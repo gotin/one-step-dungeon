@@ -183,6 +183,144 @@ function currentEnemyPos(e) {
 	return { x: e.x, y: e.y };
 }
 
+function hasEnemyAt(enemies, x, y) {
+	return enemies.some((e) => same(currentEnemyPos(e), { x, y }));
+}
+
+function makeStartState(parsed) {
+	const blocks = parsed.blocks.map((b) => ({ ...b }));
+	const key = parsed.key ? { ...parsed.key } : null;
+	const door = parsed.door ? { ...parsed.door } : null;
+	return {
+		player: { ...parsed.player },
+		blocks,
+		key,
+		door,
+		gatesOpen: computeGatesOpen(
+			parsed.switches,
+			blocks,
+			parsed.player,
+			parsed.gates,
+		),
+		enemies: JSON.parse(JSON.stringify(parsed.enemies)),
+		moves: 0,
+	};
+}
+
+function advance(parsed, cur, action) {
+	const {
+		size,
+		walls,
+		switches,
+		gates,
+		oneWays,
+		enemies: _initEnemies,
+	} = parsed;
+	let newPlayer = { ...cur.player };
+	let newBlocks = cur.blocks.map((b) => ({ ...b }));
+	let newKey = cur.key ? { ...cur.key } : null;
+	let newDoor = cur.door ? { ...cur.door } : null;
+	let gO = { ...cur.gatesOpen };
+	let pushed = false;
+	let keyTaken = false;
+
+	if (action !== "wait") {
+		const dir = DIRS[action];
+		if (!canLeavePos(newPlayer.x, newPlayer.y, action, oneWays)) return null;
+		const nx = newPlayer.x + dir.x;
+		const ny = newPlayer.y + dir.y;
+		const pushedIdx = newBlocks.findIndex((b) => same(b, { x: nx, y: ny }));
+
+		if (pushedIdx >= 0) {
+			const pb = newBlocks[pushedIdx];
+			if (!canLeavePos(pb.x, pb.y, action, oneWays)) return null;
+			const bnx = pb.x + dir.x;
+			const bny = pb.y + dir.y;
+			if (
+				isBlocked(
+					bnx,
+					bny,
+					size,
+					walls,
+					newBlocks.filter((_, i) => i !== pushedIdx),
+					gO,
+					gates,
+					newDoor,
+				) ||
+				hasEnemyAt(cur.enemies, bnx, bny)
+			)
+				return null;
+			newBlocks = newBlocks.map((b, i) =>
+				i === pushedIdx ? { x: bnx, y: bny } : b,
+			);
+			newPlayer = { x: nx, y: ny };
+			pushed = true;
+		} else {
+			if (isBlocked(nx, ny, size, walls, newBlocks, gO, gates, newDoor))
+				return null;
+			if (hasEnemyAt(cur.enemies, nx, ny)) return null;
+			newPlayer = { x: nx, y: ny };
+		}
+
+		if (newKey && !newKey.taken && same(newPlayer, newKey)) {
+			newKey = { ...newKey, taken: true };
+			keyTaken = true;
+			if (newDoor) newDoor = { ...newDoor, open: true };
+		}
+	}
+
+	const prevGates = JSON.stringify(gO);
+	gO = computeGatesOpen(switches, newBlocks, newPlayer, gates);
+	const gateChanged = JSON.stringify(gO) !== prevGates;
+	const newEnemies = cur.enemies.map((e) => {
+		if (e.type === "patrol")
+			return nextPatrol(e, size, walls, newBlocks, gO, gates, newDoor);
+		if (e.type === "chaser")
+			return nextChaser(
+				e,
+				newPlayer.x,
+				newPlayer.y,
+				size,
+				walls,
+				newBlocks,
+				gO,
+				gates,
+				newDoor,
+			);
+		return { ...e };
+	});
+	if (newEnemies.some((e) => same(currentEnemyPos(e), newPlayer))) return null;
+	if (
+		isInSight(
+			newPlayer.x,
+			newPlayer.y,
+			size,
+			walls,
+			newBlocks,
+			gO,
+			gates,
+			newDoor,
+			newEnemies,
+		)
+	)
+		return null;
+
+	return {
+		state: {
+			player: newPlayer,
+			blocks: newBlocks,
+			key: newKey,
+			door: newDoor,
+			gatesOpen: gO,
+			enemies: newEnemies,
+			moves: cur.moves + 1,
+		},
+		pushed,
+		keyTaken,
+		gateChanged,
+	};
+}
+
 function stateKey(player, blocks, key, door, gatesOpen, enemies) {
 	const b = blocks
 		.map((b) => `${b.x},${b.y}`)
@@ -287,7 +425,8 @@ export function solve(level, maxMoves = 30) {
 							gO,
 							gates,
 							newDoor,
-						)
+						) ||
+						hasEnemyAt(cur.enemies, bnx, bny)
 					)
 						continue;
 					newBlocks = newBlocks.map((b, i) =>
@@ -297,6 +436,7 @@ export function solve(level, maxMoves = 30) {
 				} else {
 					if (isBlocked(nx, ny, size, walls, newBlocks, gO, gates, newDoor))
 						continue;
+					if (hasEnemyAt(cur.enemies, nx, ny)) continue;
 					newPlayer = { x: nx, y: ny };
 				}
 
@@ -454,7 +594,8 @@ export function solveWithPath(level, maxMoves = 30) {
 							gO,
 							gates,
 							newDoor,
-						)
+						) ||
+						hasEnemyAt(cur.enemies, bnx, bny)
 					)
 						continue;
 					newBlocks = newBlocks.map((b, i) =>
@@ -464,6 +605,7 @@ export function solveWithPath(level, maxMoves = 30) {
 				} else {
 					if (isBlocked(nx, ny, size, walls, newBlocks, gO, gates, newDoor))
 						continue;
+					if (hasEnemyAt(cur.enemies, nx, ny)) continue;
 					newPlayer = { x: nx, y: ny };
 				}
 				if (newKey && !newKey.taken && same(newPlayer, newKey)) {
@@ -528,4 +670,212 @@ export function solveWithPath(level, maxMoves = 30) {
 		}
 	}
 	return null;
+}
+
+const ACTION_MARKS = {
+	up: "↑",
+	down: "↓",
+	left: "←",
+	right: "→",
+	wait: "…",
+};
+
+const OPPOSITE = {
+	up: "down",
+	down: "up",
+	left: "right",
+	right: "left",
+};
+
+function legalActionCount(parsed, state) {
+	return ["up", "down", "left", "right", "wait"].filter((action) =>
+		advance(parsed, state, action),
+	).length;
+}
+
+function countReachableArea(parsed) {
+	const queue = [parsed.player];
+	const seen = new Set([posKey(parsed.player.x, parsed.player.y)]);
+	while (queue.length) {
+		const cur = queue.shift();
+		for (const dir of Object.values(DIRS)) {
+			const next = { x: cur.x + dir.x, y: cur.y + dir.y };
+			const key = posKey(next.x, next.y);
+			if (seen.has(key)) continue;
+			if (
+				next.x < 0 ||
+				next.y < 0 ||
+				next.x >= parsed.size ||
+				next.y >= parsed.size ||
+				parsed.walls.has(key)
+			)
+				continue;
+			seen.add(key);
+			queue.push(next);
+		}
+	}
+	return seen.size;
+}
+
+function longestRun(actions) {
+	let best = 0;
+	let current = 0;
+	let previous = null;
+	for (const action of actions) {
+		if (action === previous) current += 1;
+		else current = 1;
+		best = Math.max(best, current);
+		previous = action;
+	}
+	return best;
+}
+
+export function analyzeLevel(level, maxMoves = 220) {
+	const parsed = parseLevel(level);
+	const path = solveWithPath(level, maxMoves);
+	if (!path) {
+		return { name: level.name, solved: false };
+	}
+
+	let state = makeStartState(parsed);
+	let pushes = 0;
+	let keyPickups = 0;
+	let gateChanges = 0;
+	let branchTotal = 0;
+	let forcedSteps = 0;
+	const visitedCells = new Set([posKey(state.player.x, state.player.y)]);
+	const blockCells = new Set(
+		state.blocks.map((block) => posKey(block.x, block.y)),
+	);
+
+	for (const action of path) {
+		const branches = legalActionCount(parsed, state);
+		branchTotal += branches;
+		if (branches <= 1) forcedSteps += 1;
+		const result = advance(parsed, state, action);
+		if (!result) throw new Error(`Path replay failed on ${level.name}`);
+		state = result.state;
+		if (result.pushed) pushes += 1;
+		if (result.keyTaken) keyPickups += 1;
+		if (result.gateChanged) gateChanges += 1;
+		visitedCells.add(posKey(state.player.x, state.player.y));
+		state.blocks.forEach((block) => blockCells.add(posKey(block.x, block.y)));
+	}
+
+	let directionChanges = 0;
+	let immediateBacktracks = 0;
+	let actionChanges = 0;
+	for (let i = 1; i < path.length; i += 1) {
+		if (path[i] !== path[i - 1]) actionChanges += 1;
+		if (path[i] !== "wait" && path[i - 1] !== "wait") {
+			if (path[i] !== path[i - 1]) directionChanges += 1;
+			if (OPPOSITE[path[i - 1]] === path[i]) immediateBacktracks += 1;
+		}
+	}
+
+	const moves = path.length;
+	const area = countReachableArea(parsed);
+	const density = moves / Math.max(area, 1);
+	const turnRate = directionChanges / Math.max(moves - 1, 1);
+	const actionChangeRate = actionChanges / Math.max(moves - 1, 1);
+	const pushRate = pushes / Math.max(moves, 1);
+	const backtrackRate = immediateBacktracks / Math.max(moves - 1, 1);
+	const branchAverage = branchTotal / Math.max(moves, 1);
+	const forcedRate = forcedSteps / Math.max(moves, 1);
+	const run = longestRun(path);
+	const runRate = run / Math.max(moves, 1);
+	const stateChanges = keyPickups + gateChanges;
+	const explorationRate = visitedCells.size / Math.max(area, 1);
+	const blockMobility = blockCells.size / Math.max(parsed.blocks.length || 1, 1);
+	const noEnemyPath =
+		(level.enemies?.length || 0) > 0
+			? solveWithPath({ ...level, enemies: [] }, maxMoves)
+			: null;
+	const enemyImpact = noEnemyPath
+		? Math.abs(noEnemyPath.length - moves) + (noEnemyPath.join(",") === path.join(",") ? 0 : 2)
+		: 0;
+	const hasKeyDoor = level.map.some((row) => row.includes("K") || row.includes("D"));
+	const noKeyPath = hasKeyDoor
+		? solveWithPath(
+				{
+					...level,
+					map: level.map.map((row) => row.replace(/K/g, ".").replace(/D/g, ".")),
+				},
+				maxMoves,
+			)
+		: null;
+	const keyImpact = noKeyPath
+		? Math.abs(noKeyPath.length - moves) + (noKeyPath.join(",") === path.join(",") ? 0 : 2)
+		: 0;
+
+	const score =
+		density * 18 +
+		turnRate * 12 +
+		actionChangeRate * 6 +
+		pushRate * 22 +
+		Math.log2(stateChanges + 1) * 8 +
+		Math.log2(blockMobility + 1) * 5 +
+		Math.min(enemyImpact, 8) * 1.5 +
+		Math.min(keyImpact, 8) * 1.5 +
+		branchAverage * 2.5 +
+		explorationRate * 4 -
+		forcedRate * 5 -
+		runRate * 7 -
+		backtrackRate * 4;
+
+	return {
+		name: level.name,
+		solved: true,
+		score: Number(score.toFixed(2)),
+		moves,
+		area,
+		density: Number(density.toFixed(2)),
+		pushes,
+		pushRate: Number(pushRate.toFixed(2)),
+		directionChanges,
+		turnRate: Number(turnRate.toFixed(2)),
+		immediateBacktracks,
+		branchAverage: Number(branchAverage.toFixed(2)),
+		forcedRate: Number(forcedRate.toFixed(2)),
+		longestRun: run,
+		stateChanges,
+		enemyImpact,
+		keyImpact,
+		blockMobility: Number(blockMobility.toFixed(2)),
+		path: path.map((action) => ACTION_MARKS[action]).join(" "),
+	};
+}
+
+if (process.argv[1]?.endsWith("solver.mjs")) {
+	const fs = await import("node:fs");
+	const vm = await import("node:vm");
+	const file = process.argv[2] || "outputs/one-step-dungeon/game.js";
+	const source = fs.readFileSync(file, "utf8");
+	const match = source.match(/const LEVELS = (\[[\s\S]*?\n\]);/);
+	if (!match) throw new Error("LEVELS not found");
+	const context = {};
+	vm.createContext(context);
+	vm.runInContext(`levels = ${match[1]}`, context);
+	const analyses = context.levels.map((level) => analyzeLevel(level, 240));
+	analyses.forEach((a, index) => {
+		if (!a.solved) {
+			console.log(`${index + 1}. ${a.name}: UNSOLVED`);
+			return;
+		}
+		console.log(
+			[
+				`${index + 1}. ${a.name}`,
+				`score=${a.score}`,
+				`moves=${a.moves}`,
+				`density=${a.density}`,
+				`pushes=${a.pushes}`,
+				`turnRate=${a.turnRate}`,
+				`branch=${a.branchAverage}`,
+				`run=${a.longestRun}`,
+				`state=${a.stateChanges}`,
+				`enemy=${a.enemyImpact}`,
+				`key=${a.keyImpact}`,
+			].join(" | "),
+		);
+	});
 }

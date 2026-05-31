@@ -14,31 +14,6 @@ const ONE_WAY_CHARS = {
 
 const LEVELS = [
 	{
-		name: "見張りの廊下",
-		size: 6,
-		map: ["######", "#P...#", "#..S.#", "#.##K#", "#GD..#", "######"],
-		enemies: [{ type: "sentry", x: 3, y: 2, dir: "left" }],
-	},
-	{
-		name: "巡回を待つ",
-		size: 6,
-		map: ["######", "#P...#", "#.##.#", "#K...#", "#D.G.#", "######"],
-		enemies: [
-			{
-				type: "patrol",
-				route: [
-					[3, 1],
-					[4, 1],
-					[4, 2],
-					[4, 3],
-					[3, 3],
-				],
-				index: 0,
-				forward: true,
-			},
-		],
-	},
-	{
 		name: "追跡者を誘う",
 		size: 7,
 		map: [
@@ -51,38 +26,6 @@ const LEVELS = [
 			"#######",
 		],
 		enemies: [{ type: "chaser", x: 5, y: 4 }],
-	},
-	{
-		// Microban #30 (David W. Skinner / Public Domain) 本物のデータ
-		// 石3つ・スイッチ3つ / 最小28手
-		name: "三つの帰り道",
-		size: 7,
-		map: [
-			"####   ",
-			"#  ### ",
-			"# BB # ",
-			"#TTT ##",
-			"# PB XG",
-			"#   ###",
-			"#######",
-		],
-		enemies: [],
-	},
-	{
-		// Microban #31 (David W. Skinner / Public Domain) 本物のデータ
-		// 石3つ・スイッチ3つ / 最小24手
-		name: "斜めの置き場",
-		size: 8,
-		map: [
-			"  ####  ",
-			" ##  #  ",
-			"##PBT###",
-			"# BB  # ",
-			"# T T ##",
-			"###   XG",
-			"  ######",
-		],
-		enemies: [],
 	},
 	{
 		name: "横切る影",
@@ -112,117 +55,23 @@ const LEVELS = [
 		],
 	},
 	{
-		name: "鍵を先に",
-		size: 7,
-		map: [
-			"#######",
-			"#P#...#",
-			"#.#.#G#",
-			"#...#D#",
-			"#.###.#",
-			"#K....#",
-			"#######",
+		name: "巡回を待つ",
+		size: 6,
+		map: ["######", "#P...#", "#.##.#", "#K...#", "#D.G.#", "######"],
+		enemies: [
+			{
+				type: "patrol",
+				route: [
+					[3, 1],
+					[4, 1],
+					[4, 2],
+					[4, 3],
+					[3, 3],
+				],
+				index: 0,
+				forward: true,
+			},
 		],
-		enemies: [{ type: "sentry", x: 3, y: 3, dir: "right" }],
-	},
-	{
-		name: "石の置き場所",
-		size: 8,
-		map: [
-			"########",
-			"#P...###",
-			"#..B.###",
-			"#..#.XG#",
-			"#..T.###",
-			"#......#",
-			"#......#",
-			"########",
-		],
-		enemies: [],
-	},
-	{
-		name: "鍵と石",
-		size: 10,
-		map: [
-			"##########",
-			"#P...K####",
-			"#....#####",
-			"#..B.DXG##",
-			"#..T######",
-			"#........#",
-			"#........#",
-			"#........#",
-			"#........#",
-			"##########",
-		],
-		enemies: [],
-	},
-	{
-		name: "石で遮る",
-		size: 8,
-		map: [
-			"########",
-			"#P.....#",
-			"#.B.T..#",
-			"#...B..#",
-			"#S....##",
-			"#####X##",
-			"#####G##",
-			"########",
-		],
-		enemies: [{ type: "sentry", x: 1, y: 4, dir: "right" }],
-	},
-	{
-		name: "鍵と石の詰め",
-		size: 11,
-		map: [
-			"###########",
-			"#P....K####",
-			"#.....#####",
-			"#.B.DXG####",
-			"##T########",
-			"#....BT...#",
-			"#.........#",
-			"#.........#",
-			"#.........#",
-			"#.........#",
-			"###########",
-		],
-		enemies: [],
-	},
-	{
-		name: "一方通行の石",
-		size: 10,
-		map: [
-			"##########",
-			"#P....####",
-			"#..B>.####",
-			"#..T>XG###",
-			"#......###",
-			"#........#",
-			"#........#",
-			"#........#",
-			"#........#",
-			"##########",
-		],
-		enemies: [],
-	},
-	{
-		name: "二色の倉庫",
-		size: 10,
-		map: [
-			"##########",
-			"#P....####",
-			"#..B..####",
-			"#..T.XYG##",
-			"#..U######",
-			"#...B....#",
-			"#........#",
-			"#........#",
-			"#........#",
-			"##########",
-		],
-		enemies: [],
 	},
 	{
 		name: "視線をふさぐ石",
@@ -240,24 +89,6 @@ const LEVELS = [
 			"##########",
 		],
 		enemies: [{ type: "sentry", x: 8, y: 3, dir: "left" }],
-	},
-	{
-		name: "色と矢印",
-		size: 11,
-		map: [
-			"###########",
-			"#P.....####",
-			"#..B>..####",
-			"#..T.X.YG##",
-			"#..U#######",
-			"#....B....#",
-			"#....^....#",
-			"#.........#",
-			"#.........#",
-			"#.........#",
-			"###########",
-		],
-		enemies: [],
 	},
 	{
 		name: "巡回兵の隙をつく",
@@ -286,6 +117,176 @@ const LEVELS = [
 				forward: true,
 			},
 		],
+	},
+	{
+		name: "鍵を先に",
+		size: 7,
+		map: [
+			"#######",
+			"#P#...#",
+			"#.#.#G#",
+			"#...#D#",
+			"#.###.#",
+			"#K....#",
+			"#######",
+		],
+		enemies: [{ type: "sentry", x: 3, y: 3, dir: "right" }],
+	},
+	{
+		name: "一方通行の石",
+		size: 10,
+		map: [
+			"##########",
+			"#P....####",
+			"#..B>.####",
+			"#..T>XG###",
+			"#......###",
+			"#........#",
+			"#........#",
+			"#........#",
+			"#........#",
+			"##########",
+		],
+		enemies: [],
+	},
+	{
+		// Microban #38 ベース / 17手
+		name: "四方への配達",
+		size: 12,
+		map: [
+			"############",
+			"#.##########",
+			"#.##T#######",
+			"#.#.BB.T####",
+			"#.T.PB....X#",
+			"#####.####.#",
+			"##########.#",
+			"##########G#",
+		],
+		enemies: [],
+	},
+	{
+		name: "見張りの廊下",
+		size: 6,
+		map: ["######", "#P...#", "#..S.#", "#.##K#", "#GD..#", "######"],
+		enemies: [{ type: "sentry", x: 3, y: 2, dir: "left" }],
+	},
+	{
+		name: "色と矢印",
+		size: 11,
+		map: [
+			"###########",
+			"#P.....####",
+			"#..B>..####",
+			"#..T.X.YG##",
+			"#..U#######",
+			"#....B....#",
+			"#....^....#",
+			"#.........#",
+			"#.........#",
+			"#.........#",
+			"###########",
+		],
+		enemies: [],
+	},
+	{
+		name: "鍵と石",
+		size: 10,
+		map: [
+			"##########",
+			"#P...K####",
+			"#....#####",
+			"#..B.DXG##",
+			"#..T######",
+			"#........#",
+			"#........#",
+			"#........#",
+			"#........#",
+			"##########",
+		],
+		enemies: [],
+	},
+	{
+		name: "二色の倉庫",
+		size: 10,
+		map: [
+			"##########",
+			"#P....####",
+			"#..B..####",
+			"#..T.XYG##",
+			"#..U######",
+			"#...B....#",
+			"#........#",
+			"#........#",
+			"#........#",
+			"##########",
+		],
+		enemies: [],
+	},
+	{
+		// Microban #17 をベースに変換 / 最小8手
+		name: "横並びを崩せ",
+		size: 7,
+		map: [
+			"#######",
+			"#.P..##",
+			"#TTT.XG",
+			"#BBB..#",
+			"#.....#",
+			"#.....#",
+			"#######",
+		],
+		enemies: [],
+	},
+	{
+		// 緑と青のゲートを別々の石で維持する空気室 / 最小28手
+		name: "二色の空気室",
+		size: 12,
+		map: [
+			"############",
+			"#P..B.....#",
+			"#.##.###..#",
+			"#..T...#..#",
+			"###.##.#..#",
+			"#...B..U..#",
+			"#.####.##Y#",
+			"#....K.DXG#",
+			"#.#########",
+			"#.........#",
+			"#.........#",
+			"############",
+		],
+		enemies: [],
+	},
+	{
+		name: "石の置き場所",
+		size: 8,
+		map: [
+			"########",
+			"#P...###",
+			"#..B.###",
+			"#..#.XG#",
+			"#..T.###",
+			"#......#",
+			"#......#",
+			"########",
+		],
+		enemies: [],
+	},
+	{
+		name: "石で遮る",
+		size: 8,
+		map: [
+			"########",
+			"#P.....#",
+			"#.B.T..#",
+			"#...B..#",
+			"#S....##",
+			"#####X##",
+			"#####G##",
+			"########",
+		],
+		enemies: [{ type: "sentry", x: 1, y: 4, dir: "right" }],
 	},
 	{
 		name: "見張りと巡回兵",
@@ -317,186 +318,18 @@ const LEVELS = [
 		],
 	},
 	{
-		// Microban #17 をベースに変換 / 最小8手
-		name: "横並びを崩せ",
-		size: 7,
-		map: [
-			"#######",
-			"#.P..##",
-			"#TTT.XG",
-			"#BBB..#",
-			"#.....#",
-			"#.....#",
-			"#######",
-		],
-		enemies: [],
-	},
-	{
-		// Microban #45 をベースに変換 / 最小4手
-		name: "縦に積む",
+		// Microban #31 (David W. Skinner / Public Domain) 本物のデータ
+		// 石3つ・スイッチ3つ / 最小24手
+		name: "斜めの置き場",
 		size: 8,
 		map: [
-			"########",
-			"#TTT. ##",
-			"#.B...##",
-			"#.#B..##",
-			"#.B...##",
-			"#.P..X##",
-			"#####G##",
-			"########",
-		],
-		enemies: [],
-	},
-	{
-		// Microban #6 ベース
-		name: "二つの部屋",
-		size: 12,
-		map: [
-			"######.#####",
-			"#....###...#",
-			"#.BB.....#P#",
-			"#.B.#TTT...#",
-			"#...######X#",
-			"##########G#",
-		],
-		enemies: [],
-	},
-	{
-		// Microban #13 / size=9
-		name: "縦一列に",
-		size: 9,
-		map: [
-			"####",
-			"#T ##",
-			"#TP ###",
-			"#T BXG#",
-			"##B ###",
-			"## B  #",
-			"##    #",
-			"##  ###",
-			"#####",
-		],
-		enemies: [],
-	},
-	{
-		// Microban #26
-		name: "遠回りの石",
-		size: 8,
-		map: [
-			" #####",
-			" # P #",
-			" #   ###",
-			"###B XG#",
-			"# TTT###",
-			"# BB #",
-			"###  #",
-			" #####",
-		],
-		enemies: [],
-	},
-	{
-		// Microban #27
-		name: "二股の道",
-		size: 9,
-		map: [
-			"######",
-			"#   T#",
-			"# ## ####",
-			"#  BBPXG#",
-			"# #   ###",
-			"#T  ###",
-			"#####",
-		],
-		enemies: [],
-	},
-	{
-		// 石2つ・スイッチ2つ / 最小21手
-		name: "石は一個でいい",
-		size: 7,
-		map: [
-			"######.",
-			"#    #.",
-			"# ##T#.",
-			"# #  #.",
-			"# BB ##",
-			"## PTXG",
-			"#######",
-		],
-		enemies: [],
-	},
-	{
-		// Microban #29 本物 / 109手
-		name: "長い旅路",
-		size: 11,
-		map: [
-			"     #####.",
-			"   ###   ##",
-			"   #GX    #",
-			" ######   #",
-			"##     #T #",
-			"# B B P  ##",
-			"# ######T #",
-			"#         #",
-			"###########",
-		],
-		enemies: [],
-	},
-	{
-		// Microban #33 本物 / 49手
-		name: "対称の罠",
-		size: 9,
-		map: [
-			"#########",
-			"#T #  ###",
-			"#  B  ###",
-			"#T B#P XG",
-			"#  B  ###",
-			"#T #  ###",
-			"#########",
-		],
-		enemies: [],
-	},
-	{
-		// Microban #34 本物 / 36手
-		name: "最後の一押し",
-		size: 11,
-		map: [
-			"  ####",
-			"###  ####",
-			"#       ###",
-			"#PB***T XG#",
-			"#       ###",
-			"#########",
-		],
-		enemies: [],
-	},
-	{
-		// Microban #40 本物 / 24手
-		name: "足場はスイッチ",
-		size: 9,
-		map: [
-			" #####   ",
-			" #   #   ",
-			"##   ###.",
-			"# BBB ###",
-			"# T+T XG#",
-			"#########",
-		],
-		enemies: [],
-	},
-	{
-		// Microban #38 ベース / 17手
-		name: "四方への配達",
-		size: 12,
-		map: [
-			"############",
-			"#.##########",
-			"#.##T#######",
-			"#.#.BB.T####",
-			"#.T.PB....X#",
-			"#####.####.#",
-			"##########.#",
-			"##########G#",
+			"  ####  ",
+			" ##  #  ",
+			"##PBT###",
+			"# BB  # ",
+			"# T T ##",
+			"###   XG",
+			"  ######",
 		],
 		enemies: [],
 	},
@@ -523,7 +356,204 @@ const LEVELS = [
 		enemies: [],
 	},
 	{
-		// Microban #30 をベースに、巡回兵のタイミング待ちを追加 / 最小29手
+		// 石2つ・スイッチ2つ / 最小21手
+		name: "石は一個でいい",
+		size: 7,
+		map: [
+			"######.",
+			"#    #.",
+			"# ##T#.",
+			"# #  #.",
+			"# BB ##",
+			"## PTXG",
+			"#######",
+		],
+		enemies: [],
+	},
+	{
+		// Microban #45 をベースに変換 / 最小4手
+		name: "縦に積む",
+		size: 8,
+		map: [
+			"########",
+			"#TTT. ##",
+			"#.B...##",
+			"#.#B..##",
+			"#.B...##",
+			"#.P..X##",
+			"#####G##",
+			"########",
+		],
+		enemies: [],
+	},
+	{
+		// 小部屋で3つのスイッチを処理する高密度ステージ / 評価74
+		name: "三倉庫の押し順",
+		size: 7,
+		map: [
+			"####   ",
+			"#  ### ",
+			"# BB # ",
+			"#TTT  #",
+			"# PB XG",
+			"#   ###",
+			"#######",
+		],
+		enemies: [],
+	},
+	{
+		// Microban #30 (David W. Skinner / Public Domain) 本物のデータ
+		// 石3つ・スイッチ3つ / 最小28手
+		name: "三つの帰り道",
+		size: 7,
+		map: [
+			"####   ",
+			"#  ### ",
+			"# BB # ",
+			"#TTT ##",
+			"# PB XG",
+			"#   ###",
+			"#######",
+		],
+		enemies: [],
+	},
+	{
+		// Microban #40 本物 / 24手
+		name: "足場はスイッチ",
+		size: 9,
+		map: [
+			" #####   ",
+			" #   #   ",
+			"##   ###.",
+			"# BBB ###",
+			"# T+T XG#",
+			"#########",
+		],
+		enemies: [],
+	},
+	{
+		name: "鍵と石の詰め",
+		size: 11,
+		map: [
+			"###########",
+			"#P....K####",
+			"#.....#####",
+			"#.B.DXG####",
+			"##T########",
+			"#....BT...#",
+			"#.........#",
+			"#.........#",
+			"#.........#",
+			"#.........#",
+			"###########",
+		],
+		enemies: [],
+	},
+	{
+		// Microban #34 本物 / 36手
+		name: "最後の一押し",
+		size: 11,
+		map: [
+			"  ####",
+			"###  ####",
+			"#       ###",
+			"#PB***T XG#",
+			"#       ###",
+			"#########",
+		],
+		enemies: [],
+	},
+	{
+		// Microban #6 ベース
+		name: "二つの部屋",
+		size: 12,
+		map: [
+			"######.#####",
+			"#....###...#",
+			"#.BB.....#P#",
+			"#.B.#TTT...#",
+			"#...######X#",
+			"##########G#",
+		],
+		enemies: [],
+	},
+	{
+		// 斜め配置の石を処理し、鍵扉と見張りの視線を抜ける / 評価74
+		name: "斜めの鍵監視",
+		size: 9,
+		map: [
+			"  ####   ",
+			" ##  #   ",
+			"##PBT### ",
+			"# BB  #  ",
+			"# T T K##",
+			"###   DXG",
+			"  #######",
+		],
+		enemies: [{ type: "sentry", x: 4, y: 1, dir: "down" }],
+	},
+	{
+		// Microban #6 ベースに鍵扉を追加。石を解いたあと鍵を戻りで回収する / 最小112手
+		name: "鍵つき二部屋",
+		size: 12,
+		map: [
+			"######.#####",
+			"#....###...#",
+			"#.BB..K..#P#",
+			"#.B.#TTT...#",
+			"#...######X#",
+			"##########DG",
+		],
+		enemies: [],
+	},
+	{
+		// Microban #33 本物 / 49手
+		name: "対称の罠",
+		size: 9,
+		map: [
+			"#########",
+			"#T #  ###",
+			"#  B  ###",
+			"#T B#P XG",
+			"#  B  ###",
+			"#T #  ###",
+			"#########",
+		],
+		enemies: [],
+	},
+	{
+		// Microban #33 ベース。対称配置の押し順を読む / 評価81
+		name: "対称の押し順",
+		size: 9,
+		map: [
+			"#########",
+			"#T #  ###",
+			"#  B  ###",
+			"#T B#P XG",
+			"#  B  ###",
+			"#T #  ###",
+			"#########",
+		],
+		enemies: [],
+	},
+	{
+		// Microban #26
+		name: "遠回りの石",
+		size: 8,
+		map: [
+			" #####",
+			" # P #",
+			" #   ###",
+			"###B XG#",
+			"# TTT###",
+			"# BB #",
+			"###  #",
+			" #####",
+		],
+		enemies: [],
+	},
+	{
+		// Microban #30 をベースに、巡回兵のタイミング待ちを追加 / 最小37手
 		name: "三つの帰り道と巡回",
 		size: 7,
 		map: [
@@ -539,46 +569,62 @@ const LEVELS = [
 			{
 				type: "patrol",
 				route: [
-					[1, 5],
-					[2, 5],
+					[4, 5],
 					[3, 5],
+					[2, 5],
+					[1, 5],
 				],
-				index: 0,
+				index: 1,
 				forward: true,
 			},
 		],
 	},
 	{
-		// 緑と青のゲートを別々の石で維持する空気室 / 最小28手
-		name: "二色の空気室",
-		size: 12,
+		// Microban #27
+		name: "二股の道",
+		size: 9,
 		map: [
-			"############",
-			"#P..B.....#",
-			"#.##.###..#",
-			"#..T...#..#",
-			"###.##.#..#",
-			"#...B..U..#",
-			"#.####.##Y#",
-			"#....K.DXG#",
-			"#.#########",
-			"#.........#",
-			"#.........#",
-			"############",
+			"######",
+			"#   T#",
+			"# ## ####",
+			"#  BBPXG#",
+			"# #   ###",
+			"#T  ###",
+			"#####",
 		],
 		enemies: [],
 	},
 	{
-		// Microban #6 ベースに鍵扉を追加。石を解いたあと鍵を戻りで回収する / 最小112手
-		name: "鍵つき二部屋",
-		size: 12,
+		// Microban #13 / size=9
+		name: "縦一列に",
+		size: 9,
 		map: [
-			"######.#####",
-			"#....###...#",
-			"#.BB..K..#P#",
-			"#.B.#TTT...#",
-			"#...######X#",
-			"##########DG",
+			"####",
+			"#T ##",
+			"#TP ###",
+			"#T BXG#",
+			"##B ###",
+			"## B  #",
+			"##    #",
+			"##  ###",
+			"#####",
+		],
+		enemies: [],
+	},
+	{
+		// Microban #29 本物 / 109手
+		name: "長い旅路",
+		size: 11,
+		map: [
+			"     #####.",
+			"   ###   ##",
+			"   #GX    #",
+			" ######   #",
+			"##     #T #",
+			"# B B P  ##",
+			"# ######T #",
+			"#         #",
+			"###########",
 		],
 		enemies: [],
 	},
@@ -599,77 +645,6 @@ const LEVELS = [
 		],
 		enemies: [],
 	},
-	{
-		// Microban #33 ベースに巡回兵を追加。押し順と敵周期が噛み合う / 最小49手
-		name: "対称の巡回",
-		size: 9,
-		map: [
-			"#########",
-			"#T #  ###",
-			"#  B  ###",
-			"#T B#P XG",
-			"#  B  ###",
-			"#T #  ###",
-			"#########",
-		],
-		enemies: [
-			{
-				type: "patrol",
-				route: [
-					[5, 1],
-					[6, 1],
-				],
-				index: 0,
-				forward: true,
-			},
-		],
-	},
-	{
-		// 鍵、石スイッチ、巡回兵の踏切をまとめた中盤向けステージ / 最小26手
-		name: "巡回の踏切",
-		size: 10,
-		map: [
-			"##########",
-			"#P...K...#",
-			"#.######.#",
-			"#..B.T...#",
-			"#........#",
-			"#.########",
-			"#.....DXG#",
-			"##########",
-		],
-		enemies: [
-			{
-				type: "patrol",
-				route: [
-					[2, 4],
-					[3, 4],
-					[4, 4],
-					[5, 4],
-					[6, 4],
-					[7, 4],
-				],
-				index: 0,
-				forward: true,
-			},
-		],
-	},
-	{
-		// 見張りの視線を石で遮った瞬間だけ出口に立てる / 最小21手
-		name: "鍵と盾",
-		size: 13,
-		map: [
-			"#############",
-			"#P.....K....#",
-			"#.#########.#",
-			"#D..B...G.TS#",
-			"#.#.#####.#.#",
-			"#.#.....#...#",
-			"#...###.....#",
-			"#############",
-		],
-		enemies: [{ type: "sentry", x: 11, y: 3, dir: "left" }],
-	},
 ];
 
 const boardEl = document.querySelector("#board");
@@ -682,6 +657,7 @@ const resetBtn = document.querySelector("#reset");
 const waitBtn = document.querySelector("#wait");
 const stageListEl = document.querySelector("#stage-list");
 const clearDialogEl = document.querySelector("#clear-dialog");
+const clearEyebrowEl = clearDialogEl.querySelector(".eyebrow");
 const clearTitleEl = document.querySelector("#clear-title");
 const clearDetailEl = document.querySelector("#clear-detail");
 const nextStageBtn = document.querySelector("#next-stage");
@@ -690,7 +666,7 @@ const replayStageBtn = document.querySelector("#replay-stage");
 let levelIndex = 0;
 let state = null;
 let history = [];
-let best = JSON.parse(localStorage.getItem("one-step-best-v11") || "{}");
+let best = JSON.parse(localStorage.getItem("one-step-best-v12") || "{}");
 let touchStart = null;
 let audioContext = null;
 
@@ -1016,10 +992,10 @@ function resolveTurn() {
 	}
 	if (same(state.player, state.goal)) {
 		state.won = true;
-		const key = String(state.levelIndex);
+		const key = LEVELS[state.levelIndex].name;
 		if (!best[key] || state.moves < best[key]) {
 			best[key] = state.moves;
-			localStorage.setItem("one-step-best-v11", JSON.stringify(best));
+			localStorage.setItem("one-step-best-v12", JSON.stringify(best));
 		}
 		playSound("clear");
 		showClearDialog();
@@ -1069,15 +1045,20 @@ function playSound(kind) {
 
 function showClearDialog() {
 	const isLast = levelIndex >= LEVELS.length - 1;
-	clearTitleEl.textContent = isLast ? "全ステージクリア" : "ステージクリア";
-	clearDetailEl.textContent = `${LEVELS[levelIndex].name} / ${state.moves}手`;
-	nextStageBtn.textContent = isLast ? "最初へ戻る" : "次へ →";
+	clearEyebrowEl.textContent = isLast ? "All Stages Clear" : "Stage Clear";
+	clearTitleEl.textContent = isLast ? "ONE STEP MASTER" : "ステージクリア";
+	clearDetailEl.textContent = isLast
+		? `全${LEVELS.length}ステージ踏破 / 最終ステージ ${state.moves}手`
+		: `${LEVELS[levelIndex].name} / ${state.moves}手`;
+	nextStageBtn.textContent = isLast ? "最初から →" : "次へ →";
+	clearDialogEl.classList.toggle("ending", isLast);
 	clearDialogEl.classList.add("show");
 	clearDialogEl.setAttribute("aria-hidden", "false");
 }
 
 function hideClearDialog() {
 	clearDialogEl.classList.remove("show");
+	clearDialogEl.classList.remove("ending");
 	clearDialogEl.setAttribute("aria-hidden", "true");
 }
 
@@ -1214,7 +1195,7 @@ function renderStages() {
 		const button = document.createElement("button");
 		button.type = "button";
 		button.classList.toggle("active", index === levelIndex);
-		button.innerHTML = `<span>${index + 1}. ${level.name}</span><span class="best">${best[index] ? `${best[index]}手` : "-"}</span>`;
+		button.innerHTML = `<span>${index + 1}. ${level.name}</span><span class="best">${best[level.name] ? `${best[level.name]}手` : "-"}</span>`;
 		button.addEventListener("click", () => {
 			levelIndex = index;
 			loadLevel(levelIndex);

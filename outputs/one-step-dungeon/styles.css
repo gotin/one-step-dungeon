@@ -529,8 +529,44 @@ h2 {
   box-shadow: 0 18px 60px rgba(0, 0, 0, 0.42);
 }
 
+.dialog-backdrop.ending {
+  background:
+    radial-gradient(circle at 50% 36%, rgba(242, 193, 78, 0.22), transparent 34%),
+    linear-gradient(180deg, rgba(5, 7, 8, 0.78), rgba(5, 7, 8, 0.92));
+}
+
+.dialog-backdrop.ending .clear-dialog {
+  width: min(520px, 100%);
+  border-color: rgba(242, 193, 78, 0.72);
+  background:
+    linear-gradient(180deg, rgba(39, 47, 51, 0.98), rgba(16, 20, 22, 0.98));
+  text-align: center;
+  box-shadow:
+    0 0 0 1px rgba(255, 255, 255, 0.05) inset,
+    0 26px 90px rgba(0, 0, 0, 0.62);
+}
+
+.dialog-backdrop.ending .clear-dialog::before {
+  content: "";
+  display: block;
+  width: 72px;
+  height: 72px;
+  margin: 0 auto 14px;
+  border: 2px solid rgba(242, 193, 78, 0.72);
+  border-radius: 50%;
+  background:
+    linear-gradient(90deg, transparent 48%, rgba(242, 193, 78, 0.8) 48% 52%, transparent 52%),
+    linear-gradient(0deg, transparent 48%, rgba(242, 193, 78, 0.8) 48% 52%, transparent 52%),
+    radial-gradient(circle, rgba(242, 193, 78, 0.28), transparent 58%);
+}
+
 .clear-dialog h2 {
   font-size: 1.6rem;
+}
+
+.dialog-backdrop.ending .clear-dialog h2 {
+  font-size: 2rem;
+  color: var(--goal);
 }
 
 .clear-dialog p:last-of-type {
