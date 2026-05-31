@@ -781,7 +781,8 @@ function isBlocked(x, y, ignoreDoor = false) {
 		!ignoreDoor &&
 		state.door &&
 		!state.door.open &&
-		same({ x, y }, state.door)
+		same({ x, y }, state.door) &&
+		!state.key?.taken
 	)
 		return true;
 	if (
@@ -959,12 +960,24 @@ function waitTurn() {
 function applyPlayerTileEffects() {
 	if (state.key && !state.key.taken && same(state.player, state.key)) {
 		state.key.taken = true;
-		if (state.door) state.door.open = true;
+		playSound("key");
+		pulse("🔑 鍵を拾った！扉が開けられる", false);
+		// door stays closed until player reaches it
+	}
+	if (state.door && !state.door.open && state.key?.taken && same(state.player, state.door)) {
+		state.door.open = true;
+		playSound("doorOpen");
+		// trigger opening animation on next render via flag
+		state.door.opening = true;
+		window.setTimeout(() => {
+			if (state.door) state.door.opening = false;
+		}, 400);
 	}
 }
 
 function updateSwitches() {
 	const colors = [...new Set(state.gates.map((gate) => gate.color))];
+	const prevGatesOpen = state.gatesOpen || {};
 	state.gatesOpen = Object.fromEntries(
 		colors.map((color) => {
 			const switches = state.switches.filter(
@@ -980,6 +993,27 @@ function updateSwitches() {
 			return [color, open];
 		}),
 	);
+	// スイッチ状態が変わった時に音とアニメーション
+	colors.forEach((color) => {
+		if (!prevGatesOpen[color] && state.gatesOpen[color]) {
+			playSound("gateOpen");
+			// ゲートに opening フラグを設定
+			state.gates.forEach((gate) => {
+				if (gate.color === color) {
+					gate.opening = true;
+					window.setTimeout(() => { gate.opening = false; }, 350);
+				}
+			});
+		} else if (state.gatesOpen[color] !== prevGatesOpen[color]) {
+			playSound("switch");
+		}
+	});
+	// スイッチを踏んだ音（まだゲートが開いていない場合）
+	state.switches.forEach((button) => {
+		if (same(button, state.player) && !state.gatesOpen[button.color]) {
+			playSound("switch");
+		}
+	});
 }
 
 function resolveTurn() {
@@ -1042,6 +1076,25 @@ function playSound(kind) {
 	if (kind === "miss") {
 		tone(ctx, now, 180, 0.11, "sawtooth", 0.045);
 		tone(ctx, now + 0.08, 120, 0.14, "sawtooth", 0.04);
+	}
+	if (kind === "key") {
+		tone(ctx, now, 880, 0.07, "sine", 0.05);
+		tone(ctx, now + 0.07, 1100, 0.09, "sine", 0.06);
+		tone(ctx, now + 0.14, 1320, 0.12, "sine", 0.055);
+	}
+	if (kind === "doorOpen") {
+		tone(ctx, now, 440, 0.08, "triangle", 0.05);
+		tone(ctx, now + 0.06, 660, 0.1, "triangle", 0.06);
+		tone(ctx, now + 0.14, 550, 0.18, "sine", 0.045);
+	}
+	if (kind === "switch") {
+		tone(ctx, now, 330, 0.06, "square", 0.04);
+		tone(ctx, now + 0.05, 500, 0.08, "square", 0.05);
+	}
+	if (kind === "gateOpen") {
+		tone(ctx, now, 220, 0.1, "sawtooth", 0.04);
+		tone(ctx, now + 0.08, 330, 0.12, "triangle", 0.05);
+		tone(ctx, now + 0.18, 440, 0.14, "sine", 0.05);
 	}
 }
 
@@ -2098,7 +2151,10 @@ function addGlyphs(cell, x, y) {
 	if (state.door && !state.door.open && same(p, state.door)) {
 		const cv = makeSprite("door", "door", false);
 		if (cv) {
-			cv.className = "sprite";
+			let cls = "sprite";
+			if (state.key?.taken && state.door.opening) cls += " door-opening";
+			else if (state.key?.taken) cls += " door-unlocked";
+			cv.className = cls;
 			cell.append(cv);
 		}
 	}
@@ -2112,7 +2168,10 @@ function addGlyphs(cell, x, y) {
 				: "gateG";
 		const palName = gate.color === "blue" ? "gateB" : "gateG";
 		const cv = makeSprite(sname, palName, !open);
-		if (cv) cell.append(cv);
+		if (cv) {
+			if (gate.opening) cv.classList.add("gate-opening");
+			cell.append(cv);
+		}
 	});
 	state.switches?.forEach((button) => {
 		if (!same(p, button)) return;
@@ -2255,37 +2314,34 @@ nextStageBtn.addEventListener("click", () => {
 
 replayStageBtn.addEventListener("click", () => loadLevel(levelIndex));
 
-// ── Legend (Pieces) rendering with sprites ─────────────
-function renderLegend() {
-	const legendEl = document.querySelector("#legend-list");
-	if (!legendEl) return;
-	const items = [
-		{ sname: "heroD", pal: "hero", label: "あなた" },
-		{ sname: "goal", pal: "goal", label: "出口" },
-		{ sname: "key", pal: "key", label: "鍵" },
-		{ sname: "door", pal: "door", label: "扉" },
-		{ sname: "block", pal: "block", label: "石" },
-		{ sname: "swG", pal: "swG", label: "スイッチ" },
-		{ sname: "gateG", pal: "gateG", label: "ゲート" },
-		{ sname: "swB", pal: "swB", label: "青スイッチ" },
-		{ sname: "gateB", pal: "gateB", label: "青ゲート" },
-		{ sname: "patrol", pal: "patrol", label: "巡回兵" },
-		{ sname: "chaser", pal: "chaser", label: "追跡者" },
-		{ sname: "sentryR", pal: "sentry", label: "見張り" },
+// ── How-to sprite injection ─────────────────────────────
+function renderHowto() {
+	const howtoSprites = [
+		{ id: "howto-sprite-player", sname: "heroD", pal: "hero" },
+		{ id: "howto-sprite-goal", sname: "goal", pal: "goal" },
+		{ id: "howto-sprite-key", sname: "key", pal: "key" },
+		{ id: "howto-sprite-door", sname: "door", pal: "door" },
+		{ id: "howto-sprite-patrol", sname: "patrol", pal: "patrol" },
+		{ id: "howto-sprite-chaser", sname: "chaser", pal: "chaser" },
+		{ id: "howto-sprite-sentry", sname: "sentryR", pal: "sentry" },
+		{ id: "howto-sprite-block", sname: "block", pal: "block" },
+		{ id: "howto-sprite-swG", sname: "swG", pal: "swG" },
+		{ id: "howto-sprite-gateG", sname: "gateG", pal: "gateG" },
+		{ id: "howto-sprite-swB", sname: "swB", pal: "swB" },
+		{ id: "howto-sprite-gateB", sname: "gateB", pal: "gateB" },
 	];
-	legendEl.innerHTML = "";
-	items.forEach(({ sname, pal, label }) => {
-		const li = document.createElement("li");
+	howtoSprites.forEach(({ id, sname, pal }) => {
+		const wrap = document.getElementById(id);
+		if (!wrap) return;
 		const cv = makeSprite(sname, pal, false);
 		if (cv) {
-			cv.className = "legend-sprite";
-			li.append(cv);
+			cv.className = "howto-sprite";
+			wrap.innerHTML = "";
+			wrap.append(cv);
 		}
-		li.append(document.createTextNode(label));
-		legendEl.append(li);
 	});
 }
 
 startAnimLoop();
 loadLevel(levelIndex);
-renderLegend();
+renderHowto();

@@ -37,9 +37,50 @@
           </div>
         </div>
 
-        <div class="section pieces-section">
-          <h2>Pieces</h2>
-          <ul id="legend-list" class="legend legend-sprites"></ul>
+        <div class="section howto-section">
+          <h2>How to Play</h2>
+          <div class="howto-body">
+            <dl class="howto-rules">
+              <div class="howto-rule">
+                <dt><span class="howto-sprite-wrap" id="howto-sprite-player"></span>あなた（プレイヤー）</dt>
+                <dd>出口（<span class="howto-sprite-wrap" id="howto-sprite-goal"></span>）に到達したらクリア。鍵（<span class="howto-sprite-wrap" id="howto-sprite-key"></span>）を拾うと扉（<span class="howto-sprite-wrap" id="howto-sprite-door"></span>）が光り出す。扉のマスに移動すると扉が開いて通れる。</dd>
+              </div>
+              <div class="howto-rule">
+                <dt>敵の動き</dt>
+                <dd>あなたが<strong>1歩動くたびに敵も1歩動く</strong>。敵のマスに入ったり、見張りの視線エリアに入るとゲームオーバー。</dd>
+              </div>
+              <div class="howto-rule">
+                <dt><span class="howto-sprite-wrap" id="howto-sprite-patrol"></span>巡回兵</dt>
+                <dd>決まったルートを往復する。次に移動するマス（赤枠）を確認してから動こう。</dd>
+              </div>
+              <div class="howto-rule">
+                <dt><span class="howto-sprite-wrap" id="howto-sprite-chaser"></span>追跡者</dt>
+                <dd>常にあなたを追いかける。壁や石を使って引き離そう。</dd>
+              </div>
+              <div class="howto-rule">
+                <dt><span class="howto-sprite-wrap" id="howto-sprite-sentry"></span>見張り</dt>
+                <dd>一方向を監視し続ける。赤い視線エリアを避けて通ろう。石（<span class="howto-sprite-wrap" id="howto-sprite-block"></span>）を押して視線を遮ることもできる。</dd>
+              </div>
+              <div class="howto-rule">
+                <dt><span class="howto-sprite-wrap" id="howto-sprite-swG"></span>スイッチ &amp; <span class="howto-sprite-wrap" id="howto-sprite-gateG"></span>ゲート</dt>
+                <dd>すべてのスイッチの上に石か自分が乗るとゲートが開く。青（<span class="howto-sprite-wrap" id="howto-sprite-swB"></span><span class="howto-sprite-wrap" id="howto-sprite-gateB"></span>）は独立して動作する。</dd>
+              </div>
+              <div class="howto-rule">
+                <dt>↶ Undo</dt>
+                <dd>1手だけ戻れる。ゲームオーバーになっても Undo で直前の状態に戻れるので諦めないで！</dd>
+              </div>
+            </dl>
+            <div class="howto-keys">
+              <h3>操作方法</h3>
+              <ul class="key-list">
+                <li><kbd>↑ ↓ ← →</kbd> <span>移動</span></li>
+                <li><kbd>Z</kbd> <span>Undo（1手戻る）</span></li>
+                <li><kbd>R</kbd> <span>リスタート</span></li>
+                <li><kbd>Space</kbd> <span>待機（敵だけ1歩動く）</span></li>
+                <li><span class="touch-note">📱 スワイプでも操作できます</span></li>
+              </ul>
+            </div>
+          </div>
         </div>
       </section>
 

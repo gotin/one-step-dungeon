@@ -270,17 +270,205 @@ canvas.legend-sprite {
 .legend-sprites {
   list-style: none;
   padding: 0;
-  margin: 10px 0 0;
+  margin: 8px 0 0;
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
-  gap: 6px;
+  grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+  gap: 4px 8px;
   color: var(--muted);
 }
 
 .legend-sprites li {
   display: flex;
   align-items: center;
+  gap: 4px;
+  font-size: 0.8rem;
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+/* ── How to Play ─────────────────────────────────────── */
+.howto-section {
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+}
+
+.howto-body {
+  display: grid;
+  grid-template-columns: 1fr minmax(140px, 200px);
+  gap: 16px;
+  margin-top: 10px;
+}
+
+@media (max-width: 600px) {
+  .howto-body {
+    grid-template-columns: 1fr;
+  }
+}
+
+.howto-rules {
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+
+.howto-rule {
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 8px 10px;
+}
+
+.howto-rule dt {
   font-size: 0.82rem;
+  font-weight: 700;
+  color: var(--text);
+  margin-bottom: 3px;
+}
+
+.howto-rule dd {
+  margin: 0;
+  font-size: 0.8rem;
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+.howto-keys {
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 10px 12px;
+  align-self: start;
+}
+
+.howto-keys h3 {
+  margin: 0 0 8px;
+  font-size: 0.82rem;
+  color: var(--muted);
+  font-weight: 700;
+  letter-spacing: 0;
+}
+
+.key-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  gap: 6px;
+}
+
+.key-list li {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
+kbd {
+  display: inline-block;
+  padding: 2px 5px;
+  border: 1px solid var(--line);
+  border-bottom-width: 2px;
+  background: #1e2528;
+  border-radius: 4px;
+  font-family: ui-monospace, monospace;
+  font-size: 0.75rem;
+  color: var(--text);
+  white-space: nowrap;
+  flex-shrink: 0;
+  min-width: 32px;
+  text-align: center;
+}
+
+.touch-note {
+  font-size: 0.78rem;
+  color: var(--muted);
+  opacity: 0.7;
+}
+
+/* ── Howto inline sprites ────────────────────────────── */
+.howto-sprite-wrap {
+  display: inline-flex;
+  align-items: center;
+  vertical-align: middle;
+  margin: 0 4px;
+}
+
+canvas.howto-sprite {
+  width: auto;
+  height: 32px;
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+  vertical-align: middle;
+}
+
+.howto-rule dt {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+/* ── Door unlock glow ────────────────────────────────── */
+@keyframes door-glow {
+  0%, 100% {
+    filter: brightness(1) drop-shadow(0 0 0px rgba(255, 200, 100, 0));
+  }
+
+  50% {
+    filter: brightness(1.5) drop-shadow(0 0 6px rgba(255, 200, 100, 0.9));
+  }
+}
+
+@keyframes door-open {
+  0% {
+    transform: scaleX(1);
+    opacity: 1;
+  }
+
+  60% {
+    transform: scaleX(0.1);
+    opacity: 0.6;
+  }
+
+  100% {
+    transform: scaleX(0);
+    opacity: 0;
+  }
+}
+
+canvas.sprite.door-unlocked {
+  animation: door-glow 0.8s ease-in-out infinite;
+}
+
+canvas.sprite.door-opening {
+  animation: door-open 0.35s ease-in forwards;
+  transform-origin: left center;
+}
+
+/* ── Gate open animation ─────────────────────────────── */
+@keyframes gate-open {
+  0% {
+    transform: scaleY(1);
+    opacity: 1;
+  }
+
+  40% {
+    transform: scaleY(0.15) scaleX(1.2);
+    opacity: 0.7;
+  }
+
+  100% {
+    transform: scaleY(0) scaleX(1.4);
+    opacity: 0;
+  }
+}
+
+canvas.sprite.gate-opening {
+  animation: gate-open 0.3s ease-in forwards;
+  transform-origin: center bottom;
 }
 
 /* ── glyph base ──────────────────────────────────────── */
