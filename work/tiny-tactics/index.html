@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>One Step Dungeon</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <main class="app-shell">
+      <section class="game-panel" aria-label="One Step Dungeon">
+        <header class="topbar">
+          <div>
+            <p class="eyebrow">One Step Dungeon</p>
+            <h1 id="level-title">Stage</h1>
+          </div>
+          <div class="stats" aria-label="status">
+            <span id="move-count">0手</span>
+            <span id="key-state">鍵なし</span>
+          </div>
+        </header>
+
+        <div class="board-wrap">
+          <div id="message" class="message" role="status" aria-live="polite"></div>
+          <div id="board" class="board" aria-label="game board"></div>
+        </div>
+
+        <div class="controls">
+          <button id="undo" type="button" aria-label="Undo" title="Undo">↶</button>
+          <button id="reset" type="button" aria-label="Restart" title="Restart">↻</button>
+          <button id="wait" type="button" aria-label="Wait" title="Wait">…</button>
+          <div class="dpad" aria-label="move controls">
+            <button data-dir="up" type="button" aria-label="Up">↑</button>
+            <button data-dir="left" type="button" aria-label="Left">←</button>
+            <button data-dir="down" type="button" aria-label="Down">↓</button>
+            <button data-dir="right" type="button" aria-label="Right">→</button>
+          </div>
+        </div>
+      </section>
+
+      <aside class="side-panel" aria-label="stage list and rules">
+        <div class="section">
+          <h2>Stages</h2>
+          <div id="stage-list" class="stage-list"></div>
+        </div>
+        <div class="section">
+          <h2>Pieces</h2>
+          <ul class="legend">
+            <li><span class="token hero"></span>あなた</li>
+            <li><span class="token goal"></span>出口</li>
+            <li><span class="token key"></span>鍵</li>
+            <li><span class="token door"></span>扉</li>
+            <li><span class="token block"></span>石</li>
+            <li><span class="token switch"></span>スイッチ</li>
+            <li><span class="token gate"></span>ゲート</li>
+            <li><span class="token switch blue"></span>青スイッチ</li>
+            <li><span class="token gate blue"></span>青ゲート</li>
+            <li><span class="token one-way"></span>一方通行</li>
+            <li><span class="token patrol"></span>巡回兵</li>
+            <li><span class="token chaser"></span>追跡者</li>
+            <li><span class="token sentry"></span>見張り</li>
+          </ul>
+        </div>
+      </aside>
+    </main>
+
+    <div id="clear-dialog" class="dialog-backdrop" aria-hidden="true">
+      <section class="clear-dialog" role="dialog" aria-modal="true" aria-labelledby="clear-title">
+        <p class="eyebrow">Stage Clear</p>
+        <h2 id="clear-title">クリア</h2>
+        <p id="clear-detail"></p>
+        <div class="dialog-actions">
+          <button id="replay-stage" type="button">↻</button>
+          <button id="next-stage" type="button">次へ →</button>
+        </div>
+      </section>
+    </div>
+
+    <script src="./game.js"></script>
+  </body>
+</html>
