@@ -650,7 +650,7 @@ const keyEl = document.querySelector("#key-state");
 const undoBtn = document.querySelector("#undo");
 const resetBtn = document.querySelector("#reset");
 const waitBtn = document.querySelector("#wait");
-const stageListEl = document.querySelector("#stage-list");
+const stageSelectEl = document.querySelector("#stage-select");
 const clearDialogEl = document.querySelector("#clear-dialog");
 const clearEyebrowEl = clearDialogEl.querySelector(".eyebrow");
 const clearTitleEl = document.querySelector("#clear-title");
@@ -2248,17 +2248,14 @@ function glyph(name, text, dir) {
 }
 
 function renderStages() {
-	stageListEl.innerHTML = "";
+	stageSelectEl.innerHTML = "";
 	LEVELS.forEach((level, index) => {
-		const button = document.createElement("button");
-		button.type = "button";
-		button.classList.toggle("active", index === levelIndex);
-		button.innerHTML = `<span>${index + 1}. ${level.name}</span><span class="best">${best[level.name] ? `${best[level.name]}手` : "-"}</span>`;
-		button.addEventListener("click", () => {
-			levelIndex = index;
-			loadLevel(levelIndex);
-		});
-		stageListEl.append(button);
+		const option = document.createElement("option");
+		option.value = index;
+		option.selected = index === levelIndex;
+		const bestStr = best[level.name] ? ` (${best[level.name]}手)` : "";
+		option.textContent = `${index + 1}. ${level.name}${bestStr}`;
+		stageSelectEl.append(option);
 	});
 }
 
@@ -2297,6 +2294,10 @@ document.querySelectorAll("[data-dir]").forEach((button) => {
 undoBtn.addEventListener("click", undo);
 resetBtn.addEventListener("click", () => loadLevel(levelIndex));
 waitBtn.addEventListener("click", waitTurn);
+stageSelectEl.addEventListener("change", () => {
+	levelIndex = Number(stageSelectEl.value);
+	loadLevel(levelIndex);
+});
 
 boardEl.addEventListener("pointerdown", (event) => {
 	touchStart = { x: event.clientX, y: event.clientY };

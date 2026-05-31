@@ -1029,16 +1029,43 @@ canvas.sprite.gate-opening {
 /* ── Controls ────────────────────────────────────────── */
 .controls {
   margin-top: 14px;
-  display: grid;
-  grid-template-columns: 54px 54px 54px 1fr;
-  gap: 10px;
+  display: flex;
+  justify-content: space-between;
   align-items: center;
 }
 
+/* 左グループ: dpad + 待機ボタン */
+.controls-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+/* 右グループ: undo + reset */
+.controls-right {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.controls-right button {
+  min-width: 54px;
+  min-height: 44px;
+}
+
+/* 十字キー: 3×3グリッド（中央セルは空） */
 .dpad {
   display: grid;
-  grid-template-columns: repeat(4, minmax(44px, 1fr));
-  gap: 8px;
+  grid-template-columns: repeat(3, minmax(44px, 54px));
+  grid-template-rows: repeat(3, minmax(44px, 54px));
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+/* 待機ボタン: dpad と同じ高さに揃える */
+#wait {
+  min-width: 54px;
+  min-height: 44px;
 }
 
 /* ── Side panel ─────────────────────────────────────── */
@@ -1256,6 +1283,32 @@ canvas.sprite.gate-opening {
   }
 }
 
+/* ── Stage select ────────────────────────────────────── */
+.stage-select {
+  display: block;
+  width: 100%;
+  margin-top: 10px;
+  padding: 10px 12px;
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--text);
+  font: inherit;
+  font-size: 0.9rem;
+  cursor: pointer;
+  appearance: auto;
+}
+
+.stage-select:focus {
+  outline: 2px solid var(--hero);
+  outline-offset: 2px;
+}
+
+.stage-select option {
+  background: var(--panel-2);
+  color: var(--text);
+}
+
 @media (max-width: 520px) {
   .game-panel, .side-panel {
     padding: 12px;
@@ -1274,11 +1327,8 @@ canvas.sprite.gate-opening {
     flex: 1;
   }
 
-  .controls {
-    grid-template-columns: repeat(3, 52px) 1fr;
-  }
-
   .dpad {
-    grid-template-columns: repeat(2, minmax(48px, 1fr));
+    grid-template-columns: repeat(3, minmax(44px, 54px));
+    grid-template-rows: repeat(3, minmax(44px, 54px));
   }
 }
