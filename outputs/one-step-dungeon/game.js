@@ -2363,6 +2363,22 @@ if (gamePanel) {
 	gamePanel.addEventListener("selectstart", (e) => e.preventDefault());
 }
 
+// iOS Safari は user-scalable=no を無視するため JS で直接抑止
+document.addEventListener("touchstart", (e) => {
+	if (e.touches.length > 1) e.preventDefault();
+}, { passive: false });
+
+document.addEventListener("touchmove", (e) => {
+	if (e.touches.length > 1) e.preventDefault();
+}, { passive: false });
+
+let lastTouchEnd = 0;
+document.addEventListener("touchend", (e) => {
+	const now = Date.now();
+	if (now - lastTouchEnd < 300) e.preventDefault(); // ダブルタップズーム防止
+	lastTouchEnd = now;
+}, { passive: false });
+
 startAnimLoop();
 loadLevel(levelIndex);
 renderHowto();
