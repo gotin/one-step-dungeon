@@ -356,17 +356,17 @@ const LEVELS = [
 		enemies: [],
 	},
 	{
-		// 石2つ・スイッチ2つ / 最小21手
-		name: "石は一個でいい",
-		size: 7,
+		// 石2つ・スイッチ1つ / 最小36手
+		name: "折り返し搬送",
+		size: 9,
 		map: [
 			"######.",
 			"#    #.",
-			"# ##T#.",
-			"# #  #.",
-			"# BB ##",
-			"## PTXG",
-			"#######",
+			"# ##T###",
+			"# #    #",
+			"# BB   ##",
+			"## PT XG#",
+			"#########",
 		],
 		enemies: [],
 	},
@@ -395,22 +395,6 @@ const LEVELS = [
 			"#  ### ",
 			"# BB # ",
 			"#TTT  #",
-			"# PB XG",
-			"#   ###",
-			"#######",
-		],
-		enemies: [],
-	},
-	{
-		// Microban #30 (David W. Skinner / Public Domain) 本物のデータ
-		// 石3つ・スイッチ3つ / 最小28手
-		name: "三つの帰り道",
-		size: 7,
-		map: [
-			"####   ",
-			"#  ### ",
-			"# BB # ",
-			"#TTT ##",
 			"# PB XG",
 			"#   ###",
 			"#######",
@@ -509,21 +493,6 @@ const LEVELS = [
 	{
 		// Microban #33 本物 / 49手
 		name: "対称の罠",
-		size: 9,
-		map: [
-			"#########",
-			"#T #  ###",
-			"#  B  ###",
-			"#T B#P XG",
-			"#  B  ###",
-			"#T #  ###",
-			"#########",
-		],
-		enemies: [],
-	},
-	{
-		// Microban #33 ベース。対称配置の押し順を読む / 評価81
-		name: "対称の押し順",
 		size: 9,
 		map: [
 			"#########",
@@ -1017,6 +986,24 @@ function updateSwitches() {
 }
 
 function resolveTurn() {
+	// ゲートが閉じてプレイヤーがその上に立ってしまった場合は移動をキャンセル
+	const standingOnClosedGate = state.gates?.some(
+		(gate) => same(gate, state.player) && !isGateOpen(gate),
+	);
+	if (standingOnClosedGate) {
+		// 移動前の状態に巻き戻す
+		const prev = history.pop();
+		if (prev) {
+			state.player = clone(prev.player);
+			state.moves = prev.moves;
+			state.gatesOpen = prev.gatesOpen;
+			// スイッチ状態も戻す
+			state.blocks = clone(prev.blocks);
+		}
+		playSound("miss");
+		pulse("スイッチから離れるとゲートが閉まります");
+		return;
+	}
 	const occupied = state.enemies.some((enemy) =>
 		same(currentEnemyPos(enemy), state.player),
 	);

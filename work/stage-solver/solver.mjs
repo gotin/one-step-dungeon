@@ -304,6 +304,8 @@ function advance(parsed, cur, action) {
 		)
 	)
 		return null;
+	// ゲートが閉じてプレイヤーがその上に立ってしまった場合は無効
+	if (gates.some((g) => same(g, newPlayer) && !gO[g.color])) return null;
 
 	return {
 		state: {
@@ -646,6 +648,8 @@ export function solveWithPath(level, maxMoves = 30) {
 				)
 			)
 				continue;
+			// ゲートが閉じてプレイヤーがその上に立ってしまった場合は無効
+			if (gates.some((g) => same(g, newPlayer) && !gO[g.color])) continue;
 			if (same(newPlayer, goal)) return [...cur.path, action];
 			const sk = stateKey(
 				newPlayer,
