@@ -614,6 +614,32 @@ const LEVELS = [
 		],
 		enemies: [],
 	},
+	{
+		// Microban #34 + 巡回兵 / 55手 score≈107
+		name: "一直線の攻防",
+		size: 11,
+		map: [
+			"  ####     ",
+			"###  ####  ",
+			"#       ###",
+			"#PB***T XG#",
+			"#       ###",
+			"#########  ",
+		],
+		enemies: [
+			{
+				type: "patrol",
+				route: [
+					[1, 2],
+					[2, 2],
+					[3, 2],
+					[4, 2],
+				],
+				index: 0,
+				forward: true,
+			},
+		],
+	},
 ];
 
 const boardEl = document.querySelector("#board");
