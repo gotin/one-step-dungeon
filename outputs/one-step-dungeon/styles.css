@@ -15,14 +15,17 @@
   --green: #84c76e;
   --blue: #6aa7df;
   --violet: #b989e8;
+  --px: 1px;
+  /* pixel unit – scales with glyph */
 }
 
+/* ── pixel-art rendering ─────────────────────────────── */
 * {
   box-sizing: border-box;
+  image-rendering: pixelated;
 }
 
-html,
-body {
+html, body {
   min-height: 100%;
 }
 
@@ -32,13 +35,7 @@ body {
     radial-gradient(circle at 20% 10%, rgba(111, 211, 196, 0.08), transparent 28rem),
     linear-gradient(135deg, #101316 0%, #171512 100%);
   color: var(--text);
-  font-family:
-    ui-sans-serif,
-    system-ui,
-    -apple-system,
-    BlinkMacSystemFont,
-    "Segoe UI",
-    sans-serif;
+  font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
 }
 
 button {
@@ -62,6 +59,7 @@ button:disabled {
   cursor: default;
 }
 
+/* ── Layout ──────────────────────────────────────────── */
 .app-shell {
   min-height: 100vh;
   width: min(1120px, 100%);
@@ -73,8 +71,7 @@ button:disabled {
   align-items: start;
 }
 
-.game-panel,
-.side-panel {
+.game-panel, .side-panel {
   border: 1px solid rgba(255, 255, 255, 0.08);
   background: color-mix(in srgb, var(--panel) 92%, black);
   border-radius: 8px;
@@ -96,11 +93,9 @@ button:disabled {
   margin: 0 0 3px;
   color: var(--muted);
   font-size: 0.82rem;
-  letter-spacing: 0;
 }
 
-h1,
-h2 {
+h1, h2 {
   margin: 0;
   letter-spacing: 0;
 }
@@ -143,11 +138,11 @@ h2 {
   display: grid;
   grid-template-columns: repeat(var(--size), 1fr);
   grid-template-rows: repeat(var(--size), 1fr);
-  gap: 6px;
-  padding: 6px;
-  border: 1px solid var(--line);
-  background: #121719;
-  border-radius: 8px;
+  gap: 4px;
+  padding: 4px;
+  border: 2px solid var(--line);
+  background: #0e1315;
+  border-radius: 4px;
   touch-action: none;
   user-select: none;
 }
@@ -156,86 +151,664 @@ h2 {
   position: relative;
   min-width: 0;
   min-height: 0;
-  border-radius: 6px;
+  border-radius: 2px;
   background: var(--floor);
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.025);
   display: grid;
   place-items: center;
   overflow: hidden;
 }
 
-.cell.wall {
+/* floor tile texture */
+.cell::before {
+  content: "";
+  position: absolute;
+  inset: 0;
   background:
-    linear-gradient(135deg, rgba(255,255,255,0.12), transparent),
-    var(--wall);
+    linear-gradient(135deg, rgba(255, 255, 255, 0.04) 0 50%, transparent 50%);
+  pointer-events: none;
 }
 
+/* wall – pixel-art brick look */
+.cell.wall {
+  background: var(--wall);
+  box-shadow:
+    inset 0 0 0 1px rgba(0, 0, 0, 0.35),
+    inset 2px 2px 0 rgba(255, 255, 255, 0.18),
+    inset -1px -1px 0 rgba(0, 0, 0, 0.28);
+}
+
+.cell.wall::before {
+  display: none;
+}
+
+/* danger sight */
 .cell.sight {
   background:
     linear-gradient(135deg, var(--danger-soft), transparent 70%),
     var(--floor);
 }
 
-.cell.sight::after {
-  content: "";
-  position: absolute;
-  opacity: 0.8;
-}
-
 .cell.sight-left,
 .cell.sight-right {
   background:
-    linear-gradient(0deg, transparent 0 36%, rgba(232, 95, 92, 0.48) 36% 64%, transparent 64% 100%),
+    linear-gradient(0deg, transparent 0 36%, rgba(232, 95, 92, 0.48) 36% 64%, transparent 64%),
     linear-gradient(135deg, var(--danger-soft), transparent 70%),
     var(--floor);
-}
-
-.cell.sight-left::after,
-.cell.sight-right::after {
-  inset: 18% 6%;
-  border-top: 2px solid rgba(255, 214, 124, 0.86);
-  border-bottom: 2px solid rgba(255, 214, 124, 0.46);
 }
 
 .cell.sight-up,
 .cell.sight-down {
   background:
-    linear-gradient(90deg, transparent 0 36%, rgba(232, 95, 92, 0.48) 36% 64%, transparent 64% 100%),
+    linear-gradient(90deg, transparent 0 36%, rgba(232, 95, 92, 0.48) 36% 64%, transparent 64%),
     linear-gradient(135deg, var(--danger-soft), transparent 70%),
     var(--floor);
 }
 
-.cell.sight-up::after,
-.cell.sight-down::after {
-  inset: 6% 18%;
-  border-left: 2px solid rgba(255, 214, 124, 0.86);
-  border-right: 2px solid rgba(255, 214, 124, 0.46);
-}
-
 .cell.next {
   outline: 2px solid rgba(232, 95, 92, 0.85);
-  outline-offset: -3px;
+  outline-offset: -2px;
 }
 
 .cell.escaped {
-  background:
-    radial-gradient(circle, rgba(242, 193, 78, 0.28), transparent 68%),
-    var(--floor);
+  background: radial-gradient(circle, rgba(242, 193, 78, 0.28), transparent 68%), var(--floor);
 }
 
-.glyph {
-  width: 62%;
-  aspect-ratio: 1;
-  border-radius: 50%;
-  display: grid;
-  place-items: center;
-  font-size: clamp(16px, 5vw, 30px);
-  font-weight: 900;
-  color: #121719;
-  line-height: 1;
+/* ── canvas sprite ───────────────────────────────────── */
+/* Sprites are 12w×16h – use height-driven sizing so the
+   natural canvas aspect-ratio is preserved automatically  */
+canvas.sprite {
+  position: absolute;
+  width: auto;
+  height: 90%;
+  max-width: 90%;
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
   z-index: 2;
 }
 
+canvas.sprite.key-sprite {
+  width: auto;
+  height: 50%;
+  max-width: 50%;
+  top: 4%;
+  right: 4%;
+  left: auto;
+  z-index: 5;
+}
+
+canvas.sprite.switch-sprite {
+  width: auto;
+  height: 65%;
+  max-width: 80%;
+  bottom: 5%;
+  top: auto;
+}
+
+canvas.sprite.escaped-sprite {
+  width: auto;
+  height: 82%;
+  max-width: 82%;
+}
+
+/* ── Legend sprites ──────────────────────────────────── */
+canvas.legend-sprite {
+  width: auto;
+  height: 32px;
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+  vertical-align: middle;
+  margin-right: 8px;
+  flex-shrink: 0;
+}
+
+.pieces-section {
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+}
+
+.legend-sprites {
+  list-style: none;
+  padding: 0;
+  margin: 10px 0 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+  gap: 6px;
+  color: var(--muted);
+}
+
+.legend-sprites li {
+  display: flex;
+  align-items: center;
+  font-size: 0.82rem;
+}
+
+/* ── glyph base ──────────────────────────────────────── */
+.glyph {
+  position: relative;
+  width: 72%;
+  aspect-ratio: 1;
+  border-radius: 2px;
+  display: grid;
+  place-items: center;
+  font-size: 0;
+  /* hide text – we use CSS art */
+  z-index: 2;
+}
+
+/* ── HERO ─────────────────────────────────────────────
+   Pixel art character: head + body + feet
+   Uses ::before = head, ::after = body+feet
+   Breathing animation via transform: translateY
+   Dir classes flip/rotate
+──────────────────────────────────────────────────── */
+@keyframes breathe {
+  0%, 100% {
+    transform: translateY(0);
+  }
+
+  50% {
+    transform: translateY(-2px);
+  }
+}
+
+@keyframes blink {
+  0%, 92%, 100% {
+    opacity: 1;
+  }
+
+  94%, 98% {
+    opacity: 0;
+  }
+}
+
+.glyph.hero {
+  width: 68%;
+  background: transparent;
+  animation: breathe 2.4s ease-in-out infinite;
+  image-rendering: pixelated;
+}
+
+/* head */
+.glyph.hero::before {
+  content: "";
+  position: absolute;
+  top: 4%;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 44%;
+  height: 36%;
+  background: var(--hero);
+  border-radius: 2px;
+  box-shadow:
+    /* pixel eyes */
+    -3px 3px 0 1px #121719,
+    /* left eye */
+    3px 3px 0 1px #121719;
+  /* right eye */
+}
+
+/* body + legs */
+.glyph.hero::after {
+  content: "";
+  position: absolute;
+  top: 42%;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 54%;
+  height: 54%;
+  background: linear-gradient(180deg,
+      var(--hero) 0% 54%,
+      /* torso */
+      transparent 54% 62%,
+      /* waist gap */
+      var(--hero) 62% 80%,
+      /* legs */
+      transparent 80%);
+  border-radius: 1px;
+}
+
+/* direction: facing right (default) – eye shifts right */
+.glyph.hero.dir-right::before {
+  box-shadow:
+    2px 3px 0 1px #121719,
+    5px 3px 0 1px #121719;
+}
+
+/* facing left */
+.glyph.hero.dir-left::before {
+  box-shadow:
+    -5px 3px 0 1px #121719,
+    -2px 3px 0 1px #121719;
+}
+
+/* facing up */
+.glyph.hero.dir-up::before {
+  /* no visible eyes (back of head) */
+  box-shadow:
+    -3px 2px 0 1px rgba(18, 23, 25, 0.4),
+    3px 2px 0 1px rgba(18, 23, 25, 0.4);
+  background: color-mix(in srgb, var(--hero) 80%, black);
+}
+
+/* facing down */
+.glyph.hero.dir-down::before {
+  box-shadow:
+    -3px 5px 0 1px #121719,
+    3px 5px 0 1px #121719;
+}
+
+/* lost state – red tint */
+.cell .glyph.hero:has(~ *) {
+  /* if stacked */
+}
+
+/* ── GOAL ──────────────────────────────────────────── */
+@keyframes goal-pulse {
+  0%, 100% {
+    box-shadow: 0 0 0 2px rgba(242, 193, 78, 0.5);
+  }
+
+  50% {
+    box-shadow: 0 0 0 5px rgba(242, 193, 78, 0.15);
+  }
+}
+
+.glyph.goal {
+  position: absolute;
+  width: 70%;
+  background: var(--goal);
+  border-radius: 3px;
+  z-index: 1;
+  animation: goal-pulse 1.8s ease-in-out infinite;
+}
+
+.glyph.goal::before {
+  content: "G";
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  font-size: clamp(10px, 3vw, 18px);
+  font-weight: 900;
+  color: #1a1000;
+  letter-spacing: 0;
+}
+
+/* ── ESCAPE (won) ──────────────────────────────────── */
+.glyph.escape {
+  width: 70%;
+  border-radius: 3px;
+  background: var(--goal);
+  box-shadow: 0 0 0 3px rgba(242, 193, 78, 0.22), 0 0 20px rgba(242, 193, 78, 0.32);
+  animation: breathe 1.2s ease-in-out infinite;
+}
+
+.glyph.escape::before {
+  content: "";
+  width: 38%;
+  aspect-ratio: 1;
+  border-radius: 50%;
+  background: var(--hero);
+}
+
+/* ── KEY ───────────────────────────────────────────── */
+@keyframes key-bob {
+  0%, 100% {
+    transform: rotate(-8deg) scale(1);
+  }
+
+  50% {
+    transform: rotate(8deg) scale(1.05);
+  }
+}
+
+.glyph.key {
+  position: absolute;
+  width: 36%;
+  right: 5%;
+  top: 5%;
+  background: transparent;
+  font-size: 0;
+  z-index: 5;
+  animation: key-bob 2s ease-in-out infinite;
+}
+
+/* pixel key shape */
+.glyph.key::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(circle 38% at 30% 40%, var(--goal) 95%, transparent 96%),
+    linear-gradient(90deg, transparent 40%, var(--goal) 40% 60%, transparent 60%) no-repeat center 65% / 60% 25%,
+    linear-gradient(90deg, transparent 55%, var(--goal) 55% 75%, transparent 75%) no-repeat center 78% / 40% 20%;
+}
+
+/* ── DOOR ──────────────────────────────────────────── */
+.glyph.door {
+  position: absolute;
+  width: 72%;
+  height: 88%;
+  background: #7a5030;
+  border-radius: 2px 2px 0 0;
+  z-index: 1;
+  box-shadow:
+    inset 0 0 0 2px rgba(255, 255, 255, 0.12),
+    inset 2px 2px 0 rgba(255, 255, 255, 0.1),
+    inset -2px -2px 0 rgba(0, 0, 0, 0.25);
+}
+
+/* door panel line */
+.glyph.door::before {
+  content: "";
+  position: absolute;
+  top: 20%;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 30%;
+  height: 35%;
+  border: 2px solid rgba(0, 0, 0, 0.3);
+  border-radius: 1px;
+}
+
+/* door knob */
+.glyph.door::after {
+  content: "";
+  position: absolute;
+  top: 45%;
+  right: 12%;
+  width: 12%;
+  aspect-ratio: 1;
+  background: rgba(255, 200, 100, 0.8);
+  border-radius: 50%;
+}
+
+/* ── BLOCK (石) ──────────────────────────────────────
+   3D pixel-art rock
+──────────────────────────────────────────────────── */
+.glyph.block {
+  background:
+    linear-gradient(135deg, #b8bfbc 0% 40%, #8a9490 40% 72%, #6a7470 72%);
+  border-radius: 3px;
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.22),
+    inset 3px 3px 0 rgba(255, 255, 255, 0.15),
+    inset -3px -3px 0 rgba(0, 0, 0, 0.30),
+    2px 3px 0 rgba(0, 0, 0, 0.4);
+}
+
+/* crack detail */
+.glyph.block::before {
+  content: "";
+  position: absolute;
+  top: 25%;
+  left: 30%;
+  width: 40%;
+  height: 2px;
+  background: rgba(0, 0, 0, 0.25);
+  transform: rotate(-20deg);
+}
+
+/* ── SWITCH (スイッチ) ───────────────────────────────── */
+@keyframes switch-glow {
+  0%, 100% {
+    box-shadow: 0 0 0 2px rgba(132, 199, 110, 0.3), inset 0 0 6px rgba(132, 199, 110, 0.2);
+  }
+
+  50% {
+    box-shadow: 0 0 0 4px rgba(132, 199, 110, 0.5), inset 0 0 10px rgba(132, 199, 110, 0.35);
+  }
+}
+
+.glyph.switch {
+  position: absolute;
+  width: 72%;
+  height: 40%;
+  top: auto;
+  bottom: 10%;
+  border-radius: 3px 3px 2px 2px;
+  background: linear-gradient(180deg, #6aaa52 0%, #4a8538 60%, #2e5220 100%);
+  z-index: 1;
+  animation: switch-glow 2s ease-in-out infinite;
+}
+
+.glyph.switch::before {
+  content: "";
+  position: absolute;
+  top: -30%;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 36%;
+  height: 60%;
+  background: #84c76e;
+  border-radius: 50% 50% 0 0;
+  box-shadow: inset 0 -3px 0 rgba(0, 0, 0, 0.2);
+}
+
+.glyph.switch.blue {
+  background: linear-gradient(180deg, #4a90d0 0%, #2a6098 60%, #1a3a62 100%);
+  animation: none;
+  box-shadow: 0 0 0 2px rgba(106, 167, 223, 0.3), inset 0 0 6px rgba(106, 167, 223, 0.2);
+}
+
+.glyph.switch.blue::before {
+  background: var(--blue);
+}
+
+/* ── GATE (ゲート) ───────────────────────────────────── */
+.glyph.gate {
+  position: absolute;
+  width: 80%;
+  height: 90%;
+  border-radius: 2px 2px 0 0;
+  background: repeating-linear-gradient(0deg,
+      #d78a50 0px 4px,
+      transparent 4px 8px),
+    repeating-linear-gradient(90deg,
+      #c47840 0px 4px,
+      transparent 4px 8px);
+  z-index: 2;
+  box-shadow: inset 0 0 0 2px #b06030;
+}
+
+.glyph.gate.blue {
+  background: repeating-linear-gradient(0deg,
+      #4f87c5 0px 4px,
+      transparent 4px 8px),
+    repeating-linear-gradient(90deg,
+      #3a6da0 0px 4px,
+      transparent 4px 8px);
+  box-shadow: inset 0 0 0 2px #2a508a;
+}
+
+.glyph.gate.open {
+  background: transparent;
+  border: 2px dashed rgba(215, 138, 80, 0.5);
+  box-shadow: none;
+}
+
+.glyph.gate.blue.open {
+  border-color: rgba(106, 167, 223, 0.5);
+}
+
+/* ── ONE-WAY ─────────────────────────────────────────── */
+.glyph.one-way {
+  position: absolute;
+  width: 66%;
+  border-radius: 3px;
+  background: rgba(111, 211, 196, 0.15);
+  border: 2px solid rgba(111, 211, 196, 0.5);
+  z-index: 1;
+  font-size: clamp(12px, 3.5vw, 22px);
+  color: var(--hero);
+  font-weight: 900;
+  display: grid;
+  place-items: center;
+}
+
+/* ── ENEMIES ─────────────────────────────────────────── */
+
+/* Patrol – blue slime */
+@keyframes slime-bounce {
+  0%, 100% {
+    border-radius: 48% 52% 44% 56% / 46% 46% 54% 54%;
+    transform: scaleY(1);
+  }
+
+  40% {
+    border-radius: 44% 56% 52% 48% / 54% 54% 46% 46%;
+    transform: scaleY(0.92);
+  }
+
+  60% {
+    border-radius: 50% 50% 50% 50%;
+    transform: scaleY(1.04);
+  }
+}
+
+.glyph.patrol {
+  background: radial-gradient(circle at 38% 35%, #9ecfef, var(--blue) 60%, #2a6098);
+  border-radius: 48% 52% 44% 56% / 46% 46% 54% 54%;
+  animation: slime-bounce 1.4s ease-in-out infinite;
+  box-shadow: 0 3px 0 rgba(0, 0, 0, 0.35);
+}
+
+/* eyes */
+.glyph.patrol::before {
+  content: "";
+  position: absolute;
+  top: 30%;
+  left: 26%;
+  width: 16%;
+  aspect-ratio: 1;
+  background: #121719;
+  border-radius: 50%;
+  box-shadow: 26% 0 0 #121719;
+}
+
+/* Chaser – red angry sprite */
+@keyframes chaser-shake {
+  0%, 100% {
+    transform: translateX(0);
+  }
+
+  25% {
+    transform: translateX(-1px) rotate(-3deg);
+  }
+
+  75% {
+    transform: translateX(1px) rotate(3deg);
+  }
+}
+
+.glyph.chaser {
+  background: radial-gradient(circle at 40% 30%, #ff9090, var(--danger) 55%, #8a1a1a);
+  border-radius: 4px 4px 8px 8px;
+  animation: chaser-shake 0.5s ease-in-out infinite;
+  box-shadow: 0 3px 0 rgba(0, 0, 0, 0.4);
+}
+
+/* angry eyes */
+.glyph.chaser::before {
+  content: "";
+  position: absolute;
+  top: 22%;
+  left: 22%;
+  width: 18%;
+  aspect-ratio: 1;
+  background: #121719;
+  border-radius: 2px;
+  box-shadow: 28% 0 0 #121719;
+  /* angled top = angry brow */
+  clip-path: polygon(0 40%, 100% 0, 100% 100%, 0 100%);
+}
+
+/* mouth */
+.glyph.chaser::after {
+  content: "";
+  position: absolute;
+  bottom: 22%;
+  left: 28%;
+  width: 44%;
+  height: 12%;
+  background: #121719;
+  border-radius: 0 0 4px 4px;
+}
+
+/* Sentry – purple robot */
+@keyframes sentry-scan {
+  0%, 40% {
+    transform: rotate(0deg);
+  }
+
+  50% {
+    transform: rotate(12deg);
+  }
+
+  90%, 100% {
+    transform: rotate(0deg);
+  }
+}
+
+.glyph.sentry {
+  background: linear-gradient(160deg, #d0a8f0 0%, var(--violet) 50%, #6a3a98);
+  border-radius: 3px;
+  box-shadow:
+    inset 2px 2px 0 rgba(255, 255, 255, 0.18),
+    inset -2px -2px 0 rgba(0, 0, 0, 0.28),
+    0 3px 0 rgba(0, 0, 0, 0.4);
+}
+
+/* eye / sensor */
+.glyph.sentry::before {
+  content: "";
+  position: absolute;
+  top: 28%;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 32%;
+  height: 22%;
+  background: #ff4444;
+  border-radius: 50%;
+  box-shadow: 0 0 4px 2px rgba(255, 68, 68, 0.6);
+  animation: blink 3s ease-in-out infinite;
+}
+
+/* direction arrow */
+.glyph.sentry::after {
+  content: "";
+  position: absolute;
+  width: 22%;
+  height: 22%;
+  background: #ffcc00;
+  clip-path: polygon(0 0, 100% 50%, 0 100%);
+  right: 8%;
+  top: 39%;
+}
+
+.glyph.sentry.dir-left::after {
+  right: auto;
+  left: 8%;
+  transform: rotate(180deg);
+}
+
+.glyph.sentry.dir-up::after {
+  right: auto;
+  top: 6%;
+  left: 39%;
+  transform: rotate(-90deg);
+}
+
+.glyph.sentry.dir-down::after {
+  right: auto;
+  bottom: 6%;
+  top: auto;
+  left: 39%;
+  transform: rotate(90deg);
+}
+
+/* ── stacked smaller ─────────────────────────────────── */
 .cell.stacked .glyph.hero,
 .cell.stacked .glyph.patrol,
 .cell.stacked .glyph.chaser,
@@ -243,161 +816,7 @@ h2 {
   width: 52%;
 }
 
-.glyph.hero {
-  background: var(--hero);
-  box-shadow: 0 0 0 4px rgba(111, 211, 196, 0.15);
-}
-
-.glyph.goal {
-  position: absolute;
-  width: 72%;
-  border-radius: 8px;
-  background: var(--goal);
-  z-index: 1;
-  opacity: 0.92;
-}
-
-.glyph.escape {
-  width: 68%;
-  border-radius: 8px;
-  background: var(--goal);
-  box-shadow:
-    0 0 0 4px rgba(242, 193, 78, 0.16),
-    0 0 22px rgba(242, 193, 78, 0.28);
-}
-
-.glyph.escape::before {
-  content: "";
-  width: 42%;
-  aspect-ratio: 1;
-  border-radius: 50%;
-  background: var(--hero);
-  box-shadow: 0 0 0 4px rgba(18, 23, 25, 0.45);
-}
-
-.glyph.key {
-  position: absolute;
-  width: 34%;
-  right: 8%;
-  top: 8%;
-  background: transparent;
-  color: var(--goal);
-  font-size: clamp(14px, 4vw, 24px);
-  z-index: 5;
-  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.65));
-}
-
-.glyph.door {
-  position: absolute;
-  width: 72%;
-  border-radius: 6px;
-  background: #9b7048;
-  color: #211710;
-  z-index: 1;
-}
-
-.glyph.one-way {
-  position: absolute;
-  width: 66%;
-  border-radius: 8px;
-  background: rgba(111, 211, 196, 0.2);
-  color: var(--hero);
-  z-index: 1;
-  opacity: 0.92;
-}
-
-.glyph.block {
-  border-radius: 8px;
-  background: #9aa3a0;
-  color: #202629;
-  box-shadow:
-    inset 0 0 0 2px rgba(255, 255, 255, 0.18),
-    inset -8px -8px 0 rgba(0, 0, 0, 0.12);
-}
-
-.glyph.switch {
-  position: absolute;
-  width: 70%;
-  border-radius: 8px;
-  background: var(--green);
-  color: #10210e;
-  z-index: 1;
-  opacity: 0.9;
-}
-
-.glyph.switch.blue {
-  background: var(--blue);
-  color: #0d1822;
-}
-
-.glyph.gate {
-  position: absolute;
-  width: 72%;
-  border-radius: 6px;
-  background: #d78a50;
-  color: #24140a;
-  z-index: 1;
-}
-
-.glyph.gate.blue {
-  background: #4f87c5;
-}
-
-.glyph.gate.open {
-  background: transparent;
-  border: 3px solid rgba(215, 138, 80, 0.72);
-  color: rgba(215, 138, 80, 0.82);
-}
-
-.glyph.gate.blue.open {
-  border-color: rgba(106, 167, 223, 0.72);
-  color: rgba(106, 167, 223, 0.82);
-}
-
-.glyph.patrol {
-  background: var(--blue);
-}
-
-.glyph.chaser {
-  background: var(--danger);
-}
-
-.glyph.sentry {
-  background: var(--violet);
-}
-
-.glyph.sentry::after {
-  content: "";
-  position: absolute;
-  width: 18%;
-  height: 18%;
-  background: #17131d;
-  clip-path: polygon(0 0, 100% 50%, 0 100%);
-  right: 14%;
-  top: 41%;
-}
-
-.glyph.sentry.dir-left::after {
-  right: auto;
-  left: 14%;
-  top: 41%;
-  transform: rotate(180deg);
-}
-
-.glyph.sentry.dir-up::after {
-  right: auto;
-  top: 14%;
-  left: 41%;
-  transform: rotate(-90deg);
-}
-
-.glyph.sentry.dir-down::after {
-  right: auto;
-  bottom: 14%;
-  left: 41%;
-  transform: rotate(90deg);
-}
-
+/* ── Message ─────────────────────────────────────────── */
 .message {
   position: absolute;
   inset: auto 12px 12px;
@@ -419,6 +838,7 @@ h2 {
   display: flex;
 }
 
+/* ── Controls ────────────────────────────────────────── */
 .controls {
   margin-top: 14px;
   display: grid;
@@ -433,11 +853,12 @@ h2 {
   gap: 8px;
 }
 
+/* ── Side panel ─────────────────────────────────────── */
 .side-panel {
   padding: 14px;
 }
 
-.section + .section {
+.section+.section {
   margin-top: 18px;
   padding-top: 18px;
   border-top: 1px solid var(--line);
@@ -469,6 +890,7 @@ h2 {
   font-weight: 600;
 }
 
+/* ── Legend ──────────────────────────────────────────── */
 .legend {
   list-style: none;
   padding: 0;
@@ -488,24 +910,71 @@ h2 {
   border-radius: 50%;
 }
 
-.token.hero { background: var(--hero); }
-.token.goal { background: var(--goal); border-radius: 4px; }
-.token.key { background: transparent; border: 3px solid var(--goal); }
-.token.door { background: #9b7048; border-radius: 4px; }
-.token.block { background: #9aa3a0; border-radius: 4px; }
-.token.switch { background: var(--green); border-radius: 4px; }
-.token.gate { background: #d78a50; border-radius: 4px; }
-.token.switch.blue { background: var(--blue); }
-.token.gate.blue { background: #4f87c5; }
-.token.one-way {
-  background: rgba(111, 211, 196, 0.2);
-  border: 2px solid var(--hero);
-  border-radius: 4px;
+.token.hero {
+  background: var(--hero);
+  border-radius: 2px;
 }
-.token.patrol { background: var(--blue); }
-.token.chaser { background: var(--danger); }
-.token.sentry { background: var(--violet); }
 
+.token.goal {
+  background: var(--goal);
+  border-radius: 3px;
+}
+
+.token.key {
+  background: transparent;
+  border: 2px solid var(--goal);
+}
+
+.token.door {
+  background: #7a5030;
+  border-radius: 2px;
+}
+
+.token.block {
+  background: #9aa3a0;
+  border-radius: 2px;
+}
+
+.token.switch {
+  background: var(--green);
+  border-radius: 3px;
+}
+
+.token.gate {
+  background: #d78a50;
+  border-radius: 2px;
+}
+
+.token.switch.blue {
+  background: var(--blue);
+}
+
+.token.gate.blue {
+  background: #4f87c5;
+}
+
+.token.one-way {
+  background: rgba(111, 211, 196, 0.15);
+  border: 2px solid var(--hero);
+  border-radius: 3px;
+}
+
+.token.patrol {
+  background: var(--blue);
+  border-radius: 50%;
+}
+
+.token.chaser {
+  background: var(--danger);
+  border-radius: 3px;
+}
+
+.token.sentry {
+  background: var(--violet);
+  border-radius: 2px;
+}
+
+/* ── Dialog ──────────────────────────────────────────── */
 .dialog-backdrop {
   position: fixed;
   inset: 0;
@@ -530,20 +999,16 @@ h2 {
 }
 
 .dialog-backdrop.ending {
-  background:
-    radial-gradient(circle at 50% 36%, rgba(242, 193, 78, 0.22), transparent 34%),
+  background: radial-gradient(circle at 50% 36%, rgba(242, 193, 78, 0.22), transparent 34%),
     linear-gradient(180deg, rgba(5, 7, 8, 0.78), rgba(5, 7, 8, 0.92));
 }
 
 .dialog-backdrop.ending .clear-dialog {
   width: min(520px, 100%);
   border-color: rgba(242, 193, 78, 0.72);
-  background:
-    linear-gradient(180deg, rgba(39, 47, 51, 0.98), rgba(16, 20, 22, 0.98));
+  background: linear-gradient(180deg, rgba(39, 47, 51, 0.98), rgba(16, 20, 22, 0.98));
   text-align: center;
-  box-shadow:
-    0 0 0 1px rgba(255, 255, 255, 0.05) inset,
-    0 26px 90px rgba(0, 0, 0, 0.62);
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.05) inset, 0 26px 90px rgba(0, 0, 0, 0.62);
 }
 
 .dialog-backdrop.ending .clear-dialog::before {
@@ -587,6 +1052,7 @@ h2 {
   color: #18120a;
 }
 
+/* ── Responsive ─────────────────────────────────────── */
 @media (max-width: 860px) {
   .app-shell {
     grid-template-columns: 1fr;
@@ -603,8 +1069,7 @@ h2 {
 }
 
 @media (max-width: 520px) {
-  .game-panel,
-  .side-panel {
+  .game-panel, .side-panel {
     padding: 12px;
   }
 
