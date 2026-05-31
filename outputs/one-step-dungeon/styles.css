@@ -79,6 +79,12 @@ button:disabled {
 
 .game-panel {
   padding: 16px;
+  /* モバイルでの誤操作防止 */
+  user-select: none;
+  -webkit-user-select: none;
+  touch-action: pan-y;
+  /* 縦スクロールは許可、横スワイプはゲームが使う */
+  -webkit-tap-highlight-color: transparent;
 }
 
 .topbar {

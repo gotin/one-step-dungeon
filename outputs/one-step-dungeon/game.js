@@ -2356,6 +2356,13 @@ function renderHowto() {
 	});
 }
 
+// ── モバイル誤操作防止 ──────────────────────────────────
+const gamePanel = document.querySelector(".game-panel");
+if (gamePanel) {
+	gamePanel.addEventListener("contextmenu", (e) => e.preventDefault());
+	gamePanel.addEventListener("selectstart", (e) => e.preventDefault());
+}
+
 startAnimLoop();
 loadLevel(levelIndex);
 renderHowto();
