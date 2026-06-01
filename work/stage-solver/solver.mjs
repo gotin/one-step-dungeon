@@ -866,9 +866,12 @@ if (process.argv[1]?.endsWith("solver.mjs")) {
 	const args = process.argv.slice(2);
 	let file = "outputs/one-step-dungeon/game.js";
 	const stageTokens = [];
+	let maxMovesOverride = null;
 
 	for (const arg of args) {
-		if (arg.endsWith(".js") || arg.endsWith(".mjs") || arg.includes("/") || arg.includes("\\")) {
+		if (arg.startsWith("--max=")) {
+			maxMovesOverride = Number(arg.slice(6));
+		} else if (arg.endsWith(".js") || arg.endsWith(".mjs") || arg.includes("/") || arg.includes("\\")) {
 			file = arg;
 		} else {
 			stageTokens.push(arg);
@@ -903,9 +906,12 @@ if (process.argv[1]?.endsWith("solver.mjs")) {
 		process.exit(1);
 	}
 
+	const maxMoves = maxMovesOverride ?? 300;
+	if (maxMovesOverride) console.error(`[INFO] max moves: ${maxMoves}`);
+
 	const analyses = targets.map(({ level, index }) => ({
 		stageNum: index + 1,
-		...analyzeLevel(level, 240),
+		...analyzeLevel(level, maxMoves),
 	}));
 
 	analyses.forEach((a) => {
