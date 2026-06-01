@@ -819,7 +819,7 @@ export function analyzeLevel(level, maxMoves = 220) {
 		pushRate * 22 +
 		Math.log2(stateChanges + 1) * 8 +
 		Math.log2(blockMobility + 1) * 5 +
-		Math.min(enemyImpact, 8) * 1.5 +
+		enemyImpact * 1.5 +
 		Math.min(keyImpact, 8) * 1.5 +
 		branchAverage * 2.5 +
 		explorationRate * 4 -
@@ -853,22 +853,75 @@ export function analyzeLevel(level, maxMoves = 220) {
 if (process.argv[1]?.endsWith("solver.mjs")) {
 	const fs = await import("node:fs");
 	const vm = await import("node:vm");
-	const file = process.argv[2] || "outputs/one-step-dungeon/game.js";
+
+	// 引数パース: ファイルパスと任意のステージ番号フィルタを分離
+	// 使い方例:
+	//   node solver.mjs                          → 全ステージ (game.js)
+	//   node solver.mjs game.js                  → 全ステージ
+	//   node solver.mjs game.js 37               → ステージ37のみ
+	//   node solver.mjs game.js 37 38            → ステージ37・38
+	//   node solver.mjs game.js 1-5              → ステージ1〜5
+	//   node solver.mjs game.js 1-5 37 38        → 混在可
+	//   node solver.mjs 37 38                    → game.jsを暗黙使用 + ステージ指定
+	const args = process.argv.slice(2);
+	let file = "outputs/one-step-dungeon/game.js";
+	const stageTokens = [];
+	let maxMovesOverride = null;
+
+	for (const arg of args) {
+		if (arg.startsWith("--max=")) {
+			maxMovesOverride = Number(arg.slice(6));
+		} else if (arg.endsWith(".js") || arg.endsWith(".mjs") || arg.includes("/") || arg.includes("\\")) {
+			file = arg;
+		} else {
+			stageTokens.push(arg);
+		}
+	}
+
+	// ステージ番号セットを構築 (1-based)
+	const targetSet = new Set();
+	for (const token of stageTokens) {
+		if (token.includes("-")) {
+			const [from, to] = token.split("-").map(Number);
+			for (let i = from; i <= to; i++) targetSet.add(i);
+		} else {
+			targetSet.add(Number(token));
+		}
+	}
+	const filterAll = targetSet.size === 0;
+
 	const source = fs.readFileSync(file, "utf8");
 	const match = source.match(/const LEVELS = (\[[\s\S]*?\n\]);/);
 	if (!match) throw new Error("LEVELS not found");
 	const context = {};
 	vm.createContext(context);
 	vm.runInContext(`levels = ${match[1]}`, context);
-	const analyses = context.levels.map((level) => analyzeLevel(level, 240));
-	analyses.forEach((a, index) => {
+
+	const targets = context.levels
+		.map((level, i) => ({ level, index: i }))
+		.filter(({ index }) => filterAll || targetSet.has(index + 1));
+
+	if (targets.length === 0) {
+		console.error(`指定したステージが見つかりません: ${[...targetSet].join(", ")}`);
+		process.exit(1);
+	}
+
+	const maxMoves = maxMovesOverride ?? 300;
+	if (maxMovesOverride) console.error(`[INFO] max moves: ${maxMoves}`);
+
+	const analyses = targets.map(({ level, index }) => ({
+		stageNum: index + 1,
+		...analyzeLevel(level, maxMoves),
+	}));
+
+	analyses.forEach((a) => {
 		if (!a.solved) {
-			console.log(`${index + 1}. ${a.name}: UNSOLVED`);
+			console.log(`${a.stageNum}. ${a.name}: UNSOLVED`);
 			return;
 		}
 		console.log(
 			[
-				`${index + 1}. ${a.name}`,
+				`${a.stageNum}. ${a.name}`,
 				`score=${a.score}`,
 				`moves=${a.moves}`,
 				`density=${a.density}`,
