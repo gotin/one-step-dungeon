@@ -1338,3 +1338,15 @@ canvas.sprite.gate-opening {
     grid-template-rows: repeat(3, minmax(44px, 54px));
   }
 }
+
+.site-footer {
+  text-align: center;
+  padding: 1rem;
+  font-size: 0.75rem;
+  color: #888;
+}
+
+.site-footer a {
+  color: #aaa;
+  text-decoration: underline;
+}
