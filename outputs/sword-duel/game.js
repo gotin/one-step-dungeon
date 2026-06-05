@@ -99,12 +99,13 @@ const SLASH_HIT_ANGLE   =  Math.PI * 0.05;
 const REBOUND_DURATION  = 36;  // 盾パリィ後のペナルティ（0.6sec）
 const SLASH_COOLDOWN    = 22;  // 通常スラッシュ後のインターバル（0.37sec）
 const GUARD_DURATION    = 999;
-const SWORD_LEN = 38;
+const SWORD_LEN = 55;  // 剣の長さを伸ばし、投げより間合いを広くする（38→55）
 const SWORD_W   = 4;
 
 // ── Grab constants ────────────────────────────────────────
-const GRAB_REACH       = 68;  // 投げの間合い（真の密着のみ）
-// ※ キャラ幅 = SPRITE_W * SCALE = 64px → 68px はほぼ完全に接触した状態のみ
+const GRAB_REACH       = 34;  // 投げの間合い：体幅24px + 余裕10px
+// ※ 衝突ヒットボックスを24pxに縮小したので、密着距離≒24px→その少し外が投げ間合い
+const FIGHTER_HIT_W    = 24;  // 衝突判定の幅（スプライト64pxより小さい体幅）
 const GRAB_DURATION    = 18;  // 投げモーション（成功・失敗共通）
 const GRABBED_DURATION = 30;  // 吹き飛び時間（0.5sec）
 const KNOCKED_DURATION = 36;  // 倒れている時間（0.6sec）無敵
@@ -314,8 +315,8 @@ function updateFighter(f, opponent) {
 
 	// ── Movement (blocked during action states) ───────────
 	const canMove = (f.state === "idle" || f.state === "walk" || f.state === "jump");
-	// grabbed / knocked は吹き飛び慣性を保持（vx をリセットしない）
-	const preserveVelocity = (f.state === "grabbed" || f.state === "knocked");
+	// grabbed / knocked / hurt は慣性を保持（vx をリセットしない）
+	const preserveVelocity = (f.state === "grabbed" || f.state === "knocked" || f.state === "hurt");
 
 	if (canMove) {
 		if (f.state !== "jump") {
@@ -390,20 +391,16 @@ function checkSlashHit(attacker, defender) {
 	const tip = swordTip(attacker);
 
 	// ── Check if tip hits defender's shield ──────────────
+	// guard 中かつ攻撃者が正面にいる場合は必ずパリィ
+	// （近距離で剣先が盾より後ろに届いても防御できる）
 	if (defender.state === "guard") {
-		const shieldX = defender.facingRight
-			? defender.x + SPRITE_W * SCALE         // shield on the right (facing right = facing attacker)
-			: defender.x;                            // shield on the left
-		const shieldY  = defender.y + 8;
-		const shieldH  = SPRITE_H * SCALE * 0.75;
-		const shieldW  = 16;
+		const attackerOnRight = attacker.x > defender.x;
+		const defenderFacingAttacker =
+			(defender.facingRight && attackerOnRight) ||
+			(!defender.facingRight && !attackerOnRight);
 
-		const hitX = tip.tx;
-		const hitY = tip.ty;
-
-		if (hitX > shieldX - shieldW && hitX < shieldX + shieldW &&
-		    hitY > shieldY && hitY < shieldY + shieldH) {
-			// Parried! rebound attacker
+		if (defenderFacingAttacker) {
+			// 攻撃者が正面 → 必ずパリィ
 			attacker.slashHit = true;
 			attacker.state = "rebound";
 			attacker.stateTimer = REBOUND_DURATION;
@@ -413,6 +410,7 @@ function checkSlashHit(attacker, defender) {
 			sfxParry();
 			return;
 		}
+		// 攻撃者が背後から → 盾は効果なし（そのまま body hit チェックに進む）
 	}
 
 	// ── Check body hit ────────────────────────────────────
@@ -424,9 +422,14 @@ function checkSlashHit(attacker, defender) {
 	if (tip.tx > bx && tip.tx < bx + bw && tip.ty > by && tip.ty < by + bh) {
 		attacker.slashHit = true;
 		defender.hp = Math.max(0, defender.hp - SLASH_DAMAGE);
+		// hurt 状態（20f = 0.33sec）のあいだ vx で後退アニメーション
+		// SLASH_COOLDOWN=22f より短いので、盾を張れば次の攻撃は届く前に後退完了
 		defender.state = "hurt";
 		defender.stateTimer = 20;
-		defender.vx = attacker.facingRight ? 3.5 : -3.5;
+		// 後退速度: 20フレームで約80px後退
+		const kDir = attacker.facingRight ? 1 : -1;
+		defender.vx = kDir * 4.5;
+
 		updateHud();
 		sfxHit();
 		if (defender.hp <= 0) defender.state = "dead";
@@ -898,11 +901,13 @@ function tick() {
 		updateFighter(enemy, player);
 
 		// ── Fighter vs Fighter collision (push apart) ─────
-		// 盾も含めてキャラ同士が重ならないよう押し戻す
-		const pLeft  = player.x;
-		const pRight = player.x + SPRITE_W * SCALE;
-		const eLeft  = enemy.x;
-		const eRight = enemy.x + SPRITE_W * SCALE;
+		// 体幅 FIGHTER_HIT_W (24px) でスプライト中央付近の当たり判定
+		const pCx = player.x + SPRITE_W * SCALE / 2;
+		const eCx = enemy.x  + SPRITE_W * SCALE / 2;
+		const pLeft  = pCx - FIGHTER_HIT_W / 2;
+		const pRight = pCx + FIGHTER_HIT_W / 2;
+		const eLeft  = eCx - FIGHTER_HIT_W / 2;
+		const eRight = eCx + FIGHTER_HIT_W / 2;
 		const overlap = Math.min(pRight, eRight) - Math.max(pLeft, eLeft);
 		if (overlap > 0) {
 			const push = overlap / 2 + 1;
