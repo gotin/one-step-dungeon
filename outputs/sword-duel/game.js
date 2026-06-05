@@ -590,7 +590,11 @@ function checkSlashHit(attacker, defender) {
 
 		updateHud();
 		sfxHit();
-		if (defender.hp <= 0) defender.state = "dead";
+		if (defender.hp <= 0) {
+			defender.state = "dead";
+			// 倒れる方向を攻撃者の向きから設定（grabbed で倒された場合は上書きされない）
+			defender.grabRotDir = attacker.facingRight ? 1 : -1;
+		}
 	}
 }
 
@@ -1016,10 +1020,15 @@ function drawSword(f) {
 
 function drawFighter(f, palette) {
 	if (f.state === "dead") {
+		// 地面に横倒し（上向き）。knocked と同じ位置合わせを使う。
+		// 90°回転後の最下点が GROUND に接するよう cy を調整
+		const dCx = f.x + SPRITE_W * SCALE / 2;
+		const dCy = GROUND - 16;
+		const deadAngle = f.grabRotDir * Math.PI / 2;
 		ctx.save();
-		ctx.globalAlpha = 0.55;
-		ctx.translate(f.x + SPRITE_W * SCALE / 2, f.y + SPRITE_H * SCALE / 2);
-		ctx.rotate(Math.PI / 2);
+		ctx.globalAlpha = 0.45;
+		ctx.translate(dCx, dCy);
+		ctx.rotate(deadAngle);
 		drawPixelSprite(SPRITE_HERO_R, palette, 0, -SPRITE_W * SCALE / 2, -SPRITE_H * SCALE / 2, !f.facingRight);
 		ctx.restore();
 		return;
