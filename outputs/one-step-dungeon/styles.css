@@ -59,6 +59,22 @@ button:disabled {
   cursor: default;
 }
 
+/* ── Back link ───────────────────────────────────────── */
+.back-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-bottom: 6px;
+  color: var(--muted);
+  font-size: 0.78rem;
+  text-decoration: none;
+  transition: color 0.15s;
+}
+
+.back-link:hover {
+  color: var(--hero);
+}
+
 /* ── Layout ──────────────────────────────────────────── */
 .app-shell {
   min-height: 100vh;

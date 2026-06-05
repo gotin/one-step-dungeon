@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+    <title>Sword Duel</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div class="page">
+      <header class="topbar">
+        <a href="../" class="back-link">← Games</a>
+        <h1 class="game-title">⚔️ Sword Duel</h1>
+      </header>
+
+      <div class="arena-wrap">
+        <canvas id="arena" class="arena"></canvas>
+
+        <div id="overlay" class="overlay" aria-live="polite">
+          <p id="overlay-text" class="overlay-text"></p>
+          <button id="overlay-btn" class="overlay-btn" type="button"></button>
+        </div>
+      </div>
+
+      <!-- HP bars -->
+      <div class="hud">
+        <div class="fighter-hud fighter-hud--left">
+          <span class="fighter-name">YOU</span>
+          <div class="hp-bar-track">
+            <div id="hp-bar-p" class="hp-bar hp-bar--player"></div>
+          </div>
+          <span id="hp-num-p" class="hp-num">100</span>
+        </div>
+        <div class="fighter-hud fighter-hud--right">
+          <span class="hp-num" id="hp-num-e">100</span>
+          <div class="hp-bar-track">
+            <div id="hp-bar-e" class="hp-bar hp-bar--enemy"></div>
+          </div>
+          <span class="fighter-name">CPU</span>
+        </div>
+      </div>
+
+      <!-- Mobile controls -->
+      <div class="controls">
+        <div class="btn-group btn-group--move">
+          <button class="ctrl-btn" id="btn-left"  type="button" aria-label="左移動">◀</button>
+          <button class="ctrl-btn" id="btn-right" type="button" aria-label="右移動">▶</button>
+          <button class="ctrl-btn" id="btn-jump"  type="button" aria-label="ジャンプ">↑</button>
+        </div>
+        <div class="btn-group btn-group--action">
+          <button class="ctrl-btn ctrl-btn--action" id="btn-guard" type="button" aria-label="盾をかまえる">🛡</button>
+          <button class="ctrl-btn ctrl-btn--action ctrl-btn--attack" id="btn-slash" type="button" aria-label="斬る">⚔️</button>
+          <button class="ctrl-btn ctrl-btn--action ctrl-btn--grab" id="btn-grab" type="button" aria-label="投げ">🤼</button>
+        </div>
+      </div>
+
+      <div class="key-hint">
+        <span>← → 移動</span>
+        <span>↑ ジャンプ</span>
+        <span>A 盾</span>
+        <span>S 斬る（空中可）</span>
+        <span>D 投げ（密着・盾破り）</span>
+      </div>
+    </div>
+
+    <script src="./game.js"></script>
+  </body>
+</html>
