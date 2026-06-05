@@ -2,7 +2,144 @@
 
 // ── Palettes ──────────────────────────────────────────────
 const PAL_HERO = ["transparent","#000000","#ff9500","#f1d7c9","#4cd964","#5856d6","#edd1c3"];
-const PAL_ENEMY = ["transparent","#000000","#c03030","#f1d7c9","#8a1a1a","#3a0a0a","#edd1c3"];
+
+// ── Enemy palettes per level (index 0 = transparent, 1 = outline, 2 = body, 3 = skin, 4 = armor, 5 = legs, 6 = face) ──
+// Lv1:赤  Lv2:橙  Lv3:黄  Lv4:黄緑  Lv5:青  Lv6:紫  Lv7:深紅  Lv8:黒金(魔王)
+const ENEMY_PALETTES = [
+	// Lv1 – 赤（元の色）
+	["transparent","#000000","#c03030","#f1d7c9","#8a1a1a","#3a0a0a","#edd1c3"],
+	// Lv2 – 橙
+	["transparent","#111111","#d06018","#f5dcc8","#8a3800","#3a1600","#edd1c3"],
+	// Lv3 – 黄
+	["transparent","#111111","#c0a020","#f5e8c0","#7a6000","#302400","#f0e8c0"],
+	// Lv4 – 黄緑
+	["transparent","#0a1a0a","#508030","#d8ecc8","#1e4a0a","#0a2004","#d0e8c0"],
+	// Lv5 – 青
+	["transparent","#000818","#2050b0","#c8d8f4","#0a1a60","#040820","#c0d0f0"],
+	// Lv6 – 紫
+	["transparent","#0a0018","#7030a0","#e0c8f4","#3a0060","#140020","#d8c0f0"],
+	// Lv7 – 深紅
+	["transparent","#100000","#900020","#ffc8c8","#500010","#200008","#ffc0c0"],
+	// Lv8 – 黒金（魔王）
+	["transparent","#000000","#1a1a1a","#f0d090","#0a0a0a","#050505","#f0d890"],
+];
+
+// ── Level parameters (index 0 = Lv1) ──────────────────────
+// 調整する際はここだけ変えればOK
+const LEVEL_PARAMS = [
+	// Lv1 – 初心者向け。鈍い・消極的
+	{
+		name: "GRUNT",
+		delayMin: 16, delayRange: 14,   // 反応遅延（フレーム）min + rand*range
+		decisionInterval: [28, 24],     // 行動間隔 [min, rand]
+		reactChance: 0.15,              // プレイヤー攻撃へのガード反応確率
+		slashFreq: 0.30,                // 斬り選択率（中距離）
+		guardFreq: 0.20,                // ガード選択率
+		grabGuardMult: 0.25,            // 盾中の投げ確率倍率
+		longGuardThreshold: 120,        // 長時間ガード判定（フレーム）
+		reboundGrabChance: 0.40,        // パリィ後投げ反撃確率
+		auraColor: null,                // Lv8専用
+	},
+	// Lv2 – 少し速い
+	{
+		name: "BRAWLER",
+		delayMin: 13, delayRange: 10,
+		decisionInterval: [24, 20],
+		reactChance: 0.20,
+		slashFreq: 0.35,
+		guardFreq: 0.18,
+		grabGuardMult: 0.35,
+		longGuardThreshold: 100,
+		reboundGrabChance: 0.55,
+		auraColor: null,
+	},
+	// Lv3 – 標準
+	{
+		name: "SOLDIER",
+		delayMin: 11, delayRange: 8,
+		decisionInterval: [22, 16],
+		reactChance: 0.28,
+		slashFreq: 0.40,
+		guardFreq: 0.16,
+		grabGuardMult: 0.50,
+		longGuardThreshold: 80,
+		reboundGrabChance: 0.70,
+		auraColor: null,
+	},
+	// Lv4 – 今の強さ（デフォルト）
+	{
+		name: "WARRIOR",
+		delayMin: 8, delayRange: 10,
+		decisionInterval: [16, 16],
+		reactChance: 0.40,
+		slashFreq: 0.45,
+		guardFreq: 0.15,
+		grabGuardMult: 0.72,
+		longGuardThreshold: 60,
+		reboundGrabChance: 1.00,
+		auraColor: null,
+	},
+	// Lv5 – 盾対策が厳しい
+	{
+		name: "KNIGHT",
+		delayMin: 7, delayRange: 8,
+		decisionInterval: [14, 14],
+		reactChance: 0.50,
+		slashFreq: 0.48,
+		guardFreq: 0.14,
+		grabGuardMult: 0.80,
+		longGuardThreshold: 45,
+		reboundGrabChance: 1.00,
+		auraColor: null,
+	},
+	// Lv6 – 速い・連撃あり
+	{
+		name: "CHAMPION",
+		delayMin: 6, delayRange: 7,
+		decisionInterval: [12, 12],
+		reactChance: 0.60,
+		slashFreq: 0.52,
+		guardFreq: 0.12,
+		grabGuardMult: 0.85,
+		longGuardThreshold: 35,
+		reboundGrabChance: 1.00,
+		auraColor: null,
+	},
+	// Lv7 – かなり手強い
+	{
+		name: "WARLORD",
+		delayMin: 5, delayRange: 6,
+		decisionInterval: [10, 10],
+		reactChance: 0.70,
+		slashFreq: 0.55,
+		guardFreq: 0.10,
+		grabGuardMult: 0.90,
+		longGuardThreshold: 25,
+		reboundGrabChance: 1.00,
+		auraColor: null,
+	},
+	// Lv8 – 魔王。強いが理不尽ではない
+	{
+		name: "DARK LORD",
+		delayMin: 5, delayRange: 5,
+		decisionInterval: [8, 10],
+		reactChance: 0.75,
+		slashFreq: 0.55,
+		guardFreq: 0.10,
+		grabGuardMult: 0.90,
+		longGuardThreshold: 20,
+		reboundGrabChance: 1.00,
+		auraColor: "#f0c040",           // 金色オーラ
+	},
+];
+
+const MAX_STAGE = LEVEL_PARAMS.length; // 8
+
+// 現在のステージ（1-indexed）
+let currentStage = 1;
+
+function getLvParam() { return LEVEL_PARAMS[currentStage - 1]; }
+function getEnemyPalette() { return ENEMY_PALETTES[currentStage - 1]; }
 
 // ── Sprite data (heroR, 32×32, 2 walk frames) ────────────
 const SPRITE_HERO_R = [
@@ -251,13 +388,34 @@ function updateHud() {
 	pBar.style.background = pPct < 30 ? "#e85f5c" : pPct < 60 ? "#f2c14e" : "#6fd3c4";
 }
 
+// ── Stage HUD 更新 ────────────────────────────────────────
+function updateStageHud() {
+	const lv = getLvParam();
+	document.getElementById("stage-badge").textContent = `STAGE ${currentStage}`;
+	document.getElementById("enemy-name").textContent = lv.name;
+	// 敵HPバーの色をステージカラーに合わせる
+	const ePalette = getEnemyPalette();
+	document.getElementById("hp-bar-e").style.background = ePalette[2];
+}
+
 // ── Init ──────────────────────────────────────────────────
 function startFight() {
 	player = makeFighter(40, true);
 	enemy  = makeFighter(AW - 40 - SPRITE_W * SCALE, false);
 	phase  = "fight";
+	// AI 変数リセット
+	aiDecisionTimer      = 20;
+	aiPendingIntent      = null;
+	aiPendingDelay       = 0;
+	aiCurrentIntent      = "idle";
+	aiReactQueued        = false;
+	aiReactDelay         = 0;
+	aiPlayerGuardFrames  = 0;
+	aiReboundGrabQueued  = 0;
+	aiFeintTimer         = 0;
 	hideOverlay();
 	updateHud();
+	updateStageHud();
 }
 
 // ── Physics ───────────────────────────────────────────────
@@ -551,9 +709,8 @@ function refreshGuard(f) {
 //   最速アスリート: ~100ms (6f)、一般人: ~200ms (12f)、遅め: ~350ms (21f)
 // AIは 12〜24フレームの正規分布ライクな遅延を持つ
 function humanDelay() {
-	// 12〜24フレームの範囲で、中央値18フレーム(約300ms)
-	// 複数の乱数を足すことで正規分布に近い分布を実現
-	return 12 + (Math.random() * 6 | 0) + (Math.random() * 6 | 0);
+	const lv = getLvParam();
+	return lv.delayMin + (Math.random() * (lv.delayRange / 2) | 0) + (Math.random() * (lv.delayRange / 2) | 0);
 }
 
 let aiDecisionTimer  = 20;   // 次に行動を検討するまでのフレーム
@@ -565,6 +722,11 @@ let aiCurrentIntent  = "idle"; // 現在実行中の意図
 let aiReactQueued = false;
 let aiReactDelay  = 0;
 
+// ── 対盾戦術用 ────────────────────────────────────────────
+let aiPlayerGuardFrames  = 0;  // プレイヤーが盾を張り続けたフレーム数
+let aiReboundGrabQueued  = 0;  // パリィされた後の反撃投げ遅延（> 0 でキュー中）
+let aiFeintTimer         = 0;  // フェイント（近づいて引く）の残りフレーム
+
 function updateAI() {
 	if (enemy.state === "dead" || player.state === "dead") return;
 
@@ -572,32 +734,75 @@ function updateAI() {
 	if (aiDecisionTimer  > 0) aiDecisionTimer--;
 	if (aiPendingDelay   > 0) aiPendingDelay--;
 	if (aiReactDelay     > 0) aiReactDelay--;
+	if (aiReboundGrabQueued > 0) aiReboundGrabQueued--;
+	if (aiFeintTimer     > 0) aiFeintTimer--;
+
+	// ── プレイヤーのガード継続時間を追跡 ──────────────────────
+	if (player.state === "guard") {
+		aiPlayerGuardFrames++;
+	} else {
+		aiPlayerGuardFrames = 0;
+	}
 
 	const dist = Math.abs(enemy.x - player.x);
 	const slashRange = SWORD_LEN + SPRITE_W * SCALE * 0.7;
 	const comfortDist = 85;
 
+	// ── ① パリィ後の投げ反撃：rebound が終わったら接近して投げ ──
+	// rebound 終了直後（stateTimer が 0 になる瞬間）を検出
+	if (enemy.state === "rebound" && enemy.stateTimer === 1) {
+		// rebound 終了と同時に投げ反撃キューを開始（遅延 8〜14f = 133〜233ms）
+		aiReboundGrabQueued = 8 + (Math.random() * 6 | 0);
+	}
+
+	// rebound 後の投げ反撃を実行
+	if (aiReboundGrabQueued === 1
+		&& enemy.state !== "rebound" && enemy.state !== "slash"
+		&& enemy.state !== "grabbed" && enemy.state !== "knocked") {
+		// 接近意図を即座にセット（クールダウンをリセットして強制）
+		aiCurrentIntent = "grab_approach";
+		aiPendingIntent = null;
+		aiDecisionTimer = 40; // 次の通常判断まで少し長めに猶予を与える
+	}
+
 	// ── 状況を観察して「行動意図」を決定（遅延付き）──────────
-	// 意図の決定は decisionTimer が切れたときのみ行い、
-	// 決定してから humanDelay() フレーム後に実際に行動する
 	if (aiDecisionTimer <= 0 && aiPendingIntent === null) {
+		const lv = getLvParam();
 		const r = Math.random();
 		let intent;
+
+		// レベルパラメータを使った長時間ガード対策
+		const playerLongGuard = aiPlayerGuardFrames > lv.longGuardThreshold;
+		const playerGuarding = player.state === "guard";
+		// 盾中の投げ確率（grabGuardMult を閾値として使用）
+		const grabOnGuard = lv.grabGuardMult;
+
 		if (dist > comfortDist * 1.6) {
 			intent = "approach";
 		} else if (dist < slashRange * 0.5) {
-			// 密着: 投げ・斬り・後退
-			if (player.state === "guard" && r < 0.35) intent = "grab"; // 盾を見たら投げを狙う
-			else intent = r < 0.5 ? "slash" : "retreat";
+			// 密着距離
+			if (playerGuarding) {
+				intent = r < grabOnGuard ? "grab" : "retreat";
+			} else if (playerLongGuard) {
+				intent = r < (grabOnGuard * 0.75) ? "grab" : "slash";
+			} else {
+				intent = r < lv.slashFreq ? "slash" : "retreat";
+			}
 		} else if (dist < slashRange * 1.1) {
-			if (r < 0.30) intent = "slash";
-			else if (r < 0.50) intent = "guard";
-			else if (r < 0.62 && player.state === "guard") intent = "grab"; // 相手が盾の時に投げ判断
-			else intent = "approach";
+			if (playerGuarding && r < grabOnGuard * 0.7) {
+				intent = "grab_approach";
+			} else if (playerLongGuard && r < grabOnGuard * 0.55) {
+				intent = "feint_grab";
+			} else if (r < lv.slashFreq) {
+				intent = "slash";
+			} else if (r < lv.slashFreq + lv.guardFreq) {
+				intent = "guard";
+			} else {
+				intent = "approach";
+			}
 		} else {
 			intent = r < 0.55 ? "approach" : "retreat";
 		}
-		// 意図を「知覚」し、人間らしい遅延後に実行予約
 		aiPendingIntent = intent;
 		aiPendingDelay  = humanDelay();
 	}
@@ -606,8 +811,8 @@ function updateAI() {
 	if (aiPendingIntent !== null && aiPendingDelay <= 0) {
 		aiCurrentIntent = aiPendingIntent;
 		aiPendingIntent = null;
-		// 次の観察タイミングを設定（16〜32フレーム後）
-		aiDecisionTimer = 16 + (Math.random() * 16 | 0);
+		const lv = getLvParam();
+		aiDecisionTimer = lv.decisionInterval[0] + (Math.random() * lv.decisionInterval[1] | 0);
 	}
 
 	enemy.facingRight = player.x > enemy.x;
@@ -615,17 +820,14 @@ function updateAI() {
 	enemy.moveRight = false;
 
 	// ── プレイヤー攻撃への反応ガード（人間らしい遅延付き）──────
-	// 振り始めを「見た」瞬間に一定確率で反応開始
-	// 遅延は humanDelay() = 12〜24フレーム（200〜400ms）
 	if (player.state === "slash" && !aiReactQueued
 		&& player.slashAngle > SLASH_ANGLE_START + 0.3
-		&& Math.random() < 0.4) {
+		&& Math.random() < getLvParam().reactChance) {
 		aiReactQueued = true;
-		aiReactDelay  = humanDelay(); // 人間と同じランダム遅延
+		aiReactDelay  = humanDelay();
 	}
 	if (aiReactQueued && aiReactDelay <= 0) {
 		aiReactQueued = false;
-		// 遅延後もまだ相手が振り中なら間に合う
 		if (player.state === "slash"
 			&& enemy.state !== "guard" && enemy.state !== "slash"
 			&& enemy.state !== "hurt" && enemy.state !== "rebound") {
@@ -637,7 +839,7 @@ function updateAI() {
 	}
 	if (player.state !== "slash") aiReactQueued = false;
 
-	// 行動中は何もしない（grabbed/knocked/wakeup も含む）
+	// 行動中は何もしない
 	if (enemy.state === "slash" || enemy.state === "hurt" || enemy.state === "rebound") return;
 	if (enemy.state === "grabbed" || enemy.state === "knocked" || enemy.state === "wakeup" || enemy.state === "grab") return;
 	if (enemy.state === "guard") {
@@ -673,14 +875,55 @@ function updateAI() {
 			}
 			break;
 		case "grab":
-			// 密着していて idle/walk の時のみ投げを実行
-			if (dist <= GRAB_REACH
-				&& (enemy.state === "idle" || enemy.state === "walk")) {
+			// ④ 直接投げ：密着していれば即投げ、まだ遠ければ接近
+			if (dist <= GRAB_REACH && (enemy.state === "idle" || enemy.state === "walk")) {
 				enemy.state = "grab";
 				enemy.stateTimer = GRAB_DURATION;
 				enemy.vx = 0;
+			} else if (dist > GRAB_REACH) {
+				// まだ届かない → 近づく
+				if (enemy.facingRight) enemy.moveRight = true;
+				else enemy.moveLeft = true;
 			}
 			break;
+		case "grab_approach":
+			// ⑤ 接近して投げ：パリィ後反撃・盾対処
+			if (dist <= GRAB_REACH && (enemy.state === "idle" || enemy.state === "walk")) {
+				enemy.state = "grab";
+				enemy.stateTimer = GRAB_DURATION;
+				enemy.vx = 0;
+				aiCurrentIntent = "idle";
+			} else {
+				// まだ遠い → 全力接近
+				if (enemy.facingRight) enemy.moveRight = true;
+				else enemy.moveLeft = true;
+			}
+			break;
+		case "feint_grab": {
+			// ⑥ フェイント：まず接近（攻撃を誘う）→ 盾を張ったところで投げ
+			if (aiFeintTimer <= 0) {
+				// フェイント開始：20〜30f 間接近する
+				aiFeintTimer = 20 + (Math.random() * 10 | 0);
+			}
+			if (aiFeintTimer > 10) {
+				// フェイント前半：接近（盾を誘う）
+				if (enemy.facingRight) enemy.moveRight = true;
+				else enemy.moveLeft = true;
+			} else {
+				// フェイント後半：投げに移行
+				if (dist <= GRAB_REACH && (enemy.state === "idle" || enemy.state === "walk")) {
+					enemy.state = "grab";
+					enemy.stateTimer = GRAB_DURATION;
+					enemy.vx = 0;
+					aiCurrentIntent = "idle";
+					aiFeintTimer = 0;
+				} else {
+					if (enemy.facingRight) enemy.moveRight = true;
+					else enemy.moveLeft = true;
+				}
+			}
+			break;
+		}
 	}
 }
 
@@ -885,10 +1128,49 @@ function drawArena() {
 	});
 }
 
+// ── Lv8 魔王オーラエフェクト ──────────────────────────────
+function drawDarkLordAura(f) {
+	const lv = getLvParam();
+	if (!lv.auraColor || f.state === "dead") return;
+	const t = Date.now() / 300;
+	const cx = f.x + SPRITE_W * SCALE / 2;
+	const cy = f.y + SPRITE_H * SCALE / 2;
+	// 揺れる光輪を3層描く
+	for (let i = 0; i < 3; i++) {
+		const phase = t + i * (Math.PI * 2 / 3);
+		const rx = 22 + Math.sin(phase * 1.3) * 5;
+		const ry = 26 + Math.cos(phase * 0.9) * 4;
+		const alpha = 0.18 + Math.sin(phase * 2) * 0.08;
+		ctx.save();
+		ctx.globalAlpha = alpha;
+		ctx.shadowColor = lv.auraColor;
+		ctx.shadowBlur = 18;
+		ctx.strokeStyle = lv.auraColor;
+		ctx.lineWidth = 2;
+		ctx.beginPath();
+		ctx.ellipse(cx, cy, rx + i * 5, ry + i * 4, t * 0.4 + i, 0, Math.PI * 2);
+		ctx.stroke();
+		ctx.restore();
+	}
+	// 足元の煙霧
+	const smokeAlpha = 0.12 + Math.sin(t * 3) * 0.05;
+	ctx.save();
+	ctx.globalAlpha = smokeAlpha;
+	ctx.fillStyle = lv.auraColor;
+	ctx.shadowColor = lv.auraColor;
+	ctx.shadowBlur = 24;
+	ctx.beginPath();
+	ctx.ellipse(cx, GROUND - 4, 22, 6, 0, 0, Math.PI * 2);
+	ctx.fill();
+	ctx.restore();
+}
+
 function render() {
 	ctx.clearRect(0, 0, AW, AH);
 	drawArena();
-	drawFighter(enemy, PAL_ENEMY);
+	// 魔王オーラは敵キャラの後ろに描く
+	drawDarkLordAura(enemy);
+	drawFighter(enemy, getEnemyPalette());
 	drawFighter(player, PAL_HERO);
 }
 
@@ -932,8 +1214,23 @@ function tick() {
 			phase = "lose";
 			setTimeout(() => showOverlay("💀 DEFEAT", "もう一度"), 600);
 		} else if (enemy.state === "dead") {
-			phase = "win";
-			setTimeout(() => showOverlay("🏆 VICTORY!", "もう一度"), 600);
+			if (currentStage >= MAX_STAGE) {
+				// 全ステージクリア → エンディング
+				phase = "ending";
+				setTimeout(() => {
+					overlayTxt.innerHTML = "👑 ALL STAGES CLEAR!\n\n⚔️ 真の剣士よ、おめでとう！";
+					overlayTxt.style.whiteSpace = "pre-line";
+					overlayBtn.textContent = "もう一度挑戦";
+					overlayEl.classList.add("show");
+				}, 800);
+			} else {
+				// ステージクリア → 次へ
+				phase = "stageclear";
+				const clearedStage = currentStage;
+				setTimeout(() => {
+					showOverlay(`✨ STAGE ${clearedStage} CLEAR!`, "次のステージへ");
+				}, 600);
+			}
 		}
 	}
 	render();
@@ -981,8 +1278,24 @@ bindBtn("btn-grab",  () => playerGrab(), null);
 
 // ── Overlay / boot ────────────────────────────────────────
 overlayBtn.addEventListener("click", () => {
-	if (phase === "title" || phase === "win" || phase === "lose") {
-		cancelAnimationFrame(animReqId);
+	cancelAnimationFrame(animReqId);
+	if (phase === "stageclear") {
+		// 次のステージへ進む（プレイヤーHPは引き継がない → 全回復）
+		currentStage++;
+		startFight();
+		tick();
+	} else if (phase === "ending") {
+		// エンディングからやり直し → ステージ1から
+		currentStage = 1;
+		overlayTxt.style.whiteSpace = "";
+		startFight();
+		tick();
+	} else if (phase === "lose") {
+		// 負け → 同じステージをやり直し
+		startFight();
+		tick();
+	} else if (phase === "title") {
+		currentStage = 1;
 		startFight();
 		tick();
 	}

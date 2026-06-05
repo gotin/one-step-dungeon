@@ -241,6 +241,22 @@ html, body {
     background: #3e3318;
 }
 
+/* ── Stage badge ─────────────────────────────────────── */
+.stage-badge {
+    font-size: 0.7rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    color: var(--goal);
+    background: rgba(242, 193, 78, 0.12);
+    border: 1px solid rgba(242, 193, 78, 0.35);
+    border-radius: 6px;
+    padding: 2px 8px;
+    flex-shrink: 0;
+    align-self: center;
+    text-align: center;
+    min-width: 64px;
+}
+
 /* ── Key hint ────────────────────────────────────────── */
 .key-hint {
     display: flex;
