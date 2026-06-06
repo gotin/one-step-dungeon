@@ -38,6 +38,8 @@ const LEVEL_PARAMS = [
 		grabGuardMult: 0.25,            // 盾中の投げ確率倍率
 		longGuardThreshold: 120,        // 長時間ガード判定（フレーム）
 		reboundGrabChance: 0.40,        // パリィ後投げ反撃確率
+		jumpCounterChance: 0.08,        // 空中接近をスラッシュで迎え撃つ確率
+		jumpRetreatChance: 0.15,        // 空中接近を後退で回避する確率
 		auraColor: null,                // Lv8専用
 	},
 	// Lv2 – 少し速い
@@ -51,6 +53,8 @@ const LEVEL_PARAMS = [
 		grabGuardMult: 0.35,
 		longGuardThreshold: 100,
 		reboundGrabChance: 0.55,
+		jumpCounterChance: 0.15,
+		jumpRetreatChance: 0.22,
 		auraColor: null,
 	},
 	// Lv3 – 標準
@@ -64,6 +68,8 @@ const LEVEL_PARAMS = [
 		grabGuardMult: 0.50,
 		longGuardThreshold: 80,
 		reboundGrabChance: 0.70,
+		jumpCounterChance: 0.22,
+		jumpRetreatChance: 0.30,
 		auraColor: null,
 	},
 	// Lv4 – 今の強さ（デフォルト）
@@ -77,6 +83,8 @@ const LEVEL_PARAMS = [
 		grabGuardMult: 0.72,
 		longGuardThreshold: 60,
 		reboundGrabChance: 1.00,
+		jumpCounterChance: 0.32,
+		jumpRetreatChance: 0.40,
 		auraColor: null,
 	},
 	// Lv5 – 盾対策が厳しい
@@ -90,6 +98,8 @@ const LEVEL_PARAMS = [
 		grabGuardMult: 0.80,
 		longGuardThreshold: 45,
 		reboundGrabChance: 1.00,
+		jumpCounterChance: 0.42,
+		jumpRetreatChance: 0.50,
 		auraColor: null,
 	},
 	// Lv6 – 速い・連撃あり
@@ -103,6 +113,8 @@ const LEVEL_PARAMS = [
 		grabGuardMult: 0.85,
 		longGuardThreshold: 35,
 		reboundGrabChance: 1.00,
+		jumpCounterChance: 0.52,
+		jumpRetreatChance: 0.58,
 		auraColor: null,
 	},
 	// Lv7 – かなり手強い
@@ -116,6 +128,8 @@ const LEVEL_PARAMS = [
 		grabGuardMult: 0.90,
 		longGuardThreshold: 25,
 		reboundGrabChance: 1.00,
+		jumpCounterChance: 0.60,
+		jumpRetreatChance: 0.65,
 		auraColor: null,
 	},
 	// Lv8 – 魔王。強いが理不尽ではない
@@ -129,6 +143,8 @@ const LEVEL_PARAMS = [
 		grabGuardMult: 0.90,
 		longGuardThreshold: 20,
 		reboundGrabChance: 1.00,
+		jumpCounterChance: 0.68,
+		jumpRetreatChance: 0.72,
 		auraColor: "#f0c040",           // 金色オーラ
 	},
 ];
@@ -243,17 +259,18 @@ const SWORD_W   = 4;
 const GRAB_REACH       = 34;  // 投げの間合い：体幅24px + 余裕10px
 // ※ 衝突ヒットボックスを24pxに縮小したので、密着距離≒24px→その少し外が投げ間合い
 const FIGHTER_HIT_W    = 24;  // 衝突判定の幅（スプライト64pxより小さい体幅）
-const GRAB_DURATION    = 18;  // 投げモーション（成功・失敗共通）
+const GRAB_DURATION    = 18;  // 投げモーション（失敗時はこのまま）
+const GRAB_HIT_DURATION = 90; // 投げ成功後の攻撃者硬直（相手完全回復90fと同じ → 柔道不可）
 const GRABBED_DURATION = 30;  // 吹き飛び時間（0.5sec）
 const KNOCKED_DURATION = 36;  // 倒れている時間（0.6sec）無敵
 const WAKEUP_DURATION  = 24;  // 起き上がりモーション（0.4sec）無敵
 // 合計 90フレーム = 約1.5秒（ストリートファイター系の標準的な長さ）
-const GRAB_MISS_DURATION = 28; // 投げ失敗時の自分の硬直（約0.5秒 = 相手に反撃の機会）
+const GRAB_MISS_DURATION = 45; // 投げ失敗時の自分の硬直（0.75sec）= 相手に反撃の機会
 const GRAB_DAMAGE      = 18;  // 投げ成功ダメージ（剣より少し少なめ）
-// 投げ成功後のクールダウン：敵の完全回復時間（90f）より少し長く設定
-// これにより「投げ→クールダウン切れ→即再投げ」を防止
-const GRAB_COOLDOWN       = 30;  // 投げ失敗・空振り後のクールダウン（0.5sec）
-const GRAB_HIT_COOLDOWN   = 100; // 投げ成功後のクールダウン（1.67sec > 回復90f）
+// 投げ成功・失敗ともに「硬直 = クールダウン」にして分かりやすく統一
+// 柔道防止：成功後硬直50fで相手起き上がり(60f)の直前にやっと動ける
+const GRAB_COOLDOWN       = 45;  // 投げ失敗後のクールダウン（硬直と同値）
+const GRAB_HIT_COOLDOWN   = 90;  // 投げ成功後のクールダウン（硬直と同値）
 
 // ── Web Audio ─────────────────────────────────────────────
 let audioCtx = null;
@@ -484,8 +501,9 @@ function updateFighter(f, opponent) {
 
 	// ── Movement (blocked during action states) ───────────
 	const canMove = (f.state === "idle" || f.state === "walk" || f.state === "jump");
-	// grabbed / knocked / hurt は慣性を保持（vx をリセットしない）
-	const preserveVelocity = (f.state === "grabbed" || f.state === "knocked" || f.state === "hurt");
+	// grabbed / knocked / hurt / grab は慣性を保持（vx をリセットしない）
+	// grab も含めることで投げ後の後退モーションが機能する
+	const preserveVelocity = (f.state === "grabbed" || f.state === "knocked" || f.state === "hurt" || f.state === "grab");
 
 	if (canMove) {
 		if (f.state !== "jump") {
@@ -708,6 +726,18 @@ function checkGrabHit(attacker, defender) {
 	defender.onGround = false;
 	// 回転方向を保存（grabbed→knocked遷移後も使えるように）
 	defender.grabRotDir = grabDir;  // 右投げ=+1(時計), 左投げ=-1(反時計)
+
+	// ── 投げ成功後の攻撃者硬直（柔道防止）──────────────────────
+	// stateTimerをGRAB_HIT_DURATIONに上書きして硬直を延長
+	// grab stateはstateTimer切れでidleに戻るため、長くすることで起き上がりに間に合わなくなる
+	attacker.stateTimer = GRAB_HIT_DURATION;
+
+	// 攻撃者は投げた方向と逆に大きく押し戻される
+	attacker.vx = -grabDir * 5.5;
+	// 壁際補正：defender が壁で飛べない場合はさらに強く後退させる
+	const defenderNearWall = defender.x <= 4 || defender.x >= AW - SPRITE_W * SCALE - 4;
+	if (defenderNearWall) attacker.vx = -grabDir * 8.0;
+
 	attacker.grabCooldown = GRAB_HIT_COOLDOWN;
 	updateHud();
 	sfxGrabHit();
@@ -836,6 +866,35 @@ function updateAI() {
 	enemy.facingRight = player.x > enemy.x;
 	enemy.moveLeft = false;
 	enemy.moveRight = false;
+
+	// ── ② 空中接近への対応（ジャンプ投げ対策）──────────────────
+	// プレイヤーが空中で落下中 かつ こちらに近づいている → スラッシュor後退
+	{
+		const lv = getLvParam();
+		const playerFalling = !player.onGround && player.vy > 0; // 落下中
+		const playerApproaching = (player.facingRight && player.x < enemy.x)
+			|| (!player.facingRight && player.x > enemy.x); // こちらに向かっている
+		const jumpThreatRange = GRAB_REACH + SPRITE_W * SCALE * 1.2; // 投げが届きそうな距離+余裕
+
+		if (playerFalling && playerApproaching && dist < jumpThreatRange
+			&& enemy.state !== "slash" && enemy.slashCooldown <= 0
+			&& enemy.state !== "hurt" && enemy.state !== "rebound") {
+			const r2 = Math.random();
+			if (r2 < lv.jumpCounterChance) {
+				// カウンタースラッシュ：着地する前に斬る
+				enemy.state = "slash";
+				enemy.stateTimer = SLASH_DURATION;
+				enemy.slashAngle = SLASH_ANGLE_START;
+				enemy.slashHit = false;
+				aiCurrentIntent = "slash";
+				aiDecisionTimer = 20;
+			} else if (r2 < lv.jumpCounterChance + lv.jumpRetreatChance) {
+				// 後退：投げ間合いから外れる
+				aiCurrentIntent = "retreat";
+				aiDecisionTimer = 14;
+			}
+		}
+	}
 
 	// ── プレイヤー攻撃への反応ガード（人間らしい遅延付き）──────
 	if (player.state === "slash" && !aiReactQueued
