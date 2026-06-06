@@ -1518,6 +1518,38 @@ overlayBtn.addEventListener("click", () => {
 	}
 });
 
+// ── Landscape スケール調整 ────────────────────────────────
+// 横長のとき .page 全体を縮小して全要素が1画面に収まるようにする
+function updateLandscapeScale() {
+	const pageEl = document.querySelector(".page");
+	if (!pageEl) return;
+	const isLandscape = window.innerWidth > window.innerHeight && window.innerHeight < 500;
+	if (isLandscape) {
+		pageEl.style.transform = "";
+		// 一旦リセットして自然な高さを計測
+		const naturalH = pageEl.scrollHeight;
+		const availH   = window.innerHeight;
+		if (naturalH > availH) {
+			const scale = availH / naturalH;
+			pageEl.style.transform = `scale(${scale.toFixed(4)})`;
+		}
+	} else {
+		pageEl.style.transform = "";
+	}
+}
+window.addEventListener("resize",          updateLandscapeScale);
+window.addEventListener("orientationchange", () => setTimeout(updateLandscapeScale, 200));
+// 初回実行
+setTimeout(updateLandscapeScale, 0);
+
+// ── モバイルのスクロール・ズーム防止 ──────────────────────
+// touchmove の preventDefault でスクロール・バウンスを止める
+document.addEventListener("touchmove", e => e.preventDefault(), { passive: false });
+// 2本指タッチ（ピンチズーム）を防止
+document.addEventListener("touchstart", e => {
+	if (e.touches.length > 1) e.preventDefault();
+}, { passive: false });
+
 showOverlay("⚔️ Sword Duel", "はじめる");
 animReqId = requestAnimationFrame(function boot() {
 	if (phase === "title") {
