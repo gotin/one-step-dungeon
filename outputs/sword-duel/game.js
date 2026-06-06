@@ -389,13 +389,24 @@ function updateHud() {
 }
 
 // ── Stage HUD 更新 ────────────────────────────────────────
+// Lv別HPバー色（パレット[2]が暗すぎる場合の補正）
+const STAGE_HP_COLORS = [
+	"#c03030", // Lv1 赤
+	"#d06018", // Lv2 橙
+	"#c0a020", // Lv3 黄
+	"#508030", // Lv4 黄緑
+	"#2050b0", // Lv5 青
+	"#7030a0", // Lv6 紫
+	"#900020", // Lv7 深紅
+	"#c8a000", // Lv8 金（魔王）
+];
+
 function updateStageHud() {
 	const lv = getLvParam();
 	document.getElementById("stage-badge").textContent = `STAGE ${currentStage}`;
 	document.getElementById("enemy-name").textContent = lv.name;
-	// 敵HPバーの色をステージカラーに合わせる
-	const ePalette = getEnemyPalette();
-	document.getElementById("hp-bar-e").style.background = ePalette[2];
+	// 敵HPバーの色をステージカラーに合わせる（専用色テーブルを使用）
+	document.getElementById("hp-bar-e").style.background = STAGE_HP_COLORS[currentStage - 1];
 }
 
 // ── Init ──────────────────────────────────────────────────
@@ -512,6 +523,9 @@ function updateFighter(f, opponent) {
 	const lockStates = ["slash","guard","hurt","rebound","grab","grabbed","knocked","wakeup"];
 	if (!f.onGround && !lockStates.includes(f.state)) {
 		f.state = "jump";
+	} else if (f.onGround && f.state === "jump") {
+		// 着地したら idle に戻す
+		f.state = "idle";
 	}
 
 	// anim
@@ -1185,6 +1199,12 @@ function render() {
 
 // ── Game loop ─────────────────────────────────────────────
 function tick() {
+	// キー状態を毎フレーム keys から直接同期（keyup 取りこぼし対策）
+	if (player) {
+		player.moveLeft  = !!keys["ArrowLeft"];
+		player.moveRight = !!keys["ArrowRight"];
+	}
+
 	if (phase === "fight") {
 		refreshGuard(player);
 		updateAI();
@@ -1248,23 +1268,39 @@ function tick() {
 
 // ── Keyboard ──────────────────────────────────────────────
 const keys = {};
-document.addEventListener("keydown", e => {
-	if (keys[e.key]) return;
-	keys[e.key] = true;
-	switch (e.key) {
-		case "ArrowLeft":  player.moveLeft  = true; break;
-		case "ArrowRight": player.moveRight = true; break;
-		case "ArrowUp": e.preventDefault(); playerJump(); break;
-		case "a": case "A": playerGuardStart(); break;
-		case "s": case "S": playerSlash(); break;
-		case "d": case "D": playerGrab(); break;
-		case " ": e.preventDefault(); playerJump(); break;
+
+// フォーカスが外れたとき・ページが非表示になったときに全フラグをリセット
+function resetAllInputs() {
+	for (const k of Object.keys(keys)) keys[k] = false;
+	if (player) {
+		player.moveLeft  = false;
+		player.moveRight = false;
 	}
+	guardHeld = false;
+	if (player && player.state === "guard") player.state = "idle";
+}
+window.addEventListener("blur", resetAllInputs);
+document.addEventListener("visibilitychange", () => {
+	if (document.hidden) resetAllInputs();
+});
+
+document.addEventListener("keydown", e => {
+	const wasDown = keys[e.key];
+	keys[e.key] = true;
+	// 初回押しのみアクション発動（キーリピートは無視）
+	if (!wasDown) {
+		switch (e.key) {
+			case "ArrowUp": e.preventDefault(); playerJump(); break;
+			case "a": case "A": playerGuardStart(); break;
+			case "s": case "S": playerSlash(); break;
+			case "d": case "D": playerGrab(); break;
+			case " ": e.preventDefault(); playerJump(); break;
+		}
+	}
+	if (e.key === "ArrowLeft" || e.key === "ArrowRight") e.preventDefault();
 });
 document.addEventListener("keyup", e => {
 	keys[e.key] = false;
-	if (e.key === "ArrowLeft")  player.moveLeft  = false;
-	if (e.key === "ArrowRight") player.moveRight = false;
 	if (e.key === "a" || e.key === "A") playerGuardEnd();
 });
 
