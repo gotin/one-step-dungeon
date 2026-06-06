@@ -431,6 +431,8 @@ function startFight() {
 	player = makeFighter(40, true);
 	enemy  = makeFighter(AW - 40 - SPRITE_W * SCALE, false);
 	phase  = "fight";
+	// エフェクトリセット
+	resetGrabEffects();
 	// AI 変数リセット
 	aiDecisionTimer      = 20;
 	aiPendingIntent      = null;
@@ -482,8 +484,8 @@ function updateFighter(f, opponent) {
 			f.state = "wakeup";
 			f.stateTimer = WAKEUP_DURATION;
 		} else if (f.state === "wakeup") {
-			// 起き上がり完了 → idle
-			f.state = "idle";
+			// 起き上がり完了 → idle（HP0の場合はdead）
+			f.state = f.hp <= 0 ? "dead" : "idle";
 		}
 	}
 
@@ -699,6 +701,13 @@ function checkGrabHit(attacker, defender) {
 		attacker.stateTimer = GRAB_MISS_DURATION;
 		attacker.grabCooldown = GRAB_COOLDOWN;
 		sfxGrabMiss();
+		// 投げ失敗エフェクト：攻撃者の前方に×印
+		const missDir = attacker.facingRight ? 1 : -1;
+		grabMissEffects.push({
+			x: attacker.x + SPRITE_W * SCALE / 2 + missDir * 28,
+			y: attacker.y + SPRITE_H * SCALE * 0.4,
+			timer: 22, maxTimer: 22,
+		});
 		return;
 	}
 
@@ -739,15 +748,80 @@ function checkGrabHit(attacker, defender) {
 	if (defenderNearWall) attacker.vx = -grabDir * 8.0;
 
 	attacker.grabCooldown = GRAB_HIT_COOLDOWN;
+	// 投げ成功エフェクト：相手の位置に衝撃波
+	grabHitEffects.push({
+		x: defender.x + SPRITE_W * SCALE / 2,
+		y: defender.y + SPRITE_H * SCALE * 0.45,
+		timer: 28, maxTimer: 28,
+	});
 	updateHud();
 	sfxGrabHit();
-	if (defender.hp <= 0) defender.state = "dead";
+	// HP0でもgrabbed→knockedアニメーションを最後まで再生してからdeadに遷移
+	// （即座にdead=停止にせず、wakeup完了後にdeadになる）
+	if (defender.hp <= 0) defender.hp = 0; // アニメーションはgrabbed→knocked→wakeupまで継続
 }
 
 // keep guard alive while held
 function refreshGuard(f) {
 	if (f === player && guardHeld && f.state === "guard") {
 		f.stateTimer = 2; // reset timer so it doesn't expire
+	}
+}
+
+// ── Grab effects ──────────────────────────────────────────
+// 投げ成功：衝撃波リング
+let grabHitEffects  = []; // { x, y, timer, maxTimer }
+// 投げ失敗：×印
+let grabMissEffects = []; // { x, y, timer, maxTimer, dir }
+
+function resetGrabEffects() {
+	grabHitEffects  = [];
+	grabMissEffects = [];
+}
+
+function updateGrabEffects() {
+	grabHitEffects  = grabHitEffects.filter(e  => { e.timer--;  return e.timer > 0; });
+	grabMissEffects = grabMissEffects.filter(e => { e.timer--;  return e.timer > 0; });
+}
+
+function drawGrabEffects() {
+	// ── 投げ成功：衝撃波リング ──────────────────────────────
+	for (const e of grabHitEffects) {
+		const prog = 1 - e.timer / e.maxTimer;
+		const radius = 10 + prog * 55;
+		const alpha  = (1 - prog) * 0.85;
+		ctx.save();
+		ctx.globalAlpha = alpha;
+		ctx.strokeStyle = "#f2c14e";
+		ctx.lineWidth   = 3 * (1 - prog * 0.6);
+		ctx.shadowColor = "#f2c14e";
+		ctx.shadowBlur  = 12;
+		ctx.beginPath();
+		ctx.ellipse(e.x, e.y, radius, radius * 0.4, 0, 0, Math.PI * 2);
+		ctx.stroke();
+		ctx.restore();
+	}
+
+	// ── 投げ失敗：×印 ────────────────────────────────────
+	for (const e of grabMissEffects) {
+		const prog  = 1 - e.timer / e.maxTimer;
+		const alpha = (1 - prog) * 0.9;
+		const size  = 10 + prog * 8;
+		// 震え（失敗時）
+		const shakeX = (e.timer % 4 < 2) ? 3 : -3;
+		ctx.save();
+		ctx.globalAlpha = alpha;
+		ctx.strokeStyle = "#e85f5c";
+		ctx.lineWidth   = 3;
+		ctx.lineCap     = "round";
+		ctx.shadowColor = "#e85f5c";
+		ctx.shadowBlur  = 8;
+		ctx.translate(e.x + shakeX, e.y);
+		ctx.beginPath();
+		ctx.moveTo(-size, -size); ctx.lineTo(size,  size);
+		ctx.moveTo( size, -size); ctx.lineTo(-size, size);
+		ctx.stroke();
+		ctx.restore();
 	}
 }
 
@@ -1162,15 +1236,44 @@ function drawFighter(f, palette) {
 		return;
 	}
 
-	// grab 状態：黄色グロー
+	// grab 状態：前傾み + 黄色グロー
 	if (f.state === "grab") {
+		const grabProg = 1 - f.stateTimer / GRAB_HIT_DURATION;
+		const leanDir  = f.facingRight ? 1 : -1;
+		// 最初の18f（投げ動作）は前傾み、その後は硬直で戻る
+		const leanPhase = f.stateTimer > (GRAB_HIT_DURATION - GRAB_DURATION)
+			? (GRAB_HIT_DURATION - f.stateTimer) / GRAB_DURATION  // 0→1
+			: 1 - (GRAB_HIT_DURATION - f.stateTimer - GRAB_DURATION) / (GRAB_HIT_DURATION - GRAB_DURATION); // 1→0
+		// 失敗時（stateTimer > GRAB_HIT_DURATION - GRAB_DURATION は成功時のみ）
+		// grab失敗では stateTimer は GRAB_MISS_DURATION から始まる（GRAB_HIT_DURATIONより小）
+		// → GRAB_HIT_DURATION - f.stateTimer が負になるため leanPhase が 0 になる
+		// 仰け反り：grab失敗（hurt state）では別途処理するため、ここは成功時のみ
+		const leanAngle = leanDir * 0.32 * Math.max(0, Math.min(1, leanPhase));
+		const cx = f.x + SPRITE_W * SCALE / 2;
+		const cy = f.y + SPRITE_H * SCALE;
 		ctx.save();
+		ctx.translate(cx, cy);
+		ctx.rotate(leanAngle);
+		ctx.translate(-cx, -cy);
 		ctx.shadowColor = "rgba(242,193,78,0.8)";
 		ctx.shadowBlur = 14;
 	}
 
-	if (f.state === "hurt" && Math.floor(f.stateTimer / 4) % 2 === 0) {
-		// hurt フラッシュ（早期 return の前に save してあるので restore が必要）
+	// hurt 状態：仰け反り（grab失敗 = 相手方向と逆に傾く）
+	if (f.state === "hurt") {
+		// hurt の stateTimer は長いもの（GRAB_MISS_DURATION=45f）と短いもの（slash=20f）がある
+		// 45f以上の場合は投げ失敗として仰け反り演出
+		if (f.stateTimer > 30) {
+			const hurtDir = f.facingRight ? -1 : 1; // 相手の逆方向に倒れる
+			const hurtPhase = Math.min(1, (GRAB_MISS_DURATION - f.stateTimer) / 12);
+			const hurtAngle = hurtDir * 0.28 * hurtPhase;
+			const hcx = f.x + SPRITE_W * SCALE / 2;
+			const hcy = f.y + SPRITE_H * SCALE;
+			ctx.save();
+			ctx.translate(hcx, hcy);
+			ctx.rotate(hurtAngle);
+			ctx.translate(-hcx, -hcy);
+		}
 	}
 
 	const frame = f.state === "walk" ? f.animFrame : 0;
@@ -1180,7 +1283,7 @@ function drawFighter(f, palette) {
 	drawShield(f);
 
 	if (f.state === "grab") ctx.restore();
-	if (f.state === "hurt" && Math.floor(f.stateTimer / 4) % 2 === 0) ctx.restore();
+	if (f.state === "hurt" && f.stateTimer > 30) ctx.restore();
 }
 
 function drawArena() {
@@ -1254,14 +1357,21 @@ function render() {
 	drawDarkLordAura(enemy);
 	drawFighter(enemy, getEnemyPalette());
 	drawFighter(player, PAL_HERO);
+	// 投げエフェクトはキャラの前に描く
+	drawGrabEffects();
 }
 
 // ── Game loop ─────────────────────────────────────────────
+// タッチボタン用フラグ（毎フレームの keys 同期で上書きされないよう分離）
+let touchMoveLeft  = false;
+let touchMoveRight = false;
+
 function tick() {
 	// キー状態を毎フレーム keys から直接同期（keyup 取りこぼし対策）
+	// タッチボタンとOR合成して、どちらかが押されていれば移動
 	if (player) {
-		player.moveLeft  = !!keys["ArrowLeft"];
-		player.moveRight = !!keys["ArrowRight"];
+		player.moveLeft  = !!keys["ArrowLeft"]  || touchMoveLeft;
+		player.moveRight = !!keys["ArrowRight"] || touchMoveRight;
 	}
 
 	if (phase === "fight") {
@@ -1297,6 +1407,7 @@ function tick() {
 		checkSlashHit(enemy, player);
 		checkGrabHit(player, enemy);
 		checkGrabHit(enemy, player);
+		updateGrabEffects();
 
 		if (player.state === "dead") {
 			phase = "lose";
@@ -1331,6 +1442,8 @@ const keys = {};
 // フォーカスが外れたとき・ページが非表示になったときに全フラグをリセット
 function resetAllInputs() {
 	for (const k of Object.keys(keys)) keys[k] = false;
+	touchMoveLeft  = false;
+	touchMoveRight = false;
 	if (player) {
 		player.moveLeft  = false;
 		player.moveRight = false;
@@ -1373,8 +1486,8 @@ function bindBtn(id, onDown, onUp) {
 	el.addEventListener("pointerleave", up);
 }
 
-bindBtn("btn-left",  () => { player.moveLeft  = true; }, () => { player.moveLeft  = false; });
-bindBtn("btn-right", () => { player.moveRight = true; }, () => { player.moveRight = false; });
+bindBtn("btn-left",  () => { touchMoveLeft  = true; }, () => { touchMoveLeft  = false; });
+bindBtn("btn-right", () => { touchMoveRight = true; }, () => { touchMoveRight = false; });
 bindBtn("btn-jump",  () => playerJump(), null);
 bindBtn("btn-guard", () => playerGuardStart(), () => playerGuardEnd());
 bindBtn("btn-slash", () => playerSlash(), null);
