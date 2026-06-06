@@ -38,6 +38,8 @@ const LEVEL_PARAMS = [
 		grabGuardMult: 0.25,            // 盾中の投げ確率倍率
 		longGuardThreshold: 120,        // 長時間ガード判定（フレーム）
 		reboundGrabChance: 0.40,        // パリィ後投げ反撃確率
+		jumpCounterChance: 0.08,        // 空中接近をスラッシュで迎え撃つ確率
+		jumpRetreatChance: 0.15,        // 空中接近を後退で回避する確率
 		auraColor: null,                // Lv8専用
 	},
 	// Lv2 – 少し速い
@@ -51,6 +53,8 @@ const LEVEL_PARAMS = [
 		grabGuardMult: 0.35,
 		longGuardThreshold: 100,
 		reboundGrabChance: 0.55,
+		jumpCounterChance: 0.15,
+		jumpRetreatChance: 0.22,
 		auraColor: null,
 	},
 	// Lv3 – 標準
@@ -64,6 +68,8 @@ const LEVEL_PARAMS = [
 		grabGuardMult: 0.50,
 		longGuardThreshold: 80,
 		reboundGrabChance: 0.70,
+		jumpCounterChance: 0.22,
+		jumpRetreatChance: 0.30,
 		auraColor: null,
 	},
 	// Lv4 – 今の強さ（デフォルト）
@@ -77,6 +83,8 @@ const LEVEL_PARAMS = [
 		grabGuardMult: 0.72,
 		longGuardThreshold: 60,
 		reboundGrabChance: 1.00,
+		jumpCounterChance: 0.32,
+		jumpRetreatChance: 0.40,
 		auraColor: null,
 	},
 	// Lv5 – 盾対策が厳しい
@@ -90,6 +98,8 @@ const LEVEL_PARAMS = [
 		grabGuardMult: 0.80,
 		longGuardThreshold: 45,
 		reboundGrabChance: 1.00,
+		jumpCounterChance: 0.42,
+		jumpRetreatChance: 0.50,
 		auraColor: null,
 	},
 	// Lv6 – 速い・連撃あり
@@ -103,6 +113,8 @@ const LEVEL_PARAMS = [
 		grabGuardMult: 0.85,
 		longGuardThreshold: 35,
 		reboundGrabChance: 1.00,
+		jumpCounterChance: 0.52,
+		jumpRetreatChance: 0.58,
 		auraColor: null,
 	},
 	// Lv7 – かなり手強い
@@ -116,6 +128,8 @@ const LEVEL_PARAMS = [
 		grabGuardMult: 0.90,
 		longGuardThreshold: 25,
 		reboundGrabChance: 1.00,
+		jumpCounterChance: 0.60,
+		jumpRetreatChance: 0.65,
 		auraColor: null,
 	},
 	// Lv8 – 魔王。強いが理不尽ではない
@@ -129,6 +143,8 @@ const LEVEL_PARAMS = [
 		grabGuardMult: 0.90,
 		longGuardThreshold: 20,
 		reboundGrabChance: 1.00,
+		jumpCounterChance: 0.68,
+		jumpRetreatChance: 0.72,
 		auraColor: "#f0c040",           // 金色オーラ
 	},
 ];
@@ -243,17 +259,18 @@ const SWORD_W   = 4;
 const GRAB_REACH       = 34;  // 投げの間合い：体幅24px + 余裕10px
 // ※ 衝突ヒットボックスを24pxに縮小したので、密着距離≒24px→その少し外が投げ間合い
 const FIGHTER_HIT_W    = 24;  // 衝突判定の幅（スプライト64pxより小さい体幅）
-const GRAB_DURATION    = 18;  // 投げモーション（成功・失敗共通）
+const GRAB_DURATION    = 18;  // 投げモーション（失敗時はこのまま）
+const GRAB_HIT_DURATION = 90; // 投げ成功後の攻撃者硬直（相手完全回復90fと同じ → 柔道不可）
 const GRABBED_DURATION = 30;  // 吹き飛び時間（0.5sec）
 const KNOCKED_DURATION = 36;  // 倒れている時間（0.6sec）無敵
 const WAKEUP_DURATION  = 24;  // 起き上がりモーション（0.4sec）無敵
 // 合計 90フレーム = 約1.5秒（ストリートファイター系の標準的な長さ）
-const GRAB_MISS_DURATION = 28; // 投げ失敗時の自分の硬直（約0.5秒 = 相手に反撃の機会）
+const GRAB_MISS_DURATION = 45; // 投げ失敗時の自分の硬直（0.75sec）= 相手に反撃の機会
 const GRAB_DAMAGE      = 18;  // 投げ成功ダメージ（剣より少し少なめ）
-// 投げ成功後のクールダウン：敵の完全回復時間（90f）より少し長く設定
-// これにより「投げ→クールダウン切れ→即再投げ」を防止
-const GRAB_COOLDOWN       = 30;  // 投げ失敗・空振り後のクールダウン（0.5sec）
-const GRAB_HIT_COOLDOWN   = 100; // 投げ成功後のクールダウン（1.67sec > 回復90f）
+// 投げ成功・失敗ともに「硬直 = クールダウン」にして分かりやすく統一
+// 柔道防止：成功後硬直50fで相手起き上がり(60f)の直前にやっと動ける
+const GRAB_COOLDOWN       = 45;  // 投げ失敗後のクールダウン（硬直と同値）
+const GRAB_HIT_COOLDOWN   = 90;  // 投げ成功後のクールダウン（硬直と同値）
 
 // ── Web Audio ─────────────────────────────────────────────
 let audioCtx = null;
@@ -414,6 +431,8 @@ function startFight() {
 	player = makeFighter(40, true);
 	enemy  = makeFighter(AW - 40 - SPRITE_W * SCALE, false);
 	phase  = "fight";
+	// エフェクトリセット
+	resetGrabEffects();
 	// AI 変数リセット
 	aiDecisionTimer      = 20;
 	aiPendingIntent      = null;
@@ -465,8 +484,8 @@ function updateFighter(f, opponent) {
 			f.state = "wakeup";
 			f.stateTimer = WAKEUP_DURATION;
 		} else if (f.state === "wakeup") {
-			// 起き上がり完了 → idle
-			f.state = "idle";
+			// 起き上がり完了 → idle（HP0の場合はdead）
+			f.state = f.hp <= 0 ? "dead" : "idle";
 		}
 	}
 
@@ -484,8 +503,9 @@ function updateFighter(f, opponent) {
 
 	// ── Movement (blocked during action states) ───────────
 	const canMove = (f.state === "idle" || f.state === "walk" || f.state === "jump");
-	// grabbed / knocked / hurt は慣性を保持（vx をリセットしない）
-	const preserveVelocity = (f.state === "grabbed" || f.state === "knocked" || f.state === "hurt");
+	// grabbed / knocked / hurt / grab は慣性を保持（vx をリセットしない）
+	// grab も含めることで投げ後の後退モーションが機能する
+	const preserveVelocity = (f.state === "grabbed" || f.state === "knocked" || f.state === "hurt" || f.state === "grab");
 
 	if (canMove) {
 		if (f.state !== "jump") {
@@ -681,6 +701,13 @@ function checkGrabHit(attacker, defender) {
 		attacker.stateTimer = GRAB_MISS_DURATION;
 		attacker.grabCooldown = GRAB_COOLDOWN;
 		sfxGrabMiss();
+		// 投げ失敗エフェクト：攻撃者の前方に×印
+		const missDir = attacker.facingRight ? 1 : -1;
+		grabMissEffects.push({
+			x: attacker.x + SPRITE_W * SCALE / 2 + missDir * 28,
+			y: attacker.y + SPRITE_H * SCALE * 0.4,
+			timer: 22, maxTimer: 22,
+		});
 		return;
 	}
 
@@ -708,16 +735,93 @@ function checkGrabHit(attacker, defender) {
 	defender.onGround = false;
 	// 回転方向を保存（grabbed→knocked遷移後も使えるように）
 	defender.grabRotDir = grabDir;  // 右投げ=+1(時計), 左投げ=-1(反時計)
+
+	// ── 投げ成功後の攻撃者硬直（柔道防止）──────────────────────
+	// stateTimerをGRAB_HIT_DURATIONに上書きして硬直を延長
+	// grab stateはstateTimer切れでidleに戻るため、長くすることで起き上がりに間に合わなくなる
+	attacker.stateTimer = GRAB_HIT_DURATION;
+
+	// 攻撃者は投げた方向と逆に大きく押し戻される
+	attacker.vx = -grabDir * 5.5;
+	// 壁際補正：defender が壁で飛べない場合はさらに強く後退させる
+	const defenderNearWall = defender.x <= 4 || defender.x >= AW - SPRITE_W * SCALE - 4;
+	if (defenderNearWall) attacker.vx = -grabDir * 8.0;
+
 	attacker.grabCooldown = GRAB_HIT_COOLDOWN;
+	// 投げ成功エフェクト：相手の位置に衝撃波
+	grabHitEffects.push({
+		x: defender.x + SPRITE_W * SCALE / 2,
+		y: defender.y + SPRITE_H * SCALE * 0.45,
+		timer: 28, maxTimer: 28,
+	});
 	updateHud();
 	sfxGrabHit();
-	if (defender.hp <= 0) defender.state = "dead";
+	// HP0でもgrabbed→knockedアニメーションを最後まで再生してからdeadに遷移
+	// （即座にdead=停止にせず、wakeup完了後にdeadになる）
+	if (defender.hp <= 0) defender.hp = 0; // アニメーションはgrabbed→knocked→wakeupまで継続
 }
 
 // keep guard alive while held
 function refreshGuard(f) {
 	if (f === player && guardHeld && f.state === "guard") {
 		f.stateTimer = 2; // reset timer so it doesn't expire
+	}
+}
+
+// ── Grab effects ──────────────────────────────────────────
+// 投げ成功：衝撃波リング
+let grabHitEffects  = []; // { x, y, timer, maxTimer }
+// 投げ失敗：×印
+let grabMissEffects = []; // { x, y, timer, maxTimer, dir }
+
+function resetGrabEffects() {
+	grabHitEffects  = [];
+	grabMissEffects = [];
+}
+
+function updateGrabEffects() {
+	grabHitEffects  = grabHitEffects.filter(e  => { e.timer--;  return e.timer > 0; });
+	grabMissEffects = grabMissEffects.filter(e => { e.timer--;  return e.timer > 0; });
+}
+
+function drawGrabEffects() {
+	// ── 投げ成功：衝撃波リング ──────────────────────────────
+	for (const e of grabHitEffects) {
+		const prog = 1 - e.timer / e.maxTimer;
+		const radius = 10 + prog * 55;
+		const alpha  = (1 - prog) * 0.85;
+		ctx.save();
+		ctx.globalAlpha = alpha;
+		ctx.strokeStyle = "#f2c14e";
+		ctx.lineWidth   = 3 * (1 - prog * 0.6);
+		ctx.shadowColor = "#f2c14e";
+		ctx.shadowBlur  = 12;
+		ctx.beginPath();
+		ctx.ellipse(e.x, e.y, radius, radius * 0.4, 0, 0, Math.PI * 2);
+		ctx.stroke();
+		ctx.restore();
+	}
+
+	// ── 投げ失敗：×印 ────────────────────────────────────
+	for (const e of grabMissEffects) {
+		const prog  = 1 - e.timer / e.maxTimer;
+		const alpha = (1 - prog) * 0.9;
+		const size  = 10 + prog * 8;
+		// 震え（失敗時）
+		const shakeX = (e.timer % 4 < 2) ? 3 : -3;
+		ctx.save();
+		ctx.globalAlpha = alpha;
+		ctx.strokeStyle = "#e85f5c";
+		ctx.lineWidth   = 3;
+		ctx.lineCap     = "round";
+		ctx.shadowColor = "#e85f5c";
+		ctx.shadowBlur  = 8;
+		ctx.translate(e.x + shakeX, e.y);
+		ctx.beginPath();
+		ctx.moveTo(-size, -size); ctx.lineTo(size,  size);
+		ctx.moveTo( size, -size); ctx.lineTo(-size, size);
+		ctx.stroke();
+		ctx.restore();
 	}
 }
 
@@ -836,6 +940,35 @@ function updateAI() {
 	enemy.facingRight = player.x > enemy.x;
 	enemy.moveLeft = false;
 	enemy.moveRight = false;
+
+	// ── ② 空中接近への対応（ジャンプ投げ対策）──────────────────
+	// プレイヤーが空中で落下中 かつ こちらに近づいている → スラッシュor後退
+	{
+		const lv = getLvParam();
+		const playerFalling = !player.onGround && player.vy > 0; // 落下中
+		const playerApproaching = (player.facingRight && player.x < enemy.x)
+			|| (!player.facingRight && player.x > enemy.x); // こちらに向かっている
+		const jumpThreatRange = GRAB_REACH + SPRITE_W * SCALE * 1.2; // 投げが届きそうな距離+余裕
+
+		if (playerFalling && playerApproaching && dist < jumpThreatRange
+			&& enemy.state !== "slash" && enemy.slashCooldown <= 0
+			&& enemy.state !== "hurt" && enemy.state !== "rebound") {
+			const r2 = Math.random();
+			if (r2 < lv.jumpCounterChance) {
+				// カウンタースラッシュ：着地する前に斬る
+				enemy.state = "slash";
+				enemy.stateTimer = SLASH_DURATION;
+				enemy.slashAngle = SLASH_ANGLE_START;
+				enemy.slashHit = false;
+				aiCurrentIntent = "slash";
+				aiDecisionTimer = 20;
+			} else if (r2 < lv.jumpCounterChance + lv.jumpRetreatChance) {
+				// 後退：投げ間合いから外れる
+				aiCurrentIntent = "retreat";
+				aiDecisionTimer = 14;
+			}
+		}
+	}
 
 	// ── プレイヤー攻撃への反応ガード（人間らしい遅延付き）──────
 	if (player.state === "slash" && !aiReactQueued
@@ -1103,15 +1236,44 @@ function drawFighter(f, palette) {
 		return;
 	}
 
-	// grab 状態：黄色グロー
+	// grab 状態：前傾み + 黄色グロー
 	if (f.state === "grab") {
+		const grabProg = 1 - f.stateTimer / GRAB_HIT_DURATION;
+		const leanDir  = f.facingRight ? 1 : -1;
+		// 最初の18f（投げ動作）は前傾み、その後は硬直で戻る
+		const leanPhase = f.stateTimer > (GRAB_HIT_DURATION - GRAB_DURATION)
+			? (GRAB_HIT_DURATION - f.stateTimer) / GRAB_DURATION  // 0→1
+			: 1 - (GRAB_HIT_DURATION - f.stateTimer - GRAB_DURATION) / (GRAB_HIT_DURATION - GRAB_DURATION); // 1→0
+		// 失敗時（stateTimer > GRAB_HIT_DURATION - GRAB_DURATION は成功時のみ）
+		// grab失敗では stateTimer は GRAB_MISS_DURATION から始まる（GRAB_HIT_DURATIONより小）
+		// → GRAB_HIT_DURATION - f.stateTimer が負になるため leanPhase が 0 になる
+		// 仰け反り：grab失敗（hurt state）では別途処理するため、ここは成功時のみ
+		const leanAngle = leanDir * 0.32 * Math.max(0, Math.min(1, leanPhase));
+		const cx = f.x + SPRITE_W * SCALE / 2;
+		const cy = f.y + SPRITE_H * SCALE;
 		ctx.save();
+		ctx.translate(cx, cy);
+		ctx.rotate(leanAngle);
+		ctx.translate(-cx, -cy);
 		ctx.shadowColor = "rgba(242,193,78,0.8)";
 		ctx.shadowBlur = 14;
 	}
 
-	if (f.state === "hurt" && Math.floor(f.stateTimer / 4) % 2 === 0) {
-		// hurt フラッシュ（早期 return の前に save してあるので restore が必要）
+	// hurt 状態：仰け反り（grab失敗 = 相手方向と逆に傾く）
+	if (f.state === "hurt") {
+		// hurt の stateTimer は長いもの（GRAB_MISS_DURATION=45f）と短いもの（slash=20f）がある
+		// 45f以上の場合は投げ失敗として仰け反り演出
+		if (f.stateTimer > 30) {
+			const hurtDir = f.facingRight ? -1 : 1; // 相手の逆方向に倒れる
+			const hurtPhase = Math.min(1, (GRAB_MISS_DURATION - f.stateTimer) / 12);
+			const hurtAngle = hurtDir * 0.28 * hurtPhase;
+			const hcx = f.x + SPRITE_W * SCALE / 2;
+			const hcy = f.y + SPRITE_H * SCALE;
+			ctx.save();
+			ctx.translate(hcx, hcy);
+			ctx.rotate(hurtAngle);
+			ctx.translate(-hcx, -hcy);
+		}
 	}
 
 	const frame = f.state === "walk" ? f.animFrame : 0;
@@ -1121,7 +1283,7 @@ function drawFighter(f, palette) {
 	drawShield(f);
 
 	if (f.state === "grab") ctx.restore();
-	if (f.state === "hurt" && Math.floor(f.stateTimer / 4) % 2 === 0) ctx.restore();
+	if (f.state === "hurt" && f.stateTimer > 30) ctx.restore();
 }
 
 function drawArena() {
@@ -1195,14 +1357,21 @@ function render() {
 	drawDarkLordAura(enemy);
 	drawFighter(enemy, getEnemyPalette());
 	drawFighter(player, PAL_HERO);
+	// 投げエフェクトはキャラの前に描く
+	drawGrabEffects();
 }
 
 // ── Game loop ─────────────────────────────────────────────
+// タッチボタン用フラグ（毎フレームの keys 同期で上書きされないよう分離）
+let touchMoveLeft  = false;
+let touchMoveRight = false;
+
 function tick() {
 	// キー状態を毎フレーム keys から直接同期（keyup 取りこぼし対策）
+	// タッチボタンとOR合成して、どちらかが押されていれば移動
 	if (player) {
-		player.moveLeft  = !!keys["ArrowLeft"];
-		player.moveRight = !!keys["ArrowRight"];
+		player.moveLeft  = !!keys["ArrowLeft"]  || touchMoveLeft;
+		player.moveRight = !!keys["ArrowRight"] || touchMoveRight;
 	}
 
 	if (phase === "fight") {
@@ -1238,6 +1407,7 @@ function tick() {
 		checkSlashHit(enemy, player);
 		checkGrabHit(player, enemy);
 		checkGrabHit(enemy, player);
+		updateGrabEffects();
 
 		if (player.state === "dead") {
 			phase = "lose";
@@ -1272,6 +1442,8 @@ const keys = {};
 // フォーカスが外れたとき・ページが非表示になったときに全フラグをリセット
 function resetAllInputs() {
 	for (const k of Object.keys(keys)) keys[k] = false;
+	touchMoveLeft  = false;
+	touchMoveRight = false;
 	if (player) {
 		player.moveLeft  = false;
 		player.moveRight = false;
@@ -1314,8 +1486,8 @@ function bindBtn(id, onDown, onUp) {
 	el.addEventListener("pointerleave", up);
 }
 
-bindBtn("btn-left",  () => { player.moveLeft  = true; }, () => { player.moveLeft  = false; });
-bindBtn("btn-right", () => { player.moveRight = true; }, () => { player.moveRight = false; });
+bindBtn("btn-left",  () => { touchMoveLeft  = true; }, () => { touchMoveLeft  = false; });
+bindBtn("btn-right", () => { touchMoveRight = true; }, () => { touchMoveRight = false; });
 bindBtn("btn-jump",  () => playerJump(), null);
 bindBtn("btn-guard", () => playerGuardStart(), () => playerGuardEnd());
 bindBtn("btn-slash", () => playerSlash(), null);
