@@ -1,0 +1,142 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Dungeon World – Map Editor</title>
+    <link rel="stylesheet" href="./editor.css" />
+  </head>
+  <body>
+    <div class="app">
+      <!-- ヘッダー -->
+      <header class="toolbar">
+        <span class="toolbar-title">🗺 Dungeon World Editor</span>
+        <div class="toolbar-actions">
+          <button id="btn-new-stage"   class="btn">＋ 新しいステージ</button>
+          <button id="btn-save"        class="btn btn-primary">💾 保存</button>
+          <button id="btn-load"        class="btn">📂 読み込み</button>
+          <button id="btn-preview"     class="btn btn-accent">▶ プレビュー</button>
+        </div>
+        <div class="toolbar-mode">
+          <button id="tab-world" class="tab active">ワールドマップ</button>
+          <button id="tab-stage" class="tab">ステージ</button>
+        </div>
+      </header>
+
+      <!-- メインコンテンツ -->
+      <main class="main">
+
+        <!-- ── ワールドマップビュー ── -->
+        <section id="view-world" class="view">
+          <div class="world-layout">
+            <!-- 左：グリッド -->
+            <div class="world-main">
+              <h2 class="panel-title">ワールドマップ</h2>
+              <div class="world-info">
+                <label>列数 <input id="world-cols" type="number" min="1" max="10" value="3" class="input-small"></label>
+                <label>行数 <input id="world-rows" type="number" min="1" max="10" value="3" class="input-small"></label>
+                <button id="btn-resize-world" class="btn btn-sm">リサイズ</button>
+              </div>
+              <div id="world-grid" class="world-grid"></div>
+              <p class="hint">ステージをクリックして選択。空きセルをクリックしてステージを追加。</p>
+            </div>
+            <!-- 右：選択ステージ情報 + フルサイズプレビュー -->
+            <aside id="world-side" class="world-side">
+              <div class="world-side-header">
+                <h2 class="panel-title" style="margin-bottom:0">ステージ情報</h2>
+                <div id="world-stage-actions" class="world-stage-actions hidden">
+                  <button id="btn-edit-stage" class="btn btn-primary btn-sm">✏️ 編集</button>
+                </div>
+              </div>
+              <div id="world-stage-info" class="world-stage-info">
+                <p class="hint">ステージを選択してください</p>
+              </div>
+              <!-- エンディングステージ表示順設定 -->
+              <div class="ending-order-section">
+                <h3 class="panel-title" style="margin-top:12px;margin-bottom:4px">エンディング振り返り順</h3>
+                <p class="hint" style="margin-bottom:6px">空欄のままにすると y→x 昇順で自動表示されます。<br>1行に1つの座標（x,y 形式）を入力してください。</p>
+                <textarea id="ending-stage-order-input" rows="6" style="width:100%;background:#0e1215;border:1px solid #2e3a42;color:#e8f0ec;border-radius:4px;padding:6px;font:inherit;font-size:0.72rem;resize:vertical;line-height:1.6" placeholder="例:&#10;1,1&#10;2,1&#10;0,1&#10;0,0"></textarea>
+                <button id="btn-save-ending-order" class="btn btn-sm" style="margin-top:4px">✔ 順番を設定</button>
+              </div>
+              <!-- フルサイズプレビュー -->
+              <div id="world-preview-wrap" class="world-preview-wrap hidden">
+                <canvas id="world-preview-canvas" class="world-preview-canvas"></canvas>
+              </div>
+            </aside>
+          </div>
+        </section>
+
+        <!-- ── ステージエディタービュー ── -->
+        <section id="view-stage" class="view hidden">
+          <div class="stage-layout">
+
+            <!-- 左：タイルパレット -->
+            <aside class="palette-panel">
+              <h2 class="panel-title">タイルパレット</h2>
+              <div id="tile-palette" class="tile-palette"></div>
+
+              <!-- 選択中タイルのプロパティ -->
+              <div id="tile-props" class="tile-props hidden">
+                <h3 class="props-title">プロパティ</h3>
+                <div id="props-content"></div>
+              </div>
+
+              <div class="palette-tools">
+                <h3 class="panel-title">ツール</h3>
+                <div class="tool-group">
+                  <button id="tool-draw"  class="tool-btn active" title="ペン（クリックで配置）">✏️ 描く</button>
+                  <button id="tool-erase" class="tool-btn" title="消しゴム（床に戻す）">🧹 消す</button>
+                  <button id="tool-fill"  class="tool-btn" title="塗りつぶし">🪣 塗りつぶし</button>
+                </div>
+              </div>
+
+              <div class="stage-meta">
+                <h3 class="panel-title">ステージ情報</h3>
+                <div id="stage-info" class="stage-info-content"></div>
+                <div class="border-warn" id="border-warnings"></div>
+              </div>
+            </aside>
+
+            <!-- 中央：ステージグリッド -->
+            <div class="stage-editor-center">
+              <div class="stage-toolbar">
+                <span id="stage-coord-label" class="stage-label">ステージ (0, 0)</span>
+                <button id="btn-clear-stage" class="btn btn-sm btn-danger">クリア</button>
+                <label class="checkbox-label">
+                  <input id="show-neighbors" type="checkbox" checked> 隣接ステージを表示
+                </label>
+              </div>
+              <div id="stage-canvas-wrap" class="stage-canvas-wrap">
+                <canvas id="stage-canvas"></canvas>
+              </div>
+              <div id="cell-info" class="cell-info"></div>
+            </div>
+
+            <!-- 右：ゲート/スイッチリンク設定 -->
+            <aside class="links-panel">
+              <h2 class="panel-title">ゲート・スイッチ連動</h2>
+              <p class="hint">ゲートとスイッチにIDをつけて対応させます</p>
+              <div id="links-list" class="links-list"></div>
+              <button id="btn-add-link" class="btn btn-sm">＋ 追加</button>
+
+              <h2 class="panel-title" style="margin-top:20px">宝箱の内容</h2>
+              <div id="chest-list" class="links-list"></div>
+            </aside>
+          </div>
+        </section>
+
+      </main>
+
+      <!-- プレビューオーバーレイ -->
+      <div id="preview-overlay" class="preview-overlay hidden">
+        <div class="preview-header">
+          <span>プレビューモード</span>
+          <button id="btn-exit-preview" class="btn">✕ 編集に戻る</button>
+        </div>
+        <iframe id="preview-frame" class="preview-frame" src=""></iframe>
+      </div>
+    </div>
+
+    <script type="module" src="./editor.js"></script>
+  </body>
+</html>

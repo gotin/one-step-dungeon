@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+    <title>Dungeon World</title>
+    <link rel="stylesheet" href="../../../one-step-dungeon/styles.css" />
+    <link rel="stylesheet" href="./game.css" />
+  </head>
+  <body>
+    <div class="page">
+      <div class="game-panel">
+        <div id="stage-label" class="stage-label">Loading…</div>
+        <div id="board" class="board"></div>
+        <div id="message" class="message hidden"></div>
+      <div class="hud">
+        <span id="hud-hp" class="hud-hp">❤ HP: --</span>
+        <span id="hud-lv" class="hud-lv">Lv.1</span>
+        <span id="hud-exp" class="hud-exp">EXP 0/10</span>
+        <span id="hud-keys" class="hud-keys"></span>
+      </div>
+      <div id="hud-equip" class="hud-equip"></div>
+        <div class="controls">
+          <div class="controls-row">
+            <button class="ctrl-btn" id="btn-up"   data-dir="up"    aria-label="上">▲</button>
+          </div>
+          <div class="controls-row">
+            <button class="ctrl-btn" id="btn-left"  data-dir="left"  aria-label="左">◀</button>
+            <button class="ctrl-btn ctrl-btn--attack" id="btn-attack" aria-label="攻撃">⚔️</button>
+            <button class="ctrl-btn" id="btn-right" data-dir="right" aria-label="右">▶</button>
+          </div>
+          <div class="controls-row">
+            <button class="ctrl-btn" id="btn-down"  data-dir="down"  aria-label="下">▼</button>
+          </div>
+          <div class="controls-row turn-mode-row" style="margin-top:4px">
+            <button class="ctrl-btn ctrl-btn--turn" id="turn-mode" aria-label="向き変更モード">
+              <span class="turn-mode-icon">↻</span>
+              <span class="turn-mode-label">向き変更</span>
+            </button>
+            <span class="turn-mode-hint" id="turn-mode-hint">押すと移動せずに向きだけ変えられます</span>
+          </div>
+        </div>
+        <p class="key-hint-small">スペース/S：攻撃　Shift+矢印：向き変更　R：リセット　Z：Undo</p>
+      </div>
+    </div>
+
+    <!-- アイテム取得ダイアログ -->
+    <div id="item-dialog" class="item-dialog hidden">
+      <div class="item-dialog-box">
+        <div class="item-dialog-title">✨ アイテムを入手！</div>
+        <div id="item-dialog-name" class="item-dialog-name"></div>
+        <div id="item-dialog-desc" class="item-dialog-desc"></div>
+        <button id="item-dialog-btn" class="item-dialog-btn">OK</button>
+      </div>
+    </div>
+
+    <div id="message-overlay" class="message-overlay hidden">
+      <p id="overlay-text" class="overlay-text"></p>
+      <button id="overlay-btn" class="overlay-btn">もう一度</button>
+    </div>
+
+    <!-- ── エンディングオーバーレイ ── -->
+    <div id="ending-overlay" class="ending-overlay hidden">
+      <!-- フェーズ1：ステージ振り返り＋スタッフロール＋戦闘シーン -->
+      <div id="ending-phase1" class="ending-phase1">
+        <!-- 背景：ステージをDOMボードで表示 -->
+        <div id="ending-stage-board" class="ending-stage-board board"></div>
+        <!-- スタッフロール（ステージの上に重ねる） -->
+        <div id="ending-scroll-wrap" class="ending-scroll-wrap">
+          <div id="ending-scroll" class="ending-scroll"></div>
+        </div>
+      </div>
+      <!-- フェーズ2：ハッピーエンド -->
+      <div id="ending-phase2" class="ending-phase2 hidden">
+        <div class="ending-happy-scene">
+          <canvas id="ending-hero2-canvas"     class="ending-big-sprite"></canvas>
+          <canvas id="ending-princess-canvas"  class="ending-big-sprite"></canvas>
+        </div>
+        <div id="ending-the-end" class="ending-the-end">THE END</div>
+      </div>
+    </div>
+
+    <script type="module" src="./game.js"></script>
+  </body>
+</html>
