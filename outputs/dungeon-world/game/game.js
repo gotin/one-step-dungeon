@@ -988,6 +988,14 @@ document.querySelectorAll('[data-dir]').forEach(btn => {
 	});
 });
 document.getElementById('btn-attack')?.addEventListener('click', () => playerAttack());
+document.getElementById('btn-undo')?.addEventListener('click', () => undo());
+document.getElementById('btn-reset')?.addEventListener('click', () => {
+	showItemDialog(
+		'↻ ステージをリセット',
+		'このステージの進行状況をリセットしますか？\n（獲得した経験値・レベルは保持されます）',
+		() => resetStage()
+	);
+});
 
 const turnModeBtn = document.getElementById('turn-mode');
 const turnModeHintEl = document.getElementById('turn-mode-hint');
@@ -995,10 +1003,10 @@ turnModeBtn?.addEventListener('click', () => {
 	const isActive = turnModeBtn.classList.toggle('active');
 	if (turnModeHintEl) {
 		if (isActive) {
-			turnModeHintEl.textContent = '向き変更モード中（矢印で向きだけ変わります）';
+			turnModeHintEl.textContent = '向き変更ボタンが ON です（矢印で向きだけ変わります）';
 			turnModeHintEl.classList.add('active');
 		} else {
-			turnModeHintEl.textContent = '押すと移動せずに向きだけ変えられます';
+			turnModeHintEl.textContent = '向き変更ボタンを押すと移動せずに向きだけを変えられます';
 			turnModeHintEl.classList.remove('active');
 		}
 	}

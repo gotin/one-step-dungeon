@@ -109,6 +109,37 @@
     border-left: 7px solid rgba(79, 195, 160, 0.8);
 }
 
+/* ── コントロールレイアウト ──────────────────────────────── */
+
+/* メイン操作エリア：十字キー（左）＋向き変更・攻撃（右）を横並び */
+.controls-main {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+/* 十字キー群 */
+.controls-dpad {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+}
+
+/* 十字キー中央のスペーサー（センターを空ける） */
+.ctrl-spacer {
+    width: 52px;
+    height: 52px;
+}
+
+/* 右側の向き変更＋攻撃ボタン列 */
+.controls-actions {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    align-items: center;
+}
+
 /* 攻撃ボタン */
 .ctrl-btn--attack {
     border-color: rgba(232, 95, 92, 0.6);
@@ -121,26 +152,17 @@
 }
 
 /* 向き変更モードボタン */
-.turn-mode-row {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    flex-wrap: nowrap;
-}
-
 .ctrl-btn--turn {
     font-size: 0.85rem;
-    width: auto;
-    min-width: 72px;
-    height: 44px;
+    width: 52px;
+    height: 52px;
     border-color: rgba(111, 211, 196, 0.4);
-    padding: 0 10px;
+    padding: 0;
     display: flex;
     flex-direction: column;
     align-items: center;
     justify-content: center;
     gap: 1px;
-    flex-shrink: 0;
 }
 
 .ctrl-btn--turn .turn-mode-icon {
@@ -149,10 +171,10 @@
 }
 
 .ctrl-btn--turn .turn-mode-label {
-    font-size: 0.58rem;
+    font-size: 0.55rem;
     color: inherit;
     opacity: 0.8;
-    letter-spacing: 0.02em;
+    letter-spacing: 0.01em;
 }
 
 .ctrl-btn--turn.active {
@@ -161,15 +183,52 @@
     color: #f0c040;
 }
 
-.turn-mode-hint {
-    font-size: 0.62rem;
-    color: #7a9090;
-    line-height: 1.4;
-    max-width: 140px;
-    flex-shrink: 1;
+/* Undo / Reset ユーティリティボタン行 */
+.controls-util-row {
+    display: flex;
+    gap: 8px;
+    width: 100%;
+    justify-content: space-between;
+    padding: 0 4px;
 }
 
-.turn-mode-hint.active {
+.ctrl-btn--util {
+    flex: 1;
+    height: 40px;
+    font-size: 0.78rem;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    border-color: rgba(122, 144, 144, 0.4);
+    color: #7a9090;
+}
+
+.ctrl-btn--util:active {
+    background: #2a3a40;
+    color: #e8f0ec;
+}
+
+.ctrl-btn--reset {
+    border-color: rgba(224, 80, 80, 0.3);
+    color: #c06060;
+}
+
+.ctrl-btn--reset:active {
+    background: #3a2020;
+    color: #e05050;
+}
+
+/* ヒントテキスト（ボタン群全体の下・右寄せ） */
+.turn-mode-hint-line {
+    font-size: 0.60rem;
+    color: #dddddd;
+    text-align: right;
+    width: 100%;
+    padding-right: 4px;
+    margin: 4px 0 0;
+    line-height: 1.4;
+}
+
+.turn-mode-hint-line.active {
     color: #f0c040;
     font-weight: 600;
 }
