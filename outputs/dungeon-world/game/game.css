@@ -6,22 +6,29 @@
 /* Board grid */
 .board {
     display: grid;
-    grid-template-columns: repeat(var(--cols, 10), 1fr);
+    grid-template-columns: repeat(var(--cols, 10), var(--cell-size, 40px));
     gap: 0;
     width: fit-content;
-    max-width: 100%;
     margin: 0 auto;
     image-rendering: pixelated;
 }
 
 .cell {
     position: relative;
-    width: 40px;
-    height: 40px;
+    width: var(--cell-size, 40px);
+    height: var(--cell-size, 40px);
     display: flex;
     align-items: center;
     justify-content: center;
     overflow: visible;
+}
+
+/* モバイル：セルサイズをビューポート幅に合わせて縮小 */
+@media (max-width: 440px) {
+    :root {
+        /* 画面幅÷10列（余白8px×2考慮） */
+        --cell-size: clamp(28px, calc((100vw - 16px) / 10), 40px);
+    }
 }
 
 .cell .sprite {
