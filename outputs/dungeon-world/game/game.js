@@ -207,11 +207,17 @@ function getSS(key) {
 }
 
 // ── Enter stage ───────────────────────────────────────────────
+// このステージに最初に入った位置（リセット時に戻る場所）
+let stageEntryRow = 0, stageEntryCol = 0;
+
 function enterStage(key, pRow, pCol) {
 	const sd = mapData.stages[key];
 	if (!sd) { pulse('マップデータなし'); return; }
 	stageKey  = key;
 	stageData = sd;
+	// ステージが変わった場合のみエントリー位置を更新
+	stageEntryRow = pRow;
+	stageEntryCol = pCol;
 	const [sx, sy] = key.split(',').map(Number);
 	stageLabelEl.textContent = `ステージ (${sx}, ${sy})`;
 	player.row = pRow;
@@ -736,11 +742,8 @@ function pulse(msg) {
 function resetStage() {
 	if (!stageKey || !stageData) return;
 	delete stageState[stageKey];
-	let startRow = 1, startCol = 1;
-	for (let r = 0; r < stageData.rows; r++)
-		for (let c = 0; c < stageData.cols; c++)
-			if (stageData.tiles[r][c] === TILE.PLAYER) { startRow = r; startCol = c; }
-	enterStage(stageKey, startRow, startCol);
+	// このステージに最初に入った位置に戻る（ステージ遷移で入った端の位置）
+	enterStage(stageKey, stageEntryRow, stageEntryCol);
 	pulse('ステージをリセットしました (R)');
 }
 
