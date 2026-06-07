@@ -1,0 +1,923 @@
+/* ── Blade of Lumia – Game CSS ─────────────────────────────── */
+*, *::before, *::after {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+}
+
+:root {
+    --cell: 48px;
+    --wall-color: #3a4448;
+    --floor-color: #1a2228;
+    --hud-bg: #0a0e12;
+    --hud-fg: #d0e0d0;
+    --accent: #4cd964;
+    --danger: #ff3b30;
+}
+
+html, body {
+    width: 100%;
+    height: 100%;
+    background: #060a0c;
+    color: var(--hud-fg);
+    font-family: 'Courier New', monospace;
+    overflow: hidden;
+    user-select: none;
+    -webkit-user-select: none;
+}
+
+/* ── HUD ──────────────────────────────────────────────────── */
+#hud {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: var(--hud-bg);
+    border-bottom: 1px solid #2a3a2a;
+    padding: 4px 10px;
+    min-height: 44px;
+    position: relative;
+    z-index: 10;
+}
+
+#hud-left, #hud-right {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+#hud-right {
+    align-items: flex-end;
+}
+
+#hud-hearts {
+    font-size: 18px;
+    letter-spacing: 2px;
+    line-height: 1;
+}
+
+#hud-stage-label {
+    font-size: 10px;
+    color: #6a8a6a;
+}
+
+#hud-equip {
+    display: flex;
+    gap: 6px;
+    font-size: 18px;
+}
+
+.equip-slot {
+    opacity: 0.3;
+    transition: opacity 0.2s;
+}
+
+.equip-slot.has-item {
+    opacity: 1;
+}
+
+#hud-sub-item {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 13px;
+}
+
+#hud-sub-label {
+    color: #6a8a6a;
+}
+
+#hud-sub-icon {
+    font-size: 18px;
+}
+
+#hud-sub-count {
+    color: #f0d050;
+    font-size: 12px;
+}
+
+/* ── ボード ───────────────────────────────────────────────── */
+#board-wrap {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    width: 100%;
+    /* HUD + モバイルコントローラーを除いた高さ */
+    height: calc(100vh - 44px - 140px);
+    overflow: hidden;
+}
+
+#board {
+    display: grid;
+    gap: 0;
+    background: var(--floor-color);
+    border: 2px solid #2a3a2a;
+    position: relative;
+}
+
+/* キャラクター絶対配置レイヤー（半セル移動用） */
+#char-layer {
+    position: absolute;
+    top: 0;
+    left: 0;
+    pointer-events: none;
+    z-index: 5;
+}
+
+/* char-layer 内の各キャラ */
+.char-abs {
+    position: absolute;
+    width: var(--cell);
+    height: var(--cell);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    pointer-events: none;
+    /* transition で滑らかに動く */
+    transition: left 0.08s linear, top 0.08s linear;
+}
+
+.char-abs canvas.sprite {
+    /* char-layer 内では absolute 配置ではなく static に戻す */
+    position: static;
+    transform: none;
+    /* キャラはセルいっぱいのサイズ。
+       半セル移動はサイズではなく「位置の刻み」の話なのでサイズは変えない */
+    width: var(--cell) !important;
+    height: var(--cell) !important;
+}
+
+/* ── セル ──────────────────────────────────────────────────── */
+.cell {
+    width: var(--cell);
+    height: var(--cell);
+    background: var(--floor-color);
+    position: relative;
+    overflow: visible;
+}
+
+.cell.wall {
+    background: var(--wall-color);
+}
+
+.cell.water {
+    background: #0e2040;
+}
+
+.cell.gate {
+    background: #1a2c40;
+}
+
+.cell.door {
+    background: #2a1a08;
+}
+
+.cell.switch-off {
+    background: #1a3010;
+}
+
+.cell.switch-on {
+    background: #2a5020;
+}
+
+.cell.breakable-wall {
+    background: #3a3028;
+}
+
+.cell.map-enter {
+    background: #101820;
+}
+
+/* スプライト */
+canvas.sprite {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    image-rendering: pixelated;
+    pointer-events: none;
+}
+
+/* キャラクター（大きめ）*/
+canvas.sprite.char-sprite {
+    width: calc(var(--cell) * 0.85);
+    height: calc(var(--cell) * 0.85);
+}
+
+/* ギミックアイテム（中サイズ） */
+canvas.sprite.obj-sprite {
+    width: calc(var(--cell) * 0.7);
+    height: calc(var(--cell) * 0.7);
+}
+
+/* 小アイテム */
+canvas.sprite.item-sprite {
+    width: calc(var(--cell) * 0.55);
+    height: calc(var(--cell) * 0.55);
+}
+
+/* ── 剣エフェクト ─────────────────────────────────────────── */
+.sword-slash {
+    position: absolute;
+    width: calc(var(--cell) * 0.9);
+    height: calc(var(--cell) * 0.9);
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    border-radius: 50%;
+    background: radial-gradient(circle, rgba(255, 240, 80, 0.7) 0%, rgba(255, 200, 40, 0.3) 60%, transparent 80%);
+    pointer-events: none;
+    animation: slash-anim 0.22s ease-out forwards;
+    z-index: 20;
+}
+
+.sword-slash.dir-right {
+    transform: translate(-50%, -50%) translateX(30%) scaleX(1.4) scaleY(0.7);
+}
+
+.sword-slash.dir-left {
+    transform: translate(-50%, -50%) translateX(-30%) scaleX(1.4) scaleY(0.7);
+}
+
+.sword-slash.dir-up {
+    transform: translate(-50%, -50%) translateY(-30%) scaleX(0.7) scaleY(1.4);
+}
+
+.sword-slash.dir-down {
+    transform: translate(-50%, -50%) translateY(30%) scaleX(0.7) scaleY(1.4);
+}
+
+@keyframes slash-anim {
+    0% {
+        opacity: 1;
+    }
+
+    100% {
+        opacity: 0;
+        transform: translate(-50%, -50%) scale(1.5);
+    }
+}
+
+/* char-layer 上の絶対配置剣エフェクト（transform なし版） */
+@keyframes slash-anim-abs {
+    0% {
+        opacity: 1;
+        transform: scale(0.7);
+    }
+
+    50% {
+        opacity: 1;
+        transform: scale(1.1);
+    }
+
+    100% {
+        opacity: 0;
+        transform: scale(1.4);
+    }
+}
+
+/* ── 剣突きエフェクト（Dungeon World 方式そのまま移植） ───────
+   char-layer 上に絶対配置した .sword-thrust div の
+   ::before 疑似要素で線を伸ばす */
+.sword-thrust {
+    position: absolute;
+    /* width/height は JS で var(--cell) に設定する */
+    z-index: 10;
+    pointer-events: none;
+}
+
+/* 剣本体：指定方向から突き出る光線 */
+.sword-thrust::before {
+    content: '';
+    position: absolute;
+    background: linear-gradient(var(--thrust-angle), transparent 0%, #80c8f0 30%, #ffffff 60%, #f2c14e 100%);
+    border-radius: 2px;
+    box-shadow: 0 0 6px rgba(240, 220, 120, 0.9);
+    animation: sword-thrust-anim 0.22s ease-out forwards;
+}
+
+/* 右方向 */
+.sword-thrust.dir-right {
+    --thrust-angle: 90deg;
+}
+
+.sword-thrust.dir-right::before {
+    left: 0;
+    top: 50%;
+    height: 4px;
+    width: 100%;
+    transform: translateY(-50%) scaleX(0);
+    transform-origin: left center;
+}
+
+/* 左方向 */
+.sword-thrust.dir-left {
+    --thrust-angle: 270deg;
+}
+
+.sword-thrust.dir-left::before {
+    right: 0;
+    left: auto;
+    top: 50%;
+    height: 4px;
+    width: 100%;
+    transform: translateY(-50%) scaleX(0);
+    transform-origin: right center;
+}
+
+/* 下方向 */
+.sword-thrust.dir-down {
+    --thrust-angle: 180deg;
+}
+
+.sword-thrust.dir-down::before {
+    top: 0;
+    left: 50%;
+    width: 4px;
+    height: 100%;
+    transform: translateX(-50%) scaleY(0);
+    transform-origin: top center;
+}
+
+/* 上方向 */
+.sword-thrust.dir-up {
+    --thrust-angle: 0deg;
+}
+
+.sword-thrust.dir-up::before {
+    bottom: 0;
+    top: auto;
+    left: 50%;
+    width: 4px;
+    height: 100%;
+    transform: translateX(-50%) scaleY(0);
+    transform-origin: bottom center;
+}
+
+/* 横向きアニメーション */
+@keyframes sword-thrust-anim {
+    0% {
+        opacity: 1;
+        transform: translateY(-50%) scaleX(0);
+    }
+
+    40% {
+        opacity: 1;
+        transform: translateY(-50%) scaleX(1.1);
+    }
+
+    100% {
+        opacity: 0;
+        transform: translateY(-50%) scaleX(0.8);
+    }
+}
+
+/* 縦向きアニメーション */
+.sword-thrust.dir-down::before,
+.sword-thrust.dir-up::before {
+    animation-name: sword-thrust-anim-v;
+}
+
+@keyframes sword-thrust-anim-v {
+    0% {
+        opacity: 1;
+        transform: translateX(-50%) scaleY(0);
+    }
+
+    40% {
+        opacity: 1;
+        transform: translateX(-50%) scaleY(1.1);
+    }
+
+    100% {
+        opacity: 0;
+        transform: translateX(-50%) scaleY(0.8);
+    }
+}
+
+/* ── ダメージエフェクト ───────────────────────────────────── */
+.damage-flash {
+    position: absolute;
+    inset: 0;
+    background: rgba(255, 40, 40, 0.55);
+    pointer-events: none;
+    animation: flash-anim 0.35s ease-out forwards;
+    z-index: 18;
+}
+
+@keyframes flash-anim {
+    0% {
+        opacity: 1;
+    }
+
+    100% {
+        opacity: 0;
+    }
+}
+
+/* ダメージ数字 */
+.dmg-popup {
+    position: absolute;
+    top: 4px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 14px;
+    font-weight: bold;
+    pointer-events: none;
+    z-index: 25;
+    animation: popup-anim 0.7s ease-out forwards;
+}
+
+.enemy-dmg {
+    color: #ffee44;
+}
+
+.player-dmg {
+    color: #ff4444;
+}
+
+@keyframes popup-anim {
+    0% {
+        opacity: 1;
+        transform: translateX(-50%) translateY(0);
+    }
+
+    100% {
+        opacity: 0;
+        transform: translateX(-50%) translateY(-20px);
+    }
+}
+
+/* プレイヤー点滅（ダメージ無敵） */
+@keyframes blink-anim {
+    0%, 100% {
+        opacity: 1;
+    }
+
+    50% {
+        opacity: 0.2;
+    }
+}
+
+.player-blink {
+    animation: blink-anim 0.3s infinite;
+}
+
+/* ── メッセージバー ──────────────────────────────────────── */
+#msg-bar {
+    position: fixed;
+    bottom: 144px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(0, 20, 0, 0.88);
+    border: 1px solid #4a8a4a;
+    border-radius: 6px;
+    padding: 6px 18px;
+    font-size: 14px;
+    color: #c0f0c0;
+    white-space: nowrap;
+    z-index: 40;
+    pointer-events: none;
+}
+
+#msg-bar.hidden {
+    display: none;
+}
+
+/* ── NPC 会話ダイアログ ─────────────────────────────────── */
+#dialog-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.5);
+    display: flex;
+    align-items: flex-end;
+    justify-content: center;
+    padding-bottom: 148px;
+    z-index: 50;
+}
+
+#dialog-overlay.hidden {
+    display: none;
+}
+
+#dialog-box {
+    background: #0a1418;
+    border: 2px solid #4a8a4a;
+    border-radius: 8px;
+    padding: 14px 20px;
+    max-width: 500px;
+    width: 92%;
+}
+
+#dialog-name {
+    font-size: 12px;
+    color: var(--accent);
+    margin-bottom: 6px;
+    letter-spacing: 1px;
+}
+
+#dialog-text {
+    font-size: 15px;
+    color: #d0e8d0;
+    line-height: 1.6;
+    min-height: 44px;
+}
+
+#dialog-next {
+    font-size: 11px;
+    color: #5a7a5a;
+    text-align: right;
+    margin-top: 8px;
+    animation: blink-text 1.0s infinite;
+}
+
+@keyframes blink-text {
+    0%, 100% {
+        opacity: 1;
+    }
+
+    50% {
+        opacity: 0.3;
+    }
+}
+
+/* ── ポーズ画面 ──────────────────────────────────────────── */
+#pause-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.75);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 60;
+}
+
+#pause-overlay.hidden {
+    display: none;
+}
+
+#pause-box {
+    background: #0a1418;
+    border: 2px solid #4a6a8a;
+    border-radius: 10px;
+    padding: 20px 28px;
+    min-width: 320px;
+    max-width: 90vw;
+}
+
+#pause-title {
+    font-size: 18px;
+    color: #80c0f0;
+    text-align: center;
+    margin-bottom: 16px;
+    letter-spacing: 3px;
+}
+
+#pause-items {
+    display: flex;
+    gap: 12px;
+    justify-content: center;
+    flex-wrap: wrap;
+    margin-bottom: 12px;
+}
+
+.pause-item-slot {
+    border: 2px solid #2a4a6a;
+    border-radius: 6px;
+    padding: 8px 12px;
+    text-align: center;
+    min-width: 72px;
+    cursor: pointer;
+    transition: border-color 0.1s;
+}
+
+.pause-item-slot.selected {
+    border-color: #80c0f0;
+    background: rgba(128, 192, 240, 0.12);
+}
+
+.pause-item-icon {
+    font-size: 24px;
+}
+
+.pause-item-name {
+    font-size: 10px;
+    color: #8a9aaa;
+    margin-top: 3px;
+}
+
+.pause-item-count {
+    font-size: 13px;
+    color: #f0d050;
+}
+
+#pause-hint {
+    font-size: 11px;
+    color: #4a6a8a;
+    text-align: center;
+    margin-bottom: 10px;
+}
+
+#pause-stats {
+    font-size: 13px;
+    color: #8a9aaa;
+    text-align: center;
+}
+
+/* ── ゲームオーバー ─────────────────────────────────────── */
+#gameover-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.85);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 70;
+}
+
+#gameover-overlay.hidden {
+    display: none;
+}
+
+#gameover-box {
+    text-align: center;
+}
+
+.gameover-title {
+    font-size: 36px;
+    color: var(--danger);
+    letter-spacing: 6px;
+    margin-bottom: 28px;
+    text-shadow: 0 0 20px rgba(255, 60, 48, 0.6);
+}
+
+#gameover-retry {
+    background: #1a2228;
+    border: 2px solid #3a4a5a;
+    border-radius: 8px;
+    color: var(--hud-fg);
+    font-family: inherit;
+    font-size: 15px;
+    padding: 10px 28px;
+    cursor: pointer;
+    transition: border-color 0.1s;
+}
+
+#gameover-retry:hover {
+    border-color: #80c0f0;
+    color: #80c0f0;
+}
+
+/* ── モバイルコントローラー ─────────────────────────────── */
+#mobile-ctrl {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 140px;
+    background: rgba(6, 10, 12, 0.92);
+    border-top: 1px solid #1a2a1a;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 20px;
+    z-index: 30;
+}
+
+/* D-PAD */
+#dpad {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+}
+
+.dpad-mid {
+    display: flex;
+    gap: 2px;
+}
+
+.dpad-btn {
+    width: 40px;
+    height: 40px;
+    background: #1a2228;
+    border: 1px solid #2a3a3a;
+    border-radius: 6px;
+    color: #8aaabb;
+    font-size: 16px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
+}
+
+.dpad-center {
+    background: #0e1a1e;
+    cursor: default;
+}
+
+.dpad-btn:active {
+    background: #2a3a44;
+}
+
+/* アクションボタン */
+#action-btns {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+}
+
+.action-btn {
+    width: 58px;
+    height: 50px;
+    background: #1a2228;
+    border: 1px solid #2a4040;
+    border-radius: 8px;
+    color: #8aaabb;
+    font-size: 15px;
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
+}
+
+.action-btn:active {
+    background: #2a3a44;
+}
+
+#btn-sword {
+    border-color: #a08030;
+    color: #f0d050;
+}
+
+#btn-shield {
+    border-color: #2040a0;
+    color: #6090f0;
+}
+
+#btn-sub {
+    border-color: #3a6a3a;
+    color: #80c080;
+}
+
+#btn-menu {
+    font-size: 11px;
+}
+
+/* 防御中スタイル */
+#btn-shield.defending {
+    background: #1a2860;
+    border-color: #4070d0;
+    box-shadow: 0 0 10px rgba(64, 112, 208, 0.5);
+}
+
+/* ── タイトルダイアログ ─────────────────────────────────── */
+#title-overlay,
+#confirm-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.85);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 80;
+}
+
+#title-overlay.hidden,
+#confirm-overlay.hidden {
+    display: none;
+}
+
+#title-box,
+#confirm-box {
+    background: #0a1418;
+    border: 2px solid #4a6a4a;
+    border-radius: 12px;
+    padding: 32px 40px;
+    text-align: center;
+    max-width: 360px;
+    width: 90%;
+}
+
+#title-logo {
+    font-size: 22px;
+    color: #f0d050;
+    font-weight: bold;
+    letter-spacing: 3px;
+    margin-bottom: 28px;
+    text-shadow: 0 0 16px rgba(240, 208, 80, 0.6);
+}
+
+#title-buttons,
+#confirm-buttons {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+#confirm-msg {
+    font-size: 14px;
+    color: #c0d0c0;
+    line-height: 1.7;
+    margin-bottom: 24px;
+}
+
+.title-btn {
+    padding: 12px 24px;
+    border-radius: 8px;
+    font-family: inherit;
+    font-size: 15px;
+    font-weight: bold;
+    cursor: pointer;
+    transition: background 0.12s, border-color 0.12s;
+    border: 2px solid #4a8a4a;
+    background: rgba(74, 138, 74, 0.18);
+    color: #80d080;
+}
+
+.title-btn:hover {
+    background: rgba(74, 138, 74, 0.35);
+    border-color: #80d080;
+}
+
+.title-btn--new {
+    border-color: #4a6a8a;
+    background: rgba(74, 106, 138, 0.18);
+    color: #80b0d0;
+}
+
+.title-btn--new:hover {
+    background: rgba(74, 106, 138, 0.35);
+    border-color: #80b0d0;
+}
+
+.title-btn--danger {
+    border-color: #8a3030;
+    background: rgba(138, 48, 48, 0.18);
+    color: #f08080;
+}
+
+.title-btn--danger:hover {
+    background: rgba(138, 48, 48, 0.35);
+    border-color: #f08080;
+}
+
+/* ── 爆発エフェクト ─────────────────────────────────────── */
+@keyframes explosion-anim {
+    0% {
+        opacity: 1;
+        transform: scale(0.3);
+    }
+
+    50% {
+        opacity: 0.9;
+        transform: scale(1.1);
+    }
+
+    100% {
+        opacity: 0;
+        transform: scale(1.5);
+    }
+}
+
+/* 爆弾カウントダウン（設置中の点滅） */
+.bomb-placed {
+    animation: bomb-fuse 0.4s ease-in-out infinite;
+}
+
+@keyframes bomb-fuse {
+    0%, 100% {
+        transform: scale(1.0);
+    }
+
+    50% {
+        transform: scale(1.15);
+        filter: brightness(1.6);
+    }
+}
+
+/* ── ユーティリティ ─────────────────────────────────────── */
+.hidden {
+    display: none !important;
+}
+
+/* ── PC 向け：ボードを大きく ───────────────────────────── */
+@media (min-width: 600px) {
+    :root {
+        --cell: 56px;
+    }
+
+    #board-wrap {
+        height: calc(100vh - 44px - 0px);
+    }
+
+    #mobile-ctrl {
+        display: none;
+    }
+}
+
+@media (min-width: 900px) {
+    :root {
+        --cell: 64px;
+    }
+}

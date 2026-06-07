@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>Blade of Lumia</title>
+  <link rel="stylesheet" href="game.css">
+</head>
+<body>
+  <!-- ── HUD ── -->
+  <div id="hud">
+    <div id="hud-left">
+      <div id="hud-hearts"></div>
+      <div id="hud-stage-label"></div>
+    </div>
+    <div id="hud-right">
+      <div id="hud-equip">
+        <span id="hud-equip-sword" class="equip-slot" title="剣">⚔</span>
+        <span id="hud-equip-shield" class="equip-slot" title="たて">🛡</span>
+        <span id="hud-equip-armor" class="equip-slot" title="防具">⚚</span>
+      </div>
+      <div id="hud-sub-item">
+        <span id="hud-sub-label">SUB:</span>
+        <span id="hud-sub-icon">—</span>
+        <span id="hud-sub-count"></span>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── ゲームボード ── -->
+  <div id="board-wrap">
+    <div id="board"></div>
+  </div>
+
+  <!-- ── メッセージ ── -->
+  <div id="msg-bar" class="hidden"></div>
+
+  <!-- ── NPC 会話ダイアログ ── -->
+  <div id="dialog-overlay" class="hidden">
+    <div id="dialog-box">
+      <div id="dialog-name"></div>
+      <div id="dialog-text"></div>
+      <div id="dialog-next">▼ 次へ（Spaceキー）</div>
+    </div>
+  </div>
+
+  <!-- ── ポーズ画面 ── -->
+  <div id="pause-overlay" class="hidden">
+    <div id="pause-box">
+      <div id="pause-title">⏸ PAUSED</div>
+      <div id="pause-items"></div>
+      <div id="pause-hint">← → で選択　Escape で決定・再開</div>
+      <div id="pause-stats"></div>
+    </div>
+  </div>
+
+  <!-- ── タイトル（続きから / はじめから）── -->
+  <div id="title-overlay" class="hidden">
+    <div id="title-box">
+      <div id="title-logo">⚔ Blade of Lumia</div>
+      <div id="title-buttons">
+        <button id="btn-continue" class="title-btn">続きから</button>
+        <button id="btn-newgame"  class="title-btn title-btn--new">はじめから</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── はじめから確認ダイアログ ── -->
+  <div id="confirm-overlay" class="hidden">
+    <div id="confirm-box">
+      <div id="confirm-msg">ゲームの保存データは削除されます。<br>本当にはじめからでよろしいですか？</div>
+      <div id="confirm-buttons">
+        <button id="btn-confirm-yes" class="title-btn title-btn--danger">はい、削除して開始</button>
+        <button id="btn-confirm-no"  class="title-btn">戻る</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── ゲームオーバー ── -->
+  <div id="gameover-overlay" class="hidden">
+    <div id="gameover-box">
+      <div class="gameover-title">GAME OVER</div>
+      <button id="gameover-retry">もう一度</button>
+    </div>
+  </div>
+
+  <!-- ── モバイルコントローラー ── -->
+  <div id="mobile-ctrl">
+    <div id="dpad">
+      <button class="dpad-btn" data-dir="up">▲</button>
+      <div class="dpad-mid">
+        <button class="dpad-btn" data-dir="left">◀</button>
+        <button class="dpad-btn dpad-center" data-dir="">　</button>
+        <button class="dpad-btn" data-dir="right">▶</button>
+      </div>
+      <button class="dpad-btn" data-dir="down">▼</button>
+    </div>
+    <div id="action-btns">
+      <button id="btn-sub" class="action-btn">SUB</button>
+      <button id="btn-sword" class="action-btn">⚔</button>
+      <button id="btn-shield" class="action-btn shield-btn">🛡</button>
+      <button id="btn-menu" class="action-btn">MENU</button>
+    </div>
+  </div>
+
+  <script type="module" src="game.js"></script>
+</body>
+</html>

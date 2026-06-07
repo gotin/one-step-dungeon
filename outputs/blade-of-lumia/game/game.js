@@ -1,0 +1,1643 @@
+// ── Blade of Lumia – game.js ──────────────────────────────────
+// Phase 1: マップ読み込み・プレイヤー移動（半セル）・ステージ遷移
+import { TILE } from '../shared/tiles.js';
+import { ENEMY_META, ENEMY_SPEED_NORMAL } from '../shared/enemies.js';
+import { ITEM_META, EQUIP_META } from '../shared/items.js';
+import { NPC_SPRITE_MAP, NPC_DEFAULT_DIALOG } from '../shared/npcs.js';
+import {
+	makeSprite, startAnimLoop, redrawAnimSprites,
+} from '../shared/sprites.js';
+import {
+	playSound, playBgm, stopBgm, resumeAudio,
+} from '../shared/sounds.js';
+
+// ── 定数 ──────────────────────────────────────────────────────
+// 座標系：x/y はセル単位の float（0.5 刻みで移動）
+// 例: x=1.5 → タイル列 1 の右端 / タイル列 2 の左端の中間
+const MOVE_STEP      = 0.5;   // 1 操作 = 0.5 セル
+const TICK_MS        = 120;   // 敵行動 tick 間隔（ms）
+const INVINCIBLE_MS  = 1500;  // 無敵時間（ms）
+const HP_PER_HEART   = 2;
+const MAP_JSON_URL   = '../work/blade-of-lumia.json';
+const SAVE_KEY       = 'blade-of-lumia-save';
+
+// 移動方向 → (dy, dx) セル単位
+const DIR_DELTA = {
+	up:    [-MOVE_STEP, 0],
+	down:  [ MOVE_STEP, 0],
+	left:  [0, -MOVE_STEP],
+	right: [0,  MOVE_STEP],
+};
+
+// ── DOM ───────────────────────────────────────────────────────
+const boardEl          = document.getElementById('board');
+const heartsEl         = document.getElementById('hud-hearts');
+const stageLabelEl     = document.getElementById('hud-stage-label');
+const equipSwordEl     = document.getElementById('hud-equip-sword');
+const equipShieldEl    = document.getElementById('hud-equip-shield');
+const equipArmorEl     = document.getElementById('hud-equip-armor');
+const subIconEl        = document.getElementById('hud-sub-icon');
+const subCountEl       = document.getElementById('hud-sub-count');
+const msgBarEl         = document.getElementById('msg-bar');
+const dialogOverlayEl  = document.getElementById('dialog-overlay');
+const dialogNameEl     = document.getElementById('dialog-name');
+const dialogTextEl     = document.getElementById('dialog-text');
+const pauseOverlayEl   = document.getElementById('pause-overlay');
+const pauseItemsEl     = document.getElementById('pause-items');
+const pauseStatsEl     = document.getElementById('pause-stats');
+const gameoverOverlayEl= document.getElementById('gameover-overlay');
+const gameoverRetryEl  = document.getElementById('gameover-retry');
+
+// ── 状態 ──────────────────────────────────────────────────────
+let mapData      = null;
+let currentLayer = 'field';
+let stageKey     = null;
+let stageData    = null;
+let stageState   = {};
+let exitRegistry = {};
+
+// プレイヤー：x/y はセル単位 float
+let player = {
+	x: 1, y: 1,          // float 座標（セル）
+	hp: 6, maxHp: 6, maxHearts: 3,
+	atk: 2, def: 0, keys: 0,
+	weapon: null, shield: null, armor: null,
+	subItems: {}, activeSubItem: null,
+	rupees: 0, triforceCount: 0,
+};
+
+let enemies = [];
+let heroDir = 'down';
+
+let gameTimer       = null;
+let isPaused        = false;
+let isDialog        = false;
+let isGameover      = false;
+let isTransitioning = false;
+let invincibleUntil = 0;
+let blinkTimer      = null;
+let dialogLines     = [];
+let dialogLineIdx   = 0;
+let pauseItemKeys   = [];
+let pauseItemIdx    = 0;
+let msgTimer        = null;
+let isShielding     = false;
+
+// ── デバッグモード ────────────────────────────────────────────
+// Gキーで切り替え。無敵 + 敵すり抜け + 全アイテム即取得可能
+let debugMode = false;
+
+// char-layer DOM 要素（キャラクター絶対配置コンテナ）
+let charLayerEl = null;
+
+// ── ユーティリティ ────────────────────────────────────────────
+// float 座標 → タイル整数座標
+function toTileRow(y) { return Math.floor(y + 0.5); }
+function toTileCol(x) { return Math.floor(x + 0.5); }
+
+// CSS セルサイズを取得（--cell 変数）
+function getCellPx() {
+	return parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--cell')) || 48;
+}
+
+// ── セーブ・ロード ────────────────────────────────────────────
+function getSS(lk, sk) {
+	const k = `${lk}_${sk}`;
+	if (!stageState[k]) {
+		stageState[k] = {
+			openGates:       new Set(),
+			pickedKeys:      new Set(),
+			defeatedEnemies: new Set(),
+			openedChests:    new Set(),
+			objects:         {},
+			switchStates:    {},
+			brokenWalls:     new Set(),
+			conditionsMet:   new Set(),
+		};
+	}
+	return stageState[k];
+}
+
+function saveGame() {
+	try {
+		const ss = {};
+		for (const [k, v] of Object.entries(stageState)) {
+			ss[k] = {
+				openGates:       [...v.openGates],
+				pickedKeys:      [...v.pickedKeys],
+				defeatedEnemies: [...v.defeatedEnemies],
+				openedChests:    [...v.openedChests],
+				objects:         v.objects,
+				switchStates:    v.switchStates,
+				brokenWalls:     [...v.brokenWalls],
+				conditionsMet:   [...v.conditionsMet],
+			};
+		}
+		localStorage.setItem(SAVE_KEY, JSON.stringify({
+			player, stageState: ss, currentLayer, stageKey, heroDir,
+		}));
+	} catch (e) { console.warn('saveGame failed:', e); }
+}
+
+function loadGame() {
+	try {
+		const raw = localStorage.getItem(SAVE_KEY);
+		if (!raw) return false;
+		const data = JSON.parse(raw);
+		player       = { ...player, ...data.player };
+		heroDir      = data.heroDir ?? 'down';
+		currentLayer = data.currentLayer ?? 'field';
+		stageKey     = data.stageKey ?? null;
+		for (const [k, v] of Object.entries(data.stageState ?? {})) {
+			stageState[k] = {
+				openGates:       new Set(v.openGates ?? []),
+				pickedKeys:      new Set(v.pickedKeys ?? []),
+				defeatedEnemies: new Set(v.defeatedEnemies ?? []),
+				openedChests:    new Set(v.openedChests ?? []),
+				objects:         v.objects ?? {},
+				switchStates:    v.switchStates ?? {},
+				brokenWalls:     new Set(v.brokenWalls ?? []),
+				conditionsMet:   new Set(v.conditionsMet ?? []),
+			};
+		}
+		return true;
+	} catch (e) { console.warn('loadGame failed:', e); return false; }
+}
+
+// ── マップ読み込み ────────────────────────────────────────────
+async function loadMapData() {
+	const res = await fetch(MAP_JSON_URL);
+	mapData   = await res.json();
+	buildExitRegistry();
+}
+
+function buildExitRegistry() {
+	exitRegistry = {};
+	for (const [lk, ld] of Object.entries(mapData.layers ?? {})) {
+		for (const [sk, sd] of Object.entries(ld.stages ?? {})) {
+			for (const [posKey, enter] of Object.entries(sd.mapEnters ?? {})) {
+				if (enter.id) {
+					const [row, col] = posKey.split(',').map(Number);
+					exitRegistry[enter.id] = { layer: lk, stage: sk, row, col };
+				}
+			}
+		}
+	}
+}
+
+function getStageData(lk, sk) {
+	return mapData?.layers?.[lk]?.stages?.[sk] ?? null;
+}
+
+// ── ステージ開始 ──────────────────────────────────────────────
+function enterStage(lk, sk, pRow, pCol) {
+	currentLayer = lk;
+	stageKey     = sk;
+	stageData    = getStageData(lk, sk);
+	if (!stageData) { console.error(`Stage not found: ${lk}/${sk}`); return; }
+
+	// float 座標でプレイヤーを配置（整数セル中央 = そのセルの中心）
+	player.x = pCol ?? 1;
+	player.y = pRow ?? 1;
+
+	// ステージ遷移時に飛翔物・設置爆弾をリセット
+	clearProjectiles();
+	clearBombs();
+
+	enemies = buildEnemies(stageData, lk, sk);
+
+	renderBoard();
+	renderChars();
+	updateHud();
+
+	const bgm = mapData.layers[lk]?.bgm ?? 'field';
+	playBgm(bgm);
+	if (stageData.isBossRoom) startBossBattle(lk, sk);
+}
+
+// ── 敵生成 ────────────────────────────────────────────────────
+function buildEnemies(sd, lk, sk) {
+	const ss = getSS(lk, sk);
+	const result = [];
+	sd.tiles.forEach((rowArr, r) => {
+		rowArr.forEach((tile, c) => {
+			if (!ENEMY_META[tile]) return;
+			const posKey = `${r},${c}`;
+			if (ss.defeatedEnemies.has(posKey)) return;
+			const m = ENEMY_META[tile];
+			result.push({
+				id:    posKey,
+				type:  tile,
+				x:     c,     // float 座標
+				y:     r,
+				hp:    m.hp, maxHp: m.hp,
+				atk:   m.atk, def: m.def,
+				speed: m.speed ?? ENEMY_SPEED_NORMAL,
+				sprite: m.sprite, pal: m.pal,
+				accum:  0,
+				dir:    sd.enemyDirs?.[posKey] ?? 'down',
+				el:     null,   // DOM element（後で設定）
+			});
+		});
+	});
+	return result;
+}
+
+// ── ボード（タイルグリッド）レンダリング ───────────────────────
+function renderBoard() {
+	if (!stageData) return;
+	const { cols, rows, tiles } = stageData;
+	const ss = getSS(currentLayer, stageKey);
+
+	boardEl.style.gridTemplateColumns = `repeat(${cols}, var(--cell))`;
+	boardEl.style.gridTemplateRows    = `repeat(${rows}, var(--cell))`;
+	boardEl.innerHTML = '';
+
+	// char-layer を作成（キャラクター絶対配置コンテナ）
+	charLayerEl = document.createElement('div');
+	charLayerEl.id = 'char-layer';
+	// boardEl と同サイズにする（後で調整）
+	boardEl.style.position = 'relative';
+
+	for (let r = 0; r < rows; r++) {
+		for (let c = 0; c < cols; c++) {
+			const tile   = tiles[r][c];
+			const posKey = `${r},${c}`;
+			const cellEl = document.createElement('div');
+			cellEl.className    = 'cell';
+			cellEl.dataset.row  = r;
+			cellEl.dataset.col  = c;
+
+			setCellClass(cellEl, tile, posKey, ss);
+			addCellSprite(cellEl, tile, posKey, ss);
+			boardEl.appendChild(cellEl);
+		}
+	}
+
+	// char-layer を board の上に重ねる
+	boardEl.appendChild(charLayerEl);
+	stageLabelEl.textContent = `[${currentLayer}] ${stageKey}`;
+}
+
+function setCellClass(cellEl, tile, posKey, ss) {
+	switch (tile) {
+		case TILE.WALL:           cellEl.classList.add('wall'); break;
+		case TILE.WATER:          cellEl.classList.add('water'); break;
+		case TILE.GATE:
+			cellEl.classList.add(ss.openGates.has(posKey) ? 'switch-on' : 'gate'); break;
+		case TILE.DOOR:           cellEl.classList.add('door'); break;
+		case TILE.SWITCH:
+			cellEl.classList.add(ss.switchStates[posKey] ? 'switch-on' : 'switch-off'); break;
+		case TILE.BREAKABLE_WALL:
+			cellEl.classList.add(ss.brokenWalls.has(posKey) ? 'floor' : 'breakable-wall'); break;
+		case TILE.MAP_ENTER:      cellEl.classList.add('map-enter'); break;
+	}
+}
+
+function addCellSprite(cellEl, tile, posKey, ss) {
+	if (tile === TILE.WALL || tile === TILE.FLOOR || tile === TILE.PLAYER) return;
+
+	if (tile === TILE.CHEST && !ss.openedChests.has(posKey)) {
+		const cv = makeSprite('chest', 'chest', true);
+		if (cv) { cv.classList.add('obj-sprite'); cellEl.appendChild(cv); }
+		return;
+	}
+	if (tile === TILE.KEY && !ss.pickedKeys.has(posKey)) {
+		const cv = makeSprite('key', 'key', true);
+		if (cv) { cv.classList.add('item-sprite'); cellEl.appendChild(cv); }
+		return;
+	}
+	if (tile === TILE.SWITCH) {
+		const cv = makeSprite('swG', 'swG', true);
+		if (cv) { cv.classList.add('obj-sprite'); cellEl.appendChild(cv); }
+		return;
+	}
+	if (tile === TILE.GATE && !ss.openGates.has(posKey)) {
+		const cv = makeSprite('gateG', 'gateG', false);
+		if (cv) { cv.classList.add('obj-sprite'); cellEl.appendChild(cv); }
+		return;
+	}
+	if (tile === TILE.DOOR && !ss.pickedKeys.has(posKey)) {
+		const cv = makeSprite('door', 'door', false);
+		if (cv) { cv.classList.add('obj-sprite'); cellEl.appendChild(cv); }
+		return;
+	}
+	if (tile === TILE.WATER) {
+		const cv = makeSprite('water', 'water', true);
+		if (cv) { cv.classList.add('obj-sprite'); cellEl.appendChild(cv); }
+		return;
+	}
+	if (tile === TILE.BREAKABLE_WALL && !ss.brokenWalls.has(posKey)) {
+		const cv = makeSprite('breakableWall', 'breakableWall', true);
+		if (cv) { cv.classList.add('obj-sprite'); cellEl.appendChild(cv); }
+		return;
+	}
+	if (tile === TILE.MAP_ENTER) {
+		const cond = stageData.showConditions?.[posKey];
+		if (cond && !ss.conditionsMet.has(posKey)) return;
+		const cv = makeSprite('mapEnter', 'mapEnter', true);
+		if (cv) { cv.classList.add('obj-sprite'); cellEl.appendChild(cv); }
+		return;
+	}
+	if (tile === TILE.STONE) {
+		const cv = makeSprite('block', 'block', false);
+		if (cv) { cv.classList.add('obj-sprite'); cellEl.appendChild(cv); }
+		return;
+	}
+	// NPC
+	const npcMeta = NPC_SPRITE_MAP[tile];
+	if (npcMeta) {
+		const cv = makeSprite(npcMeta.sprite, npcMeta.pal, true);
+		if (cv) { cv.classList.add('char-sprite'); cellEl.appendChild(cv); }
+		return;
+	}
+	// 落ちているアイテム（スプライトのあるもの）
+	// アニメーションなし（animated=false）：床に置いてあるものは静止表示
+	const itemMap = {
+		[TILE.ITEM_SWORD]:    ['sword',    'sword'],
+		[TILE.ITEM_SHIELD]:   ['shield',   'shield'],
+		[TILE.ITEM_BOOMERANG]:['boomerang','boomerang'],
+		[TILE.ITEM_RUPEE]:    ['rupee',    'rupee'],
+		[TILE.ITEM_RUPEE_LARGE]: ['rupee', 'rupeeBlue'],
+	};
+	if (itemMap[tile] && !ss.pickedKeys.has(posKey)) {
+		const [spr, pal] = itemMap[tile];
+		const cv = makeSprite(spr, pal, false);  // 静止表示
+		if (cv) { cv.classList.add('item-sprite'); cellEl.appendChild(cv); }
+		return;
+	}
+	// スプライト未定義のアイテムは絵文字フォールバック表示
+	const emojiItemMap = {
+		[TILE.ITEM_ARMOR]:          '⚚',
+		[TILE.ITEM_BOMB]:           '💣',
+		[TILE.ITEM_BOW]:            '🏹',
+		[TILE.ITEM_HEAL_POTION]:    '🧪',
+		[TILE.ITEM_BIG_HEAL_POTION]:'💊',
+		[TILE.ITEM_HEART_CONTAINER]:'❤',
+		[TILE.ITEM_TRIFORCE_PIECE]: '◭',
+	};
+	if (emojiItemMap[tile] && !ss.pickedKeys.has(posKey)) {
+		const span = document.createElement('span');
+		span.textContent = emojiItemMap[tile];
+		span.style.cssText = 'position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);font-size:calc(var(--cell)*0.55);pointer-events:none;z-index:3;';
+		cellEl.appendChild(span);
+	}
+}
+
+// ── キャラクター（プレイヤー＋敵）の絶対配置レンダリング ─────────
+// 毎 tick ではなく、位置変化があった時だけ呼ぶ
+function renderChars() {
+	if (!charLayerEl) return;
+	charLayerEl.innerHTML = '';
+
+	// プレイヤー（上向き時は盾を先に描いてキャラを上レイヤーに重ねる）
+	const playerDiv = document.createElement('div');
+	playerDiv.className = 'char-abs';
+	playerDiv.id        = 'char-player';
+	const cellPx0 = getCellPx();
+	playerDiv.style.left = `${player.x * cellPx0}px`;
+	playerDiv.style.top  = `${player.y * cellPx0}px`;
+	charLayerEl.appendChild(playerDiv);
+
+	if (heroDir === 'up') addShieldOverlay(playerDiv);
+	const heroSpr = getHeroSpriteName();
+	const heroFlip = heroDir === 'left';
+	const heroCv = makeSprite(heroSpr, 'hero', true, heroFlip);
+	if (heroCv) playerDiv.appendChild(heroCv);
+	if (heroDir !== 'up') addShieldOverlay(playerDiv);
+
+	// 敵
+	for (const e of enemies) {
+		const wrapper = addCharEl(e.x, e.y, `enemy-${e.id}`, () => {
+			return makeSprite(e.sprite, e.pal, true);
+		});
+		if (wrapper) wrapper.dataset.enemyId = e.id;
+	}
+}
+
+// float 座標 (x, y) にキャラ要素を配置して返す
+function addCharEl(x, y, id, makeSpriteFn) {
+	if (!charLayerEl) return null;
+	const cellPx = getCellPx();
+	const div    = document.createElement('div');
+	div.className = 'char-abs';
+	div.id        = `char-${id}`;
+	div.style.left = `${x * cellPx}px`;
+	div.style.top  = `${y * cellPx}px`;
+	const cv = makeSpriteFn();
+	if (cv) div.appendChild(cv);
+	charLayerEl.appendChild(div);
+	return div;
+}
+
+// 既存の char 要素の位置だけ更新（再生成しない）
+function moveCharEl(id, x, y) {
+	const el = document.getElementById(`char-${id}`);
+	if (!el) return;
+	const cellPx   = getCellPx();
+	el.style.left  = `${x * cellPx}px`;
+	el.style.top   = `${y * cellPx}px`;
+}
+
+function removeCharEl(id) {
+	const el = document.getElementById(`char-${id}`);
+	if (el) el.remove();
+}
+
+function getHeroSpriteName() {
+	return { down: 'heroD', right: 'heroR', left: 'heroR', up: 'heroU' }[heroDir] ?? 'heroD';
+}
+
+// ── HUD ──────────────────────────────────────────────────────
+function updateHud() {
+	let h = '';
+	const full = Math.floor(player.hp / HP_PER_HEART);
+	const half = player.hp % HP_PER_HEART;
+	for (let i = 0; i < player.maxHearts; i++) {
+		if (i < full) h += '❤';
+		else if (i === full && half) h += '🤍';
+		else h += '🖤';
+	}
+	heartsEl.textContent = h;
+	equipSwordEl.classList.toggle('has-item',  !!player.weapon);
+	equipShieldEl.classList.toggle('has-item', !!player.shield);
+	equipArmorEl.classList.toggle('has-item',  !!player.armor);
+	const ai = player.activeSubItem;
+	if (ai && player.subItems[ai]) {
+		const meta = ITEM_META[ai];
+		subIconEl.textContent  = meta?.icon ?? ai;
+		const cnt = player.subItems[ai].count;
+		subCountEl.textContent = (cnt && cnt !== Infinity) ? `×${cnt}` : '';
+	} else {
+		subIconEl.textContent  = '—';
+		subCountEl.textContent = '';
+	}
+}
+
+function pulse(text, duration = 2000) {
+	if (msgTimer) clearTimeout(msgTimer);
+	msgBarEl.textContent = text;
+	msgBarEl.classList.remove('hidden');
+	msgTimer = setTimeout(() => msgBarEl.classList.add('hidden'), duration);
+}
+
+// ── 通行可否（半セル移動 対応） ───────────────────────────────
+// x/y はキャラの「左上角」のセル単位 float 座標
+// キャラは 1×1 セルの大きさ
+//
+// キャラが占めるタイル範囲：
+//   列方向: floor(x) 〜 floor(x + 0.999)  （x が整数のとき 1列、0.5のとき 2列）
+//   行方向: floor(y) 〜 floor(y + 0.999)
+//
+// 例: x=1.5 → 列 1 と 列 2 に跨る → 両方チェック
+function isPassable(nx, ny) {
+	if (!stageData) return false;
+	const c0 = Math.floor(nx);
+	const c1 = Math.floor(nx + 0.999);
+	const r0 = Math.floor(ny);
+	const r1 = Math.floor(ny + 0.999);
+
+	for (let r = r0; r <= r1; r++) {
+		for (let c = c0; c <= c1; c++) {
+			// マップ外 → ステージ端遷移なので通行可として扱う
+			if (r < 0 || r >= stageData.rows || c < 0 || c >= stageData.cols) continue;
+			if (!tilePassable(r, c)) return false;
+		}
+	}
+
+	// デバッグモード中は敵すり抜け可能
+	if (debugMode) return true;
+
+	// 敵と同じタイルセルには移動できない（重なり防止）
+	// ※ 「0.6未満」判定だと半セル移動時に動けなくなるため、タイル単位で比較する
+	for (const e of enemies) {
+		if (toTileRow(ny) === toTileRow(e.y) && toTileCol(nx) === toTileCol(e.x)) return false;
+	}
+
+	return true;
+}
+
+function tilePassable(r, c) {
+	const tile   = stageData.tiles[r]?.[c];
+	if (!tile) return false;
+	const posKey = `${r},${c}`;
+	const ss     = getSS(currentLayer, stageKey);
+	if (tile === TILE.WALL) return false;
+	if (tile === TILE.WATER) return false;
+	if (tile === TILE.GATE   && !ss.openGates.has(posKey)) return false;
+	if (tile === TILE.DOOR   && !ss.pickedKeys.has(posKey)) return false;
+	if (tile === TILE.BREAKABLE_WALL && !ss.brokenWalls.has(posKey)) return false;
+	if (NPC_SPRITE_MAP[tile]) return false;
+	return true;
+}
+
+// 敵向けの通行可否（同じ 1セル占有チェック）
+function isPassableForEnemy(ny, nx, self) {
+	if (!stageData) return false;
+	const c0 = Math.floor(nx);
+	const c1 = Math.floor(nx + 0.999);
+	const r0 = Math.floor(ny);
+	const r1 = Math.floor(ny + 0.999);
+
+	for (let r = r0; r <= r1; r++) {
+		for (let c = c0; c <= c1; c++) {
+			if (r < 0 || r >= stageData.rows || c < 0 || c >= stageData.cols) return false;
+			if (!tilePassable(r, c)) return false;
+		}
+	}
+	// 他の敵と大きく重なっているなら通れない
+	for (const e of enemies) {
+		if (e === self) continue;
+		if (Math.abs(e.x - nx) < 0.6 && Math.abs(e.y - ny) < 0.6) return false;
+	}
+	// プレイヤーと同じタイルセルには移動できない（重なり防止）
+	// 隣接セルへの移動は許可するので体当たり攻撃は成立する
+	if (toTileRow(ny) === toTileRow(player.y) && toTileCol(nx) === toTileCol(player.x)) return false;
+	return true;
+}
+
+// ── ステージ端遷移チェック ────────────────────────────────────
+function checkStageTransition() {
+	if (isTransitioning) return;
+	const { x, y } = player;
+	const { rows, cols } = stageData;
+
+	let newKey = null, newLayer = currentLayer;
+	let newRow = Math.round(y), newCol = Math.round(x);
+	const [sx, sy] = stageKey.split(',').map(Number);
+
+	if (y < 0)    { newKey = `${sx},${sy - 1}`; newRow = rows - 1.5; newCol = x; }
+	else if (y >= rows) { newKey = `${sx},${sy + 1}`; newRow = 0.5; newCol = x; }
+	else if (x < 0)    { newKey = `${sx - 1},${sy}`; newRow = y; newCol = cols - 1.5; }
+	else if (x >= cols) { newKey = `${sx + 1},${sy}`; newRow = y; newCol = 0.5; }
+
+	if (newKey && getStageData(newLayer, newKey)) {
+		isTransitioning = true;
+		playSound('stageTransition');
+		saveGame();
+		setTimeout(() => {
+			enterStage(newLayer, newKey, newRow, newCol);
+			isTransitioning = false;
+		}, 100);
+		return;
+	}
+
+	// MAP_ENTER タイル
+	const r = toTileRow(y), c = toTileCol(x);
+	const posKey = `${r},${c}`;
+	const enter  = stageData.mapEnters?.[posKey];
+	if (enter?.destId && exitRegistry[enter.destId]) {
+		const dest = exitRegistry[enter.destId];
+		isTransitioning = true;
+		playSound('stageTransition');
+		saveGame();
+		setTimeout(() => {
+			enterStage(dest.layer, dest.stage, dest.row, dest.col);
+			isTransitioning = false;
+		}, 100);
+	}
+}
+
+// ── プレイヤー移動 ────────────────────────────────────────────
+function movePlayer(dir) {
+	if (isDialog || isPaused || isGameover || isTransitioning) return;
+	heroDir = dir;
+
+	const [dy, dx] = DIR_DELTA[dir];
+	const nx = player.x + dx;
+	const ny = player.y + dy;
+
+	// 壁チェック
+	if (!isPassable(nx, ny)) {
+		// 向きだけ変える（スプライト更新）
+		updatePlayerCharEl();
+		return;
+	}
+
+	player.x = nx;
+	player.y = ny;
+
+	playSound('move');
+	moveCharEl('player', player.x, player.y);
+	updatePlayerCharEl();
+	updateHud();
+
+	handleTileEvent();
+	checkStageTransition();
+}
+
+// 盾オーバーレイを char-abs div に追加する（ゼルダスタイル）
+// ※ .char-abs canvas.sprite に width/height: var(--cell) !important があるため
+//   setProperty('width', ..., 'important') で強制上書きする
+function addShieldOverlay(div) {
+	if (!player.shield) return;
+
+	// 向きに応じてスプライトを選択
+	let spriteName = 'shield';
+	let flipX = false;
+	if (heroDir === 'right') { spriteName = 'shieldSide'; }
+	else if (heroDir === 'left') { spriteName = 'shieldSide'; flipX = true; }
+
+	const cv = makeSprite(spriteName, 'shield', false, flipX);
+	if (!cv) return;
+	cv.style.position      = 'absolute';
+	cv.style.imageRendering= 'pixelated';
+	cv.style.pointerEvents = 'none';
+	// !important で CSS 強制上書き
+	const cellPx = getCellPx();
+
+	if (heroDir === 'down') {
+		// 下向き：右手側（左端）。右に1px、下に1px
+		const sz = Math.round(cellPx * 0.40) + 'px';  // 1回り大きく
+		cv.style.setProperty('width',  sz, 'important');
+		cv.style.setProperty('height', sz, 'important');
+		cv.style.zIndex = '4';
+		cv.style.left   = `${Math.round(cellPx * 0.08 + 1)}px`;
+		cv.style.top    = `${Math.round(cellPx * 0.48 + 1)}px`;
+		cv.style.transform = 'none';
+	} else if (heroDir === 'right') {
+		const w = Math.round(cellPx * 0.17) + 'px';
+		const h = Math.round(cellPx * 0.44) + 'px';
+		cv.style.setProperty('width',  w, 'important');
+		cv.style.setProperty('height', h, 'important');
+		cv.style.zIndex = '4';
+		cv.style.right  = '7px';
+		cv.style.left   = 'auto';
+		cv.style.top    = '50%';
+		cv.style.transform = 'none';
+	} else if (heroDir === 'left') {
+		const w = Math.round(cellPx * 0.17) + 'px';
+		const h = Math.round(cellPx * 0.44) + 'px';
+		cv.style.setProperty('width',  w, 'important');
+		cv.style.setProperty('height', h, 'important');
+		cv.style.zIndex = '4';
+		cv.style.left   = '7px';
+		cv.style.top    = '50%';
+		cv.style.transform = 'none';
+	} else {
+		const sz = Math.round(cellPx * 0.34) + 'px';
+		cv.style.setProperty('width',  sz, 'important');
+		cv.style.setProperty('height', sz, 'important');
+		cv.style.setProperty('z-index', '-1', 'important');
+		const rPx  = Math.round(cellPx * 0.08) - 3;
+		const tPct = Math.round(cellPx * 0.45 + 4);
+		cv.style.right  = `${rPx + 4}px`;
+		cv.style.left   = 'auto';
+		cv.style.top    = `${tPct + 3}px`;
+		cv.style.opacity = '1';
+		cv.style.transform = 'none';
+	}
+	div.appendChild(cv);
+}
+
+// プレイヤーのスプライトだけ差し替え（向き変更時）
+function updatePlayerCharEl() {
+	const el = document.getElementById('char-player');
+	if (!el) return;
+	el.innerHTML = '';
+
+	// 上向きのとき盾を先に追加（プレイヤースプライトの下に表示）
+	if (heroDir === 'up') addShieldOverlay(el);
+
+	const spr   = getHeroSpriteName();
+	const flipX = heroDir === 'left';
+	const cv    = makeSprite(spr, 'hero', true, flipX);
+	if (cv) el.appendChild(cv);
+
+	// 上向き以外は盾をあとで追加（プレイヤースプライトの上に表示）
+	if (heroDir !== 'up') addShieldOverlay(el);
+}
+
+// ── タイルイベント（踏んだセルを整数変換して判定） ──────────────
+function handleTileEvent() {
+	const r   = toTileRow(player.y);
+	const c   = toTileCol(player.x);
+	const posKey = `${r},${c}`;
+	const tile   = stageData.tiles[r]?.[c];
+	const ss     = getSS(currentLayer, stageKey);
+	if (!tile) return;
+
+	if (tile === TILE.KEY && !ss.pickedKeys.has(posKey)) {
+		ss.pickedKeys.add(posKey); player.keys++;
+		playSound('key'); pulse('🗝 鍵を手に入れた！');
+		renderBoard(); renderChars(); updateHud(); saveGame(); return;
+	}
+	if (tile === TILE.SWITCH && !ss.switchStates[posKey]) {
+		ss.switchStates[posKey] = true;
+		playSound('switch');
+		for (const link of stageData.links ?? []) {
+			if (link.switchId === posKey) { ss.openGates.add(link.gateId); playSound('gateOpen'); }
+		}
+		evaluateConditions();
+		renderBoard(); renderChars(); saveGame(); return;
+	}
+	if (tile === TILE.ITEM_SWORD && !ss.pickedKeys.has(posKey)) {
+		ss.pickedKeys.add(posKey); player.weapon = 'sword';
+		player.atk += EQUIP_META.sword?.atkBonus ?? 2;
+		playSound('item'); pulse('⚔ 剣を手に入れた！');
+		renderBoard(); renderChars(); updateHud(); saveGame(); return;
+	}
+	if (tile === TILE.ITEM_SHIELD && !ss.pickedKeys.has(posKey)) {
+		ss.pickedKeys.add(posKey); player.shield = 'shield';
+		playSound('item'); pulse('🛡 たてを手に入れた！');
+		renderBoard(); renderChars(); updateHud(); saveGame(); return;
+	}
+	if (tile === TILE.ITEM_ARMOR && !ss.pickedKeys.has(posKey)) {
+		ss.pickedKeys.add(posKey); player.armor = 'armor';
+		player.def += EQUIP_META.armor?.defBonus ?? 2;
+		playSound('item'); pulse('⚚ 防具を手に入れた！');
+		renderBoard(); renderChars(); updateHud(); saveGame(); return;
+	}
+	if (tile === TILE.ITEM_BOOMERANG && !ss.pickedKeys.has(posKey)) {
+		ss.pickedKeys.add(posKey);
+		if (!player.subItems.boomerang) {
+			player.subItems.boomerang = { count: Infinity };
+		}
+		if (!player.activeSubItem) player.activeSubItem = 'boomerang';
+		playSound('item'); pulse('🪃 ブーメランを手に入れた！');
+		renderBoard(); renderChars(); updateHud(); saveGame(); return;
+	}
+	if (tile === TILE.ITEM_BOMB && !ss.pickedKeys.has(posKey)) {
+		ss.pickedKeys.add(posKey);
+		const bombCount = stageData.floorItems?.[posKey]?.count ?? 3;
+		if (!player.subItems.bomb) player.subItems.bomb = { count: 0 };
+		player.subItems.bomb.count += bombCount;
+		if (!player.activeSubItem) player.activeSubItem = 'bomb';
+		playSound('item'); pulse(`💣 爆弾 ×${bombCount} を手に入れた！`);
+		renderBoard(); renderChars(); updateHud(); saveGame(); return;
+	}
+	if (tile === TILE.ITEM_HEAL_POTION && !ss.pickedKeys.has(posKey)) {
+		ss.pickedKeys.add(posKey);
+		giveSubItem('healPotion');
+		playSound('item'); pulse('🧪 回復薬（小）を手に入れた！');
+		renderBoard(); renderChars(); updateHud(); saveGame(); return;
+	}
+	if (tile === TILE.ITEM_BIG_HEAL_POTION && !ss.pickedKeys.has(posKey)) {
+		ss.pickedKeys.add(posKey);
+		giveSubItem('bigHealPotion');
+		playSound('item'); pulse('💊 回復薬（大）を手に入れた！');
+		renderBoard(); renderChars(); updateHud(); saveGame(); return;
+	}
+	if (tile === TILE.ITEM_HEART_CONTAINER && !ss.pickedKeys.has(posKey)) {
+		ss.pickedKeys.add(posKey);
+		gainHeartContainer();
+		playSound('item'); pulse('❤ ハートコンテナを手に入れた！');
+		renderBoard(); renderChars(); updateHud(); saveGame(); return;
+	}
+	if (tile === TILE.ITEM_RUPEE && !ss.pickedKeys.has(posKey)) {
+		ss.pickedKeys.add(posKey); player.rupees += 1;
+		playSound('rupee'); pulse('◆ ルピー ×1');
+		renderBoard(); renderChars(); updateHud(); saveGame(); return;
+	}
+	if (tile === TILE.ITEM_RUPEE_LARGE && !ss.pickedKeys.has(posKey)) {
+		ss.pickedKeys.add(posKey); player.rupees += 5;
+		playSound('rupee'); pulse('◇ ルピー ×5');
+		renderBoard(); renderChars(); updateHud(); saveGame(); return;
+	}
+	if (tile === TILE.CHEST && !ss.openedChests.has(posKey)) {
+		openChest(posKey, ss); return;
+	}
+	if (tile === TILE.MAP_ENTER) { checkStageTransition(); return; }
+}
+
+function openChest(posKey, ss) {
+	ss.openedChests.add(posKey); playSound('chest');
+	const content = stageData.chestContents?.[posKey];
+	if (content) {
+		if (content.type === 'item') { giveSubItem(content.item); pulse(`☐ ${content.name ?? content.item} を手に入れた！`); }
+		else if (content.type === 'weapon') { player.weapon = 'sword'; player.atk += 2; pulse(`☐ ${content.name} を手に入れた！`); updateHud(); }
+		else if (content.type === 'rupee') { player.rupees += content.value ?? 1; pulse(`☐ ルピー ×${content.value ?? 1}`); }
+		else if (content.type === 'heartContainer') { gainHeartContainer(); pulse('❤ ハートコンテナを手に入れた！'); }
+	} else { pulse('☐ 宝箱は空だった…'); }
+	renderBoard(); renderChars(); updateHud(); saveGame();
+}
+
+function giveSubItem(id) {
+	const meta = ITEM_META[id];
+	if (!player.subItems[id]) player.subItems[id] = { count: meta?.uses === Infinity ? Infinity : 1 };
+	else if (meta?.uses !== Infinity) player.subItems[id].count++;
+	if (!player.activeSubItem) player.activeSubItem = id;
+}
+
+function gainHeartContainer() {
+	player.maxHearts++; player.maxHp += HP_PER_HEART; player.hp = player.maxHp;
+}
+
+// ── 剣攻撃 ────────────────────────────────────────────────────
+// 剣リーチ：プレイヤーの正面 1.2 セル以内（半セル移動に合わせた範囲）
+const SWORD_REACH = 1.2;
+// 剣攻撃クールダウン：100ms（1秒10回まで）
+// Phase 3 で攻撃速度UP装備が実装されたらここを短縮する
+const SWORD_COOLDOWN_MS = 100;
+let lastSwordTime = 0;
+
+function swordAttack() {
+	if (isDialog || isPaused || isGameover) return;
+	if (!player.weapon) { pulse('剣を持っていない！'); return; }
+	// クールダウンチェック（デバッグモードはスキップしない）
+	const now = Date.now();
+	if (now - lastSwordTime < SWORD_COOLDOWN_MS) return;
+	lastSwordTime = now;
+	resumeAudio(); playSound('slash');
+
+	// 向き方向の単位ベクトル（半セルで正規化）
+	const [dy, dx] = DIR_DELTA[heroDir]; // 例: right → [0, 0.5]
+	const ndx = dx / MOVE_STEP; // 正規化: 0, +1, -1
+	const ndy = dy / MOVE_STEP;
+
+	// 剣エフェクト：プレイヤーのセル中心から 1 セル先（float座標）
+	const slashX = player.x + ndx;
+	const slashY = player.y + ndy;
+	showSwordSlashFloat(slashX, slashY);
+
+	// 当たり判定：プレイヤー中心から SWORD_REACH セル以内の正面にいる敵
+	// プレイヤー中心座標
+	const pcx = player.x + 0.5;
+	const pcy = player.y + 0.5;
+
+	let hitEnemy = null;
+	let hitDist  = Infinity;
+	for (const e of enemies) {
+		const ecx = e.x + 0.5;
+		const ecy = e.y + 0.5;
+		const relX = ecx - pcx;
+		const relY = ecy - pcy;
+
+		// 敵が「正面方向」にいるかチェック（内積 > 0）
+		const dot = relX * ndx + relY * ndy;
+		if (dot < 0) continue; // 背後は無視
+
+		// 剣方向に射影した距離
+		const projDist = dot; // = dot / |direction| = dot（単位ベクトルなので）
+		if (projDist > SWORD_REACH) continue;
+
+		// 横方向のずれが小さいか（横幅 0.8 セル以内）
+		const perpX = relX - ndx * projDist;
+		const perpY = relY - ndy * projDist;
+		const perpDist = Math.sqrt(perpX * perpX + perpY * perpY);
+		if (perpDist > 0.8) continue;
+
+		if (projDist < hitDist) { hitDist = projDist; hitEnemy = e; }
+	}
+
+	if (hitEnemy) { dealDamageToEnemy(hitEnemy, player.atk); return; }
+
+	// NPC に話しかける（プレイヤーの正面 1 セルのタイル）
+	const tr = toTileRow(player.y + ndy);
+	const tc = toTileCol(player.x + ndx);
+	const tile = stageData.tiles[tr]?.[tc];
+	if (tile && NPC_SPRITE_MAP[tile]) { startDialog(tr, tc, tile); }
+}
+
+// 剣エフェクト：Dungeon World の sword-thrust 方式で char-layer 上に絶対配置
+function showSwordSlashFloat(fx, fy) {
+	if (!charLayerEl) return;
+	const cellPx = getCellPx();
+	const el = document.createElement('div');
+	// Dungeon World と同じクラス名・スタイルを使用
+	el.className    = `sword-thrust dir-${heroDir}`;
+	el.style.left   = `${fx * cellPx}px`;
+	el.style.top    = `${fy * cellPx}px`;
+	el.style.width  = `${cellPx}px`;
+	el.style.height = `${cellPx}px`;
+	charLayerEl.appendChild(el);
+	setTimeout(() => el.remove(), 260);
+}
+
+function dealDamageToEnemy(e, dmg) {
+	const actual = Math.max(1, dmg - e.def);
+	e.hp -= actual;
+	playSound('hit');
+	showDmgPopupFloat(e.x, e.y, actual, true);
+	if (e.hp <= 0) killEnemy(e);
+}
+
+function killEnemy(e) {
+	playSound('enemyDie');
+	getSS(currentLayer, stageKey).defeatedEnemies.add(e.id);
+	removeCharEl(`enemy-${e.id}`);
+	enemies = enemies.filter(x => x !== e);
+	evaluateConditions();
+	saveGame();
+}
+
+// ── デバッグモード切り替え ─────────────────────────────────────
+function toggleDebugMode() {
+	debugMode = !debugMode;
+	const label = debugMode ? '🛠 DEBUG ON（無敵・すり抜け）' : '🛠 DEBUG OFF';
+	pulse(label, 1500);
+	// HUD ラベルに [DBG] 表示
+	stageLabelEl.textContent = `[${currentLayer}] ${stageKey}${debugMode ? ' [DBG]' : ''}`;
+}
+
+// ── ダメージ ──────────────────────────────────────────────────
+function takeDamage(amount) {
+	if (debugMode) return; // デバッグモード中は無敵
+	if (Date.now() < invincibleUntil || isGameover) return;
+	let dmg = (isShielding && player.shield) ? Math.ceil(amount * 0.5) : amount;
+	const actual = Math.max(1, dmg - player.def);
+	player.hp = Math.max(0, player.hp - actual);
+	invincibleUntil = Date.now() + INVINCIBLE_MS;
+	playSound('playerHit');
+	showPlayerBlink();
+	updateHud();
+	if (player.hp <= 0) gameOver();
+}
+
+function showPlayerBlink() {
+	if (blinkTimer) clearInterval(blinkTimer);
+	let cnt = 0;
+	blinkTimer = setInterval(() => {
+		const el = document.getElementById('char-player');
+		if (el) el.style.opacity = (cnt % 2 === 0) ? '0.2' : '1';
+		cnt++;
+		if (cnt >= 10) {
+			clearInterval(blinkTimer); blinkTimer = null;
+			const el2 = document.getElementById('char-player');
+			if (el2) el2.style.opacity = '1';
+		}
+	}, 150);
+}
+
+// ── ダメージポップアップ（float 座標版） ─────────────────────
+function showDmgPopupFloat(ex, ey, dmg, isEnemy) {
+	const cellPx = getCellPx();
+	const el = document.createElement('div');
+	el.className = `dmg-popup ${isEnemy ? 'enemy-dmg' : 'player-dmg'}`;
+	el.textContent = `-${dmg}`;
+	el.style.cssText = `
+		position:absolute;
+		left:${(ex + 0.5) * cellPx}px;
+		top:${(ey - 0.3) * cellPx}px;
+		transform:translateX(-50%);
+		z-index:30;
+	`;
+	charLayerEl?.appendChild(el);
+	setTimeout(() => el.remove(), 700);
+}
+
+// ── ゲームオーバー ────────────────────────────────────────────
+function gameOver() {
+	isGameover = true; stopGameLoop(); stopBgm(); playSound('gameover');
+	gameoverOverlayEl.classList.remove('hidden');
+}
+
+function retryGame() {
+	isGameover = isPaused = isDialog = isTransitioning = false;
+	invincibleUntil = 0;
+	gameoverOverlayEl.classList.add('hidden');
+	player.hp = player.maxHp;
+	updateHud();
+	enterStage(currentLayer, stageKey, player.y, player.x);
+	startGameLoop();
+}
+
+// ── 条件評価 ──────────────────────────────────────────────────
+function evaluateConditions() {
+	if (!stageData?.showConditions) return;
+	const ss = getSS(currentLayer, stageKey);
+	for (const [posKey, cond] of Object.entries(stageData.showConditions)) {
+		if (ss.conditionsMet.has(posKey)) continue;
+		let met = false;
+		if (cond.trigger === 'killAll')    met = enemies.length === 0;
+		else if (cond.trigger === 'switchOn') met = ss.switchStates?.[cond.switchId] === true;
+		else if (cond.trigger === 'wallBroken') met = ss.brokenWalls?.has(cond.wallId);
+		else if (cond.trigger === 'hasItem') met = !!player.subItems[cond.item] || player.weapon === cond.item;
+		if (met) {
+			ss.conditionsMet.add(posKey);
+			playSound('appear');
+			renderBoard(); renderChars();
+		}
+	}
+}
+
+// ── NPC 会話 ──────────────────────────────────────────────────
+function startDialog(r, c, tileChar) {
+	const posKey = `${r},${c}`;
+	const data   = stageData.npcData?.[posKey] ?? NPC_DEFAULT_DIALOG[tileChar] ?? { name: 'NPC', lines: ['…'] };
+	dialogLines = data.lines ?? ['…'];
+	dialogLineIdx = 0;
+	isDialog = true; stopGameLoop();
+	dialogNameEl.textContent = data.name ?? '';
+	showDialogLine();
+	dialogOverlayEl.classList.remove('hidden');
+	playSound('talk');
+}
+
+function showDialogLine() {
+	dialogTextEl.textContent = dialogLines[dialogLineIdx] ?? '';
+	const isLast = dialogLineIdx >= dialogLines.length - 1;
+	document.getElementById('dialog-next').textContent =
+		isLast ? '▼ 閉じる（Spaceキー）' : '▼ 次へ（Spaceキー）';
+}
+
+function advanceDialog() {
+	dialogLineIdx++;
+	if (dialogLineIdx >= dialogLines.length) {
+		isDialog = false; dialogOverlayEl.classList.add('hidden'); startGameLoop();
+	} else { showDialogLine(); playSound('talk'); }
+}
+
+// ── ポーズ ────────────────────────────────────────────────────
+function togglePause() {
+	if (isDialog || isGameover) return;
+	isPaused = !isPaused;
+	if (isPaused) {
+		stopGameLoop(); pauseOverlayEl.classList.remove('hidden'); renderPauseMenu();
+	} else {
+		pauseOverlayEl.classList.add('hidden'); startGameLoop();
+	}
+}
+
+function renderPauseMenu() {
+	pauseItemKeys = Object.keys(player.subItems).filter(k => {
+		const s = player.subItems[k];
+		return s && (s.count === Infinity || s.count > 0);
+	});
+	if (pauseItemIdx >= pauseItemKeys.length) pauseItemIdx = 0;
+	pauseItemsEl.innerHTML = '';
+	if (pauseItemKeys.length === 0) {
+		pauseItemsEl.innerHTML = '<div style="color:#4a6a8a;font-size:13px;">サブアイテムなし</div>';
+	} else {
+		for (let i = 0; i < pauseItemKeys.length; i++) {
+			const id = pauseItemKeys[i];
+			const meta = ITEM_META[id];
+			const cnt  = player.subItems[id].count;
+			const div  = document.createElement('div');
+			div.className = `pause-item-slot${i === pauseItemIdx ? ' selected' : ''}`;
+			div.innerHTML = `<div class="pause-item-icon">${meta?.icon ?? id}</div>
+				<div class="pause-item-name">${meta?.name ?? id}</div>
+				<div class="pause-item-count">${cnt === Infinity ? '∞' : `×${cnt}`}</div>`;
+			div.addEventListener('click', () => {
+				pauseItemIdx = i; player.activeSubItem = pauseItemKeys[i];
+				updateHud(); togglePause();
+			});
+			pauseItemsEl.appendChild(div);
+		}
+	}
+	pauseStatsEl.textContent = `❤×${player.maxHearts}  ATK:${player.atk}  DEF:${player.def}  💰${player.rupees}`;
+}
+
+function pauseSelectPrev() {
+	if (!pauseItemKeys.length) return;
+	pauseItemIdx = (pauseItemIdx - 1 + pauseItemKeys.length) % pauseItemKeys.length;
+	player.activeSubItem = pauseItemKeys[pauseItemIdx]; updateHud(); renderPauseMenu();
+}
+function pauseSelectNext() {
+	if (!pauseItemKeys.length) return;
+	pauseItemIdx = (pauseItemIdx + 1) % pauseItemKeys.length;
+	player.activeSubItem = pauseItemKeys[pauseItemIdx]; updateHud(); renderPauseMenu();
+}
+
+// ── ボス戦 ────────────────────────────────────────────────────
+function startBossBattle(lk, sk) {
+	if (enemies.find(e => ENEMY_META[e.type]?.isBoss)) setTimeout(() => playBgm('boss'), 200);
+}
+
+// ── リアルタイムループ ────────────────────────────────────────
+function startGameLoop() {
+	if (gameTimer) clearInterval(gameTimer);
+	gameTimer = setInterval(gameTick, TICK_MS);
+}
+function stopGameLoop() {
+	if (gameTimer) { clearInterval(gameTimer); gameTimer = null; }
+}
+
+function gameTick() {
+	if (isPaused || isDialog || isGameover || isTransitioning) return;
+	processHeldKeys();   // 押しっぱなしキーで毎tick移動
+	enemyTick();
+	projectileTick();
+	bombTick();
+	checkEnemyContact();
+	redrawAnimSprites();
+}
+
+// ── 敵 AI ────────────────────────────────────────────────────
+function enemyTick() {
+	for (const e of enemies) {
+		const meta = ENEMY_META[e.type];
+		if (!meta) continue;
+		enemyChase(e, meta.speed);
+	}
+}
+
+function enemyChase(e, speed) {
+	e.accum = (e.accum ?? 0) + speed;
+	if (e.accum < 1.0) return;
+	e.accum -= 1.0;
+
+	const dy = player.y - e.y;
+	const dx = player.x - e.x;
+	const dist = Math.sqrt(dy * dy + dx * dx);
+	if (dist < 0.01) return;
+
+	// 方向を正規化して MOVE_STEP 分だけ動く
+	const step = MOVE_STEP;
+	const candidates = [];
+	if (Math.abs(dy) >= Math.abs(dx)) {
+		candidates.push([Math.sign(dy) * step, 0]);
+		candidates.push([0, Math.sign(dx) * step]);
+	} else {
+		candidates.push([0, Math.sign(dx) * step]);
+		candidates.push([Math.sign(dy) * step, 0]);
+	}
+
+	for (const [my, mx] of candidates) {
+		const ny = e.y + my;
+		const nx = e.x + mx;
+		if (isPassableForEnemy(ny, nx, e)) {
+			e.y = ny; e.x = nx;
+			break;
+		}
+	}
+
+	// 方向更新
+	if (Math.abs(dy) >= Math.abs(dx)) e.dir = dy > 0 ? 'down' : 'up';
+	else e.dir = dx > 0 ? 'right' : 'left';
+
+	moveCharEl(`enemy-${e.id}`, e.x, e.y);
+}
+
+function checkEnemyContact() {
+	for (const e of enemies) {
+		// 体当たり攻撃：float距離で判定
+		// 敵はプレイヤーと同タイルに入れないため実距離は 0.4〜1.5 程度
+		// 0.9 セル以内ならダメージ（隣接タイルに敵がいる状態に相当）
+		if (Math.abs(e.x - player.x) < 0.9 && Math.abs(e.y - player.y) < 0.9) {
+			takeDamage(ENEMY_META[e.type]?.atk ?? 1);
+		}
+	}
+}
+
+// ── 投擲物（プロジェクタイル）管理 ───────────────────────────
+// { id, owner:'player'|'enemy', type:'boomerang'|'spear'|'stone',
+//   x, y, dx, dy, speed, atk, returning, maxRange, startX, startY, el }
+let projectiles = [];
+let nextProjId  = 1;
+
+function projectileTick() {
+	for (const proj of [...projectiles]) {
+		const step = proj.speed * MOVE_STEP;
+
+		if (proj.type === 'boomerang' && proj.owner === 'player') {
+			boomerangStep(proj, step);
+		} else {
+			// 直線飛翔（spear / stone など）
+			proj.x += proj.dx * step;
+			proj.y += proj.dy * step;
+			if (!isInBounds(proj.x, proj.y)) {
+				removeProjEl(proj);
+				projectiles = projectiles.filter(p => p !== proj);
+				continue;
+			}
+			// 壁衝突で消滅
+			if (!isTilePassableForProj(toTileRow(proj.y), toTileCol(proj.x))) {
+				removeProjEl(proj);
+				projectiles = projectiles.filter(p => p !== proj);
+				continue;
+			}
+			// プレイヤー or 敵への当たり判定
+			checkProjHit(proj);
+		}
+		moveProjEl(proj);
+	}
+}
+
+function boomerangStep(proj, step) {
+	const dist = Math.sqrt(
+		(proj.x - proj.startX) ** 2 + (proj.y - proj.startY) ** 2,
+	);
+
+	if (!proj.returning) {
+		// 往路：前進
+		proj.x += proj.dx * step;
+		proj.y += proj.dy * step;
+
+		// 壁 or 最大射程で折り返し
+		const hitWall = !isInBounds(proj.x, proj.y) ||
+			!isTilePassableForProj(toTileRow(proj.y), toTileCol(proj.x));
+		if (hitWall || dist >= proj.maxRange) {
+			proj.returning = true;
+		}
+		// 敵への当たり判定（往路）
+		checkProjHit(proj);
+	} else {
+		// 復路：プレイヤーへ向かう
+		const tdx = player.x - proj.x;
+		const tdy = player.y - proj.y;
+		const d   = Math.sqrt(tdx * tdx + tdy * tdy);
+		if (d < step + 0.3) {
+			// キャッチ：ブーメランを手元に戻す
+			removeProjEl(proj);
+			projectiles = projectiles.filter(p => p !== proj);
+			// uses が Infinity なら再使用可（消費なし）
+			playSound('item'); pulse('🪃 ブーメランをキャッチした！');
+			return;
+		}
+		proj.x += (tdx / d) * step;
+		proj.y += (tdy / d) * step;
+	}
+}
+
+function checkProjHit(proj) {
+	if (proj.owner === 'player') {
+		// 敵に当たる
+		for (const e of [...enemies]) {
+			if (Math.abs(e.x - proj.x) < 0.6 && Math.abs(e.y - proj.y) < 0.6) {
+				dealDamageToEnemy(e, proj.atk);
+				if (proj.type !== 'boomerang') {
+					removeProjEl(proj);
+					projectiles = projectiles.filter(p => p !== proj);
+				} else {
+					proj.returning = true; // 当たったら折り返す
+				}
+				return;
+			}
+		}
+	} else {
+		// プレイヤーに当たる
+		if (Math.abs(player.x - proj.x) < 0.5 && Math.abs(player.y - proj.y) < 0.5) {
+			takeDamage(proj.atk);
+			removeProjEl(proj);
+			projectiles = projectiles.filter(p => p !== proj);
+		}
+	}
+}
+
+function isInBounds(x, y) {
+	if (!stageData) return false;
+	return x >= 0 && x < stageData.cols && y >= 0 && y < stageData.rows;
+}
+
+function isTilePassableForProj(r, c) {
+	const tile = stageData?.tiles[r]?.[c];
+	if (!tile) return false;
+	if (tile === TILE.WALL) return false;
+	const posKey = `${r},${c}`;
+	const ss = getSS(currentLayer, stageKey);
+	if (tile === TILE.BREAKABLE_WALL && !ss.brokenWalls.has(posKey)) return false;
+	return true;
+}
+
+// 投擲物の DOM 要素を作成
+function createProjEl(proj) {
+	if (!charLayerEl) return;
+	const cellPx = getCellPx();
+	const div = document.createElement('div');
+	div.className = 'char-abs proj-el';
+	div.id = `proj-${proj.id}`;
+	div.style.left = `${proj.x * cellPx}px`;
+	div.style.top  = `${proj.y * cellPx}px`;
+	const cv = makeSprite(proj.type, proj.type, true);
+	if (cv) {
+		cv.style.width  = `${cellPx * 0.5}px`;
+		cv.style.height = `${cellPx * 0.5}px`;
+		div.appendChild(cv);
+	}
+	charLayerEl.appendChild(div);
+	proj.el = div;
+}
+
+function moveProjEl(proj) {
+	const el = document.getElementById(`proj-${proj.id}`);
+	if (!el) return;
+	const cellPx = getCellPx();
+	el.style.left = `${proj.x * cellPx}px`;
+	el.style.top  = `${proj.y * cellPx}px`;
+}
+
+function removeProjEl(proj) {
+	document.getElementById(`proj-${proj.id}`)?.remove();
+}
+
+// 全投擲物を消去（ステージ遷移時など）
+function clearProjectiles() {
+	for (const p of projectiles) removeProjEl(p);
+	projectiles = [];
+}
+
+// ── 爆弾管理 ─────────────────────────────────────────────────
+// { id, r, c, fuseEnd, el }
+let placedBombs = [];
+
+// 全設置爆弾を消去（ステージ遷移時など）
+function clearBombs() {
+	for (const b of placedBombs) b.el?.remove();
+	placedBombs = [];
+}
+
+function placeBomb() {
+	const id  = player.activeSubItem;
+	const si  = player.subItems[id];
+	if (!si || si.count <= 0) { pulse('爆弾がない！'); return; }
+
+	const r = toTileRow(player.y);
+	const c = toTileCol(player.x);
+	si.count--;
+	if (si.count <= 0) {
+		delete player.subItems[id];
+		player.activeSubItem = Object.keys(player.subItems)[0] ?? null;
+	}
+	updateHud();
+
+	// DOM に爆弾アイコンを配置
+	const cellPx = getCellPx();
+	const el = document.createElement('div');
+	el.className = 'char-abs bomb-placed';
+	el.id = `bomb-${nextProjId}`;
+	el.style.left = `${c * cellPx}px`;
+	el.style.top  = `${r * cellPx}px`;
+	el.style.zIndex = '8';
+	el.textContent = '💣';
+	el.style.fontSize = `${cellPx * 0.55}px`;
+	el.style.lineHeight = `${cellPx}px`;
+	el.style.textAlign = 'center';
+	charLayerEl?.appendChild(el);
+
+	playSound('item');
+	const bomb = { id: nextProjId++, r, c, fuseEnd: Date.now() + 2000, el };
+	placedBombs.push(bomb);
+}
+
+function bombTick() {
+	const now = Date.now();
+	for (const bomb of [...placedBombs]) {
+		if (now < bomb.fuseEnd) continue;
+		explodeBomb(bomb);
+	}
+}
+
+function explodeBomb(bomb) {
+	// DOM 除去
+	bomb.el?.remove();
+	placedBombs = placedBombs.filter(b => b !== bomb);
+
+	// 爆発エフェクト
+	showExplosionEffect(bomb.r, bomb.c);
+	playSound('bomb');
+
+	const AOE = ITEM_META.bomb?.aoeRadius ?? 2;
+	const ss  = getSS(currentLayer, stageKey);
+
+	// 爆発範囲内の処理
+	for (let dr = -AOE; dr <= AOE; dr++) {
+		for (let dc = -AOE; dc <= AOE; dc++) {
+			if (Math.sqrt(dr * dr + dc * dc) > AOE) continue;
+			const tr = bomb.r + dr;
+			const tc = bomb.c + dc;
+			if (tr < 0 || tr >= stageData.rows || tc < 0 || tc >= stageData.cols) continue;
+			const posKey = `${tr},${tc}`;
+			const tile   = stageData.tiles[tr][tc];
+
+			// 壊せる壁の破壊
+			if (tile === TILE.BREAKABLE_WALL && !ss.brokenWalls.has(posKey)) {
+				const bwDef = stageData.breakableWalls?.[posKey]?.breakDef ?? 1;
+				if ((ITEM_META.bomb?.breakPower ?? 3) >= bwDef) {
+					ss.brokenWalls.add(posKey);
+					evaluateConditions();
+					renderBoard(); renderChars();
+				}
+			}
+
+			// 敵ダメージ
+			for (const e of [...enemies]) {
+				if (toTileRow(e.y) === tr && toTileCol(e.x) === tc) {
+					dealDamageToEnemy(e, ITEM_META.bomb?.damage ?? 5);
+				}
+			}
+
+			// ※ 自爆ダメージなし（プレイヤーは爆弾に当たらない）
+		}
+	}
+	saveGame();
+}
+
+function showExplosionEffect(r, c) {
+	if (!charLayerEl) return;
+	const cellPx = getCellPx();
+	const el = document.createElement('div');
+	el.className = 'explosion-effect';
+	el.style.cssText = `
+		position:absolute;
+		left:${(c - 1) * cellPx}px;
+		top:${(r - 1) * cellPx}px;
+		width:${cellPx * 3}px;
+		height:${cellPx * 3}px;
+		z-index:20;
+		pointer-events:none;
+		border-radius:50%;
+		background:radial-gradient(circle, rgba(255,220,60,0.92) 0%, rgba(255,100,20,0.7) 40%, rgba(255,40,0,0.3) 70%, transparent 100%);
+		animation:explosion-anim 0.45s ease-out forwards;
+	`;
+	charLayerEl.appendChild(el);
+	setTimeout(() => el.remove(), 500);
+}
+
+// ── サブアイテム使用 ─────────────────────────────────────────
+function useSubItem() {
+	if (isDialog || isPaused || isGameover) return;
+	const id = player.activeSubItem;
+	if (!id) { pulse('サブアイテムがない！'); return; }
+	const meta = ITEM_META[id];
+	const si   = player.subItems[id];
+	if (!si || (!si.count && si.count !== Infinity)) { pulse('アイテムがない！'); return; }
+	if (meta?.type === 'consumable') {
+		if (player.hp >= player.maxHp) { pulse('HP は満タン！'); return; }
+		player.hp = Math.min(player.maxHp, player.hp + (meta.healAmount ?? 5));
+		if (si.count !== Infinity) si.count--;
+		if (si.count <= 0) { delete player.subItems[id]; player.activeSubItem = Object.keys(player.subItems)[0] ?? null; }
+		playSound('heal'); pulse(`HP を回復した！ (${player.hp}/${player.maxHp})`);
+		updateHud(); saveGame(); return;
+	}
+	if (id === 'boomerang') {
+		// 飛翔中ならキャッチ待ち
+		if (projectiles.some(p => p.type === 'boomerang' && p.owner === 'player')) {
+			pulse('ブーメランが戻ってくる！'); return;
+		}
+		const [dy, dx] = DIR_DELTA[heroDir];
+		const ndx = dx / MOVE_STEP;
+		const ndy = dy / MOVE_STEP;
+		resumeAudio(); playSound('slash');
+		const proj = {
+			id: nextProjId++, owner: 'player', type: 'boomerang',
+			x: player.x + ndx * 0.5, y: player.y + ndy * 0.5,
+			startX: player.x, startY: player.y,
+			dx: ndx, dy: ndy,
+			speed: 2.0,
+			atk: player.atk + 1,
+			returning: false,
+			maxRange: 5,
+		};
+		projectiles.push(proj);
+		createProjEl(proj);
+		return;
+	}
+	if (id === 'bomb') {
+		placeBomb(); return;
+	}
+	pulse(`${meta?.name ?? id} を使用！`);
+}
+
+// ── キーボード ────────────────────────────────────────────────
+// 現在押されているキーを管理（押しっぱなし移動用）
+const heldKeys = new Set();
+
+document.addEventListener('keydown', e => {
+	resumeAudio();
+	if (isDialog) {
+		if ([' ','Enter','z','Z'].includes(e.key)) { e.preventDefault(); advanceDialog(); }
+		return;
+	}
+	if (isPaused) {
+		if (e.key === 'Escape' || e.key === 'Enter') { e.preventDefault(); togglePause(); return; }
+		if (e.key === 'ArrowLeft')  { e.preventDefault(); pauseSelectPrev(); return; }
+		if (e.key === 'ArrowRight') { e.preventDefault(); pauseSelectNext(); return; }
+		return;
+	}
+	// 方向キーは heldKeys で管理（gameTick で処理）
+	if (['ArrowUp','w','W','ArrowDown','s','S','ArrowLeft','a','A','ArrowRight','d','D'].includes(e.key)) {
+		e.preventDefault();
+		heldKeys.add(e.key);
+		return;
+	}
+	if ([' ','z','Z'].includes(e.key)) { e.preventDefault(); swordAttack(); return; }
+	if (e.key === 'b' || e.key === 'B') { e.preventDefault(); useSubItem(); return; }
+	if (e.key === 'Escape') { e.preventDefault(); togglePause(); return; }
+	if (e.key === 'Shift')  { e.preventDefault(); isShielding = true; updateShieldHud(); return; }
+	if (e.key === 'g' || e.key === 'G') { e.preventDefault(); toggleDebugMode(); return; }
+});
+document.addEventListener('keyup', e => {
+	heldKeys.delete(e.key);
+	if (e.key === 'Shift') { isShielding = false; updateShieldHud(); }
+});
+
+// 押しっぱなし移動処理（gameTick から呼ぶ）
+function processHeldKeys() {
+	if (heldKeys.has('ArrowUp')    || heldKeys.has('w') || heldKeys.has('W')) { movePlayer('up');    return; }
+	if (heldKeys.has('ArrowDown')  || heldKeys.has('s') || heldKeys.has('S')) { movePlayer('down');  return; }
+	if (heldKeys.has('ArrowLeft')  || heldKeys.has('a') || heldKeys.has('A')) { movePlayer('left');  return; }
+	if (heldKeys.has('ArrowRight') || heldKeys.has('d') || heldKeys.has('D')) { movePlayer('right'); return; }
+}
+
+function updateShieldHud() {
+	document.getElementById('btn-shield')?.classList.toggle('defending', isShielding);
+}
+
+// ── モバイル ──────────────────────────────────────────────────
+document.querySelectorAll('.dpad-btn[data-dir]').forEach(btn => {
+	const dir = btn.dataset.dir;
+	if (!dir) return;
+	btn.addEventListener('touchstart', e => { e.preventDefault(); resumeAudio(); movePlayer(dir); }, { passive: false });
+	btn.addEventListener('mousedown', () => { resumeAudio(); movePlayer(dir); });
+});
+document.getElementById('btn-sword').addEventListener('click', () => { resumeAudio(); swordAttack(); });
+document.getElementById('btn-sub').addEventListener('click',   () => { resumeAudio(); useSubItem(); });
+document.getElementById('btn-menu').addEventListener('click',  () => { resumeAudio(); togglePause(); });
+const shieldBtn = document.getElementById('btn-shield');
+shieldBtn.addEventListener('touchstart', e => { e.preventDefault(); isShielding = true;  updateShieldHud(); }, { passive: false });
+shieldBtn.addEventListener('touchend',   () => { isShielding = false; updateShieldHud(); });
+shieldBtn.addEventListener('mousedown',  () => { isShielding = true;  updateShieldHud(); });
+shieldBtn.addEventListener('mouseup',    () => { isShielding = false; updateShieldHud(); });
+gameoverRetryEl.addEventListener('click', () => { resumeAudio(); retryGame(); });
+
+// スワイプ
+let touchStartX = 0, touchStartY = 0;
+document.addEventListener('touchstart', e => {
+	if (e.target.closest('#mobile-ctrl')) return;
+	touchStartX = e.touches[0].clientX; touchStartY = e.touches[0].clientY;
+}, { passive: true });
+document.addEventListener('touchend', e => {
+	if (e.target.closest('#mobile-ctrl')) return;
+	const dx = e.changedTouches[0].clientX - touchStartX;
+	const dy = e.changedTouches[0].clientY - touchStartY;
+	if (Math.abs(dx) < 30 && Math.abs(dy) < 30) return;
+	if (Math.abs(dx) > Math.abs(dy)) movePlayer(dx > 0 ? 'right' : 'left');
+	else movePlayer(dy > 0 ? 'down' : 'up');
+}, { passive: true });
+
+// ── アニメーション ────────────────────────────────────────────
+startAnimLoop(() => { redrawAnimSprites(); });
+
+// ── 初期化 ────────────────────────────────────────────────────
+const titleOverlayEl  = document.getElementById('title-overlay');
+const confirmOverlayEl = document.getElementById('confirm-overlay');
+const btnContinueEl   = document.getElementById('btn-continue');
+const btnNewgameEl    = document.getElementById('btn-newgame');
+const btnConfirmYesEl = document.getElementById('btn-confirm-yes');
+const btnConfirmNoEl  = document.getElementById('btn-confirm-no');
+
+// 新規ゲーム開始（セーブデータを消して最初から）
+function startNewGame() {
+	localStorage.removeItem(SAVE_KEY);
+	stageState   = {};
+	currentLayer = 'field';
+	stageKey     = Object.keys(mapData?.layers?.field?.stages ?? {})[0] ?? '0,0';
+	const sd     = getStageData(currentLayer, stageKey);
+	let startRow = 1, startCol = 1;
+	if (sd) {
+		outer: for (let r = 0; r < sd.rows; r++) {
+			for (let c = 0; c < sd.cols; c++) {
+				if (sd.tiles[r][c] === TILE.PLAYER) { startRow = r; startCol = c; break outer; }
+			}
+		}
+	}
+	// player を初期状態にリセット
+	player = {
+		x: startCol, y: startRow,
+		hp: 6, maxHp: 6, maxHearts: 3,
+		atk: 2, def: 0, keys: 0,
+		weapon: null, shield: null, armor: null,
+		subItems: {}, activeSubItem: null,
+		rupees: 0, triforceCount: 0,
+	};
+	heroDir = 'down';
+	enterStage(currentLayer, stageKey, player.y, player.x);
+	startGameLoop();
+	resumeAudio();
+}
+
+// タイトルダイアログのボタンイベント
+btnContinueEl.addEventListener('click', () => {
+	titleOverlayEl.classList.add('hidden');
+	enterStage(currentLayer, stageKey, player.y, player.x);
+	startGameLoop();
+	resumeAudio();
+});
+
+btnNewgameEl.addEventListener('click', () => {
+	// 確認ダイアログを表示
+	titleOverlayEl.classList.add('hidden');
+	confirmOverlayEl.classList.remove('hidden');
+});
+
+btnConfirmYesEl.addEventListener('click', () => {
+	confirmOverlayEl.classList.add('hidden');
+	startNewGame();
+});
+
+btnConfirmNoEl.addEventListener('click', () => {
+	// タイトルに戻る
+	confirmOverlayEl.classList.add('hidden');
+	titleOverlayEl.classList.remove('hidden');
+});
+
+async function init() {
+	await loadMapData();
+	const hasSave = loadGame();
+
+	if (!hasSave || !stageKey) {
+		// セーブデータなし → 即新規ゲーム開始
+		startNewGame();
+	} else {
+		// セーブデータあり → タイトルダイアログを表示
+		titleOverlayEl.classList.remove('hidden');
+		// 「続きから」ボタンのみ有効にする（セーブあり前提）
+		btnContinueEl.style.display = '';
+	}
+}
+
+init().catch(err => {
+	console.error('init failed:', err);
+	document.body.innerHTML = `<p style="color:red;padding:20px">読み込みエラー: ${err.message}</p>`;
+});
