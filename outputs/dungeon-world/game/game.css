@@ -501,6 +501,92 @@
     transform-origin: left center;
 }
 
+/* ── サウンドダイアログ ──────────────────────────────────── */
+.sound-dialog {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.85);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 600;
+}
+
+.sound-dialog.hidden {
+    display: none;
+}
+
+.sound-dialog-box {
+    background: #181d22;
+    border: 2px solid #4fc3a0;
+    border-radius: 14px;
+    padding: 28px 32px;
+    max-width: 300px;
+    width: 90%;
+    text-align: center;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 14px;
+}
+
+.sound-dialog-icon {
+    font-size: 2.5rem;
+    line-height: 1;
+}
+
+.sound-dialog-title {
+    font-size: 1.3rem;
+    font-weight: 800;
+    color: #f0c040;
+    letter-spacing: 0.05em;
+    margin: 0;
+}
+
+.sound-dialog-desc {
+    font-size: 0.9rem;
+    color: #b0c8c0;
+    margin: 0;
+}
+
+.sound-dialog-btns {
+    display: flex;
+    gap: 12px;
+    width: 100%;
+}
+
+.sound-btn {
+    flex: 1;
+    padding: 10px 0;
+    border-radius: 8px;
+    font: inherit;
+    font-size: 0.95rem;
+    font-weight: 700;
+    cursor: pointer;
+    border: 2px solid;
+    transition: background 0.15s;
+}
+
+.sound-btn--on {
+    border-color: #4fc3a0;
+    background: rgba(79, 195, 160, 0.2);
+    color: #4fc3a0;
+}
+
+.sound-btn--on:hover, .sound-btn--on:active {
+    background: rgba(79, 195, 160, 0.4);
+}
+
+.sound-btn--off {
+    border-color: #4a5560;
+    background: rgba(74, 85, 96, 0.2);
+    color: #7a9090;
+}
+
+.sound-btn--off:hover, .sound-btn--off:active {
+    background: rgba(74, 85, 96, 0.4);
+}
+
 /* キーヒント（小） */
 .key-hint-small {
     font-size: 0.65rem;

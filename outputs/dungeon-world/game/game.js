@@ -1042,6 +1042,20 @@ boardEl.addEventListener('pointerup',   e => {
 
 		enterStage(startKey, startRow, startCol);
 		startAnimLoop(() => redrawAnimSprites(boardEl));
-		playBgm(); // ダンジョンBGM開始
+
+		// サウンドダイアログを表示（ユーザーインタラクションを取得してAudioContextを起動）
+		const soundDialogEl = document.getElementById('sound-dialog');
+		const soundOnBtn    = document.getElementById('sound-on-btn');
+		const soundOffBtn   = document.getElementById('sound-off-btn');
+
+		soundOnBtn.addEventListener('click', () => {
+			soundDialogEl.classList.add('hidden');
+			playBgm(); // ユーザー操作後にBGM開始（AudioContext が起動できる）
+		}, { once: true });
+
+		soundOffBtn.addEventListener('click', () => {
+			soundDialogEl.classList.add('hidden');
+			// BGMなし（サウンドオフ）
+		}, { once: true });
 	}
 })();
