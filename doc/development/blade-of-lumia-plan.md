@@ -768,7 +768,7 @@ document.addEventListener('keydown', handleInput);
 ### Phase 4: 敵の高度な行動
 > **目標**: やり投げ・石つぶて・剣振りする敵が出る
 
-- [ ] プロジェクタイル（`projectiles` 配列）の共通処理実装
+- [x] プロジェクタイル（`projectiles` 配列）の共通処理実装（Phase 3 内で実装済み）
 - [ ] やり投げ（spear）敵：射程・同列判定・cooldown
 - [ ] 石つぶて（stone）敵：射程・方向算出・cooldown
 - [ ] 剣振り（sword）敵：近距離高威力・たてで防御可能
@@ -778,14 +778,16 @@ document.addEventListener('keydown', handleInput);
 
 ### Phase 5: ギミック＆ NPC
 > **目標**: スイッチ・壊せる壁・条件付き出現・NPC 会話が動く
+> **状態**: 一部実装済み（壊せる壁・条件出現・MAP_ENTER・NPC・ルピーは Phase 1〜3 内で実装済み）
 
-- [ ] 壊せる壁（BREAKABLE_WALL）：hitDef 判定・破壊後 FLOOR 化
-- [ ] 条件付き出現ギミック：`evaluateConditions()` 実装
-- [ ] MAP_ENTER（レイヤー間遷移）の完全実装
-- [ ] NPC 接触ダイアログ（複数セリフ・次へボタン）
-- [ ] ルピー拾得・`player.rupees` 管理
+- [x] 壊せる壁（BREAKABLE_WALL）：breakDef 判定・破壊後 FLOOR 化（爆弾のみ対応）
+- [x] 条件付き出現ギミック：`evaluateConditions()` 実装（killAll / switchOn / wallBroken / hasItem 対応）
+- [x] MAP_ENTER（レイヤー間遷移）の完全実装（出口ID方式、exitRegistry）
+- [x] NPC 接触ダイアログ（複数セリフ・次へボタン）
+- [x] ルピー拾得・`player.rupees` 管理（ルピー小×1・ルピー大×5）
 - [ ] ショップ UI（商品リスト・購入確認・ルピー消費）
-- [ ] ハートコンテナ・ルピー・トライフォースのカケラのスプライト追加
+- [x] ハートコンテナのタイル・拾得処理（`ITEM_HEART_CONTAINER`）
+- [ ] ルピー・トライフォースのカケラのスプライト追加（絵文字フォールバックで仮表示中）
 
 ---
 
@@ -1636,3 +1638,40 @@ stage.breakableWalls["2,1"] = {
 - **NPC の会話データはマップJSONに含める**（`stage.npcData`）ことでエディタと一体管理
 - **no-multiline-shell ルール厳守**（シェルスクリプトはファイルに書き出してから実行）
 - エディタは Dungeon World エディタのコードを**最大限再利用**し、差分のみ修正する
+
+---
+
+## 実装済み追加機能メモ（プラン外で実装されたもの）
+
+### プレイヤー・敵の衝突判定（重なり防止）
+
+- プレイヤーは敵と同タイルに移動できない（`isPassable` でタイル座標比較）
+- 敵もプレイヤーと同タイルに移動できない（`isPassableForEnemy` でタイル座標比較）
+- 体当たりダメージは `checkEnemyContact`（float距離 0.9）で別途判定
+- デバッグモード（G キー）中はプレイヤー側のすり抜けのみ有効
+
+### キー押しっぱなし移動
+
+- `keydown`/`keyup` で `heldKeys` Set を管理
+- `gameTick` 内で毎 tick `processHeldKeys()` を呼び、押下中の方向に移動
+- OSのキーリピートに依存しないためスムーズな連続移動が可能
+- 移動速度 = 0.5セル × （1000ms / TICK_MS）= 約 4〜8 セル/秒
+
+### 盾（shield）オーバーレイ表示
+
+- 盾を持っているとき、向きに応じた盾スプライトをキャラに重ねて表示
+- 右向き・左向き → `shieldSide`（横断面スプライト）
+- 下向き → `shield`（正面スプライト）
+- 上向き → DOM 追加順序制御で盾をキャラの下レイヤーに表示（`z-index: -1`）
+- CSS の `!important` 制約を `setProperty(..., 'important')` で上書きしてサイズ制御
+
+### 床置きアイテムのスプライトフレーム固定
+
+- `makeSprite(name, pal, animated=false)` のとき `drawSpriteFrame(cv, frames, 0, ...)` でフレーム0固定
+- アイテム取得時に `renderBoard()` → `animFrame` タイミングで表示が変わる問題を修正
+
+### スプライト追加（`sprites.js`）
+
+- `shieldSide`（4×8px）：横から見た盾
+- `shieldBack`（8×5px）：後ろから見た盾の裏面
+- `drawSpriteFrame()`：指定フレーム番号で描画（animFrame に左右されない）
