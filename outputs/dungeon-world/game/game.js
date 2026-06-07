@@ -89,6 +89,9 @@ let stageKey  = null;
 let stageData = null;
 let stageState = {};
 
+// プレビューモードフラグ（URLパラメータ指定時はセーブしない）
+let _previewMode = false;
+
 let player = {
 	row: 0, col: 0, hp: 20, maxHp: 20, atk: 4, def: 1, lv: 1, exp: 0, keys: 0,
 	weapon: null,
@@ -225,6 +228,7 @@ function enterStage(key, pRow, pCol) {
 	buildEnemies(key, sd);
 	render();
 	updateHud();
+	saveGameState(); // ステージ移動のたびに自動セーブ
 }
 
 function buildEnemies(key, sd) {
@@ -238,12 +242,17 @@ function buildEnemies(key, sd) {
 			if (ss.defeatedEnemies.has(`${r},${c}`)) continue;
 			const base = ENEMY_META[t];
 			const custom = (sd.enemyParams || {})[`${r},${c}`] || {};
+			// Step 8: New Game+ 時は DARK_LORD のステータスを強化
+			const isNgBoss = player.ngPlus && t === TILE.DARK_LORD;
+			const baseHp  = custom.hp  ?? base.hp;
+			const baseAtk = custom.atk ?? base.atk;
+			const baseDef = custom.def ?? base.def;
 			enemies.push({
 				id: id++, row: r, col: c, type: t,
-				hp:    custom.hp  ?? base.hp,
-				maxHp: custom.hp  ?? base.hp,
-				atk:   custom.atk ?? base.atk,
-				def:   custom.def ?? base.def,
+				hp:    isNgBoss ? baseHp  * 2 : baseHp,
+				maxHp: isNgBoss ? baseHp  * 2 : baseHp,
+				atk:   isNgBoss ? baseAtk + 10 : baseAtk,
+				def:   isNgBoss ? baseDef + 3  : baseDef,
 				exp:   custom.exp ?? base.exp,
 				aggressive: base.aggressive,
 			});
@@ -375,9 +384,16 @@ function move(dir) {
 	if (t === TILE.PRINCESS) {
 		stopBgm();       // ダイアログ表示と同時にBGMを即時停止
 		playSound('key');
-		showItemDialog('👸 姫', 'ありがとう！あなたのおかげで助かりました！', () => {
-			startEnding();
-		});
+		// Step 7: New Game+ 時はダイアログを切り替える
+		if (player.ngPlus) {
+			showItemDialog('⚔️ 勇者', '姫…！来てくれたのか！脱出しよう！', () => {
+				startEnding();
+			});
+		} else {
+			showItemDialog('👸 姫', 'ありがとう！あなたのおかげで助かりました！', () => {
+				startEnding();
+			});
+		}
 		return;
 	}
 
@@ -460,6 +476,8 @@ function pickItem(r, c) {
 		updateHud();
 	}
 	if (t === TILE.SWITCH) checkSwitches(r, c);
+	// アイテム取得・ゲート開扉後に自動セーブ
+	saveGameState();
 }
 
 // ── スイッチ・ゲート ──────────────────────────────────────────
@@ -606,6 +624,7 @@ function gainExp(amount) {
 		player.atk = 4 + (player.lv - 1) + (player.weapon?.atk ?? 0);
 		playSound('levelup'); pulse(`レベルアップ！ Lv.${player.lv} HP全回復`);
 	}
+	saveGameState(); // 敵撃破・レベルアップ後に自動セーブ
 }
 
 // ── Render ────────────────────────────────────────────────────
@@ -702,9 +721,19 @@ function render() {
 
 			// プレイヤー（向き矢印付き）
 			if (r === player.row && c === player.col) {
+				// Step 5: New Game+ 時は姫スプライトを使用（方向別）
+				let sname, palName;
 				const dirKey = { right: 'R', left: 'L', up: 'U', down: 'D' };
-				const sname  = 'hero' + (dirKey[heroDir] || 'D');
-				const cv = makeSprite(sname, 'hero', true);
+				if (player.ngPlus) {
+					const dk = dirKey[heroDir] || 'D';
+					// 下向きは princess（正面）、それ以外は princessR/L/U
+					sname   = dk === 'D' ? 'princess' : 'princess' + dk;
+					palName = 'princess';
+				} else {
+					sname   = 'hero' + (dirKey[heroDir] || 'D');
+					palName = 'hero';
+				}
+				const cv = makeSprite(sname, palName, true);
 				if (cv) cell.append(cv);
 				const arrow = document.createElement('div');
 				arrow.className = `dir-arrow dir-${heroDir}`;
@@ -738,6 +767,115 @@ function pulse(msg) {
 	msgTimer = setTimeout(() => messageEl.classList.add('hidden'), 2500);
 }
 
+// ── Save / Load ────────────────────────────────────────────────
+const SAVE_KEY    = 'dungeonWorldSaveData';
+const NG_PLUS_KEY = 'dungeonWorldNewGamePlus';
+
+function saveGameState() {
+	if (!stageKey) return;
+	if (_previewMode) return; // プレビューモード時はセーブしない
+	// stageState の Set/Map を JSON シリアライズ可能な形に変換
+	const stageStateSerialized = {};
+	for (const [key, ss] of Object.entries(stageState)) {
+		stageStateSerialized[key] = {
+			openGates:       [...ss.openGates],
+			pickedKeys:      [...ss.pickedKeys],
+			defeatedEnemies: [...ss.defeatedEnemies],
+			openedChests:    [...ss.openedChests],
+			objects:         { ...ss.objects },
+		};
+	}
+	const save = {
+		version: 1,
+		player: { ...player },
+		heroDir,
+		stageKey,
+		stageEntryRow,
+		stageEntryCol,
+		stageState: stageStateSerialized,
+	};
+	localStorage.setItem(SAVE_KEY, JSON.stringify(save));
+}
+
+function loadGameState() {
+	const raw = localStorage.getItem(SAVE_KEY);
+	if (!raw) return false;
+	try {
+		const save = JSON.parse(raw);
+		if (!save || save.version !== 1) return false;
+		// プレイヤー状態を復元
+		player = { ...save.player };
+		heroDir = save.heroDir ?? 'down';
+		stageEntryRow = save.stageEntryRow ?? 0;
+		stageEntryCol = save.stageEntryCol ?? 0;
+		// ステージ状態を復元（Set に戻す）
+		stageState = {};
+		for (const [key, ss] of Object.entries(save.stageState ?? {})) {
+			stageState[key] = {
+				openGates:       new Set(ss.openGates ?? []),
+				pickedKeys:      new Set(ss.pickedKeys ?? []),
+				defeatedEnemies: new Set(ss.defeatedEnemies ?? []),
+				openedChests:    new Set(ss.openedChests ?? []),
+				objects:         { ...(ss.objects ?? {}) },
+			};
+		}
+		// ステージを復元（enterStage の代わりに直接セット：エントリー位置を上書きしない）
+		const key = save.stageKey;
+		const sd  = mapData.stages[key];
+		if (!sd) return false;
+		stageKey  = key;
+		stageData = sd;
+		const [sx, sy] = key.split(',').map(Number);
+		stageLabelEl.textContent = `ステージ (${sx}, ${sy})`;
+		player.row = save.player.row;
+		player.col = save.player.col;
+		buildEnemies(key, sd);
+		render();
+		updateHud();
+		return true;
+	} catch { return false; }
+}
+
+function clearSaveData() {
+	localStorage.removeItem(SAVE_KEY);
+}
+
+// ── New Game+ ─────────────────────────────────────────────────
+
+/** Step 3: NG+ データを読む */
+function loadNgPlus() {
+	const raw = localStorage.getItem(NG_PLUS_KEY);
+	if (!raw) return null;
+	try {
+		const data = JSON.parse(raw);
+		if (!data?.cleared) return null;
+		return data;
+	} catch { return null; }
+}
+
+/** Step 3: NG+ データをクリアする */
+function clearNgPlus() {
+	localStorage.removeItem(NG_PLUS_KEY);
+}
+
+/** Step 4: New Game+ を開始する */
+function startNgPlus(ngPlusData, startKey, startRow, startCol) {
+	player = {
+		row: 0, col: 0,
+		hp: 20, maxHp: 20,
+		atk: 4 + (ngPlusData.weapon?.atk ?? 0),
+		def: 1 + (ngPlusData.armor?.def ?? 0),
+		lv: 1, exp: 0, keys: 0,
+		weapon: ngPlusData.weapon ?? null,
+		armor:  ngPlusData.armor  ?? null,
+		ngPlus: true,
+	};
+	heroDir = 'down';
+	stageState = {};
+	enterStage(startKey, startRow, startCol);
+	pulse('⭐ New Game+ 開始！装備を引き継いでいます');
+}
+
 // ── Reset ─────────────────────────────────────────────────────
 function resetStage() {
 	if (!stageKey || !stageData) return;
@@ -755,9 +893,13 @@ function gameover() {
 
 overlayBtnEl.addEventListener('click', () => {
 	overlayEl.classList.add('hidden');
-	player = { row: 0, col: 0, hp: 20, maxHp: 20, atk: 4, def: 1, lv: 1, exp: 0, keys: 0, weapon: null, armor: null };
-	const start = findStart();
-	enterStage(start.key, start.row, start.col);
+	// セーブデータがあれば最終セーブから再開、なければ最初から
+	const restored = loadGameState();
+	if (!restored) {
+		player = { row: 0, col: 0, hp: 20, maxHp: 20, atk: 4, def: 1, lv: 1, exp: 0, keys: 0, weapon: null, armor: null };
+		const start = findStart();
+		enterStage(start.key, start.row, start.col);
+	}
 	playBgm(); // ダンジョンBGM再開
 });
 
@@ -940,10 +1082,26 @@ async function startEnding() {
 	phase2El.classList.remove('hidden');
 
 	// 6-3. ヒーロー（正面向き heroD）と姫を描画
+	// Step 6: New Game+ 時はスプライトを入れ替える（姫が操作キャラ → 助けられた勇者と一緒に）
 	const hero2CanvasEl    = document.getElementById('ending-hero2-canvas');
 	const princessCanvasEl = document.getElementById('ending-princess-canvas');
-	drawSprite(hero2CanvasEl,    SPRITES['heroD'],    PAL['hero']);
-	drawSprite(princessCanvasEl, SPRITES['princess'], PAL['princess']);
+	if (player.ngPlus) {
+		drawSprite(hero2CanvasEl,    SPRITES['princess'], PAL['princess']); // 操作キャラ（姫）
+		drawSprite(princessCanvasEl, SPRITES['heroD'],    PAL['hero']);      // 助けられた勇者
+	} else {
+		drawSprite(hero2CanvasEl,    SPRITES['heroD'],    PAL['hero']);
+		drawSprite(princessCanvasEl, SPRITES['princess'], PAL['princess']);
+	}
+
+	// Step 1: エンディング到達フラグ + 装備を NG_PLUS_KEY に保存
+	localStorage.setItem(NG_PLUS_KEY, JSON.stringify({
+		version: 1,
+		cleared: true,
+		weapon: player.weapon ?? null,
+		armor:  player.armor  ?? null,
+		lv:     player.lv,
+	}));
+	clearSaveData(); // 通常セーブデータをクリア（NG+ は NG_PLUS_KEY で管理）
 
 	// 7. クリック/タップ or 5秒後にタイトルへ
 	function doReset() {
@@ -951,7 +1109,25 @@ async function startEnding() {
 		phase1El.style.display = '';
 		phase2El.classList.add('hidden');
 		phase2El.removeEventListener('pointerdown', doReset);
-		overlayBtnEl.click();
+		_battleBusy = false;
+
+		// Step 10: エンディング後は NG+ データを確認して New Game+ を開始する
+		// （NG_PLUS_KEY は startEnding() 内で保存済み）
+		const ngPlusData = loadNgPlus();
+		if (ngPlusData) {
+			// stageState をリセット（敵・宝箱はリセット、装備のみ引き継ぎ）
+			stageState = {};
+			const start = findStart();
+			startNgPlus(ngPlusData, start.key, start.row, start.col);
+		} else {
+			// NG+ データなし（通常はありえないが念のため通常スタート）
+			player = { row: 0, col: 0, hp: 20, maxHp: 20, atk: 4, def: 1, lv: 1, exp: 0, keys: 0, weapon: null, armor: null };
+			heroDir = 'down';
+			stageState = {};
+			const start = findStart();
+			enterStage(start.key, start.row, start.col);
+		}
+		playBgm();
 	}
 	phase2El.addEventListener('pointerdown', doReset, { once: true });
 	phase2El.style.cursor = 'pointer';
@@ -1051,22 +1227,60 @@ boardEl.addEventListener('pointerup',   e => {
 			startKey = start.key; startRow = start.row; startCol = start.col;
 		}
 
-		enterStage(startKey, startRow, startCol);
 		startAnimLoop(() => redrawAnimSprites(boardEl));
 
-		// サウンドダイアログを表示（ユーザーインタラクションを取得してAudioContextを起動）
-		const soundDialogEl = document.getElementById('sound-dialog');
-		const soundOnBtn    = document.getElementById('sound-on-btn');
-		const soundOffBtn   = document.getElementById('sound-off-btn');
+		// ── サウンドダイアログ ──────────────────────────────────
+		const soundDialogEl    = document.getElementById('sound-dialog');
+		const soundOnBtn       = document.getElementById('sound-on-btn');
+		const soundOffBtn      = document.getElementById('sound-off-btn');
+		const continueDialogEl = document.getElementById('continue-dialog');
+		const continueBtn      = document.getElementById('continue-btn');
+		const newgameBtn       = document.getElementById('newgame-btn');
 
-		soundOnBtn.addEventListener('click', () => {
+		// サウンド選択後に呼ぶ関数（セーブ有無に応じて次のダイアログを出す）
+		function afterSoundDialog(withBgm) {
 			soundDialogEl.classList.add('hidden');
-			playBgm(); // ユーザー操作後にBGM開始（AudioContext が起動できる）
-		}, { once: true });
 
-		soundOffBtn.addEventListener('click', () => {
-			soundDialogEl.classList.add('hidden');
-			// BGMなし（サウンドオフ）
-		}, { once: true });
+			// URLパラメータ指定時はプレビューモード（セーブ無効）で即スタート
+			if (stageParam) {
+				_previewMode = true;
+				enterStage(startKey, startRow, startCol);
+				if (withBgm) playBgm();
+				return;
+			}
+
+			// セーブデータがあれば「つづきから / 最初から」ダイアログを表示
+			const hasSaveData = !!localStorage.getItem(SAVE_KEY);
+			if (hasSaveData) {
+				continueDialogEl.classList.remove('hidden');
+
+				continueBtn.addEventListener('click', () => {
+					continueDialogEl.classList.add('hidden');
+					loadGameState();
+					if (withBgm) playBgm();
+				}, { once: true });
+
+				newgameBtn.addEventListener('click', () => {
+					continueDialogEl.classList.add('hidden');
+					clearSaveData();
+					clearNgPlus();
+					// Step 2: NG+ データも確認（最初からの場合はクリア済みなので通常スタート）
+					enterStage(startKey, startRow, startCol);
+					if (withBgm) playBgm();
+				}, { once: true });
+			} else {
+				// セーブなし → NG+ データを確認して New Game+ を開始するか判断
+				const ngPlus = loadNgPlus();
+				if (ngPlus) {
+					startNgPlus(ngPlus, startKey, startRow, startCol);
+				} else {
+					enterStage(startKey, startRow, startCol);
+				}
+				if (withBgm) playBgm();
+			}
+		}
+
+		soundOnBtn.addEventListener('click',  () => afterSoundDialog(true),  { once: true });
+		soundOffBtn.addEventListener('click', () => afterSoundDialog(false), { once: true });
 	}
 })();
