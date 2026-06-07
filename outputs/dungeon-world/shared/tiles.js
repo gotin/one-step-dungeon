@@ -12,6 +12,8 @@ export const TILE = {
 	SENTRY:    'F',  // 騎士（強い追跡者）
 	BOSS:      'V',  // 魔将（最強の追跡者）
 	DARK_LORD: 'X',  // 魔王（オーラを纏う最強敵）
+	// NPC
+	PRINCESS: 'P',   // 姫（隣接するとエンディングダイアログ）
 	// ギミック
 	GATE:    'T',  // ゲート（スイッチで開く）
 	SWITCH:  'S',  // スイッチ（踏むとゲートが開く）
@@ -32,6 +34,7 @@ export const TILE_META = {
 	[TILE.SENTRY]: { label: '騎士',       color: '#501880', passable: true,  icon: 'Ｆ' },
 	[TILE.BOSS]:      { label: '魔将', color: '#184060', passable: true,  icon: 'Ｖ' },
 	[TILE.DARK_LORD]: { label: '魔王', color: '#0a0a18', passable: true,  icon: 'Ｘ' },
+	[TILE.PRINCESS]:  { label: '姫',  color: '#aa4488', passable: true,  icon: '♀' },
 	[TILE.GATE]:   { label: 'ゲート',     color: '#204060', passable: false, icon: '⊟' },
 	[TILE.SWITCH]: { label: 'スイッチ',   color: '#406020', passable: true,  icon: '⊙' },
 	[TILE.DOOR]:   { label: '扉（鍵）',   color: '#604020', passable: false, icon: '⊞' },

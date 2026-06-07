@@ -4,7 +4,7 @@ import { SPRITES, PAL, drawSprite, animFrame, startAnimLoop } from '../shared/sp
 
 // ── State ─────────────────────────────────────────────────────
 const state = {
-	world: makeEmptyWorld(3, 3),      // ワールドマップ情報
+	world: makeEmptyWorld(3, 4),      // ワールドマップ情報（3列×4行）
 	stages: {},                        // { "x,y": stageData } 全ステージデータ
 	currentCoord: null,                // 現在編集中のステージ座標 { x, y }
 	selectedTile: TILE.WALL,           // 選択中のタイル
@@ -64,6 +64,7 @@ const MINIMAP_TILE_COLORS = {
 	[TILE.SENTRY]:    '#9040c0',
 	[TILE.BOSS]:      '#f0c040',
 	[TILE.DARK_LORD]: '#8800ff',
+	[TILE.PRINCESS]:  '#ff66aa',
 	[TILE.GATE]:   '#1a2c40',
 	[TILE.SWITCH]: '#5a9a40',
 	[TILE.DOOR]:   '#9b7048',
@@ -89,12 +90,91 @@ function drawMinimap(stage) {
 	return cv;
 }
 
+// ── 行・列挿入ヘルパー ────────────────────────────────────────
+
+/** insertY の位置に行を挿入（insertY 以降の y をすべて +1 シフト） */
+function insertRow(insertY) {
+	// y >= insertY のステージを y+1 にリネーム（降順処理でキー衝突を防ぐ）
+	const keys = Object.keys(state.stages)
+		.map(k => { const [x, y] = k.split(',').map(Number); return { k, x, y }; })
+		.filter(e => e.y >= insertY)
+		.sort((a, b) => b.y - a.y); // 降順
+	for (const { k, x, y } of keys) {
+		state.stages[`${x},${y + 1}`] = state.stages[k];
+		delete state.stages[k];
+	}
+	state.world.worldRows += 1;
+	// 選択中座標を追従
+	if (state.currentCoord && state.currentCoord.y >= insertY) {
+		state.currentCoord.y += 1;
+	}
+	renderWorldGrid();
+}
+
+/** insertX の位置に列を挿入（insertX 以降の x をすべて +1 シフト） */
+function insertCol(insertX) {
+	const keys = Object.keys(state.stages)
+		.map(k => { const [x, y] = k.split(',').map(Number); return { k, x, y }; })
+		.filter(e => e.x >= insertX)
+		.sort((a, b) => b.x - a.x);
+	for (const { k, x, y } of keys) {
+		state.stages[`${x + 1},${y}`] = state.stages[k];
+		delete state.stages[k];
+	}
+	state.world.worldCols += 1;
+	if (state.currentCoord && state.currentCoord.x >= insertX) {
+		state.currentCoord.x += 1;
+	}
+	renderWorldGrid();
+}
+
 function renderWorldGrid() {
 	const { worldCols, worldRows } = state.world;
-	worldGrid.style.gridTemplateColumns = `repeat(${worldCols}, 100px)`;
+	// グリッドは「挿入ボタン行/列」も含めた構造で構築
+	// 列レイアウト: [insBtn] [cell] [insBtn] [cell] ... [insBtn]
+	// 行レイアウト: insBtn行 / cell行 / insBtn行 / cell行 / ... insBtn行
+	const totalCols = worldCols * 2 + 1; // 挿入ボタン列込み
+	worldGrid.style.gridTemplateColumns = `18px repeat(${worldCols}, 100px 18px)`;
 	worldGrid.innerHTML = '';
-	for (let y = 0; y < worldRows; y++) {
+
+	// 行ループ：各行の前に「行挿入ボタン行」を挿入
+	for (let y = 0; y <= worldRows; y++) {
+		// ── 行挿入ボタン行 ──────────────────────────────────────
+		// 列挿入ボタンの上部スペーサー
+		const rowBtnCorner = document.createElement('div');
+		rowBtnCorner.style.cssText = 'height:18px;';
+		worldGrid.appendChild(rowBtnCorner);
+
 		for (let x = 0; x < worldCols; x++) {
+			const rowInsertBtn = document.createElement('button');
+			rowInsertBtn.className = 'world-insert-btn world-insert-row';
+			rowInsertBtn.title = `${y}行目の上に行を挿入`;
+			rowInsertBtn.textContent = '＋';
+			const capturedY = y;
+			rowInsertBtn.addEventListener('click', () => insertRow(capturedY));
+			worldGrid.appendChild(rowInsertBtn);
+
+			// 行区切りのスペーサー（右の列挿入ボタン分）
+			const rowBtnSpacer = document.createElement('div');
+			rowBtnSpacer.style.cssText = 'height:18px;';
+			worldGrid.appendChild(rowBtnSpacer);
+		}
+
+		if (y === worldRows) break; // 最後の行の下の挿入ボタン行まで描いたら終了
+
+		// ── ステージセル行 ─────────────────────────────────────
+		for (let x = 0; x <= worldCols; x++) {
+			// 列挿入ボタン
+			const colInsertBtn = document.createElement('button');
+			colInsertBtn.className = 'world-insert-btn world-insert-col';
+			colInsertBtn.title = `${x}列目の左に列を挿入`;
+			colInsertBtn.textContent = '＋';
+			const capturedX = x;
+			colInsertBtn.addEventListener('click', () => insertCol(capturedX));
+			worldGrid.appendChild(colInsertBtn);
+
+			if (x === worldCols) break;
+
 			const key = `${x},${y}`;
 			const hasStage = !!state.stages[key];
 			const isSelected = state.currentCoord && state.currentCoord.x === x && state.currentCoord.y === y;
@@ -103,10 +183,8 @@ function renderWorldGrid() {
 			cell.className = 'world-cell' + (hasStage ? ' has-stage' : '') + (isSelected ? ' selected' : '');
 
 			if (hasStage) {
-				// ミニマップ描画
 				const minimap = drawMinimap(state.stages[key]);
 				cell.appendChild(minimap);
-				// 座標ラベル（右下）
 				const coordEl = document.createElement('div');
 				coordEl.className = 'cell-coord';
 				coordEl.textContent = `(${x},${y})`;
@@ -124,7 +202,6 @@ function renderWorldGrid() {
 
 			cell.addEventListener('click', () => {
 				if (!hasStage) {
-					// 新しいステージを追加してそのまま選択
 					state.stages[key] = makeEmptyStage(DEFAULT_COLS, DEFAULT_ROWS);
 				}
 				state.currentCoord = { x, y };
@@ -135,7 +212,7 @@ function renderWorldGrid() {
 			worldGrid.appendChild(cell);
 		}
 	}
-	// 選択ステージがあればサイドパネルも更新
+
 	if (state.currentCoord) {
 		updateWorldSidePanel(state.currentCoord.x, state.currentCoord.y);
 	}
@@ -424,6 +501,7 @@ const TILE_SPRITE_MAP = {
 	[TILE.SENTRY]: { spr: 'sentry', pal: 'sentry' },
 	[TILE.BOSS]:      { spr: 'escape',   pal: 'escape'   },
 	[TILE.DARK_LORD]: { spr: 'darklord', pal: 'darklord' },
+	[TILE.PRINCESS]:  { spr: 'princess', pal: 'princess' },
 	[TILE.GUARD]:  { spr: 'guard',  pal: 'guard'  },
 	[TILE.CHEST]:  { spr: 'chest',  pal: 'chest'  },
 	[TILE.WATER]:  { spr: 'water',  pal: 'water'  },

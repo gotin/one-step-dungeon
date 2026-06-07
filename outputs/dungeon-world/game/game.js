@@ -299,14 +299,6 @@ async function playerAttack() {
 			pulse(`${ENEMY_META[enemy.type].name}を倒した！（+${enemy.exp} EXP）`);
 			render();
 			updateHud();
-			// ── 魔王撃破 → エンディングへ ──────────────────────────
-			if (enemy.type === TILE.DARK_LORD) {
-				render();
-				await sleep(800);
-				startEnding();
-				_battleBusy = false;
-				return;
-			}
 			_battleBusy = false;
 			return;
 		} else {
@@ -370,6 +362,15 @@ function move(dir) {
 
 	if (enemies.find(e => e.row === nr && e.col === nc)) {
 		pulse('敵がいる（スペースキーで攻撃）');
+		return;
+	}
+
+	// 姫のセルには移動できないが、隣接したらダイアログを表示してエンディングへ
+	if (t === TILE.PRINCESS) {
+		playSound('key');
+		showItemDialog('👸 姫', 'ありがとう！あなたのおかげで助かりました！', () => {
+			startEnding();
+		});
 		return;
 	}
 
@@ -652,6 +653,9 @@ function render() {
 					if (cv) cell.append(cv);
 				} else if (rawTile === TILE.WATER) {
 					const cv = makeSprite('water', 'water', true);
+					if (cv) cell.append(cv);
+				} else if (rawTile === TILE.PRINCESS) {
+					const cv = makeSprite('princess', 'princess', true);
 					if (cv) cell.append(cv);
 				}
 				if (sprName) {
