@@ -21,7 +21,7 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    overflow: hidden;
+    overflow: visible;
 }
 
 .cell .sprite {
@@ -398,9 +398,9 @@
     z-index: 1;
     pointer-events: none;
     border-radius: 50%;
-    border: 2px solid #8800ff;
+    border: 2px solid #f0c040;
     animation: dark-lord-aura-ring 1.6s linear infinite;
-    box-shadow: 0 0 12px 4px rgba(136, 0, 255, 0.4);
+    box-shadow: 0 0 12px 4px rgba(240, 192, 64, 0.5);
 }
 
 .dark-lord-aura-2 {
@@ -409,9 +409,9 @@
     z-index: 0;
     pointer-events: none;
     border-radius: 50%;
-    border: 1.5px solid rgba(136, 0, 255, 0.5);
+    border: 1.5px solid rgba(240, 192, 64, 0.4);
     animation: dark-lord-aura-ring 2.2s linear infinite reverse;
-    box-shadow: 0 0 18px 6px rgba(136, 0, 255, 0.25);
+    box-shadow: 0 0 18px 6px rgba(240, 192, 64, 0.25);
 }
 
 .dark-lord-aura-smoke {
@@ -423,7 +423,7 @@
     z-index: 0;
     pointer-events: none;
     border-radius: 50%;
-    background: rgba(136, 0, 255, 0.3);
+    background: rgba(240, 192, 64, 0.35);
     animation: dark-lord-aura-smoke 1.2s ease-in-out infinite;
     filter: blur(3px);
 }

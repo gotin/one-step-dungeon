@@ -1,7 +1,7 @@
 // ── Dungeon World – game.js (DOM sprite renderer) ────────────
 import { TILE } from '../shared/tiles.js';
 import { ENEMY_META } from '../shared/enemies.js';
-import { playSound } from '../shared/sounds.js';
+import { playSound, playBgm, stopBgm, resumeAudio } from '../shared/sounds.js';
 import { makeSprite, startAnimLoop, redrawAnimSprites, drawSprite, SPRITES, PAL } from '../shared/sprites.js';
 
 // ── RPG params ────────────────────────────────────────────────
@@ -367,6 +367,7 @@ function move(dir) {
 
 	// 姫のセルには移動できないが、隣接したらダイアログを表示してエンディングへ
 	if (t === TILE.PRINCESS) {
+		stopBgm();       // ダイアログ表示と同時にBGMを即時停止
 		playSound('key');
 		showItemDialog('👸 姫', 'ありがとう！あなたのおかげで助かりました！', () => {
 			startEnding();
@@ -754,6 +755,7 @@ overlayBtnEl.addEventListener('click', () => {
 	player = { row: 0, col: 0, hp: 20, maxHp: 20, atk: 4, def: 1, lv: 1, exp: 0, keys: 0, weapon: null, armor: null };
 	const start = findStart();
 	enterStage(start.key, start.row, start.col);
+	playBgm(); // ダンジョンBGM再開
 });
 
 // ── Ending ────────────────────────────────────────────────────
@@ -782,12 +784,14 @@ function buildStaffRollHtml() {
 		'Lore Creator',
 		'QA Lead',
 		'Playtester',
-		'Special Thanks',
+		'Special Thanks to',
 	];
 	let html = `<div class="scroll-title">Dungeon World</div>`;
-	for (const role of roles) {
+	for (let i = 0; i < roles.length; i++) {
+		const role = roles[i];
+		const name = (i === roles.length - 1) ? "Kojima's family" : AUTHOR;
 		html += `<div class="scroll-role">${role}</div>`;
-		html += `<div class="scroll-name">${AUTHOR}</div>`;
+		html += `<div class="scroll-name">${name}</div>`;
 		html += `<div class="scroll-divider"></div>`;
 	}
 	html += `<div class="scroll-role">Thank you for playing!</div>`;
@@ -870,7 +874,8 @@ async function startEnding() {
 	// 1. 入力無効化（_battleBusy = true のまま維持）
 	_battleBusy = true;
 
-	// 2. エンディングBGMを再生
+	// 2. ダンジョンBGMを止めてエンディング曲を再生
+	stopBgm();
 	playSound('ending');
 
 	// 3. オーバーレイを表示
@@ -1037,5 +1042,6 @@ boardEl.addEventListener('pointerup',   e => {
 
 		enterStage(startKey, startRow, startCol);
 		startAnimLoop(() => redrawAnimSprites(boardEl));
+		playBgm(); // ダンジョンBGM開始
 	}
 })();
