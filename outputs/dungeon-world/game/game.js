@@ -1007,7 +1007,12 @@ boardEl.addEventListener('pointerup',   e => {
 	const dx = e.clientX - touchStart.x, dy = e.clientY - touchStart.y;
 	touchStart = null;
 	if (Math.max(Math.abs(dx), Math.abs(dy)) < 24) return;
-	move(Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? 'right' : 'left') : (dy > 0 ? 'down' : 'up'));
+	const dir = Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? 'right' : 'left') : (dy > 0 ? 'down' : 'up');
+	if (turnModeBtn?.classList.contains('active')) {
+		turnOnly(dir);
+	} else {
+		move(dir);
+	}
 });
 
 // ── Boot ──────────────────────────────────────────────────────
