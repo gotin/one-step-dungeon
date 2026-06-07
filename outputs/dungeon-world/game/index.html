@@ -32,8 +32,12 @@
           <div class="controls-row">
             <button class="ctrl-btn" id="btn-down"  data-dir="down"  aria-label="下">▼</button>
           </div>
-          <div class="controls-row" style="margin-top:4px">
-            <button class="ctrl-btn ctrl-btn--turn" id="turn-mode" aria-label="向き変更モード">↻</button>
+          <div class="controls-row turn-mode-row" style="margin-top:4px">
+            <button class="ctrl-btn ctrl-btn--turn" id="turn-mode" aria-label="向き変更モード">
+              <span class="turn-mode-icon">↻</span>
+              <span class="turn-mode-label">向き変更</span>
+            </button>
+            <span class="turn-mode-hint" id="turn-mode-hint">押すと移動せずに向きだけ変えられます</span>
           </div>
         </div>
         <p class="key-hint-small">スペース/S：攻撃　Shift+矢印：向き変更　R：リセット　Z：Undo</p>

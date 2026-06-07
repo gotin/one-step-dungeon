@@ -10,6 +10,7 @@ const state = {
 	selectedTile: TILE.WALL,           // 選択中のタイル
 	currentTool: 'draw',               // draw | erase | fill
 	isDrawing: false,                  // マウスドラッグ中フラグ
+	endingStageOrder: [],              // エンディングステージ表示順 ["1,1","2,1",...] 空なら自動
 };
 
 // ── Canvas ────────────────────────────────────────────────────
@@ -844,6 +845,7 @@ function buildSaveData() {
 		version: 1,
 		world: state.world,
 		stages: state.stages,
+		endingStageOrder: state.endingStageOrder.length > 0 ? state.endingStageOrder : undefined,
 	};
 }
 
@@ -851,7 +853,11 @@ function loadSaveData(data) {
 	if (!data || data.version !== 1) { alert('データ形式が無効です'); return; }
 	state.world  = data.world;
 	state.stages = data.stages;
+	state.endingStageOrder = data.endingStageOrder ?? [];
 	state.currentCoord = null;
+	// 入力欄に反映
+	const orderInput = document.getElementById('ending-stage-order-input');
+	if (orderInput) orderInput.value = state.endingStageOrder.join('\n');
 	renderWorldGrid();
 	showView('world');
 }
@@ -979,6 +985,30 @@ document.getElementById('btn-exit-preview').addEventListener('click', () => {
 	const frame   = document.getElementById('preview-frame');
 	overlay.classList.add('hidden');
 	frame.src = '';
+});
+
+// ── Ending Stage Order ───────────────────────────────────────
+document.getElementById('btn-save-ending-order')?.addEventListener('click', () => {
+	const input = document.getElementById('ending-stage-order-input');
+	if (!input) return;
+	// スペース・改行・カンマ区切りで "x,y" 形式のキーを抽出
+	const raw = input.value.trim();
+	if (!raw) {
+		state.endingStageOrder = [];
+		alert('エンディング順をクリアしました（自動順で表示されます）');
+		return;
+	}
+	// "1,1 2,1 0,0" や "1,1\n2,1\n0,0" など空白で区切られた座標を解析
+	const keys = raw.split(/[\s\n]+/).map(s => s.trim()).filter(s => /^\d+,\d+$/.test(s));
+	const valid   = keys.filter(k => state.stages[k]);
+	const invalid = keys.filter(k => !state.stages[k]);
+	state.endingStageOrder = valid;
+	input.value = valid.join('\n');
+	if (invalid.length > 0) {
+		alert(`設定しました。\n以下のステージは存在しないためスキップされました：\n${invalid.join(', ')}`);
+	} else {
+		alert(`エンディング振り返り順を設定しました（${valid.length}ステージ）`);
+	}
 });
 
 // ── Init ─────────────────────────────────────────────────────

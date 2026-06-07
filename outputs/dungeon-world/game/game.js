@@ -880,11 +880,21 @@ async function startEnding() {
 	// 4-1. ステージをDOMボードで表示（ゲーム画面と同一）
 	// 60秒 ÷ ステージ数 で均等配分してフェード切り替え（1周したら停止）
 	const stageBoardEl  = document.getElementById('ending-stage-board');
-	// 表示順を固定（存在するステージのみ使用）
-	const STAGE_ORDER = ['1,1','2,1','1,2','2,2','0,1','0,2','2,0','1,0','0,0'];
-	const stageKeys = STAGE_ORDER.filter(k => mapData.stages[k]);
-	// 15秒で全ステージを1周（各ステージ約1.7秒）、残りはスタッフロール終了まで最後のステージを表示
-	const stageInterval = Math.floor(15000 / stageKeys.length);
+	// 表示順：mapData.endingStageOrder があればそれを使用、なければ y→x 昇順で全ステージ
+	const stageKeys = (() => {
+		if (Array.isArray(mapData.endingStageOrder) && mapData.endingStageOrder.length > 0) {
+			return mapData.endingStageOrder.filter(k => mapData.stages[k]);
+		}
+		return Object.keys(mapData.stages).sort((a, b) => {
+			const [ax, ay] = a.split(',').map(Number);
+			const [bx, by] = b.split(',').map(Number);
+			return ay !== by ? ay - by : ax - bx;
+		});
+	})();
+	// スタッフロール時間の前半80%（約21秒）でステージを1周し、残りは最後のステージで待機
+	// ステージ数が多いほど各ステージ表示が短くなる（最低1秒は確保）
+	const SCROLL_DURATION = 27000; // スタッフロール表示時間（ms）
+	const stageInterval = Math.max(1000, Math.floor(SCROLL_DURATION * 0.8 / stageKeys.length));
 	let stageIdx = 0;
 	let stageTimer = null;
 
@@ -899,7 +909,7 @@ async function startEnding() {
 		stageBoardEl.style.opacity = '0';
 		setTimeout(() => {
 			renderEndingStage(mapData.stages[key], ss, stageBoardEl);
-			stageBoardEl.style.opacity = '0.5';
+			stageBoardEl.style.opacity = '0.8';
 		}, 400);
 		stageIdx++;
 	}
@@ -927,14 +937,19 @@ async function startEnding() {
 	drawSprite(hero2CanvasEl,    SPRITES['heroD'],    PAL['hero']);
 	drawSprite(princessCanvasEl, SPRITES['princess'], PAL['princess']);
 
-	// 7. 5秒後にタイトルに戻る
-	await sleep(5000);
+	// 7. クリック/タップ or 5秒後にタイトルへ
+	function doReset() {
+		endingOverlayEl.classList.add('hidden');
+		phase1El.style.display = '';
+		phase2El.classList.add('hidden');
+		phase2El.removeEventListener('pointerdown', doReset);
+		overlayBtnEl.click();
+	}
+	phase2El.addEventListener('pointerdown', doReset, { once: true });
+	phase2El.style.cursor = 'pointer';
 
-	// クリーンアップしてリセット
-	endingOverlayEl.classList.add('hidden');
-	phase1El.style.display = '';
-	phase2El.classList.add('hidden');
-	overlayBtnEl.click();
+	await sleep(5000);
+	doReset();
 }
 
 // ── Input ─────────────────────────────────────────────────────
@@ -970,8 +985,18 @@ document.querySelectorAll('[data-dir]').forEach(btn => {
 document.getElementById('btn-attack')?.addEventListener('click', () => playerAttack());
 
 const turnModeBtn = document.getElementById('turn-mode');
+const turnModeHintEl = document.getElementById('turn-mode-hint');
 turnModeBtn?.addEventListener('click', () => {
-	turnModeBtn.classList.toggle('active');
+	const isActive = turnModeBtn.classList.toggle('active');
+	if (turnModeHintEl) {
+		if (isActive) {
+			turnModeHintEl.textContent = '向き変更モード中（矢印で向きだけ変わります）';
+			turnModeHintEl.classList.add('active');
+		} else {
+			turnModeHintEl.textContent = '押すと移動せずに向きだけ変えられます';
+			turnModeHintEl.classList.remove('active');
+		}
+	}
 });
 
 // スワイプ
