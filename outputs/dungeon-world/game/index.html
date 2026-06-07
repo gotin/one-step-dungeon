@@ -21,24 +21,38 @@
       </div>
       <div id="hud-equip" class="hud-equip"></div>
         <div class="controls">
-          <div class="controls-row">
-            <button class="ctrl-btn" id="btn-up"   data-dir="up"    aria-label="上">▲</button>
+          <!-- メイン操作エリア：左＝十字キー、右＝向き変更＋攻撃 -->
+          <div class="controls-main">
+            <!-- 十字キー -->
+            <div class="controls-dpad">
+              <div class="controls-row">
+                <button class="ctrl-btn" id="btn-up"   data-dir="up"    aria-label="上">▲</button>
+              </div>
+              <div class="controls-row">
+                <button class="ctrl-btn" id="btn-left"  data-dir="left"  aria-label="左">◀</button>
+                <div class="ctrl-spacer"></div>
+                <button class="ctrl-btn" id="btn-right" data-dir="right" aria-label="右">▶</button>
+              </div>
+              <div class="controls-row">
+                <button class="ctrl-btn" id="btn-down"  data-dir="down"  aria-label="下">▼</button>
+              </div>
+            </div>
+            <!-- 右側：向き変更＋攻撃 -->
+            <div class="controls-actions">
+              <button class="ctrl-btn ctrl-btn--turn" id="turn-mode" aria-label="向き変更モード">
+                <span class="turn-mode-icon">↻</span>
+                <span class="turn-mode-label">向き変更</span>
+              </button>
+              <button class="ctrl-btn ctrl-btn--attack" id="btn-attack" aria-label="攻撃">⚔️</button>
+            </div>
           </div>
-          <div class="controls-row">
-            <button class="ctrl-btn" id="btn-left"  data-dir="left"  aria-label="左">◀</button>
-            <button class="ctrl-btn ctrl-btn--attack" id="btn-attack" aria-label="攻撃">⚔️</button>
-            <button class="ctrl-btn" id="btn-right" data-dir="right" aria-label="右">▶</button>
+          <!-- ユーティリティ行：Undo / Reset -->
+          <div class="controls-row controls-util-row" style="margin-top:6px">
+            <button class="ctrl-btn ctrl-btn--util" id="btn-undo" aria-label="Undo">↶ Undo</button>
+            <button class="ctrl-btn ctrl-btn--util ctrl-btn--reset" id="btn-reset" aria-label="リセット">↻ Reset</button>
           </div>
-          <div class="controls-row">
-            <button class="ctrl-btn" id="btn-down"  data-dir="down"  aria-label="下">▼</button>
-          </div>
-          <div class="controls-row turn-mode-row" style="margin-top:4px">
-            <button class="ctrl-btn ctrl-btn--turn" id="turn-mode" aria-label="向き変更モード">
-              <span class="turn-mode-icon">↻</span>
-              <span class="turn-mode-label">向き変更</span>
-            </button>
-            <span class="turn-mode-hint" id="turn-mode-hint">押すと移動せずに向きだけ変えられます</span>
-          </div>
+          <!-- ヒント（右寄せ） -->
+          <p class="turn-mode-hint-line" id="turn-mode-hint">向き変更ボタンを押すと移動せずに向きだけを変えられます</p>
         </div>
         <p class="key-hint-small">スペース/S：攻撃　Shift+矢印：向き変更　R：リセット　Z：Undo</p>
       </div>
