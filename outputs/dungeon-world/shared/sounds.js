@@ -23,6 +23,97 @@ export function tone(ctx, start, frequency, duration, type, volume) {
 	osc.stop(start + duration + 0.01);
 }
 
+// ── ダンジョンBGM（ループ） ───────────────────────────────────
+let _bgmTimer = null;
+let _bgmPlaying = false;
+let _bgmGain = null; // BGM専用 GainNode（音量制御用）
+
+function _getBgmGain(ctx) {
+	if (!_bgmGain) {
+		_bgmGain = ctx.createGain();
+		_bgmGain.connect(ctx.destination);
+	}
+	return _bgmGain;
+}
+
+// BGM用 tone（BGM GainNode 経由で出力）
+function bgmTone(ctx, start, frequency, duration, type, volume) {
+	if (!_bgmPlaying) return;
+	const osc  = ctx.createOscillator();
+	const gain = ctx.createGain();
+	osc.type = type;
+	osc.frequency.setValueAtTime(frequency, start);
+	gain.gain.setValueAtTime(volume, start);
+	gain.gain.exponentialRampToValueAtTime(0.001, start + duration);
+	osc.connect(gain);
+	gain.connect(_getBgmGain(ctx)); // destination ではなく BGM GainNode に接続
+	osc.start(start);
+	osc.stop(start + duration + 0.01);
+}
+
+// ダンジョンBGM 1ループ分を鳴らす（約16秒）
+function _playBgmLoop(ctx) {
+	if (!_bgmPlaying) return;
+	const now = ctx.currentTime;
+	const vol = 0.035;
+
+	const bass = [110, 82.41, 98, 73.42];
+	bass.forEach((f, i) => {
+		bgmTone(ctx, now + i * 2.0,       f,       1.8, 'sawtooth', vol * 0.9);
+		bgmTone(ctx, now + i * 2.0 + 0.9, f * 1.5, 0.5, 'sawtooth', vol * 0.4);
+	});
+
+	const mel = [
+		[220.00, 0.5], [261.63, 0.5], [293.66, 0.5], [329.63, 1.0],
+		[293.66, 0.5], [261.63, 0.5], [220.00, 1.0],
+		[196.00, 0.5], [220.00, 0.5], [261.63, 0.5], [293.66, 1.5],
+		[261.63, 0.5], [246.94, 0.5], [220.00, 1.5],
+	];
+	let t = now + 0.5;
+	for (const [freq, dur] of mel) {
+		bgmTone(ctx, t, freq, dur * 0.85, 'triangle', vol * 0.75);
+		t += dur;
+	}
+
+	bgmTone(ctx, now,     55.00, 8.0, 'sawtooth', vol * 0.25);
+	bgmTone(ctx, now + 8, 55.00, 8.0, 'sawtooth', vol * 0.25);
+
+	[1.0, 3.0, 5.5, 7.0, 9.0, 11.5, 13.0, 15.0].forEach(bt => {
+		bgmTone(ctx, now + bt, 80, 0.08, 'square', vol * 0.5);
+	});
+
+	const loopLen = 16;
+	_bgmTimer = setTimeout(() => _playBgmLoop(ctx), loopLen * 1000 - 200);
+}
+
+export function playBgm() {
+	if (_bgmPlaying) return;
+	_bgmPlaying = true;
+	const ctx = getAudioContext();
+	// GainNode の音量を通常に戻す
+	_getBgmGain(ctx).gain.setValueAtTime(1, ctx.currentTime);
+	_playBgmLoop(ctx);
+}
+
+export function stopBgm() {
+	_bgmPlaying = false;
+	if (_bgmTimer !== null) {
+		clearTimeout(_bgmTimer);
+		_bgmTimer = null;
+	}
+	// BGM GainNode の音量を即時0にする（AudioContext は止めない）
+	if (audioContext && _bgmGain) {
+		_bgmGain.gain.setValueAtTime(0, audioContext.currentTime);
+	}
+}
+
+export function resumeAudio() {
+	// 互換性のために残す（現在は使わないが削除しない）
+	if (audioContext && audioContext.state === 'suspended') {
+		audioContext.resume();
+	}
+}
+
 export function playSound(kind) {
 	const ctx = getAudioContext();
 	const now = ctx.currentTime;
@@ -83,6 +174,11 @@ export function playSound(kind) {
 	if (kind === 'chest') {
 		tone(ctx, now,        660, 0.07, 'sine', 0.05);
 		tone(ctx, now + 0.07, 880, 0.09, 'sine', 0.06);
+	}
+	if (kind === 'bgm') {
+		// ── ダンジョンBGM（内部でループ再生） ──────────────────
+		// playBgm() / stopBgm() を使うこと
+		return;
 	}
 	if (kind === 'ending') {
 		// ── 荘厳なファンファーレ（0〜1.8秒）─────────────────────

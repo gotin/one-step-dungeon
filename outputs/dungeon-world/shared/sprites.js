@@ -15,7 +15,7 @@ export const PAL = {
 	chaser: ['transparent','#0a0a14','#6a0808','#c03030','#e86060','#ffa0a0'],
 	sentry: ['transparent','#0a0a14','#501880','#9040c0','#b989e8','#ffd0ff'],
 	escape:    ['transparent','#000000','#1a1a1a','#f0d090','#f0c040','#ffffff'],
-	darklord:  ['transparent','#000000','#0a0a0a','#d0a060','#8800ff','#f0c040'],
+	darklord:  ['transparent','#000000','#1a1a1a','#f0d090','#0a0a0a','#050505','#f0d890'],
 	princess:  ['transparent','#000000','#ff88bb','#f5e0d0','#ffffff','#ff66aa','#fce8d8'],
 	guard:  ['transparent','#0a0a14','#501880','#9040c0','#b989e8','#ffd0ff'],
 	// 水：深青＋波の2色
