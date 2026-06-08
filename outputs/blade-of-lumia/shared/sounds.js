@@ -168,7 +168,10 @@ export function stopBgm() {
 		_bgmTimer = null;
 	}
 	if (audioContext && _bgmGain) {
-		_bgmGain.gain.setValueAtTime(0, audioContext.currentTime);
+		// 即座にゲインを 0 にして音を止め、ノードを破棄して既スケジュール音も消音
+		try { _bgmGain.gain.setValueAtTime(0, audioContext.currentTime); } catch (_) {}
+		try { _bgmGain.disconnect(); } catch (_) {}
+		_bgmGain = null;  // 次回 playBgm で新規生成させる
 	}
 }
 
@@ -178,15 +181,19 @@ export function resumeAudio() {
 	}
 }
 
+// ── SE オプション ─────────────────────────────────────────────
+// 移動音 ON/OFF フラグ（true で有効）
+export let MOVE_SOUND_ENABLED = false;
+
 // ── SE ──────────────────────────────────────────────────────────
 export function playSound(kind) {
 	const ctx = getAudioContext();
 	const now = ctx.currentTime;
 
-	// 移動
+	// 移動（軽いクリック音）※ MOVE_SOUND_ENABLED が true のときのみ鳴らす
 	if (kind === 'move') {
-		tone(ctx, now,        360, 0.055, 'triangle', 0.045);
-		tone(ctx, now + 0.025, 470, 0.05,  'triangle', 0.035);
+		if (!MOVE_SOUND_ENABLED) return;
+		tone(ctx, now, 800, 0.018, 'square', 0.018);
 	}
 	// 剣振り「シュッ」
 	if (kind === 'slash') {
@@ -303,6 +310,13 @@ export function playSound(kind) {
 		tone(ctx, now,        440, 0.06, 'triangle', 0.05);
 		tone(ctx, now + 0.05, 660, 0.08, 'triangle', 0.06);
 		tone(ctx, now + 0.12, 880, 0.10, 'sine',     0.05);
+	}
+	// 盾ブロック「カーン」
+	if (kind === 'shieldBlock') {
+		tone(ctx, now,        1200, 0.01, 'square',   0.12);
+		tone(ctx, now + 0.01, 900,  0.04, 'triangle', 0.10);
+		tone(ctx, now + 0.04, 1400, 0.02, 'square',   0.07);
+		tone(ctx, now + 0.06, 700,  0.10, 'sine',     0.06);
 	}
 	// エンディング（Dungeon World 継承）
 	if (kind === 'ending') {

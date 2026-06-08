@@ -75,6 +75,8 @@ let isDialog        = false;
 let isGameover      = false;
 let isTransitioning = false;
 let invincibleUntil = 0;
+// MAP_ENTER 遷移直後クールダウン：遷移先に着いた直後は同じ入り口に乗っても再遷移しない
+let mapEnterCooldownUntil = 0;
 let blinkTimer      = null;
 let dialogLines     = [];
 let dialogLineIdx   = 0;
@@ -298,6 +300,9 @@ function addCellSprite(cellEl, tile, posKey, ss) {
 	if (tile === TILE.WALL || tile === TILE.FLOOR || tile === TILE.PLAYER) return;
 
 	if (tile === TILE.CHEST && !ss.openedChests.has(posKey)) {
+		// 表示条件が設定されていて未達成なら非表示
+		const cond = stageData.showConditions?.[posKey];
+		if (cond && !ss.conditionsMet.has(posKey)) return;
 		const cv = makeSprite('chest', 'chest', true);
 		if (cv) { cv.classList.add('obj-sprite'); cellEl.appendChild(cv); }
 		return;
@@ -583,6 +588,8 @@ function checkStageTransition() {
 	}
 
 	// MAP_ENTER タイル
+	// クールダウン中（遷移直後）はスキップ → 即再遷移を防ぐ
+	if (Date.now() < mapEnterCooldownUntil) return;
 	const r = toTileRow(y), c = toTileCol(x);
 	const posKey = `${r},${c}`;
 	const enter  = stageData.mapEnters?.[posKey];
@@ -594,6 +601,8 @@ function checkStageTransition() {
 		setTimeout(() => {
 			enterStage(dest.layer, dest.stage, dest.row, dest.col);
 			isTransitioning = false;
+			// 遷移後 1.5 秒間は MAP_ENTER 再遷移を無効化
+			mapEnterCooldownUntil = Date.now() + 1500;
 		}, 100);
 	}
 }
@@ -1119,7 +1128,70 @@ function enemyTick() {
 		const meta = ENEMY_META[e.type];
 		if (!meta) continue;
 		enemyChase(e, meta.speed);
+		enemyAttack(e, meta);
 	}
+}
+
+// 敵の攻撃処理（spear/stone/sword）
+function enemyAttack(e, meta) {
+	const atk = meta.attack;
+	if (!atk || atk.type === 'charge') return;  // charge は接触で処理
+
+	const now = Date.now();
+	if (!e.lastAttackTime) e.lastAttackTime = 0;
+
+	// cooldown チェック
+	const cooldown = atk.cooldown ?? 3000;
+	if (now - e.lastAttackTime < cooldown) return;
+
+	const dx = player.x - e.x;
+	const dy = player.y - e.y;
+	const dist = Math.sqrt(dx * dx + dy * dy);
+
+	if (dist > (atk.range ?? 5)) return;  // 射程外
+
+	if (atk.type === 'spear') {
+		// やり投げ：同列か同行のときのみ発射
+		const sameCol = Math.abs(dx) < 1.0;
+		const sameRow = Math.abs(dy) < 1.0;
+		if (!sameCol && !sameRow) return;
+		const ndx = sameCol ? 0 : Math.sign(dx);
+		const ndy = sameRow ? 0 : Math.sign(dy);
+		fireEnemyProjectile(e, 'spear', ndx, ndy, atk.projectileSpeed ?? 1.5);
+		e.lastAttackTime = now;
+	} else if (atk.type === 'stone') {
+		// 石つぶて：プレイヤーに向かって直線発射
+		const ndx = dx / dist;
+		const ndy = dy / dist;
+		fireEnemyProjectile(e, 'stone', ndx, ndy, atk.projectileSpeed ?? 1.0);
+		e.lastAttackTime = now;
+	} else if (atk.type === 'sword') {
+		// 剣振り：射程内ならダメージ
+		if (dist <= (atk.range ?? 1.5)) {
+			// たてで防御中はダメージ軽減
+			const dmg = (isShielding && player.shield)
+				? Math.ceil(meta.atk * 0.5)
+				: meta.atk;
+			takeDamage(dmg);
+			showSwordSlashFloat(e.x, e.y); // 敵の剣エフェクト
+			e.lastAttackTime = now;
+		}
+	}
+}
+
+function fireEnemyProjectile(e, type, ndx, ndy, speed) {
+	const proj = {
+		id:     nextProjId++,
+		owner:  'enemy',
+		type,
+		x: e.x + ndx * 0.8, // 敵の少し前から発射
+		y: e.y + ndy * 0.8,
+		dx: ndx, dy: ndy,
+		speed,
+		atk: ENEMY_META[e.type]?.atk ?? 2,
+	};
+	projectiles.push(proj);
+	createProjEl(proj);
 }
 
 function enemyChase(e, speed) {
@@ -1199,6 +1271,8 @@ function projectileTick() {
 			}
 			// プレイヤー or 敵への当たり判定
 			checkProjHit(proj);
+			// checkProjHit で消滅済みなら moveProjEl しない
+			if (!projectiles.includes(proj)) continue;
 		}
 		moveProjEl(proj);
 	}
@@ -1258,11 +1332,76 @@ function checkProjHit(proj) {
 	} else {
 		// プレイヤーに当たる
 		if (Math.abs(player.x - proj.x) < 0.5 && Math.abs(player.y - proj.y) < 0.5) {
-			takeDamage(proj.atk);
+			// 盾でブロック判定
+			// 盾を持っていて、やりが来る向きに正面を向いていれば完全ブロック（Shiftキー不要）
+			const blocked = player.shield && isShieldBlocking(proj);
+			if (blocked) {
+				playSound('shieldBlock');
+				showShieldBlockEffect(proj.x, proj.y);  // 投擲物が消えた位置（盾に当たった場所）
+			} else {
+				takeDamage(proj.atk);
+			}
 			removeProjEl(proj);
 			projectiles = projectiles.filter(p => p !== proj);
 		}
 	}
+}
+
+// 盾で投擲物をブロックできるか判定（ボタン操作不要・初代ゼルダ方式）
+// 飛翔方向の「逆向き」にプレイヤーが向いていれば正面でブロック
+// 座標系：y増加 = 下方向
+//   proj.dx > 0 → 右へ飛ぶ（＝左から来る）→ 左向きならブロック
+//   proj.dx < 0 → 左へ飛ぶ（＝右から来る）→ 右向きならブロック
+//   proj.dy > 0 → 下へ飛ぶ（＝上から来る）→ 上向きならブロック
+//   proj.dy < 0 → 上へ飛ぶ（＝下から来る）→ 下向きならブロック
+function isShieldBlocking(proj) {
+	if (!player.shield) return false;
+	const absDx = Math.abs(proj.dx);
+	const absDy = Math.abs(proj.dy);
+
+	if (absDx >= absDy) {
+		// 横方向が主成分
+		if (proj.dx > 0 && heroDir === 'left')  return true;  // 左から来る → 左向きでブロック
+		if (proj.dx < 0 && heroDir === 'right') return true;  // 右から来る → 右向きでブロック
+	} else {
+		// 縦方向が主成分
+		if (proj.dy > 0 && heroDir === 'up')   return true;   // 上から来る → 上向きでブロック
+		if (proj.dy < 0 && heroDir === 'down') return true;   // 下から来る → 下向きでブロック
+	}
+	return false;
+}
+
+// 盾ブロックエフェクト：盾のある側（heroDir 方向）の端にフラッシュを表示
+function showShieldBlockEffect(_px, _py) {
+	if (!charLayerEl) return;
+	const cellPx = getCellPx();
+
+	// プレーヤー中心を起点に、向いている方向へ 0.6 セルずらす
+	const offset = 0.6;
+	const cx = player.x + 0.5;
+	const cy = player.y + 0.5;
+	let fx = cx, fy = cy;
+	if (heroDir === 'left')  fx = cx - offset;
+	else if (heroDir === 'right') fx = cx + offset;
+	else if (heroDir === 'up')    fy = cy - offset;
+	else if (heroDir === 'down')  fy = cy + offset;
+
+	const el = document.createElement('div');
+	el.style.cssText = `
+		position:absolute;
+		left:${fx * cellPx}px;
+		top:${fy * cellPx}px;
+		width:0; height:0;
+		transform:translate(-50%,-50%);
+		z-index:25;
+		pointer-events:none;
+		font-size:${Math.round(cellPx * 0.7)}px;
+		line-height:1;
+		animation:shield-block-anim 0.35s ease-out forwards;
+	`;
+	el.textContent = '✦';
+	charLayerEl.appendChild(el);
+	setTimeout(() => el.remove(), 380);
 }
 
 function isInBounds(x, y) {
@@ -1289,10 +1428,12 @@ function createProjEl(proj) {
 	div.id = `proj-${proj.id}`;
 	div.style.left = `${proj.x * cellPx}px`;
 	div.style.top  = `${proj.y * cellPx}px`;
-	const cv = makeSprite(proj.type, proj.type, true);
+	const cv = makeSprite(proj.type, proj.type, false);  // 静止表示（アニメなし）
 	if (cv) {
-		cv.style.width  = `${cellPx * 0.5}px`;
-		cv.style.height = `${cellPx * 0.5}px`;
+		// !important で CSS を強制上書きしてサイズを小さくする
+		const sz = Math.round(cellPx * 0.35) + 'px';
+		cv.style.setProperty('width',  sz, 'important');
+		cv.style.setProperty('height', sz, 'important');
 		div.appendChild(cv);
 	}
 	charLayerEl.appendChild(div);
@@ -1467,7 +1608,7 @@ function useSubItem() {
 			speed: 2.0,
 			atk: player.atk + 1,
 			returning: false,
-			maxRange: 5,
+			maxRange: 3,
 		};
 		projectiles.push(proj);
 		createProjEl(proj);

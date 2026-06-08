@@ -767,12 +767,21 @@ document.addEventListener('keydown', handleInput);
 
 ### Phase 4: 敵の高度な行動
 > **目標**: やり投げ・石つぶて・剣振りする敵が出る
+> **状態**: ✅ 完了
 
 - [x] プロジェクタイル（`projectiles` 配列）の共通処理実装（Phase 3 内で実装済み）
-- [ ] やり投げ（spear）敵：射程・同列判定・cooldown
-- [ ] 石つぶて（stone）敵：射程・方向算出・cooldown
-- [ ] 剣振り（sword）敵：近距離高威力・たてで防御可能
-- [ ] 各プロジェクタイルのスプライト・当たり判定
+- [x] やり投げ（spear）敵：射程4セル・同列/同行判定・cooldown 3000ms
+- [x] 石つぶて（stone）敵：射程6セル・方向算出（正規化ベクトル）・cooldown 2000ms
+- [x] 剣振り（sword）敵：射程1.5セル・たて防御半減対応
+- [x] 各プロジェクタイルのスプライト・当たり判定（spear/stone スプライト定義済み）
+
+> **実装時の仕様メモ**：
+> - `enemyAttack(e, meta)` を `enemyTick()` 内で毎 tick 呼び出す
+> - spear は同列か同行の場合のみ発射（縦か横にぴったり並んでいるとき）
+> - stone はプレイヤーに向かって正規化ベクトルで直線発射
+> - sword は射程内のプレイヤーに直接 `takeDamage()` を呼び剣エフェクトも表示
+> - 敵弾は `fireEnemyProjectile()` で `projectiles` 配列に追加
+> - たて防御中（`isShielding && player.shield`）は sword ダメージが50%軽減
 
 ---
 

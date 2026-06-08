@@ -31,7 +31,7 @@ export const ENEMY_META = {
 	[TILE.SENTRY]: {
 		name: 'センチネル',
 		hp: 6, atk: 2, def: 1, exp: 8,
-		speed: ENEMY_SPEED_NORMAL,
+		speed: 0,  // デバッグ用：盾テスト中は静止
 		sprite: 'sentry',
 		pal:    'sentry',
 		isBoss: false,
@@ -61,7 +61,7 @@ export const ENEMY_META = {
 	[TILE.DARK_LORD]: {
 		name: '魔王',
 		hp: 50, atk: 6, def: 3, exp: 100,
-		speed: ENEMY_SPEED_FAST,
+		speed: ENEMY_SPEED_SLOW,  // デバッグ用に低速化
 		sprite: 'darklord',
 		pal:    'darklord',
 		isBoss: true,

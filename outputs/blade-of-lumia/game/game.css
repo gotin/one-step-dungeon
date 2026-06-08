@@ -921,3 +921,24 @@ canvas.sprite.item-sprite {
         --cell: 64px;
     }
 }
+
+/* ── 盾ブロックエフェクト ─────────────────────────────────── */
+@keyframes shield-block-anim {
+    0% {
+        opacity: 1;
+        transform: translate(-50%, -50%) scale(0.5);
+        color: #fff;
+    }
+
+    40% {
+        opacity: 1;
+        transform: translate(-50%, -50%) scale(1.4);
+        color: #ffe066;
+    }
+
+    100% {
+        opacity: 0;
+        transform: translate(-50%, -50%) scale(1.8);
+        color: #ffaa00;
+    }
+}
