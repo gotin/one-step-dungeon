@@ -794,9 +794,9 @@ document.addEventListener('keydown', handleInput);
 - [x] MAP_ENTER（レイヤー間遷移）の完全実装（出口ID方式、exitRegistry）
 - [x] NPC 接触ダイアログ（複数セリフ・次へボタン）
 - [x] ルピー拾得・`player.rupees` 管理（ルピー小×1・ルピー大×5）
-- [ ] ショップ UI（商品リスト・購入確認・ルピー消費）
+- [x] ショップ UI（商品リスト・購入確認・ルピー消費）
 - [x] ハートコンテナのタイル・拾得処理（`ITEM_HEART_CONTAINER`）
-- [ ] ルピー・トライフォースのカケラのスプライト追加（絵文字フォールバックで仮表示中）
+- [x] ルピー・トライフォースのカケラのスプライト追加（triforce スプライト itemMap に追加済み）
 
 ---
 

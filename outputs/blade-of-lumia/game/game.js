@@ -359,11 +359,12 @@ function addCellSprite(cellEl, tile, posKey, ss) {
 	// 落ちているアイテム（スプライトのあるもの）
 	// アニメーションなし（animated=false）：床に置いてあるものは静止表示
 	const itemMap = {
-		[TILE.ITEM_SWORD]:    ['sword',    'sword'],
-		[TILE.ITEM_SHIELD]:   ['shield',   'shield'],
-		[TILE.ITEM_BOOMERANG]:['boomerang','boomerang'],
-		[TILE.ITEM_RUPEE]:    ['rupee',    'rupee'],
-		[TILE.ITEM_RUPEE_LARGE]: ['rupee', 'rupeeBlue'],
+		[TILE.ITEM_SWORD]:          ['sword',    'sword'],
+		[TILE.ITEM_SHIELD]:         ['shield',   'shield'],
+		[TILE.ITEM_BOOMERANG]:      ['boomerang','boomerang'],
+		[TILE.ITEM_RUPEE]:          ['rupee',    'rupee'],
+		[TILE.ITEM_RUPEE_LARGE]:    ['rupee',    'rupeeBlue'],
+		[TILE.ITEM_TRIFORCE_PIECE]: ['triforce', 'triforce'],
 	};
 	if (itemMap[tile] && !ss.pickedKeys.has(posKey)) {
 		const [spr, pal] = itemMap[tile];
@@ -467,6 +468,8 @@ function updateHud() {
 	equipSwordEl.classList.toggle('has-item',  !!player.weapon);
 	equipShieldEl.classList.toggle('has-item', !!player.shield);
 	equipArmorEl.classList.toggle('has-item',  !!player.armor);
+	document.getElementById('hud-rupees').textContent   = player.rupees;
+	document.getElementById('hud-triforce').textContent = player.triforceCount;
 	const ai = player.activeSubItem;
 	if (ai && player.subItems[ai]) {
 		const meta = ITEM_META[ai];
@@ -803,6 +806,11 @@ function handleTileEvent() {
 		playSound('rupee'); pulse('◇ ルピー ×5');
 		renderBoard(); renderChars(); updateHud(); saveGame(); return;
 	}
+	if (tile === TILE.ITEM_TRIFORCE_PIECE && !ss.pickedKeys.has(posKey)) {
+		ss.pickedKeys.add(posKey); player.triforceCount++;
+		playSound('item'); pulse('◭ トライフォースのカケラを手に入れた！');
+		renderBoard(); renderChars(); updateHud(); saveGame(); return;
+	}
 	if (tile === TILE.CHEST && !ss.openedChests.has(posKey)) {
 		openChest(posKey, ss); return;
 	}
@@ -895,6 +903,12 @@ function swordAttack() {
 	const tr = toTileRow(player.y + ndy);
 	const tc = toTileCol(player.x + ndx);
 	const tile = stageData.tiles[tr]?.[tc];
+	if (tile === TILE.NPC_SHOP) {
+		const posKey2 = `${tr},${tc}`;
+		const shopData = stageData.shopData?.[posKey2];
+		if (shopData) { openShop(shopData); } else { startDialog(tr, tc, tile); }
+		return;
+	}
 	if (tile && NPC_SPRITE_MAP[tile]) { startDialog(tr, tc, tile); }
 }
 
@@ -943,8 +957,7 @@ function toggleDebugMode() {
 function takeDamage(amount) {
 	if (debugMode) return; // デバッグモード中は無敵
 	if (Date.now() < invincibleUntil || isGameover) return;
-	let dmg = (isShielding && player.shield) ? Math.ceil(amount * 0.5) : amount;
-	const actual = Math.max(1, dmg - player.def);
+	const actual = Math.max(1, amount - player.def);
 	player.hp = Math.max(0, player.hp - actual);
 	invincibleUntil = Date.now() + INVINCIBLE_MS;
 	playSound('playerHit');
@@ -1098,6 +1111,85 @@ function pauseSelectNext() {
 	player.activeSubItem = pauseItemKeys[pauseItemIdx]; updateHud(); renderPauseMenu();
 }
 
+// ── ショップ ──────────────────────────────────────────────────
+const shopOverlayEl = document.getElementById('shop-overlay');
+const shopItemsEl   = document.getElementById('shop-items');
+const shopRupeesEl  = document.getElementById('shop-rupees');
+let isShop       = false;
+let shopGoods    = [];   // { id, name, icon, count, price } の配列
+let shopIdx      = 0;
+
+function openShop(shopData) {
+	if (!shopData?.items?.length) return;
+	isShop   = true;
+	shopGoods = shopData.items;
+	shopIdx   = 0;
+	stopGameLoop();
+	renderShop();
+	shopOverlayEl.classList.remove('hidden');
+	playSound('talk');
+}
+
+function closeShop() {
+	isShop = false;
+	shopOverlayEl.classList.add('hidden');
+	startGameLoop();
+}
+
+function renderShop() {
+	shopRupeesEl.textContent = player.rupees;
+	shopItemsEl.innerHTML = '';
+	shopGoods.forEach((g, i) => {
+		const meta = ITEM_META[g.id];
+		const icon = meta?.icon ?? g.id;
+		const name = g.name ?? meta?.name ?? g.id;
+		const row  = document.createElement('div');
+		const canBuy = player.rupees >= g.price;
+		row.className = `shop-item-row${i === shopIdx ? ' selected' : ''}${canBuy ? '' : ' cannot-afford'}`;
+		row.innerHTML = `<span class="shop-item-icon">${icon}</span>
+			<span class="shop-item-name">${name}${g.count ? ` ×${g.count}` : ''}</span>
+			<span class="shop-item-price">💰${g.price}</span>`;
+		row.addEventListener('click', () => { shopIdx = i; renderShop(); shopBuy(); });
+		shopItemsEl.appendChild(row);
+	});
+}
+
+function shopSelectPrev() {
+	if (!shopGoods.length) return;
+	shopIdx = (shopIdx - 1 + shopGoods.length) % shopGoods.length;
+	renderShop();
+}
+function shopSelectNext() {
+	if (!shopGoods.length) return;
+	shopIdx = (shopIdx + 1) % shopGoods.length;
+	renderShop();
+}
+
+function shopBuy() {
+	const g = shopGoods[shopIdx];
+	if (!g) return;
+	if (player.rupees < g.price) { pulse('ルピーが足りない！', 1500); return; }
+	player.rupees -= g.price;
+	const meta = ITEM_META[g.id];
+	if (g.id === 'bomb') {
+		if (!player.subItems.bomb) player.subItems.bomb = { count: 0 };
+		player.subItems.bomb.count += g.count ?? 1;
+		if (!player.activeSubItem) player.activeSubItem = 'bomb';
+	} else if (g.id === 'healPotion' || g.id === 'bigHealPotion') {
+		giveSubItem(g.id);
+	} else if (g.id === 'boomerang') {
+		if (!player.subItems.boomerang) player.subItems.boomerang = { count: Infinity };
+		if (!player.activeSubItem) player.activeSubItem = 'boomerang';
+	} else {
+		giveSubItem(g.id);
+	}
+	playSound('item');
+	pulse(`${meta?.name ?? g.id} を購入した！`, 1500);
+	updateHud();
+	saveGame();
+	renderShop();
+}
+
 // ── ボス戦 ────────────────────────────────────────────────────
 function startBossBattle(lk, sk) {
 	if (enemies.find(e => ENEMY_META[e.type]?.isBoss)) setTimeout(() => playBgm('boss'), 200);
@@ -1168,11 +1260,15 @@ function enemyAttack(e, meta) {
 	} else if (atk.type === 'sword') {
 		// 剣振り：射程内ならダメージ
 		if (dist <= (atk.range ?? 1.5)) {
-			// たてで防御中はダメージ軽減
-			const dmg = (isShielding && player.shield)
-				? Math.ceil(meta.atk * 0.5)
-				: meta.atk;
-			takeDamage(dmg);
+			// 向きに合った盾ブロック判定（敵の方向から来る攻撃として扱う）
+			const swordDir = { dx: Math.sign(player.x - e.x), dy: Math.sign(player.y - e.y) };
+			const blocked = player.shield && isShieldBlockingDir(swordDir.dx, swordDir.dy);
+			if (blocked) {
+				playSound('shieldBlock');
+				showShieldBlockEffect(e.x, e.y);
+			} else {
+				takeDamage(meta.atk);
+			}
 			showSwordSlashFloat(e.x, e.y); // 敵の剣エフェクト
 			e.lastAttackTime = now;
 		}
@@ -1355,18 +1451,22 @@ function checkProjHit(proj) {
 //   proj.dy > 0 → 下へ飛ぶ（＝上から来る）→ 上向きならブロック
 //   proj.dy < 0 → 上へ飛ぶ（＝下から来る）→ 下向きならブロック
 function isShieldBlocking(proj) {
+	return isShieldBlockingDir(proj.dx, proj.dy);
+}
+
+// dx/dy（攻撃の飛んでくる方向）に対して盾でブロックできるか判定
+// 例：敵が左にいてプレイヤーの方向に来る（dx>0）→ プレイヤーが左向きならブロック
+function isShieldBlockingDir(dx, dy) {
 	if (!player.shield) return false;
-	const absDx = Math.abs(proj.dx);
-	const absDy = Math.abs(proj.dy);
+	const absDx = Math.abs(dx);
+	const absDy = Math.abs(dy);
 
 	if (absDx >= absDy) {
-		// 横方向が主成分
-		if (proj.dx > 0 && heroDir === 'left')  return true;  // 左から来る → 左向きでブロック
-		if (proj.dx < 0 && heroDir === 'right') return true;  // 右から来る → 右向きでブロック
+		if (dx > 0 && heroDir === 'left')  return true;
+		if (dx < 0 && heroDir === 'right') return true;
 	} else {
-		// 縦方向が主成分
-		if (proj.dy > 0 && heroDir === 'up')   return true;   // 上から来る → 上向きでブロック
-		if (proj.dy < 0 && heroDir === 'down') return true;   // 下から来る → 下向きでブロック
+		if (dy > 0 && heroDir === 'up')   return true;
+		if (dy < 0 && heroDir === 'down') return true;
 	}
 	return false;
 }
@@ -1630,6 +1730,13 @@ document.addEventListener('keydown', e => {
 		if ([' ','Enter','z','Z'].includes(e.key)) { e.preventDefault(); advanceDialog(); }
 		return;
 	}
+	if (isShop) {
+		if (e.key === 'Escape') { e.preventDefault(); closeShop(); return; }
+		if (e.key === 'ArrowUp'   || e.key === 'w' || e.key === 'W') { e.preventDefault(); shopSelectPrev(); return; }
+		if (e.key === 'ArrowDown' || e.key === 's' || e.key === 'S') { e.preventDefault(); shopSelectNext(); return; }
+		if ([' ','Enter','z','Z'].includes(e.key)) { e.preventDefault(); shopBuy(); return; }
+		return;
+	}
 	if (isPaused) {
 		if (e.key === 'Escape' || e.key === 'Enter') { e.preventDefault(); togglePause(); return; }
 		if (e.key === 'ArrowLeft')  { e.preventDefault(); pauseSelectPrev(); return; }
@@ -1645,12 +1752,10 @@ document.addEventListener('keydown', e => {
 	if ([' ','z','Z'].includes(e.key)) { e.preventDefault(); swordAttack(); return; }
 	if (e.key === 'b' || e.key === 'B') { e.preventDefault(); useSubItem(); return; }
 	if (e.key === 'Escape') { e.preventDefault(); togglePause(); return; }
-	if (e.key === 'Shift')  { e.preventDefault(); isShielding = true; updateShieldHud(); return; }
 	if (e.key === 'g' || e.key === 'G') { e.preventDefault(); toggleDebugMode(); return; }
 });
 document.addEventListener('keyup', e => {
 	heldKeys.delete(e.key);
-	if (e.key === 'Shift') { isShielding = false; updateShieldHud(); }
 });
 
 // 押しっぱなし移動処理（gameTick から呼ぶ）

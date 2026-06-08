@@ -95,6 +95,13 @@ html, body {
     font-size: 12px;
 }
 
+#hud-wallet {
+    font-size: 12px;
+    color: #f0d050;
+    letter-spacing: 1px;
+    margin-top: 2px;
+}
+
 /* ── ボード ───────────────────────────────────────────────── */
 #board-wrap {
     display: flex;
@@ -920,6 +927,95 @@ canvas.sprite.item-sprite {
     :root {
         --cell: 64px;
     }
+}
+
+/* ── ショップ ────────────────────────────────────────────── */
+#shop-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.80);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 65;
+}
+
+#shop-overlay.hidden {
+    display: none;
+}
+
+#shop-box {
+    background: #0a1418;
+    border: 2px solid #a08030;
+    border-radius: 10px;
+    padding: 20px 28px;
+    min-width: 320px;
+    max-width: 92vw;
+}
+
+#shop-title {
+    font-size: 18px;
+    color: #f0d050;
+    text-align: center;
+    margin-bottom: 14px;
+    letter-spacing: 2px;
+}
+
+#shop-items {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-bottom: 14px;
+}
+
+.shop-item-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 12px;
+    border: 2px solid #2a3a2a;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: border-color 0.1s, background 0.1s;
+}
+
+.shop-item-row.selected {
+    border-color: #f0d050;
+    background: rgba(240, 208, 80, 0.10);
+}
+
+.shop-item-row.cannot-afford {
+    opacity: 0.45;
+}
+
+.shop-item-icon {
+    font-size: 22px;
+    min-width: 28px;
+    text-align: center;
+}
+
+.shop-item-name {
+    flex: 1;
+    font-size: 14px;
+    color: #c0d0c0;
+}
+
+.shop-item-price {
+    font-size: 14px;
+    color: #f0d050;
+}
+
+#shop-wallet {
+    font-size: 14px;
+    color: #80d080;
+    text-align: right;
+    margin-bottom: 8px;
+}
+
+#shop-hint {
+    font-size: 11px;
+    color: #4a6a4a;
+    text-align: center;
 }
 
 /* ── 盾ブロックエフェクト ─────────────────────────────────── */
