@@ -13,6 +13,12 @@
       <div id="hud-hearts"></div>
       <div id="hud-stage-label"></div>
     </div>
+    <div id="hud-center">
+      <div id="hud-dungeon-info" class="hidden">
+        <span id="hud-dungeon-name"></span>
+        <span id="hud-dungeon-items"></span>
+      </div>
+    </div>
     <div id="hud-right">
       <div id="hud-equip">
         <span id="hud-equip-sword" class="equip-slot" title="剣">⚔</span>
@@ -25,6 +31,14 @@
         <span id="hud-sub-count"></span>
       </div>
       <div id="hud-wallet">💰<span id="hud-rupees">0</span>　◭<span id="hud-triforce">0</span></div>
+    </div>
+  </div>
+
+  <!-- ── ボス HP バー ── -->
+  <div id="boss-hpbar" class="hidden">
+    <span id="boss-name">ボス</span>
+    <div id="boss-hp-track">
+      <div id="boss-hp-fill"></div>
     </div>
   </div>
 
@@ -52,6 +66,12 @@
       <div id="pause-items"></div>
       <div id="pause-hint">← → で選択　Escape で決定・再開</div>
       <div id="pause-stats"></div>
+      <!-- ダンジョンマップ（地図入手済みのときのみ表示） -->
+      <div id="pause-dungeon-map" class="hidden">
+        <div id="pause-map-title">🗺 ダンジョンマップ</div>
+        <canvas id="pause-map-canvas"></canvas>
+        <div id="pause-map-hint" class="hidden">🧭 ボス部屋あり</div>
+      </div>
     </div>
   </div>
 
@@ -92,6 +112,16 @@
     <div id="gameover-box">
       <div class="gameover-title">GAME OVER</div>
       <button id="gameover-retry">もう一度</button>
+    </div>
+  </div>
+
+  <!-- ── エンディング ── -->
+  <div id="ending-overlay" class="hidden">
+    <div id="ending-box">
+      <div id="ending-triforce">◭◭◭</div>
+      <div id="ending-title">CONGRATULATIONS!</div>
+      <div id="ending-msg">魔王を倒し、すべてのトライフォースのカケラを集めた！<br>ルミアの平和は守られた……</div>
+      <button id="ending-restart" class="title-btn">はじめから</button>
     </div>
   </div>
 

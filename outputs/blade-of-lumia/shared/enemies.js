@@ -31,7 +31,7 @@ export const ENEMY_META = {
 	[TILE.SENTRY]: {
 		name: 'センチネル',
 		hp: 6, atk: 2, def: 1, exp: 8,
-		speed: 0,  // デバッグ用：盾テスト中は静止
+		speed: ENEMY_SPEED_NORMAL,
 		sprite: 'sentry',
 		pal:    'sentry',
 		isBoss: false,
@@ -45,7 +45,7 @@ export const ENEMY_META = {
 	[TILE.BOSS]: {
 		name: 'ボス',
 		hp: 20, atk: 4, def: 2, exp: 30,
-		speed: 0,  // デバッグ用：盾テスト中は静止
+		speed: ENEMY_SPEED_FAST,
 		sprite: 'escape',
 		pal:    'escape',
 		isBoss: true,

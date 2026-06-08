@@ -47,6 +47,14 @@ export const TILE = {
 	ITEM_RUPEE:          'r',  // ルピー（小）
 	ITEM_RUPEE_LARGE:    'R',  // ルピー（大）
 	ITEM_TRIFORCE_PIECE: 'Q',  // トライフォースのカケラ
+	// ── Phase 6.5: ドアウェイシステム ────────────────────────
+	DOORWAY:        ';',  // 常時開放出入り口（ステージ境界の通路）
+	DOORWAY_BOSS:   ':',  // 入室ロック型（ボス部屋専用：入ると内側から閉じる）
+	DOORWAY_LOCKED: '|',  // 条件付き開放型（敵全滅・スイッチON等で開く）
+
+	// ダンジョン専用アイテム
+	ITEM_DUNGEON_MAP:    'm',  // ダンジョン地図
+	ITEM_COMPASS:        'n',  // コンパス
 };
 
 // タイルのメタ情報
@@ -89,6 +97,10 @@ export const TILE_META = {
 	[TILE.ITEM_RUPEE]:           { label: 'ルピー（小）', color: '#20a040', passable: true, icon: '◆' },
 	[TILE.ITEM_RUPEE_LARGE]:     { label: 'ルピー（大）', color: '#2060c0', passable: true, icon: '◇' },
 	[TILE.ITEM_TRIFORCE_PIECE]:  { label: 'トライフォースのカケラ', color: '#c0a020', passable: true, icon: '◭' },
+	// Phase 6.5: ドアウェイ
+	[TILE.DOORWAY]:        { label: '出入り口（常時開）',   color: '#102020', passable: true,  icon: '∪' },
+	[TILE.DOORWAY_BOSS]:   { label: '出入り口（ボス部屋）', color: '#300820', passable: true,  icon: '⛩' },
+	[TILE.DOORWAY_LOCKED]: { label: '出入り口（条件開）',   color: '#182030', passable: false, icon: '🚪' },
 };
 
 // タイルの一覧（パレット表示用）

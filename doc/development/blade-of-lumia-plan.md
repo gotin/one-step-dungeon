@@ -802,12 +802,57 @@ document.addEventListener('keydown', handleInput);
 
 ### Phase 6: ダンジョン＋クリア条件
 > **目標**: ダンジョンに入れて、ボスを倒してトライフォースを集めると終わる
+> **状態**: ✅ 完了
 
-- [ ] ダンジョンレイヤー：JSON の layers 構造・BGM 切り替え
-- [ ] ダンジョン専用 HUD（地図・コンパス状態表示）
-- [ ] コンパス / 地図アイテムの処理（ポーズ画面にマップ表示）
-- [ ] トライフォースのカケラ取得 → `player.triforceCount` 更新
-- [ ] 全カケラ収集 → `startEnding()`
+- [x] ダンジョンレイヤー：JSON の layers 構造・BGM 切り替え
+- [x] ダンジョン専用 HUD（地図・コンパス状態表示）
+- [x] コンパス / 地図アイテムの処理（HUD にアイコン表示）
+- [x] ボス専用 HP バー（`showBossHpBar` / `updateBossHpBar`）
+- [x] ボス入室演出（BGM 切り替え・HP バー表示・メッセージ）
+- [x] ボス多段フェーズ（`checkBossPhase`・速度倍率・攻撃クールダウン倍率）
+- [x] ボス撃破演出（点滅・爆発×4・fanfare・トライフォース出現）
+- [x] トライフォースのカケラ取得 → `player.triforceCount` 更新
+- [x] 全カケラ収集 → `startEnding()`（エンディング画面・はじめからボタン）
+- [x] JSON にボス部屋ステージ追加（`dungeon_1/1,0` isBossRoom:true）
+
+---
+
+### Phase 6.5: ドアウェイシステム（出入り口タイル）
+> **目標**: ゼルダ方式の「開閉する出入り口」を実装し、ボス部屋ロックを視覚的に正しく動作させる
+> **背景**: 現在の `MAP_ENTER`（`>`タイル）は単なるワープ。「扉が閉じる」視覚演出がなく、ボス部屋ロックが不自然。
+
+#### 設計：3タイプの出入り口
+
+| タイプ | タイル | 見た目 | 動作 |
+|---|---|---|---|
+| **常時開放** | `DOORWAY` | 開いた通路（アーチなど） | 常に通行可。ステージ境界の出入り口として使用 |
+| **入室ロック型** | `DOORWAY_BOSS` | 開いた通路 → 入室後閉じる | プレイヤーが通ると内側から閉じる。ボス部屋専用 |
+| **条件付き開放型** | `DOORWAY_LOCKED` | 閉じた扉 | 条件達成（敵全滅・スイッチON・アイテム所持）で開く |
+
+#### 実装内容
+
+- [x] 新タイル定義（`tiles.js`）：`DOORWAY`, `DOORWAY_BOSS`, `DOORWAY_LOCKED`
+- [x] スプライト追加：扉の開閉アニメーション（2フレーム：開／閉）
+- [x] `DOORWAY_BOSS`：入室後 0.4秒で閉じる → ロック状態へ（`lockBossDoors()`）
+- [x] `DOORWAY_LOCKED`：`tilePassable()` で閉状態なら通行不可（`unlockLockedDoor()` で開放）
+- [x] `startBossBattle()` で `lockBossDoors()` 呼び出し → `bossRoomLocked = true`
+- [x] `onBossDefeated()` で `unlockBossDoors()` 呼び出し → `bossRoomLocked = false`
+- [x] `saveGame/loadGame` に `doorwayStates` を追加（永続化）
+- [x] `game.css` にドアウェイ用背景色 CSS を追加
+- [ ] エディタ：出入り口タイルのパレット追加・条件設定UI（Phase 7 で対応）
+
+#### 出入り口タイルと既存システムの関係
+
+```js
+// DOORWAY_BOSS：ボス部屋入室で内側から閉じる
+// MAP_ENTER の代替として、方向（向かい合う位置）でペアを設定
+
+// DOORWAY_LOCKED：条件付き開放
+// 既存の showConditions / links と同じトリガーで制御
+// killAll → 敵全滅で開く（部屋クリア型）
+// switchOn → スイッチで開く（ギミック型）
+// triggerZone → プレイヤーが特定範囲に入ると開く（将来拡張）
+```
 
 ---
 
@@ -822,6 +867,7 @@ document.addEventListener('keydown', handleInput);
 - [ ] ショップ商品設定 UI
 - [ ] ダンジョンレイヤー作成 UI（新規レイヤー追加）
 - [ ] エディタプレビューで全新規タイルをスプライト表示
+- [ ] ドアウェイタイル（DOORWAY/DOORWAY_BOSS/DOORWAY_LOCKED）の設定 UI
 
 ---
 

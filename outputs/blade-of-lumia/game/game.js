@@ -5,6 +5,7 @@ import { ENEMY_META, ENEMY_SPEED_NORMAL } from '../shared/enemies.js';
 import { ITEM_META, EQUIP_META } from '../shared/items.js';
 import { NPC_SPRITE_MAP, NPC_DEFAULT_DIALOG } from '../shared/npcs.js';
 import {
+	SPRITES, PAL, drawSpriteFrame,
 	makeSprite, startAnimLoop, redrawAnimSprites,
 } from '../shared/sprites.js';
 import {
@@ -47,6 +48,18 @@ const pauseItemsEl     = document.getElementById('pause-items');
 const pauseStatsEl     = document.getElementById('pause-stats');
 const gameoverOverlayEl= document.getElementById('gameover-overlay');
 const gameoverRetryEl  = document.getElementById('gameover-retry');
+// ボス・エンディング・ダンジョン HUD
+const bossHpbarEl      = document.getElementById('boss-hpbar');
+const bossNameEl       = document.getElementById('boss-name');
+const bossHpFillEl     = document.getElementById('boss-hp-fill');
+const endingOverlayEl  = document.getElementById('ending-overlay');
+const endingRestartEl  = document.getElementById('ending-restart');
+const dungeonInfoEl    = document.getElementById('hud-dungeon-info');
+const dungeonNameEl    = document.getElementById('hud-dungeon-name');
+const dungeonItemsEl   = document.getElementById('hud-dungeon-items');
+const pauseDungeonMapEl= document.getElementById('pause-dungeon-map');
+const pauseMapCanvasEl = document.getElementById('pause-map-canvas');
+const pauseMapHintEl   = document.getElementById('pause-map-hint');
 
 // ── 状態 ──────────────────────────────────────────────────────
 let mapData      = null;
@@ -133,6 +146,7 @@ function saveGame() {
 				switchStates:    v.switchStates,
 				brokenWalls:     [...v.brokenWalls],
 				conditionsMet:   [...v.conditionsMet],
+				doorwayStates:   v.doorwayStates ?? {},  // Phase 6.5
 			};
 		}
 		localStorage.setItem(SAVE_KEY, JSON.stringify({
@@ -160,6 +174,7 @@ function loadGame() {
 				switchStates:    v.switchStates ?? {},
 				brokenWalls:     new Set(v.brokenWalls ?? []),
 				conditionsMet:   new Set(v.conditionsMet ?? []),
+				doorwayStates:   v.doorwayStates ?? {},  // Phase 6.5
 			};
 		}
 		return true;
@@ -205,6 +220,8 @@ function enterStage(lk, sk, pRow, pCol) {
 	// ステージ遷移時に飛翔物・設置爆弾をリセット
 	clearProjectiles();
 	clearBombs();
+	// ボス部屋ロックをリセット（非ボス部屋に移動したとき）
+	if (!stageData.isBossRoom) bossRoomLocked = false;
 
 	enemies = buildEnemies(stageData, lk, sk);
 
@@ -212,9 +229,29 @@ function enterStage(lk, sk, pRow, pCol) {
 	renderChars();
 	updateHud();
 
-	const bgm = mapData.layers[lk]?.bgm ?? 'field';
+	const layerData = mapData.layers[lk];
+	const bgm = layerData?.bgm ?? 'field';
 	playBgm(bgm);
+	updateDungeonHud(lk);
 	if (stageData.isBossRoom) startBossBattle(lk, sk);
+}
+
+// ── ダンジョン HUD 更新 ───────────────────────────────────────
+function updateDungeonHud(lk) {
+	const isDungeon = lk !== 'field';
+	if (isDungeon) {
+		const ld = mapData.layers[lk];
+		dungeonInfoEl.classList.remove('hidden');
+		dungeonNameEl.textContent = ld?.name ?? lk;
+		// 地図・コンパスの所持状況を表示
+		const dm = player.dungeonItems?.[lk];
+		let items = '';
+		if (dm?.hasMap)     items += '🗺';
+		if (dm?.hasCompass) items += '🧭';
+		dungeonItemsEl.textContent = items;
+	} else {
+		dungeonInfoEl.classList.add('hidden');
+	}
 }
 
 // ── 敵生成 ────────────────────────────────────────────────────
@@ -293,6 +330,18 @@ function setCellClass(cellEl, tile, posKey, ss) {
 		case TILE.BREAKABLE_WALL:
 			cellEl.classList.add(ss.brokenWalls.has(posKey) ? 'floor' : 'breakable-wall'); break;
 		case TILE.MAP_ENTER:      cellEl.classList.add('map-enter'); break;
+		// ── Phase 6.5: ドアウェイ ────────────────────────────────
+		case TILE.DOORWAY: cellEl.classList.add('doorway'); break;
+		case TILE.DOORWAY_BOSS: {
+			const dwState = getDoorwayState(posKey);
+			cellEl.classList.add(dwState === 'boss_closed' ? 'doorway-boss-closed' : 'doorway-boss');
+			break;
+		}
+		case TILE.DOORWAY_LOCKED: {
+			const dwState2 = getDoorwayState(posKey);
+			cellEl.classList.add(dwState2 === 'open' ? 'doorway-locked-open' : 'doorway-locked');
+			break;
+		}
 	}
 }
 
@@ -349,6 +398,38 @@ function addCellSprite(cellEl, tile, posKey, ss) {
 		if (cv) { cv.classList.add('obj-sprite'); cellEl.appendChild(cv); }
 		return;
 	}
+	// ── Phase 6.5: ドアウェイスプライト描画 ─────────────────────
+	if (tile === TILE.DOORWAY) {
+		const cv = makeSprite('doorway', 'doorway', true);
+		if (cv) { cv.classList.add('obj-sprite'); cellEl.appendChild(cv); }
+		return;
+	}
+	if (tile === TILE.DOORWAY_BOSS) {
+		const dwState = getDoorwayState(posKey);
+		const frames = SPRITES['doorwayBoss'];
+		const pal    = PAL['doorwayBoss'];
+		if (frames && pal) {
+			const cv = document.createElement('canvas');
+			cv.className = 'sprite obj-sprite';
+			const frameIdx = (dwState === 'boss_closed') ? 1 : 0;
+			drawSpriteFrame(cv, frames, frameIdx, pal);
+			cellEl.appendChild(cv);
+		}
+		return;
+	}
+	if (tile === TILE.DOORWAY_LOCKED) {
+		const dwState = getDoorwayState(posKey);
+		const frames = SPRITES['doorwayLocked'];
+		const pal    = PAL['doorwayLocked'];
+		if (frames && pal) {
+			const cv = document.createElement('canvas');
+			cv.className = 'sprite obj-sprite';
+			const frameIdx = (dwState === 'open') ? 1 : 0;
+			drawSpriteFrame(cv, frames, frameIdx, pal);
+			cellEl.appendChild(cv);
+		}
+		return;
+	}
 	// NPC
 	const npcMeta = NPC_SPRITE_MAP[tile];
 	if (npcMeta) {
@@ -381,6 +462,8 @@ function addCellSprite(cellEl, tile, posKey, ss) {
 		[TILE.ITEM_BIG_HEAL_POTION]:'💊',
 		[TILE.ITEM_HEART_CONTAINER]:'❤',
 		[TILE.ITEM_TRIFORCE_PIECE]: '◭',
+		[TILE.ITEM_DUNGEON_MAP]:    '🗺',
+		[TILE.ITEM_COMPASS]:        '🧭',
 	};
 	if (emojiItemMap[tile] && !ss.pickedKeys.has(posKey)) {
 		const span = document.createElement('span');
@@ -536,6 +619,19 @@ function tilePassable(r, c) {
 	if (tile === TILE.DOOR   && !ss.pickedKeys.has(posKey)) return false;
 	if (tile === TILE.BREAKABLE_WALL && !ss.brokenWalls.has(posKey)) return false;
 	if (NPC_SPRITE_MAP[tile]) return false;
+	// Phase 6.5: ドアウェイの通行判定
+	if (tile === TILE.DOORWAY_BOSS || tile === TILE.DOORWAY_LOCKED) {
+		const dwState = ss.doorwayStates?.[posKey];
+		// DOORWAY_LOCKED: 閉じている間は通れない
+		if (tile === TILE.DOORWAY_LOCKED) {
+			const state = dwState ?? 'closed';
+			if (state !== 'open') return false;
+		}
+		// DOORWAY_BOSS: boss_closed 状態は通れない
+		if (tile === TILE.DOORWAY_BOSS) {
+			if (dwState === 'boss_closed') return false;
+		}
+	}
 	return true;
 }
 
@@ -564,9 +660,73 @@ function isPassableForEnemy(ny, nx, self) {
 	return true;
 }
 
+// ── ドアウェイシステム（Phase 6.5） ──────────────────────────
+// ボス部屋ロック状態：true の間はステージ遷移・MAP_ENTER を完全ブロック
+let bossRoomLocked = false;
+
+// ステージ内のドアウェイ開閉状態を管理
+// getSS().doorwayStates["r,c"] = 'open' | 'closed' | 'boss_open' | 'boss_closed'
+// DOORWAY       : 常に open（変化なし）
+// DOORWAY_BOSS  : 初期 'open'、入室後 'boss_closed'、ボス撃破で 'open'
+// DOORWAY_LOCKED: 初期 'closed'、条件達成で 'open'
+
+function getDoorwayState(posKey) {
+	const ss = getSS(currentLayer, stageKey);
+	if (!ss.doorwayStates) ss.doorwayStates = {};
+	const tile = stageData?.tiles
+		?.[parseInt(posKey.split(',')[0])]
+		?.[parseInt(posKey.split(',')[1])];
+	if (tile === TILE.DOORWAY) return 'open';
+	return ss.doorwayStates[posKey] ?? (tile === TILE.DOORWAY_LOCKED ? 'closed' : 'open');
+}
+
+function setDoorwayState(posKey, state) {
+	const ss = getSS(currentLayer, stageKey);
+	if (!ss.doorwayStates) ss.doorwayStates = {};
+	ss.doorwayStates[posKey] = state;
+}
+
+// ボス入室時：DOORWAY_BOSS タイルを全て閉じる
+function lockBossDoors() {
+	if (!stageData) return;
+	for (let r = 0; r < stageData.rows; r++) {
+		for (let c = 0; c < stageData.cols; c++) {
+			if (stageData.tiles[r][c] === TILE.DOORWAY_BOSS) {
+				setDoorwayState(`${r},${c}`, 'boss_closed');
+			}
+		}
+	}
+	renderBoard(); renderChars();
+}
+
+// ボス撃破時：DOORWAY_BOSS タイルを全て開く
+function unlockBossDoors() {
+	if (!stageData) return;
+	for (let r = 0; r < stageData.rows; r++) {
+		for (let c = 0; c < stageData.cols; c++) {
+			if (stageData.tiles[r][c] === TILE.DOORWAY_BOSS) {
+				setDoorwayState(`${r},${c}`, 'open');
+			}
+		}
+	}
+	renderBoard(); renderChars();
+}
+
+// 条件達成時：DOORWAY_LOCKED タイルを開く（posKey指定または全て）
+function unlockLockedDoor(posKey) {
+	setDoorwayState(posKey, 'open');
+	playSound('gateOpen');
+	renderBoard(); renderChars();
+}
+
 // ── ステージ端遷移チェック ────────────────────────────────────
 function checkStageTransition() {
 	if (isTransitioning) return;
+	// ボス部屋ロック中は全方向の退出を禁止
+	if (bossRoomLocked) {
+		pulse('扉が閉じている！', 1200);
+		return;
+	}
 	const { x, y } = player;
 	const { rows, cols } = stageData;
 
@@ -811,6 +971,9 @@ function handleTileEvent() {
 		playSound('item'); pulse('◭ トライフォースのカケラを手に入れた！');
 		renderBoard(); renderChars(); updateHud(); saveGame(); return;
 	}
+	if ((tile === TILE.ITEM_DUNGEON_MAP || tile === TILE.ITEM_COMPASS) && !ss.pickedKeys.has(posKey)) {
+		pickDungeonItem(tile, posKey, ss); return;
+	}
 	if (tile === TILE.CHEST && !ss.openedChests.has(posKey)) {
 		openChest(posKey, ss); return;
 	}
@@ -932,10 +1095,21 @@ function dealDamageToEnemy(e, dmg) {
 	e.hp -= actual;
 	playSound('hit');
 	showDmgPopupFloat(e.x, e.y, actual, true);
+	// ボスなら HP バー更新・フェーズチェック
+	if (ENEMY_META[e.type]?.isBoss) {
+		updateBossHpBar(e);
+		checkBossPhase(e);
+	}
 	if (e.hp <= 0) killEnemy(e);
 }
 
 function killEnemy(e) {
+	const meta = ENEMY_META[e.type];
+	if (meta?.isBoss) {
+		// ボス撃破演出（非同期）
+		onBossDefeated(e);
+		return;
+	}
 	playSound('enemyDie');
 	getSS(currentLayer, stageKey).defeatedEnemies.add(e.id);
 	removeCharEl(`enemy-${e.id}`);
@@ -1098,6 +1272,95 @@ function renderPauseMenu() {
 		}
 	}
 	pauseStatsEl.textContent = `❤×${player.maxHearts}  ATK:${player.atk}  DEF:${player.def}  💰${player.rupees}`;
+	// ダンジョン地図を描画（現在ダンジョン内かつ地図入手済みの場合のみ）
+	renderPauseDungeonMap();
+}
+
+// ── ポーズ画面：ダンジョンマップ描画 ─────────────────────────
+function renderPauseDungeonMap() {
+	const lk = currentLayer;
+	if (lk === 'field') { pauseDungeonMapEl.classList.add('hidden'); return; }
+	const dm = player.dungeonItems?.[lk];
+	if (!dm?.hasMap) { pauseDungeonMapEl.classList.add('hidden'); return; }
+
+	pauseDungeonMapEl.classList.remove('hidden');
+
+	// コンパス：ボス部屋の場所を表示（コンパス入手済みの場合）
+	const ld = mapData.layers[lk];
+	const hasCompass = !!dm.hasCompass;
+	const bossStageKey = ld?.bossStage ?? null;
+
+	// ステージ一覧からグリッド範囲を算出
+	const stages = Object.keys(ld.stages ?? {});
+	if (stages.length === 0) { pauseDungeonMapEl.classList.add('hidden'); return; }
+
+	const coords = stages.map(k => k.split(',').map(Number));
+	const minR = Math.min(...coords.map(c => c[0]));
+	const maxR = Math.max(...coords.map(c => c[0]));
+	const minC = Math.min(...coords.map(c => c[1]));
+	const maxC = Math.max(...coords.map(c => c[1]));
+	const gridW = maxC - minC + 1;
+	const gridH = maxR - minR + 1;
+
+	// canvas サイズ設定（1ステージ = 24px、最大10ステージ幅まで想定）
+	const CELL = 24;
+	const PAD  = 3;
+	const cw = gridW * (CELL + PAD) + PAD;
+	const ch = gridH * (CELL + PAD) + PAD;
+	pauseMapCanvasEl.width  = cw;
+	pauseMapCanvasEl.height = ch;
+	// display サイズ（2倍でピクセルくっきり）
+	pauseMapCanvasEl.style.width  = `${cw * 2}px`;
+	pauseMapCanvasEl.style.height = `${ch * 2}px`;
+
+	const ctx = pauseMapCanvasEl.getContext('2d');
+	ctx.clearRect(0, 0, cw, ch);
+
+	// 背景
+	ctx.fillStyle = '#0a0e12';
+	ctx.fillRect(0, 0, cw, ch);
+
+	// 現在ステージ
+	const [curR, curC] = stageKey.split(',').map(Number);
+
+	stages.forEach(sk => {
+		const [r, c] = sk.split(',').map(Number);
+		const x = PAD + (c - minC) * (CELL + PAD);
+		const y = PAD + (r - minR) * (CELL + PAD);
+
+		const isCurrent  = (r === curR && c === curC);
+		const isBoss     = (sk === bossStageKey && hasCompass);
+		const isVisited  = getSS(lk, sk).defeatedEnemies.size > 0 || isCurrent;
+
+		// ステージ背景色
+		if (isCurrent)   ctx.fillStyle = '#80c0f0';
+		else if (isBoss) ctx.fillStyle = '#c04040';
+		else             ctx.fillStyle = isVisited ? '#3a5060' : '#1a2a38';
+
+		ctx.fillRect(x, y, CELL, CELL);
+
+		// ボス部屋マーク
+		if (isBoss) {
+			ctx.fillStyle = '#ffffff';
+			ctx.font = `${CELL - 4}px sans-serif`;
+			ctx.textAlign = 'center';
+			ctx.textBaseline = 'middle';
+			ctx.fillText('!', x + CELL / 2, y + CELL / 2 + 1);
+		}
+		// 現在地マーク
+		if (isCurrent) {
+			ctx.fillStyle = '#0a1418';
+			const s = 4;
+			ctx.fillRect(x + CELL / 2 - s / 2, y + CELL / 2 - s / 2, s, s);
+		}
+	});
+
+	// ヒント（コンパス入手でボス部屋表示）
+	if (hasCompass && bossStageKey && ld.stages[bossStageKey]) {
+		pauseMapHintEl.classList.remove('hidden');
+	} else {
+		pauseMapHintEl.classList.add('hidden');
+	}
 }
 
 function pauseSelectPrev() {
@@ -1190,9 +1453,207 @@ function shopBuy() {
 	renderShop();
 }
 
+// ── ダンジョンアイテム（地図・コンパス）取得ユーティリティ ─────
+function pickDungeonItem(tile, posKey, ss) {
+	if (ss.pickedKeys.has(posKey)) return false;
+	ss.pickedKeys.add(posKey);
+	if (!player.dungeonItems) player.dungeonItems = {};
+	if (!player.dungeonItems[currentLayer]) {
+		player.dungeonItems[currentLayer] = { hasMap: false, hasCompass: false };
+	}
+	if (tile === TILE.ITEM_DUNGEON_MAP) {
+		player.dungeonItems[currentLayer].hasMap = true;
+		playSound('item'); pulse('🗺 ダンジョンの地図を手に入れた！');
+	} else if (tile === TILE.ITEM_COMPASS) {
+		player.dungeonItems[currentLayer].hasCompass = true;
+		playSound('item'); pulse('🧭 コンパスを手に入れた！');
+	}
+	updateDungeonHud(currentLayer);
+	renderBoard(); renderChars(); updateHud(); saveGame();
+	return true;
+}
+
+// ── ボス HPバー ───────────────────────────────────────────────
+function showBossHpBar(boss) {
+	bossHpbarEl.classList.remove('hidden');
+	bossNameEl.textContent = ENEMY_META[boss.type]?.name ?? 'ボス';
+	updateBossHpBar(boss);
+}
+
+function updateBossHpBar(boss) {
+	const pct = Math.max(0, boss.hp / boss.maxHp * 100);
+	bossHpFillEl.style.width = `${pct}%`;
+	// HP が低いほど赤くなる
+	if (pct < 25) bossHpFillEl.style.background = 'linear-gradient(90deg,#880000,#cc0000)';
+	else if (pct < 50) bossHpFillEl.style.background = 'linear-gradient(90deg,#aa2000,#ee4010)';
+	else bossHpFillEl.style.background = 'linear-gradient(90deg,#cc2020,#ff5050)';
+}
+
+function hideBossHpBar() {
+	bossHpbarEl.classList.add('hidden');
+}
+
+// ── ボス多段フェーズ ──────────────────────────────────────────
+function checkBossPhase(boss) {
+	const meta = ENEMY_META[boss.type];
+	if (!meta?.phases) return;
+	for (const phase of meta.phases) {
+		const ratio = boss.hp / boss.maxHp;
+		if (ratio <= phase.hpThreshold && !boss.phasesTriggered?.includes(phase.hpThreshold)) {
+			if (!boss.phasesTriggered) boss.phasesTriggered = [];
+			boss.phasesTriggered.push(phase.hpThreshold);
+			// 速度倍率適用
+			if (phase.speedMultiplier) boss.speed = (meta.speed) * phase.speedMultiplier;
+			// 攻撃クールダウン倍率適用
+			if (phase.attackCooldownMultiplier && boss.attack?.cooldown) {
+				boss.attack = { ...boss.attack, cooldown: Math.round(boss.attack.cooldown * phase.attackCooldownMultiplier) };
+			}
+			// フェーズ変化エフェクト
+			const bossEl = document.getElementById(`char-enemy-${boss.id}`);
+			if (bossEl) {
+				let cnt = 0;
+				const t = setInterval(() => {
+					bossEl.style.opacity = (cnt % 2 === 0) ? '0.2' : '1';
+					if (++cnt >= 8) { clearInterval(t); bossEl.style.opacity = '1'; }
+				}, 120);
+			}
+			pulse(`${meta.name} が 怒り狂った！`, 2500);
+		}
+	}
+}
+
+// ── ボス撃破演出（非同期） ────────────────────────────────────
+function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+async function onBossDefeated(boss) {
+	stopGameLoop();
+	// 1. ボスを点滅
+	const bossEl = document.getElementById(`char-enemy-${boss.id}`);
+	if (bossEl) {
+		for (let i = 0; i < 10; i++) {
+			bossEl.style.opacity = (i % 2 === 0) ? '0.15' : '1';
+			await sleep(140);
+		}
+		bossEl.remove();
+	}
+	// 2. 爆発エフェクト複数
+	const br = toTileRow(boss.y), bc = toTileCol(boss.x);
+	for (let i = 0; i < 4; i++) {
+		showExplosionEffect(br + (Math.random() - 0.5), bc + (Math.random() - 0.5));
+		await sleep(200);
+	}
+	// 3. BGM 停止・SE
+	stopBgm();
+	playSound('fanfare');
+	// 4. ボス HP バー非表示・ロック解除・ドアウェイ開放
+	hideBossHpBar();
+	bossRoomLocked = false;
+	unlockBossDoors();   // DOORWAY_BOSS タイルを開く（Phase 6.5）
+	pulse('🔓 扉が開いた！', 2000);
+	// 5. 敵リストから除去・セーブ
+	getSS(currentLayer, stageKey).defeatedEnemies.add(boss.id);
+	enemies = enemies.filter(x => x !== boss);
+	// 6. トライフォース出現
+	spawnTriforcePiece(boss);
+	await sleep(800);
+	// 7. メッセージ
+	pulse('◭ トライフォースのカケラを 手に入れた！', 4000);
+	// 8. カウント更新
+	player.triforceCount++;
+	updateHud();
+	saveGame();
+	// 9. 全カケラ収集チェック
+	const totalDungeons = Object.values(mapData.layers)
+		.filter(ld => ld.triforceId !== undefined).length;
+	if (player.triforceCount >= totalDungeons && totalDungeons > 0) {
+		await sleep(2500);
+		startEnding();
+		return;
+	}
+	// ループ再開
+	startGameLoop();
+}
+
+// トライフォースのカケラをボスの位置に表示
+function spawnTriforcePiece(boss) {
+	if (!charLayerEl) return;
+	const cellPx = getCellPx();
+	const el = document.createElement('div');
+	el.style.cssText = `
+		position:absolute;
+		left:${boss.x * cellPx}px;
+		top:${boss.y * cellPx}px;
+		width:${cellPx}px; height:${cellPx}px;
+		display:flex; align-items:center; justify-content:center;
+		font-size:${Math.round(cellPx * 0.65)}px;
+		z-index:12; pointer-events:none;
+		animation:triforce-pulse 1.5s ease-in-out infinite;
+	`;
+	el.textContent = '◭';
+	charLayerEl.appendChild(el);
+}
+
+// ── エンディング ──────────────────────────────────────────────
+function startEnding() {
+	isGameover = true; // ゲーム操作を無効化
+	stopGameLoop(); stopBgm();
+	// エンディング表示（動的メッセージ生成）
+	const msgEl = document.getElementById('ending-msg');
+	if (msgEl) {
+		msgEl.innerHTML = `魔王を倒し、すべてのトライフォースのカケラを集めた！<br>ルミアの平和は守られた……`;
+	}
+	// トライフォース個数に合わせたアイコン
+	const triEl = document.getElementById('ending-triforce');
+	if (triEl) triEl.textContent = '◭'.repeat(player.triforceCount || 1);
+	endingOverlayEl.classList.remove('hidden');
+	localStorage.removeItem(SAVE_KEY); // クリアしたのでセーブ削除
+}
+
+// ── ボス部屋ロック演出（扉が閉まるフラッシュ） ───────────────
+function showBossRoomLockEffect() {
+	if (!charLayerEl) return;
+	// 画面全体を赤く一瞬フラッシュ
+	const flash = document.createElement('div');
+	flash.style.cssText = `
+		position:fixed;
+		inset:0;
+		background:rgba(180,0,0,0.45);
+		pointer-events:none;
+		z-index:50;
+		animation:flash-anim 0.4s ease-out forwards;
+	`;
+	document.body.appendChild(flash);
+	setTimeout(() => flash.remove(), 420);
+}
+
 // ── ボス戦 ────────────────────────────────────────────────────
 function startBossBattle(lk, sk) {
-	if (enemies.find(e => ENEMY_META[e.type]?.isBoss)) setTimeout(() => playBgm('boss'), 200);
+	// ボスが既に倒されている（defeatedEnemies に登録済み）なら演出なし
+	const ss = getSS(lk, sk);
+	const boss = enemies.find(e => ENEMY_META[e.type]?.isBoss);
+	if (!boss) {
+		// ボス撃破済み → ロック不要
+		bossRoomLocked = false;
+		return;
+	}
+
+	// 入室から少し待って扉閉鎖演出 → ロック
+	setTimeout(() => {
+		lockBossDoors();              // DOORWAY_BOSS タイルを閉じる
+		showBossRoomLockEffect();
+		playSound('stageTransition'); // 扉が閉まる音（暫定）
+		bossRoomLocked = true;
+		pulse('⚠ 扉が閉じた！ボスを倒さないと出られない！', 3000);
+
+		// さらに少し待ってBGMとHPバー表示
+		setTimeout(() => {
+			const ld = mapData.layers[lk];
+			const bossBgm = ld?.bossBgm ?? 'boss';
+			playBgm(bossBgm);
+			showBossHpBar(boss);
+			pulse(`${ENEMY_META[boss.type].name} が 現れた！`, 2500);
+		}, 800);
+	}, 400);
 }
 
 // ── リアルタイムループ ────────────────────────────────────────
@@ -1786,6 +2247,12 @@ shieldBtn.addEventListener('touchend',   () => { isShielding = false; updateShie
 shieldBtn.addEventListener('mousedown',  () => { isShielding = true;  updateShieldHud(); });
 shieldBtn.addEventListener('mouseup',    () => { isShielding = false; updateShieldHud(); });
 gameoverRetryEl.addEventListener('click', () => { resumeAudio(); retryGame(); });
+// エンディング「はじめから」ボタン
+endingRestartEl.addEventListener('click', () => {
+	endingOverlayEl.classList.add('hidden');
+	isGameover = false;
+	startNewGame();
+});
 
 // スワイプ
 let touchStartX = 0, touchStartY = 0;

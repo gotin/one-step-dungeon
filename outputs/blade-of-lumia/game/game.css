@@ -194,6 +194,32 @@ html, body {
     background: #101820;
 }
 
+/* ── Phase 6.5: ドアウェイ ──────────────────────────────────── */
+/* 常時開放（アーチ通路）*/
+.cell.doorway {
+    background: #0e1a20;
+}
+
+/* ボス部屋ドアウェイ（開）*/
+.cell.doorway-boss {
+    background: #1a0c10;
+}
+
+/* ボス部屋ドアウェイ（閉・ロック中）*/
+.cell.doorway-boss-closed {
+    background: #3a1020;
+}
+
+/* 条件付きドアウェイ（閉）*/
+.cell.doorway-locked {
+    background: #121830;
+}
+
+/* 条件付きドアウェイ（開）*/
+.cell.doorway-locked-open {
+    background: #0e1a20;
+}
+
 /* スプライト */
 canvas.sprite {
     position: absolute;
@@ -630,6 +656,36 @@ canvas.sprite.item-sprite {
     text-align: center;
 }
 
+/* ── ポーズ画面：ダンジョンマップ ─────────────────────────── */
+#pause-dungeon-map {
+    margin-top: 16px;
+    border-top: 1px solid #2a4a6a;
+    padding-top: 12px;
+}
+
+#pause-map-title {
+    font-size: 13px;
+    color: #8ab0d0;
+    text-align: center;
+    margin-bottom: 8px;
+    letter-spacing: 1px;
+}
+
+#pause-map-canvas {
+    display: block;
+    margin: 0 auto;
+    image-rendering: pixelated;
+    border: 1px solid #2a4a6a;
+    border-radius: 4px;
+}
+
+#pause-map-hint {
+    font-size: 11px;
+    color: #f08080;
+    text-align: center;
+    margin-top: 6px;
+}
+
 /* ── ゲームオーバー ─────────────────────────────────────── */
 #gameover-overlay {
     position: fixed;
@@ -1016,6 +1072,198 @@ canvas.sprite.item-sprite {
     font-size: 11px;
     color: #4a6a4a;
     text-align: center;
+}
+
+/* ── ボス HP バー ──────────────────────────────────────────── */
+#boss-hpbar {
+    position: fixed;
+    bottom: 148px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(8, 12, 18, 0.92);
+    border: 2px solid #8a2020;
+    border-radius: 8px;
+    padding: 6px 14px;
+    min-width: 240px;
+    max-width: 92vw;
+    z-index: 35;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    animation: boss-hpbar-in 0.4s ease-out;
+}
+
+#boss-hpbar.hidden {
+    display: none;
+}
+
+#boss-name {
+    font-size: 12px;
+    color: #f08080;
+    letter-spacing: 2px;
+    text-align: center;
+}
+
+#boss-hp-track {
+    width: 100%;
+    height: 10px;
+    background: #2a0a0a;
+    border-radius: 5px;
+    overflow: hidden;
+}
+
+#boss-hp-fill {
+    height: 100%;
+    background: linear-gradient(90deg, #cc2020, #ff5050);
+    border-radius: 5px;
+    transition: width 0.3s ease-out;
+    width: 100%;
+}
+
+@keyframes boss-hpbar-in {
+    from {
+        opacity: 0;
+        transform: translateX(-50%) translateY(12px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateX(-50%) translateY(0);
+    }
+}
+
+/* ── ダンジョン HUD（中央） ────────────────────────────────── */
+#hud-center {
+    flex: 1;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+
+#hud-dungeon-info {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+}
+
+#hud-dungeon-name {
+    font-size: 11px;
+    color: #8ab0d0;
+    letter-spacing: 1px;
+}
+
+#hud-dungeon-items {
+    font-size: 12px;
+    color: #c0d0e0;
+    letter-spacing: 2px;
+}
+
+/* ── エンディング ───────────────────────────────────────────── */
+#ending-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.0);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 90;
+    animation: ending-fadein 2.0s ease-out forwards;
+}
+
+#ending-overlay.hidden {
+    display: none;
+}
+
+@keyframes ending-fadein {
+    0% {
+        background: rgba(0, 0, 0, 0.0);
+    }
+
+    30% {
+        background: rgba(0, 0, 0, 0.85);
+    }
+
+    100% {
+        background: rgba(0, 0, 0, 0.92);
+    }
+}
+
+#ending-box {
+    text-align: center;
+    padding: 40px 48px;
+    background: rgba(10, 16, 20, 0.0);
+    animation: ending-box-in 2.5s ease-out forwards;
+}
+
+@keyframes ending-box-in {
+    0% {
+        opacity: 0;
+        transform: scale(0.8);
+    }
+
+    40% {
+        opacity: 0;
+        transform: scale(0.8);
+    }
+
+    100% {
+        opacity: 1;
+        transform: scale(1.0);
+    }
+}
+
+#ending-triforce {
+    font-size: 42px;
+    color: #f0d050;
+    letter-spacing: 8px;
+    margin-bottom: 16px;
+    text-shadow: 0 0 30px rgba(240, 200, 60, 0.8);
+    animation: triforce-pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes triforce-pulse {
+    0%, 100% {
+        text-shadow: 0 0 20px rgba(240, 200, 60, 0.6);
+    }
+
+    50% {
+        text-shadow: 0 0 50px rgba(240, 200, 60, 1.0), 0 0 80px rgba(255, 230, 80, 0.6);
+    }
+}
+
+#ending-title {
+    font-size: 28px;
+    color: #f0d050;
+    letter-spacing: 4px;
+    margin-bottom: 20px;
+    font-weight: bold;
+    text-shadow: 0 0 20px rgba(240, 208, 80, 0.7);
+}
+
+#ending-msg {
+    font-size: 15px;
+    color: #c0d8c0;
+    line-height: 1.8;
+    margin-bottom: 32px;
+}
+
+/* ── ボス部屋ロック演出（暗転オーバーレイ） ────────────────── */
+#dark-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.0);
+    pointer-events: none;
+    z-index: 45;
+    transition: background 0.3s ease;
+}
+
+#dark-overlay.active {
+    background: rgba(0, 0, 0, 0.75);
+}
+
+#dark-overlay.hidden {
+    display: none;
 }
 
 /* ── 盾ブロックエフェクト ─────────────────────────────────── */
