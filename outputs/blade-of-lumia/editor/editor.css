@@ -1,0 +1,781 @@
+/* ── Blade of Lumia Map Editor CSS ─────────────────────────── */
+:root {
+    --bg: #0e1215;
+    --surface: #181d22;
+    --surface2: #1f262c;
+    --border: #2e3a42;
+    --text: #e8f0ec;
+    --muted: #7a9090;
+    --accent: #4fc3a0;
+    --accent2: #f0c040;
+    --danger: #e05050;
+    --primary: #3a78d0;
+}
+
+* {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+}
+
+html, body {
+    height: 100%;
+    background: var(--bg);
+    color: var(--text);
+    font-family: ui-sans-serif, system-ui, -apple-system, sans-serif;
+    font-size: 13px;
+    overflow: hidden;
+}
+
+.app {
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+}
+
+/* ── Toolbar ──────────────────────────────────────────────── */
+.toolbar {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 8px 16px;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+    flex-wrap: wrap;
+}
+
+.toolbar-title {
+    font-weight: 700;
+    font-size: 1rem;
+    color: var(--accent);
+    flex-shrink: 0;
+}
+
+.toolbar-actions {
+    display: flex;
+    gap: 6px;
+    flex: 1;
+}
+
+.toolbar-mode {
+    display: flex;
+    gap: 4px;
+}
+
+/* ── Buttons ──────────────────────────────────────────────── */
+.btn {
+    padding: 5px 12px;
+    border: 1px solid var(--border);
+    background: var(--surface2);
+    color: var(--text);
+    border-radius: 6px;
+    cursor: pointer;
+    font: inherit;
+    font-size: 0.82rem;
+    transition: background 0.1s, border-color 0.1s;
+}
+
+.btn:hover {
+    background: #2a3540;
+    border-color: var(--accent);
+}
+
+.btn-primary {
+    border-color: var(--primary);
+    background: rgba(58, 120, 208, 0.2);
+    color: #80b0f0;
+}
+
+.btn-primary:hover {
+    background: rgba(58, 120, 208, 0.35);
+}
+
+.btn-accent {
+    border-color: var(--accent2);
+    background: rgba(240, 192, 64, 0.15);
+    color: var(--accent2);
+}
+
+.btn-accent:hover {
+    background: rgba(240, 192, 64, 0.28);
+}
+
+.btn-danger {
+    border-color: var(--danger);
+    color: var(--danger);
+    background: rgba(224, 80, 80, 0.1);
+}
+
+.btn-danger:hover {
+    background: rgba(224, 80, 80, 0.25);
+}
+
+.btn-sm {
+    padding: 3px 8px;
+    font-size: 0.78rem;
+}
+
+/* ── Tabs ─────────────────────────────────────────────────── */
+.tab {
+    padding: 5px 14px;
+    border: 1px solid var(--border);
+    background: transparent;
+    color: var(--muted);
+    border-radius: 6px;
+    cursor: pointer;
+    font: inherit;
+    font-size: 0.82rem;
+    transition: all 0.1s;
+}
+
+.tab:hover {
+    color: var(--text);
+    background: var(--surface2);
+}
+
+.tab.active {
+    background: var(--accent);
+    color: #000;
+    border-color: var(--accent);
+    font-weight: 600;
+}
+
+/* ── Main ─────────────────────────────────────────────────── */
+.main {
+    flex: 1;
+    overflow: hidden;
+    position: relative;
+}
+
+.view {
+    width: 100%;
+    height: 100%;
+    overflow: auto;
+}
+
+.view.hidden {
+    display: none;
+}
+
+/* ── Layer bar ────────────────────────────────────────────── */
+.layer-bar {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 0 10px;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 12px;
+    flex-wrap: wrap;
+}
+
+.layer-tabs {
+    display: flex;
+    gap: 4px;
+    flex-wrap: wrap;
+}
+
+.layer-tab {
+    padding: 4px 12px;
+    border: 1px solid var(--border);
+    background: var(--surface2);
+    color: var(--muted);
+    border-radius: 5px;
+    cursor: pointer;
+    font: inherit;
+    font-size: 0.78rem;
+    transition: all 0.1s;
+}
+
+.layer-tab:hover {
+    border-color: var(--accent);
+    color: var(--text);
+}
+
+.layer-tab.active {
+    background: var(--accent);
+    color: #000;
+    border-color: var(--accent);
+    font-weight: 600;
+}
+
+/* ── Dungeon meta panel ───────────────────────────────────── */
+.dungeon-meta-panel {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 10px 14px;
+    margin-bottom: 12px;
+}
+
+.dungeon-meta-panel.hidden {
+    display: none;
+}
+
+.meta-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+    font-size: 0.78rem;
+}
+
+.meta-row label {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    color: var(--muted);
+}
+
+.meta-label {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    color: var(--muted);
+    font-size: 0.78rem;
+}
+
+/* ── World Map ────────────────────────────────────────────── */
+.world-layout {
+    display: flex;
+    height: 100%;
+    overflow: hidden;
+}
+
+.world-main {
+    flex: 1;
+    padding: 16px 20px;
+    overflow: auto;
+}
+
+.world-side {
+    width: 440px;
+    flex-shrink: 0;
+    background: var(--surface);
+    border-left: 1px solid var(--border);
+    padding: 16px 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    overflow-y: auto;
+}
+
+.world-preview-wrap {
+    overflow: hidden;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    background: var(--bg);
+    flex-shrink: 0;
+    width: 100%;
+}
+
+.world-preview-wrap.hidden {
+    display: none;
+}
+
+.world-preview-canvas {
+    display: block;
+    image-rendering: pixelated;
+    image-rendering: crisp-edges;
+    /* パネル幅に合わせて自動縮小（縦横比は保持） */
+    max-width: 100%;
+    height: auto;
+}
+
+.world-stage-info {
+    flex: 1;
+    font-size: 0.78rem;
+    line-height: 1.8;
+    color: var(--muted);
+}
+
+.world-stage-info .info-row {
+    display: flex;
+    justify-content: space-between;
+    padding: 2px 0;
+    border-bottom: 1px solid var(--border);
+}
+
+.world-stage-info .info-label {
+    color: var(--muted);
+}
+
+.world-stage-info .info-value {
+    color: var(--text);
+    font-weight: 600;
+}
+
+.world-side-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    margin-bottom: 10px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--border);
+}
+
+.world-stage-actions {
+    flex-shrink: 0;
+    display: flex;
+    gap: 6px;
+}
+
+.world-info {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 16px;
+}
+
+.input-small {
+    width: 54px;
+    padding: 3px 6px;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    color: var(--text);
+    border-radius: 4px;
+    font: inherit;
+    margin-left: 4px;
+}
+
+.input-med {
+    width: 120px;
+    padding: 3px 6px;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    color: var(--text);
+    border-radius: 4px;
+    font: inherit;
+    font-size: 0.78rem;
+    margin-left: 4px;
+}
+
+.world-grid {
+    display: inline-grid;
+    gap: 0;
+    margin-bottom: 12px;
+}
+
+.world-insert-btn {
+    background: transparent;
+    border: 1px dashed transparent;
+    color: var(--muted);
+    cursor: pointer;
+    font-size: 0.7rem;
+    border-radius: 3px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.12s, border-color 0.12s, color 0.12s;
+    padding: 0;
+}
+
+.world-insert-row {
+    width: 100%;
+    height: 18px;
+}
+
+.world-insert-col {
+    width: 18px;
+    height: 100px;
+    writing-mode: vertical-lr;
+}
+
+.world-insert-btn:hover {
+    background: rgba(79, 195, 160, 0.15);
+    border-color: var(--accent);
+    color: var(--accent);
+}
+
+.world-cell {
+    width: 100px;
+    height: 100px;
+    border: 2px solid var(--border);
+    border-radius: 6px;
+    background: var(--surface2);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: border-color 0.15s, background 0.15s;
+    font-size: 0.72rem;
+    color: var(--muted);
+    gap: 4px;
+    overflow: hidden;
+    position: relative;
+}
+
+.world-cell:hover {
+    border-color: var(--accent);
+}
+
+.world-cell.has-stage {
+    border-color: #3a5060;
+}
+
+.world-cell.has-stage:hover {
+    border-color: var(--accent);
+}
+
+.world-cell.selected {
+    border-color: var(--accent2) !important;
+    box-shadow: 0 0 0 2px rgba(240, 192, 64, 0.4);
+}
+
+.world-cell .minimap-canvas {
+    display: block;
+    image-rendering: pixelated;
+    width: 80px;
+    height: 80px;
+    border-radius: 2px;
+}
+
+.world-cell .cell-coord {
+    font-size: 0.64rem;
+    color: var(--muted);
+    position: absolute;
+    bottom: 3px;
+    right: 5px;
+}
+
+.world-cell .cell-empty {
+    color: var(--muted);
+    font-size: 1.4rem;
+}
+
+.world-cell .cell-add-label {
+    font-size: 0.64rem;
+    color: var(--muted);
+}
+
+.world-cell.boss-room-mark {
+    border-color: #c03030 !important;
+}
+
+/* ── Stage Editor Layout ──────────────────────────────────── */
+.stage-layout {
+    display: grid;
+    grid-template-columns: 190px 1fr 230px;
+    height: 100%;
+    overflow: hidden;
+}
+
+/* ── Palette Panel ────────────────────────────────────────── */
+.palette-panel {
+    background: var(--surface);
+    border-right: 1px solid var(--border);
+    padding: 12px 10px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.panel-title {
+    font-size: 0.75rem;
+    font-weight: 700;
+    color: var(--muted);
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    margin-bottom: 6px;
+}
+
+.tile-palette {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 3px;
+}
+
+.tile-btn {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 5px 2px;
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    cursor: pointer;
+    background: var(--surface2);
+    color: var(--text);
+    font: inherit;
+    font-size: 0.65rem;
+    gap: 2px;
+    transition: border-color 0.1s, background 0.1s;
+}
+
+.tile-btn:hover {
+    border-color: var(--accent);
+    background: #1f2e30;
+}
+
+.tile-btn.selected {
+    border-color: var(--accent2);
+    background: rgba(240, 192, 64, 0.12);
+}
+
+.tile-btn .tile-icon {
+    font-size: 0.95rem;
+    line-height: 1;
+}
+
+.tile-btn .tile-label {
+    font-size: 0.6rem;
+    color: var(--muted);
+    text-align: center;
+}
+
+.palette-tools {
+    margin-top: 2px;
+}
+
+.tool-group {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.tool-btn {
+    padding: 5px 10px;
+    border: 1px solid var(--border);
+    background: var(--surface2);
+    color: var(--text);
+    border-radius: 5px;
+    cursor: pointer;
+    font: inherit;
+    font-size: 0.78rem;
+    text-align: left;
+    transition: border-color 0.1s, background 0.1s;
+}
+
+.tool-btn:hover {
+    border-color: var(--accent);
+}
+
+.tool-btn.active {
+    border-color: var(--accent2);
+    background: rgba(240, 192, 64, 0.12);
+    color: var(--accent2);
+}
+
+/* ステージ設定 */
+.stage-settings {
+    border-top: 1px solid var(--border);
+    padding-top: 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.stage-meta {
+    margin-top: 2px;
+}
+
+.stage-info-content {
+    font-size: 0.72rem;
+    color: var(--muted);
+    line-height: 1.8;
+}
+
+.border-warn {
+    margin-top: 6px;
+    font-size: 0.7rem;
+    color: #e08040;
+}
+
+/* ── Stage Editor Center ──────────────────────────────────── */
+.stage-editor-center {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    background: var(--bg);
+}
+
+.stage-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 12px;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+}
+
+.stage-label {
+    font-weight: 700;
+    color: var(--accent2);
+}
+
+.checkbox-label {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 0.78rem;
+    color: var(--muted);
+    cursor: pointer;
+}
+
+.stage-canvas-wrap {
+    flex: 1;
+    overflow: auto;
+    display: flex;
+    align-items: flex-start;
+    justify-content: flex-start;
+    padding: 16px;
+}
+
+#stage-canvas {
+    image-rendering: pixelated;
+    cursor: crosshair;
+    border: 2px solid var(--border);
+    border-radius: 4px;
+}
+
+.cell-info {
+    padding: 6px 12px;
+    height: 28px;
+    font-size: 0.72rem;
+    color: var(--muted);
+    background: var(--surface);
+    border-top: 1px solid var(--border);
+    flex-shrink: 0;
+}
+
+/* ── Props Panel ──────────────────────────────────────────── */
+.props-panel {
+    background: var(--surface);
+    border-left: 1px solid var(--border);
+    padding: 8px 10px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+}
+
+.props-section {
+    padding: 10px 0 8px;
+    border-bottom: 1px solid var(--border);
+}
+
+.props-section:last-child {
+    border-bottom: none;
+}
+
+/* ── Links / items list ───────────────────────────────────── */
+.links-list {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    margin-bottom: 6px;
+}
+
+.link-item {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    padding: 6px 8px;
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    background: var(--surface2);
+    font-size: 0.72rem;
+}
+
+.link-item label {
+    color: var(--muted);
+}
+
+.link-item input, .link-item select, .link-item textarea {
+    width: 100%;
+    padding: 2px 5px;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    color: var(--text);
+    border-radius: 3px;
+    font: inherit;
+    font-size: 0.72rem;
+    margin-top: 2px;
+}
+
+.link-item textarea {
+    resize: vertical;
+    min-height: 50px;
+}
+
+.link-item-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 2px;
+}
+
+.link-item-header span {
+    font-size: 0.72rem;
+    color: var(--accent);
+    font-weight: 600;
+}
+
+/* 条件付きオブジェクト: 未設定は薄く表示 */
+.cond-badge {
+    display: inline-block;
+    padding: 1px 5px;
+    border-radius: 3px;
+    font-size: 0.62rem;
+    background: rgba(240, 192, 64, 0.18);
+    color: var(--accent2);
+    margin-left: 4px;
+}
+
+/* ── Preview Overlay ──────────────────────────────────────── */
+.preview-overlay {
+    position: fixed;
+    inset: 0;
+    background: var(--bg);
+    display: flex;
+    flex-direction: column;
+    z-index: 1000;
+}
+
+.preview-overlay.hidden {
+    display: none;
+}
+
+.preview-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 16px;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    font-weight: 700;
+    color: var(--accent);
+}
+
+.preview-frame {
+    flex: 1;
+    border: none;
+    background: #000;
+}
+
+/* ── Misc ─────────────────────────────────────────────────── */
+.hint {
+    font-size: 0.72rem;
+    color: var(--muted);
+    margin-top: 4px;
+    line-height: 1.5;
+}
+
+.hidden {
+    display: none !important;
+}
+
+/* tile category separators */
+.tile-category {
+    grid-column: 1 / -1;
+    font-size: 0.62rem;
+    color: var(--accent);
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    margin-top: 4px;
+    padding-top: 4px;
+    border-top: 1px solid var(--border);
+}

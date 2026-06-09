@@ -1,6 +1,6 @@
 // ── Blade of Lumia – game.js ──────────────────────────────────
 // Phase 1: マップ読み込み・プレイヤー移動（半セル）・ステージ遷移
-import { TILE } from '../shared/tiles.js';
+import { TILE, BG_TILES } from '../shared/tiles.js';
 import { ENEMY_META, ENEMY_SPEED_NORMAL } from '../shared/enemies.js';
 import { ITEM_META, EQUIP_META } from '../shared/items.js';
 import { NPC_SPRITE_MAP, NPC_DEFAULT_DIALOG } from '../shared/npcs.js';
@@ -147,6 +147,7 @@ function saveGame() {
 				brokenWalls:     [...v.brokenWalls],
 				conditionsMet:   [...v.conditionsMet],
 				doorwayStates:   v.doorwayStates ?? {},  // Phase 6.5
+				cutBushes:       [...(v.cutBushes ?? [])], // Phase 8.2
 			};
 		}
 		localStorage.setItem(SAVE_KEY, JSON.stringify({
@@ -175,6 +176,7 @@ function loadGame() {
 				brokenWalls:     new Set(v.brokenWalls ?? []),
 				conditionsMet:   new Set(v.conditionsMet ?? []),
 				doorwayStates:   v.doorwayStates ?? {},  // Phase 6.5
+				cutBushes:       new Set(v.cutBushes ?? []), // Phase 8.2
 			};
 		}
 		return true;
@@ -318,31 +320,57 @@ function renderBoard() {
 	stageLabelEl.textContent = `[${currentLayer}] ${stageKey}`;
 }
 
+// bgTile の背景色を cellEl に適用するヘルパー
+const BG_TILE_COLOR_CLASS = {
+	[TILE.FLOOR]:       '',           // デフォルト（CSS変数そのまま）
+	[TILE.GRASS]:       'bg-grass',
+	[TILE.SAND]:        'bg-sand',
+	[TILE.STONE_FLOOR]: 'bg-stonefloor',
+	[TILE.BRIDGE]:      'bg-bridge',
+};
+function applyBgTileClass(cellEl, posKey) {
+	const bgTile = stageData.bgTiles?.[posKey] ?? TILE.FLOOR;
+	const cls = BG_TILE_COLOR_CLASS[bgTile];
+	if (cls) cellEl.classList.add(cls);
+}
+
 function setCellClass(cellEl, tile, posKey, ss) {
+	// 構造タイル（壁・水など）は bgTile を無視
 	switch (tile) {
-		case TILE.WALL:           cellEl.classList.add('wall'); break;
-		case TILE.WATER:          cellEl.classList.add('water'); break;
+		case TILE.WALL:           cellEl.classList.add('wall'); return;
+		case TILE.WATER:          cellEl.classList.add('water'); return;
 		case TILE.GATE:
-			cellEl.classList.add(ss.openGates.has(posKey) ? 'switch-on' : 'gate'); break;
-		case TILE.DOOR:           cellEl.classList.add('door'); break;
+			cellEl.classList.add(ss.openGates.has(posKey) ? 'switch-on' : 'gate');
+			applyBgTileClass(cellEl, posKey); return;
+		case TILE.DOOR:
+			cellEl.classList.add('door');
+			applyBgTileClass(cellEl, posKey); return;
 		case TILE.SWITCH:
-			cellEl.classList.add(ss.switchStates[posKey] ? 'switch-on' : 'switch-off'); break;
+			cellEl.classList.add(ss.switchStates[posKey] ? 'switch-on' : 'switch-off');
+			applyBgTileClass(cellEl, posKey); return;
 		case TILE.BREAKABLE_WALL:
-			cellEl.classList.add(ss.brokenWalls.has(posKey) ? 'floor' : 'breakable-wall'); break;
-		case TILE.MAP_ENTER:      cellEl.classList.add('map-enter'); break;
+			cellEl.classList.add(ss.brokenWalls.has(posKey) ? 'floor' : 'breakable-wall');
+			applyBgTileClass(cellEl, posKey); return;
+		case TILE.MAP_ENTER:
+			cellEl.classList.add('map-enter');
+			applyBgTileClass(cellEl, posKey); return;
 		// ── Phase 6.5: ドアウェイ ────────────────────────────────
-		case TILE.DOORWAY: cellEl.classList.add('doorway'); break;
+		case TILE.DOORWAY:
+			cellEl.classList.add('doorway');
+			applyBgTileClass(cellEl, posKey); return;
 		case TILE.DOORWAY_BOSS: {
 			const dwState = getDoorwayState(posKey);
 			cellEl.classList.add(dwState === 'boss_closed' ? 'doorway-boss-closed' : 'doorway-boss');
-			break;
+			applyBgTileClass(cellEl, posKey); return;
 		}
 		case TILE.DOORWAY_LOCKED: {
 			const dwState2 = getDoorwayState(posKey);
 			cellEl.classList.add(dwState2 === 'open' ? 'doorway-locked-open' : 'doorway-locked');
-			break;
+			applyBgTileClass(cellEl, posKey); return;
 		}
 	}
+	// それ以外（FLOOR・アイテム・NPC・フィールドタイルなど）→ bgTile を背景に
+	applyBgTileClass(cellEl, posKey);
 }
 
 function addCellSprite(cellEl, tile, posKey, ss) {
@@ -453,6 +481,39 @@ function addCellSprite(cellEl, tile, posKey, ss) {
 		if (cv) { cv.classList.add('item-sprite'); cellEl.appendChild(cv); }
 		return;
 	}
+	// ── Phase 8: フィールドタイルのスプライト描画 ────────────────
+	// 通行可タイル（草・砂・石畳・橋）は背景色のみ（CSS color で表現）
+	// 通行不可タイル（木・山・茂み・柵・建物）はスプライト表示
+	const fieldSpriteMap = {
+		[TILE.GRASS]:       ['grass',      'grass'],
+		[TILE.SAND]:        ['sand',       'sand'],
+		[TILE.STONE_FLOOR]: ['stoneFloor', 'stoneFloor'],
+		[TILE.BRIDGE]:      ['bridge',     'bridge'],
+		[TILE.TREE]:        ['tree',       'tree'],
+		[TILE.MOUNTAIN]:    ['mountain',   'mountain'],
+		[TILE.FENCE]:       ['fence',      'fence'],
+		[TILE.HOUSE_WALL]:  ['houseWall',  'houseWall'],
+		[TILE.HOUSE_DOOR]:  ['houseDoor',  'houseDoor'],
+		[TILE.HOUSE_ROOF]:  ['houseRoof',  'houseRoof'],
+		[TILE.SIGN]:        ['sign',       'sign'],
+	};
+	if (fieldSpriteMap[tile]) {
+		const [spr, pal] = fieldSpriteMap[tile];
+		if (SPRITES[spr]) {
+			const cv = makeSprite(spr, pal, tile === TILE.GRASS || tile === TILE.TREE || tile === TILE.BUSH);
+			if (cv) { cv.classList.add('obj-sprite'); cellEl.appendChild(cv); }
+		}
+		return;
+	}
+	// 茂み：切られていなければスプライト表示
+	if (tile === TILE.BUSH) {
+		if (!ss.cutBushes?.has(posKey)) {
+			const cv = makeSprite('bush', 'bush', true);
+			if (cv) { cv.classList.add('obj-sprite'); cellEl.appendChild(cv); }
+		}
+		return;
+	}
+
 	// スプライト未定義のアイテムは絵文字フォールバック表示
 	const emojiItemMap = {
 		[TILE.ITEM_ARMOR]:          '⚚',
@@ -619,6 +680,18 @@ function tilePassable(r, c) {
 	if (tile === TILE.DOOR   && !ss.pickedKeys.has(posKey)) return false;
 	if (tile === TILE.BREAKABLE_WALL && !ss.brokenWalls.has(posKey)) return false;
 	if (NPC_SPRITE_MAP[tile]) return false;
+	// Phase 8: フィールドタイル通行判定
+	if (tile === TILE.TREE)        return false;
+	if (tile === TILE.MOUNTAIN)    return false;
+	if (tile === TILE.FENCE)       return false;
+	if (tile === TILE.HOUSE_WALL)  return false;
+	if (tile === TILE.HOUSE_ROOF)  return false;
+	if (tile === TILE.SIGN)        return true;  // 看板は通行可（隣接で読める）
+	if (tile === TILE.BUSH) {
+		// 茂み：切られていれば通行可
+		if (ss.cutBushes?.has(posKey)) return true;
+		return false;
+	}
 	// Phase 6.5: ドアウェイの通行判定
 	if (tile === TILE.DOORWAY_BOSS || tile === TILE.DOORWAY_LOCKED) {
 		const dwState = ss.doorwayStates?.[posKey];
@@ -1062,17 +1135,58 @@ function swordAttack() {
 
 	if (hitEnemy) { dealDamageToEnemy(hitEnemy, player.atk); return; }
 
-	// NPC に話しかける（プレイヤーの正面 1 セルのタイル）
+	// NPC・ギミックとのインタラクション（プレイヤーの正面 1 セルのタイル）
 	const tr = toTileRow(player.y + ndy);
 	const tc = toTileCol(player.x + ndx);
 	const tile = stageData.tiles[tr]?.[tc];
+	const posKey3 = `${tr},${tc}`;
+
 	if (tile === TILE.NPC_SHOP) {
-		const posKey2 = `${tr},${tc}`;
-		const shopData = stageData.shopData?.[posKey2];
+		const shopData = stageData.shopData?.[posKey3];
 		if (shopData) { openShop(shopData); } else { startDialog(tr, tc, tile); }
 		return;
 	}
-	if (tile && NPC_SPRITE_MAP[tile]) { startDialog(tr, tc, tile); }
+	if (tile && NPC_SPRITE_MAP[tile]) { startDialog(tr, tc, tile); return; }
+
+	// Phase 8.3: 看板を読む
+	if (tile === TILE.SIGN) {
+		const signData = stageData.signData?.[posKey3] ?? stageData.npcData?.[posKey3] ?? { name: '看板', lines: ['（何も書かれていない）'] };
+		dialogLines = signData.lines ?? ['（何も書かれていない）'];
+		dialogLineIdx = 0;
+		isDialog = true; stopGameLoop();
+		dialogNameEl.textContent = signData.name ?? '看板';
+		showDialogLine();
+		dialogOverlayEl.classList.remove('hidden');
+		playSound('talk');
+		return;
+	}
+
+	// Phase 8.2: 茂みを切る
+	if (tile === TILE.BUSH) {
+		const ss = getSS(currentLayer, stageKey);
+		if (!ss.cutBushes) ss.cutBushes = new Set();
+		if (!ss.cutBushes.has(posKey3)) {
+			ss.cutBushes.add(posKey3);
+			playSound('slash');
+			// ランダムドロップ
+			const rand = Math.random();
+			if (rand < 0.12) {
+				// ハート（HP+1）
+				player.hp = Math.min(player.maxHp, player.hp + 1);
+				updateHud();
+				spawnDropEffect(tr, tc, '❤', '#ff4040');
+				pulse('🌿 ❤ HP+1');
+			} else if (rand < 0.16) {
+				// ルピー（小）
+				player.rupees += 1;
+				updateHud();
+				spawnDropEffect(tr, tc, '◆', '#20c040');
+				pulse('🌿 ルピー ×1');
+			}
+			renderBoard(); renderChars(); saveGame();
+		}
+		return;
+	}
 }
 
 // 剣エフェクト：Dungeon World の sword-thrust 方式で char-layer 上に絶対配置
@@ -2269,6 +2383,27 @@ document.addEventListener('touchend', e => {
 	else movePlayer(dy > 0 ? 'down' : 'up');
 }, { passive: true });
 
+// ── Phase 8.2: ドロップエフェクト（茂み切り等でアイテムが飛び出す） ──
+function spawnDropEffect(r, c, icon, color) {
+	if (!charLayerEl) return;
+	const cellPx = getCellPx();
+	const el = document.createElement('div');
+	el.style.cssText = `
+		position:absolute;
+		left:${(c + 0.5) * cellPx}px;
+		top:${(r + 0.2) * cellPx}px;
+		transform:translateX(-50%);
+		font-size:${Math.round(cellPx * 0.55)}px;
+		color:${color};
+		z-index:25;
+		pointer-events:none;
+		animation:drop-popup 0.6s ease-out forwards;
+	`;
+	el.textContent = icon;
+	charLayerEl.appendChild(el);
+	setTimeout(() => el.remove(), 650);
+}
+
 // ── アニメーション ────────────────────────────────────────────
 startAnimLoop(() => { redrawAnimSprites(); });
 
@@ -2336,6 +2471,36 @@ btnConfirmNoEl.addEventListener('click', () => {
 });
 
 async function init() {
+	// URL パラメータ解析
+	const params     = new URLSearchParams(location.search);
+	const fromEditor = params.get('fromEditor') === '1';
+	const paramLayer = params.get('layer');
+	const paramStage = params.get('stage');
+	const paramRow   = params.get('row');
+	const paramCol   = params.get('col');
+
+	if (fromEditor) {
+		// エディタプレビューモード：localStorageから最新データを読み込む
+		const saved = localStorage.getItem('bladeOfLumiaMapData');
+		if (saved) {
+			try { mapData = JSON.parse(saved); } catch { /* 無視 */ }
+		}
+		if (!mapData) await loadMapData();
+		buildExitRegistry();
+
+		// 開始位置をパラメータから取得
+		const lk = paramLayer ?? 'field';
+		const sk = paramStage ?? Object.keys(mapData.layers?.[lk]?.stages ?? {})[0] ?? '0,0';
+		const pr = parseInt(paramRow ?? '1', 10);
+		const pc = parseInt(paramCol ?? '1', 10);
+
+		// デバッグモード ON（エディタプレビューは常に無敵）
+		debugMode = true;
+		enterStage(lk, sk, pr, pc);
+		startGameLoop();
+		return;
+	}
+
 	await loadMapData();
 	const hasSave = loadGame();
 

@@ -55,6 +55,23 @@ export const TILE = {
 	// ダンジョン専用アイテム
 	ITEM_DUNGEON_MAP:    'm',  // ダンジョン地図
 	ITEM_COMPASS:        'n',  // コンパス
+
+	// ── Phase 8: フィールドタイル ──────────────────────────────
+	// 地形（通行可）
+	GRASS:       'g',  // 草地（フィールド基本地面）
+	SAND:        'd',  // 砂地・砂漠
+	STONE_FLOOR: 'o',  // 石畳（町・城内）
+	BRIDGE:      'v',  // 橋（水の上を渡れる）
+	// 地形（通行不可）
+	TREE:        't',  // 木（通行不可）
+	MOUNTAIN:    'M',  // 山（通行不可）
+	BUSH:        'u',  // 茂み（剣で切れる → GRASS 化）
+	FENCE:       'f',  // 柵（通行不可）
+	// 建物系
+	HOUSE_WALL:  'h',  // 家の外壁（通行不可）
+	HOUSE_DOOR:  'e',  // 家のドア（通行可）
+	HOUSE_ROOF:  'p',  // 家の屋根（通行不可）
+	SIGN:        'i',  // 看板（通行可・近づいて読める）
 };
 
 // タイルのメタ情報
@@ -101,6 +118,19 @@ export const TILE_META = {
 	[TILE.DOORWAY]:        { label: '出入り口（常時開）',   color: '#102020', passable: true,  icon: '∪' },
 	[TILE.DOORWAY_BOSS]:   { label: '出入り口（ボス部屋）', color: '#300820', passable: true,  icon: '⛩' },
 	[TILE.DOORWAY_LOCKED]: { label: '出入り口（条件開）',   color: '#182030', passable: false, icon: '🚪' },
+	// Phase 8: フィールドタイル
+	[TILE.GRASS]:       { label: '草地',       color: '#3a6e28', passable: true,  icon: '🌿' },
+	[TILE.SAND]:        { label: '砂地',       color: '#c8a84a', passable: true,  icon: '﹒' },
+	[TILE.STONE_FLOOR]: { label: '石畳',       color: '#6a6878', passable: true,  icon: '▦' },
+	[TILE.BRIDGE]:      { label: '橋',         color: '#8a6030', passable: true,  icon: '〓' },
+	[TILE.TREE]:        { label: '木',         color: '#1a4810', passable: false, icon: '🌲' },
+	[TILE.MOUNTAIN]:    { label: '山',         color: '#6a6060', passable: false, icon: '▲' },
+	[TILE.BUSH]:        { label: '茂み',       color: '#2a6018', passable: false, icon: '🌿' },
+	[TILE.FENCE]:       { label: '柵',         color: '#8a6830', passable: false, icon: '╫' },
+	[TILE.HOUSE_WALL]:  { label: '家の外壁',   color: '#c09060', passable: false, icon: '⊡' },
+	[TILE.HOUSE_DOOR]:  { label: '家のドア',   color: '#8a4020', passable: true,  icon: '⊟' },
+	[TILE.HOUSE_ROOF]:  { label: '家の屋根',   color: '#c03020', passable: false, icon: '△' },
+	[TILE.SIGN]:        { label: '看板',       color: '#b08040', passable: true,  icon: '📋' },
 };
 
 // タイルの一覧（パレット表示用）
@@ -109,6 +139,11 @@ export const TILE_LIST = Object.keys(TILE_META);
 // デフォルトのステージサイズ
 export const DEFAULT_COLS = 10;
 export const DEFAULT_ROWS = 10;
+
+// フィールド地形タイル（bgTiles に書き込む通行可タイル）
+export const BG_TILES = new Set([
+	TILE.FLOOR, TILE.GRASS, TILE.SAND, TILE.STONE_FLOOR, TILE.BRIDGE,
+]);
 
 // 空のステージデータを生成する
 export function makeEmptyStage(cols = DEFAULT_COLS, rows = DEFAULT_ROWS) {
@@ -121,6 +156,8 @@ export function makeEmptyStage(cols = DEFAULT_COLS, rows = DEFAULT_ROWS) {
 				return TILE.FLOOR;
 			})
 		),
+		// bgTiles: 背景地形レイヤー。キー "r,c" → タイル文字。省略時は FLOOR 扱い
+		bgTiles: {},
 		links: [],
 		enemyDirs: {},
 		chestContents: {},
