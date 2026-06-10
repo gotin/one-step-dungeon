@@ -2506,7 +2506,7 @@
             ],
             [
               "#",
-              ".",
+              "B",
               ".",
               ".",
               ".",
@@ -2634,14 +2634,30 @@
           "bgTiles": {},
           "links": [],
           "enemyDirs": {},
-          "chestContents": {},
+          "chestContents": {
+            "1,1": {
+              "type": "armor",
+              "name": "伝説のよろい",
+              "value": 20
+            }
+          },
           "objects": {},
           "npcData": {},
           "shopData": {},
           "mapEnters": {},
-          "showConditions": {},
+          "showConditions": {
+            "1,1": {
+              "trigger": "killAll"
+            }
+          },
           "breakableWalls": {},
-          "isBossRoom": false
+          "isBossRoom": false,
+          "floorItems": {
+            "4,9": {
+              "name": "強いけん",
+              "atkBonus": 10000
+            }
+          }
         },
         "0,2": {
           "cols": 12,
@@ -2834,7 +2850,7 @@
             ],
             [
               "#",
-              "1",
+              ".",
               ".",
               ".",
               ".",
