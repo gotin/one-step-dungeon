@@ -114,6 +114,8 @@ export const TILE_META = {
 	[TILE.ITEM_RUPEE]:           { label: 'ルピー（小）', color: '#20a040', passable: true, icon: '◆' },
 	[TILE.ITEM_RUPEE_LARGE]:     { label: 'ルピー（大）', color: '#2060c0', passable: true, icon: '◇' },
 	[TILE.ITEM_TRIFORCE_PIECE]:  { label: 'トライフォースのカケラ', color: '#c0a020', passable: true, icon: '◭' },
+	[TILE.ITEM_DUNGEON_MAP]:     { label: 'ダンジョン地図', color: '#205080', passable: true, icon: '🗺' },
+	[TILE.ITEM_COMPASS]:         { label: 'コンパス',       color: '#2050a0', passable: true, icon: '🧭' },
 	// Phase 6.5: ドアウェイ
 	[TILE.DOORWAY]:        { label: '出入り口（常時開）',   color: '#102020', passable: true,  icon: '∪' },
 	[TILE.DOORWAY_BOSS]:   { label: '出入り口（ボス部屋）', color: '#300820', passable: true,  icon: '⛩' },
@@ -137,7 +139,7 @@ export const TILE_META = {
 export const TILE_LIST = Object.keys(TILE_META);
 
 // デフォルトのステージサイズ
-export const DEFAULT_COLS = 10;
+export const DEFAULT_COLS = 12;
 export const DEFAULT_ROWS = 10;
 
 // フィールド地形タイル（bgTiles に書き込む通行可タイル）

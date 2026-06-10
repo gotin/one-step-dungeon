@@ -36,10 +36,10 @@
             <div id="layer-tabs" class="layer-tabs"></div>
             <button id="btn-add-layer" class="btn btn-sm">＋ ダンジョン追加</button>
           </div>
-          <!-- ダンジョンメタ情報（フィールド以外で表示） -->
-          <div id="dungeon-meta-panel" class="dungeon-meta-panel hidden">
+          <!-- レイヤーメタ情報（field含む全レイヤーで表示） -->
+          <div id="dungeon-meta-panel" class="dungeon-meta-panel">
             <div class="meta-row">
-              <label>名前 <input id="dungeon-name" type="text" class="input-med" placeholder="例: 謎の洞窟"></label>
+              <label class="dungeon-only">名前 <input id="dungeon-name" type="text" class="input-med" placeholder="例: 謎の洞窟"></label>
               <label>BGM
                 <select id="dungeon-bgm" class="input-med">
                   <option value="dungeon">dungeon</option>
@@ -47,14 +47,13 @@
                   <option value="field">field</option>
                 </select>
               </label>
-              <label>ボスBGM
+              <label class="dungeon-only">ボスBGM
                 <select id="dungeon-bossBgm" class="input-med">
                   <option value="boss">boss</option>
                   <option value="dungeon">dungeon</option>
                 </select>
               </label>
-              <label>ボス部屋 <input id="dungeon-bossStage" type="text" class="input-small" placeholder="例: 1,2"></label>
-              <label>トライフォース番号 <input id="dungeon-triforceId" type="number" min="1" class="input-small" value="1"></label>
+              <label class="dungeon-only">ボス部屋 <input id="dungeon-bossStage" type="text" class="input-small" placeholder="例: 1,2"></label>
               <button id="btn-save-dungeon-meta" class="btn btn-sm btn-primary">✔ 保存</button>
             </div>
           </div>
@@ -151,6 +150,13 @@
             <h2 class="panel-title">ゲート・スイッチ連動</h2>
             <div id="links-list" class="links-list"></div>
             <button id="btn-add-link" class="btn btn-sm">＋ 追加</button>
+          </div>
+
+          <!-- 剣・防具のステータス設定 -->
+          <div class="props-section">
+            <h2 class="panel-title">⚔ 剣・防具のステータス</h2>
+            <p class="hint">ATK+/DEF+ ボーナス値を設定</p>
+            <div id="equip-flooritems-list" class="links-list"></div>
           </div>
 
           <!-- 宝箱の内容 -->

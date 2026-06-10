@@ -69,6 +69,12 @@ function findTilePositions(stage, tileChar) {
 
 // ── タブ切り替え ───────────────────────────────────────────────
 function showView(view) {
+	// ビュー切り替え時はプレビュー待機状態を必ずリセット
+	_previewPending = false;
+	canvas.style.cursor  = '';
+	canvas.style.outline = '';
+	if (cellInfoEl) cellInfoEl.textContent = '';
+
 	if (view === 'world') {
 		viewWorldEl.classList.remove('hidden');
 		viewStageEl.classList.add('hidden');
@@ -81,6 +87,14 @@ function showView(view) {
 		viewStageEl.classList.remove('hidden');
 		tabWorldEl.classList.remove('active');
 		tabStageEl.classList.add('active');
+		// currentCoord が未設定の場合は最初のステージを選択
+		if (!state.currentCoord) {
+			const firstKey = Object.keys(getCurrentStages())[0];
+			if (firstKey) {
+				const [x, y] = firstKey.split(',').map(Number);
+				state.currentCoord = { x, y };
+			}
+		}
 		renderStageCanvas();
 		renderSidePanel();
 	}
@@ -143,29 +157,30 @@ document.getElementById('btn-add-layer').addEventListener('click', () => {
 
 // ── ダンジョンメタ情報パネル ──────────────────────────────────
 function renderDungeonMeta() {
-	if (state.currentLayer === 'field') {
-		dungeonMetaPanel.classList.add('hidden');
-		return;
-	}
 	dungeonMetaPanel.classList.remove('hidden');
 	const ld = getCurrentLayerData();
+	const isField = state.currentLayer === 'field';
+	// field レイヤーはダンジョン専用項目（name/bossBgm/bossStage）を非表示
+	document.querySelectorAll('.dungeon-only').forEach(el => {
+		el.style.display = isField ? 'none' : '';
+	});
 	document.getElementById('dungeon-name').value       = ld?.name      ?? '';
-	document.getElementById('dungeon-bgm').value        = ld?.bgm       ?? 'dungeon';
+	document.getElementById('dungeon-bgm').value        = ld?.bgm       ?? (isField ? 'field' : 'dungeon');
 	document.getElementById('dungeon-bossBgm').value    = ld?.bossBgm   ?? 'boss';
 	document.getElementById('dungeon-bossStage').value  = ld?.bossStage ?? '';
-	document.getElementById('dungeon-triforceId').value = ld?.triforceId ?? 1;
 }
 
 document.getElementById('btn-save-dungeon-meta').addEventListener('click', () => {
-	if (state.currentLayer === 'field') return;
 	const ld = getCurrentLayerData();
-	ld.name       = document.getElementById('dungeon-name').value.trim();
-	ld.bgm        = document.getElementById('dungeon-bgm').value;
-	ld.bossBgm    = document.getElementById('dungeon-bossBgm').value;
-	ld.bossStage  = document.getElementById('dungeon-bossStage').value.trim();
-	ld.triforceId = parseInt(document.getElementById('dungeon-triforceId').value, 10) || 1;
+	const isField = state.currentLayer === 'field';
+	if (!isField) {
+		ld.name      = document.getElementById('dungeon-name').value.trim();
+		ld.bossBgm   = document.getElementById('dungeon-bossBgm').value;
+		ld.bossStage = document.getElementById('dungeon-bossStage').value.trim();
+	}
+	ld.bgm = document.getElementById('dungeon-bgm').value;
 	renderLayerTabs();
-	alert('ダンジョン設定を保存しました');
+	alert(`${isField ? 'フィールド' : 'ダンジョン'}設定を保存しました`);
 });
 
 // ── ワールドグリッド ──────────────────────────────────────────
@@ -440,6 +455,12 @@ document.getElementById('btn-resize-world').addEventListener('click', () => { re
 
 document.getElementById('btn-edit-stage').addEventListener('click', () => {
 	if (!state.currentCoord) return;
+	// _previewPending を完全リセットしてからステージ編集へ
+	_previewPending = false;
+	canvas.style.cursor  = '';
+	canvas.style.outline = '';
+	document.getElementById('preview-overlay').classList.add('hidden');
+	document.getElementById('preview-frame').src = '';
 	showView('stage');
 });
 
@@ -544,6 +565,25 @@ const TILE_SPRITE_MAP = {
 	[TILE.ITEM_TRIFORCE_PIECE]:  { spr: 'triforce', pal: 'triforce' },
 	[TILE.BREAKABLE_WALL]:       { spr: 'breakableWall', pal: 'breakableWall' },
 	[TILE.MAP_ENTER]:            { spr: 'mapEnter', pal: 'mapEnter' },
+	[TILE.ITEM_HEART_CONTAINER]: { spr: 'heart',     pal: 'heart'     },
+	// ドアウェイ（ゲーム画面と同じスプライト）
+	[TILE.DOORWAY]:              { spr: 'doorway',       pal: 'doorway'       },
+	[TILE.DOORWAY_BOSS]:         { spr: 'doorwayBoss',   pal: 'doorwayBoss'   },
+	[TILE.DOORWAY_LOCKED]:       { spr: 'doorwayLocked', pal: 'doorwayLocked' },
+	// ITEM_COMPASS/ITEM_DUNGEON_MAP/ITEM_BOMB/ITEM_HEAL_POTION/ITEM_ARMOR
+	// はゲーム画面と同様に絵文字フォールバックで表示（スプライトなし）
+	[TILE.TREE]:        { spr: 'tree',      pal: 'tree'      },
+	[TILE.MOUNTAIN]:    { spr: 'mountain',  pal: 'mountain'  },
+	[TILE.BUSH]:        { spr: 'bush',      pal: 'bush'      },
+	[TILE.FENCE]:       { spr: 'fence',     pal: 'fence'     },
+	[TILE.HOUSE_WALL]:  { spr: 'houseWall', pal: 'houseWall' },
+	[TILE.HOUSE_DOOR]:  { spr: 'houseDoor', pal: 'houseDoor' },
+	[TILE.HOUSE_ROOF]:  { spr: 'houseRoof', pal: 'houseRoof' },
+	[TILE.SIGN]:        { spr: 'sign',      pal: 'sign'      },
+	[TILE.GRASS]:       { spr: 'grass',     pal: 'grass'     },
+	[TILE.SAND]:        { spr: 'sand',      pal: 'sand'      },
+	[TILE.STONE_FLOOR]: { spr: 'stoneFloor',pal: 'stoneFloor'},
+	[TILE.BRIDGE]:      { spr: 'bridge',    pal: 'bridge'    },
 };
 
 function drawSpriteAt(ctx, spriteName, palName, dx, dy, dw, dh) {
@@ -668,9 +708,13 @@ function drawNeighborEdges(sd) {
 		} else if (edge === 'bottom') {
 			for (let c = 0; c < cols; c++) drawCell(c, rows - 0.5, nb.tiles[0][c]);
 		} else if (edge === 'left') {
-			for (let r = 0; r < rows; r++) drawCell(-0.5, r, nb.tiles[r][nb.cols - 1]);
+			for (let r = 0; r < rows; r++) {
+				if (r < nb.rows && nb.tiles[r]) drawCell(-0.5, r, nb.tiles[r][nb.cols - 1]);
+			}
 		} else {
-			for (let r = 0; r < rows; r++) drawCell(cols - 0.5, r, nb.tiles[r][0]);
+			for (let r = 0; r < rows; r++) {
+				if (r < nb.rows && nb.tiles[r]) drawCell(cols - 0.5, r, nb.tiles[r][0]);
+			}
 		}
 		canvasCtx.globalAlpha = 1;
 	}
@@ -735,13 +779,13 @@ function applyTool(c, r) {
 			} else {
 				sd.bgTiles[posKey] = state.selectedTile;
 			}
-			// tiles が壁・水以外なら FLOOR に（通行可地形として扱う）
+			// tiles が FLOOR か bgTile のときだけ FLOOR に戻す
+			// それ以外（NPC・敵・アイテム・ギミック等）は上書きしない
 			const curTile = sd.tiles[r][c];
-			if (curTile === TILE.WALL || curTile === TILE.WATER) {
-				// 壁・水は上書きしない（背景だけ設定）
-			} else if (curTile === TILE.FLOOR || BG_TILES.has(curTile)) {
-				sd.tiles[r][c] = TILE.FLOOR; // bgTile に変更されたのでフォアは FLOOR
+			if (curTile === TILE.FLOOR || BG_TILES.has(curTile)) {
+				sd.tiles[r][c] = TILE.FLOOR;
 			}
+			// 壁・水・NPC・敵・アイテム・ギミック等はそのまま維持
 		} else {
 			// 通常タイル → tiles に書き込み
 			if (state.selectedTile === TILE.PLAYER) {
@@ -802,8 +846,12 @@ function floodFill(sd, sc, sr, from, to) {
 	}
 }
 
-canvas.addEventListener('mousedown', () => { state.isDrawing = true; });
+canvas.addEventListener('mousedown', () => {
+	if (_previewPending) return; // 位置指定モード中は描画開始しない
+	state.isDrawing = true;
+});
 canvas.addEventListener('click',     e => {
+	if (_previewPending) return; // プレイヤー位置指定モード中はタイル描画しない
 	const { c, r } = getCellFromEvent(e);
 	applyTool(c, r);
 	renderSidePanel();
@@ -859,6 +907,7 @@ function renderSidePanel() {
 	const sd = getCurrentStage();
 	if (!sd) return;
 	renderLinks(sd);
+	renderEquipItems(sd);
 	renderChests(sd);
 	renderNPCs(sd);
 	renderShops(sd);
@@ -896,6 +945,44 @@ document.getElementById('btn-add-link').addEventListener('click', () => {
 	sd.links.push({ gateId: '', switchId: '' });
 	renderLinks(sd);
 });
+
+// ── 剣・防具のフロアアイテム設定 ────────────────────────────
+// ITEM_SWORD → atkBonus、ITEM_ARMOR → defBonus を floorItems に保存
+function renderEquipItems(sd) {
+	// 既存の宝箱設定パネルの直前に挿入する独立パネル
+	const el = document.getElementById('equip-flooritems-list');
+	if (!el) return;
+	el.innerHTML = '';
+	const swordItems = findTilePositions(sd, TILE.ITEM_SWORD).map(p => ({ ...p, tile: TILE.ITEM_SWORD }));
+	const armorItems = findTilePositions(sd, TILE.ITEM_ARMOR).map(p => ({ ...p, tile: TILE.ITEM_ARMOR }));
+	const allItems   = [...swordItems, ...armorItems];
+	if (!allItems.length) { el.innerHTML = '<div class="hint">剣・防具なし</div>'; return; }
+	for (const { r, c, tile } of allItems) {
+		const key  = `${r},${c}`;
+		const data = sd.floorItems?.[key] ?? {};
+		const isSword = tile === TILE.ITEM_SWORD;
+		const label   = isSword ? `⚔ 剣 (${c},${r})` : `⚚ 防具 (${c},${r})`;
+		const field   = isSword ? 'atkBonus' : 'defBonus';
+		const stat    = isSword ? 'ATK+' : 'DEF+';
+		const defVal  = data[field] ?? (isSword ? 2 : 2);
+		const item = document.createElement('div');
+		item.className = 'link-item';
+		item.innerHTML = `
+			<div class="link-item-header"><span>${label}</span></div>
+			<label>名前 <input type="text" value="${data.name ?? ''}" data-key="${key}" data-f="name" placeholder="例: 光の剣"></label>
+			<label>${stat}ボーナス <input type="number" min="1" max="99" value="${defVal}" data-key="${key}" data-f="${field}"></label>
+		`;
+		item.querySelectorAll('input').forEach(inp => {
+			inp.addEventListener('input', e => {
+				if (!sd.floorItems) sd.floorItems = {};
+				if (!sd.floorItems[key]) sd.floorItems[key] = {};
+				const f = inp.dataset.f;
+				sd.floorItems[key][f] = (f === field) ? (parseInt(inp.value, 10) || 1) : inp.value;
+			});
+		});
+		el.appendChild(item);
+	}
+}
 
 // ── 宝箱の内容 ────────────────────────────────────────────────
 const CHEST_ITEM_OPTIONS = [
@@ -961,13 +1048,13 @@ function renderChests(sd) {
 	}
 }
 
-// ── NPC 会話設定 ───────────────────────────────────────────────
+// ── NPC 会話設定（SIGN含む） ───────────────────────────────────
 function renderNPCs(sd) {
 	const el = document.getElementById('npc-list');
 	el.innerHTML = '';
-	const npcTiles = [TILE.NPC_A, TILE.NPC_B, TILE.PRINCESS];
+	const npcTiles = [TILE.NPC_A, TILE.NPC_B, TILE.PRINCESS, TILE.SIGN];
 	const npcs = npcTiles.flatMap(t => findTilePositions(sd, t).map(p => ({ ...p, tile: t })));
-	if (!npcs.length) { el.innerHTML = '<div class="hint">NPC なし</div>'; return; }
+	if (!npcs.length) { el.innerHTML = '<div class="hint">NPC・看板なし</div>'; return; }
 	for (const { r, c, tile } of npcs) {
 		const key  = `${r},${c}`;
 		const data = sd.npcData?.[key] ?? { name: '', lines: [] };
@@ -1351,6 +1438,8 @@ document.getElementById('btn-preview').addEventListener('click', () => {
 
 canvas.addEventListener('click', e => {
 	if (!_previewPending) return;
+	// 位置指定モードのクリックは描画ハンドラーに伝播させない
+	e.stopImmediatePropagation();
 	_previewPending = false;
 	canvas.style.cursor  = '';
 	canvas.style.outline = '';
@@ -1371,6 +1460,11 @@ function openPreview(stX, stY, row, col) {
 document.getElementById('btn-exit-preview').addEventListener('click', () => {
 	document.getElementById('preview-overlay').classList.add('hidden');
 	document.getElementById('preview-frame').src = '';
+	// プレビュー待機状態を必ずリセット
+	_previewPending = false;
+	canvas.style.cursor  = '';
+	canvas.style.outline = '';
+	cellInfoEl.textContent = '';
 });
 
 // ── アニメーションループ ──────────────────────────────────────

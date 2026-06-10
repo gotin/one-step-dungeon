@@ -65,6 +65,7 @@ export const ENEMY_META = {
 		sprite: 'darklord',
 		pal:    'darklord',
 		isBoss: true,
+		aura:   true,   // 魔王オーラエフェクト
 		attack: {
 			type:            'stone',
 			range:           6,
