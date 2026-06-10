@@ -49,11 +49,23 @@ export const ENEMY_META = {
 		sprite: 'escape',
 		pal:    'escape',
 		isBoss: true,
-		attack: {
-			type:     'sword',
-			range:    1.5,
-			cooldown: 1500,
-		},
+		hitAndAway: true,   // ヒット＆アウェイ行動
+		// attacks: 配列で複数攻撃パターン。cooldown は各攻撃個別に管理
+		attacks: [
+			{
+				type:     'sword',
+				range:    1.5,
+				cooldown: 400,    // 近接剣攻撃
+			},
+			{
+				type:            'stone',
+				range:           5,
+				cooldown:        1800,  // 中距離から石投げ
+				projectileSpeed: 1.2,
+			},
+		],
+		// 後方互換用（単体参照される場合のフォールバック）
+		attack: { type: 'sword', range: 1.5, cooldown: 400 },
 		phases: [
 			{ hpThreshold: 0.5, speedMultiplier: 1.5 }, // HP50%以下で加速
 		],
@@ -66,13 +78,21 @@ export const ENEMY_META = {
 		pal:    'darklord',
 		isBoss: true,
 		aura:   true,   // 魔王オーラエフェクト
-		attack: {
-			type:            'stone',
-			range:           6,
-			cooldown:        2000,
-			projectileSpeed: 1.0,
-			aoe:             false,
-		},
+		hitAndAway: true,   // ヒット＆アウェイ行動
+		attacks: [
+			{
+				type:            'stone',
+				range:           6,
+				cooldown:        2000,
+				projectileSpeed: 1.0,
+			},
+			{
+				type:     'sword',
+				range:    1.5,
+				cooldown: 800,    // 近距離に来たら剣も使う
+			},
+		],
+		attack: { type: 'stone', range: 6, cooldown: 2000, projectileSpeed: 1.0 },
 		phases: [
 			{ hpThreshold: 0.5, speedMultiplier: 1.5 },
 			{ hpThreshold: 0.25, attackCooldownMultiplier: 0.6 }, // HP25%以下で攻撃頻度UP

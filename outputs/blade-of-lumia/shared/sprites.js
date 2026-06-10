@@ -667,8 +667,19 @@ SPRITES.water = [
 ];
 
 // ── ESCAPE（魔将）── 32×32、hero と同じ形、escape パレット ───
+SPRITES.escapeD = SPRITES.heroD;
+SPRITES.escapeR = SPRITES.heroR;
+SPRITES.escapeL = SPRITES.heroR; // flipX で反転
+SPRITES.escapeU = SPRITES.heroU;
+// 後方互換（単体参照用）
 SPRITES.escape = SPRITES.heroR;
-// ── DARK LORD（魔王）── escape と同じ、darklord パレット ────
+
+// ── DARK LORD（魔王）── 4方向、darklord パレット ────────────
+SPRITES.darklordD = SPRITES.heroD;
+SPRITES.darklordR = SPRITES.heroR;
+SPRITES.darklordL = SPRITES.heroR; // flipX で反転
+SPRITES.darklordU = SPRITES.heroU;
+// 後方互換
 SPRITES.darklord = SPRITES.heroR;
 // ── PRINCESS（姫）── hero と同じ形、princess パレット ───────
 SPRITES.princess = SPRITES.heroD;

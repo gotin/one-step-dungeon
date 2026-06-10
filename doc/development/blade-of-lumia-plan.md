@@ -1846,3 +1846,306 @@ stage.breakableWalls["2,1"] = {
 - `shieldSide`（4×8px）：横から見た盾
 - `shieldBack`（8×5px）：後ろから見た盾の裏面
 - `drawSpriteFrame()`：指定フレーム番号で描画（animFrame に左右されない）
+
+---
+
+## ⚠️ 次セッションでやること（2026-06-10 時点）
+
+### 現在の game.js の状態
+
+git checkout HEAD で復元済み（commit: e3fc208）。
+この状態には以下の修正が**入っていない**。新セッションで再実装すること。
+
+---
+
+### 再実装タスク一覧
+
+#### 1. `enemies.js` の修正
+
+```js
+// BOSS の attack.cooldown を 1500 → 300 に変更
+[TILE.BOSS]: {
+  attack: { type: 'sword', range: 1.5, cooldown: 300 },
+}
+```
+
+#### 2. `game.js` に hitAndAway AI を追加
+
+`enemyTick()` の中で `meta.hitAndAway` が true な敵には `bossTickHitAndAway(e, meta)` を呼ぶ。
+
+```js
+function enemyTick() {
+  for (const e of enemies) {
+    const meta = ENEMY_META[e.type];
+    if (!meta) continue;
+    if (meta.hitAndAway) {
+      bossTickHitAndAway(e, meta);
+    } else {
+      enemyChase(e, meta.speed);
+    }
+    enemyAttack(e, meta);
+  }
+}
+```
+
+#### 3. `bossTickHitAndAway(e, meta)` 関数を実装
+
+フェーズ: `approach` / `retreat`
+
+**approach フェーズの移動ルール（重要）：**
+- 位置・距離に関係なく、**常に背後を目標**にして移動する
+- 背後 = プレイヤーが向いている方向の逆方向 1.5 セル先
+- 背後目標に到達したらプレイヤーへ突進（攻撃はenemyAttackが処理）
+- 移動候補は主軸→垂直の6方向フォールバック（プレイヤーが邪魔でも迂回できる）
+
+```js
+function bossTickHitAndAway(e, meta) {
+  const now = Date.now();
+  if (!e._haPhase) {
+    e._haPhase = 'approach';
+    e._haTimer = now + 2500 + Math.random() * 1500;
+  }
+
+  const dx = player.x - e.x;
+  const dy = player.y - e.y;
+
+  // 向きを常にプレイヤー方向に
+  {
+    const prevDir = e.dir;
+    if (Math.abs(dy) >= Math.abs(dx)) e.dir = dy > 0 ? 'down' : 'up';
+    else e.dir = dx > 0 ? 'right' : 'left';
+    if (e.dir !== prevDir) updateEnemyCharEl(e);
+  }
+
+  if (e._haPhase === 'approach') {
+    if (now >= e._haTimer) {
+      e._haPhase = 'retreat';
+      e._haTimer = now + 800 + Math.random() * 600;
+    } else {
+      const heroFwd = { down:[0,1], up:[0,-1], left:[-1,0], right:[1,0] }[heroDir] ?? [0,1];
+      const backX = player.x - heroFwd[0] * 1.5;
+      const backY = player.y - heroFwd[1] * 1.5;
+      const toBkX = backX - e.x;
+      const toBkY = backY - e.y;
+      const toBkDist = Math.sqrt(toBkX*toBkX + toBkY*toBkY);
+      const tdx = toBkDist < 0.8 ? dx : toBkX;
+      const tdy = toBkDist < 0.8 ? dy : toBkY;
+
+      e.accum = (e.accum ?? 0) + meta.speed;
+      if (e.accum >= 1.0) {
+        e.accum -= 1.0;
+        const step = MOVE_STEP;
+        const candidates = [];
+        if (Math.abs(tdy) >= Math.abs(tdx)) {
+          if (tdy !== 0) candidates.push([Math.sign(tdy)*step, 0]);
+          if (tdx !== 0) candidates.push([0, Math.sign(tdx)*step]);
+          candidates.push([0, step], [0, -step], [step, 0], [-step, 0]);
+        } else {
+          if (tdx !== 0) candidates.push([0, Math.sign(tdx)*step]);
+          if (tdy !== 0) candidates.push([Math.sign(tdy)*step, 0]);
+          candidates.push([step, 0], [-step, 0], [0, step], [0, -step]);
+        }
+        for (const [my, mx] of candidates) {
+          if (isPassableForEnemy(e.y+my, e.x+mx, e)) {
+            e.y += my; e.x += mx; break;
+          }
+        }
+        moveCharEl(`enemy-${e.id}`, e.x, e.y);
+      }
+    }
+  } else { // retreat
+    if (now >= e._haTimer) {
+      e._haPhase = 'approach';
+      e._haTimer = now + 2000 + Math.random() * 1000;
+    } else {
+      const rdx = -Math.sign(dx), rdy = -Math.sign(dy);
+      const step = MOVE_STEP;
+      const cands = Math.abs(dy) >= Math.abs(dx)
+        ? [[rdy*step,0],[0,rdx*step]] : [[0,rdx*step],[rdy*step,0]];
+      e.accum = (e.accum ?? 0) + meta.speed;
+      if (e.accum >= 1.0) {
+        e.accum -= 1.0;
+        for (const [my,mx] of cands) {
+          if (isPassableForEnemy(e.y+my, e.x+mx, e)) {
+            e.y += my; e.x += mx; break;
+          }
+        }
+        moveCharEl(`enemy-${e.id}`, e.x, e.y);
+      }
+    }
+  }
+}
+```
+
+#### 4. `enemyAttack` の sword 攻撃に追加処理
+
+攻撃後即 retreat + 横幅チェック + 盾ブロック（float差分）:
+
+```js
+} else if (atk.type === 'sword') {
+  const range = atk.range ?? 1.5;
+  if (dist <= range) {
+    const rawDx = player.x - e.x, rawDy = player.y - e.y;
+    const absDx = Math.abs(rawDx), absDy = Math.abs(rawDy);
+    let ux, uy;
+    if (absDy >= absDx) { ux=0; uy=(rawDy>0?1:-1); }
+    else                { ux=(rawDx>0?1:-1); uy=0; }
+    const projDist = Math.abs(rawDx*ux + rawDy*uy);
+    const perpDist = Math.abs(rawDx*(-uy) + rawDy*ux);
+    if (projDist <= range && perpDist <= 0.8) {
+      let sdx = rawDx, sdy = rawDy;
+      if (absDx < 0.01 && absDy < 0.01) {
+        const dv = {down:[0,1],up:[0,-1],left:[-1,0],right:[1,0]}[e.dir]??[0,1];
+        sdx=dv[0]; sdy=dv[1];
+      }
+      const blocked = player.shield && isShieldBlockingDir(sdx, sdy);
+      if (blocked) { playSound('shieldBlock'); showShieldBlockEffect(e.x,e.y); }
+      else { takeDamage(meta.atk); }
+      showEnemySwordSlash(e);
+      e.lastAttackTime = now;
+      // 攻撃後即retreat
+      if (meta.hitAndAway && e._haPhase === 'approach') {
+        e._haPhase = 'retreat';
+        e._haTimer = now + 600 + Math.random() * 400;
+      }
+    }
+  }
+}
+```
+
+#### 5. `showEnemySwordSlash(e)` 関数を追加
+
+```js
+function showEnemySwordSlash(e) {
+  if (!charLayerEl) return;
+  const dx = player.x-e.x, dy = player.y-e.y;
+  const dist = Math.sqrt(dx*dx+dy*dy);
+  if (dist < 0.01) return;
+  const fx = e.x + dx/dist, fy = e.y + dy/dist;
+  const dir = Math.abs(dy)>=Math.abs(dx)?(dy>0?'down':'up'):(dx>0?'right':'left');
+  const cellPx = getCellPx();
+  const el = document.createElement('div');
+  el.className = `sword-thrust dir-${dir}`;
+  el.style.left=`${fx*cellPx}px`; el.style.top=`${fy*cellPx}px`;
+  el.style.width=el.style.height=`${cellPx}px`;
+  charLayerEl.appendChild(el);
+  setTimeout(()=>el.remove(), 260);
+}
+```
+
+#### 6. `isShieldBlockingDir` の既存関数に注意
+
+`Math.abs(dx) >= Math.abs(dy)` で主軸判断するので、
+float の生の座標差 `rawDx, rawDy` をそのまま渡せば正しく動く（`Math.sign` は使わない）。
+
+---
+
+## ⚠️ 次セッションでやること（2026-06-10 その2）
+
+### ボス AI の動的モード重み調整
+
+現在の `bossTickHitAndAway()` には3モードのランダム選択が実装済み（flank 40% / direct 30% / wander 30%）。
+次セッションでは各モードの成功/失敗を評価し、確率を動的に調整する仕組みを追加する。
+
+---
+
+### 実装タスク
+
+#### 1. モード重みテーブルの初期化
+
+approach 開始時（`!e._haPhase` ブロック）に重みを初期化：
+
+```js
+if (!e._modeWeights) {
+  e._modeWeights = { flank: 1.0, direct: 1.0, wander: 1.0 };
+}
+```
+
+#### 2. 重みを使ったモード選択ヘルパー関数
+
+`bossTickHitAndAway` の前に関数を追加：
+
+```js
+function pickApproachMode(e) {
+  const w = e._modeWeights ?? { flank: 1.0, direct: 1.0, wander: 1.0 };
+  const total = w.flank + w.direct + w.wander;
+  let r = Math.random() * total;
+  if ((r -= w.flank)  <= 0) return 'flank';
+  if ((r -= w.direct) <= 0) return 'direct';
+  return 'wander';
+}
+```
+
+#### 3. モード選択箇所を `pickApproachMode(e)` に置き換え
+
+現在2箇所で `Math.random()` によるモード選択をしている：
+
+**初回起動時（`!e._haPhase` ブロック）：**
+```js
+e._approachMode = pickApproachMode(e);
+```
+
+**retreat→approach 切り替え時：**
+```js
+e._approachMode = pickApproachMode(e);
+```
+（`wander` のランダム座標設定は引き続き同じ場所で行う）
+
+#### 4. 成功/失敗の評価と重み更新
+
+approach→retreat への切り替え時（`now >= e._haTimer` のブロック）に評価を追加：
+
+```js
+// approach 終了時の成功/失敗評価
+const dist = Math.sqrt(dx*dx + dy*dy);
+const atk = ENEMY_META[e.type]?.attack;
+const range = atk?.range ?? 1.5;
+const succeeded = (e._approachMode === 'direct' || e._approachMode === 'flank')
+  && dist <= range + 1.0;  // 攻撃射程+余裕1セル以内に到達できたか
+
+if (!e._modeWeights) e._modeWeights = { flank: 1.0, direct: 1.0, wander: 1.0 };
+const mode = e._approachMode;
+if (mode === 'flank' || mode === 'direct') {
+  if (succeeded) {
+    e._modeWeights[mode] = Math.min(2.0, e._modeWeights[mode] * 1.5);
+  } else {
+    e._modeWeights[mode] = Math.max(0.2, e._modeWeights[mode] * 0.5);
+  }
+}
+
+// wander が選ばれた後は重みをリセット（新鮮な挑戦）
+if (mode === 'wander') {
+  e._modeWeights = { flank: 1.0, direct: 1.0, wander: 1.0 };
+}
+```
+
+#### 5. デバッグログで確率を表示
+
+`retreat→approach` 切り替え時のログに重みを追加：
+
+```js
+if (debugMode) {
+  const w = e._modeWeights;
+  const total = w.flank + w.direct + w.wander;
+  console.log(
+    `[AI] ${e.id} retreat→approach mode=${e._approachMode}` +
+    ` weights=F${(w.flank/total*100).toFixed(0)}%` +
+    `/D${(w.direct/total*100).toFixed(0)}%` +
+    `/W${(w.wander/total*100).toFixed(0)}%` +
+    (e._approachMode === 'wander' ? ` wander=(${e._wanderX?.toFixed(1)},${e._wanderY?.toFixed(1)})` : '')
+  );
+}
+```
+
+---
+
+### 現在の game.js の状態
+
+このセッション（2026-06-10）で以下が実装済み（commit: e3fc208 からの変更）：
+
+1. `bossTickHitAndAway()`：flank / direct / wander の3モードランダム選択
+2. wander モード：マップ内ランダム座標を目標に大移動してループ脱出
+3. DODGE_DIST 3〜6 セル、向きスプライット切り替え、デバッグログ (G キー)
+4. retreat→approach でも wander を含む3択からランダム選択
+
+これらはすでに `outputs/blade-of-lumia/game/game.js` に反映済み。
