@@ -1,0 +1,226 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Blade of Lumia – Map Editor</title>
+  <link rel="stylesheet" href="./editor.css" />
+</head>
+<body>
+<div class="app">
+  <!-- ヘッダー -->
+  <header class="toolbar">
+    <span class="toolbar-title">⚔ Blade of Lumia Editor</span>
+    <div class="toolbar-actions">
+      <button id="btn-save"    class="btn btn-primary">💾 保存</button>
+      <button id="btn-load"    class="btn">📂 読み込み</button>
+      <button id="btn-preview" class="btn btn-accent">▶ プレビュー</button>
+    </div>
+    <div class="toolbar-mode">
+      <button id="tab-world" class="tab active">ワールドマップ</button>
+      <button id="tab-stage" class="tab">ステージ編集</button>
+    </div>
+  </header>
+
+  <!-- メインコンテンツ -->
+  <main class="main">
+
+    <!-- ── ワールドマップビュー ── -->
+    <section id="view-world" class="view">
+      <div class="world-layout">
+        <!-- 左：レイヤー選択 + グリッド -->
+        <div class="world-main">
+          <!-- レイヤー管理 -->
+          <div class="layer-bar">
+            <h2 class="panel-title" style="margin-bottom:0">レイヤー</h2>
+            <div id="layer-tabs" class="layer-tabs"></div>
+            <button id="btn-add-layer" class="btn btn-sm">＋ ダンジョン追加</button>
+          </div>
+          <!-- レイヤーメタ情報（field含む全レイヤーで表示） -->
+          <div id="dungeon-meta-panel" class="dungeon-meta-panel">
+            <div class="meta-row">
+              <label class="dungeon-only">名前 <input id="dungeon-name" type="text" class="input-med" placeholder="例: 謎の洞窟"></label>
+              <label>BGM
+                <select id="dungeon-bgm" class="input-med">
+                  <option value="dungeon">dungeon</option>
+                  <option value="boss">boss</option>
+                  <option value="field">field</option>
+                </select>
+              </label>
+              <label class="dungeon-only">ボスBGM
+                <select id="dungeon-bossBgm" class="input-med">
+                  <option value="boss">boss</option>
+                  <option value="dungeon">dungeon</option>
+                </select>
+              </label>
+              <label class="dungeon-only">ボス部屋 <input id="dungeon-bossStage" type="text" class="input-small" placeholder="例: 1,2"></label>
+              <button id="btn-save-dungeon-meta" class="btn btn-sm btn-primary">✔ 保存</button>
+            </div>
+          </div>
+
+          <div class="world-info">
+            <label>列数 <input id="world-cols" type="number" min="1" max="20" value="3" class="input-small"></label>
+            <label>行数 <input id="world-rows" type="number" min="1" max="20" value="3" class="input-small"></label>
+            <button id="btn-resize-world" class="btn btn-sm">リサイズ</button>
+          </div>
+          <div id="world-grid" class="world-grid"></div>
+          <p class="hint">ステージをクリックして選択。空きセルをクリックしてステージを追加。</p>
+        </div>
+
+        <!-- 右：ステージ情報 + プレビュー -->
+        <aside id="world-side" class="world-side">
+          <div class="world-side-header">
+            <h2 class="panel-title" style="margin-bottom:0">ステージ情報</h2>
+            <div id="world-stage-actions" class="world-stage-actions hidden">
+              <button id="btn-edit-stage" class="btn btn-primary btn-sm">✏️ 編集</button>
+              <button id="btn-delete-stage" class="btn btn-danger btn-sm">🗑 削除</button>
+            </div>
+          </div>
+          <div id="world-stage-info" class="world-stage-info">
+            <p class="hint">ステージを選択してください</p>
+          </div>
+          <div id="world-preview-wrap" class="world-preview-wrap hidden">
+            <canvas id="world-preview-canvas" class="world-preview-canvas"></canvas>
+          </div>
+        </aside>
+      </div>
+    </section>
+
+    <!-- ── ステージ編集ビュー ── -->
+    <section id="view-stage" class="view hidden">
+      <div class="stage-layout">
+
+        <!-- 左：タイルパレット + ツール -->
+        <aside class="palette-panel">
+          <h2 class="panel-title">タイルパレット</h2>
+          <div id="tile-palette" class="tile-palette"></div>
+
+          <div class="palette-tools">
+            <h3 class="panel-title">ツール</h3>
+            <div class="tool-group">
+              <button id="tool-draw"  class="tool-btn active">✏️ 描く</button>
+              <button id="tool-erase" class="tool-btn">🧹 消す</button>
+              <button id="tool-fill"  class="tool-btn">🪣 塗りつぶし</button>
+            </div>
+          </div>
+
+          <div class="stage-meta">
+            <h3 class="panel-title">ステージ情報</h3>
+            <div id="stage-info" class="stage-info-content"></div>
+            <div class="border-warn" id="border-warnings"></div>
+          </div>
+
+          <!-- ステージ設定 -->
+          <div class="stage-settings">
+            <h3 class="panel-title">ステージ設定</h3>
+            <label class="checkbox-label">
+              <input id="stage-is-boss-room" type="checkbox"> ボス部屋
+            </label>
+            <label class="meta-label">BGM上書き
+              <select id="stage-bgm-override" class="input-med">
+                <option value="">(レイヤーデフォルト)</option>
+                <option value="field">field</option>
+                <option value="dungeon">dungeon</option>
+                <option value="boss">boss</option>
+              </select>
+            </label>
+            <button id="btn-save-stage-settings" class="btn btn-sm btn-primary">✔ 保存</button>
+          </div>
+        </aside>
+
+        <!-- 中央：ステージキャンバス -->
+        <div class="stage-editor-center">
+          <div class="stage-toolbar">
+            <span id="stage-coord-label" class="stage-label">ステージ (0, 0)</span>
+            <button id="btn-clear-stage" class="btn btn-sm btn-danger">クリア</button>
+            <label class="checkbox-label">
+              <input id="show-neighbors" type="checkbox" checked> 隣接表示
+            </label>
+          </div>
+          <div id="stage-canvas-wrap" class="stage-canvas-wrap">
+            <canvas id="stage-canvas"></canvas>
+          </div>
+          <div id="cell-info" class="cell-info"></div>
+        </div>
+
+        <!-- 右：プロパティパネル -->
+        <aside class="props-panel">
+          <!-- ゲート/スイッチリンク -->
+          <div class="props-section">
+            <h2 class="panel-title">ゲート・スイッチ連動</h2>
+            <div id="links-list" class="links-list"></div>
+            <button id="btn-add-link" class="btn btn-sm">＋ 追加</button>
+          </div>
+
+          <!-- 剣・防具のステータス設定 -->
+          <div class="props-section">
+            <h2 class="panel-title">⚔ 剣・防具のステータス</h2>
+            <p class="hint">ATK+/DEF+ ボーナス値を設定</p>
+            <div id="equip-flooritems-list" class="links-list"></div>
+          </div>
+
+          <!-- 宝箱の内容 -->
+          <div class="props-section">
+            <h2 class="panel-title">宝箱の内容</h2>
+            <div id="chest-list" class="links-list"></div>
+          </div>
+
+          <!-- NPC会話設定 -->
+          <div class="props-section">
+            <h2 class="panel-title">NPC会話設定</h2>
+            <div id="npc-list" class="links-list"></div>
+          </div>
+
+          <!-- ショップ設定 -->
+          <div class="props-section">
+            <h2 class="panel-title">ショップ設定</h2>
+            <div id="shop-list" class="links-list"></div>
+          </div>
+
+          <!-- MAP_ENTER 出口設定 -->
+          <div class="props-section">
+            <h2 class="panel-title">マップ入り口（出口設定）</h2>
+            <p class="hint">出口IDを設定してペアを作成</p>
+            <div id="mapenter-list" class="links-list"></div>
+          </div>
+
+          <!-- 表示条件（showConditions）設定 -->
+          <div class="props-section">
+            <h2 class="panel-title">表示条件（出現ギミック）</h2>
+            <p class="hint">宝箱・入り口などの出現条件</p>
+            <div id="condition-list" class="links-list"></div>
+            <button id="btn-add-condition" class="btn btn-sm">＋ 追加</button>
+          </div>
+
+          <!-- 壊せる壁 設定 -->
+          <div class="props-section">
+            <h2 class="panel-title">壊せる壁（強度設定）</h2>
+            <div id="breakwall-list" class="links-list"></div>
+          </div>
+
+          <!-- ドアウェイ設定（Phase 6.5） -->
+          <div class="props-section">
+            <h2 class="panel-title">ドアウェイ設定</h2>
+            <p class="hint">DOORWAY_LOCKED の開放条件</p>
+            <div id="doorway-list" class="links-list"></div>
+            <button id="btn-add-doorway-cond" class="btn btn-sm">＋ 追加</button>
+          </div>
+        </aside>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- プレビューオーバーレイ -->
+  <div id="preview-overlay" class="preview-overlay hidden">
+    <div class="preview-header">
+      <span>プレビューモード</span>
+      <button id="btn-exit-preview" class="btn">✕ 編集に戻る</button>
+    </div>
+    <iframe id="preview-frame" class="preview-frame" src=""></iframe>
+  </div>
+</div>
+
+<script type="module" src="./editor.js"></script>
+</body>
+</html>
