@@ -13,7 +13,7 @@ export const ITEM_META = {
 		type: 'placeable',
 		breakPower: 3,
 		aoeRadius: 2,      // 爆風半径（セル）
-		damage: 5,
+		damage: 20,
 		uses: null,        // スタック数で管理
 	},
 	bow: {

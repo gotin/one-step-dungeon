@@ -1153,6 +1153,15 @@ function handleTileEvent() {
 		playSound('item'); pulse(`💣 爆弾 ×${bombCount} を手に入れた！`);
 		renderBoard(); renderChars(); updateHud(); saveGame(); return;
 	}
+	if (tile === TILE.ITEM_BOW && !ss.pickedKeys.has(posKey)) {
+		ss.pickedKeys.add(posKey);
+		const arrowCount = stageData.floorItems?.[posKey]?.count ?? 10;
+		if (!player.subItems.bow) player.subItems.bow = { count: 0 };
+		player.subItems.bow.count += arrowCount;
+		if (!player.activeSubItem) player.activeSubItem = 'bow';
+		playSound('item'); pulse(`🏹 弓矢 ×${arrowCount} を手に入れた！`);
+		renderBoard(); renderChars(); updateHud(); saveGame(); return;
+	}
 	if (tile === TILE.ITEM_HEAL_POTION && !ss.pickedKeys.has(posKey)) {
 		ss.pickedKeys.add(posKey);
 		giveSubItem('healPotion');
@@ -2958,6 +2967,21 @@ function createProjEl(proj) {
 		const sz = Math.round(cellPx * 0.35) + 'px';
 		cv.style.setProperty('width',  sz, 'important');
 		cv.style.setProperty('height', sz, 'important');
+		// 矢（arrow）は向きに応じてスプライトを回転する
+		// SPRITES.arrow は右向き（→）が基準
+		if (proj.type === 'arrow') {
+			const adx = proj.dx, ady = proj.dy;
+			let deg = 0;
+			if (adx > 0 && ady === 0)  deg = 0;    // 右
+			else if (adx < 0 && ady === 0) deg = 180; // 左
+			else if (ady < 0 && adx === 0) deg = 270; // 上
+			else if (ady > 0 && adx === 0) deg = 90;  // 下
+			else if (adx > 0 && ady > 0)   deg = 45;  // 右下
+			else if (adx < 0 && ady > 0)   deg = 135; // 左下
+			else if (adx < 0 && ady < 0)   deg = 225; // 左上
+			else if (adx > 0 && ady < 0)   deg = 315; // 右上
+			if (deg !== 0) cv.style.setProperty('transform', `translate(-50%,-50%) rotate(${deg}deg)`, 'important');
+		}
 		div.appendChild(cv);
 	}
 	charLayerEl.appendChild(div);
@@ -3130,7 +3154,7 @@ function useSubItem() {
 			startX: player.x, startY: player.y,
 			dx: ndx, dy: ndy,
 			speed: 2.0,
-			atk: player.atk + 1,
+			atk: 3,  // ブーメランは固定ダメージ（剣ATK不使用）
 			returning: false,
 			maxRange: 3,
 		};
@@ -3140,6 +3164,27 @@ function useSubItem() {
 	}
 	if (id === 'bomb') {
 		placeBomb(); return;
+	}
+	if (id === 'bow') {
+		// 矢を発射（ブーメランより大幅に速い・貫通・1消費）
+		if (si.count <= 0) { pulse('矢がない！'); return; }
+		si.count--;
+		if (si.count <= 0) { delete player.subItems[id]; player.activeSubItem = Object.keys(player.subItems)[0] ?? null; }
+		const [dy, dx] = DIR_DELTA[heroDir];
+		const ndx = dx / MOVE_STEP;
+		const ndy = dy / MOVE_STEP;
+		resumeAudio(); playSound('slash');
+		const proj = {
+			id: nextProjId++, owner: 'player', type: 'arrow',
+			x: player.x + ndx * 0.5, y: player.y + ndy * 0.5,
+			dx: ndx, dy: ndy,
+			speed: 4.5,   // ブーメラン(2.0)の2倍以上の速さ
+			atk: 5,  // 弓矢は固定ダメージ（剣ATK不使用）
+			piercing: true, // 貫通フラグ（checkProjHitで利用）
+		};
+		projectiles.push(proj);
+		createProjEl(proj);
+		updateHud(); saveGame(); return;
 	}
 	pulse(`${meta?.name ?? id} を使用！`);
 }
