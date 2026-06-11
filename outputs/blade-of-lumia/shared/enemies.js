@@ -43,7 +43,7 @@ export const ENEMY_META = {
 		},
 	},
 	[TILE.BOSS]: {
-		name: 'ボス',
+		name: '魔将',
 		hp: 20, atk: 4, def: 2, exp: 30,
 		speed: ENEMY_SPEED_FAST,
 		sprite: 'escape',

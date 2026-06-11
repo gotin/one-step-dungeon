@@ -171,6 +171,15 @@ function loadGame() {
 		heroDir      = data.heroDir ?? 'down';
 		currentLayer = data.currentLayer ?? 'field';
 		stageKey     = data.stageKey ?? null;
+		// 旧セーブデータの修正: passive アイテム（heartContainer 等）が subItems に混入していたら除去
+		for (const k of Object.keys(player.subItems ?? {})) {
+			if (ITEM_META[k]?.type === 'passive') {
+				delete player.subItems[k];
+			}
+		}
+		if (player.activeSubItem && ITEM_META[player.activeSubItem]?.type === 'passive') {
+			player.activeSubItem = Object.keys(player.subItems)[0] ?? null;
+		}
 		for (const [k, v] of Object.entries(data.stageState ?? {})) {
 			stageState[k] = {
 				openGates:       new Set(v.openGates ?? []),
@@ -1144,6 +1153,15 @@ function handleTileEvent() {
 		playSound('item'); pulse(`💣 爆弾 ×${bombCount} を手に入れた！`);
 		renderBoard(); renderChars(); updateHud(); saveGame(); return;
 	}
+	if (tile === TILE.ITEM_BOW && !ss.pickedKeys.has(posKey)) {
+		ss.pickedKeys.add(posKey);
+		const arrowCount = stageData.floorItems?.[posKey]?.count ?? 10;
+		if (!player.subItems.bow) player.subItems.bow = { count: 0 };
+		player.subItems.bow.count += arrowCount;
+		if (!player.activeSubItem) player.activeSubItem = 'bow';
+		playSound('item'); pulse(`🏹 弓矢 ×${arrowCount} を手に入れた！`);
+		renderBoard(); renderChars(); updateHud(); saveGame(); return;
+	}
 	if (tile === TILE.ITEM_HEAL_POTION && !ss.pickedKeys.has(posKey)) {
 		ss.pickedKeys.add(posKey);
 		giveSubItem('healPotion');
@@ -1174,6 +1192,7 @@ function handleTileEvent() {
 	}
 	if (tile === TILE.ITEM_TRIFORCE_PIECE && !ss.pickedKeys.has(posKey)) {
 		ss.pickedKeys.add(posKey); player.triforceCount++;
+		console.log(`[TRIFORCE] handleTileEvent: ITEM_TRIFORCE_PIECE picked at ${posKey}, triforceCount=${player.triforceCount}`);
 		playSound('item'); pulse('◭ トライフォースのカケラを手に入れた！');
 		renderBoard(); renderChars(); updateHud(); saveGame();
 		checkTriforceClear(); // 全収集チェック
@@ -1258,13 +1277,18 @@ function openChest(posKey, ss) {
 			updateHud();
 		}
 		else if (content.type === 'rupee') { player.rupees += content.value ?? 1; pulse(`☐ ルピー ×${content.value ?? 1}`); }
-		else if (content.type === 'heartContainer') { gainHeartContainer(); pulse('❤ ハートコンテナを手に入れた！'); }
+		else if (content.type === 'heartContainer') { gainHeartContainer(); pulse('❤ ハートの器を手に入れた！'); }
 	} else { pulse('☐ 宝箱は空だった…'); }
 	renderBoard(); renderChars(); updateHud(); saveGame();
 }
 
 function giveSubItem(id) {
 	const meta = ITEM_META[id];
+	// passive アイテムは subItems に追加しない（heartContainer は gainHeartContainer で処理）
+	if (meta?.type === 'passive') {
+		if (id === 'heartContainer') gainHeartContainer();
+		return;
+	}
 	if (!player.subItems[id]) player.subItems[id] = { count: meta?.uses === Infinity ? Infinity : 1 };
 	else if (meta?.uses !== Infinity) player.subItems[id].count++;
 	if (!player.activeSubItem) player.activeSubItem = id;
@@ -1580,7 +1604,11 @@ function togglePause() {
 function renderPauseMenu() {
 	pauseItemKeys = Object.keys(player.subItems).filter(k => {
 		const s = player.subItems[k];
-		return s && (s.count === Infinity || s.count > 0);
+		if (!s || (s.count !== Infinity && s.count <= 0)) return false;
+		// passive アイテム（heartContainer等）はサブアイテムスロットに表示しない
+		const meta = ITEM_META[k];
+		if (meta?.type === 'passive') return false;
+		return true;
 	});
 	if (pauseItemIdx >= pauseItemKeys.length) pauseItemIdx = 0;
 	pauseItemsEl.innerHTML = '';
@@ -1593,9 +1621,45 @@ function renderPauseMenu() {
 			const cnt  = player.subItems[id].count;
 			const div  = document.createElement('div');
 			div.className = `pause-item-slot${i === pauseItemIdx ? ' selected' : ''}`;
-			div.innerHTML = `<div class="pause-item-icon">${meta?.icon ?? id}</div>
-				<div class="pause-item-name">${meta?.name ?? id}</div>
-				<div class="pause-item-count">${cnt === Infinity ? '∞' : `×${cnt}`}</div>`;
+			// アイコン部分：スプライトがあればcanvas、なければ絵文字
+			const iconDiv = document.createElement('div');
+			iconDiv.className = 'pause-item-icon';
+			const sprName = meta?.sprite;
+			const palName = meta?.pal ?? sprName;
+			if (sprName && SPRITES[sprName]) {
+				// ポーズメニュー用：spriteクラスを付けずに直接描画
+				const frames = SPRITES[sprName];
+				const palette = PAL[palName] || PAL[sprName] || PAL.hero;
+				const cv = document.createElement('canvas');
+				// spriteクラスは付けない（position:absoluteが適用されないよう）
+				cv.style.cssText = 'width:24px;height:24px;image-rendering:pixelated;display:block;';
+				const grid = frames[0];
+				const rows = grid.length;
+				const cols = grid[0].length;
+				cv.width  = cols;
+				cv.height = rows;
+				const ctx = cv.getContext('2d');
+				for (let rr = 0; rr < rows; rr++) {
+					for (let cc = 0; cc < cols; cc++) {
+						const idx = grid[rr][cc];
+						if (idx === 0) continue;
+						ctx.fillStyle = palette[idx] ?? 'transparent';
+						ctx.fillRect(cc, rr, 1, 1);
+					}
+				}
+				iconDiv.appendChild(cv);
+			} else {
+				iconDiv.textContent = meta?.icon ?? id;
+			}
+			div.appendChild(iconDiv);
+			const nameDiv = document.createElement('div');
+			nameDiv.className = 'pause-item-name';
+			nameDiv.textContent = meta?.name ?? id;
+			div.appendChild(nameDiv);
+			const cntDiv = document.createElement('div');
+			cntDiv.className = 'pause-item-count';
+			cntDiv.textContent = cnt === Infinity ? '∞' : `×${cnt}`;
+			div.appendChild(cntDiv);
 			div.addEventListener('click', () => {
 				pauseItemIdx = i; player.activeSubItem = pauseItemKeys[i];
 				updateHud(); togglePause();
@@ -1606,7 +1670,40 @@ function renderPauseMenu() {
 	// 装備名を含むステータス表示
 	const swordLabel = player.weapon ? `⚔${player._equip?.swordName ?? '剣'}(ATK${player.atk})` : '⚔なし';
 	const armorLabel = player.armor  ? `⚚${player._equip?.armorName ?? '防具'}(DEF${player.def})` : '⚚なし';
-	pauseStatsEl.innerHTML = `❤×${player.maxHearts}　💰${player.rupees}<br>${swordLabel}　${armorLabel}`;
+	// ハートをスプライト canvas で描画
+	pauseStatsEl.innerHTML = '';
+	const heartRow = document.createElement('div');
+	heartRow.style.cssText = 'display:flex;align-items:center;gap:2px;margin-bottom:4px;';
+	const fullHearts = Math.floor(player.hp / HP_PER_HEART);
+	for (let i = 0; i < player.maxHearts; i++) {
+		const sprName = i < fullHearts ? 'heart' : 'heartEmpty';
+		const palName = sprName;
+		const frames = SPRITES[sprName];
+		const palette = PAL[palName];
+		if (frames && palette) {
+			const grid = frames[0];
+			const rows = grid.length;
+			const cols = grid[0].length;
+			const cv = document.createElement('canvas');
+			cv.width  = cols;
+			cv.height = rows;
+			cv.style.cssText = 'width:16px;height:16px;image-rendering:pixelated;display:inline-block;flex-shrink:0;';
+			const ctx = cv.getContext('2d');
+			for (let rr = 0; rr < rows; rr++) {
+				for (let cc = 0; cc < cols; cc++) {
+					const idx = grid[rr][cc];
+					if (idx === 0) continue;
+					ctx.fillStyle = palette[idx] ?? 'transparent';
+					ctx.fillRect(cc, rr, 1, 1);
+				}
+			}
+			heartRow.appendChild(cv);
+		}
+	}
+	pauseStatsEl.appendChild(heartRow);
+	const statsLine = document.createElement('div');
+	statsLine.textContent = `💰${player.rupees}　${swordLabel}　${armorLabel}`;
+	pauseStatsEl.appendChild(statsLine);
 	// ダンジョン地図を描画（現在ダンジョン内かつ地図入手済みの場合のみ）
 	renderPauseDungeonMap();
 }
@@ -1659,6 +1756,9 @@ function renderPauseDungeonMap() {
 	// 現在ステージ（stageKey も "x,y" 形式）
 	const [curX, curY] = stageKey.split(',').map(Number);
 
+	// stageキー集合（隣接チェック用）
+	const stageSet = new Set(stages);
+
 	stages.forEach(sk => {
 		const [sx, sy] = sk.split(',').map(Number);
 		// x → 横（列）、y → 縦（行）
@@ -1675,6 +1775,28 @@ function renderPauseDungeonMap() {
 		else             ctx.fillStyle = isVisited ? '#3a5060' : '#1a2a38';
 
 		ctx.fillRect(x, y, CELL, CELL);
+
+		// 隣接ステージとの通路を描画（上下左右）
+		const PASS_W = Math.floor(CELL * 0.4);  // 通路の幅
+		const PASS_H = PAD;                      // 通路の長さ（= PAD分）
+		const passColor = isCurrent ? '#80c0f0' : (isVisited ? '#3a5060' : '#1a2a38');
+		ctx.fillStyle = passColor;
+		// 右
+		if (stageSet.has(`${sx + 1},${sy}`)) {
+			ctx.fillRect(x + CELL, y + (CELL - PASS_W) / 2, PASS_H, PASS_W);
+		}
+		// 下
+		if (stageSet.has(`${sx},${sy + 1}`)) {
+			ctx.fillRect(x + (CELL - PASS_W) / 2, y + CELL, PASS_W, PASS_H);
+		}
+		// 左（左の部屋が通路を引く）
+		if (stageSet.has(`${sx - 1},${sy}`)) {
+			ctx.fillRect(x - PASS_H, y + (CELL - PASS_W) / 2, PASS_H, PASS_W);
+		}
+		// 上（上の部屋が通路を引く）
+		if (stageSet.has(`${sx},${sy - 1}`)) {
+			ctx.fillRect(x + (CELL - PASS_W) / 2, y - PASS_H, PASS_W, PASS_H);
+		}
 
 		// ボス部屋マーク
 		if (isBoss) {
@@ -1863,6 +1985,9 @@ function checkBossPhase(boss) {
 function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 
 async function onBossDefeated(boss) {
+	// 二重実行防止：同じボスで既に撃破演出が始まっていたらスキップ
+	if (_bossDefeating) return;
+	_bossDefeating = true;
 	stopGameLoop();
 	// 1. ボスを点滅
 	const bossEl = document.getElementById(`char-enemy-${boss.id}`);
@@ -1882,16 +2007,17 @@ async function onBossDefeated(boss) {
 	// 3. BGM 停止・SE
 	stopBgm();
 	playSound('fanfare');
-	// 4. ボス HP バー非表示・ロック解除・ドアウェイ開放
+	// 4. 敵リストから除去（renderChars より前に行う）
+	getSS(currentLayer, stageKey).defeatedEnemies.add(boss.id);
+	enemies = enemies.filter(x => x !== boss);
+	// 5. ボス HP バー非表示・ロック解除・ドアウェイ開放
 	hideBossHpBar();
 	bossRoomLocked = false;
 	// DOORWAY_BOSS タイルが存在する場合のみ開放メッセージを表示
 	const hasBossDoors = stageData?.tiles?.some(row => row.includes(TILE.DOORWAY_BOSS));
 	unlockBossDoors();
 	if (hasBossDoors) pulse('🔓 扉が開いた！', 2000);
-	// 5. 敵リストから除去・セーブ・条件評価
-	getSS(currentLayer, stageKey).defeatedEnemies.add(boss.id);
-	enemies = enemies.filter(x => x !== boss);
+	// 6. 条件評価
 	evaluateConditions(); // ボス撃破後の showConditions（killAll など）を評価
 	// 6. トライフォース付与（DARK_LORD のみ：フィールドにカケラを出現させる）
 	if (boss.type === TILE.DARK_LORD) {
@@ -1911,8 +2037,12 @@ async function onBossDefeated(boss) {
 		saveGame();
 	}
 	// ループ再開
+	_bossDefeating = false; // 演出完了でフラグをリセット
 	startGameLoop();
 }
+
+// ボス撃破演出実行中フラグ（二重実行防止）
+let _bossDefeating = false;
 
 // トライフォースのカケラをボスの位置に表示（DOM要素への参照を返す）
 let _pendingTriforcePieceEl = null;
@@ -2044,6 +2174,7 @@ function checkPendingTriforce() {
 	document.getElementById('pending-triforce-piece')?.remove();
 
 	player.triforceCount++;
+	console.log(`[TRIFORCE] checkPendingTriforce: collected, triforceCount=${player.triforceCount}`, new Error().stack);
 	playSound('item');
 	pulse('◭ トライフォースのカケラを 手に入れた！', 4000);
 	updateHud();
@@ -2836,6 +2967,21 @@ function createProjEl(proj) {
 		const sz = Math.round(cellPx * 0.35) + 'px';
 		cv.style.setProperty('width',  sz, 'important');
 		cv.style.setProperty('height', sz, 'important');
+		// 矢（arrow）は向きに応じてスプライトを回転する
+		// SPRITES.arrow は右向き（→）が基準
+		if (proj.type === 'arrow') {
+			const adx = proj.dx, ady = proj.dy;
+			let deg = 0;
+			if (adx > 0 && ady === 0)  deg = 0;    // 右
+			else if (adx < 0 && ady === 0) deg = 180; // 左
+			else if (ady < 0 && adx === 0) deg = 270; // 上
+			else if (ady > 0 && adx === 0) deg = 90;  // 下
+			else if (adx > 0 && ady > 0)   deg = 45;  // 右下
+			else if (adx < 0 && ady > 0)   deg = 135; // 左下
+			else if (adx < 0 && ady < 0)   deg = 225; // 左上
+			else if (adx > 0 && ady < 0)   deg = 315; // 右上
+			if (deg !== 0) cv.style.setProperty('transform', `translate(-50%,-50%) rotate(${deg}deg)`, 'important');
+		}
 		div.appendChild(cv);
 	}
 	charLayerEl.appendChild(div);
@@ -3008,7 +3154,7 @@ function useSubItem() {
 			startX: player.x, startY: player.y,
 			dx: ndx, dy: ndy,
 			speed: 2.0,
-			atk: player.atk + 1,
+			atk: 3,  // ブーメランは固定ダメージ（剣ATK不使用）
 			returning: false,
 			maxRange: 3,
 		};
@@ -3018,6 +3164,27 @@ function useSubItem() {
 	}
 	if (id === 'bomb') {
 		placeBomb(); return;
+	}
+	if (id === 'bow') {
+		// 矢を発射（ブーメランより大幅に速い・貫通・1消費）
+		if (si.count <= 0) { pulse('矢がない！'); return; }
+		si.count--;
+		if (si.count <= 0) { delete player.subItems[id]; player.activeSubItem = Object.keys(player.subItems)[0] ?? null; }
+		const [dy, dx] = DIR_DELTA[heroDir];
+		const ndx = dx / MOVE_STEP;
+		const ndy = dy / MOVE_STEP;
+		resumeAudio(); playSound('slash');
+		const proj = {
+			id: nextProjId++, owner: 'player', type: 'arrow',
+			x: player.x + ndx * 0.5, y: player.y + ndy * 0.5,
+			dx: ndx, dy: ndy,
+			speed: 4.5,   // ブーメラン(2.0)の2倍以上の速さ
+			atk: 5,  // 弓矢は固定ダメージ（剣ATK不使用）
+			piercing: true, // 貫通フラグ（checkProjHitで利用）
+		};
+		projectiles.push(proj);
+		createProjEl(proj);
+		updateHud(); saveGame(); return;
 	}
 	pulse(`${meta?.name ?? id} を使用！`);
 }

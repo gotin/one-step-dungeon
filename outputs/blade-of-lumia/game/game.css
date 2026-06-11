@@ -190,9 +190,7 @@ html, body {
     background: #3a3028;
 }
 
-.cell.map-enter {
-    background: #101820;
-}
+/* map-enter: 背景はbgTileクラス（bg-grass等）に任せる。独自背景なし */
 
 /* ── Phase 6.5: ドアウェイ ──────────────────────────────────── */
 /* 常時開放（アーチ通路）*/
@@ -630,6 +628,10 @@ canvas.sprite.item-sprite {
 
 .pause-item-icon {
     font-size: 24px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 28px;
 }
 
 .pause-item-name {
