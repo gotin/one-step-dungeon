@@ -82,34 +82,71 @@ function _playFieldBgmLoop(ctx) {
 	_bgmTimer = setTimeout(() => _playFieldBgmLoop(ctx), 16000 - 200);
 }
 
-// ── ダンジョン BGM（緊迫感） ──────────────────────────────────────
+// ── ダンジョン BGM（初代ゼルダ風・不気味な短調）──────────────────
+// Aマイナー基調。重い低音ドローン＋不気味なアルペジオ＋メロディー
 function _playDungeonBgmLoop(ctx) {
 	if (!_bgmPlaying || _bgmKey !== 'dungeon') return;
 	const now = ctx.currentTime;
-	const vol = 0.035;
+	const vol = 0.032;
 
-	const bass = [110, 82.41, 98, 73.42];
-	bass.forEach((f, i) => {
-		bgmTone(ctx, now + i * 2.0,       f,       1.8, 'sawtooth', vol * 0.9);
-		bgmTone(ctx, now + i * 2.0 + 0.9, f * 1.5, 0.5, 'sawtooth', vol * 0.4);
-	});
+	// ── 低音ドローン（重く暗い）──────────────────────────────────
+	// 55Hz (A1) と 110Hz (A2) の重低音を全体に敷く
+	bgmTone(ctx, now,      55.00, 16.0, 'sawtooth', vol * 0.20);
+	bgmTone(ctx, now,     110.00, 16.0, 'triangle', vol * 0.15);
 
-	const mel = [
-		[220.00, 0.5], [261.63, 0.5], [293.66, 0.5], [329.63, 1.0],
-		[293.66, 0.5], [261.63, 0.5], [220.00, 1.0],
-		[196.00, 0.5], [220.00, 0.5], [261.63, 0.5], [293.66, 1.5],
-		[261.63, 0.5], [246.94, 0.5], [220.00, 1.5],
+	// ── ベースライン（Amマイナースケール）──────────────────────────
+	// A2=110, E2=82.4, G2=98, F2=87.3, Am低域
+	const bassLine = [
+		[110.00, 1.5], [82.41, 0.5], [98.00, 1.0], [87.31, 1.0],
+		[110.00, 1.0], [73.42, 1.0], [87.31, 0.5], [82.41, 1.5],
 	];
-	let t = now + 0.5;
-	for (const [freq, dur] of mel) {
-		bgmTone(ctx, t, freq, dur * 0.85, 'triangle', vol * 0.75);
-		t += dur;
+	let bt = now;
+	for (const [f, dur] of bassLine) {
+		bgmTone(ctx, bt, f,       dur * 0.85, 'sawtooth', vol * 0.75);
+		bgmTone(ctx, bt, f * 2.0, dur * 0.5,  'square',   vol * 0.18);
+		bt += dur;
 	}
 
-	bgmTone(ctx, now,     55.00, 8.0, 'sawtooth', vol * 0.25);
-	bgmTone(ctx, now + 8, 55.00, 8.0, 'sawtooth', vol * 0.25);
-	[1.0, 3.0, 5.5, 7.0, 9.0, 11.5, 13.0, 15.0].forEach(bt => {
-		bgmTone(ctx, now + bt, 80, 0.08, 'square', vol * 0.5);
+	// ── 不気味なアルペジオ（Amコード: A3,C4,E4）──────────────────
+	// 220, 261.63, 329.63 Hz
+	const arpNotes = [220.00, 261.63, 329.63, 261.63];
+	const arpTimes = [0.0, 0.3, 0.6, 0.9]; // 1小節
+	for (let bar = 0; bar < 4; bar++) {
+		arpTimes.forEach((offset, idx) => {
+			bgmTone(ctx, now + bar * 1.2 + offset, arpNotes[idx], 0.22, 'square', vol * 0.35);
+		});
+	}
+	// 後半4小節：Emアルペジオ (E3=164.8, G3=196, B3=246.9)
+	const arpE = [164.81, 196.00, 246.94, 196.00];
+	for (let bar = 0; bar < 4; bar++) {
+		arpTimes.forEach((offset, idx) => {
+			bgmTone(ctx, now + 4.8 + bar * 1.2 + offset, arpE[idx], 0.22, 'square', vol * 0.30);
+		});
+	}
+
+	// ── 主メロディー（初代ゼルダ「地下洞窟」風 短調） ────────────
+	// Am スケール（A,B,C,D,E,F,G）で暗いフレーズ
+	const melody = [
+		[440.00, 0.4], [392.00, 0.2], [349.23, 0.4], [329.63, 0.4],
+		[293.66, 0.4], [261.63, 0.4], [246.94, 0.8],
+		[261.63, 0.4], [293.66, 0.4], [329.63, 0.4], [349.23, 0.4],
+		[329.63, 0.4], [293.66, 0.4], [261.63, 1.2],
+		[246.94, 0.4], [261.63, 0.4], [293.66, 0.4], [329.63, 0.4],
+		[293.66, 0.4], [261.63, 0.4], [220.00, 1.6],
+	];
+	let mt = now + 1.5;
+	for (const [freq, dur] of melody) {
+		bgmTone(ctx, mt, freq, dur * 0.80, 'triangle', vol * 0.70);
+		mt += dur;
+	}
+
+	// ── タイコ（重い一拍） ─────────────────────────────────────────
+	[0, 1.2, 2.4, 3.6, 4.8, 6.0, 7.2, 8.4, 9.6, 10.8, 12.0, 13.2, 14.4, 15.6].forEach(t => {
+		bgmTone(ctx, now + t, 60, 0.12, 'square', vol * 0.60);
+	});
+	// 裏拍（弱く）
+	[0.6, 1.8, 3.0, 4.2, 5.4, 6.6, 7.8, 9.0, 10.2, 11.4, 12.6, 13.8, 15.0].forEach(t => {
+		bgmTone(ctx, now + t, 45, 0.07, 'square', vol * 0.25);
 	});
 
 	_bgmTimer = setTimeout(() => _playDungeonBgmLoop(ctx), 16000 - 200);
@@ -168,10 +205,16 @@ export function stopBgm() {
 		_bgmTimer = null;
 	}
 	if (audioContext && _bgmGain) {
-		// 即座にゲインを 0 にして音を止め、ノードを破棄して既スケジュール音も消音
+		// ゲインを即座に 0 にして切断
 		try { _bgmGain.gain.setValueAtTime(0, audioContext.currentTime); } catch (_) {}
 		try { _bgmGain.disconnect(); } catch (_) {}
-		_bgmGain = null;  // 次回 playBgm で新規生成させる
+		_bgmGain = null;
+	}
+	// AudioContext を閉じて再生成することで、スケジュール済みの
+	// 全オシレーターを強制停止する（これが最も確実な方法）
+	if (audioContext) {
+		try { audioContext.close(); } catch (_) {}
+		audioContext = null;
 	}
 }
 

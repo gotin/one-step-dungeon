@@ -45,6 +45,11 @@ export const ITEM_META = {
 		type: 'passive',
 		uses: null,
 	},
+	heartContainer: {
+		name: 'ハートの器', icon: '❤', sprite: 'heart', pal: 'heart',
+		type: 'passive',
+		uses: null,
+	},
 };
 
 // ── 各攻撃の breakPower ────────────────────────────────────────
