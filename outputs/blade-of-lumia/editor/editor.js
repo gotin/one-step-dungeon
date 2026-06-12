@@ -292,7 +292,7 @@ function updateWorldSidePanel(x, y) {
 		worldPreviewWrap.classList.add('hidden');
 		return;
 	}
-	const enemyTiles = [TILE.PATROL, TILE.CHASER, TILE.SENTRY, TILE.BOSS, TILE.DARK_LORD];
+	const enemyTiles = [TILE.PATROL, TILE.CHASER, TILE.SENTRY, TILE.BOSS, TILE.MONSTER, TILE.DARK_LORD];
 	worldStageInfoEl.innerHTML = `
 		<div class="info-row"><span class="info-label">座標</span><span class="info-value">(${x}, ${y})</span></div>
 		<div class="info-row"><span class="info-label">サイズ</span><span class="info-value">${sd.cols}×${sd.rows}</span></div>
@@ -357,7 +357,7 @@ const MINIMAP_COLORS = {
 	[TILE.WALL]: '#3a4448', [TILE.FLOOR]: '#1a2228', [TILE.WATER]: '#0e2040',
 	[TILE.PLAYER]: '#4cd964',
 	[TILE.PATROL]: '#4888c0', [TILE.CHASER]: '#c03030', [TILE.SENTRY]: '#9040c0',
-	[TILE.BOSS]: '#f0c040', [TILE.DARK_LORD]: '#8800ff',
+	[TILE.BOSS]: '#f0c040', [TILE.MONSTER]: '#9060d0', [TILE.DARK_LORD]: '#8800ff',
 	[TILE.NPC_A]: '#44aa44', [TILE.NPC_B]: '#aa8844', [TILE.NPC_SHOP]: '#aaaa00',
 	[TILE.PRINCESS]: '#ff66aa',
 	[TILE.GATE]: '#1a2c40', [TILE.SWITCH]: '#5a9a40', [TILE.DOOR]: '#9b7048',
@@ -371,7 +371,7 @@ const PREVIEW_BG = {
 	[TILE.WALL]: '#3a4448', [TILE.FLOOR]: '#1a2228', [TILE.WATER]: '#0e2040',
 	[TILE.PLAYER]: '#2a5020',
 	[TILE.PATROL]: '#1a3060', [TILE.CHASER]: '#3a0808', [TILE.SENTRY]: '#2a0840',
-	[TILE.BOSS]: '#1a1a0a', [TILE.DARK_LORD]: '#0a0a18',
+	[TILE.BOSS]: '#1a1a0a', [TILE.MONSTER]: '#180830', [TILE.DARK_LORD]: '#0a0a18',
 };
 
 function drawWorldPreview(sd) {
@@ -482,7 +482,7 @@ const PALETTE_CATEGORIES = [
 	{ label: '地形（背景）', tiles: [TILE.FLOOR, TILE.GRASS, TILE.SAND, TILE.STONE_FLOOR, TILE.BRIDGE] },
 	{ label: '障害物・建物', tiles: [TILE.WALL, TILE.WATER, TILE.BREAKABLE_WALL, TILE.TREE, TILE.MOUNTAIN, TILE.BUSH, TILE.FENCE, TILE.HOUSE_WALL, TILE.HOUSE_DOOR, TILE.HOUSE_ROOF, TILE.SIGN] },
 	{ label: 'プレイヤー', tiles: [TILE.PLAYER] },
-	{ label: '敵',    tiles: [TILE.PATROL, TILE.CHASER, TILE.SENTRY, TILE.BOSS, TILE.DARK_LORD] },
+	{ label: '敵',    tiles: [TILE.PATROL, TILE.CHASER, TILE.SENTRY, TILE.BOSS, TILE.MONSTER, TILE.DARK_LORD] },
 	{ label: 'NPC',   tiles: [TILE.PRINCESS, TILE.NPC_A, TILE.NPC_B, TILE.NPC_SHOP] },
 	{ label: 'ギミック', tiles: [TILE.GATE, TILE.SWITCH, TILE.DOOR, TILE.KEY, TILE.CHEST, TILE.STONE, TILE.MAP_ENTER] },
 	{ label: 'ドアウェイ', tiles: [TILE.DOORWAY, TILE.DOORWAY_BOSS, TILE.DOORWAY_LOCKED] },
@@ -552,6 +552,7 @@ const TILE_SPRITE_MAP = {
 	[TILE.CHASER]:    { spr: 'chaser',   pal: 'chaser'   },
 	[TILE.SENTRY]:    { spr: 'sentry',   pal: 'sentry'   },
 	[TILE.BOSS]:      { spr: 'escape',   pal: 'escape'   },
+	[TILE.MONSTER]:   { spr: 'monster',  pal: 'monster'  },
 	[TILE.DARK_LORD]: { spr: 'darklord', pal: 'darklord' },
 	[TILE.PRINCESS]:  { spr: 'princess', pal: 'princess' },
 	[TILE.PLAYER]:    { spr: 'heroD',    pal: 'hero'     },
@@ -724,7 +725,7 @@ function drawNeighborEdges(sd) {
 function updateStageInfo(sd) {
 	stageInfoEl.innerHTML = `
 		<div>プレイヤー: <b>${countTile(sd,[TILE.PLAYER])}</b></div>
-		<div>敵: <b>${countTile(sd,[TILE.PATROL,TILE.CHASER,TILE.SENTRY,TILE.BOSS,TILE.DARK_LORD])}</b></div>
+		<div>敵: <b>${countTile(sd,[TILE.PATROL,TILE.CHASER,TILE.SENTRY,TILE.BOSS,TILE.MONSTER,TILE.DARK_LORD])}</b></div>
 		<div>宝箱: <b>${countTile(sd,[TILE.CHEST])}</b>　鍵: <b>${countTile(sd,[TILE.KEY])}</b></div>
 		<div>NPC: <b>${countTile(sd,[TILE.NPC_A,TILE.NPC_B,TILE.NPC_SHOP,TILE.PRINCESS])}</b></div>
 		<div>MAP_ENTER: <b>${countTile(sd,[TILE.MAP_ENTER])}</b></div>
@@ -961,7 +962,7 @@ function renderEquipItems(sd) {
 		const key  = `${r},${c}`;
 		const data = sd.floorItems?.[key] ?? {};
 		const isSword = tile === TILE.ITEM_SWORD;
-		const label   = isSword ? `⚔ 剣 (${c},${r})` : `⚚ 防具 (${c},${r})`;
+		const label   = isSword ? `⚔ 剣 (${r},${c})` : `⚚ 防具 (${r},${c})`;
 		const field   = isSword ? 'atkBonus' : 'defBonus';
 		const stat    = isSword ? 'ATK+' : 'DEF+';
 		const defVal  = data[field] ?? (isSword ? 2 : 2);
@@ -1014,7 +1015,7 @@ function renderChests(sd) {
 		const item = document.createElement('div');
 		item.className = 'link-item';
 		item.innerHTML = `
-			<div class="link-item-header"><span>宝箱 (${c},${r})</span></div>
+			<div class="link-item-header"><span>宝箱 (${r},${c})</span></div>
 			<label>種類
 				<select data-key="${key}" data-f="type">
 					${CHEST_TYPE_OPTIONS.map(o => `<option value="${o.value}"${cont.type===o.value?' selected':''}>${o.label}</option>`).join('')}
@@ -1061,7 +1062,7 @@ function renderNPCs(sd) {
 		const item = document.createElement('div');
 		item.className = 'link-item';
 		item.innerHTML = `
-			<div class="link-item-header"><span>NPC (${c},${r}) ${TILE_META[tile]?.icon??''}</span></div>
+			<div class="link-item-header"><span>NPC (${r},${c}) ${TILE_META[tile]?.icon??''}</span></div>
 			<label>キャラ名 <input type="text" value="${data.name??''}" data-key="${key}" data-f="name" placeholder="例: 村人 タロ"></label>
 			<label>スプライト
 				<select data-key="${key}" data-f="sprite">
@@ -1103,7 +1104,7 @@ function renderShops(sd) {
 		item.className = 'link-item';
 		const itemsJson = JSON.stringify(data.items ?? [], null, 2);
 		item.innerHTML = `
-			<div class="link-item-header"><span>ショップ (${c},${r})</span></div>
+			<div class="link-item-header"><span>ショップ (${r},${c})</span></div>
 			<label>店名 <input type="text" value="${data.name??''}" data-key="${key}" data-f="name"></label>
 			<label>商品リスト（JSON）
 				<textarea data-key="${key}" data-f="items" rows="6" style="font-family:monospace;font-size:0.65rem">${itemsJson}</textarea>
@@ -1137,7 +1138,7 @@ function renderMapEnters(sd) {
 		const item = document.createElement('div');
 		item.className = 'link-item';
 		item.innerHTML = `
-			<div class="link-item-header"><span>出口 (${c},${r})</span></div>
+			<div class="link-item-header"><span>出口 (${r},${c})</span></div>
 			<label>出口ID <input type="text" value="${data.id??''}" data-key="${key}" data-f="id" placeholder="例: cave1_entrance"></label>
 			<label>遷移先ID <input type="text" value="${data.destId??''}" data-key="${key}" data-f="destId" placeholder="例: cave1_exit"></label>
 		`;
@@ -1232,7 +1233,7 @@ function renderBreakableWalls(sd) {
 		const item = document.createElement('div');
 		item.className = 'link-item';
 		item.innerHTML = `
-			<div class="link-item-header"><span>壊せる壁 (${c},${r})</span></div>
+			<div class="link-item-header"><span>壊せる壁 (${r},${c})</span></div>
 			<label>breakDef（強度）
 				<select data-key="${key}">
 					<option value="1" ${data.breakDef===1?'selected':''}>1（軽い）</option>
@@ -1266,7 +1267,7 @@ function renderDoorways(sd) {
 		item.className = 'link-item';
 		if (type === 'boss') {
 			item.innerHTML = `
-				<div class="link-item-header"><span>BOSS扉 (${c},${r}) 🔒</span></div>
+				<div class="link-item-header"><span>BOSS扉 (${r},${c}) 🔒</span></div>
 				<p class="hint" style="margin:2px 0">ボス入室で自動ロック・撃破で自動解除</p>
 			`;
 		} else {
@@ -1274,7 +1275,7 @@ function renderDoorways(sd) {
 			const condText = cond ? `${cond.trigger}` : '（条件なし）';
 			item.innerHTML = `
 				<div class="link-item-header">
-					<span>条件扉 (${c},${r}) <span class="cond-badge">${condText}</span></span>
+					<span>条件扉 (${r},${c}) <span class="cond-badge">${condText}</span></span>
 					<button class="btn btn-sm" data-action="set-cond">条件設定</button>
 				</div>
 				<p class="hint" style="margin:2px 0">表示条件パネルで条件を設定すると連動して開きます</p>

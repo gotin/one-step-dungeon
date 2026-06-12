@@ -16,6 +16,8 @@ export const PAL = {
 	chaser:   ['transparent','#0a0a14','#6a0808','#c03030','#e86060','#ffa0a0'],
 	sentry:   ['transparent','#0a0a14','#501880','#9040c0','#b989e8','#ffd0ff'],
 	escape:   ['transparent','#000000','#1a1a1a','#f0d090','#f0c040','#ffffff'],
+	// 魔物（紫がかった暗色）
+	monster:  ['transparent','#000000','#6030a0','#e0d0ff','#9060d0','#4020a0','#c0a0f0'],
 	darklord: ['transparent','#000000','#1a1a1a','#f0d090','#0a0a0a','#050505','#f0d890'],
 	princess: ['transparent','#000000','#ff88bb','#f5e0d0','#ffffff','#ff66aa','#fce8d8'],
 	guard:    ['transparent','#0a0a14','#501880','#9040c0','#b989e8','#ffd0ff'],
@@ -677,6 +679,14 @@ SPRITES.escapeL = SPRITES.heroR; // flipX で反転
 SPRITES.escapeU = SPRITES.heroU;
 // 後方互換（単体参照用）
 SPRITES.escape = SPRITES.heroR;
+
+// ── MONSTER（魔物）── 32×32、hero と同じ形、monster パレット ─
+SPRITES.monsterD = SPRITES.heroD;
+SPRITES.monsterR = SPRITES.heroR;
+SPRITES.monsterL = SPRITES.heroR; // flipX で反転
+SPRITES.monsterU = SPRITES.heroU;
+// 後方互換（単体参照用）
+SPRITES.monster = SPRITES.heroR;
 
 // ── DARK LORD（魔王）── 4方向、darklord パレット ────────────
 SPRITES.darklordD = SPRITES.heroD;

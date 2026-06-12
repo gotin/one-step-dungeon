@@ -133,6 +133,7 @@ function getSS(lk, sk) {
 			brokenWalls:     new Set(),
 			conditionsMet:   new Set(),
 			openedDoors:     new Set(),  // 鍵で開いたドア
+			stonePositions:  {},         // { 'r,c': {r, c} } 石の移動後位置
 		};
 	}
 	return stageState[k];
@@ -154,6 +155,7 @@ function saveGame() {
 				doorwayStates:   v.doorwayStates ?? {},  // Phase 6.5
 				cutBushes:       [...(v.cutBushes ?? [])], // Phase 8.2
 				openedDoors:     [...(v.openedDoors ?? [])], // 鍵で開いたドア
+				stonePositions:  v.stonePositions ?? {},      // 石の移動後位置
 			};
 		}
 		localStorage.setItem(SAVE_KEY, JSON.stringify({
@@ -193,6 +195,7 @@ function loadGame() {
 				doorwayStates:   v.doorwayStates ?? {},  // Phase 6.5
 				cutBushes:       new Set(v.cutBushes ?? []), // Phase 8.2
 				openedDoors:     new Set(v.openedDoors ?? []), // 鍵で開いたドア
+				stonePositions:  {},         // 石の位置は常にリセット（セーブデータを引き継がない）
 			};
 		}
 		return true;
@@ -226,6 +229,17 @@ function getStageData(lk, sk) {
 
 // ── ステージ開始 ──────────────────────────────────────────────
 function enterStage(lk, sk, pRow, pCol) {
+	// 別のステージに移動する場合、現在ステージの石を元の位置にリセット
+	// （壁際に挟まって取り出せなくなった石をリセットするため）
+	if (stageKey !== null && (currentLayer !== lk || stageKey !== sk)) {
+		const prevSS = getSS(currentLayer, stageKey);
+		if (prevSS.stonePositions && Object.keys(prevSS.stonePositions).length > 0) {
+			prevSS.stonePositions = {};
+			// 石がスイッチを押していた記録もリセット
+			if (prevSS.stoneSwitches) prevSS.stoneSwitches = new Set();
+		}
+	}
+
 	currentLayer = lk;
 	stageKey     = sk;
 	stageData    = getStageData(lk, sk);
@@ -442,6 +456,9 @@ function addCellSprite(cellEl, tile, posKey, ss) {
 		return;
 	}
 	if (tile === TILE.STONE) {
+		// 元のタイル位置にある石（移動されていない場合）
+		const _ssSt = getSS(currentLayer, stageKey);
+		if (_ssSt.stonePositions?.[posKey]) return; // 移動済み → 元の場所には描画しない
 		const cv = makeSprite('block', 'block', false);
 		if (cv) { cv.classList.add('obj-sprite'); cellEl.appendChild(cv); }
 		return;
@@ -576,6 +593,48 @@ function renderChars() {
 	if (heroCv) playerDiv.appendChild(heroCv);
 	if (heroDir !== 'up') addShieldOverlay(playerDiv);
 
+	// 移動済みの石を描画（プレイヤーの後ろに配置）
+	{
+		const _ssRc = getSS(currentLayer, stageKey);
+		const _cellPxSt = getCellPx();
+		const _stSize = Math.round(_cellPxSt * 0.7) + 'px'; // obj-sprite と同じ70%サイズ
+		for (const [origKey, st] of Object.entries(_ssRc.stonePositions ?? {})) {
+			const stDiv = document.createElement('div');
+			stDiv.className = 'char-abs';
+			stDiv.id = `char-stone-${origKey.replace(',', '-')}`;
+			stDiv.style.left   = `${st.c * _cellPxSt}px`;
+			stDiv.style.top    = `${st.r * _cellPxSt}px`;
+			stDiv.style.zIndex = '1'; // プレイヤー(z-index:2相当)より下
+			// 石のキャンバスを直接描画（spriteクラスなし→CSSの位置上書きを回避）
+			const stoneCv = document.createElement('canvas');
+			stoneCv.style.cssText = `position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:${_stSize};height:${_stSize};image-rendering:pixelated;`;
+			const _stFrames = SPRITES['block'];
+			const _stPal = PAL['block'];
+			if (_stFrames && _stPal) {
+				const _stGrid = _stFrames[0];
+				stoneCv.width = _stGrid[0].length;
+				stoneCv.height = _stGrid.length;
+				const _stCtx = stoneCv.getContext('2d');
+				for (let _r = 0; _r < _stGrid.length; _r++) {
+					for (let _c = 0; _c < _stGrid[_r].length; _c++) {
+						const idx = _stGrid[_r][_c];
+						if (idx === 0) continue;
+						_stCtx.fillStyle = _stPal[idx] ?? 'transparent';
+						_stCtx.fillRect(_c, _r, 1, 1);
+					}
+				}
+			}
+			stDiv.appendChild(stoneCv);
+			// 石がスイッチの上にある場合は緑色のグローを追加
+			const onSwitch = stageData.tiles[st.r]?.[st.c] === TILE.SWITCH;
+			if (onSwitch) {
+				const glow = document.createElement('div');
+				glow.style.cssText = 'position:absolute;inset:0;background:rgba(80,255,100,0.38);border-radius:3px;box-shadow:0 0 8px 4px rgba(60,255,80,0.6);pointer-events:none;z-index:5;animation:stone-glow 1.2s ease-in-out infinite;';
+				stDiv.appendChild(glow);
+			}
+			charLayerEl.appendChild(stDiv);
+		}
+	}
 	// 敵
 	for (const e of enemies) {
 		const wrapper = addCharEl(e.x, e.y, `enemy-${e.id}`, () => {
@@ -694,6 +753,14 @@ function isPassable(nx, ny) {
 	// デバッグモード中は敵すり抜け可能
 	if (debugMode) return true;
 
+	// 移動後の石があるセルには移動できない（範囲チェック）
+	if (stageData && !debugMode) {
+		const _ssp = getSS(currentLayer, stageKey);
+		for (const st of Object.values(_ssp.stonePositions ?? {})) {
+			if (st.r >= r0 && st.r <= r1 && st.c >= c0 && st.c <= c1) return false;
+		}
+	}
+
 	// 敵と同じタイルセルには移動できない（重なり防止）
 	// ※ 「0.6未満」判定だと半セル移動時に動けなくなるため、タイル単位で比較する
 	for (const e of enemies) {
@@ -727,6 +794,13 @@ function tilePassable(r, c) {
 		if (ss.cutBushes?.has(posKey)) return true;
 		return false;
 	}
+	// 石（STONE）の通行判定：元のタイル位置で判断
+	if (tile === TILE.STONE) {
+		const _ss = getSS(currentLayer, stageKey);
+		// stonePositions に登録されていれば石は移動済み → 元の位置は床として通行可
+		if (_ss.stonePositions?.[posKey]) return true;
+		return false; // 移動されていない → 石がある → 通れない
+	}
 	// Phase 6.5: ドアウェイの通行判定
 	if (tile === TILE.DOORWAY_BOSS || tile === TILE.DOORWAY_LOCKED) {
 		const dwState = ss.doorwayStates?.[posKey];
@@ -755,6 +829,13 @@ function isPassableForEnemy(ny, nx, self) {
 		for (let c = c0; c <= c1; c++) {
 			if (r < 0 || r >= stageData.rows || c < 0 || c >= stageData.cols) return false;
 			if (!tilePassable(r, c)) return false;
+		}
+	}
+	// 移動後の石があるセルには通れない
+	if (stageData) {
+		const _sspe = getSS(currentLayer, stageKey);
+		for (const st of Object.values(_sspe.stonePositions ?? {})) {
+			if (toTileRow(ny) === st.r && toTileCol(nx) === st.c) return false;
 		}
 	}
 	// 他の敵と大きく重なっているなら通れない
@@ -928,6 +1009,103 @@ function showDoorOpenEffect(r, c) {
 	setTimeout(() => el.remove(), 550);
 }
 
+
+// ── 石を押す処理 ──────────────────────────────────────────────
+// r,c: 石のタイル座標（元のタイル位置 or 移動後位置）
+// dir: 押す方向（プレイヤーの移動方向）
+// origKey: stonePositions のキー（移動後の石の場合）
+// 戻り値: true = 石を押せた
+function tryPushStone(r, c, dir, origKey) {
+	const [pdy, pdx] = DIR_DELTA[dir];
+	const ndr = Math.sign(pdy); // -1, 0, +1
+	const ndc = Math.sign(pdx);
+	const tr = r + ndr; // 石の押し先の行
+	const tc = c + ndc; // 石の押し先の列
+	console.log(`[STONE] tryPushStone(${r},${c}) dir=${dir} → dest=(${tr},${tc}) origKey=${origKey}`);
+	if (tr < 0 || tr >= stageData.rows || tc < 0 || tc >= stageData.cols) { console.log('[STONE] blocked: out of bounds'); return false; }
+	// 押し先が壁・水・ゲート（閉）・他の石などならブロック
+	const destTile = stageData.tiles[tr]?.[tc];
+	const passable = tilePassable(tr, tc);
+	console.log(`[STONE] destTile=${destTile} tilePassable=${passable}`);
+	if (!passable) return false;
+	// 押し先に他の移動済み石がいないか確認
+	const ss = getSS(currentLayer, stageKey);
+	if (!ss.stonePositions) ss.stonePositions = {};
+	for (const st of Object.values(ss.stonePositions)) {
+		if (st.r === tr && st.c === tc) { console.log('[STONE] blocked: another moved stone'); return false; }
+	}
+	// 押し先に敵がいないか
+	for (const e of enemies) {
+		if (toTileRow(e.y) === tr && toTileCol(e.x) === tc) { console.log('[STONE] blocked: enemy'); return false; }
+	}
+
+	// origKey が指定されている場合は既存エントリを更新、なければ新規作成
+	const key = origKey ?? `${r},${c}`;
+	console.log(`[STONE] PUSHED! key=${key} → (${tr},${tc}) stonePositions=`, JSON.stringify(ss.stonePositions));
+	ss.stonePositions[key] = { r: tr, c: tc };
+
+	// スイッチとの判定
+	checkStoneOnSwitch();
+
+	playSound('move');
+	renderBoard();
+	renderChars();
+	evaluateConditions();
+	saveGame();
+	return true;
+}
+
+// 石がスイッチの上に乗っているかチェックしてスイッチ状態を更新
+function checkStoneOnSwitch() {
+	const ss = getSS(currentLayer, stageKey);
+	if (!ss.stonePositions) return;
+	// まずスイッチ状態を「石によるON」をリセット（石がないスイッチはOFF）
+	// ただしプレイヤーが踏んでいる場合は維持する
+	for (let r = 0; r < stageData.rows; r++) {
+		for (let c = 0; c < stageData.cols; c++) {
+			if (stageData.tiles[r][c] !== TILE.SWITCH) continue;
+			const pk = `${r},${c}`;
+			// 石がこのスイッチの上にあるか確認
+			const stoneHere = Object.values(ss.stonePositions).some(st => st.r === r && st.c === c);
+			// プレイヤーが踏んでいるか確認
+			const playerHere = toTileRow(player.y) === r && toTileCol(player.x) === c;
+			if (stoneHere || playerHere) {
+				if (!ss.switchStates[pk]) {
+					ss.switchStates[pk] = true;
+					// スイッチに連動するゲートを開く
+					for (const link of stageData.links ?? []) {
+						if (link.switchId === pk) {
+							ss.openGates.add(link.gateId);
+							playSound('gateOpen');
+						}
+					}
+				}
+			} else {
+				// 石もプレイヤーもいない → スイッチを最初に踏んだプレイヤーによる永続ONでない場合のみOFF
+				// ※ STONE タイル元位置でのスイッチ（石が最初からスイッチの上）は永続ON扱い
+				// プレイヤーが踏んでONになったスイッチは石が離れてもON維持
+				// → 石による一時スイッチ = ss.stoneSwitches に記録している場合のみリセット
+				if (!ss.stoneSwitches) ss.stoneSwitches = new Set();
+				if (ss.stoneSwitches.has(pk)) {
+					ss.switchStates[pk] = false;
+					// 閉じるゲート処理
+					for (const link of stageData.links ?? []) {
+						if (link.switchId === pk) ss.openGates.delete(link.gateId);
+					}
+				}
+			}
+		}
+	}
+	// 今石が乗っているスイッチを stoneSwitches に記録
+	if (!ss.stoneSwitches) ss.stoneSwitches = new Set();
+	for (const st of Object.values(ss.stonePositions)) {
+		const pk = `${st.r},${st.c}`;
+		if (stageData.tiles[st.r]?.[st.c] === TILE.SWITCH) {
+			ss.stoneSwitches.add(pk);
+		}
+	}
+}
+
 // ── プレイヤー移動 ────────────────────────────────────────────
 function movePlayer(dir) {
 	if (isDialog || isPaused || isGameover || isTransitioning) return;
@@ -937,9 +1115,147 @@ function movePlayer(dir) {
 	const nx = player.x + dx;
 	const ny = player.y + dy;
 
-	// 壁チェック
+	// ── 石の押し判定（整数セル単位） ─────────────────────────
+	// プレイヤーの現在タイル位置から1セル先に石があれば押す
+	const pr = toTileRow(player.y);
+	const pc = toTileCol(player.x);
+	const pdr = Math.sign(dy); // 移動方向（行）
+	const pdc = Math.sign(dx); // 移動方向（列）
+	const nextR = pr + pdr;    // 1セル先の行
+	const nextC = pc + pdc;    // 1セル先の列
+	const ss = getSS(currentLayer, stageKey);
+
+	// 1セル先に石（元位置 or 移動後位置）があるか確認
+	let stoneKey = null;
+	if (stageData.tiles[nextR]?.[nextC] === TILE.STONE && !ss.stonePositions?.[`${nextR},${nextC}`]) {
+		stoneKey = `${nextR},${nextC}`; // 元位置の石
+	} else {
+		// 移動後の石を確認
+		for (const [k, st] of Object.entries(ss.stonePositions ?? {})) {
+			if (st.r === nextR && st.c === nextC) { stoneKey = k; break; }
+		}
+	}
+
+	if (stoneKey !== null) {
+		// 石を押す：クールダウンチェック（重い石はゆっくりしか押せない）
+		const nowSt = Date.now();
+		if (nowSt - lastStonePushTime < STONE_PUSH_COOLDOWN_MS) {
+			// クールダウン中 → 向きだけ変えて終わり（石に触れているが動かせない状態）
+			updatePlayerCharEl();
+			return;
+		}
+		// 石を押す：石の移動先
+		const stoneDestR = nextR + pdr;
+		const stoneDestC = nextC + pdc;
+		// 石の移動先が壁・水等でないか、他の石がないか
+		const stoneDestOk = stageData.tiles[stoneDestR]?.[stoneDestC] != null
+			&& tilePassable(stoneDestR, stoneDestC)
+			&& !Object.values(ss.stonePositions ?? {}).some(st => st.r === stoneDestR && st.c === stoneDestC);
+		if (stoneDestOk) {
+			// 石を1セル移動
+			if (!ss.stonePositions) ss.stonePositions = {};
+			// 石の「元の描画位置」を取得（アニメーション開始座標）
+			const stoneFromR = (ss.stonePositions[stoneKey] ?? { r: nextR, c: nextC }).r;
+			const stoneFromC = (ss.stonePositions[stoneKey] ?? { r: nextR, c: nextC }).c;
+			// 位置を更新（アニメーション後の正式座標）
+			ss.stonePositions[stoneKey] = { r: stoneDestR, c: stoneDestC };
+			lastStonePushTime = nowSt; // クールダウンタイマーを更新
+			checkStoneOnSwitch();
+			evaluateConditions();
+
+			// プレイヤーも1セル整数移動（石を押す時だけ整数単位）
+			player.x = nextC;
+			player.y = nextR;
+			playSound('move');
+
+			// ── 石の移動アニメーション ─────────────────────────
+			// renderBoard()でcharLayerElを再作成してから、
+			// 石をアニメーション付きで描画し、完了後にrenderChars()を呼ぶ
+			renderBoard(); // タイル再描画（charLayerElリセット）
+
+			// プレイヤーを押す前の位置に配置して、石と同じ速度でアニメーション移動
+			const _animCellPx = getCellPx();
+			const _animPlayerDiv = document.createElement('div');
+			_animPlayerDiv.className = 'char-abs';
+			_animPlayerDiv.id = 'char-player';
+			// 移動前の位置（player.x/y はすでに nextC/nextR に更新済みなので元の位置 = pr, pc）
+			_animPlayerDiv.style.left = `${pc * _animCellPx}px`;
+			_animPlayerDiv.style.top  = `${pr * _animCellPx}px`;
+			const _animHeroSpr = getHeroSpriteName();
+			const _animHeroCv  = makeSprite(_animHeroSpr, 'hero', true, heroDir === 'left');
+			if (_animHeroCv) _animPlayerDiv.appendChild(_animHeroCv);
+			charLayerEl.appendChild(_animPlayerDiv);
+
+			// 石をアニメーション用要素として古い位置に配置
+			const _animStDiv = document.createElement('div');
+			_animStDiv.className = 'char-abs';
+			_animStDiv.id = `char-stone-${stoneKey.replace(',', '-')}`;
+			_animStDiv.style.zIndex = '1';
+			const _animStSize = Math.round(_animCellPx * 0.7) + 'px';
+			const _animStCv = document.createElement('canvas');
+			_animStCv.style.cssText = `position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:${_animStSize};height:${_animStSize};image-rendering:pixelated;`;
+			const _animFrames = SPRITES['block'];
+			const _animPal    = PAL['block'];
+			if (_animFrames && _animPal) {
+				const _animGrid = _animFrames[0];
+				_animStCv.width  = _animGrid[0].length;
+				_animStCv.height = _animGrid.length;
+				const _animCtx = _animStCv.getContext('2d');
+				for (let _r = 0; _r < _animGrid.length; _r++) {
+					for (let _c = 0; _c < _animGrid[_r].length; _c++) {
+						const idx = _animGrid[_r][_c];
+						if (idx === 0) continue;
+						_animCtx.fillStyle = _animPal[idx] ?? 'transparent';
+						_animCtx.fillRect(_c, _r, 1, 1);
+					}
+				}
+			}
+			_animStDiv.appendChild(_animStCv);
+			// 古い位置に配置してからtransitionで新しい位置へ移動
+			_animStDiv.style.left = `${stoneFromC * _animCellPx}px`;
+			_animStDiv.style.top  = `${stoneFromR * _animCellPx}px`;
+			charLayerEl.appendChild(_animStDiv);
+
+			// 2フレーム待ってからtransitionを有効にして移動
+			// （1回のrAFだと古い位置set→新位置setが同フレームに最適化されtransitionが発動しない場合がある）
+			const _animDuration = STONE_PUSH_COOLDOWN_MS - 60; // クールダウンより少し短く
+			requestAnimationFrame(() => {
+				// 1フレーム目: ブラウザに古い位置を確定させる（レイアウト強制）
+				void _animStDiv.offsetLeft;    // reflow強制
+				void _animPlayerDiv.offsetLeft;
+				requestAnimationFrame(() => {
+					// 2フレーム目: transition設定 + 移動先を指定
+					const _t = `left ${_animDuration}ms linear, top ${_animDuration}ms linear`;
+					_animStDiv.style.transition = _t;
+					_animStDiv.style.left = `${stoneDestC * _animCellPx}px`;
+					_animStDiv.style.top  = `${stoneDestR * _animCellPx}px`;
+					_animPlayerDiv.style.transition = _t;
+					_animPlayerDiv.style.left = `${nextC * _animCellPx}px`;
+					_animPlayerDiv.style.top  = `${nextR * _animCellPx}px`;
+				});
+			});
+
+			// アニメーション完了後に正式再描画
+			// handleTileEvent/checkSwitchOff はここでは呼ばない:
+			// プレイヤーがスイッチの上に乗った場合、renderBoard/renderCharsを呼んでアニメを中断してしまうため
+			updateHud();
+			setTimeout(() => {
+				renderChars();   // transition なし・正式座標で再描画
+				saveGame();
+				handleTileEvent();   // ← アニメ完了後に実行
+				checkSwitchOff();    // ← アニメ完了後に実行
+				checkStageTransition(); // ← アニメ完了後に実行
+			}, _animDuration + 10);
+			return;
+		}
+		// 石を押せない → 向きだけ変える
+		updatePlayerCharEl();
+		return;
+	}
+
+	// 壁チェック（通常移動）
 	if (!isPassable(nx, ny)) {
-		// 移動先にドアがあるか確認（半セル移動を考慮して全タイルをチェック）
+		// ドア判定
 		const c0 = Math.floor(nx), c1 = Math.floor(nx + 0.999);
 		const r0 = Math.floor(ny), r1 = Math.floor(ny + 0.999);
 		let doorOpened = false;
@@ -952,11 +1268,9 @@ function movePlayer(dir) {
 			}
 		}
 		if (!doorOpened) {
-			// 向きだけ変える（スプライト更新）
 			updatePlayerCharEl();
 			return;
 		}
-		// ドアが開いた → もう一度通行可チェックしてから移動
 		if (!isPassable(nx, ny)) {
 			updatePlayerCharEl();
 			return;
@@ -972,7 +1286,35 @@ function movePlayer(dir) {
 	updateHud();
 
 	handleTileEvent();
+	checkSwitchOff();
 	checkStageTransition();
+}
+
+// プレイヤーがスイッチから離れた時にOFFにする
+function checkSwitchOff() {
+	const ss = getSS(currentLayer, stageKey);
+	let changed = false;
+	for (let r = 0; r < stageData.rows; r++) {
+		for (let c = 0; c < stageData.cols; c++) {
+			if (stageData.tiles[r][c] !== TILE.SWITCH) continue;
+			const pk = `${r},${c}`;
+			if (!ss.switchStates[pk]) continue;
+			// 石が乗っているスイッチは維持
+			const stoneHere = Object.values(ss.stonePositions ?? {}).some(st => st.r === r && st.c === c);
+			if (stoneHere) continue;
+			// プレイヤーが乗っているか
+			const playerHere = toTileRow(player.y) === r && toTileCol(player.x) === c;
+			if (!playerHere) {
+				// プレイヤーが離れた → OFF
+				ss.switchStates[pk] = false;
+				for (const link of stageData.links ?? []) {
+					if (link.switchId === pk) ss.openGates.delete(link.gateId);
+				}
+				changed = true;
+			}
+		}
+	}
+	if (changed) { renderBoard(); renderChars(); evaluateConditions(); saveGame(); }
 }
 
 // 盾オーバーレイを char-abs div に追加する（ゼルダスタイル）
@@ -1071,14 +1413,18 @@ function handleTileEvent() {
 		playSound('key'); pulse('🗝 鍵を手に入れた！');
 		renderBoard(); renderChars(); updateHud(); saveGame(); return;
 	}
-	if (tile === TILE.SWITCH && !ss.switchStates[posKey]) {
-		ss.switchStates[posKey] = true;
-		playSound('switch');
-		for (const link of stageData.links ?? []) {
-			if (link.switchId === posKey) { ss.openGates.add(link.gateId); playSound('gateOpen'); }
+	if (tile === TILE.SWITCH) {
+		// プレッシャープレート方式：乗っている間だけON
+		if (!ss.switchStates[posKey]) {
+			ss.switchStates[posKey] = true;
+			playSound('switch');
+			for (const link of stageData.links ?? []) {
+				if (link.switchId === posKey) { ss.openGates.add(link.gateId); playSound('gateOpen'); }
+			}
+			evaluateConditions();
+			renderBoard(); renderChars(); saveGame();
 		}
-		evaluateConditions();
-		renderBoard(); renderChars(); saveGame(); return;
+		return;
 	}
 	if (tile === TILE.ITEM_SWORD && !ss.pickedKeys.has(posKey)) {
 		ss.pickedKeys.add(posKey);
@@ -1142,7 +1488,8 @@ function handleTileEvent() {
 		}
 		if (!player.activeSubItem) player.activeSubItem = 'boomerang';
 		playSound('item'); pulse('🪃 ブーメランを手に入れた！');
-		renderBoard(); renderChars(); updateHud(); saveGame(); return;
+		renderBoard(); renderChars(); updateHud(); saveGame();
+		maybeShowSubItemHint(); return;
 	}
 	if (tile === TILE.ITEM_BOMB && !ss.pickedKeys.has(posKey)) {
 		ss.pickedKeys.add(posKey);
@@ -1151,7 +1498,8 @@ function handleTileEvent() {
 		player.subItems.bomb.count += bombCount;
 		if (!player.activeSubItem) player.activeSubItem = 'bomb';
 		playSound('item'); pulse(`💣 爆弾 ×${bombCount} を手に入れた！`);
-		renderBoard(); renderChars(); updateHud(); saveGame(); return;
+		renderBoard(); renderChars(); updateHud(); saveGame();
+		maybeShowSubItemHint(); return;
 	}
 	if (tile === TILE.ITEM_BOW && !ss.pickedKeys.has(posKey)) {
 		ss.pickedKeys.add(posKey);
@@ -1160,7 +1508,8 @@ function handleTileEvent() {
 		player.subItems.bow.count += arrowCount;
 		if (!player.activeSubItem) player.activeSubItem = 'bow';
 		playSound('item'); pulse(`🏹 弓矢 ×${arrowCount} を手に入れた！`);
-		renderBoard(); renderChars(); updateHud(); saveGame(); return;
+		renderBoard(); renderChars(); updateHud(); saveGame();
+		maybeShowSubItemHint(); return;
 	}
 	if (tile === TILE.ITEM_HEAL_POTION && !ss.pickedKeys.has(posKey)) {
 		ss.pickedKeys.add(posKey);
@@ -1292,6 +1641,25 @@ function giveSubItem(id) {
 	if (!player.subItems[id]) player.subItems[id] = { count: meta?.uses === Infinity ? Infinity : 1 };
 	else if (meta?.uses !== Infinity) player.subItems[id].count++;
 	if (!player.activeSubItem) player.activeSubItem = id;
+	maybeShowSubItemHint();
+}
+
+// ── サブアイテム初取得ヒントダイアログ ────────────────────────
+// 初めてBボタン用のサブアイテムを取得した時、Escape画面での切り替え方法を説明する
+function maybeShowSubItemHint() {
+	if (player._shownSubItemHint) return;
+	player._shownSubItemHint = true;
+	dialogLines = [
+		'サブアイテムを手に入れた！',
+		'Escapeキー（または ≡ボタン）を押すと\nアイテム切り替え画面を開けます。',
+		'左右キーでBボタンに使うアイテムを\n切り替えることができます。',
+	];
+	dialogLineIdx = 0;
+	isDialog = true; stopGameLoop();
+	dialogNameEl.textContent = '！ ヒント';
+	showDialogLine();
+	dialogOverlayEl.classList.remove('hidden');
+	playSound('talk');
 }
 
 function gainHeartContainer() {
@@ -1305,6 +1673,10 @@ const SWORD_REACH = 1.2;
 // Phase 3 で攻撃速度UP装備が実装されたらここを短縮する
 const SWORD_COOLDOWN_MS = 100;
 let lastSwordTime = 0;
+
+// 石を押すクールダウン：600ms（重い石はゆっくりしか押せない）
+const STONE_PUSH_COOLDOWN_MS = 600;
+let lastStonePushTime = 0;
 
 function swordAttack() {
 	if (isDialog || isPaused || isGameover) return;
@@ -1555,6 +1927,15 @@ function evaluateConditions() {
 		else if (cond.trigger === 'switchOn') met = ss.switchStates?.[cond.switchId] === true;
 		else if (cond.trigger === 'wallBroken') met = ss.brokenWalls?.has(cond.wallId);
 		else if (cond.trigger === 'hasItem') met = !!player.subItems[cond.item] || player.weapon === cond.item;
+		else if (cond.trigger === 'allSwitchesOn') {
+			const allSw = [];
+			for (let _r = 0; _r < stageData.rows; _r++) {
+				for (let _c = 0; _c < stageData.cols; _c++) {
+					if (stageData.tiles[_r][_c] === TILE.SWITCH) allSw.push(`${_r},${_c}`);
+				}
+			}
+			met = allSw.length > 0 && allSw.every(pk => ss.switchStates?.[pk] === true);
+		}
 		if (met) {
 			ss.conditionsMet.add(posKey);
 			playSound('appear');
@@ -2234,9 +2615,11 @@ function pickApproachMode(e) {
 	const meta = e.type ? ENEMY_META[e.type] : null;
 	// attacks[] に stone がある敵だけ strafe を選択肢に入れる
 	const hasStone = meta?.attacks?.some(a => a.type === 'stone');
-	const w = e._modeWeights ?? (hasStone
+	// meta.initialModeWeights が定義されていればそれをデフォルト重みとして使う
+	const defaultWeights = meta?.initialModeWeights ?? (hasStone
 		? { flank: 0.8, direct: 0.6, wander: 1.0, strafe: 1.2 }
 		: { flank: 1.0, direct: 1.0, wander: 1.0, strafe: 0 });
+	const w = e._modeWeights ?? defaultWeights;
 	const total = (w.flank ?? 0) + (w.direct ?? 0) + (w.wander ?? 0) + (w.strafe ?? 0);
 	let r = Math.random() * total;
 	if ((r -= (w.flank  ?? 0)) <= 0) return 'flank';
@@ -2251,8 +2634,12 @@ function bossTickHitAndAway(e, meta) {
 		e._haPhase = 'approach';
 		e._haTimer = now + 2500 + Math.random() * 1500;
 		// モード重みを初期化（初回のみ）
+		// meta.initialModeWeights が定義されていればそれを初期値として使う
 		if (!e._modeWeights) {
-			e._modeWeights = { flank: 1.0, direct: 1.0, wander: 1.0 };
+			const meta2 = e.type ? ENEMY_META[e.type] : null;
+			e._modeWeights = meta2?.initialModeWeights
+				? { ...meta2.initialModeWeights }
+				: { flank: 1.0, direct: 1.0, wander: 1.0 };
 		}
 		// approach 開始時に重みを使ってモードを決定
 		// flank=背後回り込み / direct=直接突進 / wander=ランダム大移動（ループ脱出）
@@ -2279,7 +2666,7 @@ function bossTickHitAndAway(e, meta) {
 			// darklord → darklordD/darklordR/darklordU
 			const baseName = ENEMY_META[e.type]?.sprite ?? e.sprite;
 			// baseName の末尾にすでに方向文字がある場合は除去してbaseを取得
-			const base = baseName.replace(/[DRLUdrlu]$/, '');
+			const base = baseName.replace(/[DRLU]$/, '');// 大文字方向文字のみ除去;
 			const dirSuffix = { down:'D', right:'R', left:'R', up:'U' }[newDir] ?? 'D';
 			e.sprite = `${base}${dirSuffix}`;
 			e.flipX  = (newDir === 'left');  // 左向きは右向きスプライトをflip
@@ -3220,6 +3607,8 @@ document.addEventListener('keydown', e => {
 	}
 	if ([' ','z','Z'].includes(e.key)) { e.preventDefault(); swordAttack(); return; }
 	if (e.key === 'b' || e.key === 'B') { e.preventDefault(); useSubItem(); return; }
+	// Mac: Commandキー / Windows: Altキー でもサブアイテム使用
+	if (e.key === 'Meta' || e.key === 'Alt') { e.preventDefault(); useSubItem(); return; }
 	if (e.key === 'Escape') { e.preventDefault(); togglePause(); return; }
 	if (e.key === 'g' || e.key === 'G') { e.preventDefault(); toggleDebugMode(); return; }
 });

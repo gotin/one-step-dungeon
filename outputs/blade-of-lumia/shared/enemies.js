@@ -2,6 +2,11 @@
 // Dungeon World から継承し、速度・攻撃タイプを拡張
 import { TILE } from './tiles.js';
 
+// ── 行動モード初期重み ────────────────────────────────────────
+// pickApproachMode がこの値を参照して初期重みを決定する
+// stone 攻撃なし敵: { flank, direct, wander }
+// stone 攻撃あり敵: { flank, direct, wander, strafe }
+
 // ── 速度定数 ─────────────────────────────────────────────────
 export const ENEMY_SPEED_SLOW   = 0.25; // 鈍足敵
 export const ENEMY_SPEED_NORMAL = 0.5;  // 通常敵
@@ -41,6 +46,34 @@ export const ENEMY_META = {
 			cooldown:        3000,    // 攻撃間隔（ms）
 			projectileSpeed: 1.5,     // 飛翔速度（セル/tick）
 		},
+	},
+	[TILE.MONSTER]: {
+		name: '魔物',
+		hp: 12, atk: 3, def: 1, exp: 18,
+		speed: ENEMY_SPEED_FAST * 0.45,  // 魔将より大幅に遅い (0.45)
+		sprite: 'monster',
+		pal:    'monster',
+		isBoss: true,
+		hitAndAway: true,   // ヒット＆アウェイ行動
+		attacks: [
+			{
+				type:     'sword',
+				range:    1.5,
+				cooldown: 600,    // 近接剣（魔将より遅い）
+			},
+			{
+				type:            'stone',
+				range:           4,
+				cooldown:        2800,  // 石投げ（魔将より頻度低）
+				projectileSpeed: 1.0,
+			},
+		],
+		attack: { type: 'sword', range: 1.5, cooldown: 600 },
+		// 背後・横回り込みの初期重み（魔将より低頻度）
+		initialModeWeights: { flank: 0.2, direct: 1.5, wander: 0.3, strafe: 0.2 },
+		phases: [
+			{ hpThreshold: 0.5, speedMultiplier: 1.3 }, // HP50%以下でやや加速
+		],
 	},
 	[TILE.BOSS]: {
 		name: '魔将',
