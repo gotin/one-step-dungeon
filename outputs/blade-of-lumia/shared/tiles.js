@@ -13,6 +13,7 @@ export const TILE = {
 	CHASER:    'C',  // 追跡者（プレイヤーを追いかける）
 	SENTRY:    'F',  // 騎士（強い追跡者）
 	BOSS:      'V',  // 魔将（ボス）
+	MONSTER:   'W',  // 魔物（中ボス）
 	DARK_LORD: 'X',  // 魔王（最終ボス）
 	// NPC（Dungeon World 継承）
 	PRINCESS: 'P',   // 姫
@@ -85,6 +86,7 @@ export const TILE_META = {
 	[TILE.CHASER]:  { label: '追跡者',       color: '#aa2040', passable: true,  icon: 'Ｃ' },
 	[TILE.SENTRY]:  { label: '騎士',         color: '#501880', passable: true,  icon: 'Ｆ' },
 	[TILE.BOSS]:    { label: '魔将',         color: '#184060', passable: true,  icon: 'Ｖ' },
+	[TILE.MONSTER]: { label: '魔物',         color: '#2a1060', passable: true,  icon: 'Ｗ' },
 	[TILE.DARK_LORD]:{ label: '魔王',        color: '#0a0a18', passable: true,  icon: 'Ｘ' },
 	// NPC
 	[TILE.PRINCESS]:{ label: '姫',           color: '#aa4488', passable: true,  icon: '♀' },
