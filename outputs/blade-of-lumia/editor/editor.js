@@ -1439,6 +1439,51 @@ function tryRestoreFromStorage() {
 // ── プレビュー ────────────────────────────────────────────────
 let _previewPending = false;
 
+// ── プレビュー設定ダイアログ ──────────────────────────────────
+let _previewStartCoord = null; // ステージビューで位置を選んでから設定ダイアログを出す場合に保持
+
+function showPreviewSettingsDialog(onStart) {
+	const overlay = document.getElementById('preview-settings-overlay');
+	overlay.classList.remove('hidden');
+	// OKボタン
+	const btnStart = document.getElementById('ps-btn-start');
+	const btnCancel = document.getElementById('ps-btn-cancel');
+	// イベント重複防止のため一旦クローン差し替え
+	const newStart = btnStart.cloneNode(true);
+	const newCancel = btnCancel.cloneNode(true);
+	btnStart.replaceWith(newStart);
+	btnCancel.replaceWith(newCancel);
+
+	newStart.addEventListener('click', () => {
+		overlay.classList.add('hidden');
+		const ps = getPreviewSettings();
+		onStart(ps);
+	});
+	newCancel.addEventListener('click', () => {
+		overlay.classList.add('hidden');
+		// ステージビューの位置指定モードをリセット
+		_previewPending = false;
+		canvas.style.cursor  = '';
+		canvas.style.outline = '';
+		if (cellInfoEl) cellInfoEl.textContent = '';
+	});
+}
+
+function getPreviewSettings() {
+	return {
+		atk:       parseInt(document.getElementById('ps-atk').value, 10) || 2,
+		def:       parseInt(document.getElementById('ps-def').value, 10) || 0,
+		rupees:    parseInt(document.getElementById('ps-rupees').value, 10) || 0,
+		triforce:  parseInt(document.getElementById('ps-triforce').value, 10) || 0,
+		weapon:    document.getElementById('ps-weapon').checked,
+		shield:    document.getElementById('ps-shield').checked,
+		armor:     document.getElementById('ps-armor').checked,
+		bow:       document.getElementById('ps-bow').checked,
+		boomerang: document.getElementById('ps-boomerang').checked,
+		cleared:   document.getElementById('ps-cleared').checked,
+	};
+}
+
 document.getElementById('btn-preview').addEventListener('click', () => {
 	if (!state.currentCoord) {
 		// ステージ選択がなければワールドマップから最初のステージを使う
@@ -1448,14 +1493,17 @@ document.getElementById('btn-preview').addEventListener('click', () => {
 		const [x, y] = firstKey.split(',').map(Number);
 		state.currentCoord = { x, y };
 	}
-	// 現在の状態をlocalStorageに保存してプレビュー
+	// 現在の状態をlocalStorageに保存
 	const json = JSON.stringify(buildSaveData(), null, 2);
 	localStorage.setItem('bladeOfLumiaMapData', json);
 
 	if (viewStageEl.classList.contains('hidden')) {
-		// ワールドビューからの場合はキャンバスなしでプレビュー
-		openPreview(state.currentCoord.x, state.currentCoord.y, 1, 1);
+		// ワールドビューからの場合：設定ダイアログを表示してからプレビュー
+		showPreviewSettingsDialog(ps => {
+			openPreview(state.currentCoord.x, state.currentCoord.y, 1, 1, ps);
+		});
 	} else {
+		// ステージビューからの場合：まず位置指定、その後ダイアログ
 		_previewPending = true;
 		canvas.style.cursor  = 'crosshair';
 		canvas.style.outline = '3px solid #f0c040';
@@ -1472,16 +1520,34 @@ canvas.addEventListener('click', e => {
 	canvas.style.outline = '';
 	cellInfoEl.textContent = '';
 	const { c, r } = getCellFromEvent(e);
-	openPreview(state.currentCoord.x, state.currentCoord.y, r, c);
+	// 位置確定後にプレビュー設定ダイアログを表示
+	showPreviewSettingsDialog(ps => {
+		openPreview(state.currentCoord.x, state.currentCoord.y, r, c, ps);
+	});
 }, true);
 
-function openPreview(stX, stY, row, col) {
+function openPreview(stX, stY, row, col, ps) {
 	const json = JSON.stringify(buildSaveData(), null, 2);
 	localStorage.setItem('bladeOfLumiaMapData', json);
 	const overlayEl = document.getElementById('preview-overlay');
 	const frameEl   = document.getElementById('preview-frame');
-	frameEl.src = `../game/index.html?layer=${state.currentLayer}&stage=${stX},${stY}&row=${row}&col=${col}&fromEditor=1`;
-	overlayEl.classList.remove('hidden');
+
+	// プレビュー設定パラメータをURLに追加
+	// &t= でキャッシュを防止（毎回確実に再読み込み）
+	let url = `../game/index.html?layer=${encodeURIComponent(state.currentLayer)}&stage=${stX},${stY}&row=${row}&col=${col}&fromEditor=1&t=${Date.now()}`;
+	if (ps) {
+		url += `&ps_atk=${ps.atk}&ps_def=${ps.def}&ps_rupees=${ps.rupees}&ps_triforce=${ps.triforce}`;
+		url += `&ps_weapon=${ps.weapon?1:0}&ps_shield=${ps.shield?1:0}&ps_armor=${ps.armor?1:0}`;
+		url += `&ps_bow=${ps.bow?1:0}&ps_boomerang=${ps.boomerang?1:0}&ps_cleared=${ps.cleared?1:0}`;
+	}
+	console.log('[Editor] openPreview URL:', url);
+	console.log('[Editor] ps settings:', ps);
+	// iframe を確実にリロードするため一旦 about:blank に
+	frameEl.src = 'about:blank';
+	requestAnimationFrame(() => {
+		frameEl.src = url;
+		overlayEl.classList.remove('hidden');
+	});
 }
 
 document.getElementById('btn-exit-preview').addEventListener('click', () => {

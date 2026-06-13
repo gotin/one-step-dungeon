@@ -528,6 +528,9 @@ function addCellSprite(cellEl, tile, posKey, ss) {
 		[TILE.ITEM_TRIFORCE_PIECE]: ['triforce', 'triforce'],
 	};
 	if (itemMap[tile] && !ss.pickedKeys.has(posKey)) {
+		// 表示条件が設定されていて未達成なら非表示
+		const itemCond = stageData.showConditions?.[posKey];
+		if (itemCond && !ss.conditionsMet.has(posKey)) return;
 		const [spr, pal] = itemMap[tile];
 		const cv = makeSprite(spr, pal, false);  // 静止表示
 		if (cv) { cv.classList.add('item-sprite'); cellEl.appendChild(cv); }
@@ -1883,6 +1886,8 @@ function showEnemySwordSlash(e) {
 }
 
 function dealDamageToEnemy(e, dmg) {
+	// HP が既に 0 以下（ボス撃破アニメーション中など）は無視
+	if (e.hp <= 0) return;
 	const actual = Math.max(1, dmg - e.def);
 	e.hp -= actual;
 	playSound('hit');
@@ -2272,12 +2277,16 @@ function renderPauseDungeonMap() {
 function pauseSelectPrev() {
 	if (!pauseItemKeys.length) return;
 	pauseItemIdx = (pauseItemIdx - 1 + pauseItemKeys.length) % pauseItemKeys.length;
-	player.activeSubItem = pauseItemKeys[pauseItemIdx]; updateHud(); renderPauseMenu();
+	player.activeSubItem = pauseItemKeys[pauseItemIdx];
+	playSound('switch');
+	updateHud(); renderPauseMenu();
 }
 function pauseSelectNext() {
 	if (!pauseItemKeys.length) return;
 	pauseItemIdx = (pauseItemIdx + 1) % pauseItemKeys.length;
-	player.activeSubItem = pauseItemKeys[pauseItemIdx]; updateHud(); renderPauseMenu();
+	player.activeSubItem = pauseItemKeys[pauseItemIdx];
+	playSound('switch');
+	updateHud(); renderPauseMenu();
 }
 
 // ── ショップ ──────────────────────────────────────────────────
@@ -3878,6 +3887,7 @@ const btnConfirmNoEl  = document.getElementById('btn-confirm-no');
 // startPos（mapData.startPos）を優先して使用し、field ハードコードを排除
 function startNewGame() {
 	localStorage.removeItem(SAVE_KEY);
+	// ※ CLEARED_KEY はここで削除しない：クリア済みフラグは二周目（姫状態）に引き継ぐ
 	stageState = {};
 
 	// startPos がある場合はそちらを使う
@@ -3976,6 +3986,41 @@ async function init() {
 		const sk = paramStage ?? Object.keys(mapData.layers?.[lk]?.stages ?? {})[0] ?? '0,0';
 		const pr = parseInt(paramRow ?? '1', 10);
 		const pc = parseInt(paramCol ?? '1', 10);
+
+		// ── プレビュー設定パラメータを適用 ──────────────────────
+		const psAtk      = params.get('ps_atk');
+		const psDef      = params.get('ps_def');
+		const psRupees   = params.get('ps_rupees');
+		const psTriforce = params.get('ps_triforce');
+		const psWeapon   = params.get('ps_weapon');
+		const psShield   = params.get('ps_shield');
+		const psArmor    = params.get('ps_armor');
+		const psBow      = params.get('ps_bow');
+		const psBoomerang= params.get('ps_boomerang');
+		const psCleared  = params.get('ps_cleared');
+
+		if (psAtk      !== null) player.atk    = parseInt(psAtk,  10) || 2;
+		if (psDef      !== null) player.def    = parseInt(psDef,  10) || 0;
+		if (psRupees   !== null) player.rupees = parseInt(psRupees, 10) || 0;
+		if (psTriforce !== null) player.triforceCount = parseInt(psTriforce, 10) || 0;
+		if (psWeapon   === '1') { player.weapon = 'sword'; if (!player._equip) player._equip = {}; player._equip.swordName = '剣'; }
+		if (psShield   === '1') player.shield = 'shield';
+		if (psArmor    === '1') { player.armor  = 'armor'; if (!player._equip) player._equip = {}; player._equip.armorName = '防具'; }
+		if (psBow      === '1') { player.subItems.bow       = { count: 10 };       if (!player.activeSubItem) player.activeSubItem = 'bow'; }
+		if (psBoomerang=== '1') { player.subItems.boomerang = { count: Infinity };  if (!player.activeSubItem) player.activeSubItem = 'boomerang'; }
+		// 姫状態（クリア済みフラグ）の設定
+		if (psCleared === '1') {
+			localStorage.setItem(CLEARED_KEY, '1');
+		} else {
+			localStorage.removeItem(CLEARED_KEY);
+		}
+
+		console.log('[Game] player after ps apply:', JSON.stringify({
+			atk: player.atk, def: player.def, rupees: player.rupees,
+			weapon: player.weapon, shield: player.shield, armor: player.armor,
+			subItems: player.subItems, activeSubItem: player.activeSubItem,
+			triforceCount: player.triforceCount,
+		}));
 
 		// デバッグモード ON（エディタプレビューは常に無敵）
 		debugMode = true;

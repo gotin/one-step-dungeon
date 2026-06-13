@@ -4213,7 +4213,7 @@
               ".",
               ".",
               ".",
-              ".",
+              "B",
               "Q",
               "#"
             ],
@@ -4235,13 +4235,20 @@
           "bgTiles": {},
           "links": [],
           "enemyDirs": {},
-          "chestContents": {},
+          "chestContents": {
+            "8,9": {
+              "item": "heartContainer"
+            }
+          },
           "objects": {},
           "npcData": {},
           "shopData": {},
           "mapEnters": {},
           "showConditions": {
-            "7,11": {
+            "8,10": {
+              "trigger": "killAll"
+            },
+            "8,9": {
               "trigger": "killAll"
             }
           },
