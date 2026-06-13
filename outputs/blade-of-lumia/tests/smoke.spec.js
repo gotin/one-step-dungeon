@@ -1,11 +1,9 @@
 import { test, expect } from '@playwright/test';
+import { GAME_URL, waitForBoard } from './helpers.js';
 
 // Phase 0-0 最小スモークテスト
 // 目的：ゲームページが「エラーなく起動」し、ゲームボードが描画されることを確認する。
 // これがリファクタ（モジュール分割）前の最低限の安全網になる。
-
-// Vite で outputs/ を配信しているため、ゲームは /blade-of-lumia/game/ に置かれる
-const GAME_URL = '/blade-of-lumia/game/';
 
 test.describe('Blade of Lumia – 起動スモーク', () => {
   test('ページがエラーなく起動し、ゲームボードが描画される', async ({ page }) => {
@@ -31,12 +29,8 @@ test.describe('Blade of Lumia – 起動スモーク', () => {
     await expect(page.locator('body')).not.toContainText('読み込みエラー');
 
     // ゲームボードにセルが描画されるのを待つ（描画されれば起動成功とみなす）
-    const board = page.locator('#board');
-    await expect(board).toBeVisible();
-    await expect.poll(
-      async () => board.locator('> *').count(),
-      { timeout: 10_000, message: 'ゲームボードにセルが描画されること' },
-    ).toBeGreaterThan(0);
+    await waitForBoard(page);
+    await expect(page.locator('#char-player')).toBeVisible();
 
     // 致命的エラーが出ていないこと
     expect(pageErrors, `pageerror が発生:\n${pageErrors.join('\n')}`).toEqual([]);
