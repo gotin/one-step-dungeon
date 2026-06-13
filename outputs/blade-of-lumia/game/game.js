@@ -716,15 +716,38 @@ function getHeroPalName() {
 
 // ── HUD ──────────────────────────────────────────────────────
 function updateHud() {
-	let h = '';
-	const full = Math.floor(player.hp / HP_PER_HEART);
-	const half = player.hp % HP_PER_HEART;
+	// ハートをスプライト canvas で描画（半ハート対応）
+	heartsEl.innerHTML = '';
 	for (let i = 0; i < player.maxHearts; i++) {
-		if (i < full) h += '❤';
-		else if (i === full && half) h += '🤍';
-		else h += '🖤';
+		let sprName, palName;
+		const hpForThis = player.hp - i * HP_PER_HEART;
+		if (hpForThis >= HP_PER_HEART) {
+			sprName = 'heart'; palName = 'heart';
+		} else if (hpForThis === 1) {
+			sprName = 'heartHalf'; palName = 'heartHalf';
+		} else {
+			sprName = 'heartEmpty'; palName = 'heartEmpty';
+		}
+		const frames = SPRITES[sprName];
+		const palette = PAL[palName];
+		if (frames && palette) {
+			const cv = document.createElement('canvas');
+			const grid = frames[0];
+			cv.width  = grid[0].length;
+			cv.height = grid.length;
+			cv.style.cssText = 'width:16px;height:16px;image-rendering:pixelated;display:inline-block;flex-shrink:0;';
+			const ctx = cv.getContext('2d');
+			for (let r = 0; r < grid.length; r++) {
+				for (let c = 0; c < grid[0].length; c++) {
+					const idx = grid[r][c];
+					if (idx === 0) continue;
+					ctx.fillStyle = palette[idx] ?? 'transparent';
+					ctx.fillRect(c, r, 1, 1);
+				}
+			}
+			heartsEl.appendChild(cv);
+		}
 	}
-	heartsEl.textContent = h;
 	equipSwordEl.classList.toggle('has-item',  !!player.weapon);
 	equipShieldEl.classList.toggle('has-item', !!player.shield);
 	equipArmorEl.classList.toggle('has-item',  !!player.armor);
@@ -2122,27 +2145,31 @@ function renderPauseMenu() {
 	// 装備名を含むステータス表示
 	const swordLabel = player.weapon ? `⚔${player._equip?.swordName ?? '剣'}(ATK${player.atk})` : '⚔なし';
 	const armorLabel = player.armor  ? `⚚${player._equip?.armorName ?? '防具'}(DEF${player.def})` : '⚚なし';
-	// ハートをスプライト canvas で描画
+	// ハートをスプライト canvas で描画（半ハート対応）
 	pauseStatsEl.innerHTML = '';
 	const heartRow = document.createElement('div');
 	heartRow.style.cssText = 'display:flex;align-items:center;gap:2px;margin-bottom:4px;';
-	const fullHearts = Math.floor(player.hp / HP_PER_HEART);
 	for (let i = 0; i < player.maxHearts; i++) {
-		const sprName = i < fullHearts ? 'heart' : 'heartEmpty';
-		const palName = sprName;
+		const hpForThis = player.hp - i * HP_PER_HEART;
+		let sprName, palName;
+		if (hpForThis >= HP_PER_HEART) {
+			sprName = 'heart'; palName = 'heart';
+		} else if (hpForThis === 1) {
+			sprName = 'heartHalf'; palName = 'heartHalf';
+		} else {
+			sprName = 'heartEmpty'; palName = 'heartEmpty';
+		}
 		const frames = SPRITES[sprName];
 		const palette = PAL[palName];
 		if (frames && palette) {
 			const grid = frames[0];
-			const rows = grid.length;
-			const cols = grid[0].length;
 			const cv = document.createElement('canvas');
-			cv.width  = cols;
-			cv.height = rows;
+			cv.width  = grid[0].length;
+			cv.height = grid.length;
 			cv.style.cssText = 'width:16px;height:16px;image-rendering:pixelated;display:inline-block;flex-shrink:0;';
 			const ctx = cv.getContext('2d');
-			for (let rr = 0; rr < rows; rr++) {
-				for (let cc = 0; cc < cols; cc++) {
+			for (let rr = 0; rr < grid.length; rr++) {
+				for (let cc = 0; cc < grid[0].length; cc++) {
 					const idx = grid[rr][cc];
 					if (idx === 0) continue;
 					ctx.fillStyle = palette[idx] ?? 'transparent';
