@@ -26,23 +26,30 @@ html, body {
     -webkit-user-select: none;
 }
 
-/* ── HUD ──────────────────────────────────────────────────── */
+/* ── HUD（ゲームボード上オーバーレイ） ────────────────────── */
 #hud {
     display: flex;
     justify-content: space-between;
-    align-items: center;
-    background: var(--hud-bg);
-    border-bottom: 1px solid #2a3a2a;
+    align-items: flex-start;
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    background: transparent;
+    border-bottom: none;
     padding: 4px 10px;
-    min-height: 44px;
-    position: relative;
-    z-index: 10;
+    min-height: 40px;
+    z-index: 20;
+    pointer-events: none;
 }
 
 #hud-left, #hud-right {
     display: flex;
     flex-direction: column;
-    gap: 2px;
+    gap: 1px;
+    pointer-events: none;
+    color: #ffffff;
+    text-shadow: 0 1px 3px rgba(0, 0, 0, 0.9), 0 0 6px rgba(0, 0, 0, 0.7);
 }
 
 #hud-right {
@@ -50,13 +57,13 @@ html, body {
 }
 
 #hud-hearts {
-    font-size: 18px;
-    letter-spacing: 2px;
+    font-size: 15px;
+    letter-spacing: 1px;
     line-height: 1;
 }
 
 #hud-stage-label {
-    font-size: 10px;
+    font-size: 9px;
     color: #6a8a6a;
 }
 
@@ -107,9 +114,8 @@ html, body {
     display: flex;
     justify-content: center;
     align-items: center;
-    width: 100%;
-    /* HUD + モバイルコントローラーを除いた高さ */
-    height: calc(100vh - 44px - 140px);
+    position: fixed;
+    inset: 0;
     overflow: hidden;
 }
 
@@ -119,6 +125,18 @@ html, body {
     background: var(--floor-color);
     border: 2px solid #2a3a2a;
     position: relative;
+    transform-origin: center center;
+    /* JS で transform: scale(N) を動的にセットする */
+    /* スケール時のサブピクセルによる格子線を防ぐ */
+    image-rendering: pixelated;
+    will-change: transform;
+}
+
+/* セル間の隙間をなくす（サブピクセル対策） */
+.cell {
+    outline: none;
+    margin: 0;
+    padding: 0;
 }
 
 /* キャラクター絶対配置レイヤー（半セル移動用） */
@@ -966,24 +984,66 @@ canvas.sprite.item-sprite {
     display: none !important;
 }
 
-/* ── PC 向け：ボードを大きく ───────────────────────────── */
+/* ── PC 向け ───────────────────────────────────────────── */
 @media (min-width: 600px) {
-    :root {
-        --cell: 56px;
-    }
-
     #board-wrap {
-        height: calc(100vh - 44px - 0px);
+        height: 100vh;
     }
 
     #mobile-ctrl {
         display: none;
     }
-}
 
-@media (min-width: 900px) {
-    :root {
-        --cell: 64px;
+    #msg-bar {
+        bottom: 20px;
+    }
+
+    #boss-hpbar {
+        bottom: 20px;
+    }
+
+    #dialog-overlay {
+        padding-bottom: 20px;
+    }
+
+    /* PC向けHUD：ビューポート幅基準で大きく */
+    #hud {
+        padding: 1vh 1.5vw;
+    }
+
+    #hud-left, #hud-right {
+        gap: 0.3vh;
+    }
+
+    #hud-hearts {
+        font-size: 4vw;
+        letter-spacing: 0.3vw;
+    }
+
+    #hud-equip {
+        font-size: 3.5vw;
+        gap: 0.5vw;
+    }
+
+    #hud-sub-icon {
+        font-size: 3.5vw;
+    }
+
+    #hud-sub-item {
+        font-size: 2.5vw;
+        gap: 0.4vw;
+    }
+
+    #hud-sub-count {
+        font-size: 2.2vw;
+    }
+
+    #hud-wallet {
+        font-size: 2.2vw;
+    }
+
+    #hud-stage-label {
+        font-size: 1vw;
     }
 }
 
@@ -1165,89 +1225,184 @@ canvas.sprite.item-sprite {
 #ending-overlay {
     position: fixed;
     inset: 0;
-    background: rgba(0, 0, 0, 0.0);
-    display: flex;
-    align-items: center;
-    justify-content: center;
+    background: #060a0c;
     z-index: 90;
-    animation: ending-fadein 2.0s ease-out forwards;
+    overflow: hidden;
 }
 
 #ending-overlay.hidden {
     display: none;
 }
 
-@keyframes ending-fadein {
-    0% {
-        background: rgba(0, 0, 0, 0.0);
-    }
+/* フェーズ1：スタッフロール */
+#ending-phase1 {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    background: #060a0c;
+}
 
-    30% {
-        background: rgba(0, 0, 0, 0.85);
+#ending-scroll-wrap {
+    position: absolute;
+    inset: 0;
+    overflow: hidden;
+}
+
+#ending-scroll {
+    position: absolute;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 90%;
+    max-width: 480px;
+    text-align: center;
+    line-height: 2;
+    color: #d0e8d0;
+    top: 100%;
+    animation: ending-scroll-up 10s linear forwards;
+}
+
+@keyframes ending-scroll-up {
+    0% {
+        top: 100%;
     }
 
     100% {
-        background: rgba(0, 0, 0, 0.92);
+        top: -600%;
     }
 }
 
-#ending-box {
-    text-align: center;
-    padding: 40px 48px;
-    background: rgba(10, 16, 20, 0.0);
-    animation: ending-box-in 2.5s ease-out forwards;
+#ending-scroll .scroll-game-title {
+    font-size: 3.6rem;
+    color: #f0d050;
+    letter-spacing: 4px;
+    font-weight: bold;
+    text-shadow: 0 0 20px rgba(240, 200, 60, 0.8);
+    margin-bottom: 12px;
 }
 
-@keyframes ending-box-in {
+#ending-scroll .scroll-subtitle {
+    font-size: 1.6rem;
+    color: #80a080;
+    margin-bottom: 60px;
+}
+
+#ending-scroll .scroll-role {
+    font-size: 1.3rem;
+    color: #6a9070;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    margin-top: 28px;
+}
+
+#ending-scroll .scroll-name {
+    font-size: 2.2rem;
+    color: #d0f0d0;
+    letter-spacing: 2px;
+}
+
+#ending-scroll .scroll-divider {
+    width: 60px;
+    height: 1px;
+    background: #2a4a2a;
+    margin: 16px auto;
+}
+
+#ending-scroll .scroll-thanks {
+    font-size: 2.4rem;
+    color: #f0d050;
+    letter-spacing: 3px;
+    margin-top: 60px;
+    text-shadow: 0 0 10px rgba(240, 200, 60, 0.6);
+}
+
+#ending-scroll .scroll-copyright {
+    font-size: 1.4rem;
+    color: #4a6a4a;
+    margin-top: 12px;
+    margin-bottom: 120px;
+}
+
+/* フェーズ2：THE END */
+#ending-phase2 {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 24px;
+    background: #060a0c;
+    animation: ending-phase2-fadein 2s ease forwards;
+}
+
+#ending-phase2.hidden {
+    display: none;
+}
+
+@keyframes ending-phase2-fadein {
     0% {
         opacity: 0;
-        transform: scale(0.8);
-    }
-
-    40% {
-        opacity: 0;
-        transform: scale(0.8);
     }
 
     100% {
         opacity: 1;
-        transform: scale(1.0);
     }
 }
 
-#ending-triforce {
-    font-size: 42px;
-    color: #f0d050;
-    letter-spacing: 8px;
-    margin-bottom: 16px;
-    text-shadow: 0 0 30px rgba(240, 200, 60, 0.8);
-    animation: triforce-pulse 1.5s ease-in-out infinite;
+#ending-happy-scene {
+    display: flex;
+    align-items: flex-end;
+    justify-content: center;
+    gap: 32px;
 }
 
-@keyframes triforce-pulse {
+.ending-big-sprite {
+    image-rendering: pixelated;
+    width: 96px;
+    height: 96px;
+    position: relative;
+    overflow: visible;
+}
+
+/* エンディングのアニメスプライト canvas を親に合わせる */
+.ending-big-sprite canvas.sprite {
+    position: absolute !important;
+    top: 0 !important;
+    left: 0 !important;
+    transform: none !important;
+    width: 100% !important;
+    height: 100% !important;
+    image-rendering: pixelated;
+}
+
+#ending-the-end {
+    font-size: 3rem;
+    color: #f0d050;
+    letter-spacing: 8px;
+    font-weight: bold;
+    text-shadow: 0 0 30px rgba(240, 200, 60, 0.9);
+    animation: ending-theend-glow 2s ease-in-out infinite;
+}
+
+@keyframes ending-theend-glow {
     0%, 100% {
         text-shadow: 0 0 20px rgba(240, 200, 60, 0.6);
     }
 
     50% {
-        text-shadow: 0 0 50px rgba(240, 200, 60, 1.0), 0 0 80px rgba(255, 230, 80, 0.6);
+        text-shadow: 0 0 60px rgba(240, 200, 60, 1.0), 0 0 100px rgba(255, 230, 80, 0.5);
     }
 }
 
-#ending-title {
-    font-size: 28px;
-    color: #f0d050;
-    letter-spacing: 4px;
-    margin-bottom: 20px;
-    font-weight: bold;
-    text-shadow: 0 0 20px rgba(240, 208, 80, 0.7);
-}
-
 #ending-msg {
-    font-size: 15px;
+    font-size: 14px;
     color: #c0d8c0;
     line-height: 1.8;
-    margin-bottom: 32px;
+    text-align: center;
+    max-width: 380px;
 }
 
 /* ── ボス部屋ロック演出（暗転オーバーレイ） ────────────────── */
@@ -1492,4 +1647,15 @@ canvas.sprite.item-sprite {
         opacity: 0;
     }
 }
-@keyframes stone-glow { 0%,100%{opacity:0.5;box-shadow:0 0 6px 2px rgba(60,255,80,0.5)} 50%{opacity:1;box-shadow:0 0 14px 6px rgba(60,255,80,0.9)} }
+
+@keyframes stone-glow {
+    0%, 100% {
+        opacity: 0.5;
+        box-shadow: 0 0 6px 2px rgba(60, 255, 80, 0.5)
+    }
+
+    50% {
+        opacity: 1;
+        box-shadow: 0 0 14px 6px rgba(60, 255, 80, 0.9)
+    }
+}

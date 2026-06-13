@@ -184,6 +184,80 @@ function _playBossBgmLoop(ctx) {
 	_bgmTimer = setTimeout(() => _playBossBgmLoop(ctx), 8000 - 100);
 }
 
+// ── エンディング BGM（ハッピーエンド・明るいCメジャー）────────────
+function _playEndingBgmLoop(ctx) {
+	if (!_bgmPlaying || _bgmKey !== 'ending') return;
+	const now = ctx.currentTime;
+	const vol = 0.030;
+
+	// ── 低音弦（暖かみのあるベース）─────────────────────────────────
+	// C2=65.4, G2=98, F2=87.3, Am2=110 進行
+	const bassLine = [
+		[65.41, 2.0], [98.00, 2.0], [87.31, 2.0], [110.00, 2.0],
+		[65.41, 2.0], [98.00, 2.0], [87.31, 1.0], [73.42,  1.0],
+	];
+	let bt = now;
+	for (const [f, dur] of bassLine) {
+		bgmTone(ctx, bt, f,       dur * 0.7, 'triangle', vol * 0.55);
+		bgmTone(ctx, bt, f * 2.0, dur * 0.4, 'sine',     vol * 0.20);
+		bt += dur;
+	}
+
+	// ── ハープ風アルペジオ（Cメジャーコード: C4=261.6, E4=329.6, G4=392）─
+	// I - V - IV - VIm コード進行
+	const chords = [
+		[261.63, 329.63, 392.00], // C
+		[196.00, 246.94, 293.66], // G
+		[174.61, 220.00, 261.63], // F
+		[220.00, 261.63, 329.63], // Am
+	];
+	chords.forEach((chord, ci) => {
+		const base = now + ci * 4.0;
+		// 32分音符刻みのアルペジオ
+		[0.0, 0.18, 0.36, 0.54, 0.72, 0.90, 1.08, 1.26,
+		 1.6, 1.78, 1.96, 2.14, 2.32, 2.50, 2.68, 2.86].forEach((offset, oi) => {
+			const note = chord[oi % 3];
+			bgmTone(ctx, base + offset, note, 0.15, 'sine', vol * 0.30);
+		});
+	});
+
+	// ── 主旋律（明るく軽快なCメジャースケール）────────────────────
+	// "勝利のテーマ"っぽいファンファーレ風フレーズ
+	const melody = [
+		// フレーズA（上昇）
+		[261.63, 0.25], [329.63, 0.25], [392.00, 0.25], [523.25, 0.50],
+		[493.88, 0.25], [523.25, 0.25], [587.33, 0.50],
+		[523.25, 0.25], [493.88, 0.25], [440.00, 0.25], [392.00, 0.50],
+		[440.00, 0.25], [392.00, 0.25], [349.23, 0.25], [329.63, 0.75],
+		// フレーズB（流れるように）
+		[392.00, 0.25], [440.00, 0.25], [493.88, 0.25], [523.25, 0.50],
+		[440.00, 0.25], [493.88, 0.25], [523.25, 0.50],
+		[587.33, 0.25], [523.25, 0.25], [493.88, 0.25], [440.00, 0.50],
+		[392.00, 0.25], [349.23, 0.25], [329.63, 0.25], [261.63, 1.50],
+	];
+	let mt = now + 0.5;
+	for (const [freq, dur] of melody) {
+		bgmTone(ctx, mt, freq, dur * 0.75, 'sine', vol * 0.75);
+		// オクターブ上のハーモニー（薄く）
+		bgmTone(ctx, mt, freq * 2, dur * 0.55, 'sine', vol * 0.15);
+		mt += dur;
+	}
+
+	// ── 鐘のような高音（きらきら感）─────────────────────────────────
+	[0.5, 1.25, 2.5, 4.0, 5.5, 7.0, 8.5, 10.0, 12.0, 14.0].forEach(t => {
+		bgmTone(ctx, now + t, 1046.5, 0.4, 'sine', vol * 0.20);
+		bgmTone(ctx, now + t + 0.05, 1318.5, 0.3, 'sine', vol * 0.12);
+	});
+
+	// ── リズム（軽いパーカッション）─────────────────────────────────
+	for (let i = 0; i < 16; i++) {
+		bgmTone(ctx, now + i * 1.0,       220, 0.05, 'square', vol * 0.18);
+		bgmTone(ctx, now + i * 1.0 + 0.5, 180, 0.04, 'square', vol * 0.10);
+	}
+
+	_bgmTimer = setTimeout(() => _playEndingBgmLoop(ctx), 16000 - 200);
+}
+
 export function playBgm(key = 'field') {
 	if (_bgmPlaying && _bgmKey === key) return;
 	stopBgm();
@@ -191,9 +265,10 @@ export function playBgm(key = 'field') {
 	_bgmKey = key;
 	const ctx = getAudioContext();
 	_getBgmGain(ctx).gain.setValueAtTime(1, ctx.currentTime);
-	if (key === 'field')   _playFieldBgmLoop(ctx);
+	if (key === 'field')        _playFieldBgmLoop(ctx);
 	else if (key === 'dungeon') _playDungeonBgmLoop(ctx);
 	else if (key === 'boss')    _playBossBgmLoop(ctx);
+	else if (key === 'ending')  _playEndingBgmLoop(ctx);
 	else _playFieldBgmLoop(ctx); // fallback
 }
 

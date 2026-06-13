@@ -117,10 +117,21 @@
 
   <!-- ── エンディング ── -->
   <div id="ending-overlay" class="hidden">
-    <div id="ending-box">
-      <div id="ending-triforce">◭◭◭</div>
-      <div id="ending-title">CONGRATULATIONS!</div>
-      <div id="ending-msg">魔王を倒し、すべてのトライフォースのカケラを集めた！<br>ルミアの平和は守られた……</div>
+    <!-- フェーズ1：スタッフロール -->
+    <div id="ending-phase1">
+      <div id="ending-scroll-wrap">
+        <div id="ending-scroll"></div>
+      </div>
+    </div>
+    <!-- フェーズ2：THE END シーン（姫・主人公・姫） -->
+    <div id="ending-phase2" class="hidden">
+      <div id="ending-happy-scene">
+        <div id="ending-princess1-canvas" class="ending-big-sprite"></div>
+        <div id="ending-hero-canvas"      class="ending-big-sprite"></div>
+        <div id="ending-princess2-canvas" class="ending-big-sprite"></div>
+      </div>
+      <div id="ending-the-end">THE END</div>
+      <div id="ending-msg"></div>
       <button id="ending-restart" class="title-btn">はじめから</button>
     </div>
   </div>
