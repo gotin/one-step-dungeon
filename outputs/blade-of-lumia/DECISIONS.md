@@ -46,6 +46,13 @@
 - **代替案：** 全部一括リネーム → 保留（分割完了後に安全に実施）。
 - **結果／影響：** Phase 1-1 で表示名のみ変更。完全リネームは Phase 0 完了後の課題。
 
+### 2026-06-13 — テスト用ローカルサーバは Vite に統一（Node系で揃える）
+- **決定：** E2Eテストのローカルサーバは **Vite** を使う。Playwright の `webServer.command` を `npx vite ../ --port 18080 --strictPort` とし、サーバルートは `outputs/`、ゲームは `http://localhost:18080/blade-of-lumia/game/` で開く。
+- **理由：** 利用技術を Node 系に統一したい（実装に使っていない Python を持ち込まない）。普段の手動確認がリポジトリルートで `npx vite outputs --port 18080` のため、テストも同じ構成・同じポートに揃えると認知負荷が下がり、`reuseExistingServer` で手動起動中の dev サーバをそのまま再利用できる。
+- **代替案：** `python3 -m http.server`（当初採用）→ 却下（実装で使わない言語の持ち込み）。`http-server` 等の別 npm パッケージ → 却下（Vite で十分かつ手動確認と統一できる）。
+- **結果／影響：** `vite` を devDependency に追加。`npm run dev` でも同じサーバを起動可能。Python 依存は撤廃。
+- **学び（ハマりどころ）：** サーバルートが `outputs/` なので、テストの URL は `/game/` ではなく `/blade-of-lumia/game/` になる。`game.js` が `../shared` `../work` を相対参照する点と整合する。
+
 ### 2026-06-13 — モデル使い分け（Opus / Sonnet）を方針化
 - **決定：** 設計・依存判断は Opus、決まった実装・量産は Sonnet。PLAN.md の各タスクに推奨モデルを記載。
 - **理由：** コスト効率と品質の両立。「最初の1つ・全体設計」は重い思考、「2つ目以降の繰り返し」は機械的作業。

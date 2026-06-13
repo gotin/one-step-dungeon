@@ -91,9 +91,9 @@ npcs.js      17行  OK
 > ただし**最初から完璧を目指さず、小さなスモークから始める**（起動・移動・遷移程度）。
 
 #### ① Playwright による E2E テスト（主軸）
-- [ ] Playwright を導入（`npm i -D @playwright/test`、`npx playwright install chromium`）
-- [ ] **スモークテスト**：
-  - ゲームページが**エラーなく起動**するか（`pageerror`・`console.error` を監視）
+- [x] Playwright を導入（`npm i -D @playwright/test`、`npx playwright install chromium`）
+- [x] **最小スモークテスト**：ゲームページが**エラーなく起動**し、ボードが描画されるか（`pageerror`・`console.error` を監視）
+- [ ] **スモークテスト（続き）**：
   - キー入力でプレイヤーが**移動**できるか
   - **ステージ遷移**が動くか
   - **セーブ/ロード**（localStorage）が機能するか
@@ -613,7 +613,7 @@ Step 5: 必要になったら（Phase 0後半）
 | はしご・笛・ロウソク | ⬜ 未実装 |
 | 色スイッチ | ⬜ 未実装 |
 | 剣の複数ランク | ⬜ 未実装 |
-| テスト基盤（Playwright E2E/VRT） | ⬜ 未整備（テスト0件） |
+| テスト基盤（Playwright E2E/VRT） | 🚧 着手（最小スモーク1本パス。移動/遷移/セーブ・VRTは今後） |
 | game.js モジュール分割 | ⬜ 未実施（4098行・要分割） |
 | sprites.js 分割 | ⬜ 未実施（1440行・要分割） |
 | スプライトエディタ | ⬜ 未実装 |
