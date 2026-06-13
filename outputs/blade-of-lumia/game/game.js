@@ -119,6 +119,20 @@ function getCellPx() {
 	return parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--cell')) || 48;
 }
 
+// セルサイズを整数px に計算して --cell を更新する（格子線防止）
+// transform: scale() を使わず --cell を直接変更することでサブピクセルを完全排除
+function updateBoardScale() {
+	if (!stageData) return;
+	const BASE_CELL = 48;
+	const maxScaleX = window.innerWidth  / (stageData.cols * BASE_CELL);
+	const maxScaleY = window.innerHeight / (stageData.rows * BASE_CELL);
+	const rawScale = Math.min(maxScaleX, maxScaleY);
+	// セルサイズを整数にすることでサブピクセル格子線を完全排除
+	const newCell = Math.max(8, Math.floor(rawScale * BASE_CELL));
+	document.documentElement.style.setProperty('--cell', `${newCell}px`);
+	boardEl.style.transform = ''; // scaleは不使用
+}
+
 // ── セーブ・ロード ────────────────────────────────────────────
 function getSS(lk, sk) {
 	const k = `${lk}_${sk}`;
@@ -258,6 +272,7 @@ function enterStage(lk, sk, pRow, pCol) {
 	enemies = buildEnemies(stageData, lk, sk);
 
 	renderBoard();
+	updateBoardScale();
 	renderChars();
 	updateHud();
 
@@ -589,7 +604,7 @@ function renderChars() {
 	if (heroDir === 'up') addShieldOverlay(playerDiv);
 	const heroSpr = getHeroSpriteName();
 	const heroFlip = heroDir === 'left';
-	const heroCv = makeSprite(heroSpr, 'hero', true, heroFlip);
+	const heroCv = makeSprite(heroSpr, getHeroPalName(), true, heroFlip);
 	if (heroCv) playerDiv.appendChild(heroCv);
 	if (heroDir !== 'up') addShieldOverlay(playerDiv);
 
@@ -689,6 +704,11 @@ function removeCharEl(id) {
 
 function getHeroSpriteName() {
 	return { down: 'heroD', right: 'heroR', left: 'heroR', up: 'heroU' }[heroDir] ?? 'heroD';
+}
+
+// クリア済みなら姫パレット、未クリアなら勇者パレットを返す
+function getHeroPalName() {
+	return hasCleared() ? 'princess' : 'hero';
 }
 
 // ── HUD ──────────────────────────────────────────────────────
@@ -1182,7 +1202,7 @@ function movePlayer(dir) {
 			_animPlayerDiv.style.left = `${pc * _animCellPx}px`;
 			_animPlayerDiv.style.top  = `${pr * _animCellPx}px`;
 			const _animHeroSpr = getHeroSpriteName();
-			const _animHeroCv  = makeSprite(_animHeroSpr, 'hero', true, heroDir === 'left');
+			const _animHeroCv  = makeSprite(_animHeroSpr, getHeroPalName(), true, heroDir === 'left');
 			if (_animHeroCv) _animPlayerDiv.appendChild(_animHeroCv);
 			charLayerEl.appendChild(_animPlayerDiv);
 
@@ -1434,7 +1454,7 @@ function updatePlayerCharEl() {
 
 	const spr   = getHeroSpriteName();
 	const flipX = heroDir === 'left';
-	const cv    = makeSprite(spr, 'hero', true, flipX);
+	const cv    = makeSprite(spr, getHeroPalName(), true, flipX);
 	if (cv) el.appendChild(cv);
 
 	// 上向き以外は盾をあとで追加（プレイヤースプライトの上に表示）
@@ -1769,7 +1789,9 @@ function swordAttack() {
 		if (projDist < hitDist) { hitDist = projDist; hitEnemy = e; }
 	}
 
-	if (hitEnemy) { dealDamageToEnemy(hitEnemy, player.atk); return; }
+	// 二周目（姫パレット）は攻撃力2倍
+	const swordAtk = hasCleared() ? player.atk * 2 : player.atk;
+	if (hitEnemy) { dealDamageToEnemy(hitEnemy, swordAtk); return; }
 
 	// NPC・ギミックとのインタラクション（プレイヤーの正面 1 セルのタイル）
 	const tr = toTileRow(player.y + ndy);
@@ -1901,7 +1923,9 @@ function toggleDebugMode() {
 function takeDamage(amount) {
 	if (debugMode) return; // デバッグモード中は無敵
 	if (Date.now() < invincibleUntil || isGameover) return;
-	const actual = Math.max(1, amount - player.def);
+	// 二周目（姫パレット）は防御力2倍
+	const effectiveDef = hasCleared() ? player.def * 2 : player.def;
+	const actual = Math.max(1, amount - effectiveDef);
 	player.hp = Math.max(0, player.hp - actual);
 	invincibleUntil = Date.now() + INVINCIBLE_MS;
 	playSound('playerHit');
@@ -2490,20 +2514,117 @@ function spawnTriforcePiece(boss) {
 	_pendingTriforcePieceEl = el;
 }
 
+// ── クリア済みフラグ保存キー ──────────────────────────────────
+const CLEARED_KEY = 'blade-of-lumia-cleared';
+
+function hasCleared() {
+	return !!localStorage.getItem(CLEARED_KEY);
+}
+
+function saveCleared() {
+	localStorage.setItem(CLEARED_KEY, '1');
+}
+
 // ── エンディング ──────────────────────────────────────────────
-function startEnding() {
+async function startEnding() {
 	isGameover = true; // ゲーム操作を無効化
 	stopGameLoop(); stopBgm();
-	// エンディング表示（動的メッセージ生成）
+
+	// クリア済みフラグを保存
+	saveCleared();
+	// ゲームのセーブデータは削除
+	localStorage.removeItem(SAVE_KEY);
+
+	// エンディングオーバーレイ表示
+	endingOverlayEl.classList.remove('hidden');
+
+	// エンディング BGM 再生
+	playBgm('ending');
+
+	// ── フェーズ1：スタッフロール ─────────────────────────
+	const phase1El = document.getElementById('ending-phase1');
+	const phase2El = document.getElementById('ending-phase2');
+	phase1El.style.display = '';
+	phase2El.classList.add('hidden');
+
+	// スタッフロールHTML生成
+	const scrollEl = document.getElementById('ending-scroll');
+	scrollEl.innerHTML = buildStaffRollHtml();
+
+	// スタッフロールのアニメーション（40秒）が終わるのを待たずに即フェーズ2へ
+	// CSSアニメーションの終了を検知して切り替える
+	const scrollEl2 = document.getElementById('ending-scroll');
+	await new Promise(r => {
+		scrollEl2.addEventListener('animationend', r, { once: true });
+	});
+
+	// ── フェーズ2：THE END シーン ─────────────────────────
+	phase1El.style.display = 'none';
+	phase2El.classList.remove('hidden');
+
+	// 姫・主人公・姫のスプライトをアニメーション付きで表示
+	// makeSprite(animated=true) を使うとゲーム内と同じアニメーションが動く
+	// spriteクラスのposition:absoluteが邪魔するので除去してインラインで設定
+	function placeBigSprite(canvasId, spriteName, palName) {
+		const container = document.getElementById(canvasId);
+		if (!container) return;
+		container.innerHTML = '';
+		const cv = makeSprite(spriteName, palName, true);
+		if (!cv) return;
+		// sprite クラスはそのまま残す（redrawAnimSprites が canvas.sprite[data-sprite] を検索するため）
+		// CSS の .ending-big-sprite canvas.sprite でレイアウトを上書き済み
+		container.appendChild(cv);
+	}
+
+	placeBigSprite('ending-princess1-canvas', 'princess', 'princess');
+	placeBigSprite('ending-hero-canvas',      'heroD',    'hero');
+	placeBigSprite('ending-princess2-canvas', 'princess', 'princess');
+
+	// エンディングメッセージ
 	const msgEl = document.getElementById('ending-msg');
 	if (msgEl) {
-		msgEl.innerHTML = `魔王を倒し、すべてのトライフォースのカケラを集めた！<br>ルミアの平和は守られた……`;
+		msgEl.innerHTML = '魔王を倒し、すべてのトライフォースのカケラを集めた！<br>ルミアの平和は守られた……';
 	}
-	// トライフォース個数に合わせたアイコン
-	const triEl = document.getElementById('ending-triforce');
-	if (triEl) triEl.textContent = '◭'.repeat(player.triforceCount || 1);
-	endingOverlayEl.classList.remove('hidden');
-	localStorage.removeItem(SAVE_KEY); // クリアしたのでセーブ削除
+}
+
+/** スタッフロール HTML を生成して返す */
+function buildStaffRollHtml() {
+	const AUTHOR = 'Go Kojima';
+	const roles = [
+		'Game Director',
+		'Executive Producer',
+		'Game Designer',
+		'Level Designer',
+		'Programmer',
+		'Lead Programmer',
+		'Character Designer',
+		'Pixel Artist',
+		'Background Artist',
+		'UI/UX Designer',
+		'Sound Designer',
+		'Music Composer',
+		'Story Writer',
+		'World Builder',
+		'Dungeon Architect',
+		'Monster Designer',
+		'Lore Creator',
+		'QA Lead',
+		'Playtester',
+	];
+	let html = `<div class="scroll-game-title">⚔ Blade of Lumia</div>`;
+	html += `<div class="scroll-subtitle">～ ルミアの剣 ～</div>`;
+	for (const role of roles) {
+		html += `<div class="scroll-role">${role}</div>`;
+		html += `<div class="scroll-name">${AUTHOR}</div>`;
+		html += `<div class="scroll-divider"></div>`;
+	}
+	// Special Thanks to は別名で表示
+	html += `<div class="scroll-role">Special Thanks to</div>`;
+	html += `<div class="scroll-name">Kojima's family</div>`;
+	html += `<div class="scroll-divider"></div>`;
+	html += `<div class="scroll-thanks">Thank you for playing!</div>`;
+	html += `<div class="scroll-copyright">© 2026 ${AUTHOR}</div>`;
+	return html;
 }
 
 // ── ボス部屋ロック演出（扉が閉まるフラッシュ） ───────────────
@@ -3582,7 +3703,7 @@ function useSubItem() {
 			x: player.x + ndx * 0.5, y: player.y + ndy * 0.5,
 			startX: player.x, startY: player.y,
 			dx: ndx, dy: ndy,
-			speed: 2.0,
+			speed: hasCleared() ? 4.0 : 2.0,  // 二周目は2倍速
 			atk: 3,  // ブーメランは固定ダメージ（剣ATK不使用）
 			returning: false,
 			maxRange: 3,
@@ -3607,7 +3728,7 @@ function useSubItem() {
 			id: nextProjId++, owner: 'player', type: 'arrow',
 			x: player.x + ndx * 0.5, y: player.y + ndy * 0.5,
 			dx: ndx, dy: ndy,
-			speed: 4.5,   // ブーメラン(2.0)の2倍以上の速さ
+			speed: hasCleared() ? 9.0 : 4.5,  // 二周目は2倍速
 			atk: 5,  // 弓矢は固定ダメージ（剣ATK不使用）
 			piercing: true, // 貫通フラグ（checkProjHitで利用）
 		};
@@ -3658,12 +3779,25 @@ document.addEventListener('keyup', e => {
 	heldKeys.delete(e.key);
 });
 
+// 二周目移動速度ブースト用アキュムレータ
+let _moveSpeedAccum = 0;
+
 // 押しっぱなし移動処理（gameTick から呼ぶ）
 function processHeldKeys() {
-	if (heldKeys.has('ArrowUp')    || heldKeys.has('w') || heldKeys.has('W')) { movePlayer('up');    return; }
-	if (heldKeys.has('ArrowDown')  || heldKeys.has('s') || heldKeys.has('S')) { movePlayer('down');  return; }
-	if (heldKeys.has('ArrowLeft')  || heldKeys.has('a') || heldKeys.has('A')) { movePlayer('left');  return; }
-	if (heldKeys.has('ArrowRight') || heldKeys.has('d') || heldKeys.has('D')) { movePlayer('right'); return; }
+	let dir = null;
+	if (heldKeys.has('ArrowUp')    || heldKeys.has('w') || heldKeys.has('W')) dir = 'up';
+	else if (heldKeys.has('ArrowDown')  || heldKeys.has('s') || heldKeys.has('S')) dir = 'down';
+	else if (heldKeys.has('ArrowLeft')  || heldKeys.has('a') || heldKeys.has('A')) dir = 'left';
+	else if (heldKeys.has('ArrowRight') || heldKeys.has('d') || heldKeys.has('D')) dir = 'right';
+	if (!dir) { _moveSpeedAccum = 0; return; }
+
+	// 二周目（姫パレット）は移動速度1.2倍
+	// アキュムレータに 1.2 を加算し、整数部を消費して movePlayer を呼ぶ
+	const speed = hasCleared() ? 1.2 : 1.0;
+	_moveSpeedAccum += speed;
+	const times = Math.floor(_moveSpeedAccum);
+	_moveSpeedAccum -= times;
+	for (let i = 0; i < times; i++) movePlayer(dir);
 }
 
 function updateShieldHud() {
@@ -3868,3 +4002,9 @@ init().catch(err => {
 	console.error('init failed:', err);
 	document.body.innerHTML = `<p style="color:red;padding:20px">読み込みエラー: ${err.message}</p>`;
 });
+
+// ウィンドウリサイズ時にボードのスケールを再計算
+window.addEventListener('resize', () => updateBoardScale());
+
+// ── デバッグ用：コンソールから呼び出せるようにグローバルに公開 ──
+window._debugEnding = () => startEnding();
