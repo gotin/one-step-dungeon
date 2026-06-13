@@ -801,6 +801,8 @@ function applyTool(c, r) {
 			sd.tiles[r][c] = state.selectedTile;
 		}
 	} else if (state.currentTool === 'erase') {
+		// 消去前のタイルに応じてメタデータも削除
+		cleanTileMetaData(sd, r, c);
 		sd.tiles[r][c] = TILE.FLOOR;
 		delete sd.bgTiles[`${r},${c}`];
 	} else if (state.currentTool === 'fill') {
@@ -814,6 +816,30 @@ function applyTool(c, r) {
 		}
 	}
 	renderStageCanvas();
+}
+
+// ── タイルに紐づくメタデータを削除するユーティリティ ──────────
+// タイルを消去・上書きするときにメタデータも合わせて削除する
+function cleanTileMetaData(sd, r, c) {
+	const posKey = `${r},${c}`;
+	const tile = sd.tiles[r]?.[c];
+	if (tile === TILE.MAP_ENTER) {
+		delete sd.mapEnters?.[posKey];
+	} else if (tile === TILE.CHEST) {
+		delete sd.chestContents?.[posKey];
+	} else if (tile === TILE.NPC_A || tile === TILE.NPC_B || tile === TILE.PRINCESS || tile === TILE.SIGN) {
+		delete sd.npcData?.[posKey];
+	} else if (tile === TILE.NPC_SHOP) {
+		delete sd.shopData?.[posKey];
+	} else if (tile === TILE.BREAKABLE_WALL) {
+		delete sd.breakableWalls?.[posKey];
+	} else if (tile === TILE.ITEM_SWORD || tile === TILE.ITEM_ARMOR) {
+		delete sd.floorItems?.[posKey];
+	}
+	// showConditions は MAP_ENTER・DOORWAY_LOCKED と連動することがあるため削除
+	if (tile === TILE.MAP_ENTER || tile === TILE.DOORWAY_LOCKED) {
+		delete sd.showConditions?.[posKey];
+	}
 }
 
 // bgTiles 用フラッドフィル
@@ -1139,8 +1165,8 @@ function renderMapEnters(sd) {
 		item.className = 'link-item';
 		item.innerHTML = `
 			<div class="link-item-header"><span>出口 (${r},${c})</span></div>
-			<label>出口ID <input type="text" value="${data.id??''}" data-key="${key}" data-f="id" placeholder="例: cave1_entrance"></label>
-			<label>遷移先ID <input type="text" value="${data.destId??''}" data-key="${key}" data-f="destId" placeholder="例: cave1_exit"></label>
+			<label>出口ID（このMAP_ENTERのID） <input type="text" value="${data.id??''}" data-key="${key}" data-f="id" placeholder="半角英数字（例: town_to_dungeon）"></label>
+			<label>遷移先ID（どこに繋ぐか） <input type="text" value="${data.destId??''}" data-key="${key}" data-f="destId" placeholder="接続先の出口ID（例: dungeon_to_town）"></label>
 		`;
 		item.querySelectorAll('[data-key]').forEach(inp => {
 			inp.addEventListener('input', () => {

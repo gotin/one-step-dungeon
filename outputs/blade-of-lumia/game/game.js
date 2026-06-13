@@ -1186,6 +1186,48 @@ function movePlayer(dir) {
 			if (_animHeroCv) _animPlayerDiv.appendChild(_animHeroCv);
 			charLayerEl.appendChild(_animPlayerDiv);
 
+			// アニメーションしない他の移動済み石を先に描画（グローも含む）
+			{
+				const _otherCellPx = getCellPx();
+				const _otherStSize = Math.round(_otherCellPx * 0.7) + 'px';
+				for (const [otherKey, otherSt] of Object.entries(ss.stonePositions ?? {})) {
+					if (otherKey === stoneKey) continue; // 今動かしている石はスキップ
+					const otherDiv = document.createElement('div');
+					otherDiv.className = 'char-abs';
+					otherDiv.id = `char-stone-${otherKey.replace(',', '-')}`;
+					otherDiv.style.left   = `${otherSt.c * _otherCellPx}px`;
+					otherDiv.style.top    = `${otherSt.r * _otherCellPx}px`;
+					otherDiv.style.zIndex = '1';
+					const otherCv = document.createElement('canvas');
+					otherCv.style.cssText = `position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:${_otherStSize};height:${_otherStSize};image-rendering:pixelated;`;
+					const _otherFrames = SPRITES['block'];
+					const _otherPal    = PAL['block'];
+					if (_otherFrames && _otherPal) {
+						const _otherGrid = _otherFrames[0];
+						otherCv.width  = _otherGrid[0].length;
+						otherCv.height = _otherGrid.length;
+						const _otherCtx = otherCv.getContext('2d');
+						for (let _r = 0; _r < _otherGrid.length; _r++) {
+							for (let _c = 0; _c < _otherGrid[_r].length; _c++) {
+								const idx = _otherGrid[_r][_c];
+								if (idx === 0) continue;
+								_otherCtx.fillStyle = _otherPal[idx] ?? 'transparent';
+								_otherCtx.fillRect(_c, _r, 1, 1);
+							}
+						}
+					}
+					otherDiv.appendChild(otherCv);
+					// スイッチの上にある石はグロー追加
+					const otherOnSwitch = stageData.tiles[otherSt.r]?.[otherSt.c] === TILE.SWITCH;
+					if (otherOnSwitch) {
+						const glow = document.createElement('div');
+						glow.style.cssText = 'position:absolute;inset:0;background:rgba(80,255,100,0.38);border-radius:3px;box-shadow:0 0 8px 4px rgba(60,255,80,0.6);pointer-events:none;z-index:5;animation:stone-glow 1.2s ease-in-out infinite;';
+						otherDiv.appendChild(glow);
+					}
+					charLayerEl.appendChild(otherDiv);
+				}
+			}
+
 			// 石をアニメーション用要素として古い位置に配置
 			const _animStDiv = document.createElement('div');
 			_animStDiv.className = 'char-abs';
