@@ -211,6 +211,29 @@
 
   </main>
 
+  <!-- プレビュー設定ダイアログ -->
+  <div id="preview-settings-overlay" class="preview-settings-overlay hidden">
+    <div class="preview-settings-box">
+      <div class="preview-settings-title">▶ プレビュー設定</div>
+      <div class="preview-settings-grid">
+        <label>ATK<input id="ps-atk"  type="number" value="10" min="1" max="99" style="width:54px"></label>
+        <label>DEF<input id="ps-def"  type="number" value="10" min="0" max="99" style="width:54px"></label>
+        <label>💰ルピー<input id="ps-rupees" type="number" value="10" min="0" max="9999" style="width:70px"></label>
+        <label>◭カケラ<input id="ps-triforce" type="number" value="0" min="0" max="99" style="width:54px"></label>
+        <label class="ps-check"><input id="ps-weapon" type="checkbox" checked> ⚔ 剣</label>
+        <label class="ps-check"><input id="ps-shield" type="checkbox" checked> 🛡 盾</label>
+        <label class="ps-check"><input id="ps-armor"  type="checkbox" checked> ⚚ 防具</label>
+        <label class="ps-check"><input id="ps-bow"    type="checkbox" checked> 🏹 弓矢</label>
+        <label class="ps-check"><input id="ps-boomerang" type="checkbox" checked> 🪃 ブーメラン</label>
+        <label class="ps-check"><input id="ps-cleared" type="checkbox"> 👸 姫状態（二周目）</label>
+      </div>
+      <div class="preview-settings-actions">
+        <button id="ps-btn-start" class="btn btn-accent">▶ この設定でプレビュー</button>
+        <button id="ps-btn-cancel" class="btn">キャンセル</button>
+      </div>
+    </div>
+  </div>
+
   <!-- プレビューオーバーレイ -->
   <div id="preview-overlay" class="preview-overlay hidden">
     <div class="preview-header">
