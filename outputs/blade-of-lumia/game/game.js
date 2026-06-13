@@ -1755,7 +1755,8 @@ function gainHeartContainer() {
 }
 
 // ── 剣攻撃 ────────────────────────────────────────────────────
-// 剣リーチ：プレイヤーの正面 1.2 セル以内（半セル移動に合わせた範囲）
+// 剣リーチ：プレイヤー中心から敵中心までの距離で判定するため、
+// 隣接セルの敵との距離 = 1.0 セルなので、1.2 あれば十分届く（少し余裕あり）
 const SWORD_REACH = 1.2;
 // 剣攻撃クールダウン：100ms（1秒10回まで）
 // Phase 3 で攻撃速度UP装備が実装されたらここを短縮する
@@ -1768,21 +1769,51 @@ let lastStonePushTime = 0;
 
 function swordAttack() {
 	if (isDialog || isPaused || isGameover) return;
-	if (!player.weapon) { pulse('剣を持っていない！'); return; }
-	// クールダウンチェック（デバッグモードはスキップしない）
-	const now = Date.now();
-	if (now - lastSwordTime < SWORD_COOLDOWN_MS) return;
-	lastSwordTime = now;
-	resumeAudio(); playSound('slash');
 
 	// 向き方向の単位ベクトル（半セルで正規化）
 	const [dy, dx] = DIR_DELTA[heroDir]; // 例: right → [0, 0.5]
 	const ndx = dx / MOVE_STEP; // 正規化: 0, +1, -1
 	const ndy = dy / MOVE_STEP;
 
-	// 剣エフェクト：プレイヤーのセル中心から 1 セル先（float座標）
-	const slashX = player.x + ndx;
-	const slashY = player.y + ndy;
+	// NPC・ギミックとのインタラクション（剣なしでも可能）
+	// プレイヤーの正面 1 セルのタイルをチェック
+	const tr = toTileRow(player.y + ndy);
+	const tc = toTileCol(player.x + ndx);
+	const tile = stageData.tiles[tr]?.[tc];
+	const posKey3 = `${tr},${tc}`;
+
+	if (tile === TILE.NPC_SHOP) {
+		const shopData = stageData.shopData?.[posKey3];
+		if (shopData) { openShop(shopData); } else { startDialog(tr, tc, tile); }
+		return;
+	}
+	if (tile && NPC_SPRITE_MAP[tile]) { startDialog(tr, tc, tile); return; }
+
+	// Phase 8.3: 看板を読む（剣なしでも可能）
+	if (tile === TILE.SIGN) {
+		const signData = stageData.signData?.[posKey3] ?? stageData.npcData?.[posKey3] ?? { name: '看板', lines: ['（何も書かれていない）'] };
+		dialogLines = signData.lines ?? ['（何も書かれていない）'];
+		dialogLineIdx = 0;
+		isDialog = true; stopGameLoop();
+		dialogNameEl.textContent = signData.name ?? '看板';
+		showDialogLine();
+		dialogOverlayEl.classList.remove('hidden');
+		playSound('talk');
+		return;
+	}
+
+	// 以降は剣が必要な操作
+	if (!player.weapon) { pulse('剣を持っていない！'); return; }
+
+	// クールダウンチェック（デバッグモードはスキップしない）
+	const now = Date.now();
+	if (now - lastSwordTime < SWORD_COOLDOWN_MS) return;
+	lastSwordTime = now;
+	resumeAudio(); playSound('slash');
+
+	// 剣エフェクト：プレイヤーのセル中心から 0.7 セル先（float座標）
+	const slashX = player.x + ndx * 0.7;
+	const slashY = player.y + ndy * 0.7;
 	showSwordSlashFloat(slashX, slashY);
 
 	// 当たり判定：プレイヤー中心から SWORD_REACH セル以内の正面にいる敵
@@ -1819,33 +1850,7 @@ function swordAttack() {
 	const swordAtk = hasCleared() ? player.atk * 2 : player.atk;
 	if (hitEnemy) { dealDamageToEnemy(hitEnemy, swordAtk); return; }
 
-	// NPC・ギミックとのインタラクション（プレイヤーの正面 1 セルのタイル）
-	const tr = toTileRow(player.y + ndy);
-	const tc = toTileCol(player.x + ndx);
-	const tile = stageData.tiles[tr]?.[tc];
-	const posKey3 = `${tr},${tc}`;
-
-	if (tile === TILE.NPC_SHOP) {
-		const shopData = stageData.shopData?.[posKey3];
-		if (shopData) { openShop(shopData); } else { startDialog(tr, tc, tile); }
-		return;
-	}
-	if (tile && NPC_SPRITE_MAP[tile]) { startDialog(tr, tc, tile); return; }
-
-	// Phase 8.3: 看板を読む
-	if (tile === TILE.SIGN) {
-		const signData = stageData.signData?.[posKey3] ?? stageData.npcData?.[posKey3] ?? { name: '看板', lines: ['（何も書かれていない）'] };
-		dialogLines = signData.lines ?? ['（何も書かれていない）'];
-		dialogLineIdx = 0;
-		isDialog = true; stopGameLoop();
-		dialogNameEl.textContent = signData.name ?? '看板';
-		showDialogLine();
-		dialogOverlayEl.classList.remove('hidden');
-		playSound('talk');
-		return;
-	}
-
-	// Phase 8.2: 茂みを切る
+	// Phase 8.2: 茂みを切る（剣が必要）
 	if (tile === TILE.BUSH) {
 		const ss = getSS(currentLayer, stageKey);
 		if (!ss.cutBushes) ss.cutBushes = new Set();
@@ -3648,14 +3653,14 @@ function explodeBomb(bomb) {
 	bomb.el?.remove();
 	placedBombs = placedBombs.filter(b => b !== bomb);
 
-	// 爆発エフェクト
-	showExplosionEffect(bomb.r, bomb.c);
-	playSound('bomb');
+	// 爆発音
+	playSound('bombExplosion');
 
 	const AOE = ITEM_META.bomb?.aoeRadius ?? 2;
 	const ss  = getSS(currentLayer, stageKey);
 
-	// 爆発範囲内の処理
+	// 壊せる壁・敵ダメージを先に処理（renderBoard前）
+	let needRenderBoard = false;
 	for (let dr = -AOE; dr <= AOE; dr++) {
 		for (let dc = -AOE; dc <= AOE; dc++) {
 			if (Math.sqrt(dr * dr + dc * dc) > AOE) continue;
@@ -3671,7 +3676,7 @@ function explodeBomb(bomb) {
 				if ((ITEM_META.bomb?.breakPower ?? 3) >= bwDef) {
 					ss.brokenWalls.add(posKey);
 					evaluateConditions();
-					renderBoard(); renderChars();
+					needRenderBoard = true;
 				}
 			}
 
@@ -3685,6 +3690,17 @@ function explodeBomb(bomb) {
 			// ※ 自爆ダメージなし（プレイヤーは爆弾に当たらない）
 		}
 	}
+
+	// renderBoardが必要な場合は先に実行してcharLayerElをリセット
+	// その後に爆発エフェクトを追加することで、エフェクトが消えない
+	if (needRenderBoard) {
+		renderBoard();
+		renderChars();
+	}
+
+	// renderBoard後にエフェクトを追加（charLayerElが最新の状態）
+	showExplosionEffect(bomb.r, bomb.c);
+
 	saveGame();
 }
 
