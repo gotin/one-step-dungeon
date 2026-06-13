@@ -14,14 +14,40 @@
 ## 📍 現在地（常に最新に保つ）
 
 - **進行中フェーズ：** Phase 0（技術基盤）
-- **進行中タスク：** 0-1 決定論的ゲームループ（次のターゲット）
-- **直近の状態：** Phase 0-0 完了。Playwright 5テスト（起動・移動・セーブ/ロード・ステージ遷移・VRT）がすべてグリーン。次は 0-1 へ。
+- **進行中タスク：** 0-2 game.js モジュール分割（次のターゲット）
+- **直近の状態：** Phase 0-1 完了。論理時間 `gameTime` + `step()` 分離 + `window.__game` フックを実装。Playwright 8テスト（既存5＋決定論3）すべてグリーン。次は 0-2 の分割へ（0-1 と同じく game.js を触るので連続して進めると効率的）。
 
 ---
 
 ## セッションログ
 
 <!-- 新しいエントリを上に追加していく（最新が一番上） -->
+
+### 2026-06-13 — Phase 0-1：決定論的ゲームループ（gameTime / step / __game）
+
+**やったこと：**
+- **論理時間 `gameTime` + `gameNow()` を導入**。game.js 内の `Date.now()` 全10箇所（剣CD・無敵・石押しCD・マップ遷移CD・ボスAI `_haTimer`・敵攻撃 `_attackTimes`・爆弾 `fuseEnd`/`bombTick`）を `gameNow()` に置換
+- **`gameTick` → `step(frames)` に分離**：driver は `setInterval(() => step(1), TICK_MS)`。`step()` が 1 フレームごとに `gameTime += TICK_MS` してから `gameTick()` を呼ぶ。凍結状態（pause/dialog/gameover/transition）では加算もしない
+- **`window.__game` テストフックを公開**：`step(n)` / `queueInput(dir)` / `releaseInput(dir)` / `movePlayer(dir)` / `swordAttack()` / `getState()`
+- `tests/deterministic.spec.js` を追加（3テスト）：フック公開確認・`step(10)` で gameTime が ≥1200 進む・`queueInput`+`step` で決定論的に移動
+- `npx playwright test` で **8 passed**（既存5＋決定論3、デグレなし）
+- DECISIONS.md に実装方針を記録、PLAN.md の 0-1 チェックを完了に
+
+**学び・気づき：**
+- 視覚演出（要素削除・点滅・撃破演出）は `setTimeout`/`setInterval` 側で `Date.now()` を使っていなかったため、`Date.now()→gameNow()` の全置換でゲームロジックだけを論理時間化でき、演出は実時間のまま温存できた（PLAN の意図どおり）
+- `gameTick` の関数名は互換のため残し、`step()` から呼ぶ構成にしたことで既存の `startGameLoop`/`stopGameLoop` 呼び出し（多数）を変更不要にできた
+- replace_in_file で重複ブロックを挿入してしまうミスが発生 → 大きいファイルの編集は SEARCH を一意にし、適用後に必ず重複チェックすること
+
+**石押し検証（追記）：**
+- 石押し不具合の報告を受け調査。結論：**game.js のコードは develop と一致しており正常**。実機で見えた不具合は**ブラウザの古いキャッシュ**が原因で、ハードリロードで develop と同じスムーズ動作を確認
+- 反省：(1) 最初の石押しテストはユーザー指定の2条件（石サイズ不変・連続押下）を検証しておらず「緑でも無意味」だった、(2) diff の行範囲をずらして「アニメ4行欠落」と誤診断、(3) 「実機で不成立＝コード原因」と思い込んだ（真因はキャッシュ）。詳細は DECISIONS.md に記録
+- `tests/stone-push.spec.js` を**2条件を正しく検証する形に作り直し**：石 canvas の実描画サイズを実測（不変確認）／押しっぱなし＋実ループで連続押下（2セル以上前進）を検証。`scripts/find-stone.mjs` を追加（石のあるステージ探索）
+- 全テスト **10 passed**
+
+**▶ 次やること：**
+- [ ] Phase 0-2：game.js モジュール分割 Step 1（state.js / save.js の切り出し）から着手 🧠→⚡
+- ※ 動作確認時はブラウザのハードリロード（キャッシュ無効）を徹底する
+
 
 ### 2026-06-13 — Phase 0-0：ステージ遷移スモーク＋VRT 追加（Phase 0-0 完了）
 
@@ -115,7 +141,7 @@
 
 | フェーズ | 状態 | メモ |
 |---|---|---|
-| Phase 0 技術基盤 | 🚧 進行中 | 0-0 ✅ 完了（5テストグリーン）。0-1 決定論的ゲームループへ |
+| Phase 0 技術基盤 | 🚧 進行中 | 0-0 ✅ / 0-1 ✅ 完了（8テストグリーン）。次は 0-2 モジュール分割 |
 | Phase 1 ストーリー基盤 | 🔲 未着手 | |
 | Phase 2 8ダンジョン | 🔲 未着手 | |
 | Phase 3 アクション深化 | 🔲 未着手 | |

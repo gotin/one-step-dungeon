@@ -83,6 +83,14 @@ let enemies = [];
 let heroDir = 'down';
 
 let gameTimer       = null;
+// ── 論理時間（Phase 0-1）─────────────────────────────────────
+// gameTime は step() が 1 フレームごとに TICK_MS 加算する「ゲーム内の論理時刻」(ms)。
+// クールダウン・無敵時間・敵AI・爆弾の導火線などゲーム状態に影響するタイマーは
+// すべて gameNow() を基準にする（Date.now() ではなく）。これによりテストから
+// step(frames) でフレーム単位に決定論的な検証ができる。視覚演出（setTimeout 等）は
+// 実時間のままで構わない。
+let gameTime        = 0;
+function gameNow() { return gameTime; }
 let isPaused        = false;
 let isDialog        = false;
 let isGameover      = false;
@@ -987,7 +995,7 @@ function checkStageTransition() {
 
 	// MAP_ENTER タイル（'>' タイルが実際に置かれている場所のみ発動）
 	// mapEnters のメタデータだけ存在してもタイルが '>' でなければ遷移しない
-	if (Date.now() < mapEnterCooldownUntil) return;
+	if (gameNow() < mapEnterCooldownUntil) return;
 	const r = toTileRow(y), c = toTileCol(x);
 	const posKey = `${r},${c}`;
 	const tileAtPos = stageData.tiles[r]?.[c];
@@ -1001,7 +1009,7 @@ function checkStageTransition() {
 			enterStage(dest.layer, dest.stage, dest.row, dest.col);
 			isTransitioning = false;
 			// 遷移後 1.5 秒間は MAP_ENTER 再遷移を無効化
-			mapEnterCooldownUntil = Date.now() + 1500;
+			mapEnterCooldownUntil = gameNow() + 1500;
 		}, 100);
 	}
 }
@@ -1184,6 +1192,12 @@ function movePlayer(dir) {
 
 	if (stoneKey !== null) {
 		// 石を押す：クールダウンチェック（重い石はゆっくりしか押せない）
+		// ※ 石押しは setTimeout（実時間 _animDuration）で石とプレイヤーを同時に
+		//   セル単位でゆっくり移動させる「特別なアニメーションモード」。
+		//   クールダウンもその実時間アニメと同期させる必要があるため、ここだけは
+		//   論理時間 gameNow() ではなく Date.now()（実時間）を使う。
+		//   gameNow() にすると実時間アニメと時間系がズレ、アニメ完了後もクールダウンが
+		//   解けず「2回目が押せない」「石要素が残って重なり大きく見える」不具合になる。
 		const nowSt = Date.now();
 		if (nowSt - lastStonePushTime < STONE_PUSH_COOLDOWN_MS) {
 			// クールダウン中 → 向きだけ変えて終わり（石に触れているが動かせない状態）
@@ -1806,7 +1820,7 @@ function swordAttack() {
 	if (!player.weapon) { pulse('剣を持っていない！'); return; }
 
 	// クールダウンチェック（デバッグモードはスキップしない）
-	const now = Date.now();
+	const now = gameNow();
 	if (now - lastSwordTime < SWORD_COOLDOWN_MS) return;
 	lastSwordTime = now;
 	resumeAudio(); playSound('slash');
@@ -1955,12 +1969,12 @@ function toggleDebugMode() {
 // ── ダメージ ──────────────────────────────────────────────────
 function takeDamage(amount) {
 	if (debugMode) return; // デバッグモード中は無敵
-	if (Date.now() < invincibleUntil || isGameover) return;
+	if (gameNow() < invincibleUntil || isGameover) return;
 	// 二周目（姫パレット）は防御力2倍
 	const effectiveDef = hasCleared() ? player.def * 2 : player.def;
 	const actual = Math.max(1, amount - effectiveDef);
 	player.hp = Math.max(0, player.hp - actual);
-	invincibleUntil = Date.now() + INVINCIBLE_MS;
+	invincibleUntil = gameNow() + INVINCIBLE_MS;
 	playSound('playerHit');
 	showPlayerBlink();
 	updateHud();
@@ -2716,14 +2730,19 @@ function startBossBattle(lk, sk) {
 }
 
 // ── リアルタイムループ ────────────────────────────────────────
+// driver（setInterval）は「実時間で step(1) を駆動」するだけ。
+// 世界を進めるロジックは step() に集約し、テストからは __game.step(n) を
+// 直接呼ぶことで実時間ゼロ・決定論的にフレームを進められる（Phase 0-1）。
 function startGameLoop() {
 	if (gameTimer) clearInterval(gameTimer);
-	gameTimer = setInterval(gameTick, TICK_MS);
+	gameTimer = setInterval(() => step(1), TICK_MS);
 }
 function stopGameLoop() {
 	if (gameTimer) { clearInterval(gameTimer); gameTimer = null; }
 }
 
+// gameTick: 1 フレーム分の「世界の更新」（純粋ロジック）。
+// 互換のため関数名は残すが、実体は step(1) と同じ。
 function gameTick() {
 	if (isPaused || isDialog || isGameover || isTransitioning) return;
 	processHeldKeys();   // 押しっぱなしキーで毎tick移動
@@ -2734,6 +2753,19 @@ function gameTick() {
 	checkPendingTriforce(); // 魔王撃破後のトライフォース収集チェック
 	redrawAnimSprites();
 }
+
+// step(frames): frames 分だけ世界を進める。
+// 1 フレームごとに論理時間 gameTime を TICK_MS 加算してから gameTick() を実行する。
+// 凍結状態（ポーズ・ダイアログ・ゲームオーバー・遷移中）では gameTick が早期 return し、
+// gameTime も進めない（＝世界が止まる）。
+function step(frames = 1) {
+	for (let i = 0; i < frames; i++) {
+		if (isPaused || isDialog || isGameover || isTransitioning) return;
+		gameTime += TICK_MS;
+		gameTick();
+	}
+}
+
 
 // ── 魔王撃破後トライフォース収集チェック ─────────────────────
 // プレイヤーがカケラに近づいたら収集 → エンディングチェック
@@ -2833,7 +2865,7 @@ function pickApproachMode(e) {
 }
 
 function bossTickHitAndAway(e, meta) {
-	const now = Date.now();
+	const now = gameNow();
 	if (!e._haPhase) {
 		e._haPhase = 'approach';
 		e._haTimer = now + 2500 + Math.random() * 1500;
@@ -3215,7 +3247,7 @@ function enemyAttack(e, meta) {
 	const attackList = meta.attacks ?? (meta.attack ? [meta.attack] : []);
 	if (attackList.length === 0) return;
 
-	const now = Date.now();
+	const now = gameNow();
 	if (!e._attackTimes) e._attackTimes = {};
 
 	const dx = player.x - e.x;
@@ -3636,12 +3668,12 @@ function placeBomb() {
 	charLayerEl?.appendChild(el);
 
 	playSound('item');
-	const bomb = { id: nextProjId++, r, c, fuseEnd: Date.now() + 2000, el };
+	const bomb = { id: nextProjId++, r, c, fuseEnd: gameNow() + 2000, el };
 	placedBombs.push(bomb);
 }
 
 function bombTick() {
-	const now = Date.now();
+	const now = gameNow();
 	for (const bomb of [...placedBombs]) {
 		if (now < bomb.fuseEnd) continue;
 		explodeBomb(bomb);
@@ -4096,3 +4128,40 @@ window.addEventListener('resize', () => updateBoardScale());
 
 // ── デバッグ用：コンソールから呼び出せるようにグローバルに公開 ──
 window._debugEnding = () => startEnding();
+
+// ── テスト用フック（Phase 0-1）────────────────────────────────
+// E2E テストから決定論的にゲームを操作するための API を公開する。
+//   __game.step(n)        : 実時間ゼロで n フレーム進める（gameTime を n*TICK_MS 加算）
+//   __game.queueInput(d)  : 方向 d ('up'|'down'|'left'|'right') の押下を予約（次の step で反映）
+//   __game.releaseInput(d): 方向 d の押下を解除
+//   __game.movePlayer(d)  : プレイヤーを 1 操作分だけ即座に移動
+//   __game.swordAttack()  : 剣攻撃を即座に実行
+//   __game.getState()     : 現在の主要状態のスナップショット（player 座標・gameTime 等）
+// 本番動作には影響しない（読み取り＋既存関数の呼び出しのみ）。
+window.__game = {
+	step,
+	queueInput(dir) {
+		const keyMap = { up: 'ArrowUp', down: 'ArrowDown', left: 'ArrowLeft', right: 'ArrowRight' };
+		const k = keyMap[dir];
+		if (k) heldKeys.add(k);
+	},
+	releaseInput(dir) {
+		const keyMap = { up: 'ArrowUp', down: 'ArrowDown', left: 'ArrowLeft', right: 'ArrowRight' };
+		const k = keyMap[dir];
+		if (k) heldKeys.delete(k);
+	},
+	movePlayer: (dir) => movePlayer(dir),
+	swordAttack: () => swordAttack(),
+	getState() {
+		return {
+			gameTime,
+			currentLayer,
+			stageKey,
+			player: { x: player.x, y: player.y, hp: player.hp, maxHp: player.maxHp },
+			heroDir,
+			enemyCount: enemies.length,
+			isPaused, isDialog, isGameover, isTransitioning,
+		};
+	},
+};
+
