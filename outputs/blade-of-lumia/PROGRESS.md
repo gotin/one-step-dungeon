@@ -14,8 +14,8 @@
 ## 📍 現在地（常に最新に保つ）
 
 - **進行中フェーズ：** Phase 0（技術基盤）
-- **進行中タスク：** 0-2 game.js モジュール分割 Step 4（input.js / ui.js の切り出し）
-- **直近の状態：** Phase 0-2 Step 3（render-board.js / render-chars.js）完了。`charLayerElRef = { value }` ラッパーで render-board / render-chars 間の DOM 参照を共有。addShieldOverlay / updatePlayerCharEl も render-chars.js に同梱。10テストすべてグリーン（デグレなし）。次は Step 4（入力・UI系の分離）。
+- **進行中タスク：** 0-2 game.js モジュール分割 Step 5（player.js / combat.js / projectile.js / enemy-ai.js / boss.js の切り出し）
+- **直近の状態：** Phase 0-2 Step 4（input.js / ui.js）完了。`initInput(deps)` factory でキーボード・モバイル・スワイプ入力を切り出し、`createUi(deps)` factory で HUD・ポーズ・ダイアログ・ショップを切り出し。旧インラインコードを削除して factory 生成版で上書き。`updateShieldHud` / `processHeldKeys` は事前 `let` 宣言で TDZ を回避。10テストすべてグリーン（デグレなし）。次は Step 5（ゲームロジック系の分離）。
 
 
 ---
@@ -23,6 +23,28 @@
 ## セッションログ
 
 <!-- 新しいエントリを上に追加していく（最新が一番上） -->
+
+### 2026-06-14 — Phase 0-2 Step 4：input.js / ui.js 切り出し
+
+**やったこと：**
+- **`game/input.js` を新設**（`initInput(deps)` factory）：キーボード・モバイル・スワイプ入力を game.js から切り出し。`heldKeys`（Set）と `processHeldKeys()` を返す。deps は `getIsDialog`/`getIsShop`/`getIsPaused`/`getIsShielding`/`setIsShielding`/`movePlayer`/`swordAttack`/`useSubItem`/`togglePause`/`toggleDebugMode`/`advanceDialog`/`closeShop`/`shopSelectPrev`/`shopSelectNext`/`shopBuy`/`pauseSelectPrev`/`pauseSelectNext`/`hasCleared`/`updateShieldHud`。`resumeAudio` / `MOVE_STEP` は直接 import
+- **`game/ui.js` を新設**（`createUi(deps)` factory）：HUD・ポーズ・ダイアログ・ショップを game.js から切り出し。deps に状態フラグの getter/setter を注入して read-only binding 問題を回避
+- game.js に `initInput` / `createUi` の import を追加し、factory 呼び出しブロック（`{ const _ui = createUi(...); const _in = initInput(...); ... }`）を追加
+- `updateShieldHud` と `processHeldKeys` は factory より前に使われるため `let` 宣言を事前追加（TDZ 回避）
+- **旧インラインコードを全削除**：キーボードリスナー（`document.addEventListener('keydown'...)`）・`processHeldKeys` 本体・モバイルボタン（`btn-sword`/`btn-sub`/`btn-menu`/`btn-shield`）・スワイプ・`updateShieldHud` 関数・2つ目の `let _inputModule` 宣言・`const heldKeys` 宣言・`let _activeHeldKeys` 宣言 → 計100行超を削除
+- `node scripts/check-errors.mjs` → エラーなし確認
+- `npx playwright test` で **10 passed**（VRT 含む全テストグリーン＝デグレなし）
+- PLAN.md（Step 4 完了）・PROGRESS.md・進捗サマリを更新
+
+**学び・気づき：**
+- token 長エラーで中断した際、前セッションで input.js / ui.js の**ファイル自体は作成済み**だったが、game.js への統合ブロック挿入と旧コード削除が未完または重複していた。再開時は `check-errors.mjs` でページエラーを確認することが最初のステップとして有効
+- `Identifier '_inputModule' has already been declared` エラー：新統合ブロックで `let _inputModule = null` が上部にあり、旧インラインコードにも同名宣言が残っていた。旧コードを丸ごと削除することで解決
+- `updateShieldHud is not defined` エラー：旧インライン `function updateShieldHud()` を削除したが、factory 上書き前に参照箇所があったため。`let updateShieldHud = () => {};` の事前宣言で解決
+- factory 生成関数を game.js の既存 `function` 宣言より先に呼び出す場合、`function` 宣言はホイスティングされるが `let` は TDZ があるため事前宣言が必要
+
+**▶ 次やること：**
+- [ ] Phase 0-2 Step 5：ゲームロジック系の分離（`player.js`: movePlayer/handleTileEvent、`combat.js`: swordAttack/dealDamageToEnemy/takeDamage、`projectile.js`: 投擲物・爆弾、`enemy-ai.js`: enemyTick/bossTickHitAndAway、`boss.js`: onBossDefeated/startBossBattle/startEnding）⚡。これらも factory + getter 注入方式を継続
+
 
 ### 2026-06-14 — Phase 0-2 Step 3：render-board.js / render-chars.js 切り出し
 
@@ -217,7 +239,7 @@
 
 | フェーズ | 状態 | メモ |
 |---|---|---|
-| Phase 0 技術基盤 | 🚧 進行中 | 0-0 ✅ / 0-1 ✅ 完了。0-2 進行中（Step 1〜3 完了: constants.js + save.js + passable.js + conditions.js + render-board.js + render-chars.js、10テストグリーン）。次は Step 4 入力・UI系（input.js / ui.js）|
+| Phase 0 技術基盤 | 🚧 進行中 | 0-0 ✅ / 0-1 ✅ 完了。0-2 進行中（Step 1〜4 完了: constants.js + save.js + passable.js + conditions.js + render-board.js + render-chars.js + input.js + ui.js、10テストグリーン）。次は Step 5 ゲームロジック系（player.js / combat.js / projectile.js / enemy-ai.js / boss.js）|
 
 | Phase 1 ストーリー基盤 | 🔲 未着手 | |
 | Phase 2 8ダンジョン | 🔲 未着手 | |

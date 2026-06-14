@@ -230,9 +230,10 @@ game/
   - `render-chars.js`：`renderChars()` / `addCharEl()` / `moveCharEl()`
   - ※ `charLayerElRef = { value }` ラッパーを game.js に導入し、render-board が `.value` に新しい charLayerEl を書き込み、render-chars はそれを読む設計。`addShieldOverlay` / `updatePlayerCharEl` も render-chars.js に同梱。10テストグリーン
 
-- [ ] **Step 4: 入力・UI系の分離**
+- [x] **Step 4: 入力・UI系の分離**
   - `input.js`：キーボード・タッチ・スワイプ
   - `ui.js`：HUD・ポーズ・ダイアログ・ショップ
+  - ※ `initInput(deps)` factory でキーボード・モバイル・スワイプリスナーを登録し `heldKeys` / `processHeldKeys` を返す。`createUi(deps)` factory で HUD・ポーズ・ダイアログ・ショップを生成。旧インラインコード（キーボードリスナー・processHeldKeys・モバイルボタン等）を削除し、factory 生成版で全て上書き。`updateShieldHud` / `processHeldKeys` は事前に `let` 宣言を追加して TDZ を回避。10テストグリーン（デグレなし）。
 
 - [ ] **Step 5: ゲームロジック系の分離**
   - `player.js`：`movePlayer()` / `handleTileEvent()`

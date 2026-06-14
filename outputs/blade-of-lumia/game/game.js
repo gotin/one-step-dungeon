@@ -27,6 +27,9 @@ import { createConditions } from './conditions.js';
 // ── 描画系（Phase 0-2 Step 3: render-board.js / render-chars.js へ切り出し）──────
 import { createRenderBoard } from './render-board.js';
 import { createRenderChars } from './render-chars.js';
+// ── 入力・UI（Phase 0-2 Step 4: input.js / ui.js へ切り出し）──────────────────
+import { initInput } from './input.js';
+import { createUi } from './ui.js';
 
 
 // ── DOM ───────────────────────────────────────────────────────
@@ -119,6 +122,10 @@ let pendingTriforcePos = null;
 // renderChars() 側は .value 経由で常に最新の要素を読む。
 let charLayerEl = null;
 const charLayerElRef = { value: null };  // ← 両モジュールが共有する参照ラッパー
+
+// ── Phase 0-2 Step 4: input.js factory の戻り値を保持（window.__game から参照）──
+// initInput 後に _inputModule に代入される。宣言はここに置くことで TDZ を回避。
+let _inputModule = null;
 
 // ── ユーティリティ ────────────────────────────────────────────
 // float 座標 → タイル整数座標
@@ -736,6 +743,25 @@ function pulse(text, duration = 2000) {
 	msgTimer = setTimeout(() => msgBarEl.classList.add('hidden'), duration);
 }
 
+// ── Phase 0-2 Step 4: factory で上書きされる関数の let 宣言 ──────────────────
+// ui.js / input.js の factory が生成した実装で上書きするため、事前に let 宣言する。
+// （function 宣言は下方で定義済みだが、updateShieldHud / processHeldKeys は
+//   旧インライン実装が削除されたため宣言が必要）
+let updateShieldHud  = () => {};   // ui.js の _ui.updateShieldHud で上書き
+let processHeldKeys  = () => {};   // input.js の _in.processHeldKeys で上書き
+
+// ── 状態フラグ getter/setter（Phase 0-2 Step 4: ui.js / input.js に注入するため）──
+// game.js の let 変数を外部モジュールが読み書きできるよう getter/setter を用意する。
+// 直接参照を避けることで read-only binding 問題を回避する。
+function getIsDialog()    { return isDialog; }
+function setIsDialog(v)   { isDialog = v; }
+function getIsShop()      { return isShop; }
+function setIsShop(v)     { isShop = v; }
+function getIsPaused()    { return isPaused; }
+function setIsPaused(v)   { isPaused = v; }
+function getIsShielding() { return isShielding; }
+function setIsShielding(v){ isShielding = v; }
+
 // ── 通行可否・条件評価（Phase 0-2 Step 2: passable.js / conditions.js へ切り出し）──
 // これらの関数は再代入される可変状態を参照するため、状態 getter と依存関数を
 // factory に注入して生成する（getter 経由で常に最新状態を読む）。生成された
@@ -808,6 +834,86 @@ const { checkStoneOnSwitch, evaluateConditions } = createConditions({
 	removeCharEl= _rc.removeCharEl;
 	addShieldOverlay    = _rc.addShieldOverlay;
 	updatePlayerCharEl  = _rc.updatePlayerCharEl;
+}
+
+// ── UI・入力（Phase 0-2 Step 4: ui.js / input.js へ切り出し）────────────────
+// createUi: HUD/ポーズ/ダイアログ/ショップを factory で生成し旧実装を上書き
+// initInput: キーボード・モバイル・スワイプリスナーを登録し heldKeys / processHeldKeys を返す
+
+{
+	const _ui = createUi({
+		getPlayer:         () => player,
+		getMapData:        () => mapData,
+		getCurrentLayer:   () => currentLayer,
+		getStageKey:       () => stageKey,
+		getSS,
+		startGameLoop,
+		stopGameLoop,
+		saveGame,
+		getIsDialog,  setIsDialog,
+		getIsShop,    setIsShop,
+		getIsPaused,  setIsPaused,
+		getIsShielding, setIsShielding,
+	});
+
+	// factory が生成した関数で旧実装を上書き
+	updateHud        = _ui.updateHud;
+	pulse            = _ui.pulse;
+	updateDungeonHud = _ui.updateDungeonHud;
+	updateShieldHud  = _ui.updateShieldHud;
+	startDialog      = (r, c, tileChar) => _ui.startDialog(r, c, tileChar, stageData, NPC_DEFAULT_DIALOG);
+	showDialogLine   = _ui.showDialogLine;
+	advanceDialog    = _ui.advanceDialog;
+	togglePause      = _ui.togglePause;
+	renderPauseMenu  = _ui.renderPauseMenu;
+	renderPauseDungeonMap = _ui.renderPauseDungeonMap;
+	pauseSelectPrev  = _ui.pauseSelectPrev;
+	pauseSelectNext  = _ui.pauseSelectNext;
+	openShop         = _ui.openShop;
+	closeShop        = _ui.closeShop;
+	renderShop       = _ui.renderShop;
+	shopSelectPrev   = _ui.shopSelectPrev;
+	shopSelectNext   = _ui.shopSelectNext;
+	shopBuy          = () => _ui.shopBuy(giveSubItem, updateHud);
+
+	// maybeShowSubItemHint は game.js 側の openDialog に相当する処理を使う
+	// ヒントダイアログは ui.js の openDialog を通して開く
+	maybeShowSubItemHint = () => {
+		if (player._shownSubItemHint) return;
+		player._shownSubItemHint = true;
+		_ui.openDialog('！ ヒント', [
+			'サブアイテムを手に入れた！',
+			'Escapeキー（または ≡ボタン）を押すと\nアイテム切り替え画面を開けます。',
+			'左右キーでBボタンに使うアイテムを\n切り替えることができます。',
+		]);
+	};
+
+	const _in = initInput({
+		getIsDialog:     () => getIsDialog(),
+		getIsShop:       () => getIsShop(),
+		getIsPaused:     () => getIsPaused(),
+		getIsShielding:  () => getIsShielding(),
+		setIsShielding,
+		movePlayer,
+		swordAttack,
+		useSubItem,
+		togglePause,
+		toggleDebugMode,
+		advanceDialog,
+		closeShop,
+		shopSelectPrev,
+		shopSelectNext,
+		shopBuy,
+		pauseSelectPrev,
+		pauseSelectNext,
+		hasCleared,
+		updateShieldHud,
+	});
+
+	// heldKeys と processHeldKeys を factory 生成版で上書き
+	// _inputModule に保存することで window.__game 定義後も参照できる
+	processHeldKeys = _in.processHeldKeys;
+	_inputModule = _in;  // window.__game の queueInput/releaseInput から参照するため保持
 }
 
 
@@ -3650,109 +3756,6 @@ function useSubItem() {
 	pulse(`${meta?.name ?? id} を使用！`);
 }
 
-// ── キーボード ────────────────────────────────────────────────
-// 現在押されているキーを管理（押しっぱなし移動用）
-const heldKeys = new Set();
-
-document.addEventListener('keydown', e => {
-	resumeAudio();
-	if (isDialog) {
-		if ([' ','Enter','z','Z'].includes(e.key)) { e.preventDefault(); advanceDialog(); }
-		return;
-	}
-	if (isShop) {
-		if (e.key === 'Escape') { e.preventDefault(); closeShop(); return; }
-		if (e.key === 'ArrowUp'   || e.key === 'w' || e.key === 'W') { e.preventDefault(); shopSelectPrev(); return; }
-		if (e.key === 'ArrowDown' || e.key === 's' || e.key === 'S') { e.preventDefault(); shopSelectNext(); return; }
-		if ([' ','Enter','z','Z'].includes(e.key)) { e.preventDefault(); shopBuy(); return; }
-		return;
-	}
-	if (isPaused) {
-		if (e.key === 'Escape' || e.key === 'Enter') { e.preventDefault(); togglePause(); return; }
-		if (e.key === 'ArrowLeft')  { e.preventDefault(); pauseSelectPrev(); return; }
-		if (e.key === 'ArrowRight') { e.preventDefault(); pauseSelectNext(); return; }
-		return;
-	}
-	// 方向キーは heldKeys で管理（gameTick で処理）
-	if (['ArrowUp','w','W','ArrowDown','s','S','ArrowLeft','a','A','ArrowRight','d','D'].includes(e.key)) {
-		e.preventDefault();
-		heldKeys.add(e.key);
-		return;
-	}
-	if ([' ','z','Z'].includes(e.key)) { e.preventDefault(); swordAttack(); return; }
-	if (e.key === 'b' || e.key === 'B') { e.preventDefault(); useSubItem(); return; }
-	// Mac: Commandキー / Windows: Altキー でもサブアイテム使用
-	if (e.key === 'Meta' || e.key === 'Alt') { e.preventDefault(); useSubItem(); return; }
-	if (e.key === 'Escape') { e.preventDefault(); togglePause(); return; }
-	if (e.key === 'g' || e.key === 'G') { e.preventDefault(); toggleDebugMode(); return; }
-});
-document.addEventListener('keyup', e => {
-	heldKeys.delete(e.key);
-});
-
-// 二周目移動速度ブースト用アキュムレータ
-let _moveSpeedAccum = 0;
-
-// 押しっぱなし移動処理（gameTick から呼ぶ）
-function processHeldKeys() {
-	let dir = null;
-	if (heldKeys.has('ArrowUp')    || heldKeys.has('w') || heldKeys.has('W')) dir = 'up';
-	else if (heldKeys.has('ArrowDown')  || heldKeys.has('s') || heldKeys.has('S')) dir = 'down';
-	else if (heldKeys.has('ArrowLeft')  || heldKeys.has('a') || heldKeys.has('A')) dir = 'left';
-	else if (heldKeys.has('ArrowRight') || heldKeys.has('d') || heldKeys.has('D')) dir = 'right';
-	if (!dir) { _moveSpeedAccum = 0; return; }
-
-	// 二周目（姫パレット）は移動速度1.2倍
-	// アキュムレータに 1.2 を加算し、整数部を消費して movePlayer を呼ぶ
-	const speed = hasCleared() ? 1.2 : 1.0;
-	_moveSpeedAccum += speed;
-	const times = Math.floor(_moveSpeedAccum);
-	_moveSpeedAccum -= times;
-	for (let i = 0; i < times; i++) movePlayer(dir);
-}
-
-function updateShieldHud() {
-	document.getElementById('btn-shield')?.classList.toggle('defending', isShielding);
-}
-
-// ── モバイル ──────────────────────────────────────────────────
-document.querySelectorAll('.dpad-btn[data-dir]').forEach(btn => {
-	const dir = btn.dataset.dir;
-	if (!dir) return;
-	btn.addEventListener('touchstart', e => { e.preventDefault(); resumeAudio(); movePlayer(dir); }, { passive: false });
-	btn.addEventListener('mousedown', () => { resumeAudio(); movePlayer(dir); });
-});
-document.getElementById('btn-sword').addEventListener('click', () => { resumeAudio(); swordAttack(); });
-document.getElementById('btn-sub').addEventListener('click',   () => { resumeAudio(); useSubItem(); });
-document.getElementById('btn-menu').addEventListener('click',  () => { resumeAudio(); togglePause(); });
-const shieldBtn = document.getElementById('btn-shield');
-shieldBtn.addEventListener('touchstart', e => { e.preventDefault(); isShielding = true;  updateShieldHud(); }, { passive: false });
-shieldBtn.addEventListener('touchend',   () => { isShielding = false; updateShieldHud(); });
-shieldBtn.addEventListener('mousedown',  () => { isShielding = true;  updateShieldHud(); });
-shieldBtn.addEventListener('mouseup',    () => { isShielding = false; updateShieldHud(); });
-gameoverRetryEl.addEventListener('click', () => { resumeAudio(); retryGame(); });
-// エンディング「はじめから」ボタン
-endingRestartEl.addEventListener('click', () => {
-	endingOverlayEl.classList.add('hidden');
-	isGameover = false;
-	startNewGame();
-});
-
-// スワイプ
-let touchStartX = 0, touchStartY = 0;
-document.addEventListener('touchstart', e => {
-	if (e.target.closest('#mobile-ctrl')) return;
-	touchStartX = e.touches[0].clientX; touchStartY = e.touches[0].clientY;
-}, { passive: true });
-document.addEventListener('touchend', e => {
-	if (e.target.closest('#mobile-ctrl')) return;
-	const dx = e.changedTouches[0].clientX - touchStartX;
-	const dy = e.changedTouches[0].clientY - touchStartY;
-	if (Math.abs(dx) < 30 && Math.abs(dy) < 30) return;
-	if (Math.abs(dx) > Math.abs(dy)) movePlayer(dx > 0 ? 'right' : 'left');
-	else movePlayer(dy > 0 ? 'down' : 'up');
-}, { passive: true });
-
 // ── Phase 8.2: ドロップエフェクト（茂み切り等でアイテムが飛び出す） ──
 function spawnDropEffect(r, c, icon, color) {
 	if (!charLayerEl) return;
@@ -3970,12 +3973,13 @@ window.__game = {
 	queueInput(dir) {
 		const keyMap = { up: 'ArrowUp', down: 'ArrowDown', left: 'ArrowLeft', right: 'ArrowRight' };
 		const k = keyMap[dir];
-		if (k) heldKeys.add(k);
+		// initInput 後は _inputModule.heldKeys を優先使用（processHeldKeys と同じ Set を操作）
+		if (k) (_inputModule ? _inputModule.heldKeys : heldKeys).add(k);
 	},
 	releaseInput(dir) {
 		const keyMap = { up: 'ArrowUp', down: 'ArrowDown', left: 'ArrowLeft', right: 'ArrowRight' };
 		const k = keyMap[dir];
-		if (k) heldKeys.delete(k);
+		if (k) (_inputModule ? _inputModule.heldKeys : heldKeys).delete(k);
 	},
 	movePlayer: (dir) => movePlayer(dir),
 	swordAttack: () => swordAttack(),
