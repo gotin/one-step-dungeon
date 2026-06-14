@@ -274,9 +274,11 @@ game/
 - ※ 0-5 でエディタ機能（スプライト/キャラ/アイテム編集）を追加する**前に**分割しておく
 
 **game.css（1660行）：**
-- [ ] CSS を機能別に分割（レイアウト / HUD / キャラ・スプライト / アニメーション / オーバーレイ など）
-- [ ] 目標：各ファイル400行以内
-- `@import` または `<link>` 複数で読み込む
+- [x] CSS を機能別に分割（レイアウト / HUD / キャラ・スプライト / アニメーション / オーバーレイ など）
+- [x] 目標：各ファイル400行以内
+- [x] `@import` または `<link>` 複数で読み込む
+- ※ `game.css` を `@import` のみのエントリファイルにし、`css/` 配下へ11ファイルに分割（base / hud / board / effects / overlays / mobile / responsive / shop / boss / ending / tiles）。@import 順は元のソース順（カスケード）を厳密に維持（特に `#boss-hpbar` の bottom が `@media(PC)` より後で後勝ちになる挙動を保つため boss.css を responsive.css の後に配置）。index.html は無改修。13テストグリーン（VRT含む＝見た目差分なし）
+
 
 ---
 

@@ -22,7 +22,14 @@
 
 ## 記録
 
+### 2026-06-14 — game.css は @import エントリ + 機能別サブファイルに分割する
+- **決定：** `game.css` を `@import` 専用のエントリファイルにし、機能別に `game/css/` 配下へ11ファイル（base / hud / board / effects / overlays / mobile / responsive / shop / boss / ending / tiles）へ分割する。
+- **理由：** index.html を無改修にでき（`<link href="game.css">` のまま）、ファイル単位で責務が明確になる。`@import` は CSS 先頭にまとめる制約があるが、エントリを @import 専用にすれば自然に満たせる。
+- **代替案：** (A) index.html に `<link>` を複数並べる → index.html を改修する必要があり、読み込み順の管理も HTML 側に漏れる。(B) ビルドツールで結合 → Phase 0-6 まで plain ESModule 方針なので時期尚早。→ いずれも却下。
+- **結果／影響：** **@import の順序は元 game.css のソース順（カスケード）を厳密に維持する必要がある。** 特に `#boss-hpbar { bottom: 148px }` は元ソースで `@media(PC){#boss-hpbar{bottom:20px}}` より後に定義され後勝ちになるため、`responsive.css` → `boss.css` の順で読み込む。今後サブファイルを足す/並べ替える際もこのカスケード前提を壊さないこと。VRT（`game-start.png`）が見た目の不変を保証する安全網になった（13テストグリーン）。
+
 ### 2026-06-13 — Phase 0（技術基盤）を最優先にする
+
 - **決定：** ゲーム機能追加（Phase 1以降）の前に、技術基盤の整備（Phase 0）を完了させる。
 - **理由：** game.js が 4098 行に肥大化しており、この状態で機能を足し続けるとバグ修正・デバッグが困難になる。
 - **代替案：** 機能追加を優先し、分割は後回し → 却下（技術的負債が雪だるま式に増える）。

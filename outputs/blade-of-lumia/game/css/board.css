@@ -1,0 +1,154 @@
+/* ── ボード ───────────────────────────────────────────────── */
+#board-wrap {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    position: fixed;
+    inset: 0;
+    overflow: hidden;
+}
+
+#board {
+    display: grid;
+    gap: 0;
+    background: var(--floor-color);
+    border: 2px solid #2a3a2a;
+    position: relative;
+    transform-origin: center center;
+    /* JS で transform: scale(N) を動的にセットする */
+    /* スケール時のサブピクセルによる格子線を防ぐ */
+    image-rendering: pixelated;
+    will-change: transform;
+}
+
+/* セル間の隙間をなくす（サブピクセル対策） */
+.cell {
+    outline: none;
+    margin: 0;
+    padding: 0;
+}
+
+/* キャラクター絶対配置レイヤー（半セル移動用） */
+#char-layer {
+    position: absolute;
+    top: 0;
+    left: 0;
+    pointer-events: none;
+    z-index: 5;
+}
+
+/* char-layer 内の各キャラ */
+.char-abs {
+    position: absolute;
+    width: var(--cell);
+    height: var(--cell);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    pointer-events: none;
+    /* transition で滑らかに動く */
+    transition: left 0.08s linear, top 0.08s linear;
+}
+
+.char-abs canvas.sprite {
+    /* char-layer 内では absolute 配置ではなく static に戻す */
+    position: static;
+    transform: none;
+    /* キャラはセルいっぱいのサイズ。
+       半セル移動はサイズではなく「位置の刻み」の話なのでサイズは変えない */
+    width: var(--cell) !important;
+    height: var(--cell) !important;
+}
+
+/* ── セル ──────────────────────────────────────────────────── */
+.cell {
+    width: var(--cell);
+    height: var(--cell);
+    background: var(--floor-color);
+    position: relative;
+    overflow: visible;
+}
+
+.cell.wall {
+    background: var(--wall-color);
+}
+
+.cell.water {
+    background: #0e2040;
+}
+
+.cell.gate {
+    background: #1a2c40;
+}
+
+.cell.door {
+    background: #2a1a08;
+}
+
+.cell.switch-off {
+    background: #1a3010;
+}
+
+.cell.switch-on {
+    background: #2a5020;
+}
+
+.cell.breakable-wall {
+    background: #3a3028;
+}
+
+/* map-enter: 背景はbgTileクラス（bg-grass等）に任せる。独自背景なし */
+
+/* ── Phase 6.5: ドアウェイ ──────────────────────────────────── */
+/* 常時開放（アーチ通路）*/
+.cell.doorway {
+    background: #0e1a20;
+}
+
+/* ボス部屋ドアウェイ（開）*/
+.cell.doorway-boss {
+    background: #1a0c10;
+}
+
+/* ボス部屋ドアウェイ（閉・ロック中）*/
+.cell.doorway-boss-closed {
+    background: #3a1020;
+}
+
+/* 条件付きドアウェイ（閉）*/
+.cell.doorway-locked {
+    background: #121830;
+}
+
+/* 条件付きドアウェイ（開）*/
+.cell.doorway-locked-open {
+    background: #0e1a20;
+}
+
+/* スプライト */
+canvas.sprite {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    image-rendering: pixelated;
+    pointer-events: none;
+}
+
+/* キャラクター（大きめ）*/
+canvas.sprite.char-sprite {
+    width: calc(var(--cell) * 0.85);
+    height: calc(var(--cell) * 0.85);
+}
+
+/* ギミックアイテム（中サイズ） */
+canvas.sprite.obj-sprite {
+    width: calc(var(--cell) * 0.7);
+    height: calc(var(--cell) * 0.7);
+}
+
+/* 小アイテム */
+canvas.sprite.item-sprite {
+    width: calc(var(--cell) * 0.55);
+    height: calc(var(--cell) * 0.55);
+}

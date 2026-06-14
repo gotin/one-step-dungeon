@@ -1,0 +1,329 @@
+/* ── メッセージバー ──────────────────────────────────────── */
+#msg-bar {
+    position: fixed;
+    bottom: 204px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(0, 20, 0, 0.88);
+    border: 1px solid #4a8a4a;
+    border-radius: 6px;
+    padding: 6px 18px;
+    font-size: 14px;
+    color: #c0f0c0;
+    white-space: nowrap;
+    z-index: 40;
+    pointer-events: none;
+}
+
+#msg-bar.hidden {
+    display: none;
+}
+
+/* ── NPC 会話ダイアログ ─────────────────────────────────── */
+#dialog-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.5);
+    display: flex;
+    align-items: flex-end;
+    justify-content: center;
+    padding-bottom: 148px;
+    z-index: 50;
+}
+
+#dialog-overlay.hidden {
+    display: none;
+}
+
+#dialog-box {
+    background: #0a1418;
+    border: 2px solid #4a8a4a;
+    border-radius: 8px;
+    padding: 14px 20px;
+    max-width: 500px;
+    width: 92%;
+}
+
+#dialog-name {
+    font-size: 12px;
+    color: var(--accent);
+    margin-bottom: 6px;
+    letter-spacing: 1px;
+}
+
+#dialog-text {
+    font-size: 15px;
+    color: #d0e8d0;
+    line-height: 1.6;
+    min-height: 44px;
+}
+
+#dialog-next {
+    font-size: 11px;
+    color: #5a7a5a;
+    text-align: right;
+    margin-top: 8px;
+    animation: blink-text 1.0s infinite;
+}
+
+@keyframes blink-text {
+    0%, 100% {
+        opacity: 1;
+    }
+
+    50% {
+        opacity: 0.3;
+    }
+}
+
+/* ── ポーズ画面 ──────────────────────────────────────────── */
+#pause-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.75);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 60;
+}
+
+#pause-overlay.hidden {
+    display: none;
+}
+
+#pause-box {
+    background: #0a1418;
+    border: 2px solid #4a6a8a;
+    border-radius: 10px;
+    padding: 20px 28px;
+    min-width: 320px;
+    max-width: 90vw;
+}
+
+#pause-title {
+    font-size: 18px;
+    color: #80c0f0;
+    text-align: center;
+    margin-bottom: 16px;
+    letter-spacing: 3px;
+}
+
+#pause-items {
+    display: flex;
+    gap: 12px;
+    justify-content: center;
+    flex-wrap: wrap;
+    margin-bottom: 12px;
+}
+
+.pause-item-slot {
+    border: 2px solid #2a4a6a;
+    border-radius: 6px;
+    padding: 8px 12px;
+    text-align: center;
+    min-width: 72px;
+    cursor: pointer;
+    transition: border-color 0.1s;
+}
+
+.pause-item-slot.selected {
+    border-color: #80c0f0;
+    background: rgba(128, 192, 240, 0.12);
+}
+
+.pause-item-icon {
+    font-size: 24px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 28px;
+}
+
+.pause-item-name {
+    font-size: 10px;
+    color: #8a9aaa;
+    margin-top: 3px;
+}
+
+.pause-item-count {
+    font-size: 13px;
+    color: #f0d050;
+}
+
+#pause-hint {
+    font-size: 11px;
+    color: #4a6a8a;
+    text-align: center;
+    margin-bottom: 10px;
+}
+
+#pause-stats {
+    font-size: 13px;
+    color: #8a9aaa;
+    text-align: center;
+}
+
+/* ── ポーズ画面：ダンジョンマップ ─────────────────────────── */
+#pause-dungeon-map {
+    margin-top: 16px;
+    border-top: 1px solid #2a4a6a;
+    padding-top: 12px;
+}
+
+#pause-map-title {
+    font-size: 13px;
+    color: #8ab0d0;
+    text-align: center;
+    margin-bottom: 8px;
+    letter-spacing: 1px;
+}
+
+#pause-map-canvas {
+    display: block;
+    margin: 0 auto;
+    image-rendering: pixelated;
+    border: 1px solid #2a4a6a;
+    border-radius: 4px;
+}
+
+#pause-map-hint {
+    font-size: 11px;
+    color: #f08080;
+    text-align: center;
+    margin-top: 6px;
+}
+
+/* ── ゲームオーバー ─────────────────────────────────────── */
+#gameover-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.85);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 70;
+}
+
+#gameover-overlay.hidden {
+    display: none;
+}
+
+#gameover-box {
+    text-align: center;
+}
+
+.gameover-title {
+    font-size: 36px;
+    color: var(--danger);
+    letter-spacing: 6px;
+    margin-bottom: 28px;
+    text-shadow: 0 0 20px rgba(255, 60, 48, 0.6);
+}
+
+#gameover-retry {
+    background: #1a2228;
+    border: 2px solid #3a4a5a;
+    border-radius: 8px;
+    color: var(--hud-fg);
+    font-family: inherit;
+    font-size: 15px;
+    padding: 10px 28px;
+    cursor: pointer;
+    transition: border-color 0.1s;
+}
+
+#gameover-retry:hover {
+    border-color: #80c0f0;
+    color: #80c0f0;
+}
+
+/* ── タイトルダイアログ ─────────────────────────────────── */
+#title-overlay,
+#confirm-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.85);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 80;
+}
+
+#title-overlay.hidden,
+#confirm-overlay.hidden {
+    display: none;
+}
+
+#title-box,
+#confirm-box {
+    background: #0a1418;
+    border: 2px solid #4a6a4a;
+    border-radius: 12px;
+    padding: 32px 40px;
+    text-align: center;
+    max-width: 360px;
+    width: 90%;
+}
+
+#title-logo {
+    font-size: 22px;
+    color: #f0d050;
+    font-weight: bold;
+    letter-spacing: 3px;
+    margin-bottom: 28px;
+    text-shadow: 0 0 16px rgba(240, 208, 80, 0.6);
+}
+
+#title-buttons,
+#confirm-buttons {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+#confirm-msg {
+    font-size: 14px;
+    color: #c0d0c0;
+    line-height: 1.7;
+    margin-bottom: 24px;
+}
+
+.title-btn {
+    padding: 12px 24px;
+    border-radius: 8px;
+    font-family: inherit;
+    font-size: 15px;
+    font-weight: bold;
+    cursor: pointer;
+    transition: background 0.12s, border-color 0.12s;
+    border: 2px solid #4a8a4a;
+    background: rgba(74, 138, 74, 0.18);
+    color: #80d080;
+}
+
+.title-btn:hover {
+    background: rgba(74, 138, 74, 0.35);
+    border-color: #80d080;
+}
+
+.title-btn--new {
+    border-color: #4a6a8a;
+    background: rgba(74, 106, 138, 0.18);
+    color: #80b0d0;
+}
+
+.title-btn--new:hover {
+    background: rgba(74, 106, 138, 0.35);
+    border-color: #80b0d0;
+}
+
+.title-btn--danger {
+    border-color: #8a3030;
+    background: rgba(138, 48, 48, 0.18);
+    color: #f08080;
+}
+
+.title-btn--danger:hover {
+    background: rgba(138, 48, 48, 0.35);
+    border-color: #f08080;
+}

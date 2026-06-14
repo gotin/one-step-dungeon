@@ -1,0 +1,103 @@
+/* ── モバイルコントローラー ─────────────────────────────── */
+#mobile-ctrl {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 140px;
+    background: rgba(6, 10, 12, 0.92);
+    border-top: 1px solid #1a2a1a;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 20px;
+    z-index: 30;
+}
+
+/* D-PAD */
+#dpad {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+}
+
+.dpad-mid {
+    display: flex;
+    gap: 2px;
+}
+
+.dpad-btn {
+    width: 40px;
+    height: 40px;
+    background: #1a2228;
+    border: 1px solid #2a3a3a;
+    border-radius: 6px;
+    color: #8aaabb;
+    font-size: 16px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
+}
+
+.dpad-center {
+    background: #0e1a1e;
+    cursor: default;
+}
+
+.dpad-btn:active {
+    background: #2a3a44;
+}
+
+/* アクションボタン */
+#action-btns {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+}
+
+.action-btn {
+    width: 58px;
+    height: 50px;
+    background: #1a2228;
+    border: 1px solid #2a4040;
+    border-radius: 8px;
+    color: #8aaabb;
+    font-size: 15px;
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
+}
+
+.action-btn:active {
+    background: #2a3a44;
+}
+
+#btn-sword {
+    border-color: #a08030;
+    color: #f0d050;
+}
+
+#btn-shield {
+    border-color: #2040a0;
+    color: #6090f0;
+}
+
+#btn-sub {
+    border-color: #3a6a3a;
+    color: #80c080;
+}
+
+#btn-menu {
+    font-size: 11px;
+}
+
+/* 防御中スタイル */
+#btn-shield.defending {
+    background: #1a2860;
+    border-color: #4070d0;
+    box-shadow: 0 0 10px rgba(64, 112, 208, 0.5);
+}

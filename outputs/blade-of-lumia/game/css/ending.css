@@ -1,0 +1,183 @@
+/* ── エンディング ───────────────────────────────────────────── */
+#ending-overlay {
+    position: fixed;
+    inset: 0;
+    background: #060a0c;
+    z-index: 90;
+    overflow: hidden;
+}
+
+#ending-overlay.hidden {
+    display: none;
+}
+
+/* フェーズ1：スタッフロール */
+#ending-phase1 {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    background: #060a0c;
+}
+
+#ending-scroll-wrap {
+    position: absolute;
+    inset: 0;
+    overflow: hidden;
+}
+
+#ending-scroll {
+    position: absolute;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 90%;
+    max-width: 480px;
+    text-align: center;
+    line-height: 2;
+    color: #d0e8d0;
+    top: 100%;
+    animation: ending-scroll-up 10s linear forwards;
+}
+
+@keyframes ending-scroll-up {
+    0% {
+        top: 100%;
+    }
+
+    100% {
+        top: -600%;
+    }
+}
+
+#ending-scroll .scroll-game-title {
+    font-size: 3.6rem;
+    color: #f0d050;
+    letter-spacing: 4px;
+    font-weight: bold;
+    text-shadow: 0 0 20px rgba(240, 200, 60, 0.8);
+    margin-bottom: 12px;
+}
+
+#ending-scroll .scroll-subtitle {
+    font-size: 1.6rem;
+    color: #80a080;
+    margin-bottom: 60px;
+}
+
+#ending-scroll .scroll-role {
+    font-size: 1.3rem;
+    color: #6a9070;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    margin-top: 28px;
+}
+
+#ending-scroll .scroll-name {
+    font-size: 2.2rem;
+    color: #d0f0d0;
+    letter-spacing: 2px;
+}
+
+#ending-scroll .scroll-divider {
+    width: 60px;
+    height: 1px;
+    background: #2a4a2a;
+    margin: 16px auto;
+}
+
+#ending-scroll .scroll-thanks {
+    font-size: 2.4rem;
+    color: #f0d050;
+    letter-spacing: 3px;
+    margin-top: 60px;
+    text-shadow: 0 0 10px rgba(240, 200, 60, 0.6);
+}
+
+#ending-scroll .scroll-copyright {
+    font-size: 1.4rem;
+    color: #4a6a4a;
+    margin-top: 12px;
+    margin-bottom: 120px;
+}
+
+/* フェーズ2：THE END */
+#ending-phase2 {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 24px;
+    background: #060a0c;
+    animation: ending-phase2-fadein 2s ease forwards;
+}
+
+#ending-phase2.hidden {
+    display: none;
+}
+
+@keyframes ending-phase2-fadein {
+    0% {
+        opacity: 0;
+    }
+
+    100% {
+        opacity: 1;
+    }
+}
+
+#ending-happy-scene {
+    display: flex;
+    align-items: flex-end;
+    justify-content: center;
+    gap: 32px;
+}
+
+.ending-big-sprite {
+    image-rendering: pixelated;
+    width: 96px;
+    height: 96px;
+    position: relative;
+    overflow: visible;
+}
+
+/* エンディングのアニメスプライト canvas を親に合わせる */
+.ending-big-sprite canvas.sprite {
+    position: absolute !important;
+    top: 0 !important;
+    left: 0 !important;
+    transform: none !important;
+    width: 100% !important;
+    height: 100% !important;
+    image-rendering: pixelated;
+}
+
+#ending-the-end {
+    font-size: 3rem;
+    color: #f0d050;
+    letter-spacing: 8px;
+    font-weight: bold;
+    text-shadow: 0 0 30px rgba(240, 200, 60, 0.9);
+    animation: ending-theend-glow 2s ease-in-out infinite;
+}
+
+@keyframes ending-theend-glow {
+    0%, 100% {
+        text-shadow: 0 0 20px rgba(240, 200, 60, 0.6);
+    }
+
+    50% {
+        text-shadow: 0 0 60px rgba(240, 200, 60, 1.0), 0 0 100px rgba(255, 230, 80, 0.5);
+    }
+}
+
+#ending-msg {
+    font-size: 14px;
+    color: #c0d8c0;
+    line-height: 1.8;
+    text-align: center;
+    max-width: 380px;
+}

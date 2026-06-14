@@ -14,8 +14,8 @@
 ## 📍 現在地（常に最新に保つ）
 
 - **進行中フェーズ：** Phase 0（技術基盤）
-- **進行中タスク：** Phase 0-3 完了・バグ修正完了 → 次は 0-3b（editor.js / game.css の分割）
-- **直近の状態：** `sprites.js`（1440行）を4サブファイル＋aggregatorに分割完了。バグ修正：看板（TILE.SIGN）のダイアログ文章が表示されない不具合を修正。`game.js` の看板コードが `dialogLines`（game.js ローカル変数）を直接セットしており、`_ui.showDialogLine` に届かなかったのが原因。`openDialog` を `let openDialog = () => {}` で事前宣言し、ui factory ブロックで `openDialog = (name, lines) => _ui.openDialog(name, lines)` と上書き、看板コードを `openDialog(signData.name, signData.lines)` 呼び出しに変更して修正。**13テストグリーン**（デグレなし）。
+- **進行中タスク：** Phase 0-3b の **game.css 分割 完了** → 次は 0-3b の **editor.js（1581行）分割**
+- **直近の状態：** `game.css`（1661行）を `@import` エントリ化し、`css/` 配下へ11ファイルに分割完了（base / hud / board / effects / overlays / mobile / responsive / shop / boss / ending / tiles）。@import 順は元ソースのカスケード順を厳密に維持。**13テストグリーン（VRT含む＝見た目の差分ゼロ）**。残る editor.js（1581行）は自動テストが無い大規模DOMモジュールのため、分割は慎重に（手動確認手順の整備が前提）。
 
 
 ---
@@ -23,6 +23,34 @@
 ## セッションログ
 
 <!-- 新しいエントリを上に追加していく（最新が一番上） -->
+
+### 2026-06-14 — Phase 0-3b：game.css を11ファイルに分割（@import エントリ化）
+
+**やったこと：**
+- **`game.css`（1661行）を `@import` のみのエントリファイルに書き換え**、機能別に `game/css/` 配下へ分割：
+  - `base.css`：リセット・CSS変数（`:root`）・html/body
+  - `hud.css`：HUD（ハート・装備・サブアイテム・ウォレット）
+  - `board.css`：ボード・セル・char-layer・スプライトサイズ・ドアウェイ背景
+  - `effects.css`：剣スラッシュ/突き・ダメージ・点滅・爆発・盾ブロック・ドア・魔王オーラ・家ドア・stone-glow・`.hidden`
+  - `overlays.css`：メッセージバー・NPCダイアログ・ポーズ・ゲームオーバー・タイトル/確認
+  - `mobile.css`：モバイルコントローラー（D-PAD・アクションボタン）
+  - `responsive.css`：`@media (min-width: 600px)` PC向け
+  - `shop.css`：ショップ
+  - `boss.css`：ボスHPバー・ダンジョンHUD中央・暗転オーバーレイ
+  - `ending.css`：エンディング（スタッフロール・THE END）
+  - `tiles.css`：bgTile／フィールドタイル背景色
+- **カスケード順を厳密に保持**：`#boss-hpbar { bottom: 148px }` は元ソースで `@media(PC){#boss-hpbar{bottom:20px}}` より**後**に定義され後勝ちになる。これを再現するため @import 順を `responsive.css` → `boss.css` の順に配置。`#hud`/`#msg-bar` 等は @media より前なので hud/overlays を responsive より前に置いて元挙動を維持
+- `index.html` は無改修（`<link rel="stylesheet" href="game.css">` のまま）
+- `npx playwright test` → **13 passed**（VRT の `game-start.png` が一致＝見た目の差分ゼロ）
+
+**学び・気づき：**
+- CSS 分割で最も注意すべきは**カスケード順（同詳細度のルールの後勝ち）**。特に `@media` と通常ルールの定義順が逆転すると PC 表示で差が出る。元ソースの行順を @import 順にそのまま写すのが最も安全
+- `@import` は CSS の先頭にまとめて書く必要がある（他ルールより前）。エントリを @import 専用にすればこの制約を自然に満たせる
+- VRT（`toHaveScreenshot`）が「見た目が1px も変わっていない」ことを保証してくれるので、CSS の機械的分割では特に心強い安全網になった
+
+**▶ 次やること：**
+- [ ] Phase 0-3b：`editor.js`（1581行）を機能別に分割 🧠→⚡。ただし editor は自動テストが無くデグレ検知できないため、(1) まず Playwright で editor の最小スモーク（起動・タイル配置・JSON エクスポート）を1〜2本張る → (2) その後 factory/モジュール分割、の順で進めるのが安全
+
 
 ### 2026-06-14 — Phase 0-3：sprites.js を4サブファイル＋aggregatorに分割
 
@@ -363,7 +391,8 @@
 
 | フェーズ | 状態 | メモ |
 |---|---|---|
-| Phase 0 技術基盤 | 🚧 進行中 | 0-0 ✅ / 0-1 ✅ / 0-2 ✅ / 0-3 ✅ 完了。sprites.js を4サブファイル＋aggregatorに分割（sprites-player.js / sprites-enemies.js / sprites-items.js / sprites-tiles.js、13テストグリーン）。次は 0-3b（editor.js / game.css 分割）|
+| Phase 0 技術基盤 | 🚧 進行中 | 0-0 ✅ / 0-1 ✅ / 0-2 ✅ / 0-3 ✅ 完了。0-3b は game.css 分割 ✅（11ファイル化・VRT含む13テストグリーン）／editor.js 分割は未着手。次は editor.js（1581行）分割（先に editor 用スモークテストを張るのが安全）|
+
 
 | Phase 1 ストーリー基盤 | 🔲 未着手 | |
 | Phase 2 8ダンジョン | 🔲 未着手 | |
