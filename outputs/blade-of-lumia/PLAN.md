@@ -107,6 +107,11 @@ npcs.js      17行  OK
   - `isPassable()` / `tilePassable()` / `toTileRow()` / `toTileCol()` など
   - テストランナーは Node 標準の `node --test`（追加依存なし）
 
+#### ④ 投擲物テスト（サブアイテム動作スモーク）
+- [ ] **弓矢テスト**：弓矢を装備・使用 → N フレーム後に `__game.getProjectiles()` に矢が存在し、座標が前進していることを確認
+  - 背景：Phase 0-2 Step 5 の factory 切り出し後、useSubItem が旧ローカル変数に push し続けていたバグ（投擲物が動かない）がテストで検出できず実機確認で発覚した。今後の factory 切り出しでも同種のリグレッションが起きうるため追加
+- [ ] **ブーメランテスト**：ブーメランを装備・使用 → N フレーム後に飛翔中の投擲物が存在し、プレイヤー元位置から離れていることを確認（`returning: false` の間は前進）
+
 #### ③ 手動テストチェックリスト（自動化が難しい演出系）
 - [ ] ボス撃破演出・エンディング・ダイアログ表示などの確認手順を md 化
 
@@ -235,12 +240,12 @@ game/
   - `ui.js`：HUD・ポーズ・ダイアログ・ショップ
   - ※ `initInput(deps)` factory でキーボード・モバイル・スワイプリスナーを登録し `heldKeys` / `processHeldKeys` を返す。`createUi(deps)` factory で HUD・ポーズ・ダイアログ・ショップを生成。旧インラインコード（キーボードリスナー・processHeldKeys・モバイルボタン等）を削除し、factory 生成版で全て上書き。`updateShieldHud` / `processHeldKeys` は事前に `let` 宣言を追加して TDZ を回避。10テストグリーン（デグレなし）。
 
-- [x] **Step 5: ゲームロジック系の分離（部分完了）**
+- [x] **Step 5: ゲームロジック系の分離（完了）**
   - `projectile.js`：投擲物・爆弾・盾ブロック判定（`createProjectile` factory）✅
   - `enemy-ai.js`：`enemyTick()` / `bossTickHitAndAway()` / `enemyChase()` / `enemyAttack()` / `checkEnemyContact()`（`createEnemyAi` factory）✅
-  - `player.js`：`movePlayer()` / `handleTileEvent()` → 次 Step で実施
-  - `combat.js`：`swordAttack()` / `dealDamageToEnemy()` / `takeDamage()` → 次 Step で実施
-  - `boss.js`：`onBossDefeated()` / `startBossBattle()` / `startEnding()` → 次 Step で実施
+  - `player.js`：`movePlayer()` / `handleTileEvent()` / `checkSwitchOff()` / `giveSubItem()` / `spawnDropEffect()` 等（`createPlayer` factory）✅
+  - `combat.js`：`swordAttack()` / `dealDamageToEnemy()` / `takeDamage()` / `gameOver()` / `showDmgPopupFloat()` 等（`createCombat` factory）✅
+  - `boss.js`：`onBossDefeated()` / `startBossBattle()` / `startEnding()` / `checkTriforceClear()` / `checkPendingTriforce()` 等（`createBoss` factory）✅
   - ※ factory + getter 注入方式を踏襲。`_proj.fireEnemyProjectile` / `_proj.isShieldBlockingDir` / `_proj.showShieldBlockEffect` を enemy-ai に deps として渡すことで循環参照フリーな設計を実現。10テストグリーン（デグレなし）
 
 - [ ] **Step 6: エントリポイントの整理**

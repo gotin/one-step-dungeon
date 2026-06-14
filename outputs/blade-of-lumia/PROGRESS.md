@@ -14,8 +14,8 @@
 ## 📍 現在地（常に最新に保つ）
 
 - **進行中フェーズ：** Phase 0（技術基盤）
-- **進行中タスク：** 0-2 game.js モジュール分割 Step 5 続き（player.js / combat.js / boss.js の切り出し）
-- **直近の状態：** Phase 0-2 Step 5 部分完了。`projectile.js`（投擲物・爆弾・盾ブロック判定）と `enemy-ai.js`（敵AI全般）を `createProjectile` / `createEnemyAi` factory で切り出し。`_proj.fireEnemyProjectile` / `_proj.isShieldBlockingDir` / `_proj.showShieldBlockEffect` を enemy-ai deps に渡すことで循環参照フリー設計。10テストグリーン（デグレなし）。残りは player.js / combat.js / boss.js。
+- **進行中タスク：** 0-2 game.js モジュール分割 Step 6（main.js へのエントリポイント整理）
+- **直近の状態：** Phase 0-2 Step 5 完了。`player.js`（movePlayer / handleTileEvent / giveSubItem 等）・`combat.js`（swordAttack / dealDamageToEnemy / takeDamage 等）・`boss.js`（onBossDefeated / startBossBattle / startEnding / checkTriforceClear 等）を factory で切り出し。game.js に import を追加。check-errors.mjs エラーなし・10テストグリーン（デグレなし）。次は Step 6（main.js 整理）。
 
 
 ---
@@ -23,6 +23,46 @@
 ## セッションログ
 
 <!-- 新しいエントリを上に追加していく（最新が一番上） -->
+
+### 2026-06-14 — 投擲物テスト追加（projectile.spec.js）
+
+**やったこと：**
+- **PLAN.md に「④ 投擲物テスト」を追記**：弓矢・ブーメランの飛翔確認テストは PLAN.md の 0-0 テスト基盤に位置づけた
+- **`window.__game` に `useSubItem()` と `getProjectiles()` を追加**：テストからサブアイテム使用・投擲物状態取得ができるように公開
+- **`tests/projectile.spec.js` を新設**（2テスト）：
+  - 条件1：弓矢を使用後、arrow が factory の投擲物リストに存在し dx > 0（右方向）であること
+  - 条件2：ブーメランを使用後、boomerang が factory の投擲物リストに存在し、3フレーム後に初期位置から前進していること
+- `npx playwright test` で **12 passed**（既存10＋新規2、デグレなし）
+
+**学び・気づき：**
+- seed があるとタイトルダイアログが表示されるため、`waitForBoard` ではなく `#btn-continue` をクリックしてからボード待機が必要（movement.spec.js と同じパターン）
+- Infinity は `JSON.stringify` でシリアライズできない → ブーメランの count は 99 を使い、useSubItem の `si.count !== Infinity` チェックを回避
+- `getProjectiles()` のスナップショット実装で `returning: p.returning ?? false` としたことでデシリアライズ後も boolean が正しく返る
+
+**▶ 次やること：**
+- [ ] Phase 0-2 Step 6：`main.js` への `init()` とゲームループの整理（エントリポイントの切り出し）⚡
+
+
+### 2026-06-14 — バグ修正：弓矢・ブーメランが動かない不具合
+
+**やったこと：**
+- **原因特定**：`useSubItem` の中で `projectiles.push(proj)` / `createProjEl(proj)` / `nextProjId++` を直接参照していた。これらは `projectile.js` factory の内部変数になっており game.js のローカル変数は使われないため、投擲物が実際には追加されず動かなかった
+- **修正内容**：
+  - factory ブロックに `addProjectile = (config) => _proj.addProjectile(config)` / `getProjectiles = () => _proj.getProjectiles()` を追加して公開
+  - `useSubItem` の boomerang / bow 発射処理を `addProjectile(config)` 呼び出しに変更（id 付与は factory 内部で行われる）
+  - ブーメラン飛翔中チェックを `projectiles.some(...)` → `getProjectiles().some(...)` に変更
+  - `addProjectile` / `getProjectiles` の `let` 事前宣言を factory 上書きの前（`updateShieldHud` / `processHeldKeys` と同じ場所）に追加（TDZ 回避）
+- `node scripts/check-errors.mjs` → エラーなし確認
+- `npx playwright test` で **10 passed**（デグレなし）
+
+**学び・気づき：**
+- projectile.js factory は `_projectiles` / `_nextProjId` / `createProjEl` を**内部に閉じ込めて**いるため、game.js の `let projectiles = []` / `nextProjId` は使われない空の変数になっていた。useSubItem が旧変数に push しても factory の tickループから見えないため投擲物が「存在しないまま」になっていた
+- factory API の `addProjectile(config)` に id を含めない設定オブジェクトを渡せば factory 側で `id: _nextProjId++` を付与してくれる設計になっていた（正しい使い方）
+- factory 公開後も旧インライン実装（`projectiles = []` / `createProjEl`）が game.js に残っているが、`clearProjectiles` / `projectileTick` は factory 版で上書き済みなので今回の修正で整合がとれた
+
+**▶ 次やること：**
+- [ ] Phase 0-2 Step 6：`main.js` への `init()` とゲームループの整理（エントリポイントの切り出し）⚡
+
 
 ### 2026-06-14 — Phase 0-2 Step 5（前半）：projectile.js / enemy-ai.js 切り出し
 
@@ -258,7 +298,7 @@
 
 | フェーズ | 状態 | メモ |
 |---|---|---|
-| Phase 0 技術基盤 | 🚧 進行中 | 0-0 ✅ / 0-1 ✅ 完了。0-2 進行中（Step 1〜5前半完了: constants.js + save.js + passable.js + conditions.js + render-board.js + render-chars.js + input.js + ui.js + projectile.js + enemy-ai.js、10テストグリーン）。次は Step 5 残り（player.js / combat.js / boss.js）|
+| Phase 0 技術基盤 | 🚧 進行中 | 0-0 ✅ / 0-1 ✅ 完了。0-2 進行中（Step 1〜5完了: constants.js + save.js + passable.js + conditions.js + render-board.js + render-chars.js + input.js + ui.js + projectile.js + enemy-ai.js + player.js + combat.js + boss.js、10テストグリーン）。次は Step 6（main.js エントリポイント整理）|
 
 | Phase 1 ストーリー基盤 | 🔲 未着手 | |
 | Phase 2 8ダンジョン | 🔲 未着手 | |

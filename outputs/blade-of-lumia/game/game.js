@@ -34,6 +34,12 @@ import { createUi } from './ui.js';
 import { createProjectile } from './projectile.js';
 // ── 敵AI（Phase 0-2 Step 5: enemy-ai.js へ切り出し）──────────────────────────
 import { createEnemyAi } from './enemy-ai.js';
+// ── プレイヤー移動・タイルイベント（Phase 0-2 Step 5: player.js へ切り出し）──
+import { createPlayer } from './player.js';
+// ── 剣攻撃・ダメージ（Phase 0-2 Step 5: combat.js へ切り出し）───────────────
+import { createCombat } from './combat.js';
+// ── ボス戦・エンディング（Phase 0-2 Step 5: boss.js へ切り出し）─────────────
+import { createBoss } from './boss.js';
 
 
 // ── DOM ───────────────────────────────────────────────────────
@@ -753,6 +759,9 @@ function pulse(text, duration = 2000) {
 //   旧インライン実装が削除されたため宣言が必要）
 let updateShieldHud  = () => {};   // ui.js の _ui.updateShieldHud で上書き
 let processHeldKeys  = () => {};   // input.js の _in.processHeldKeys で上書き
+// projectile.js factory の addProjectile / getProjectiles は useSubItem から参照するため事前宣言
+let addProjectile    = () => {};
+let getProjectiles   = () => [];
 
 // ── 状態フラグ getter/setter（Phase 0-2 Step 4: ui.js / input.js に注入するため）──
 // game.js の let 変数を外部モジュールが読み書きできるよう getter/setter を用意する。
@@ -974,6 +983,8 @@ const { checkStoneOnSwitch, evaluateConditions } = createConditions({
 	clearBombs           = _proj.clearBombs;
 	bombTick             = _proj.bombTick;
 	placeBomb            = _proj.placeBomb;
+	addProjectile        = (config) => _proj.addProjectile(config);
+	getProjectiles       = () => _proj.getProjectiles();
 	fireEnemyProjectile  = _proj.fireEnemyProjectile;
 	isShieldBlocking     = (proj) => _proj.isShieldBlocking(proj);
 	isShieldBlockingDir  = _proj.isShieldBlockingDir;
@@ -3777,15 +3788,15 @@ function useSubItem() {
 	}
 	if (id === 'boomerang') {
 		// 飛翔中ならキャッチ待ち
-		if (projectiles.some(p => p.type === 'boomerang' && p.owner === 'player')) {
+		if (getProjectiles().some(p => p.type === 'boomerang' && p.owner === 'player')) {
 			pulse('ブーメランが戻ってくる！'); return;
 		}
 		const [dy, dx] = DIR_DELTA[heroDir];
 		const ndx = dx / MOVE_STEP;
 		const ndy = dy / MOVE_STEP;
 		resumeAudio(); playSound('slash');
-		const proj = {
-			id: nextProjId++, owner: 'player', type: 'boomerang',
+		addProjectile({
+			owner: 'player', type: 'boomerang',
 			x: player.x + ndx * 0.5, y: player.y + ndy * 0.5,
 			startX: player.x, startY: player.y,
 			dx: ndx, dy: ndy,
@@ -3793,9 +3804,7 @@ function useSubItem() {
 			atk: 3,  // ブーメランは固定ダメージ（剣ATK不使用）
 			returning: false,
 			maxRange: 3,
-		};
-		projectiles.push(proj);
-		createProjEl(proj);
+		});
 		return;
 	}
 	if (id === 'bomb') {
@@ -3810,16 +3819,14 @@ function useSubItem() {
 		const ndx = dx / MOVE_STEP;
 		const ndy = dy / MOVE_STEP;
 		resumeAudio(); playSound('slash');
-		const proj = {
-			id: nextProjId++, owner: 'player', type: 'arrow',
+		addProjectile({
+			owner: 'player', type: 'arrow',
 			x: player.x + ndx * 0.5, y: player.y + ndy * 0.5,
 			dx: ndx, dy: ndy,
 			speed: hasCleared() ? 9.0 : 4.5,  // 二周目は2倍速
 			atk: 5,  // 弓矢は固定ダメージ（剣ATK不使用）
 			piercing: true, // 貫通フラグ（checkProjHitで利用）
-		};
-		projectiles.push(proj);
-		createProjEl(proj);
+		});
 		updateHud(); saveGame(); return;
 	}
 	pulse(`${meta?.name ?? id} を使用！`);
@@ -4052,6 +4059,13 @@ window.__game = {
 	},
 	movePlayer: (dir) => movePlayer(dir),
 	swordAttack: () => swordAttack(),
+	useSubItem: () => useSubItem(),
+	// 投擲物の現在状態をスナップショットとして返す（テスト用）
+	getProjectiles: () => getProjectiles().map(p => ({
+		id: p.id, owner: p.owner, type: p.type,
+		x: p.x, y: p.y, dx: p.dx, dy: p.dy,
+		returning: p.returning ?? false,
+	})),
 	getState() {
 		return {
 			gameTime,
