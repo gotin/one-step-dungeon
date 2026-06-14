@@ -318,9 +318,9 @@ input.js     161 / passable.js 161 / conditions.js 117 / save.js 87 / main.js 78
 ### 0-3b. editor.js・game.css の分割　🧠→⚡（editor.jsの分割設計はOpus、CSSはSonnet）
 
 **editor.js（1581行）：**
-- [ ] 機能別に分割（マップ編集 / ステージ管理 / プレビュー / エクスポート など）
-- [ ] 目標：各ファイル400行以内
-- ※ 0-5 でエディタ機能（スプライト/キャラ/アイテム編集）を追加する**前に**分割しておく
+- [x] 機能別に分割（マップ編集 / ステージ管理 / プレビュー / エクスポート など）
+- [x] 目標：各ファイル400行以内
+- ※ editor.js（1581行）を8モジュールに分割：editor-state(62) / editor-layers(85) / editor-world(289) / editor-palette(134) / editor-canvas(327) / editor-props(409) / editor-io(248) / editor.js(142=エントリ)。editor スモークテスト4本追加（起動・ステージ作成・タイルパレット・JSONエクスポート）。**17テストグリーン**（デグレなし）
 
 **game.css（1660行）：**
 - [x] CSS を機能別に分割（レイアウト / HUD / キャラ・スプライト / アニメーション / オーバーレイ など）
@@ -680,7 +680,7 @@ Step 5: 必要になったら（Phase 0後半）
 | game.js モジュール分割 | 🚧 途中（関数は別ファイルに切り出したが、旧本体が game.js に重複して残り 4075 行のまま。0-2b で旧本体を削除予定） |
 | game.css 分割 | ✅ 完了（css/ 配下11ファイル + @import エントリ） |
 | sprites.js 分割 | ✅ 完了（player/enemies/items/tiles + aggregator） |
-| editor.js 分割 | ⬜ 未実施（1581行・要分割） |
+| editor.js 分割 | ✅ 完了（8モジュール：editor-state/layers/world/palette/canvas/props/io + エントリ142行。スモークテスト4本追加。17テストグリーン） |
 
 | スプライトエディタ | ⬜ 未実装 |
 | キャラクター定義エディタ | ⬜ 未実装 |

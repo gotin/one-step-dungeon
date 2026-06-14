@@ -22,6 +22,18 @@
 
 ## 記録
 
+### 2026-06-14 — editor.js は factory パターンなし・引数注入 + CustomEvent で分割する
+- **決定：** editor.js（1581行）の分割では game.js で使った `createXxx(deps)` factory パターンを採用せず、**引数注入（コールバック渡し）と CustomEvent** を組み合わせる形で疎結合化する。
+- **理由：** editor.js はゲームと異なり「1ファイルにすべてが含まれた素直な構造（再代入 `let` 状態なし・ESModule read-only binding 問題なし）」だったため、factory の複雑な deps 配線は不要。各モジュールの関数は `renderWorldGrid` / `renderDungeonMeta` 等の描画関数をコールバックとして受け取るだけで動作できる。`showView` のように「モジュール外のルーティング関数」が必要な箇所は CustomEvent（`editor:resetPreview` / `editor:showWorld` / `editor:previewClickAt`）で editor.js に通知する方式にした。
+- **代替案：** (A) factory + deps 注入（game.js と同じ方式）→ 不要な複雑さ。再代入 `let` がないのに `() => val` クロージャ注入を使うのは過剰設計。(B) 単純 import（各モジュールが editor.js の関数を直接 import）→ 循環 import になるため却下。
+- **結果／影響：** editor.js（エントリ）が142行のオーケストレーター層になった。各モジュールへの `renderWorldGrid` 等の受け渡しは呼び出し側（editor.js）でラムダ `() => renderWorldGrid()` で包んで渡す。今後エディタ機能を追加するときも同じパターンで新モジュールを追加できる。editor-props.js が409行（目標400行比 +9行）だが、右パネルは論理的に1単位なので分割しないことにした。
+
+### 2026-06-14 — editor スモークテストを分割前に追加する
+- **決定：** editor.js を分割する前に、Playwright でエディタの最小スモーク（起動・ステージ作成・タイルパレット・JSONエクスポート）を4本通してから分割を開始する。
+- **理由：** エディタは自動テストが0件だったため、分割後のデグレを検知できない。game.js 分割の教訓として「テスト網を先に張ってから分割する」が PLAN.md に明記されている。分割中・分割後に4本が継続してグリーンであればエディタの主要機能が維持されていると判断できる。
+- **代替案：** 分割後にスモークを追加 → デグレがあっても分割前か後か特定しにくくなる。手動確認のみ → 機械的な安全網がなくリグレッションを見落とす可能性。
+- **結果／影響：** tests/editor.spec.js を追加。17テストグリーン（ゲーム13本＋エディタ4本）で分割完了を確認。
+
 ### 2026-06-14 — game.css は @import エントリ + 機能別サブファイルに分割する
 - **決定：** `game.css` を `@import` 専用のエントリファイルにし、機能別に `game/css/` 配下へ11ファイル（base / hud / board / effects / overlays / mobile / responsive / shop / boss / ending / tiles）へ分割する。
 - **理由：** index.html を無改修にでき（`<link href="game.css">` のまま）、ファイル単位で責務が明確になる。`@import` は CSS 先頭にまとめる制約があるが、エントリを @import 専用にすれば自然に満たせる。

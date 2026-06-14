@@ -14,8 +14,8 @@
 ## 📍 現在地（常に最新に保つ）
 
 - **進行中フェーズ：** Phase 0（技術基盤）
-- **進行中タスク：** **Phase 0-2b 完了**（game.js モジュール分割の完遂）→ 次は **Phase 0-3b：editor.js（1581行）分割**
-- **直近の状態：** 0-2b で **player.js / combat.js / boss.js の factory 統合 + 旧本体削除を完了**。3モジュールは相互依存（combat→boss / player→combat,boss / boss→proj）するため、proj/ai ブロックの直後に **1ブロックでまとめて createBoss → createCombat → createPlayer を生成**し、deps はすべて getter/wrapper 経由で配線。配線テスト（13 green）後に旧 function 本体を削除し game.js を再構成。**game.js 2726→1268行（1458行減・元4098行から 70% 削減）・13テストグリーン**。**Phase 0-2 / 0-2b の game.js モジュール分割は全完了**（オーケストレーション層＝状態宣言・factory初期化・export のみ）。
+- **進行中タスク：** **Phase 0-3b 完了**（editor.js 分割＋スモークテスト追加）→ 次は **Phase 0-4：必要なスプライト・モーション一覧の洗い出し** または **Phase 0-5：エディタ機能拡張**
+- **直近の状態：** editor.js（1581行）を8モジュールに分割完了。editor-state(62) / editor-layers(85) / editor-world(289) / editor-palette(134) / editor-canvas(327) / editor-props(409) / editor-io(248) / editor.js(142=エントリ)。分割前にエディタ Playwright スモークテスト4本を追加（起動・ステージ作成・タイルパレット表示・JSON エクスポート）。**17テストグリーン**（ゲーム側13本＋エディタ4本、デグレなし）。**Phase 0-3b（editor.js + game.css）全完了**。
 
 
 
@@ -27,6 +27,34 @@
 ## セッションログ
 
 <!-- 新しいエントリを上に追加していく（最新が一番上） -->
+
+### 2026-06-14 — Phase 0-3b 完遂：editor.js（1581行）を8モジュールに分割＋スモークテスト4本追加
+
+**やったこと：**
+- **editor Playwright スモークテスト4本を新設**（`tests/editor.spec.js`）：(1) 起動でJSエラーなし＋ワールドグリッド表示、(2) 空セルクリックでステージ作成、(3) ステージ編集ビューへの遷移＋タイルパレット表示、(4) 保存ボタンで有効なJSONがlocalStorageに保存される。4本全グリーンを確認してから分割に着手
+- **editor.js（1581行）を8モジュールに分割**：
+  - `editor-state.js`（62行）：state オブジェクト・DOM参照・ユーティリティ（getCurrentStage系・stageKey・countTile・findTilePositions）
+  - `editor-layers.js`（85行）：レイヤータブ描画・ダンジョンメタパネル・レイヤー追加/削除イベント
+  - `editor-world.js`（289行）：ワールドグリッド描画・ミニマップ・ワールドプレビュー・行/列挿入・updateWorldSidePanel
+  - `editor-palette.js`（134行）：TILE_SPRITE_MAP・drawSpriteAt・タイルパレット描画（buildTilePalette）
+  - `editor-canvas.js`（327行）：ステージキャンバス描画・drawCell・マウスイベント（draw/erase/fill）・フラッドフィル・ツールボタン
+  - `editor-props.js`（409行）：右パネル全体（renderSidePanel）・ゲートリンク・剣/防具・宝箱・NPC・ショップ・MAP_ENTER・表示条件・壊せる壁・ドアウェイ
+  - `editor-io.js`（248行）：保存（File System Access API + DLフォールバック）・読み込み・プレビュー状態管理（getPreviewPending/setPreviewPending）・openPreview・tryRestoreFromStorage
+  - `editor.js`（142行）：エントリ（showView・タブ切替・各モジュールのイベント登録・アニメーションループ・init）
+- 各モジュール間の連携は **引数注入（コールバック渡し）+ CustomEvent（editor:resetPreview / editor:showWorld / editor:previewClickAt）** で疎結合化。`editor-world.js` のボタンが `showView` を必要とするケースは CustomEvent で editor.js 側に通知
+- **17テストグリーン**（ゲーム側13本＋エディタ4本）。デグレなし
+
+**学び・気づき：**
+- editor.js はゲームと異なり「1ファイルにすべてが含まれた素直な構造」だったため、ESModule の read-only binding 問題が起きにくい。factory パターンは不要で、**引数注入（renderWorldGrid を受け取る関数群）** で十分に疎結合にできた
+- `_previewPending` のような「複数モジュールをまたぐ状態」は editor-io.js に所有させ、getter/setter（`getPreviewPending` / `setPreviewPending`）で公開するパターンが有効。editor-canvas.js は pending 中の描画ブロックのためにのみ参照するので依存方向が一方向に保たれる
+- `showPreviewSettingsDialog` のような「UI操作フロー」は editor-io.js 内部に閉じることで、editor.js から canvas クリック後の処理フローが CustomEvent 経由で整理できた
+- editor-props.js が 409 行で目標（400行以内）をわずかに超えたが、右パネルは論理的に1単位（renderSidePanel が全セクションを統括）なので分割しないことが妥当と判断
+
+**▶ 次やること：**
+- [ ] Phase 0-4：必要なスプライト・モーション一覧の洗い出し 🧠 Opus（プレイヤーモーション・ダンジョンテーマ別タイル・新ボス敵・新アイテム）
+- または
+- [ ] Phase 0-5：エディタ機能拡張（スプライトエディタ・キャラ/アイテム定義エディタ）🧠→⚡ ← editor.js 分割が完了したため安全に着手可能
+
 
 ### 2026-06-14 — Phase 0-2b 完遂：player.js / combat.js / boss.js の factory 統合 + 旧本体削除
 
@@ -432,7 +460,7 @@
 
 | フェーズ | 状態 | メモ |
 |---|---|---|
-| Phase 0 技術基盤 | 🚧 進行中 | 0-0 ✅ / 0-1 ✅ / 0-2 ✅ / **0-2b ✅（game.js 分割完遂：4098→1268 行・約70%減）** / 0-3 ✅（sprites）/ 0-3b の game.css ✅。**残りは 0-3b の editor.js 分割（1581行）と 0-4/0-5。** |
+| Phase 0 技術基盤 | 🚧 進行中 | 0-0 ✅ / 0-1 ✅ / 0-2 ✅ / 0-2b ✅ / 0-3 ✅ / **0-3b ✅（editor.js 8分割・game.css 11分割）**。**残りは 0-4（スプライト洗い出し）・0-5（エディタ機能拡張）・0-6（TS/ビルド検討）。** |
 
 
 
