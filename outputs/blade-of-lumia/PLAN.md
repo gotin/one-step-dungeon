@@ -248,8 +248,8 @@ game/
   - `boss.js`：`onBossDefeated()` / `startBossBattle()` / `startEnding()` / `checkTriforceClear()` / `checkPendingTriforce()` 等（`createBoss` factory）✅
   - ※ factory + getter 注入方式を踏襲。`_proj.fireEnemyProjectile` / `_proj.isShieldBlockingDir` / `_proj.showShieldBlockEffect` を enemy-ai に deps として渡すことで循環参照フリーな設計を実現。10テストグリーン（デグレなし）
 
-- [ ] **Step 6: エントリポイントの整理**
-  - `main.js`：`init()` とゲームループのみ
+- [x] **Step 6: エントリポイントの整理**
+  - `main.js`：`init()` 呼び出し・`window.__game` テストフック・`startAnimLoop()` 呼び出し・`window.addEventListener('resize')` を切り出し。game.js は必要な関数を `export` して main.js が `import` する設計。12テストグリーン（デグレなし）
 
 ---
 

@@ -239,20 +239,42 @@ export function createProjectile(deps) {
 			if (proj.type === 'boomerang' && proj.owner === 'player') {
 				boomerangStep(proj, step);
 			} else {
-				proj.x += proj.dx * step;
-				proj.y += proj.dy * step;
-				if (!isInBounds(proj.x, proj.y)) {
-					removeProjEl(proj);
-					_projectiles = _projectiles.filter(p => p !== proj);
-					continue;
+				// ── 高速投擲物のトンネリング防止：区間補間チェック ──────
+				// 1tick の移動量が大きいと敵のヒットボックス（0.6セル）を
+				// 飛び越えて当たり判定が抜ける（トンネリング）。
+				// ヒットボックス半径（0.5）以下の小ステップに分割して補間チェックを行う。
+				const HIT_RADIUS = 0.5;         // 当たり判定に使う距離
+				const SUB_STEP = HIT_RADIUS * 0.8; // 分割ステップ（重複なく全域をカバー）
+				const numSubs = Math.max(1, Math.ceil(step / SUB_STEP));
+				const dx = proj.dx * step / numSubs;
+				const dy = proj.dy * step / numSubs;
+
+				let hit = false;
+				for (let i = 0; i < numSubs; i++) {
+					proj.x += dx;
+					proj.y += dy;
+					// 境界チェック
+					if (!isInBounds(proj.x, proj.y)) {
+						removeProjEl(proj);
+						_projectiles = _projectiles.filter(p => p !== proj);
+						hit = true;
+						break;
+					}
+					// 壁衝突チェック
+					if (!isTilePassableForProj(toTileRow(proj.y), toTileCol(proj.x))) {
+						removeProjEl(proj);
+						_projectiles = _projectiles.filter(p => p !== proj);
+						hit = true;
+						break;
+					}
+					// 当たり判定
+					checkProjHit(proj);
+					if (!_projectiles.includes(proj)) {
+						hit = true;
+						break;
+					}
 				}
-				if (!isTilePassableForProj(toTileRow(proj.y), toTileCol(proj.x))) {
-					removeProjEl(proj);
-					_projectiles = _projectiles.filter(p => p !== proj);
-					continue;
-				}
-				checkProjHit(proj);
-				if (!_projectiles.includes(proj)) continue;
+				if (hit) continue;
 			}
 			moveProjEl(proj);
 		}

@@ -3853,9 +3853,6 @@ function spawnDropEffect(r, c, icon, color) {
 	setTimeout(() => el.remove(), 650);
 }
 
-// ── アニメーション ────────────────────────────────────────────
-startAnimLoop(() => { redrawAnimSprites(); });
-
 // ── 初期化 ────────────────────────────────────────────────────
 const titleOverlayEl  = document.getElementById('title-overlay');
 const confirmOverlayEl = document.getElementById('confirm-overlay');
@@ -4024,58 +4021,59 @@ async function init() {
 	}
 }
 
-init().catch(err => {
-	console.error('init failed:', err);
-	document.body.innerHTML = `<p style="color:red;padding:20px">読み込みエラー: ${err.message}</p>`;
-});
-
-// ウィンドウリサイズ時にボードのスケールを再計算
-window.addEventListener('resize', () => updateBoardScale());
-
-// ── デバッグ用：コンソールから呼び出せるようにグローバルに公開 ──
-window._debugEnding = () => startEnding();
-
-// ── テスト用フック（Phase 0-1）────────────────────────────────
-// E2E テストから決定論的にゲームを操作するための API を公開する。
-//   __game.step(n)        : 実時間ゼロで n フレーム進める（gameTime を n*TICK_MS 加算）
-//   __game.queueInput(d)  : 方向 d ('up'|'down'|'left'|'right') の押下を予約（次の step で反映）
-//   __game.releaseInput(d): 方向 d の押下を解除
-//   __game.movePlayer(d)  : プレイヤーを 1 操作分だけ即座に移動
-//   __game.swordAttack()  : 剣攻撃を即座に実行
-//   __game.getState()     : 現在の主要状態のスナップショット（player 座標・gameTime 等）
-// 本番動作には影響しない（読み取り＋既存関数の呼び出しのみ）。
-window.__game = {
+// ── Phase 0-2 Step 6: main.js へのエントリポイント切り出し用 export ────────────
+// main.js が import して使う。game.js 自身は init() を自動実行しない。
+export {
+	init,
+	updateBoardScale,
 	step,
-	queueInput(dir) {
-		const keyMap = { up: 'ArrowUp', down: 'ArrowDown', left: 'ArrowLeft', right: 'ArrowRight' };
-		const k = keyMap[dir];
-		// initInput 後は _inputModule.heldKeys を優先使用（processHeldKeys と同じ Set を操作）
-		if (k) (_inputModule ? _inputModule.heldKeys : heldKeys).add(k);
-	},
-	releaseInput(dir) {
-		const keyMap = { up: 'ArrowUp', down: 'ArrowDown', left: 'ArrowLeft', right: 'ArrowRight' };
-		const k = keyMap[dir];
-		if (k) (_inputModule ? _inputModule.heldKeys : heldKeys).delete(k);
-	},
-	movePlayer: (dir) => movePlayer(dir),
-	swordAttack: () => swordAttack(),
-	useSubItem: () => useSubItem(),
-	// 投擲物の現在状態をスナップショットとして返す（テスト用）
-	getProjectiles: () => getProjectiles().map(p => ({
-		id: p.id, owner: p.owner, type: p.type,
-		x: p.x, y: p.y, dx: p.dx, dy: p.dy,
-		returning: p.returning ?? false,
-	})),
-	getState() {
-		return {
-			gameTime,
-			currentLayer,
-			stageKey,
-			player: { x: player.x, y: player.y, hp: player.hp, maxHp: player.maxHp },
-			heroDir,
-			enemyCount: enemies.length,
-			isPaused, isDialog, isGameover, isTransitioning,
-		};
-	},
+	movePlayer,
+	swordAttack,
+	useSubItem,
+	getProjectiles,
+	startEnding,
 };
+export { startAnimLoop, redrawAnimSprites } from '../shared/sprites.js';
+
+// テスト用フック（main.js 側の window.__game から呼ばれる）
+export function getGameState() {
+	return {
+		gameTime,
+		currentLayer,
+		stageKey,
+		player: { x: player.x, y: player.y, hp: player.hp, maxHp: player.maxHp },
+		heroDir,
+		enemyCount: enemies.length,
+		isPaused, isDialog, isGameover, isTransitioning,
+	};
+}
+
+export function getInputModule() {
+	return _inputModule;
+}
+
+// 敵のスナップショットを返す（テスト用：hp などの状態確認）
+export function getEnemiesSnapshot() {
+	return enemies.map(e => ({
+		id: e.id, type: e.type,
+		x: e.x, y: e.y,
+		hp: e.hp, maxHp: e.maxHp,
+	}));
+}
+
+// テスト用：任意の座標に擬似敵を注入する
+// ゲーム中の敵データに直接追加するため、DOM 要素は作らない（hp 減少だけ確認）
+export function injectTestEnemy(x, y, hp = 5) {
+	const id = `test-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+	enemies.push({
+		id, type: 'E', // ダミータイプ（ENEMY_META にないため isBoss=false）
+		x, y,
+		hp, maxHp: hp,
+		atk: 0, def: 0,
+		speed: 0,
+		sprite: 'slime', pal: 'slime',
+		accum: 0, dir: 'down', el: null,
+	});
+	return id;
+}
 

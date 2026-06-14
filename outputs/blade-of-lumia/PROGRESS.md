@@ -14,8 +14,8 @@
 ## 📍 現在地（常に最新に保つ）
 
 - **進行中フェーズ：** Phase 0（技術基盤）
-- **進行中タスク：** 0-2 game.js モジュール分割 Step 6（main.js へのエントリポイント整理）
-- **直近の状態：** Phase 0-2 Step 5 完了。`player.js`（movePlayer / handleTileEvent / giveSubItem 等）・`combat.js`（swordAttack / dealDamageToEnemy / takeDamage 等）・`boss.js`（onBossDefeated / startBossBattle / startEnding / checkTriforceClear 等）を factory で切り出し。game.js に import を追加。check-errors.mjs エラーなし・10テストグリーン（デグレなし）。次は Step 6（main.js 整理）。
+- **進行中タスク：** Phase 0-2 完了 → 次は 0-3（sprites.js 分割）
+- **直近の状態：** 弓矢トンネリングバグ修正＋命中テスト追加完了。`projectile.js` に区間補間チェック（1tick=0.4セル分割）を実装。`game.js` に `getEnemiesSnapshot` / `injectTestEnemy` を追加、`main.js` の `window.__game` に `getEnemies` / `injectEnemy` を公開。`projectile.spec.js` に距離1〜8セルの命中テスト（条件3）を追加。**13テストグリーン**（デグレなし）。
 
 
 ---
@@ -23,6 +23,50 @@
 ## セッションログ
 
 <!-- 新しいエントリを上に追加していく（最新が一番上） -->
+
+### 2026-06-14 — バグ修正：弓矢が特定距離の敵に当たらない（トンネリング）
+
+**やったこと：**
+- **原因特定**：`projectileTick` では 1tick に `speed × MOVE_STEP` だけ一気に移動してから `checkProjHit` で1点判定していた。弓矢は speed=4.5（通常）・9.0（二周目）のため 1tick あたり 2.25〜4.5 セル移動し、敵のヒットボックス（0.6セル）を飛び越えて当たり判定が抜ける「トンネリング」が発生していた
+- **修正**：`projectileTick` の直線飛翔ブランチに**区間補間チェック**を実装。1tick の移動量を `HIT_RADIUS×0.8 = 0.4` セル以下の小ステップに分割し、各サブステップで境界・壁・当たり判定を順番にチェックする。ヒットした時点で即 `break` して残移動はスキップ（速度感への影響なし）
+  ```
+  const numSubs = Math.ceil(step / 0.4);  // 弓矢なら 2.25/0.4 ≒ 6 分割
+  for (let i = 0; i < numSubs; i++) {
+      proj.x += dx; proj.y += dy;
+      // 境界・壁・当たり判定 → ヒットで break
+  }
+  ```
+- `node scripts/check-errors.mjs` → エラーなし
+- `npx playwright test` → **12 passed**（デグレなし）
+
+**学び・気づき：**
+- 高速投擲物のトンネリングは「当たらない距離がある」という形で現れる。敵が何マス離れていても当たるべきだが、特定距離（ちょうど矢が飛び越えるセル）だけ抜けるのが特徴
+- `checkProjHit` の判定閾値（0.6セル）はそのままで、移動ステップを小さくするのが最も安全な修正（判定ロジック自体を変えない）
+- ブーメランは `boomerangStep` で別処理しているため影響なし。敵の投擲物（spear/stone）も速度が低めなため実害は少なかったが、同じ修正で恩恵を受ける
+
+**▶ 次やること：**
+- [ ] Phase 0-3：`sprites.js`（1440行）を機能別に分割（`sprites-player.js` / `sprites-enemies.js` / `sprites-items.js` / `sprites-tiles.js` / `sprites-ui.js`）⚡
+
+
+### 2026-06-14 — Phase 0-2 Step 6：main.js エントリポイント整理（Phase 0-2 全完了）
+
+**やったこと：**
+- **`game/main.js` を新設**：`init()` 呼び出し・`window.__game` テストフック・`startAnimLoop(() => { redrawAnimSprites(); })` 呼び出し・`window.addEventListener('resize', ...)` を切り出し。`window._debugEnding` もここに集約
+- **game.js に `export` を追加**：`init` / `updateBoardScale` / `step` / `movePlayer` / `swordAttack` / `useSubItem` / `getProjectiles` / `startEnding` と、テスト用ヘルパー `getGameState()` / `getInputModule()` をエクスポート。`startAnimLoop` / `redrawAnimSprites` は sprites.js から再 export
+- **game.js から旧エントリポイントコードを削除**：`init().catch(...)` / `window.addEventListener('resize')` / `window._debugEnding` / `window.__game` ブロック・`startAnimLoop()` 呼び出しを game.js 末尾から削除
+- **`game/index.html` の `script` タグを変更**：`game.js?v=3` → `main.js`
+- `node scripts/check-errors.mjs` → ページエラーなし・consoleエラーなし
+- `npx playwright test` で **12 passed**（デグレなし）
+- PLAN.md（Step 6 完了）・PROGRESS.md・進捗サマリを更新
+
+**学び・気づき：**
+- game.js が ESModule の `export` を持つモジュールになったことで、`import` 側（main.js）から必要な関数だけを参照できる設計が整った
+- `startAnimLoop` / `redrawAnimSprites` は sprites.js に属する関数なので、`export { startAnimLoop, redrawAnimSprites } from '../shared/sprites.js'` で game.js を経由して再 export する形にした（main.js から sprites.js を直接 import しても良いが、game.js の責務範囲内に留めた）
+- `window.__game` の `queueInput` / `releaseInput` は `getInputModule()` を通じて `_inputModule.heldKeys` にアクセスする設計に変更（旧 game.js 内のクロージャ変数直接参照から切り離し）
+
+**▶ 次やること：**
+- [ ] Phase 0-3：`sprites.js`（1440行）を機能別に分割（`sprites-player.js` / `sprites-enemies.js` / `sprites-items.js` / `sprites-tiles.js` / `sprites-ui.js`）⚡
+
 
 ### 2026-06-14 — 投擲物テスト追加（projectile.spec.js）
 
@@ -298,7 +342,7 @@
 
 | フェーズ | 状態 | メモ |
 |---|---|---|
-| Phase 0 技術基盤 | 🚧 進行中 | 0-0 ✅ / 0-1 ✅ 完了。0-2 進行中（Step 1〜5完了: constants.js + save.js + passable.js + conditions.js + render-board.js + render-chars.js + input.js + ui.js + projectile.js + enemy-ai.js + player.js + combat.js + boss.js、10テストグリーン）。次は Step 6（main.js エントリポイント整理）|
+| Phase 0 技術基盤 | 🚧 進行中 | 0-0 ✅ / 0-1 ✅ / 0-2 ✅ 完了。0-2 全 Step 完了（constants.js + save.js + passable.js + conditions.js + render-board.js + render-chars.js + input.js + ui.js + projectile.js + enemy-ai.js + player.js + combat.js + boss.js + main.js、12テストグリーン）。次は 0-3（sprites.js 分割）|
 
 | Phase 1 ストーリー基盤 | 🔲 未着手 | |
 | Phase 2 8ダンジョン | 🔲 未着手 | |
