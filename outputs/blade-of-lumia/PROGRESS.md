@@ -14,8 +14,8 @@
 ## 📍 現在地（常に最新に保つ）
 
 - **進行中フェーズ：** Phase 0（技術基盤）
-- **進行中タスク：** Phase 0-2 完了 → 次は 0-3（sprites.js 分割）
-- **直近の状態：** 弓矢トンネリングバグ修正＋命中テスト追加完了。`projectile.js` に区間補間チェック（1tick=0.4セル分割）を実装。`game.js` に `getEnemiesSnapshot` / `injectTestEnemy` を追加、`main.js` の `window.__game` に `getEnemies` / `injectEnemy` を公開。`projectile.spec.js` に距離1〜8セルの命中テスト（条件3）を追加。**13テストグリーン**（デグレなし）。
+- **進行中タスク：** Phase 0-3 完了・バグ修正完了 → 次は 0-3b（editor.js / game.css の分割）
+- **直近の状態：** `sprites.js`（1440行）を4サブファイル＋aggregatorに分割完了。バグ修正：看板（TILE.SIGN）のダイアログ文章が表示されない不具合を修正。`game.js` の看板コードが `dialogLines`（game.js ローカル変数）を直接セットしており、`_ui.showDialogLine` に届かなかったのが原因。`openDialog` を `let openDialog = () => {}` で事前宣言し、ui factory ブロックで `openDialog = (name, lines) => _ui.openDialog(name, lines)` と上書き、看板コードを `openDialog(signData.name, signData.lines)` 呼び出しに変更して修正。**13テストグリーン**（デグレなし）。
 
 
 ---
@@ -23,6 +23,27 @@
 ## セッションログ
 
 <!-- 新しいエントリを上に追加していく（最新が一番上） -->
+
+### 2026-06-14 — Phase 0-3：sprites.js を4サブファイル＋aggregatorに分割
+
+**やったこと：**
+- **`shared/sprites-player.js` を新設**：hero（4方向2フレーム）/ escape / monster / darklord / princess / npcA / npcB / npcShop の各スプライトデータと対応パレット（hero/escape/monster/darklord/princess/guard/npcA/npcB）を収録（~340行）
+- **`shared/sprites-enemies.js` を新設**：patrol（巡回兵）/ chaser（追跡者）/ sentry（騎士）の各スプライトデータと対応パレットを収録（~120行）
+- **`shared/sprites-items.js` を新設**：sword/shield（+side/back）/boomerang/arrow/spear（+spearV）/stone/key/chest/rupee/triforce/heart（+empty/half）の各スプライトデータと対応パレットを収録（~250行）
+- **`shared/sprites-tiles.js` を新設**：block/door（+doorOpen）/swG/gateG（+gateGopen）/water/breakableWall/mapEnter/doorway/doorwayBoss/doorwayLocked ＋ フィールドタイル全種（grass/sand/stoneFloor/bridge/tree/mountain/bush/fence/houseWall/houseDoor/houseRoof/sign）の各スプライトデータと対応パレットを収録（~400行）
+- **`shared/sprites.js` を aggregator に書き換え**：4サブファイルから `PLAYER_PAL`/`PLAYER_SPRITES` 等をインポートし、`PAL = { ...PLAYER_PAL, ...ENEMY_PAL, ...ITEM_PAL, ...TILE_PAL }` / `SPRITES = { ...PLAYER_SPRITES, ... }` でマージして再エクスポート。animation/drawing 関数（`startAnimLoop` / `stopAnimLoop` / `drawSprite` / `makeSprite` / `drawSpriteFrame` / `redrawAnimSprites`）はそのまま残す（~100行）
+- `node scripts/check-errors.mjs` → エラーなし
+- `npx playwright test` → **13 passed**（デグレなし）
+- PLAN.md（0-3 完了）・PROGRESS.md・進捗サマリを更新
+
+**学び・気づき：**
+- `sprites-ui.js` は当初 PLAN.md に記載していたが、HUD要素（heart/heartHalf/heartEmpty）はアイテム的な性格、doorway等は tiles 的な性格のため、それぞれ items/tiles に自然に収まった。分割方針は「UI要素か否か」より「何を表すオブジェクトか」で判断した方が良い
+- aggregator で `...PLAYER_SPRITES` をスプレッド構文でマージする設計は、外部の import 側（game.js / render-board.js 等）の変更を一切不要にする。エントリポイントが sprites.js → PAL/SPRITES を使う全ファイルへの影響ゼロ
+- 各サブファイルは独立した名前空間（`PLAYER_PAL` / `ENEMY_PAL` 等）を持つため、将来さらに細分化する際も aggregator だけ変更すればよい
+
+**▶ 次やること：**
+- [ ] Phase 0-3b：`editor.js`（1581行）を機能別に分割 / `game.css`（1660行）を機能別に分割 🧠→⚡
+
 
 ### 2026-06-14 — バグ修正：弓矢が特定距離の敵に当たらない（トンネリング）
 
@@ -342,7 +363,7 @@
 
 | フェーズ | 状態 | メモ |
 |---|---|---|
-| Phase 0 技術基盤 | 🚧 進行中 | 0-0 ✅ / 0-1 ✅ / 0-2 ✅ 完了。0-2 全 Step 完了（constants.js + save.js + passable.js + conditions.js + render-board.js + render-chars.js + input.js + ui.js + projectile.js + enemy-ai.js + player.js + combat.js + boss.js + main.js、12テストグリーン）。次は 0-3（sprites.js 分割）|
+| Phase 0 技術基盤 | 🚧 進行中 | 0-0 ✅ / 0-1 ✅ / 0-2 ✅ / 0-3 ✅ 完了。sprites.js を4サブファイル＋aggregatorに分割（sprites-player.js / sprites-enemies.js / sprites-items.js / sprites-tiles.js、13テストグリーン）。次は 0-3b（editor.js / game.css 分割）|
 
 | Phase 1 ストーリー基盤 | 🔲 未着手 | |
 | Phase 2 8ダンジョン | 🔲 未着手 | |

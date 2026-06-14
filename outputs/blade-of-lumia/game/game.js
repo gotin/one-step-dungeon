@@ -762,6 +762,8 @@ let processHeldKeys  = () => {};   // input.js の _in.processHeldKeys で上書
 // projectile.js factory の addProjectile / getProjectiles は useSubItem から参照するため事前宣言
 let addProjectile    = () => {};
 let getProjectiles   = () => [];
+// openDialog は ui.js の _ui.openDialog で上書き（看板・ヒントダイアログ等から参照）
+let openDialog       = () => {};
 
 // ── 状態フラグ getter/setter（Phase 0-2 Step 4: ui.js / input.js に注入するため）──
 // game.js の let 変数を外部モジュールが読み書きできるよう getter/setter を用意する。
@@ -888,9 +890,9 @@ const { checkStoneOnSwitch, evaluateConditions } = createConditions({
 	shopSelectPrev   = _ui.shopSelectPrev;
 	shopSelectNext   = _ui.shopSelectNext;
 	shopBuy          = () => _ui.shopBuy(giveSubItem, updateHud);
+	openDialog       = (name, lines) => _ui.openDialog(name, lines);
 
-	// maybeShowSubItemHint は game.js 側の openDialog に相当する処理を使う
-	// ヒントダイアログは ui.js の openDialog を通して開く
+	// maybeShowSubItemHint は ui.js の openDialog を通して開く
 	maybeShowSubItemHint = () => {
 		if (player._shownSubItemHint) return;
 		player._shownSubItemHint = true;
@@ -1844,13 +1846,7 @@ function swordAttack() {
 	// Phase 8.3: 看板を読む（剣なしでも可能）
 	if (tile === TILE.SIGN) {
 		const signData = stageData.signData?.[posKey3] ?? stageData.npcData?.[posKey3] ?? { name: '看板', lines: ['（何も書かれていない）'] };
-		dialogLines = signData.lines ?? ['（何も書かれていない）'];
-		dialogLineIdx = 0;
-		isDialog = true; stopGameLoop();
-		dialogNameEl.textContent = signData.name ?? '看板';
-		showDialogLine();
-		dialogOverlayEl.classList.remove('hidden');
-		playSound('talk');
+		openDialog(signData.name ?? '看板', signData.lines ?? ['（何も書かれていない）']);
 		return;
 	}
 

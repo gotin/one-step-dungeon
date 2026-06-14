@@ -255,13 +255,14 @@ game/
 
 ### 0-3. sprites.js の分割　⚡ Sonnet（機械的なファイル分け）
 
-- [ ] `sprites.js`（1440行）を機能別に分割：
-  - `sprites-player.js`：プレイヤーキャラクター
-  - `sprites-enemies.js`：敵キャラクター
-  - `sprites-items.js`：アイテム・武器
-  - `sprites-tiles.js`：タイル・背景
-  - `sprites-ui.js`：HUD・UI要素
-- 目標：各ファイル300行以内
+- [x] `sprites.js`（1440行）を機能別に分割：
+  - `sprites-player.js`：プレイヤー・NPC・escape/monster/darklord/princess（~340行）
+  - `sprites-enemies.js`：patrol/chaser/sentry（~120行）
+  - `sprites-items.js`：sword/shield/boomerang/arrow/spear/stone/key/chest/rupee/triforce/heart（~250行）
+  - `sprites-tiles.js`：block/door/switch/gate/water/mapEnter/doorway系＋フィールドタイル（~400行）
+  - `sprites.js` → aggregator（サブファイルをマージして再エクスポート、~100行）
+- ※ HUD・UI要素は items.js・tiles.js に自然に収まったため sprites-ui.js は作成せず
+- 13テストグリーン（デグレなし）
 
 ---
 
