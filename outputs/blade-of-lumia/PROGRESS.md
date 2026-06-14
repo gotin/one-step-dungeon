@@ -14,8 +14,9 @@
 ## 📍 現在地（常に最新に保つ）
 
 - **進行中フェーズ：** Phase 0（技術基盤）
-- **進行中タスク：** 0-2 game.js モジュール分割 Step 2（passable.js / conditions.js の切り出し）
-- **直近の状態：** Phase 0-2 Step 1（1a constants.js / 1b save.js）完了。10テストすべてグリーン（デグレなし）。次は Step 2（判定・ロジック系の分離）。
+- **進行中タスク：** 0-2 game.js モジュール分割 Step 3（render-board.js / render-chars.js の切り出し）
+- **直近の状態：** Phase 0-2 Step 2（passable.js / conditions.js）完了。factory + 状態 getter 注入方式で切り出し。10テストすべてグリーン（デグレなし）。次は Step 3（描画系の分離）。
+
 
 ---
 
@@ -23,7 +24,29 @@
 
 <!-- 新しいエントリを上に追加していく（最新が一番上） -->
 
+### 2026-06-14 — Phase 0-2 Step 2：passable.js / conditions.js 切り出し
+
+**やったこと：**
+- 設計判断（Opus）：対象5関数（`isPassable`/`tilePassable`/`isPassableForEnemy`/`checkStoneOnSwitch`/`evaluateConditions`）は `stageData`/`enemies`/`player`/`currentLayer`/`stageKey`/`debugMode` という**再代入される `let` 状態**を多数参照し、呼び出し箇所も多い。save.js のような「全状態を引数で渡す純粋関数化」は呼び出し側の全面改修が必要でリスク大と判断
+- **factory + 状態 getter 注入方式**を採用：
+  - `game/passable.js` 新設 → `createPassable(deps)` が `{ isPassable, tilePassable, isPassableForEnemy }` を返す
+  - `game/conditions.js` 新設 → `createConditions(deps)` が `{ checkStoneOnSwitch, evaluateConditions }` を返す
+  - `deps` は `getStageData`/`getEnemies`/`getPlayer`/`getCurrentLayer`/`getStageKey`/`getDebugMode`/`getSS`/`toTileRow`/`toTileCol`（+ conditions は `renderBoard`/`renderChars`）。getter 経由で常に最新の状態を読むので、状態が後で再代入されても正しく動く
+- game.js は起動時に一度 `createPassable(...)` / `createConditions(...)` を呼んで分割代入で関数を取得。**呼び出し側のコードは一切変更不要**（関数名そのまま）
+- game.js から旧5関数の本体を削除（コメントで「切り出し済み」と明記）
+- `npx playwright test` で **10 passed**（石押し・条件評価の往復がグリーン＝注入が正しく機能）
+- PLAN.md（Step 2 完了・方針を明記）・PROGRESS.md・DECISIONS.md を更新
+
+**学び・気づき：**
+- read-only binding 問題への対処は2パターンある：(A) save.js のように「全状態を引数で渡す純粋関数」、(B) 今回のように「状態 getter を注入する factory」。状態参照が多く呼び出し側改修を避けたい場合は (B) が低リスク。`() => stageData` のクロージャは最新値を返すので再代入に追従できる
+- shared モジュール（`TILE`/`NPC_SPRITE_MAP`/`playSound`）は各分割ファイルで直接 import すればよく、注入対象は「game.js スコープの可変状態と相互依存関数」だけに絞れた
+
+**▶ 次やること：**
+- [ ] Phase 0-2 Step 3：描画系の分離（`render-board.js`: renderBoard/setCellClass/addCellSprite、`render-chars.js`: renderChars/addCharEl/moveCharEl）⚡。これらも factory + getter 注入方式が使えるが、DOM 要素参照（boardEl/charLayerEl）・makeSprite 等の依存が多いので注入対象の整理が必要
+
+
 ### 2026-06-14 — Phase 0-2 Step 1b：save.js（セーブ/ロードの純粋関数）切り出し
+
 
 **やったこと：**
 - 当初の Step 1b 想定（状態コンテナ `state.js` への全面移行）を再検討。`player` 等の参照が数百箇所に及び一括置換のデグレリスクが過大なため、**より安全な形に再定義**：状態の再代入は game.js に残し、セーブ/ロードの**純粋変換ロジックだけ**を `save.js` に切り出す
@@ -175,7 +198,8 @@
 
 | フェーズ | 状態 | メモ |
 |---|---|---|
-| Phase 0 技術基盤 | 🚧 進行中 | 0-0 ✅ / 0-1 ✅ 完了。0-2 進行中（Step 1 完了：constants.js + save.js 切り出し、10テストグリーン）。次は Step 2 passable/conditions |
+| Phase 0 技術基盤 | 🚧 進行中 | 0-0 ✅ / 0-1 ✅ 完了。0-2 進行中（Step 1: constants.js + save.js、Step 2: passable.js + conditions.js 完了、10テストグリーン）。次は Step 3 描画系（render-board/render-chars） |
+
 | Phase 1 ストーリー基盤 | 🔲 未着手 | |
 | Phase 2 8ダンジョン | 🔲 未着手 | |
 | Phase 3 アクション深化 | 🔲 未着手 | |

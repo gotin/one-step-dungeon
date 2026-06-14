@@ -219,9 +219,11 @@ game/
   - [x] **Step 1b**：`save.js` にセーブ/ロードの純粋変換関数を切り出し（`createStageState` / `serializeStageState` / `deserializeStageState` / `sanitizeLoadedPlayer`）。game.js の `getSS` / `saveGame` / `loadGame` がこれらを利用。10テストグリーン
     - ※ 当初想定の「状態コンテナ `state.js` への全面移行」は、`player` 等の参照が数百箇所に及び一括置換のデグレリスクが過大なため見送り。状態の再代入は game.js に残し、save.js は「状態を受け取り変換値を返す純粋関数」に限定した（read-only binding 問題を回避）。完全な状態集約は必要になった時点で再判断
 
-- [ ] **Step 2: 判定・ロジック系の分離（純粋関数が多い・低リスク）**
-  - `passable.js`：`isPassable()` / `tilePassable()` / `isPassableForEnemy()`
-  - `conditions.js`：`evaluateConditions()` / `checkStoneOnSwitch()`
+- [x] **Step 2: 判定・ロジック系の分離（純粋関数が多い・低リスク）**
+  - [x] `passable.js`：`isPassable()` / `tilePassable()` / `isPassableForEnemy()`
+  - [x] `conditions.js`：`evaluateConditions()` / `checkStoneOnSwitch()`
+  - ※ これらは `stageData`/`enemies`/`player`/`currentLayer`/`stageKey`/`debugMode` 等の再代入される `let` 状態を参照するため、純粋関数化ではなく **factory + 状態 getter 注入方式**を採用（`createPassable(deps)` / `createConditions(deps)`）。getter 経由で常に最新状態を読むので呼び出し側は無改修。10テストグリーン
+
 
 - [ ] **Step 3: 描画系の分離**
   - `render-board.js`：`renderBoard()` / `setCellClass()` / `addCellSprite()`

@@ -94,7 +94,14 @@
 - **代替案：** (A) PLAN通り state.js + save.js を一気に切り出す → 却下（数百箇所の `player`→`S.player` 置換が必要で侵襲的）。本セッションでユーザーと相談し B（段階方式）を選択。
 - **結果／影響：** `constants.js` に11定数を集約（MOVE_STEP / TICK_MS / INVINCIBLE_MS / HP_PER_HEART / MAP_JSON_URL / SAVE_KEY / CLEARED_KEY / DIR_DELTA / SWORD_REACH / SWORD_COOLDOWN_MS / STONE_PUSH_COOLDOWN_MS）。`lastSwordTime`/`lastStonePushTime` は再代入される `let` なので game.js に残した。DOM参照・`BG_TILE_COLOR_CLASS`（描画密接）も対象外。10テストグリーン。1b は次セッションで状態コンテナ化として実施。
 
+### 2026-06-14 — Phase 0-2 Step 2：passable/conditions は「factory + 状態 getter 注入」で切り出し
+- **決定：** `isPassable`/`tilePassable`/`isPassableForEnemy`（→ `passable.js`）と `checkStoneOnSwitch`/`evaluateConditions`（→ `conditions.js`）を、**状態を引数で渡す純粋関数ではなく `createXxx(deps)` ファクトリ + 状態 getter 注入**の形で切り出す。game.js は起動時に一度だけ `createPassable(...)`/`createConditions(...)` を呼び、分割代入で関数群を取得する。**呼び出し側のコードは無改修**（関数名そのまま）。
+- **理由：** これらの関数は `stageData`/`enemies`/`player`/`currentLayer`/`stageKey`/`debugMode` という再代入される `let` 状態を多数参照し、呼び出し箇所も多い。save.js のように全状態を引数で渡す純粋関数化だと呼び出し側を全面改修する必要があり侵襲的。`() => stageData` のような getter クロージャを注入すれば、状態が後で再代入されても常に最新値を読めるため、呼び出し側を変えずに切り出せる（低リスク）。
+- **代替案：** (A) 全状態を引数で渡す純粋関数化 → 却下（呼び出し箇所の全面改修が必要）。(B) `export let` 直接 import → 不可（read-only binding）。(C) 状態コンテナ `S` への全面移行 → 却下（Step 1b と同じ理由でリスク過大）。
+- **結果／影響：** `game/passable.js`（`createPassable`）・`game/conditions.js`（`createConditions`）を新設。注入 deps は状態 getter（getStageData/getEnemies/getPlayer/getCurrentLayer/getStageKey/getDebugMode/getSS）+ ユーティリティ（toTileRow/toTileCol）+ conditions のみ副作用関数（renderBoard/renderChars）。shared の `TILE`/`NPC_SPRITE_MAP`/`playSound` は各ファイルで直接 import。10テストグリーン。今後の描画系（Step 3）以降も同じ注入パターンを適用できる見込み。
+
 ### 2026-06-14 — Phase 0-2 Step 1b：状態コンテナ化はやめ、save.js は「純粋変換関数」に限定
+
 - **決定：** Step 1b は当初「可変状態を `state.js` の単一オブジェクト `S` に集約し全参照を `S.xxx` に置換」する予定だったが、**取りやめ**。代わりに **save.js には localStorage にも状態にも触れない純粋変換関数だけを置く**：`createStageState` / `serializeStageState`（Set→配列）/ `deserializeStageState`（配列→Set）/ `sanitizeLoadedPlayer`。`getSS`/`saveGame`/`loadGame` 本体（localStorage I/O と `player`/`stageState` 等への再代入）は game.js に残す。
 - **理由：** `player`/`stageData`/`stageState` 等の参照は game.js 全体で数百箇所あり、状態コンテナへの一括置換は (1) デグレリスクが過大、(2) テスト網（10件）では演出・ボス戦など全経路を保証できない、(3) WORKFLOW の「1単位ずつ・一度に詰め込まない」に反する。一方で「状態を受け取り変換値を返す純粋関数」だけなら read-only binding 問題が起きず、低リスクで切り出せる（save.js は引数→戻り値で完結し副作用なし＝テスタブル）。
 - **代替案：** (A) 状態コンテナ `S` への全面移行 → 却下（上記リスク）。(B) `export let` を直接 import → 不可（ESModule の named import は read-only binding で再代入できない）。

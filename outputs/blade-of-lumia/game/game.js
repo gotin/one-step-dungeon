@@ -21,6 +21,10 @@ import {
 import {
 	createStageState, serializeStageState, deserializeStageState, sanitizeLoadedPlayer,
 } from './save.js';
+// ── 通行可否判定・条件評価（Phase 0-2 Step 2: passable.js / conditions.js へ切り出し）──
+import { createPassable } from './passable.js';
+import { createConditions } from './conditions.js';
+
 
 // ── DOM ───────────────────────────────────────────────────────
 const boardEl          = document.getElementById('board');
@@ -725,128 +729,35 @@ function pulse(text, duration = 2000) {
 	msgTimer = setTimeout(() => msgBarEl.classList.add('hidden'), duration);
 }
 
-// ── 通行可否（半セル移動 対応） ───────────────────────────────
-// x/y はキャラの「左上角」のセル単位 float 座標
-// キャラは 1×1 セルの大きさ
-//
-// キャラが占めるタイル範囲：
-//   列方向: floor(x) 〜 floor(x + 0.999)  （x が整数のとき 1列、0.5のとき 2列）
-//   行方向: floor(y) 〜 floor(y + 0.999)
-//
-// 例: x=1.5 → 列 1 と 列 2 に跨る → 両方チェック
-function isPassable(nx, ny) {
-	if (!stageData) return false;
-	const c0 = Math.floor(nx);
-	const c1 = Math.floor(nx + 0.999);
-	const r0 = Math.floor(ny);
-	const r1 = Math.floor(ny + 0.999);
+// ── 通行可否・条件評価（Phase 0-2 Step 2: passable.js / conditions.js へ切り出し）──
+// これらの関数は再代入される可変状態を参照するため、状態 getter と依存関数を
+// factory に注入して生成する（getter 経由で常に最新状態を読む）。生成された
+// 関数は呼び出し側を変えずにそのまま使える。
+const { isPassable, tilePassable, isPassableForEnemy } = createPassable({
+	getStageData:    () => stageData,
+	getEnemies:      () => enemies,
+	getPlayer:       () => player,
+	getCurrentLayer: () => currentLayer,
+	getStageKey:     () => stageKey,
+	getDebugMode:    () => debugMode,
+	getSS,
+	toTileRow,
+	toTileCol,
+});
 
-	for (let r = r0; r <= r1; r++) {
-		for (let c = c0; c <= c1; c++) {
-			// マップ外 → ステージ端遷移なので通行可として扱う
-			if (r < 0 || r >= stageData.rows || c < 0 || c >= stageData.cols) continue;
-			if (!tilePassable(r, c)) return false;
-		}
-	}
+const { checkStoneOnSwitch, evaluateConditions } = createConditions({
+	getStageData:    () => stageData,
+	getEnemies:      () => enemies,
+	getPlayer:       () => player,
+	getCurrentLayer: () => currentLayer,
+	getStageKey:     () => stageKey,
+	getSS,
+	toTileRow,
+	toTileCol,
+	renderBoard:     () => renderBoard(),
+	renderChars:     () => renderChars(),
+});
 
-	// デバッグモード中は敵すり抜け可能
-	if (debugMode) return true;
-
-	// 移動後の石があるセルには移動できない（範囲チェック）
-	if (stageData && !debugMode) {
-		const _ssp = getSS(currentLayer, stageKey);
-		for (const st of Object.values(_ssp.stonePositions ?? {})) {
-			if (st.r >= r0 && st.r <= r1 && st.c >= c0 && st.c <= c1) return false;
-		}
-	}
-
-	// 敵と同じタイルセルには移動できない（重なり防止）
-	// ※ 「0.6未満」判定だと半セル移動時に動けなくなるため、タイル単位で比較する
-	for (const e of enemies) {
-		if (toTileRow(ny) === toTileRow(e.y) && toTileCol(nx) === toTileCol(e.x)) return false;
-	}
-
-	return true;
-}
-
-function tilePassable(r, c) {
-	const tile   = stageData.tiles[r]?.[c];
-	if (!tile) return false;
-	const posKey = `${r},${c}`;
-	const ss     = getSS(currentLayer, stageKey);
-	if (tile === TILE.WALL) return false;
-	if (tile === TILE.WATER) return false;
-	if (tile === TILE.GATE   && !ss.openGates.has(posKey)) return false;
-	// デバッグモード中はドアを素通り（鍵不要）
-	if (tile === TILE.DOOR   && !ss.openedDoors?.has(posKey) && !debugMode) return false;
-	if (tile === TILE.BREAKABLE_WALL && !ss.brokenWalls.has(posKey)) return false;
-	if (NPC_SPRITE_MAP[tile]) return false;
-	// Phase 8: フィールドタイル通行判定
-	if (tile === TILE.TREE)        return false;
-	if (tile === TILE.MOUNTAIN)    return false;
-	if (tile === TILE.FENCE)       return false;
-	if (tile === TILE.HOUSE_WALL)  return false;
-	if (tile === TILE.HOUSE_ROOF)  return false;
-	if (tile === TILE.SIGN)        return false; // 看板は通行不可（隣接して剣で読む）
-	if (tile === TILE.BUSH) {
-		// 茂み：切られていれば通行可
-		if (ss.cutBushes?.has(posKey)) return true;
-		return false;
-	}
-	// 石（STONE）の通行判定：元のタイル位置で判断
-	if (tile === TILE.STONE) {
-		const _ss = getSS(currentLayer, stageKey);
-		// stonePositions に登録されていれば石は移動済み → 元の位置は床として通行可
-		if (_ss.stonePositions?.[posKey]) return true;
-		return false; // 移動されていない → 石がある → 通れない
-	}
-	// Phase 6.5: ドアウェイの通行判定
-	if (tile === TILE.DOORWAY_BOSS || tile === TILE.DOORWAY_LOCKED) {
-		const dwState = ss.doorwayStates?.[posKey];
-		// DOORWAY_LOCKED: 閉じている間は通れない
-		if (tile === TILE.DOORWAY_LOCKED) {
-			const state = dwState ?? 'closed';
-			if (state !== 'open') return false;
-		}
-		// DOORWAY_BOSS: boss_closed 状態は通れない
-		if (tile === TILE.DOORWAY_BOSS) {
-			if (dwState === 'boss_closed') return false;
-		}
-	}
-	return true;
-}
-
-// 敵向けの通行可否（同じ 1セル占有チェック）
-function isPassableForEnemy(ny, nx, self) {
-	if (!stageData) return false;
-	const c0 = Math.floor(nx);
-	const c1 = Math.floor(nx + 0.999);
-	const r0 = Math.floor(ny);
-	const r1 = Math.floor(ny + 0.999);
-
-	for (let r = r0; r <= r1; r++) {
-		for (let c = c0; c <= c1; c++) {
-			if (r < 0 || r >= stageData.rows || c < 0 || c >= stageData.cols) return false;
-			if (!tilePassable(r, c)) return false;
-		}
-	}
-	// 移動後の石があるセルには通れない
-	if (stageData) {
-		const _sspe = getSS(currentLayer, stageKey);
-		for (const st of Object.values(_sspe.stonePositions ?? {})) {
-			if (toTileRow(ny) === st.r && toTileCol(nx) === st.c) return false;
-		}
-	}
-	// 他の敵と大きく重なっているなら通れない
-	for (const e of enemies) {
-		if (e === self) continue;
-		if (Math.abs(e.x - nx) < 0.6 && Math.abs(e.y - ny) < 0.6) return false;
-	}
-	// プレイヤーと同じタイルセルには移動できない（重なり防止）
-	// 隣接セルへの移動は許可するので体当たり攻撃は成立する
-	if (toTileRow(ny) === toTileRow(player.y) && toTileCol(nx) === toTileCol(player.x)) return false;
-	return true;
-}
 
 // ── ドアウェイシステム（Phase 6.5） ──────────────────────────
 // ボス部屋ロック状態：true の間はステージ遷移・MAP_ENTER を完全ブロック
@@ -1054,58 +965,10 @@ function tryPushStone(r, c, dir, origKey) {
 	return true;
 }
 
-// 石がスイッチの上に乗っているかチェックしてスイッチ状態を更新
-function checkStoneOnSwitch() {
-	const ss = getSS(currentLayer, stageKey);
-	if (!ss.stonePositions) return;
-	// まずスイッチ状態を「石によるON」をリセット（石がないスイッチはOFF）
-	// ただしプレイヤーが踏んでいる場合は維持する
-	for (let r = 0; r < stageData.rows; r++) {
-		for (let c = 0; c < stageData.cols; c++) {
-			if (stageData.tiles[r][c] !== TILE.SWITCH) continue;
-			const pk = `${r},${c}`;
-			// 石がこのスイッチの上にあるか確認
-			const stoneHere = Object.values(ss.stonePositions).some(st => st.r === r && st.c === c);
-			// プレイヤーが踏んでいるか確認
-			const playerHere = toTileRow(player.y) === r && toTileCol(player.x) === c;
-			if (stoneHere || playerHere) {
-				if (!ss.switchStates[pk]) {
-					ss.switchStates[pk] = true;
-					// スイッチに連動するゲートを開く
-					for (const link of stageData.links ?? []) {
-						if (link.switchId === pk) {
-							ss.openGates.add(link.gateId);
-							playSound('gateOpen');
-						}
-					}
-				}
-			} else {
-				// 石もプレイヤーもいない → スイッチを最初に踏んだプレイヤーによる永続ONでない場合のみOFF
-				// ※ STONE タイル元位置でのスイッチ（石が最初からスイッチの上）は永続ON扱い
-				// プレイヤーが踏んでONになったスイッチは石が離れてもON維持
-				// → 石による一時スイッチ = ss.stoneSwitches に記録している場合のみリセット
-				if (!ss.stoneSwitches) ss.stoneSwitches = new Set();
-				if (ss.stoneSwitches.has(pk)) {
-					ss.switchStates[pk] = false;
-					// 閉じるゲート処理
-					for (const link of stageData.links ?? []) {
-						if (link.switchId === pk) ss.openGates.delete(link.gateId);
-					}
-				}
-			}
-		}
-	}
-	// 今石が乗っているスイッチを stoneSwitches に記録
-	if (!ss.stoneSwitches) ss.stoneSwitches = new Set();
-	for (const st of Object.values(ss.stonePositions)) {
-		const pk = `${st.r},${st.c}`;
-		if (stageData.tiles[st.r]?.[st.c] === TILE.SWITCH) {
-			ss.stoneSwitches.add(pk);
-		}
-	}
-}
+// checkStoneOnSwitch は conditions.js へ切り出し（factory で生成済み）
 
 // ── プレイヤー移動 ────────────────────────────────────────────
+
 function movePlayer(dir) {
 	if (isDialog || isPaused || isGameover || isTransitioning) return;
 	heroDir = dir;
@@ -1966,35 +1829,10 @@ function retryGame() {
 	startGameLoop();
 }
 
-// ── 条件評価 ──────────────────────────────────────────────────
-function evaluateConditions() {
-	if (!stageData?.showConditions) return;
-	const ss = getSS(currentLayer, stageKey);
-	for (const [posKey, cond] of Object.entries(stageData.showConditions)) {
-		if (ss.conditionsMet.has(posKey)) continue;
-		let met = false;
-		if (cond.trigger === 'killAll')    met = enemies.length === 0;
-		else if (cond.trigger === 'switchOn') met = ss.switchStates?.[cond.switchId] === true;
-		else if (cond.trigger === 'wallBroken') met = ss.brokenWalls?.has(cond.wallId);
-		else if (cond.trigger === 'hasItem') met = !!player.subItems[cond.item] || player.weapon === cond.item;
-		else if (cond.trigger === 'allSwitchesOn') {
-			const allSw = [];
-			for (let _r = 0; _r < stageData.rows; _r++) {
-				for (let _c = 0; _c < stageData.cols; _c++) {
-					if (stageData.tiles[_r][_c] === TILE.SWITCH) allSw.push(`${_r},${_c}`);
-				}
-			}
-			met = allSw.length > 0 && allSw.every(pk => ss.switchStates?.[pk] === true);
-		}
-		if (met) {
-			ss.conditionsMet.add(posKey);
-			playSound('appear');
-			renderBoard(); renderChars();
-		}
-	}
-}
+// evaluateConditions は conditions.js へ切り出し（factory で生成済み）
 
 // ── NPC 会話 ──────────────────────────────────────────────────
+
 function startDialog(r, c, tileChar) {
 	const posKey = `${r},${c}`;
 	const data   = stageData.npcData?.[posKey] ?? NPC_DEFAULT_DIALOG[tileChar] ?? { name: 'NPC', lines: ['…'] };
