@@ -63,19 +63,28 @@
 
 **目的：** 長期開発・機能追加に耐えられるコードベースを整備する。**最初に完了させる。**
 
-**現状のファイルサイズ（要対応を ⚠️ で表示）：**
+**現状のファイルサイズ（要対応を ⚠️ で表示・2026-06-14 実測）：**
 ```
-game.js    4098行  ⚠️ 限界超え。1機能変更のたびにファイル全体を把握しなければならない
-game.css   1660行  ⚠️ 要分割
-editor.js  1581行  ⚠️ 要分割（さらに 0-4 でエディタ機能追加予定 → 先に分割が必要）
-sprites.js 1440行  ⚠️ 要分割
+game.js    4075行  ⚠️ ⚠️ 未だ痩せていない！ 関数は別ファイルに切り出したが、旧本体が
+                      game.js に重複して残ったまま（factory版で上書きしただけ）。
+                      → 0-2b で旧本体を削除して本当にスリム化する
+game.css   分割済 ✅ → css/ 配下11ファイル + @import エントリ（0-3b 完了）
+editor.js  1581行  ⚠️ 要分割（さらに 0-5 でエディタ機能追加予定 → 先に分割が必要）
+sprites.js 分割済 ✅ → sprites-player/enemies/items/tiles + aggregator（0-3 完了）
 sounds.js   448行  許容範囲内
 enemies.js  142行  OK
 items.js     92行  OK
 tiles.js    198行  OK
 npcs.js      17行  OK
-テストコード   0件  ⚠️ ゼロ。分割でデグレが起きても検知できない
+
+【game.js から切り出し済みのモジュール（実体はこちらが動いている）】
+player.js 698 / enemy-ai.js 555 / ui.js 529 / projectile.js 440 / boss.js 376 /
+render-board.js 308 / combat.js 291 / render-chars.js 266 / input.js 161 /
+passable.js 161 / conditions.js 117 / save.js 87 / main.js 78 / constants.js 36
+
+テストコード  Playwright 13本（起動・移動・セーブ/ロード・遷移・投擲物・石押し・VRT 等）
 ```
+
 
 ---
 
@@ -253,7 +262,45 @@ game/
 
 ---
 
+### 0-2b. game.js から重複した旧関数本体を削除する（分割の完遂）　🧠→⚡（依存確認はOpus、削除はSonnet）
+
+> **⚠️ 重要：これまでの Step 2〜5 の分割は「コピー＋factory上書き」方式で進めたため、
+> 切り出した関数の本体が game.js にも丸ごと残っており、game.js は 4075 行のままほとんど痩せていない。**
+> ファイル数は増えたが「1ファイルを小さくして把握しやすくする」という分割本来の目的が未達成。
+> このタスクで game.js 内の死蔵コード（factory版で上書き済みの旧 `function` 本体）を削除し、分割を本当に完了させる。
+
+**現状（2026-06-14 実測）：**
+```
+game.js     4075行  ← 元4098行からほぼ減っていない（要対応）
+player.js    698 / enemy-ai.js 555 / ui.js 529 / projectile.js 440 /
+boss.js      376 / render-board.js 308 / combat.js 291 / render-chars.js 266 /
+input.js     161 / passable.js 161 / conditions.js 117 / save.js 87 / main.js 78 / constants.js 36
+```
+
+**game.js に本体が重複して残っている主な関数（grep 確認済み）：**
+`renderBoard`(315) / `movePlayer`(1212) / `swordAttack`(1824) / `takeDamage`(2004) / `onBossDefeated`(2498) / `enemyTick`(2845) / `projectileTick`(3412) ほか多数（各 factory 版が上書きして実際に使われている）
+
+**進め方（安全第一・1モジュールずつ）：**
+- [ ] **準備**：削除候補の棚卸し。各分割ファイル（passable/conditions/render-board/render-chars/input/ui/projectile/enemy-ai/player/combat/boss）が公開する関数名と、game.js 内の旧 `function` 本体・旧 `let`/`const` 宣言の対応表を作る
+- [ ] **削除は依存の浅い順に1モジュールずつ**実施し、毎回 `npx playwright test`（13本）でデグレ確認：
+  - [ ] passable.js / conditions.js 分（判定系・依存が浅い）
+  - [ ] render-board.js / render-chars.js 分（描画系）
+  - [ ] input.js / ui.js 分
+  - [ ] projectile.js / enemy-ai.js 分
+  - [ ] player.js / combat.js / boss.js 分
+- [ ] **各削除で確認すること**：
+  - factory が確実にその関数を上書きしている（`xxx = _mod.xxx` が存在する）
+  - 削除する旧本体が他から直接参照されていない（クロージャ変数への依存が残っていないか）
+  - 旧本体だけが参照していたヘルパー関数・変数が「使われなくなったゴミ」になっていないか（あれば一緒に削除）
+- [ ] **目標**：game.js を 4075行 → **大幅に削減**（理想は ~400〜800行のオーケストレーション層：状態宣言・factory初期化・export のみ）
+- [ ] 完了後、PLAN.md 冒頭「現状のファイルサイズ」表と「現在の実装状態」表の game.js 行数を更新
+
+> **学びとして DECISIONS.md にも記録済み：** 「コピー＋上書き」方式は動作の安全性は高い（旧実装を残したまま新実装に切り替えられる）が、**旧本体の削除を別ステップとして必ず実施しないと分割が完了しない**。今後の切り出しは「コピー→テスト→旧削除→テスト」を1セットにする。
+
+---
+
 ### 0-3. sprites.js の分割　⚡ Sonnet（機械的なファイル分け）
+
 
 - [x] `sprites.js`（1440行）を機能別に分割：
   - `sprites-player.js`：プレイヤー・NPC・escape/monster/darklord/princess（~340行）
@@ -628,8 +675,11 @@ Step 5: 必要になったら（Phase 0後半）
 | 色スイッチ | ⬜ 未実装 |
 | 剣の複数ランク | ⬜ 未実装 |
 | テスト基盤（Playwright E2E/VRT） | ✅ Phase 0-0 完了（起動・移動・セーブ/ロード・ステージ遷移の4スモーク＋VRT、計5テストがパス） |
-| game.js モジュール分割 | ⬜ 未実施（4098行・要分割） |
-| sprites.js 分割 | ⬜ 未実施（1440行・要分割） |
+| game.js モジュール分割 | 🚧 途中（関数は別ファイルに切り出したが、旧本体が game.js に重複して残り 4075 行のまま。0-2b で旧本体を削除予定） |
+| game.css 分割 | ✅ 完了（css/ 配下11ファイル + @import エントリ） |
+| sprites.js 分割 | ✅ 完了（player/enemies/items/tiles + aggregator） |
+| editor.js 分割 | ⬜ 未実施（1581行・要分割） |
+
 | スプライトエディタ | ⬜ 未実装 |
 | キャラクター定義エディタ | ⬜ 未実装 |
 | アイテム定義エディタ | ⬜ 未実装 |
