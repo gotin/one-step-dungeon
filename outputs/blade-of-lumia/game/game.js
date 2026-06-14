@@ -11,24 +11,12 @@ import {
 import {
 	playSound, playBgm, stopBgm, resumeAudio,
 } from '../shared/sounds.js';
-
-// ── 定数 ──────────────────────────────────────────────────────
-// 座標系：x/y はセル単位の float（0.5 刻みで移動）
-// 例: x=1.5 → タイル列 1 の右端 / タイル列 2 の左端の中間
-const MOVE_STEP      = 0.5;   // 1 操作 = 0.5 セル
-const TICK_MS        = 120;   // 敵行動 tick 間隔（ms）
-const INVINCIBLE_MS  = 1500;  // 無敵時間（ms）
-const HP_PER_HEART   = 2;
-const MAP_JSON_URL   = '../work/blade-of-lumia.json';
-const SAVE_KEY       = 'blade-of-lumia-save';
-
-// 移動方向 → (dy, dx) セル単位
-const DIR_DELTA = {
-	up:    [-MOVE_STEP, 0],
-	down:  [ MOVE_STEP, 0],
-	left:  [0, -MOVE_STEP],
-	right: [0,  MOVE_STEP],
-};
+// ── 定数（Phase 0-2 Step 1a: constants.js へ切り出し済み）──────
+import {
+	MOVE_STEP, TICK_MS, INVINCIBLE_MS, HP_PER_HEART,
+	MAP_JSON_URL, SAVE_KEY, CLEARED_KEY, DIR_DELTA,
+	SWORD_REACH, SWORD_COOLDOWN_MS, STONE_PUSH_COOLDOWN_MS,
+} from './constants.js';
 
 // ── DOM ───────────────────────────────────────────────────────
 const boardEl          = document.getElementById('board');
@@ -1769,16 +1757,8 @@ function gainHeartContainer() {
 }
 
 // ── 剣攻撃 ────────────────────────────────────────────────────
-// 剣リーチ：プレイヤー中心から敵中心までの距離で判定するため、
-// 隣接セルの敵との距離 = 1.0 セルなので、1.2 あれば十分届く（少し余裕あり）
-const SWORD_REACH = 1.2;
-// 剣攻撃クールダウン：100ms（1秒10回まで）
-// Phase 3 で攻撃速度UP装備が実装されたらここを短縮する
-const SWORD_COOLDOWN_MS = 100;
+// SWORD_REACH / SWORD_COOLDOWN_MS / STONE_PUSH_COOLDOWN_MS は constants.js から import 済み
 let lastSwordTime = 0;
-
-// 石を押すクールダウン：600ms（重い石はゆっくりしか押せない）
-const STONE_PUSH_COOLDOWN_MS = 600;
 let lastStonePushTime = 0;
 
 function swordAttack() {
@@ -2570,7 +2550,7 @@ function spawnTriforcePiece(boss) {
 }
 
 // ── クリア済みフラグ保存キー ──────────────────────────────────
-const CLEARED_KEY = 'blade-of-lumia-cleared';
+// CLEARED_KEY は constants.js から import 済み
 
 function hasCleared() {
 	return !!localStorage.getItem(CLEARED_KEY);

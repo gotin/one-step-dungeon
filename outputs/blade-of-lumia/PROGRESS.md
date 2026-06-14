@@ -14,14 +14,31 @@
 ## 📍 現在地（常に最新に保つ）
 
 - **進行中フェーズ：** Phase 0（技術基盤）
-- **進行中タスク：** 0-2 game.js モジュール分割（次のターゲット）
-- **直近の状態：** Phase 0-1 完了。論理時間 `gameTime` + `step()` 分離 + `window.__game` フックを実装。Playwright 8テスト（既存5＋決定論3）すべてグリーン。次は 0-2 の分割へ（0-1 と同じく game.js を触るので連続して進めると効率的）。
+- **進行中タスク：** 0-2 game.js モジュール分割 Step 1b（状態コンテナ方式で state.js / save.js 切り出し）
+- **直近の状態：** Phase 0-2 Step 1a 完了。再代入されない純粋定数を `constants.js` に切り出し（11定数）。10テストすべてグリーン（デグレなし）。次は Step 1b（可変状態の状態コンテナ化）。
 
 ---
 
 ## セッションログ
 
 <!-- 新しいエントリを上に追加していく（最新が一番上） -->
+
+### 2026-06-14 — Phase 0-2 Step 1a：定数を constants.js へ切り出し
+
+**やったこと：**
+- 設計方針を確認：`player`/`stageKey`/`currentLayer`/`mapData` 等は `let` で再代入されるため、ESModule の read-only binding 問題が分割の核心。PLAN の Step 1 を **段階方式（B）** に分解（1a=定数のみ、1b=状態コンテナ化）し、まず低リスクな 1a を実施
+- **`game/constants.js` を新設**：再代入されない純粋定数11個を切り出し（MOVE_STEP / TICK_MS / INVINCIBLE_MS / HP_PER_HEART / MAP_JSON_URL / SAVE_KEY / CLEARED_KEY / DIR_DELTA / SWORD_REACH / SWORD_COOLDOWN_MS / STONE_PUSH_COOLDOWN_MS）
+- game.js を `import { ... } from './constants.js'` に変更し、インラインの `const` 宣言と重複していた `CLEARED_KEY` を削除（`lastSwordTime`/`lastStonePushTime` の `let` は game.js に残す）
+- `npx playwright test` で **10 passed**（デグレなし）
+- PLAN.md（Step 1 を 1a/1b に分割・1a完了）・PROGRESS.md・DECISIONS.md を更新
+
+**学び・気づき：**
+- DOM参照（`const boardEl = document.getElementById(...)`）・描画密接な `BG_TILE_COLOR_CLASS`・`let` 状態は今回の対象外とし、純粋な値だけを移すことで副作用ゼロ・低リスクに保てた
+- ESModule の named import は read-only binding なので、定数（再代入なし）は安全に移せるが、状態（再代入あり）は単一オブジェクト集約（状態コンテナ）が必要 → 1b で実施
+
+**▶ 次やること：**
+- [ ] Phase 0-2 Step 1b：可変状態を状態コンテナ方式（`state.js` に `S = {...}`）へ移行し、`save.js`（saveGame/loadGame/getSS）も切り出す 🧠→⚡
+
 
 ### 2026-06-13 — Phase 0-1：決定論的ゲームループ（gameTime / step / __game）
 
@@ -141,7 +158,7 @@
 
 | フェーズ | 状態 | メモ |
 |---|---|---|
-| Phase 0 技術基盤 | 🚧 進行中 | 0-0 ✅ / 0-1 ✅ 完了（8テストグリーン）。次は 0-2 モジュール分割 |
+| Phase 0 技術基盤 | 🚧 進行中 | 0-0 ✅ / 0-1 ✅ 完了。0-2 着手（Step 1a: constants.js 切り出し済み、10テストグリーン）。次は Step 1b 状態コンテナ化 |
 | Phase 1 ストーリー基盤 | 🔲 未着手 | |
 | Phase 2 8ダンジョン | 🔲 未着手 | |
 | Phase 3 アクション深化 | 🔲 未着手 | |

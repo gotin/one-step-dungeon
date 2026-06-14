@@ -88,6 +88,12 @@
 - **ミス3（思い込み）：** 「実機で不成立＝コードが原因」と決めつけた。真因は**ブラウザの古いキャッシュ**だった。→ 教訓：実機差異を見たら、まずハードリロード／キャッシュ無効化を疑う。コードが develop と一致しているなら、環境要因（キャッシュ・サーバ）を先に切り分ける。
 - **結果：** game.js のコードは develop と一致しており正常。実機もキャッシュクリアで develop と同じスムーズ動作を確認。テストは2条件を正しく検証する形に作り直して保持（10テスト全グリーン）。
 
+### 2026-06-14 — Phase 0-2 の分割は「定数→状態」の段階方式で進める
+- **決定：** PLAN の Step 1（state.js / save.js 切り出し）を **2段階に分解**する。1a=再代入されない純粋定数を `constants.js` へ、1b=可変状態を状態コンテナ方式（`state.js` の単一オブジェクト `S`）へ。まず 1a を実施した。
+- **理由：** `player`/`stageKey`/`currentLayer`/`mapData`/`stageState` 等は `loadGame()`・`init()`・`startNewGame()` で**再代入**される。ESModule の named import は **read-only binding** なので、`export let player` を別ファイルから import すると再代入できずエラーになる。したがって「再代入されない定数」と「再代入される状態」は分割の難易度がまったく異なる。低リスクな定数から先に切り出し、影響の大きい状態移行を独立した単位にすることでデグレリスクを抑える（WORKFLOW の「1単位ずつ進める」にも合致）。
+- **代替案：** (A) PLAN通り state.js + save.js を一気に切り出す → 却下（数百箇所の `player`→`S.player` 置換が必要で侵襲的）。本セッションでユーザーと相談し B（段階方式）を選択。
+- **結果／影響：** `constants.js` に11定数を集約（MOVE_STEP / TICK_MS / INVINCIBLE_MS / HP_PER_HEART / MAP_JSON_URL / SAVE_KEY / CLEARED_KEY / DIR_DELTA / SWORD_REACH / SWORD_COOLDOWN_MS / STONE_PUSH_COOLDOWN_MS）。`lastSwordTime`/`lastStonePushTime` は再代入される `let` なので game.js に残した。DOM参照・`BG_TILE_COLOR_CLASS`（描画密接）も対象外。10テストグリーン。1b は次セッションで状態コンテナ化として実施。
+
 ### 2026-06-13 — モデル使い分け（Opus / Sonnet）を方針化
 - **決定：** 設計・依存判断は Opus、決まった実装・量産は Sonnet。PLAN.md の各タスクに推奨モデルを記載。
 - **理由：** コスト効率と品質の両立。「最初の1つ・全体設計」は重い思考、「2つ目以降の繰り返し」は機械的作業。

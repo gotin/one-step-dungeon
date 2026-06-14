@@ -215,8 +215,9 @@ game/
 **分割手順（段階的に実施）：**
 
 - [ ] **Step 1: 状態・定数の分離（副作用ゼロ・低リスク）**
-  - `state.js`：グローバル変数・定数をまとめる
-  - `save.js`：`saveGame()` / `loadGame()` / `getSS()` を移動
+  - [x] **Step 1a**：再代入されない純粋定数を `constants.js` へ切り出し（MOVE_STEP / TICK_MS / INVINCIBLE_MS / HP_PER_HEART / MAP_JSON_URL / SAVE_KEY / CLEARED_KEY / DIR_DELTA / SWORD_REACH / SWORD_COOLDOWN_MS / STONE_PUSH_COOLDOWN_MS）。10テストグリーン
+  - [ ] **Step 1b**：可変状態（player / stageKey / currentLayer / mapData 等）を状態コンテナ方式（`state.js`）へ移行 ※ESModule read-only binding 回避のため単一オブジェクト集約
+  - [ ] `save.js`：`saveGame()` / `loadGame()` / `getSS()` を移動（Step 1b と同時 or 直後）
 
 - [ ] **Step 2: 判定・ロジック系の分離（純粋関数が多い・低リスク）**
   - `passable.js`：`isPassable()` / `tilePassable()` / `isPassableForEnemy()`
