@@ -14,8 +14,8 @@
 ## 📍 現在地（常に最新に保つ）
 
 - **進行中フェーズ：** Phase 0（技術基盤）
-- **進行中タスク：** 0-2 game.js モジュール分割 Step 5（player.js / combat.js / projectile.js / enemy-ai.js / boss.js の切り出し）
-- **直近の状態：** Phase 0-2 Step 4（input.js / ui.js）完了。`initInput(deps)` factory でキーボード・モバイル・スワイプ入力を切り出し、`createUi(deps)` factory で HUD・ポーズ・ダイアログ・ショップを切り出し。旧インラインコードを削除して factory 生成版で上書き。`updateShieldHud` / `processHeldKeys` は事前 `let` 宣言で TDZ を回避。10テストすべてグリーン（デグレなし）。次は Step 5（ゲームロジック系の分離）。
+- **進行中タスク：** 0-2 game.js モジュール分割 Step 5 続き（player.js / combat.js / boss.js の切り出し）
+- **直近の状態：** Phase 0-2 Step 5 部分完了。`projectile.js`（投擲物・爆弾・盾ブロック判定）と `enemy-ai.js`（敵AI全般）を `createProjectile` / `createEnemyAi` factory で切り出し。`_proj.fireEnemyProjectile` / `_proj.isShieldBlockingDir` / `_proj.showShieldBlockEffect` を enemy-ai deps に渡すことで循環参照フリー設計。10テストグリーン（デグレなし）。残りは player.js / combat.js / boss.js。
 
 
 ---
@@ -23,6 +23,25 @@
 ## セッションログ
 
 <!-- 新しいエントリを上に追加していく（最新が一番上） -->
+
+### 2026-06-14 — Phase 0-2 Step 5（前半）：projectile.js / enemy-ai.js 切り出し
+
+**やったこと：**
+- **`game/projectile.js` を新設**（`createProjectile(deps)` factory）：投擲物・爆弾・盾ブロック判定を game.js から切り出し。内部状態（`_projectiles` / `_placedBombs` / `_nextProjId`）をこのモジュールが所有。公開 API: `projectileTick` / `clearProjectiles` / `addProjectile` / `fireEnemyProjectile` / `isShieldBlocking` / `isShieldBlockingDir` / `showShieldBlockEffect` / `clearBombs` / `placeBomb` / `bombTick` / `showExplosionEffect`
+- **`game/enemy-ai.js` を新設**（`createEnemyAi(deps)` factory）：`enemyTick` / `enemyChase` / `bossTickHitAndAway` / `enemyAttack` / `checkEnemyContact` を切り出し。`_proj.fireEnemyProjectile` / `_proj.isShieldBlockingDir` / `_proj.showShieldBlockEffect` を deps として渡すことで循環参照フリー設計
+- game.js に `createProjectile` / `createEnemyAi` の import を追加し、factory 初期化ブロック `{ const _proj = createProjectile(...); const _ai = createEnemyAi(...); projectileTick = _proj.projectileTick; ... }` を追加
+- `node scripts/check-errors.mjs` → エラーなし確認
+- `npx playwright test` で **10 passed**（VRT 含む全テストグリーン＝デグレなし）
+- PLAN.md（Step 5 部分完了）・PROGRESS.md・進捗サマリを更新
+
+**学び・気づき：**
+- projectile.js が盾ブロック判定（`isShieldBlockingDir`）を所有し、enemy-ai.js がそれを deps として受け取る設計にしたことで、敵の投擲物・近接攻撃ともに同じ判定ロジックを使える循環参照フリーな構造を作れた
+- factory ブロックで `_proj` → `_ai` の順に初期化することで、`_proj.fireEnemyProjectile` を `_ai` の deps に渡せる（依存の向きが一方向で明快）
+- game.js にはまだ旧インライン実装が残っているが、factory が上書きするため動作は factory 版で統一されている（旧実装は使われない）
+
+**▶ 次やること：**
+- [ ] Phase 0-2 Step 5 続き：`player.js`（`movePlayer` / `handleTileEvent`）、`combat.js`（`swordAttack` / `dealDamageToEnemy` / `takeDamage`）、`boss.js`（`onBossDefeated` / `startBossBattle` / `startEnding`）を切り出す ⚡
+
 
 ### 2026-06-14 — Phase 0-2 Step 4：input.js / ui.js 切り出し
 
@@ -239,7 +258,7 @@
 
 | フェーズ | 状態 | メモ |
 |---|---|---|
-| Phase 0 技術基盤 | 🚧 進行中 | 0-0 ✅ / 0-1 ✅ 完了。0-2 進行中（Step 1〜4 完了: constants.js + save.js + passable.js + conditions.js + render-board.js + render-chars.js + input.js + ui.js、10テストグリーン）。次は Step 5 ゲームロジック系（player.js / combat.js / projectile.js / enemy-ai.js / boss.js）|
+| Phase 0 技術基盤 | 🚧 進行中 | 0-0 ✅ / 0-1 ✅ 完了。0-2 進行中（Step 1〜5前半完了: constants.js + save.js + passable.js + conditions.js + render-board.js + render-chars.js + input.js + ui.js + projectile.js + enemy-ai.js、10テストグリーン）。次は Step 5 残り（player.js / combat.js / boss.js）|
 
 | Phase 1 ストーリー基盤 | 🔲 未着手 | |
 | Phase 2 8ダンジョン | 🔲 未着手 | |

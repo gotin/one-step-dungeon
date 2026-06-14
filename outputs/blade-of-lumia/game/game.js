@@ -30,6 +30,10 @@ import { createRenderChars } from './render-chars.js';
 // ── 入力・UI（Phase 0-2 Step 4: input.js / ui.js へ切り出し）──────────────────
 import { initInput } from './input.js';
 import { createUi } from './ui.js';
+// ── 投擲物・爆弾（Phase 0-2 Step 5: projectile.js へ切り出し）───────────────
+import { createProjectile } from './projectile.js';
+// ── 敵AI（Phase 0-2 Step 5: enemy-ai.js へ切り出し）──────────────────────────
+import { createEnemyAi } from './enemy-ai.js';
 
 
 // ── DOM ───────────────────────────────────────────────────────
@@ -916,6 +920,71 @@ const { checkStoneOnSwitch, evaluateConditions } = createConditions({
 	_inputModule = _in;  // window.__game の queueInput/releaseInput から参照するため保持
 }
 
+// ── 投擲物・爆弾 / 敵AI（Phase 0-2 Step 5: projectile.js / enemy-ai.js へ切り出し）──
+// createProjectile / createEnemyAi の factory を生成し、旧インライン実装を上書きする。
+// deps は getters 経由で常に最新の game.js 状態を読む。
+{
+	const _proj = createProjectile({
+		getStageData:       () => stageData,
+		getPlayer:          () => player,
+		getEnemies:         () => enemies,
+		getCurrentLayer:    () => currentLayer,
+		getStageKey:        () => stageKey,
+		getHeroDir:         () => heroDir,
+		getCharLayerEl:     () => charLayerEl,
+		getCellPx,
+		toTileRow,
+		toTileCol,
+		gameNow,
+		getSS,
+		dealDamageToEnemy:  (e, dmg) => dealDamageToEnemy(e, dmg),
+		takeDamage:         (amt) => takeDamage(amt),
+		evaluateConditions: () => evaluateConditions(),
+		renderBoard:        () => renderBoard(),
+		renderChars:        () => renderChars(),
+		saveGame:           () => saveGame(),
+		updateHud:          () => updateHud(),
+		pulse:              (t, d) => pulse(t, d),
+		hasCleared,
+	});
+
+	const _ai = createEnemyAi({
+		getStageData:          () => stageData,
+		getPlayer:             () => player,
+		getEnemies:            () => enemies,
+		getHeroDir:            () => heroDir,
+		getCharLayerEl:        () => charLayerEl,
+		getCellPx,
+		toTileRow,
+		toTileCol,
+		gameNow,
+		isPassableForEnemy,
+		moveCharEl:            (id, x, y) => moveCharEl(id, x, y),
+		takeDamage:            (amt) => takeDamage(amt),
+		dealDamageToEnemy:     (e, dmg) => dealDamageToEnemy(e, dmg),
+		fireEnemyProjectile:   _proj.fireEnemyProjectile,
+		isShieldBlockingDir:   _proj.isShieldBlockingDir,
+		showShieldBlockEffect: _proj.showShieldBlockEffect,
+		getDebugMode:          () => debugMode,
+	});
+
+	// factory が生成した関数で旧インライン実装を上書き
+	projectileTick       = _proj.projectileTick;
+	clearProjectiles     = _proj.clearProjectiles;
+	clearBombs           = _proj.clearBombs;
+	bombTick             = _proj.bombTick;
+	placeBomb            = _proj.placeBomb;
+	fireEnemyProjectile  = _proj.fireEnemyProjectile;
+	isShieldBlocking     = (proj) => _proj.isShieldBlocking(proj);
+	isShieldBlockingDir  = _proj.isShieldBlockingDir;
+	showShieldBlockEffect= _proj.showShieldBlockEffect;
+	showExplosionEffect  = _proj.showExplosionEffect;
+	enemyTick            = _ai.enemyTick;
+	enemyChase           = _ai.enemyChase;
+	bossTickHitAndAway   = _ai.bossTickHitAndAway;
+	enemyAttack          = _ai.enemyAttack;
+	checkEnemyContact    = _ai.checkEnemyContact;
+}
 
 // ── ドアウェイシステム（Phase 6.5） ──────────────────────────
 // ボス部屋ロック状態：true の間はステージ遷移・MAP_ENTER を完全ブロック

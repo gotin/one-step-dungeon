@@ -235,12 +235,13 @@ game/
   - `ui.js`：HUD・ポーズ・ダイアログ・ショップ
   - ※ `initInput(deps)` factory でキーボード・モバイル・スワイプリスナーを登録し `heldKeys` / `processHeldKeys` を返す。`createUi(deps)` factory で HUD・ポーズ・ダイアログ・ショップを生成。旧インラインコード（キーボードリスナー・processHeldKeys・モバイルボタン等）を削除し、factory 生成版で全て上書き。`updateShieldHud` / `processHeldKeys` は事前に `let` 宣言を追加して TDZ を回避。10テストグリーン（デグレなし）。
 
-- [ ] **Step 5: ゲームロジック系の分離**
-  - `player.js`：`movePlayer()` / `handleTileEvent()`
-  - `combat.js`：`swordAttack()` / `dealDamageToEnemy()` / `takeDamage()`
-  - `projectile.js`：投擲物・爆弾
-  - `enemy-ai.js`：`enemyTick()` / `bossTickHitAndAway()` / `enemyChase()`
-  - `boss.js`：`onBossDefeated()` / `startBossBattle()` / `startEnding()`
+- [x] **Step 5: ゲームロジック系の分離（部分完了）**
+  - `projectile.js`：投擲物・爆弾・盾ブロック判定（`createProjectile` factory）✅
+  - `enemy-ai.js`：`enemyTick()` / `bossTickHitAndAway()` / `enemyChase()` / `enemyAttack()` / `checkEnemyContact()`（`createEnemyAi` factory）✅
+  - `player.js`：`movePlayer()` / `handleTileEvent()` → 次 Step で実施
+  - `combat.js`：`swordAttack()` / `dealDamageToEnemy()` / `takeDamage()` → 次 Step で実施
+  - `boss.js`：`onBossDefeated()` / `startBossBattle()` / `startEnding()` → 次 Step で実施
+  - ※ factory + getter 注入方式を踏襲。`_proj.fireEnemyProjectile` / `_proj.isShieldBlockingDir` / `_proj.showShieldBlockEffect` を enemy-ai に deps として渡すことで循環参照フリーな設計を実現。10テストグリーン（デグレなし）
 
 - [ ] **Step 6: エントリポイントの整理**
   - `main.js`：`init()` とゲームループのみ
