@@ -14,8 +14,9 @@
 ## 📍 現在地（常に最新に保つ）
 
 - **進行中フェーズ：** Phase 0（技術基盤）
-- **進行中タスク：** Phase 0-2b（game.js 旧本体削除）**進行中** → 次は input/ui → projectile/enemy-ai → player/combat/boss の旧本体削除
-- **直近の状態：** 0-2b 開始。**render-board / render-chars の旧本体（renderBoard/setCellClass/addCellSprite/applyBgTileClass/renderChars/addCharEl/moveCharEl/removeCharEl/addShieldOverlay/updatePlayerCharEl）を game.js から削除**し、factory 代入先に `let` 事前宣言を追加。**game.js 4075→3624行（451行減）・13テストグリーン**。削除パターン（① factory 代入の `let` 宣言を追加 → ② 旧 `function` 本体を `sed` で削除 → ③ テスト）が確立。残り（input/ui・projectile/enemy-ai・player/combat/boss）は同パターンで Sonnet が量産削除する想定。passable/conditions は Step2 時点で既に削除済みだった。
+- **進行中タスク：** Phase 0-2b（game.js 旧本体削除）**進行中** → 次は **player/combat/boss の factory 統合 + 旧本体削除**
+- **直近の状態：** 0-2b で **enemy-ai / projectile の旧本体を game.js から削除**（factory で上書き済みの dead code を除去）。削除した関数の `let` 事前宣言を追加（ESM strict mode では旧 `function` のホイスティング消失で代入先が未宣言になり ReferenceError → 起動失敗するため）。**game.js 3631→2726行（905行減）・13テストグリーン**。⚠️ **player.js / combat.js / boss.js はファイル作成済みだが factory 統合が未完**（`createPlayer/createCombat/createBoss` を import しているが `_player./_combat./_boss.` の呼び出しが無く、game.js 内の旧本体 movePlayer/handleTileEvent/swordAttack/dealDamageToEnemy/takeDamage/onBossDefeated/startEnding/startBossBattle 等が現役）。次はこの3モジュールの factory 統合（deps 配線 + 代入ブロック追加）→ 旧本体削除を **1モジュールずつ** 行う。render-board/render-chars/input/ui/passable/conditions/enemy-ai/projectile は削除済み。
+
 
 
 
@@ -26,7 +27,25 @@
 
 <!-- 新しいエントリを上に追加していく（最新が一番上） -->
 
+### 2026-06-14 — Phase 0-2b：enemy-ai / projectile の旧本体を game.js から削除
+
+**やったこと：**
+- 再開時にまず状況確認：直近コミット `5ae567b`（render 関数削除）時点でコードは健全（**13 passed・git クリーン・構文OK**）。前セッションの中断は token 長等が原因で、壊れた状態はコミットされていなかった
+- **enemy-ai の旧本体を削除**（`enemyTick`/`pickApproachMode`/`bossTickHitAndAway`/`enemyAttack`/`fireEnemyProjectile`/`enemyChase`/`checkEnemyContact` ＋ヘルパー、約560行）。factory（`_ai.*`）で上書き済みの dead code
+- **projectile の旧本体を削除**（`projectiles`/`nextProjId`/`projectileTick`/`boomerangStep`/`checkProjHit`/`isShieldBlocking(Dir)`/`showShieldBlockEffect`/`isInBounds`/`isTilePassableForProj`/`createProjEl`/`moveProjEl`/`removeProjEl`/`clearProjectiles`/`placedBombs`/`clearBombs`/`placeBomb`/`bombTick`/`explodeBomb`/`showExplosionEffect`、約360行）。factory（`_proj.*`）で上書き済みの dead code
+- **game.js 3631→2726行（905行減）・13テストグリーン**
+
+**学び・気づき（重要）：**
+- **ESM strict mode の落とし穴**：factory 代入ブロックの `enemyTick = _ai.enemyTick` 等は、削除対象の `function enemyTick(){}` の**ホイスティングによる暗黙の宣言**に依存していた。旧 `function` 本体を削除すると代入先が未宣言になり **ReferenceError で起動失敗**（全テストがタイムアウト）。最初に enemy 系を削除したらこれで全滅した
+- **正しい削除パターン（PROGRESS 既出の手順を厳守）**：① factory 代入先の関数を `let xxx = () => {};` で**事前宣言** → ② 旧 `function` 本体を削除 → ③ テスト。render/input/ui 系で確立済みだった手順を、今回 enemy/projectile にも適用して解決
+- 削除前に「他所からの参照が旧本体内部に閉じているか」を `grep` で必ず確認した（`fireEnemyProjectile` は projectile/enemy 両方に定義があるが factory 版に一本化済み）
+
+**▶ 次やること：**
+- [ ] Phase 0-2b 続き：**player.js / combat.js / boss.js の factory 統合 + 旧本体削除**。⚠️ これら3つは enemy/projectile と違い **factory 統合自体が未完**（`createPlayer/createCombat/createBoss` を import しているが `_player./_combat./_boss.` の呼び出しが無く、game.js の旧本体が現役）。単純削除ではなく「deps 配線 → 代入ブロック追加 → テスト → 旧本体削除 → 再テスト」を **1モジュールずつ** 行う必要がある（相互依存：combat の dealDamageToEnemy/takeDamage を enemy-ai/projectile factory が deps として参照している点に注意）
+
+
 ### 2026-06-14 — Phase 0-3b：game.css を11ファイルに分割（@import エントリ化）
+
 
 **やったこと：**
 - **`game.css`（1661行）を `@import` のみのエントリファイルに書き換え**、機能別に `game/css/` 配下へ分割：
@@ -393,7 +412,8 @@
 
 | フェーズ | 状態 | メモ |
 |---|---|---|
-| Phase 0 技術基盤 | 🚧 進行中 | 0-0 ✅ / 0-1 ✅ / 0-3 ✅（sprites）/ 0-3b の game.css ✅。**0-2（game.js 分割）は「コピー＋上書き」で実体は分割済みだが game.js 内に旧本体が残り 4075 行のまま → 0-2b で旧本体を削除して本当にスリム化する（最優先）。** その後 editor.js 分割（0-3b 残り）|
+| Phase 0 技術基盤 | 🚧 進行中 | 0-0 ✅ / 0-1 ✅ / 0-3 ✅（sprites）/ 0-3b の game.css ✅。**0-2b（game.js 旧本体削除）進行中：render/input/ui/passable/conditions/enemy-ai/projectile は削除済みで game.js 4075→2726 行まで縮小。残りは player/combat/boss の factory 統合＋旧本体削除（これらは統合自体が未完）。** その後 editor.js 分割（0-3b 残り）|
+
 
 
 
