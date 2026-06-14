@@ -24,6 +24,9 @@ import {
 // ── 通行可否判定・条件評価（Phase 0-2 Step 2: passable.js / conditions.js へ切り出し）──
 import { createPassable } from './passable.js';
 import { createConditions } from './conditions.js';
+// ── 描画系（Phase 0-2 Step 3: render-board.js / render-chars.js へ切り出し）──────
+import { createRenderBoard } from './render-board.js';
+import { createRenderChars } from './render-chars.js';
 
 
 // ── DOM ───────────────────────────────────────────────────────
@@ -111,7 +114,11 @@ let debugMode = false;
 let pendingTriforcePos = null;
 
 // char-layer DOM 要素（キャラクター絶対配置コンテナ）
+// Phase 0-2 Step 3: render-board.js と render-chars.js が共有する参照ラッパー。
+// renderBoard() が新しい charLayerEl を作成したとき .value を更新し、
+// renderChars() 側は .value 経由で常に最新の要素を読む。
 let charLayerEl = null;
+const charLayerElRef = { value: null };  // ← 両モジュールが共有する参照ラッパー
 
 // ── ユーティリティ ────────────────────────────────────────────
 // float 座標 → タイル整数座標
@@ -757,6 +764,51 @@ const { checkStoneOnSwitch, evaluateConditions } = createConditions({
 	renderBoard:     () => renderBoard(),
 	renderChars:     () => renderChars(),
 });
+
+// ── 描画系（Phase 0-2 Step 3: render-board.js / render-chars.js へ切り出し）──────
+// renderBoard / renderChars / addCharEl / moveCharEl / removeCharEl /
+// addShieldOverlay / updatePlayerCharEl を factory + getter 注入で生成する。
+// 呼び出し側（game.js 内）は関数名を変えずにそのまま使える（上書き代入）。
+//
+// render-board は charLayerElRef.value に新しい charLayerEl を書き込む。
+// render-chars はその .value を読む。game.js は charLayerEl も同期させる。
+
+{
+	const _rb = createRenderBoard({
+		getStageData:    () => stageData,
+		getCurrentLayer: () => currentLayer,
+		getStageKey:     () => stageKey,
+		getSS,
+		getBoardEl:      () => boardEl,
+		getStageLabelEl: () => stageLabelEl,
+		charLayerElRef,
+		getDoorwayState,
+	});
+
+	const _rc = createRenderChars({
+		getPlayer:         () => player,
+		getEnemies:        () => enemies,
+		getCurrentLayer:   () => currentLayer,
+		getStageKey:       () => stageKey,
+		getStageData:      () => stageData,
+		getHeroDir:        () => heroDir,
+		getSS,
+		getCellPx,
+		charLayerElRef,
+		getHeroSpriteName: () => getHeroSpriteName(),
+		getHeroPalName:    () => getHeroPalName(),
+	});
+
+	// factory が生成した関数で旧実装を上書き
+	// renderBoard は呼び出し後に charLayerEl を同期する（game.js 内の直接参照のため）
+	renderBoard = () => { _rb.renderBoard(); charLayerEl = charLayerElRef.value; };
+	renderChars = _rc.renderChars;
+	addCharEl   = _rc.addCharEl;
+	moveCharEl  = _rc.moveCharEl;
+	removeCharEl= _rc.removeCharEl;
+	addShieldOverlay    = _rc.addShieldOverlay;
+	updatePlayerCharEl  = _rc.updatePlayerCharEl;
+}
 
 
 // ── ドアウェイシステム（Phase 6.5） ──────────────────────────

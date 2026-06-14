@@ -225,9 +225,10 @@ game/
   - ※ これらは `stageData`/`enemies`/`player`/`currentLayer`/`stageKey`/`debugMode` 等の再代入される `let` 状態を参照するため、純粋関数化ではなく **factory + 状態 getter 注入方式**を採用（`createPassable(deps)` / `createConditions(deps)`）。getter 経由で常に最新状態を読むので呼び出し側は無改修。10テストグリーン
 
 
-- [ ] **Step 3: 描画系の分離**
+- [x] **Step 3: 描画系の分離**
   - `render-board.js`：`renderBoard()` / `setCellClass()` / `addCellSprite()`
   - `render-chars.js`：`renderChars()` / `addCharEl()` / `moveCharEl()`
+  - ※ `charLayerElRef = { value }` ラッパーを game.js に導入し、render-board が `.value` に新しい charLayerEl を書き込み、render-chars はそれを読む設計。`addShieldOverlay` / `updatePlayerCharEl` も render-chars.js に同梱。10テストグリーン
 
 - [ ] **Step 4: 入力・UI系の分離**
   - `input.js`：キーボード・タッチ・スワイプ

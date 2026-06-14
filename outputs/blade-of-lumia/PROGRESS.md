@@ -14,8 +14,8 @@
 ## 📍 現在地（常に最新に保つ）
 
 - **進行中フェーズ：** Phase 0（技術基盤）
-- **進行中タスク：** 0-2 game.js モジュール分割 Step 3（render-board.js / render-chars.js の切り出し）
-- **直近の状態：** Phase 0-2 Step 2（passable.js / conditions.js）完了。factory + 状態 getter 注入方式で切り出し。10テストすべてグリーン（デグレなし）。次は Step 3（描画系の分離）。
+- **進行中タスク：** 0-2 game.js モジュール分割 Step 4（input.js / ui.js の切り出し）
+- **直近の状態：** Phase 0-2 Step 3（render-board.js / render-chars.js）完了。`charLayerElRef = { value }` ラッパーで render-board / render-chars 間の DOM 参照を共有。addShieldOverlay / updatePlayerCharEl も render-chars.js に同梱。10テストすべてグリーン（デグレなし）。次は Step 4（入力・UI系の分離）。
 
 
 ---
@@ -23,6 +23,25 @@
 ## セッションログ
 
 <!-- 新しいエントリを上に追加していく（最新が一番上） -->
+
+### 2026-06-14 — Phase 0-2 Step 3：render-board.js / render-chars.js 切り出し
+
+**やったこと：**
+- **`game/render-board.js` を新設**（`createRenderBoard(deps)` factory）：`renderBoard()` / `setCellClass()` / `addCellSprite()` / `applyBgTileClass()` を切り出し。deps は `getStageData`/`getCurrentLayer`/`getStageKey`/`getSS`/`getBoardEl`/`getStageLabelEl`/`charLayerElRef`/`getDoorwayState`。shared モジュール（`TILE`/`SPRITES`/`PAL`/`NPC_SPRITE_MAP`/`drawSpriteFrame`/`makeSprite`）は直接 import
+- **`game/render-chars.js` を新設**（`createRenderChars(deps)` factory）：`renderChars()` / `addCharEl()` / `moveCharEl()` / `removeCharEl()` / `addShieldOverlay()` / `updatePlayerCharEl()` を切り出し。石描画ヘルパー（`makeStoneCanvas` / `addStoneGlow`）も内部関数として実装
+- **`charLayerElRef = { value: null }` ラッパーを game.js に追加**：render-board が `renderBoard()` 実行時に `.value` へ新しい charLayerEl を書き込み、render-chars は `.value` を読む。DOM 参照を2モジュール間で安全に共有する設計
+- game.js に `createRenderBoard` / `createRenderChars` の import を追加し、`getDoorwayState` 定義後に factory 呼び出しブロックを追加。`renderBoard = () => { _rb.renderBoard(); charLayerEl = charLayerElRef.value; }` の形で旧実装を上書き（`charLayerEl` はアニメーション系コードが直接参照するため game.js 内変数も同期）
+- `npx playwright test` で **10 passed**（VRT 含む全テストグリーン＝デグレなし）
+- PLAN.md（Step 3 完了・方針を明記）・PROGRESS.md・進捗サマリを更新
+
+**学び・気づき：**
+- `charLayerEl` は renderBoard 後に直接 `charLayerEl.appendChild(...)` する箇所（石押しアニメーション・投擲物・剣エフェクト等）が多数あるため、`charLayerElRef.value` で共有しつつ `charLayerEl` も同期させる2重管理が必要だった
+- `addShieldOverlay` / `updatePlayerCharEl` は render-chars 側に入れることで、描画系の依存（makeSprite / getCellPx / getHeroDir）が 1 ファイルに集中し見通しが改善
+- factory ブロック `{ ... }` を block scope にしたことで `_rb` / `_rc` が外部に漏れず、game.js のグローバルスコープを汚染しない
+
+**▶ 次やること：**
+- [ ] Phase 0-2 Step 4：入力・UI系の分離（`input.js`: キーボード・タッチ・スワイプ、`ui.js`: HUD・ポーズ・ダイアログ・ショップ）⚡。これらも大量の状態参照があるため getter 注入方式を継続
+
 
 ### 2026-06-14 — Phase 0-2 Step 2：passable.js / conditions.js 切り出し
 
@@ -198,7 +217,7 @@
 
 | フェーズ | 状態 | メモ |
 |---|---|---|
-| Phase 0 技術基盤 | 🚧 進行中 | 0-0 ✅ / 0-1 ✅ 完了。0-2 進行中（Step 1: constants.js + save.js、Step 2: passable.js + conditions.js 完了、10テストグリーン）。次は Step 3 描画系（render-board/render-chars） |
+| Phase 0 技術基盤 | 🚧 進行中 | 0-0 ✅ / 0-1 ✅ 完了。0-2 進行中（Step 1〜3 完了: constants.js + save.js + passable.js + conditions.js + render-board.js + render-chars.js、10テストグリーン）。次は Step 4 入力・UI系（input.js / ui.js）|
 
 | Phase 1 ストーリー基盤 | 🔲 未着手 | |
 | Phase 2 8ダンジョン | 🔲 未着手 | |
