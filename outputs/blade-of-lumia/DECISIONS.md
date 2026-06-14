@@ -94,6 +94,12 @@
 - **代替案：** (A) PLAN通り state.js + save.js を一気に切り出す → 却下（数百箇所の `player`→`S.player` 置換が必要で侵襲的）。本セッションでユーザーと相談し B（段階方式）を選択。
 - **結果／影響：** `constants.js` に11定数を集約（MOVE_STEP / TICK_MS / INVINCIBLE_MS / HP_PER_HEART / MAP_JSON_URL / SAVE_KEY / CLEARED_KEY / DIR_DELTA / SWORD_REACH / SWORD_COOLDOWN_MS / STONE_PUSH_COOLDOWN_MS）。`lastSwordTime`/`lastStonePushTime` は再代入される `let` なので game.js に残した。DOM参照・`BG_TILE_COLOR_CLASS`（描画密接）も対象外。10テストグリーン。1b は次セッションで状態コンテナ化として実施。
 
+### 2026-06-14 — Phase 0-2 Step 1b：状態コンテナ化はやめ、save.js は「純粋変換関数」に限定
+- **決定：** Step 1b は当初「可変状態を `state.js` の単一オブジェクト `S` に集約し全参照を `S.xxx` に置換」する予定だったが、**取りやめ**。代わりに **save.js には localStorage にも状態にも触れない純粋変換関数だけを置く**：`createStageState` / `serializeStageState`（Set→配列）/ `deserializeStageState`（配列→Set）/ `sanitizeLoadedPlayer`。`getSS`/`saveGame`/`loadGame` 本体（localStorage I/O と `player`/`stageState` 等への再代入）は game.js に残す。
+- **理由：** `player`/`stageData`/`stageState` 等の参照は game.js 全体で数百箇所あり、状態コンテナへの一括置換は (1) デグレリスクが過大、(2) テスト網（10件）では演出・ボス戦など全経路を保証できない、(3) WORKFLOW の「1単位ずつ・一度に詰め込まない」に反する。一方で「状態を受け取り変換値を返す純粋関数」だけなら read-only binding 問題が起きず、低リスクで切り出せる（save.js は引数→戻り値で完結し副作用なし＝テスタブル）。
+- **代替案：** (A) 状態コンテナ `S` への全面移行 → 却下（上記リスク）。(B) `export let` を直接 import → 不可（ESModule の named import は read-only binding で再代入できない）。
+- **結果／影響：** `game/save.js` を新設（4純粋関数）。`getSS` は `createStageState()`、`saveGame` は `serializeStageState()`、`loadGame` は `deserializeStageState()`+`sanitizeLoadedPlayer()` を使う形に簡約。10テストグリーン（セーブ/ロード復元テストがシリアライズ往復の正しさを担保）。完全な状態集約は将来 Step 2 以降で他モジュールが状態参照を必要としたとき、必要最小限の範囲で再判断する。
+
 ### 2026-06-13 — モデル使い分け（Opus / Sonnet）を方針化
 - **決定：** 設計・依存判断は Opus、決まった実装・量産は Sonnet。PLAN.md の各タスクに推奨モデルを記載。
 - **理由：** コスト効率と品質の両立。「最初の1つ・全体設計」は重い思考、「2つ目以降の繰り返し」は機械的作業。

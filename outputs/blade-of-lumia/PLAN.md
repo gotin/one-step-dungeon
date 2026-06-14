@@ -214,10 +214,10 @@ game/
 
 **分割手順（段階的に実施）：**
 
-- [ ] **Step 1: 状態・定数の分離（副作用ゼロ・低リスク）**
+- [x] **Step 1: 状態・定数の分離（副作用ゼロ・低リスク）**
   - [x] **Step 1a**：再代入されない純粋定数を `constants.js` へ切り出し（MOVE_STEP / TICK_MS / INVINCIBLE_MS / HP_PER_HEART / MAP_JSON_URL / SAVE_KEY / CLEARED_KEY / DIR_DELTA / SWORD_REACH / SWORD_COOLDOWN_MS / STONE_PUSH_COOLDOWN_MS）。10テストグリーン
-  - [ ] **Step 1b**：可変状態（player / stageKey / currentLayer / mapData 等）を状態コンテナ方式（`state.js`）へ移行 ※ESModule read-only binding 回避のため単一オブジェクト集約
-  - [ ] `save.js`：`saveGame()` / `loadGame()` / `getSS()` を移動（Step 1b と同時 or 直後）
+  - [x] **Step 1b**：`save.js` にセーブ/ロードの純粋変換関数を切り出し（`createStageState` / `serializeStageState` / `deserializeStageState` / `sanitizeLoadedPlayer`）。game.js の `getSS` / `saveGame` / `loadGame` がこれらを利用。10テストグリーン
+    - ※ 当初想定の「状態コンテナ `state.js` への全面移行」は、`player` 等の参照が数百箇所に及び一括置換のデグレリスクが過大なため見送り。状態の再代入は game.js に残し、save.js は「状態を受け取り変換値を返す純粋関数」に限定した（read-only binding 問題を回避）。完全な状態集約は必要になった時点で再判断
 
 - [ ] **Step 2: 判定・ロジック系の分離（純粋関数が多い・低リスク）**
   - `passable.js`：`isPassable()` / `tilePassable()` / `isPassableForEnemy()`

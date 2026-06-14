@@ -17,6 +17,10 @@ import {
 	MAP_JSON_URL, SAVE_KEY, CLEARED_KEY, DIR_DELTA,
 	SWORD_REACH, SWORD_COOLDOWN_MS, STONE_PUSH_COOLDOWN_MS,
 } from './constants.js';
+// ── セーブ/ロードの純粋変換ロジック（Phase 0-2 Step 1b: save.js へ切り出し）──
+import {
+	createStageState, serializeStageState, deserializeStageState, sanitizeLoadedPlayer,
+} from './save.js';
 
 // ── DOM ───────────────────────────────────────────────────────
 const boardEl          = document.getElementById('board');
@@ -130,46 +134,23 @@ function updateBoardScale() {
 }
 
 // ── セーブ・ロード ────────────────────────────────────────────
+// シリアライズ/デシリアライズ等の純粋ロジックは save.js に切り出し済み。
+// ここでは localStorage への read/write と状態の再代入（game.js のスコープ
+// に閉じた副作用）のみを担当する。
 function getSS(lk, sk) {
 	const k = `${lk}_${sk}`;
 	if (!stageState[k]) {
-		stageState[k] = {
-			openGates:       new Set(),
-			pickedKeys:      new Set(),
-			defeatedEnemies: new Set(),
-			openedChests:    new Set(),
-			objects:         {},
-			switchStates:    {},
-			brokenWalls:     new Set(),
-			conditionsMet:   new Set(),
-			openedDoors:     new Set(),  // 鍵で開いたドア
-			stonePositions:  {},         // { 'r,c': {r, c} } 石の移動後位置
-		};
+		stageState[k] = createStageState();
 	}
 	return stageState[k];
 }
 
 function saveGame() {
 	try {
-		const ss = {};
-		for (const [k, v] of Object.entries(stageState)) {
-			ss[k] = {
-				openGates:       [...v.openGates],
-				pickedKeys:      [...v.pickedKeys],
-				defeatedEnemies: [...v.defeatedEnemies],
-				openedChests:    [...v.openedChests],
-				objects:         v.objects,
-				switchStates:    v.switchStates,
-				brokenWalls:     [...v.brokenWalls],
-				conditionsMet:   [...v.conditionsMet],
-				doorwayStates:   v.doorwayStates ?? {},  // Phase 6.5
-				cutBushes:       [...(v.cutBushes ?? [])], // Phase 8.2
-				openedDoors:     [...(v.openedDoors ?? [])], // 鍵で開いたドア
-				stonePositions:  v.stonePositions ?? {},      // 石の移動後位置
-			};
-		}
 		localStorage.setItem(SAVE_KEY, JSON.stringify({
-			player, stageState: ss, currentLayer, stageKey, heroDir,
+			player,
+			stageState: serializeStageState(stageState),
+			currentLayer, stageKey, heroDir,
 		}));
 	} catch (e) { console.warn('saveGame failed:', e); }
 }
@@ -179,35 +160,11 @@ function loadGame() {
 		const raw = localStorage.getItem(SAVE_KEY);
 		if (!raw) return false;
 		const data = JSON.parse(raw);
-		player       = { ...player, ...data.player };
+		player       = sanitizeLoadedPlayer({ ...player, ...data.player }, ITEM_META);
 		heroDir      = data.heroDir ?? 'down';
 		currentLayer = data.currentLayer ?? 'field';
 		stageKey     = data.stageKey ?? null;
-		// 旧セーブデータの修正: passive アイテム（heartContainer 等）が subItems に混入していたら除去
-		for (const k of Object.keys(player.subItems ?? {})) {
-			if (ITEM_META[k]?.type === 'passive') {
-				delete player.subItems[k];
-			}
-		}
-		if (player.activeSubItem && ITEM_META[player.activeSubItem]?.type === 'passive') {
-			player.activeSubItem = Object.keys(player.subItems)[0] ?? null;
-		}
-		for (const [k, v] of Object.entries(data.stageState ?? {})) {
-			stageState[k] = {
-				openGates:       new Set(v.openGates ?? []),
-				pickedKeys:      new Set(v.pickedKeys ?? []),
-				defeatedEnemies: new Set(v.defeatedEnemies ?? []),
-				openedChests:    new Set(v.openedChests ?? []),
-				objects:         v.objects ?? {},
-				switchStates:    v.switchStates ?? {},
-				brokenWalls:     new Set(v.brokenWalls ?? []),
-				conditionsMet:   new Set(v.conditionsMet ?? []),
-				doorwayStates:   v.doorwayStates ?? {},  // Phase 6.5
-				cutBushes:       new Set(v.cutBushes ?? []), // Phase 8.2
-				openedDoors:     new Set(v.openedDoors ?? []), // 鍵で開いたドア
-				stonePositions:  {},         // 石の位置は常にリセット（セーブデータを引き継がない）
-			};
-		}
+		stageState   = deserializeStageState(data.stageState);
 		return true;
 	} catch (e) { console.warn('loadGame failed:', e); return false; }
 }

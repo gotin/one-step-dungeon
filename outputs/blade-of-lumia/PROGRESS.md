@@ -14,14 +14,31 @@
 ## 📍 現在地（常に最新に保つ）
 
 - **進行中フェーズ：** Phase 0（技術基盤）
-- **進行中タスク：** 0-2 game.js モジュール分割 Step 1b（状態コンテナ方式で state.js / save.js 切り出し）
-- **直近の状態：** Phase 0-2 Step 1a 完了。再代入されない純粋定数を `constants.js` に切り出し（11定数）。10テストすべてグリーン（デグレなし）。次は Step 1b（可変状態の状態コンテナ化）。
+- **進行中タスク：** 0-2 game.js モジュール分割 Step 2（passable.js / conditions.js の切り出し）
+- **直近の状態：** Phase 0-2 Step 1（1a constants.js / 1b save.js）完了。10テストすべてグリーン（デグレなし）。次は Step 2（判定・ロジック系の分離）。
 
 ---
 
 ## セッションログ
 
 <!-- 新しいエントリを上に追加していく（最新が一番上） -->
+
+### 2026-06-14 — Phase 0-2 Step 1b：save.js（セーブ/ロードの純粋関数）切り出し
+
+**やったこと：**
+- 当初の Step 1b 想定（状態コンテナ `state.js` への全面移行）を再検討。`player` 等の参照が数百箇所に及び一括置換のデグレリスクが過大なため、**より安全な形に再定義**：状態の再代入は game.js に残し、セーブ/ロードの**純粋変換ロジックだけ**を `save.js` に切り出す
+- **`game/save.js` を新設**：`createStageState()`（新規ステージ状態の初期値生成）/ `serializeStageState()`（Set→配列）/ `deserializeStageState()`（配列→Set・stonePositions は常にリセット）/ `sanitizeLoadedPlayer()`（旧セーブの passive アイテム混入を除去）の4純粋関数
+- game.js の `getSS`/`saveGame`/`loadGame` をこれら利用に簡約（localStorage の read/write と状態再代入のみ game.js に残す）
+- `npx playwright test` で **10 passed**（特にセーブ/ロード復元テストがグリーン＝シリアライズ往復が正しい）
+- PLAN.md（Step 1b 完了・方針変更を明記）・PROGRESS.md・DECISIONS.md を更新
+
+**学び・気づき：**
+- ESModule の read-only binding 問題は「純粋関数として切り出し、状態の所有権は元モジュールに残す」ことで綺麗に回避できた。`save.js` は localStorage にも player にも直接触れず、引数→戻り値だけで完結する（テスタブル）
+- セーブ/ロード往復の正しさは movement.spec.js の「続きから復元」テストが実質カバーしている
+
+**▶ 次やること：**
+- [ ] Phase 0-2 Step 2：判定・ロジック系（`passable.js`: isPassable/tilePassable/isPassableForEnemy、`conditions.js`: evaluateConditions/checkStoneOnSwitch）の切り出し ⚡。これらは getSS/stageData/enemies/player 等の状態を参照するため、引数で渡す純粋関数化 or アクセサ注入を検討
+
 
 ### 2026-06-14 — Phase 0-2 Step 1a：定数を constants.js へ切り出し
 
@@ -158,7 +175,7 @@
 
 | フェーズ | 状態 | メモ |
 |---|---|---|
-| Phase 0 技術基盤 | 🚧 進行中 | 0-0 ✅ / 0-1 ✅ 完了。0-2 着手（Step 1a: constants.js 切り出し済み、10テストグリーン）。次は Step 1b 状態コンテナ化 |
+| Phase 0 技術基盤 | 🚧 進行中 | 0-0 ✅ / 0-1 ✅ 完了。0-2 進行中（Step 1 完了：constants.js + save.js 切り出し、10テストグリーン）。次は Step 2 passable/conditions |
 | Phase 1 ストーリー基盤 | 🔲 未着手 | |
 | Phase 2 8ダンジョン | 🔲 未着手 | |
 | Phase 3 アクション深化 | 🔲 未着手 | |
