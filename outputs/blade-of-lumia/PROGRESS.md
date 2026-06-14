@@ -14,8 +14,9 @@
 ## 📍 現在地（常に最新に保つ）
 
 - **進行中フェーズ：** Phase 0（技術基盤）
-- **進行中タスク：** Phase 0-3b の **game.css 分割 完了** → ⚠️ **次は最優先で 0-2b（game.js から重複した旧関数本体を削除）**
-- **直近の状態：** `game.css`（1661行）を `@import` エントリ化し `css/` 配下へ11ファイルに分割完了（13テストグリーン・VRT差分ゼロ）。**⚠️ 重要な気づき：ユーザー指摘により、game.js が依然 4075 行でほとんど痩せていないことが判明。** これまでの Phase 0-2 分割は「関数を別ファイルにコピー＋factory で上書き」しただけで、game.js 内の旧 `function` 本体を削除していなかった（＝同じロジックが2か所に重複、動いているのは新ファイル版、game.js の旧本体は死蔵コード）。**PLAN に 0-2b（旧本体削除で本当にスリム化）を新設し最優先タスクとした。** editor.js 分割（0-3b 残り）はその後。
+- **進行中タスク：** Phase 0-2b（game.js 旧本体削除）**進行中** → 次は input/ui → projectile/enemy-ai → player/combat/boss の旧本体削除
+- **直近の状態：** 0-2b 開始。**render-board / render-chars の旧本体（renderBoard/setCellClass/addCellSprite/applyBgTileClass/renderChars/addCharEl/moveCharEl/removeCharEl/addShieldOverlay/updatePlayerCharEl）を game.js から削除**し、factory 代入先に `let` 事前宣言を追加。**game.js 4075→3624行（451行減）・13テストグリーン**。削除パターン（① factory 代入の `let` 宣言を追加 → ② 旧 `function` 本体を `sed` で削除 → ③ テスト）が確立。残り（input/ui・projectile/enemy-ai・player/combat/boss）は同パターンで Sonnet が量産削除する想定。passable/conditions は Step2 時点で既に削除済みだった。
+
 
 
 

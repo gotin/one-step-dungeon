@@ -283,11 +283,12 @@ input.js     161 / passable.js 161 / conditions.js 117 / save.js 87 / main.js 78
 **進め方（安全第一・1モジュールずつ）：**
 - [ ] **準備**：削除候補の棚卸し。各分割ファイル（passable/conditions/render-board/render-chars/input/ui/projectile/enemy-ai/player/combat/boss）が公開する関数名と、game.js 内の旧 `function` 本体・旧 `let`/`const` 宣言の対応表を作る
 - [ ] **削除は依存の浅い順に1モジュールずつ**実施し、毎回 `npx playwright test`（13本）でデグレ確認：
-  - [ ] passable.js / conditions.js 分（判定系・依存が浅い）
-  - [ ] render-board.js / render-chars.js 分（描画系）
+  - [x] passable.js / conditions.js 分（判定系）※ Step2 時点で既に削除済みだった
+  - [x] render-board.js / render-chars.js 分（描画系）※ 旧本体6関数を削除し `let` 事前宣言を追加。4075→3624行（451行減）。13テストグリーン
   - [ ] input.js / ui.js 分
   - [ ] projectile.js / enemy-ai.js 分
   - [ ] player.js / combat.js / boss.js 分
+
 - [ ] **各削除で確認すること**：
   - factory が確実にその関数を上書きしている（`xxx = _mod.xxx` が存在する）
   - 削除する旧本体が他から直接参照されていない（クロージャ変数への依存が残っていないか）
