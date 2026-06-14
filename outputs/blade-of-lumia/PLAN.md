@@ -285,9 +285,10 @@ input.js     161 / passable.js 161 / conditions.js 117 / save.js 87 / main.js 78
 - [ ] **削除は依存の浅い順に1モジュールずつ**実施し、毎回 `npx playwright test`（13本）でデグレ確認：
   - [x] passable.js / conditions.js 分（判定系）※ Step2 時点で既に削除済みだった
   - [x] render-board.js / render-chars.js 分（描画系）※ 旧本体6関数を削除し `let` 事前宣言を追加。4075→3624行（451行減）。13テストグリーン
-  - [ ] input.js / ui.js 分
-  - [ ] projectile.js / enemy-ai.js 分
-  - [ ] player.js / combat.js / boss.js 分
+  - [x] input.js / ui.js 分（旧本体削除済み）
+  - [x] projectile.js / enemy-ai.js 分（旧本体削除済み・3631→2726行）
+  - [x] player.js / combat.js / boss.js 分 ※ factory 統合（deps配線 + 代入ブロック）→ 旧本体削除を1セットで実施。**2726→1268行（1458行減）**・13テストグリーン
+
 
 - [ ] **各削除で確認すること**：
   - factory が確実にその関数を上書きしている（`xxx = _mod.xxx` が存在する）

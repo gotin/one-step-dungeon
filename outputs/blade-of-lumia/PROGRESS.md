@@ -14,8 +14,9 @@
 ## 📍 現在地（常に最新に保つ）
 
 - **進行中フェーズ：** Phase 0（技術基盤）
-- **進行中タスク：** Phase 0-2b（game.js 旧本体削除）**進行中** → 次は **player/combat/boss の factory 統合 + 旧本体削除**
-- **直近の状態：** 0-2b で **enemy-ai / projectile の旧本体を game.js から削除**（factory で上書き済みの dead code を除去）。削除した関数の `let` 事前宣言を追加（ESM strict mode では旧 `function` のホイスティング消失で代入先が未宣言になり ReferenceError → 起動失敗するため）。**game.js 3631→2726行（905行減）・13テストグリーン**。⚠️ **player.js / combat.js / boss.js はファイル作成済みだが factory 統合が未完**（`createPlayer/createCombat/createBoss` を import しているが `_player./_combat./_boss.` の呼び出しが無く、game.js 内の旧本体 movePlayer/handleTileEvent/swordAttack/dealDamageToEnemy/takeDamage/onBossDefeated/startEnding/startBossBattle 等が現役）。次はこの3モジュールの factory 統合（deps 配線 + 代入ブロック追加）→ 旧本体削除を **1モジュールずつ** 行う。render-board/render-chars/input/ui/passable/conditions/enemy-ai/projectile は削除済み。
+- **進行中タスク：** **Phase 0-2b 完了**（game.js モジュール分割の完遂）→ 次は **Phase 0-3b：editor.js（1581行）分割**
+- **直近の状態：** 0-2b で **player.js / combat.js / boss.js の factory 統合 + 旧本体削除を完了**。3モジュールは相互依存（combat→boss / player→combat,boss / boss→proj）するため、proj/ai ブロックの直後に **1ブロックでまとめて createBoss → createCombat → createPlayer を生成**し、deps はすべて getter/wrapper 経由で配線。配線テスト（13 green）後に旧 function 本体を削除し game.js を再構成。**game.js 2726→1268行（1458行減・元4098行から 70% 削減）・13テストグリーン**。**Phase 0-2 / 0-2b の game.js モジュール分割は全完了**（オーケストレーション層＝状態宣言・factory初期化・export のみ）。
+
 
 
 
@@ -27,7 +28,26 @@
 
 <!-- 新しいエントリを上に追加していく（最新が一番上） -->
 
+### 2026-06-14 — Phase 0-2b 完遂：player.js / combat.js / boss.js の factory 統合 + 旧本体削除
+
+**やったこと：**
+- **3モジュールの factory 統合を実装**：`createPlayer/createCombat/createBoss` を import 済みだが factory 呼び出しが無かった（旧本体が現役）状態を解消。proj/ai の factory ブロック直後に **1ブロックでまとめて createBoss → createCombat → createPlayer を生成**（相互依存：combat→boss の `onBossDefeated`、player→combat,boss の `swordAttack`/`checkTriforceClear`、boss→proj の `showExplosionEffect`）
+- deps はすべて getter/wrapper 経由で配線。boss が読み書きする `_bossDefeating` / `_pendingTriforcePieceEl` / `_collectingTriforce` / `pendingTriforcePos` / `bossRoomLocked` / `lastSwordTime` / `lastStonePushTime` は getter/setter で注入。input.js が初期化時に保持する `movePlayer`/`swordAttack`/`useSubItem` は `(dir) => movePlayer(dir)` 等のラッパー化で再代入に追従
+- **配線テスト（13 green）→ 旧 function 本体を削除し game.js を再構成**：movePlayer/handleTileEvent/tryPushStone/checkSwitchOff/giveSubItem/gainHeartContainer/spawnDropEffect（player）、swordAttack/showSwordSlashFloat/showEnemySwordSlash/dealDamageToEnemy/killEnemy/takeDamage/showPlayerBlink/showDmgPopupFloat/gameOver（combat）、startDialog/showDialogLine/advanceDialog/togglePause/renderPauseMenu/renderPauseDungeonMap/pauseSelect*/openShop/closeShop/renderShop/shopSelect*/shopBuy/pickDungeonItem（ui — ui.js へ既出）、showBossHpBar/updateBossHpBar/hideBossHpBar/checkBossPhase/onBossDefeated/spawnTriforcePiece/startEnding/buildStaffRollHtml/showBossRoomLockEffect/startBossBattle/checkPendingTriforce/calcTotalTriforces/checkTriforceClear（boss）等を削除
+- factory で上書きされる全関数を冒頭で `let xxx = () => {}` 事前宣言（ESM strict mode のホイスティング消失対策）。`isShop` も ui.js getter/setter 用に game.js に残す
+- **game.js 2726→1268行（1458行減・元4098行から約 70% 削減）・13テストグリーン**。これで **Phase 0-2 / 0-2b の game.js 分割は全完了**（残りは状態宣言・factory初期化・ループ駆動・init・useSubItem・export のオーケストレーション層）
+
+**学び・気づき：**
+- 相互依存する3モジュールは「1つずつ」より **1ブロックでまとめて生成**する方が安全。`const _boss = ...; const _combat = ...; const _player = ...;` の順で生成し、combat の deps に `_boss.onBossDefeated`、player の deps に `_boss.checkTriforceClear` を直接渡せる（生成順を依存の向きに合わせる）
+- deps が後方宣言の `let`（`bossRoomLocked` 等）を参照しても、すべて `() => bossRoomLocked` のクロージャ/wrapper 経由なので **factory 生成時には評価されず**、実際の呼び出し時には初期化済みで TDZ にかからない
+- 大量の旧本体削除は SEARCH/REPLACE を繰り返すより **write_to_file で再構成**する方が確実（中間に残す関数が挟まると部分削除でコメントブロックが壊れる）
+
+**▶ 次やること：**
+- [ ] Phase 0-3b：`editor.js`（1581行）を機能別に分割 🧠→⚡。editor は自動テストが無いため、(1) まず Playwright で editor の最小スモーク（起動・タイル配置・JSON エクスポート）を1〜2本張る → (2) その後 factory/モジュール分割、の順で進めるのが安全
+
+
 ### 2026-06-14 — Phase 0-2b：enemy-ai / projectile の旧本体を game.js から削除
+
 
 **やったこと：**
 - 再開時にまず状況確認：直近コミット `5ae567b`（render 関数削除）時点でコードは健全（**13 passed・git クリーン・構文OK**）。前セッションの中断は token 長等が原因で、壊れた状態はコミットされていなかった
@@ -412,7 +432,8 @@
 
 | フェーズ | 状態 | メモ |
 |---|---|---|
-| Phase 0 技術基盤 | 🚧 進行中 | 0-0 ✅ / 0-1 ✅ / 0-3 ✅（sprites）/ 0-3b の game.css ✅。**0-2b（game.js 旧本体削除）進行中：render/input/ui/passable/conditions/enemy-ai/projectile は削除済みで game.js 4075→2726 行まで縮小。残りは player/combat/boss の factory 統合＋旧本体削除（これらは統合自体が未完）。** その後 editor.js 分割（0-3b 残り）|
+| Phase 0 技術基盤 | 🚧 進行中 | 0-0 ✅ / 0-1 ✅ / 0-2 ✅ / **0-2b ✅（game.js 分割完遂：4098→1268 行・約70%減）** / 0-3 ✅（sprites）/ 0-3b の game.css ✅。**残りは 0-3b の editor.js 分割（1581行）と 0-4/0-5。** |
+
 
 
 
