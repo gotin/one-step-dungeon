@@ -114,7 +114,7 @@ export function createBoss(deps) {
 		}
 	}
 
-	// ── トライフォースのカケラを生成 ──────────────────────
+	// ── 星の欠片を生成 ──────────────────────
 	function spawnTriforcePiece(boss) {
 		const charLayerEl = getCharLayerEl();
 		if (!charLayerEl) return;
@@ -191,7 +191,7 @@ export function createBoss(deps) {
 		if (boss.type === TILE.DARK_LORD) {
 			spawnTriforcePiece(boss);
 			await sleep(600);
-			pulse('◭ トライフォースのカケラが 現れた！', 3000);
+			pulse('◭ 星の欠片が 現れた！', 3000);
 			deps.setPendingTriforcePos(null);
 			const tfx = boss.x, tfy = boss.y;
 			setTimeout(() => { deps.setPendingTriforcePos({ x: tfx, y: tfy }); }, 1500);
@@ -257,7 +257,7 @@ export function createBoss(deps) {
 		return html;
 	}
 
-	// ── トライフォース全収集チェック ──────────────────────
+	// ── 星の欠片・全収集チェック ──────────────────────
 	function calcTotalTriforces() {
 		const mapData = getMapData();
 		if (!mapData) return 0;
@@ -285,7 +285,7 @@ export function createBoss(deps) {
 		}
 	}
 
-	// ── 魔王撃破後トライフォース収集チェック ──────────────
+	// ── 魔王撃破後・星の欠片収集チェック ──────────────
 	function checkPendingTriforce() {
 		const pendingTriforcePos = deps.getPendingTriforcePos();
 		if (!pendingTriforcePos || deps.getCollectingTriforce()) return;
@@ -306,7 +306,7 @@ export function createBoss(deps) {
 		player.triforceCount++;
 		console.log(`[TRIFORCE] checkPendingTriforce: collected, triforceCount=${player.triforceCount}`, new Error().stack);
 		playSound('item');
-		pulse('◭ トライフォースのカケラを 手に入れた！', 4000);
+		pulse('◭ 星の欠片を 手に入れた！', 4000);
 		updateHud();
 		saveGame();
 
@@ -357,7 +357,7 @@ export function createBoss(deps) {
 
 		const msgEl = document.getElementById('ending-msg');
 		if (msgEl) {
-			msgEl.innerHTML = '魔王を倒し、すべてのトライフォースのカケラを集めた！<br>ルミアの平和は守られた……';
+			msgEl.innerHTML = 'ザーネルを倒し、すべての星の欠片を集め、女王ルミアの呪いを解いた。<br>光が世界に戻り、ルミアの地に平和が訪れた……';
 		}
 	}
 

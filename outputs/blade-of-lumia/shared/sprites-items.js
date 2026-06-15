@@ -25,7 +25,7 @@ export const ITEM_PAL = {
 	rupee:    ['transparent','#000000','#008020','#20c040','#60ff80','#ffffff'],
 	// ルピー（青）
 	rupeeBlue:['transparent','#000000','#002080','#2040c0','#6080ff','#ffffff'],
-	// トライフォース（金）
+	// 星の欠片（金）
 	triforce: ['transparent','#000000','#604000','#c09000','#f0d040','#ffffff'],
 	// ハートコンテナ（赤）
 	heart:    ['transparent','#000000','#c02020','#f04040','#ff8080','#ffffff'],
@@ -297,7 +297,7 @@ ITEM_SPRITES.rupee = [
 	],
 ];
 
-// ── TRIFORCE PIECE（トライフォースのカケラ）── 10×10 ─────────
+// ── STAR PIECE（星の欠片）── 10×10 ─────────
 ITEM_SPRITES.triforce = [
 	[
 		[0,0,0,0,1,1,0,0,0,0],

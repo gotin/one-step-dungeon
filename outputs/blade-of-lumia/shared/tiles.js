@@ -47,7 +47,7 @@ export const TILE = {
 	ITEM_HEART_CONTAINER:'9',  // ハートコンテナ
 	ITEM_RUPEE:          'r',  // ルピー（小）
 	ITEM_RUPEE_LARGE:    'R',  // ルピー（大）
-	ITEM_TRIFORCE_PIECE: 'Q',  // トライフォースのカケラ
+	ITEM_TRIFORCE_PIECE: 'Q',  // 星の欠片
 	// ── Phase 6.5: ドアウェイシステム ────────────────────────
 	DOORWAY:        ';',  // 常時開放出入り口（ステージ境界の通路）
 	DOORWAY_BOSS:   ':',  // 入室ロック型（ボス部屋専用：入ると内側から閉じる）
@@ -115,7 +115,7 @@ export const TILE_META = {
 	[TILE.ITEM_HEART_CONTAINER]: { label: 'ハートコンテナ',color: '#c02040', passable: true, icon: '❤' },
 	[TILE.ITEM_RUPEE]:           { label: 'ルピー（小）', color: '#20a040', passable: true, icon: '◆' },
 	[TILE.ITEM_RUPEE_LARGE]:     { label: 'ルピー（大）', color: '#2060c0', passable: true, icon: '◇' },
-	[TILE.ITEM_TRIFORCE_PIECE]:  { label: 'トライフォースのカケラ', color: '#c0a020', passable: true, icon: '◭' },
+	[TILE.ITEM_TRIFORCE_PIECE]:  { label: '星の欠片', color: '#c0a020', passable: true, icon: '◭' },
 	[TILE.ITEM_DUNGEON_MAP]:     { label: 'ダンジョン地図', color: '#205080', passable: true, icon: '🗺' },
 	[TILE.ITEM_COMPASS]:         { label: 'コンパス',       color: '#2050a0', passable: true, icon: '🧭' },
 	// Phase 6.5: ドアウェイ

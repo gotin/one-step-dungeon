@@ -52,7 +52,7 @@ import {
  *   startDialog(r, c, tile)      – ダイアログ開始
  *   stopGameLoop()               – ゲームループ停止
  *   startGameLoop()              – ゲームループ開始
- *   checkTriforceClear()         – トライフォース全収集チェック
+ *   checkTriforceClear()         – 星の欠片・全収集チェック
  *   maybeShowSubItemHint()       – サブアイテムヒント
  *   getHeroSpriteName()          – スプライト名取得
  *   getHeroPalName()             – パレット名取得
@@ -641,7 +641,7 @@ export function createPlayer(deps) {
 		if (tile === TILE.ITEM_TRIFORCE_PIECE && !ss.pickedKeys.has(posKey)) {
 			ss.pickedKeys.add(posKey); player.triforceCount++;
 			console.log(`[TRIFORCE] handleTileEvent: ITEM_TRIFORCE_PIECE picked at ${posKey}, triforceCount=${player.triforceCount}`);
-			playSound('item'); pulse('◭ トライフォースのカケラを手に入れた！');
+			playSound('item'); pulse('◭ 星の欠片を手に入れた！');
 			renderBoard(); renderChars(); updateHud(); saveGame();
 			checkTriforceClear();
 			return;

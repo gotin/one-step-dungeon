@@ -122,7 +122,7 @@ let isShielding     = false;
 // Gキーで切り替え。無敵 + 敵すり抜け + 全アイテム即取得可能
 let debugMode = false;
 
-// ── トライフォース待機位置（魔王撃破後に出現したカケラの位置） ──
+// ── 星の欠片・待機位置（魔王撃破後に出現した欠片の位置） ──
 // null = 出現していない。{ x, y } = 拾い待ち
 let pendingTriforcePos = null;
 
@@ -137,11 +137,11 @@ const charLayerElRef = { value: null };  // ← 両モジュールが共有す�
 // initInput 後に _inputModule に代入される。宣言はここに置くことで TDZ を回避。
 let _inputModule = null;
 
-// ── ボス撃破・トライフォース収集の状態フラグ（boss.js factory が参照） ──────
+// ── ボス撃破・星の欠片収集の状態フラグ（boss.js factory が参照） ──────
 // boss.js（createBoss）の deps が getter/setter 経由で読み書きするため、
 // factory 呼び出し時点で初期化済みになるよう前方で宣言する。
 let _bossDefeating = false;          // ボス撃破演出 実行中フラグ（二重実行防止）
-let _pendingTriforcePieceEl = null;  // 出現中のトライフォース DOM 要素
+let _pendingTriforcePieceEl = null;  // 出現中の星の欠片 DOM 要素
 let _collectingTriforce = false;     // 二重収集防止フラグ
 // 剣・石押しのクールダウン論理時刻（combat.js / player.js factory が参照）
 let lastSwordTime = 0;
@@ -904,7 +904,7 @@ function checkStageTransition() {
 
 // ── プレイヤー移動・タイルイベント・石押し・宝箱・サブアイテム付与は player.js へ ──
 // ── 剣攻撃・ダメージ・撃破・ゲームオーバーは combat.js へ ──
-// ── ボス戦・HPバー・撃破演出・エンディング・トライフォース収集は boss.js へ ──
+// ── ボス戦・HPバー・撃破演出・エンディング・星の欠片収集は boss.js へ ──
 //   （Phase 0-2b で旧本体を削除。factory 生成版で上書き済み）
 
 // ── デバッグモード切り替え ─────────────────────────────────────
@@ -960,7 +960,7 @@ function gameTick() {
 	projectileTick();
 	bombTick();
 	checkEnemyContact();
-	checkPendingTriforce(); // 魔王撃破後のトライフォース収集チェック
+	checkPendingTriforce(); // 魔王撃破後の星の欠片収集チェック
 	redrawAnimSprites();
 }
 
