@@ -457,12 +457,15 @@ input.js     161 / passable.js 161 / conditions.js 117 / save.js 87 / main.js 78
 - ※ 描画は専用スプライト未作成のため絵文字 `⛩` フォールバック（render-board.js）。専用スプライトは Phase 0-4 SPRITES_NEEDED.md の最優先5点
 - ※ 検証：全29テストグリーン＋エディタプレビュー（`ps_triforce=3` で全収集スポーン）で祭壇に乗り「翼の羽衣」付与・hasWingRobe がセーブに永続化を実ブラウザ確認（一時 spec、確認後削除）
 
-### 1-5. 暗黒の塔（ラストダンジョン）　🧠→⚡（飛行・入場ロジックはOpus、ステージ作成はSonnet）
-- [ ] 暗黒の塔ステージを作成（入り口 MAP_ENTER の `id` に **`'darkTower'`（= `DARK_TOWER_EXIT_ID`）** を設定）
-  - 翼の羽衣（`player.hasWingRobe`）がなければ入れない（空中フロートで入口にアクセス）※飛行移動を実装する方針
-  - 通常より難しい敵配置
-  - 最上階にラスボス **`ZARNEL`（タイル `Z`）** を配置（撃破で boss.js がエンディング発火）
-- [ ] ザーネルとの決戦後、女王復活のエンディングに繋げる（`onBossDefeated` の `isFinalBoss` 分岐で発火済み）
+### 1-5. 暗黒の塔（ラストダンジョン）　🧠→⚡（飛行・入場ロジックはOpus、ステージ作成はSonnet）　✅ 完了（2026-06-15）
+- [x] 暗黒の塔ステージを作成（`dark_tower` レイヤー：入口フロア `0,1` → ボス部屋 `0,0`）
+  - 入口は MAP_ENTER テレポート方式（field の閉じた縁に依存しない）。field `3,0` の到達可能な床(2,2)に portal MAP_ENTER（`id:'fieldToTower'`/`destId:'darkTower'`）を配置 → `destId==='darkTower'`(=`DARK_TOWER_EXIT_ID`) なので game.js が `hasWingRobe` ゲートを適用
+  - **飛行移動システムを実装**（ユーザー選択：フル実装）：`player.flying` フラグ・`toggleFlight()`（F キー / モバイル🪽ボタン）。飛行中は新タイル `SKY('%')`・`WATER` を越えられる（`passable.js` が `player.flying` を見る）。着陸は地上タイルの上だけ・ステージ遷移で自動着陸（到着が空/水なら飛行維持）
+  - field `4,0`（空島）：到着足場(3,2) → 虚空 `SKY` の谷(cols4-7) → 浮島の塔入口(3,9)。谷は全行 SKY で分断＝翼の羽衣の飛行でしか渡れない（BFS で「徒歩では塔到達不可・飛行で到達可」を検証）
+  - 通常より難しい敵配置（入口フロアに追跡者×2・騎士×2）
+  - 最上階のボス部屋にラスボス **`ZARNEL`（タイル `Z`）** を配置（ボス用ドアウェイ `:` で入室ロック・撃破で boss.js の `isFinalBoss` 分岐がエンディング発火）
+- [x] ザーネルとの決戦後、女王復活のエンディングに繋げる（`onBossDefeated` の `isFinalBoss` 分岐で発火・実ブラウザで撃破→エンディング発火を確認）
+- ※ 実装：`shared/tiles.js`（`SKY`）・`game/passable.js`（飛行通過）・`game/player.js`（`toggleFlight`）・`game/game.js`（飛行ゲート・自動着陸・flying 初期化/state・ps_wingrobe）・`game/input.js`（F/🪽）・`game/ui.js`（飛行ボタン表示）・`game/render-board.js`＋`game/css/tiles.css`（空タイル描画）・`game/render-chars.js`＋`game/css/board.css`（飛行浮遊演出）・`work/blade-of-lumia.json`（field 4,0・dark_tower レイヤー）。スモークテスト3本追加（`tests/dark-tower.spec.js`）。**全32テストグリーン**
 
 ---
 
@@ -700,8 +703,9 @@ Step 5: 必要になったら（Phase 0後半）
 | ボス戦（DARK_LORD系） | ✅ 実装済み |
 | 星の欠片収集→エンディング | ✅ 実装済み（Phase 1-3 で終盤フロー分岐化：祭壇あれば誘導／無ければ従来どおり即エンディング） |
 | 8ダンジョン | ⬜ 未達成（拡張必要） |
-| 古代の祭壇→翼の羽衣→暗黒の塔 | 🚧 祭壇まで実装（1-3 基盤＋1-4 祭壇タイル＝全収集で翼の羽衣入手・hasWingRobe 永続化）。暗黒の塔/ザーネル配置は 1-5 |
-| ラスボス ザーネル（最終ボス・撃破でエンディング） | 🚧 ENEMY_META 定義済み（`Z`・isFinalBoss）。マップ配置は 1-5 |
+| 古代の祭壇→翼の羽衣→暗黒の塔 | ✅ 完了（1-3 基盤＋1-4 祭壇＋1-5 飛行/暗黒の塔）。全収集→祭壇で翼の羽衣→飛行で虚空を越えて塔→ザーネル→エンディングが一本に繋がる |
+| ラスボス ザーネル（最終ボス・撃破でエンディング） | ✅ 完了（dark_tower ボス部屋に `Z` 配置・isFinalBoss 撃破でエンディング発火を実ブラウザ確認） |
+| 翼の羽衣による飛行移動 | ✅ 完了（1-5：`player.flying`・F/🪽 トグル・SKY/WATER 越え・地上のみ着陸・自動着陸） |
 | 老賢者のストーリー導入 | ✅ 完了（Phase 1-2：最初の村に老賢者NPC配置・ストーリー導入台詞） |
 | チャージ攻撃（剣ビーム） | ⬜ 未実装 |
 | はしご・笛・ロウソク | ⬜ 未実装 |

@@ -45,11 +45,20 @@ export function createPassable(d) {
 		const r0 = Math.floor(ny);
 		const r1 = Math.floor(ny + 0.999);
 
+		// Phase 1-5: 翼の羽衣で飛行中は「空（SKY）」「水（WATER）」を越えられる。
+		// 飛行は player 専用（敵は isPassableForEnemy 経由なので地上判定のまま）。
+		const flying = !!getPlayer()?.flying;
+
 		for (let r = r0; r <= r1; r++) {
 			for (let c = c0; c <= c1; c++) {
 				// マップ外 → ステージ端遷移なので通行可として扱う
 				if (r < 0 || r >= stageData.rows || c < 0 || c >= stageData.cols) continue;
-				if (!tilePassable(r, c)) return false;
+				if (!tilePassable(r, c)) {
+					// 飛行中は虚空・水の上を移動できる（その他の壁・木などは依然ブロック）
+					const t = stageData.tiles[r]?.[c];
+					if (flying && (t === TILE.SKY || t === TILE.WATER)) continue;
+					return false;
+				}
 			}
 		}
 
@@ -83,6 +92,7 @@ export function createPassable(d) {
 		const debugMode = getDebugMode();
 		if (tile === TILE.WALL) return false;
 		if (tile === TILE.WATER) return false;
+		if (tile === TILE.SKY) return false;  // 空（虚空）：地上では通れない（飛行は isPassable で許可）
 		if (tile === TILE.GATE   && !ss.openGates.has(posKey)) return false;
 		// デバッグモード中はドアを素通り（鍵不要）
 		if (tile === TILE.DOOR   && !ss.openedDoors?.has(posKey) && !debugMode) return false;

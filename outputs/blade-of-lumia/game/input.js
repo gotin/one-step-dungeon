@@ -49,6 +49,7 @@ export function initInput(deps) {
 		movePlayer,
 		swordAttack,
 		useSubItem,
+		toggleFlight,
 		togglePause,
 		toggleDebugMode,
 		advanceDialog,
@@ -92,6 +93,7 @@ export function initInput(deps) {
 		}
 		if ([' ','z','Z'].includes(e.key)) { e.preventDefault(); swordAttack(); return; }
 		if (e.key === 'b' || e.key === 'B') { e.preventDefault(); useSubItem(); return; }
+		if (e.key === 'f' || e.key === 'F') { e.preventDefault(); toggleFlight?.(); return; }
 		// Mac: Commandキー / Windows: Altキー でもサブアイテム使用
 		if (e.key === 'Meta' || e.key === 'Alt') { e.preventDefault(); useSubItem(); return; }
 		if (e.key === 'Escape') { e.preventDefault(); togglePause(); return; }
@@ -112,6 +114,7 @@ export function initInput(deps) {
 
 	document.getElementById('btn-sword')?.addEventListener('click', () => { resumeAudio(); swordAttack(); });
 	document.getElementById('btn-sub')?.addEventListener('click',   () => { resumeAudio(); useSubItem(); });
+	document.getElementById('btn-fly')?.addEventListener('click',   () => { resumeAudio(); toggleFlight?.(); });
 	document.getElementById('btn-menu')?.addEventListener('click',  () => { resumeAudio(); togglePause(); });
 
 	const shieldBtn = document.getElementById('btn-shield');

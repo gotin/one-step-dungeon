@@ -16,6 +16,7 @@ import {
 	MOVE_STEP, TICK_MS, INVINCIBLE_MS, HP_PER_HEART,
 	MAP_JSON_URL, SAVE_KEY, CLEARED_KEY, DIR_DELTA,
 	SWORD_REACH, SWORD_COOLDOWN_MS, STONE_PUSH_COOLDOWN_MS,
+	DARK_TOWER_EXIT_ID,
 } from './constants.js';
 // ── セーブ/ロードの純粋変換ロジック（Phase 0-2 Step 1b: save.js へ切り出し）──
 import {
@@ -91,6 +92,8 @@ let player = {
 	rupees: 0, triforceCount: 0,
 	// Phase 1-3: 翼の羽衣（古代の祭壇で授かる）。暗黒の塔の入り口を通れるようになる。
 	hasWingRobe: false,
+	// Phase 1-5: 飛行中フラグ（翼の羽衣で離陸中。SKY/WATER を越えられる）。
+	flying: false,
 };
 
 let enemies = [];
@@ -256,6 +259,13 @@ function enterStage(lk, sk, pRow, pCol) {
 	player.x = pCol ?? 1;
 	player.y = pRow ?? 1;
 
+	// Phase 1-5: ステージ遷移時の着陸処理。到着セルが地上なら自動着陸する。
+	// 到着セルが空・水（塔の空島入口など）なら飛行を維持してその場に留まれる。
+	if (player.flying) {
+		const arrTile = stageData.tiles?.[Math.floor((pRow ?? 1) + 0.5)]?.[Math.floor((pCol ?? 1) + 0.5)];
+		if (arrTile !== TILE.SKY && arrTile !== TILE.WATER) player.flying = false;
+	}
+
 	// ステージ遷移時に飛翔物・設置爆弾をリセット
 	clearProjectiles();
 	clearBombs();
@@ -384,6 +394,7 @@ let checkSwitchOff      = () => {};
 let giveSubItem         = () => {};
 let gainHeartContainer  = () => {};
 let spawnDropEffect     = () => {};
+let toggleFlight        = () => {};
 // ── combat.js ──
 let swordAttack         = () => {};
 let dealDamageToEnemy   = () => {};
@@ -552,6 +563,7 @@ const { checkStoneOnSwitch, evaluateConditions } = createConditions({
 		movePlayer:  (dir) => movePlayer(dir),
 		swordAttack: () => swordAttack(),
 		useSubItem:  () => useSubItem(),
+		toggleFlight: () => toggleFlight(),
 		togglePause,
 		toggleDebugMode,
 		advanceDialog,
@@ -775,6 +787,7 @@ const { checkStoneOnSwitch, evaluateConditions } = createConditions({
 	giveSubItem       = _player.giveSubItem;
 	gainHeartContainer= _player.gainHeartContainer;
 	spawnDropEffect   = _player.spawnDropEffect;
+	toggleFlight      = _player.toggleFlight;
 
 	swordAttack       = _combat.swordAttack;
 	dealDamageToEnemy = _combat.dealDamageToEnemy;
@@ -893,6 +906,12 @@ function checkStageTransition() {
 	const tileAtPos = stageData.tiles[r]?.[c];
 	const enter  = stageData.mapEnters?.[posKey];
 	if (tileAtPos === TILE.MAP_ENTER && enter?.destId && exitRegistry[enter.destId]) {
+		// Phase 1-5: 暗黒の塔の入り口は翼の羽衣がないと通れない（飛行ゲート）。
+		// 入り口自体が空島にあり飛行しないと到達できないが、安全策として明示判定する。
+		if (enter.destId === DARK_TOWER_EXIT_ID && !player.hasWingRobe) {
+			pulse('🪽 翼の羽衣が なければ 暗黒の塔へは 渡れない', 2500);
+			return;
+		}
 		const dest = exitRegistry[enter.destId];
 		isTransitioning = true;
 		playSound('stageTransition');
@@ -1090,6 +1109,7 @@ function startNewGame() {
 		subItems: {}, activeSubItem: null,
 		rupees: 0, triforceCount: 0,
 		hasWingRobe: false,
+		flying: false,
 	};
 	heroDir = 'down';
 	enterStage(currentLayer, stageKey, player.y, player.x);
@@ -1171,6 +1191,7 @@ async function init() {
 		const psBow      = params.get('ps_bow');
 		const psBoomerang= params.get('ps_boomerang');
 		const psCleared  = params.get('ps_cleared');
+		const psWingRobe = params.get('ps_wingrobe');
 
 		if (psAtk      !== null) player.atk    = parseInt(psAtk,  10) || 2;
 		if (psDef      !== null) player.def    = parseInt(psDef,  10) || 0;
@@ -1179,6 +1200,7 @@ async function init() {
 		if (psWeapon   === '1') { player.weapon = 'sword'; if (!player._equip) player._equip = {}; player._equip.swordName = '剣'; }
 		if (psShield   === '1') player.shield = 'shield';
 		if (psArmor    === '1') { player.armor  = 'armor'; if (!player._equip) player._equip = {}; player._equip.armorName = '防具'; }
+		if (psWingRobe === '1') player.hasWingRobe = true;
 		if (psBow      === '1') { player.subItems.bow       = { count: 10 };       if (!player.activeSubItem) player.activeSubItem = 'bow'; }
 		if (psBoomerang=== '1') { player.subItems.boomerang = { count: Infinity };  if (!player.activeSubItem) player.activeSubItem = 'boomerang'; }
 		// 姫状態（クリア済みフラグ）の設定
@@ -1228,6 +1250,8 @@ export {
 	getProjectiles,
 	startEnding,
 };
+// テスト用：飛行トグルを公開（main.js の __game から呼ぶ）
+export function callToggleFlight() { return toggleFlight(); }
 export { startAnimLoop, redrawAnimSprites } from '../shared/sprites.js';
 
 // テスト用フック（main.js 側の window.__game から呼ばれる）
@@ -1236,7 +1260,10 @@ export function getGameState() {
 		gameTime,
 		currentLayer,
 		stageKey,
-		player: { x: player.x, y: player.y, hp: player.hp, maxHp: player.maxHp },
+		player: {
+			x: player.x, y: player.y, hp: player.hp, maxHp: player.maxHp,
+			hasWingRobe: !!player.hasWingRobe, flying: !!player.flying,
+		},
 		heroDir,
 		enemyCount: enemies.length,
 		isPaused, isDialog, isGameover, isTransitioning,

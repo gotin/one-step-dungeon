@@ -81,6 +81,8 @@ export function createRenderBoard(deps) {
 			case TILE.MAP_ENTER:
 				cellEl.classList.add('map-enter');
 				applyBgTileClass(cellEl, posKey); return;
+			case TILE.SKY:
+				cellEl.classList.add('sky'); return;
 			case TILE.DOORWAY:
 				cellEl.classList.add('doorway');
 				applyBgTileClass(cellEl, posKey); return;

@@ -120,6 +120,12 @@ export function createUi(deps) {
 		equipSwordEl.classList.toggle('has-item',  !!player.weapon);
 		equipShieldEl.classList.toggle('has-item', !!player.shield);
 		equipArmorEl.classList.toggle('has-item',  !!player.armor);
+		// Phase 1-5: 翼の羽衣を授かったら飛行ボタンを表示。飛行中はハイライト。
+		const flyBtn = document.getElementById('btn-fly');
+		if (flyBtn) {
+			flyBtn.classList.toggle('hidden', !player.hasWingRobe);
+			flyBtn.classList.toggle('defending', !!player.flying);
+		}
 		document.getElementById('hud-rupees').textContent   = player.rupees;
 		document.getElementById('hud-triforce').textContent = player.triforceCount;
 		const ai = player.activeSubItem;

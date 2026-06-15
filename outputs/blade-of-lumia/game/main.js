@@ -18,6 +18,7 @@ import {
 	startAnimLoop,
 	redrawAnimSprites,
 	startEnding,
+	callToggleFlight,
 } from './game.js';
 
 // ── アニメーション ────────────────────────────────────────────
@@ -62,6 +63,7 @@ window.__game = {
 	movePlayer: (dir) => movePlayer(dir),
 	swordAttack: () => swordAttack(),
 	useSubItem: () => useSubItem(),
+	toggleFlight: () => callToggleFlight(),
 	// 投擲物の現在状態をスナップショットとして返す（テスト用）
 	getProjectiles: () => getProjectiles().map(p => ({
 		id: p.id, owner: p.owner, type: p.type,

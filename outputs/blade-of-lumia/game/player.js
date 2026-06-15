@@ -86,6 +86,37 @@ export function createPlayer(deps) {
 	// 祭壇の連続発火を防ぐガード（乗りっぱなしで毎フレーム発火しないように）
 	let _lastAltarPosKey = null;
 
+	// ── 翼の羽衣による飛行（Phase 1-5）────────────────────────────
+	// 飛行中は SKY/WATER の上を移動できる（passable.js が player.flying を見る）。
+	// 着陸できるのは地上タイル（tilePassable=true）の上だけ。空・水の上では降りられない。
+	// 離着陸は F キー / モバイル飛行ボタンから toggleFlight() で行う。
+	function toggleFlight() {
+		const player = getPlayer();
+		if (getIsDialog() || getIsPaused() || getIsGameover() || getIsTransitioning()) return;
+		if (!player.hasWingRobe) {
+			pulse('🪽 翼の羽衣を まだ持っていない', 1800);
+			return;
+		}
+		if (!player.flying) {
+			// 離陸
+			player.flying = true;
+			playSound('item');
+			pulse('🪽 翼の羽衣で 空へ舞い上がった！', 1800);
+			renderChars(); updateHud(); saveGame();
+			return;
+		}
+		// 着陸：現在のタイルが地上（通行可）でなければ降りられない
+		const r = toTileRow(player.y), c = toTileCol(player.x);
+		if (!tilePassable(r, c)) {
+			pulse('ここには 降りられない！', 1500);
+			return;
+		}
+		player.flying = false;
+		playSound('move');
+		pulse('🪽 地上に 降り立った', 1500);
+		renderChars(); updateHud(); saveGame();
+	}
+
 	// ── ドア開扉アニメーション ────────────────────────────────
 	function showDoorOpenEffect(r, c) {
 		const charLayerEl = getCharLayerEl();
@@ -710,5 +741,6 @@ export function createPlayer(deps) {
 		giveSubItem,
 		gainHeartContainer,
 		spawnDropEffect,
+		toggleFlight,
 	};
 }

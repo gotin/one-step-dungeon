@@ -1,3 +1,12 @@
+/* ── Phase 1-5: 空（虚空）タイル。翼の羽衣の飛行中のみ越えられる */
+.cell.sky {
+    background:
+        radial-gradient(1px 1px at 20% 30%, rgba(255,255,255,0.9), transparent),
+        radial-gradient(1px 1px at 70% 60%, rgba(200,220,255,0.8), transparent),
+        radial-gradient(1px 1px at 45% 80%, rgba(255,255,255,0.7), transparent),
+        linear-gradient(180deg, #1a1438 0%, #0a0a20 100%);
+}
+
 /* ── Phase 8: bgTile 背景色クラス（フォアグラウンドタイルの下に表示） */
 .cell.bg-grass {
     background: #3a6e28;

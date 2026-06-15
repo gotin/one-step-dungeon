@@ -31,6 +31,7 @@ export const TILE = {
 	BREAKABLE_WALL: '!',  // 壊せる壁（爆弾で破壊可能）
 	MAP_ENTER:      '>',  // 別マップへの入り口
 	ALTAR:          '^',  // 古代の祭壇（星の欠片を全部捧げると翼の羽衣を授かる。Phase 1-4）
+	SKY:            '%',  // 空（虚空）。徒歩では通れない。翼の羽衣で飛行中のみ越えられる（Phase 1-5）
 
 	// NPC（複数種）
 	NPC_A:     'a',  // NPC（村人など）
@@ -107,6 +108,7 @@ export const TILE_META = {
 	[TILE.BREAKABLE_WALL]: { label: '壊せる壁',    color: '#3a3028', passable: false, icon: '✦' },
 	[TILE.MAP_ENTER]:      { label: 'マップ入り口', color: '#202840', passable: true,  icon: '◎' },
 	[TILE.ALTAR]:          { label: '古代の祭壇',  color: '#4a3a6a', passable: true,  icon: '⛩' },
+	[TILE.SKY]:            { label: '空（飛行）',  color: '#0a0a20', passable: false, icon: '☁' },
 	// アイテム
 	[TILE.ITEM_SWORD]:           { label: '剣',           color: '#607080', passable: true, icon: '⚔' },
 	[TILE.ITEM_SHIELD]:          { label: 'たて',         color: '#607080', passable: true, icon: '🛡' },

@@ -149,6 +149,7 @@ export function createRenderChars(deps) {
 		const heroDir = getHeroDir();
 		const el = document.getElementById('char-player');
 		if (!el) return;
+		el.classList.toggle('flying', !!getPlayer().flying);
 		el.innerHTML = '';
 
 		if (heroDir === 'up') addShieldOverlay(el);
@@ -208,7 +209,7 @@ export function createRenderChars(deps) {
 
 		// プレイヤー
 		const playerDiv = document.createElement('div');
-		playerDiv.className = 'char-abs';
+		playerDiv.className = 'char-abs' + (player.flying ? ' flying' : '');
 		playerDiv.id        = 'char-player';
 		playerDiv.style.left = `${player.x * cellPx0}px`;
 		playerDiv.style.top  = `${player.y * cellPx0}px`;

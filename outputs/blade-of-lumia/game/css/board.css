@@ -50,6 +50,17 @@
     transition: left 0.08s linear, top 0.08s linear;
 }
 
+/* Phase 1-5: 飛行中のプレイヤー（翼の羽衣）。淡い浮遊感と光のオーラ。 */
+.char-abs.flying {
+    z-index: 30;
+    filter: drop-shadow(0 0 6px rgba(180,210,255,0.85));
+    animation: wing-float 1.4s ease-in-out infinite;
+}
+@keyframes wing-float {
+    0%, 100% { transform: translateY(-8%); }
+    50%      { transform: translateY(-16%); }
+}
+
 .char-abs canvas.sprite {
     /* char-layer 内では absolute 配置ではなく static に戻す */
     position: static;
