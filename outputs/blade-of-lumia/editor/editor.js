@@ -13,9 +13,12 @@ import {
 	getPreviewPending, setPreviewPending, openPreview,
 } from './editor-io.js';
 import { initSpriteEditor, onLeaveSpriteEditor } from './editor-sprite.js';
+import { initCharacterEditor, onLeaveCharacterEditor } from './editor-character.js';
 
 const viewSpriteEl = document.getElementById('view-sprite');
 const tabSpriteEl  = document.getElementById('tab-sprite');
+const viewCharacterEl = document.getElementById('view-character');
+const tabCharacterEl  = document.getElementById('tab-character');
 
 // ── タブ切り替え ───────────────────────────────────────────────
 function showView(view) {
@@ -23,14 +26,18 @@ function showView(view) {
 	setPreviewPending(false);
 	// スプライトビューを離れる場合は再生を止める
 	if (view !== 'sprite') onLeaveSpriteEditor();
+	// キャラクタービューを離れる場合の処理
+	if (view !== 'character') onLeaveCharacterEditor();
 
 	// 全ビュー・全タブを一旦リセット
 	viewWorldEl.classList.add('hidden');
 	viewStageEl.classList.add('hidden');
 	if (viewSpriteEl) viewSpriteEl.classList.add('hidden');
+	if (viewCharacterEl) viewCharacterEl.classList.add('hidden');
 	tabWorldEl.classList.remove('active');
 	tabStageEl.classList.remove('active');
 	if (tabSpriteEl) tabSpriteEl.classList.remove('active');
+	if (tabCharacterEl) tabCharacterEl.classList.remove('active');
 
 	if (view === 'world') {
 		viewWorldEl.classList.remove('hidden');
@@ -40,6 +47,9 @@ function showView(view) {
 	} else if (view === 'sprite') {
 		if (viewSpriteEl) viewSpriteEl.classList.remove('hidden');
 		if (tabSpriteEl) tabSpriteEl.classList.add('active');
+	} else if (view === 'character') {
+		if (viewCharacterEl) viewCharacterEl.classList.remove('hidden');
+		if (tabCharacterEl) tabCharacterEl.classList.add('active');
 	} else {
 		viewStageEl.classList.remove('hidden');
 		tabStageEl.classList.add('active');
@@ -59,6 +69,7 @@ function showView(view) {
 tabWorldEl.addEventListener('click', () => showView('world'));
 tabStageEl.addEventListener('click', () => showView('stage'));
 if (tabSpriteEl) tabSpriteEl.addEventListener('click', () => showView('sprite'));
+if (tabCharacterEl) tabCharacterEl.addEventListener('click', () => showView('character'));
 
 // ── 各モジュールのイベント登録 ────────────────────────────────
 const updateToolButtons = initToolButtons(
@@ -143,6 +154,7 @@ function init() {
 	buildTilePalette(updateToolButtons);
 	updateToolButtons();
 	initSpriteEditor();
+	initCharacterEditor();
 	tryRestoreFromStorage(
 		() => renderLayerTabs(() => renderWorldGrid(), () => renderDungeonMeta()),
 		() => renderDungeonMeta(),

@@ -366,12 +366,15 @@ input.js     161 / passable.js 161 / conditions.js 117 / save.js 87 / main.js 78
 - [x] 既存スプライト/パレットの選択・読込・編集
 - ※ 実装：`editor/index.html`（🎨タブ＋`#view-sprite`）/ `editor/editor-sprite.js`（自己完結モジュール）/ `editor/editor-sprite.css`。スモークテスト2本追加。**19テストグリーン**
 
-#### キャラクター定義エディタ
-- [ ] プレイヤー・敵のキャラクター定義（`enemies.js` の中身）をフォームで編集できる
-  - HP・ATK・DEF・速度・スプライト名・パレット名の設定
-  - 攻撃パターン（sword/spear/stone + range + cooldown）の設定
-  - ボスフラグ・弱点属性の設定
-- [ ] 定義内容を JSON / JS コードとしてエクスポート
+#### キャラクター定義エディタ ✅ 完了（2026-06-15）
+- [x] プレイヤー・敵のキャラクター定義（`enemies.js` の中身）をフォームで編集できる
+  - [x] HP・ATK・DEF・速度・スプライト名・パレット名の設定
+  - [x] 攻撃パターン（sword/spear/stone + range + cooldown）の設定
+  - [x] 複数攻撃パターン（attacks配列）の編集
+  - [x] ボスフラグ・ヒット&アウェイ・オーラエフェクトのチェックボックス
+  - [x] フェーズ設定（HP閾値・速度倍率・攻撃CD倍率）
+- [x] 定義内容を JS コードとしてエクスポート
+- ※ 実装：`editor/index.html`（🧙タブ＋`#view-character`）/ `editor/editor-character.js`（492行）/ `editor/editor-character.css`（117行）。スモークテスト3本追加。**23テストグリーン**（デグレなし）
 
 #### アイテム定義エディタ
 - [ ] アイテムの定義（`items.js`）をフォームで編集できる
@@ -687,6 +690,6 @@ Step 5: 必要になったら（Phase 0後半）
 | editor.js 分割 | ✅ 完了（8モジュール：editor-state/layers/world/palette/canvas/props/io + エントリ142行。スモークテスト4本追加。17テストグリーン） |
 
 | スプライトエディタ | ✅ 完了（🎨タブ・グリッド可変・パレット・マルチフレーム・反転・既存読込・コードエクスポート。editor-sprite.js。19テストグリーン） |
-| キャラクター定義エディタ | ⬜ 未実装（0-5 残タスク） |
+| キャラクター定義エディタ | ✅ 完了（🧙タブ・敵リスト選択・HP/ATK/DEF/速度/攻撃パターン/フェーズ編集・JSコード生成。editor-character.js 492行。23テストグリーン） |
 | アイテム定義エディタ | ⬜ 未実装（0-5 残タスク） |
 | タイルバリエーション設計支援 | ⬜ 未実装（0-5 残タスク） |
