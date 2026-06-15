@@ -12,23 +12,36 @@ import {
 	tryRestoreFromStorage, initIOEvents,
 	getPreviewPending, setPreviewPending, openPreview,
 } from './editor-io.js';
+import { initSpriteEditor, onLeaveSpriteEditor } from './editor-sprite.js';
+
+const viewSpriteEl = document.getElementById('view-sprite');
+const tabSpriteEl  = document.getElementById('tab-sprite');
 
 // ── タブ切り替え ───────────────────────────────────────────────
 function showView(view) {
 	// ビュー切り替え時はプレビュー待機状態を必ずリセット
 	setPreviewPending(false);
+	// スプライトビューを離れる場合は再生を止める
+	if (view !== 'sprite') onLeaveSpriteEditor();
+
+	// 全ビュー・全タブを一旦リセット
+	viewWorldEl.classList.add('hidden');
+	viewStageEl.classList.add('hidden');
+	if (viewSpriteEl) viewSpriteEl.classList.add('hidden');
+	tabWorldEl.classList.remove('active');
+	tabStageEl.classList.remove('active');
+	if (tabSpriteEl) tabSpriteEl.classList.remove('active');
 
 	if (view === 'world') {
 		viewWorldEl.classList.remove('hidden');
-		viewStageEl.classList.add('hidden');
 		tabWorldEl.classList.add('active');
-		tabStageEl.classList.remove('active');
 		renderLayerTabs(() => renderWorldGrid(), () => renderDungeonMeta());
 		renderWorldGrid();
+	} else if (view === 'sprite') {
+		if (viewSpriteEl) viewSpriteEl.classList.remove('hidden');
+		if (tabSpriteEl) tabSpriteEl.classList.add('active');
 	} else {
-		viewWorldEl.classList.add('hidden');
 		viewStageEl.classList.remove('hidden');
-		tabWorldEl.classList.remove('active');
 		tabStageEl.classList.add('active');
 		// currentCoord が未設定の場合は最初のステージを選択
 		if (!state.currentCoord) {
@@ -45,6 +58,7 @@ function showView(view) {
 
 tabWorldEl.addEventListener('click', () => showView('world'));
 tabStageEl.addEventListener('click', () => showView('stage'));
+if (tabSpriteEl) tabSpriteEl.addEventListener('click', () => showView('sprite'));
 
 // ── 各モジュールのイベント登録 ────────────────────────────────
 const updateToolButtons = initToolButtons(
@@ -128,6 +142,7 @@ startAnimLoop(() => {
 function init() {
 	buildTilePalette(updateToolButtons);
 	updateToolButtons();
+	initSpriteEditor();
 	tryRestoreFromStorage(
 		() => renderLayerTabs(() => renderWorldGrid(), () => renderDungeonMeta()),
 		() => renderDungeonMeta(),

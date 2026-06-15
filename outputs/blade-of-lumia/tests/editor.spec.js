@@ -1,5 +1,5 @@
 // tests/editor.spec.js – Editor smoke tests
-// エディタの最小動作確認：起動・タイル配置・JSONエクスポート
+// エディタの最小動作確認：起動・タイル配置・JSONエクスポート・スプライトエディタ
 import { test, expect } from '@playwright/test';
 
 const EDITOR_URL = '/blade-of-lumia/editor/';
@@ -79,4 +79,70 @@ test('editor: save button stores valid JSON in localStorage', async ({ page }) =
 	const data = JSON.parse(stored);
 	expect(data).toHaveProperty('layers');
 	expect(data.layers).toHaveProperty('field');
+});
+
+// ─── ⑤ スプライトエディタ：タブ表示 + キャンバス描画 ──────────
+test('editor: sprite tab shows canvas and palette', async ({ page }) => {
+	const errors = [];
+	page.on('pageerror', e => errors.push(e.message));
+	page.on('console', msg => {
+		if (msg.type() === 'error') errors.push(msg.text());
+	});
+
+	await page.goto(EDITOR_URL);
+	await page.waitForSelector('#world-grid', { state: 'visible' });
+
+	// スプライトタブをクリック
+	await page.locator('#tab-sprite').click();
+	await expect(page.locator('#view-sprite')).not.toHaveClass(/hidden/);
+	await expect(page.locator('#tab-sprite')).toHaveClass(/active/);
+
+	// 描画キャンバスとパレットが表示される
+	await expect(page.locator('#sprite-canvas')).toBeVisible();
+	const swatchCount = await page.locator('#sprite-palette .sprite-swatch').count();
+	expect(swatchCount).toBeGreaterThan(0);
+
+	expect(errors).toEqual([]);
+});
+
+// ─── ⑥ スプライトエディタ：既存読込 → エクスポートコード生成 ──
+test('editor: sprite load existing then export valid code', async ({ page }) => {
+	await page.goto(EDITOR_URL);
+	await page.waitForSelector('#world-grid', { state: 'visible' });
+	await page.locator('#tab-sprite').click();
+
+	// heroD を読み込む
+	await page.locator('#sprite-load-name').selectOption('heroD');
+	await page.locator('#sprite-load-pal').selectOption('hero');
+	await page.locator('#sprite-load-btn').click();
+
+	// 32×32 が読み込まれてサイズラベルに反映
+	await expect(page.locator('#sprite-size-label')).toHaveText('32 × 32');
+
+	// エクスポートコード生成
+	await page.locator('#sprite-export-btn').click();
+	const code = await page.locator('#sprite-export-out').inputValue();
+	expect(code).toContain('SPRITES.');
+	expect(code).toContain('[');
+	// 配列形式の行が含まれること
+	expect(code.length).toBeGreaterThan(100);
+});
+
+// ─── ⑦ スプライト選択でパレットが自動連動する ──────────────
+test('editor: selecting a sprite auto-syncs the palette', async ({ page }) => {
+	await page.goto(EDITOR_URL);
+	await page.waitForSelector('#world-grid', { state: 'visible' });
+	await page.locator('#tab-sprite').click();
+
+	// 初期：heroD → hero に自動連動
+	await expect(page.locator('#sprite-load-name')).toHaveValue('heroD');
+	await expect(page.locator('#sprite-load-pal')).toHaveValue('hero');
+
+	// patrol（敵）に変更 → パレットも patrol に連動
+	await page.locator('#sprite-load-name').selectOption('patrol');
+	await expect(page.locator('#sprite-load-pal')).toHaveValue('patrol');
+
+	// heroR に変更 → 最長プレフィックス一致で hero に連動
+	await page.locator('#sprite-load-name').selectOption('heroR');
+	await expect(page.locator('#sprite-load-pal')).toHaveValue('hero');
 });

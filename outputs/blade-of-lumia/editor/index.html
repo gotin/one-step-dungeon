@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Blade of Lumia – Map Editor</title>
   <link rel="stylesheet" href="./editor.css" />
+  <link rel="stylesheet" href="./editor-sprite.css" />
 </head>
 <body>
 <div class="app">
@@ -19,6 +20,7 @@
     <div class="toolbar-mode">
       <button id="tab-world" class="tab active">ワールドマップ</button>
       <button id="tab-stage" class="tab">ステージ編集</button>
+      <button id="tab-sprite" class="tab">🎨 スプライト</button>
     </div>
   </header>
 
@@ -204,6 +206,102 @@
             <p class="hint">DOORWAY_LOCKED の開放条件</p>
             <div id="doorway-list" class="links-list"></div>
             <button id="btn-add-doorway-cond" class="btn btn-sm">＋ 追加</button>
+          </div>
+        </aside>
+      </div>
+    </section>
+
+    <!-- ── スプライトエディタビュー ── -->
+    <section id="view-sprite" class="view hidden">
+      <div class="sprite-layout">
+
+        <!-- 左：ツール・パレット -->
+        <aside class="sprite-tools-panel">
+          <h2 class="panel-title">🎨 スプライト</h2>
+
+          <div class="sprite-tool-row">
+            <label>グリッド
+              <select id="sprite-grid-size" class="input-med">
+                <option value="32x32">32 × 32（プレイヤー/ボス）</option>
+                <option value="16x16">16 × 16</option>
+                <option value="12x16">12 × 16（敵/扉）</option>
+                <option value="8x8">8 × 8（小物）</option>
+                <option value="6x6">6 × 6（剣/ハート）</option>
+                <option value="64x64">64 × 64（大型ボス）</option>
+              </select>
+            </label>
+            <button id="sprite-resize-btn" class="btn btn-sm">適用（クリア）</button>
+          </div>
+
+          <h3 class="panel-title">ツール</h3>
+          <div class="tool-group">
+            <button id="sprite-tool-pen"   class="tool-btn active">✏️ ペン</button>
+            <button id="sprite-tool-erase" class="tool-btn">🧹 消しゴム</button>
+          </div>
+          <div class="sprite-tool-row">
+            <button id="sprite-flip-btn"  class="btn btn-sm">↔ 左右反転</button>
+            <button id="sprite-clear-btn" class="btn btn-sm btn-danger">クリア</button>
+          </div>
+
+          <h3 class="panel-title">パレット</h3>
+          <p class="hint">クリックで選択色を変更。下のカラーピッカーで現在色を編集。</p>
+          <div id="sprite-palette" class="sprite-palette"></div>
+          <div class="sprite-tool-row">
+            <input id="sprite-color-input" type="color" value="#ffffff">
+            <button id="sprite-set-color-btn" class="btn btn-sm">選択色を変更</button>
+            <button id="sprite-add-color-btn" class="btn btn-sm">＋ 色を追加</button>
+          </div>
+        </aside>
+
+        <!-- 中央：描画キャンバス -->
+        <div class="sprite-editor-center">
+          <div class="sprite-toolbar">
+            <span id="sprite-size-label" class="stage-label">32 × 32</span>
+          </div>
+          <div id="sprite-canvas-wrap" class="sprite-canvas-wrap">
+            <canvas id="sprite-canvas"></canvas>
+          </div>
+        </div>
+
+        <!-- 右：フレーム・読込・エクスポート -->
+        <aside class="sprite-side-panel">
+          <div class="props-section">
+            <h2 class="panel-title">フレーム（アニメ）</h2>
+            <div id="sprite-frames" class="sprite-frames"></div>
+            <div class="sprite-tool-row">
+              <button id="sprite-add-frame-btn"  class="btn btn-sm">＋ フレーム追加</button>
+              <button id="sprite-dup-frame-btn"  class="btn btn-sm">⧉ 複製</button>
+              <button id="sprite-del-frame-btn"  class="btn btn-sm btn-danger">🗑 削除</button>
+            </div>
+            <div class="sprite-tool-row">
+              <button id="sprite-play-btn" class="btn btn-sm">▶ プレビュー再生</button>
+              <canvas id="sprite-preview-canvas" class="sprite-preview-canvas"></canvas>
+            </div>
+          </div>
+
+          <div class="props-section">
+            <h2 class="panel-title">既存スプライト読込</h2>
+            <p class="hint">「形（スプライト）」と「色（パレット）」を選ぶ。スプライトを選ぶと対応するパレットが自動で選ばれます。</p>
+            <label class="meta-label">形（スプライト）
+              <select id="sprite-load-name" class="input-med"></select>
+            </label>
+            <label class="meta-label">色（パレット）
+              <select id="sprite-load-pal" class="input-med"></select>
+            </label>
+            <button id="sprite-load-btn" class="btn btn-sm">📥 読み込んで編集</button>
+          </div>
+
+          <div class="props-section">
+            <h2 class="panel-title">エクスポート</h2>
+            <label class="meta-label">スプライト名
+              <input id="sprite-export-name" type="text" class="input-med" value="newSprite" placeholder="例: heroAttackD">
+            </label>
+            <label class="meta-label">パレット名
+              <input id="sprite-export-pal" type="text" class="input-med" value="newPal" placeholder="例: hero">
+            </label>
+            <button id="sprite-export-btn" class="btn btn-sm btn-primary">📋 コードを生成</button>
+            <textarea id="sprite-export-out" class="sprite-export-out" readonly placeholder="生成されたコードがここに表示されます"></textarea>
+            <button id="sprite-copy-btn" class="btn btn-sm">クリップボードにコピー</button>
           </div>
         </aside>
       </div>

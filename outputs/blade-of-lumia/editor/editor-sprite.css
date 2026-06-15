@@ -1,0 +1,150 @@
+/* ── Sprite Editor 専用スタイル（editor.css と分離して衝突回避） ── */
+.sprite-layout {
+    display: grid;
+    grid-template-columns: 260px 1fr 300px;
+    gap: 12px;
+    height: 100%;
+    padding: 12px;
+    overflow: hidden;
+}
+
+.sprite-tools-panel,
+.sprite-side-panel {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 12px;
+    overflow-y: auto;
+}
+
+.sprite-editor-center {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    overflow: auto;
+}
+
+.sprite-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.sprite-canvas-wrap {
+    border: 1px solid var(--border);
+    background: #14181b;
+    border-radius: 6px;
+    padding: 8px;
+    overflow: auto;
+    max-height: calc(100vh - 120px);
+}
+
+#sprite-canvas {
+    image-rendering: pixelated;
+    cursor: crosshair;
+    display: block;
+}
+
+.sprite-tool-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+    margin: 6px 0;
+}
+
+.sprite-palette {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    margin: 6px 0;
+}
+
+.sprite-swatch {
+    width: 26px;
+    height: 26px;
+    border: 2px solid var(--border);
+    border-radius: 4px;
+    cursor: pointer;
+    padding: 0;
+}
+
+.sprite-swatch.selected {
+    border-color: var(--accent2);
+    box-shadow: 0 0 0 2px var(--accent2);
+}
+
+.sprite-swatch.transparent {
+    background:
+        linear-gradient(45deg, #555 25%, transparent 25%) 0 0/10px 10px,
+        linear-gradient(-45deg, #555 25%, transparent 25%) 0 0/10px 10px,
+        #333;
+    color: var(--muted);
+    font-size: 12px;
+    line-height: 1;
+}
+
+.sprite-frames {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin: 6px 0;
+}
+
+.sprite-frame-thumb {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+    border: 2px solid var(--border);
+    border-radius: 4px;
+    background: #14181b;
+    cursor: pointer;
+    padding: 4px;
+}
+
+.sprite-frame-thumb.selected {
+    border-color: var(--accent);
+}
+
+.sprite-frame-thumb canvas {
+    image-rendering: pixelated;
+    width: 48px;
+    height: 48px;
+    object-fit: contain;
+    background:
+        linear-gradient(45deg, #2a2f33 25%, transparent 25%) 0 0/8px 8px,
+        linear-gradient(-45deg, #2a2f33 25%, transparent 25%) 0 0/8px 8px,
+        #22262a;
+}
+
+.sprite-frame-thumb span {
+    font-size: 11px;
+    color: var(--muted);
+}
+
+.sprite-preview-canvas {
+    image-rendering: pixelated;
+    width: 64px;
+    height: 64px;
+    border: 1px solid var(--border);
+    background:
+        linear-gradient(45deg, #2a2f33 25%, transparent 25%) 0 0/8px 8px,
+        linear-gradient(-45deg, #2a2f33 25%, transparent 25%) 0 0/8px 8px,
+        #22262a;
+}
+
+.sprite-export-out {
+    width: 100%;
+    height: 160px;
+    margin: 6px 0;
+    background: #14181b;
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    font-family: ui-monospace, monospace;
+    font-size: 11px;
+    padding: 8px;
+    resize: vertical;
+}
