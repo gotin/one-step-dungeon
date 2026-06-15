@@ -63,13 +63,13 @@
 
 **目的：** 長期開発・機能追加に耐えられるコードベースを整備する。**最初に完了させる。**
 
-**現状のファイルサイズ（要対応を ⚠️ で表示・2026-06-14 実測）：**
+**現状のファイルサイズ（2026-06-15 実測・Phase 0 完了時点）：**
 ```
-game.js    4075行  ⚠️ ⚠️ 未だ痩せていない！ 関数は別ファイルに切り出したが、旧本体が
-                      game.js に重複して残ったまま（factory版で上書きしただけ）。
-                      → 0-2b で旧本体を削除して本当にスリム化する
+game.js    1268行  ✅ 4098行 → 1268行（約70%削減。0-2b で旧本体削除完了）。
+                      オーケストレーション層（状態宣言・factory初期化・export）に収束
 game.css   分割済 ✅ → css/ 配下11ファイル + @import エントリ（0-3b 完了）
-editor.js  1581行  ⚠️ 要分割（さらに 0-5 でエディタ機能追加予定 → 先に分割が必要）
+editor.js  分割済 ✅ → 12モジュール（editor-state/layers/world/palette/canvas/props/io/
+                      sprite/character/item/tile + エントリ193行。0-3b/0-5 完了）
 sprites.js 分割済 ✅ → sprites-player/enemies/items/tiles + aggregator（0-3 完了）
 sounds.js   448行  許容範囲内
 enemies.js  142行  OK
@@ -77,12 +77,14 @@ items.js     92行  OK
 tiles.js    198行  OK
 npcs.js      17行  OK
 
-【game.js から切り出し済みのモジュール（実体はこちらが動いている）】
+【game.js から切り出し済みのモジュール（全て目標400〜700行内）】
 player.js 698 / enemy-ai.js 555 / ui.js 529 / projectile.js 440 / boss.js 376 /
 render-board.js 308 / combat.js 291 / render-chars.js 266 / input.js 161 /
 passable.js 161 / conditions.js 117 / save.js 87 / main.js 78 / constants.js 36
 
-テストコード  Playwright 13本（起動・移動・セーブ/ロード・遷移・投擲物・石押し・VRT 等）
+テストコード  Playwright 29本（起動・移動・セーブ/ロード・遷移・投擲物・石押し・VRT・
+                      editor スモーク：起動/作成/パレット/エクスポート＋スプライト/キャラ/
+                      アイテム/タイル各エディタ）
 ```
 
 
@@ -393,17 +395,21 @@ input.js     161 / passable.js 161 / conditions.js 117 / save.js 87 / main.js 78
 
 ---
 
-### 0-6. TypeScript・ビルドの検討（分割完了後）　🧠 Opus（採用判断）
+### 0-6. TypeScript・ビルドの検討（分割完了後）　🧠 Opus（採用判断）　✅ 完了（2026-06-15）
 
-**推奨方針：**
+**結論：当面は plain ESModule のまま維持する（TS も `vite build` も導入しない）。Phase 0 をクローズ。**
 
-> **当面は plain ESModule のまま進め、モジュール分割を完了させる。**  
-> TypeScript・esbuild は分割完了後に採用可否を再判断する。
+- [x] TypeScript 採用可否を判断 → **見送り**（理由は DECISIONS.md 参照：分割済みで可読性問題は解消・Phase 1+ はコンテンツ中心で型化の費用対効果が低い・移行コスト大）
+- [x] esbuild / `vite build`（bundle+minify）採用可否を判断 → **見送り**
+  - 本番 Vercel は `outputs/` を素ファイルのまま静的配信（ビルドなし）。計測で本番同等構成の起動時間を実測：time-to-board は RTT 0ms=269ms / 30ms=482ms / 75ms=817ms。
+  - ボトルネックは転送量（gzip後70KBで軽量）ではなく **JS27本の import 連鎖 × RTT**。`vite build` で 300〜500ms 短縮の見込みだが、無ビルド運用の手軽さ喪失・4ゲーム同居の Vercel 設定整合コストに見合わないと判断。
+- [x] 再判断トリガーを記録：起動が体感で重い声／モバイル比率上昇時 → **新ツールを足さず `vite build` を blade 内で完結**させ Vercel 配信先を dist に切替（esbuild 単独導入は不要＝Vite 内部で esbuild が動くため）。
 
-- [ ] **将来的な esbuild の導入**（必要になったら）
-  ```
-  npx esbuild game/main.js --bundle --minify --outfile=dist/game.min.js
-  ```
+> **再判断時のメモ：**
+> ```
+> # blade-of-lumia 内で完結させる場合（将来）
+> vite build   # 内部で esbuild(minify) + Rollup(bundle) → dist/
+> ```
 
 ---
 
@@ -687,7 +693,8 @@ Step 5: 必要になったら（Phase 0後半）
 | 色スイッチ | ⬜ 未実装 |
 | 剣の複数ランク | ⬜ 未実装 |
 | テスト基盤（Playwright E2E/VRT） | ✅ Phase 0-0 完了（起動・移動・セーブ/ロード・ステージ遷移の4スモーク＋VRT、計5テストがパス） |
-| game.js モジュール分割 | 🚧 途中（関数は別ファイルに切り出したが、旧本体が game.js に重複して残り 4075 行のまま。0-2b で旧本体を削除予定） |
+| game.js モジュール分割 | ✅ 完了（4098行 → 1268行・約70%削減。0-2b で旧本体削除済み・13テストグリーン） |
+| TypeScript・ビルド検討（0-6） | ✅ 完了（plain ESModule 維持と判断。計測根拠は DECISIONS.md。Phase 0 クローズ） |
 | game.css 分割 | ✅ 完了（css/ 配下11ファイル + @import エントリ） |
 | sprites.js 分割 | ✅ 完了（player/enemies/items/tiles + aggregator） |
 | editor.js 分割 | ✅ 完了（8モジュール：editor-state/layers/world/palette/canvas/props/io + エントリ142行。スモークテスト4本追加。17テストグリーン） |

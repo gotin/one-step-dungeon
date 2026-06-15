@@ -22,6 +22,19 @@
 
 ## 記録
 
+### 2026-06-15 — Phase 0-6：TypeScript・ビルドは当面導入しない（plain ESModule を維持）
+- **決定：** TypeScript も `vite build`（bundle+minify）も**当面導入しない**。本番 Vercel が `outputs/` を素ファイルのまま静的配信する現状（未バンドル・ビルドなし）を維持する。これをもって **Phase 0 をクローズ**する。
+- **背景（公開構成）：** このゲームは Vercel で公開済み。`vercel.json` は `{ outputDirectory: "outputs", trailingSlash: true }` のみで**ビルドステップなし**。`outputs/` 配下に blade-of-lumia 以外に3ゲーム（one-step-dungeon / dungeon-world / sword-duel）と共通ランディング `index.html` が同居し、全体が静的配信される。
+- **esbuild と Vite の関係（混同しやすい点を整理）：** esbuild は Vite の内部で使われている。dev サーバ（`vite`）は素ファイルを変換せず個別配信し minify しない。本番最適化は `vite build`（内部で esbuild minify + Rollup bundle）が担う。よって「esbuild を別途導入」は不要で、最適化したいなら `vite build` を足すだけ。現状は dev 配信のみで最適化は一切かかっていない。
+- **計測（判断の根拠・2026-06-15 実測）：** 本番同等の未バンドル構成を Playwright + CDP で計測（転送量律速を排除するため帯域無制限・RTT のみ注入し、import 連鎖の段数だけを切り出した）。
+  - リクエスト総数 30（JS 27 + CSS/JSON/他）。素ファイル合計 297KB / gzip後 70KB（Vercel が gzip/brotli 自動適用）。
+  - time-to-board（起動完了）：RTT 0ms=269ms / 30ms=482ms / 75ms=817ms。
+  - ボトルネックは**転送量ではなく import 連鎖の段数 × RTT**（`main.js→game.js→各モジュール`の数珠つなぎ27本）。`vite build` で JS を 1〜数本に束ねれば RTT75ms 環境で概ね 300〜500ms 短縮の見込み。
+  - ※ Vite dev サーバでの素朴計測は総転送量が約2MB（ソースマップ＋HMR注入で約7倍に水増し）と出るが、これは dev 専用の膨張で**本番とは無関係**（本番は素の297KB）。帯域スロットルすると転送量律速になり誤った結論を導くため、帯域無制限で測り直した。
+- **理由：** (1) ゲーム自体が gzip後70KBと軽量で「重くて困る」水準ではない。(2) 改善幅は数百msで体感はするが致命的ではない。(3) 代償として「JS編集→git push→即反映」という無ビルド運用の手軽さを失い、4ゲーム同居の `outputs/` で blade だけ `dist/` 化すると Vercel 設定（`outputDirectory: outputs`）との整合・混在構成の管理コストが発生する。(4) これから入る Phase 1+ はストーリー・コンテンツ中心で型パズルが重い基盤作業ではなく、TS 化（game約5300行＋editor約3400行の移行・factory deps の型付け）の費用対効果が低い。
+- **代替案：** (A) `vite build` 導入 → 数百msの起動改善は得られるが上記の運用代償・整合作業に見合わないと判断。(B) TypeScript 導入 → 型安全・補完の利点はあるが、現状モジュールは全て700行以下に分割済みで可読性問題は解消済み、移行コストが Phase 1 のコンテンツ作業を圧迫する。(C) esbuild 単独導入 → Vite を既に使っており二重管理になるため却下。
+- **結果／影響：** Phase 0 を完了とする。再判断のトリガーは「起動の体感が遅いという声が出た／モバイル比率が高くロード短縮の価値が上がった」時。その際は **新ツールを足さず `vite build` を blade-of-lumia 内で完結させ Vercel 配信先を dist に切り替える**のが第一候補（esbuild 単独導入は不要）。型安全が必要になったら、育っていくデータ構造（`ENEMY_META`/`ITEM_META`/タイル定義）から部分的に JSDoc + `// @ts-check` で型注釈を入れる軽量策を先に検討する。
+
 ### 2026-06-14 — editor.js は factory パターンなし・引数注入 + CustomEvent で分割する
 - **決定：** editor.js（1581行）の分割では game.js で使った `createXxx(deps)` factory パターンを採用せず、**引数注入（コールバック渡し）と CustomEvent** を組み合わせる形で疎結合化する。
 - **理由：** editor.js はゲームと異なり「1ファイルにすべてが含まれた素直な構造（再代入 `let` 状態なし・ESModule read-only binding 問題なし）」だったため、factory の複雑な deps 配線は不要。各モジュールの関数は `renderWorldGrid` / `renderDungeonMeta` 等の描画関数をコールバックとして受け取るだけで動作できる。`showView` のように「モジュール外のルーティング関数」が必要な箇所は CustomEvent（`editor:resetPreview` / `editor:showWorld` / `editor:previewClickAt`）で editor.js に通知する方式にした。
