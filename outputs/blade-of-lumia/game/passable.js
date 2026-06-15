@@ -10,6 +10,14 @@
 import { TILE } from '../shared/tiles.js';
 import { NPC_SPRITE_MAP } from '../shared/npcs.js';
 
+// Phase 1-5: 翼の羽衣で飛行中に「上を飛び越えられる」障害物タイル。
+// ルール：自然物（空・水・木・茂み・柵）は飛び越え可。
+//        山・壁・建造物（家）・閉じた門/扉は飛んでも越えられない＝マップ境界として機能し続ける。
+// ※ per-instance のデータ追加は不要（タイル種別だけで分類できる）。
+const FLYABLE_OVER = new Set([
+	TILE.SKY, TILE.WATER, TILE.TREE, TILE.BUSH, TILE.FENCE,
+]);
+
 /**
  * 通行可否判定関数群を生成する。
  * @param {object} d 依存（状態 getter と関数）
@@ -54,9 +62,10 @@ export function createPassable(d) {
 				// マップ外 → ステージ端遷移なので通行可として扱う
 				if (r < 0 || r >= stageData.rows || c < 0 || c >= stageData.cols) continue;
 				if (!tilePassable(r, c)) {
-					// 飛行中は虚空・水の上を移動できる（その他の壁・木などは依然ブロック）
+					// 飛行中は自然物（空・水・木・茂み・柵）の上を飛び越えられる。
+					// 山・壁・家・閉じた門/扉などは飛んでもブロック（マップ境界を維持）。
 					const t = stageData.tiles[r]?.[c];
-					if (flying && (t === TILE.SKY || t === TILE.WATER)) continue;
+					if (flying && FLYABLE_OVER.has(t)) continue;
 					return false;
 				}
 			}

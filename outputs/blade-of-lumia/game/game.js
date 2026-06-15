@@ -898,6 +898,18 @@ function checkStageTransition() {
 		return;
 	}
 
+	// Phase 1-5: 遷移先ステージが無い端に出てしまった場合（飛行で木境界を
+	// 越えると、隣ステージの無い縁に到達できる）はマップ内へクランプして
+	// 引き戻す。これで「場外の虚空に出て詰む」のを防ぐ。
+	if (newKey && !getStageData(newLayer, newKey)) {
+		const margin = 0.5;
+		player.x = Math.min(Math.max(x, margin), cols - 1 - margin);
+		player.y = Math.min(Math.max(y, margin), rows - 1 - margin);
+		moveCharEl('player', player.x, player.y);
+		updatePlayerCharEl();
+		return;
+	}
+
 	// MAP_ENTER タイル（'>' タイルが実際に置かれている場所のみ発動）
 	// mapEnters のメタデータだけ存在してもタイルが '>' でなければ遷移しない
 	if (gameNow() < mapEnterCooldownUntil) return;
