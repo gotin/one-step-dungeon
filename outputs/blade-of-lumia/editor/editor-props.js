@@ -92,7 +92,7 @@ const CHEST_ITEM_OPTIONS = [
 	{ value: 'boomerang',     label: 'ブーメラン' },
 	{ value: 'bomb',          label: '爆弾' },
 	{ value: 'bow',           label: '弓矢' },
-	{ value: 'heartContainer',label: 'ハートコンテナ' },
+	{ value: 'heartContainer',label: 'ハートの器' },
 	{ value: 'dungeonMap',    label: 'ダンジョン地図' },
 	{ value: 'compass',       label: 'コンパス' },
 ];
@@ -101,7 +101,7 @@ const CHEST_TYPE_OPTIONS = [
 	{ value: 'weapon', label: '武器（剣）' },
 	{ value: 'armor',  label: '防具' },
 	{ value: 'rupee',  label: 'ルピー' },
-	{ value: 'heartContainer', label: 'ハートコンテナ' },
+	{ value: 'heartContainer', label: 'ハートの器' },
 ];
 
 function renderChests(sd) {

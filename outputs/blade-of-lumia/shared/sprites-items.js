@@ -27,7 +27,7 @@ export const ITEM_PAL = {
 	rupeeBlue:['transparent','#000000','#002080','#2040c0','#6080ff','#ffffff'],
 	// 星の欠片（金）
 	triforce: ['transparent','#000000','#604000','#c09000','#f0d040','#ffffff'],
-	// ハートコンテナ（赤）
+	// ハートの器（赤）
 	heart:    ['transparent','#000000','#c02020','#f04040','#ff8080','#ffffff'],
 	// 空ハート（灰）
 	heartEmpty: ['transparent','#000000','#404040','#606060','#909090','#ffffff'],

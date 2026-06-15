@@ -187,7 +187,7 @@ export function createBoss(deps) {
 		if (hasBossDoors) pulse('🔓 扉が開いた！', 2000);
 		// 6. 条件評価
 		evaluateConditions();
-		// 7. トライフォース付与（DARK_LORD のみ）
+		// 7. 星の欠片付与（DARK_LORD のみ・内部識別子は triforce 系のまま維持）
 		if (boss.type === TILE.DARK_LORD) {
 			spawnTriforcePiece(boss);
 			await sleep(600);

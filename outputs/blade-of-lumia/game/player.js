@@ -432,7 +432,7 @@ export function createPlayer(deps) {
 		setTimeout(() => { left.remove(); right.remove(); }, 450);
 	}
 
-	// ── ハートコンテナを得る ──────────────────────────────
+	// ── ハートの器を得る ──────────────────────────────
 	function gainHeartContainer() {
 		const player = getPlayer();
 		player.maxHearts++; player.maxHp += HP_PER_HEART; player.hp = player.maxHp;
@@ -625,7 +625,7 @@ export function createPlayer(deps) {
 		if (tile === TILE.ITEM_HEART_CONTAINER && !ss.pickedKeys.has(posKey)) {
 			ss.pickedKeys.add(posKey);
 			gainHeartContainer();
-			playSound('item'); pulse('❤ ハートコンテナを手に入れた！');
+			playSound('item'); pulse('❤ ハートの器を手に入れた！');
 			renderBoard(); renderChars(); updateHud(); saveGame(); return;
 		}
 		if (tile === TILE.ITEM_RUPEE && !ss.pickedKeys.has(posKey)) {

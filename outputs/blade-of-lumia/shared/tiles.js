@@ -44,7 +44,7 @@ export const TILE = {
 	ITEM_BOW:            '6',  // 弓矢（将来拡張）
 	ITEM_HEAL_POTION:    '7',  // 回復薬（小）
 	ITEM_BIG_HEAL_POTION:'8',  // 回復薬（大）
-	ITEM_HEART_CONTAINER:'9',  // ハートコンテナ
+	ITEM_HEART_CONTAINER:'9',  // ハートの器
 	ITEM_RUPEE:          'r',  // ルピー（小）
 	ITEM_RUPEE_LARGE:    'R',  // ルピー（大）
 	ITEM_TRIFORCE_PIECE: 'Q',  // 星の欠片
@@ -112,7 +112,7 @@ export const TILE_META = {
 	[TILE.ITEM_BOW]:             { label: '弓矢',         color: '#605040', passable: true, icon: '🏹' },
 	[TILE.ITEM_HEAL_POTION]:     { label: '回復薬（小）', color: '#206020', passable: true, icon: '🧪' },
 	[TILE.ITEM_BIG_HEAL_POTION]: { label: '回復薬（大）', color: '#208020', passable: true, icon: '💊' },
-	[TILE.ITEM_HEART_CONTAINER]: { label: 'ハートコンテナ',color: '#c02040', passable: true, icon: '❤' },
+	[TILE.ITEM_HEART_CONTAINER]: { label: 'ハートの器',color: '#c02040', passable: true, icon: '❤' },
 	[TILE.ITEM_RUPEE]:           { label: 'ルピー（小）', color: '#20a040', passable: true, icon: '◆' },
 	[TILE.ITEM_RUPEE_LARGE]:     { label: 'ルピー（大）', color: '#2060c0', passable: true, icon: '◇' },
 	[TILE.ITEM_TRIFORCE_PIECE]:  { label: '星の欠片', color: '#c0a020', passable: true, icon: '◭' },
