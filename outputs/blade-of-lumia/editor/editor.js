@@ -14,11 +14,14 @@ import {
 } from './editor-io.js';
 import { initSpriteEditor, onLeaveSpriteEditor } from './editor-sprite.js';
 import { initCharacterEditor, onLeaveCharacterEditor } from './editor-character.js';
+import { initItemEditor, onLeaveItemEditor } from './editor-item.js';
 
 const viewSpriteEl = document.getElementById('view-sprite');
 const tabSpriteEl  = document.getElementById('tab-sprite');
 const viewCharacterEl = document.getElementById('view-character');
 const tabCharacterEl  = document.getElementById('tab-character');
+const viewItemEl      = document.getElementById('view-item');
+const tabItemEl       = document.getElementById('tab-item');
 
 // ── タブ切り替え ───────────────────────────────────────────────
 function showView(view) {
@@ -28,16 +31,20 @@ function showView(view) {
 	if (view !== 'sprite') onLeaveSpriteEditor();
 	// キャラクタービューを離れる場合の処理
 	if (view !== 'character') onLeaveCharacterEditor();
+	// アイテムビューを離れる場合の処理
+	if (view !== 'item') onLeaveItemEditor();
 
 	// 全ビュー・全タブを一旦リセット
 	viewWorldEl.classList.add('hidden');
 	viewStageEl.classList.add('hidden');
 	if (viewSpriteEl) viewSpriteEl.classList.add('hidden');
 	if (viewCharacterEl) viewCharacterEl.classList.add('hidden');
+	if (viewItemEl) viewItemEl.classList.add('hidden');
 	tabWorldEl.classList.remove('active');
 	tabStageEl.classList.remove('active');
 	if (tabSpriteEl) tabSpriteEl.classList.remove('active');
 	if (tabCharacterEl) tabCharacterEl.classList.remove('active');
+	if (tabItemEl) tabItemEl.classList.remove('active');
 
 	if (view === 'world') {
 		viewWorldEl.classList.remove('hidden');
@@ -50,6 +57,9 @@ function showView(view) {
 	} else if (view === 'character') {
 		if (viewCharacterEl) viewCharacterEl.classList.remove('hidden');
 		if (tabCharacterEl) tabCharacterEl.classList.add('active');
+	} else if (view === 'item') {
+		if (viewItemEl) viewItemEl.classList.remove('hidden');
+		if (tabItemEl) tabItemEl.classList.add('active');
 	} else {
 		viewStageEl.classList.remove('hidden');
 		tabStageEl.classList.add('active');
@@ -70,6 +80,7 @@ tabWorldEl.addEventListener('click', () => showView('world'));
 tabStageEl.addEventListener('click', () => showView('stage'));
 if (tabSpriteEl) tabSpriteEl.addEventListener('click', () => showView('sprite'));
 if (tabCharacterEl) tabCharacterEl.addEventListener('click', () => showView('character'));
+if (tabItemEl) tabItemEl.addEventListener('click', () => showView('item'));
 
 // ── 各モジュールのイベント登録 ────────────────────────────────
 const updateToolButtons = initToolButtons(
@@ -155,6 +166,7 @@ function init() {
 	updateToolButtons();
 	initSpriteEditor();
 	initCharacterEditor();
+	initItemEditor();
 	tryRestoreFromStorage(
 		() => renderLayerTabs(() => renderWorldGrid(), () => renderDungeonMeta()),
 		() => renderDungeonMeta(),

@@ -14,8 +14,8 @@
 ## 📍 現在地（常に最新に保つ）
 
 - **進行中フェーズ：** Phase 0（技術基盤）
-- **進行中タスク：** **Phase 0-5 キャラクター定義エディタ 完了**（🧙タブ・`editor-character.js`）→ 次は **0-5 残り**（アイテム定義エディタ／タイルバリエーション設計支援）。または 0-2b 残り・0-6（TS/ビルド検討）
-- **直近の状態：** Phase 0-5 の **キャラクター定義エディタ** を実装。`editor/index.html` に🧙キャラクタータブ＋`#view-character` を追加、自己完結モジュール `editor/editor-character.js`（492行）を新設。機能：敵リスト選択・基本情報（HP/ATK/DEF/EXP）・スプライト/パレット名・速度プリセット＋カスタム・ボスフラグ/ヒット&アウェイ/オーラのチェックボックス・単一攻撃（charge/sword/spear/stone）vs 複数攻撃（attacks配列）切替・各攻撃の射程/CD/飛翔速度・フェーズ設定（HP閾値・速度倍率・攻撃CD倍率）・変更適用→JSコード生成＆クリップボードコピー。スタイルは `editor/editor-character.css`（117行）に分離。editor スモークテスト3本追加。**全23テストグリーン**（デグレなし）。
+- **進行中タスク：** **Phase 0-5 アイテム定義エディタ 完了**（📦タブ・`editor-item.js`）→ 次は **0-5 残り**（タイルバリエーション設計支援）。または 0-6（TS/ビルド検討）→ Phase 1 ストーリー基盤
+- **直近の状態：** Phase 0-5 の **アイテム定義エディタ** を実装。`editor/index.html` に📦アイテムタブ＋`#view-item` を追加、自己完結モジュール `editor/editor-item.js` を新設。機能：ITEM_META（サブアイテム）と EQUIP_META（装備）の一覧表示・選択・フォーム編集・JS コードエクスポート。タイプ別追加フィールド（throwable/placeable/consumable）の表示切替・uses 形式切替（Infinity/null/数値）対応。スタイルは `editor/editor-item.css` に分離。スモークテスト3本追加。**全26テストグリーン**（デグレなし）。
 
 
 
@@ -29,6 +29,31 @@
 ## セッションログ
 
 <!-- 新しいエントリを上に追加していく（最新が一番上） -->
+
+### 2026-06-15 — Phase 0-5（後半）：アイテム定義エディタを実装
+
+**やったこと：**
+- **📦 アイテムタブ＋`#view-item` を `editor/index.html` に追加**（3ペイン：左=アイテムリスト、中央=エディタフォーム、右=エクスポートコード）
+- **`editor/editor-item.js` を新設**（`initItemEditor()` / `onLeaveItemEditor()` を export）：
+  - アイテムリスト描画：`ITEM_META`（サブアイテム）と `EQUIP_META`（装備）を2セクションに分けて列挙・クリックで選択・active ハイライト
+  - ITEM_META 用フォーム：名前/アイコン/スプライト名/パレット名・タイプ選択（throwable/placeable/consumable/passive）・uses形式切替（Infinity/null/数値）・タイプ別追加フィールド（breakPower/piercing/aoeRadius/damage/healAmount）の動的表示切替
+  - EQUIP_META 用フォーム：名前/アイコン・スロット選択（weapon/shield/armor）・スロット別ステータス（atkBonus/damageReduction/defBonus）の動的表示切替
+  - 変更適用：フォーム値を itemBuffer/equipBuffer に反映 → JS コード生成
+  - エクスポート：選択中エントリ + Export All（ITEM_META または EQUIP_META 全体）を textarea に表示 → クリップボードコピー
+- **`editor/editor-item.css` を新設**（item-layout 3ペイン・アイテムリストスタイル・セクションタイトル・エクスポートパネル）
+- **`editor/editor.js` を統合**：`initItemEditor()`/`onLeaveItemEditor()` を import・`showView('item')` 分岐追加・タブクリックリスナー追加
+- **editor スモークテスト3本追加**（`tests/editor-item.spec.js`）：(1) アイテムタブ表示＋アイテムリスト＋エクスポートtextarea存在＋JSエラーなし、(2) アイテム選択→active＋フォーム表示＋基本入力欄存在、(3) 名前編集→変更適用→エクスポートコードに `ITEM_META` と編集後名前を含む
+- `npx playwright test` → **全26テストグリーン**（既存23＋新3、デグレなし）
+
+**学び・気づき：**
+- items.js の `uses` フィールドは `Infinity`・`null`・数値の3パターンがある。`structuredClone` は `Infinity` を正しくコピーする（`NaN` や `undefined` と異なり問題なし）。エクスポートコード生成時も `valueToJs()` ヘルパーで `Infinity`→文字列 `'Infinity'`（引用符なし）に変換する必要がある
+- タイプ別追加フィールド（`throwable`/`placeable`/`consumable`/`passive`）の表示切替は、タイプ選択セレクトの `change` イベントで `renderTypeFields()` を再描画する方式にした。フォーム全体を再描画するとフォーカスが飛ぶため、フィールド部分のみを差し替えるのがポイント
+- キャラクターエディタと同じ `.char-form` / `.form-row` CSS クラスを流用することで、中央パネルのレイアウトを統一できた（editor-character.css に定義済みのスタイルがそのまま適用される）
+
+**▶ 次やること：**
+- [ ] Phase 0-5 残り：タイルバリエーション設計支援（テーマ別パレットプレビュー）⚡ ← 必要性低め、Phase 1 優先でもよい
+- または
+- [ ] Phase 1 ストーリー基盤：「トライフォースのかけら」→「星の欠片」テキスト変更・老賢者NPC・エンディング書き直し⚡
 
 ### 2026-06-15 — Phase 0-5（中盤）：キャラクター定義エディタを実装
 
@@ -512,7 +537,7 @@
 
 | フェーズ | 状態 | メモ |
 |---|---|---|
-| Phase 0 技術基盤 | 🚧 進行中 | 0-0〜0-4 ✅ / **0-5 🚧（スプライトエディタ ✅ / キャラクター定義エディタ ✅ / アイテム定義エディタ・タイル支援は未着手）** / 0-6 未着手 |
+| Phase 0 技術基盤 | 🚧 進行中 | 0-0〜0-4 ✅ / **0-5 🚧（スプライトエディタ ✅ / キャラクター定義エディタ ✅ / アイテム定義エディタ ✅ / タイル支援は未着手）** / 0-6 未着手 |
 
 
 

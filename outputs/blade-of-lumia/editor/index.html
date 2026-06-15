@@ -7,6 +7,7 @@
   <link rel="stylesheet" href="./editor.css" />
   <link rel="stylesheet" href="./editor-sprite.css" />
   <link rel="stylesheet" href="./editor-character.css" />
+  <link rel="stylesheet" href="./editor-item.css" />
 </head>
 <body>
 <div class="app">
@@ -23,6 +24,7 @@
       <button id="tab-stage" class="tab">ステージ編集</button>
       <button id="tab-sprite" class="tab">🎨 スプライト</button>
       <button id="tab-character" class="tab">🧙 キャラクター</button>
+      <button id="tab-item" class="tab">📦 アイテム</button>
     </div>
   </header>
 
@@ -331,6 +333,32 @@
           <p class="hint">変更を適用すると、ここにコードが生成されます</p>
           <textarea id="char-export-code" readonly placeholder="// enemies.js の ENEMY_META に貼り付けるコードがここに表示されます"></textarea>
           <button id="btn-char-copy-code" class="btn btn-sm">クリップボードにコピー</button>
+        </aside>
+
+      </div>
+    </section>
+
+    <!-- ── アイテム定義エディタビュー ── -->
+    <section id="view-item" class="view hidden">
+      <div class="item-layout">
+
+        <!-- 左：アイテムリスト -->
+        <aside class="item-list-panel">
+          <h2 class="panel-title">📦 アイテム定義</h2>
+          <div id="item-list"></div>
+        </aside>
+
+        <!-- 中央：エディタフォーム -->
+        <div class="item-editor-panel" id="item-editor-panel">
+          <p class="hint">アイテムを選択してください</p>
+        </div>
+
+        <!-- 右：エクスポートコード -->
+        <aside class="item-export-panel">
+          <h2 class="panel-title">エクスポート</h2>
+          <p class="hint">変更を適用すると、ここにコードが生成されます</p>
+          <textarea id="item-export-code" readonly placeholder="// items.js の ITEM_META または EQUIP_META に貼り付けるコードがここに表示されます"></textarea>
+          <button id="btn-item-copy-code" class="btn btn-sm">クリップボードにコピー</button>
         </aside>
 
       </div>
