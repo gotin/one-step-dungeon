@@ -8,6 +8,7 @@
   <link rel="stylesheet" href="./editor-sprite.css" />
   <link rel="stylesheet" href="./editor-character.css" />
   <link rel="stylesheet" href="./editor-item.css" />
+  <link rel="stylesheet" href="./editor-tile.css" />
 </head>
 <body>
 <div class="app">
@@ -25,6 +26,7 @@
       <button id="tab-sprite" class="tab">🎨 スプライト</button>
       <button id="tab-character" class="tab">🧙 キャラクター</button>
       <button id="tab-item" class="tab">📦 アイテム</button>
+      <button id="tab-tile" class="tab">🗺 タイル</button>
     </div>
   </header>
 
@@ -359,6 +361,38 @@
           <p class="hint">変更を適用すると、ここにコードが生成されます</p>
           <textarea id="item-export-code" readonly placeholder="// items.js の ITEM_META または EQUIP_META に貼り付けるコードがここに表示されます"></textarea>
           <button id="btn-item-copy-code" class="btn btn-sm">クリップボードにコピー</button>
+        </aside>
+
+      </div>
+    </section>
+
+    <!-- ── タイルバリエーション設計支援ビュー ── -->
+    <section id="view-tile" class="view hidden">
+      <div class="tile-layout">
+
+        <!-- 左：テーマ選択 + タイルグリッド -->
+        <div class="tile-left-panel">
+          <h2 class="panel-title">🗺 タイルバリエーション</h2>
+          <div class="tile-theme-row">
+            <label>テーマ
+              <select id="tile-theme-select" class="input-med"></select>
+            </label>
+          </div>
+          <p class="hint">テーマを選ぶとダンジョンタイルの色パレットが変わります。タイルをクリックすると右パネルで色を編集できます。</p>
+          <div id="tile-preview-grid"></div>
+        </div>
+
+        <!-- 中央：パレットエディタ -->
+        <div class="tile-palette-panel" id="tile-palette-panel">
+          <p class="hint">タイルを選択してください</p>
+        </div>
+
+        <!-- 右：エクスポートコード -->
+        <aside class="tile-export-panel">
+          <h2 class="panel-title">エクスポート</h2>
+          <p class="hint">テーマ別の変更パレットを JS コードで出力します。<code>sprites-tiles.js</code> の <code>TILE_PAL</code> に追加してください。</p>
+          <textarea id="tile-export-code" readonly placeholder="// コードがここに表示されます"></textarea>
+          <button id="btn-tile-copy-code" class="btn btn-sm">クリップボードにコピー</button>
         </aside>
 
       </div>
