@@ -53,6 +53,7 @@ import {
  *   stopGameLoop()               – ゲームループ停止
  *   startGameLoop()              – ゲームループ開始
  *   checkTriforceClear()         – 星の欠片・全収集チェック
+ *   offerAtAltar()               – 古代の祭壇に欠片を捧げる（翼の羽衣を授かる）
  *   maybeShowSubItemHint()       – サブアイテムヒント
  *   getHeroSpriteName()          – スプライト名取得
  *   getHeroPalName()             – パレット名取得
@@ -77,10 +78,13 @@ export function createPlayer(deps) {
 		renderBoard, renderChars, updateHud,
 		pulse, saveGame,
 		stopGameLoop, startGameLoop,
-		checkTriforceClear, maybeShowSubItemHint,
+		checkTriforceClear, offerAtAltar, maybeShowSubItemHint,
 		getHeroSpriteName, getHeroPalName,
 		hasCleared,
 	} = deps;
+
+	// 祭壇の連続発火を防ぐガード（乗りっぱなしで毎フレーム発火しないように）
+	let _lastAltarPosKey = null;
 
 	// ── ドア開扉アニメーション ────────────────────────────────
 	function showDoorOpenEffect(r, c) {
@@ -512,6 +516,9 @@ export function createPlayer(deps) {
 		const ss     = getSS(getCurrentLayer(), getStageKey());
 		if (!tile) return;
 
+		// 祭壇から離れたら再判定できるようにガードを解除する
+		if (tile !== TILE.ALTAR) _lastAltarPosKey = null;
+
 		if (tile === TILE.KEY && !ss.pickedKeys.has(posKey)) {
 			ss.pickedKeys.add(posKey); player.keys++;
 			playSound('key'); pulse('🗝 鍵を手に入れた！');
@@ -658,6 +665,15 @@ export function createPlayer(deps) {
 			openChest(posKey, ss); return;
 		}
 		if (tile === TILE.MAP_ENTER) { checkStageTransition(); return; }
+		if (tile === TILE.ALTAR) {
+			// 古代の祭壇：踏むたびに判定（羽衣未取得なら捧げる／取得済なら案内）。
+			// 同じセルに乗りっぱなしで連打しないよう、直前に処理したセルを記録する。
+			if (_lastAltarPosKey !== posKey) {
+				_lastAltarPosKey = posKey;
+				offerAtAltar();
+			}
+			return;
+		}
 		if (tile === TILE.HOUSE_DOOR) {
 			showHouseDoorAnimation(r, c);
 			return;

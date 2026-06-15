@@ -131,6 +131,40 @@ export const ENEMY_META = {
 			{ hpThreshold: 0.25, attackCooldownMultiplier: 0.6 }, // HP25%以下で攻撃頻度UP
 		],
 	},
+	// ── ラスボス：ザーネル（Phase 1-3）─────────────────────────
+	// 暗黒の塔の最奥で待ち受ける最終ボス。撃破するとエンディングへ。
+	// isFinalBoss: true が boss.js のエンディング発火分岐の目印になる。
+	// 専用スプライトは未作成のため当面 darklord を流用（新規スプライトは
+	// Phase 0-4 / スプライトエディタの管轄。最優先5点の1つ）。
+	[TILE.ZARNEL]: {
+		name: 'ザーネル',
+		hp: 80, atk: 8, def: 4, exp: 0,  // 撃破でクリアなので exp は不要
+		speed: ENEMY_SPEED_NORMAL,
+		sprite: 'darklord',
+		pal:    'darklord',
+		isBoss: true,
+		isFinalBoss: true,  // ← ラスボス。撃破でエンディング
+		aura:   true,
+		hitAndAway: true,
+		attacks: [
+			{
+				type:            'stone',
+				range:           7,
+				cooldown:        1600,
+				projectileSpeed: 1.2,
+			},
+			{
+				type:     'sword',
+				range:    1.5,
+				cooldown: 700,
+			},
+		],
+		attack: { type: 'stone', range: 7, cooldown: 1600, projectileSpeed: 1.2 },
+		phases: [
+			{ hpThreshold: 0.66, speedMultiplier: 1.3 },
+			{ hpThreshold: 0.33, speedMultiplier: 1.6, attackCooldownMultiplier: 0.55 },
+		],
+	},
 };
 
 // 投擲物のスプライト対応表

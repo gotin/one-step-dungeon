@@ -33,6 +33,7 @@ export const worldStageInfoEl = document.getElementById('world-stage-info');
 export const worldActionsEl   = document.getElementById('world-stage-actions');
 export const worldPreviewWrap = document.getElementById('world-preview-wrap');
 export const worldPreviewCv   = document.getElementById('world-preview-canvas');
+export const worldShardSummaryEl = document.getElementById('world-shard-summary');
 
 // ── ユーティリティ ────────────────────────────────────────────
 export function getCurrentLayerData() {

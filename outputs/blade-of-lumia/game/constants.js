@@ -17,6 +17,18 @@ export const MAP_JSON_URL  = '../work/blade-of-lumia.json';
 export const SAVE_KEY      = 'blade-of-lumia-save';
 export const CLEARED_KEY   = 'blade-of-lumia-cleared';
 
+// ── Phase 1-3: 終盤フローの MAP_ENTER 予約 ID ──────────────────
+// 終盤は「星の欠片を全収集 → 古代の祭壇へ誘導 → 翼の羽衣を入手 →
+// 暗黒の塔解放 → ラスボス ザーネル撃破 → エンディング」の順に進む。
+// 祭壇・暗黒の塔の入り口（MAP_ENTER）は下記の予約 id を mapEnters.<pos>.id に
+// 設定する契約とする（Phase 1-4 が祭壇、Phase 1-5 が暗黒の塔を配置する）。
+//   - ALTAR_EXIT_ID:      古代の祭壇ステージの入り口（全欠片収集後に誘導）
+//   - DARK_TOWER_EXIT_ID: 暗黒の塔の入り口（hasWingRobe=true のとき通行可）
+// これらの id を持つ入り口がマップに存在しない間は、boss.js は従来どおり
+// 「全収集 → 即エンディング」のフォールバック動作になる（後方互換）。
+export const ALTAR_EXIT_ID      = 'altar';
+export const DARK_TOWER_EXIT_ID = 'darkTower';
+
 // 移動方向 → (dy, dx) セル単位
 export const DIR_DELTA = {
 	up:    [-MOVE_STEP, 0],

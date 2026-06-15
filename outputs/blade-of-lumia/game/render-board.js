@@ -150,6 +150,14 @@ export function createRenderBoard(deps) {
 			if (cv) { cv.classList.add('obj-sprite'); cellEl.appendChild(cv); }
 			return;
 		}
+		if (tile === TILE.ALTAR) {
+			// 古代の祭壇（専用スプライトは未作成のため絵文字フォールバック描画）
+			const span = document.createElement('span');
+			span.textContent = '⛩';
+			span.style.cssText = 'position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);font-size:calc(var(--cell)*0.8);pointer-events:none;z-index:3;';
+			cellEl.appendChild(span);
+			return;
+		}
 		if (tile === TILE.STONE) {
 			const _ssSt = getSS(currentLayer, stageKey);
 			if (_ssSt.stonePositions?.[posKey]) return;

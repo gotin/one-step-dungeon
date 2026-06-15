@@ -89,6 +89,8 @@ let player = {
 	weapon: null, shield: null, armor: null,
 	subItems: {}, activeSubItem: null,
 	rupees: 0, triforceCount: 0,
+	// Phase 1-3: 翼の羽衣（古代の祭壇で授かる）。暗黒の塔の入り口を通れるようになる。
+	hasWingRobe: false,
 };
 
 let enemies = [];
@@ -661,6 +663,7 @@ const { checkStoneOnSwitch, evaluateConditions } = createConditions({
 		setPendingTriforcePieceEl: (v) => { _pendingTriforcePieceEl = v; },
 		getCellPx, toTileRow, toTileCol,
 		getSS,
+		getExitRegistry: () => exitRegistry,
 		evaluateConditions: () => evaluateConditions(),
 		lockBossDoors:   () => lockBossDoors(),
 		unlockBossDoors: () => unlockBossDoors(),
@@ -757,6 +760,7 @@ const { checkStoneOnSwitch, evaluateConditions } = createConditions({
 		saveGame:     () => saveGame(),
 		stopGameLoop, startGameLoop,
 		checkTriforceClear:   () => _boss.checkTriforceClear(),
+		offerAtAltar:         () => _boss.offerAtAltar(),
 		maybeShowSubItemHint: () => maybeShowSubItemHint(),
 		getHeroSpriteName, getHeroPalName,
 		hasCleared,
@@ -1085,6 +1089,7 @@ function startNewGame() {
 		weapon: null, shield: null, armor: null,
 		subItems: {}, activeSubItem: null,
 		rupees: 0, triforceCount: 0,
+		hasWingRobe: false,
 	};
 	heroDir = 'down';
 	enterStage(currentLayer, stageKey, player.y, player.x);

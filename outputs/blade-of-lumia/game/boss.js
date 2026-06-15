@@ -6,7 +6,7 @@ import { TILE } from '../shared/tiles.js';
 import { ENEMY_META } from '../shared/enemies.js';
 import { makeSprite } from '../shared/sprites.js';
 import { playSound, playBgm, stopBgm } from '../shared/sounds.js';
-import { SAVE_KEY, CLEARED_KEY } from './constants.js';
+import { SAVE_KEY, CLEARED_KEY, ALTAR_EXIT_ID } from './constants.js';
 
 /**
  * createBoss(deps) – factory
@@ -29,6 +29,7 @@ import { SAVE_KEY, CLEARED_KEY } from './constants.js';
  *   getCellPx()                  – セルサイズ(px)
  *   toTileRow(y) / toTileCol(x) – float → タイル座標
  *   getSS(lk, sk)                – ステージ状態取得
+ *   getExitRegistry()            – MAP_ENTER の id→宛先レジストリ（祭壇誘導判定に使用）
  *   evaluateConditions()         – 条件評価
  *   lockBossDoors()              – ボス扉を閉じる
  *   unlockBossDoors()            – ボス扉を開ける
@@ -55,6 +56,7 @@ export function createBoss(deps) {
 		getPendingTriforcePieceEl, setPendingTriforcePieceEl,
 		getCellPx, toTileRow, toTileCol,
 		getSS,
+		getExitRegistry,
 		evaluateConditions,
 		lockBossDoors, unlockBossDoors,
 		renderBoard, renderChars, updateHud,
@@ -187,7 +189,17 @@ export function createBoss(deps) {
 		if (hasBossDoors) pulse('🔓 扉が開いた！', 2000);
 		// 6. 条件評価
 		evaluateConditions();
-		// 7. 星の欠片付与（DARK_LORD のみ・内部識別子は triforce 系のまま維持）
+		// 7a. ラスボス（ザーネル）撃破 → エンディングへ（Phase 1-3）
+		const isFinalBoss = ENEMY_META[boss.type]?.isFinalBoss;
+		if (isFinalBoss) {
+			await sleep(500);
+			pulse(`${ENEMY_META[boss.type]?.name ?? 'ザーネル'} を 倒した！`, 3000);
+			// 撃破フラグを解除してからエンディング演出へ（ループは startEnding が停止する）
+			setBossDefeating(false);
+			setTimeout(() => startEnding(), 2500);
+			return;
+		}
+		// 7b. 星の欠片付与（DARK_LORD のみ・内部識別子は triforce 系のまま維持）
 		if (boss.type === TILE.DARK_LORD) {
 			spawnTriforcePiece(boss);
 			await sleep(600);
@@ -275,14 +287,87 @@ export function createBoss(deps) {
 		return total;
 	}
 
+	// 古代の祭壇（タイル ALTAR='^'）がマップ上に存在するか。
+	// 存在すれば「全収集 → 祭壇へ誘導」の終盤フロー、無ければ従来の
+	// 「全収集 → 即エンディング」フォールバックに分岐する（Phase 1-3/1-4）。
+	// ※ 1-4 は専用ステージを作らず、フィールドに祭壇タイルを1個置く方式（A案）。
+	//   将来 MAP_ENTER 経由の専用ステージにする場合は ALTAR_EXIT_ID も併用判定する。
+	function altarExists() {
+		const mapData = getMapData();
+		if (!mapData) return false;
+		for (const ld of Object.values(mapData.layers ?? {})) {
+			for (const sd of Object.values(ld.stages ?? {})) {
+				for (const row of sd.tiles ?? []) {
+					if (row.includes(TILE.ALTAR)) return true;
+				}
+			}
+		}
+		// フォールバック：専用ステージ方式（MAP_ENTER id）でも誘導扱いにする
+		const reg = getExitRegistry?.();
+		return !!(reg && reg[ALTAR_EXIT_ID]);
+	}
+
+	// ── 古代の祭壇に星の欠片を捧げる（Phase 1-4）──────────────
+	// プレイヤーが祭壇タイルに乗ったとき handleTileEvent から呼ばれる。
+	// 全収集していれば翼の羽衣を授ける。不足していれば拒否メッセージ。
+	function offerAtAltar() {
+		const player = getPlayer();
+		if (player.hasWingRobe) {
+			pulse('⛩ 古代の祭壇 …翼の羽衣は すでに授かった', 2500);
+			return;
+		}
+		const total = calcTotalTriforces();
+		if (total <= 0 || player.triforceCount < total) {
+			const remain = Math.max(0, total - player.triforceCount);
+			pulse(`⛩ 古代の祭壇 …星の欠片が ${remain}つ 足りない`, 3000);
+			return;
+		}
+		// 全収集 → 翼の羽衣を授かる
+		player.hasWingRobe = true;
+		playSound('fanfare');
+		showAltarLightPillar();
+		pulse('✦ 古代の祭壇が 光り輝いた！「翼の羽衣」を 授かった！', 5000);
+		updateHud();
+		saveGame();
+	}
+
+	// 祭壇の光柱演出（画面中央から立ち上る光のフラッシュ）
+	function showAltarLightPillar() {
+		const pillar = document.createElement('div');
+		pillar.style.cssText = `
+			position:fixed;
+			inset:0;
+			background:radial-gradient(circle at 50% 60%, rgba(255,250,210,0.85), rgba(255,240,160,0.3) 35%, transparent 70%);
+			pointer-events:none;
+			z-index:55;
+			animation:flash-anim 1.2s ease-out forwards;
+		`;
+		document.body.appendChild(pillar);
+		setTimeout(() => pillar.remove(), 1300);
+	}
+
 	function checkTriforceClear() {
 		const total = calcTotalTriforces();
 		if (total <= 0) return;
 		const player = getPlayer();
-		if (player.triforceCount >= total) {
-			stopGameLoop();
-			setTimeout(() => startEnding(), 2500);
+		if (player.triforceCount < total) return;
+
+		// 既に翼の羽衣を授かっている＝祭壇は済。ここではエンディングを発火しない
+		// （ラスボス ザーネル撃破で onBossDefeated 側がエンディングを出す）。
+		if (player.hasWingRobe) return;
+
+		if (altarExists()) {
+			// Phase 1-4 で配置される古代の祭壇へ誘導する。
+			// エンディングはまだ出さず、祭壇で翼の羽衣を授かるよう促す。
+			setTimeout(() => {
+				pulse('✦ すべての星の欠片が 集まった！古代の祭壇へ向かおう', 4500);
+			}, 800);
+			return;
 		}
+
+		// フォールバック：祭壇が未配置の現状は従来どおり即エンディング。
+		stopGameLoop();
+		setTimeout(() => startEnding(), 2500);
 	}
 
 	// ── 魔王撃破後・星の欠片収集チェック ──────────────
@@ -369,6 +454,7 @@ export function createBoss(deps) {
 		checkBossPhase,
 		checkTriforceClear,
 		checkPendingTriforce,
+		offerAtAltar,
 		showBossHpBar,
 		hideBossHpBar,
 		showBossRoomLockEffect,

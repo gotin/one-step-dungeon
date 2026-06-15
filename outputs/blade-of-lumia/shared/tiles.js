@@ -14,7 +14,8 @@ export const TILE = {
 	SENTRY:    'F',  // 騎士（強い追跡者）
 	BOSS:      'V',  // 魔将（ボス）
 	MONSTER:   'W',  // 魔物（中ボス）
-	DARK_LORD: 'X',  // 魔王（最終ボス）
+	DARK_LORD: 'X',  // 魔王（ダンジョンボス・星の欠片を落とす）
+	ZARNEL:    'Z',  // ザーネル（ラスボス・撃破でエンディング。Phase 1-3）
 	// NPC（Dungeon World 継承）
 	PRINCESS: 'P',   // 姫
 	// ギミック（Dungeon World 継承）
@@ -29,6 +30,7 @@ export const TILE = {
 	// 壊せる壁・マップ入り口
 	BREAKABLE_WALL: '!',  // 壊せる壁（爆弾で破壊可能）
 	MAP_ENTER:      '>',  // 別マップへの入り口
+	ALTAR:          '^',  // 古代の祭壇（星の欠片を全部捧げると翼の羽衣を授かる。Phase 1-4）
 
 	// NPC（複数種）
 	NPC_A:     'a',  // NPC（村人など）
@@ -88,6 +90,7 @@ export const TILE_META = {
 	[TILE.BOSS]:    { label: '魔将',         color: '#184060', passable: true,  icon: 'Ｖ' },
 	[TILE.MONSTER]: { label: '魔物',         color: '#2a1060', passable: true,  icon: 'Ｗ' },
 	[TILE.DARK_LORD]:{ label: '魔王',        color: '#0a0a18', passable: true,  icon: 'Ｘ' },
+	[TILE.ZARNEL]:  { label: 'ザーネル',     color: '#180828', passable: true,  icon: 'Ｚ' },
 	// NPC
 	[TILE.PRINCESS]:{ label: '姫',           color: '#aa4488', passable: true,  icon: '♀' },
 	[TILE.NPC_A]:   { label: 'NPC（村人）',  color: '#448844', passable: true,  icon: 'Ａ' },
@@ -103,6 +106,7 @@ export const TILE_META = {
 	// Blade of Lumia 追加
 	[TILE.BREAKABLE_WALL]: { label: '壊せる壁',    color: '#3a3028', passable: false, icon: '✦' },
 	[TILE.MAP_ENTER]:      { label: 'マップ入り口', color: '#202840', passable: true,  icon: '◎' },
+	[TILE.ALTAR]:          { label: '古代の祭壇',  color: '#4a3a6a', passable: true,  icon: '⛩' },
 	// アイテム
 	[TILE.ITEM_SWORD]:           { label: '剣',           color: '#607080', passable: true, icon: '⚔' },
 	[TILE.ITEM_SHIELD]:          { label: 'たて',         color: '#607080', passable: true, icon: '🛡' },
