@@ -9,6 +9,7 @@ import { playSound, resumeAudio, stopBgm } from '../shared/sounds.js';
 import {
 	MOVE_STEP, DIR_DELTA, SWORD_REACH, SWORD_COOLDOWN_MS, INVINCIBLE_MS,
 } from './constants.js';
+import { enemyW, enemyH, enemyCenter } from './hitbox.js';
 
 /**
  * createCombat(deps) – factory
@@ -232,21 +233,29 @@ export function createCombat(deps) {
 		let hitEnemy = null;
 		let hitDist  = Infinity;
 		for (const e of enemies) {
-			const ecx = e.x + 0.5;
-			const ecy = e.y + 0.5;
+			// 占有範囲（AABB）対応：大型敵は中心が遠く半身が広いので、
+			// body の半幅ぶんだけ「届く距離」と「横の許容幅」を広げる。
+			// 1×1 敵では halfFwd=halfSide=0 となり従来挙動と一致する。
+			const { cx: ecx, cy: ecy } = enemyCenter(e);
 			const relX = ecx - pcx;
 			const relY = ecy - pcy;
 
 			const dot = relX * ndx + relY * ndy;
 			if (dot < 0) continue;
 
+			// 攻撃方向(ndx,ndy)に沿った body 半サイズ・直交方向の body 半サイズ
+			const halfW = (enemyW(e) - 1) / 2;
+			const halfH = (enemyH(e) - 1) / 2;
+			const halfFwd  = Math.abs(ndx) * halfW + Math.abs(ndy) * halfH;
+			const halfSide = Math.abs(ndy) * halfW + Math.abs(ndx) * halfH;
+
 			const projDist = dot;
-			if (projDist > SWORD_REACH) continue;
+			if (projDist - halfFwd > SWORD_REACH) continue;
 
 			const perpX = relX - ndx * projDist;
 			const perpY = relY - ndy * projDist;
 			const perpDist = Math.sqrt(perpX * perpX + perpY * perpY);
-			if (perpDist > 0.8) continue;
+			if (perpDist > 0.8 + halfSide) continue;
 
 			if (projDist < hitDist) { hitDist = projDist; hitEnemy = e; }
 		}

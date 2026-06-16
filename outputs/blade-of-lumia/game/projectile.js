@@ -9,6 +9,7 @@ import { ITEM_META } from '../shared/items.js';
 import { makeSprite } from '../shared/sprites.js';
 import { playSound } from '../shared/sounds.js';
 import { MOVE_STEP } from './constants.js';
+import { enemyPointHit } from './hitbox.js';
 
 /**
  * createProjectile(deps) – factory
@@ -133,6 +134,23 @@ export function createProjectile(deps) {
 		div.id = `proj-${proj.id}`;
 		div.style.left = `${proj.x * cellPx}px`;
 		div.style.top  = `${proj.y * cellPx}px`;
+
+		// 剣ビーム（Phase 3-1）：専用スプライトは未作成のため CSS 演出で描画する。
+		// 横/縦向きで光の刃を伸ばし、満タン（strong）は太く明るくする。
+		if (proj.type === 'beam') {
+			const horizontal = Math.abs(proj.dx) >= Math.abs(proj.dy);
+			const beam = document.createElement('div');
+			beam.className = 'sword-beam' + (proj.strong ? ' beam-strong' : '');
+			const longPx  = Math.round(cellPx * (proj.strong ? 0.95 : 0.7));
+			const shortPx = Math.round(cellPx * (proj.strong ? 0.42 : 0.3));
+			beam.style.width  = `${horizontal ? longPx : shortPx}px`;
+			beam.style.height = `${horizontal ? shortPx : longPx}px`;
+			div.appendChild(beam);
+			charLayerEl.appendChild(div);
+			proj.el = div;
+			return;
+		}
+
 		const cv = makeSprite(proj.type, proj.type, false);  // 静止表示（アニメなし）
 		if (cv) {
 			const sz = Math.round(cellPx * 0.35) + 'px';
@@ -175,7 +193,16 @@ export function createProjectile(deps) {
 		const enemies = getEnemies();
 		if (proj.owner === 'player') {
 			for (const e of [...enemies]) {
-				if (Math.abs(e.x - proj.x) < 0.6 && Math.abs(e.y - proj.y) < 0.6) {
+				// 占有範囲（AABB）ベース。1×1 敵では従来の 0.6 箱と一致する。
+				if (enemyPointHit(e, proj.x, proj.y, 0.6)) {
+					// 貫通する投擲物（満タン剣ビーム等）は同じ敵に二重ヒットしない
+					if (proj.piercing) {
+						if (!proj._hitIds) proj._hitIds = new Set();
+						if (proj._hitIds.has(e.id)) continue;
+						proj._hitIds.add(e.id);
+						dealDamageToEnemy(e, proj.atk);
+						continue;  // 貫通：消えずに飛び続ける
+					}
 					dealDamageToEnemy(e, proj.atk);
 					if (proj.type !== 'boomerang') {
 						removeProjEl(proj);

@@ -41,6 +41,8 @@ import { createPlayer } from './player.js';
 import { createCombat } from './combat.js';
 // ── ボス戦・エンディング（Phase 0-2 Step 5: boss.js へ切り出し）─────────────
 import { createBoss } from './boss.js';
+// ── チャージ攻撃・剣ビーム（Phase 3-1: charge.js へ切り出し）──────────────────
+import { createCharge } from './charge.js';
 
 
 // ── DOM ───────────────────────────────────────────────────────
@@ -269,6 +271,7 @@ function enterStage(lk, sk, pRow, pCol) {
 	// ステージ遷移時に飛翔物・設置爆弾をリセット
 	clearProjectiles();
 	clearBombs();
+	cancelCharge();   // チャージ中の遷移はキャンセル（Phase 3-1）
 	// ボス部屋ロックをリセット（非ボス部屋に移動したとき）
 	if (!stageData.isBossRoom) bossRoomLocked = false;
 
@@ -324,6 +327,9 @@ function buildEnemies(sd, lk, sk) {
 				atk:   m.atk, def: m.def,
 				speed: m.speed ?? ENEMY_SPEED_NORMAL,
 				sprite: m.sprite, pal: m.pal,
+				// Phase 3-2: 占有セル数（大型敵）。省略時は 1×1。
+				w:      m.size?.w ?? 1,
+				h:      m.size?.h ?? 1,
 				accum:  0,
 				dir:    sd.enemyDirs?.[posKey] ?? 'down',
 				el:     null,   // DOM element（後で設定）
@@ -351,6 +357,12 @@ let updateHud        = () => {};
 let pulse            = (t, d) => {};
 let updateShieldHud  = () => {};
 let processHeldKeys  = () => {};
+// ── charge.js（Phase 3-1）──
+let startCharge        = () => {};
+let releaseCharge      = () => {};
+let cancelCharge       = () => {};
+let tickCharge         = () => {};
+let getChargeMoveSpeedFactor = () => 1;
 let startDialog      = () => {};
 let showDialogLine   = () => {};
 let advanceDialog    = () => {};
@@ -562,6 +574,8 @@ const { checkStoneOnSwitch, evaluateConditions } = createConditions({
 		setIsShielding,
 		movePlayer:  (dir) => movePlayer(dir),
 		swordAttack: () => swordAttack(),
+		startCharge:   () => startCharge(),
+		releaseCharge: () => releaseCharge(),
 		useSubItem:  () => useSubItem(),
 		toggleFlight: () => toggleFlight(),
 		togglePause,
@@ -575,6 +589,7 @@ const { checkStoneOnSwitch, evaluateConditions } = createConditions({
 		pauseSelectNext,
 		hasCleared,
 		updateShieldHud,
+		getChargeMoveSpeedFactor: () => getChargeMoveSpeedFactor(),
 	});
 
 	// heldKeys と processHeldKeys を factory 生成版で上書き
@@ -649,6 +664,27 @@ const { checkStoneOnSwitch, evaluateConditions } = createConditions({
 	bossTickHitAndAway   = _ai.bossTickHitAndAway;
 	enemyAttack          = _ai.enemyAttack;
 	checkEnemyContact    = _ai.checkEnemyContact;
+}
+
+// ── チャージ攻撃・剣ビーム（Phase 3-1）──────────────────────────
+// addProjectile が上のブロックで設定済みなので、ここで charge factory を生成する。
+{
+	const _charge = createCharge({
+		gameNow,
+		getPlayer:           () => player,
+		getHeroDir:          () => heroDir,
+		getIsDialog:         () => isDialog,
+		getIsPaused:         () => isPaused,
+		getIsGameover:       () => isGameover,
+		getIsTransitioning:  () => isTransitioning,
+		addProjectile:       (config) => addProjectile(config),
+		hasCleared,
+	});
+	startCharge        = _charge.startCharge;
+	releaseCharge      = _charge.releaseCharge;
+	cancelCharge       = _charge.cancelCharge;
+	tickCharge         = _charge.tickCharge;
+	getChargeMoveSpeedFactor = _charge.getMoveSpeedFactor;
 }
 
 // ── プレイヤー / 戦闘 / ボス（Phase 0-2b: player.js / combat.js / boss.js 統合）──
@@ -991,6 +1027,7 @@ function stopGameLoop() {
 function gameTick() {
 	if (isPaused || isDialog || isGameover || isTransitioning) return;
 	processHeldKeys();   // 押しっぱなしキーで毎tick移動
+	tickCharge();        // チャージゲージ更新（剣ビーム・Phase 3-1）
 	enemyTick();
 	projectileTick();
 	bombTick();
@@ -1264,6 +1301,9 @@ export {
 };
 // テスト用：飛行トグルを公開（main.js の __game から呼ぶ）
 export function callToggleFlight() { return toggleFlight(); }
+// テスト用：チャージ攻撃（剣ビーム）を公開（Phase 3-1）
+export function callStartCharge() { return startCharge(); }
+export function callReleaseCharge() { return releaseCharge(); }
 export { startAnimLoop, redrawAnimSprites } from '../shared/sprites.js';
 
 // テスト用フック（main.js 側の window.__game から呼ばれる）
@@ -1297,7 +1337,7 @@ export function getEnemiesSnapshot() {
 
 // テスト用：任意の座標に擬似敵を注入する
 // ゲーム中の敵データに直接追加するため、DOM 要素は作らない（hp 減少だけ確認）
-export function injectTestEnemy(x, y, hp = 5) {
+export function injectTestEnemy(x, y, hp = 5, w = 1, h = 1) {
 	const id = `test-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 	enemies.push({
 		id, type: 'E', // ダミータイプ（ENEMY_META にないため isBoss=false）
@@ -1305,6 +1345,7 @@ export function injectTestEnemy(x, y, hp = 5) {
 		hp, maxHp: hp,
 		atk: 0, def: 0,
 		speed: 0,
+		w, h,            // Phase 3-2: 占有セル数（大型敵テスト用）
 		sprite: 'slime', pal: 'slime',
 		accum: 0, dir: 'down', el: null,
 	});

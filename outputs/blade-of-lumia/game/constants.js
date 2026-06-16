@@ -46,3 +46,14 @@ export const SWORD_REACH = 1.2;
 export const SWORD_COOLDOWN_MS = 100;
 // 石を押すクールダウン：600ms（重い石はゆっくりしか押せない）
 export const STONE_PUSH_COOLDOWN_MS = 600;
+
+// ── Phase 3-1: チャージ攻撃（剣ビーム）─────────────────────────
+// 攻撃ボタンを押した瞬間に通常の剣が出る。押しっぱなしでチャージが溜まり、
+// 離した時のチャージ量で発射するビームが変わる（論理時間 gameNow 基準）。
+//   - 1/4(CHARGE_MIN_RATIO)未満 … ビームなし（剣は既に振っている）
+//   - 1/4以上〜満タン未満        … 弱ビーム（剣ATK・非貫通）
+//   - 満タン(CHARGE_FULL_MS)     … 強ビーム（剣ATK×2・貫通）
+export const CHARGE_FULL_MS   = 720;   // 満タンまでの所要時間（6 フレーム）
+export const CHARGE_MIN_RATIO = 0.25;  // ビームが撃てる最低チャージ割合（1/4）
+export const BEAM_SPEED       = 4.0;   // ビーム飛翔速度（セル/tick 換算前）
+export const BEAM_STRONG_MULT = 2;     // 満タンビームの威力倍率（剣ATK に対して）

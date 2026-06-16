@@ -16,6 +16,9 @@ export const TILE = {
 	MONSTER:   'W',  // 魔物（中ボス）
 	DARK_LORD: 'X',  // 魔王（ダンジョンボス・星の欠片を落とす）
 	ZARNEL:    'Z',  // ザーネル（ラスボス・撃破でエンディング。Phase 1-3）
+	ROCK_GOLEM:   'G',  // 岩のゴーレム（2×2 大型ボス・dungeon_1）
+	FIRE_SALAMANDER:'A',  // 炎のサラマンドラ（2×2 大型ボス・dungeon_4）
+	ICE_LEVIATHAN:'L',  // 氷のリヴァイアサン（2×2 大型ボス・dungeon_5）
 	// NPC（Dungeon World 継承）
 	PRINCESS: 'P',   // 姫
 	// ギミック（Dungeon World 継承）
@@ -92,6 +95,9 @@ export const TILE_META = {
 	[TILE.MONSTER]: { label: '魔物',         color: '#2a1060', passable: true,  icon: 'Ｗ' },
 	[TILE.DARK_LORD]:{ label: '魔王',        color: '#0a0a18', passable: true,  icon: 'Ｘ' },
 	[TILE.ZARNEL]:  { label: 'ザーネル',     color: '#180828', passable: true,  icon: 'Ｚ' },
+	[TILE.ROCK_GOLEM]:     { label: '岩のゴーレム',         color: '#3a3026', passable: true, icon: 'Ｇ' },
+	[TILE.FIRE_SALAMANDER]:{ label: '炎のサラマンドラ',     color: '#6a1008', passable: true, icon: 'Ａ' },
+	[TILE.ICE_LEVIATHAN]:  { label: '氷のリヴァイアサン',   color: '#0a2850', passable: true, icon: 'Ｌ' },
 	// NPC
 	[TILE.PRINCESS]:{ label: '姫',           color: '#aa4488', passable: true,  icon: '♀' },
 	[TILE.NPC_A]:   { label: 'NPC（村人）',  color: '#448844', passable: true,  icon: 'Ａ' },

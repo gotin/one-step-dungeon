@@ -85,8 +85,12 @@ export function createPassable(d) {
 
 		// 敵と同じタイルセルには移動できない（重なり防止）
 		// ※ 「0.6未満」判定だと半セル移動時に動けなくなるため、タイル単位で比較する
+		// 大型敵（w×h）は占有セルすべてをブロックする（Phase 3-2）。
+		const ptc = toTileCol(nx), ptr = toTileRow(ny);
 		for (const e of getEnemies()) {
-			if (toTileRow(ny) === toTileRow(e.y) && toTileCol(nx) === toTileCol(e.x)) return false;
+			const ew = e.w ?? 1, eh = e.h ?? 1;
+			const ec = toTileCol(e.x), er = toTileRow(e.y);
+			if (ptc >= ec && ptc < ec + ew && ptr >= er && ptr < er + eh) return false;
 		}
 
 		return true;
@@ -142,14 +146,18 @@ export function createPassable(d) {
 		return true;
 	}
 
-	// 敵向けの通行可否（同じ 1セル占有チェック）
+	// 敵向けの通行可否（占有 w×h セルすべてをチェック）
+	// 大型敵（Phase 3-2）は self.w/self.h で占有範囲が広がる。
+	// nx/ny は移動後の top-left 座標。
 	function isPassableForEnemy(ny, nx, self) {
 		const stageData = getStageData();
 		if (!stageData) return false;
+		const ew = self?.w ?? 1, eh = self?.h ?? 1;
+		// 占有範囲：top-left から w×h セル（半セル移動分の +0.999 も考慮）
 		const c0 = Math.floor(nx);
-		const c1 = Math.floor(nx + 0.999);
+		const c1 = Math.floor(nx + ew - 1 + 0.999);
 		const r0 = Math.floor(ny);
-		const r1 = Math.floor(ny + 0.999);
+		const r1 = Math.floor(ny + eh - 1 + 0.999);
 
 		for (let r = r0; r <= r1; r++) {
 			for (let c = c0; c <= c1; c++) {
@@ -157,22 +165,24 @@ export function createPassable(d) {
 				if (!tilePassable(r, c)) return false;
 			}
 		}
-		// 移動後の石があるセルには通れない
+		// 移動後の石があるセルには通れない（占有範囲のどれかに重なれば不可）
 		if (stageData) {
 			const _sspe = getSS(getCurrentLayer(), getStageKey());
 			for (const st of Object.values(_sspe.stonePositions ?? {})) {
-				if (toTileRow(ny) === st.r && toTileCol(nx) === st.c) return false;
+				if (st.c >= c0 && st.c <= c1 && st.r >= r0 && st.r <= r1) return false;
 			}
 		}
-		// 他の敵と大きく重なっているなら通れない
+		// 他の敵と占有範囲が重なるなら通れない（AABB 重なり判定）
 		for (const e of getEnemies()) {
 			if (e === self) continue;
-			if (Math.abs(e.x - nx) < 0.6 && Math.abs(e.y - ny) < 0.6) return false;
+			const ow = e.w ?? 1, oh = e.h ?? 1;
+			if (nx < e.x + ow && nx + ew > e.x && ny < e.y + oh && ny + eh > e.y) return false;
 		}
-		// プレイヤーと同じタイルセルには移動できない（重なり防止）
+		// プレイヤーと占有セルが重なるなら移動できない（重なり防止）
 		// 隣接セルへの移動は許可するので体当たり攻撃は成立する
 		const player = getPlayer();
-		if (toTileRow(ny) === toTileRow(player.y) && toTileCol(nx) === toTileCol(player.x)) return false;
+		const ptc = toTileCol(player.x), ptr = toTileRow(player.y);
+		if (ptc >= c0 && ptc <= c1 && ptr >= r0 && ptr <= r1) return false;
 		return true;
 	}
 

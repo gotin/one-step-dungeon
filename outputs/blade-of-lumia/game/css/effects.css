@@ -453,3 +453,55 @@
         box-shadow: 0 0 14px 6px rgba(60, 255, 80, 0.9)
     }
 }
+
+/* ── チャージ攻撃・剣ビーム（Phase 3-1）─────────────────────── */
+/* チャージ中のオーラ：プレイヤー要素に重ねる光の輪 */
+.charge-aura {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    width: calc(var(--cell) * 1.05);
+    height: calc(var(--cell) * 1.05);
+    transform: translate(-50%, -50%);
+    border-radius: 50%;
+    pointer-events: none;
+    z-index: 6;
+    background: radial-gradient(circle, rgba(120, 200, 255, 0.5) 0%, rgba(80, 160, 255, 0.2) 55%, transparent 75%);
+    box-shadow: 0 0 8px 2px rgba(120, 200, 255, 0.5);
+}
+
+/* 1/4 以上溜まった（撃てる）状態 */
+.charge-aura.charge-ready {
+    background: radial-gradient(circle, rgba(140, 220, 255, 0.7) 0%, rgba(90, 180, 255, 0.3) 55%, transparent 78%);
+    box-shadow: 0 0 12px 4px rgba(140, 220, 255, 0.7);
+    animation: charge-pulse 0.5s ease-in-out infinite;
+}
+
+/* 満タン（貫通ビーム）状態 */
+.charge-aura.charge-full {
+    background: radial-gradient(circle, rgba(255, 255, 200, 0.9) 0%, rgba(255, 230, 120, 0.5) 50%, rgba(255, 200, 60, 0.2) 75%, transparent 88%);
+    box-shadow: 0 0 18px 7px rgba(255, 235, 130, 0.9);
+    animation: charge-pulse 0.28s ease-in-out infinite;
+}
+
+@keyframes charge-pulse {
+    0%, 100% { transform: translate(-50%, -50%) scale(1); }
+    50%      { transform: translate(-50%, -50%) scale(1.18); }
+}
+
+/* 剣ビーム本体（飛翔体）：横/縦は JS が width/height を入れ替える */
+.sword-beam {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    border-radius: 50%;
+    pointer-events: none;
+    background: linear-gradient(90deg, rgba(180, 230, 255, 0.2) 0%, rgba(160, 220, 255, 0.95) 50%, rgba(180, 230, 255, 0.2) 100%);
+    box-shadow: 0 0 10px 3px rgba(150, 210, 255, 0.85);
+}
+
+.sword-beam.beam-strong {
+    background: linear-gradient(90deg, rgba(255, 245, 200, 0.25) 0%, rgba(255, 240, 150, 1) 50%, rgba(255, 245, 200, 0.25) 100%);
+    box-shadow: 0 0 16px 6px rgba(255, 235, 120, 0.95);
+}

@@ -83,6 +83,23 @@ export function createRenderChars(deps) {
 		div.appendChild(glow);
 	}
 
+	// ── 大型敵（w×h）の見た目サイズを適用（Phase 3-2）─────────
+	// wrapper（.char-abs）は既定で 1セル四方。w×h 敵はそれを拡げ、
+	// 内部 canvas を wrapper 全面に追従させる（CSS の 1セル !important を上書き）。
+	function applyEnemySize(wrapper, e, cellPx) {
+		const w = e.w ?? 1, h = e.h ?? 1;
+		if (w === 1 && h === 1) return;
+		wrapper.style.width  = `${w * cellPx}px`;
+		wrapper.style.height = `${h * cellPx}px`;
+		wrapper.style.zIndex = '6';  // 通常キャラより前面に
+		wrapper.classList.add('large-enemy');  // 重々しい揺れアニメ（board.css）
+		const cv = wrapper.querySelector('canvas.sprite');
+		if (cv) {
+			cv.style.setProperty('width',  '100%', 'important');
+			cv.style.setProperty('height', '100%', 'important');
+		}
+	}
+
 	// ── 盾オーバーレイ ───────────────────────────────────────
 	function addShieldOverlay(div) {
 		const player  = getPlayer();
@@ -248,6 +265,8 @@ export function createRenderChars(deps) {
 			});
 			if (wrapper) {
 				wrapper.dataset.enemyId = e.id;
+				// 大型敵（Phase 3-2）：wrapper を w×h セルに拡げ、canvas を全面に追従させる
+				applyEnemySize(wrapper, e, cellPx0);
 				if (ENEMY_META[e.type]?.aura) {
 					const smoke = document.createElement('div');
 					smoke.className = 'dark-lord-aura-smoke';

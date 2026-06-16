@@ -22,6 +22,35 @@
 
 ## 記録
 
+### 2026-06-16 — Phase 3-2（採用）：大型ボスは「向き切替＋揺れアニメ」で動かし、欠片整合は `dropsTriforce` フラグで一般化する
+- **決定（ユーザー方針）：** 岩のゴーレム（2×2）を**正式採用して dungeon_1（最初のダンジョン）のボスにする**。さらに**大型敵を複数種つくる**方針。ただし「正面固定で止まって見える」のが不満なので、まず1体目を「**動く大型ボス**」として完成させてから量産に入る（型を固める）。
+- **「動いてる感じ」は (a) 向き切替 (b) 待機揺れアニメ の2本立てで出す：** (a) ボス化して `hitAndAway` AI に乗せると、毎tick プレイヤー方向へ `e.sprite` を `rockGolem{D/R/L/U}` に切替（左は flipX）。ゴーレムは正面シルエットが左右対称なので**向きエイリアス4つは同じ絵を流用**（`ENEMY_SPRITES.rockGolemR = rockGolem` 等）。(b) `board.css` に `@keyframes golem-lumber`（上下＋左右ロール＋わずかな伸縮）を追加し `.char-abs.large-enemy canvas.sprite` に適用、`applyEnemySize` で wrapper に `large-enemy` クラスを付与。向き切替だけだと遠距離で止まって見え、揺れだけだと方向感が出ないため両方入れる。
+- **AI のスプライト差し替えは大型サイズを吹き飛ばすので再適用が必要：** `bossTickHitAndAway` の向き切替は canvas を remove → `makeSprite` で作り直して insert する。新 canvas は CSS の `width: var(--cell) !important` で 1セルに縮むため、差し替え箇所で `e.w/e.h>1` なら `setProperty('width','100%','important')` を再適用する。揺れアニメは wrapper の `large-enemy` クラス経由（アニメ対象は内側 canvas）なので差し替えても効き続ける。
+- **欠片整合は汎用フラグ `dropsTriforce` に一般化：** ボスの「撃破で星の欠片を落とす」「全収集の必要数にカウントする」を、従来の `boss.type === TILE.DARK_LORD` 決め打ちから `ENEMY_META[type].dropsTriforce` 参照に変更（`onBossDefeated` のドロップ分岐・`calcTotalTriforces` のカウント両方）。dungeon_1 の魔王 X×1 を G に置換しても、X×6 + G×1 + 直接欠片2 = **合計9個のまま不変**。これで大型ボスを複数種足してもタイル文字ごとに boss.js を条件分岐で汚さずに済む。
+- **代替案：** (A) 大型ボスを `enemyChase`（通常追跡）のまま置く → 向きが変わらず「動いて見えない」不満が残る。`hitAndAway` に乗せて向き切替を得た。(B) 向きごとに別の絵を描く（4方向×2フレーム=8枚）→ 1体目は対称シルエットで足りるので流用。非対称な2体目以降で必要になったら描く。(C) 欠片ドロップを `isFinalBoss` のようにタイル種別で分岐し続ける → 種類が増えるたび分岐が増えるため `dropsTriforce` フラグで一般化した。
+- **結果／影響：** dungeon_1 ボス部屋 `2,0` の X を G に置換、開始村の試作 G は撤去。実機（一時 spec・確認後削除）でゴーレムが 2×2 描画・`large-enemy` クラス・ボス部屋ロック演出・AI 40step エラーなし・右隣で `rockGolemR` 向き切替＋大型維持を確認。**全45テストグリーン**（VRT は試作G撤去で起動画面が元に戻り更新）。**大型敵の“型”が確立**：size＋dropsTriforce＋揺れアニメ＋向きエイリアスで「動く大型ボス」が作れる。次は2体目以降をテーマ別ダンジョンボスとして量産（スプライト→meta→エイリアス→配置の反復）。
+
+### 2026-06-16 — Phase 3-2：大型ボスは「ENEMY_META.size:{w,h} の汎用機構」で実装し、まず新規 2×2 敵1体で検証する
+- **決定（ユーザー方針）：** 既存ボスをいきなり大型化せず、**汎用の `size:{w,h}` 機構を入れた上で新規に 2×2 敵を1体だけ作って動作確認**する。うまく作れることを確認してから「どのステージのボスに size を付けるか／複数種の大型敵を作るか」を改めて決める。試作の `ROCK_GOLEM('G')`「岩のゴーレム」は**当面 `isBoss:false` の大型通常敵**にして、ボス演出（HPバー・部屋ロック・撃破ドロップ）を絡めず size 機構そのものだけを純粋検証する。
+- **size は ENEMY_META の任意フィールド（省略時 1×1）：** `buildEnemies` が `e.w = m.size?.w ?? 1` / `e.h = ...` を付与。既存の全敵は size 未指定なので自動的に 1×1 となり挙動不変。「2つ目以降の大型敵」も meta に `size:{w:2,h:2}` を足すだけで増やせる。
+- **当たり判定はすべて「占有範囲(AABB)」ベースに一般化し、1×1 では従来挙動と完全一致させる：** 共通ヘルパー `game/hitbox.js` を新設。
+  - `enemyPointHit(e, px, py, margin)`：点が敵の箱に入るか。**1×1 のとき `|px-e.x|<margin && |py-e.y|<margin` と完全一致**（halfX=halfY=0）。w/h が大きいほど箱が body 中心へ移り半幅が `(w-1)/2+margin` に広がる。投擲物/ビームの `checkProjHit`（margin 0.6）と接触ダメージ `checkEnemyContact`（margin 0.9）に適用。
+  - 剣 `swordAttack`：敵中心 `enemyCenter(e)` への射影距離・直交距離で判定する既存ロジックに、**攻撃方向に沿った body 半サイズ `halfFwd` を届く距離に・直交方向の半サイズ `halfSide` を横の許容幅に加算**。1×1 では halfFwd=halfSide=0 で従来と一致し、大型敵は「中心が遠くても手前の面で当たる」。
+- **敵の移動判定 `isPassableForEnemy` を w×h 占有に拡張：** 占有セル全部を壁チェック、石・他敵・プレイヤーとの重なりは AABB 重なり判定にした。プレイヤー側 `isPassable` の「敵セルに入れない」判定も、大型敵の占有 w×h セル全部をブロックするよう変更（プレイヤーが大型敵にめり込めない）。
+- **描画は wrapper を w×h セルに拡げ canvas を全面追従：** `render-chars.js` に `applyEnemySize(wrapper, e, cellPx)` を追加。CSS の `canvas.sprite { width/height: 1セル !important }` を `100% !important` で上書きし、wrapper を `w*cellPx × h*cellPx`・`z-index:6`（前面）に。スプライトは 24×24（2×2 セル相当）の `rockGolem` を `sprites-enemies.js` に新規作成（眼が光る岩塊・2フレーム）。
+- **代替案：** (A) ザーネル/全魔王を即 2×2 化 → 8ボス部屋のレイアウト整合確認が要り影響大。ユーザーが「まず1体試作」を選択したため却下。(B) 大型ボス専用の当たり判定関数を別建て → 1×1 と分岐が二重化しデグレ源になる。占有範囲ヘルパーで一本化し「1×1 は箱が潰れて従来一致」にした方が安全。(C) スプライトを後回しで絵文字フォールバック → 大型は見た目のインパクトが要点なので 24×24 ドット絵を先に作った。
+- **結果／影響：** 新規 `tests/large-enemy.spec.js` 3本（2×2 のビーム手前面ヒット・剣リーチが body 半分ぶん拡大・1×1 デグレなし）＋**全46テストグリーン**。実機（一時 spec・確認後削除）で field 1,0 に置いた `G` が wrapper 144×144px（=2×72セル）・24×24 canvas・JSエラーなしで描画されることを確認。**試作ゴーレムは開始村（field 1,0 row3,col8）に配置**したので歩いてすぐ戦える（VRT 起動画面が変わるため基準画像 `game-start.png` を更新）。**次の判断ポイント：** 動作確認後、どのボスに size を適用するか・大型敵を複数種作るかをユーザーと決める（試作ゴーレムは検証用なので、本採用しないなら撤去 or ダンジョン敵化する）。
+
+### 2026-06-16 — Phase 3-1：チャージ攻撃は「押下で即剣＋論理時間チャージ」、ビームは既存投擲物に相乗りで実装する
+- **決定（仕様・ユーザー確定）：** 攻撃ボタンを**押した瞬間に必ず通常の剣**を出す（既存 `swordAttack()` をそのまま発火）。同時に**押しっぱなしでチャージ開始**し、**離した時のチャージ量**で発射を決める：1/4(`CHARGE_MIN_RATIO`)未満=ビームなし／1/4以上=弱ビーム（剣ATK・非貫通）／満タン(`CHARGE_FULL_MS`)=強ビーム（剣ATK×`BEAM_STRONG_MULT`・貫通）。**チャージ中は移動できるが移動速度0.5倍**。初代ゼルダの「HP満タンでビーム」より自由度が高く、ALttP のスピン斬りチャージに近い手応えにする。
+- **チャージ状態は論理時間 `gameNow()` 基準の `_chargeStart` 1個で表す：** 押下時刻を記録し、離した時に `(gameNow()-_chargeStart)/CHARGE_FULL_MS` で割合を出すだけ。Phase 0-1 の `step()` でフレームを進めれば決定的にテストできる（飛行 `player.flying` と同じ "1状態＋トグル" パターンの再利用）。`startCharge` はキーリピート対策で「既にチャージ中なら何もしない」。
+- **ビームは新規の飛翔体システムを作らず、既存 `projectile.js` の `addProjectile({type:'beam'})` に相乗りさせる：** トンネリング防止の区間補間・境界/壁判定・`checkProjHit` がそのまま効く。新規対応は2点だけ——(1) `createProjEl` に beam の CSS 描画分岐（専用スプライト未作成のため `.sword-beam`/`.beam-strong` で光の刃を描く。横/縦で width/height を入替）、(2) `checkProjHit` に**貫通対応**（`proj.piercing` のときは `_hitIds` Set で同一敵の二重ヒットを防ぎつつ消えずに飛び続ける）。
+- **`piercing` は弓矢で既に宣言されていたが checkProjHit で未実装だった**（矢は実際には最初の敵で消えていた）。今回ビームのために貫通ロジックを正しく実装した。矢の挙動は据え置き（当面ビームのみ満タンで貫通）。
+- **モバイルの「押しっぱなし」は `click` では取れない：** 剣ボタンを touchstart/touchend + mousedown/up/leave に変え、`_swordHeld` フラグで多重 press を防ぎ、touchcancel/mouseleave での release 漏れも塞いだ。PC はキーボードなので「攻撃キー長押し＋方向キー移動」が自然に両立する。
+- **新モジュール `charge.js`（`createCharge` factory）に隔離：** Phase 0-2 の factory + getter 注入方式を踏襲（deps は `gameNow`/`getPlayer`/`getHeroDir`/各種フラグ getter/`addProjectile`/`hasCleared`）。`game.js` 側は addProjectile 設定後に生成し、`gameTick` で `tickCharge()`（オーラ更新）・`enterStage` で `cancelCharge()`（遷移で中断）を呼ぶ。`input.js` の `processHeldKeys` は移動量に `getChargeMoveSpeedFactor()` を乗算して減速。
+- **代替案：** (A) HP満タン式（初代ゼルダ準拠・チャージ操作不要）→ ユーザーが段階チャージ式を選択したため却下。(B) ビーム用に専用の飛翔体ループを新設 → 投擲物と当たり判定/トンネリング対策が二重化するため却下（既存 addProjectile に乗せた）。(C) チャージ割合を連続スケールで威力に反映 → プレイヤーが手応えを区別しにくく・テストも非決定的になりやすいため、離散2段階（弱/強）にした。(D) ドット絵スプライトを先に作る → SPRITES_NEEDED.md の P3/FX1/FX2 は未作成。既存スラッシュ/爆発と同じく CSS 演出で代用し、専用スプライトは後回し（Phase 0-5 スプライトエディタ/人手の管轄）。
+- **結果／影響：** 「押下＝剣／長押し＝チャージ／離す＝ビーム」が一本に繋がり、チャージ中は半速で位置取りしながら溜められる。`tests/charge-beam.spec.js` 3本（1/4未満で発射なし・十分溜めて beam 前方生成・満タンビームの貫通で hp=1 の2体同時撃破）＋全42テストグリーン（VRT 起動画面に差分なし＝オーラはチャージ中のみ表示のため基準画像不変）。実機で aura ready/full クラス・beam DOM 生成・離脱後のオーラ消去・JSエラーなしを確認。残課題なし（次は 3-2 ボス大型化＝複数セル当たり判定の設計）。
+
 ### 2026-06-15 — Phase 1-5：飛行は「player 専用の passable 緩和」、塔接続は「MAP_ENTER テレポート」で実装する
 - **決定：** 翼の羽衣による飛行を**フル実装**する（ユーザー選択。1-3 の元方針どおり）。`player.flying` フラグ1個＋`toggleFlight()`（F キー/モバイル🪽）で離着陸し、飛行中は新タイル `SKY('%')` と `WATER` を越えられる。暗黒の塔は新レイヤー `dark_tower`（入口フロア→ボス部屋）とし、フィールドからの接続は**ステージ端の縁遷移ではなく MAP_ENTER テレポート**で行う。塔へ渡る空島（field 4,0）は虚空 `SKY` の谷で分断し、飛行でしか越えられない構造にする。
 - **飛行の実装場所：** 通行判定は2系統ある——プレイヤーは `isPassable`、敵は `isPassableForEnemy`。飛行緩和を `isPassable` 側にだけ足せば敵には一切影響しない（敵は飛べないまま）。地上の真実 `tilePassable` は据え置きで `SKY` を明示ブロックに加え、「徒歩では不可・`player.flying` なら越える」を `isPassable` の早期 return 緩和で両立させた。これにより既存の壁・木・水の判定ロジックを壊さず最小差分で飛行を追加できる。

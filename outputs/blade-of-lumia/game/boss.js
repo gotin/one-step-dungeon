@@ -199,8 +199,11 @@ export function createBoss(deps) {
 			setTimeout(() => startEnding(), 2500);
 			return;
 		}
-		// 7b. 星の欠片付与（DARK_LORD のみ・内部識別子は triforce 系のまま維持）
-		if (boss.type === TILE.DARK_LORD) {
+		// 7b. 星の欠片付与（DARK_LORD または dropsTriforce フラグを持つボス）
+		// 大型ボス（岩のゴーレム等）も dropsTriforce:true で欠片を落とす。
+		const dropsTriforce = boss.type === TILE.DARK_LORD
+			|| ENEMY_META[boss.type]?.dropsTriforce;
+		if (dropsTriforce) {
 			spawnTriforcePiece(boss);
 			await sleep(600);
 			pulse('◭ 星の欠片が 現れた！', 3000);
@@ -280,6 +283,9 @@ export function createBoss(deps) {
 					for (const tile of row) {
 						if (tile === TILE.ITEM_TRIFORCE_PIECE) total++;
 						if (tile === TILE.DARK_LORD) total++;
+						// 大型ボス等、欠片を落とすボスタイルもカウント（DARK_LORD 以外）
+						else if (tile !== TILE.ITEM_TRIFORCE_PIECE
+							&& ENEMY_META[tile]?.dropsTriforce) total++;
 					}
 				}
 			}

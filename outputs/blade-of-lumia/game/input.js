@@ -48,6 +48,8 @@ export function initInput(deps) {
 		setIsShielding,
 		movePlayer,
 		swordAttack,
+		startCharge,
+		releaseCharge,
 		useSubItem,
 		toggleFlight,
 		togglePause,
@@ -61,6 +63,7 @@ export function initInput(deps) {
 		pauseSelectNext,
 		hasCleared,
 		updateShieldHud,
+		getChargeMoveSpeedFactor,
 	} = deps;
 
 	// 現在押されているキーを管理（押しっぱなし移動用）
@@ -91,7 +94,13 @@ export function initInput(deps) {
 			heldKeys.add(e.key);
 			return;
 		}
-		if ([' ','z','Z'].includes(e.key)) { e.preventDefault(); swordAttack(); return; }
+		// 攻撃キー：押した瞬間に剣を振り、押しっぱなしでチャージ開始（Phase 3-1）。
+		// キーリピート（e.repeat）では再発火させず、チャージ開始も一度だけにする。
+		if ([' ','z','Z'].includes(e.key)) {
+			e.preventDefault();
+			if (!e.repeat) { swordAttack(); startCharge?.(); }
+			return;
+		}
 		if (e.key === 'b' || e.key === 'B') { e.preventDefault(); useSubItem(); return; }
 		if (e.key === 'f' || e.key === 'F') { e.preventDefault(); toggleFlight?.(); return; }
 		// Mac: Commandキー / Windows: Altキー でもサブアイテム使用
@@ -102,6 +111,8 @@ export function initInput(deps) {
 
 	document.addEventListener('keyup', e => {
 		heldKeys.delete(e.key);
+		// 攻撃キーを離したらチャージ解放（剣ビーム発射判定）（Phase 3-1）
+		if ([' ','z','Z'].includes(e.key)) releaseCharge?.();
 	});
 
 	// ── モバイル ──────────────────────────────────────────────
@@ -112,7 +123,26 @@ export function initInput(deps) {
 		btn.addEventListener('mousedown', () => { resumeAudio(); movePlayer(dir); });
 	});
 
-	document.getElementById('btn-sword')?.addEventListener('click', () => { resumeAudio(); swordAttack(); });
+	// 剣ボタン：押した瞬間に剣＋チャージ開始、離してビーム発射（Phase 3-1）。
+	// touch と mouse の両方に対応（click だと押しっぱなしを取れないため使わない）。
+	const swordBtn = document.getElementById('btn-sword');
+	if (swordBtn) {
+		let _swordHeld = false;
+		const pressSword = () => {
+			if (_swordHeld) return; _swordHeld = true;
+			resumeAudio(); swordAttack(); startCharge?.();
+		};
+		const releaseSword = () => {
+			if (!_swordHeld) return; _swordHeld = false;
+			releaseCharge?.();
+		};
+		swordBtn.addEventListener('touchstart', e => { e.preventDefault(); pressSword(); }, { passive: false });
+		swordBtn.addEventListener('touchend',   e => { e.preventDefault(); releaseSword(); }, { passive: false });
+		swordBtn.addEventListener('touchcancel', () => releaseSword());
+		swordBtn.addEventListener('mousedown',  () => pressSword());
+		swordBtn.addEventListener('mouseup',    () => releaseSword());
+		swordBtn.addEventListener('mouseleave', () => releaseSword());
+	}
 	document.getElementById('btn-sub')?.addEventListener('click',   () => { resumeAudio(); useSubItem(); });
 	document.getElementById('btn-fly')?.addEventListener('click',   () => { resumeAudio(); toggleFlight?.(); });
 	document.getElementById('btn-menu')?.addEventListener('click',  () => { resumeAudio(); togglePause(); });
@@ -153,7 +183,8 @@ export function initInput(deps) {
 		if (!dir) { _moveSpeedAccum = 0; return; }
 
 		// 二周目（姫パレット）は移動速度1.2倍
-		const speed = hasCleared() ? 1.2 : 1.0;
+		// チャージ中（剣ビーム溜め）は移動速度を落とす（Phase 3-1）
+		const speed = (hasCleared() ? 1.2 : 1.0) * (getChargeMoveSpeedFactor?.() ?? 1);
 		_moveSpeedAccum += speed;
 		const times = Math.floor(_moveSpeedAccum);
 		_moveSpeedAccum -= times;

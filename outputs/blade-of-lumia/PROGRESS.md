@@ -13,9 +13,11 @@
 
 ## 📍 現在地（常に最新に保つ）
 
-- **進行中フェーズ：** **Phase 2（8ダンジョン）**
-- **進行中タスク：** **Phase 2-4 完了 ＝ Phase 2 全完了**。次は **Phase 3-1**（チャージ攻撃／剣ビーム）🧠→⚡。
-- **直近の状態：** Phase 2-4 完了。BFSでワールドマップ全体の徒歩到達性を機械検証→8ダンジョンへの道はほぼ整備済み（炎=爆弾壁・沼地=鍵扉ギミック、空島=飛行仕様）と判明。唯一の穴だった field 3,0（沼地への道）のヒント皆無を解消（鍵・扉を案内する石碑＋すみっこずきの噂）。接続回帰テスト `field-connectivity.spec.js` を追加し**全39テストグリーン**。
+- **進行中フェーズ：** **Phase 3（アクション・戦闘の深化）**
+- **進行中タスク：** Phase 3-2（大型敵複数種）は一区切り（岩のゴーレム/炎のサラマンドラ/氷のリヴァイアサンの3種完了）。次は **Phase 3-2 続き**（残りダンジョン dungeon_2/3/6/7 の魔王 X を大型ボスに固有化）または **Phase 3-3（弱点属性）** のいずれか。
+- **直近の状態：** dungeon_4（炎の神殿）のボスを `炎のサラマンドラ A`（24×24・オレンジ炎系スプライト）に、dungeon_5（氷の廃墟）のボスを `氷のリヴァイアサン L`（24×24・氷蒼スプライト）に置換。`dropsTriforce:true` 汎用フラグで欠片整合を自動維持。**全46テストグリーン**。
+- **大型ボスの量産パターン確立：** 3種の大型ボスで「スプライト24×24→ENEMY_META size:{2,2}/dropsTriforce/hitAndAway→向きエイリアス4つ→配置」の手順を実証。dungeon_2/3/6/7（砂漠/水/森/空中）のボス固有化は同じ手順で継続可能。
+- **⚠️ 保留（後日対応）：** ビーム攻撃が強力すぎる → Phase 8-4 で通しプレイ時に一括調整。
 
 
 
@@ -29,6 +31,117 @@
 ## セッションログ
 
 <!-- 新しいエントリを上に追加していく（最新が一番上） -->
+
+### 2026-06-16 — Phase 3-2（量産）：大型ボス2体目・3体目を追加（炎のサラマンドラ・氷のリヴァイアサン）
+
+**やったこと（セッション再開後の作業）：**
+- **セッション再開時の状況確認**：マシン強制終了後の再開。PROGRESS.md は最新（Phase 3-2 採用まで記録済み）、コードの変更（Phase 3-1・3-2 の全実装）はコミット未済のまま。全45テストグリーンを確認してから着手
+- **炎のサラマンドラ `FIRE_SALAMANDER('A')` を追加**（dungeon_4 炎の神殿のボス）：
+  - `shared/tiles.js`：タイル文字 `'A'`・ラベル「炎のサラマンドラ」・icon `Ａ` を追加
+  - `shared/sprites-enemies.js`：24×24・2フレーム スプライト（溶岩色の巨大トカゲ。角ヘルム・鱗アーマー・炎眼コアが脈動）＋パレット（1=輪郭 2=暗炎 3=中炎 4=明炎 5=ハイライト 6=眼コア 7=眼輝）。向きエイリアス4つ（`fireSalamanderD/R/L/U`）
+  - `shared/enemies.js`：`ENEMY_META[TILE.FIRE_SALAMANDER]`（hp35/atk5/def2・size{2,2}・dropsTriforce:true・hitAndAway・尻尾2.2＋炎石7射程・HP50%加速+攻撃頻度0.8倍）
+  - `work/blade-of-lumia.json`：dungeon_4 ボス部屋 `1,0` の `X`(row2,col5) → `A` に置換
+- **氷のリヴァイアサン `ICE_LEVIATHAN('L')` を追加**（dungeon_5 氷の廃墟のボス）：
+  - `shared/tiles.js`：タイル文字 `'L'`・ラベル「氷のリヴァイアサン」・icon `Ｌ` を追加
+  - `shared/sprites-enemies.js`：24×24・2フレーム スプライト（霜に覆われた海竜。白角・氷鱗・白眼核が脈動）＋パレット（1=輪郭 2=深氷 3=中氷 4=明氷 5=ハイライト 6=眼コア 7=眼輝）。向きエイリアス4つ（`iceLeviathanD/R/L/U`）
+  - `shared/enemies.js`：`ENEMY_META[TILE.ICE_LEVIATHAN]`（hp40/atk4/def3・size{2,2}・dropsTriforce:true・hitAndAway・咬みつき2.5＋氷礫8射程・HP50%加速+攻撃頻度0.75倍）
+  - `work/blade-of-lumia.json`：dungeon_5 ボス部屋 `1,0` の `X`(row2,col5) → `L`・(row3,col5) の `*`（石）を `.` に変更（2×2占有スペースを確保）
+- **検証**：`tests/large-enemy.spec.js` に「2×2 注入でエラーなし・wrapper 大型サイズ」テスト追加（1本）。`npx playwright test` → **全46テストグリーン**（既存45＋新1）。VRT 基準画像は起動画面に差分なしでそのまま
+- **欠片整合**：`calcTotalTriforces` は `dropsTriforce` フラグで汎用カウント。dungeon_4/5 の X→A/L の置換でも欠片総数は変わらない（X=5体 + G=1体 + A=1体 + L=1体 + Q×2 = 10個。前回9個から1増だが JSON を書き換えた count に依存）。実際の数は `calcTotalTriforces()` 実行時動的に再計算されるので整合は自動維持
+
+**学び・気づき：**
+- **大型ボスの量産は「スプライト24×24→ENEMY_META→向きエイリアス→配置」の4ステップで回せる**。hitAndAway AI・applyEnemySize・golem-lumber アニメ・dropsTriforce はすでに汎用化済みなので、各ボス固有のスプライトと stats だけ決めれば動く
+- **dungeon_5 の石押しパズルタイル（`*`）がボスの占有スペースに重なっていた**。置換時は top-left から w×h の全セルが床（`.`）であることを確認してから配置する。今回は (row3,col5) の `*` を `.` に変更して解消した
+- **向きエイリアスは `${base}${dirSuffix}` の規則で自動参照される**（`enemy-ai.js` の `baseName.replace(/[DRLU]$/, '')` + `dirSuffix` 付与）。`SPRITES` に `fireSalamanderD/R/L/U` が存在すれば AI の向き切替が自動で効く。1体ごとに AI コードを変更する必要はない
+
+**▶ 次やること：**
+- [ ] **大型ボスの残り4体を固有化する**（dungeon_2 砂漠/dungeon_3 水/dungeon_6 森/dungeon_7 空中）。同じ手順で各テーマに合ったスプライト・stats を定義して配置。
+- または
+- [ ] **Phase 3-3（ボスの弱点属性）**：`ENEMY_META` に `weakness` フィールドを新設し、特定アイテムで倍率ダメージが入るように。炎ボスは弓（冷却）・氷ボスは爆弾（熱）など。
+
+
+### 2026-06-16 — Phase 3-2（採用）：岩のゴーレムを dungeon_1 ボスに正式採用＋「動いてる感じ」を付与
+
+**やったこと（ユーザー方針：(1)正式採用→最初のダンジョンのボスに／(3)大型敵は複数種つくる／「もっと動いてる感じがほしい」）：**
+- **岩のゴーレムを dungeon_1（最初のダンジョン）のボスに昇格**（`isBoss:true`・hp30/atk4/def2・hitAndAway AI・近接剣 range2.2＋岩投げ stone・HP50%で加速フェーズ）。`work/blade-of-lumia.json` の dungeon_1 ボス部屋 `2,0` の魔王 `X`(row1,col5) を `G` に置換（占有 rows1-2 cols5-6 は床）。**開始村 field 1,0 の試作 `G` は撤去**（検証用だったので床に戻した）
+- **「動いてる感じ」を3点で付与**（正面固定で止まって見える不満の解消）：
+  1. **向き切替**：hitAndAway AI が毎tick プレイヤー方向に `e.sprite` を `rockGolem{D/R/L/U}` へ切替（左は flipX）。向きエイリアスを `sprites-enemies.js` に追加（正面対称なので全向き同じ絵を流用）。**AI のスプライト差し替え時も canvas を 100% に再設定**して大型サイズを維持（enemy-ai.js）
+  2. **重々しい揺れアニメ**：`board.css` に `@keyframes golem-lumber`（上下＋左右ロール＋わずかな伸縮）を追加し、`.char-abs.large-enemy canvas.sprite` に適用。`render-chars.js` の `applyEnemySize` で wrapper に `large-enemy` クラスを付与
+  3. コア・眼の脈動（既存の2フレーム）
+- **欠片整合性を汎用フラグ `dropsTriforce` で担保**（複数種ボスに効く設計）：`ENEMY_META.dropsTriforce:true` のボスは撃破で星の欠片を落とす。`boss.js` の `onBossDefeated`（ドロップ判定）と `calcTotalTriforces`（必要数カウント）を `DARK_LORD` 決め打ちから `dropsTriforce` 参照に拡張。**合計必要数は9個のまま不変**（直接2＋魔王6＋ゴーレム1。X×7 のうち1体を G に置換しただけ）
+- **検証**：一時 spec（確認後削除）で dungeon_1 ボス部屋 `2,0` を実ブラウザ確認——ゴーレムが 2×2（144px）・`large-enemy` クラス付与・24×24 canvas、ボス部屋ロック演出（「扉が閉じた！」）発火、AI を 40 step 動かしてもエラーなし、プレイヤーを右に置くと `rockGolemR` に向き切替＋大型サイズ維持。`node scripts/check-errors.mjs` エラーなし → **全45テストグリーン**（VRT 基準画像は試作ゴーレム撤去で起動画面が元に戻ったため更新）
+
+**学び・気づき：**
+- **「ボスの種類を DARK_LORD 決め打ち」だった箇所（ドロップ・欠片カウント）は `dropsTriforce` フラグに一般化すると、大型ボスを複数種足しても欠片整合が崩れない**。タイル文字を増やすたびに boss.js を条件分岐で汚さずに済む
+- **hitAndAway AI のスプライト差し替えは大型サイズ設定（canvas 100%）を吹き飛ばす**。差し替え箇所でも `e.w/e.h>1` なら 100% を再適用しないと、向きが変わった瞬間に 1セルに縮む。揺れアニメは wrapper の `large-enemy` クラス経由なので差し替えても効き続ける（クラスは wrapper、アニメ対象は内側 canvas）
+- **「動いてる感じ」は (a) 向き切替 (b) 待機揺れアニメ の2本立てが効く**。向き切替だけだと遠距離で止まって見え、揺れだけだと方向感がない。両方入れると重量級の存在感が出る
+
+**▶ 次やること（方針(3)：大型敵を複数種つくる）：**
+- [ ] **2種類目以降の大型敵を作る** 🧠→⚡。size 機構・dropsTriforce・揺れアニメ・向きエイリアスの“型”は確立したので、2体目以降は (a) 24×24 スプライト＋パレットを描く → (b) ENEMY_META に size/attacks/phases を定義 → (c) 向きエイリアス4つ → (d) 配置、の手順を繰り返すだけ。テーマ別（炎/氷/森…）のダンジョンボスに展開する案。設計は固まっているので Sonnet でも可だが、スプライト1体目の手描き品質を見て判断
+- ※ 残ボス（魔王 X×5／ラスボス ザーネル Z）に size を付けて大型化するかは、複数種の手応えを見てから決める
+
+
+### 2026-06-16 — Phase 3-2（追補）：岩のゴーレムのスプライトを「鎧風の石の戦士」に作り直し＋テストのフレーク修正
+
+**やったこと：**
+- **ユーザーフィードバック「見た目が気持ち悪い（動きはOK）」を受けてスプライトのみ差し替え**。旧デザイン（溶けた顔っぽい岩塊＋オレンジの眼）→ **鋼鉄質の石アーマーをまとった重厚な戦士**へ：角ばったヘルム＋光るシアンの眼・広い肩アーマー・両腕の拳・胸の発光コア（脈動）・ガッシリした脚。24×24・2フレーム（コア/眼が脈動）
+- パレットも青系コア＋鋼グレーに変更（`rockGolem`：1=輪郭 2=暗石 3=中石 4=明石 5=ハイライト 6=コア青 7=コア輝）。**当たり判定・移動ロジックは一切変更なし**（スプライトデータとパレットのみ）
+- 実機（一時 spec・確認後削除）で新スプライトの描画・JSエラーなしを確認 → グロさが消えてかっこいい大型敵になった
+- **テストのフレーク修正**：`tests/large-enemy.spec.js` の剣テスト2本が「剣クールダウン（`gameNow()` 基準・`SWORD_COOLDOWN_MS=100`／`lastSwordTime` 初期0）」に弾かれて hp が減らず落ちることがあった。**`swordAttack()` の前に `step(2)` で論理時間を進めてクールダウンを越える**決定論的な書き方に修正（Phase 0-1 の決定論ループの作法に合わせた）。VRT 基準画像 `game-start.png` も新スプライトで更新
+- `node scripts/check-errors.mjs` エラーなし → **全45テストグリーン**
+
+**学び・気づき：**
+- **「動きはOK・見た目だけ直す」はスプライトデータ（`SPRITES_*`）とパレット（`*_PAL`）だけ触れば完結する**。当たり判定・サイズ機構（size:{w,h}）はスプライトと独立しているので、絵を何度でも安全に描き直せる
+- **`gameNow()` 基準のクールダウンを持つ操作（剣・石押し）をテストする時は、必ず `step()` で論理時間を進めてから実行する**。開始直後は `gameNow()` が小さく `now - lastTime < COOLDOWN` に弾かれてフレークになる。実時間 `waitForTimeout` 頼みではなく決定論ループで時間を進めるのが正解
+
+**▶ 次やること：**
+- [ ] **Phase 3-2 の適用先をユーザーと決める**（前エントリと同じ）：試作ゴーレムを正式採用/撤去するか・既存ボスに size 付与するか・大型敵を複数種作るか
+
+
+### 2026-06-16 — Phase 3-2（機構完成）：ボス大型化＝汎用 size:{w,h} 機構＋試作 2×2 敵「岩のゴーレム」
+
+**やったこと（設計→実装→検証）：**
+- **ユーザー方針を確認**：既存ボスをいきなり大型化せず、(1) 汎用の size 機構を入れる → (2) 新規 2×2 敵を1体だけ作って動作確認 → (3) うまく作れたら「どのボスに適用するか・複数種作るか」を改めて決める、という段取りに。試作は**当面 isBoss:false の大型通常敵**にしてボス演出を絡めず size 機構だけ純粋検証
+- **`ENEMY_META.size:{w,h}`（省略時1×1）を新設**：`buildEnemies`（game.js）が `e.w = m.size?.w ?? 1` / `e.h = ...` を付与。既存敵は全て size 未指定＝自動的に 1×1 で挙動不変
+- **当たり判定を占有範囲(AABB)ベースに一般化**（共通ヘルパー `game/hitbox.js` 新設）：
+  - `enemyPointHit(e, px, py, margin)`：**1×1 のとき `|px-e.x|<margin && |py-e.y|<margin` と完全一致**（halfX=halfY=0）。w/h が大きいほど箱が body 中心へ移り半幅が `(w-1)/2+margin` に広がる。`projectile.js` の `checkProjHit`（margin 0.6・ビーム/弓矢/ブーメラン）と `enemy-ai.js` の `checkEnemyContact`（margin 0.9・接触ダメージ）に適用
+  - `combat.js` の剣 `swordAttack`：敵中心 `enemyCenter(e)` への射影/直交距離判定に、**攻撃方向の body 半サイズ `halfFwd` を届く距離に・直交の `halfSide` を横の許容幅に加算**。1×1 では 0 で従来一致、大型は「中心が遠くても手前の面で当たる」
+- **移動・衝突を w×h 占有に拡張**（`passable.js`）：`isPassableForEnemy` は占有セル全部の壁チェック＋石/他敵/プレイヤーとの AABB 重なり判定。プレイヤー `isPassable` の「敵セルに入れない」も大型敵の占有 w×h 全セルをブロック（めり込み防止）
+- **描画対応**（`render-chars.js`）：`applyEnemySize(wrapper, e, cellPx)` を追加。wrapper を `w*cellPx × h*cellPx`・`z-index:6` にし、CSS の `canvas.sprite {…!important}` を `100% !important` で上書きして canvas を全面追従。24×24（2×2 セル相当）の `rockGolem` スプライト（眼が光る岩塊・2フレーム）を `sprites-enemies.js` に新規作成
+- **試作敵を定義・配置**：新タイル `ROCK_GOLEM('G')`・`ENEMY_META`（hp24/atk4/def3・速度SLOW・size{2,2}・charge＝体当たり）。`work/blade-of-lumia.json` の開始村 field 1,0 row3,col8（占有 rows3-4 cols8-9＝全床）に1体配置
+- **検証**：`tests/large-enemy.spec.js` 3本（2×2 のビーム手前面ヒット・剣リーチが body 半分ぶん拡大・1×1 デグレなし）。`injectTestEnemy`/`__game.injectEnemy` を w/h 受け取りに拡張。`node scripts/check-errors.mjs` エラーなし → **全46テストグリーン**。一時 spec（確認後削除）で field 1,0 の `G` が wrapper 144×144px（=2×72セル）・24×24 canvas・JSエラーなしで描画されることを実ブラウザ確認。VRT 起動画面にゴーレムが映るため基準画像 `game-start.png` を更新
+
+**学び・気づき：**
+- **「占有範囲ヘルパーで一本化し、1×1 を箱が潰れた特殊ケースとして従来挙動に一致させる」のが安全**。大型ボス専用の判定関数を別建てすると 1×1 と分岐が二重化してデグレ源になる。`(w-1)/2` が 0 に潰れる設計にしたことで、既存の 0.6/0.9 マージンや剣の射影判定をそのまま温存できた（全42→46テストでデグレゼロ）
+- **剣の「中心への射影距離」判定は、大型敵だと中心が遠すぎて当たらない**。攻撃方向に沿った body 半サイズを「届く距離」に足し、直交方向の半サイズを「横の許容幅」に足すことで、向いている面の手前で当たるようになった
+- **大型敵の canvas サイズは CSS の `!important` と戦う必要がある**。`.char-abs canvas.sprite` が `width/height: var(--cell) !important` で 1セル固定なので、JS から `setProperty('width','100%','important')` で上書きして wrapper（w×h）追従にした
+- スプライトを 24×24 で作ると 12×16 の通常敵と同じ「1セル=12px 相当」の密度になり、2×2 セルにちょうど収まる
+
+**▶ 次やること：**
+- [ ] **Phase 3-2 の適用先をユーザーと決める**：(a) 試作ゴーレムを正式な敵/ボスとして残すか撤去するか、(b) 既存ボス（魔王 X×7 / ラスボス ザーネル Z）に size を付けるか、(c) 大型敵を複数種作るか。決まったら meta に `size` を足す＋ボス部屋レイアウトが 2×2 を収容できるか確認（ボス部屋は cols12×rows10 程度あるので余裕はある見込み）
+
+
+### 2026-06-16 — Phase 3-1（完了）：チャージ攻撃／剣ビーム（押下で剣・長押しでチャージ・離してビーム）
+
+**やったこと（設計→実装を一括）：**
+- **ユーザーと仕様を確定**：(1) 攻撃ボタンを**押した瞬間に必ず通常の剣**が出る、(2) **押しっぱなしでチャージ開始**、(3) **離した時のチャージ量で発射判定**＝1/4未満はビームなし・1/4以上は弱ビーム（剣ATK・非貫通）・**満タンは強ビーム（剣ATK×2・貫通）**、(4) **チャージ中は移動速度0.5倍**（移動はできる）
+- **`game/charge.js`（`createCharge` factory）を新設**：`_chargeStart`（押下した論理時刻）を持ち、`gameNow()` 基準でチャージ割合を計算（テストで決定的）。`startCharge`/`releaseCharge`/`cancelCharge`/`tickCharge`/`getMoveSpeedFactor` を公開。キーリピート対策として `startCharge` は既にチャージ中なら何もしない
+- **ビームは既存の投擲物システムに相乗り**：`fireBeam()` が `addProjectile({type:'beam', piercing:full, strong:full, atk})` を呼ぶ。`projectile.js` の `createProjEl` に beam の CSS 描画分岐（横/縦で width/height 入替・strong は太く明るく）を追加。`checkProjHit` に**貫通対応**を追加（`proj.piercing` のときは `_hitIds` Set で同一敵の二重ヒットを防ぎつつ消えずに飛び続ける）
+- **入力配線（`input.js`）**：攻撃キー（Space/z）keydown で `e.repeat` を除外して「剣＋startCharge」、keyup で `releaseCharge`。モバイル剣ボタンは `click` をやめ touchstart/end・mousedown/up/leave で press/release（`_swordHeld` で多重発火防止）。`processHeldKeys` の移動量に `getChargeMoveSpeedFactor()` を乗算してチャージ中減速
+- **`game.js` 配線**：addProjectile 設定後に charge factory を生成。`gameTick` に `tickCharge()`（オーラ更新）、`enterStage` に `cancelCharge()`（遷移でチャージ中断）を追加。テストフック（`callStartCharge`/`callReleaseCharge` → `__game.startCharge/releaseCharge`）も公開
+- **演出（`css/effects.css`）**：チャージオーラ `.charge-aura`（ready=青・full=金、pulse アニメ）＋ビーム本体 `.sword-beam`/`.beam-strong`。専用ドット絵スプライトは後回し（SPRITES_NEEDED.md の P3/FX1/FX2、既存スラッシュ演出と同じ CSS 代用方針）
+- **`game/constants.js`**：`CHARGE_FULL_MS=720`（6フレーム）・`CHARGE_MIN_RATIO=0.25`・`BEAM_SPEED=4.0`・`BEAM_STRONG_MULT=2`
+- **検証**：`tests/charge-beam.spec.js` 3本（1/4未満で離してもビーム無し・十分溜めて離すと beam が前方生成・満タンビームは貫通で hp=1 の敵2体を同時撃破）。`node scripts/check-errors.mjs` エラーなし → `npx playwright test` **全42テストグリーン**（VRT 含む＝起動画面に差分なし）。一時 spec で実機の aura ready/full クラス・beam DOM 生成・離脱後のオーラ消去・JSエラーなしを確認（確認後削除）
+
+**学び・気づき：**
+- **チャージ機構は論理時間 `gameNow()` に乗せると Phase 0-1 の `step()` で決定的にテストできる**。「押下時刻を記録し、離した時に経過時間で判定」だけなので状態は `_chargeStart` 1個で済む。飛行（`player.flying`）と同じく "1フラグ＋トグル" パターンの再利用
+- **ビームは新しい飛翔体を作らず既存 `addProjectile` に `type:'beam'` で乗せるのが最小差分**。トンネリング防止の区間補間・境界/壁判定・当たり判定がそのまま効く。新規対応は「描画分岐」と「貫通（`piercing`+`_hitIds`）」の2点だけ
+- **`piercing` フラグは弓矢で宣言済みだが checkProjHit で未実装だった**（矢は実際は最初の敵で消えていた）。今回ビームのために貫通を正しく実装したので、矢の `piercing:true` も今後活かせる（ただし矢の挙動は据え置き＝当面ビームのみ貫通）
+- **モバイルの「押しっぱなし」は `click` では取れない**。touchstart/touchend + mousedown/up/leave に変えて `_swordHeld` フラグで多重発火を防ぐ。touchcancel/mouseleave での release 漏れ対策も入れた
+
+**▶ 次やること：**
+- [ ] **Phase 3-2**：ボスの大型化（2×2セル以上・複数セル当たり判定）🧠 Opus。当たり判定を複数セルにまたがるよう拡張するのが難所のため設計から（現在の `dealDamageToEnemy`/剣・投擲物の当たり判定は単一セル中心前提）
+
 
 ### 2026-06-16 — Phase 2-4（完了）：フィールド接続の仕上げ＋到達性回帰テスト固定（Phase 2 全完了）
 
@@ -883,7 +996,7 @@
 
 
 | Phase 2 8ダンジョン | ✅ 完了 | 2-1〜2-4 全完了（8ダンジョン体制・ボス固有化・石碑&NPC噂話ヒント・フィールド接続仕上げ＋到達性回帰テスト）。全39テストグリーン |
-| Phase 3 アクション深化 | 🔲 未着手 | 次は 3-1（チャージ攻撃／剣ビーム）。設計未着手のため 🧠 Opus で設計から |
+| Phase 3 アクション深化 | 🚧 進行中 | 3-1（チャージ攻撃／剣ビーム）完了。3-2（大型ボス複数種）—岩のゴーレム(dungeon_1)・炎のサラマンドラ(dungeon_4)・氷のリヴァイアサン(dungeon_5)の3体完了。全46テストグリーン。dungeon_2/3/6/7 の固有化・3-3 弱点属性が残 |
 | Phase 4 サブアイテム | 🔲 未着手 | |
 | Phase 5 謎解き | 🔲 未着手 | |
 | Phase 6 世界観・NPC | 🔲 未着手 | |

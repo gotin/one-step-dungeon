@@ -61,6 +61,21 @@
     50%      { transform: translateY(-16%); }
 }
 
+/* Phase 3-2: 大型敵（岩のゴーレム等）の重々しい揺れ。
+   常に微妙に上下＋左右に揺れて「正面固定で止まって見える」のを防ぐ。
+   ※ 内側 canvas に当てる（wrapper は left/top を transition で動かすため）。 */
+.char-abs.large-enemy canvas.sprite {
+    transform-origin: 50% 100%;
+    animation: golem-lumber 1.1s ease-in-out infinite;
+}
+@keyframes golem-lumber {
+    0%   { transform: translateY(0)      rotate(-1.5deg) scaleY(1);    }
+    25%  { transform: translateY(-3%)    rotate(0deg)    scaleY(1.02); }
+    50%  { transform: translateY(0)      rotate(1.5deg)  scaleY(1);    }
+    75%  { transform: translateY(-3%)    rotate(0deg)    scaleY(1.02); }
+    100% { transform: translateY(0)      rotate(-1.5deg) scaleY(1);    }
+}
+
 .char-abs canvas.sprite {
     /* char-layer 内では absolute 配置ではなく static に戻す */
     position: static;

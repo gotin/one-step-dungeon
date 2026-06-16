@@ -6,6 +6,7 @@ import { ENEMY_META } from '../shared/enemies.js';
 import { makeSprite } from '../shared/sprites.js';
 import { playSound } from '../shared/sounds.js';
 import { MOVE_STEP } from './constants.js';
+import { enemyPointHit } from './hitbox.js';
 
 /**
  * createEnemyAi(deps) – factory
@@ -99,7 +100,16 @@ export function createEnemyAi(deps) {
 					const oldCv = el.querySelector('canvas.sprite');
 					if (oldCv) oldCv.remove();
 					const cv = makeSprite(e.sprite, e.pal, true, e.flipX);
-					if (cv) el.insertBefore(cv, el.firstChild);
+					if (cv) {
+						// 大型敵（w/h>1）は差し替え後も canvas を wrapper 全面に追従させる
+						// （CSS の 1セル !important を上書き。揺れアニメは wrapper の
+						//  large-enemy クラス経由で canvas に当たり続ける）
+						if ((e.w ?? 1) > 1 || (e.h ?? 1) > 1) {
+							cv.style.setProperty('width',  '100%', 'important');
+							cv.style.setProperty('height', '100%', 'important');
+						}
+						el.insertBefore(cv, el.firstChild);
+					}
 				}
 			}
 		}
@@ -524,7 +534,8 @@ export function createEnemyAi(deps) {
 		const player  = getPlayer();
 		const enemies = getEnemies();
 		for (const e of enemies) {
-			if (Math.abs(e.x - player.x) < 0.9 && Math.abs(e.y - player.y) < 0.9) {
+			// 占有範囲（AABB）ベース。1×1 敵では従来の 0.9 箱と一致する。
+			if (enemyPointHit(e, player.x, player.y, 0.9)) {
 				takeDamage(ENEMY_META[e.type]?.atk ?? 1);
 			}
 		}

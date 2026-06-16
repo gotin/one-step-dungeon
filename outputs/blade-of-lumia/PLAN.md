@@ -530,17 +530,34 @@ input.js     161 / passable.js 161 / conditions.js 117 / save.js 87 / main.js 78
 
 **目的：** 戦闘を「ただ殴るだけ」から「考えて戦う」ものにする。
 
-### 3-1. チャージ攻撃（剣ビーム）　🧠→⚡（チャージ機構の設計はOpus、実装はSonnet）
-- [ ] 攻撃ボタン長押しでエネルギーゲージが溜まる
-- [ ] ゲージ満タン（またはHP満タン時）で「剣ビーム」を発動
-  - 正面方向に貫通する光の剣撃を飛ばす
-  - 初代ゼルダの剣ビームと同様の爽快感
-- [ ] チャージ中のゲージ表示・エフェクト追加
+### 3-1. チャージ攻撃（剣ビーム）　🧠→⚡（チャージ機構の設計はOpus、実装はSonnet）　✅ 完了（2026-06-16）
+- [x] 攻撃ボタン長押しでエネルギーゲージが溜まる
+  - 押した瞬間に通常の剣が出る（既存 `swordAttack()`）→ 押しっぱなしでチャージ開始（論理時間 `gameNow` 基準）
+  - 離した時のチャージ量で発射を判定：**1/4未満=ビームなし／1/4以上=弱ビーム（剣ATK・非貫通）／満タン=強ビーム（剣ATK×2・貫通）**
+  - チャージ中は移動速度 0.5倍（`getChargeMoveSpeedFactor`）
+- [x] ゲージ満タンで「剣ビーム」を発動
+  - 正面方向に光の剣撃を飛ばす（満タンは貫通）。ビームは projectile.js の `addProjectile({type:'beam'})` に乗せ、`checkProjHit` に貫通対応（`piercing` + `_hitIds` で二重ヒット防止）を追加
+- [x] チャージ中のゲージ表示・エフェクト追加
+  - プレイヤー上の CSS オーラ（`.charge-aura` → ready/full クラス）＋ビーム本体（`.sword-beam` / `.beam-strong`）。専用ドット絵スプライトは後回し（既存スラッシュ演出と同じ CSS 代用方針）
+- ※ 実装：`game/constants.js`（CHARGE_* / BEAM_*）・`game/charge.js`（`createCharge` factory 新設）・`game/game.js`（factory 配線・gameTick で `tickCharge`・enterStage で `cancelCharge`）・`game/input.js`（攻撃キー/剣ボタンの press→剣+startCharge / release→releaseCharge・チャージ中の移動減速）・`game/projectile.js`（beam 描画＋貫通）・`game/css/effects.css`（オーラ・ビーム）・`game/main.js`（テストフック）。`tests/charge-beam.spec.js` 3本追加。**全42テストグリーン**（VRT 含む）
 
-### 3-2. ボスの大型化　🧠 Opus（複数セル当たり判定の設計が難所）
-- [ ] 2×2セルサイズ以上のボスを実装
-  - 当たり判定を複数セルにまたがるよう拡張
-  - スプライトも大型に対応
+### 3-2. ボスの大型化　🧠 Opus（複数セル当たり判定の設計が難所）　🚧 機構完成＋dungeon_1 ボス採用済・大型敵の量産が残（2026-06-16）
+- [x] 2×2セルサイズ以上のボスを実装（**汎用の size:{w,h} 機構**として実装。試作1体で動作確認済み）
+  - [x] 当たり判定を複数セルにまたがるよう拡張
+    - `ENEMY_META.size:{w,h}`（省略時 1×1）を追加 → `buildEnemies` が `e.w/e.h` を付与
+    - 共通ヘルパー `game/hitbox.js`（`enemyPointHit`/`enemyCenter`/`enemyW/H`）で占有範囲(AABB)判定に一般化。**1×1 では従来挙動と完全一致**（デグレなし）
+    - 適用：投擲物/ビーム `checkProjHit`・接触 `checkEnemyContact`・剣 `swordAttack`（body 半サイズぶんリーチ拡張）・敵移動 `isPassableForEnemy`（w×h 占有）・プレイヤー `isPassable`（大型敵セルをブロック）
+  - [x] スプライトも大型に対応（`render-chars.js` の `applyEnemySize` で wrapper を w×h セルに拡げ canvas を全面追従。24×24 `rockGolem` スプライト新規作成）
+  - [x] 試作：新規 2×2 敵 `ROCK_GOLEM('G')`「岩のゴーレム」を定義。**dungeon_1（最初のダンジョン）のボスに正式採用**（isBoss:true・hitAndAway AI・hp30/atk4/def2・近接剣 range2.2＋岩投げ・HP50%加速）。ボス部屋 dungeon_1 `2,0` の魔王 X を G に置換（開始村の試作 G は撤去）
+  - [x] **「動いてる感じ」を付与**：(1) hitAndAway AI で向き切替（`rockGolem{D/R/L/U}` エイリアス・左は flipX・差し替え時も大型 100% 維持）、(2) `board.css` の `golem-lumber` 重々しい揺れアニメ（`large-enemy` クラス）、(3) コア/眼の脈動
+  - [x] **欠片整合：汎用 `dropsTriforce` フラグ**で担保（`onBossDefeated` ドロップ＋`calcTotalTriforces` カウントを DARK_LORD 決め打ちから一般化）。合計必要数は9個のまま不変
+  - [x] テスト：`tests/large-enemy.spec.js` 3本＋全45テストグリーン（VRT 基準画像更新済み）。実機で dungeon_1 ボス部屋のゴーレム描画・ロック演出・AI 向き切替・エラーなしを確認
+  - [x] **大型敵を複数種つくる**（2体目・3体目）：
+    - **炎のサラマンドラ `FIRE_SALAMANDER('A')`**（dungeon_4 炎の神殿）：24×24スプライト（溶岩色・オレンジ炎系）・hp35/atk5/def2・hitAndAway・近接剣2.2＋炎石投げ・HP50%加速+攻撃頻度UP。向きエイリアス4つ
+    - **氷のリヴァイアサン `ICE_LEVIATHAN('L')`**（dungeon_5 氷の廃墟）：24×24スプライト（氷蒼・白氷核脈動）・hp40/atk4/def3・hitAndAway・咬みつき2.5＋氷礫・HP50%加速。向きエイリアス4つ
+    - dungeon_4/5 ボス部屋の `X` を `A`/`L` に置換。`dropsTriforce:true` で欠片整合は自動維持
+    - `tests/large-enemy.spec.js` に「2×2 注入でエラーなし・wrapper 大型サイズ」テスト追加。**全46テストグリーン**
+    - ※ 残り dungeon_2/3/6/7 の魔王 `X` の大型化・ダンジョンボス固有化は今後のセッションで継続。3-3（弱点属性）・3-4（スタン）など他タスクとの順序はユーザー判断
 
 ### 3-3. ボスの弱点属性　🧠→⚡（データ構造設計はOpus、各ボス設定はSonnet）
 - [ ] **`enemies.js` の `ENEMY_META` に `weakness` フィールドを新設**（現状は未定義）
@@ -681,6 +698,16 @@ input.js     161 / passable.js 161 / conditions.js 117 / save.js 87 / main.js 78
 - [ ] BGM連動：ボス部屋BGMのテンポアップ
 - [ ] タッチジェスチャーの改善
 
+### 8-4. ゲーム全体のバランス調整（プレイヤー強さ vs 敵強さ）　🧠 Opus（数値バランスの全体判断）
+> **背景：** 各機能を個別に実装してきたため、プレイヤーが強くなりすぎている箇所がある。
+> **ゲームが一通り完成した段階（コンテンツが出揃ってから）にまとめて調整する。**
+> 個別に都度いじると全体の難易度感がブレるため、最後にプレイ通しで一括チューニングするのが目的。
+- [ ] **既知の要調整点：チャージ攻撃（剣ビーム）が強力すぎる**（Phase 3-1 で実装）。雑魚も比較的簡単に倒せてしまうので、威力・チャージ時間・貫通条件・クールダウン等を見直す
+  - 調整候補：満タンビームの倍率（`BEAM_STRONG_MULT`）/ チャージ所要時間（`CHARGE_FULL_MS`）/ 発射のクールダウン追加 / ビームに弱点属性（Phase 3-3）でない敵には等倍 など
+- [ ] プレイヤー側の強化要素（剣ランク・ビーム・サブアイテム・二周目2倍）と、敵・ボスのHP/ATK/出現数を**通しプレイで突き合わせて調整**
+- [ ] 各ダンジョンの難易度カーブ（序盤→終盤）が緩やかに上がっているか確認・調整
+- [ ] ※ 数値は `shared/enemies.js`（ENEMY_META）・`shared/items.js`・`game/constants.js`（CHARGE_*/BEAM_*/SWORD_*）に集約されているので、ここを中心に調整する
+
 ---
 
 ## 実装優先順位まとめ
@@ -734,7 +761,7 @@ Step 5: 必要になったら（Phase 0後半）
 | ラスボス ザーネル（最終ボス・撃破でエンディング） | ✅ 完了（dark_tower ボス部屋に `Z` 配置・isFinalBoss 撃破でエンディング発火を実ブラウザ確認） |
 | 翼の羽衣による飛行移動 | ✅ 完了（1-5：`player.flying`・F/🪽 トグル・自然物（空/水/木/茂み/柵）飛び越え・山/壁/家/門は不可・地上のみ着陸・自動着陸・場外クランプ） |
 | 老賢者のストーリー導入 | ✅ 完了（Phase 1-2：最初の村に老賢者NPC配置・ストーリー導入台詞） |
-| チャージ攻撃（剣ビーム） | ⬜ 未実装 |
+| チャージ攻撃（剣ビーム） | ✅ 完了（Phase 3-1：押下で剣＋長押しチャージ→離してビーム。1/4以上=弱ビーム/満タン=貫通強ビーム。チャージ中は移動半速。charge.js + CSS オーラ。42テストグリーン） |
 | はしご・笛・ロウソク | ⬜ 未実装 |
 | 色スイッチ | ⬜ 未実装 |
 | 剣の複数ランク | ⬜ 未実装 |

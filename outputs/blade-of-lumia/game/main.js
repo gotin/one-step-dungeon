@@ -19,6 +19,8 @@ import {
 	redrawAnimSprites,
 	startEnding,
 	callToggleFlight,
+	callStartCharge,
+	callReleaseCharge,
 } from './game.js';
 
 // ── アニメーション ────────────────────────────────────────────
@@ -62,6 +64,9 @@ window.__game = {
 	},
 	movePlayer: (dir) => movePlayer(dir),
 	swordAttack: () => swordAttack(),
+	// チャージ攻撃（剣ビーム）テスト用（Phase 3-1）
+	startCharge: () => callStartCharge(),
+	releaseCharge: () => callReleaseCharge(),
 	useSubItem: () => useSubItem(),
 	toggleFlight: () => callToggleFlight(),
 	// 投擲物の現在状態をスナップショットとして返す（テスト用）
@@ -76,5 +81,6 @@ window.__game = {
 	// 敵のスナップショットを返す（テスト用）
 	getEnemies: () => getEnemiesSnapshot(),
 	// テスト用に任意の座標へ擬似敵を注入する（hp 減少で命中確認）
-	injectEnemy: (x, y, hp) => injectTestEnemy(x, y, hp),
+	// w/h を渡せば大型敵（占有セル）を注入できる（Phase 3-2）
+	injectEnemy: (x, y, hp, w, h) => injectTestEnemy(x, y, hp, w, h),
 };

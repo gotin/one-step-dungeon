@@ -165,6 +165,81 @@ export const ENEMY_META = {
 			{ hpThreshold: 0.33, speedMultiplier: 1.6, attackCooldownMultiplier: 0.55 },
 		],
 	},
+	// ── 炎のサラマンドラ（Phase 3-2）：2×2 大型ボス・dungeon_4（炎の神殿）─────
+	// 炎をまとった巨大トカゲ型の守護者。体全体が溶岩のように輝き、
+	// 尻尾の一撃と炎の石投げで戦う。hitAndAway でジグザグに接近する。
+	// dropsTriforce:true で撃破時に星の欠片を落とす。
+	[TILE.FIRE_SALAMANDER]: {
+		name: '炎のサラマンドラ',
+		hp: 35, atk: 5, def: 2, exp: 50,
+		speed: ENEMY_SPEED_SLOW * 1.2,   // ゴーレムより少し速い
+		sprite: 'fireSalamander',
+		pal:    'fireSalamander',
+		size:   { w: 2, h: 2 },
+		isBoss: true,
+		dropsTriforce: true,
+		hitAndAway: true,
+		attacks: [
+			{ type: 'sword', range: 2.2, cooldown: 800 },   // 尻尾なぎ払い
+			{ type: 'stone', range: 7, cooldown: 2200, projectileSpeed: 1.2 }, // 炎の石
+		],
+		attack: { type: 'sword', range: 2.2, cooldown: 800 },
+		initialModeWeights: { flank: 0.3, direct: 1.3, wander: 0.3, strafe: 0.1 },
+		phases: [
+			{ hpThreshold: 0.5, speedMultiplier: 1.5, attackCooldownMultiplier: 0.8 },
+		],
+	},
+	// ── 氷のリヴァイアサン（Phase 3-2）：2×2 大型ボス・dungeon_5（氷の廃墟）──
+	// 凍てつく海竜。全身が霜に覆われた巨体で、氷の息と咬みつきで戦う。
+	// 動きは遅いが防御力が高く、遠距離からの石投げが主な攻撃手段。
+	// dropsTriforce:true で撃破時に星の欠片を落とす。
+	[TILE.ICE_LEVIATHAN]: {
+		name: '氷のリヴァイアサン',
+		hp: 40, atk: 4, def: 3, exp: 55,
+		speed: ENEMY_SPEED_SLOW,          // 重厚で鈍足
+		sprite: 'iceLeviathan',
+		pal:    'iceLeviathan',
+		size:   { w: 2, h: 2 },
+		isBoss: true,
+		dropsTriforce: true,
+		hitAndAway: true,
+		attacks: [
+			{ type: 'sword', range: 2.5, cooldown: 1100 },  // 咬みつき（リーチが長い）
+			{ type: 'stone', range: 8, cooldown: 2800, projectileSpeed: 0.9 }, // 氷の礫
+		],
+		attack: { type: 'sword', range: 2.5, cooldown: 1100 },
+		initialModeWeights: { flank: 0.2, direct: 1.6, wander: 0.2, strafe: 0 },
+		phases: [
+			{ hpThreshold: 0.5, speedMultiplier: 1.3, attackCooldownMultiplier: 0.75 },
+		],
+	},
+	// ── 岩のゴーレム（Phase 3-2）：2×2 大型ボス ──────────────────
+	// size:{w,h} を持つ最初の大型敵。dungeon_1（最初のダンジョン）の
+	// ボスとして採用。hitAndAway AI で接近戦闘し、向きを変えながら戦う
+	// （正面固定にならないよう左右反転＋CSS の巨体揺れアニメを併用）。
+	// dropsTriforce: true で撃破時に星の欠片を落とす（DARK_LORD と同等）。
+	// スプライトは 2×2 セル相当の 24×24（向きエイリアス rockGolemR/L/D/U）。
+	[TILE.ROCK_GOLEM]: {
+		name: '岩のゴーレム',
+		hp: 30, atk: 4, def: 2, exp: 40,
+		speed: ENEMY_SPEED_SLOW,   // 大型なので鈍重
+		sprite: 'rockGolem',
+		pal:    'rockGolem',
+		size:   { w: 2, h: 2 },    // ← 2×2 セルを占有
+		isBoss: true,
+		dropsTriforce: true,       // 撃破で星の欠片を落とす（boss.js が参照）
+		hitAndAway: true,          // 接近→攻撃→後退（向きも切り替わる）
+		attacks: [
+			{ type: 'sword', range: 2.2, cooldown: 900 },   // 大型なのでリーチ長め
+			{ type: 'stone', range: 6, cooldown: 2600, projectileSpeed: 1.0 }, // 岩투げ
+		],
+		attack: { type: 'sword', range: 2.2, cooldown: 900 },
+		// 直進寄り（大型は回り込みより正面から押す）
+		initialModeWeights: { flank: 0.2, direct: 1.4, wander: 0.4, strafe: 0 },
+		phases: [
+			{ hpThreshold: 0.5, speedMultiplier: 1.4 }, // HP50%以下で加速
+		],
+	},
 };
 
 // 投擲物のスプライト対応表
