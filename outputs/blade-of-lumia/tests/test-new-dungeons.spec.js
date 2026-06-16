@@ -43,4 +43,28 @@ test.describe('Blade of Lumia – 新規ダンジョン接続', () => {
     await expect(page.locator('#hud-stage-label')).toContainText('dungeon_5', { timeout: 3000 });
     expect(errors).toHaveLength(0);
   });
+
+  test('dungeon_3 エントリ(0,0)右端からボス部屋(1,0)へ遷移できる', async ({ page }) => {
+    const errors = [];
+    page.on('pageerror', e => errors.push(e.message));
+
+    // dungeon_3 entry(0,0): row=4, col=9（右端開口の手前）からスポーン
+    const url = `${GAME}?fromEditor=1&layer=dungeon_3&stage=0%2C0&row=4&col=9`;
+    await page.goto(url);
+    await waitForBoard(page);
+
+    await expect(page.locator('#hud-stage-label')).toContainText('0,0');
+
+    // 右端まで繰り返し right を押して遷移を待つ
+    for (let i = 0; i < 8; i++) {
+      await page.evaluate(() => { window.__game.movePlayer('right'); window.__game.step(2); });
+    }
+
+    // 遷移は setTimeout(100ms) で非同期なので waitForFunction で待つ
+    await page.waitForFunction(
+      () => window.__game.getState().stageKey === '1,0',
+      null, { timeout: 3000 }
+    );
+    expect(errors).toHaveLength(0);
+  });
 });
