@@ -544,9 +544,11 @@ export function createEnemyAi(deps) {
 	// ── 敵ループ（毎 tick 呼ぶ） ──────────────────────────────
 	function enemyTick() {
 		const enemies = getEnemies();
+		const now = gameNow();
 		for (const e of enemies) {
 			const meta = ENEMY_META[e.type];
 			if (!meta) continue;
+			if (e.stunUntil && now < e.stunUntil) continue;  // スタン中は移動・攻撃スキップ
 			if (meta.hitAndAway) {
 				bossTickHitAndAway(e, meta);
 			} else {

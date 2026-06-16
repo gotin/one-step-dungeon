@@ -572,8 +572,8 @@ input.js     161 / passable.js 161 / conditions.js 117 / save.js 87 / main.js 78
 - ※ 実装：`shared/enemies.js`（weakness フィールド＋8ボス設定）・`game/combat.js`（`dealDamageToEnemy(e,dmg,atkType)` 弱点判定＋`showWeaknessBurst`）・`game/projectile.js`（proj.type/bomb を atkType として渡す）・`game/game.js`（wrapper に atkType・`dealDamageToEnemyById`/`injectTestEnemy` の type 引数）・`game/main.js`（`__game.dealDamage`/`injectEnemy` の type）・`game/css/effects.css`（weak-dmg/weak-burst）。`tests/weakness.spec.js` 4本追加。**全50テストグリーン**
 
 ### 3-4. ブーメランのスタン効果　⚡ Sonnet（既存処理への追加）
-- [ ] ブーメランが敵に当たった時、一定時間スタン（動けなくなる）
-- [ ] スタン中は特別なダメージが入る（戦略性を高める）
+- [x] ブーメランが敵に当たった時、一定時間スタン（動けなくなる）
+- [x] スタン中は ⭐ エフェクト表示・敵の移動・攻撃をスキップ（BOOMERANG_STUN_MS=1500ms）
 
 ---
 

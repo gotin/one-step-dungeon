@@ -16,6 +16,7 @@ import {
 	getEnemiesSnapshot,
 	injectTestEnemy,
 	dealDamageToEnemyById,
+	stunEnemyById,
 	startAnimLoop,
 	redrawAnimSprites,
 	startEnding,
@@ -87,4 +88,6 @@ window.__game = {
 	injectEnemy: (x, y, hp, w, h, type) => injectTestEnemy(x, y, hp, w, h, type),
 	// 指定 id の敵に直接ダメージ（弱点属性 Phase 3-3 の検証用）
 	dealDamage: (id, dmg, atkType) => dealDamageToEnemyById(id, dmg, atkType),
+	// 指定 id の敵をスタン（ブーメランスタン Phase 3-4 の検証用）
+	stunEnemy: (id, ms) => stunEnemyById(id, ms),
 };

@@ -57,3 +57,6 @@ export const CHARGE_FULL_MS   = 720;   // 満タンまでの所要時間（6 フ
 export const CHARGE_MIN_RATIO = 0.25;  // ビームが撃てる最低チャージ割合（1/4）
 export const BEAM_SPEED       = 4.0;   // ビーム飛翔速度（セル/tick 換算前）
 export const BEAM_STRONG_MULT = 2;     // 満タンビームの威力倍率（剣ATK に対して）
+
+// ── Phase 3-4: ブーメランスタン ──────────────────────────────
+export const BOOMERANG_STUN_MS = 1500; // スタン持続時間（ms）

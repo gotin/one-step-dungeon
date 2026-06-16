@@ -8,8 +8,8 @@ import { ENEMY_META } from '../shared/enemies.js';
 import { ITEM_META } from '../shared/items.js';
 import { makeSprite } from '../shared/sprites.js';
 import { playSound } from '../shared/sounds.js';
-import { MOVE_STEP } from './constants.js';
-import { enemyPointHit } from './hitbox.js';
+import { MOVE_STEP, BOOMERANG_STUN_MS } from './constants.js';
+import { enemyPointHit, enemyCenter } from './hitbox.js';
 
 /**
  * createProjectile(deps) – factory
@@ -104,6 +104,21 @@ export function createProjectile(deps) {
 		el.textContent = '✦';
 		charLayerEl.appendChild(el);
 		setTimeout(() => el.remove(), 380);
+	}
+
+	// ブーメランスタンエフェクト：敵中心に ⭐ を浮かばせる
+	function showStunEffect(e) {
+		const charLayerEl = getCharLayerEl();
+		if (!charLayerEl) return;
+		const cellPx = getCellPx();
+		const { cx, cy } = enemyCenter(e);
+		const el = document.createElement('div');
+		el.className = 'stun-burst';
+		el.textContent = '⭐';
+		el.style.left = `${cx * cellPx}px`;
+		el.style.top  = `${cy * cellPx}px`;
+		charLayerEl.appendChild(el);
+		setTimeout(() => el.remove(), BOOMERANG_STUN_MS);
 	}
 
 	// ── 境界・通行判定 ────────────────────────────────────────
@@ -208,6 +223,8 @@ export function createProjectile(deps) {
 						removeProjEl(proj);
 						_projectiles = _projectiles.filter(p => p !== proj);
 					} else {
+						e.stunUntil = gameNow() + BOOMERANG_STUN_MS;
+						showStunEffect(e);
 						proj.returning = true;  // ブーメランは折り返す
 					}
 					return;

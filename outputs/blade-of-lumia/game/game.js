@@ -1332,6 +1332,7 @@ export function getEnemiesSnapshot() {
 		id: e.id, type: e.type,
 		x: e.x, y: e.y,
 		hp: e.hp, maxHp: e.maxHp,
+		stunUntil: e.stunUntil ?? null,
 	}));
 }
 
@@ -1357,4 +1358,10 @@ export function injectTestEnemy(x, y, hp = 5, w = 1, h = 1, type = 'E') {
 export function dealDamageToEnemyById(id, dmg, atkType) {
 	const e = enemies.find(x => x.id === id);
 	if (e) dealDamageToEnemy(e, dmg, atkType);
+}
+
+// テスト用：指定 id の敵をスタンさせる（ブーメランスタン Phase 3-4 の検証用）。
+export function stunEnemyById(id, durationMs) {
+	const e = enemies.find(x => x.id === id);
+	if (e) e.stunUntil = gameTime + durationMs;
 }

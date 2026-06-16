@@ -278,6 +278,33 @@
     animation: blink-anim 0.3s infinite;
 }
 
+/* ブーメランスタン（Phase 3-4）：スタン中に ⭐ が点滅して浮き上がる */
+.stun-burst {
+    position: absolute;
+    transform: translate(-50%, -100%);
+    pointer-events: none;
+    z-index: 29;
+    font-size: 18px;
+    line-height: 1;
+    animation: stun-burst-anim 1.5s ease-out forwards;
+}
+
+@keyframes stun-burst-anim {
+    0% {
+        opacity: 1;
+        transform: translate(-50%, -100%) translateY(0);
+    }
+
+    60% {
+        opacity: 1;
+    }
+
+    100% {
+        opacity: 0;
+        transform: translate(-50%, -100%) translateY(-12px);
+    }
+}
+
 /* ── 爆発エフェクト ─────────────────────────────────────── */
 @keyframes explosion-anim {
     0% {

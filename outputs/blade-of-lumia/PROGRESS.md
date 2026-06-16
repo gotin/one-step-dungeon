@@ -13,9 +13,9 @@
 
 ## 📍 現在地（常に最新に保つ）
 
-- **進行中フェーズ：** **Phase 3（アクション・戦闘の深化）**
-- **進行中タスク：** **Phase 3-3 完了**。8大型ボスに弱点属性を設定済み。残るは **Phase 3-4（ブーメランスタン）** で Phase 3 完了。
-- **直近の状態：** `ENEMY_META.weakness:{type,multiplier}` を新設。`dealDamageToEnemy(e,dmg,atkType)` に攻撃種別を渡し、弱点一致で倍率＋専用エフェクト（WEAK!オレンジ文字・放射状フラッシュ）＋SE。8ボスに弓矢/爆弾/ビーム/ブーメランの弱点をバラけて設定。**全50テストグリーン**（既存46＋新4）。
+- **進行中フェーズ：** **Phase 3（アクション・戦闘の深化）** → **✅ Phase 3 完了**
+- **進行中タスク：** **Phase 3-4 完了**。ブーメランスタンを実装。**Phase 3 全完了**。
+- **直近の状態：** ブーメラン命中で `e.stunUntil = gameNow() + 1500ms` をセット。`enemyTick` でスタン中は移動・攻撃をスキップ。⭐ エフェクトをスタン継続中表示。**全53テストグリーン**（既存50＋新3）。
 - **⚠️ 保留（後日対応）：** ビーム攻撃が強力すぎる → Phase 8-4 で通しプレイ時に一括調整。
 
 
@@ -30,6 +30,27 @@
 ## セッションログ
 
 <!-- 新しいエントリを上に追加していく（最新が一番上） -->
+
+### 2026-06-16 — Phase 3-4（完了）：ブーメランスタン（Phase 3 全完了）
+
+**やったこと：**
+- **`game/constants.js`**：`BOOMERANG_STUN_MS = 1500`（スタン持続時間）を追加
+- **`game/projectile.js`**：`enemyCenter` を `hitbox.js` から import。ブーメランヒット時（`proj.type === 'boomerang'` ブランチ）に `e.stunUntil = gameNow() + BOOMERANG_STUN_MS` をセット＋`showStunEffect(e)` を呼ぶ。`showStunEffect` は敵中心に ⭐ テキストを `BOOMERANG_STUN_MS` ms 間表示
+- **`game/enemy-ai.js`**：`enemyTick` に `if (e.stunUntil && now < e.stunUntil) continue;` を追加。スタン中は移動・攻撃を完全スキップ
+- **`game/css/effects.css`**：`.stun-burst`（⭐ がフロート上昇するアニメ、duration はスタン継続中）を追加
+- **`game/game.js`**：`getEnemiesSnapshot` に `stunUntil` フィールドを追加。`stunEnemyById(id, durationMs)` を新設・export（テスト用）
+- **`game/main.js`**：`stunEnemyById` を import し `__game.stunEnemy(id, ms)` として公開
+- **`tests/boomerang-stun.spec.js`** 3本：(1) スタン後 `stunUntil` が gameTime より大きい、(2) スタン中は step を踏んでも座標変化なし、(3) スタン期間過ぎると `stunUntil < gameTime`（期限切れ確認）
+
+**学び・気づき：**
+- **`injectTestEnemy` の敵は `speed:0` 固定**のため「スタン切れ後に実際に動く」はAI由来のspeedが適用されない。スタン期限切れの確認は「`stunUntil < gameTime`」というロジック状態で確認する方が決定論的
+- **`getEnemiesSnapshot` はテスト用APIであり、必要な新フィールドを都度追加する**のが正しい運用（スナップショットに `stunUntil` がなかったため最初のテストが `null` を返した）
+- **スタン中に ⭐ を表示するエフェクトは `showWeaknessBurst` と同じ「charLayerEl にdiv追加→setTimeout削除」パターンで実装**できる。duration=BOOMERANG_STUN_MS に合わせると「⭐が消えたらスタン切れ」という視覚フィードバックになる
+
+**▶ 次やること：**
+- [ ] **Phase 4（サブアイテム拡充）** へ。Phase 3 は 3-1〜3-4 全完了。推奨モデルは PLAN.md の Phase 4 タスク見出しを参照
+
+---
 
 ### 2026-06-16 — Phase 3-3（完了）：ボスの弱点属性（攻撃種別ごとの倍率ダメージ）
 
@@ -1055,7 +1076,7 @@
 
 
 | Phase 2 8ダンジョン | ✅ 完了 | 2-1〜2-4 全完了（8ダンジョン体制・ボス固有化・石碑&NPC噂話ヒント・フィールド接続仕上げ＋到達性回帰テスト）。全39テストグリーン |
-| Phase 3 アクション深化 | 🚧 進行中 | 3-1（チャージ攻撃／剣ビーム）✅。3-2（大型ボス複数種）✅ 全8ダンジョン固有大型ボス。3-3（弱点属性）✅ 8ボスに弓矢/爆弾/ビーム/ブーメランの弱点＋倍率ダメージ・WEAK演出。全50テストグリーン。残るは 3-4 ブーメランスタンのみ |
+| Phase 3 アクション深化 | ✅ 完了 | 3-1〜3-4 全完了。チャージ剣ビーム・大型ボス8種・弱点属性・ブーメランスタン。全53テストグリーン |
 | Phase 4 サブアイテム | 🔲 未着手 | |
 | Phase 5 謎解き | 🔲 未着手 | |
 | Phase 6 世界観・NPC | 🔲 未着手 | |
