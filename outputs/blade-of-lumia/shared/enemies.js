@@ -14,6 +14,12 @@ export const ENEMY_SPEED_FAST   = 1.0;  // 高速敵
 
 // ── 敵パラメータ ──────────────────────────────────────────────
 // attack.type: 'charge' | 'spear' | 'stone' | 'sword'
+//
+// weakness（Phase 3-3・任意）: { type, multiplier }
+//   type … 弱点となる攻撃種別 'sword' | 'beam' | 'arrow' | 'boomerang' | 'bomb'
+//   multiplier … その攻撃でのダメージ倍率（def 適用前の素ダメージに掛ける）
+//   弱点ヒット時は combat.js の dealDamageToEnemy が倍率＋専用エフェクト/SE を出す。
+//   未定義なら弱点なし＝全攻撃が等倍（後方互換）。
 export const ENEMY_META = {
 	[TILE.PATROL]: {
 		name: 'パトロール',
@@ -178,6 +184,7 @@ export const ENEMY_META = {
 		size:   { w: 2, h: 2 },
 		isBoss: true,
 		dropsTriforce: true,
+		weakness: { type: 'arrow', multiplier: 2 },  // 矢で炎を射抜く
 		hitAndAway: true,
 		attacks: [
 			{ type: 'sword', range: 2.2, cooldown: 800 },   // 尻尾なぎ払い
@@ -202,6 +209,7 @@ export const ENEMY_META = {
 		size:   { w: 2, h: 2 },
 		isBoss: true,
 		dropsTriforce: true,
+		weakness: { type: 'bomb', multiplier: 3 },   // 爆発の熱で氷を砕く
 		hitAndAway: true,
 		attacks: [
 			{ type: 'sword', range: 2.5, cooldown: 1100 },  // 咬みつき（リーチが長い）
@@ -211,6 +219,102 @@ export const ENEMY_META = {
 		initialModeWeights: { flank: 0.2, direct: 1.6, wander: 0.2, strafe: 0 },
 		phases: [
 			{ hpThreshold: 0.5, speedMultiplier: 1.3, attackCooldownMultiplier: 0.75 },
+		],
+	},
+	// ── 砂嵐の蠍王（Phase 3-2）：2×2 大型ボス・dungeon_2（砂漠の神殿）──
+	// 砂漠の守護者。8本の鉗肢と曲がった毒針を持つ巨大蠍。
+	// 打撃と毒針投げで戦い、HP半減で猛スピードで突進してくる。
+	[TILE.SAND_SCORPION]: {
+		name: '砂嵐の蠍王',
+		hp: 32, atk: 5, def: 1, exp: 45,
+		speed: ENEMY_SPEED_SLOW * 1.1,
+		sprite: 'sandScorpion',
+		pal:    'sandScorpion',
+		size:   { w: 2, h: 2 },
+		isBoss: true,
+		dropsTriforce: true,
+		weakness: { type: 'boomerang', multiplier: 3 },  // 旋回刃で鉗肢を断つ
+		hitAndAway: true,
+		attacks: [
+			{ type: 'sword', range: 2.3, cooldown: 750 },   // 鉗肢なぎ払い
+			{ type: 'stone', range: 7, cooldown: 2400, projectileSpeed: 1.3 }, // 毒針投げ
+		],
+		attack: { type: 'sword', range: 2.3, cooldown: 750 },
+		initialModeWeights: { flank: 0.4, direct: 1.2, wander: 0.2, strafe: 0.2 },
+		phases: [
+			{ hpThreshold: 0.5, speedMultiplier: 1.6, attackCooldownMultiplier: 0.75 },
+		],
+	},
+	// ── 深海の海蛇（Phase 3-2）：2×2 大型ボス・dungeon_3（水の迷宮）──
+	// 深淵から召喚された巨大海蛇。長い胴体を波打たせて接近し、
+	// 咬みつきと水球投げで圧倒する。鱗の防御力が高い。
+	[TILE.SEA_SERPENT]: {
+		name: '深海の海蛇',
+		hp: 38, atk: 4, def: 3, exp: 52,
+		speed: ENEMY_SPEED_SLOW * 0.95,
+		sprite: 'seaSerpent',
+		pal:    'seaSerpent',
+		size:   { w: 2, h: 2 },
+		isBoss: true,
+		dropsTriforce: true,
+		weakness: { type: 'beam', multiplier: 2 },   // 光の刃で鱗を貫く
+		hitAndAway: true,
+		attacks: [
+			{ type: 'sword', range: 2.6, cooldown: 1000 },  // 咬みつき（リーチ長）
+			{ type: 'stone', range: 8, cooldown: 2600, projectileSpeed: 1.0 }, // 水球
+		],
+		attack: { type: 'sword', range: 2.6, cooldown: 1000 },
+		initialModeWeights: { flank: 0.2, direct: 1.5, wander: 0.3, strafe: 0 },
+		phases: [
+			{ hpThreshold: 0.5, speedMultiplier: 1.4, attackCooldownMultiplier: 0.7 },
+		],
+	},
+	// ── 古森の巨人（Phase 3-2）：2×2 大型ボス・dungeon_6（森の聖域）──
+	// 大樹の精霊が宿った樹人の守護者。巨木の腕で叩きつけ、
+	// 木の実や胞子弾を飛ばして広範囲を制圧する。
+	[TILE.FOREST_GIANT]: {
+		name: '古森の巨人',
+		hp: 42, atk: 5, def: 2, exp: 58,
+		speed: ENEMY_SPEED_SLOW * 0.9,
+		sprite: 'forestGiant',
+		pal:    'forestGiant',
+		size:   { w: 2, h: 2 },
+		isBoss: true,
+		dropsTriforce: true,
+		weakness: { type: 'bomb', multiplier: 2 },   // 爆炎で樹皮を焼き払う
+		hitAndAway: true,
+		attacks: [
+			{ type: 'sword', range: 2.4, cooldown: 950 },   // 枝腕なぎ払い
+			{ type: 'stone', range: 6, cooldown: 2200, projectileSpeed: 0.9 }, // 木の実投げ
+		],
+		attack: { type: 'sword', range: 2.4, cooldown: 950 },
+		initialModeWeights: { flank: 0.15, direct: 1.7, wander: 0.15, strafe: 0 },
+		phases: [
+			{ hpThreshold: 0.5, speedMultiplier: 1.3, attackCooldownMultiplier: 0.8 },
+		],
+	},
+	// ── 嵐の鷲王（Phase 3-2）：2×2 大型ボス・dungeon_7（空中の遺跡）──
+	// 嵐を纏う翼王。翼から放つ雷撃と突進で戦場を制圧する。
+	// 素早く動き回り、HP半減後は雷撃の頻度が大幅に増加する。
+	[TILE.STORM_EAGLE]: {
+		name: '嵐の鷲王',
+		hp: 36, atk: 6, def: 1, exp: 55,
+		speed: ENEMY_SPEED_SLOW * 1.3,   // 鷲なので速め
+		sprite: 'stormEagle',
+		pal:    'stormEagle',
+		size:   { w: 2, h: 2 },
+		isBoss: true,
+		dropsTriforce: true,
+		weakness: { type: 'arrow', multiplier: 2 },  // 矢で翼を射落とす
+		hitAndAway: true,
+		attacks: [
+			{ type: 'sword', range: 2.1, cooldown: 700 },   // 鉤爪（速い）
+			{ type: 'stone', range: 7, cooldown: 2000, projectileSpeed: 1.4 }, // 雷撃弾
+		],
+		attack: { type: 'sword', range: 2.1, cooldown: 700 },
+		initialModeWeights: { flank: 0.5, direct: 1.0, wander: 0.3, strafe: 0.2 },
+		phases: [
+			{ hpThreshold: 0.5, speedMultiplier: 1.7, attackCooldownMultiplier: 0.65 },
 		],
 	},
 	// ── 岩のゴーレム（Phase 3-2）：2×2 大型ボス ──────────────────
@@ -228,6 +332,7 @@ export const ENEMY_META = {
 		size:   { w: 2, h: 2 },    // ← 2×2 セルを占有
 		isBoss: true,
 		dropsTriforce: true,       // 撃破で星の欠片を落とす（boss.js が参照）
+		weakness: { type: 'bomb', multiplier: 3 },  // 爆弾で岩体を砕く
 		hitAndAway: true,          // 接近→攻撃→後退（向きも切り替わる）
 		attacks: [
 			{ type: 'sword', range: 2.2, cooldown: 900 },   // 大型なのでリーチ長め

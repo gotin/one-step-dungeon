@@ -15,6 +15,7 @@ import {
 	getInputModule,
 	getEnemiesSnapshot,
 	injectTestEnemy,
+	dealDamageToEnemyById,
 	startAnimLoop,
 	redrawAnimSprites,
 	startEnding,
@@ -82,5 +83,8 @@ window.__game = {
 	getEnemies: () => getEnemiesSnapshot(),
 	// テスト用に任意の座標へ擬似敵を注入する（hp 減少で命中確認）
 	// w/h を渡せば大型敵（占有セル）を注入できる（Phase 3-2）
-	injectEnemy: (x, y, hp, w, h) => injectTestEnemy(x, y, hp, w, h),
+	// type を渡せば実タイプの敵を注入できる（弱点属性 Phase 3-3）
+	injectEnemy: (x, y, hp, w, h, type) => injectTestEnemy(x, y, hp, w, h, type),
+	// 指定 id の敵に直接ダメージ（弱点属性 Phase 3-3 の検証用）
+	dealDamage: (id, dmg, atkType) => dealDamageToEnemyById(id, dmg, atkType),
 };

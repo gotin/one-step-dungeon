@@ -218,6 +218,14 @@
     color: #ff4444;
 }
 
+/* 弱点ヒット（Phase 3-3）：大きく目立つオレンジ文字 */
+.weak-dmg {
+    color: #ff8c1a;
+    font-size: 18px;
+    text-shadow: 0 0 6px #ffd24a, 0 0 2px #fff;
+    letter-spacing: 0.5px;
+}
+
 @keyframes popup-anim {
     0% {
         opacity: 1;
@@ -227,6 +235,31 @@
     100% {
         opacity: 0;
         transform: translateX(-50%) translateY(-20px);
+    }
+}
+
+/* 弱点ヒットの閃光（Phase 3-3）：敵中心に走る放射状フラッシュ */
+.weak-burst {
+    position: absolute;
+    width: 48px;
+    height: 48px;
+    transform: translate(-50%, -50%);
+    border-radius: 50%;
+    pointer-events: none;
+    z-index: 28;
+    background: radial-gradient(circle, rgba(255,210,74,0.9) 0%, rgba(255,140,26,0.6) 40%, rgba(255,140,26,0) 70%);
+    animation: weak-burst-anim 0.5s ease-out forwards;
+}
+
+@keyframes weak-burst-anim {
+    0% {
+        opacity: 1;
+        transform: translate(-50%, -50%) scale(0.3);
+    }
+
+    100% {
+        opacity: 0;
+        transform: translate(-50%, -50%) scale(1.6);
     }
 }
 

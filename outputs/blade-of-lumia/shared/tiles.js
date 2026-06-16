@@ -17,8 +17,12 @@ export const TILE = {
 	DARK_LORD: 'X',  // 魔王（ダンジョンボス・星の欠片を落とす）
 	ZARNEL:    'Z',  // ザーネル（ラスボス・撃破でエンディング。Phase 1-3）
 	ROCK_GOLEM:   'G',  // 岩のゴーレム（2×2 大型ボス・dungeon_1）
+	SAND_SCORPION:'N',  // 砂嵐の蠍王（2×2 大型ボス・dungeon_2）
+	SEA_SERPENT:  'J',  // 深海の海蛇（2×2 大型ボス・dungeon_3）
 	FIRE_SALAMANDER:'A',  // 炎のサラマンドラ（2×2 大型ボス・dungeon_4）
 	ICE_LEVIATHAN:'L',  // 氷のリヴァイアサン（2×2 大型ボス・dungeon_5）
+	FOREST_GIANT: 'O',  // 古森の巨人（2×2 大型ボス・dungeon_6）
+	STORM_EAGLE:  'U',  // 嵐の鷲王（2×2 大型ボス・dungeon_7）
 	// NPC（Dungeon World 継承）
 	PRINCESS: 'P',   // 姫
 	// ギミック（Dungeon World 継承）
@@ -96,8 +100,12 @@ export const TILE_META = {
 	[TILE.DARK_LORD]:{ label: '魔王',        color: '#0a0a18', passable: true,  icon: 'Ｘ' },
 	[TILE.ZARNEL]:  { label: 'ザーネル',     color: '#180828', passable: true,  icon: 'Ｚ' },
 	[TILE.ROCK_GOLEM]:     { label: '岩のゴーレム',         color: '#3a3026', passable: true, icon: 'Ｇ' },
+	[TILE.SAND_SCORPION]:  { label: '砂嵐の蠍王',           color: '#6a4010', passable: true, icon: 'Ｎ' },
+	[TILE.SEA_SERPENT]:    { label: '深海の海蛇',           color: '#0a2848', passable: true, icon: 'Ｊ' },
 	[TILE.FIRE_SALAMANDER]:{ label: '炎のサラマンドラ',     color: '#6a1008', passable: true, icon: 'Ａ' },
 	[TILE.ICE_LEVIATHAN]:  { label: '氷のリヴァイアサン',   color: '#0a2850', passable: true, icon: 'Ｌ' },
+	[TILE.FOREST_GIANT]:   { label: '古森の巨人',           color: '#1a3c14', passable: true, icon: 'Ｏ' },
+	[TILE.STORM_EAGLE]:    { label: '嵐の鷲王',             color: '#1e2840', passable: true, icon: 'Ｕ' },
 	// NPC
 	[TILE.PRINCESS]:{ label: '姫',           color: '#aa4488', passable: true,  icon: '♀' },
 	[TILE.NPC_A]:   { label: 'NPC（村人）',  color: '#448844', passable: true,  icon: 'Ａ' },

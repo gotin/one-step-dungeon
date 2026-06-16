@@ -96,12 +96,12 @@ export function createCombat(deps) {
 	}
 
 	// ── ダメージポップアップ ──────────────────────────────
-	function showDmgPopupFloat(ex, ey, dmg, isEnemy) {
+	function showDmgPopupFloat(ex, ey, dmg, isEnemy, isWeak = false) {
 		const charLayerEl = getCharLayerEl();
 		const cellPx = getCellPx();
 		const el = document.createElement('div');
-		el.className = `dmg-popup ${isEnemy ? 'enemy-dmg' : 'player-dmg'}`;
-		el.textContent = `-${dmg}`;
+		el.className = `dmg-popup ${isEnemy ? 'enemy-dmg' : 'player-dmg'}${isWeak ? ' weak-dmg' : ''}`;
+		el.textContent = isWeak ? `WEAK! -${dmg}` : `-${dmg}`;
 		el.style.cssText = `
 			position:absolute;
 			left:${(ex + 0.5) * cellPx}px;
@@ -111,6 +111,20 @@ export function createCombat(deps) {
 		`;
 		charLayerEl?.appendChild(el);
 		setTimeout(() => el.remove(), 700);
+	}
+
+	// ── 弱点ヒットの閃光エフェクト ────────────────────────
+	function showWeaknessBurst(e) {
+		const charLayerEl = getCharLayerEl();
+		if (!charLayerEl) return;
+		const cellPx = getCellPx();
+		const { cx, cy } = enemyCenter(e);
+		const el = document.createElement('div');
+		el.className = 'weak-burst';
+		el.style.left = `${cx * cellPx}px`;
+		el.style.top  = `${cy * cellPx}px`;
+		charLayerEl.appendChild(el);
+		setTimeout(() => el.remove(), 500);
 	}
 
 	// ── 敵を倒す ──────────────────────────────────────────
@@ -129,13 +143,25 @@ export function createCombat(deps) {
 	}
 
 	// ── 敵にダメージ ──────────────────────────────────────
-	function dealDamageToEnemy(e, dmg) {
+	// atkType: 攻撃種別（'sword'|'beam'|'arrow'|'boomerang'|'bomb'）。
+	//   ENEMY_META[type].weakness.type と一致すれば multiplier 倍のダメージ。
+	//   省略時（undefined）は弱点判定なし＝従来挙動（後方互換）。
+	function dealDamageToEnemy(e, dmg, atkType) {
 		if (e.hp <= 0) return;
-		const actual = Math.max(1, dmg - e.def);
+		const meta = ENEMY_META[e.type];
+		const weakness = meta?.weakness;
+		const isWeak = !!(atkType && weakness && weakness.type === atkType);
+		const effective = isWeak ? Math.round(dmg * (weakness.multiplier ?? 2)) : dmg;
+		const actual = Math.max(1, effective - e.def);
 		e.hp -= actual;
-		playSound('hit');
-		showDmgPopupFloat(e.x, e.y, actual, true);
-		if (ENEMY_META[e.type]?.isBoss) {
+		if (isWeak) {
+			playSound('key');          // 弱点ヒットは高めの「キンッ」で区別（専用SE代用）
+			showWeaknessBurst(e);
+		} else {
+			playSound('hit');
+		}
+		showDmgPopupFloat(e.x, e.y, actual, true, isWeak);
+		if (meta?.isBoss) {
 			updateBossHpBar(e);
 			checkBossPhase(e);
 		}
@@ -262,7 +288,7 @@ export function createCombat(deps) {
 
 		// 二周目は攻撃力2倍
 		const swordAtk = hasCleared() ? player.atk * 2 : player.atk;
-		if (hitEnemy) { dealDamageToEnemy(hitEnemy, swordAtk); return; }
+		if (hitEnemy) { dealDamageToEnemy(hitEnemy, swordAtk, 'sword'); return; }
 
 		// 茂みを切る
 		if (tile === TILE.BUSH) {

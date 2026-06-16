@@ -615,7 +615,7 @@ const { checkStoneOnSwitch, evaluateConditions } = createConditions({
 		toTileCol,
 		gameNow,
 		getSS,
-		dealDamageToEnemy:  (e, dmg) => dealDamageToEnemy(e, dmg),
+		dealDamageToEnemy:  (e, dmg, atkType) => dealDamageToEnemy(e, dmg, atkType),
 		takeDamage:         (amt) => takeDamage(amt),
 		evaluateConditions: () => evaluateConditions(),
 		renderBoard:        () => renderBoard(),
@@ -639,7 +639,7 @@ const { checkStoneOnSwitch, evaluateConditions } = createConditions({
 		isPassableForEnemy,
 		moveCharEl:            (id, x, y) => moveCharEl(id, x, y),
 		takeDamage:            (amt) => takeDamage(amt),
-		dealDamageToEnemy:     (e, dmg) => dealDamageToEnemy(e, dmg),
+		dealDamageToEnemy:     (e, dmg, atkType) => dealDamageToEnemy(e, dmg, atkType),
 		fireEnemyProjectile:   _proj.fireEnemyProjectile,
 		isShieldBlockingDir:   _proj.isShieldBlockingDir,
 		showShieldBlockEffect: _proj.showShieldBlockEffect,
@@ -1337,10 +1337,10 @@ export function getEnemiesSnapshot() {
 
 // テスト用：任意の座標に擬似敵を注入する
 // ゲーム中の敵データに直接追加するため、DOM 要素は作らない（hp 減少だけ確認）
-export function injectTestEnemy(x, y, hp = 5, w = 1, h = 1) {
+export function injectTestEnemy(x, y, hp = 5, w = 1, h = 1, type = 'E') {
 	const id = `test-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 	enemies.push({
-		id, type: 'E', // ダミータイプ（ENEMY_META にないため isBoss=false）
+		id, type, // 既定 'E'（ENEMY_META にないため isBoss=false）。弱点テストは実タイプを渡す
 		x, y,
 		hp, maxHp: hp,
 		atk: 0, def: 0,
@@ -1350,4 +1350,11 @@ export function injectTestEnemy(x, y, hp = 5, w = 1, h = 1) {
 		accum: 0, dir: 'down', el: null,
 	});
 	return id;
+}
+
+// テスト用：指定 id の敵に直接ダメージを与える（弱点属性 Phase 3-3 の検証用）。
+// atkType を渡すと弱点判定（倍率）が効く。
+export function dealDamageToEnemyById(id, dmg, atkType) {
+	const e = enemies.find(x => x.id === id);
+	if (e) dealDamageToEnemy(e, dmg, atkType);
 }

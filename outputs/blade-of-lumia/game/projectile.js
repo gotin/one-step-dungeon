@@ -200,10 +200,10 @@ export function createProjectile(deps) {
 						if (!proj._hitIds) proj._hitIds = new Set();
 						if (proj._hitIds.has(e.id)) continue;
 						proj._hitIds.add(e.id);
-						dealDamageToEnemy(e, proj.atk);
+						dealDamageToEnemy(e, proj.atk, proj.type);
 						continue;  // 貫通：消えずに飛び続ける
 					}
-					dealDamageToEnemy(e, proj.atk);
+					dealDamageToEnemy(e, proj.atk, proj.type);
 					if (proj.type !== 'boomerang') {
 						removeProjEl(proj);
 						_projectiles = _projectiles.filter(p => p !== proj);
@@ -419,7 +419,7 @@ export function createProjectile(deps) {
 				// 敵ダメージ
 				for (const e of [...getEnemies()]) {
 					if (toTileRow(e.y) === tr && toTileCol(e.x) === tc) {
-						dealDamageToEnemy(e, ITEM_META.bomb?.damage ?? 5);
+						dealDamageToEnemy(e, ITEM_META.bomb?.damage ?? 5, 'bomb');
 					}
 				}
 			}

@@ -541,7 +541,7 @@ input.js     161 / passable.js 161 / conditions.js 117 / save.js 87 / main.js 78
   - プレイヤー上の CSS オーラ（`.charge-aura` → ready/full クラス）＋ビーム本体（`.sword-beam` / `.beam-strong`）。専用ドット絵スプライトは後回し（既存スラッシュ演出と同じ CSS 代用方針）
 - ※ 実装：`game/constants.js`（CHARGE_* / BEAM_*）・`game/charge.js`（`createCharge` factory 新設）・`game/game.js`（factory 配線・gameTick で `tickCharge`・enterStage で `cancelCharge`）・`game/input.js`（攻撃キー/剣ボタンの press→剣+startCharge / release→releaseCharge・チャージ中の移動減速）・`game/projectile.js`（beam 描画＋貫通）・`game/css/effects.css`（オーラ・ビーム）・`game/main.js`（テストフック）。`tests/charge-beam.spec.js` 3本追加。**全42テストグリーン**（VRT 含む）
 
-### 3-2. ボスの大型化　🧠 Opus（複数セル当たり判定の設計が難所）　🚧 機構完成＋dungeon_1 ボス採用済・大型敵の量産が残（2026-06-16）
+### 3-2. ボスの大型化　🧠 Opus（複数セル当たり判定の設計が難所）　✅ 完了（2026-06-16）
 - [x] 2×2セルサイズ以上のボスを実装（**汎用の size:{w,h} 機構**として実装。試作1体で動作確認済み）
   - [x] 当たり判定を複数セルにまたがるよう拡張
     - `ENEMY_META.size:{w,h}`（省略時 1×1）を追加 → `buildEnemies` が `e.w/e.h` を付与
@@ -557,17 +557,19 @@ input.js     161 / passable.js 161 / conditions.js 117 / save.js 87 / main.js 78
     - **氷のリヴァイアサン `ICE_LEVIATHAN('L')`**（dungeon_5 氷の廃墟）：24×24スプライト（氷蒼・白氷核脈動）・hp40/atk4/def3・hitAndAway・咬みつき2.5＋氷礫・HP50%加速。向きエイリアス4つ
     - dungeon_4/5 ボス部屋の `X` を `A`/`L` に置換。`dropsTriforce:true` で欠片整合は自動維持
     - `tests/large-enemy.spec.js` に「2×2 注入でエラーなし・wrapper 大型サイズ」テスト追加。**全46テストグリーン**
-    - ※ 残り dungeon_2/3/6/7 の魔王 `X` の大型化・ダンジョンボス固有化は今後のセッションで継続。3-3（弱点属性）・3-4（スタン）など他タスクとの順序はユーザー判断
+    - **砂嵐の蠍王 `SAND_SCORPION('N')`**（dungeon_2）・**深海の海蛇 `SEA_SERPENT('J')`**（dungeon_3）・**古森の巨人 `FOREST_GIANT('O')`**（dungeon_6）・**嵐の鷲王 `STORM_EAGLE('U')`**（dungeon_7）の4体を一括追加。64×64スプライト・ENEMY_META・向きエイリアス・JSON配置。**全46テストグリーン**（変更なし）
+    - **Phase 3-2 完了。全8ダンジョンボスが固有大型ボスに**
 
-### 3-3. ボスの弱点属性　🧠→⚡（データ構造設計はOpus、各ボス設定はSonnet）
-- [ ] **`enemies.js` の `ENEMY_META` に `weakness` フィールドを新設**（現状は未定義）
-  - 例：`weakness: { type: 'bow', multiplier: 2 }`（弓矢で2倍ダメージ）
-  - 例：`weakness: { type: 'bomb', multiplier: 3 }`（爆弾で3倍ダメージ）
-- [ ] 各ボスに「弱点アイテム」を設定
-  - 例：炎ボスは弓矢（水矢）が特効
-  - 例：岩ボスは爆弾が特効
-- [ ] `dealDamageToEnemy()` で攻撃種別を受け取り、弱点なら倍率を適用するよう改修
-- [ ] 弱点ヒット時に特別なエフェクト・SEを出す（プレイヤーへのフィードバック）
+### 3-3. ボスの弱点属性　🧠→⚡（データ構造設計はOpus、各ボス設定はSonnet）　✅ 完了（2026-06-16）
+- [x] **`enemies.js` の `ENEMY_META` に `weakness` フィールドを新設**
+  - `weakness: { type, multiplier }`（type='sword'|'beam'|'arrow'|'boomerang'|'bomb'）。未定義なら弱点なし＝全攻撃等倍（後方互換）
+- [x] 各ボス（8大型ボス）に「弱点アイテム」を設定（武器をバラけさせて使い分けを促す）
+  - 岩のゴーレム→爆弾(×3) / 氷のリヴァイアサン→爆弾(×3) / 炎のサラマンドラ→弓矢(×2) / 嵐の鷲王→弓矢(×2) / 深海の海蛇→剣ビーム(×2) / 古森の巨人→爆弾(×2) / 砂嵐の蠍王→ブーメラン(×3)
+- [x] `dealDamageToEnemy()` で攻撃種別 `atkType` を受け取り、弱点なら倍率を適用するよう改修
+  - 攻撃元が種別を渡す：剣→`'sword'`・投擲物→`proj.type`（'arrow'/'boomerang'/'beam'）・爆弾→`'bomb'`。倍率は def 適用前の素ダメージに乗算
+- [x] 弱点ヒット時に特別なエフェクト・SEを出す（プレイヤーへのフィードバック）
+  - ダメージポップアップを「WEAK! -N」のオレンジ大文字（`.weak-dmg`）に・敵中心に放射状フラッシュ（`.weak-burst`）・高めの SE（`key` 音を代用）
+- ※ 実装：`shared/enemies.js`（weakness フィールド＋8ボス設定）・`game/combat.js`（`dealDamageToEnemy(e,dmg,atkType)` 弱点判定＋`showWeaknessBurst`）・`game/projectile.js`（proj.type/bomb を atkType として渡す）・`game/game.js`（wrapper に atkType・`dealDamageToEnemyById`/`injectTestEnemy` の type 引数）・`game/main.js`（`__game.dealDamage`/`injectEnemy` の type）・`game/css/effects.css`（weak-dmg/weak-burst）。`tests/weakness.spec.js` 4本追加。**全50テストグリーン**
 
 ### 3-4. ブーメランのスタン効果　⚡ Sonnet（既存処理への追加）
 - [ ] ブーメランが敵に当たった時、一定時間スタン（動けなくなる）
