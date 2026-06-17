@@ -50,6 +50,14 @@ export const ITEM_META = {
 		type: 'passive',
 		uses: null,
 	},
+	ladder: {
+		// Phase 4-1: はしご。所持しているだけで効果を発揮する「自動わたり」装備。
+		// サブアイテムスロットでは使わず player.hasLadder フラグで管理する
+		// （hasWingRobe と同型）。両隣が地上の水/穴を1セルだけ自動で渡れる。
+		name: 'はしご', icon: '🪜', sprite: 'ladder', pal: 'ladder',
+		type: 'passive',
+		uses: null,
+	},
 };
 
 // ── 各攻撃の breakPower ────────────────────────────────────────

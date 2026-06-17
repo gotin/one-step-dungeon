@@ -96,6 +96,8 @@ let player = {
 	hasWingRobe: false,
 	// Phase 1-5: 飛行中フラグ（翼の羽衣で離陸中。SKY/WATER を越えられる）。
 	flying: false,
+	// Phase 4-1: はしご所持フラグ。両隣が地上の水/穴を1セルだけ自動で渡れる。
+	hasLadder: false,
 };
 
 let enemies = [];
@@ -450,7 +452,7 @@ function setIsShielding(v){ isShielding = v; }
 // これらの関数は再代入される可変状態を参照するため、状態 getter と依存関数を
 // factory に注入して生成する（getter 経由で常に最新状態を読む）。生成された
 // 関数は呼び出し側を変えずにそのまま使える。
-const { isPassable, tilePassable, isPassableForEnemy } = createPassable({
+const { isPassable, tilePassable, isPassableForEnemy, ladderOrientationAt } = createPassable({
 	getStageData:    () => stageData,
 	getEnemies:      () => enemies,
 	getPlayer:       () => player,
@@ -502,6 +504,7 @@ const { checkStoneOnSwitch, evaluateConditions } = createConditions({
 		charLayerElRef,
 		getHeroSpriteName: () => getHeroSpriteName(),
 		getHeroPalName:    () => getHeroPalName(),
+		ladderOrientationAt,
 	});
 
 	// factory が生成した関数で旧実装を上書き
@@ -794,7 +797,7 @@ const { checkStoneOnSwitch, evaluateConditions } = createConditions({
 		gameNow, getCellPx,
 		toTileRow, toTileCol,
 		getSS,
-		isPassable:   (nx, ny) => isPassable(nx, ny),
+		isPassable:   (nx, ny, axis) => isPassable(nx, ny, axis),
 		tilePassable: (r, c) => tilePassable(r, c),
 		checkStoneOnSwitch: () => checkStoneOnSwitch(),
 		evaluateConditions: () => evaluateConditions(),
@@ -1159,6 +1162,7 @@ function startNewGame() {
 		rupees: 0, triforceCount: 0,
 		hasWingRobe: false,
 		flying: false,
+		hasLadder: false,
 	};
 	heroDir = 'down';
 	enterStage(currentLayer, stageKey, player.y, player.x);
@@ -1241,6 +1245,7 @@ async function init() {
 		const psBoomerang= params.get('ps_boomerang');
 		const psCleared  = params.get('ps_cleared');
 		const psWingRobe = params.get('ps_wingrobe');
+		const psLadder   = params.get('ps_ladder');
 
 		if (psAtk      !== null) player.atk    = parseInt(psAtk,  10) || 2;
 		if (psDef      !== null) player.def    = parseInt(psDef,  10) || 0;
@@ -1250,6 +1255,7 @@ async function init() {
 		if (psShield   === '1') player.shield = 'shield';
 		if (psArmor    === '1') { player.armor  = 'armor'; if (!player._equip) player._equip = {}; player._equip.armorName = '防具'; }
 		if (psWingRobe === '1') player.hasWingRobe = true;
+		if (psLadder   === '1') player.hasLadder = true;
 		if (psBow      === '1') { player.subItems.bow       = { count: 10 };       if (!player.activeSubItem) player.activeSubItem = 'bow'; }
 		if (psBoomerang=== '1') { player.subItems.boomerang = { count: Infinity };  if (!player.activeSubItem) player.activeSubItem = 'boomerang'; }
 		// 姫状態（クリア済みフラグ）の設定
@@ -1315,6 +1321,7 @@ export function getGameState() {
 		player: {
 			x: player.x, y: player.y, hp: player.hp, maxHp: player.maxHp,
 			hasWingRobe: !!player.hasWingRobe, flying: !!player.flying,
+			hasLadder: !!player.hasLadder,
 		},
 		heroDir,
 		enemyCount: enemies.length,

@@ -238,6 +238,8 @@ export function createPlayer(deps) {
 		const [dy, dx]  = DIR_DELTA[dir];
 		const nx = player.x + dx;
 		const ny = player.y + dy;
+		// Phase 4-1c: 進入軸（横移動='h' / 縦移動='v'）。はしごの水/穴進入判定に渡す。
+		const moveAxis = (dir === 'left' || dir === 'right') ? 'h' : 'v';
 
 		// ── 石の押し判定 ────────────────────────────────
 		const pr = toTileRow(player.y);
@@ -396,7 +398,7 @@ export function createPlayer(deps) {
 		}
 
 		// 壁チェック（通常移動）
-		if (!isPassable(nx, ny)) {
+		if (!isPassable(nx, ny, moveAxis)) {
 			const c0 = Math.floor(nx), c1 = Math.floor(nx + 0.999);
 			const r0 = Math.floor(ny), r1 = Math.floor(ny + 0.999);
 			let doorOpened = false;
@@ -412,7 +414,7 @@ export function createPlayer(deps) {
 				updatePlayerCharEl();
 				return;
 			}
-			if (!isPassable(nx, ny)) {
+			if (!isPassable(nx, ny, moveAxis)) {
 				updatePlayerCharEl();
 				return;
 			}
@@ -420,6 +422,10 @@ export function createPlayer(deps) {
 
 		player.x = nx;
 		player.y = ny;
+		// Phase 4-1c: はしごの向きは「進入軸」で決める。実際に移動できたときだけ
+		// 軸をラッチする（向きだけ変えた＝移動できなかったときは前回の軸を保持＝
+		// はしごの上で向きを変えても向き／表示が変わらない）。
+		player._ladderAxis = moveAxis;
 
 		playSound('move');
 		moveCharEl('player', player.x, player.y);
@@ -479,6 +485,7 @@ export function createPlayer(deps) {
 		const meta = ITEM_META[id];
 		if (meta?.type === 'passive') {
 			if (id === 'heartContainer') gainHeartContainer();
+			else if (id === 'ladder') player.hasLadder = true;  // Phase 4-1
 			return;
 		}
 		if (!player.subItems[id]) player.subItems[id] = { count: meta?.uses === Infinity ? Infinity : 1 };
@@ -511,6 +518,7 @@ export function createPlayer(deps) {
 			}
 			else if (content.type === 'rupee') { player.rupees += content.value ?? 1; pulse(`☐ ルピー ×${content.value ?? 1}`); }
 			else if (content.type === 'heartContainer') { gainHeartContainer(); pulse('❤ ハートの器を手に入れた！'); }
+			else if (content.type === 'ladder') { player.hasLadder = true; pulse('🪜 はしごを手に入れた！水や穴を渡れる'); }
 		} else { pulse('☐ 宝箱は空だった…'); }
 		renderBoard(); renderChars(); updateHud(); saveGame();
 	}

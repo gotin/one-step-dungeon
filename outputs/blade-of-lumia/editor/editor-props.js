@@ -102,6 +102,7 @@ const CHEST_TYPE_OPTIONS = [
 	{ value: 'armor',  label: '防具' },
 	{ value: 'rupee',  label: 'ルピー' },
 	{ value: 'heartContainer', label: 'ハートの器' },
+	{ value: 'ladder', label: 'はしご' },
 ];
 
 function renderChests(sd) {

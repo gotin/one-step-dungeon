@@ -7,6 +7,21 @@
         linear-gradient(180deg, #1a1438 0%, #0a0a20 100%);
 }
 
+/* ── Phase 4-1: 穴（落とし穴）タイル。はしごで両隣が地上の1セルだけ渡れる */
+.cell.pit {
+    background:
+        radial-gradient(circle at 50% 38%, #000 0%, #050608 55%, #14181e 100%);
+    box-shadow: inset 0 0 6px 3px rgba(0,0,0,0.85);
+}
+
+/* ── Phase 4-1b: はしご（初代ゼルダ式：渡っている最中だけ足元の水/穴セルに出る） */
+/* char-layer 内の .char-ladder 要素（セル固定・プレイヤー非追従）に入る canvas。
+   親 .char-ladder の z-index:-1 でセル描画より上・プレイヤー/敵より下に重なる。 */
+canvas.sprite.ladder-sprite {
+    width: 100%;
+    height: 100%;
+}
+
 /* ── Phase 8: bgTile 背景色クラス（フォアグラウンドタイルの下に表示） */
 .cell.bg-grass {
     background: #3a6e28;

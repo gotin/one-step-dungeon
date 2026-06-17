@@ -83,6 +83,8 @@ export function createRenderBoard(deps) {
 				applyBgTileClass(cellEl, posKey); return;
 			case TILE.SKY:
 				cellEl.classList.add('sky'); return;
+			case TILE.PIT:
+				cellEl.classList.add('pit'); return;
 			case TILE.DOORWAY:
 				cellEl.classList.add('doorway');
 				applyBgTileClass(cellEl, posKey); return;

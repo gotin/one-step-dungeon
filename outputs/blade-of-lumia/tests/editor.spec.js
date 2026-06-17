@@ -146,3 +146,33 @@ test('editor: selecting a sprite auto-syncs the palette', async ({ page }) => {
 	await page.locator('#sprite-load-name').selectOption('heroR');
 	await expect(page.locator('#sprite-load-pal')).toHaveValue('hero');
 });
+
+// ─── ⑧ プレビュー設定「はしご」が iframe URL に ps_ladder=1 として渡る（Phase 4-1c bug③ 回帰）──
+// canvas クリック経由のプレビュー起動ハンドラ（editor.js）が ps.ladder を取りこぼし、
+// ps_ladder=0 になっていた不具合の回帰テスト。
+test('editor: ps-ladder checkbox reaches preview iframe as ps_ladder=1', async ({ page }) => {
+	await page.goto(EDITOR_URL);
+	await page.waitForSelector('#world-grid .cell-empty', { state: 'visible' });
+
+	// ステージを作成 → 編集ビューへ
+	await page.locator('#world-grid .cell-empty').first().click();
+	await page.locator('#btn-edit-stage').click();
+	await expect(page.locator('#view-stage')).not.toHaveClass(/hidden/);
+
+	// プレビュー開始 → 「クリックで開始」モードになる
+	await page.locator('#btn-preview').click();
+	// キャンバスをクリックして位置確定 → プレビュー設定ダイアログが開く
+	await page.locator('#stage-canvas').click({ position: { x: 30, y: 30 } });
+	await expect(page.locator('#preview-settings-overlay')).not.toHaveClass(/hidden/);
+
+	// はしごチェック（デフォルト ON だが明示的に確認）→ 開始
+	await page.locator('#ps-ladder').check();
+	await page.locator('#ps-btn-start').click();
+
+	// iframe の src に ps_ladder=1 が含まれる
+	// （openPreview は about:blank → requestAnimationFrame で実URLに差し替えるので待つ）
+	await expect.poll(
+		() => page.locator('#preview-frame').getAttribute('src'),
+		{ timeout: 3000 },
+	).toContain('ps_ladder=1');
+});

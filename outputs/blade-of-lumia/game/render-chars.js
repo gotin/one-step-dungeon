@@ -50,6 +50,7 @@ export function createRenderChars(deps) {
 		charLayerElRef,
 		getHeroSpriteName,
 		getHeroPalName,
+		ladderOrientationAt,
 	} = deps;
 
 	// 石の canvas を描画するヘルパー（stoneDiv に追加する）
@@ -177,6 +178,77 @@ export function createRenderChars(deps) {
 		if (cv) el.appendChild(cv);
 
 		if (heroDir !== 'up') addShieldOverlay(el);
+
+		// Phase 4-1b: 渡っている最中だけ、足元の水/穴セルにはしごを敷き直す
+		updateLadderOverlay();
+	}
+
+	// ── はしごオーバーレイ（初代ゼルダ式：渡っている最中だけ足元に出る）───
+	// プレイヤー要素には入れない（追従させない）。char-layer に「セル固定」の
+	// 別要素として置き、プレイヤーが今乗っている水/穴の橋セルに「1枚だけ」敷く。
+	// 渡り切って陸セルだけになれば自然に消える（毎回作り直すため）。
+	// Phase 4-1c 修正：
+	//   ① 半セル位置で2セルに跨るとき両方に出ていた → プレイヤー中心に最も近い橋セル1枚に限定。
+	//   ② 向きは「進入軸（プレイヤーがそのセルへ入ってきた方向の軸）」で決める。
+	//      ただし live な heroDir を使うと「上で向きを変える＝向きが変わる／消える」副作用が
+	//      出るため、player._ladderAxis（実際に移動できたときだけ更新される軸）をラッチして使う。
+	//      → 下から/上から入れば縦はしご、左右から入れば横はしご。向きだけ変えても変わらない。
+	//   ③ 進入軸の橋でないセル（例：縦移動で入った横橋しか成立しないセル）は通行判定で弾かれ
+	//      乗れないので、ここでは「乗っている橋セルにラッチ軸で描く」だけでよい。
+	// z-index は -1＝セル描画より上・プレイヤー/敵（char-abs）より下。
+	function updateLadderOverlay() {
+		const charLayerEl = charLayerElRef.value;
+		if (!charLayerEl) return;
+		// 既存のオーバーレイを除去（毎回敷き直す＝渡り切れば消える）
+		charLayerEl.querySelectorAll('.char-ladder').forEach(e => e.remove());
+
+		const player = getPlayer();
+		if (!player.hasLadder || !ladderOrientationAt) return;
+		const stageData = getStageData();
+		if (!stageData) return;
+
+		// 進入軸をラッチ値から取得（実際に移動できたときだけ更新される）。
+		// 未設定なら null＝セルの地形で向きを決める（フォールバック）。
+		const axis = player._ladderAxis ?? null;
+
+		const cellPx = getCellPx();
+		// プレイヤーが重なっているセル範囲（0.5 刻み移動で2セルに跨る）
+		const c0 = Math.floor(player.x), c1 = Math.floor(player.x + 0.999);
+		const r0 = Math.floor(player.y), r1 = Math.floor(player.y + 0.999);
+		// プレイヤー中心（セルは 1×1 なので中心は +0.5）
+		const pcx = player.x + 0.5, pcy = player.y + 0.5;
+
+		// 跨っている水/穴の橋セルのうち、プレイヤー中心に最も近い1枚だけを選ぶ。
+		// 距離が同じ（上下に均等に跨る）ときは「下側のセル」を選ぶ。
+		// 上側を選ぶとキャラの足元が水のまま見え、水の上に浮いて見えてしまうため。
+		// 向きは「進入軸（axis）」で決める＝下/上から入れば縦・左右から入れば横。
+		const EPS = 1e-6;
+		let best = null, bestDist = Infinity;
+		for (let r = r0; r <= r1; r++) {
+			for (let c = c0; c <= c1; c++) {
+				const t = stageData.tiles[r]?.[c];
+				if (t !== TILE.WATER && t !== TILE.PIT) continue;
+				const orient = ladderOrientationAt(r, c, axis);  // 進入軸で向き決定
+				if (!orient) continue;  // 進入軸の橋でない水/穴には出さない
+				const d = (c + 0.5 - pcx) ** 2 + (r + 0.5 - pcy) ** 2;
+				// より近い、または「ほぼ同距離なら下側（r が大きい方）」を優先
+				if (d < bestDist - EPS || (Math.abs(d - bestDist) <= EPS && best && r > best.r)) {
+					bestDist = d; best = { r, c, orient };
+				}
+			}
+		}
+		if (!best) return;
+
+		const div = document.createElement('div');
+		div.className = 'char-abs char-ladder';
+		div.dataset.orient = best.orient;  // 'h' / 'v'（テスト・デバッグ用）
+		div.style.left = `${best.c * cellPx}px`;
+		div.style.top  = `${best.r * cellPx}px`;
+		div.style.transition = 'none';   // セル固定（スライドさせない）
+		div.style.zIndex = '-1';          // セルより上・プレイヤー/敵より下
+		const cv = makeSprite(best.orient === 'h' ? 'ladderH' : 'ladderV', 'ladder', false);
+		if (cv) { cv.classList.add('ladder-sprite'); div.appendChild(cv); }
+		charLayerEl.appendChild(div);
 	}
 
 	// ── float 座標にキャラ要素を配置して返す ──────────────────
@@ -238,6 +310,9 @@ export function createRenderChars(deps) {
 		const heroCv   = makeSprite(heroSpr, getHeroPalName(), true, heroFlip);
 		if (heroCv) playerDiv.appendChild(heroCv);
 		if (heroDir !== 'up') addShieldOverlay(playerDiv);
+
+		// Phase 4-1b: 渡っている最中だけ足元の水/穴セルにはしごを敷く（プレイヤー非追従）
+		updateLadderOverlay();
 
 		// 移動済みの石を描画
 		{

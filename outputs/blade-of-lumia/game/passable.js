@@ -18,6 +18,12 @@ const FLYABLE_OVER = new Set([
 	TILE.SKY, TILE.WATER, TILE.TREE, TILE.BUSH, TILE.FENCE,
 ]);
 
+// Phase 4-1: はしごで「両隣が地上の1セルだけ」渡れる障害物タイル。
+// 水・穴のみ対象（空 SKY は飛行専用、山などは渡れない）。
+const LADDER_OVER = new Set([
+	TILE.WATER, TILE.PIT,
+]);
+
 /**
  * 通行可否判定関数群を生成する。
  * @param {object} d 依存（状態 getter と関数）
@@ -45,7 +51,11 @@ export function createPassable(d) {
 	//   行方向: floor(y) 〜 floor(y + 0.999)
 	//
 	// 例: x=1.5 → 列 1 と 列 2 に跨る → 両方チェック
-	function isPassable(nx, ny) {
+	//
+	// Phase 4-1c: 第3引数 axis に「進入方向の軸」を渡す（横移動='h' / 縦移動='v'）。
+	// 水/穴セルへ入る移動は「進入軸の橋（その軸の両隣が陸＝1セル幅）」のときだけ許可する。
+	// これにより縦連続の水を縦方向にスルスル渡れてしまうバグを防ぐ（陸へはどの軸でも出られる）。
+	function isPassable(nx, ny, axis) {
 		const stageData = getStageData();
 		if (!stageData) return false;
 		const c0 = Math.floor(nx);
@@ -55,7 +65,15 @@ export function createPassable(d) {
 
 		// Phase 1-5: 翼の羽衣で飛行中は「空（SKY）」「水（WATER）」を越えられる。
 		// 飛行は player 専用（敵は isPassableForEnemy 経由なので地上判定のまま）。
-		const flying = !!getPlayer()?.flying;
+		const player    = getPlayer();
+		const flying    = !!player?.flying;
+		const hasLadder = !!player?.hasLadder;
+		// Phase 4-1c: プレイヤーが「今いる水/穴セル」（橋の上）の範囲。
+		// 既に乗っているセルは進入軸チェックの対象外＝陸へはどの軸でも抜けられる。
+		const pc0 = player ? Math.floor(player.x) : NaN;
+		const pc1 = player ? Math.floor(player.x + 0.999) : NaN;
+		const pr0 = player ? Math.floor(player.y) : NaN;
+		const pr1 = player ? Math.floor(player.y + 0.999) : NaN;
 
 		for (let r = r0; r <= r1; r++) {
 			for (let c = c0; c <= c1; c++) {
@@ -66,6 +84,14 @@ export function createPassable(d) {
 					// 山・壁・家・閉じた門/扉などは飛んでもブロック（マップ境界を維持）。
 					const t = stageData.tiles[r]?.[c];
 					if (flying && FLYABLE_OVER.has(t)) continue;
+					if (hasLadder && LADDER_OVER.has(t)) {
+						// 既にそのセルに乗っているなら通す（橋の上から陸へ・軸を問わず抜けられる）。
+						const alreadyOn = (r >= pr0 && r <= pr1 && c >= pc0 && c <= pc1);
+						// Phase 4-1c: 新規に踏み込む水/穴は「進入軸の橋（その軸の両隣が陸）」のときだけ
+						// 1セルだけ渡れる。axis 未指定なら両軸のどちらかが橋なら許可（後方互換）。
+						// axis 指定時はその軸の橋のときだけ許可＝縦連続水を縦に渡れないようにする核心。
+						if (alreadyOn || isLadderCrossable(r, c, axis)) continue;
+					}
 					return false;
 				}
 			}
@@ -106,6 +132,7 @@ export function createPassable(d) {
 		if (tile === TILE.WALL) return false;
 		if (tile === TILE.WATER) return false;
 		if (tile === TILE.SKY) return false;  // 空（虚空）：地上では通れない（飛行は isPassable で許可）
+		if (tile === TILE.PIT) return false;  // 穴：地上では通れない（はしごは isPassable で許可）
 		if (tile === TILE.GATE   && !ss.openGates.has(posKey)) return false;
 		// デバッグモード中はドアを素通り（鍵不要）
 		if (tile === TILE.DOOR   && !ss.openedDoors?.has(posKey) && !debugMode) return false;
@@ -144,6 +171,58 @@ export function createPassable(d) {
 			}
 		}
 		return true;
+	}
+
+	// Phase 4-1: はしごで渡れる「1セル幅の水/穴」かを判定する（軸を問わない版）。
+	// 縦方向（上下が地上）または横方向（左右が地上）のどちらかが成立すれば渡れる。
+	// 2連続の水/穴は、その軸の隣もまた水/穴になるため成立せず＝渡れない。
+	// ※ 「地上」= LADDER_OVER でない通行可タイル（床・草・橋など）。壁等の不可タイルは橋脚にならない。
+	function isLadderBridge(r, c) {
+		return isHorizBridge(r, c) || isVertBridge(r, c);
+	}
+
+	// 横向きの橋（左右が陸）か
+	function isHorizBridge(r, c) {
+		return isLadderBank(r, c - 1) && isLadderBank(r, c + 1);
+	}
+	// 縦向きの橋（上下が陸）か
+	function isVertBridge(r, c) {
+		return isLadderBank(r - 1, c) && isLadderBank(r + 1, c);
+	}
+
+	// Phase 4-1c: 進入軸 axis（'h'=横移動 / 'v'=縦移動）でその水/穴セルを渡れるか。
+	// axis 指定時はその軸の橋のときだけ許可（縦連続水を縦に渡れないようにする核心ロジック）。
+	// axis 未指定（軸不明）なら両軸のどちらかが橋なら許可（後方互換）。
+	function isLadderCrossable(r, c, axis) {
+		if (axis === 'h') return isHorizBridge(r, c);
+		if (axis === 'v') return isVertBridge(r, c);
+		return isLadderBridge(r, c);
+	}
+
+	// はしごの橋脚になりうる「地上」セルか（通行可、かつ水/穴でない）。
+	function isLadderBank(r, c) {
+		const stageData = getStageData();
+		if (r < 0 || r >= stageData.rows || c < 0 || c >= stageData.cols) return false;
+		const t = stageData.tiles[r]?.[c];
+		if (LADDER_OVER.has(t)) return false;  // 水/穴は橋脚にならない
+		return tilePassable(r, c);
+	}
+
+	// Phase 4-1b/4-1c: 描画側が使う「はしごが架かるセルの向き」判定。
+	// そのセルが水/穴で、進入軸 axis の橋が成立すれば 'h'（横）/ 'v'（縦）を返す。
+	// 架からない（橋脚が無い・水/穴でない・進入軸が橋でない）なら null。
+	// 向きは「進入軸」で決まる（プレイヤーが今そのセルへ入ってきた方向の軸）。
+	// axis 未指定なら従来どおりセルの地形で決める（横優先）。
+	function ladderOrientationAt(r, c, axis) {
+		const stageData = getStageData();
+		if (!stageData) return null;
+		const t = stageData.tiles[r]?.[c];
+		if (!LADDER_OVER.has(t)) return null;
+		if (axis === 'h') return isHorizBridge(r, c) ? 'h' : null;
+		if (axis === 'v') return isVertBridge(r, c) ? 'v' : null;
+		if (isHorizBridge(r, c)) return 'h';
+		if (isVertBridge(r, c)) return 'v';
+		return null;
 	}
 
 	// 敵向けの通行可否（占有 w×h セルすべてをチェック）
@@ -186,5 +265,5 @@ export function createPassable(d) {
 		return true;
 	}
 
-	return { isPassable, tilePassable, isPassableForEnemy };
+	return { isPassable, tilePassable, isPassableForEnemy, ladderOrientationAt, isLadderCrossable };
 }
