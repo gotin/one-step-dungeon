@@ -22,6 +22,19 @@
 
 ## 記録
 
+### 2026-06-17 — Phase 4-2：笛は「active サブアイテム＋ステージ単位の `fluteEffect` データ駆動」で実装し、reveal は showConditions、warp は exitRegistry を再利用する
+- **決定（仕組み設計）：** 笛（フルート）は **active サブアイテム**（ブーメラン/弓矢と同型・`useSubItem` で発動・`type:'magic'`・`uses:Infinity`）。`player.hasFlute` のような専用フラグは作らず `player.subItems.flute` で管理する（save/load は player 丸ごと JSON 化で自動対応）。効果は **ステージ単位のデータ `stageData.fluteEffect`** で表す：
+  - `{ type:'reveal' }` → そのステージの `ss.flutePlayed=true` にして `evaluateConditions()` を呼ぶ。`showConditions` に新トリガー **`'flutePlayed'`** を足し、これで gate された隠しタイル（隠しダンジョン入口 `>`・隠しアイテム等）が出現する。
+  - `{ type:'warp', destId }` → `exitRegistry[destId]` の登録先へワープ（`checkStageTransition` の MAP_ENTER 分岐と同じ `enterStage` 遷移を再利用）。ワープ着地点は宛先ステージの `mapEnters` に `id` だけ登録すれば `'>'` タイル無しでも exitRegistry に載る（描画・VRT に影響しない）。
+  - `fluteEffect` 無し → 「ここでは何も起きない」とメッセージのみ（笛の音 SE は鳴らす）。
+- **既存システムの再利用が肝（新サブシステムを作らない）：**
+  - reveal は **showConditions の hide/reveal 描画パイプライン**（render-board.js が `conditionsMet` 未達のタイルを描画しない）をそのまま使う。`conditionsMet` は save.js でシリアライズ済みなので、**一度笛で出した入口は再訪・リロード後も出たまま**になる（`flutePlayed` 自体は揮発フラグで save 不要＝conditionsMet が永続性を担う）。
+  - warp は **exitRegistry + enterStage**（ダンジョン入口と同じ）を再利用。新しいワープ管理機構は作らない。
+- **「特定の場所」はセル単位でなくステージ単位にした理由：** 初代ゼルダの笛（レベル7出現・湖の near で吹けば反応）も実質エリア単位。セル完全一致を要求すると「正しいマスを総当たり」になりストレス。ステージに居れば吹いて反応する方が探索の手触りが良い（どのステージで吹くかが謎解き）。1ステージ1効果に限定すると reveal/warp が衝突せず実装も単純。
+- **代替案：** (A) `player.hasFlute` フラグ＋専用ボタン → サブアイテムスロットの既存導線（装備切替・モバイルボタン）に乗らず UI が増える。active サブアイテム化で既存導線に相乗りできるため却下。(B) セル単位 `fluteSpots{"r,c":...}` → 上記の総当たりストレス＋編集も煩雑で却下。(C) reveal 専用の新しい可視化フラグ → showConditions が既に同じことをしており二重実装になるため却下（`flutePlayed` トリガー1個追加で済む）。
+- **エディタ対応（Phase 4 共通ルール）：** プレビュー設定に「🎵 笛」トグル（`ps-flute`・デフォルト ON）を **両方の getPreviewSettings（editor-io.js と editor.js の重複定義）に追加**（[[blade-preview-settings-duplicated]] の教訓）。宝箱内容に「笛」選択肢、右パネルに `fluteEffect` 編集セクションを追加。
+- **結果／影響：** `shared/items.js`（flute）・`game/game.js`（`playFlute()`・useSubItem 分岐・ps_flute・getState）・`game/conditions.js`（flutePlayed トリガー）・`game/css/effects.css`（ワープ渦巻き演出）・editor 4ファイル・`work/blade-of-lumia.json`（笛宝箱＋reveal/warp デモ）。`tests/flute.spec.js` を追加。
+
 ### 2026-06-16 — Phase 4-1b：はしごは「常設の地形」ではなく「渡っている間だけ足元に出る一時的な橋」として描く
 - **決定：** はしご（初代ゼルダの伝説式）の描画は「**プレイヤーが1マス幅の水/穴に踏み込んでいる間だけ、その足元の橋セルに1枚出す。渡り切ると消す**」。常設しない・プレイヤー要素にも入れない（追従させない）。char-layer 内の `.char-ladder`（セル固定・`transition:none`・`z-index:-1`）として描き、毎更新で全削除→今の足元セルだけ敷き直す。向きはセルの地形（左右地上＝横／上下地上＝縦）、z-index はセル描画より上・プレイヤー/敵より下（ユーザー指定）。
 - **理由（2回外した反省）：** v1 はプレイヤー要素内に入れて「張り付いて一緒に動く」誤り。v2（私の誤実装）は「セル固定」を「**常設**」と取り違え、架かりうる橋セル全部に出しっぱなしにした（水路に縦にはしごが並び続けた）。正しくは「セル固定＝そのセルに留まる」だが「**渡っている間だけ存在する一時的な橋**」であること。出現条件は「隣接」ではなく「プレイヤーの体がその水/穴セルに重なっている」。

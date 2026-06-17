@@ -93,6 +93,7 @@ export function createConditions(d) {
 			if (ss.conditionsMet.has(posKey)) continue;
 			let met = false;
 			if (cond.trigger === 'killAll')    met = enemies.length === 0;
+			else if (cond.trigger === 'flutePlayed') met = ss.flutePlayed === true;  // Phase 4-2: 笛を吹いた
 			else if (cond.trigger === 'switchOn') met = ss.switchStates?.[cond.switchId] === true;
 			else if (cond.trigger === 'wallBroken') met = ss.brokenWalls?.has(cond.wallId);
 			else if (cond.trigger === 'hasItem') met = !!player.subItems[cond.item] || player.weapon === cond.item;

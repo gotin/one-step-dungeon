@@ -14,9 +14,9 @@
 ## 📍 現在地（常に最新に保つ）
 
 - **進行中フェーズ：** **Phase 4（サブアイテム拡充）**
-- **進行中タスク：** **Phase 4-1c（はしごの進入軸通行判定）完了。** はしご機構（4-1 / 4-1b / 4-1c）は完成。
-- **⚠️ 次やること：** **Phase 4-2（笛）🧠 Opus**（ワープ・隠しダンジョン出現の仕組み設計が未着手）。または **Phase 4-3（ロウソク）⚡ Sonnet**（既存の茂み切り機能の拡張）。
-- **直近の状態：** はしごは「進入軸の橋（その軸の両隣が陸）の水/穴」を1セルだけ渡れる。縦連続水を縦に渡れるバグは解消。軸ロックは入れず「既に乗っている水/穴セルは進入軸チェック対象外」として陸へはどの軸でも抜けられる。**2026-06-17 追加修正（分岐B）：** はしご描画の二重表示・向き変更で消える・上下均等跨りで上側に出る・**向きが進入軸を反映しない**不具合・プレビュー設定の取りこぼしを修正。向きは「進入軸（移動成功時にラッチ）」で決定。**全67テストグリーン**（ladder 13本＋editor 8本）。
+- **進行中タスク：** **Phase 4-2（笛）✅ 完了**。次は **Phase 4-3（ロウソク）⚡ Sonnet**。
+- **⚠️ 次やること（最優先）：** **Phase 4-3（ロウソク）⚡ Sonnet**。既存の茂み切り機能を拡張し「前方の草・茂みを燃やす→隠し通路/入口が出現」を実装。設計は PLAN.md 4-3 参照（既存拡張なので Sonnet 可）。
+- **直近の状態：** 笛＝active サブアイテム。効果は `stageData.fluteEffect`（reveal＝showConditions の新トリガー `flutePlayed` で隠し入口出現／warp＝exitRegistry へ移動）。**flute テスト4本＋全体71テストすべてグリーン**。テスト3の不確定は「実装バグではなくテストの移動ナビが隠し入口(5,3)を通り越していた」のが原因——`down 6/left 6` → 正しい `down 2/left 2` に修正して解決（実装は正しかった）。
 - **⚠️ 保留（後日対応）：** ビーム攻撃が強力すぎる → Phase 8-4 で通しプレイ時に一括調整。
 
 
@@ -31,6 +31,71 @@
 ## セッションログ
 
 <!-- 新しいエントリを上に追加していく（最新が一番上） -->
+
+### 2026-06-17 — Phase 4-2（完了）：笛の仕上げ。未確定だったテスト3はテスト側のナビバグと判明、実装は正しかった
+
+**やったこと：**
+- 前セッションで「未確定」だった flute テスト3（reveal→隠し入口→secret_grotto 遷移）を切り分け。一時 spec で `pageerror` を監視しつつプレイヤー座標を1ステップずつトレースした結果、**実装は完全に正しく、テストの移動ナビゲーションが隠し入口 (5,3) を通り越していた**のが原因と判明
+  - スポーン (4,4) から `down 6`（y→7）→`left 6`（x→1）では終点 (7,1) で、隠し入口 (5,3) を一切踏んでいなかった（だから遷移しなかった）
+  - 正しい経路 `down 2`（y→5）→`left 2`（x→3）で (5,3) に乗ると、reveal→`enterStage('secret_grotto')` が `pageerror` ゼロで完走することを確認
+- テスト2（笛なしでは遷移しない）も同じく入口を踏んでおらず**vacuously pass していた**ため、両テストの移動を `down 2/left 2` に修正。テスト2には遷移 setTimeout(100ms) を確実に見送るため `waitForTimeout(300)` を追加
+- **flute テスト4本グリーン → 全71テストグリーン**（既存67＋flute 4）。一時 spec は削除済み
+- VRT 起動画面（field 1,0）はデモが field 2,0 にあるため不変＝基準画像更新不要（全体テストで確認済み）
+- PLAN.md 4-2 を `[x]`・実装状態表（笛行）を完了に更新。DECISIONS.md は前セッションで記録済み（追記不要）
+
+**学び・気づき：**
+- **「テストが落ちる＝実装バグ」とは限らない**。前セッションのデバッグログで「遷移分岐まで到達・ゲート通過」まで確認できていたのに遷移しなかったのは、そもそも**プレイヤーが入口セルに乗っていなかった**から。座標を1ステップずつトレースすれば一目で分かった
+- **E2E の「○○しても遷移しない」系テストは、対象セルを実際に踏むナビゲーションになっているか必ず確認する**。今回テスト2は入口を踏まずに通っていた（偽の安心）。reveal 前は通り越し・reveal 後は乗る、で同じ経路を使うと両者を正しく対比できる
+- 0.5 セル刻み移動では「目的セル row,col に乗る」= 整数座標 (col, row) に到達すること。`down N`/`left N` の N は (目標−現在)×2 で計算する
+
+**▶ 次やること：** **Phase 4-3（ロウソク）⚡ Sonnet**（既存の茂み切り拡張：前方の草・茂みを燃やす→隠し通路/入口出現）。設計は PLAN.md 4-3 参照。
+
+---
+
+### 2026-06-17 — Phase 4-2（途中・引き継ぎ）：笛（フルート）を実装。reveal/warp の仕組みは完成、テスト1本だけ未確定
+
+**⚠️ このエントリは「未完了タスクの引き継ぎ」。次セッションは下記【残作業】から再開する。**
+
+**設計（DECISIONS.md に詳細記録済み）：**
+- 笛は **active サブアイテム**（ブーメラン/弓矢と同型・`useSubItem` で発動・`type:'magic'`・`uses:Infinity`）。`player.hasFlute` は作らず `subItems.flute` で管理（save/load 自動）。
+- 効果は **ステージ単位の `stageData.fluteEffect`** で決まる：
+  - `{type:'reveal', message?}` → `ss.flutePlayed=true` にして `evaluateConditions()`。`showConditions` の**新トリガー `flutePlayed`** で gate された隠しタイル（隠し入口 `>`・隠しアイテム）が出現。`conditionsMet` がセーブされるので一度出した入口は永続。
+  - `{type:'warp', destId, message?}` → `exitRegistry[destId]` へ `enterStage`（MAP_ENTER と同じ仕組みを再利用）。
+  - 無し → 「何も起きない」メッセージのみ。
+- **隠し入口の遷移ゲートも追加**：`checkStageTransition` の MAP_ENTER 分岐に「`showConditions` があり `conditionsMet` 未達なら遷移しない」を追加（笛で出すまで描画も遷移もされない）。
+
+**実装済みファイル（投入済み・`node scripts/check-errors.mjs` エラーなし）：**
+- `shared/items.js`：`flute` 定義（icon 🎵・type magic・uses Infinity・専用スプライト未作成＝pause/HUD は icon フォールバック）
+- `game/conditions.js`：`evaluateConditions` に `flutePlayed` トリガー追加
+- `game/game.js`：`playFlute()`＋`showFluteWarpEffect()` 新設・`useSubItem` に flute 分岐・`init` の `ps_flute` 適用・`getState` に `hasFlute`/`activeSubItem` 追加・MAP_ENTER 遷移の showConditions ゲート追加
+- `game/css/effects.css`：`.flute-warp`（竜巻の渦巻き演出）＋ `@keyframes flute-warp-spin`
+- エディタ：`editor/index.html`（プレビュー設定に `ps-flute` トグル＋ステージ設定に `stage-flute-effect` JSON 入力）・`editor/editor-io.js`（getPreviewSettings＋URL に ps_flute）・`editor/editor.js`（**重複定義の getPreviewSettings にも flute 追加**＝[[blade-preview-settings-duplicated]] 教訓）・`editor/editor-props.js`（宝箱内容に「笛」・トリガーに「flutePlayed」）・`editor/editor-canvas.js`（fluteEffect の読み書き：JSON パース・保存）
+- `work/blade-of-lumia.json`：**デモ配置**（node 直書き）
+  - field 2,0：`fluteEffect={type:'reveal',...}`／(4,3) に笛の宝箱 `B`（chestContents type:item item:flute）／(5,3) に隠し入口 `>`（id:`field_secret_entrance` destId:`secret_grotto`・showConditions `flutePlayed`）／(4,5) にワープ戻り先 mapEnter（id:`field_secret_back` destId:`field_2`・`>` タイル無しで exitRegistry 登録のみ）
+  - 新レイヤー `secret_grotto`（0,0 のみ）：到着 mapEnter(5,2)・報酬ルピー宝箱(5,9)・石碑(5,5)・`fluteEffect={type:'warp', destId:'field_secret_back'}`
+
+**テスト（`tests/flute.spec.js` 新設・4本）：**
+1. ✅ `ps_flute=1` で笛所持＆active
+2. ✅ 隠し入口は笛を吹くまで遷移しない
+3. 🟡 **未確定**：笛を吹く（reveal）→隠し入口へ歩く→`secret_grotto` へ遷移
+4. ✅ secret_grotto で笛を吹く（warp）→`field` へ戻る
+
+**3 の調査でわかっていること（重要・次セッションはここから）：**
+- デバッグログで **遷移分岐まで到達し、ゲートも通過している**ことを確認済み：プレイヤーが (5,3) に乗ると `tile='>' enter={id:field_secret_entrance,destId:secret_grotto} reg=true cond={trigger:flutePlayed} met=true` まで出る（＝reveal も exitRegistry も正常、遷移条件は満たしている）。
+- それでも `currentLayer` が `secret_grotto` に変わらなかった。**遷移は 100ms の `setTimeout` 経由**なので、テストの待ち方（`step` だけでは実時間が進まない）か、`enterStage('secret_grotto',...)` 着地後の状態取得タイミングの問題の可能性が高い。`enterStage` が例外を投げているかは未確認（その確認の spec 実行直前にセッションを中断した）。
+
+**【残作業】（次セッションでこの順に）：**
+1. テスト3の切り分け：一時 spec で `page.on('pageerror')` を見つつ、(5,3) 到達後に `await page.waitForTimeout(300)` を入れて `enterStage('secret_grotto')` が例外なく完走するか確認。例外があれば secret_grotto ステージ定義の不足フィールドを補う。例外が無ければテストを「`movePlayer`+`step` の後に十分な実時間待ち（遷移 setTimeout 100ms 以上）を入れる」形に直す。
+2. テスト4本グリーン＋`npx playwright test` 全体グリーンを確認（既存 67 + flute 4 = 71 本想定）。
+3. 実機（一時 spec・確認後削除）で「笛吹く→隠し入口出現→入る／secret_grotto で笛→戻る」を目視確認。VRT 起動画面（field 1,0）はデモを field 2,0 に置いたので不変のはず（要確認）。
+4. PLAN.md の 4-2 チェックボックスを `[x]`、進捗サマリ表・実装状態表（笛・ロウソク行）を更新。
+5. DECISIONS.md は記録済み（追記不要）。
+
+**学び（暫定）：** 隠し入口は「描画を hide するだけ」では不十分で、`checkStageTransition` 側にも同じ条件ゲートを足さないと「見えないのに踏むと入れる」抜けが出る。reveal は showConditions、warp は exitRegistry と、**既存パイプラインの再利用だけで新サブシステム無しに実装できた**。
+
+**▶ 次やること：** 上記【残作業】1〜4。完了後 Phase 4-3（ロウソク）⚡。
+
+---
 
 ### 2026-06-17 — バグ修正（分岐B・追補2）：はしごの向きを「進入軸」で決める（進入軸をラッチ）
 
@@ -1211,7 +1276,7 @@
 
 | Phase 2 8ダンジョン | ✅ 完了 | 2-1〜2-4 全完了（8ダンジョン体制・ボス固有化・石碑&NPC噂話ヒント・フィールド接続仕上げ＋到達性回帰テスト）。全39テストグリーン |
 | Phase 3 アクション深化 | ✅ 完了 | 3-1〜3-4 全完了。チャージ剣ビーム・大型ボス8種・弱点属性・ブーメランスタン。全53テストグリーン |
-| Phase 4 サブアイテム | 🚧 進行中 | 4-1（はしご）＋4-1b（描画セル固定）＋4-1c（進入軸通行判定）完了＋描画/プレビューのバグ修正。自動わたり方式・水/穴1セル渡り・進入軸チェックで縦連続水を縦に渡れない・PIT タイル・dungeon_3 パズル。全67テストグリーン。残：4-2 笛 / 4-3 ロウソク / 4-4 ブーメラン回収 / 4-5 組合せ |
+| Phase 4 サブアイテム | 🚧 進行中 | 4-1（はしご）＋4-1b/c＋4-2（笛）完了。笛＝active サブアイテム・reveal（隠し入口出現）/warp（ワープ）の2効果・`stageData.fluteEffect`・showConditions の `flutePlayed` トリガー。全71テストグリーン。残：4-3 ロウソク / 4-4 ブーメラン回収 / 4-5 組合せ |
 | Phase 5 謎解き | 🔲 未着手 | |
 | Phase 6 世界観・NPC | 🔲 未着手 | |
 | Phase 7 成長システム | 🔲 未着手 | |

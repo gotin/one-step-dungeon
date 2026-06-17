@@ -50,6 +50,17 @@ export const ITEM_META = {
 		type: 'passive',
 		uses: null,
 	},
+	flute: {
+		// Phase 4-2: 笛。active サブアイテム（使うと魔法の音色を奏でる）。
+		// 効果はステージ単位の stageData.fluteEffect で決まる：
+		//   reveal → 隠しダンジョン入口/隠しアイテムが出現（showConditions の
+		//            flutePlayed トリガーで gate されたタイルを表示）
+		//   warp   → exitRegistry[destId] のワープポイントへ移動
+		// hasFlute フラグは作らず subItems.flute で管理（boomerang と同型）。
+		name: '笛', icon: '🎵', sprite: 'flute', pal: 'flute',
+		type: 'magic',
+		uses: Infinity,
+	},
 	ladder: {
 		// Phase 4-1: はしご。所持しているだけで効果を発揮する「自動わたり」装備。
 		// サブアイテムスロットでは使わず player.hasLadder フラグで管理する

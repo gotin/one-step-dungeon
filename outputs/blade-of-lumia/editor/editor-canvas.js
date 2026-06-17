@@ -134,6 +134,8 @@ export function renderStageCanvas(renderSidePanel) {
 	updateBorderWarnings(sd);
 	document.getElementById('stage-is-boss-room').checked = !!sd.isBossRoom;
 	document.getElementById('stage-bgm-override').value  = sd.bgm ?? '';
+	const fluteEl = document.getElementById('stage-flute-effect');
+	if (fluteEl) fluteEl.value = sd.fluteEffect ? JSON.stringify(sd.fluteEffect) : '';
 }
 
 // タイルに紐づくメタデータを削除するユーティリティ
@@ -307,6 +309,14 @@ export function initCanvasEvents(renderSidePanel, renderWorldGrid, getPreviewPen
 		const bgmVal  = document.getElementById('stage-bgm-override').value;
 		if (bgmVal) sd.bgm = bgmVal;
 		else delete sd.bgm;
+		// 🎵 笛の効果（fluteEffect）：JSON をパースして保存（空欄なら削除）
+		const fluteVal = document.getElementById('stage-flute-effect').value.trim();
+		if (fluteVal) {
+			try { sd.fluteEffect = JSON.parse(fluteVal); }
+			catch { alert('🎵 笛の効果が不正な JSON です（例: {"type":"reveal"}）'); return; }
+		} else {
+			delete sd.fluteEffect;
+		}
 		renderWorldGrid();
 		alert('ステージ設定を保存しました');
 	});

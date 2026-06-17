@@ -957,6 +957,10 @@ function checkStageTransition() {
 	const tileAtPos = stageData.tiles[r]?.[c];
 	const enter  = stageData.mapEnters?.[posKey];
 	if (tileAtPos === TILE.MAP_ENTER && enter?.destId && exitRegistry[enter.destId]) {
+		// Phase 4-2: 隠し入口（showConditions で gate された MAP_ENTER）は、
+		// 条件未達のうちは描画されないだけでなく遷移もしない（笛で出現させるまで通れない）。
+		const ssTr = getSS(currentLayer, stageKey);
+		if (stageData.showConditions?.[posKey] && !ssTr.conditionsMet.has(posKey)) return;
 		// Phase 1-5: 暗黒の塔の入り口は翼の羽衣がないと通れない（飛行ゲート）。
 		// 入り口自体が空島にあり飛行しないと到達できないが、安全策として明示判定する。
 		if (enter.destId === DARK_TOWER_EXIT_ID && !player.hasWingRobe) {
@@ -1051,6 +1055,61 @@ function step(frames = 1) {
 	}
 }
 
+// ── 笛を奏でる（Phase 4-2）─────────────────────────────────────
+// 効果は現在ステージの stageData.fluteEffect で決まる：
+//   { type:'reveal' } → ss.flutePlayed=true → evaluateConditions() で
+//                       flutePlayed トリガーの隠しタイル（入口/アイテム）が出現
+//   { type:'warp', destId } → exitRegistry[destId] のワープポイントへ移動
+//   未設定           → 何も起きない（音だけ鳴る）
+function playFlute() {
+	if (isDialog || isPaused || isGameover || isTransitioning) return;
+	resumeAudio();
+	playSound('flute');  // 魔法の音色（笛の短いメロディ）
+	const fx = stageData?.fluteEffect;
+	if (!fx) {
+		pulse('🎵 不思議な音色が響いた…… 特に何も起きない', 1800);
+		return;
+	}
+	if (fx.type === 'reveal') {
+		const ss = getSS(currentLayer, stageKey);
+		if (ss.flutePlayed) { pulse('🎵 もう何かが現れている', 1500); return; }
+		ss.flutePlayed = true;
+		evaluateConditions();
+		renderBoard(); renderChars();
+		pulse(fx.message ?? '🎵 音色に応えて 何かが現れた！', 2200);
+		saveGame();
+		return;
+	}
+	if (fx.type === 'warp') {
+		const dest = exitRegistry[fx.destId];
+		if (!dest) { pulse('🎵 音色は響いたが 行き先が見つからない', 1800); return; }
+		if (isTransitioning) return;
+		isTransitioning = true;
+		showFluteWarpEffect();
+		playSound('stageTransition');
+		saveGame();
+		pulse(fx.message ?? '🎵 竜巻が巻き起こり 運ばれていく！', 2000);
+		setTimeout(() => {
+			enterStage(dest.layer, dest.stage, dest.row, dest.col);
+			isTransitioning = false;
+			mapEnterCooldownUntil = gameNow() + 1500;
+		}, 400);
+		return;
+	}
+	pulse('🎵 不思議な音色が響いた……', 1800);
+}
+
+// 笛ワープの渦巻き演出（プレイヤーの上に一時 div を出す）
+function showFluteWarpEffect() {
+	if (!charLayerEl) return;
+	const cellPx = getCellPx();
+	const el = document.createElement('div');
+	el.className = 'flute-warp';
+	el.style.cssText = `position:absolute;left:${(player.x - 0.5) * cellPx}px;top:${(player.y - 0.5) * cellPx}px;width:${cellPx * 2}px;height:${cellPx * 2}px;z-index:30;pointer-events:none;`;
+	charLayerEl.appendChild(el);
+	setTimeout(() => el.remove(), 700);
+}
+
 // ── サブアイテム使用 ─────────────────────────────────────────
 function useSubItem() {
 	if (isDialog || isPaused || isGameover) return;
@@ -1087,6 +1146,9 @@ function useSubItem() {
 			maxRange: 3,
 		});
 		return;
+	}
+	if (id === 'flute') {
+		playFlute(); return;
 	}
 	if (id === 'bomb') {
 		placeBomb(); return;
@@ -1243,6 +1305,7 @@ async function init() {
 		const psArmor    = params.get('ps_armor');
 		const psBow      = params.get('ps_bow');
 		const psBoomerang= params.get('ps_boomerang');
+		const psFlute    = params.get('ps_flute');
 		const psCleared  = params.get('ps_cleared');
 		const psWingRobe = params.get('ps_wingrobe');
 		const psLadder   = params.get('ps_ladder');
@@ -1258,6 +1321,7 @@ async function init() {
 		if (psLadder   === '1') player.hasLadder = true;
 		if (psBow      === '1') { player.subItems.bow       = { count: 10 };       if (!player.activeSubItem) player.activeSubItem = 'bow'; }
 		if (psBoomerang=== '1') { player.subItems.boomerang = { count: Infinity };  if (!player.activeSubItem) player.activeSubItem = 'boomerang'; }
+		if (psFlute    === '1') { player.subItems.flute     = { count: Infinity };  if (!player.activeSubItem) player.activeSubItem = 'flute'; }
 		// 姫状態（クリア済みフラグ）の設定
 		if (psCleared === '1') {
 			localStorage.setItem(CLEARED_KEY, '1');
@@ -1322,6 +1386,8 @@ export function getGameState() {
 			x: player.x, y: player.y, hp: player.hp, maxHp: player.maxHp,
 			hasWingRobe: !!player.hasWingRobe, flying: !!player.flying,
 			hasLadder: !!player.hasLadder,
+			hasFlute: !!player.subItems?.flute,
+			activeSubItem: player.activeSubItem,
 		},
 		heroDir,
 		enemyCount: enemies.length,

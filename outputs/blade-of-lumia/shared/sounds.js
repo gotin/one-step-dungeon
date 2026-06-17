@@ -437,6 +437,23 @@ export function playSound(kind) {
 		tone(ctx, now + 0.06, 700,  0.10, 'sine',     0.06);
 	}
 	// エンディング（Dungeon World 継承）
+	if (kind === 'flute') {
+			// 魔法の音色。原作の笛を彷彿とさせる、上昇して締めくくる短いフレーズ
+			// （木管風＝sine 基音＋薄いオクターブ上の倍音）。
+			// [周波数, 開始オフセット(s), 長さ(s)]
+			const phrase = [
+				[587.33,  0.00, 0.14],  // D5
+				[880.00,  0.13, 0.14],  // A5
+				[1174.66, 0.26, 0.14],  // D6
+				[987.77,  0.39, 0.14],  // B5
+				[1174.66, 0.52, 0.16],  // D6
+				[1318.51, 0.66, 0.45],  // E6
+			];
+			for (const [freq, off, dur] of phrase) {
+				tone(ctx, now + off, freq, dur, 'sine', 0.07);
+				tone(ctx, now + off, freq * 2, dur * 0.7, 'triangle', 0.018);
+			}
+		}
 	if (kind === 'ending') {
 		tone(ctx, now + 0.00, 523.25, 0.30, 'sine', 0.10);
 		tone(ctx, now + 0.30, 659.25, 0.30, 'sine', 0.10);

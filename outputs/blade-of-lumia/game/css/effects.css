@@ -565,3 +565,20 @@
     background: linear-gradient(90deg, rgba(255, 245, 200, 0.25) 0%, rgba(255, 240, 150, 1) 50%, rgba(255, 245, 200, 0.25) 100%);
     box-shadow: 0 0 16px 6px rgba(255, 235, 120, 0.95);
 }
+/* Phase 4-2: 笛のワープ演出（竜巻の渦巻きが回転して縮む） */
+.flute-warp {
+    border-radius: 50%;
+    background: conic-gradient(from 0deg,
+        rgba(140, 220, 255, 0.0) 0deg,
+        rgba(140, 220, 255, 0.7) 90deg,
+        rgba(200, 180, 255, 0.0) 180deg,
+        rgba(140, 220, 255, 0.7) 270deg,
+        rgba(140, 220, 255, 0.0) 360deg);
+    box-shadow: 0 0 18px 6px rgba(160, 210, 255, 0.7);
+    animation: flute-warp-spin 0.7s ease-in forwards;
+}
+@keyframes flute-warp-spin {
+    0%   { transform: rotate(0deg) scale(0.4); opacity: 0.2; }
+    40%  { transform: rotate(360deg) scale(1.1); opacity: 0.95; }
+    100% { transform: rotate(900deg) scale(0.1); opacity: 0; }
+}

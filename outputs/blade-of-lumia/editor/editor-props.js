@@ -90,6 +90,7 @@ const CHEST_ITEM_OPTIONS = [
 	{ value: 'healPotion',    label: '回復薬（小）' },
 	{ value: 'bigHealPotion', label: '回復薬（大）' },
 	{ value: 'boomerang',     label: 'ブーメラン' },
+	{ value: 'flute',         label: '笛' },
 	{ value: 'bomb',          label: '爆弾' },
 	{ value: 'bow',           label: '弓矢' },
 	{ value: 'heartContainer',label: 'ハートの器' },
@@ -256,6 +257,7 @@ function renderMapEnters(sd) {
 // ── 表示条件（showConditions）設定 ───────────────────────────
 const TRIGGER_OPTIONS = [
 	{ value: 'killAll',     label: '敵全滅（killAll）' },
+	{ value: 'flutePlayed', label: '笛を吹いた（flutePlayed）' },
 	{ value: 'killGroup',   label: '指定グループ全滅（killGroup）' },
 	{ value: 'switchOn',    label: 'スイッチON（switchOn）' },
 	{ value: 'allSwitchesOn', label: '全スイッチON（allSwitchesOn）' },
