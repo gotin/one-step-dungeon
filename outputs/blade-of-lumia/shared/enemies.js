@@ -209,7 +209,7 @@ export const ENEMY_META = {
 		size:   { w: 2, h: 2 },
 		isBoss: true,
 		dropsTriforce: true,
-		weakness: { type: 'bomb', multiplier: 3 },   // 爆発の熱で氷を砕く
+		weakness: { type: 'fire', multiplier: 3 },   // ロウソクの炎で氷が溶ける
 		hitAndAway: true,
 		attacks: [
 			{ type: 'sword', range: 2.5, cooldown: 1100 },  // 咬みつき（リーチが長い）
@@ -281,7 +281,7 @@ export const ENEMY_META = {
 		size:   { w: 2, h: 2 },
 		isBoss: true,
 		dropsTriforce: true,
-		weakness: { type: 'bomb', multiplier: 2 },   // 爆炎で樹皮を焼き払う
+		weakness: { type: 'fire', multiplier: 2 },   // 炎で樹皮を焼き払う
 		hitAndAway: true,
 		attacks: [
 			{ type: 'sword', range: 2.4, cooldown: 950 },   // 枝腕なぎ払い

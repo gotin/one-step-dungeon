@@ -16,7 +16,7 @@ import {
 	MOVE_STEP, TICK_MS, INVINCIBLE_MS, HP_PER_HEART,
 	MAP_JSON_URL, SAVE_KEY, CLEARED_KEY, DIR_DELTA,
 	SWORD_REACH, SWORD_COOLDOWN_MS, STONE_PUSH_COOLDOWN_MS,
-	DARK_TOWER_EXIT_ID,
+	DARK_TOWER_EXIT_ID, CANDLE_FIRE_DMG,
 } from './constants.js';
 // ── セーブ/ロードの純粋変換ロジック（Phase 0-2 Step 1b: save.js へ切り出し）──
 import {
@@ -1128,15 +1128,29 @@ function playCandle() {
 
 	playSound('fire');
 
+	// 前方の敵に炎ダメージ（茂みの有無に関わらず判定）
+	const hitEnemy = enemies.find(e => toTileRow(e.y) === tr && toTileCol(e.x) === tc);
+	if (hitEnemy) {
+		dealDamageToEnemy(hitEnemy, CANDLE_FIRE_DMG, 'fire');
+	}
+
 	if (tile !== TILE.BUSH) {
 		showCandleFireEffect(player.x + ndx, player.y + ndy);
-		pulse('🕯 炎が揺らめいた…… 前に燃やせる茂みはない', 1600);
+		if (hitEnemy) {
+			pulse('🔥 炎が敵を焼いた！', 1400);
+		} else {
+			pulse('🕯 炎が揺らめいた…… 前に燃やせる茂みはない', 1600);
+		}
 		return;
 	}
 
 	const ss = getSS(currentLayer, stageKey);
 	if (!ss.cutBushes) ss.cutBushes = new Set();
-	if (ss.cutBushes.has(posKey)) { pulse('🕯 もう燃え尽きている', 1400); return; }
+	if (ss.cutBushes.has(posKey)) {
+		showCandleFireEffect(player.x + ndx, player.y + ndy);
+		pulse('🕯 もう燃え尽きている', 1400);
+		return;
+	}
 
 	ss.cutBushes.add(posKey);   // 茂みを燃やす（通行可化・既存パイプライン）
 	ss.bushBurned = true;       // ロウソク固有：bushBurned トリガーを立てる
@@ -1155,7 +1169,7 @@ function showCandleFireEffect(cx, cy) {
 	const cellPx = getCellPx();
 	const el = document.createElement('div');
 	el.className = 'candle-fire';
-	el.style.cssText = `position:absolute;left:${(cx - 0.5) * cellPx}px;top:${(cy - 0.5) * cellPx}px;width:${cellPx}px;height:${cellPx}px;z-index:25;pointer-events:none;`;
+	el.style.cssText = `position:absolute;left:${cx * cellPx}px;top:${cy * cellPx}px;width:${cellPx}px;height:${cellPx}px;z-index:25;pointer-events:none;`;
 	charLayerEl.appendChild(el);
 	setTimeout(() => el.remove(), 600);
 }

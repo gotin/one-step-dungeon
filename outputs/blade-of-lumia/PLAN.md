@@ -717,15 +717,15 @@ input.js     161 / passable.js 161 / conditions.js 117 / save.js 87 / main.js 78
 - [x] **エディタのプレビュー設定に「🕯 ロウソク」トグルを追加**（`ps-candle`・デフォルト ON・両 getPreviewSettings に追加＝[[blade-preview-settings-duplicated]] の教訓）。宝箱内容に「ロウソク」・トリガーに「bushBurned」も追加
 - ※ 実装：`shared/items.js`（candle 定義）・`game/conditions.js`（bushBurned トリガー）・`game/game.js`（`playCandle()`＋`showCandleFireEffect()`・useSubItem 分岐・ps_candle・getState に hasCandle）・`shared/sounds.js`（`fire` SE）・`game/css/effects.css`（`.candle-fire` 炎演出）・エディタ4ファイル（index.html/editor-io.js/editor.js/editor-props.js）・`work/blade-of-lumia.json`（デモ配置）。`tests/candle.spec.js` 4本。**全75テストグリーン**
 
-### 4-3b. ロウソクの炎で敵にダメージ　⚡ Sonnet（既存ダメージ処理への攻撃種別追加）
+### 4-3b. ロウソクの炎で敵にダメージ　⚡ Sonnet（既存ダメージ処理への攻撃種別追加）　✅ 完了（2026-06-18）
 > **背景：** 4-3 のロウソクは「茂みを燃やす」発見専用。ユーザー方針で**炎で前方の敵にダメージを与える攻撃要素**を追加する（次タスク）。
-- [ ] `playCandle()` で前方セルに敵がいれば `dealDamageToEnemy(e, dmg, 'fire')` でダメージを与える（攻撃種別 `'fire'` を新設）
+- [x] `playCandle()` で前方セルに敵がいれば `dealDamageToEnemy(e, dmg, 'fire')` でダメージを与える（攻撃種別 `'fire'` を新設）
   - ダメージ量は控えめに（ロウソクは主に発見用途・剣の補助）。値は実装時に決め、`game/constants.js` に集約候補
   - 茂み燃やしと両立：前方が茂みなら燃やす＋（その先/同セルに敵がいれば）炎ダメージ、という素直な処理にする
-- [ ] **Phase 3-3 の弱点属性（`weakness.type`）と連動**：`'fire'` を弱点に持つボス/敵を設定できるようにする（例：氷・植物系の敵が炎に弱い）。`shared/enemies.js` の該当敵に `weakness:{type:'fire',multiplier}` を付与
-- [ ] 炎ヒット時のエフェクト/SE（既存の `.candle-fire` 演出・`fire` SE を流用、必要なら敵中心に着火演出）
-- [ ] テスト：`tests/candle.spec.js` に「前方の敵に炎ダメージが入る」「炎が弱点の敵には倍率ダメージ」を追加
-- ※ 実装は `dealDamageToEnemy` に種別を渡すだけ（Phase 3-3 で `atkType` 引数は実装済み）。当たり判定は前方1セル（剣の茂み切りと同じ前方セル判定）でよい
+- [x] **Phase 3-3 の弱点属性（`weakness.type`）と連動**：`'fire'` を弱点に持つボス/敵を設定できるようにする（例：氷・植物系の敵が炎に弱い）。`shared/enemies.js` の該当敵に `weakness:{type:'fire',multiplier}` を付与
+- [x] 炎ヒット時のエフェクト/SE（既存の `.candle-fire` 演出・`fire` SE を流用、必要なら敵中心に着火演出）
+- [x] テスト：`tests/candle.spec.js` に「前方の敵に炎ダメージが入る」「炎が弱点の敵には倍率ダメージ」を追加
+- ※ 実装：`game/constants.js`（`CANDLE_FIRE_DMG=3`）・`game/game.js`（`playCandle()` に敵判定追加）・`shared/enemies.js`（氷のリヴァイアサン・古森の巨人の弱点を `fire` に変更）。`tests/candle.spec.js` +2本。**全77テストグリーン**
 
 ### 4-4. ブーメランでアイテム取得　⚡ Sonnet（既存ブーメラン処理の拡張）
 - [ ] ブーメランが通過したマスのアイテムを回収できる機能

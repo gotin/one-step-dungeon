@@ -60,3 +60,6 @@ export const BEAM_STRONG_MULT = 2;     // 満タンビームの威力倍率（�
 
 // ── Phase 3-4: ブーメランスタン ──────────────────────────────
 export const BOOMERANG_STUN_MS = 1500; // スタン持続時間（ms）
+
+// ── Phase 4-3b: ロウソク炎ダメージ ────────────────────────────
+export const CANDLE_FIRE_DMG = 3; // ロウソクの炎による基本ダメージ（控えめ・発見用途の補助）
