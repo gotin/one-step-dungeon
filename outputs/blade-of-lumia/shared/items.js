@@ -61,6 +61,17 @@ export const ITEM_META = {
 		type: 'magic',
 		uses: Infinity,
 	},
+	candle: {
+		// Phase 4-3: ロウソク。active サブアイテム（使うと前方の茂みを燃やす）。
+		// 既存の「茂み切り」(cutBushes) を再利用して前方の BUSH を燃やし通行可化する。
+		// さらに燃やすとステージ単位の ss.bushBurned=true を立て、showConditions の
+		// 新トリガー bushBurned で gate された隠し通路/入口/アイテムを出現させる
+		// （笛の flutePlayed と同型）。剣で切っても bushBurned は立たない＝ロウソク固有
+		// の発見役割。hasCandle フラグは作らず subItems.candle で管理（flute と同型）。
+		name: 'ロウソク', icon: '🕯', sprite: 'candle', pal: 'candle',
+		type: 'magic',
+		uses: Infinity,
+	},
 	ladder: {
 		// Phase 4-1: はしご。所持しているだけで効果を発揮する「自動わたり」装備。
 		// サブアイテムスロットでは使わず player.hasLadder フラグで管理する

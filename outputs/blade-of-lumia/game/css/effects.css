@@ -582,3 +582,21 @@
     40%  { transform: rotate(360deg) scale(1.1); opacity: 0.95; }
     100% { transform: rotate(900deg) scale(0.1); opacity: 0; }
 }
+
+/* Phase 4-3: ロウソクの炎（前方セルで茂みを燃やす演出） */
+.candle-fire {
+    border-radius: 50% 50% 45% 45%;
+    background: radial-gradient(ellipse at 50% 75%,
+        rgba(255, 240, 160, 0.95) 0%,
+        rgba(255, 160, 40, 0.85) 35%,
+        rgba(220, 60, 20, 0.6) 70%,
+        rgba(160, 20, 10, 0.0) 100%);
+    box-shadow: 0 0 16px 6px rgba(255, 140, 40, 0.7);
+    animation: candle-fire-burn 0.6s ease-out forwards;
+}
+@keyframes candle-fire-burn {
+    0%   { transform: scaleY(0.3) translateY(30%); opacity: 0.3; }
+    35%  { transform: scaleY(1.25) translateY(-10%); opacity: 1; }
+    70%  { transform: scaleY(1.0) translateY(0); opacity: 0.85; }
+    100% { transform: scaleY(0.5) translateY(10%); opacity: 0; }
+}

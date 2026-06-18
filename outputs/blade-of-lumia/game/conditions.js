@@ -94,6 +94,7 @@ export function createConditions(d) {
 			let met = false;
 			if (cond.trigger === 'killAll')    met = enemies.length === 0;
 			else if (cond.trigger === 'flutePlayed') met = ss.flutePlayed === true;  // Phase 4-2: 笛を吹いた
+			else if (cond.trigger === 'bushBurned') met = ss.bushBurned === true;  // Phase 4-3: ロウソクで茂みを燃やした
 			else if (cond.trigger === 'switchOn') met = ss.switchStates?.[cond.switchId] === true;
 			else if (cond.trigger === 'wallBroken') met = ss.brokenWalls?.has(cond.wallId);
 			else if (cond.trigger === 'hasItem') met = !!player.subItems[cond.item] || player.weapon === cond.item;

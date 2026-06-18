@@ -342,6 +342,13 @@ export function playSound(kind) {
 		tone(ctx, now,        660, 0.07, 'sine', 0.05);
 		tone(ctx, now + 0.07, 880, 0.09, 'sine', 0.06);
 	}
+	// ロウソクの炎「ボッ…ゴォォ」（Phase 4-3：茂みを燃やす）
+	if (kind === 'fire') {
+		tone(ctx, now,        180, 0.05, 'sawtooth', 0.06);
+		tone(ctx, now + 0.03, 120, 0.12, 'sawtooth', 0.05);
+		tone(ctx, now + 0.08, 90,  0.22, 'triangle', 0.045);
+		tone(ctx, now + 0.10, 220, 0.18, 'sawtooth', 0.03);
+	}
 	// 宝箱
 	if (kind === 'chest') {
 		tone(ctx, now,        660, 0.07, 'sine', 0.05);

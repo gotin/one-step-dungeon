@@ -14,9 +14,9 @@
 ## 📍 現在地（常に最新に保つ）
 
 - **進行中フェーズ：** **Phase 4（サブアイテム拡充）**
-- **進行中タスク：** **Phase 4-2（笛）✅ 完了**。次は **Phase 4-3（ロウソク）⚡ Sonnet**。
-- **⚠️ 次やること（最優先）：** **Phase 4-3（ロウソク）⚡ Sonnet**。既存の茂み切り機能を拡張し「前方の草・茂みを燃やす→隠し通路/入口が出現」を実装。設計は PLAN.md 4-3 参照（既存拡張なので Sonnet 可）。
-- **直近の状態：** 笛＝active サブアイテム。効果は `stageData.fluteEffect`（reveal＝showConditions の新トリガー `flutePlayed` で隠し入口出現／warp＝exitRegistry へ移動）。**flute テスト4本＋全体71テストすべてグリーン**。テスト3の不確定は「実装バグではなくテストの移動ナビが隠し入口(5,3)を通り越していた」のが原因——`down 6/left 6` → 正しい `down 2/left 2` に修正して解決（実装は正しかった）。
+- **進行中タスク：** **Phase 4-3（ロウソク：茂み燃やし）✅ 完了**。次は **Phase 4-3b（ロウソクの炎で敵にダメージ）⚡ Sonnet**。
+- **⚠️ 次やること（最優先）：** **Phase 4-3b（ロウソクの炎で敵にダメージ）⚡ Sonnet**。`playCandle()` で前方の敵に `dealDamageToEnemy(e, dmg, 'fire')`（新攻撃種別 `fire`）＋Phase 3-3 の弱点属性と連動（炎が弱点の敵を設定）。設計は PLAN.md 4-3b 参照。※ その後 4-4（ブーメランでアイテム回収）。※「暗闇をロウソクで照らす」は重いので IDEA.md に記録済み（Phase 5 で別タスク化）。
+- **直近の状態：** ロウソク＝笛と同型の active magic サブアイテム。前方の茂み（BUSH）を燃やす（既存 `cutBushes` を再利用＝通行可化）＋`ss.bushBurned=true`→`showConditions` の**新トリガー `bushBurned`** で隠し通路/入口/アイテム出現。**剣で切っても bushBurned は立たない**＝ロウソク固有の発見役割。**candle テスト4本＋全体75テストすべてグリーン**。ハマり：炎演出 div は `renderBoard/renderChars` が charLayerEl を作り直すため、再描画の**後**に出さないと消える（笛 warp は遷移するので顕在化しなかった）。
 - **⚠️ 保留（後日対応）：** ビーム攻撃が強力すぎる → Phase 8-4 で通しプレイ時に一括調整。
 
 
@@ -31,6 +31,24 @@
 ## セッションログ
 
 <!-- 新しいエントリを上に追加していく（最新が一番上） -->
+
+### 2026-06-18 — Phase 4-3（完了）：ロウソクを実装（笛と同型・前方の茂みを燃やす→bushBurned で隠し入口出現）
+
+**やったこと：**
+- **ロウソクを笛と同型の active magic サブアイテムとして実装**（`subItems.candle`・`type:'magic'`・`uses:Infinity`・`hasCandle` フラグは作らない）。使うと **前方セル（heroDir 由来）の茂み（BUSH）を燃やす**
+- **燃焼は既存の `cutBushes`（剣切りと共有の Set）を再利用**して通行可化（描画も render-board の既存 cutBushes 分岐に乗る・save 永続）。さらに `ss.bushBurned=true` を立て `evaluateConditions()` を呼び、`showConditions` の**新トリガー `bushBurned`** で gate された隠し通路/入口/アイテムを出現させる（笛の `flutePlayed` と1対1で同型）
+- **剣で切っても `bushBurned` は立たない**＝「剣＝通行可化のみ／ロウソク＝通行可化＋発見」の役割分離。combat.js の茂み切りは無改修
+- 実装ファイル：`shared/items.js`（candle 定義）・`game/conditions.js`（bushBurned トリガー）・`game/game.js`（`playCandle()`＋`showCandleFireEffect()`・useSubItem 分岐・ps_candle 適用・getState に hasCandle）・`shared/sounds.js`（`fire` SE「ボッ…ゴォォ」）・`game/css/effects.css`（`.candle-fire` 炎演出＋keyframes）・エディタ4ファイル（index.html の ps-candle トグル／editor-io.js・editor.js の両 getPreviewSettings／editor-props.js の宝箱「ロウソク」＋トリガー「bushBurned」）・`work/blade-of-lumia.json`（field 2,0：(2,6) ロウソク宝箱・(4,7) 茂み・(4,8) bushBurned 隠し入口→既存 secret_grotto を再利用）
+- **検証**：`node scripts/check-errors.mjs` エラーなし → `tests/candle.spec.js` 4本（所持&active／燃やすまで遷移しない／燃やすと出現して secret_grotto へ遷移／前方が茂みでなければ出現しない）→ **全75テストグリーン**（既存71＋candle 4・VRT 含む＝起動画面 field 1,0 は不変）。一時 spec で炎演出 div の生成・JSエラーなしを実ブラウザ確認（確認後削除）
+
+**学び・気づき：**
+- **「茂みを燃やす」は新サブシステム不要**。剣切りの `cutBushes`（通行可化＋描画消去＋永続）と笛の `showConditions`（hide/reveal＋永続）という**既存の2機構を組み合わせる**だけで「燃やす→隠し通路出現」が成立した。新規は `playCandle()` と `bushBurned` トリガー1個のみ
+- **炎演出 div は再描画の後に出す**：`showCandleFireEffect` を `renderBoard()/renderChars()` の**前**に append すると、再描画が charLayerEl を作り直して消えてしまう（functional テストは通るが視覚要素が出ない）。笛の warp 演出は遷移するので顕在化しなかったが、その場に留まる演出では再描画後に出すのが必須。前方が茂みでない（再描画しない）分岐では先に出してよい
+- **「剣でも切れるが発見はロウソクだけ」は bushBurned を立てる主体を分けるだけ**で表現できた。同じ `cutBushes` を共有しつつ、発見トリガーをロウソク専用にすることで、剣で雑に茂みを退けても隠し通路は現れない＝ロウソクに固有価値を持たせられた
+
+**▶ 次やること：** **Phase 4-3b（ロウソクの炎で敵にダメージ）⚡ Sonnet**（`playCandle()` で前方の敵に `dealDamageToEnemy(e, dmg, 'fire')`＋Phase 3-3 弱点属性と連動）。設計は PLAN.md 4-3b 参照。※ 暗闇照らしは重いので IDEA.md に記録（Phase 5 で別タスク化）。その後 4-4（ブーメラン回収）。
+
+---
 
 ### 2026-06-17 — Phase 4-2（完了）：笛の仕上げ。未確定だったテスト3はテスト側のナビバグと判明、実装は正しかった
 
@@ -1276,7 +1294,7 @@
 
 | Phase 2 8ダンジョン | ✅ 完了 | 2-1〜2-4 全完了（8ダンジョン体制・ボス固有化・石碑&NPC噂話ヒント・フィールド接続仕上げ＋到達性回帰テスト）。全39テストグリーン |
 | Phase 3 アクション深化 | ✅ 完了 | 3-1〜3-4 全完了。チャージ剣ビーム・大型ボス8種・弱点属性・ブーメランスタン。全53テストグリーン |
-| Phase 4 サブアイテム | 🚧 進行中 | 4-1（はしご）＋4-1b/c＋4-2（笛）完了。笛＝active サブアイテム・reveal（隠し入口出現）/warp（ワープ）の2効果・`stageData.fluteEffect`・showConditions の `flutePlayed` トリガー。全71テストグリーン。残：4-3 ロウソク / 4-4 ブーメラン回収 / 4-5 組合せ |
+| Phase 4 サブアイテム | 🚧 進行中 | 4-1（はしご）＋4-1b/c＋4-2（笛）＋4-3（ロウソク）完了。ロウソク＝笛と同型 active magic・前方の茂みを燃やす（cutBushes 再利用）＋`bushBurned` トリガーで隠し入口出現。全75テストグリーン。残：4-4 ブーメラン回収 / 4-5 組合せ |
 | Phase 5 謎解き | 🔲 未着手 | |
 | Phase 6 世界観・NPC | 🔲 未着手 | |
 | Phase 7 成長システム | 🔲 未着手 | |

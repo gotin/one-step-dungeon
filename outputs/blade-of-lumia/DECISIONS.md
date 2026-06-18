@@ -22,6 +22,15 @@
 
 ## 記録
 
+### 2026-06-18 — Phase 4-3：ロウソクは「笛と同型の active magic サブアイテム」とし、既存の cutBushes 機構を再利用、発見は showConditions の新トリガー bushBurned で行う
+- **決定（仕組み設計）：** ロウソク（candle）は **笛（flute）と完全に同型の active magic サブアイテム**（`subItems.candle`・`type:'magic'`・`uses:Infinity`・`hasCandle` フラグは作らない）。使うと **前方セル（heroDir 由来）の茂み（BUSH）を燃やす**：既存の「剣で茂みを切る」機構 `ss.cutBushes`（Set）に posKey を追加して通行可化し、描画も既存の render-board の cutBushes 分岐に乗せる（新しい消去ロジックを作らない）。さらに燃やしたら **ステージ単位の `ss.bushBurned=true`** を立て `evaluateConditions()` を呼ぶ。`showConditions` に新トリガー **`bushBurned`** を足し、これで gate された隠し通路・隠し入口 `>`・隠しアイテムが出現する（笛の `flutePlayed` トリガーと1対1で同型）。
+- **「剣で切る」と「ロウソクで燃やす」の役割分担：** 両者とも `cutBushes` で通行可化するが、**`bushBurned` を立てるのはロウソクだけ**。これで「剣でも茂みは退けられる（通行可）が、ロウソクで燃やさないと隠し通路は現れない」という発見専用の役割をロウソクに持たせられる。combat.js の茂み切り（`swordAttack`）は `bushBurned` を触らないので既存挙動は不変。
+- **既存システムの再利用が肝（新サブシステムを作らない）：** (1) 燃焼＝`cutBushes`（剣切りと共有・save.js でシリアライズ済み＝燃やした茂みは永続）。(2) 発見＝`showConditions`/`conditionsMet` の hide/reveal パイプライン（笛と同じ・`conditionsMet` が永続性を担い `bushBurned` 自体は揮発フラグで save 不要）。(3) 隠し入口の遷移ゲートも笛で追加済みの「`checkStageTransition` の MAP_ENTER 分岐で `showConditions` 未達なら遷移しない」をそのまま流用（トリガー非依存なので `bushBurned` でも効く）。新規実装は「`playCandle()`＋炎演出＋`bushBurned` トリガー1個」のみ。
+- **炎演出は再描画の後に出す（ハマりどころ）：** `showCandleFireEffect` は炎 div を `charLayerEl` に append するが、**`renderBoard()`/`renderChars()` は charLayerEl を作り直す**ため、先に append すると再描画で消える（笛の warp 演出は遷移するので顕在化しなかった）。`evaluateConditions()→renderBoard()→renderChars()` の**後**に演出を出すことで解決。前方が茂みでない（再描画しない）分岐では先に出してよい。
+- **代替案：** (A) `player.hasCandle` フラグ＋専用ボタン → 笛と同じくサブアイテム導線に乗らず UI が増えるので却下（active サブアイテム化で既存の装備切替・モバイルボタンに相乗り）。(B) 燃焼用に新しい焼却済みフラグ Set を新設 → `cutBushes` が既に同じ役割（通行可化＋描画消去）なので二重実装になり却下。(C) 剣でも `bushBurned` を立てる → ロウソク固有の「発見」価値が消えるため却下（剣＝通行可化のみ・ロウソク＝通行可化＋発見、で役割分離）。
+- **エディタ対応（Phase 4 共通ルール）：** プレビュー設定に「🕯 ロウソク」トグル（`ps-candle`・デフォルト ON）を **両方の getPreviewSettings（editor-io.js と editor.js の重複定義）に追加**（[[blade-preview-settings-duplicated]]）。宝箱内容に「ロウソク」選択肢、showConditions のトリガーに「bushBurned」を追加。
+- **結果／影響：** `shared/items.js`（candle）・`game/conditions.js`（bushBurned）・`game/game.js`（`playCandle()`/`showCandleFireEffect()`・useSubItem 分岐・ps_candle・getState の hasCandle）・`shared/sounds.js`（`fire` SE）・`game/css/effects.css`（`.candle-fire`）・editor 4ファイル・`work/blade-of-lumia.json`（field 2,0 にロウソク宝箱＋茂み＋bushBurned 隠し入口→secret_grotto を再利用）。`tests/candle.spec.js` 4本（所持/active・燃やすまで遷移しない・燃やすと出現して遷移・前方が茂みでなければ出現しない）＋**全75テストグリーン**。
+
 ### 2026-06-17 — Phase 4-2：笛は「active サブアイテム＋ステージ単位の `fluteEffect` データ駆動」で実装し、reveal は showConditions、warp は exitRegistry を再利用する
 - **決定（仕組み設計）：** 笛（フルート）は **active サブアイテム**（ブーメラン/弓矢と同型・`useSubItem` で発動・`type:'magic'`・`uses:Infinity`）。`player.hasFlute` のような専用フラグは作らず `player.subItems.flute` で管理する（save/load は player 丸ごと JSON 化で自動対応）。効果は **ステージ単位のデータ `stageData.fluteEffect`** で表す：
   - `{ type:'reveal' }` → そのステージの `ss.flutePlayed=true` にして `evaluateConditions()` を呼ぶ。`showConditions` に新トリガー **`'flutePlayed'`** を足し、これで gate された隠しタイル（隠しダンジョン入口 `>`・隠しアイテム等）が出現する。

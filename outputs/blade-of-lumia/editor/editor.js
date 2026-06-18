@@ -145,8 +145,9 @@ document.addEventListener('editor:previewClickAt', e => {
 			boomerang: document.getElementById('ps-boomerang').checked,
 			// Phase 4-1c 修正：はしご・翼の羽衣が欠落していたため openPreview で
 			// ps_ladder=0/ps_wingrobe=0 になっていた（プレビュー設定が効かない原因）。
-			// Phase 4-2：笛 (flute) も両定義に必ず追加する。
+			// Phase 4-2：笛 (flute)・Phase 4-3：ロウソク (candle) も両定義に必ず追加する。
 			flute:     document.getElementById('ps-flute').checked,
+			candle:    document.getElementById('ps-candle').checked,
 			ladder:    document.getElementById('ps-ladder').checked,
 			wingrobe:  document.getElementById('ps-wingrobe').checked,
 			cleared:   document.getElementById('ps-cleared').checked,

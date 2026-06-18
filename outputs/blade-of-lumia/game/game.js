@@ -1110,6 +1110,56 @@ function showFluteWarpEffect() {
 	setTimeout(() => el.remove(), 700);
 }
 
+// ── ロウソクを使う（Phase 4-3）─────────────────────────────────
+// 前方の茂み（BUSH）を燃やす（既存の cutBushes を再利用して通行可化）。
+// 燃やしたら ss.bushBurned=true → evaluateConditions() で showConditions の
+// 新トリガー bushBurned で gate された隠し通路/入口/アイテムが出現する。
+// 前方が茂みでなければ「炎が揺らめくだけ」のメッセージのみ。
+function playCandle() {
+	if (isDialog || isPaused || isGameover || isTransitioning) return;
+	resumeAudio();
+	const [dy, dx] = DIR_DELTA[heroDir];
+	const ndx = dx / MOVE_STEP;
+	const ndy = dy / MOVE_STEP;
+	const tr = toTileRow(player.y + ndy);
+	const tc = toTileCol(player.x + ndx);
+	const tile = stageData.tiles[tr]?.[tc];
+	const posKey = `${tr},${tc}`;
+
+	playSound('fire');
+
+	if (tile !== TILE.BUSH) {
+		showCandleFireEffect(player.x + ndx, player.y + ndy);
+		pulse('🕯 炎が揺らめいた…… 前に燃やせる茂みはない', 1600);
+		return;
+	}
+
+	const ss = getSS(currentLayer, stageKey);
+	if (!ss.cutBushes) ss.cutBushes = new Set();
+	if (ss.cutBushes.has(posKey)) { pulse('🕯 もう燃え尽きている', 1400); return; }
+
+	ss.cutBushes.add(posKey);   // 茂みを燃やす（通行可化・既存パイプライン）
+	ss.bushBurned = true;       // ロウソク固有：bushBurned トリガーを立てる
+	evaluateConditions();       // 隠し通路/入口/アイテムを出現させる
+	renderBoard(); renderChars();
+	// 炎演出は renderBoard/renderChars が charLayerEl を作り直した後に出す
+	// （先に出すと再描画で消えてしまうため）。
+	showCandleFireEffect(player.x + ndx, player.y + ndy);
+	pulse('🔥 茂みが燃え上がった！', 1800);
+	saveGame();
+}
+
+// ロウソクの炎演出（前方セルに一時 div を出す）
+function showCandleFireEffect(cx, cy) {
+	if (!charLayerEl) return;
+	const cellPx = getCellPx();
+	const el = document.createElement('div');
+	el.className = 'candle-fire';
+	el.style.cssText = `position:absolute;left:${(cx - 0.5) * cellPx}px;top:${(cy - 0.5) * cellPx}px;width:${cellPx}px;height:${cellPx}px;z-index:25;pointer-events:none;`;
+	charLayerEl.appendChild(el);
+	setTimeout(() => el.remove(), 600);
+}
+
 // ── サブアイテム使用 ─────────────────────────────────────────
 function useSubItem() {
 	if (isDialog || isPaused || isGameover) return;
@@ -1149,6 +1199,9 @@ function useSubItem() {
 	}
 	if (id === 'flute') {
 		playFlute(); return;
+	}
+	if (id === 'candle') {
+		playCandle(); return;
 	}
 	if (id === 'bomb') {
 		placeBomb(); return;
@@ -1306,6 +1359,7 @@ async function init() {
 		const psBow      = params.get('ps_bow');
 		const psBoomerang= params.get('ps_boomerang');
 		const psFlute    = params.get('ps_flute');
+		const psCandle   = params.get('ps_candle');
 		const psCleared  = params.get('ps_cleared');
 		const psWingRobe = params.get('ps_wingrobe');
 		const psLadder   = params.get('ps_ladder');
@@ -1322,6 +1376,7 @@ async function init() {
 		if (psBow      === '1') { player.subItems.bow       = { count: 10 };       if (!player.activeSubItem) player.activeSubItem = 'bow'; }
 		if (psBoomerang=== '1') { player.subItems.boomerang = { count: Infinity };  if (!player.activeSubItem) player.activeSubItem = 'boomerang'; }
 		if (psFlute    === '1') { player.subItems.flute     = { count: Infinity };  if (!player.activeSubItem) player.activeSubItem = 'flute'; }
+		if (psCandle   === '1') { player.subItems.candle    = { count: Infinity };  if (!player.activeSubItem) player.activeSubItem = 'candle'; }
 		// 姫状態（クリア済みフラグ）の設定
 		if (psCleared === '1') {
 			localStorage.setItem(CLEARED_KEY, '1');
@@ -1387,6 +1442,7 @@ export function getGameState() {
 			hasWingRobe: !!player.hasWingRobe, flying: !!player.flying,
 			hasLadder: !!player.hasLadder,
 			hasFlute: !!player.subItems?.flute,
+			hasCandle: !!player.subItems?.candle,
 			activeSubItem: player.activeSubItem,
 		},
 		heroDir,

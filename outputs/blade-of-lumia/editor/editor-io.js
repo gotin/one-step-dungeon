@@ -132,6 +132,7 @@ function getPreviewSettings() {
 		bow:       document.getElementById('ps-bow').checked,
 		boomerang: document.getElementById('ps-boomerang').checked,
 		flute:     document.getElementById('ps-flute').checked,
+		candle:    document.getElementById('ps-candle').checked,
 		ladder:    document.getElementById('ps-ladder').checked,
 		wingrobe:  document.getElementById('ps-wingrobe').checked,
 		cleared:   document.getElementById('ps-cleared').checked,
@@ -150,6 +151,7 @@ export function openPreview(stX, stY, row, col, ps, TILE) {
 		url += `&ps_weapon=${ps.weapon?1:0}&ps_shield=${ps.shield?1:0}&ps_armor=${ps.armor?1:0}`;
 		url += `&ps_bow=${ps.bow?1:0}&ps_boomerang=${ps.boomerang?1:0}&ps_cleared=${ps.cleared?1:0}`;
 		url += `&ps_ladder=${ps.ladder?1:0}&ps_wingrobe=${ps.wingrobe?1:0}&ps_flute=${ps.flute?1:0}`;
+		url += `&ps_candle=${ps.candle?1:0}`;
 	}
 	frameEl.src = 'about:blank';
 	requestAnimationFrame(() => {

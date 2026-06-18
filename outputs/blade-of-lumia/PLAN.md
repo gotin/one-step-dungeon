@@ -708,12 +708,24 @@ input.js     161 / passable.js 161 / conditions.js 117 / save.js 87 / main.js 78
 - [x] **エディタのプレビュー設定に「🎵 笛」トグルを追加**（getPreviewSettings 2箇所・ステージ fluteEffect 入力・宝箱内容・トリガー）
 - [x] flute スモークテスト4本グリーン（全71テストグリーン）
 
-### 4-3. ロウソク　⚡ Sonnet（茂み切り機能の拡張）
-- [ ] 「ロウソク」アイテムを実装
-  - 前方の草・茂みを燃やせる（既存の茂み切り機能を拡張）
-  - 燃やした後に隠し通路・隠し入口が現れるギミック
-- [ ] ロウソクを使った発見ギミックの追加
-- [ ] **エディタのプレビュー設定に「🕯 ロウソク」トグルを追加**（上記 Phase 4 共通ルール参照）
+### 4-3. ロウソク　⚡ Sonnet（茂み切り機能の拡張）　✅ 完了（2026-06-18）
+- [x] 「ロウソク」アイテムを実装（active magic サブアイテム・`subItems.candle`・`type:'magic'`・`uses:Infinity`。笛と同型）
+  - 前方の茂み（BUSH）を燃やせる（既存の `cutBushes` 機構を再利用＝通行可化・再描画も既存パイプライン）
+  - 燃やすと `ss.bushBurned=true` → `evaluateConditions()` で `showConditions` の**新トリガー `bushBurned`** で gate された隠し通路・隠し入口・隠しアイテムが出現（笛の `flutePlayed` と同型）
+  - **剣で切っても `bushBurned` は立たない**＝ロウソク固有の発見役割（剣＝通行可化のみ／ロウソク＝通行可化＋発見トリガー）
+- [x] ロウソクを使った発見ギミックの追加（field 2,0：(2,6) にロウソク宝箱・(4,7) に茂み・(4,8) に `bushBurned` で出現する隠し入口→`secret_grotto`）
+- [x] **エディタのプレビュー設定に「🕯 ロウソク」トグルを追加**（`ps-candle`・デフォルト ON・両 getPreviewSettings に追加＝[[blade-preview-settings-duplicated]] の教訓）。宝箱内容に「ロウソク」・トリガーに「bushBurned」も追加
+- ※ 実装：`shared/items.js`（candle 定義）・`game/conditions.js`（bushBurned トリガー）・`game/game.js`（`playCandle()`＋`showCandleFireEffect()`・useSubItem 分岐・ps_candle・getState に hasCandle）・`shared/sounds.js`（`fire` SE）・`game/css/effects.css`（`.candle-fire` 炎演出）・エディタ4ファイル（index.html/editor-io.js/editor.js/editor-props.js）・`work/blade-of-lumia.json`（デモ配置）。`tests/candle.spec.js` 4本。**全75テストグリーン**
+
+### 4-3b. ロウソクの炎で敵にダメージ　⚡ Sonnet（既存ダメージ処理への攻撃種別追加）
+> **背景：** 4-3 のロウソクは「茂みを燃やす」発見専用。ユーザー方針で**炎で前方の敵にダメージを与える攻撃要素**を追加する（次タスク）。
+- [ ] `playCandle()` で前方セルに敵がいれば `dealDamageToEnemy(e, dmg, 'fire')` でダメージを与える（攻撃種別 `'fire'` を新設）
+  - ダメージ量は控えめに（ロウソクは主に発見用途・剣の補助）。値は実装時に決め、`game/constants.js` に集約候補
+  - 茂み燃やしと両立：前方が茂みなら燃やす＋（その先/同セルに敵がいれば）炎ダメージ、という素直な処理にする
+- [ ] **Phase 3-3 の弱点属性（`weakness.type`）と連動**：`'fire'` を弱点に持つボス/敵を設定できるようにする（例：氷・植物系の敵が炎に弱い）。`shared/enemies.js` の該当敵に `weakness:{type:'fire',multiplier}` を付与
+- [ ] 炎ヒット時のエフェクト/SE（既存の `.candle-fire` 演出・`fire` SE を流用、必要なら敵中心に着火演出）
+- [ ] テスト：`tests/candle.spec.js` に「前方の敵に炎ダメージが入る」「炎が弱点の敵には倍率ダメージ」を追加
+- ※ 実装は `dealDamageToEnemy` に種別を渡すだけ（Phase 3-3 で `atkType` 引数は実装済み）。当たり判定は前方1セル（剣の茂み切りと同じ前方セル判定）でよい
 
 ### 4-4. ブーメランでアイテム取得　⚡ Sonnet（既存ブーメラン処理の拡張）
 - [ ] ブーメランが通過したマスのアイテムを回収できる機能
@@ -881,7 +893,7 @@ Step 5: 必要になったら（Phase 0後半）
 | チャージ攻撃（剣ビーム） | ✅ 完了（Phase 3-1：押下で剣＋長押しチャージ→離してビーム。1/4以上=弱ビーム/満タン=貫通強ビーム。チャージ中は移動半速。charge.js + CSS オーラ。42テストグリーン） |
 | はしご | ✅ 完了（Phase 4-1：自動わたり方式・水/穴を1セル渡れる・PIT タイル追加・dungeon_3 パズル。57テストグリーン） |
 | 笛 | ✅ 完了（Phase 4-2：active サブアイテム・reveal（隠し入口出現）/warp（ワープ）の2効果・`stageData.fluteEffect`・showConditions の `flutePlayed` トリガー・エディタ対応・71テストグリーン） |
-| ロウソク | ⬜ 未実装（Phase 4-3） |
+| ロウソク | ✅ 完了（Phase 4-3：active magic サブアイテム・前方の茂みを燃やす（cutBushes 再利用）・`ss.bushBurned`→showConditions の `bushBurned` トリガーで隠し通路/入口出現・エディタ対応・75テストグリーン） |
 | 色スイッチ | ⬜ 未実装 |
 | 剣の複数ランク | ⬜ 未実装 |
 | テスト基盤（Playwright E2E/VRT） | ✅ Phase 0-0 完了（起動・移動・セーブ/ロード・ステージ遷移の4スモーク＋VRT、計5テストがパス） |

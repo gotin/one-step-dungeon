@@ -352,7 +352,7 @@
               ".",
               "B",
               ".",
-              ".",
+              "B",
               ".",
               "t",
               "t",
@@ -381,8 +381,8 @@
               ".",
               ".",
               ".",
-              ".",
-              ".",
+              "u",
+              ">",
               ".",
               ".",
               "."
@@ -592,6 +592,11 @@
               "type": "item",
               "item": "flute",
               "name": "笛"
+            },
+            "2,6": {
+              "type": "item",
+              "item": "candle",
+              "name": "ロウソク"
             }
           },
           "floorItems": {},
@@ -672,11 +677,19 @@
             "4,5": {
               "id": "field_secret_back",
               "destId": "field_2"
+            },
+            "4,8": {
+              "id": "field_candle_entrance",
+              "destId": "secret_grotto"
             }
           },
           "showConditions": {
             "5,3": {
               "trigger": "flutePlayed"
+            },
+            "4,8": {
+              "trigger": "bushBurned",
+              "message": "🔥 茂みの奥から 隠れた洞窟の入口が現れた！"
             }
           },
           "breakableWalls": {},
