@@ -719,6 +719,39 @@ export function createPlayer(deps) {
 		}
 	}
 
+	// ── ブーメランによるフィールドアイテム回収 ───────────────
+	// ブーメランが通過したセル (r, c) の鍵・ルピーを回収する。
+	// pickedKeys に登録済みならスキップ（handleTileEvent と同じガード）。
+	function collectFieldItem(r, c) {
+		const stageData = getStageData();
+		const player    = getPlayer();
+		const tile      = stageData.tiles[r]?.[c];
+		if (!tile) return false;
+		const ss     = getSS(getCurrentLayer(), getStageKey());
+		const posKey = `${r},${c}`;
+		if (ss.pickedKeys.has(posKey)) return false;
+
+		if (tile === TILE.KEY) {
+			ss.pickedKeys.add(posKey); player.keys++;
+			playSound('key'); pulse('🪃🗝 ブーメランが鍵を回収した！');
+			renderBoard(); renderChars(); updateHud(); saveGame();
+			return true;
+		}
+		if (tile === TILE.ITEM_RUPEE) {
+			ss.pickedKeys.add(posKey); player.rupees += 1;
+			playSound('rupee'); pulse('🪃◆ ブーメランがルピーを回収した！');
+			renderBoard(); renderChars(); updateHud(); saveGame();
+			return true;
+		}
+		if (tile === TILE.ITEM_RUPEE_LARGE) {
+			ss.pickedKeys.add(posKey); player.rupees += 5;
+			playSound('rupee'); pulse('🪃◇ ブーメランがルピー×5を回収した！');
+			renderBoard(); renderChars(); updateHud(); saveGame();
+			return true;
+		}
+		return false;
+	}
+
 	// ── ドロップエフェクト ────────────────────────────────
 	function spawnDropEffect(r, c, icon, color) {
 		const charLayerEl = getCharLayerEl();
@@ -750,5 +783,6 @@ export function createPlayer(deps) {
 		gainHeartContainer,
 		spawnDropEffect,
 		toggleFlight,
+		collectFieldItem,
 	};
 }

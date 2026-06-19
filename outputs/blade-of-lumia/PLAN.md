@@ -728,9 +728,10 @@ input.js     161 / passable.js 161 / conditions.js 117 / save.js 87 / main.js 78
 - ※ 実装：`game/constants.js`（`CANDLE_FIRE_DMG=3`）・`game/game.js`（`playCandle()` に敵判定追加）・`shared/enemies.js`（氷のリヴァイアサン・古森の巨人の弱点を `fire` に変更）。`tests/candle.spec.js` +2本。**全77テストグリーン**
 
 ### 4-4. ブーメランでアイテム取得　⚡ Sonnet（既存ブーメラン処理の拡張）
-- [ ] ブーメランが通過したマスのアイテムを回収できる機能
+- [x] ブーメランが通過したマスのアイテムを回収できる機能
   - 届かない場所の鍵・ルピーを取れる
-- [ ] この機能を使わないと解けないパズルを設計
+- [x] この機能を使わないと解けないパズルを設計
+- ※ 実装：`game/projectile.js`（`boomerangStep` に `collectFieldItem` 呼び出し）・`game/player.js`（`collectFieldItem` 新設・K/r/R 対応）・`game/game.js`（deps 配線・`getGameState` に keys/rupees 追加）。`work/blade-of-lumia.json` field `1,1` にブーメランパズル配置（柵に囲まれた鍵K・施錠扉D・宝箱B）。`tests/boomerang-item.spec.js` 3本。**全81テストグリーン**
 
 ### 4-5. アイテムの組み合わせギミック　🧠→⚡（ギミック設計はOpus、配置はSonnet）
 - [ ] 弓矢で遠くのスイッチを撃つ仕掛け

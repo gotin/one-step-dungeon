@@ -36,6 +36,7 @@ import { enemyPointHit, enemyCenter } from './hitbox.js';
  *   updateHud()               – HUD 更新
  *   pulse(text, dur?)         – メッセージ表示
  *   hasCleared()              – クリア済みか
+ *   collectFieldItem(r, c)    – ブーメランが通過したセルのアイテム回収
  */
 export function createProjectile(deps) {
 	const {
@@ -46,6 +47,7 @@ export function createProjectile(deps) {
 		dealDamageToEnemy, takeDamage,
 		evaluateConditions, renderBoard, renderChars,
 		saveGame, updateHud, pulse, hasCleared,
+		collectFieldItem,
 	} = deps;
 
 	// ── 内部状態 ──────────────────────────────────────────────
@@ -273,6 +275,10 @@ export function createProjectile(deps) {
 			}
 			proj.x += (tdx / d) * step;
 			proj.y += (tdy / d) * step;
+		}
+		// 往路・復路どちらでも通過セルのアイテムを回収する
+		if (collectFieldItem) {
+			collectFieldItem(toTileRow(proj.y), toTileCol(proj.x));
 		}
 	}
 

@@ -409,6 +409,7 @@ let giveSubItem         = () => {};
 let gainHeartContainer  = () => {};
 let spawnDropEffect     = () => {};
 let toggleFlight        = () => {};
+let collectFieldItem    = () => {};
 // ── combat.js ──
 let swordAttack         = () => {};
 let dealDamageToEnemy   = () => {};
@@ -627,6 +628,7 @@ const { checkStoneOnSwitch, evaluateConditions } = createConditions({
 		updateHud:          () => updateHud(),
 		pulse:              (t, d) => pulse(t, d),
 		hasCleared,
+		collectFieldItem:   (r, c) => collectFieldItem(r, c),
 	});
 
 	const _ai = createEnemyAi({
@@ -827,6 +829,7 @@ const { checkStoneOnSwitch, evaluateConditions } = createConditions({
 	gainHeartContainer= _player.gainHeartContainer;
 	spawnDropEffect   = _player.spawnDropEffect;
 	toggleFlight      = _player.toggleFlight;
+	collectFieldItem  = _player.collectFieldItem;
 
 	swordAttack       = _combat.swordAttack;
 	dealDamageToEnemy = _combat.dealDamageToEnemy;
@@ -1458,6 +1461,8 @@ export function getGameState() {
 			hasFlute: !!player.subItems?.flute,
 			hasCandle: !!player.subItems?.candle,
 			activeSubItem: player.activeSubItem,
+			keys: player.keys ?? 0,
+			rupees: player.rupees ?? 0,
 		},
 		heroDir,
 		enemyCount: enemies.length,
