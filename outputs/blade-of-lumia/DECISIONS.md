@@ -22,6 +22,35 @@
 
 ## 記録
 
+### 2026-06-19 — Phase 4-5（設計）：組み合わせギミックは「投擲物/爆弾がタイル状態に作用する」共通核で実装し、新サブシステムを増やさない
+- **決定（仕組み設計）：** Phase 4-5 の3サブギミック（①弓矢で遠くのスイッチを撃つ ②ブーメランで炎を操作 ③爆弾＋特定タイルの組み合わせ）は、**「投擲物・爆弾が『敵/壁』だけでなく『タイルの状態』に作用する」** という1つの核に集約して実装する。新しい飛翔体ループや専用パズル管理機構は作らず、既存の `projectileTick`／`boomerangStep`／`explodeBomb`／`showConditions` に最小の分岐を足す。
+- **① 弓矢で遠くのスイッチを撃つ（既存 SWITCH を再利用）：**
+  - 新タイルは作らず既存 `SWITCH('S')` を流用。`projectile.js` の直線投擲物のサブステップ補間ループ（トンネリング防止で既に毎セルを通過チェックしている箇所）に、**「矢が `SWITCH` セルを通過したらそのスイッチを ON にする」** 分岐を足す。
+  - **「撃って ON にしたスイッチ」は離れても OFF にならない（ラッチ）**：踏むスイッチ（プレイヤー/石）は離れると `checkSwitchOff` で OFF になるが、矢で撃ったものは `ss.shotSwitches`（新 Set）に記録し、`checkSwitchOff` の OFF 対象から除外する。これで「徒歩では届かない位置のスイッチを矢で撃って恒久的にゲートを開ける」謎解きが成立する（踏みっぱなしが要らない＝初代ゼルダの「目玉スイッチ」相当）。
+  - ON 処理は既存の `SWITCH` 踏み処理（`handleTileEvent` の switch 分岐）と**同じロジック**（`ss.switchStates[pk]=true` → links の `openGates.add(gateId)` → `evaluateConditions()`）を共通ヘルパー化して矢からも呼ぶ。`playSound('switch')`。
+  - **対象を弓矢だけにするか**：当面は弓矢（arrow）のみ。ブーメランは②で炎用途に使うため、スイッチ撃ちは矢に限定して役割を分ける（必要なら後でブーメランも撃てるよう緩める）。
+- **② ブーメランで炎を操作（新タイル TORCH）：**
+  - 新タイル **`TORCH('Y')`（かがり火）** を追加。点灯/消灯状態は **`ss.litTorches`（新 Set・save.js でシリアライズして永続）** で管理（初期点灯はステージデータ側で `litTorches` 初期値を持たせるか、`objects`/専用フィールドで指定）。描画は点灯＝明るい炎・消灯＝暗い台座（render-board の addCellSprite に分岐／当面は CSS/絵文字フォールバックでも可）。通行は基本不可（台座）か通行可かは配置設計で選べるようにする（初期は通行不可の障害物兼ギミックスイッチとして扱う）。
+  - **ブーメランが「火を運ぶ」**：`boomerangStep` の通過セル処理（既に `collectFieldItem` を呼んでいる箇所）に炎運搬を足す。ブーメランが**点いた TORCH を通過すると `proj.flaming=true`（火を拾う）**、**消えた TORCH を通過しているとき `proj.flaming` なら点火**（`ss.litTorches.add`→`evaluateConditions()`）。逆に「炎を消す」演出にしたい場合は、水セル通過で `proj.flaming=false`、点いた TORCH 通過で消灯、という対称ルールも選べる（初期実装は**点火方向**＝「離れたかがり火に火を運んで全部点ける」を主軸にする＝初代ゼルダのロウソク/松明パズルに近い）。
+  - ロウソク（前方炎）・爆弾AOE でも TORCH を点火できるようにし、「火種をどう運ぶか」を複数アイテムで解ける設計にする（ブーメランは"遠くまで運ぶ"、ロウソクは"隣接で点ける"、爆弾は"範囲で一気に"）。
+- **③ 爆弾＋特定タイルの組み合わせ：**
+  - `explodeBomb` の AOE ループは既に「壊せる壁 BREAKABLE_WALL を壊す」「敵にダメージ」を行っている。ここに **「AOE 内の TORCH を点火する」** 分岐を足す（②と同じ `ss.litTorches.add`→`evaluateConditions()`）。これで「爆弾を置いて一帯のかがり火を同時点火」という組み合わせが作れる。
+  - 追加の特定タイルが必要になれば同じ AOE ループに分岐を足すだけで拡張できる（例：ひび割れ床 `CRACKED_FLOOR` を爆弾で開ける等は将来 Phase 5 で）。今回は TORCH 点火だけに絞る。
+- **クリア（ギミック達成）判定：** `showConditions` に**新トリガー `torchesLit`** を足す（笛 `flutePlayed`・ロウソク `bushBurned`・既存 `allSwitchesOn` と同型）。`met = (ステージ内 TORCH の総数>0) && すべて ss.litTorches に含まれる`。これで「全かがり火点灯で隠し扉/宝箱が出現」が gate できる。`conditionsMet` が永続性を担うので一度達成したら戻らない。
+- **既存システムの再利用が肝（新サブシステムを作らない）：**
+  - スイッチ：既存 `switchStates`/`links`/`openGates`/`checkSwitchOff` をそのまま使い、ラッチ用の `shotSwitches` を1つ足すだけ。
+  - 炎運搬・点火：`boomerangStep`/`explodeBomb`/`playCandle` の既存ループに「TORCH を litTorches に追加」する分岐を足すだけ。新しい火管理ループは作らない。
+  - 発見/達成：`showConditions`/`conditionsMet` の hide/reveal パイプライン（笛・ロウソクで確立済み）に `torchesLit` トリガー1個を足すだけ。隠し入口の遷移ゲート（`checkStageTransition` の showConditions 判定）もトリガー非依存なのでそのまま効く。
+  - 永続化：`save.js` の `serializeStageState`/`deserializeStageState` に `litTorches`（Set→配列）と `shotSwitches` を追加（`cutBushes`/`brokenWalls` と同じ要領）。
+- **代替案：**
+  - (A) スイッチを矢で撃ったら「一定時間だけ ON（タイマー式）」→ 論理時間タイマー管理が増え、テストも非決定的になりやすい。**ラッチ（撃ったら恒久 ON）**にして状態を1 Set で表す方が単純で謎解きとしても素直。必要になればタイマー式は別途。
+  - (B) 炎を `player` のフラグや専用エフェクト管理で持つ → ブーメランが火を運ぶので状態は**投擲物オブジェクトの `proj.flaming`** に持たせるのが自然（投擲物消滅で火種も消える）。TORCH の点灯状態だけ ss に永続させる。
+  - (C) TORCH を作らず既存タイルで代用（例：かがり火＝スイッチ扱い）→ 「炎を運ぶ」という視覚的・意味的に独立したギミックなので専用タイルを足す方が分かりやすい。タイル追加コストは tiles.js に1行＋描画分岐だけで軽い。
+  - (D) 3ギミックを別々の独立機構で作る → 「投擲物/爆弾→タイル状態」という共通核を見落として重複実装になる。核を1つにして分岐で表現する。
+- **エディタ対応（Phase 4 共通ルール）：** 新タイル TORCH をパレットに追加（tiles.js の TILE/TILE_META に足せば自動でパレット表示）。`showConditions` のトリガー選択に **`torchesLit`** を追加（editor-props.js）。プレビュー設定トグルは新アイテムを増やさない（弓矢・ブーメラン・爆弾・ロウソクは既存）ので**追加不要**だが、テスト用に「TORCH 初期点灯」をステージデータで指定できるようにする。**[[blade-preview-settings-duplicated]]** は新トグルを足さないので今回は無関係。
+- **実装の進め方（次フェーズ ⚡ Sonnet・1サブギミックずつ）：** ①弓矢スイッチ（最も既存資産で完結・低リスク）→ ②TORCH タイル＋ブーメラン炎運搬 → ③爆弾点火＋`torchesLit` トリガー の順。各ステップで `tests/` にスモークを足してグリーン確認（①矢で離れたスイッチが ON になりゲートが開く＋離れても ON 維持／②ブーメランで消えた TORCH が点く／③爆弾AOEで TORCH が点く・全点灯で `torchesLit` の隠し要素が出る）。
+- **結果／影響（予定）：** `shared/tiles.js`（TORCH）・`game/projectile.js`（矢のスイッチ点火・ブーメラン炎運搬）・`game/player.js` or `game/game.js`（共通スイッチ ON ヘルパー・`shotSwitches` ラッチ）・`game/conditions.js`（torchesLit トリガー）・`game/game.js`（playCandle で TORCH 点火）・`game/save.js`（litTorches/shotSwitches シリアライズ）・`game/render-board.js`（TORCH 描画）・`editor/editor-props.js`（torchesLit トリガー）・`work/blade-of-lumia.json`（3ギミックのパズル配置）。実装は次セッション（Sonnet）で1サブギミックずつ。
+
 ### 2026-06-18 — Phase 4-3：ロウソクは「笛と同型の active magic サブアイテム」とし、既存の cutBushes 機構を再利用、発見は showConditions の新トリガー bushBurned で行う
 - **決定（仕組み設計）：** ロウソク（candle）は **笛（flute）と完全に同型の active magic サブアイテム**（`subItems.candle`・`type:'magic'`・`uses:Infinity`・`hasCandle` フラグは作らない）。使うと **前方セル（heroDir 由来）の茂み（BUSH）を燃やす**：既存の「剣で茂みを切る」機構 `ss.cutBushes`（Set）に posKey を追加して通行可化し、描画も既存の render-board の cutBushes 分岐に乗せる（新しい消去ロジックを作らない）。さらに燃やしたら **ステージ単位の `ss.bushBurned=true`** を立て `evaluateConditions()` を呼ぶ。`showConditions` に新トリガー **`bushBurned`** を足し、これで gate された隠し通路・隠し入口 `>`・隠しアイテムが出現する（笛の `flutePlayed` トリガーと1対1で同型）。
 - **「剣で切る」と「ロウソクで燃やす」の役割分担：** 両者とも `cutBushes` で通行可化するが、**`bushBurned` を立てるのはロウソクだけ**。これで「剣でも茂みは退けられる（通行可）が、ロウソクで燃やさないと隠し通路は現れない」という発見専用の役割をロウソクに持たせられる。combat.js の茂み切り（`swordAttack`）は `bushBurned` を触らないので既存挙動は不変。

@@ -734,9 +734,28 @@ input.js     161 / passable.js 161 / conditions.js 117 / save.js 87 / main.js 78
 - ※ 実装：`game/projectile.js`（`boomerangStep` に `collectFieldItem` 呼び出し）・`game/player.js`（`collectFieldItem` 新設・K/r/R 対応）・`game/game.js`（deps 配線・`getGameState` に keys/rupees 追加）。`work/blade-of-lumia.json` field `1,1` にブーメランパズル配置（柵に囲まれた鍵K・施錠扉D・宝箱B）。`tests/boomerang-item.spec.js` 3本。**全81テストグリーン**
 
 ### 4-5. アイテムの組み合わせギミック　🧠→⚡（ギミック設計はOpus、配置はSonnet）
-- [ ] 弓矢で遠くのスイッチを撃つ仕掛け
-- [ ] ブーメランで炎を消す（または火をつける）仕掛け
-- [ ] 爆弾＋特定タイルの組み合わせパズル
+
+> **設計確定（2026-06-19・Opus）：DECISIONS.md「Phase 4-5（設計）」参照。**
+> 共通核＝**「投擲物・爆弾が『敵/壁』だけでなく『タイルの状態』に作用する」**。新サブシステムは作らず
+> 既存 `projectileTick`／`boomerangStep`／`explodeBomb`／`showConditions` に最小分岐を足す。
+> 実装は **⚡ Sonnet** で **1サブギミックずつ**（①→②→③の順）。各ステップでスモークテストを足してグリーン確認。
+
+- [ ] **① 弓矢で遠くのスイッチを撃つ**（既存 `SWITCH('S')` を再利用）
+  - `projectile.js` の直線投擲物サブステップ補間ループに「矢が SWITCH セルを通過したら ON」分岐を足す
+  - **ラッチ式**：撃って ON にしたスイッチは `ss.shotSwitches`（新 Set）に記録し `checkSwitchOff` の OFF 対象から除外（離れても ON 維持）
+  - ON 処理は既存の switch 踏み処理（`switchStates[pk]=true`→links の `openGates.add`→`evaluateConditions()`）を共通ヘルパー化して矢からも呼ぶ
+  - 当面は弓矢（arrow）のみ対象（ブーメランは②の炎用途と役割分離）
+- [ ] **② ブーメランで炎を操作**（新タイル `TORCH('Y')` かがり火）
+  - 点灯/消灯は `ss.litTorches`（新 Set・save.js でシリアライズ＝永続）で管理。描画は render-board の addCellSprite に分岐（当面 CSS/絵文字フォールバック可）
+  - `boomerangStep` の通過セル処理（`collectFieldItem` を呼んでいる箇所）に炎運搬を足す：点いた TORCH 通過で `proj.flaming=true`、消えた TORCH 通過時に `proj.flaming` なら点火（`litTorches.add`→`evaluateConditions()`）
+  - 主軸は**点火方向**（離れたかがり火に火を運んで点ける）。ロウソク（隣接点火）・爆弾（範囲点火）でも点くよう統一
+- [ ] **③ 爆弾＋特定タイルの組み合わせ**（爆弾で TORCH を範囲点火）
+  - `explodeBomb` の AOE ループ（壊せる壁破壊・敵ダメージを行う箇所）に「AOE 内の TORCH を点火」分岐を足す
+- [ ] **クリア判定：`showConditions` に新トリガー `torchesLit` を追加**（`conditions.js`）
+  - `met = (ステージ内 TORCH 総数>0) && すべて litTorches に含まれる`。全点灯で隠し扉/宝箱が出現（笛 `flutePlayed`・ロウソク `bushBurned` と同型）
+- [ ] **永続化**：`save.js` の serialize/deserialize に `litTorches`・`shotSwitches`（Set↔配列）を追加
+- [ ] **エディタ対応**：TORCH をパレットに追加（tiles.js に足せば自動）・`showConditions` トリガーに `torchesLit` を追加（editor-props.js）。TORCH 初期点灯をステージデータで指定可能に
+- [ ] **パズル配置**（`work/blade-of-lumia.json`）：①徒歩で届かないスイッチを矢で撃つ／②ブーメランで離れたかがり火を点ける／③爆弾で一帯のかがり火を同時点灯。各 `tests/` にスモーク追加
 
 ---
 
