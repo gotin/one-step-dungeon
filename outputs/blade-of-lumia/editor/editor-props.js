@@ -14,6 +14,7 @@ export function renderSidePanel() {
 	renderMapEnters(sd);
 	renderConditions(sd);
 	renderBreakableWalls(sd);
+	renderTorches(sd);
 	renderDoorways(sd);
 }
 
@@ -353,6 +354,36 @@ function renderBreakableWalls(sd) {
 			if (!sd.breakableWalls) sd.breakableWalls = {};
 			if (!sd.breakableWalls[key]) sd.breakableWalls[key] = {};
 			sd.breakableWalls[key].breakDef = parseInt(e.target.value, 10);
+		});
+		el.appendChild(item);
+	}
+}
+
+// ── かがり火 初期点灯設定 ──────────────────────────────────────
+function renderTorches(sd) {
+	const el = document.getElementById('torch-list');
+	if (!el) return;
+	el.innerHTML = '';
+	const torches = findTilePositions(sd, TILE.TORCH);
+	if (!torches.length) { el.innerHTML = '<div class="hint">かがり火なし</div>'; return; }
+	const initLit = new Set(sd.initLitTorches ?? []);
+	for (const { r, c } of torches) {
+		const key  = `${r},${c}`;
+		const item = document.createElement('div');
+		item.className = 'link-item';
+		item.innerHTML = `
+			<label style="display:flex;align-items:center;gap:6px;">
+				<input type="checkbox" data-key="${key}" ${initLit.has(key) ? 'checked' : ''}>
+				(${r},${c}) 初期点灯
+			</label>
+		`;
+		item.querySelector('input').addEventListener('change', e => {
+			if (!sd.initLitTorches) sd.initLitTorches = [];
+			if (e.target.checked) {
+				if (!sd.initLitTorches.includes(key)) sd.initLitTorches.push(key);
+			} else {
+				sd.initLitTorches = sd.initLitTorches.filter(k => k !== key);
+			}
 		});
 		el.appendChild(item);
 	}

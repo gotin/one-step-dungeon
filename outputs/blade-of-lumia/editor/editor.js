@@ -143,6 +143,7 @@ document.addEventListener('editor:previewClickAt', e => {
 			armor:     document.getElementById('ps-armor').checked,
 			bow:       document.getElementById('ps-bow').checked,
 			boomerang: document.getElementById('ps-boomerang').checked,
+			bomb:      document.getElementById('ps-bomb').checked,
 			// Phase 4-1c 修正：はしご・翼の羽衣が欠落していたため openPreview で
 			// ps_ladder=0/ps_wingrobe=0 になっていた（プレビュー設定が効かない原因）。
 			// Phase 4-2：笛 (flute)・Phase 4-3：ロウソク (candle) も両定義に必ず追加する。

@@ -1146,6 +1146,23 @@ function playCandle() {
 		dealDamageToEnemy(hitEnemy, CANDLE_FIRE_DMG, 'fire');
 	}
 
+	// 前方が TORCH なら点灯
+	if (tile === TILE.TORCH) {
+		const ss = getSS(currentLayer, stageKey);
+		if (ss.litTorches.has(posKey)) {
+			showCandleFireEffect(player.x + ndx, player.y + ndy);
+			pulse('🕯 もう火がついている', 1400);
+		} else {
+			ss.litTorches.add(posKey);
+			evaluateConditions();
+			renderBoard(); renderChars();
+			showCandleFireEffect(player.x + ndx, player.y + ndy);
+			pulse('🔥 かがり火に火をつけた！', 1600);
+			saveGame();
+		}
+		return;
+	}
+
 	if (tile !== TILE.BUSH) {
 		showCandleFireEffect(player.x + ndx, player.y + ndy);
 		if (hitEnemy) {
@@ -1384,6 +1401,7 @@ async function init() {
 		const psArmor    = params.get('ps_armor');
 		const psBow      = params.get('ps_bow');
 		const psBoomerang= params.get('ps_boomerang');
+		const psBomb     = params.get('ps_bomb');
 		const psFlute    = params.get('ps_flute');
 		const psCandle   = params.get('ps_candle');
 		const psCleared  = params.get('ps_cleared');
@@ -1401,6 +1419,7 @@ async function init() {
 		if (psLadder   === '1') player.hasLadder = true;
 		if (psBow      === '1') { player.subItems.bow       = { count: 10 };       if (!player.activeSubItem) player.activeSubItem = 'bow'; }
 		if (psBoomerang=== '1') { player.subItems.boomerang = { count: Infinity };  if (!player.activeSubItem) player.activeSubItem = 'boomerang'; }
+		if (psBomb     === '1') { player.subItems.bomb      = { count: 10 };        if (!player.activeSubItem) player.activeSubItem = 'bomb'; }
 		if (psFlute    === '1') { player.subItems.flute     = { count: Infinity };  if (!player.activeSubItem) player.activeSubItem = 'flute'; }
 		if (psCandle   === '1') { player.subItems.candle    = { count: Infinity };  if (!player.activeSubItem) player.activeSubItem = 'candle'; }
 		// 姫状態（クリア済みフラグ）の設定

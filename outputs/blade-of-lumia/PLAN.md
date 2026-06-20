@@ -754,12 +754,12 @@ input.js     161 / passable.js 161 / conditions.js 117 / save.js 87 / main.js 78
   - `editor/editor-props.js` の showConditions トリガードロップダウンに `torchesLit` 追加
   - パズル配置：dungeon_1 ステージ `1,2`（点灯 TORCH `2,3`＋消灯 `2,9`/`7,5`＋宝箱 `7,9` torchesLit 条件付き）
   - `tests/torch.spec.js` 5本（initLitTorches 動作・通過判定・エラーなし）。**全89テストグリーン**
-- [ ] **③ 爆弾＋特定タイルの組み合わせ**（爆弾で TORCH を範囲点火）
-  - `explodeBomb` の AOE ループ（壊せる壁破壊・敵ダメージを行う箇所）に「AOE 内の TORCH を点火」分岐を足す
+- [x] **③ ロウソクで隣接 TORCH を点灯**（爆弾は不採用→ブーメランパズルの難しさを守るため）✅ 2026-06-20
+  - `playCandle()` に TORCH 点灯分岐追加。前方セルが TORCH なら `litTorches.add`→`evaluateConditions()`→`renderBoard()`。点灯済みなら「もう火がついている」メッセージ。`ps_bomb` プレビュー設定も追加（汎用）。dungeon_1 `1,2` (7,3) に石碑ヒント配置。
 - [x] **クリア判定：`showConditions` に新トリガー `torchesLit` を追加**（`conditions.js`）✅ 2026-06-20（② に含む）
 - [x] **永続化**：`save.js` の serialize/deserialize に `litTorches`・`switchToggles`（Set↔配列）を追加 ✅ 2026-06-20（① 実装時にまとめて追加。`litTorches` は② で使用）
 - [x] **エディタ対応**：TORCH をパレットに追加（tiles.js に足せば自動）・`showConditions` トリガーに `torchesLit` を追加（editor-props.js）✅ 2026-06-20（② に含む）
-- [x] **パズル配置**（`work/blade-of-lumia.json`）：②ブーメランで離れたかがり火を点ける（dungeon_1 `1,2`）✅ 2026-06-20。③爆弾での一斉点灯は ③ タスクで追加予定
+- [x] **パズル配置**（`work/blade-of-lumia.json`）：②ブーメランで離れたかがり火を点ける（dungeon_1 `1,2`）✅ 2026-06-20。③爆弾石碑ヒント (7,3) 追加 ✅ 2026-06-20
 
 ### 4-X. バグ修正：ワールドマップの「星の欠片 合計」が大型ボス分を数えていない　⚡ Sonnet
 > **症状（ユーザー報告・2026-06-20）：** エディタのワールドマップ右下「星の欠片 合計」が、**直接拾える欠片(Q)と cave_1 のもの程度しか表示されず**、dungeon_1〜7 の大型ボス分が数えられていない。
