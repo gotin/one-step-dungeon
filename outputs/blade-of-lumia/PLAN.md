@@ -774,10 +774,23 @@ input.js     161 / passable.js 161 / conditions.js 117 / save.js 87 / main.js 78
 **目的：** 「頭を使う」楽しさを追加して探索に深みを出す。
 
 ### 5-1. 色スイッチ・色ゲート　🧠→⚡（連動ロジック設計はOpus、エディタ対応はSonnet）
-- [ ] 赤・青などの色属性スイッチとゲートを実装
-  - 赤スイッチON → 赤ゲート開、青ゲート閉
-  - 連動する複雑なパズルが作れるように
-- [ ] エディタ対応（色属性の設定）
+
+> **設計確定（2026-06-20・Opus）：DECISIONS.md「Phase 5-1（設計）」参照。「色セレクタ式」を採用（ユーザー選択）。**
+> 仕組み：ステージ単位の `ss.activeColor`（1個）＋色別ゲートタイル。色スイッチを武器で叩くと activeColor をその色に**セット**、`GATE_<c>` は `activeColor===c` のときだけ通行可。`links` 機構には触らない（既存パズルに無影響）。**実装は ⚡ Sonnet**（設計が書き出し済みのため）。
+
+- [ ] **タイル追加**（`shared/tiles.js`）：色スイッチ2つ（`SWITCH_RED`/`SWITCH_BLUE`）＋色ゲート2つ（`GATE_RED`/`GATE_BLUE`）。⚠️ セーブ互換のため**既存と衝突しない新文字**を割り当てる（TILE 一覧を再 grep して確認・確定したら DECISIONS に追記）
+- [ ] **スプライト**（`shared/tile-sprites.js` ＋ `shared/sprites-tiles.js`）：既存 `gateG`/`lever` のパレットを色違いにして4タイル分の `{spr,pal}` を単一表に追加（絵文字は使わない＝[[blade-tile-sprite-single-source]]）
+- [ ] **状態 `ss.activeColor`**（プリミティブ文字列・1ステージ1個）：
+  - `save.js` の createStageState / serialize / deserialize に追加（Set変換不要・そのまま代入）
+  - `game.js` `getSS()` で `stageData.initActiveColor` を種まき（`initLitTorches` と同要領）
+  - `getStageStateSnapshot()` に `activeColor` を追加（テスト観測用）
+- [ ] **叩く＝色セット**：`player.js` に `setActiveColor(r,c)` を新設。`combat.js`（剣）・`projectile.js`（矢/ビーム・ビーム貫通は `proj._switchedCells` 流用）の SWITCH ヒット分岐の隣に「色スイッチなら setActiveColor」を足す
+- [ ] **通行判定**：`passable.js` の GATE 分岐の隣に `GATE_<c>` は `activeColor===c` のとき通行可（`openGates` は見ない）
+- [ ] **描画**：`render-board.js` の GATE 分岐に倣い、色ゲートは不一致なら色付き閉ゲートを描画・一致なら床。色スイッチは自色が active のとき点灯フレーム
+- [ ] **クリア判定（任意・YAGNI）**：通行ギミックだけで成立するなら不要。必要なら `conditions.js` に `activeColorIs`（`cond.color===ss.activeColor`）トリガーを追加（torchesLit と同型）
+- [ ] **エディタ対応**：色タイルは tiles.js に足せば自動でパレットに出る。`initActiveColor` をステージ設定に1項目追加（`editor-canvas.js`/`editor-props.js`・fluteEffect と同要領）
+- [ ] **パズル配置**（`work/blade-of-lumia.json`）：1本道を赤青ゲートで交互に塞ぎ、離れた色スイッチを撃ち分けて進む配置＋石碑ヒント
+- [ ] **テスト**（`tests/color-switch.spec.js`）：赤を叩く→赤ゲート通行可・青ゲート不可／青を叩く→反転／snapshot に activeColor が出る
 
 ### 5-2. 隠し通路・隠し入口　⚡ Sonnet（既存ギミックの配置）
 - [ ] 爆弾で壊せる壁（既存）を使った隠し部屋の増設

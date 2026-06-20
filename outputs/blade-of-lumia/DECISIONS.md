@@ -22,6 +22,24 @@
 
 ## 記録
 
+### 2026-06-20 — Phase 5-1（設計）：色スイッチ・色ゲートは「ステージ単位の activeColor 1個＋色別 GATE タイル」の状態機械で実装する
+- **決定（仕組み・ユーザー選択）：** 「**色セレクタ式**」を採用する。色ごとに専用スイッチタイルを置き（`SWITCH_RED`・`SWITCH_BLUE`、将来 `SWITCH_GREEN` 等）、**武器で叩くとそのステージの「アクティブ色 `ss.activeColor`」がその色に切り替わる**（トグルではなく**セット**）。ゲートも色別タイル（`GATE_RED`・`GATE_BLUE`…）にし、**`GATE_<c>` は `ss.activeColor === c` のときだけ通行可（＝開いて見える）**、それ以外は壁（閉じて見える）。これにより「赤を叩く→赤ゲート開・他色ゲート閉／青を叩く→青だけ開」という**排他切替パズル**が成立する。
+- **既存スイッチとの決定的な違い（なぜ `links` を使わないか）：** 既存の `BUTTON`/`SWITCH`＋`links`（switchId→gateId）は**加算式**（スイッチON→そのゲートが開く・各リンクは独立）で、「ある色を開くと他色が閉じる」という**排他**を素直に表現できない。色ギミックの本質は「同時に1色だけ通れる」排他制御なので、`links` で個別ゲートを開閉するのではなく、**ステージに `activeColor` という単一の状態を持たせ、各ゲートが自分の色と一致するかだけを見る**のが最小かつ決定論的。`links` 機構には一切手を入れない（既存パズルに無影響）。
+- **データ構造（最小）：**
+  - 状態：`ss.activeColor`（文字列 `'red'|'blue'|...`／未設定時は `null`）。**1ステージにつき1個**。
+  - 初期色：`stageData.initActiveColor`（例 `'red'`）。`getSS()` の初期化で `litTorches` の `initLitTorches` 種まきと同じ要領でセットする。未指定なら `null`（＝どの色ゲートも閉じた状態から開始）。
+  - 永続化：`save.js` の createStageState / serialize / deserialize に `activeColor`（**プリミティブ文字列**なので Set↔配列変換は不要・そのまま代入）を追加。
+  - スナップショット：`getStageStateSnapshot()` に `activeColor` を追加（テストで観測するため）。
+- **タイル（セーブ互換のため新文字を割り当て・既存文字は不変）：** 空き文字から、`SWITCH_RED='R'`… は既に `ITEM_RUPEE_LARGE='R'` 等で埋まっているため、**未使用の英大文字/記号**を 4つ確保する（実装時に `shared/tiles.js` の TILE 一覧を再 grep して衝突しない文字を選ぶ。候補例：スイッチ＝`'['`/`']'`、ゲート＝`'('`/`')'` などの記号、または未使用大文字）。タイル文字は実装フェーズで最終確定し DECISIONS に追記する。
+- **作用箇所（既存の SWITCH 経路に「色版」を1分岐ずつ足す）：**
+  - **叩く＝色セット**：`player.js` に `setActiveColor(r, c)` を新設（`toggleSwitch` の隣）。前方タイルが `SWITCH_<c>` なら `ss.activeColor = c`＋SE＋`evaluateConditions()`＋再描画＋`saveGame()`。`combat.js`（剣）・`projectile.js`（矢・ビーム・※ブーメランも可）の **SWITCH ヒット分岐の隣に** 「色スイッチなら `setActiveColor`」を足す。ビーム貫通は既存 `proj._switchedCells` で1セル1回に制御（同じ仕組みを流用）。
+  - **通行可否**：`passable.js` の GATE 分岐の隣に `if (tile===GATE_RED) return ss.activeColor==='red'; …` を追加（`openGates` は見ない＝色ゲートは links と独立）。
+  - **描画**：`render-board.js` の GATE 分岐に倣い、色ゲートは「`activeColor` 不一致なら閉じたゲートスプライト（色付き）を描く・一致なら床」。色スイッチは「`activeColor===自色` のとき点灯フレーム」。スプライトは既存 `gateG`/`lever` のパレットを**色違い**にするだけ（[[blade-tile-sprite-single-source]] のとおり `shared/tile-sprites.js` の単一表に `{spr,pal}` を足す。絵文字は使わない）。
+- **クリア判定（任意）：** `conditions.js` に新トリガー `activeColorIs`（`cond.color === ss.activeColor` で達成）を追加できる（torchesLit と同型）。ただし色ゲートを通り抜けて先に進む構造なら新トリガー無しでもパズルは成立するため、**最初は通行ギミックだけで実装し、必要になったらトリガーを足す**（YAGNI）。
+- **エディタ対応：** 色スイッチ/色ゲートはタイルなので `shared/tiles.js` に足せばパレットに自動で出る。`stageData.initActiveColor` を `editor-canvas.js`/`editor-props.js` のステージ設定に1項目足す（`fluteEffect` と同じ要領）。`links` UI は色ギミックでは使わない（既存のまま）。
+- **代替案：** (A) ユーザー提示の「クリスタル式（1種・赤青トグル）」→ 2色固定で実装は最小だが3色以上に拡張できず、スイッチ位置で色を撃ち分ける面白さが出ない。色セレクタ式なら色を足すだけで拡張できるので採用。(B) 既存 `links` を色対応に拡張（link に `color` を持たせ activeColor 一致時のみ開く）→ ゲートを links 経由で開閉する設計と、色ゲートを「自色が active か」で判定する設計が二重化し複雑。**色ゲートは links に依存させず自己完結させる**方が単純。(C) `activeColor` を複数色同時 ON（Set）にする→「同時に1色」という排他の手触りが消える。単一値が正解。
+- **結果／影響（実装フェーズ＝⚡ Sonnet の作業見積り）：** `shared/tiles.js`（色スイッチ2＋色ゲート2タイル＋META）・`shared/tile-sprites.js`（4タイルの{spr,pal}）・`shared/sprites-tiles.js`（色違いパレット）・`game/save.js`（activeColor 3箇所）・`game/game.js`（getSS で initActiveColor 種まき・snapshot に activeColor・配線）・`game/player.js`（`setActiveColor`）・`game/combat.js`＋`game/projectile.js`（色スイッチヒット分岐）・`game/passable.js`（色ゲート通行判定）・`game/render-board.js`（色ゲート/色スイッチ描画）・editor 2ファイル・`work/blade-of-lumia.json`（パズル1つ：1本道を赤青ゲートで交互に塞ぎ、離れた色スイッチを撃ち分けて進む配置・石碑ヒント）。`tests/color-switch.spec.js`（赤を叩くと赤ゲートが通行可・青ゲートが不可／青を叩くと反転／activeColor が snapshot に出る）。**新サブシステムは `activeColor` 1個だけ**で、既存の SWITCH/GATE 経路に色分岐を足す形に収める。
+
 ### 2026-06-20 — Phase 4-5 ①（呼称・見た目の整理）：踏むやつを「ボタン」、武器で押すやつを「スイッチ」に。スイッチは剣でもトグル可
 - **決定（ユーザー指示）：** ギミックを2タイルに**呼び分け**る。(1) 従来の「乗っている間だけ ON」のモーメンタリ式＝**ボタン `BUTTON`**（タイル文字 `'S'`）。(2) 新設した「武器の攻撃で ON↔OFF トグル」＝**スイッチ `SWITCH`**（タイル文字 `'Y'`）。**見た目も分ける**：ボタンは押し込み式で、プレイヤー/石が乗っている（ON）ときに「押された」見た目（沈み込み＋発光、従来の光る効果は維持）。スイッチは ON のとき発光（紫系の的）。さらに**スイッチは矢だけでなく剣・剣ビームなど武器の攻撃でもトグル**できるようにする。
 - **理由：** 直前の実装（2026-06-20 前エントリ）で「踏む＝SWITCH／矢＝ARROW_SWITCH」という命名にしたが、ユーザーの語感では**踏むのは『ボタン』・武器で作動させるのが『スイッチ』**が自然。呼称と見た目を合わせることで役割が直感的になる。「スイッチは剣でも反応」はゼルダの目玉/クリスタルスイッチの手触りに近く、矢が無くても解けるようにして詰みを防ぐ。

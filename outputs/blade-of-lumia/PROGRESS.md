@@ -13,10 +13,10 @@
 
 ## 📍 現在地（常に最新に保つ）
 
-- **進行中フェーズ：** **Phase 4（サブアイテム拡充）**
-- **進行中タスク：** **Phase 4-5（アイテムの組み合わせギミック）🧠→⚡**。①②③完了 → Phase 4-5 全完了。
-- **⚠️ 次やること：** **Phase 5（謎解き・パズルギミック）** または次の未完了タスクへ。PLAN.md 参照。
-- **直近の状態：** Phase 4-5 ③ 爆弾で TORCH 範囲点火完了。`explodeBomb` AOE に TORCH 点灯分岐・`ps_bomb` プレビュー設定・石碑ヒント追加。**全90テストグリーン**。
+- **進行中フェーズ：** **Phase 5（謎解き・パズルギミック）**
+- **進行中タスク：** **Phase 5-1（色スイッチ・色ゲート）🧠→⚡**。**設計完了（Opus）→ 次は実装（⚡ Sonnet）**。
+- **⚠️ 次やること：** **Phase 5-1 の実装（⚡ Sonnet）**。設計が DECISIONS.md/PLAN.md に書き出し済み。`shared/tiles.js` に色スイッチ2＋色ゲート2タイル追加から着手。
+- **直近の状態：** Phase 5-1 設計フェーズ完了。「色セレクタ式」採用（ユーザー選択）＝ステージ単位の `ss.activeColor` 1個＋色別ゲートタイル。既存 `links` 機構には触らず、SWITCH/GATE 経路に色分岐を足す最小設計。コード変更なし。**全90テストグリーン（不変）**。
 - **⚠️ 保留（後日対応）：** ビーム攻撃が強力すぎる → Phase 8-4 で通しプレイ時に一括調整。
 
 
@@ -31,6 +31,29 @@
 ## セッションログ
 
 <!-- 新しいエントリを上に追加していく（最新が一番上） -->
+
+### 2026-06-20 — Phase 5-1（設計フェーズ・Opus）：色スイッチ・色ゲートを「色セレクタ式（activeColor 1個）」で設計
+
+**やったこと（設計のみ・コード変更なし）：**
+- Phase 5-1（色スイッチ・色ゲート）は 🧠→⚡ で設計未着手だったため、まず Opus で設計を確定。実装は次フェーズ（⚡ Sonnet）に回す
+- **コード調査**：既存のスイッチ/ゲート機構（`player.js` `toggleSwitch`/`checkSwitchOff`・`links`（switchId→gateId）・`switchStates`/`switchToggles`/`openGates`・`passable.js` GATE 通行判定・`combat.js`/`projectile.js` の SWITCH ヒット分岐・`render-board.js` の状態別フレーム・`save.js` の serialize・`game.js` `getSS`/snapshot・editor-props.js の links UI）を Explore で洗い出した
+- **仕組みをユーザーに確認**：ゼルダ定番の2系統（クリスタル式＝1種・赤青トグル／色セレクタ式＝色ごとにスイッチ）を提示 → **「色セレクタ式」を採用**（3色以上に拡張でき、色を撃ち分ける面白さが出るため）
+- **設計を3ファイルに記録**：DECISIONS.md「Phase 5-1（設計）」（決定・既存 links を使わない理由・データ構造・作用箇所・代替案）／PLAN.md 5-1 にチェック項目を具体化／PROGRESS.md 現在地を更新
+
+**設計の要点（次セッションの実装契約）：**
+- **核心の状態は `ss.activeColor`（文字列・1ステージ1個）だけ**。色スイッチを武器で叩くと activeColor をその色に**セット**（トグルではない）。`GATE_<c>` は `ss.activeColor === c` のときだけ通行可（＝開いて見える）
+- **既存 `links` 機構には触らない**：links は加算式（スイッチON→ゲート開・独立）で「ある色を開くと他色が閉じる」**排他**を表現できない。色ゲートは links に依存させず「自色が active か」だけで自己完結判定する
+- **既存の SWITCH/GATE 経路に色分岐を1つずつ足す**：`player.js` に `setActiveColor(r,c)`／`combat.js`・`projectile.js` の SWITCH ヒット隣に色スイッチ分岐／`passable.js` の GATE 隣に色ゲート通行判定／`render-board.js` に色ゲート・色スイッチ描画
+- **永続化**：`activeColor` はプリミティブ文字列なので save.js は Set↔配列変換不要・そのまま代入。`getSS` で `stageData.initActiveColor` を種まき（`initLitTorches` と同要領）
+- **クリア判定トリガーは YAGNI**：通行ギミックだけで成立。必要なら `activeColorIs`（torchesLit と同型）を後で足す
+
+**学び・気づき：**
+- **「色スイッチ」は既存 SWITCH の延長に見えて、本質は別物**。既存は加算式（個別ゲートを開く）だが色ギミックは排他（同時1色のみ）。`links` を色対応に拡張すると「ゲートを links で開閉する設計」と「色一致で判定する設計」が二重化する。**ステージに `activeColor` 1個を持たせ各ゲートが自色一致を見る**だけで排他が自然に出る
+- ユーザー提示の選択肢に「クリスタル式（1種・トグル）」もあったが、3色以上に拡張できない。**色ごとにスイッチを分ける（セレクタ式）**方が拡張性が高く、撃ち分けの面白さも出る
+
+**▶ 次やること：** **Phase 5-1 の実装（⚡ Sonnet）**。設計が DECISIONS.md/PLAN.md に書き出し済みなので Sonnet 推奨。`shared/tiles.js` の色スイッチ2＋色ゲート2タイル追加（衝突しない新文字を grep で確認）から着手し、save→passable→player/combat/projectile→render の順に分岐を足して各ステップで `tests/` にスモークを足してグリーン確認。
+
+---
 
 ### 2026-06-20 — Phase 4-5 ③（完了）：ロウソクで隣接 TORCH を点灯（爆弾は不採用）
 
