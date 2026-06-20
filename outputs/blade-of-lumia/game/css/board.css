@@ -111,13 +111,9 @@
     background: #2a1a08;
 }
 
-.cell.switch-off {
-    background: #1a3010;
-}
-
-.cell.switch-on {
-    background: #2a5020;
-}
+/* ボタン（BUTTON）／スイッチ（SWITCH）の ON/OFF・押下はスプライトの
+   フレーム（button: frame0浮き/frame1沈み、lever: frame0 OFF/frame1 ON）で
+   表現する。CSS フィルタ等は使わない（render-board.js が状態でフレームを選ぶ）。 */
 
 .cell.breakable-wall {
     background: #3a3028;

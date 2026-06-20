@@ -13,6 +13,7 @@ import {
 	getProjectiles,
 	getGameState,
 	getInputModule,
+	getStageStateSnapshot,
 	getEnemiesSnapshot,
 	injectTestEnemy,
 	dealDamageToEnemyById,
@@ -80,6 +81,8 @@ window.__game = {
 	getState() {
 		return getGameState();
 	},
+	// 現在ステージのスイッチ/ゲート/かがり火状態（Phase 4-5 テスト用）
+	getStageState: () => getStageStateSnapshot(),
 	// 敵のスナップショットを返す（テスト用）
 	getEnemies: () => getEnemiesSnapshot(),
 	// テスト用に任意の座標へ擬似敵を注入する（hp 減少で命中確認）

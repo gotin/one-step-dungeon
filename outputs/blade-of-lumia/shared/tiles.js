@@ -26,8 +26,9 @@ export const TILE = {
 	// NPC（Dungeon World 継承）
 	PRINCESS: 'P',   // 姫
 	// ギミック（Dungeon World 継承）
-	GATE:    'T',  // ゲート（スイッチで開く）
-	SWITCH:  'S',  // スイッチ（踏むとゲートが開く）
+	GATE:    'T',  // ゲート（ボタン/スイッチで開く）
+	BUTTON:  'S',  // ボタン（プレイヤー/石が乗っている間だけ ON＝モーメンタリ式。離すと OFF）
+	SWITCH:  'Y',  // スイッチ（矢や剣など武器の攻撃で ON↔OFF をトグル。攻撃するまで状態維持。Phase 4-5 ①）
 	DOOR:    'D',  // 扉（鍵で開く）
 	KEY:     'K',  // 鍵アイテム
 	CHEST:   'B',  // 宝箱
@@ -114,7 +115,8 @@ export const TILE_META = {
 	[TILE.NPC_SHOP]:{ label: 'ショップ',     color: '#aa8800', passable: true,  icon: '＄' },
 	// ギミック
 	[TILE.GATE]:    { label: 'ゲート',       color: '#204060', passable: false, icon: '⊟' },
-	[TILE.SWITCH]:  { label: 'スイッチ',     color: '#406020', passable: true,  icon: '⊙' },
+	[TILE.BUTTON]:  { label: 'ボタン',       color: '#406020', passable: true,  icon: '⊙' },
+	[TILE.SWITCH]:  { label: 'スイッチ',     color: '#604060', passable: true,  icon: '◎' },
 	[TILE.DOOR]:    { label: '扉（鍵）',     color: '#604020', passable: false, icon: '⊞' },
 	[TILE.KEY]:     { label: '鍵',           color: '#a08020', passable: true,  icon: '🗝' },
 	[TILE.CHEST]:   { label: '宝箱',         color: '#806010', passable: true,  icon: '☐' },

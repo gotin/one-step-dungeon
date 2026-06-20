@@ -39,7 +39,7 @@ export function createConditions(d) {
 		// ただしプレイヤーが踏んでいる場合は維持する
 		for (let r = 0; r < stageData.rows; r++) {
 			for (let c = 0; c < stageData.cols; c++) {
-				if (stageData.tiles[r][c] !== TILE.SWITCH) continue;
+				if (stageData.tiles[r][c] !== TILE.BUTTON) continue;
 				const pk = `${r},${c}`;
 				// 石がこのスイッチの上にあるか確認
 				const stoneHere = Object.values(ss.stonePositions).some(st => st.r === r && st.c === c);
@@ -76,7 +76,7 @@ export function createConditions(d) {
 		if (!ss.stoneSwitches) ss.stoneSwitches = new Set();
 		for (const st of Object.values(ss.stonePositions)) {
 			const pk = `${st.r},${st.c}`;
-			if (stageData.tiles[st.r]?.[st.c] === TILE.SWITCH) {
+			if (stageData.tiles[st.r]?.[st.c] === TILE.BUTTON) {
 				ss.stoneSwitches.add(pk);
 			}
 		}
@@ -102,7 +102,7 @@ export function createConditions(d) {
 				const allSw = [];
 				for (let _r = 0; _r < stageData.rows; _r++) {
 					for (let _c = 0; _c < stageData.cols; _c++) {
-						if (stageData.tiles[_r][_c] === TILE.SWITCH) allSw.push(`${_r},${_c}`);
+						if (stageData.tiles[_r][_c] === TILE.BUTTON) allSw.push(`${_r},${_c}`);
 					}
 				}
 				met = allSw.length > 0 && allSw.every(pk => ss.switchStates?.[pk] === true);

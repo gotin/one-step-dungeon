@@ -251,6 +251,13 @@ export function createCombat(deps) {
 		const slashY = player.y + ndy * 0.7;
 		showSwordSlashFloat(slashX, slashY);
 
+		// Phase 4-5 ①：前方がスイッチ（SWITCH）なら剣でトグルする（矢と同じ作用）。
+		// ボタン（BUTTON）はモーメンタリ式なので剣では反応しない＝役割分離。
+		if (tile === TILE.SWITCH && deps.toggleSwitch) {
+			deps.toggleSwitch(tr, tc);
+			return;
+		}
+
 		// 当たり判定
 		const enemies = getEnemies();
 		const pcx = player.x + 0.5;

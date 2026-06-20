@@ -22,6 +22,8 @@ export function createStageState() {
 		conditionsMet:   new Set(),
 		openedDoors:     new Set(),  // 鍵で開いたドア
 		stonePositions:  {},         // { 'r,c': {r, c} } 石の移動後位置
+		switchToggles:   new Set(),  // Phase 4-5 ①: 武器の攻撃で ON にしたトグルスイッチ
+		litTorches:      new Set(),  // Phase 4-5 ②: 点灯したかがり火
 	};
 }
 
@@ -43,6 +45,8 @@ export function serializeStageState(stageState) {
 			cutBushes:       [...(v.cutBushes ?? [])],      // Phase 8.2
 			openedDoors:     [...(v.openedDoors ?? [])],    // 鍵で開いたドア
 			stonePositions:  v.stonePositions ?? {},        // 石の移動後位置
+			switchToggles:   [...(v.switchToggles ?? [])],  // Phase 4-5 ①
+			litTorches:      [...(v.litTorches ?? [])],     // Phase 4-5 ②
 		};
 	}
 	return ss;
@@ -66,6 +70,8 @@ export function deserializeStageState(rawSS) {
 			cutBushes:       new Set(v.cutBushes ?? []),      // Phase 8.2
 			openedDoors:     new Set(v.openedDoors ?? []),    // 鍵で開いたドア
 			stonePositions:  {},                              // 常にリセット
+			switchToggles:   new Set(v.switchToggles ?? []),  // Phase 4-5 ①
+			litTorches:      new Set(v.litTorches ?? []),     // Phase 4-5 ②
 		};
 	}
 	return stageState;

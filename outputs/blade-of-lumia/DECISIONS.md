@@ -22,6 +22,22 @@
 
 ## 記録
 
+### 2026-06-20 — Phase 4-5 ①（呼称・見た目の整理）：踏むやつを「ボタン」、武器で押すやつを「スイッチ」に。スイッチは剣でもトグル可
+- **決定（ユーザー指示）：** ギミックを2タイルに**呼び分け**る。(1) 従来の「乗っている間だけ ON」のモーメンタリ式＝**ボタン `BUTTON`**（タイル文字 `'S'`）。(2) 新設した「武器の攻撃で ON↔OFF トグル」＝**スイッチ `SWITCH`**（タイル文字 `'Y'`）。**見た目も分ける**：ボタンは押し込み式で、プレイヤー/石が乗っている（ON）ときに「押された」見た目（沈み込み＋発光、従来の光る効果は維持）。スイッチは ON のとき発光（紫系の的）。さらに**スイッチは矢だけでなく剣・剣ビームなど武器の攻撃でもトグル**できるようにする。
+- **理由：** 直前の実装（2026-06-20 前エントリ）で「踏む＝SWITCH／矢＝ARROW_SWITCH」という命名にしたが、ユーザーの語感では**踏むのは『ボタン』・武器で作動させるのが『スイッチ』**が自然。呼称と見た目を合わせることで役割が直感的になる。「スイッチは剣でも反応」はゼルダの目玉/クリスタルスイッチの手触りに近く、矢が無くても解けるようにして詰みを防ぐ。
+- **実装：** タイル文字はセーブ/JSON 互換のため `'S'`（BUTTON）・`'Y'`（SWITCH）のまま。状態 Set は `switchStates`（ボタン・モーメンタリ、従来名を維持）と `switchToggles`（スイッチ・トグル、旧 `arrowSwitches` から改名）に分離。剣トグルは `combat.js` の `swordAttack` で前方タイルが SWITCH なら `toggleSwitch(tr,tc)` を呼ぶ（ボタン BUTTON は剣では無反応＝役割分離）。剣ビーム（貫通）は `proj._switchedCells` で「1セル1回」だけトグル。矢は当たって消滅＝1本1トグル。ボタンの「乗っている間 ON」挙動（`checkSwitchOff`・石スイッチ `conditions.js`）は BUTTON タイルを参照するよう更新（挙動は不変）。
+- **代替案：** (A) スイッチを矢専用のままにする → 矢を持たないと解けず詰みやすい。武器全般でトグル可にして回避。(B) ボタンとスイッチを1タイルでフラグ切替 → 見た目・判定・パズル設計が分岐だらけになる。タイルを分ける方が明快（前エントリの判断を踏襲）。
+- **結果／影響：** `shared/tiles.js`（BUTTON/SWITCH 呼び分け）・`game/player.js`（`toggleSwitch`・checkSwitchOff は BUTTON）・`game/combat.js`（剣トグル）・`game/projectile.js`（矢/ビームトグル）・`game/conditions.js`（BUTTON 参照）・`game/game.js`（配線・snapshot の `switchToggles`）・`game/save.js`（`switchToggles`）・`game/render-board.js`＋`render-chars.js`＋`css/board.css`（ボタン押し込み／スイッチ発光）・editor 3ファイル・`work/blade-of-lumia.json`（hint 文言）。`tests/arrow-switch.spec.js` 4本（剣トグル追加）。**全84テストグリーン**。テストで `switchStates['6,9']` が undefined＝**ボタン機構に無作用**を回帰固定。
+
+### 2026-06-20 — Phase 4-5 ①（設計修正）：矢で撃つスイッチは既存 SWITCH を流用せず、専用タイル ARROW_SWITCH を新設する
+> ※ このエントリの直後（同日）に、呼称を「ボタン（踏む）／スイッチ（武器）」へ整理し直した（上記エントリ参照）。`ARROW_SWITCH('Y')` は `SWITCH('Y')` に、旧 `SWITCH('S')` は `BUTTON('S')` に改名。状態 Set `arrowSwitches`→`switchToggles`。
+- **決定：** 「弓矢で撃つスイッチ」は **既存の踏みスイッチ `SWITCH('S')` を流用せず、新タイル `ARROW_SWITCH('Y')` を新設**して実装する。矢が当たるたび ON↔OFF を**トグル**し、プレイヤーが乗っても無反応。状態は `ss.arrowSwitches`（ON のものだけ保持する Set）で `switchStates` とは完全に分離する。
+- **理由（ユーザー指摘で当初設計を撤回）：** 当初の設計（DECISIONS 2026-06-19 ①）は「既存 SWITCH を矢で撃ったら `ss.shotSwitches` に記録してラッチ ON にし、`checkSwitchOff` の OFF 対象から除外する」だった。しかし**既存の踏みスイッチは「プレイヤー（または石）が乗っている間だけ ON＝モーメンタリ式」という性質そのものでパズルが成立している**（例：スイッチに乗り続ける／石を乗せる必要がある謎解き）。これを矢でラッチ ON できるようにすると、「踏みっぱなしでないのに ON 状態」が作れてしまい**既存パズルが破綻する**。種別が違う2つの挙動を同一タイルにフラグで同居させるべきではない。
+- **代替案：** (A) 既存 SWITCH にラッチ挙動を足す（当初案）→ 上記のとおりモーメンタリ前提の既存パズルを壊すので却下。(B) ステージデータで「このスイッチは矢ラッチ可」とフラグ指定 → 同一タイルに2挙動が同居し描画・判定が分岐だらけになる。タイルを分ければ判定も描画もパズル設計も明快。
+- **実装：** `toggleArrowSwitch(r,c)` を player.js に新設（既存 `handleTileEvent` の SWITCH 分岐・`checkSwitchOff` は**無改修**＝モーメンタリ挙動を保全）。`projectile.js` の矢サブステップで「ARROW_SWITCH に当たったらトグルして矢消滅」。連動ゲートは既存 `links`（switchId→gateId）をそのまま使い `openGates` を開閉（ON→add／OFF→delete）。描画は render-board に分岐＋紫系フィルタの的（CSS）。save.js に `arrowSwitches` を永続化。
+- **結果／影響：** `shared/tiles.js`（ARROW_SWITCH）・`game/player.js`（toggleArrowSwitch・既存 SWITCH は無改修）・`game/projectile.js`・`game/game.js`・`game/main.js`・`game/save.js`・`game/render-board.js`・`game/css/board.css`・`editor/editor-palette.js`・`work/blade-of-lumia.json`（dungeon_1 2,2 にパズル）。`tests/arrow-switch.spec.js` 3本（ON でゲート開／移動後も ON 維持＝トグルでモーメンタリでない／再射で OFF＆ゲート閉）。テストで `switchStates['6,9']` が `undefined`＝**既存スイッチ機構に一切作用しない**ことを保証。**全83テストグリーン**。
+- **学び：** 「既存の仕組みを再利用して新サブシステムを増やさない」は良い原則だが、**再利用先の挙動がパズルの前提になっている場合は流用してはいけない**。挙動の意味が異なる（モーメンタリ vs トグル/ラッチ）なら、タイルを分けて状態 Set も分けるのが正解。共通核（投擲物→タイル状態）は保ちつつ、作用先のタイルだけ別にする。
+
 ### 2026-06-19 — Phase 4-5（設計）：組み合わせギミックは「投擲物/爆弾がタイル状態に作用する」共通核で実装し、新サブシステムを増やさない
 - **決定（仕組み設計）：** Phase 4-5 の3サブギミック（①弓矢で遠くのスイッチを撃つ ②ブーメランで炎を操作 ③爆弾＋特定タイルの組み合わせ）は、**「投擲物・爆弾が『敵/壁』だけでなく『タイルの状態』に作用する」** という1つの核に集約して実装する。新しい飛翔体ループや専用パズル管理機構は作らず、既存の `projectileTick`／`boomerangStep`／`explodeBomb`／`showConditions` に最小の分岐を足す。
 - **① 弓矢で遠くのスイッチを撃つ（既存 SWITCH を再利用）：**

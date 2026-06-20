@@ -201,7 +201,35 @@ export function createPlayer(deps) {
 		return true;
 	}
 
-	// ── プレイヤーがスイッチから離れた時 OFF ─────────────────
+	// ── 武器で押すトグルスイッチ（Phase 4-5 ①・SWITCH）────────────
+	// ボタン（BUTTON＝踏みっぱなしで ON のモーメンタリ式）とは別物。
+	// 矢・剣・その他の武器の攻撃が当たるたびに ON↔OFF をトグルする。
+	// 攻撃するまで状態を維持する（プレイヤーが乗っても何も起きない）。
+	// 状態は ss.switchToggles（ON のものだけを保持する Set）で管理し、連動ゲートは
+	// links（switchId→gateId）で openGates を開閉する＝ボタンの状態と混ざらない。
+	function toggleSwitch(r, c) {
+		const stageData = getStageData();
+		if (stageData?.tiles[r]?.[c] !== TILE.SWITCH) return false;
+		const ss = getSS(getCurrentLayer(), getStageKey());
+		if (!ss.switchToggles) ss.switchToggles = new Set();
+		const pk = `${r},${c}`;
+		const nowOn = !ss.switchToggles.has(pk);
+		if (nowOn) ss.switchToggles.add(pk);
+		else       ss.switchToggles.delete(pk);
+		playSound('switch');
+		for (const link of stageData.links ?? []) {
+			if (link.switchId === pk) {
+				if (nowOn) { ss.openGates.add(link.gateId); playSound('gateOpen'); }
+				else         ss.openGates.delete(link.gateId);
+			}
+		}
+		evaluateConditions();
+		renderBoard(); renderChars(); saveGame();
+		return true;
+	}
+
+	// ── プレイヤーがボタンから離れた時 OFF ─────────────────
+	// ボタン（BUTTON）はモーメンタリ式：プレイヤー/石が乗っている間だけ ON。
 	function checkSwitchOff() {
 		const stageData = getStageData();
 		const player    = getPlayer();
@@ -209,7 +237,7 @@ export function createPlayer(deps) {
 		let changed = false;
 		for (let r = 0; r < stageData.rows; r++) {
 			for (let c = 0; c < stageData.cols; c++) {
-				if (stageData.tiles[r][c] !== TILE.SWITCH) continue;
+				if (stageData.tiles[r][c] !== TILE.BUTTON) continue;
 				const pk = `${r},${c}`;
 				if (!ss.switchStates[pk]) continue;
 				const stoneHere = Object.values(ss.stonePositions ?? {}).some(st => st.r === r && st.c === c);
@@ -329,7 +357,7 @@ export function createPlayer(deps) {
 							}
 						}
 						otherDiv.appendChild(otherCv);
-						const otherOnSwitch = stageData.tiles[otherSt.r]?.[otherSt.c] === TILE.SWITCH;
+						const otherOnSwitch = stageData.tiles[otherSt.r]?.[otherSt.c] === TILE.BUTTON;
 						if (otherOnSwitch) {
 							const glow = document.createElement('div');
 							glow.style.cssText = 'position:absolute;inset:0;background:rgba(80,255,100,0.38);border-radius:3px;box-shadow:0 0 8px 4px rgba(60,255,80,0.6);pointer-events:none;z-index:5;animation:stone-glow 1.2s ease-in-out infinite;';
@@ -563,7 +591,7 @@ export function createPlayer(deps) {
 			playSound('key'); pulse('🗝 鍵を手に入れた！');
 			renderBoard(); renderChars(); updateHud(); saveGame(); return;
 		}
-		if (tile === TILE.SWITCH) {
+		if (tile === TILE.BUTTON) {
 			if (!ss.switchStates[posKey]) {
 				ss.switchStates[posKey] = true;
 				playSound('switch');
@@ -779,6 +807,7 @@ export function createPlayer(deps) {
 		handleTileEvent,
 		tryPushStone,
 		checkSwitchOff,
+		toggleSwitch,
 		giveSubItem,
 		gainHeartContainer,
 		spawnDropEffect,

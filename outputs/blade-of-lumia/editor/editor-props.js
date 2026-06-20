@@ -261,8 +261,8 @@ const TRIGGER_OPTIONS = [
 	{ value: 'flutePlayed', label: '笛を吹いた（flutePlayed）' },
 	{ value: 'bushBurned',  label: 'ロウソクで茂みを燃やした（bushBurned）' },
 	{ value: 'killGroup',   label: '指定グループ全滅（killGroup）' },
-	{ value: 'switchOn',    label: 'スイッチON（switchOn）' },
-	{ value: 'allSwitchesOn', label: '全スイッチON（allSwitchesOn）' },
+	{ value: 'switchOn',    label: 'ボタンON（switchOn）' },
+	{ value: 'allSwitchesOn', label: '全ボタンON（allSwitchesOn）' },
 	{ value: 'wallBroken',  label: '壁破壊（wallBroken）' },
 	{ value: 'hasItem',     label: 'アイテム所持（hasItem）' },
 ];

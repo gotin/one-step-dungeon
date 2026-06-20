@@ -326,8 +326,8 @@ export function createRenderChars(deps) {
 				stDiv.style.top    = `${st.r * cellPxSt}px`;
 				stDiv.style.zIndex = '1';
 				stDiv.appendChild(makeStoneCanvas(cellPxSt));
-				// 石がスイッチの上にある場合はグロー追加
-				const onSwitch = stageData.tiles[st.r]?.[st.c] === TILE.SWITCH;
+				// 石がボタンの上にある場合はグロー追加（押されている演出）
+				const onSwitch = stageData.tiles[st.r]?.[st.c] === TILE.BUTTON;
 				if (onSwitch) addStoneGlow(stDiv);
 				charLayerEl.appendChild(stDiv);
 			}

@@ -740,12 +740,13 @@ input.js     161 / passable.js 161 / conditions.js 117 / save.js 87 / main.js 78
 > 既存 `projectileTick`／`boomerangStep`／`explodeBomb`／`showConditions` に最小分岐を足す。
 > 実装は **⚡ Sonnet** で **1サブギミックずつ**（①→②→③の順）。各ステップでスモークテストを足してグリーン確認。
 
-- [ ] **① 弓矢で遠くのスイッチを撃つ**（既存 `SWITCH('S')` を再利用）
-  - `projectile.js` の直線投擲物サブステップ補間ループに「矢が SWITCH セルを通過したら ON」分岐を足す
-  - **ラッチ式**：撃って ON にしたスイッチは `ss.shotSwitches`（新 Set）に記録し `checkSwitchOff` の OFF 対象から除外（離れても ON 維持）
-  - ON 処理は既存の switch 踏み処理（`switchStates[pk]=true`→links の `openGates.add`→`evaluateConditions()`）を共通ヘルパー化して矢からも呼ぶ
-  - 当面は弓矢（arrow）のみ対象（ブーメランは②の炎用途と役割分離）
-- [ ] **② ブーメランで炎を操作**（新タイル `TORCH('Y')` かがり火）
+- [x] **① 武器でトグルするスイッチ（タイルを2種に呼び分け）**✅ 2026-06-20
+  - ⚠️ **既存スイッチは流用しない**：踏みスイッチは「乗っている間だけ ON＝モーメンタリ」でパズルが成立しているため、武器でラッチ/トグルすると既存パズルが壊れる（ユーザー指摘）。**専用の別タイルを新設**して分離した
+  - **タイルを2種に呼び分け（ユーザー指示・2026-06-20）：** 従来の踏みスイッチ＝**ボタン `BUTTON('S')`**（乗っている間だけ ON のモーメンタリ）／武器で押す方＝**スイッチ `SWITCH('Y')`**（矢・剣など武器の攻撃で ON↔OFF トグル・攻撃まで状態維持）。タイル文字はセーブ互換のため `'S'`/`'Y'` のまま
+  - **スイッチ（SWITCH）：** 矢・剣ビーム・剣（前方タイル）でトグル。状態は `ss.switchToggles`（ON のものだけ保持する Set）で `switchStates`（ボタン）と完全分離。連動ゲートは既存 `links`（switchId→gateId）。ON のとき発光（紫系の的）
+  - **ボタン（BUTTON）：** 押し込み式の見た目。プレイヤー/石が乗って ON のとき「押された」見た目（沈み込み＋発光）。光る効果は従来どおり
+  - ※ 実装：`shared/tiles.js`（`BUTTON('S')`/`SWITCH('Y')` に呼び分け）・`game/player.js`（`toggleSwitch(r,c)` 新設・`checkSwitchOff`/handleTileEvent は BUTTON を参照）・`game/combat.js`（剣で前方 SWITCH をトグル）・`game/projectile.js`（矢＝当たって消滅／ビーム＝1セル1回トグル）・`game/conditions.js`（stoneOnButton・allSwitchesOn は BUTTON 参照）・`game/game.js`（配線・`getStageStateSnapshot` の `switchToggles`）・`game/save.js`（`switchToggles`/`litTorches`）・`game/render-board.js`＋`render-chars.js`＋`css/board.css`（ボタン押し込み／スイッチ発光）・`editor/editor-palette.js`＋`editor-world.js`＋`editor-props.js`（ボタン/スイッチ呼び分け・トリガー文言）。`work/blade-of-lumia.json` dungeon_1 `2,2` にスイッチパズル（全幅水堀の南の Y(6,9) を矢/剣で叩く→ゲート 2,1 開・再叩きで閉）。`tests/arrow-switch.spec.js` 4本（矢で ON＋ボタン無作用／移動後 ON 維持＝トグル／再射で OFF／剣でもトグル）。**全84テストグリーン**
+- [ ] **② ブーメランで炎を操作**（新タイル `TORCH` かがり火・⚠️ `'Y'` は ARROW_SWITCH で使用済みなので別文字を選ぶ）
   - 点灯/消灯は `ss.litTorches`（新 Set・save.js でシリアライズ＝永続）で管理。描画は render-board の addCellSprite に分岐（当面 CSS/絵文字フォールバック可）
   - `boomerangStep` の通過セル処理（`collectFieldItem` を呼んでいる箇所）に炎運搬を足す：点いた TORCH 通過で `proj.flaming=true`、消えた TORCH 通過時に `proj.flaming` なら点火（`litTorches.add`→`evaluateConditions()`）
   - 主軸は**点火方向**（離れたかがり火に火を運んで点ける）。ロウソク（隣接点火）・爆弾（範囲点火）でも点くよう統一
@@ -753,9 +754,17 @@ input.js     161 / passable.js 161 / conditions.js 117 / save.js 87 / main.js 78
   - `explodeBomb` の AOE ループ（壊せる壁破壊・敵ダメージを行う箇所）に「AOE 内の TORCH を点火」分岐を足す
 - [ ] **クリア判定：`showConditions` に新トリガー `torchesLit` を追加**（`conditions.js`）
   - `met = (ステージ内 TORCH 総数>0) && すべて litTorches に含まれる`。全点灯で隠し扉/宝箱が出現（笛 `flutePlayed`・ロウソク `bushBurned` と同型）
-- [ ] **永続化**：`save.js` の serialize/deserialize に `litTorches`・`shotSwitches`（Set↔配列）を追加
+- [x] **永続化**：`save.js` の serialize/deserialize に `litTorches`・`switchToggles`（Set↔配列）を追加 ✅ 2026-06-20（① 実装時にまとめて追加。`litTorches` は② で使用）
 - [ ] **エディタ対応**：TORCH をパレットに追加（tiles.js に足せば自動）・`showConditions` トリガーに `torchesLit` を追加（editor-props.js）。TORCH 初期点灯をステージデータで指定可能に
 - [ ] **パズル配置**（`work/blade-of-lumia.json`）：①徒歩で届かないスイッチを矢で撃つ／②ブーメランで離れたかがり火を点ける／③爆弾で一帯のかがり火を同時点灯。各 `tests/` にスモーク追加
+
+### 4-X. バグ修正：ワールドマップの「星の欠片 合計」が大型ボス分を数えていない　⚡ Sonnet
+> **症状（ユーザー報告・2026-06-20）：** エディタのワールドマップ右下「星の欠片 合計」が、**直接拾える欠片(Q)と cave_1 のもの程度しか表示されず**、dungeon_1〜7 の大型ボス分が数えられていない。
+- [ ] **原因（調査済み）：** エディタの `editor/editor-world.js` `updateShardSummary()` は **`ITEM_TRIFORCE_PIECE('Q')` と `DARK_LORD('X')` だけ**を数えている。しかし現状のダンジョンボスは大型ボス（G/N/J/A/L/O/U）で、これらは `X` ではなく **`ENEMY_META[tile].dropsTriforce:true`** で欠片を落とす（ゲーム側 `boss.js calcTotalTriforces` は dropsTriforce も数える）。エディタがこのフラグを見ていないため大型ボス分が欠落している。
+  - 現状マップの内訳：直接 Q ＝ field 2,0 と cave_1 1,0 の2個／ボス ＝ dungeon_1 G・dungeon_2 N・dungeon_3 J・dungeon_4 A・dungeon_5 L・dungeon_6 O・dungeon_7 U の7体（＝合計9個になるはず）。`Z`(ザーネル) は `dropsTriforce` を持たない＝数えないのが正（撃破でエンディング）。
+- [ ] **修正方針：** `updateShardSummary()` のカウントを `boss.js calcTotalTriforces()` と**同じ定義**にする＝`Q` ＋ `X` ＋ `ENEMY_META[tile]?.dropsTriforce` のタイル。`editor-world.js` で `shared/enemies.js` の `ENEMY_META` を import し、`entries.push` の分岐に dropsTriforce ボスを追加（内訳リストのラベルも「魔王」だけでなくボス名 or 「ボス撃破」に）。
+- [ ] **再発防止：** ゲームとエディタで「欠片の数え方」が二重定義になっているのが根因。可能なら数え方を `shared/` のヘルパー（例：`shared/triforce.js` の `countTriforces(mapData)`）に集約し、`boss.js` とエディタ両方から呼ぶ（[[blade-tile-sprite-single-source]] と同じ「単一の真実」方針）。
+- [ ] 確認：現状マップで合計 **9** と表示されること・内訳に7ダンジョンのボスが並ぶこと。
 
 ---
 

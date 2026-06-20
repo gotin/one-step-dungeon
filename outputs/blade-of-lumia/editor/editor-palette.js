@@ -1,58 +1,23 @@
 // ── editor-palette.js ── タイルパレット・スプライト描画 ────────
 import { TILE, TILE_META } from '../shared/tiles.js';
 import { SPRITES, PAL, animFrame } from '../shared/sprites.js';
+import { TILE_SPRITE_MAP } from '../shared/tile-sprites.js';
 import { state, tilePaletteEl } from './editor-state.js';
 
-// タイル → スプライト対応
-export const TILE_SPRITE_MAP = {
-	[TILE.SWITCH]:    { spr: 'swG',      pal: 'swG'      },
-	[TILE.GATE]:      { spr: 'gateG',    pal: 'gateG'    },
-	[TILE.DOOR]:      { spr: 'door',     pal: 'door'     },
-	[TILE.KEY]:       { spr: 'key',      pal: 'key'      },
-	[TILE.STONE]:     { spr: 'block',    pal: 'block'    },
-	[TILE.CHEST]:     { spr: 'chest',    pal: 'chest'    },
-	[TILE.WATER]:     { spr: 'water',    pal: 'water'    },
-	[TILE.PATROL]:    { spr: 'patrol',   pal: 'patrol'   },
-	[TILE.CHASER]:    { spr: 'chaser',   pal: 'chaser'   },
-	[TILE.SENTRY]:    { spr: 'sentry',   pal: 'sentry'   },
-	[TILE.BOSS]:      { spr: 'escape',   pal: 'escape'   },
-	[TILE.MONSTER]:   { spr: 'monster',  pal: 'monster'  },
-	[TILE.DARK_LORD]: { spr: 'darklord', pal: 'darklord' },
-	[TILE.PRINCESS]:  { spr: 'princess', pal: 'princess' },
-	[TILE.PLAYER]:    { spr: 'heroD',    pal: 'hero'     },
-	[TILE.NPC_A]:     { spr: 'npcA',     pal: 'npcA'     },
-	[TILE.NPC_B]:     { spr: 'npcB',     pal: 'npcB'     },
-	[TILE.ITEM_SWORD]:           { spr: 'sword',    pal: 'sword'    },
-	[TILE.ITEM_SHIELD]:          { spr: 'shield',   pal: 'shield'   },
-	[TILE.ITEM_BOOMERANG]:       { spr: 'boomerang',pal: 'boomerang'},
-	[TILE.ITEM_RUPEE]:           { spr: 'rupee',    pal: 'rupee'    },
-	[TILE.ITEM_RUPEE_LARGE]:     { spr: 'rupee',    pal: 'rupeeBlue'},
-	[TILE.ITEM_TRIFORCE_PIECE]:  { spr: 'triforce', pal: 'triforce' },
-	[TILE.BREAKABLE_WALL]:       { spr: 'breakableWall', pal: 'breakableWall' },
-	[TILE.MAP_ENTER]:            { spr: 'mapEnter', pal: 'mapEnter' },
-	[TILE.ITEM_HEART_CONTAINER]: { spr: 'heart',     pal: 'heart'     },
-	[TILE.DOORWAY]:              { spr: 'doorway',       pal: 'doorway'       },
-	[TILE.DOORWAY_BOSS]:         { spr: 'doorwayBoss',   pal: 'doorwayBoss'   },
-	[TILE.DOORWAY_LOCKED]:       { spr: 'doorwayLocked', pal: 'doorwayLocked' },
-	[TILE.TREE]:        { spr: 'tree',      pal: 'tree'      },
-	[TILE.MOUNTAIN]:    { spr: 'mountain',  pal: 'mountain'  },
-	[TILE.BUSH]:        { spr: 'bush',      pal: 'bush'      },
-	[TILE.FENCE]:       { spr: 'fence',     pal: 'fence'     },
-	[TILE.HOUSE_WALL]:  { spr: 'houseWall', pal: 'houseWall' },
-	[TILE.HOUSE_DOOR]:  { spr: 'houseDoor', pal: 'houseDoor' },
-	[TILE.HOUSE_ROOF]:  { spr: 'houseRoof', pal: 'houseRoof' },
-	[TILE.SIGN]:        { spr: 'sign',      pal: 'sign'      },
-	[TILE.GRASS]:       { spr: 'grass',     pal: 'grass'     },
-	[TILE.SAND]:        { spr: 'sand',      pal: 'sand'      },
-	[TILE.STONE_FLOOR]: { spr: 'stoneFloor',pal: 'stoneFloor'},
-	[TILE.BRIDGE]:      { spr: 'bridge',    pal: 'bridge'    },
-};
+// タイル → スプライト対応は shared/tile-sprites.js（単一の真実）を再エクスポート。
+// エディタとゲーム（render-board.js）が同じ表を見ることで見た目を一致させる。
+export { TILE_SPRITE_MAP };
+
+// エディタでは「状態で 2 フレームを切り替える」スプライト（ボタン押下・レバー
+// ON/OFF）は frame0（OFF/浮き）で固定表示する。アニメ扱いだと配置物が
+// 勝手に押された/ON 状態にチラついて紛らわしいため。
+const STATIC_FRAME0 = new Set(['button', 'lever']);
 
 export function drawSpriteAt(ctx, spriteName, palName, dx, dy, dw, dh) {
 	const frames = SPRITES[spriteName];
 	if (!frames) return false;
 	const palette = PAL[palName] ?? PAL.hero;
-	const fi   = animFrame % frames.length;
+	const fi   = STATIC_FRAME0.has(spriteName) ? 0 : (animFrame % frames.length);
 	const grid = frames[fi];
 	const rows = grid.length, cols = grid[0].length;
 	const tmp  = document.createElement('canvas');
@@ -78,7 +43,7 @@ const PALETTE_CATEGORIES = [
 	{ label: 'プレイヤー', tiles: [TILE.PLAYER] },
 	{ label: '敵',    tiles: [TILE.PATROL, TILE.CHASER, TILE.SENTRY, TILE.BOSS, TILE.MONSTER, TILE.DARK_LORD] },
 	{ label: 'NPC',   tiles: [TILE.PRINCESS, TILE.NPC_A, TILE.NPC_B, TILE.NPC_SHOP] },
-	{ label: 'ギミック', tiles: [TILE.GATE, TILE.SWITCH, TILE.DOOR, TILE.KEY, TILE.CHEST, TILE.STONE, TILE.MAP_ENTER] },
+	{ label: 'ギミック', tiles: [TILE.GATE, TILE.BUTTON, TILE.SWITCH, TILE.DOOR, TILE.KEY, TILE.CHEST, TILE.STONE, TILE.MAP_ENTER, TILE.ALTAR] },
 	{ label: 'ドアウェイ', tiles: [TILE.DOORWAY, TILE.DOORWAY_BOSS, TILE.DOORWAY_LOCKED] },
 	{ label: 'アイテム', tiles: [
 		TILE.ITEM_SWORD, TILE.ITEM_SHIELD, TILE.ITEM_ARMOR,

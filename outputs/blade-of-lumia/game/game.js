@@ -410,6 +410,7 @@ let gainHeartContainer  = () => {};
 let spawnDropEffect     = () => {};
 let toggleFlight        = () => {};
 let collectFieldItem    = () => {};
+let toggleSwitch        = () => {};
 // ── combat.js ──
 let swordAttack         = () => {};
 let dealDamageToEnemy   = () => {};
@@ -629,6 +630,7 @@ const { checkStoneOnSwitch, evaluateConditions } = createConditions({
 		pulse:              (t, d) => pulse(t, d),
 		hasCleared,
 		collectFieldItem:   (r, c) => collectFieldItem(r, c),
+		toggleSwitch:       (r, c) => toggleSwitch(r, c),
 	});
 
 	const _ai = createEnemyAi({
@@ -773,6 +775,7 @@ const { checkStoneOnSwitch, evaluateConditions } = createConditions({
 		isShieldBlockingDir:   (dx, dy) => isShieldBlockingDir(dx, dy),
 		showShieldBlockEffect: (x, y) => showShieldBlockEffect(x, y),
 		spawnDropEffect: (r, c, icon, color) => spawnDropEffect(r, c, icon, color),
+		toggleSwitch: (r, c) => toggleSwitch(r, c),
 		gameoverOverlayEl,
 		openSignDialog: (sd) => openDialog(sd.name ?? '看板', sd.lines ?? ['（何も書かれていない）']),
 		renderBoard:  () => renderBoard(),
@@ -825,6 +828,7 @@ const { checkStoneOnSwitch, evaluateConditions } = createConditions({
 	handleTileEvent   = _player.handleTileEvent;
 	tryPushStone      = _player.tryPushStone;
 	checkSwitchOff    = _player.checkSwitchOff;
+	toggleSwitch      = _player.toggleSwitch;
 	giveSubItem       = _player.giveSubItem;
 	gainHeartContainer= _player.gainHeartContainer;
 	spawnDropEffect   = _player.spawnDropEffect;
@@ -1472,6 +1476,18 @@ export function getGameState() {
 
 export function getInputModule() {
 	return _inputModule;
+}
+
+// テスト用：現在ステージのスイッチ/ゲート/かがり火の状態スナップショット（Phase 4-5）
+export function getStageStateSnapshot() {
+	const ss = getSS(currentLayer, stageKey);
+	return {
+		switchStates:  { ...ss.switchStates },
+		openGates:     [...ss.openGates],
+		switchToggles: [...(ss.switchToggles ?? [])],
+		litTorches:    [...(ss.litTorches ?? [])],
+		conditionsMet: [...ss.conditionsMet],
+	};
 }
 
 // 敵のスナップショットを返す（テスト用：hp などの状態確認）

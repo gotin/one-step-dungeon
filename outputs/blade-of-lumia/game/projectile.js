@@ -37,6 +37,7 @@ import { enemyPointHit, enemyCenter } from './hitbox.js';
  *   pulse(text, dur?)         – メッセージ表示
  *   hasCleared()              – クリア済みか
  *   collectFieldItem(r, c)    – ブーメランが通過したセルのアイテム回収
+ *   toggleSwitch(r, c)        – 矢が当たったスイッチをトグル（Phase 4-5 ①）
  */
 export function createProjectile(deps) {
 	const {
@@ -47,7 +48,7 @@ export function createProjectile(deps) {
 		dealDamageToEnemy, takeDamage,
 		evaluateConditions, renderBoard, renderChars,
 		saveGame, updateHud, pulse, hasCleared,
-		collectFieldItem,
+		collectFieldItem, toggleSwitch,
 	} = deps;
 
 	// ── 内部状態 ──────────────────────────────────────────────
@@ -316,6 +317,29 @@ export function createProjectile(deps) {
 						_projectiles = _projectiles.filter(p => p !== proj);
 						hit = true;
 						break;
+					}
+					// Phase 4-5 ①：投擲武器がスイッチ（SWITCH）に当たったらトグルする。
+					// ・矢（arrow）：当たったら消える（1本＝1トグル）
+					// ・剣ビーム（beam）：貫通するので「1セル1回だけ」トグル（proj._switchedCells で重複防止）
+					// ボタン（BUTTON）はモーメンタリ式なので投擲武器では反応しない＝役割分離。
+					if ((proj.type === 'arrow' || proj.type === 'beam') && proj.owner === 'player' && toggleSwitch) {
+						const sr = toTileRow(proj.y), sc = toTileCol(proj.x);
+						if (getStageData()?.tiles[sr]?.[sc] === TILE.SWITCH) {
+							if (proj.type === 'arrow') {
+								toggleSwitch(sr, sc);
+								removeProjEl(proj);
+								_projectiles = _projectiles.filter(p => p !== proj);
+								hit = true;
+								break;
+							}
+							// beam：同じセルを複数サブステップで跨いでも1回だけトグル
+							if (!proj._switchedCells) proj._switchedCells = new Set();
+							const sk = `${sr},${sc}`;
+							if (!proj._switchedCells.has(sk)) {
+								proj._switchedCells.add(sk);
+								toggleSwitch(sr, sc);
+							}
+						}
 					}
 					// 当たり判定
 					checkProjHit(proj);

@@ -18,6 +18,7 @@
 
 import { TILE } from '../shared/tiles.js';
 import { SPRITES, PAL, drawSpriteFrame, makeSprite } from '../shared/sprites.js';
+import { TILE_SPRITE_MAP } from '../shared/tile-sprites.js';
 import { NPC_SPRITE_MAP } from '../shared/npcs.js';
 
 // bgTile の背景色クラスマップ（renderBoard 内でのみ使う定数）
@@ -28,6 +29,15 @@ const BG_TILE_COLOR_CLASS = {
 	[TILE.STONE_FLOOR]: 'bg-stonefloor',
 	[TILE.BRIDGE]:      'bg-bridge',
 };
+
+// 末尾の共通スプライト fallback で「静的に描いてよい落ちアイテム」タイルの集合。
+// 敵・プレイヤー・NPC は実体として render-chars が描くので含めない（重複描画防止）。
+// 専用分岐を持つアイテム（剣/盾/ブーメラン/鍵/ルピー/星の欠片）も含めない。
+const ITEM_FALLBACK_TILES = new Set([
+	TILE.ITEM_ARMOR, TILE.ITEM_BOMB, TILE.ITEM_BOW,
+	TILE.ITEM_HEAL_POTION, TILE.ITEM_BIG_HEAL_POTION,
+	TILE.ITEM_HEART_CONTAINER, TILE.ITEM_DUNGEON_MAP, TILE.ITEM_COMPASS,
+]);
 
 /**
  * タイルグリッド描画関数群を生成して返す factory。
@@ -67,13 +77,20 @@ export function createRenderBoard(deps) {
 			case TILE.WALL:           cellEl.classList.add('wall'); return;
 			case TILE.WATER:          cellEl.classList.add('water'); return;
 			case TILE.GATE:
-				cellEl.classList.add(ss.openGates.has(posKey) ? 'switch-on' : 'gate');
+				// 開いたゲートは床と同じ背景に（bgTile に任せる）。閉じている時だけ gate 色。
+				// ※ 以前は開時に switch-on を付けていたが、これはスイッチ ON の緑色で
+				//    「ゲート跡が草地っぽく緑になる」誤表示の原因だった。
+				if (!ss.openGates.has(posKey)) cellEl.classList.add('gate');
 				applyBgTileClass(cellEl, posKey); return;
 			case TILE.DOOR:
 				cellEl.classList.add('door');
 				applyBgTileClass(cellEl, posKey); return;
+			case TILE.BUTTON:
 			case TILE.SWITCH:
-				cellEl.classList.add(ss.switchStates[posKey] ? 'switch-on' : 'switch-off');
+				// 背景は床（bgTile）に任せる。ON/OFF・押下の見た目はスプライト側の
+				// クラス（button-pressed / switch-toggle-on）で表現する。
+				// ※ 以前はセルに switch-on/off（緑）を付けていたが、これが床を緑に
+				//    上書きし「床のはずが草地に見える」＋エディタとの不一致の原因だった。
 				applyBgTileClass(cellEl, posKey); return;
 			case TILE.BREAKABLE_WALL:
 				cellEl.classList.add(ss.brokenWalls.has(posKey) ? 'floor' : 'breakable-wall');
@@ -109,11 +126,15 @@ export function createRenderBoard(deps) {
 
 		if (tile === TILE.WALL || tile === TILE.FLOOR || tile === TILE.PLAYER) return;
 
-		if (tile === TILE.CHEST && !ss.openedChests.has(posKey)) {
-			const cond = stageData.showConditions?.[posKey];
-			if (cond && !ss.conditionsMet.has(posKey)) return;
-			const cv = makeSprite('chest', 'chest', true);
-			if (cv) { cv.classList.add('obj-sprite'); cellEl.appendChild(cv); }
+		if (tile === TILE.CHEST) {
+			// 未開封のときだけ宝箱を描く（開封済みは床）。必ず return すること
+			// ＝末尾の共通 fallback が chest を再描画して「開けても宝箱が残る」のを防ぐ。
+			if (!ss.openedChests.has(posKey)) {
+				const cond = stageData.showConditions?.[posKey];
+				if (cond && !ss.conditionsMet.has(posKey)) return;
+				const cv = makeSprite('chest', 'chest', true);
+				if (cv) { cv.classList.add('obj-sprite'); cellEl.appendChild(cv); }
+			}
 			return;
 		}
 		if (tile === TILE.KEY && !ss.pickedKeys.has(posKey)) {
@@ -121,14 +142,40 @@ export function createRenderBoard(deps) {
 			if (cv) { cv.classList.add('item-sprite'); cellEl.appendChild(cv); }
 			return;
 		}
-		if (tile === TILE.SWITCH) {
-			const cv = makeSprite('swG', 'swG', true);
-			if (cv) { cv.classList.add('obj-sprite'); cellEl.appendChild(cv); }
+		if (tile === TILE.BUTTON) {
+			// ボタン：丸い床ボタン。frame0=浮いている／frame1=押し込まれ＋発光。
+			// プレイヤー/石が乗って ON（switchStates）の間だけ押された見た目にする。
+			const frames = SPRITES['button'];
+			const pal    = PAL['button'];
+			if (frames && pal) {
+				const cv = document.createElement('canvas');
+				cv.className = 'sprite obj-sprite';
+				drawSpriteFrame(cv, frames, ss.switchStates[posKey] ? 1 : 0, pal);
+				cellEl.appendChild(cv);
+			}
 			return;
 		}
-		if (tile === TILE.GATE && !ss.openGates.has(posKey)) {
-			const cv = makeSprite('gateG', 'gateG', false);
-			if (cv) { cv.classList.add('obj-sprite'); cellEl.appendChild(cv); }
+		if (tile === TILE.SWITCH) {
+			// スイッチ：レバー。frame0=OFF（左倒し）／frame1=ON（右倒し＋発光）。
+			// 武器の攻撃でトグルする（switchToggles）。
+			const frames = SPRITES['lever'];
+			const pal    = PAL['lever'];
+			if (frames && pal) {
+				const cv = document.createElement('canvas');
+				cv.className = 'sprite obj-sprite';
+				drawSpriteFrame(cv, frames, ss.switchToggles?.has(posKey) ? 1 : 0, pal);
+				cellEl.appendChild(cv);
+			}
+			return;
+		}
+		if (tile === TILE.GATE) {
+			// 閉じている時だけ柵スプライトを描く。開いている時は何も描かない（床）。
+			// ※ return を忘れると末尾の共通スプライト fallback が gateG を再描画して
+			//    「開いてもゲートが見えたまま」になる（実際に起きたバグ）。
+			if (!ss.openGates.has(posKey)) {
+				const cv = makeSprite('gateG', 'gateG', false);
+				if (cv) { cv.classList.add('obj-sprite'); cellEl.appendChild(cv); }
+			}
 			return;
 		}
 		if (tile === TILE.DOOR) {
@@ -142,9 +189,12 @@ export function createRenderBoard(deps) {
 			if (cv) { cv.classList.add('obj-sprite'); cellEl.appendChild(cv); }
 			return;
 		}
-		if (tile === TILE.BREAKABLE_WALL && !ss.brokenWalls.has(posKey)) {
-			const cv = makeSprite('breakableWall', 'breakableWall', true);
-			if (cv) { cv.classList.add('obj-sprite'); cellEl.appendChild(cv); }
+		if (tile === TILE.BREAKABLE_WALL) {
+			// 未破壊のときだけ壁を描く（破壊後は床）。必ず return すること。
+			if (!ss.brokenWalls.has(posKey)) {
+				const cv = makeSprite('breakableWall', 'breakableWall', true);
+				if (cv) { cv.classList.add('obj-sprite'); cellEl.appendChild(cv); }
+			}
 			return;
 		}
 		if (tile === TILE.MAP_ENTER) {
@@ -155,11 +205,8 @@ export function createRenderBoard(deps) {
 			return;
 		}
 		if (tile === TILE.ALTAR) {
-			// 古代の祭壇（専用スプライトは未作成のため絵文字フォールバック描画）
-			const span = document.createElement('span');
-			span.textContent = '⛩';
-			span.style.cssText = 'position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);font-size:calc(var(--cell)*0.8);pointer-events:none;z-index:3;';
-			cellEl.appendChild(span);
+			const cv = makeSprite('altar', 'altar', false);
+			if (cv) { cv.classList.add('obj-sprite'); cellEl.appendChild(cv); }
 			return;
 		}
 		if (tile === TILE.STONE) {
@@ -254,23 +301,19 @@ export function createRenderBoard(deps) {
 			}
 			return;
 		}
-		// スプライト未定義のアイテムは絵文字フォールバック
-		const emojiItemMap = {
-			[TILE.ITEM_ARMOR]:          '⚚',
-			[TILE.ITEM_BOMB]:           '💣',
-			[TILE.ITEM_BOW]:            '🏹',
-			[TILE.ITEM_HEAL_POTION]:    '🧪',
-			[TILE.ITEM_BIG_HEAL_POTION]:'💊',
-			[TILE.ITEM_HEART_CONTAINER]:'❤',
-			[TILE.ITEM_TRIFORCE_PIECE]: '◭',
-			[TILE.ITEM_DUNGEON_MAP]:    '🗺',
-			[TILE.ITEM_COMPASS]:        '🧭',
-		};
-		if (emojiItemMap[tile] && !ss.pickedKeys.has(posKey)) {
-			const span = document.createElement('span');
-			span.textContent = emojiItemMap[tile];
-			span.style.cssText = 'position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);font-size:calc(var(--cell)*0.55);pointer-events:none;z-index:3;';
-			cellEl.appendChild(span);
+		// 残りの「落ちているアイテム」だけを共通表 TILE_SPRITE_MAP から描く
+		// （よろい・爆弾・弓矢・回復薬・地図・コンパス・ハートの器）。
+		// ※ 敵（W/E/C/F/ボス）・プレイヤー・NPC も共通表に載っているが、それらは
+		//   buildEnemies→render-chars.js が動く実体として描くので、ここで静的描画しては
+		//   いけない（盤面に動かない複製が出る不具合になる）。アイテムタイルに限定する。
+		if (ITEM_FALLBACK_TILES.has(tile) && !ss.pickedKeys.has(posKey)) {
+			const si = TILE_SPRITE_MAP[tile];
+			if (si && SPRITES[si.spr]) {
+				const itemCond = stageData.showConditions?.[posKey];
+				if (itemCond && !ss.conditionsMet.has(posKey)) return;
+				const cv = makeSprite(si.spr, si.pal, false);
+				if (cv) { cv.classList.add('item-sprite'); cellEl.appendChild(cv); }
+			}
 		}
 	}
 
