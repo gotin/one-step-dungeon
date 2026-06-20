@@ -583,6 +583,31 @@
     100% { transform: rotate(900deg) scale(0.1); opacity: 0; }
 }
 
+/* Phase 4-5 ②: 炎持ちブーメランのオーラ */
+.boomerang-flaming {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    width: calc(var(--cell) * 0.55);
+    height: calc(var(--cell) * 0.55);
+    transform: translate(-50%, -50%);
+    border-radius: 50%;
+    pointer-events: none;
+    z-index: 6;
+    background: radial-gradient(circle,
+        rgba(255, 240, 80, 0.9) 0%,
+        rgba(255, 130, 20, 0.7) 45%,
+        rgba(220, 40, 10, 0.3) 75%,
+        transparent 100%);
+    box-shadow: 0 0 8px 3px rgba(255, 140, 20, 0.8);
+    animation: boomerang-flame-pulse 0.3s ease-in-out infinite alternate;
+}
+
+@keyframes boomerang-flame-pulse {
+    0%   { transform: translate(-50%, -50%) scale(0.85); opacity: 0.85; }
+    100% { transform: translate(-50%, -50%) scale(1.15); opacity: 1.0; }
+}
+
 /* Phase 4-3: ロウソクの炎（前方セルで茂みを燃やす演出） */
 .candle-fire {
     border-radius: 50% 50% 45% 45%;

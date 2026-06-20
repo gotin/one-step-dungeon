@@ -77,6 +77,7 @@ window.__game = {
 		id: p.id, owner: p.owner, type: p.type,
 		x: p.x, y: p.y, dx: p.dx, dy: p.dy,
 		returning: p.returning ?? false,
+		flaming: p.flaming ?? false,
 	})),
 	getState() {
 		return getGameState();

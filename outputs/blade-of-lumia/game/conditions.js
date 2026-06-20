@@ -107,6 +107,15 @@ export function createConditions(d) {
 				}
 				met = allSw.length > 0 && allSw.every(pk => ss.switchStates?.[pk] === true);
 			}
+			else if (cond.trigger === 'torchesLit') {  // Phase 4-5 ②: 全かがり火点灯
+				const allTorches = [];
+				for (let _r = 0; _r < stageData.rows; _r++) {
+					for (let _c = 0; _c < stageData.cols; _c++) {
+						if (stageData.tiles[_r][_c] === TILE.TORCH) allTorches.push(`${_r},${_c}`);
+					}
+				}
+				met = allTorches.length > 0 && allTorches.every(pk => ss.litTorches?.has(pk));
+			}
 			if (met) {
 				ss.conditionsMet.add(posKey);
 				playSound('appear');

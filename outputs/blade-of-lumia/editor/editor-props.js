@@ -263,6 +263,7 @@ const TRIGGER_OPTIONS = [
 	{ value: 'killGroup',   label: '指定グループ全滅（killGroup）' },
 	{ value: 'switchOn',    label: 'ボタンON（switchOn）' },
 	{ value: 'allSwitchesOn', label: '全ボタンON（allSwitchesOn）' },
+	{ value: 'torchesLit',  label: '全かがり火点灯（torchesLit）' },
 	{ value: 'wallBroken',  label: '壁破壊（wallBroken）' },
 	{ value: 'hasItem',     label: 'アイテム所持（hasItem）' },
 ];

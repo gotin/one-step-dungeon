@@ -200,6 +200,17 @@ export function createProjectile(deps) {
 		const cellPx = getCellPx();
 		el.style.left = `${proj.x * cellPx}px`;
 		el.style.top  = `${proj.y * cellPx}px`;
+		// Phase 4-5 ②: 炎持ちブーメランにオーラを付ける
+		if (proj.type === 'boomerang') {
+			let aura = el.querySelector('.boomerang-flaming');
+			if (proj.flaming && !aura) {
+				aura = document.createElement('div');
+				aura.className = 'boomerang-flaming';
+				el.appendChild(aura);
+			} else if (!proj.flaming && aura) {
+				aura.remove();
+			}
+		}
 	}
 
 	function removeProjEl(proj) {
@@ -280,6 +291,22 @@ export function createProjectile(deps) {
 		// 往路・復路どちらでも通過セルのアイテムを回収する
 		if (collectFieldItem) {
 			collectFieldItem(toTileRow(proj.y), toTileCol(proj.x));
+		}
+		// Phase 4-5 ②: ブーメランで炎を運ぶ
+		const br  = toTileRow(proj.y);
+		const bc  = toTileCol(proj.x);
+		const bpk = `${br},${bc}`;
+		const bss = getSS(getCurrentLayer(), getStageKey());
+		if (getStageData()?.tiles[br]?.[bc] === TILE.TORCH) {
+			if (bss.litTorches?.has(bpk)) {
+				proj.flaming = true;  // 点いたかがり火から炎を拾う
+			} else if (proj.flaming) {
+				bss.litTorches.add(bpk);  // 消えたかがり火に点火
+				evaluateConditions();
+				renderBoard(); renderChars();
+				pulse('🔥 かがり火に火が灯った！');
+				saveGame();
+			}
 		}
 	}
 

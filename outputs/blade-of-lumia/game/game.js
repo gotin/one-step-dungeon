@@ -188,6 +188,11 @@ function getSS(lk, sk) {
 	const k = `${lk}_${sk}`;
 	if (!stageState[k]) {
 		stageState[k] = createStageState();
+		// Phase 4-5 ②: stageData.initLitTorches で事前点灯かがり火を初期化
+		const sd = mapData?.layers?.[lk]?.stages?.[sk];
+		for (const pk of sd?.initLitTorches ?? []) {
+			stageState[k].litTorches.add(pk);
+		}
 	}
 	return stageState[k];
 }

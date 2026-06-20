@@ -209,6 +209,18 @@ export function createRenderBoard(deps) {
 			if (cv) { cv.classList.add('obj-sprite'); cellEl.appendChild(cv); }
 			return;
 		}
+		if (tile === TILE.TORCH) {
+			// frame0=消灯（暗い台座）／frame1=点灯（燃える炎）
+			const frames = SPRITES['torch'];
+			const pal    = PAL['torch'];
+			if (frames && pal) {
+				const cv = document.createElement('canvas');
+				cv.className = 'sprite obj-sprite';
+				drawSpriteFrame(cv, frames, ss.litTorches?.has(posKey) ? 1 : 0, pal);
+				cellEl.appendChild(cv);
+			}
+			return;
+		}
 		if (tile === TILE.STONE) {
 			const _ssSt = getSS(currentLayer, stageKey);
 			if (_ssSt.stonePositions?.[posKey]) return;

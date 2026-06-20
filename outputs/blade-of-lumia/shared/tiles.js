@@ -41,6 +41,7 @@ export const TILE = {
 	ALTAR:          '^',  // 古代の祭壇（星の欠片を全部捧げると翼の羽衣を授かる。Phase 1-4）
 	SKY:            '%',  // 空（虚空）。徒歩では通れない。翼の羽衣で飛行中のみ越えられる（Phase 1-5）
 	PIT:            'x',  // 穴（落とし穴）。徒歩では通れない。はしごで両隣が地上の1セルだけ渡れる（Phase 4-1）
+	TORCH:          'H',  // かがり火（点灯/消灯。ブーメランで炎を運べる。Phase 4-5 ②）
 
 	// NPC（複数種）
 	NPC_A:     'a',  // NPC（村人など）
@@ -127,6 +128,7 @@ export const TILE_META = {
 	[TILE.ALTAR]:          { label: '古代の祭壇',  color: '#4a3a6a', passable: true,  icon: '⛩' },
 	[TILE.SKY]:            { label: '空（飛行）',  color: '#0a0a20', passable: false, icon: '☁' },
 	[TILE.PIT]:            { label: '穴（はしご）', color: '#050608', passable: false, icon: '□' },
+	[TILE.TORCH]:          { label: 'かがり火',    color: '#6a3010', passable: false, icon: '🔥' },
 	// アイテム
 	[TILE.ITEM_SWORD]:           { label: '剣',           color: '#607080', passable: true, icon: '⚔' },
 	[TILE.ITEM_SHIELD]:          { label: 'たて',         color: '#607080', passable: true, icon: '🛡' },

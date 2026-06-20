@@ -14,9 +14,9 @@
 ## 📍 現在地（常に最新に保つ）
 
 - **進行中フェーズ：** **Phase 4（サブアイテム拡充）**
-- **進行中タスク：** **Phase 4-5（アイテムの組み合わせギミック）🧠→⚡**。①弓矢スイッチ実装完了 → 次は②ブーメランで炎（TORCH タイル）。
-- **⚠️ 次やること：** **Phase 4-5 ②（⚡ Sonnet）：かがり火タイル `TORCH`（⚠️`'Y'` は SWITCH で使用済みなので別文字）追加＋ブーメランで炎運搬**。`game/projectile.js` の `boomerangStep` 通過セル処理に「点いた TORCH 通過で `proj.flaming=true`／消えた TORCH に火を運んで `litTorches.add`→`evaluateConditions()`」を足す → 描画。永続化（`litTorches`）は① で save.js に追加済み。設計は DECISIONS.md「Phase 4-5（設計）」②参照。
-- **直近の状態：** Phase 4-X バグ修正完了（大型ボス分の欠片カウント修正）。`shared/triforce.js` に `countTriforces`/`listTriforceEntries` を新設し、`boss.js` とエディタの両方が参照。エディタ合計9個・全ボス内訳確認済み。**全84テストグリーン**。
+- **進行中タスク：** **Phase 4-5（アイテムの組み合わせギミック）🧠→⚡**。①②完了 → 次は③爆弾で TORCH 範囲点火。
+- **⚠️ 次やること：** **Phase 4-5 ③（⚡ Sonnet）：爆弾で TORCH 範囲点火**。`game/projectile.js` の `explodeBomb` AOE ループ（壊せる壁・敵ダメージの箇所）に「AOE 内の TORCH を点火」分岐を足す。すでに `litTorches` / `evaluateConditions` / `renderBoard` は配線済み。設計は DECISIONS.md「Phase 4-5（設計）」③参照。
+- **直近の状態：** Phase 4-5 ② TORCH タイル＋ブーメラン炎運搬完了。TORCH(`H`)タイル・2フレームスプライト・litTorches 永続化・boomerangStep 炎運搬（proj.flaming）・torchesLit 条件・initLitTorches ステージ初期化・dungeon_1 1,2 パズル配置。**全89テストグリーン**。
 - **⚠️ 保留（後日対応）：** ビーム攻撃が強力すぎる → Phase 8-4 で通しプレイ時に一括調整。
 
 
@@ -31,6 +31,26 @@
 ## セッションログ
 
 <!-- 新しいエントリを上に追加していく（最新が一番上） -->
+
+### 2026-06-20 — Phase 4-5 ②（完了）：TORCH タイル＋ブーメランで炎を運ぶ
+
+**やったこと：**
+- **`shared/tiles.js`**：`TORCH: 'H'`（⚠️ `'Y'` は SWITCH で使用済みなので `'H'`）・`TILE_META['H']`（passable=false）
+- **`shared/tile-sprites.js`**：`TILE_SPRITE_MAP[TILE.TORCH] = { spr:'torch', pal:'torch' }` 追加
+- **`shared/sprites-tiles.js`**：`TILE_PAL.torch`（8色）＋`TILE_SPRITES.torch`（2フレーム 12×16：frame0=消灯/frame1=点灯）追加
+- **`game/render-board.js`**：`addCellSprite` に TORCH 分岐追加（`ss.litTorches.has(posKey)` でフレーム切り替え）
+- **`game/conditions.js`**：`torchesLit` トリガー追加（ステージ内全 TORCH が `litTorches` に入ったら達成）
+- **`game/projectile.js`**：`boomerangStep` に炎運搬追加：点いた TORCH 通過→`proj.flaming=true`、消えた TORCH 通過時に `proj.flaming`→`litTorches.add`+`evaluateConditions()`+`renderBoard()`+`saveGame()`
+- **`game/game.js`**：`getSS()` に `initLitTorches` 種まき（`stageData.initLitTorches: ['r,c',...]` で初期点灯を指定可能）
+- **`editor/editor-props.js`**：showConditions トリガードロップダウンに `torchesLit` 追加
+- **`work/blade-of-lumia.json`**：dungeon_1 `1,2` に TORCH パズル（点灯 `2,3`・消灯 `2,9`/`7,5`・宝箱 `7,9` torchesLit 条件付き・initLitTorches: ['2,3']）
+- **`tests/torch.spec.js`**：5本追加（initLitTorches 動作・点灯確認・conditionsMet 未達成・通行不能確認）
+
+**確認：** **全89テストグリーン**（+5本）。
+
+**▶ 次やること：** **Phase 4-5 ③（⚡ Sonnet）：爆弾で TORCH 範囲点火**。`explodeBomb` AOE ループに TORCH 点灯分岐を足す。設計は DECISIONS.md「Phase 4-5（設計）」③参照。
+
+---
 
 ### 2026-06-20 — Phase 4-X バグ修正（完了）：ワールドマップ「星の欠片 合計」が大型ボス分を数えていない
 

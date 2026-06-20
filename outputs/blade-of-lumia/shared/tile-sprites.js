@@ -34,6 +34,7 @@ export const TILE_SPRITE_MAP = {
 	[TILE.ITEM_RUPEE]:           { spr: 'rupee',    pal: 'rupee'    },
 	[TILE.ITEM_RUPEE_LARGE]:     { spr: 'rupee',    pal: 'rupeeBlue'},
 	[TILE.ITEM_TRIFORCE_PIECE]:  { spr: 'triforce', pal: 'triforce' },
+	[TILE.TORCH]:                { spr: 'torch',    pal: 'torch'    },
 	[TILE.BREAKABLE_WALL]:       { spr: 'breakableWall', pal: 'breakableWall' },
 	[TILE.MAP_ENTER]:            { spr: 'mapEnter', pal: 'mapEnter' },
 	[TILE.ITEM_HEART_CONTAINER]: { spr: 'heart',     pal: 'heart'     },
