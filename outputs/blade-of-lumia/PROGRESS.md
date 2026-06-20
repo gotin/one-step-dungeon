@@ -15,9 +15,8 @@
 
 - **進行中フェーズ：** **Phase 4（サブアイテム拡充）**
 - **進行中タスク：** **Phase 4-5（アイテムの組み合わせギミック）🧠→⚡**。①弓矢スイッチ実装完了 → 次は②ブーメランで炎（TORCH タイル）。
-- **⚠️ 次やること（最優先）：** **Phase 4-X バグ修正（⚡ Sonnet）：ワールドマップの「星の欠片 合計」が大型ボス分を数えていない**（ユーザー報告 2026-06-20）。エディタ `editor-world.js updateShardSummary()` が `Q`＋`X` しか数えず、大型ボス（G/N/J/A/L/O/U＝`dropsTriforce` で欠片を落とす）を欠落。`boss.js calcTotalTriforces()` と数え方を統一する（できれば `shared/` のヘルパーに集約）。詳細は PLAN.md 4-X。確認：合計9になること。
-- **その次：** **Phase 4-5 ②（⚡ Sonnet）：かがり火タイル `TORCH`（⚠️`'Y'` は SWITCH で使用済みなので別文字）追加＋ブーメランで炎運搬**。`game/projectile.js` の `boomerangStep` 通過セル処理に「点いた TORCH 通過で `proj.flaming=true`／消えた TORCH に火を運んで `litTorches.add`→`evaluateConditions()`」を足す → 描画。永続化（`litTorches`）は① で save.js に追加済み。設計は DECISIONS.md「Phase 4-5（設計）」②参照。
-- **直近の状態：** Phase 4-5 ①（武器でトグルするスイッチ）を実装し、ユーザー指示で**タイルを2種に呼び分け**た：従来の踏みスイッチ＝**ボタン `BUTTON('S')`**（乗っている間だけ ON のモーメンタリ・押し込み見た目）／武器で押す方＝**スイッチ `SWITCH('Y')`**（矢・剣など武器の攻撃で ON↔OFF トグル・ON で発光）。状態は `switchStates`（ボタン）と `switchToggles`（スイッチ）に分離。剣でも前方スイッチをトグル可。dungeon_1 `2,2` にパズル配置（水堀越しの Y を矢/剣で叩く→ゲート開）。**全84テストグリーン**（arrow-switch 4本）。
+- **⚠️ 次やること：** **Phase 4-5 ②（⚡ Sonnet）：かがり火タイル `TORCH`（⚠️`'Y'` は SWITCH で使用済みなので別文字）追加＋ブーメランで炎運搬**。`game/projectile.js` の `boomerangStep` 通過セル処理に「点いた TORCH 通過で `proj.flaming=true`／消えた TORCH に火を運んで `litTorches.add`→`evaluateConditions()`」を足す → 描画。永続化（`litTorches`）は① で save.js に追加済み。設計は DECISIONS.md「Phase 4-5（設計）」②参照。
+- **直近の状態：** Phase 4-X バグ修正完了（大型ボス分の欠片カウント修正）。`shared/triforce.js` に `countTriforces`/`listTriforceEntries` を新設し、`boss.js` とエディタの両方が参照。エディタ合計9個・全ボス内訳確認済み。**全84テストグリーン**。
 - **⚠️ 保留（後日対応）：** ビーム攻撃が強力すぎる → Phase 8-4 で通しプレイ時に一括調整。
 
 
@@ -32,6 +31,25 @@
 ## セッションログ
 
 <!-- 新しいエントリを上に追加していく（最新が一番上） -->
+
+### 2026-06-20 — Phase 4-X バグ修正（完了）：ワールドマップ「星の欠片 合計」が大型ボス分を数えていない
+
+**症状（ユーザー報告）：** エディタのワールドマップ右下「星の欠片 合計」が3程度しか表示されず、dungeon_1〜7 の大型ボス（G/N/J/A/L/O/U）分7体が欠落していた。
+
+**原因：** `editor/editor-world.js updateShardSummary()` が `ITEM_TRIFORCE_PIECE('Q')` と `DARK_LORD('X')` だけをカウントし、大型ボス（`ENEMY_META[tile].dropsTriforce:true`）を見ていなかった。ゲーム側 `boss.js calcTotalTriforces()` は dropsTriforce も数えていたため、エディタとゲームで定義が乖離していた。
+
+**修正：**
+- **`shared/triforce.js` を新設**：`countTriforces(mapData)` と `listTriforceEntries(mapData)` を export。Q＋X＋dropsTriforce ボスを単一の真実として定義
+- **`game/boss.js`**：`calcTotalTriforces()` を `countTriforces(getMapData())` に委譲（既存ロジック削除）
+- **`editor/editor-world.js`**：`updateShardSummary()` を `listTriforceEntries(state.mapData)` を使う形に書き換え。ボス名も `ENEMY_META[tile].name` から取得してラベルに表示
+
+**確認：** `node` スクリプトで現在のマップを直接計算 → 合計9（直接Q×2 + ボス7体：G/N/J/A/L/O/U）。7ダンジョンすべてのボス名が内訳リストに並ぶことを確認。**全84テストグリーン**、`check-errors.mjs` エラーなし。
+
+**学び：** エディタとゲームで「欠片の数え方」を二重定義していたのが根因。新タイル（大型ボス）を追加した際に片方だけ更新したため乖離した。`shared/` に集約する「単一の真実」方針は [[blade-tile-sprite-single-source]] と同じ。新タイルを追加した際は `shared/triforce.js` の対象条件（`dropsTriforce` フラグ）に乗れば自動的に両側が追従する。
+
+**▶ 次やること：** **Phase 4-5 ②（⚡ Sonnet）：かがり火タイル `TORCH`（別文字・`'Y'` は SWITCH で使用済み）追加＋ブーメランで炎運搬**。設計は DECISIONS.md「Phase 4-5（設計）」②参照。
+
+---
 
 ### 2026-06-20 — バグ修正（分岐B）：cave_1 1,0 に「小さくて動かない魔物」が出る（共通 fallback が敵タイルを静的描画）
 

@@ -760,11 +760,9 @@ input.js     161 / passable.js 161 / conditions.js 117 / save.js 87 / main.js 78
 
 ### 4-X. バグ修正：ワールドマップの「星の欠片 合計」が大型ボス分を数えていない　⚡ Sonnet
 > **症状（ユーザー報告・2026-06-20）：** エディタのワールドマップ右下「星の欠片 合計」が、**直接拾える欠片(Q)と cave_1 のもの程度しか表示されず**、dungeon_1〜7 の大型ボス分が数えられていない。
-- [ ] **原因（調査済み）：** エディタの `editor/editor-world.js` `updateShardSummary()` は **`ITEM_TRIFORCE_PIECE('Q')` と `DARK_LORD('X')` だけ**を数えている。しかし現状のダンジョンボスは大型ボス（G/N/J/A/L/O/U）で、これらは `X` ではなく **`ENEMY_META[tile].dropsTriforce:true`** で欠片を落とす（ゲーム側 `boss.js calcTotalTriforces` は dropsTriforce も数える）。エディタがこのフラグを見ていないため大型ボス分が欠落している。
-  - 現状マップの内訳：直接 Q ＝ field 2,0 と cave_1 1,0 の2個／ボス ＝ dungeon_1 G・dungeon_2 N・dungeon_3 J・dungeon_4 A・dungeon_5 L・dungeon_6 O・dungeon_7 U の7体（＝合計9個になるはず）。`Z`(ザーネル) は `dropsTriforce` を持たない＝数えないのが正（撃破でエンディング）。
-- [ ] **修正方針：** `updateShardSummary()` のカウントを `boss.js calcTotalTriforces()` と**同じ定義**にする＝`Q` ＋ `X` ＋ `ENEMY_META[tile]?.dropsTriforce` のタイル。`editor-world.js` で `shared/enemies.js` の `ENEMY_META` を import し、`entries.push` の分岐に dropsTriforce ボスを追加（内訳リストのラベルも「魔王」だけでなくボス名 or 「ボス撃破」に）。
-- [ ] **再発防止：** ゲームとエディタで「欠片の数え方」が二重定義になっているのが根因。可能なら数え方を `shared/` のヘルパー（例：`shared/triforce.js` の `countTriforces(mapData)`）に集約し、`boss.js` とエディタ両方から呼ぶ（[[blade-tile-sprite-single-source]] と同じ「単一の真実」方針）。
-- [ ] 確認：現状マップで合計 **9** と表示されること・内訳に7ダンジョンのボスが並ぶこと。
+- [x] **原因（調査済み）：** エディタの `editor/editor-world.js` `updateShardSummary()` は **`ITEM_TRIFORCE_PIECE('Q')` と `DARK_LORD('X')` だけ**を数えていた。しかし現状のダンジョンボスは大型ボス（G/N/J/A/L/O/U）で、これらは `X` ではなく **`ENEMY_META[tile].dropsTriforce:true`** で欠片を落とす。エディタがこのフラグを見ていないため大型ボス分が欠落していた。
+- [x] **修正完了：** `shared/triforce.js` を新設（`countTriforces(mapData)` / `listTriforceEntries(mapData)` を export）。`boss.js calcTotalTriforces` と `editor-world.js updateShardSummary` の両方がこのヘルパーを呼ぶ単一の真実に統一。
+- [x] 確認：現状マップで合計 **9**（直接Q×2＋ボス7体）・内訳に7ダンジョンのボスが全員表示されることを Node.js スクリプトで確認。**全84テストグリーン**。
 
 ---
 

@@ -1,5 +1,6 @@
 // ── editor-world.js ── ワールドグリッド・ミニマップ・プレビュー ─
 import { TILE, TILE_META, makeEmptyStage, DEFAULT_COLS, DEFAULT_ROWS } from '../shared/tiles.js';
+import { countTriforces, listTriforceEntries } from '../shared/triforce.js';
 import {
 	state, stageKey, countTile, getCurrentStages,
 	worldGridEl, worldStageInfoEl, worldActionsEl, worldPreviewWrap, worldPreviewCv,
@@ -145,27 +146,12 @@ export function updateWorldSidePanel(x, y) {
 }
 
 // ── 星の欠片サマリ（全レイヤー横断）────────────────────────────
-// ゲーム側 boss.js の calcTotalTriforces() と同じ定義で総数を数える：
-//   星の欠片タイル（ITEM_TRIFORCE_PIECE='Q'）＋ 魔王タイル（DARK_LORD='X'・撃破で欠片を落とす）
-// この個数を全部集めるとエンディング条件（または祭壇への誘導）が成立する。
-// レイヤー/ステージ/座標の内訳リストも表示する。
+// shared/triforce.js の listTriforceEntries を使い、ゲーム側 calcTotalTriforces()
+// と同じ定義（Q＋X＋dropsTriforce ボス）で総数と内訳を表示する。
 export function updateShardSummary() {
 	if (!worldShardSummaryEl) return;
-	const layers = state.mapData?.layers ?? {};
-	const entries = [];  // { kind, layer, stage, r, c }
-	for (const [lk, ld] of Object.entries(layers)) {
-		for (const [sk, sd] of Object.entries(ld.stages ?? {})) {
-			const tiles = sd.tiles ?? [];
-			for (let r = 0; r < tiles.length; r++) {
-				const row = tiles[r] ?? [];
-				for (let c = 0; c < row.length; c++) {
-					if (row[c] === TILE.ITEM_TRIFORCE_PIECE) entries.push({ kind: 'piece', layer: lk, stage: sk, r, c });
-					else if (row[c] === TILE.DARK_LORD)        entries.push({ kind: 'boss',  layer: lk, stage: sk, r, c });
-				}
-			}
-		}
-	}
-	const total = entries.length;
+	const entries = listTriforceEntries(state.mapData);
+	const total      = entries.length;
 	const pieceCount = entries.filter(e => e.kind === 'piece').length;
 	const bossCount  = entries.filter(e => e.kind === 'boss').length;
 
@@ -174,19 +160,18 @@ export function updateShardSummary() {
 			<span class="shard-summary-title">★ 星の欠片 合計</span>
 			<span class="shard-summary-total">${total}</span>
 		</div>
-		<div class="shard-summary-sub">直接拾える欠片(◭) ${pieceCount} ＋ 魔王撃破で出現(X) ${bossCount}</div>
+		<div class="shard-summary-sub">直接拾える欠片(◭) ${pieceCount} ＋ ボス撃破で出現 ${bossCount}</div>
 		<p class="hint" style="margin:4px 0">この ${total} 個すべて集めると終盤フローが進む（祭壇があれば祭壇へ誘導／無ければ即エンディング）。プレビューの「星の欠片」初期値を ${total} にすると祭壇の挙動を確認できる。</p>
 	`;
 	if (total === 0) {
-		html += `<p class="hint">マップに星の欠片(Q)も魔王(X)もありません。</p>`;
+		html += `<p class="hint">マップに星の欠片(Q)もボス(dropsTriforce)もありません。</p>`;
 	} else {
 		html += `<ul class="shard-list">`;
 		for (const e of entries) {
-			const icon  = e.kind === 'piece' ? '◭' : 'X';
-			const label = e.kind === 'piece' ? '星の欠片' : '魔王';
+			const icon = e.kind === 'piece' ? '◭' : e.tile;
 			html += `<li class="shard-list-item"><span class="shard-list-icon">${icon}</span>`
 				+ `<span class="shard-list-loc">${e.layer} / ${e.stage} / (row ${e.r}, col ${e.c})</span>`
-				+ `<span class="shard-list-kind">${label}</span></li>`;
+				+ `<span class="shard-list-kind">${e.label}</span></li>`;
 		}
 		html += `</ul>`;
 	}

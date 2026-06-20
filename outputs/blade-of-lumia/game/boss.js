@@ -4,6 +4,7 @@
 
 import { TILE } from '../shared/tiles.js';
 import { ENEMY_META } from '../shared/enemies.js';
+import { countTriforces } from '../shared/triforce.js';
 import { makeSprite } from '../shared/sprites.js';
 import { playSound, playBgm, stopBgm } from '../shared/sounds.js';
 import { SAVE_KEY, CLEARED_KEY, ALTAR_EXIT_ID } from './constants.js';
@@ -274,23 +275,7 @@ export function createBoss(deps) {
 
 	// ── 星の欠片・全収集チェック ──────────────────────
 	function calcTotalTriforces() {
-		const mapData = getMapData();
-		if (!mapData) return 0;
-		let total = 0;
-		for (const ld of Object.values(mapData.layers ?? {})) {
-			for (const sd of Object.values(ld.stages ?? {})) {
-				for (const row of sd.tiles ?? []) {
-					for (const tile of row) {
-						if (tile === TILE.ITEM_TRIFORCE_PIECE) total++;
-						if (tile === TILE.DARK_LORD) total++;
-						// 大型ボス等、欠片を落とすボスタイルもカウント（DARK_LORD 以外）
-						else if (tile !== TILE.ITEM_TRIFORCE_PIECE
-							&& ENEMY_META[tile]?.dropsTriforce) total++;
-					}
-				}
-			}
-		}
-		return total;
+		return countTriforces(getMapData());
 	}
 
 	// 古代の祭壇（タイル ALTAR='^'）がマップ上に存在するか。
