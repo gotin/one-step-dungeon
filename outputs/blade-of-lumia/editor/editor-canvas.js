@@ -136,6 +136,8 @@ export function renderStageCanvas(renderSidePanel) {
 	document.getElementById('stage-bgm-override').value  = sd.bgm ?? '';
 	const fluteEl = document.getElementById('stage-flute-effect');
 	if (fluteEl) fluteEl.value = sd.fluteEffect ? JSON.stringify(sd.fluteEffect) : '';
+	const initColorEl = document.getElementById('stage-init-active-color');
+	if (initColorEl) initColorEl.value = sd.initActiveColor ?? '';
 }
 
 // タイルに紐づくメタデータを削除するユーティリティ
@@ -316,6 +318,13 @@ export function initCanvasEvents(renderSidePanel, renderWorldGrid, getPreviewPen
 			catch { alert('🎵 笛の効果が不正な JSON です（例: {"type":"reveal"}）'); return; }
 		} else {
 			delete sd.fluteEffect;
+		}
+		// Phase 5-1: initActiveColor（色スイッチの初期アクティブ色）
+		const initColorSaveEl = document.getElementById('stage-init-active-color');
+		if (initColorSaveEl) {
+			const cv = initColorSaveEl.value.trim();
+			if (cv) sd.initActiveColor = cv;
+			else delete sd.initActiveColor;
 		}
 		renderWorldGrid();
 		alert('ステージ設定を保存しました');

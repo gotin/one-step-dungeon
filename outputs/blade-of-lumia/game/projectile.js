@@ -38,6 +38,7 @@ import { enemyPointHit, enemyCenter } from './hitbox.js';
  *   hasCleared()              – クリア済みか
  *   collectFieldItem(r, c)    – ブーメランが通過したセルのアイテム回収
  *   toggleSwitch(r, c)        – 矢が当たったスイッチをトグル（Phase 4-5 ①）
+ *   setActiveColor(r, c)     – 矢が当たった色スイッチで activeColor をセット（Phase 5-1）
  */
 export function createProjectile(deps) {
 	const {
@@ -48,7 +49,7 @@ export function createProjectile(deps) {
 		dealDamageToEnemy, takeDamage,
 		evaluateConditions, renderBoard, renderChars,
 		saveGame, updateHud, pulse, hasCleared,
-		collectFieldItem, toggleSwitch,
+		collectFieldItem, toggleSwitch, setActiveColor,
 	} = deps;
 
 	// ── 内部状態 ──────────────────────────────────────────────
@@ -365,6 +366,27 @@ export function createProjectile(deps) {
 							if (!proj._switchedCells.has(sk)) {
 								proj._switchedCells.add(sk);
 								toggleSwitch(sr, sc);
+							}
+						}
+					}
+					// Phase 5-1: 投擲武器が色スイッチに当たったら activeColor をセット。
+					if ((proj.type === 'arrow' || proj.type === 'beam') && proj.owner === 'player' && setActiveColor) {
+						const sr = toTileRow(proj.y), sc = toTileCol(proj.x);
+						const stile = getStageData()?.tiles[sr]?.[sc];
+						if (stile === TILE.SWITCH_RED || stile === TILE.SWITCH_BLUE) {
+							if (proj.type === 'arrow') {
+								setActiveColor(sr, sc);
+								removeProjEl(proj);
+								_projectiles = _projectiles.filter(p => p !== proj);
+								hit = true;
+								break;
+							}
+							// beam：同じセルを複数サブステップで跨いでも1回だけセット
+							if (!proj._switchedCells) proj._switchedCells = new Set();
+							const csk = `${sr},${sc}`;
+							if (!proj._switchedCells.has(csk)) {
+								proj._switchedCells.add(csk);
+								setActiveColor(sr, sc);
 							}
 						}
 					}

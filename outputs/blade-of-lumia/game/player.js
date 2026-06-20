@@ -228,6 +228,22 @@ export function createPlayer(deps) {
 		return true;
 	}
 
+	// ── Phase 5-1: 色スイッチをセット（activeColor をその色に変更） ──
+	// SWITCH_RED/SWITCH_BLUE を武器で叩くと activeColor をセット。
+	// トグルではなく常に「この色に切替」＝排他制御が自然に成立する。
+	function setActiveColor(r, c) {
+		const stageData = getStageData();
+		const tile = stageData?.tiles[r]?.[c];
+		const color = tile === TILE.SWITCH_RED ? 'red' : tile === TILE.SWITCH_BLUE ? 'blue' : null;
+		if (!color) return false;
+		const ss = getSS(getCurrentLayer(), getStageKey());
+		ss.activeColor = color;
+		playSound('switch');
+		evaluateConditions();
+		renderBoard(); renderChars(); saveGame();
+		return true;
+	}
+
 	// ── プレイヤーがボタンから離れた時 OFF ─────────────────
 	// ボタン（BUTTON）はモーメンタリ式：プレイヤー/石が乗っている間だけ ON。
 	function checkSwitchOff() {
@@ -808,6 +824,7 @@ export function createPlayer(deps) {
 		tryPushStone,
 		checkSwitchOff,
 		toggleSwitch,
+		setActiveColor,
 		giveSubItem,
 		gainHeartContainer,
 		spawnDropEffect,

@@ -24,6 +24,7 @@ export function createStageState() {
 		stonePositions:  {},         // { 'r,c': {r, c} } 石の移動後位置
 		switchToggles:   new Set(),  // Phase 4-5 ①: 武器の攻撃で ON にしたトグルスイッチ
 		litTorches:      new Set(),  // Phase 4-5 ②: 点灯したかがり火
+		activeColor:     null,       // Phase 5-1: 現在アクティブな色（'red'|'blue'|null）
 	};
 }
 
@@ -47,6 +48,7 @@ export function serializeStageState(stageState) {
 			stonePositions:  v.stonePositions ?? {},        // 石の移動後位置
 			switchToggles:   [...(v.switchToggles ?? [])],  // Phase 4-5 ①
 			litTorches:      [...(v.litTorches ?? [])],     // Phase 4-5 ②
+			activeColor:     v.activeColor ?? null,          // Phase 5-1
 		};
 	}
 	return ss;
@@ -72,6 +74,7 @@ export function deserializeStageState(rawSS) {
 			stonePositions:  {},                              // 常にリセット
 			switchToggles:   new Set(v.switchToggles ?? []),  // Phase 4-5 ①
 			litTorches:      new Set(v.litTorches ?? []),     // Phase 4-5 ②
+			activeColor:     v.activeColor ?? null,            // Phase 5-1
 		};
 	}
 	return stageState;

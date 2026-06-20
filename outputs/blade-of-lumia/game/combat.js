@@ -257,6 +257,11 @@ export function createCombat(deps) {
 			deps.toggleSwitch(tr, tc);
 			return;
 		}
+		// Phase 5-1：前方が色スイッチなら剣で activeColor をセット。
+		if ((tile === TILE.SWITCH_RED || tile === TILE.SWITCH_BLUE) && deps.setActiveColor) {
+			deps.setActiveColor(tr, tc);
+			return;
+		}
 
 		// 当たり判定
 		const enemies = getEnemies();

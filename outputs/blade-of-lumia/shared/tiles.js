@@ -43,6 +43,12 @@ export const TILE = {
 	PIT:            'x',  // 穴（落とし穴）。徒歩では通れない。はしごで両隣が地上の1セルだけ渡れる（Phase 4-1）
 	TORCH:          'H',  // かがり火（点灯/消灯。ブーメランで炎を運べる。Phase 4-5 ②）
 
+	// ── Phase 5-1: 色スイッチ・色ゲート（色セレクタ式） ──────────
+	SWITCH_RED:  '[',  // 色スイッチ（赤）。武器で叩くと ss.activeColor = 'red'
+	SWITCH_BLUE: ']',  // 色スイッチ（青）。武器で叩くと ss.activeColor = 'blue'
+	GATE_RED:    '(',  // 色ゲート（赤）。activeColor==='red' のときだけ通行可（開く）
+	GATE_BLUE:   ')',  // 色ゲート（青）。activeColor==='blue' のときだけ通行可（開く）
+
 	// NPC（複数種）
 	NPC_A:     'a',  // NPC（村人など）
 	NPC_B:     'b',  // NPC（商人など）
@@ -129,6 +135,11 @@ export const TILE_META = {
 	[TILE.SKY]:            { label: '空（飛行）',  color: '#0a0a20', passable: false, icon: '☁' },
 	[TILE.PIT]:            { label: '穴（はしご）', color: '#050608', passable: false, icon: '□' },
 	[TILE.TORCH]:          { label: 'かがり火',    color: '#6a3010', passable: false, icon: '🔥' },
+	// Phase 5-1
+	[TILE.SWITCH_RED]:  { label: '色スイッチ（赤）', color: '#602020', passable: true,  icon: '◎' },
+	[TILE.SWITCH_BLUE]: { label: '色スイッチ（青）', color: '#203060', passable: true,  icon: '◎' },
+	[TILE.GATE_RED]:    { label: '色ゲート（赤）',   color: '#601010', passable: false, icon: '⊟' },
+	[TILE.GATE_BLUE]:   { label: '色ゲート（青）',   color: '#102050', passable: false, icon: '⊟' },
 	// アイテム
 	[TILE.ITEM_SWORD]:           { label: '剣',           color: '#607080', passable: true, icon: '⚔' },
 	[TILE.ITEM_SHIELD]:          { label: 'たて',         color: '#607080', passable: true, icon: '🛡' },

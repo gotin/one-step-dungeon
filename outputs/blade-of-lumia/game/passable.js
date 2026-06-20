@@ -134,6 +134,9 @@ export function createPassable(d) {
 		if (tile === TILE.SKY) return false;  // 空（虚空）：地上では通れない（飛行は isPassable で許可）
 		if (tile === TILE.PIT) return false;  // 穴：地上では通れない（はしごは isPassable で許可）
 		if (tile === TILE.GATE   && !ss.openGates.has(posKey)) return false;
+		// Phase 5-1: 色ゲートは activeColor が自色のときだけ通行可（links とは独立）
+		if (tile === TILE.GATE_RED)  return ss.activeColor === 'red';
+		if (tile === TILE.GATE_BLUE) return ss.activeColor === 'blue';
 		// デバッグモード中はドアを素通り（鍵不要）
 		if (tile === TILE.DOOR   && !ss.openedDoors?.has(posKey) && !debugMode) return false;
 		if (tile === TILE.BREAKABLE_WALL && !ss.brokenWalls.has(posKey)) return false;

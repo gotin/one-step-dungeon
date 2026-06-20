@@ -61,4 +61,9 @@ export const TILE_SPRITE_MAP = {
 	[TILE.SAND]:        { spr: 'sand',      pal: 'sand'      },
 	[TILE.STONE_FLOOR]: { spr: 'stoneFloor',pal: 'stoneFloor'},
 	[TILE.BRIDGE]:      { spr: 'bridge',    pal: 'bridge'    },
+	// Phase 5-1: 色スイッチ・色ゲート（基本スプライト。状態依存描画はゲーム側）
+	[TILE.SWITCH_RED]:  { spr: 'switchRed', pal: 'switchRed' },
+	[TILE.SWITCH_BLUE]: { spr: 'switchBlu', pal: 'switchBlu' },
+	[TILE.GATE_RED]:    { spr: 'gateRed',   pal: 'gateRed'   },
+	[TILE.GATE_BLUE]:   { spr: 'gateBlu',   pal: 'gateBlu'   },
 };

@@ -30,7 +30,7 @@
   - 初期色：`stageData.initActiveColor`（例 `'red'`）。`getSS()` の初期化で `litTorches` の `initLitTorches` 種まきと同じ要領でセットする。未指定なら `null`（＝どの色ゲートも閉じた状態から開始）。
   - 永続化：`save.js` の createStageState / serialize / deserialize に `activeColor`（**プリミティブ文字列**なので Set↔配列変換は不要・そのまま代入）を追加。
   - スナップショット：`getStageStateSnapshot()` に `activeColor` を追加（テストで観測するため）。
-- **タイル（セーブ互換のため新文字を割り当て・既存文字は不変）：** 空き文字から、`SWITCH_RED='R'`… は既に `ITEM_RUPEE_LARGE='R'` 等で埋まっているため、**未使用の英大文字/記号**を 4つ確保する（実装時に `shared/tiles.js` の TILE 一覧を再 grep して衝突しない文字を選ぶ。候補例：スイッチ＝`'['`/`']'`、ゲート＝`'('`/`')'` などの記号、または未使用大文字）。タイル文字は実装フェーズで最終確定し DECISIONS に追記する。
+- **タイル（セーブ互換のため新文字を割り当て・既存文字は不変）：** 実装フェーズで `shared/tiles.js` の TILE 一覧を grep して衝突なしを確認し、**以下の文字に最終確定**した：`SWITCH_RED='['`・`SWITCH_BLUE=']'`・`GATE_RED='('`・`GATE_BLUE=')'`（ASCII 記号4文字、既存タイルとは衝突しない）。
 - **作用箇所（既存の SWITCH 経路に「色版」を1分岐ずつ足す）：**
   - **叩く＝色セット**：`player.js` に `setActiveColor(r, c)` を新設（`toggleSwitch` の隣）。前方タイルが `SWITCH_<c>` なら `ss.activeColor = c`＋SE＋`evaluateConditions()`＋再描画＋`saveGame()`。`combat.js`（剣）・`projectile.js`（矢・ビーム・※ブーメランも可）の **SWITCH ヒット分岐の隣に** 「色スイッチなら `setActiveColor`」を足す。ビーム貫通は既存 `proj._switchedCells` で1セル1回に制御（同じ仕組みを流用）。
   - **通行可否**：`passable.js` の GATE 分岐の隣に `if (tile===GATE_RED) return ss.activeColor==='red'; …` を追加（`openGates` は見ない＝色ゲートは links と独立）。

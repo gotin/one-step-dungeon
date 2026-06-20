@@ -193,6 +193,10 @@ function getSS(lk, sk) {
 		for (const pk of sd?.initLitTorches ?? []) {
 			stageState[k].litTorches.add(pk);
 		}
+		// Phase 5-1: stageData.initActiveColor で色スイッチの初期色を設定
+		if (sd?.initActiveColor) {
+			stageState[k].activeColor = sd.initActiveColor;
+		}
 	}
 	return stageState[k];
 }
@@ -416,6 +420,7 @@ let spawnDropEffect     = () => {};
 let toggleFlight        = () => {};
 let collectFieldItem    = () => {};
 let toggleSwitch        = () => {};
+let setActiveColor      = () => {};
 // ── combat.js ──
 let swordAttack         = () => {};
 let dealDamageToEnemy   = () => {};
@@ -636,6 +641,7 @@ const { checkStoneOnSwitch, evaluateConditions } = createConditions({
 		hasCleared,
 		collectFieldItem:   (r, c) => collectFieldItem(r, c),
 		toggleSwitch:       (r, c) => toggleSwitch(r, c),
+		setActiveColor:     (r, c) => setActiveColor(r, c),
 	});
 
 	const _ai = createEnemyAi({
@@ -780,7 +786,8 @@ const { checkStoneOnSwitch, evaluateConditions } = createConditions({
 		isShieldBlockingDir:   (dx, dy) => isShieldBlockingDir(dx, dy),
 		showShieldBlockEffect: (x, y) => showShieldBlockEffect(x, y),
 		spawnDropEffect: (r, c, icon, color) => spawnDropEffect(r, c, icon, color),
-		toggleSwitch: (r, c) => toggleSwitch(r, c),
+		toggleSwitch:    (r, c) => toggleSwitch(r, c),
+		setActiveColor:  (r, c) => setActiveColor(r, c),
 		gameoverOverlayEl,
 		openSignDialog: (sd) => openDialog(sd.name ?? '看板', sd.lines ?? ['（何も書かれていない）']),
 		renderBoard:  () => renderBoard(),
@@ -834,6 +841,7 @@ const { checkStoneOnSwitch, evaluateConditions } = createConditions({
 	tryPushStone      = _player.tryPushStone;
 	checkSwitchOff    = _player.checkSwitchOff;
 	toggleSwitch      = _player.toggleSwitch;
+	setActiveColor    = _player.setActiveColor;
 	giveSubItem       = _player.giveSubItem;
 	gainHeartContainer= _player.gainHeartContainer;
 	spawnDropEffect   = _player.spawnDropEffect;
@@ -1511,6 +1519,7 @@ export function getStageStateSnapshot() {
 		switchToggles: [...(ss.switchToggles ?? [])],
 		litTorches:    [...(ss.litTorches ?? [])],
 		conditionsMet: [...ss.conditionsMet],
+		activeColor:   ss.activeColor ?? null,
 	};
 }
 

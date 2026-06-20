@@ -17,6 +17,16 @@ export const TILE_PAL = {
 	lever:    ['transparent','#0a0a10','#3a3030','#6a5a4a','#1a1a22','#c0c8d4','#e8eef8','#ffd24a'],
 	gateG:    ['transparent','#0a0a14','#8a4010','#d78a50','#f0b070','#ffffff'],
 	gateB:    ['transparent','#0a0a14','#1a3060','#4070b0','#6a9fd0','#a0d0ff'],
+	// Phase 5-1: 色スイッチ・色ゲート
+	// 色ゲート（赤）：1=輪郭 2=暗赤 3=中赤 4=明赤 5=ハイライト
+	gateRed:  ['transparent','#0a0a14','#6a0808','#b02020','#e04040','#ffa0a0'],
+	// 色ゲート（青）：1=輪郭 2=暗青 3=中青 4=明青 5=ハイライト
+	gateBlu:  ['transparent','#0a0a14','#08086a','#2020b0','#4040e0','#a0a0ff'],
+	// 色スイッチ（赤）：既存 lever のパレットを赤系に
+	// 1=輪郭 2=台座暗 3=台座中 4=スロット 5=レバー軸 6=ノブ(暗赤OFF) 7=ノブ(明赤ON発光)
+	switchRed:['transparent','#0a0a10','#3a1010','#6a2020','#1a0a0a','#c87070','#f8e8e8','#ff6060'],
+	// 色スイッチ（青）：1=輪郭 2=台座暗 3=台座中 4=スロット 5=レバー軸 6=ノブ(暗青OFF) 7=ノブ(明青ON発光)
+	switchBlu:['transparent','#0a0a10','#101030','#202060','#0a0a1a','#7070c8','#e8e8f8','#6060ff'],
 	water:    ['transparent','#0a1830','#0e2a58','#1a4a8a','#2a6aaa'],
 	// 壊せる壁（ひび入り）
 	breakableWall: ['transparent','#2a2010','#504030','#706050','#908070','#c0b090'],
@@ -817,3 +827,13 @@ TILE_SPRITES.torch = [
 		[0,0,0,0,0,0,0,0,0,0,0,0],
 	],
 ];
+
+// ── Phase 5-1: 色ゲート（赤/青）── 12×16 ─────────────────────
+// gateG と同形でパレットだけ異なる（color gate = 格子状の柵）
+TILE_SPRITES.gateRed = TILE_SPRITES.gateG;
+TILE_SPRITES.gateBlu = TILE_SPRITES.gateG;
+
+// ── Phase 5-1: 色スイッチ（赤/青）── 32×32・2フレーム ──────────
+// lever スプライトと同形でパレットのみ異なる
+TILE_SPRITES.switchRed = TILE_SPRITES.lever;
+TILE_SPRITES.switchBlu = TILE_SPRITES.lever;

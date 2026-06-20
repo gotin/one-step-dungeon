@@ -14,10 +14,10 @@
 ## 📍 現在地（常に最新に保つ）
 
 - **進行中フェーズ：** **Phase 5（謎解き・パズルギミック）**
-- **進行中タスク：** **Phase 5-1（色スイッチ・色ゲート）🧠→⚡**。**設計完了（Opus）→ 次は実装（⚡ Sonnet）**。
-- **⚠️ 次やること：** **Phase 5-1 の実装（⚡ Sonnet）**。設計が DECISIONS.md/PLAN.md に書き出し済み。`shared/tiles.js` に色スイッチ2＋色ゲート2タイル追加から着手。
-- **直近の状態：** Phase 5-1 設計フェーズ完了。「色セレクタ式」採用（ユーザー選択）＝ステージ単位の `ss.activeColor` 1個＋色別ゲートタイル。既存 `links` 機構には触らず、SWITCH/GATE 経路に色分岐を足す最小設計。コード変更なし。**全90テストグリーン（不変）**。
-- **⚠️ 保留（後日対応）：** ビーム攻撃が強力すぎる → Phase 8-4 で通しプレイ時に一括調整。
+- **進行中タスク：** **Phase 5-2（隠し通路・隠し入口）⚡ Sonnet**
+- **⚠️ 次やること：** **Phase 5-2 の実装**。爆弾壊し壁で隠し部屋増設・看板フェイク・ロウソク→草燃やし隠し入口。既存ギミックの配置がメインなので ⚡ Sonnet 推奨。
+- **直近の状態：** Phase 5-1（色スイッチ・色ゲート）実装完了。全95テストグリーン。dungeon_1 ステージ `3,0` にパズル配置済み（mapEnters は未接続）。
+- **⚠️ 保留（後日対応）：** ビーム攻撃が強力すぎる → Phase 8-4 で通しプレイ時に一括調整。dungeon_1 ステージ `3,0` のパズルは実装済みだが mapEnters が空（reachable 経路に未接続）→ Phase 5 末尾か Phase 6 で接続。
 
 
 
@@ -31,6 +31,29 @@
 ## セッションログ
 
 <!-- 新しいエントリを上に追加していく（最新が一番上） -->
+
+### 2026-06-20 — Phase 5-1（実装完了・Sonnet）：色スイッチ・色ゲート フルスタック実装 + テスト5本
+
+**やったこと：**
+- **タイル追加**（`shared/tiles.js`）：`SWITCH_RED='['`・`SWITCH_BLUE=']'`・`GATE_RED='('`・`GATE_BLUE=')'` を追加。TILE_META に色・label・icon も設定
+- **スプライト**（`shared/tile-sprites.js` / `shared/sprites-tiles.js`）：色違いパレット（`gateRed`・`gateBlu`・`switchRed`・`switchBlu`）を定義。既存 `gateG`/`lever` の形状を流用し、単一表（[[blade-tile-sprite-single-source]]）に4エントリ追加
+- **状態管理**（`game/save.js` / `game/game.js`）：`activeColor: null` を createStageState / serialize / deserialize に追加。`getSS()` で `stageData.initActiveColor` を種まき（`initLitTorches` と同要領）。`getStageStateSnapshot()` に `activeColor` を追加
+- **叩く＝色セット**（`game/player.js`）：`setActiveColor(r, c)` を新設。`combat.js`（剣）・`projectile.js`（矢/ビーム）に色スイッチ分岐を追加。ビームは既存 `proj._switchedCells` で二重起動防止
+- **通行判定**（`game/passable.js`）：`GATE_RED` は `ss.activeColor==='red'` のとき通行可、`GATE_BLUE` は `'blue'` のとき通行可（`openGates` 不使用・links と独立）
+- **描画**（`game/render-board.js`）：色ゲートは activeColor 不一致なら色付き閉ゲートを描画、一致なら床。色スイッチは activeColor 一致なら frame1（点灯）、不一致なら frame0（非アクティブ）
+- **エディタ対応**（`editor/editor-canvas.js` / `editor/index.html`）：`initActiveColor` 入力フィールドをステージ設定に追加（fluteEffect と同要領）
+- **パズル配置**（`work/blade-of-lumia.json`）：dungeon_1 ステージ `3,0`（rows=10, cols=12）を新設。row2 に SWITCH_RED(2,1)・SWITCH_BLUE(2,9)、row4 に GATE_RED(4,3)・GATE_BLUE(4,7)、row6 に石碑ヒント。報酬ステージ `4,0` も追加（宝箱）
+- **テスト**（`tests/color-switch.spec.js`）：5テスト新設・全グリーン：①矢→SWITCH_RED→activeColor='red'、②activeColor='red' で GATE_RED 通行可（snapshot確認）、③矢→SWITCH_BLUE→activeColor='blue'（排他制御）、④snapshot に activeColor フィールドが存在（初期null・起動後'red'）、⑤剣でも SWITCH_RED を起動可
+- PLAN.md の Phase 5-1 チェックボックスを全て `[x]` に更新。DECISIONS.md にタイル文字確定を追記
+
+**学び・気づき：**
+- `deps.setActiveColor` の配線は projectile.js / combat.js の両方に必要（game.js の deps 生成を2箇所修正）。片方だけ忘れると剣か矢の一方で起動できないバグになる
+- テストの SWITCH_BLUE 起動：`teleportPlayer` が `__game` に公開されていないため、col=6 にスポーンし直すアプローチで対応（リロードして blue 側から射撃）
+- `mapEnters` は空のまま（既存ダンジョンへの接続経路は別途 Phase 5 末〜6 で設定）
+
+**▶ 次やること：** **Phase 5-2（隠し通路・隠し入口）⚡ Sonnet**。既存ギミック（爆弾壊し壁・看板フェイク・ロウソク草燃やし）の配置がメイン。
+
+---
 
 ### 2026-06-20 — Phase 5-1（設計フェーズ・Opus）：色スイッチ・色ゲートを「色セレクタ式（activeColor 1個）」で設計
 
@@ -1567,7 +1590,7 @@
 | Phase 2 8ダンジョン | ✅ 完了 | 2-1〜2-4 全完了（8ダンジョン体制・ボス固有化・石碑&NPC噂話ヒント・フィールド接続仕上げ＋到達性回帰テスト）。全39テストグリーン |
 | Phase 3 アクション深化 | ✅ 完了 | 3-1〜3-4 全完了。チャージ剣ビーム・大型ボス8種・弱点属性・ブーメランスタン。全53テストグリーン |
 | Phase 4 サブアイテム | 🚧 進行中 | 4-1〜4-4 完了＋4-5 ①（武器スイッチ）完了。ギミックを**ボタン `BUTTON('S')`（踏む・モーメンタリ）／スイッチ `SWITCH('Y')`（矢・剣でトグル・ON で発光）**に呼び分け。状態 Set も分離しボタンのパズルは保全。全84テストグリーン。残：4-5 ②（ブーメランで炎/かがり火）・③（爆弾点火）・torchesLit トリガー |
-| Phase 5 謎解き | 🔲 未着手 | |
+| Phase 5 謎解き | 🚧 進行中 | 5-1 完了（色スイッチ・色ゲート。全95テストグリーン）。残：5-2（隠し通路）・5-3（敵パズル） |
 | Phase 6 世界観・NPC | 🔲 未着手 | |
 | Phase 7 成長システム | 🔲 未着手 | |
 | Phase 8 やりこみ・UX | 🔲 未着手 | |

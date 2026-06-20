@@ -85,6 +85,12 @@ export function createRenderBoard(deps) {
 			case TILE.DOOR:
 				cellEl.classList.add('door');
 				applyBgTileClass(cellEl, posKey); return;
+			case TILE.SWITCH_RED:
+			case TILE.SWITCH_BLUE:
+			case TILE.GATE_RED:
+			case TILE.GATE_BLUE:
+				// Phase 5-1: 色ゲート・色スイッチの背景は床に任せる
+				applyBgTileClass(cellEl, posKey); return;
 			case TILE.BUTTON:
 			case TILE.SWITCH:
 				// 背景は床（bgTile）に任せる。ON/OFF・押下の見た目はスプライト側の
@@ -175,6 +181,34 @@ export function createRenderBoard(deps) {
 			if (!ss.openGates.has(posKey)) {
 				const cv = makeSprite('gateG', 'gateG', false);
 				if (cv) { cv.classList.add('obj-sprite'); cellEl.appendChild(cv); }
+			}
+			return;
+		}
+		// Phase 5-1: 色ゲート（赤/青）
+		// activeColor が自色と一致 → 開いている（床として描かない）。不一致 → 閉じた格子を描く。
+		if (tile === TILE.GATE_RED || tile === TILE.GATE_BLUE) {
+			const color = tile === TILE.GATE_RED ? 'red' : 'blue';
+			if (ss.activeColor !== color) {
+				const sprName = tile === TILE.GATE_RED ? 'gateRed' : 'gateBlu';
+				const palName = tile === TILE.GATE_RED ? 'gateRed' : 'gateBlu';
+				const cv = makeSprite(sprName, palName, false);
+				if (cv) { cv.classList.add('obj-sprite'); cellEl.appendChild(cv); }
+			}
+			return;
+		}
+		// Phase 5-1: 色スイッチ（赤/青）
+		// frame0=非アクティブ（自色でない）／frame1=アクティブ（自色が選ばれている）
+		if (tile === TILE.SWITCH_RED || tile === TILE.SWITCH_BLUE) {
+			const color    = tile === TILE.SWITCH_RED ? 'red' : 'blue';
+			const sprName  = tile === TILE.SWITCH_RED ? 'switchRed' : 'switchBlu';
+			const palName  = tile === TILE.SWITCH_RED ? 'switchRed' : 'switchBlu';
+			const frames   = SPRITES[sprName];
+			const pal      = PAL[palName];
+			if (frames && pal) {
+				const cv = document.createElement('canvas');
+				cv.className = 'sprite obj-sprite';
+				drawSpriteFrame(cv, frames, ss.activeColor === color ? 1 : 0, pal);
+				cellEl.appendChild(cv);
 			}
 			return;
 		}
