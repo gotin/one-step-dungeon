@@ -98,6 +98,8 @@ let player = {
 	flying: false,
 	// Phase 4-1: はしご所持フラグ。両隣が地上の水/穴を1セルだけ自動で渡れる。
 	hasLadder: false,
+	// Phase 6-1b: 撃破済みボスのタイル文字を記録する Set。NPC 台詞の切り替えに使用。
+	defeatedBosses: new Set(),
 };
 
 let enemies = [];
@@ -203,8 +205,9 @@ function getSS(lk, sk) {
 
 function saveGame() {
 	try {
+		const playerForSave = { ...player, defeatedBosses: [...(player.defeatedBosses ?? [])] };
 		localStorage.setItem(SAVE_KEY, JSON.stringify({
-			player,
+			player: playerForSave,
 			stageState: serializeStageState(stageState),
 			currentLayer, stageKey, heroDir,
 		}));
@@ -217,6 +220,7 @@ function loadGame() {
 		if (!raw) return false;
 		const data = JSON.parse(raw);
 		player       = sanitizeLoadedPlayer({ ...player, ...data.player }, ITEM_META);
+		player.defeatedBosses = new Set(data.player?.defeatedBosses ?? []);
 		heroDir      = data.heroDir ?? 'down';
 		currentLayer = data.currentLayer ?? 'field';
 		stageKey     = data.stageKey ?? null;
@@ -1338,6 +1342,7 @@ function startNewGame() {
 		hasWingRobe: false,
 		flying: false,
 		hasLadder: false,
+		defeatedBosses: new Set(),
 	};
 	heroDir = 'down';
 	enterStage(currentLayer, stageKey, player.y, player.x);
@@ -1503,6 +1508,7 @@ export function getGameState() {
 			x: player.x, y: player.y, hp: player.hp, maxHp: player.maxHp,
 			hasWingRobe: !!player.hasWingRobe, flying: !!player.flying,
 			hasLadder: !!player.hasLadder,
+			defeatedBosses: [...(player.defeatedBosses ?? [])],
 			hasFlute: !!player.subItems?.flute,
 			hasCandle: !!player.subItems?.candle,
 			activeSubItem: player.activeSubItem,
@@ -1572,4 +1578,10 @@ export function dealDamageToEnemyById(id, dmg, atkType) {
 export function stunEnemyById(id, durationMs) {
 	const e = enemies.find(x => x.id === id);
 	if (e) e.stunUntil = gameTime + durationMs;
+}
+
+// Phase 6-1b: テスト用 — 撃破ボスフラグを直接追加する
+export function addDefeatedBossForTest(bossType) {
+	if (!player.defeatedBosses) player.defeatedBosses = new Set();
+	player.defeatedBosses.add(bossType);
 }

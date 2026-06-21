@@ -184,6 +184,10 @@ export function createBoss(deps) {
 		// 5. ボス HP バー非表示・ロック解除・ドアウェイ開放
 		hideBossHpBar();
 		setBossRoomLocked(false);
+		// Phase 6-1b: 撃破ボスを記録（NPC 台詞切り替えに使用）
+		const player = getPlayer();
+		if (!player.defeatedBosses) player.defeatedBosses = new Set();
+		player.defeatedBosses.add(boss.type);
 		const stageData = getStageData();
 		const hasBossDoors = stageData?.tiles?.some(row => row.includes(TILE.DOORWAY_BOSS));
 		unlockBossDoors();

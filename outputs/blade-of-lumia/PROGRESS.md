@@ -14,9 +14,9 @@
 ## 📍 現在地（常に最新に保つ）
 
 - **進行中フェーズ：** **Phase 6（世界観・NPC・テキスト）**
-- **進行中タスク：** **Phase 6-1 完了**
-- **⚠️ 次やること：** **Phase 6-1b（個別ボス撃破フラグ `defeatedBosses`）⚡ Sonnet**。`player.defeatedBosses` Set を追加し、どのボスを倒したかで NPC 台詞を個別に変えられるようにする。save.js・boss.js・ui.js・JSON データの変更。設計は PLAN.md 6-1b に記載済みなので Sonnet 推奨。
-- **直近の状態：** Phase 6-1（NPCの台詞充実）完了。全104テストグリーン。`ui.js#startDialog` に `linesAfter` 対応を追加し、`triforceCount > 0`（ボス撃破済み）のとき別の台詞に切り替わる仕組みを実装。7ステージのNPCに噂話台詞・ボス撃破後台詞を追加。
+- **進行中タスク：** **Phase 6-1b 完了**
+- **⚠️ 次やること：** **Phase 6-2（世界の歴史を語る石碑・壁画）🧠→⚡**。ダンジョン内にザーネルの過去を語る断片テキストを石碑に配置。ストーリー断片の構成は未着手なので Opus 推奨。
+- **直近の状態：** Phase 6-1b（個別ボス撃破フラグ）完了。全108テストグリーン。`player.defeatedBosses`（Set）を追加し、`linesAfterBoss[type]` → `default` → `linesAfter` → `lines` の優先順位でNPC台詞を選択。saveGame/loadGame で配列変換対応。
 - **⚠️ 保留（後日対応）：** ビーム攻撃が強力すぎる → Phase 8-4 で通しプレイ時に一括調整。dungeon_1 ステージ `3,0`（色スイッチ）・`5,0`（敵石押し）のパズルは実装済みだが mapEnters が空（reachable 経路に未接続）→ Phase 6 でフィールドから接続。
 
 
@@ -31,6 +31,25 @@
 ## セッションログ
 
 <!-- 新しいエントリを上に追加していく（最新が一番上） -->
+
+### 2026-06-21 — Phase 6-1b（完了・Sonnet）：個別ボス撃破フラグ `defeatedBosses`
+
+**やったこと：**
+- **`player.defeatedBosses`（Set）を追加**（`game/game.js`）：グローバル player 定義と `startNewGame` の両方に初期化。`onBossDefeated`（`game/boss.js`）でボスを倒したときに `player.defeatedBosses.add(boss.type)` を実行
+- **save/load 対応**（`game/game.js`）：`saveGame` で `defeatedBosses` を配列に変換（`[...Set]`）・`loadGame` で `new Set(array)` に復元。`save.js` は player を直接 serialize せず game.js 側で制御するため game.js のみ変更
+- **`startDialog` の台詞選択優先順位を拡張**（`game/ui.js`）：`linesAfterBoss[type]`（個別ボス台詞）→ `linesAfterBoss.default`（汎用「ボス倒した」台詞）→ `linesAfter`（従来の全体ボス撃破後）→ `lines`（通常）の4段階優先順位に
+- **NPCデータを更新**（`work/blade-of-lumia.json`）：field 1,0 の**村人タロ（3,5）**と**老賢者（3,3）**に `linesAfterBoss` を追加。`G`（岩のゴーレム）撃破後の個別台詞と `default`（汎用台詞）を設定
+- **テスト用 API を追加**（`game/game.js` / `game/main.js`）：`addDefeatedBossForTest` / `__game.addDefeatedBoss(type)` を公開
+- **テスト**（`tests/defeated-bosses.spec.js`）：4本新設・全グリーン：①空状態では通常台詞（「ゴーレム」を含まない）、②G 追加後は `linesAfterBoss["G"]` 台詞（「ゴーレム」を含む）、③G 以外のボスなら `default` 台詞、④`getState()` で `defeatedBosses` が配列型で返る
+
+**学び・気づき：**
+- **`player` の `Set` フィールドは `JSON.stringify` で `{}` になる**。`save.js` の `stageState` は専用の serialize 関数があるが、`player` は game.js 内で `JSON.stringify({player, ...})` に直接渡している。`saveGame` で `playerForSave = {...player, defeatedBosses: [...Set]}` を作って渡すのが最小変更。`loadGame` でも `new Set(data.player?.defeatedBosses ?? [])` で復元する
+- **台詞の優先順位チェーンは「最初に一致したらbreak」**。`linesAfterBoss` のキーをイテレートして `'default'` を除外して最初の一致を取り、一致がなければ `default` を確認、それもなければ従来の `linesAfter`/`lines` にフォールバックする。将来ボス種を増やしても NPC データの追加だけで対応できる
+- **`save.js` を触らずに保存できた**：`cutBushes` は stageState 経由で `save.js` の serialize 関数を通るが、`defeatedBosses` は player オブジェクト側にあるため game.js の `saveGame`/`loadGame` を直接修正する方が筋が通っている
+
+**▶ 次やること：** **Phase 6-2（世界の歴史を語る石碑・壁画）🧠→⚡**。ストーリー断片の構成は未着手なので Opus 推奨。
+
+---
 
 ### 2026-06-21 — Phase 6-1（完了・Sonnet）：NPCの台詞充実＋ボス撃破後台詞システム
 

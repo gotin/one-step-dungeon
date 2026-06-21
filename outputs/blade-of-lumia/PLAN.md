@@ -821,11 +821,11 @@ input.js     161 / passable.js 161 / conditions.js 117 / save.js 87 / main.js 78
 - [x] ボス撃破後に変化するNPCの台詞（「ありがとう！」系）
 
 ### 6-1b. 個別ボス撃破フラグ（`defeatedBosses`）⚡ Sonnet
-- [ ] `player.defeatedBosses`（Set）を追加：`onBossDefeated` でボスのタイル文字を記録
-- [ ] `save.js` で Set↔配列変換（`cutBushes` 等と同パターン）
-- [ ] `startDialog` で `linesAfterBoss[tileChar]` → `linesAfterBoss.default` → `linesAfter` → `lines` の優先順位で台詞選択
-- [ ] 各NPCの `npcData` に `linesAfterBoss` を追加（dungeon_1 ゴーレム `G`、dungeon_4 炎 `A` 等で個別反応）
-- [ ] テスト：ゴーレム撃破後に対応NPCの台詞が変わることを確認
+- [x] `player.defeatedBosses`（Set）を追加：`onBossDefeated` でボスのタイル文字を記録
+- [x] `save.js` で Set↔配列変換（saveGame で配列化・loadGame で Set 復元）
+- [x] `startDialog` で `linesAfterBoss[tileChar]` → `linesAfterBoss.default` → `linesAfter` → `lines` の優先順位で台詞選択
+- [x] 各NPCの `npcData` に `linesAfterBoss` を追加（field 1,0 村人タロ・老賢者に G/default）
+- [x] テスト：ゴーレム撃破後に対応NPCの台詞が変わることを確認（4本）
 
 ### 6-2. 世界の歴史を語る石碑・壁画　🧠→⚡（ストーリー断片の構成はOpus、配置はSonnet）
 - [ ] ダンジョン内に石碑タイルを追加

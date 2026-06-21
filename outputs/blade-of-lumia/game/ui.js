@@ -173,8 +173,22 @@ export function createUi(deps) {
 	function startDialog(r, c, tileChar, stageData, npcDefaultDialog, player) {
 		const posKey = `${r},${c}`;
 		const data   = stageData.npcData?.[posKey] ?? npcDefaultDialog[tileChar] ?? { name: 'NPC', lines: ['…'] };
-		const hasSeenBoss = (player?.triforceCount ?? 0) > 0;
-		dialogLines = (hasSeenBoss && data.linesAfter) ? data.linesAfter : (data.lines ?? ['…']);
+		// Phase 6-1b: 個別ボス撃破台詞 linesAfterBoss[type] → default → linesAfter → lines
+		const defeated = player?.defeatedBosses;
+		let lines = null;
+		if (defeated && data.linesAfterBoss) {
+			for (const [bossType, bossLines] of Object.entries(data.linesAfterBoss)) {
+				if (bossType !== 'default' && defeated.has(bossType)) { lines = bossLines; break; }
+			}
+			if (!lines && defeated.size > 0 && data.linesAfterBoss.default) {
+				lines = data.linesAfterBoss.default;
+			}
+		}
+		if (!lines) {
+			const hasSeenBoss = (player?.triforceCount ?? 0) > 0;
+			lines = (hasSeenBoss && data.linesAfter) ? data.linesAfter : (data.lines ?? ['…']);
+		}
+		dialogLines = lines;
 		dialogLineIdx = 0;
 		setIsDialog(true); stopGameLoop();
 		dialogNameEl.textContent = data.name ?? '';

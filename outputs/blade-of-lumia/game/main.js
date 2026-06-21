@@ -18,6 +18,7 @@ import {
 	injectTestEnemy,
 	dealDamageToEnemyById,
 	stunEnemyById,
+	addDefeatedBossForTest,
 	startAnimLoop,
 	redrawAnimSprites,
 	startEnding,
@@ -94,4 +95,6 @@ window.__game = {
 	dealDamage: (id, dmg, atkType) => dealDamageToEnemyById(id, dmg, atkType),
 	// 指定 id の敵をスタン（ブーメランスタン Phase 3-4 の検証用）
 	stunEnemy: (id, ms) => stunEnemyById(id, ms),
+	// Phase 6-1b: 撃破ボスフラグをテストから直接追加する
+	addDefeatedBoss: (type) => addDefeatedBossForTest(type),
 };
