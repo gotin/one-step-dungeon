@@ -3,6 +3,7 @@
 // enemyTick / enemyChase / bossTickHitAndAway / enemyAttack / checkEnemyContact を提供。
 
 import { ENEMY_META } from '../shared/enemies.js';
+import { TILE } from '../shared/tiles.js';
 import { makeSprite } from '../shared/sprites.js';
 import { playSound } from '../shared/sounds.js';
 import { MOVE_STEP } from './constants.js';
@@ -29,6 +30,14 @@ import { enemyPointHit } from './hitbox.js';
  *   isShieldBlockingDir(dx, dy)  – 盾ブロック方向判定
  *   showShieldBlockEffect(x, y)  – 盾ブロックエフェクト
  *   debugMode                    – デバッグフラグ getter
+ *   ── Phase 5-3: 敵が石を押すパズル用 ──
+ *   getCurrentLayer()            – 現在レイヤー
+ *   getStageKey()                – 現在ステージキー
+ *   getSS(layer, key)            – ステージ状態取得
+ *   tilePassable(r, c)           – 地形の通行可否（石の押し先判定用）
+ *   checkStoneOnSwitch()         – 石→ボタン判定（既存・conditions.js）
+ *   evaluateConditions()         – 条件再評価（既存）
+ *   renderBoard() / renderChars()– 再描画
  */
 export function createEnemyAi(deps) {
 	const {
@@ -39,7 +48,66 @@ export function createEnemyAi(deps) {
 		takeDamage, dealDamageToEnemy,
 		fireEnemyProjectile, isShieldBlockingDir, showShieldBlockEffect,
 		getDebugMode,
+		// Phase 5-3: 敵が石を押すパズル
+		getCurrentLayer, getStageKey, getSS, tilePassable,
+		checkStoneOnSwitch, evaluateConditions, renderBoard, renderChars,
 	} = deps;
+
+	// ── Phase 5-3: 敵が石を押す ────────────────────────────────
+	// プレイヤーの tryPushStone（player.js）と同じ規則で、敵が移動しようとした
+	// マス (er+ndr, ec+ndc) に石があるとき、その先 (er+2ndr, ec+2ndc) が押し先。
+	// 押し先が通行可（tilePassable）かつ他の石・敵がいなければ石を1マス押し出す。
+	// 押された石がボタンに乗れば既存の checkStoneOnSwitch がゲートを開く。
+	// 戻り値：石を押せたら true（呼び出し側で敵もそのマスへ前進させる）。
+	function tryEnemyPushStone(e, my, mx) {
+		if (!getSS || !tilePassable) return false;        // deps 未注入なら無効（後方互換）
+		const ndr = Math.sign(my);
+		const ndc = Math.sign(mx);
+		if (ndr !== 0 && ndc !== 0) return false;          // 斜めには押さない
+		const stageData = getStageData();
+		const er = toTileRow(e.y);
+		const ec = toTileCol(e.x);
+		const sr = er + ndr;   // 石があるはずのマス
+		const sc = ec + ndc;
+		const ss = getSS(getCurrentLayer(), getStageKey());
+		if (!ss.stonePositions) ss.stonePositions = {};
+
+		// (sr,sc) に石があるか（元位置の STONE タイル or 移動済みの石）
+		let stoneKey = null;
+		if (stageData.tiles[sr]?.[sc] === TILE.STONE && !ss.stonePositions[`${sr},${sc}`]) {
+			stoneKey = `${sr},${sc}`;
+		} else {
+			for (const [k, st] of Object.entries(ss.stonePositions)) {
+				if (st.r === sr && st.c === sc) { stoneKey = k; break; }
+			}
+		}
+		if (stoneKey === null) return false;               // そこに石はない
+
+		// 押し先 (dr,dc)
+		const dr = sr + ndr;
+		const dc = sc + ndc;
+		if (dr < 0 || dr >= stageData.rows || dc < 0 || dc >= stageData.cols) return false;
+		if (!tilePassable(dr, dc)) return false;           // 壁/水/穴は押せない
+		// 押し先に別の石・敵・プレイヤーがいないか
+		for (const st of Object.values(ss.stonePositions)) {
+			if (st.r === dr && st.c === dc) return false;
+		}
+		const player = getPlayer();
+		if (toTileRow(player.y) === dr && toTileCol(player.x) === dc) return false;
+		for (const other of getEnemies()) {
+			if (other === e) continue;
+			if (toTileRow(other.y) === dr && toTileCol(other.x) === dc) return false;
+		}
+
+		// 石を1マス押し出す
+		ss.stonePositions[stoneKey] = { r: dr, c: dc };
+		checkStoneOnSwitch?.();
+		evaluateConditions?.();
+		playSound('move');
+		renderBoard?.();
+		renderChars?.();
+		return true;
+	}
 
 	// ── ヒット＆アウェイ AI（アプローチモード選択） ────────────
 	function pickApproachMode(e) {
@@ -407,10 +475,19 @@ export function createEnemyAi(deps) {
 			candidates.push([Math.sign(dy) * step, 0]);
 		}
 
+		// タイル境界に揃っているか（石押しは整数座標のときだけ試す）
+		const aligned = Math.abs(e.x - Math.round(e.x)) < 0.01
+			&& Math.abs(e.y - Math.round(e.y)) < 0.01;
+
 		for (const [my, mx] of candidates) {
 			const ny = e.y + my;
 			const nx = e.x + mx;
 			if (isPassableForEnemy(ny, nx, e)) {
+				e.y = ny; e.x = nx;
+				break;
+			}
+			// Phase 5-3: 塞がれた先が石なら押してみる（整数座標・カーディナルのみ）
+			if (aligned && tryEnemyPushStone(e, my, mx)) {
 				e.y = ny; e.x = nx;
 				break;
 			}

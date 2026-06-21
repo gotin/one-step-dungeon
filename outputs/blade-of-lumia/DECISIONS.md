@@ -22,6 +22,16 @@
 
 ## 記録
 
+### 2026-06-21 — Phase 5-3（設計＋実装）：敵を使ったパズルは「敵が石を押す→既存の checkStoneOnSwitch でボタンON」で実装する
+- **決定（仕組み・ユーザー選択）：** Phase 5-3「敵を使ったパズル」は、提示した3案（①重し式：敵がボタンに乗っている間だけON ②ラッチ式：一度踏めば恒久ON ③**敵が石を押すギミック**）のうち、ユーザーが**③敵が石を押す**を選択。敵が移動経路上の石にぶつかると、プレイヤーの石押しと同じ向きに石を1マス押し出す。押された石がボタン（`BUTTON`）に乗ると、**既存の `checkStoneOnSwitch`（conditions.js）が「石 or プレイヤーが乗っていればON」**と判定して連動ゲート（`links`）を開く。つまりパズルの後半（石→ボタン→ゲート）は**完全に既存資産**で、新規実装は「敵に石を押させる」前半だけ。
+- **なぜこの設計が最小か：**
+  - 石がボタンを押し下げる機構（`checkStoneOnSwitch`・`ss.stoneSwitches` での石ON/OFFリセット）は石押しパズルで実装済み。**敵が押した石も `ss.stonePositions` に同じ形式で記録すれば、ボタン判定はそのまま流用できる**（石の出所がプレイヤーか敵かを区別しない）。
+  - 敵の石押しは、プレイヤーの `tryPushStone`（player.js:168）と**同じ規則**（押し先が `tilePassable` かつ他の石・敵がいない）で1マス移動させ、`checkStoneOnSwitch()`＋`evaluateConditions()`＋`renderBoard/renderChars` を呼ぶだけ。
+- **実装箇所（enemy-ai.js）：** 通常追跡 `enemyChase` の移動ループで、候補マスが `isPassableForEnemy` で塞がれたとき、その塞いだ原因が**石**なら `tryEnemyPushStone(e, my, mx)` を試す。押せたら敵もそのマスへ前進する。`enemyChase` は `Math.random` を一切使わない決定論的ロジックなので、`step()` ベースのテストで「敵が石をボタンへ押す→ゲートが開く」を再現できる（boss の hitAndAway は乱数依存なので、石押しは**通常敵＝CHASERなど非ボス**に持たせる）。
+- **暴走防止（重要）：** 敵が石を押し続けて盤外やパズル外へ運ぶのを防ぐため、(a) 押せるのは1tickにつき石移動のクールダウン（プレイヤーと同じ実時間ガードではなく、敵 accum ベースの自然な間引き）、(b) 石の押し先がボタン上または通常床のときのみ許可（水/穴/壁は `tilePassable` が false なので自然にブロック）、(c) **敵が石を押す対象は「プレイヤーへ向かう経路上で石に当たったとき」だけ**（石を探しには行かない）。これでパズル設計者は「敵の追跡経路上に石とボタンを置く」だけで誘導パズルを作れる。
+- **代替案：** ①重し式（敵がボタンに乗る）は `checkStoneOnSwitch` に敵位置チェックを足すだけでより簡単だが、ユーザーは「石を押す」方がパズルとして面白いと判断。②ラッチ式は 5-1 の色スイッチや射撃スイッチと機構が被るため不採用。
+- **結果／影響：** `enemy-ai.js` に `tryEnemyPushStone` を新設し `enemyChase` から呼ぶ。`createEnemyAi` の deps に `getCurrentLayer`/`getStageKey`/`getSS`/`tilePassable`/`checkStoneOnSwitch`/`evaluateConditions`/`renderBoard`/`renderChars` を追加。`getStageStateSnapshot()` に `stonePositions` を追加（テスト観測用）。パズルは dungeon ステージに「CHASER + STONE + BUTTON + GATE(links)」で配置する。
+
 ### 2026-06-20 — Phase 5-1（設計）：色スイッチ・色ゲートは「ステージ単位の activeColor 1個＋色別 GATE タイル」の状態機械で実装する
 - **決定（仕組み・ユーザー選択）：** 「**色セレクタ式**」を採用する。色ごとに専用スイッチタイルを置き（`SWITCH_RED`・`SWITCH_BLUE`、将来 `SWITCH_GREEN` 等）、**武器で叩くとそのステージの「アクティブ色 `ss.activeColor`」がその色に切り替わる**（トグルではなく**セット**）。ゲートも色別タイル（`GATE_RED`・`GATE_BLUE`…）にし、**`GATE_<c>` は `ss.activeColor === c` のときだけ通行可（＝開いて見える）**、それ以外は壁（閉じて見える）。これにより「赤を叩く→赤ゲート開・他色ゲート閉／青を叩く→青だけ開」という**排他切替パズル**が成立する。
 - **既存スイッチとの決定的な違い（なぜ `links` を使わないか）：** 既存の `BUTTON`/`SWITCH`＋`links`（switchId→gateId）は**加算式**（スイッチON→そのゲートが開く・各リンクは独立）で、「ある色を開くと他色が閉じる」という**排他**を素直に表現できない。色ギミックの本質は「同時に1色だけ通れる」排他制御なので、`links` で個別ゲートを開閉するのではなく、**ステージに `activeColor` という単一の状態を持たせ、各ゲートが自分の色と一致するかだけを見る**のが最小かつ決定論的。`links` 機構には一切手を入れない（既存パズルに無影響）。

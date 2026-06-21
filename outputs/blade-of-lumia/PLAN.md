@@ -798,8 +798,15 @@ input.js     161 / passable.js 161 / conditions.js 117 / save.js 87 / main.js 78
 - [x] ロウソクで草を燃やすと現れる隠し入口
 
 ### 5-3. 敵を使ったパズル　🧠 Opus（敵AI・誘導ロジックの設計）
-- [ ] 「敵をスイッチの上に誘導する」パズル設計
-  - 敵AIが石を踏んで押す・スイッチに乗るなどの仕掛け
+
+> **設計確定＋実装（2026-06-21・Opus）：DECISIONS.md「Phase 5-3（設計＋実装）」参照。「敵が石を押す」方式を採用（ユーザー選択）。**
+> 敵が追跡経路上の石にぶつかると、プレイヤーの石押しと同じ規則で石を1マス押す。押された石がボタンに乗ると**既存の `checkStoneOnSwitch`** がゲートを開く。パズル後半（石→ボタン→ゲート）は完全に既存資産で、新規は「敵に石を押させる」前半だけ。
+
+- [x] 「敵をスイッチの上に誘導する」パズル設計（→「敵が石をボタンへ押し込む」方式に確定）
+- [x] **敵の石押し**（`enemy-ai.js`）：`tryEnemyPushStone(e, my, mx)` を新設。`enemyChase` の移動ループで、整数座標かつカーディナル移動が石で塞がれたとき石を1マス押す（プレイヤーの `tryPushStone` と同規則：押し先が `tilePassable` かつ石/敵/プレイヤー不在）。乱数なしの通常追跡 AI なので決定論的
+- [x] **配線**（`game.js`）：`createEnemyAi` deps に `getCurrentLayer`/`getStageKey`/`getSS`/`tilePassable`/`checkStoneOnSwitch`/`evaluateConditions`/`renderBoard`/`renderChars` を追加。`getStageStateSnapshot()` に `stonePositions` を追加（テスト観測用）
+- [x] **パズル配置**（`work/blade-of-lumia.json`）：dungeon_1 ステージ `5,0`（rows=10,cols=12）に CHASER(2,5)・STONE(3,5)・BUTTON(4,5)・GATE(4,9)・封印宝箱(4,10)・石碑(7,3)。ボタン直下(5,5)を壁で塞ぎ石が越えないように（恒久ON）。`links: [{switchId:'4,5', gateId:'4,9'}]`。`mapEnters` は空（reachable 経路へは Phase 5 末〜6 で接続）
+- [x] **テスト**（`tests/enemy-stone-puzzle.spec.js`）：①チェイサーが石をボタンへ押し込む→switchStates['4,5']===true・openGates に '4,9'／②敵を上方へ誘導すると石は乗らずゲート閉のまま（vacuous pass 防止）。2テスト全グリーン（総101テスト）
 
 ---
 

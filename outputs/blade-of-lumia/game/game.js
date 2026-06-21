@@ -662,6 +662,15 @@ const { checkStoneOnSwitch, evaluateConditions } = createConditions({
 		isShieldBlockingDir:   _proj.isShieldBlockingDir,
 		showShieldBlockEffect: _proj.showShieldBlockEffect,
 		getDebugMode:          () => debugMode,
+		// Phase 5-3: 敵が石を押すパズル
+		getCurrentLayer:       () => currentLayer,
+		getStageKey:           () => stageKey,
+		getSS,
+		tilePassable:          (r, c) => tilePassable(r, c),
+		checkStoneOnSwitch:    () => checkStoneOnSwitch(),
+		evaluateConditions:    () => evaluateConditions(),
+		renderBoard:           () => renderBoard(),
+		renderChars:           () => renderChars(),
 	});
 
 	// factory が生成した関数で旧インライン実装を上書き
@@ -1521,6 +1530,7 @@ export function getStageStateSnapshot() {
 		conditionsMet: [...ss.conditionsMet],
 		activeColor:   ss.activeColor ?? null,
 		brokenWalls:   [...(ss.brokenWalls ?? [])],
+		stonePositions: { ...(ss.stonePositions ?? {}) },  // Phase 5-3: 敵が押した石の確認用
 	};
 }
 
