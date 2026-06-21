@@ -1520,6 +1520,7 @@ export function getStageStateSnapshot() {
 		litTorches:    [...(ss.litTorches ?? [])],
 		conditionsMet: [...ss.conditionsMet],
 		activeColor:   ss.activeColor ?? null,
+		brokenWalls:   [...(ss.brokenWalls ?? [])],
 	};
 }
 
