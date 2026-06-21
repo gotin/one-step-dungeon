@@ -170,10 +170,11 @@ export function createUi(deps) {
 	}
 
 	// ── ダイアログ ────────────────────────────────────────────
-	function startDialog(r, c, tileChar, stageData, npcDefaultDialog) {
+	function startDialog(r, c, tileChar, stageData, npcDefaultDialog, player) {
 		const posKey = `${r},${c}`;
 		const data   = stageData.npcData?.[posKey] ?? npcDefaultDialog[tileChar] ?? { name: 'NPC', lines: ['…'] };
-		dialogLines = data.lines ?? ['…'];
+		const hasSeenBoss = (player?.triforceCount ?? 0) > 0;
+		dialogLines = (hasSeenBoss && data.linesAfter) ? data.linesAfter : (data.lines ?? ['…']);
 		dialogLineIdx = 0;
 		setIsDialog(true); stopGameLoop();
 		dialogNameEl.textContent = data.name ?? '';

@@ -554,7 +554,7 @@ const { checkStoneOnSwitch, evaluateConditions } = createConditions({
 	pulse            = _ui.pulse;
 	updateDungeonHud = _ui.updateDungeonHud;
 	updateShieldHud  = _ui.updateShieldHud;
-	startDialog      = (r, c, tileChar) => _ui.startDialog(r, c, tileChar, stageData, NPC_DEFAULT_DIALOG);
+	startDialog      = (r, c, tileChar) => _ui.startDialog(r, c, tileChar, stageData, NPC_DEFAULT_DIALOG, player);
 	showDialogLine   = _ui.showDialogLine;
 	advanceDialog    = _ui.advanceDialog;
 	togglePause      = _ui.togglePause;
