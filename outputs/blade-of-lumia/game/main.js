@@ -31,6 +31,7 @@ import {
 	callEquipArmorTier,
 	callEquipShieldTier,
 	callUpdateHud,
+	callGainHeartContainer,
 } from './game.js';
 
 // ── アニメーション ────────────────────────────────────────────
@@ -113,4 +114,6 @@ window.__game = {
 	equipArmorTier: (idx) => callEquipArmorTier(idx),
 	equipShieldTier: (idx) => callEquipShieldTier(idx),
 	updateHud: () => callUpdateHud(),
+	// Phase 7-3: ハートの器テスト用
+	gainHeartContainer: () => callGainHeartContainer(),
 };

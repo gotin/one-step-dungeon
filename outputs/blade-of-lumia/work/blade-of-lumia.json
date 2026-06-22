@@ -79,7 +79,7 @@
               ".",
               ".",
               "t",
-              ".",
+              "B",
               ".",
               "K",
               "f"
@@ -283,6 +283,10 @@
             "7,7": {
               "type": "rupee",
               "value": 100
+            },
+            "4,8": {
+              "type": "heartContainer",
+              "name": "ハートの器"
             }
           },
           "objects": {},
@@ -3378,7 +3382,7 @@
               ".",
               ".",
               ".",
-              ".",
+              "B",
               "#"
             ],
             [
@@ -3497,7 +3501,12 @@
           "bgTiles": {},
           "links": [],
           "enemyDirs": {},
-          "chestContents": {},
+          "chestContents": {
+            "1,10": {
+              "type": "heartContainer",
+              "name": "ハートの器"
+            }
+          },
           "floorItems": {},
           "objects": {},
           "npcData": {
@@ -5000,7 +5009,7 @@
               ".",
               ".",
               ".",
-              ".",
+              "B",
               ".",
               ".",
               "#"
@@ -5028,6 +5037,10 @@
               "type": "item",
               "item": "rupee",
               "name": "ルピー（大）×3"
+            },
+            "8,8": {
+              "type": "heartContainer",
+              "name": "ハートの器"
             }
           },
           "objects": {},
@@ -6248,12 +6261,8 @@
           "enemyDirs": {},
           "chestContents": {
             "1,10": {
-              "items": [
-                {
-                  "type": "rupee",
-                  "value": 50
-                }
-              ]
+              "type": "heartContainer",
+              "name": "ハートの器"
             }
           },
           "floorItems": {},
@@ -6620,12 +6629,8 @@
           "enemyDirs": {},
           "chestContents": {
             "1,10": {
-              "items": [
-                {
-                  "type": "rupee",
-                  "value": 50
-                }
-              ]
+              "type": "heartContainer",
+              "name": "ハートの器"
             }
           },
           "floorItems": {},
@@ -6991,12 +6996,8 @@
           "enemyDirs": {},
           "chestContents": {
             "1,10": {
-              "items": [
-                {
-                  "type": "rupee",
-                  "value": 50
-                }
-              ]
+              "type": "heartContainer",
+              "name": "ハートの器"
             }
           },
           "floorItems": {},
@@ -7359,12 +7360,8 @@
           "enemyDirs": {},
           "chestContents": {
             "1,10": {
-              "items": [
-                {
-                  "type": "rupee",
-                  "value": 50
-                }
-              ]
+              "type": "heartContainer",
+              "name": "ハートの器"
             }
           },
           "floorItems": {},
@@ -7724,12 +7721,8 @@
           "enemyDirs": {},
           "chestContents": {
             "1,10": {
-              "items": [
-                {
-                  "type": "rupee",
-                  "value": 50
-                }
-              ]
+              "type": "heartContainer",
+              "name": "ハートの器"
             }
           },
           "floorItems": {},
@@ -8087,12 +8080,8 @@
           "enemyDirs": {},
           "chestContents": {
             "1,10": {
-              "items": [
-                {
-                  "type": "rupee",
-                  "value": 50
-                }
-              ]
+              "type": "heartContainer",
+              "name": "ハートの器"
             }
           },
           "floorItems": {},

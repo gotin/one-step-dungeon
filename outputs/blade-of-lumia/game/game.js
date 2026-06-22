@@ -1532,6 +1532,7 @@ export function getGameState() {
 		stageKey,
 		player: {
 			x: player.x, y: player.y, hp: player.hp, maxHp: player.maxHp,
+			maxHearts: player.maxHearts ?? 3,
 			hasWingRobe: !!player.hasWingRobe, flying: !!player.flying,
 			hasLadder: !!player.hasLadder,
 			defeatedBosses: [...(player.defeatedBosses ?? [])],
@@ -1634,3 +1635,6 @@ export function callEquipShieldTier(tierIndex) { return equipShieldTier(tierInde
 
 // テスト用：updateHud を外部から呼べるよう再公開する（Phase 7-1）
 export function callUpdateHud() { return updateHud(); }
+
+// テスト用：gainHeartContainer を外部から呼べるよう再公開する（Phase 7-3）
+export function callGainHeartContainer() { return gainHeartContainer(); }
