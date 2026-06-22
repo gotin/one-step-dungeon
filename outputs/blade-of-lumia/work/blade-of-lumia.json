@@ -415,7 +415,7 @@
               ".",
               "$",
               ".",
-              ".",
+              "$",
               "Q",
               "."
             ],
@@ -676,6 +676,52 @@
                   "id": "boomerang",
                   "count": 1,
                   "price": 50
+                }
+              ]
+            },
+            "6,9": {
+              "name": "運だめしの壺",
+              "items": [
+                {
+                  "id": "gacha",
+                  "name": "くじを引く（最大ハートの器があたる！）",
+                  "gacha": {
+                    "price": 30,
+                    "pityCount": 8,
+                    "pityReward": {
+                      "type": "heartContainer"
+                    },
+                    "pool": [
+                      {
+                        "weight": 50,
+                        "reward": {
+                          "type": "rupee",
+                          "value": 5
+                        }
+                      },
+                      {
+                        "weight": 30,
+                        "reward": {
+                          "type": "rupee",
+                          "value": 40
+                        }
+                      },
+                      {
+                        "weight": 15,
+                        "reward": {
+                          "type": "item",
+                          "item": "healPotion",
+                          "name": "回復薬"
+                        }
+                      },
+                      {
+                        "weight": 5,
+                        "reward": {
+                          "type": "heartContainer"
+                        }
+                      }
+                    ]
+                  }
                 }
               ]
             }
@@ -4772,9 +4818,9 @@
               ".",
               ".",
               ".",
+              "W",
               ".",
-              ".",
-              ".",
+              "B",
               "#"
             ],
             [
@@ -4865,7 +4911,13 @@
           "bgTiles": {},
           "links": [],
           "enemyDirs": {},
-          "chestContents": {},
+          "chestContents": {
+            "3,10": {
+              "type": "armor",
+              "armorTier": 2,
+              "name": "伝説のよろい"
+            }
+          },
           "objects": {},
           "npcData": {
             "6,6": {
@@ -4879,10 +4931,17 @@
           },
           "shopData": {},
           "mapEnters": {},
-          "showConditions": {},
+          "showConditions": {
+            "3,10": {
+              "trigger": "killAll"
+            }
+          },
           "breakableWalls": {},
           "isBossRoom": false,
-          "initActiveColor": null
+          "initActiveColor": null,
+          "signData": {
+            "1,1": "奥に強き者あり、されど宝も眠る。\n覚悟ある者のみ前に進め。"
+          }
         },
         "4,0": {
           "rows": 10,
@@ -4925,7 +4984,7 @@
               ".",
               ".",
               ".",
-              ".",
+              "B",
               ".",
               ".",
               "#"
@@ -5041,6 +5100,11 @@
             "8,8": {
               "type": "heartContainer",
               "name": "ハートの器"
+            },
+            "2,8": {
+              "type": "shield",
+              "shieldTier": 2,
+              "name": "ミラーシールド"
             }
           },
           "objects": {},

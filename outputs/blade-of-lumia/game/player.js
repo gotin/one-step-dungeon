@@ -587,50 +587,62 @@ export function createPlayer(deps) {
 		maybeShowSubItemHint();
 	}
 
+	// ── 報酬付与（チェストとガチャの共通ロジック）──────────
+	// content: { type, item?, swordTier?, armorTier?, shieldTier?, value? }
+	// 戻り値: メッセージ文字列（pulse は呼び出し側で行う）
+	function grantReward(content) {
+		const player = getPlayer();
+		if (content.type === 'item') {
+			giveSubItem(content.item);
+			return `${content.name ?? content.item} を手に入れた！`;
+		} else if (content.type === 'weapon') {
+			const tierIndex = content.swordTier ?? 0;
+			const tier = SWORD_TIERS[tierIndex];
+			if (equipSwordTier(tierIndex)) {
+				updateHud();
+				return `${tier.name} を手に入れた！（ATK+${tier.atk}）`;
+			} else {
+				return `${tier?.name ?? '剣'} を拾った（今の剣の方が強い）`;
+			}
+		} else if (content.type === 'armor') {
+			const tierIndex = content.armorTier ?? 0;
+			const tier = ARMOR_TIERS[tierIndex];
+			if (equipArmorTier(tierIndex)) {
+				updateHud();
+				return `${tier.name} を手に入れた！（DEF+${tier.def}）`;
+			} else {
+				return `${tier?.name ?? '防具'} を拾った（今の防具の方が強い）`;
+			}
+		} else if (content.type === 'shield') {
+			const tierIndex = content.shieldTier ?? 0;
+			const tier = SHIELD_TIERS[tierIndex];
+			if (equipShieldTier(tierIndex)) {
+				updateHud();
+				return `${tier.name} を手に入れた！`;
+			} else {
+				return `${tier?.name ?? 'たて'} を拾った（今の盾の方が強い）`;
+			}
+		} else if (content.type === 'rupee') {
+			player.rupees += content.value ?? 1;
+			return `ルピー ×${content.value ?? 1}`;
+		} else if (content.type === 'heartContainer') {
+			gainHeartContainer();
+			return 'ハートの器を手に入れた！';
+		} else if (content.type === 'ladder') {
+			player.hasLadder = true;
+			return 'はしごを手に入れた！水や穴を渡れる';
+		}
+		return '';
+	}
+
 	// ── 宝箱を開ける ──────────────────────────────────────
 	function openChest(posKey, ss) {
 		const stageData = getStageData();
-		const player    = getPlayer();
 		ss.openedChests.add(posKey); playSound('chest');
 		const content = stageData.chestContents?.[posKey];
 		if (content) {
-			if (content.type === 'item') { giveSubItem(content.item); pulse(`☐ ${content.name ?? content.item} を手に入れた！`); }
-			else if (content.type === 'weapon') {
-				const tierIndex = content.swordTier ?? 0;
-				if (equipSwordTier(tierIndex)) {
-					const tier = SWORD_TIERS[tierIndex];
-					pulse(`☐ ${tier.name} を手に入れた！（ATK+${tier.atk}）`);
-				} else {
-					const tier = SWORD_TIERS[tierIndex];
-					pulse(`☐ ${tier?.name ?? '剣'} を拾った（今の剣の方が強い）`);
-				}
-				updateHud();
-			}
-			else if (content.type === 'armor') {
-				const tierIndex = content.armorTier ?? 0;
-				if (equipArmorTier(tierIndex)) {
-					const tier = ARMOR_TIERS[tierIndex];
-					pulse(`☐ ${tier.name} を手に入れた！（DEF+${tier.def}）`);
-				} else {
-					const tier = ARMOR_TIERS[tierIndex];
-					pulse(`☐ ${tier?.name ?? '防具'} を拾った（今の防具の方が強い）`);
-				}
-				updateHud();
-			}
-			else if (content.type === 'shield') {
-				const tierIndex = content.shieldTier ?? 0;
-				if (equipShieldTier(tierIndex)) {
-					const tier = SHIELD_TIERS[tierIndex];
-					pulse(`☐ ${tier.name} を手に入れた！`);
-				} else {
-					const tier = SHIELD_TIERS[tierIndex];
-					pulse(`☐ ${tier?.name ?? 'たて'} を拾った（今の盾の方が強い）`);
-				}
-				updateHud();
-			}
-			else if (content.type === 'rupee') { player.rupees += content.value ?? 1; pulse(`☐ ルピー ×${content.value ?? 1}`); }
-			else if (content.type === 'heartContainer') { gainHeartContainer(); pulse('❤ ハートの器を手に入れた！'); }
-			else if (content.type === 'ladder') { player.hasLadder = true; pulse('🪜 はしごを手に入れた！水や穴を渡れる'); }
+			const msg = grantReward(content);
+			pulse(`☐ ${msg}`);
 		} else { pulse('☐ 宝箱は空だった…'); }
 		renderBoard(); renderChars(); updateHud(); saveGame();
 	}
@@ -886,5 +898,6 @@ export function createPlayer(deps) {
 		equipSwordTier,   // Phase 7-1: テスト・外部からのティア装備
 		equipArmorTier,   // Phase 7-2: 防具ティア装備
 		equipShieldTier,  // Phase 7-2: 盾ティア装備
+		grantReward,      // Phase 7-4: 報酬付与の共通化（チェスト/ガチャ共用）
 	};
 }

@@ -105,6 +105,8 @@ let player = {
 	// Phase 7-2: 防具ティア（-1=なし, 0=布, 1=鎖, 2=伝説）/ 盾ティア（-1=なし, 0=木, 1=鉄, 2=ミラー）。
 	armorTier: -1,
 	shieldTier: -1,
+	// Phase 7-4: ガチャ天井カウンタ。キー="layer:stageKey:posKey"→引いた回数。プレーンオブジェクトなので saveGame で自動保持。
+	gachaPulls: {},
 };
 
 let enemies = [];
@@ -432,6 +434,7 @@ let collectFieldItem    = () => {};
 let equipSwordTier      = () => false;
 let equipArmorTier      = () => false;
 let equipShieldTier     = () => false;
+let grantReward         = () => '';
 let toggleSwitch        = () => {};
 let setActiveColor      = () => {};
 // ── combat.js ──
@@ -580,7 +583,7 @@ const { checkStoneOnSwitch, evaluateConditions } = createConditions({
 	renderShop       = _ui.renderShop;
 	shopSelectPrev   = _ui.shopSelectPrev;
 	shopSelectNext   = _ui.shopSelectNext;
-	shopBuy          = () => _ui.shopBuy(giveSubItem, updateHud);
+	shopBuy          = () => _ui.shopBuy(giveSubItem, updateHud, grantReward, () => currentLayer, () => stageKey);
 	openDialog       = (name, lines) => _ui.openDialog(name, lines);
 
 	// maybeShowSubItemHint は ui.js の openDialog を通して開く
@@ -876,6 +879,7 @@ const { checkStoneOnSwitch, evaluateConditions } = createConditions({
 	equipSwordTier    = _player.equipSwordTier;
 	equipArmorTier    = _player.equipArmorTier;
 	equipShieldTier   = _player.equipShieldTier;
+	grantReward       = _player.grantReward;
 
 	swordAttack       = _combat.swordAttack;
 	dealDamageToEnemy = _combat.dealDamageToEnemy;
@@ -1368,6 +1372,7 @@ function startNewGame() {
 		swordTier: -1,
 		armorTier: -1,
 		shieldTier: -1,
+		gachaPulls: {},
 	};
 	heroDir = 'down';
 	enterStage(currentLayer, stageKey, player.y, player.x);
@@ -1638,3 +1643,6 @@ export function callUpdateHud() { return updateHud(); }
 
 // テスト用：gainHeartContainer を外部から呼べるよう再公開する（Phase 7-3）
 export function callGainHeartContainer() { return gainHeartContainer(); }
+
+// Phase 7-4: grantReward テスト用（player への付与を確認するため）
+export function callGrantReward(content) { return grantReward(content); }

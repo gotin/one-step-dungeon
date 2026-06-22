@@ -74,6 +74,27 @@
     color: #f0d050;
 }
 
+#shop-result {
+    padding: 10px 12px;
+    border-radius: 6px;
+    font-size: 14px;
+    text-align: center;
+    margin-bottom: 10px;
+    background: rgba(240, 208, 80, 0.10);
+    border: 1px solid #a08030;
+    color: #f0d050;
+}
+
+#shop-result.miss {
+    background: rgba(80, 80, 80, 0.20);
+    border-color: #505050;
+    color: #909090;
+}
+
+#shop-result.hidden {
+    display: none;
+}
+
 #shop-wallet {
     font-size: 14px;
     color: #80d080;

@@ -13,10 +13,10 @@
 
 ## 📍 現在地（常に最新に保つ）
 
-- **進行中フェーズ：** **Phase 7（成長・強化システム）**
-- **進行中タスク：** **Phase 7-4（リスク・リワード設計）— 設計完了・実装待ち**
-- **⚠️ 次やること：** **Phase 7-4 の実装（⚡ Sonnet）**。設計が DECISIONS.md/PLAN.md に書き出し済みなので Sonnet 推奨。手順：①`player.js openChest` の付与を `grantReward()` に切り出し → ②`ui.js shopBuy` にガチャ分岐（`random`注入＋`player.gachaPulls` 天井カウンタ）→ ③`player.gachaPulls={}` を初期化2箇所 → ④ガチャNPC＋強敵部屋①・難所報酬②をデモ配置 → ⑤テスト。
-- **直近の状態：** Phase 7-4 を Opus で設計確定（コード変更なし）。調査で「①②はゼロコードのデータ配置／固定価格ショップは完成済み（`ui.js:446-518`・field 2,0 旅の商人）」と判明。**新規は③ガチャ＝天井つき抽選を既存ショップに1分岐足すだけ**。ユーザー確定：ガチャは天井つき（pity）／このセッションは設計のみ。
+- **進行中フェーズ：** **Phase 8（演出・サウンド・UIポリッシュ）**
+- **進行中タスク：** **Phase 8-1（次フェーズ）— 未着手**
+- **⚠️ 次やること：** PLAN.md の Phase 8 を確認して次タスクを開始する
+- **直近の状態：** Phase 7-4（リスク・リワード）実装完了（2026-06-22）。`grantReward` 共通化・ガチャ天井分岐・強敵部屋①＋難所報酬②のデモ配置。テスト 145 passed / 1 failed（ladder 既存不安定のみ）。Phase 7 全完了。
 - **⚠️ 保留（後日対応）：** ビーム攻撃が強力すぎる → Phase 8-4 で通しプレイ時に一括調整。防具DEF値・盾reflect係数も 8-4 で最終調整。dungeon_1 ステージ `3,0`（色スイッチ）・`5,0`（敵石押し）のパズルは実装済みだが mapEnters が空（reachable 経路に未接続）→ Phase 6 でフィールドから接続。ladder テスト145行（`data-orient='v'`）が以前から不安定（今回変更と無関係・HEAD でも fail を確認済み）。
 
 
@@ -31,6 +31,31 @@
 ## セッションログ
 
 <!-- 新しいエントリを上に追加していく（最新が一番上） -->
+
+### 2026-06-22 — Phase 7-4（実装フェーズ・Sonnet）：リスク・リワード実装完了（Phase 7 全完了）
+
+**やったこと：**
+- **`game/player.js`**：`grantReward(content)` を新設（item/weapon/armor/shield/rupee/heartContainer/ladder の付与 switch）。`openChest` はこれを呼ぶように変更（チェスト付与の二重実装を解消）。`grantReward` を return オブジェクトに追加
+- **`game/game.js`**：`let grantReward = () => ''` 追加、`_player.grantReward` 配線。`player.gachaPulls = {}` を初期化2箇所（グローバル＋`startNewGame`）に追加。`callGrantReward` テスト用エクスポートを追加
+- **`game/ui.js`**：`openShop(shopData, posKey)` に posKey 引数追加（ガチャ items に `_posKey` 注入）。`shopBuy` にガチャ分岐（`g.gacha` があれば：price チェック→`gachaPulls[key]++`→天井到達で `pityReward`＋リセット／未満は重み付き抽選→`grantReward`→`playSound`/`pulse`）
+- **`game/combat.js`**：`openShop(shopData, posKey3)` に posKey3 も渡すよう変更
+- **`game/main.js`**：`callGrantReward` をインポートし `__game.grantReward` として公開
+- **`work/blade-of-lumia.json`（配置）：**
+  - **field 2,0 (6,9)**：ガチャ NPC `$` を追加。shopData に天井 8回・price 30・`pityReward:heartContainer`・pool 4段のガチャデータ追加
+  - **dungeon_1/3,0 (3,8)**：強敵 `W`、**(3,10)**：封印宝箱（`killAll` でゲート・伝説の鎧 armorTier:2）配置。signData (1,1)「奥に強き者あり…」リスク予告石碑
+  - **dungeon_1/4,0 (2,8)**：ミラーシールド（shieldTier:2）宝箱を難所報酬として追加
+- **テスト**（`tests/gacha-risk-reward.spec.js`・9本）：①grantReward ルピー付与 ①b ハートの器付与 ②pulls 変化なし確認 ③random=0 で先頭枠 ③b random=0.99 で末尾枠 ④a pityCount-1 で天井未満 ④b pityCount 回目でレア＋リセット ⑤gachaPulls 保持 ⑥killAll showConditions 確認。**全9パス**
+
+**テスト結果：** 145 passed / 1 failed（ladder 145行は既存不安定・今回変更と無関係）
+
+**学び・気づき：**
+- **`grantReward` の切り出しは「付与だけ行い、SE/メッセージ/saveGame は呼び出し側」とするのが正解**。チェストは `playSound('chest')` → pulse（宝箱風メッセージ）→`saveGame`、ガチャは `playSound('appear'/'item')` → `pulse('✨...')` → `saveGame` と演出が異なるため、付与ロジックだけ共通化した。`grantReward` がメッセージ文字列を返す設計にしたことで、各呼び出し側が自由にフォーマットできる
+- **ガチャ天井カウンタのキー `"layer:stageKey:posKey"` は 3 段結合が必須**。`posKey` だけだと別レイヤー/別ステージに同じ座標のガチャが複数あるとカウンタが混同される。`_posKey` を `openShop` で items に注入する設計にしたことで、`shopBuy` は呼び出し元の座標を知らずにキーを生成できる
+- **ガチャの `_random` はテスト注入式にしたが、shopData の pool に直接書く方式が最もシンプル**。`g.gacha._random = () => 0` のようにテスト側で注入する方式にすれば、ゲーム本番コードに `_random` の特別処理を持ち込まずに決定論テストができる
+
+**▶ 次やること：** **PLAN.md の Phase 8 を確認して次タスクを進める**。Phase 7 全完了。
+
+---
 
 ### 2026-06-22 — Phase 7-4（設計フェーズ・Opus）：リスク・リワード＝①②はゼロコード配置／③ガチャは既存ショップに天井つき抽選を1分岐
 

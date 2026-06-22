@@ -32,6 +32,7 @@ import {
 	callEquipShieldTier,
 	callUpdateHud,
 	callGainHeartContainer,
+	callGrantReward,
 } from './game.js';
 
 // ── アニメーション ────────────────────────────────────────────
@@ -116,4 +117,6 @@ window.__game = {
 	updateHud: () => callUpdateHud(),
 	// Phase 7-3: ハートの器テスト用
 	gainHeartContainer: () => callGainHeartContainer(),
+	// Phase 7-4: grantReward テスト用
+	grantReward: (content) => callGrantReward(content),
 };

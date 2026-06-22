@@ -81,6 +81,7 @@ export function createUi(deps) {
 	const pauseMapHintEl   = document.getElementById('pause-map-hint');
 	const shopOverlayEl    = document.getElementById('shop-overlay');
 	const shopItemsEl      = document.getElementById('shop-items');
+	const shopResultEl     = document.getElementById('shop-result');
 	const shopRupeesEl     = document.getElementById('shop-rupees');
 
 	// ── HUD ───────────────────────────────────────────────────
@@ -443,11 +444,12 @@ export function createUi(deps) {
 	}
 
 	// ── ショップ ──────────────────────────────────────────────
-	function openShop(shopData) {
+	function openShop(shopData, posKey) {
 		if (!shopData?.items?.length) return;
 		setIsShop(true);
-		shopGoods = shopData.items;
+		shopGoods = shopData.items.map(g => g.gacha ? { ...g, _posKey: posKey ?? '' } : g);
 		shopIdx   = 0;
+		shopResultEl.className = 'hidden';
 		stopGameLoop();
 		renderShop();
 		shopOverlayEl.classList.remove('hidden');
@@ -456,6 +458,7 @@ export function createUi(deps) {
 
 	function closeShop() {
 		setIsShop(false);
+		shopResultEl.className = 'hidden';
 		shopOverlayEl.classList.add('hidden');
 		startGameLoop();
 	}
@@ -466,14 +469,15 @@ export function createUi(deps) {
 		shopItemsEl.innerHTML = '';
 		shopGoods.forEach((g, i) => {
 			const meta = ITEM_META[g.id];
-			const icon = meta?.icon ?? g.id;
+			const price = g.gacha ? g.gacha.price : g.price;
+			const icon = meta?.icon ?? (g.gacha ? '🎲' : g.id);
 			const name = g.name ?? meta?.name ?? g.id;
 			const row  = document.createElement('div');
-			const canBuy = player.rupees >= g.price;
+			const canBuy = player.rupees >= price;
 			row.className = `shop-item-row${i === shopIdx ? ' selected' : ''}${canBuy ? '' : ' cannot-afford'}`;
 			row.innerHTML = `<span class="shop-item-icon">${icon}</span>
 				<span class="shop-item-name">${name}${g.count ? ` ×${g.count}` : ''}</span>
-				<span class="shop-item-price">💰${g.price}</span>`;
+				<span class="shop-item-price">💰${price}</span>`;
 			row.addEventListener('click', () => { shopIdx = i; renderShop(); shopBuy(); });
 			shopItemsEl.appendChild(row);
 		});
@@ -491,10 +495,56 @@ export function createUi(deps) {
 		renderShop();
 	}
 
-	function shopBuy(giveSubItemFn, updateHudFn) {
+	function shopBuy(giveSubItemFn, updateHudFn, grantRewardFn, getLayerFn, getStageFn) {
 		const player = getPlayer();
 		const g = shopGoods[shopIdx];
 		if (!g) return;
+
+		// ガチャ分岐（good に gacha プロパティがある場合）
+		if (g.gacha) {
+			const gacha = g.gacha;
+			if (player.rupees < gacha.price) { pulse('ルピーが足りない！', 1500); return; }
+			player.rupees -= gacha.price;
+			const layer = getLayerFn ? getLayerFn() : '';
+			const stageKey = getStageFn ? getStageFn() : '';
+			const posKey = g._posKey ?? '';
+			const gachaKey = `${layer}:${stageKey}:${posKey}`;
+			if (!player.gachaPulls) player.gachaPulls = {};
+			player.gachaPulls[gachaKey] = (player.gachaPulls[gachaKey] ?? 0) + 1;
+			const pulls = player.gachaPulls[gachaKey];
+			let reward;
+			if (pulls >= gacha.pityCount) {
+				reward = gacha.pityReward;
+				player.gachaPulls[gachaKey] = 0;
+			} else {
+				// 重み付き抽選
+				const random = gacha._random ?? Math.random;
+				const totalWeight = gacha.pool.reduce((s, e) => s + e.weight, 0);
+				let roll = random() * totalWeight;
+				reward = gacha.pool[gacha.pool.length - 1].reward;
+				for (const entry of gacha.pool) {
+					roll -= entry.weight;
+					if (roll <= 0) { reward = entry.reward; break; }
+				}
+			}
+			const msg = grantRewardFn ? grantRewardFn(reward) : '';
+			const matchedEntry = gacha.pool.find(e => e.reward === reward);
+			const isRare = reward === gacha.pityReward || (matchedEntry?.weight ?? 100) <= 10;
+			const isMiss = reward.type === 'rupee' && (reward.value ?? 0) < gacha.price;
+			playSound(isRare ? 'appear' : 'item');
+			if (isMiss) {
+				shopResultEl.className = 'miss';
+				shopResultEl.textContent = `はずれ… ${msg || 'ルピーが少し戻ってきた'}`;
+			} else {
+				shopResultEl.className = '';
+				shopResultEl.textContent = `✨ あたり！ ${msg || '何かを手に入れた！'}`;
+			}
+			if (updateHudFn) updateHudFn(); else updateHud();
+			saveGame();
+			renderShop();
+			return;
+		}
+
 		if (player.rupees < g.price) { pulse('ルピーが足りない！', 1500); return; }
 		player.rupees -= g.price;
 		const meta = ITEM_META[g.id];

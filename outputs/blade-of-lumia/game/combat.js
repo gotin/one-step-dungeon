@@ -229,7 +229,7 @@ export function createCombat(deps) {
 
 		if (tile === TILE.NPC_SHOP) {
 			const shopData = stageData.shopData?.[posKey3];
-			if (shopData) { openShop(shopData); } else { startDialog(tr, tc, tile); }
+			if (shopData) { openShop(shopData, posKey3); } else { startDialog(tr, tc, tile); }
 			return;
 		}
 		if (tile && NPC_SPRITE_MAP[tile]) { startDialog(tr, tc, tile); return; }
