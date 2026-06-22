@@ -25,6 +25,9 @@ import {
 	callToggleFlight,
 	callStartCharge,
 	callReleaseCharge,
+	getPlayerForTest,
+	callEquipSwordTier,
+	callUpdateHud,
 } from './game.js';
 
 // ── アニメーション ────────────────────────────────────────────
@@ -97,4 +100,8 @@ window.__game = {
 	stunEnemy: (id, ms) => stunEnemyById(id, ms),
 	// Phase 6-1b: 撃破ボスフラグをテストから直接追加する
 	addDefeatedBoss: (type) => addDefeatedBossForTest(type),
+	// Phase 7-1: 剣ティアテスト用
+	getPlayer: () => getPlayerForTest(),
+	equipSwordTier: (idx) => callEquipSwordTier(idx),
+	updateHud: () => callUpdateHud(),
 };

@@ -1,5 +1,24 @@
 // ── Blade of Lumia – Item Definitions ────────────────────────
 
+// ── 剣ティア定義（Phase 7-1）── 剣の段階の単一の真実 ─────────
+// player.swordTier (-1=剣なし, 0..3=ティア) で管理する。
+// player.atk = BASE_ATK + SWORD_TIERS[tier].atk で再計算する（加算廃止）。
+export const SWORD_TIERS = [
+	// index 0: 木の剣
+	{ key: 'wood',   name: '木の剣',  atk: 2,  sprite: 'swordWood',   pal: 'swordWood',
+	  beam: false, pierce: false },
+	// index 1: 銅の剣
+	{ key: 'bronze', name: '銅の剣',  atk: 4,  sprite: 'swordBronze', pal: 'swordBronze',
+	  beam: true,  pierce: false },
+	// index 2: 銀の剣
+	{ key: 'silver', name: '銀の剣',  atk: 7,  sprite: 'swordSilver', pal: 'swordSilver',
+	  beam: true,  pierce: false },
+	// index 3: 聖剣
+	{ key: 'holy',   name: '聖剣',    atk: 12, sprite: 'swordHoly',   pal: 'swordHoly',
+	  beam: true,  pierce: true  },
+];
+export const BASE_ATK = 2;  // 剣なし時の基礎ATK
+
 // ── ITEM_META: サブアイテム定義 ───────────────────────────────
 export const ITEM_META = {
 	boomerang: {

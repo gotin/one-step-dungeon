@@ -100,6 +100,8 @@ let player = {
 	hasLadder: false,
 	// Phase 6-1b: 撃破済みボスのタイル文字を記録する Set。NPC 台詞の切り替えに使用。
 	defeatedBosses: new Set(),
+	// Phase 7-1: 剣ティア（-1=剣なし, 0=木, 1=銅, 2=銀, 3=聖）。
+	swordTier: -1,
 };
 
 let enemies = [];
@@ -423,6 +425,7 @@ let gainHeartContainer  = () => {};
 let spawnDropEffect     = () => {};
 let toggleFlight        = () => {};
 let collectFieldItem    = () => {};
+let equipSwordTier      = () => false;
 let toggleSwitch        = () => {};
 let setActiveColor      = () => {};
 // ── combat.js ──
@@ -860,6 +863,7 @@ const { checkStoneOnSwitch, evaluateConditions } = createConditions({
 	spawnDropEffect   = _player.spawnDropEffect;
 	toggleFlight      = _player.toggleFlight;
 	collectFieldItem  = _player.collectFieldItem;
+	equipSwordTier    = _player.equipSwordTier;
 
 	swordAttack       = _combat.swordAttack;
 	dealDamageToEnemy = _combat.dealDamageToEnemy;
@@ -1349,6 +1353,7 @@ function startNewGame() {
 		flying: false,
 		hasLadder: false,
 		defeatedBosses: new Set(),
+		swordTier: -1,
 	};
 	heroDir = 'down';
 	enterStage(currentLayer, stageKey, player.y, player.x);
@@ -1591,3 +1596,12 @@ export function addDefeatedBossForTest(bossType) {
 	if (!player.defeatedBosses) player.defeatedBosses = new Set();
 	player.defeatedBosses.add(bossType);
 }
+
+// テスト用：player オブジェクトへの参照を返す（Phase 7-1 剣ティアテスト用）
+export function getPlayerForTest() { return player; }
+
+// テスト用：equipSwordTier をゲームモジュール外から呼べるよう再公開する（Phase 7-1）
+export function callEquipSwordTier(tierIndex) { return equipSwordTier(tierIndex); }
+
+// テスト用：updateHud を外部から呼べるよう再公開する（Phase 7-1）
+export function callUpdateHud() { return updateHud(); }

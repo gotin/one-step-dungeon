@@ -83,10 +83,14 @@ export function createCombat(deps) {
 	function showSwordSlashFloat(fx, fy) {
 		const charLayerEl = getCharLayerEl();
 		if (!charLayerEl) return;
-		const heroDir = getHeroDir();
-		const cellPx  = getCellPx();
+		const heroDir  = getHeroDir();
+		const cellPx   = getCellPx();
+		const player   = getPlayer();
+		const tierKey  = (player?.swordTier ?? -1) >= 0
+			? ['wood','bronze','silver','holy'][player.swordTier] ?? ''
+			: '';
 		const el = document.createElement('div');
-		el.className    = `sword-thrust dir-${heroDir}`;
+		el.className    = `sword-thrust dir-${heroDir}${tierKey ? ` tier-${tierKey}` : ''}`;
 		el.style.left   = `${fx * cellPx}px`;
 		el.style.top    = `${fy * cellPx}px`;
 		el.style.width  = `${cellPx}px`;

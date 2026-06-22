@@ -3,7 +3,7 @@
 // movePlayer / handleTileEvent を提供。
 
 import { TILE } from '../shared/tiles.js';
-import { ITEM_META, EQUIP_META } from '../shared/items.js';
+import { ITEM_META, EQUIP_META, SWORD_TIERS, BASE_ATK } from '../shared/items.js';
 import { NPC_SPRITE_MAP } from '../shared/npcs.js';
 import { SPRITES, PAL, makeSprite } from '../shared/sprites.js';
 import { playSound, resumeAudio } from '../shared/sounds.js';
@@ -85,6 +85,23 @@ export function createPlayer(deps) {
 
 	// 祭壇の連続発火を防ぐガード（乗りっぱなしで毎フレーム発火しないように）
 	let _lastAltarPosKey = null;
+
+	// ── 剣ティア装備（Phase 7-1）────────────────────────────────
+	// tierIndex: SWORD_TIERS のインデックス（0..3）
+	// 現在のティアより高い場合のみ更新し、atk を再計算する（差分加算を廃止）。
+	function equipSwordTier(tierIndex) {
+		const player = getPlayer();
+		const tier = SWORD_TIERS[tierIndex];
+		if (!tier) return false;
+		if (tierIndex <= (player.swordTier ?? -1)) return false;  // 下位は無視
+		player.weapon = 'sword';
+		player.swordTier = tierIndex;
+		if (!player._equip) player._equip = {};
+		player._equip.swordName  = tier.name;
+		player._equip.swordBonus = tier.atk;
+		player.atk = BASE_ATK + tier.atk;
+		return true;
+	}
 
 	// ── 翼の羽衣による飛行（Phase 1-5）────────────────────────────
 	// 飛行中は SKY/WATER の上を移動できる（passable.js が player.flying を見る）。
@@ -547,10 +564,14 @@ export function createPlayer(deps) {
 		if (content) {
 			if (content.type === 'item') { giveSubItem(content.item); pulse(`☐ ${content.name ?? content.item} を手に入れた！`); }
 			else if (content.type === 'weapon') {
-				player.weapon = 'sword';
-				const atkBonus = content.atkBonus ?? content.value ?? 2;
-				player.atk += atkBonus;
-				pulse(`☐ ${content.name ?? '剣'} を手に入れた！（ATK+${atkBonus}）`);
+				const tierIndex = content.swordTier ?? 0;
+				if (equipSwordTier(tierIndex)) {
+					const tier = SWORD_TIERS[tierIndex];
+					pulse(`☐ ${tier.name} を手に入れた！（ATK+${tier.atk}）`);
+				} else {
+					const tier = SWORD_TIERS[tierIndex];
+					pulse(`☐ ${tier?.name ?? '剣'} を拾った（今の剣の方が強い）`);
+				}
 				updateHud();
 			}
 			else if (content.type === 'armor') {
@@ -621,24 +642,13 @@ export function createPlayer(deps) {
 		}
 		if (tile === TILE.ITEM_SWORD && !ss.pickedKeys.has(posKey)) {
 			ss.pickedKeys.add(posKey);
-			const swordBonus = stageData.floorItems?.[posKey]?.atkBonus ?? EQUIP_META.sword?.atkBonus ?? 2;
-			const swordName  = stageData.floorItems?.[posKey]?.name ?? '剣';
-			if (!player.weapon) {
-				player.weapon = 'sword';
-				if (!player._equip) player._equip = {};
-				player._equip.swordBonus = swordBonus;
-				player._equip.swordName  = swordName;
-				player.atk += swordBonus;
-				playSound('item'); pulse(`⚔ ${swordName}を手に入れた！（ATK+${swordBonus}）`);
-			} else if (swordBonus > (player._equip?.swordBonus ?? 0)) {
-				const diff = swordBonus - (player._equip?.swordBonus ?? 0);
-				if (!player._equip) player._equip = {};
-				player._equip.swordBonus = swordBonus;
-				player._equip.swordName  = swordName;
-				player.atk += diff;
-				playSound('item'); pulse(`⚔ ${swordName}を手に入れた！（ATK+${diff}）`);
+			const tierIndex = stageData.floorItems?.[posKey]?.swordTier ?? 0;
+			if (equipSwordTier(tierIndex)) {
+				const tier = SWORD_TIERS[tierIndex];
+				playSound('item'); pulse(`⚔ ${tier.name}を手に入れた！（ATK+${tier.atk}）`);
 			} else {
-				playSound('item'); pulse(`⚔ ${swordName}を拾った（今の剣の方が強い）`);
+				const tier = SWORD_TIERS[tierIndex];
+				playSound('item'); pulse(`⚔ ${tier?.name ?? '剣'}を拾った（今の剣の方が強い）`);
 			}
 			renderBoard(); renderChars(); updateHud(); saveGame(); return;
 		}
@@ -830,5 +840,6 @@ export function createPlayer(deps) {
 		spawnDropEffect,
 		toggleFlight,
 		collectFieldItem,
+		equipSwordTier,   // Phase 7-1: テスト・外部からのティア装備
 	};
 }

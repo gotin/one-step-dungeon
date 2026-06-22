@@ -16,13 +16,15 @@
 import { test, expect } from '@playwright/test';
 import { GAME_URL, SAVE_KEY } from './helpers.js';
 
-async function seedAndStart(page) {
+async function seedAndStart(page, swordTier = 1) {
+  const atkMap = [4, 6, 9, 14];
   const saveData = JSON.stringify({
     player: {
       x: 2, y: 5,
       hp: 6, maxHp: 6, maxHearts: 3,
-      atk: 2, def: 0, keys: 0,
-      weapon: 'sword', shield: null, armor: null,
+      atk: atkMap[swordTier] ?? 6, def: 0, keys: 0,
+      weapon: 'sword', swordTier,
+      shield: null, armor: null,
       subItems: {}, activeSubItem: null,
       rupees: 0, triforceCount: 0,
     },
@@ -79,7 +81,7 @@ test.describe('Blade of Lumia – チャージ攻撃（剣ビーム）', () => {
   });
 
   test('条件3: 満タンチャージのビームは貫通し、複数の敵を倒せる', async ({ page }) => {
-    await seedAndStart(page);
+    await seedAndStart(page, 3);  // 聖剣（pierce:true）
     // プレイヤー(2,5)の右側 一直線に hp=1 の敵を2体注入
     const id1 = await page.evaluate(() => window.__game.injectEnemy(4, 5, 1));
     const id2 = await page.evaluate(() => window.__game.injectEnemy(6, 5, 1));

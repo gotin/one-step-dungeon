@@ -2067,8 +2067,8 @@
           "chestContents": {
             "8,10": {
               "type": "weapon",
-              "name": "ストロー",
-              "value": 4
+              "name": "木の剣",
+              "swordTier": 0
             }
           },
           "floorItems": {},
@@ -2435,8 +2435,8 @@
           "isBossRoom": false,
           "floorItems": {
             "4,8": {
-              "name": "うまいぼう",
-              "atkBonus": 3
+              "name": "木の剣",
+              "swordTier": 0
             }
           }
         },
@@ -4020,8 +4020,8 @@
           "isBossRoom": false,
           "floorItems": {
             "4,9": {
-              "name": "強いけん",
-              "atkBonus": 10000
+              "name": "銀の剣",
+              "swordTier": 2
             }
           }
         },
@@ -4333,8 +4333,8 @@
           "chestContents": {
             "4,8": {
               "type": "weapon",
-              "name": "アルテマウェポン",
-              "value": 10
+              "name": "聖剣",
+              "swordTier": 3
             },
             "7,9": {
               "type": "rupee",
@@ -4699,8 +4699,8 @@
           "isBossRoom": false,
           "floorItems": {
             "4,5": {
-              "name": "さいごの剣",
-              "atkBonus": 10000
+              "name": "聖剣",
+              "swordTier": 3
             },
             "3,6": {
               "name": "さいごの鎧",

@@ -14,7 +14,8 @@ async function seedAndStart(page) {
       x: 2, y: 5,
       hp: 6, maxHp: 6, maxHearts: 3,
       atk: 2, def: 0, keys: 0,
-      weapon: 'sword', shield: null, armor: null,
+      weapon: 'sword', swordTier: 1,  // 銅の剣（beam:true）
+      shield: null, armor: null,
       subItems: {}, activeSubItem: null,
       rupees: 0, triforceCount: 0,
     },

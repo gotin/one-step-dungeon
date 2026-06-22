@@ -14,9 +14,9 @@
 ## 📍 現在地（常に最新に保つ）
 
 - **進行中フェーズ：** **Phase 7（成長・強化システム）**
-- **進行中タスク：** **Phase 7-1 設計完了 → 実装（⚡ Sonnet）へ**
-- **⚠️ 次やること：** **Phase 7-1 の実装（⚡ Sonnet）**。設計が DECISIONS.md/PLAN.md に書き出し済みなので Sonnet 推奨。`SWORD_TIERS` 定義 → atk 導出一本化 → 3経路の持ち替えをティア判定に統一 → スプライト4種＋斬撃CSS → charge.js のビーム解禁/貫通ゲート → ネタ剣を4ティアに再配置 → テスト、の順。
-- **直近の状態：** Phase 7-1（剣の段階的強化）を **設計フェーズ（Opus）で確定**（コード変更なし・DECISIONS/PLAN/PROGRESS のみ更新）。ティア制（木→銅→銀→聖の4段階）＋**ビーム解禁をティアに紐づけ**（木=ビーム不可／銅・銀=非貫通ビーム／聖剣のみ満タン貫通）。既存の剣強化機構が7割実装済み（タイル経路は持ち替え判定あり・チェスト経路は無条件加算バグ）と判明し、ティア enum で一掃する方針。ATK絶対値は Phase 8-4 で最終調整。
+- **進行中タスク：** **Phase 7-2（防具・盾の強化版）**
+- **⚠️ 次やること：** **Phase 7-2 の実装（⚡ Sonnet）**。上位盾・上位防具のティア化（Phase 7-1 と同様の設計パターンを踏襲）。
+- **直近の状態：** Phase 7-1（剣の段階的強化）の実装完了。`SWORD_TIERS`（wood/bronze/silver/holy）を `shared/items.js` に定義、3経路の持ち替えをティア比較に統一、`charge.js` でビーム解禁/貫通をティアに紐づけ、斬撃エフェクトにティア別カラー追加、スプライト4種追加、ネタ剣を4ティアに再配置、全6テストパス。
 - **⚠️ 保留（後日対応）：** ビーム攻撃が強力すぎる → Phase 8-4 で通しプレイ時に一括調整。dungeon_1 ステージ `3,0`（色スイッチ）・`5,0`（敵石押し）のパズルは実装済みだが mapEnters が空（reachable 経路に未接続）→ Phase 6 でフィールドから接続。ladder テスト145行（`data-orient='v'`）が以前から不安定（今回変更と無関係）。
 
 
@@ -31,6 +31,27 @@
 ## セッションログ
 
 <!-- 新しいエントリを上に追加していく（最新が一番上） -->
+
+### 2026-06-22 — Phase 7-1（実装フェーズ・Sonnet）：剣ティア制・ビーム解禁・貫通ゲートの実装完了
+
+**やったこと（コード変更あり）：**
+- **`shared/items.js`**：`SWORD_TIERS` 配列（wood/bronze/silver/holy）と `BASE_ATK=2` を追加。各ティアに `atk/sprite/pal/beam/pierce` を持つ
+- **`game/game.js`**：`player` 初期化と `startNewGame` リセットに `swordTier: -1` を追加。テスト用エクスポート（`getPlayerForTest`/`callEquipSwordTier`/`callUpdateHud`/`equipSwordTier` 変数）を追加
+- **`game/player.js`**：`equipSwordTier(tierIndex)` ヘルパー追加（ティア比較→atk再計算）。チェスト `weapon` 経路（無条件加算バグ）と `ITEM_SWORD` タイル経路の両方をティア判定に統一。`equipSwordTier` を return object に追加
+- **`game/charge.js`**：`SWORD_TIERS` インポート追加。`fireBeam` でティアの `beam` フラグをチェック（木の剣ではビーム不可）、`pierce` フラグで貫通判定
+- **`game/combat.js`**：`showSwordSlashFloat` に `tier-{key}` クラスを追加（ティア別斬撃エフェクト用）
+- **`game/css/effects.css`**：`.sword-thrust.tier-wood/bronze/silver/holy::before` ティア別グラデーション＋グロー色を追加
+- **`shared/sprites-items.js`**：`ITEM_PAL.swordWood/Bronze/Silver/Holy` と対応 8×8 スプライトを追加（2フレームアニメ対応）
+- **`work/blade-of-lumia.json`**：ネタ剣を4ティアに再配置（field ストロー→木の剣tier0、dungeon_1 強いけん→銀の剣tier2、アルテマウェポン/さいごの剣→聖剣tier3）
+- **`game/main.js`**：新エクスポート3件のインポートと `__game` への公開
+- **`tests/sword-tiers.spec.js`**（新規）：6テスト全件パス（①下位剣ATK不変、①b無剣→木装備、②木ビーム不可、③銅非貫通、④聖剣貫通、⑤HUD名称ATK）
+- **`tests/charge-beam.spec.js`** および **`tests/large-enemy.spec.js`** を `swordTier` 追加で修正（銅の剣tier=1を明示）
+
+**テスト結果：** 126 passed / 1 failed（ladder tests/145行は今回変更と無関係の既存不具合）
+
+**▶ 次やること：** Phase 7-2（防具・盾の強化版）—⚡ Sonnet 推奨
+
+---
 
 ### 2026-06-22 — Phase 7-1（設計フェーズ・Opus）：剣をティア制にし、ビーム解禁・満タン貫通をティアに紐づける
 

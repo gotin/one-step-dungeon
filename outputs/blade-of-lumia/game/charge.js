@@ -13,6 +13,7 @@
 // ビーム本体は projectile.js の addProjectile に type:'beam' で乗せる（飛翔・当たり判定を共有）。
 
 import { playSound, resumeAudio } from '../shared/sounds.js';
+import { SWORD_TIERS } from '../shared/items.js';
 import {
 	DIR_DELTA, MOVE_STEP,
 	CHARGE_FULL_MS, CHARGE_MIN_RATIO, BEAM_SPEED, BEAM_STRONG_MULT,
@@ -54,6 +55,8 @@ export function createCharge(deps) {
 	function startCharge() {
 		if (_chargeStart !== null) return;
 		if (!canAct()) return;
+		const tier = SWORD_TIERS[getPlayer()?.swordTier ?? -1];
+		if (!tier?.beam) return;  // ビーム不可ティアではオーラもチャージも出さない
 		_chargeStart = gameNow();
 	}
 
@@ -84,12 +87,16 @@ export function createCharge(deps) {
 	function fireBeam(full) {
 		const player = getPlayer();
 		if (!player?.weapon) return;
+		const tier = SWORD_TIERS[player.swordTier ?? -1];
+		if (!tier?.beam) return;   // ビーム解禁はティアに紐づく
 		const heroDir  = getHeroDir();
 		const [dy, dx] = DIR_DELTA[heroDir];
 		const ndx = dx / MOVE_STEP;
 		const ndy = dy / MOVE_STEP;
 		const baseAtk = hasCleared() ? player.atk * 2 : player.atk;
-		const atk = full ? baseAtk * BEAM_STRONG_MULT : baseAtk;
+		const piercing = full && !!tier.pierce;  // 満タン＆聖剣のみ貫通
+		const strong   = full && !!tier.pierce;  // 聖剣満タンのみ強ビーム演出
+		const atk = strong ? baseAtk * BEAM_STRONG_MULT : baseAtk;
 		resumeAudio();
 		playSound('slash');
 		addProjectile({
@@ -99,8 +106,8 @@ export function createCharge(deps) {
 			dx: ndx, dy: ndy,
 			speed: BEAM_SPEED,
 			atk,
-			piercing: full,   // 満タンビームは貫通
-			strong: full,     // 描画用フラグ
+			piercing,
+			strong,     // 描画用フラグ（金色ビームは聖剣満タンのみ）
 		});
 	}
 
@@ -121,10 +128,13 @@ export function createCharge(deps) {
 			aura.className = 'charge-aura';
 			playerEl.appendChild(aura);
 		}
-		const full  = ratio >= 1;
-		const ready = ratio >= CHARGE_MIN_RATIO;
-		aura.classList.toggle('charge-ready', ready && !full);
-		aura.classList.toggle('charge-full', full);
+		const player  = getPlayer();
+		const tier    = SWORD_TIERS[player?.swordTier ?? -1];
+		const canPierce = !!tier?.pierce;          // 聖剣のみ true
+		const full    = ratio >= 1;
+		const ready   = ratio >= CHARGE_MIN_RATIO;
+		aura.classList.toggle('charge-ready', ready && !(full && canPierce));
+		aura.classList.toggle('charge-full',  full  &&   canPierce);  // 金色は聖剣満タンのみ
 		aura.style.opacity = String(0.25 + ratio * 0.75);
 	}
 
