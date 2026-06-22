@@ -1114,7 +1114,13 @@ function playFlute() {
 		return;
 	}
 	if (fx.type === 'warp') {
-		const dest = exitRegistry[fx.destId];
+		// 直接座標指定 {layer, stage, row, col} を優先、なければ destId → exitRegistry
+		let dest;
+		if (fx.layer && fx.stage) {
+			dest = { layer: fx.layer, stage: fx.stage, row: fx.row ?? 5, col: fx.col ?? 5 };
+		} else if (fx.destId) {
+			dest = exitRegistry[fx.destId];
+		}
 		if (!dest) { pulse('🎵 音色は響いたが 行き先が見つからない', 1800); return; }
 		if (isTransitioning) return;
 		isTransitioning = true;

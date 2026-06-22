@@ -519,9 +519,20 @@ html, body {
 /* ── Stage Editor Layout ──────────────────────────────────── */
 .stage-layout {
     display: grid;
-    grid-template-columns: 190px 1fr 230px;
+    grid-template-columns: 190px 240px 1fr 230px;
     height: 100%;
     overflow: hidden;
+}
+
+/* ── Stage Settings Panel (2nd column) ───────────────────── */
+.stage-settings-panel {
+    background: var(--surface);
+    border-right: 1px solid var(--border);
+    padding: 12px 10px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
 }
 
 /* ── Palette Panel ────────────────────────────────────────── */

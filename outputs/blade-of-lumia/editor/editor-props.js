@@ -233,27 +233,70 @@ function renderShops(sd) {
 function renderMapEnters(sd) {
 	const el = document.getElementById('mapenter-list');
 	el.innerHTML = '';
-	const enters = findTilePositions(sd, TILE.MAP_ENTER);
-	if (!enters.length) { el.innerHTML = '<div class="hint">MAP_ENTER なし</div>'; return; }
-	for (const { r, c } of enters) {
-		const key  = `${r},${c}`;
-		const data = sd.mapEnters?.[key] ?? { id: '', destId: '' };
-		const item = document.createElement('div');
+
+	// > タイルの座標 + mapEnters 既存エントリ（タイルなし含む）をマージ
+	const tileKeys = new Set(findTilePositions(sd, TILE.MAP_ENTER).map(({r,c}) => `${r},${c}`));
+	const dataKeys = new Set(Object.keys(sd.mapEnters ?? {}));
+	const allKeys  = [...new Set([...tileKeys, ...dataKeys])].sort();
+
+	if (!allKeys.length) { el.innerHTML = '<div class="hint">MAP_ENTER なし</div>'; }
+
+	for (const key of allKeys) {
+		const hasTile = tileKeys.has(key);
+		const data    = sd.mapEnters?.[key] ?? { id: '', destId: '' };
+		const item    = document.createElement('div');
 		item.className = 'link-item';
 		item.innerHTML = `
-			<div class="link-item-header"><span>出口 (${r},${c})</span></div>
-			<label>出口ID（このMAP_ENTERのID） <input type="text" value="${data.id??''}" data-key="${key}" data-f="id" placeholder="半角英数字（例: town_to_dungeon）"></label>
-			<label>遷移先ID（どこに繋ぐか） <input type="text" value="${data.destId??''}" data-key="${key}" data-f="destId" placeholder="接続先の出口ID（例: dungeon_to_town）"></label>
+			<div class="link-item-header">
+				<span>出口 (${key})${hasTile ? '' : ' <span class="cond-badge">タイルなし</span>'}</span>
+				<button class="btn btn-sm btn-danger" data-del="${key}">削除</button>
+			</div>
+			<label>出口ID（このMAP_ENTERのID）
+				<input type="text" value="${data.id??''}" data-key="${key}" data-f="id" placeholder="例: town_to_dungeon">
+			</label>
+			<label>遷移先ID（どこに繋ぐか）
+				<input type="text" value="${data.destId??''}" data-key="${key}" data-f="destId" placeholder="接続先の出口ID">
+			</label>
+			<label>着地 row（任意）
+				<input type="number" value="${data.row??''}" data-key="${key}" data-f="row" placeholder="省略可">
+			</label>
+			<label>着地 col（任意）
+				<input type="number" value="${data.col??''}" data-key="${key}" data-f="col" placeholder="省略可">
+			</label>
 		`;
 		item.querySelectorAll('[data-key]').forEach(inp => {
 			inp.addEventListener('input', () => {
 				if (!sd.mapEnters) sd.mapEnters = {};
 				if (!sd.mapEnters[key]) sd.mapEnters[key] = { id: '', destId: '' };
-				sd.mapEnters[key][inp.dataset.f] = inp.value;
+				const val = inp.value.trim();
+				if (inp.dataset.f === 'row' || inp.dataset.f === 'col') {
+					if (val === '') delete sd.mapEnters[key][inp.dataset.f];
+					else sd.mapEnters[key][inp.dataset.f] = Number(val);
+				} else {
+					sd.mapEnters[key][inp.dataset.f] = val;
+				}
 			});
+		});
+		item.querySelector('[data-del]').addEventListener('click', () => {
+			if (sd.mapEnters) delete sd.mapEnters[key];
+			renderMapEnters(sd);
 		});
 		el.appendChild(item);
 	}
+
+	// 「＋ 追加」ボタン
+	const addBtn = document.createElement('button');
+	addBtn.className = 'btn btn-sm';
+	addBtn.textContent = '＋ 追加（タイルなし）';
+	addBtn.addEventListener('click', () => {
+		const pos = prompt('追加する座標を入力（例: 4,4）');
+		if (!pos || !/^\d+,\d+$/.test(pos.trim())) return;
+		const k = pos.trim();
+		if (!sd.mapEnters) sd.mapEnters = {};
+		if (!sd.mapEnters[k]) sd.mapEnters[k] = { id: '', destId: '' };
+		renderMapEnters(sd);
+	});
+	el.appendChild(addBtn);
 }
 
 // ── 表示条件（showConditions）設定 ───────────────────────────

@@ -134,8 +134,18 @@ export function renderStageCanvas(renderSidePanel) {
 	updateBorderWarnings(sd);
 	document.getElementById('stage-is-boss-room').checked = !!sd.isBossRoom;
 	document.getElementById('stage-bgm-override').value  = sd.bgm ?? '';
-	const fluteEl = document.getElementById('stage-flute-effect');
-	if (fluteEl) fluteEl.value = sd.fluteEffect ? JSON.stringify(sd.fluteEffect) : '';
+	const fx = sd.fluteEffect;
+	const fluteTypeEl = document.getElementById('stage-flute-type');
+	if (fluteTypeEl) {
+		fluteTypeEl.value = fx?.type ?? '';
+		const warpFields = document.getElementById('stage-flute-warp-fields');
+		if (warpFields) warpFields.style.display = fx?.type === 'warp' ? '' : 'none';
+		document.getElementById('stage-flute-layer').value   = fx?.layer   ?? '';
+		document.getElementById('stage-flute-stage').value   = fx?.stage   ?? '';
+		document.getElementById('stage-flute-row').value     = fx?.row     ?? '';
+		document.getElementById('stage-flute-col').value     = fx?.col     ?? '';
+		document.getElementById('stage-flute-message').value = fx?.message ?? '';
+	}
 	const initColorEl = document.getElementById('stage-init-active-color');
 	if (initColorEl) initColorEl.value = sd.initActiveColor ?? '';
 }
@@ -304,6 +314,11 @@ export function initCanvasEvents(renderSidePanel, renderWorldGrid, getPreviewPen
 		renderSidePanel();
 	});
 
+	document.getElementById('stage-flute-type').addEventListener('change', e => {
+		const warpFields = document.getElementById('stage-flute-warp-fields');
+		if (warpFields) warpFields.style.display = e.target.value === 'warp' ? '' : 'none';
+	});
+
 	document.getElementById('btn-save-stage-settings').addEventListener('click', () => {
 		const sd = getCurrentStage();
 		if (!sd) return;
@@ -311,13 +326,25 @@ export function initCanvasEvents(renderSidePanel, renderWorldGrid, getPreviewPen
 		const bgmVal  = document.getElementById('stage-bgm-override').value;
 		if (bgmVal) sd.bgm = bgmVal;
 		else delete sd.bgm;
-		// 🎵 笛の効果（fluteEffect）：JSON をパースして保存（空欄なら削除）
-		const fluteVal = document.getElementById('stage-flute-effect').value.trim();
-		if (fluteVal) {
-			try { sd.fluteEffect = JSON.parse(fluteVal); }
-			catch { alert('🎵 笛の効果が不正な JSON です（例: {"type":"reveal"}）'); return; }
-		} else {
+		// 🎵 笛の効果（fluteEffect）
+		const fluteType = document.getElementById('stage-flute-type').value;
+		if (!fluteType) {
 			delete sd.fluteEffect;
+		} else if (fluteType === 'reveal') {
+			sd.fluteEffect = { type: 'reveal' };
+			const msg = document.getElementById('stage-flute-message').value.trim();
+			if (msg) sd.fluteEffect.message = msg;
+		} else if (fluteType === 'warp') {
+			const layer = document.getElementById('stage-flute-layer').value.trim();
+			const stage = document.getElementById('stage-flute-stage').value.trim();
+			if (!layer || !stage) { alert('ワープ先のレイヤーとステージを入力してください'); return; }
+			const rowVal = document.getElementById('stage-flute-row').value.trim();
+			const colVal = document.getElementById('stage-flute-col').value.trim();
+			const msg    = document.getElementById('stage-flute-message').value.trim();
+			sd.fluteEffect = { type: 'warp', layer, stage };
+			if (rowVal !== '') sd.fluteEffect.row = Number(rowVal);
+			if (colVal !== '') sd.fluteEffect.col = Number(colVal);
+			if (msg)           sd.fluteEffect.message = msg;
 		}
 		// Phase 5-1: initActiveColor（色スイッチの初期アクティブ色）
 		const initColorSaveEl = document.getElementById('stage-init-active-color');

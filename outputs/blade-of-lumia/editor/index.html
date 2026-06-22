@@ -101,7 +101,7 @@
     <section id="view-stage" class="view hidden">
       <div class="stage-layout">
 
-        <!-- 左：タイルパレット + ツール -->
+        <!-- 左1：タイルパレット + ツール -->
         <aside class="palette-panel">
           <h2 class="panel-title">タイルパレット</h2>
           <div id="tile-palette" class="tile-palette"></div>
@@ -120,10 +120,43 @@
             <div id="stage-info" class="stage-info-content"></div>
             <div class="border-warn" id="border-warnings"></div>
           </div>
+        </aside>
 
-          <!-- ステージ設定 -->
-          <div class="stage-settings">
-            <h3 class="panel-title">ステージ設定</h3>
+        <!-- 左2：ステージ設定 -->
+        <aside class="stage-settings-panel">
+          <h2 class="panel-title">ステージ設定</h2>
+
+          <!-- 笛の効果（最上部） -->
+          <div class="props-section">
+            <h3 class="panel-title">🎵 笛の効果</h3>
+            <label class="meta-label">タイプ
+              <select id="stage-flute-type" class="input-med">
+                <option value="">(なし)</option>
+                <option value="reveal">reveal（隠し入口・アイテム出現）</option>
+                <option value="warp">warp（別ステージへ飛ぶ）</option>
+              </select>
+            </label>
+            <div id="stage-flute-warp-fields" style="display:none">
+              <label class="meta-label">ワープ先 レイヤー
+                <input id="stage-flute-layer" type="text" class="input-med" placeholder="例: field">
+              </label>
+              <label class="meta-label">ワープ先 ステージ
+                <input id="stage-flute-stage" type="text" class="input-med" placeholder="例: 2,0">
+              </label>
+              <label class="meta-label">着地 row
+                <input id="stage-flute-row" type="number" class="input-med" placeholder="省略可">
+              </label>
+              <label class="meta-label">着地 col
+                <input id="stage-flute-col" type="number" class="input-med" placeholder="省略可">
+              </label>
+              <label class="meta-label">メッセージ（任意）
+                <input id="stage-flute-message" type="text" class="input-med" placeholder="省略可">
+              </label>
+            </div>
+          </div>
+
+          <!-- その他ステージ設定 -->
+          <div class="props-section">
             <label class="checkbox-label">
               <input id="stage-is-boss-room" type="checkbox"> ボス部屋
             </label>
@@ -135,16 +168,13 @@
                 <option value="boss">boss</option>
               </select>
             </label>
-            <label class="meta-label">🎵 笛の効果（fluteEffect・JSON）
-              <input id="stage-flute-effect" type="text" class="input-med"
-                placeholder='例: {"type":"reveal"} / {"type":"warp","destId":"dungeon_1"}'>
-            </label>
             <label class="meta-label">🔴 初期アクティブ色（initActiveColor）
               <input id="stage-init-active-color" type="text" class="input-med"
                 placeholder='例: red / blue（空欄なら null）'>
             </label>
-            <button id="btn-save-stage-settings" class="btn btn-sm btn-primary">✔ 保存</button>
           </div>
+
+          <button id="btn-save-stage-settings" class="btn btn-sm btn-primary">✔ 保存</button>
         </aside>
 
         <!-- 中央：ステージキャンバス -->
@@ -199,7 +229,7 @@
           <!-- MAP_ENTER 出口設定 -->
           <div class="props-section">
             <h2 class="panel-title">マップ入り口（出口設定）</h2>
-            <p class="hint">出口IDを設定してペアを作成</p>
+            <p class="hint">「>」タイルの出口 + タイルなしの着地点を管理。着地 row/col は省略可（省略時はタイル座標に着地）</p>
             <div id="mapenter-list" class="links-list"></div>
           </div>
 
