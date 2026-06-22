@@ -55,31 +55,40 @@ function renderEquipItems(sd) {
 	const el = document.getElementById('equip-flooritems-list');
 	if (!el) return;
 	el.innerHTML = '';
-	const swordItems = findTilePositions(sd, TILE.ITEM_SWORD).map(p => ({ ...p, tile: TILE.ITEM_SWORD }));
-	const armorItems = findTilePositions(sd, TILE.ITEM_ARMOR).map(p => ({ ...p, tile: TILE.ITEM_ARMOR }));
-	const allItems   = [...swordItems, ...armorItems];
-	if (!allItems.length) { el.innerHTML = '<div class="hint">剣・防具なし</div>'; return; }
+	const swordItems  = findTilePositions(sd, TILE.ITEM_SWORD).map(p => ({ ...p, tile: TILE.ITEM_SWORD }));
+	const armorItems  = findTilePositions(sd, TILE.ITEM_ARMOR).map(p => ({ ...p, tile: TILE.ITEM_ARMOR }));
+	const shieldItems = findTilePositions(sd, TILE.ITEM_SHIELD).map(p => ({ ...p, tile: TILE.ITEM_SHIELD }));
+	const allItems    = [...swordItems, ...armorItems, ...shieldItems];
+	if (!allItems.length) { el.innerHTML = '<div class="hint">剣・防具・盾なし</div>'; return; }
+	// Phase 7-2: 剣・防具・盾はティア番号で段階を指定する（SWORD/ARMOR/SHIELD_TIERS）
+	const TIER_FIELD = {
+		[TILE.ITEM_SWORD]:  { f: 'swordTier',  names: ['木の剣','銅の剣','銀の剣','聖剣'],          icon: '⚔ 剣' },
+		[TILE.ITEM_ARMOR]:  { f: 'armorTier',  names: ['布の服','鎖かたびら','伝説の鎧'],            icon: '⚚ 防具' },
+		[TILE.ITEM_SHIELD]: { f: 'shieldTier', names: ['木の盾','鉄の盾','ミラーシールド'],          icon: '🛡 盾' },
+	};
 	for (const { r, c, tile } of allItems) {
 		const key  = `${r},${c}`;
 		const data = sd.floorItems?.[key] ?? {};
-		const isSword = tile === TILE.ITEM_SWORD;
-		const label   = isSword ? `⚔ 剣 (${r},${c})` : `⚚ 防具 (${r},${c})`;
-		const field   = isSword ? 'atkBonus' : 'defBonus';
-		const stat    = isSword ? 'ATK+' : 'DEF+';
-		const defVal  = data[field] ?? (isSword ? 2 : 2);
+		const spec = TIER_FIELD[tile];
+		const field = spec.f;
+		const tierVal = data[field] ?? 0;
 		const item = document.createElement('div');
 		item.className = 'link-item';
 		item.innerHTML = `
-			<div class="link-item-header"><span>${label}</span></div>
-			<label>名前 <input type="text" value="${data.name ?? ''}" data-key="${key}" data-f="name" placeholder="例: 光の剣"></label>
-			<label>${stat}ボーナス <input type="number" min="1" max="99" value="${defVal}" data-key="${key}" data-f="${field}"></label>
+			<div class="link-item-header"><span>${spec.icon} (${r},${c})</span></div>
+			<label>名前 <input type="text" value="${data.name ?? ''}" data-key="${key}" data-f="name" placeholder="（省略可）"></label>
+			<label>ティア
+				<select data-key="${key}" data-f="${field}">
+					${spec.names.map((n, i) => `<option value="${i}"${tierVal===i?' selected':''}>${i}: ${n}</option>`).join('')}
+				</select>
+			</label>
 		`;
-		item.querySelectorAll('input').forEach(inp => {
-			inp.addEventListener('input', e => {
+		item.querySelectorAll('input,select').forEach(inp => {
+			inp.addEventListener('input', () => {
 				if (!sd.floorItems) sd.floorItems = {};
 				if (!sd.floorItems[key]) sd.floorItems[key] = {};
 				const f = inp.dataset.f;
-				sd.floorItems[key][f] = (f === field) ? (parseInt(inp.value, 10) || 1) : inp.value;
+				sd.floorItems[key][f] = (f === field) ? (parseInt(inp.value, 10) || 0) : inp.value;
 			});
 		});
 		el.appendChild(item);
@@ -103,10 +112,17 @@ const CHEST_TYPE_OPTIONS = [
 	{ value: 'item',   label: 'アイテム（サブ）' },
 	{ value: 'weapon', label: '武器（剣）' },
 	{ value: 'armor',  label: '防具' },
+	{ value: 'shield', label: '盾' },
 	{ value: 'rupee',  label: 'ルピー' },
 	{ value: 'heartContainer', label: 'ハートの器' },
 	{ value: 'ladder', label: 'はしご' },
 ];
+// Phase 7-2: ティア装備（剣/防具/盾）はティア番号で段階を指定する
+const CHEST_TIER_FIELD = {
+	weapon: { f: 'swordTier',  names: ['木の剣','銅の剣','銀の剣','聖剣'] },
+	armor:  { f: 'armorTier',  names: ['布の服','鎖かたびら','伝説の鎧'] },
+	shield: { f: 'shieldTier', names: ['木の盾','鉄の盾','ミラーシールド'] },
+};
 
 function renderChests(sd) {
 	const el = document.getElementById('chest-list');
@@ -116,6 +132,7 @@ function renderChests(sd) {
 	for (const { r, c } of chests) {
 		const key  = `${r},${c}`;
 		const cont = sd.chestContents?.[key] ?? { type: 'item', item: 'healPotion', name: '', value: 0, count: 1 };
+		const tierSpec = CHEST_TIER_FIELD[cont.type];
 		const item = document.createElement('div');
 		item.className = 'link-item';
 		item.innerHTML = `
@@ -130,17 +147,42 @@ function renderChests(sd) {
 					${CHEST_ITEM_OPTIONS.map(o => `<option value="${o.value}"${cont.item===o.value?' selected':''}>${o.label}</option>`).join('')}
 				</select>
 			</label>
+			<label class="tier-row" style="${tierSpec?'':'display:none'}">ティア
+				<select data-key="${key}" data-f="tier">
+					${(tierSpec?.names ?? []).map((n, i) => {
+						const cur = tierSpec ? (cont[tierSpec.f] ?? 0) : 0;
+						return `<option value="${i}"${cur===i?' selected':''}>${i}: ${n}</option>`;
+					}).join('')}
+				</select>
+			</label>
 			<label>個数 <input type="number" min="1" max="99" value="${cont.count??1}" data-key="${key}" data-f="count"></label>
 			<label>名前 <input type="text" value="${cont.name??''}" data-key="${key}" data-f="name" placeholder="（省略可）"></label>
 			<label>値（ルピー等）<input type="number" min="0" value="${cont.value??0}" data-key="${key}" data-f="value"></label>
 		`;
+		// ティア選択を現在の種類に合わせて再構築する
+		function refreshTierRow(type) {
+			const spec = CHEST_TIER_FIELD[type];
+			const row  = item.querySelector('.tier-row');
+			row.style.display = spec ? '' : 'none';
+			if (!spec) return;
+			const sel = row.querySelector('select[data-f="tier"]');
+			const cur = (sd.chestContents?.[key]?.[spec.f]) ?? 0;
+			sel.innerHTML = spec.names.map((n, i) => `<option value="${i}"${cur===i?' selected':''}>${i}: ${n}</option>`).join('');
+		}
 		item.querySelector('select[data-f="type"]').addEventListener('change', e => {
 			if (!sd.chestContents) sd.chestContents = {};
 			if (!sd.chestContents[key]) sd.chestContents[key] = {};
 			sd.chestContents[key].type = e.target.value;
 			item.querySelector('.item-id-row').style.display = e.target.value === 'item' ? '' : 'none';
+			refreshTierRow(e.target.value);
 		});
-		item.querySelectorAll('[data-f]:not([data-f="type"])').forEach(inp => {
+		item.querySelector('select[data-f="tier"]').addEventListener('change', e => {
+			if (!sd.chestContents) sd.chestContents = {};
+			if (!sd.chestContents[key]) sd.chestContents[key] = {};
+			const spec = CHEST_TIER_FIELD[sd.chestContents[key].type];
+			if (spec) sd.chestContents[key][spec.f] = parseInt(e.target.value, 10) || 0;
+		});
+		item.querySelectorAll('[data-f]:not([data-f="type"]):not([data-f="tier"])').forEach(inp => {
 			inp.addEventListener('input', () => {
 				if (!sd.chestContents) sd.chestContents = {};
 				if (!sd.chestContents[key]) sd.chestContents[key] = {};

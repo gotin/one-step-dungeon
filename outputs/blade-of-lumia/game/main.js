@@ -17,6 +17,7 @@ import {
 	getEnemiesSnapshot,
 	injectTestEnemy,
 	dealDamageToEnemyById,
+	injectEnemyProjectileForTest,
 	stunEnemyById,
 	addDefeatedBossForTest,
 	startAnimLoop,
@@ -27,6 +28,8 @@ import {
 	callReleaseCharge,
 	getPlayerForTest,
 	callEquipSwordTier,
+	callEquipArmorTier,
+	callEquipShieldTier,
 	callUpdateHud,
 } from './game.js';
 
@@ -80,6 +83,7 @@ window.__game = {
 	getProjectiles: () => getProjectiles().map(p => ({
 		id: p.id, owner: p.owner, type: p.type,
 		x: p.x, y: p.y, dx: p.dx, dy: p.dy,
+		atk: p.atk,
 		returning: p.returning ?? false,
 		flaming: p.flaming ?? false,
 	})),
@@ -96,6 +100,8 @@ window.__game = {
 	injectEnemy: (x, y, hp, w, h, type) => injectTestEnemy(x, y, hp, w, h, type),
 	// 指定 id の敵に直接ダメージ（弱点属性 Phase 3-3 の検証用）
 	dealDamage: (id, dmg, atkType) => dealDamageToEnemyById(id, dmg, atkType),
+	// 敵投擲物を注入（盾跳ね返し Phase 7-2 の検証用）
+	injectEnemyProjectile: (x, y, dx, dy, atk, speed) => injectEnemyProjectileForTest(x, y, dx, dy, atk, speed),
 	// 指定 id の敵をスタン（ブーメランスタン Phase 3-4 の検証用）
 	stunEnemy: (id, ms) => stunEnemyById(id, ms),
 	// Phase 6-1b: 撃破ボスフラグをテストから直接追加する
@@ -103,5 +109,8 @@ window.__game = {
 	// Phase 7-1: 剣ティアテスト用
 	getPlayer: () => getPlayerForTest(),
 	equipSwordTier: (idx) => callEquipSwordTier(idx),
+	// Phase 7-2: 防具・盾ティアテスト用
+	equipArmorTier: (idx) => callEquipArmorTier(idx),
+	equipShieldTier: (idx) => callEquipShieldTier(idx),
 	updateHud: () => callUpdateHud(),
 };

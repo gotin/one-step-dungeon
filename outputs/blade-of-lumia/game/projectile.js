@@ -8,7 +8,8 @@ import { ENEMY_META } from '../shared/enemies.js';
 import { ITEM_META } from '../shared/items.js';
 import { makeSprite } from '../shared/sprites.js';
 import { playSound } from '../shared/sounds.js';
-import { MOVE_STEP, BOOMERANG_STUN_MS } from './constants.js';
+import { MOVE_STEP, BOOMERANG_STUN_MS, SWORD_COOLDOWN_MS } from './constants.js';
+import { SHIELD_TIERS } from '../shared/items.js';
 import { enemyPointHit, enemyCenter } from './hitbox.js';
 
 /**
@@ -50,6 +51,8 @@ export function createProjectile(deps) {
 		evaluateConditions, renderBoard, renderChars,
 		saveGame, updateHud, pulse, hasCleared,
 		collectFieldItem, toggleSwitch, setActiveColor,
+		// Phase 7-2: 盾は剣振り中・チャージ中はオフ（これらが無ければ常に盾有効）
+		getLastSwordTime, getIsCharging,
 	} = deps;
 
 	// ── 内部状態 ──────────────────────────────────────────────
@@ -64,11 +67,21 @@ export function createProjectile(deps) {
 		return isShieldBlockingDir(proj.dx, proj.dy);
 	}
 
+	// 盾が今この瞬間に機能するか（Phase 7-2）。
+	// 剣を振っている最中（クールダウン中）・チャージ中は盾オフ＝正面でも食らう。
+	function isShieldActive() {
+		const player = getPlayer();
+		if (!player.shield) return false;
+		if (getIsCharging && getIsCharging()) return false;
+		if (getLastSwordTime && (gameNow() - getLastSwordTime() < SWORD_COOLDOWN_MS)) return false;
+		return true;
+	}
+
 	// dx/dy（攻撃の飛んでくる方向）に対して盾でブロックできるか判定
 	function isShieldBlockingDir(dx, dy) {
 		const player  = getPlayer();
 		const heroDir = getHeroDir();
-		if (!player.shield) return false;
+		if (!isShieldActive()) return false;
 		const absDx = Math.abs(dx);
 		const absDy = Math.abs(dy);
 		if (absDx >= absDy) {
@@ -249,10 +262,26 @@ export function createProjectile(deps) {
 			// 敵の投擲物 → プレイヤーに当たるか
 			const player = getPlayer();
 			if (Math.abs(player.x - proj.x) < 0.5 && Math.abs(player.y - proj.y) < 0.5) {
-				const blocked = player.shield && isShieldBlocking(proj);
+				const blocked = isShieldBlocking(proj);
 				if (blocked) {
 					playSound('shieldBlock');
 					showShieldBlockEffect(proj.x, proj.y);
+					// Phase 7-2: 上位盾（reflect>0）は敵の「投擲物」を打ち返す。
+					// dx/dy を反転し owner→player・atk=元atk×reflect にして敵に当てる
+					// （剣＝近接攻撃はここを通らないのでガードのみ）。
+					const tier = SHIELD_TIERS[player.shieldTier ?? -1];
+					const reflect = tier?.reflect ?? 0;
+					if (reflect > 0) {
+						proj.owner = 'player';
+						proj.dx = -proj.dx;
+						proj.dy = -proj.dy;
+						proj.atk = Math.max(1, Math.round(proj.atk * reflect));
+						proj._hitIds = new Set();   // 跳ね返し後の二重ヒット防止用に初期化
+						// 跳ね返した投擲物はプレイヤーから少し離して再配置（即自爆防止）
+						proj.x += proj.dx * 0.5;
+						proj.y += proj.dy * 0.5;
+						return;  // 消さずに player の投擲物として飛ばし続ける
+					}
 				} else {
 					takeDamage(proj.atk);
 				}

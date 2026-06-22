@@ -14,10 +14,10 @@
 ## 📍 現在地（常に最新に保つ）
 
 - **進行中フェーズ：** **Phase 7（成長・強化システム）**
-- **進行中タスク：** **Phase 7-2（防具・盾の強化版）**
-- **⚠️ 次やること：** **Phase 7-2 の実装（⚡ Sonnet）**。上位盾・上位防具のティア化（Phase 7-1 と同様の設計パターンを踏襲）。
-- **直近の状態：** Phase 7-1（剣の段階的強化）の実装完了。`SWORD_TIERS`（wood/bronze/silver/holy）を `shared/items.js` に定義、3経路の持ち替えをティア比較に統一、`charge.js` でビーム解禁/貫通をティアに紐づけ、斬撃エフェクトにティア別カラー追加、スプライト4種追加、ネタ剣を4ティアに再配置、全6テストパス。
-- **⚠️ 保留（後日対応）：** ビーム攻撃が強力すぎる → Phase 8-4 で通しプレイ時に一括調整。dungeon_1 ステージ `3,0`（色スイッチ）・`5,0`（敵石押し）のパズルは実装済みだが mapEnters が空（reachable 経路に未接続）→ Phase 6 でフィールドから接続。ladder テスト145行（`data-orient='v'`）が以前から不安定（今回変更と無関係）。
+- **進行中タスク：** **Phase 7-3（ハートの器の増設）**
+- **⚠️ 次やること：** **Phase 7-3（ハートの器の増設）⚡ Sonnet**。隠し場所・強敵撃破報酬にハートの器を追加配置し、最大HP上限を増やす（配置作業中心・設計不要）。
+- **直近の状態：** Phase 7-2（防具・盾の強化版）の実装完了。`ARMOR_TIERS`（cloth/chain/legend・def 2/4/7）と `SHIELD_TIERS`（wood/iron/mirror）を `shared/items.js` に定義。防具は `def=BASE_DEF+tier.def` 再計算に一本化（チェスト無条件加算バグ解消）、盾は「正面ブロック常時＋剣振り/チャージ中オフ＋上位ほど敵投擲物を跳ね返す（鉄0.5/ミラー1.0）」で差別化。スプライト6種・エディタ（盾種別/ティア選択）対応、ネタ装備を防具3ティアに再配置＋鉄盾(dungeon_4)/ミラー盾(暗黒の塔)を新規配置、全7テストパス。
+- **⚠️ 保留（後日対応）：** ビーム攻撃が強力すぎる → Phase 8-4 で通しプレイ時に一括調整。防具DEF値・盾reflect係数も 8-4 で最終調整。dungeon_1 ステージ `3,0`（色スイッチ）・`5,0`（敵石押し）のパズルは実装済みだが mapEnters が空（reachable 経路に未接続）→ Phase 6 でフィールドから接続。ladder テスト145行（`data-orient='v'`）が以前から不安定（今回変更と無関係・HEAD でも fail を確認済み）。
 
 
 
@@ -31,6 +31,32 @@
 ## セッションログ
 
 <!-- 新しいエントリを上に追加していく（最新が一番上） -->
+
+### 2026-06-22 — Phase 7-2（設計＋実装・Opus）：防具ティア＋盾の「投擲物跳ね返し」
+
+**やったこと（設計→実装→検証を一括）：**
+- **設計フォークをユーザーと確定**：防具は剣 7-1 と同型（ティアごとDEFアップ）。盾は当初「①全方向軽減率／②角度拡大／③DEF加算」を提示したが、ユーザー発案の **「強い盾は敵の投擲物を跳ね返せる」** を採用。さらにユーザー要求で **「正面ブロックは常に成立／剣振り中・チャージ中は盾オフ／跳ね返しは投擲のみ（剣＝近接はガードのみ）／跳ね返し威力は鉄0.5・ミラー1.0」** を確定。DECISIONS.md に記録
+- **`shared/items.js`**：`ARMOR_TIERS`（cloth/chain/legend・def 2/4/7）・`SHIELD_TIERS`（wood/iron/mirror・reflect 0/0.5/1.0）・`BASE_DEF=0` を新設
+- **`game/player.js`**：`equipArmorTier`/`equipShieldTier` を新設（剣の `equipSwordTier` と同型・ティア比較で下位無視）。防具は `def=BASE_DEF+tier.def` 再計算に一本化。チェスト（armor/shield）・フロアアイテム（ITEM_ARMOR/ITEM_SHIELD）の3経路をティア判定に統一（**チェスト経路の無条件加算バグも解消**）
+- **`game/projectile.js`（核心）**：`isShieldActive()` を新設（剣クールダウン中＝`gameNow-getLastSwordTime<SWORD_COOLDOWN_MS`／チャージ中は盾オフ）。`isShieldBlockingDir` の先頭で参照。`checkProjHit` の敵投擲物ブロック分岐に**跳ね返し**を追加：`reflect>0` なら proj を消さず `dx/dy` 反転・`owner→'player'`・`atk=round(元atk×reflect)` にして敵に当てる。自爆防止に 0.5 ずらし＋`_hitIds` 初期化
+- **`game/game.js`**：`armorTier`/`shieldTier` を player 初期化2箇所に追加。projectile factory に `getLastSwordTime`/`getIsCharging` を注入（charge factory の `isCharging` を `getIsCharging` グローバルに配線）。`getGameState` に def/各tier を公開。プレビュー `ps_shield`/`ps_armor` をティア装備呼び出しに変更。テスト用 `callEquipArmorTier`/`callEquipShieldTier`/`injectEnemyProjectileForTest` を新設
+- **`game/main.js`**：`equipArmorTier`/`equipShieldTier`/`injectEnemyProjectile` を `__game` に公開。getProjectiles スナップショットに `atk` を追加
+- **`game/ui.js`**：ポーズ画面ステータスに盾ティア名（`🛡{name}`）を表示
+- **`shared/sprites-items.js`**：armorCloth/Chain/Legend・shieldWood/Iron/Mirror のパレット6種を追加（形状は既存 armor/shield を流用＝`ITEM_SPRITES.armorCloth = ITEM_SPRITES.armor` 等）
+- **`editor/editor-props.js`**：宝箱種別に「盾」を追加。weapon/armor/shield 選択時にティア選択 select を表示（種類変更で動的再構築）。フロアアイテム編集も剣/防具/盾のティア選択に刷新
+- **`work/blade-of-lumia.json`**：ネタ防具（ながT/じょうぶな服/伝説のよろい/さいごの鎧）を布(0)/鎖(1)/伝説(2) に再配置。鉄の盾(1) を dungeon_4 entry(2,8)・ミラーシールド(2) を暗黒の塔入口(1,9) に新規配置
+- **テスト**（`tests/armor-shield-tiers.spec.js`・7本）：①下位防具で def 不変 ①b 布で def=2 ②木の盾は跳ね返さない ③鉄=×0.5跳ね返し（atk=2・dx反転）④ミラー=×1.0で背後の hp3 敵撃破 ⑤チャージ中は盾オフでダメージ ⑥HUD防具名/DEF。**全7パス**
+
+**テスト結果：** 134 中 133 passed / 1 failed（ladder 145行は今回変更と無関係。stash で HEAD に戻して実行しても同じく fail することを確認済み＝既存不具合）。editor スモーク 8本もグリーン
+
+**学び・気づき：**
+- **「投擲物の跳ね返し」は新サブシステム不要**。敵投擲物は元から `owner:'enemy'` を持ち `checkProjHit` が owner で分岐するので、ブロック時に proj を消さず **dx/dy 反転＋owner→player＋atk×reflect** にするだけで、既存の player 投擲物ヒット経路がそのまま「敵への攻撃」に転用できた。剣ビーム（7-1/3-1）の `_hitIds` 貫通防止とも自然に整合
+- **「盾を剣振り中・チャージ中にオフ」は通行判定でなく `isShieldBlockingDir` のゲートで表現**。`getLastSwordTime`（既存）＋`getIsCharging`（charge factory の isCharging を配線）を見るだけ。盾の有無→剣との同時成立を防ぐ手触りが、新フラグ無しで出せた
+- **盾は DEF に寄与させない**のが設計の肝：DEF加算にすると防具と計算・役割が完全重複する。正面ブロックが常時完全な以上、上位盾の価値は「正面ブロック成立時の追加行動＝跳ね返し攻撃」に置くのが筋（ユーザー発案が設計的にも正解だった）
+
+**▶ 次やること：** **Phase 7-3（ハートの器の増設）⚡ Sonnet**。配置作業中心で設計不要なので Sonnet 推奨。
+
+---
 
 ### 2026-06-22 — Phase 7-1（実装フェーズ・Sonnet）：剣ティア制・ビーム解禁・貫通ゲートの実装完了
 

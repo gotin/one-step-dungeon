@@ -3,7 +3,7 @@
 // movePlayer / handleTileEvent を提供。
 
 import { TILE } from '../shared/tiles.js';
-import { ITEM_META, EQUIP_META, SWORD_TIERS, BASE_ATK } from '../shared/items.js';
+import { ITEM_META, EQUIP_META, SWORD_TIERS, BASE_ATK, ARMOR_TIERS, BASE_DEF, SHIELD_TIERS } from '../shared/items.js';
 import { NPC_SPRITE_MAP } from '../shared/npcs.js';
 import { SPRITES, PAL, makeSprite } from '../shared/sprites.js';
 import { playSound, resumeAudio } from '../shared/sounds.js';
@@ -100,6 +100,38 @@ export function createPlayer(deps) {
 		player._equip.swordName  = tier.name;
 		player._equip.swordBonus = tier.atk;
 		player.atk = BASE_ATK + tier.atk;
+		return true;
+	}
+
+	// ── 防具ティア装備（Phase 7-2）──────────────────────────────
+	// tierIndex: ARMOR_TIERS のインデックス（0..2）
+	// 現在のティアより高い場合のみ更新し、def を再計算する（差分加算を廃止）。
+	function equipArmorTier(tierIndex) {
+		const player = getPlayer();
+		const tier = ARMOR_TIERS[tierIndex];
+		if (!tier) return false;
+		if (tierIndex <= (player.armorTier ?? -1)) return false;  // 下位は無視
+		player.armor = 'armor';
+		player.armorTier = tierIndex;
+		if (!player._equip) player._equip = {};
+		player._equip.armorName  = tier.name;
+		player._equip.armorBonus = tier.def;
+		player.def = BASE_DEF + tier.def;
+		return true;
+	}
+
+	// ── 盾ティア装備（Phase 7-2）────────────────────────────────
+	// tierIndex: SHIELD_TIERS のインデックス（0..2）
+	// 現在のティアより高い場合のみ更新する（盾は def に寄与しない＝跳ね返し係数で差別化）。
+	function equipShieldTier(tierIndex) {
+		const player = getPlayer();
+		const tier = SHIELD_TIERS[tierIndex];
+		if (!tier) return false;
+		if (tierIndex <= (player.shieldTier ?? -1)) return false;  // 下位は無視
+		player.shield = 'shield';
+		player.shieldTier = tierIndex;
+		if (!player._equip) player._equip = {};
+		player._equip.shieldName = tier.name;
 		return true;
 	}
 
@@ -575,10 +607,25 @@ export function createPlayer(deps) {
 				updateHud();
 			}
 			else if (content.type === 'armor') {
-				player.armor = 'armor';
-				const defBonus = content.defBonus ?? content.value ?? 2;
-				player.def += defBonus;
-				pulse(`☐ ${content.name ?? '防具'} を手に入れた！（DEF+${defBonus}）`);
+				const tierIndex = content.armorTier ?? 0;
+				if (equipArmorTier(tierIndex)) {
+					const tier = ARMOR_TIERS[tierIndex];
+					pulse(`☐ ${tier.name} を手に入れた！（DEF+${tier.def}）`);
+				} else {
+					const tier = ARMOR_TIERS[tierIndex];
+					pulse(`☐ ${tier?.name ?? '防具'} を拾った（今の防具の方が強い）`);
+				}
+				updateHud();
+			}
+			else if (content.type === 'shield') {
+				const tierIndex = content.shieldTier ?? 0;
+				if (equipShieldTier(tierIndex)) {
+					const tier = SHIELD_TIERS[tierIndex];
+					pulse(`☐ ${tier.name} を手に入れた！`);
+				} else {
+					const tier = SHIELD_TIERS[tierIndex];
+					pulse(`☐ ${tier?.name ?? 'たて'} を拾った（今の盾の方が強い）`);
+				}
 				updateHud();
 			}
 			else if (content.type === 'rupee') { player.rupees += content.value ?? 1; pulse(`☐ ルピー ×${content.value ?? 1}`); }
@@ -653,30 +700,26 @@ export function createPlayer(deps) {
 			renderBoard(); renderChars(); updateHud(); saveGame(); return;
 		}
 		if (tile === TILE.ITEM_SHIELD && !ss.pickedKeys.has(posKey)) {
-			ss.pickedKeys.add(posKey); player.shield = 'shield';
-			playSound('item'); pulse('🛡 たてを手に入れた！');
+			ss.pickedKeys.add(posKey);
+			const tierIndex = stageData.floorItems?.[posKey]?.shieldTier ?? 0;
+			if (equipShieldTier(tierIndex)) {
+				const tier = SHIELD_TIERS[tierIndex];
+				playSound('item'); pulse(`🛡 ${tier.name}を手に入れた！`);
+			} else {
+				const tier = SHIELD_TIERS[tierIndex];
+				playSound('item'); pulse(`🛡 ${tier?.name ?? 'たて'}を拾った（今の盾の方が強い）`);
+			}
 			renderBoard(); renderChars(); updateHud(); saveGame(); return;
 		}
 		if (tile === TILE.ITEM_ARMOR && !ss.pickedKeys.has(posKey)) {
 			ss.pickedKeys.add(posKey);
-			const armorBonus = stageData.floorItems?.[posKey]?.defBonus ?? EQUIP_META.armor?.defBonus ?? 2;
-			const armorName  = stageData.floorItems?.[posKey]?.name ?? '防具';
-			if (!player.armor) {
-				player.armor = 'armor';
-				if (!player._equip) player._equip = {};
-				player._equip.armorBonus = armorBonus;
-				player._equip.armorName  = armorName;
-				player.def += armorBonus;
-				playSound('item'); pulse(`⚚ ${armorName}を手に入れた！（DEF+${armorBonus}）`);
-			} else if (armorBonus > (player._equip?.armorBonus ?? 0)) {
-				const diff = armorBonus - (player._equip?.armorBonus ?? 0);
-				if (!player._equip) player._equip = {};
-				player._equip.armorBonus = armorBonus;
-				player._equip.armorName  = armorName;
-				player.def += diff;
-				playSound('item'); pulse(`⚚ ${armorName}を手に入れた！（DEF+${diff}）`);
+			const tierIndex = stageData.floorItems?.[posKey]?.armorTier ?? 0;
+			if (equipArmorTier(tierIndex)) {
+				const tier = ARMOR_TIERS[tierIndex];
+				playSound('item'); pulse(`⚚ ${tier.name}を手に入れた！（DEF+${tier.def}）`);
 			} else {
-				playSound('item'); pulse(`⚚ ${armorName}を拾った（今の防具の方が強い）`);
+				const tier = ARMOR_TIERS[tierIndex];
+				playSound('item'); pulse(`⚚ ${tier?.name ?? '防具'}を拾った（今の防具の方が強い）`);
 			}
 			renderBoard(); renderChars(); updateHud(); saveGame(); return;
 		}
@@ -841,5 +884,7 @@ export function createPlayer(deps) {
 		toggleFlight,
 		collectFieldItem,
 		equipSwordTier,   // Phase 7-1: テスト・外部からのティア装備
+		equipArmorTier,   // Phase 7-2: 防具ティア装備
+		equipShieldTier,  // Phase 7-2: 盾ティア装備
 	};
 }

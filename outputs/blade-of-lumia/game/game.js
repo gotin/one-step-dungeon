@@ -102,6 +102,9 @@ let player = {
 	defeatedBosses: new Set(),
 	// Phase 7-1: 剣ティア（-1=剣なし, 0=木, 1=銅, 2=銀, 3=聖）。
 	swordTier: -1,
+	// Phase 7-2: 防具ティア（-1=なし, 0=布, 1=鎖, 2=伝説）/ 盾ティア（-1=なし, 0=木, 1=鉄, 2=ミラー）。
+	armorTier: -1,
+	shieldTier: -1,
 };
 
 let enemies = [];
@@ -380,6 +383,7 @@ let releaseCharge      = () => {};
 let cancelCharge       = () => {};
 let tickCharge         = () => {};
 let getChargeMoveSpeedFactor = () => 1;
+let getIsCharging      = () => false;
 let startDialog      = () => {};
 let showDialogLine   = () => {};
 let advanceDialog    = () => {};
@@ -426,6 +430,8 @@ let spawnDropEffect     = () => {};
 let toggleFlight        = () => {};
 let collectFieldItem    = () => {};
 let equipSwordTier      = () => false;
+let equipArmorTier      = () => false;
+let equipShieldTier     = () => false;
 let toggleSwitch        = () => {};
 let setActiveColor      = () => {};
 // ── combat.js ──
@@ -649,6 +655,9 @@ const { checkStoneOnSwitch, evaluateConditions } = createConditions({
 		collectFieldItem:   (r, c) => collectFieldItem(r, c),
 		toggleSwitch:       (r, c) => toggleSwitch(r, c),
 		setActiveColor:     (r, c) => setActiveColor(r, c),
+		// Phase 7-2: 盾は剣振り中・チャージ中はオフ
+		getLastSwordTime:   () => lastSwordTime,
+		getIsCharging:      () => getIsCharging(),
 	});
 
 	const _ai = createEnemyAi({
@@ -719,6 +728,7 @@ const { checkStoneOnSwitch, evaluateConditions } = createConditions({
 	cancelCharge       = _charge.cancelCharge;
 	tickCharge         = _charge.tickCharge;
 	getChargeMoveSpeedFactor = _charge.getMoveSpeedFactor;
+	getIsCharging      = _charge.isCharging;
 }
 
 // ── プレイヤー / 戦闘 / ボス（Phase 0-2b: player.js / combat.js / boss.js 統合）──
@@ -864,6 +874,8 @@ const { checkStoneOnSwitch, evaluateConditions } = createConditions({
 	toggleFlight      = _player.toggleFlight;
 	collectFieldItem  = _player.collectFieldItem;
 	equipSwordTier    = _player.equipSwordTier;
+	equipArmorTier    = _player.equipArmorTier;
+	equipShieldTier   = _player.equipShieldTier;
 
 	swordAttack       = _combat.swordAttack;
 	dealDamageToEnemy = _combat.dealDamageToEnemy;
@@ -1354,6 +1366,8 @@ function startNewGame() {
 		hasLadder: false,
 		defeatedBosses: new Set(),
 		swordTier: -1,
+		armorTier: -1,
+		shieldTier: -1,
 	};
 	heroDir = 'down';
 	enterStage(currentLayer, stageKey, player.y, player.x);
@@ -1446,8 +1460,9 @@ async function init() {
 		if (psRupees   !== null) player.rupees = parseInt(psRupees, 10) || 0;
 		if (psTriforce !== null) player.triforceCount = parseInt(psTriforce, 10) || 0;
 		if (psWeapon   === '1') { player.weapon = 'sword'; if (!player._equip) player._equip = {}; player._equip.swordName = '剣'; }
-		if (psShield   === '1') player.shield = 'shield';
-		if (psArmor    === '1') { player.armor  = 'armor'; if (!player._equip) player._equip = {}; player._equip.armorName = '防具'; }
+		// Phase 7-2: ps_shield/ps_armor はティア番号でも指定可（編集チェックボックスの '1' は下位ティア=0 として扱う）。
+		if (psShield   !== null) equipShieldTier(psShield === '1' ? 0 : (parseInt(psShield, 10) || 0));
+		if (psArmor    !== null) equipArmorTier(psArmor  === '1' ? 0 : (parseInt(psArmor,  10) || 0));
 		if (psWingRobe === '1') player.hasWingRobe = true;
 		if (psLadder   === '1') player.hasLadder = true;
 		if (psBow      === '1') { player.subItems.bow       = { count: 10 };       if (!player.activeSubItem) player.activeSubItem = 'bow'; }
@@ -1525,6 +1540,10 @@ export function getGameState() {
 			activeSubItem: player.activeSubItem,
 			keys: player.keys ?? 0,
 			rupees: player.rupees ?? 0,
+			def: player.def ?? 0,
+			swordTier: player.swordTier ?? -1,
+			armorTier: player.armorTier ?? -1,
+			shieldTier: player.shieldTier ?? -1,
 		},
 		heroDir,
 		enemyCount: enemies.length,
@@ -1585,6 +1604,12 @@ export function dealDamageToEnemyById(id, dmg, atkType) {
 	if (e) dealDamageToEnemy(e, dmg, atkType);
 }
 
+// テスト用：敵の投擲物を注入する（盾跳ね返し Phase 7-2 の検証用）。
+// dx/dy は飛んでくる方向（プレイヤーへ向かう向き）。
+export function injectEnemyProjectileForTest(x, y, dx, dy, atk = 4, speed = 2) {
+	return addProjectile({ owner: 'enemy', type: 'arrow', x, y, dx, dy, atk, speed });
+}
+
 // テスト用：指定 id の敵をスタンさせる（ブーメランスタン Phase 3-4 の検証用）。
 export function stunEnemyById(id, durationMs) {
 	const e = enemies.find(x => x.id === id);
@@ -1602,6 +1627,10 @@ export function getPlayerForTest() { return player; }
 
 // テスト用：equipSwordTier をゲームモジュール外から呼べるよう再公開する（Phase 7-1）
 export function callEquipSwordTier(tierIndex) { return equipSwordTier(tierIndex); }
+
+// テスト用：防具/盾ティア装備を外部から呼べるよう再公開する（Phase 7-2）
+export function callEquipArmorTier(tierIndex)  { return equipArmorTier(tierIndex); }
+export function callEquipShieldTier(tierIndex) { return equipShieldTier(tierIndex); }
 
 // テスト用：updateHud を外部から呼べるよう再公開する（Phase 7-1）
 export function callUpdateHud() { return updateHud(); }

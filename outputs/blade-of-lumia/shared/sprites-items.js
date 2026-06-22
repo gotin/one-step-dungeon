@@ -45,6 +45,14 @@ export const ITEM_PAL = {
 	ladder:     ['transparent','#2a1808','#6a4018','#9a6028','#c89048'],
 	// よろい（鋼・青灰。1=輪郭 2=暗鋼 3=中鋼 4=明鋼 5=ハイライト）
 	armor:      ['transparent','#10141c','#3a4860','#6a7c98','#9fb2cc','#e0ecff'],
+	// 防具ティア（Phase 7-2）── armor 形状を流用し色だけ変える
+	armorCloth:  ['transparent','#1a140c','#5a4424','#8a6c40','#b89860','#e8d8a8'],  // 布の服（茶・生成り）
+	armorChain:  ['transparent','#0c0c12','#384050','#5a6478','#8894aa','#c0ccdc'],  // 鎖かたびら（鉄灰）
+	armorLegend: ['transparent','#180c00','#7a5410','#c08820','#f0c040','#fff4c0'],  // 伝説の鎧（金）
+	// 盾ティア（Phase 7-2）── shield 形状を流用し色だけ変える
+	shieldWood:   ['transparent','#1a1208','#5a3a18','#8a5a28','#c0c030','#e8d8a8'],  // 木の盾（茶木・金縁）
+	shieldIron:   ['transparent','#0c0e14','#384050','#5a6478','#c0c030','#dfe8f4'],  // 鉄の盾（鉄灰・金縁）
+	shieldMirror: ['transparent','#101824','#2a6088','#50b0e0','#e0e040','#ffffff'],  // ミラーシールド（鏡面青・白輝）
 	// 回復薬・小（赤液・ガラス瓶。1=輪郭 2=暗赤 3=赤 4=明赤 5=ガラス 6=光）
 	potion:     ['transparent','#1a0a0a','#a01818','#e03030','#ff7060','#9fd0e0','#ffffff'],
 	// 回復薬・大（青液・ガラス瓶）
@@ -531,6 +539,16 @@ ITEM_SPRITES.armor = [[
 	[0,0,0,1,1,2,2,2,2,2,2,1,1,0,0,0],
 	[0,0,0,0,0,1,1,1,1,1,1,0,0,0,0,0],
 ]];
+
+// 防具ティア（Phase 7-2）── armor 形状を流用（パレットだけ違う）
+ITEM_SPRITES.armorCloth  = ITEM_SPRITES.armor;
+ITEM_SPRITES.armorChain  = ITEM_SPRITES.armor;
+ITEM_SPRITES.armorLegend = ITEM_SPRITES.armor;
+
+// 盾ティア（Phase 7-2）── shield 形状を流用（パレットだけ違う）
+ITEM_SPRITES.shieldWood   = ITEM_SPRITES.shield;
+ITEM_SPRITES.shieldIron   = ITEM_SPRITES.shield;
+ITEM_SPRITES.shieldMirror = ITEM_SPRITES.shield;
 
 // 回復薬・小（赤い液体の小瓶）── potion パレット
 ITEM_SPRITES.potion = [[

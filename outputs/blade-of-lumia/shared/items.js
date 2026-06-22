@@ -19,6 +19,34 @@ export const SWORD_TIERS = [
 ];
 export const BASE_ATK = 2;  // 剣なし時の基礎ATK
 
+// ── 防具ティア定義（Phase 7-2）── 防具の段階の単一の真実 ─────
+// player.armorTier (-1=防具なし, 0..2=ティア) で管理する。
+// player.def = BASE_DEF + ARMOR_TIERS[tier].def で再計算する（加算廃止）。
+// 剣（SWORD_TIERS）と同型：ティア番号で持ち替え判定する（下位は無視）。
+export const ARMOR_TIERS = [
+	// index 0: 布の服
+	{ key: 'cloth',  name: '布の服',     def: 2, sprite: 'armorCloth',  pal: 'armorCloth'  },
+	// index 1: 鎖かたびら
+	{ key: 'chain',  name: '鎖かたびら', def: 4, sprite: 'armorChain',  pal: 'armorChain'  },
+	// index 2: 伝説の鎧
+	{ key: 'legend', name: '伝説の鎧',   def: 7, sprite: 'armorLegend', pal: 'armorLegend' },
+];
+export const BASE_DEF = 0;  // 防具なし時の基礎DEF
+
+// ── 盾ティア定義（Phase 7-2）── 盾の段階の単一の真実 ─────────
+// player.shieldTier (-1=盾なし, 0..2=ティア) で管理する。
+// 正面ブロック（完全ブロック）は全ティア共通。剣振り中・チャージ中は盾オフ。
+// reflect: 正面ブロック成立時に敵の「投擲物」を打ち返す係数（0=跳ね返さない）。
+//   跳ね返した投擲物は owner→player・atk=元atk×reflect で敵に当たる（剣＝近接はガードのみ）。
+export const SHIELD_TIERS = [
+	// index 0: 木の盾（ガードのみ）
+	{ key: 'wood',   name: '木の盾',         sprite: 'shieldWood',   pal: 'shieldWood',   reflect: 0   },
+	// index 1: 鉄の盾（跳ね返し 0.5 倍）
+	{ key: 'iron',   name: '鉄の盾',         sprite: 'shieldIron',   pal: 'shieldIron',   reflect: 0.5 },
+	// index 2: ミラーシールド（跳ね返し 1.0 倍）
+	{ key: 'mirror', name: 'ミラーシールド', sprite: 'shieldMirror', pal: 'shieldMirror', reflect: 1.0 },
+];
+
 // ── ITEM_META: サブアイテム定義 ───────────────────────────────
 export const ITEM_META = {
 	boomerang: {

@@ -300,8 +300,9 @@ export function createUi(deps) {
 			}
 		}
 
-		const swordLabel = player.weapon ? `⚔${player._equip?.swordName ?? '剣'}(ATK${player.atk})` : '⚔なし';
-		const armorLabel = player.armor  ? `⚚${player._equip?.armorName ?? '防具'}(DEF${player.def})` : '⚚なし';
+		const swordLabel  = player.weapon ? `⚔${player._equip?.swordName ?? '剣'}(ATK${player.atk})` : '⚔なし';
+		const armorLabel  = player.armor  ? `⚚${player._equip?.armorName ?? '防具'}(DEF${player.def})` : '⚚なし';
+		const shieldLabel = player.shield ? `🛡${player._equip?.shieldName ?? 'たて'}` : '🛡なし';
 
 		pauseStatsEl.innerHTML = '';
 		const heartRow = document.createElement('div');
@@ -338,7 +339,7 @@ export function createUi(deps) {
 		}
 		pauseStatsEl.appendChild(heartRow);
 		const statsLine = document.createElement('div');
-		statsLine.textContent = `💰${player.rupees}　${swordLabel}　${armorLabel}`;
+		statsLine.textContent = `💰${player.rupees}　${swordLabel}　${armorLabel}　${shieldLabel}`;
 		pauseStatsEl.appendChild(statsLine);
 		renderPauseDungeonMap();
 	}
