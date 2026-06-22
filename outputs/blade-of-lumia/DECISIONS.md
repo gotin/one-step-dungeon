@@ -22,6 +22,55 @@
 
 ## 記録
 
+### 2026-06-22 — Phase 7-4（設計）：リスク・リワードは「①②はゼロコードのデータ配置／③ガチャ＝既存ショップに天井つき抽選を1分岐追加」で実装する
+- **背景（調査で判明）：** 7-4 の3項目のうち①②は**既存機構だけで成立し新規コード不要**。③も**固定価格ショップは完成済み**（`game/ui.js:446-518` `openShop`/`shopBuy`、`shopData` 機構、field 2,0「旅の商人」1軒が配置済み `combat.js:231-232` で `shopData[posKey]` を見て `openShop`）。**7-4 の唯一の新規実装は③のガチャ（抽選購入）だけ**。
+- **ユーザー確定：** (1) ガチャは**天井つき（pity）**——ハズレ（少額ルピー等）を含む抽選だが、**N回引くと確定でレア（伝説防具/ハートの器等）が出る**。(2) このセッションは**設計のみ**（実装は次フェーズ⚡ Sonnet）。①②の配置も次フェーズに回す。
+
+- **① 「扉を開けると強敵が出るが宝もある」選択要素（ゼロコード・データ配置）：**
+  - **構成：** 任意の分岐路／鍵扉 `LOCKED_DOOR(D)`／ボタン・スイッチの先に「強敵＋封印宝箱」を置く。宝箱を `showConditions[posKey]={trigger:'killAll'}`（`conditions.js:95`）でゲートし、**部屋の敵を全滅させると宝箱が開封可能**になる（`player.js:796-800` の封印チェック「？ 何かが封印されているようだ…」が既にこれを担保）。
+  - **「選択」の表現：** メインルートを塞がない**任意の脇道**に置く。プレイヤーは「危険な強敵部屋に入るか／スルーするか」を自分で選ぶ。入口に石碑（`signData`）で「この奥には強き者あり…されど宝も眠る」と予告し、リスクを明示する。
+  - **新規コードはゼロ。** 敵配置（既存タイル W/E/C/F/大型ボス）＋宝箱＋`showConditions:killAll`＋石碑、すべて Phase 2〜6 で完成した機構。
+
+- **② 高難度任意エリアへの報酬配置（ゼロコード・データ配置）：**
+  - ①と同型。隠し通路（Phase 5-2 `bushBurned`/爆弾壁）・色スイッチ部屋（5-1）・敵石押し（5-3）の先に上位ティア装備（伝説の鎧/ミラーシールド/聖剣など 7-1/7-2 のティア品）やハートの器（7-3）を置く。**「難所を解いた人だけが強化を得る」**＝任意だが見返りが大きい配置にする。
+  - 既存の隠し報酬（dungeon_1/4,0・field/3,0 の隠し宝箱＝7-3）と同じ手法。配置のみ。
+
+- **③ ルピーで報酬を引くガチャNPC（天井つき）＝新規実装（最小差分）：**
+  - **既存ショップに相乗りする。** 新タイル・新オーバーレイは作らず、`shopData[posKey].items[]` の good に**抽選プール型**を追加する：
+    ```
+    shopData["6,7"] = {
+      name:'運だめしの壺',
+      gacha:{
+        price: 30,                     // 1回のルピー
+        pityCount: 10,                 // この回数で確定レア（天井）
+        pityReward: { type:'heartContainer' },   // または {type:'shield',shieldTier:2} 等
+        pool: [                        // 重み付き抽選（ハズレ込み）
+          { weight: 50, reward:{ type:'rupee', value:5 } },     // ハズレ（払った分以下＝損）
+          { weight: 30, reward:{ type:'rupee', value:40 } },    // 小当たり（プラス）
+          { weight: 15, reward:{ type:'item', item:'healPotion', count:1 } },
+          { weight: 5,  reward:{ type:'heartContainer' } },     // レア
+        ],
+      },
+    }
+    ```
+  - **天井（pity）の状態：** `player.gachaPulls`（**プレーンオブジェクト**・キー=ガチャ識別子`"layer:stageKey:posKey"`→引いた回数）。`player` は `saveGame` で JSON シリアライズされるので**プレーンオブジェクトなら save/load が自動対応**（Set は `{}` になるので不可＝[[defeated-bosses]] の `JSON.stringify` 教訓と同じ理由で**オブジェクトを選ぶ**）。
+  - **抽選ロジック（`ui.js shopBuy` に分岐追加）：** good に `gacha` があれば——
+    1. `player.rupees < gacha.price` なら「ルピーが足りない！」で return（既存と同じ）。
+    2. `player.rupees -= gacha.price`、`pulls = ++player.gachaPulls[key]`。
+    3. **`pulls >= pityCount` なら確定レア**：`reward = gacha.pityReward`、`player.gachaPulls[key] = 0`（リセット）。それ未満なら重み付き抽選で `pool` から1つ引く。
+    4. `grantReward(reward)` で付与、`playSound`（当たり=`'appear'`/通常=`'item'`）、`pulse` で結果表示、`updateHud`/`saveGame`/`renderShop`。
+  - **報酬付与は共通化する（重要・重複排除）：** `player.js openChest` の中身（`type` で item/weapon/armor/shield/rupee/heartContainer/ladder を付与する switch・`player.js:597-633`）を **`grantReward(content)` として切り出し**、`openChest` とガチャの両方から呼ぶ。これで「チェストとガチャで付与ロジックが二重化」を防ぐ（[[blade-tile-sprite-single-source]] の単一の真実方針）。`grantReward` は付与だけ行い、SE/メッセージ/saveGame は呼び出し側が出す（チェストとガチャで演出が違うため）。
+  - **乱数の注入（決定論テスト）：** 抽選は `Math.random` 直書きでなく、**ショップ factory に `random` 依存を注入**（既定 `Math.random`）。テストは `random` を固定値/シーケンスに差し替えて「特定の枠が出る」を決定論的に検証する（ボスAIは `Math.random` 直書きだが、ガチャは結果がテスト対象なので注入式にする）。
+  - **エディタ対応：** `editor-props.js` の shopData 編集に「ガチャ」種別を追加（price/pityCount/pool 行の編集）。最小実装ではまず JSON 直書きでデモ配置し、エディタUIは後追いでもよい（笛 `fluteEffect` を JSON テキスト入力で先行させた前例＝`editor-canvas.js` と同様）。
+
+- **理由：**
+  - ①②は**「強敵/難所＋封印報酬」という1パターン**に集約でき、`showConditions:killAll`＋宝箱＋石碑という既存3部品だけで「リスクを選ぶ→クリアで報酬」が完成する。新サブシステムを足すと既存の封印機構と二重化する。
+  - ③のガチャは**新オーバーレイを作らず既存ショップに `gacha` 分岐を足す**のが最小差分。`shopData`/`openShop`/`renderShop`/`shopBuy` の入力UIと選択ループはそのまま使える。新規は「抽選＋天井カウンタ＋報酬付与の共通化」だけ。
+  - **天井つきにするのはユーザー指定**であり、「引き続けても報酬が得られない理不尽」を防ぎつつ「ハズレありの射幸性」を残せる。`pityCount` で確率設計が破綻しても上限保証される。
+  - 報酬付与を `grantReward` に共通化することで、将来チェスト/ガチャ/敵ドロップに報酬種を増やしても1箇所追加で全経路に効く。
+- **代替案：** (A) ガチャ専用の新タイル＋新オーバーレイ → 既存ショップと役割が重複し UI が二重化。却下。(B) 天井なし（純粋確率）→ ユーザーが天井つきを選択。(C) 天井カウンタを `Set`/専用 stageState に持つ → `player.gachaPulls` プレーンオブジェクトが save 自動対応で最小。stageState に置くと「店ごと」管理が煩雑。(D) ①②に boss-room ロック機構（`lockBossDoors`/`game.js:926-949`）を流用して「入室→扉が閉じる→全滅で開く」演出にする → 任意エリアに強制ロックは「選んで入る」設計と相性が悪い（ボス必須部屋向き）。任意の脇道は `killAll` 封印宝箱で十分なので不採用（必要なら後付け可）。
+- **結果／影響：** 次フェーズ（⚡ Sonnet 実装）の手順：(1) `player.js` の openChest 付与 switch を `grantReward(content)` に切り出し（チェスト経路の回帰テストで挙動不変を確認）→ (2) `ui.js shopBuy` にガチャ分岐＋`random` 注入＋`player.gachaPulls` 天井カウンタ → (3) `player.gachaPulls={}` を player 初期化2箇所（グローバル＋`startNewGame`）に追加 → (4) ガチャNPCをデモ配置（field 2,0 の旅の商人の隣 or 新NPC）→ (5) 強敵部屋①・難所報酬②を `killAll` 封印宝箱＋石碑で1〜2箇所デモ配置 → (6) テスト。**テスト観点：** ①`grantReward` 切り出し後もチェストが従来どおり付与する（回帰）②ルピー不足でガチャを引けない③`random` 固定で特定枠が出る（重み境界）④`pityCount-1` 回はプール抽選・`pityCount` 回目で確定レア＋カウンタが0にリセット⑤天井カウンタが save/load で保持される⑥強敵部屋の封印宝箱は全滅前は開かず全滅後に開く。**報酬の絶対値（price/weight/pityCount）の最終チューニングは Phase 8-4。**
+
 ### 2026-06-22 — Phase 7-2：防具はティアでDEF再計算、盾は「上位ほど投擲物を跳ね返す」で差別化
 - **決定（ユーザー確定）：** 防具・盾とも3ティア制（剣 7-1 と同型）。
   - **防具**（布の服0/鎖かたびら1/伝説の鎧2・def 2/4/7）：ティア番号で持ち替え判定し、`player.def = BASE_DEF + ARMOR_TIERS[tier].def` で**再計算**（拾うたび加算をやめ、チェスト経路の無条件加算バグも解消）。
