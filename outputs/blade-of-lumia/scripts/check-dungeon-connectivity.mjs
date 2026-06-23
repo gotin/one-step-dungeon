@@ -1,13 +1,17 @@
 // Phase 9-2 support: verify a dungeon's room connectivity at the TILE level.
-// Mirrors game/game.js checkStageTransition (sx/sy edge-scroll) and
-// game/passable.js tilePassable, so it catches the real "edge openings don't
-// line up" bug — not just graph adjacency. Walks 4-dir within a stage and
-// crosses to adjacent stages by stepping off an edge.
+// Uses the shared core (scripts/lib/connectivity.mjs) which mirrors
+// game/game.js checkStageTransition (sx/sy edge-scroll) and game/passable.js
+// tilePassable — so it catches the real "edge openings don't line up" bug
+// (dead edges) and orphan rooms, not just graph adjacency.
 //
-// Usage: node scripts/check-dungeon-connectivity.mjs dungeon_2 [--item-gate=boomerang]
-//   Reports: reachable rooms from entry, boss-room single-entry check, and
-//   (with an item gate) whether blocking the gate room cuts off the boss.
+// Usage: node scripts/check-dungeon-connectivity.mjs dungeon_2 [--block-room=1,1]
+//   Reports: reachable rooms from entry, dead edges (arrival walled / no stage),
+//   orphan rooms, boss-room single-entry check, and (with --block-room) whether
+//   blocking the gate room cuts off the boss (critical-path one-way check).
 import { readFileSync } from 'fs';
+import {
+  bfsLayer, checkGridAdjacency, firstWalkable, findEntrances, findOrphanRooms,
+} from './lib/connectivity.mjs';
 
 const layerName = process.argv[2] || 'dungeon_2';
 const d = JSON.parse(readFileSync(new URL('../work/blade-of-lumia.json', import.meta.url), 'utf8'));
@@ -15,88 +19,87 @@ const layer = d.layers[layerName];
 if (!layer) { console.error(`layer not found: ${layerName}`); process.exit(1); }
 const stages = layer.stages;
 
-// Blocked-on-foot tiles (mirrors passable.js with no keys/switches/subitems).
-// A closed DOOR(D)/GATE(T)/BREAKABLE(!)/WATER(~)/PIT(x)/SKY(%) blocks the path —
-// which is what we WANT when proving "you cannot reach the boss without X".
-const BLOCKED = new Set([
-  '#','~','%','T','D','!','*','t','M','u','f','h','p','i','|','x',
-  ':','S','Y','[',']','(',')',  // boss-doorway & switches treated as walls for pure-walk reachability
-]);
-const isBlocked = (ch) => ch !== undefined && ch !== ' ' && BLOCKED.has(ch);
+let problems = 0;
 
-// Find the room that contains a given role by tile char (first match).
-function findRoomWithTile(ch) {
-  for (const sk of Object.keys(stages)) {
-    const t = stages[sk].tiles;
-    for (let r = 0; r < t.length; r++) for (let c = 0; c < t[0].length; c++)
-      if (t[r][c] === ch) return { sk, r, c };
-  }
-  return null;
+// External entrances: rooms the OUTSIDE world teleports into (a dungeon may have
+// several). "Dead" = unreachable from the UNION of all entrances.
+const entrances = findEntrances(d, layerName);
+console.log(`Layer: ${layerName} — ${Object.keys(stages).length} rooms. Entrances: ${entrances.join(' ') || '(none found!)'}`);
+if (entrances.length === 0) {
+  problems++;
+  console.log(`\n❌ NO EXTERNAL ENTRANCE — no other layer's destId points into ${layerName} (you can't get in at all).`);
 }
 
-function bfs(startSk, startR, startC, blockedRoom) {
-  const seenCells = new Set(), reachedRooms = new Set(), q = [[startSk, startR, startC]];
-  const key = (sk, r, c) => `${sk}:${r},${c}`;
-  const enq = (sk, r, c) => {
-    if (sk === blockedRoom) return;
-    const st = stages[sk]; if (!st) return;
-    if (r < 0 || c < 0 || r >= st.rows || c >= st.cols) return;
-    if (isBlocked(st.tiles[r][c])) return;
-    const k = key(sk, r, c); if (seenCells.has(k)) return;
-    seenCells.add(k); q.push([sk, r, c]);
-  };
-  enq(startSk, startR, startC);
-  while (q.length) {
-    const [sk, r, c] = q.shift();
-    reachedRooms.add(sk);
-    const st = stages[sk];
-    const [sx, sy] = sk.split(',').map(Number);
-    enq(sk, r-1, c); enq(sk, r+1, c); enq(sk, r, c-1); enq(sk, r, c+1);
-    if (r === 0)          enq(`${sx},${sy-1}`, st.rows-1, c);
-    if (r === st.rows-1)  enq(`${sx},${sy+1}`, 0, c);
-    if (c === 0)          enq(`${sx-1},${sy}`, r, st.cols-1);
-    if (c === st.cols-1)  enq(`${sx+1},${sy}`, r, 0);
-  }
-  return reachedRooms;
+// Pure-walk reachability from each entrance (gates CLOSED) — informational; the
+// union shows what's reachable on foot before opening anything.
+const reachedRooms = new Set();
+const deadEdges = [];
+for (const e of entrances) {
+  const r = bfsLayer(stages, { stage: e, ...firstWalkable(stages[e]) });
+  for (const k of r.reachedRooms) reachedRooms.add(k);
+  deadEdges.push(...r.deadEdges);
 }
-
-// Entry room = the one with a '>' MAP_ENTER back to the field, else the @ start.
-let entry = null;
-for (const sk of Object.keys(stages)) {
-  const me = stages[sk].mapEnters || {};
-  if (Object.values(me).some(m => /field/.test(m.destId || ''))) { entry = sk; break; }
-}
-if (!entry) { const p = findRoomWithTile('@'); entry = p?.sk ?? Object.keys(stages)[0]; }
-const [esx, esy] = entry.split(',').map(Number);
-// start at a passable cell in the entry room
-let er = 1, ec = 1; const et = stages[entry].tiles;
-outer: for (let r = 0; r < et.length; r++) for (let c = 0; c < et[0].length; c++)
-  if (!isBlocked(et[r][c])) { er = r; ec = c; break outer; }
-
-console.log(`Layer: ${layerName} — ${Object.keys(stages).length} rooms. Entry: ${entry}`);
-
 const allRooms = new Set(Object.keys(stages));
-const reached = bfs(entry, er, ec, null);
-const unreached = [...allRooms].filter(r => !reached.has(r));
-console.log(`Reached from entry (walls/doors closed): ${[...reached].sort().join(' ')}`);
-console.log(`Unreached (need door/switch/subitem):    ${unreached.join(' ') || '(none)'}`);
+const unreached = [...allRooms].filter(r => !reachedRooms.has(r));
+console.log(`Reached on foot (gates closed):           ${[...reachedRooms].sort().join(' ') || '(none)'}`);
+console.log(`Unreached (gated OR orphan — see below):  ${unreached.join(' ') || '(none)'}`);
 
-// Boss room: isBossRoom flag
+// Grid adjacency (edges always point at grid neighbors by construction; report anomalies).
+const badAdj = checkGridAdjacency(stages);
+if (badAdj.length) {
+  problems += badAdj.length;
+  console.log(`\n⚠️ non-adjacent edges: ${badAdj.map(b => `${b.from}->${b.to}`).join(' ')}`);
+}
+
+// TRUE ORPHANS: rooms unreachable even with EVERY gate open + teleports followed.
+// This is the real defect (e.g. a fully wall-boxed room with no mapEnter) that
+// pure-walk reachability hides inside "unreached (gated)". A gated-but-reachable
+// room is NOT an orphan.
+const { orphans } = findOrphanRooms(stages, entrances);
+if (orphans.length) {
+  problems += orphans.length;
+  console.log(`\n❌ ORPHAN ROOMS (unreachable from ANY entrance, even with all gates open + teleports):`);
+  console.log(`   ${orphans.join(' ')}`);
+  console.log(`   → connect an edge/teleport from the reachable area, or remove the room. (gated rooms are fine; these aren't gated, they're cut off — even rooms that reach each other but not the entrance count.)`);
+} else {
+  console.log(`\n✅ no orphan rooms (every room is reachable once its gates are opened)`);
+}
+
+// Dead edges = stepped off an open edge but arrival is a wall / missing stage.
+if (deadEdges.length) {
+  problems += deadEdges.length;
+  console.log(`\n⚠️ DEAD EDGES (open edge, but you can't actually cross — clamp/stuck):`);
+  for (const e of deadEdges)
+    console.log(`  ${e.from} ${e.dir} → ${e.to} @ ${e.at}  [${e.reason}${e.tile ? ` '${e.tile}'` : ''}]`);
+} else {
+  console.log(`\n✅ no dead edges (every open border lines up with a walkable arrival)`);
+}
+
+// Boss room: isBossRoom flag — only the intended single entry should line up.
 const bossRoom = Object.keys(stages).find(sk => stages[sk].isBossRoom);
 if (bossRoom) {
   const [bx, by] = bossRoom.split(',').map(Number);
-  const neighbors = [[bx+1,by],[bx-1,by],[bx,by+1],[bx,by-1]]
-    .map(([x,y]) => `${x},${y}`).filter(k => stages[k]);
+  const neighbors = [[bx + 1, by], [bx - 1, by], [bx, by + 1], [bx, by - 1]]
+    .map(([x, y]) => `${x},${y}`).filter(k => stages[k]);
   console.log(`\nBoss room: ${bossRoom}  grid-neighbors with a stage: ${neighbors.join(' ') || '(none)'}`);
   console.log(`  (only the intended single entry should actually have lined-up edge openings)`);
 }
 
-// Item-gate check: blocking the gate room must cut the boss off.
+// Item-gate / critical-path check: blocking the gate room must cut the boss off.
 const gateArg = process.argv.find(a => a.startsWith('--block-room='));
 if (gateArg && bossRoom) {
   const blocked = gateArg.split('=')[1];
-  const r2 = bfs(entry, er, ec, blocked);
-  const cut = !r2.has(bossRoom);
-  console.log(`\nBlocking room ${blocked}: boss ${bossRoom} reachable? ${r2.has(bossRoom)}  ` +
+  const reached = new Set();
+  for (const e of entrances) {
+    const { reachedRooms: r2 } = bfsLayer(stages, { stage: e, ...firstWalkable(stages[e]) },
+                                          { blockedRoom: blocked });
+    for (const k of r2) reached.add(k);
+  }
+  const cut = !reached.has(bossRoom);
+  console.log(`\nBlocking room ${blocked}: boss ${bossRoom} reachable? ${reached.has(bossRoom)}  ` +
               `=> ${cut ? '✅ gate holds (boss cut off)' : '❌ boss reachable via detour'}`);
 }
+
+// Overall verdict (non-zero exit so CI / scripts can gate on it).
+console.log(`\n${problems === 0 ? '✅ PASS' : `❌ FAIL — ${problems} connectivity problem(s)`}`);
+if (problems > 0) process.exitCode = 1;
