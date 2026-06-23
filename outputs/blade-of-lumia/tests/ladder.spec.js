@@ -4,17 +4,23 @@
 //   row8 = "#B..x...x.B#"
 //   col1 = はしごの宝箱 / col4,col8 = 単セルの穴(PIT) / col10 = 報酬宝箱
 // はしご無しでは穴で止まり、はしご所持で両隣が地上の穴を1セルだけ渡れる。
+//
+// 「進入軸で向きが決まる」テストだけは孤立水を要するため、ゲームマップ編集に
+// 影響されないフィクスチャ test_mechanics/ladder_isolated（(3,2)=孤立水）を使う。
 import { test, expect } from '@playwright/test';
 import { waitForBoard } from './helpers.js';
 
 const GAME = '/blade-of-lumia/game/';
 
-function previewUrl({ stage = '0,0', layer = 'dungeon_3', row, col, ladder }) {
+const FIXTURE_SRC = '../tests/fixtures/test-stages.json';
+
+function previewUrl({ stage = '0,0', layer = 'dungeon_3', row, col, ladder, mapSrc }) {
 	const p = new URLSearchParams({
 		fromEditor: '1', layer, stage,
 		row: String(row), col: String(col),
 	});
 	if (ladder) p.set('ps_ladder', '1');
+	if (mapSrc) p.set('ps_mapSrc', mapSrc);
 	return `${GAME}?${p.toString()}`;
 }
 
@@ -143,12 +149,13 @@ test.describe('Blade of Lumia – はしご', () => {
 	});
 
 	test('はしごの向きは進入軸で決まる：縦移動で入れば縦向き／横移動で入れば横向き', async ({ page }) => {
-		// field 0,2 r3 c2 は孤立した水（上下左右すべて陸）＝縦橋でも横橋でも成立する。
+		// フィクスチャ test_mechanics/ladder_isolated の (3,2) は孤立した水
+		//（上下左右すべて床＝陸）＝縦橋でも横橋でも成立する。
 		// 上から下へ入れば縦向き(ladderV)・左右から入れば横向き(ladderH) になるべき。
 		// （セルの地形だけで横優先に決めると、下移動なのに横向きになる不具合の回帰テスト）
 
 		// ── 縦（下移動）で進入 → 縦向き ──
-		await page.goto(previewUrl({ layer: 'field', stage: '0,2', row: 2, col: 2, ladder: true }));
+		await page.goto(previewUrl({ layer: 'test_mechanics', stage: 'ladder_isolated', row: 2, col: 2, ladder: true, mapSrc: FIXTURE_SRC }));
 		await waitForBoard(page);
 		await walk(page, 'down', 2);  // row2 → row3（c2 の水へ縦移動で入る）
 		let st = await page.evaluate(() => window.__game.getState());
@@ -159,7 +166,7 @@ test.describe('Blade of Lumia – はしご', () => {
 		expect(await ladder.first().getAttribute('data-orient')).toBe('v');  // 縦向き
 
 		// ── 横（右移動）で進入 → 横向き ──
-		await page.goto(previewUrl({ layer: 'field', stage: '0,2', row: 3, col: 1, ladder: true }));
+		await page.goto(previewUrl({ layer: 'test_mechanics', stage: 'ladder_isolated', row: 3, col: 1, ladder: true, mapSrc: FIXTURE_SRC }));
 		await waitForBoard(page);
 		await walk(page, 'right', 2);  // c1 → c2（水へ横移動で入る）
 		st = await page.evaluate(() => window.__game.getState());

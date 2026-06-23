@@ -62,10 +62,10 @@ test('①: gainHeartContainer でmaxHearts+1・maxHp+2・hp がリセットさ�
 });
 
 
-test('③: ダンジョン2〜7のボスルームにハートの器の宝箱がある（データレベル）', () => {
+test('③: ダンジョン1〜7のボスルームにハートの器の宝箱がある（データレベル）', () => {
   const bossRooms = [
-    { layer: 'dungeon_1', stage: '2,0' },
-    { layer: 'dungeon_2', stage: '1,0' },
+    { layer: 'dungeon_1', stage: '0,0' },
+    { layer: 'dungeon_2', stage: '0,0' },
     { layer: 'dungeon_3', stage: '1,0' },
     { layer: 'dungeon_4', stage: '1,0' },
     { layer: 'dungeon_5', stage: '1,0' },
@@ -76,7 +76,7 @@ test('③: ダンジョン2〜7のボスルームにハートの器の宝箱が�
   expect(missing, `ハートの器が不足: ${JSON.stringify(missing)}`).toHaveLength(0);
 });
 
-test('④: 隠し場所（field/3,0 と dungeon_1/4,0）にハートの器がある（データレベル）', () => {
+test('④: 隠し場所（field/3,0 と dungeon_1/3,3）にハートの器がある（データレベル）', () => {
   expect(hasHeartContainer('field', '3,0'), 'field/3,0 にハートの器がない').toBe(true);
-  expect(hasHeartContainer('dungeon_1', '4,0'), 'dungeon_1/4,0 にハートの器がない').toBe(true);
+  expect(hasHeartContainer('dungeon_1', '3,3'), 'dungeon_1/3,3 にハートの器がない').toBe(true);
 });

@@ -1,6 +1,6 @@
 // Phase 5-3: 敵を使ったパズル（敵が石を押す）のスモークテスト
 //
-// パズル配置（work/blade-of-lumia.json）：dungeon_1 ステージ "5,0"
+// パズル配置（tests/fixtures/test-stages.json）：test_mechanics ステージ "enemy_stone"
 //          0123456789AB
 //   row2: #....C....##   C = CHASER(2,5)
 //   row3: #....*....##   * = STONE(3,5)
@@ -20,11 +20,13 @@ import { waitForBoard } from './helpers.js';
 
 const GAME = '/blade-of-lumia/game/';
 
-// dungeon_1 "5,0" にプレイヤーを (row,col) でスポーンさせるプレビューURL
+const FIXTURE_SRC = '../tests/fixtures/test-stages.json';
+
 function previewUrl(row, col) {
 	const p = new URLSearchParams({
-		fromEditor: '1', layer: 'dungeon_1', stage: '5,0',
+		fromEditor: '1', layer: 'test_mechanics', stage: 'enemy_stone',
 		row: String(row), col: String(col),
+		ps_mapSrc: FIXTURE_SRC,
 	});
 	return `${GAME}?${p.toString()}`;
 }

@@ -1,6 +1,6 @@
 // tests/torch.spec.js – TORCH タイル + ブーメラン炎運搬（Phase 4-5 ②）
 //
-// パズル配置（dungeon_1 ステージ "1,2"）：
+// パズル配置（tests/fixtures/test-stages.json）：test_mechanics ステージ "torch_relay"
 //   (3,2)=H 点灯済み（initLitTorches: ['3,2']）
 //   (3,3)=H 消灯
 //   (7,5)=H 消灯
@@ -13,7 +13,7 @@
 //
 // 検証：
 //  1. initLitTorches でステージ初期化時に (3,2) が litTorches に入っている
-//  2. ブーメランが点灯TORCH (3,2) を通過すると flaming になり (3,4) を点灯する
+//  2. ブーメランが点灯TORCH (3,2) を通過すると flaming になり (3,3) を点灯する
 //  3. 点灯後 conditionsMet に "7,9" は入っていない（まだ7,5が消灯）
 //  4. 炎持ちブーメランのとき proj-el に .boomerang-flaming クラスが付く
 
@@ -22,21 +22,24 @@ import { waitForBoard } from './helpers.js';
 
 const GAME = '/blade-of-lumia/game/';
 
-function previewUrl({ row, col, dir = 'right' }) {
+const FIXTURE_SRC = '../tests/fixtures/test-stages.json';
+
+function previewUrl({ row, col }) {
 	const p = new URLSearchParams({
 		fromEditor: '1',
-		layer: 'dungeon_1',
-		stage: '1,2',
+		layer: 'test_mechanics',
+		stage: 'torch_relay',
 		row: String(row),
 		col: String(col),
 		ps_boomerang: '1',
+		ps_mapSrc: FIXTURE_SRC,
 	});
 	return `${GAME}?${p.toString()}`;
 }
 
 test.describe('Blade of Lumia – TORCH + ブーメラン炎運搬（Phase 4-5 ②）', () => {
 
-	test('initLitTorches: ステージ初期化時に (3,2) が litTorches に入っている', async ({ page }) => {
+	test('initLitTorches: ステージ初期化時に (3,2) が litTorches に入っている（フィクスチャ）', async ({ page }) => {
 		const errors = [];
 		page.on('pageerror', e => errors.push(e.message));
 
@@ -69,7 +72,7 @@ test.describe('Blade of Lumia – TORCH + ブーメラン炎運搬（Phase 4-5 �
 
 		// (3,2) は initLitTorches で初期点灯済み
 		expect(result.litTorches).toContain('3,2');
-		// ブーメランが (3,2) → flaming → (3,3) に到達して点火
+		// ブーメランが (3,2) 点灯TORCH → flaming → (3,3) 消灯TORCHを点火
 		expect(result.litTorches).toContain('3,3');
 		expect(errors).toEqual([]);
 	});
@@ -89,7 +92,7 @@ test.describe('Blade of Lumia – TORCH + ブーメラン炎運搬（Phase 4-5 �
 		});
 
 		const ss = await page.evaluate(() => window.__game.getStageState());
-		// (7,5) がまだ消灯なので torchesLit は未達成
+		// (7,5) がまだ消灯なので全TORCH点灯には足りず torchesLit は未達成
 		expect(ss.conditionsMet).not.toContain('7,9');
 		expect(errors).toEqual([]);
 	});

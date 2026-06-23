@@ -1,6 +1,6 @@
 // tests/candle-torch.spec.js → bomb-torch.spec.js（Phase 4-5 ③ ロウソクで TORCH 点灯）
 //
-// パズル配置（dungeon_1 ステージ "1,2"）：
+// パズル配置（tests/fixtures/test-stages.json　test_mechanics ステージ "torch_relay"）：
 //   (3,2)=H 点灯済み（initLitTorches: ['3,2']）
 //   (3,3)=H 消灯
 //
@@ -13,14 +13,17 @@ import { waitForBoard } from './helpers.js';
 
 const GAME = '/blade-of-lumia/game/';
 
+const FIXTURE_SRC = '../tests/fixtures/test-stages.json';
+
 function previewUrl({ row, col }) {
 	const p = new URLSearchParams({
 		fromEditor: '1',
-		layer: 'dungeon_1',
-		stage: '1,2',
+		layer: 'test_mechanics',
+		stage: 'torch_relay',
 		row: String(row),
 		col: String(col),
 		ps_candle: '1',
+		ps_mapSrc: FIXTURE_SRC,
 	});
 	return `${GAME}?${p.toString()}`;
 }

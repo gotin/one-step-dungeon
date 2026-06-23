@@ -1,26 +1,30 @@
 // Phase 5-2: 隠し通路・隠し入口のスモークテスト
 //
-// ギミック①: 爆弾壊し壁 → 隠し宝箱（dungeon_1 / 1,0）
-//   row2: #.......#!B#  col8=# col9=!（壊せる壁） col10=B（隠し宝箱）
-//   プレイヤー (2,7) に爆弾置く → AOE=2 で (2,9) の ! が破壊 → brokenWalls に '2,9'
+// ギミック①②③ 共通：tests/fixtures/test-stages.json　test_mechanics ステージ "bomb_wall"
+//   field/1,1 のレイアウトをそのままコピーしたフィクスチャを使用
 //
-// ギミック②: 看板フェイク（field / 1,1）
-//   row1: t.i#!B..f..t  col2=i（「何もない」看板） col3=# col4=!（壊せる壁） col5=B（隠し宝箱）
-//   この spec では配置の存在確認のみ（プレイヤーは field 1,1 col2=i 看板の隣から開始）
+// ギミック①: 爆弾壊し壁 → 隠し宝箱
+//   row1: t.i#!B..f..t  col2=i（看板） col3=# col4=!（壊せる壁） col5=B（隠し宝箱）
+//   プレイヤー (1,2) に爆弾置く → AOE=2 で (1,4) の ! が破壊 → brokenWalls に '1,4'
 //
-// ギミック③: ロウソク草燃やし → 隠し入口（field / 1,1）
+// ギミック②: 看板フェイク
+//   row1: t.i#!B..f..t  col2=i（「何もない」看板） col3=# col4=!（壊せる壁）
+//
+// ギミック③: ロウソク草燃やし → 隠し入口
 //   row6: !.......B.u>  col10=u（茂み） col11=>（bushBurned で出現する隠し入口）
-//   ロウソク使用で col10 の茂みを燃やす → conditionsMet に '6,11'
 
 import { test, expect } from '@playwright/test';
 import { waitForBoard } from './helpers.js';
 
 const GAME = '/blade-of-lumia/game/';
 
-function previewUrl({ layer, stage, row, col, bomb = false, candle = false }) {
+const FIXTURE_SRC = '../tests/fixtures/test-stages.json';
+
+function previewUrl({ layer = 'test_mechanics', stage = 'bomb_wall', row, col, bomb = false, candle = false }) {
 	const p = new URLSearchParams({
 		fromEditor: '1', layer, stage,
 		row: String(row), col: String(col),
+		ps_mapSrc: FIXTURE_SRC,
 	});
 	if (bomb)   p.set('ps_bomb',   '1');
 	if (candle) p.set('ps_candle', '1');
@@ -30,16 +34,16 @@ function previewUrl({ layer, stage, row, col, bomb = false, candle = false }) {
 test.describe('Blade of Lumia – 隠し通路・隠し入口（Phase 5-2）', () => {
 
 	// ── ギミック①: 爆弾壊し壁 ──────────────────────────────────
-	test('爆弾で壊せる壁 (2,9) を破壊できる', async ({ page }) => {
+	test('爆弾で壊せる壁 (1,4) を破壊できる', async ({ page }) => {
 		const errors = [];
 		page.on('pageerror', e => errors.push(e.message));
 
-		// dungeon_1/1,0 の (2,7) にスポーン（壁 (2,8) の手前）
-		await page.goto(previewUrl({ layer: 'dungeon_1', stage: '1,0', row: 2, col: 7, bomb: true }));
+		// (1,2) にスポーン（壁 (1,3) の手前、! (1,4) まで距離2）
+		await page.goto(previewUrl({ row: 1, col: 2, bomb: true }));
 		await waitForBoard(page);
 
 		const result = await page.evaluate(async () => {
-			// (2,7) に爆弾を置く（bomb が activeSubItem）
+			// (1,2) に爆弾を置く（bomb が activeSubItem）
 			window.__game.step(2); // クールダウン解消
 			window.__game.useSubItem(); // 爆弾設置
 			// 爆発まで 2000ms → TICK_MS=120ms × 20 tick = 2400ms
@@ -47,8 +51,8 @@ test.describe('Blade of Lumia – 隠し通路・隠し入口（Phase 5-2）', (
 			return window.__game.getStageState();
 		});
 
-		// (2,9) の ! が破壊されて brokenWalls に入っている
-		expect(result.brokenWalls).toContain('2,9');
+		// (1,4) の ! が破壊されて brokenWalls に入っている
+		expect(result.brokenWalls).toContain('1,4');
 		expect(errors).toEqual([]);
 	});
 
@@ -57,8 +61,8 @@ test.describe('Blade of Lumia – 隠し通路・隠し入口（Phase 5-2）', (
 		const errors = [];
 		page.on('pageerror', e => errors.push(e.message));
 
-		// field/1,1 の (1,1) にスポーン（看板 (1,2) の左隣）
-		await page.goto(previewUrl({ layer: 'field', stage: '1,1', row: 1, col: 1, bomb: true }));
+		// (1,1) にスポーン（看板 (1,2) の左隣）
+		await page.goto(previewUrl({ row: 1, col: 1, bomb: true }));
 		await waitForBoard(page);
 
 		const result = await page.evaluate(() => {
@@ -89,8 +93,8 @@ test.describe('Blade of Lumia – 隠し通路・隠し入口（Phase 5-2）', (
 		const errors = [];
 		page.on('pageerror', e => errors.push(e.message));
 
-		// field/1,1 の (6,9) にスポーン（茂み (6,10) の左隣）
-		await page.goto(previewUrl({ layer: 'field', stage: '1,1', row: 6, col: 9, candle: true }));
+		// (6,9) にスポーン（茂み (6,10) の左隣）
+		await page.goto(previewUrl({ row: 6, col: 9, candle: true }));
 		await waitForBoard(page);
 
 		const result = await page.evaluate(() => {
@@ -107,13 +111,13 @@ test.describe('Blade of Lumia – 隠し通路・隠し入口（Phase 5-2）', (
 		expect(errors).toEqual([]);
 	});
 
-	// ── ギミック③: 隠し入口から hidden_cave へ遷移 ──────────────
-	test('ロウソクで茂みを燃やした後、(6,11) の隠し入口に乗ると hidden_cave へ遷移する', async ({ page }) => {
+	// ── ギミック③: 隠し入口から hidden_cave_test へ遷移 ──────────────
+	test('ロウソクで茂みを燃やした後、(6,11) の隠し入口に乗ると hidden_cave_test へ遷移する', async ({ page }) => {
 		const errors = [];
 		page.on('pageerror', e => errors.push(e.message));
 
-		// field/1,1 の (6,9) にスポーン
-		await page.goto(previewUrl({ layer: 'field', stage: '1,1', row: 6, col: 9, candle: true }));
+		// (6,9) にスポーン
+		await page.goto(previewUrl({ row: 6, col: 9, candle: true }));
 		await waitForBoard(page);
 
 		// 右を向く → ロウソク使用 → 茂みを燃やす
@@ -134,13 +138,15 @@ test.describe('Blade of Lumia – 隠し通路・隠し入口（Phase 5-2）', (
 		}
 
 		// 遷移待ち（setTimeout 100ms + マージン）
+		// フィクスチャでは hidden_cave_test は test_mechanics レイヤー内のステージ
+		// （実ゲームの hidden_cave はレイヤー）。よって stageKey の変化で遷移を判定する。
 		await page.waitForFunction(() => {
 			const s = window.__game.getState();
-			return s.currentLayer === 'hidden_cave';
+			return s.stageKey === 'hidden_cave_test';
 		}, { timeout: 3000 });
 
 		const st = await page.evaluate(() => window.__game.getState());
-		expect(st.currentLayer).toBe('hidden_cave');
+		expect(st.stageKey).toBe('hidden_cave_test');
 		expect(errors).toEqual([]);
 	});
 });

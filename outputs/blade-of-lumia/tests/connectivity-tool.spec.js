@@ -176,18 +176,15 @@ test.describe('connectivity tool — detects known defects', () => {
     expect(findEntrances(mapData, 'field')).toEqual(['1,0']);
   });
 
-  test('regression: real dungeon_1 has dead rooms 3,0/4,0/5,0 from its real entrance', () => {
-    // Locks in that the checker SEES the known dungeon_1 defect, using the REAL
-    // entrance discovered from cross-layer destId (not a guessed room). 3,0<->4,0
-    // reach each other; 5,0 is sealed; none reach entrance 0,0. When 9-2a2 remakes
-    // dungeon_1 and connects them, this test should flip to expect [] (the failure
-    // is the signal to update it).
+  test('regression: real dungeon_1 has no dead rooms after 9-2a2 remake', () => {
+    // Phase 9-2a2 remade dungeon_1 into a 4×4 grid with all rooms connected.
+    // Old dead rooms 3,0/4,0/5,0 were removed; new layout has no orphans.
     const url = new URL('../work/blade-of-lumia.json', import.meta.url);
     const d = JSON.parse(readFileSync(url, 'utf8'));
     const entrances = findEntrances(d, 'dungeon_1');
-    expect(entrances).toEqual(['0,0']);
+    expect(entrances).toEqual(['1,3']);
     const { orphans } = findOrphanRooms(d.layers.dungeon_1.stages, entrances);
-    expect(orphans).toEqual(['3,0', '4,0', '5,0']);
+    expect(orphans).toEqual([]);
   });
 
   test('regression: real FIELD has no dead stages (entrance = startPos, sky island reached via portal)', () => {

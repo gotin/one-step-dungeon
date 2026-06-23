@@ -237,8 +237,9 @@ function loadGame() {
 }
 
 // ── マップ読み込み ────────────────────────────────────────────
-async function loadMapData() {
-	const res = await fetch(MAP_JSON_URL);
+async function loadMapData(overrideUrl) {
+	const url = overrideUrl ?? MAP_JSON_URL;
+	const res = await fetch(url);
 	mapData   = await res.json();
 	buildExitRegistry();
 }
@@ -1418,12 +1419,14 @@ async function init() {
 	const paramStage = params.get('stage');
 	const paramRow   = params.get('row');
 	const paramCol   = params.get('col');
+	const paramMapSrc = params.get('ps_mapSrc') ?? null;
 
 	if (fromEditor) {
 		// エディタプレビューモード：実際のJSONを優先して読み込み（確実に最新データを使う）
+		// ps_mapSrc が指定された場合はそのURLを使う（テスト用フィクスチャ向け）
 		// localStorage は古い可能性があるためフォールバックのみ
 		try {
-			await loadMapData(); // 実際のJSONファイルを読む
+			await loadMapData(paramMapSrc ?? undefined); // 実際のJSONファイルを読む
 		} catch {
 			// JSONファイルが読めない場合はlocalStorageにフォールバック
 			const saved = localStorage.getItem('bladeOfLumiaMapData');
