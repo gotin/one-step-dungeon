@@ -23,6 +23,7 @@ export const TILE = {
 	ICE_LEVIATHAN:'L',  // 氷のリヴァイアサン（2×2 大型ボス・dungeon_5）
 	FOREST_GIANT: 'O',  // 古森の巨人（2×2 大型ボス・dungeon_6）
 	STORM_EAGLE:  'U',  // 嵐の鷲王（2×2 大型ボス・dungeon_7）
+	SWAMP_TOAD:   'I',  // 沼地の大蝦蟇（2×2 大型ボス・cave_1）
 	// NPC（Dungeon World 継承）
 	PRINCESS: 'P',   // 姫
 	// ギミック（Dungeon World 継承）
@@ -115,6 +116,7 @@ export const TILE_META = {
 	[TILE.ICE_LEVIATHAN]:  { label: '氷のリヴァイアサン',   color: '#0a2850', passable: true, icon: 'Ｌ' },
 	[TILE.FOREST_GIANT]:   { label: '古森の巨人',           color: '#1a3c14', passable: true, icon: 'Ｏ' },
 	[TILE.STORM_EAGLE]:    { label: '嵐の鷲王',             color: '#1e2840', passable: true, icon: 'Ｕ' },
+	[TILE.SWAMP_TOAD]:     { label: '沼地の大蝦蟇',         color: '#274a1e', passable: true, icon: 'Ｉ' },
 	// NPC
 	[TILE.PRINCESS]:{ label: '姫',           color: '#aa4488', passable: true,  icon: '♀' },
 	[TILE.NPC_A]:   { label: 'NPC（村人）',  color: '#448844', passable: true,  icon: 'Ａ' },

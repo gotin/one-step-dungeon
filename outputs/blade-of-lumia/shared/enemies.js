@@ -345,6 +345,32 @@ export const ENEMY_META = {
 			{ hpThreshold: 0.5, speedMultiplier: 1.4 }, // HP50%以下で加速
 		],
 	},
+	// ── 沼地の大蝦蟇（Phase 9-2c）：2×2 大型ボス・cave_1（沼地の洞窟）────
+	// 沼地の主＝膨れ上がった毒蝦蟇。長い舌の打撃と毒沫の投擲で戦う。
+	// 鈍重だが体力が高く、HP半減で跳ねるように加速する。
+	// 8体目の dropsTriforce ボス（cave_1）。これで「大型ボス8＝欠片8」が揃う。
+	// 弱点は炎（ロウソク＝cave_1 入場前に入手済み）。剣でも倒せる。
+	[TILE.SWAMP_TOAD]: {
+		name: '沼地の大蝦蟇',
+		hp: 40, atk: 5, def: 2, exp: 56,
+		speed: ENEMY_SPEED_SLOW,          // 鈍重
+		sprite: 'swampToad',
+		pal:    'swampToad',
+		size:   { w: 2, h: 2 },
+		isBoss: true,
+		dropsTriforce: true,
+		weakness: { type: 'fire', multiplier: 2 },   // 炎で焼かれると弱い両生類
+		hitAndAway: true,
+		attacks: [
+			{ type: 'sword', range: 2.4, cooldown: 900 },   // 舌の打撃（リーチ長）
+			{ type: 'stone', range: 7, cooldown: 2400, projectileSpeed: 1.1 }, // 毒沫
+		],
+		attack: { type: 'sword', range: 2.4, cooldown: 900 },
+		initialModeWeights: { flank: 0.25, direct: 1.4, wander: 0.35, strafe: 0 },
+		phases: [
+			{ hpThreshold: 0.5, speedMultiplier: 1.5, attackCooldownMultiplier: 0.8 },
+		],
+	},
 };
 
 // 投擲物のスプライト対応表

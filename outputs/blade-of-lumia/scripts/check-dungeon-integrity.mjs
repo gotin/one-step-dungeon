@@ -25,9 +25,9 @@ const MAP_PATH = new URL('../work/blade-of-lumia.json', import.meta.url);
 const d = JSON.parse(readFileSync(MAP_PATH, 'utf8'));
 
 // Boss tiles that have dropsTriforce:true (from shared/enemies.js)
-const TRIFORCE_BOSS_TILES = new Set(['A', 'L', 'N', 'J', 'O', 'U', 'G']);
+const TRIFORCE_BOSS_TILES = new Set(['A', 'L', 'N', 'J', 'O', 'U', 'G', 'I']);
 // All boss tiles (isBoss:true) — used to detect "has a boss"
-const ALL_BOSS_TILES      = new Set(['W', 'V', 'X', 'Z', 'A', 'L', 'N', 'J', 'O', 'U', 'G']);
+const ALL_BOSS_TILES      = new Set(['W', 'V', 'X', 'Z', 'A', 'L', 'N', 'J', 'O', 'U', 'G', 'I']);
 
 // Item unlock order: dungeonLayer → items available when the player enters
 // (i.e. items won from the PREVIOUS dungeon and earlier)
