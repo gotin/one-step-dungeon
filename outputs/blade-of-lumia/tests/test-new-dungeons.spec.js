@@ -44,25 +44,27 @@ test.describe('Blade of Lumia – 新規ダンジョン接続', () => {
     expect(errors).toHaveLength(0);
   });
 
-  test('dungeon_3 エントリ(0,0)右端からボス部屋(1,0)へ遷移できる', async ({ page }) => {
+  test('dungeon_3 エントリ(1,3)上端から弓入手部屋(1,2)へ遷移できる', async ({ page }) => {
     const errors = [];
     page.on('pageerror', e => errors.push(e.message));
 
-    // dungeon_3 entry(0,0): row=4, col=9（右端開口の手前）からスポーン
-    const url = `${GAME}?fromEditor=1&layer=dungeon_3&stage=0%2C0&row=4&col=9`;
+    // Phase 9-2d で dungeon_3 を「水の迷宮」(18部屋)へ再設計。エントリは 1,3、
+    // 上端開口(row0 col5,6)から弓矢入手部屋 1,2 へ繋がる（臨界経路の1段目）。
+    // 1,3 row1 col5 付近からスポーンし、上へ進んで遷移を確認する。
+    const url = `${GAME}?fromEditor=1&layer=dungeon_3&stage=1%2C3&row=1&col=5`;
     await page.goto(url);
     await waitForBoard(page);
 
-    await expect(page.locator('#hud-stage-label')).toContainText('0,0');
+    await expect(page.locator('#hud-stage-label')).toContainText('1,3');
 
-    // 右端まで繰り返し right を押して遷移を待つ
+    // 上端まで繰り返し up を押して遷移を待つ
     for (let i = 0; i < 8; i++) {
-      await page.evaluate(() => { window.__game.movePlayer('right'); window.__game.step(2); });
+      await page.evaluate(() => { window.__game.movePlayer('up'); window.__game.step(2); });
     }
 
     // 遷移は setTimeout(100ms) で非同期なので waitForFunction で待つ
     await page.waitForFunction(
-      () => window.__game.getState().stageKey === '1,0',
+      () => window.__game.getState().stageKey === '1,2',
       null, { timeout: 3000 }
     );
     expect(errors).toHaveLength(0);

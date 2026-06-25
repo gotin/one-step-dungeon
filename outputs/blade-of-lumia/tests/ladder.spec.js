@@ -1,12 +1,13 @@
 // Phase 4-1: はしご（自動わたり）のスモークテスト
 //
-// dungeon_3 0,0 の最下段にはしごパズルを設置済み：
-//   row8 = "#B..x...x.B#"
-//   col1 = はしごの宝箱 / col4,col8 = 単セルの穴(PIT) / col10 = 報酬宝箱
-// はしご無しでは穴で止まり、はしご所持で両隣が地上の穴を1セルだけ渡れる。
-//
-// 「進入軸で向きが決まる」テストだけは孤立水を要するため、ゲームマップ編集に
-// 影響されないフィクスチャ test_mechanics/ladder_isolated（(3,2)=孤立水）を使う。
+// ⚠️ ギミックテストはライブマップ（work/blade-of-lumia.json）を参照しない。
+// dungeon_3 は Phase 9-2d で「水の迷宮」へ再設計され、旧はしごパズル（0,0/1,0）は
+// 撤去された（はしご＝D5報酬なので D3 に置くとソフトロック違反）。そのため
+// 旧 0,0/1,0 のジオメトリは tests/fixtures/test-stages.json の
+//   test_mechanics/ladder_pit    … 旧 0,0（PIT・単セル穴・横橋／縦連続水・はしご宝箱）
+//   test_mechanics/ladder_water2 … 旧 1,0（2連続水＝橋脚なしで渡れない不変条件）
+//   test_mechanics/ladder_isolated … (3,2) 孤立水（進入軸で向きが決まる回帰）
+// として複製・固定してある。ライブ dungeon_3 を編集してもこのテストは壊れない。
 import { test, expect } from '@playwright/test';
 import { waitForBoard } from './helpers.js';
 
@@ -14,7 +15,7 @@ const GAME = '/blade-of-lumia/game/';
 
 const FIXTURE_SRC = '../tests/fixtures/test-stages.json';
 
-function previewUrl({ stage = '0,0', layer = 'dungeon_3', row, col, ladder, mapSrc }) {
+function previewUrl({ stage = 'ladder_pit', layer = 'test_mechanics', row, col, ladder, mapSrc = FIXTURE_SRC }) {
 	const p = new URLSearchParams({
 		fromEditor: '1', layer, stage,
 		row: String(row), col: String(col),
@@ -68,9 +69,9 @@ test.describe('Blade of Lumia – はしご', () => {
 	});
 
 	test('はしご所持でも2連続の水は渡れない（橋脚が無い）', async ({ page }) => {
-		// dungeon_3 ボス部屋 1,0：row2 = "#..~~~~~~..#"（col3-8 が連続した水）。
+		// fixture ladder_water2（旧 dungeon_3 1,0）：row2 = "#..~~~~~~..#"（col3-8 が連続した水）。
 		// col2 から右へ進んでも、連続水は両隣が地上にならないため渡れない。
-		await page.goto(previewUrl({ stage: '1,0', row: 2, col: 2, ladder: true }));
+		await page.goto(previewUrl({ stage: 'ladder_water2', row: 2, col: 2, ladder: true }));
 		await waitForBoard(page);
 		await walk(page, 'right', 10);
 		const st = await page.evaluate(() => window.__game.getState());
@@ -200,7 +201,7 @@ test.describe('Blade of Lumia – はしご', () => {
 
 	// ── Phase 4-1c: 進入軸の通行判定 ──────────────────────────────
 	test('縦連続の水は縦方向には渡れない（col4 を下に進んでも止まる）', async ({ page }) => {
-		// dungeon_3 0,0 の col4 は row2〜7 が水で縦に連続している（橋 v 含む）。
+		// fixture ladder_pit（旧 dungeon_3 0,0）の col4 は row2〜7 が水で縦に連続している（橋 v 含む）。
 		// 各セルは左右(col3,col5)が陸なので「横橋」としては成立するが、縦移動では
 		// 縦橋（上下が陸）でないため進入できない＝縦にスルスル渡れてはいけない。
 		await page.goto(previewUrl({ row: 1, col: 4, ladder: true }));

@@ -68,15 +68,24 @@ function tileAt(stage, r, c) {
 function lockedExitsInRoom(stage, lockedTileSet) {
   const ROWS = stage.rows || 10;
   const COLS = stage.cols || 12;
-  // Hard-blocked: walls + locked tiles
+  // Hard-blocked: walls + locked tiles.
+  // NOTE: openable in-dungeon gates (T gate, D key-door, color gates) are NOT
+  // hard walls here — the player opens them with in-dungeon means (switch/key),
+  // exactly like connectivity.mjs SOLVABLE_GATES. Treating them as walls would
+  // wrongly flag a legitimate bow/key gate that sits on a room's exit edge (e.g.
+  // D3's [1,1] water moat: shoot Y across the water → T opens → walk out dry).
+  // Real softlocks (a late-item tile blocking the ONLY exit with no gate route)
+  // still error, because the locked tile itself stays blocked.
   const hardBlocked = (r, c) => {
     const t = tileAt(stage, r, c);
     if (t === undefined) return true;
     if (lockedTileSet.has(t)) return true;
-    // standard hard walls (simplified)
-    const HARD = new Set(['#', 'M', 'P', 'T', 'W', 'w', 'p', 'V', 'X', 'Z',
+    // standard hard walls (simplified). 'Y' stays blocked (a switch you shoot,
+    // never stand on); 'T'/'D'/'('/')' are solvable gates → passable for this
+    // exit-reachability flood.
+    const HARD = new Set(['#', 'M', 'P', 'W', 'w', 'p', 'V', 'X', 'Z',
       'A', 'L', 'N', 'J', 'O', 'U', 'G', 'i', '$', 'q', 'f', 'H', 'u',
-      '[', ']', '(', ')', 'D', 'Y']);
+      '[', ']', 'Y']);
     return HARD.has(t);
   };
 

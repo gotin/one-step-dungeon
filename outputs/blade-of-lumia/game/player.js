@@ -188,15 +188,35 @@ export function createPlayer(deps) {
 		setTimeout(() => el.remove(), 550);
 	}
 
+	// 隣接して連なった DOOR タイルを1枚の扉として集める（縦横の連結成分）。
+	// 例：ボス入口の "DD"（横2セル）は1枚の扉＝鍵1個でまとめて開く。城門に縦
+	// "DD" や 2×2 を置けば、そのまま2セル幅の門になる。単独の D は長さ1の扉。
+	function collectDoorRun(stageData, sr, sc) {
+		const run = [];
+		const seen = new Set();
+		const stack = [[sr, sc]];
+		while (stack.length) {
+			const [r, c] = stack.pop();
+			const key = `${r},${c}`;
+			if (seen.has(key)) continue;
+			if (r < 0 || c < 0 || r >= stageData.rows || c >= stageData.cols) continue;
+			if (stageData.tiles[r]?.[c] !== TILE.DOOR) continue;
+			seen.add(key);
+			run.push([r, c]);
+			stack.push([r - 1, c], [r + 1, c], [r, c - 1], [r, c + 1]);
+		}
+		return run;
+	}
+
 	// ── ドアを鍵で開ける ────────────────────────────────────
+	// 連なった DOOR は1枚の扉＝1個の鍵でまとめて開く（隣接2枚に鍵2個は不要）。
 	function tryOpenDoor(nr, nc) {
-		const posKey  = `${nr},${nc}`;
 		const stageData = getStageData();
 		const player  = getPlayer();
 		const tile    = stageData?.tiles[nr]?.[nc];
 		if (tile !== TILE.DOOR) return false;
 		const ss = getSS(getCurrentLayer(), getStageKey());
-		if (ss.openedDoors?.has(posKey)) return true;
+		if (ss.openedDoors?.has(`${nr},${nc}`)) return true;
 
 		if (player.keys <= 0) {
 			pulse('🗝 鍵がない！', 1500);
@@ -204,9 +224,12 @@ export function createPlayer(deps) {
 		}
 		player.keys--;
 		if (!ss.openedDoors) ss.openedDoors = new Set();
-		ss.openedDoors.add(posKey);
+		// この扉を構成する連結セルすべてを開く（鍵は1個だけ消費）。
+		for (const [r, c] of collectDoorRun(stageData, nr, nc)) {
+			ss.openedDoors.add(`${r},${c}`);
+			showDoorOpenEffect(r, c);
+		}
 
-		showDoorOpenEffect(nr, nc);
 		playSound('gateOpen');
 		pulse('🗝 扉を開けた！', 1500);
 		renderBoard(); renderChars(); updateHud(); saveGame();

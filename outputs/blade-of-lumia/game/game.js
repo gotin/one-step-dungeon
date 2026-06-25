@@ -1570,6 +1570,7 @@ export function getStageStateSnapshot() {
 	return {
 		switchStates:  { ...ss.switchStates },
 		openGates:     [...ss.openGates],
+		openedDoors:   [...(ss.openedDoors ?? [])],
 		switchToggles: [...(ss.switchToggles ?? [])],
 		litTorches:    [...(ss.litTorches ?? [])],
 		conditionsMet: [...ss.conditionsMet],

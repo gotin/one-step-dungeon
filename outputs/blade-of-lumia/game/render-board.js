@@ -214,8 +214,24 @@ export function createRenderBoard(deps) {
 		}
 		if (tile === TILE.DOOR) {
 			const isOpen = ss.openedDoors?.has(posKey);
-			const cv = makeSprite(isOpen ? 'doorOpen' : 'door', 'door', false);
-			if (cv) { cv.classList.add('obj-sprite'); cellEl.appendChild(cv); }
+			// 横に連なった扉は「1枚の大きな門」に見せる：左セルは doorL、右セルは
+			// それを左右反転して描く（外枠が両端だけ・中央は合わせ目で繋がる）。
+			// 単独の扉は従来の door スプライト。縦連結は今は単独扱い（横並びのみ対応）。
+			const [r, c] = posKey.split(',').map(Number);
+			const leftIsDoor  = stageData.tiles[r]?.[c - 1] === TILE.DOOR;
+			const rightIsDoor = stageData.tiles[r]?.[c + 1] === TILE.DOOR;
+			let sprName = isOpen ? 'doorOpen' : 'door';
+			let flipX = false;
+			if (rightIsDoor && !leftIsDoor) {            // 連結の左端 → 左半分
+				sprName = isOpen ? 'doorLopen' : 'doorL';
+			} else if (leftIsDoor && !rightIsDoor) {     // 連結の右端 → 左半分を反転
+				sprName = isOpen ? 'doorLopen' : 'doorL';
+				flipX = true;
+			} else if (leftIsDoor && rightIsDoor) {       // 3枚以上の中間 → 縁なしの中身
+				sprName = isOpen ? 'doorLopen' : 'doorL';  // 中間も左半分流用（枠は両端のみ見える）
+			}
+			const cv = makeSprite(sprName, 'door', false, flipX);
+			if (cv) { cv.classList.add('door-sprite'); cellEl.appendChild(cv); }
 			return;
 		}
 		if (tile === TILE.WATER) {

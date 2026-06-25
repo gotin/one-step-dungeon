@@ -169,6 +169,13 @@ canvas.sprite.obj-sprite {
     height: calc(var(--cell) * 0.7);
 }
 
+/* 扉（DOOR）はセル全体を埋める＝横に連なると隙間なく1枚の門に繋がる。
+   中央寄せ(0.7倍)だと小さな扉が2個に見えてしまうため、door は別扱い。 */
+canvas.sprite.door-sprite {
+    width: var(--cell);
+    height: var(--cell);
+}
+
 /* 小アイテム */
 canvas.sprite.item-sprite {
     width: calc(var(--cell) * 0.55);
