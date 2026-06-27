@@ -269,9 +269,27 @@ function enterStage(lk, sk, pRow, pCol) {
 	if (stageKey !== null && (currentLayer !== lk || stageKey !== sk)) {
 		const prevSS = getSS(currentLayer, stageKey);
 		if (prevSS.stonePositions && Object.keys(prevSS.stonePositions).length > 0) {
-			prevSS.stonePositions = {};
-			// 石がスイッチを押していた記録もリセット
-			if (prevSS.stoneSwitches) prevSS.stoneSwitches = new Set();
+			// 全ボタンの上に石が乗っているか確認
+			const prevSD = getStageData(currentLayer, stageKey);
+			const buttons = [];
+			for (let r = 0; r < (prevSD?.rows ?? 0); r++) {
+				for (let c = 0; c < (prevSD?.cols ?? 0); c++) {
+					if (prevSD.tiles[r][c] === TILE.BUTTON) buttons.push(`${r},${c}`);
+				}
+			}
+			const allSolved = buttons.length > 0 && buttons.every(pk => {
+				const [br, bc] = pk.split(',').map(Number);
+				return Object.values(prevSS.stonePositions).some(st => st.r === br && st.c === bc);
+			});
+			if (allSolved) {
+				// パズル解決済み：石位置スナップショットを保存してリセットしない
+				prevSS.solvedStonePositions = { ...prevSS.stonePositions };
+			} else {
+				// 未解決：通常リセット（スナップショットも消す）
+				prevSS.stonePositions = {};
+				prevSS.solvedStonePositions = null;
+				if (prevSS.stoneSwitches) prevSS.stoneSwitches = new Set();
+			}
 		}
 	}
 
@@ -279,6 +297,18 @@ function enterStage(lk, sk, pRow, pCol) {
 	stageKey     = sk;
 	stageData    = getStageData(lk, sk);
 	if (!stageData) { console.error(`Stage not found: ${lk}/${sk}`); return; }
+
+	// パズル解決済みのステージに再入する場合、石位置スナップショットを復元する
+	{
+		const ss = getSS(lk, sk);
+		if (ss.solvedStonePositions && Object.keys(ss.stonePositions).length === 0) {
+			ss.stonePositions = { ...ss.solvedStonePositions };
+			if (!ss.stoneSwitches) ss.stoneSwitches = new Set();
+			for (const [pk, st] of Object.entries(ss.stonePositions)) {
+				if (stageData.tiles[st.r]?.[st.c] === TILE.BUTTON) ss.stoneSwitches.add(`${st.r},${st.c}`);
+			}
+		}
+	}
 
 	// float 座標でプレイヤーを配置（整数セル中央 = そのセルの中心）
 	player.x = pCol ?? 1;
@@ -299,6 +329,9 @@ function enterStage(lk, sk, pRow, pCol) {
 	if (!stageData.isBossRoom) bossRoomLocked = false;
 
 	enemies = buildEnemies(stageData, lk, sk);
+
+	// 解決済み石パズルのゲートを再入時に開く
+	checkStoneOnSwitch();
 
 	renderBoard();
 	updateBoardScale();

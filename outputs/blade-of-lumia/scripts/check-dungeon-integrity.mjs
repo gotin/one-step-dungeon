@@ -36,8 +36,8 @@ const UNLOCKED_AT = {
   dungeon_2: new Set(['boomerang']),
   dungeon_3: new Set(['boomerang', 'bow']),
   dungeon_4: new Set(['boomerang', 'bow', 'candle']),
-  dungeon_5: new Set(['boomerang', 'bow', 'candle', 'ladder']),
-  dungeon_6: new Set(['boomerang', 'bow', 'candle', 'ladder', 'bomb']),
+  dungeon_5: new Set(['boomerang', 'bow', 'candle', 'bomb', 'ladder']),
+  dungeon_6: new Set(['boomerang', 'bow', 'candle', 'bomb']),
   cave_1:    new Set(['boomerang', 'bow', 'candle', 'ladder', 'bomb']),
   dungeon_7: new Set(['boomerang', 'bow', 'candle', 'ladder', 'bomb', 'flute']),
 };

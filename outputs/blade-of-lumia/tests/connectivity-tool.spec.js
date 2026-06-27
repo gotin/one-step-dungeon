@@ -2,6 +2,7 @@ import { test, expect } from '@playwright/test';
 import {
   bfsLayer, isBlocked, isHardBlocked, BLOCKED, HARD_BLOCKED, SOLVABLE_GATES,
   findEntryRoom, firstWalkable, findOrphanRooms, findEntrances,
+  isLadderBridgeCell,
 } from '../scripts/lib/connectivity.mjs';
 import { readFileSync } from 'fs';
 
@@ -236,6 +237,105 @@ test.describe('connectivity tool — detects known defects', () => {
     expect(open.reachedRooms.has('0,2')).toBe(true);
     const blocked = bfsLayer(stages, { stage: '0,0', row: 1, col: 1 }, { blockedRoom: '0,1' });
     expect(blocked.reachedRooms.has('0,2'), 'blocking 0,1 cuts 0,2 off').toBe(false);
+  });
+});
+
+test.describe('connectivity tool — --with-ladder (1-cell bridge)', () => {
+  // Build a 10x12 room with a single-cell water moat at row 3 (col1-10),
+  // with land on row2 and row4 on either side => each column is a valid vertical bridge.
+  function moatRoom(openings = [], extraStamp = []) {
+    const r = room(openings);
+    for (let c = 1; c <= 10; c++) r.tiles[3][c] = '~';  // water moat
+    for (const { r: row, c: col, ch } of extraStamp) r.tiles[row][col] = ch;
+    return r;
+  }
+
+  test('isLadderBridgeCell: 1-cell-wide water (land above and below) = bridge', () => {
+    const t = Array.from({ length: 10 }, (_, r) =>
+      Array.from({ length: 12 }, (_, c) => (r === 0 || r === 9 || c === 0 || c === 11) ? '#' : '.'));
+    t[3][5] = '~';  // single water cell, floor above (2,5) and below (4,5)
+    expect(isLadderBridgeCell(t, 10, 12, 3, 5)).toBe(true);
+  });
+
+  test('isLadderBridgeCell: 2-cell-wide water = NOT a bridge (far neighbor is also water)', () => {
+    const t = Array.from({ length: 10 }, (_, r) =>
+      Array.from({ length: 12 }, (_, c) => (r === 0 || r === 9 || c === 0 || c === 11) ? '#' : '.'));
+    t[3][5] = '~'; t[4][5] = '~';  // two consecutive water cells vertically
+    // cell (3,5): above=(2,5)=floor OK, below=(4,5)=water NOT a bank => no vertical bridge
+    // cell (3,5): left=(3,4)=floor OK, right=(3,6)=floor OK => horizontal bridge IS valid
+    // But the moat is vertical movement; for the test, set horizontal neighbors to water too:
+    t[3][4] = '~'; t[3][6] = '~';
+    expect(isLadderBridgeCell(t, 10, 12, 3, 5)).toBe(false);  // neither axis bridgeable
+  });
+
+  test('--with-ladder: boss room unreachable without ladder, reachable with (3-room chain)', () => {
+    // Chain: entry[0,2] → moat[0,1] → boss[0,0].
+    // BFS enters moat room from below (arrives at row9), must cross row3 moat to reach row0 → boss.
+    // Without ladder: row3 moat blocks upward walk → boss[0,0] unreachable.
+    // With ladder: 1-cell vertical bridge → boss reachable.
+    const entry    = room([{ side: 'top', idx: 5 }]);   // top opening → moat[0,1]
+    const moatRoom_ = moatRoom([{ side: 'top', idx: 5 }, { side: 'bottom', idx: 5 }]); // both openings
+    const bossRoom  = room([{ side: 'bottom', idx: 5 }]); // bottom opening ← moat
+    const stages = {
+      '0,0': { ...bossRoom, isBossRoom: true },
+      '0,1': moatRoom_,
+      '0,2': { ...entry, mapEnters: { '1,1': { id: 'e', destId: 'field' } } },
+    };
+    // Without ladder: moat at row3 of [0,1] blocks walk from row9→row0 → boss[0,0] unreachable
+    const noLadder = bfsLayer(stages, { stage: '0,2', row: 8, col: 6 });
+    expect(noLadder.reachedRooms.has('0,0'), 'no ladder: boss unreachable').toBe(false);
+    // With ladder: row3 is a 1-cell vertical bridge (row2 and row4 both land) → boss reachable
+    const withLadder = bfsLayer(stages, { stage: '0,2', row: 8, col: 6 }, { withLadder: true });
+    expect(withLadder.reachedRooms.has('0,0'), 'with ladder: boss reachable').toBe(true);
+  });
+
+  test('--with-ladder: 2x2 water block has no bridge (neither axis has land on both sides)', () => {
+    // A 2×2 block of water: no cell has land on BOTH sides along either axis.
+    // This is structurally impassable even with a ladder.
+    const r = room([{ side: 'bottom', idx: 5 }, { side: 'top', idx: 5 }]);
+    // Overwrite cells to create 2×2 water at rows 3-4, cols 5-6
+    r.tiles[3][5] = '~'; r.tiles[3][6] = '~';
+    r.tiles[4][5] = '~'; r.tiles[4][6] = '~';
+    // Cell (3,5): above=(2,5)=`.` ok, below=(4,5)=`~` NOT land → no vertical bridge.
+    //            left=(3,4)=`.` ok, right=(3,6)=`~` NOT land → no horizontal bridge.
+    // isLadderBridgeCell should return false for (3,5).
+    expect(isLadderBridgeCell(r.tiles, r.rows, r.cols, 3, 5)).toBe(false);
+    expect(isLadderBridgeCell(r.tiles, r.rows, r.cols, 3, 6)).toBe(false);
+    expect(isLadderBridgeCell(r.tiles, r.rows, r.cols, 4, 5)).toBe(false);
+    expect(isLadderBridgeCell(r.tiles, r.rows, r.cols, 4, 6)).toBe(false);
+  });
+
+  test('ladder-bridge orphan analysis: moat-gated room is NOT orphan (ladder always obtainable)', () => {
+    // A room behind a 1-cell water moat is NOT an orphan — the ladder is always in the dungeon.
+    const entrance = room([{ side: 'bottom', idx: 5 }]);
+    const behind = moatRoom([{ side: 'top', idx: 5 }]);
+    const stages = {
+      '0,0': { ...entrance, mapEnters: { '1,1': { id: 'e', destId: 'field' } } },
+      '0,1': behind,
+    };
+    const { orphans } = findOrphanRooms(stages, ['0,0']);
+    expect(orphans, '0,1 behind moat is not an orphan').not.toContain('0,1');
+  });
+
+  test('regression: real dungeon_5 — boss unreachable without ladder, reachable with', () => {
+    const url = new URL('../work/blade-of-lumia.json', import.meta.url);
+    const d = JSON.parse(readFileSync(url, 'utf8'));
+    const stages = d.layers.dungeon_5.stages;
+    const entrances = findEntrances(d, 'dungeon_5');
+    expect(entrances).toEqual(['1,3']);
+
+    // Without ladder: boss 0,0 unreachable (water moat blocks)
+    const noLadder = bfsLayer(stages, { stage: '1,3', ...firstWalkable(stages['1,3']) });
+    expect(noLadder.reachedRooms.has('0,0'), 'no ladder: boss unreachable').toBe(false);
+
+    // With ladder: all rooms reachable
+    const withLadder = bfsLayer(stages, { stage: '1,3', ...firstWalkable(stages['1,3']) }, { withLadder: true });
+    expect(withLadder.reachedRooms.has('0,0'), 'with ladder: boss reachable').toBe(true);
+    expect(withLadder.reachedRooms.size, 'all 20 rooms reachable with ladder').toBe(20);
+
+    // No orphans (ladder bridges count as passable)
+    const { orphans } = findOrphanRooms(stages, entrances);
+    expect(orphans).toEqual([]);
   });
 });
 

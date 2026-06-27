@@ -4,16 +4,20 @@
 // tilePassable — so it catches the real "edge openings don't line up" bug
 // (dead edges) and orphan rooms, not just graph adjacency.
 //
-// Usage: node scripts/check-dungeon-connectivity.mjs dungeon_2 [--block-room=1,1]
+// Usage: node scripts/check-dungeon-connectivity.mjs dungeon_2 [--block-room=1,1] [--with-ladder]
 //   Reports: reachable rooms from entry, dead edges (arrival walled / no stage),
 //   orphan rooms, boss-room single-entry check, and (with --block-room) whether
 //   blocking the gate room cuts off the boss (critical-path one-way check).
+//   --with-ladder: treat 1-cell-wide WATER/PIT bridge cells as walkable, to verify
+//   ladder-crossing gates (D5-style). Without the flag, water/pit block the walk so
+//   "boss unreachable" confirms the gate holds.
 import { readFileSync } from 'fs';
 import {
   bfsLayer, checkGridAdjacency, firstWalkable, findEntrances, findOrphanRooms,
 } from './lib/connectivity.mjs';
 
 const layerName = process.argv[2] || 'dungeon_2';
+const withLadder = process.argv.includes('--with-ladder');
 const d = JSON.parse(readFileSync(new URL('../work/blade-of-lumia.json', import.meta.url), 'utf8'));
 const layer = d.layers[layerName];
 if (!layer) { console.error(`layer not found: ${layerName}`); process.exit(1); }
@@ -32,10 +36,11 @@ if (entrances.length === 0) {
 
 // Pure-walk reachability from each entrance (gates CLOSED) — informational; the
 // union shows what's reachable on foot before opening anything.
+if (withLadder) console.log('  (--with-ladder: 1-cell-wide water/pit bridges are walkable)');
 const reachedRooms = new Set();
 const deadEdges = [];
 for (const e of entrances) {
-  const r = bfsLayer(stages, { stage: e, ...firstWalkable(stages[e]) });
+  const r = bfsLayer(stages, { stage: e, ...firstWalkable(stages[e]) }, { withLadder });
   for (const k of r.reachedRooms) reachedRooms.add(k);
   deadEdges.push(...r.deadEdges);
 }
@@ -92,7 +97,7 @@ if (gateArg && bossRoom) {
   const reached = new Set();
   for (const e of entrances) {
     const { reachedRooms: r2 } = bfsLayer(stages, { stage: e, ...firstWalkable(stages[e]) },
-                                          { blockedRoom: blocked });
+                                          { blockedRoom: blocked, withLadder });
     for (const k of r2) reached.add(k);
   }
   const cut = !reached.has(bossRoom);

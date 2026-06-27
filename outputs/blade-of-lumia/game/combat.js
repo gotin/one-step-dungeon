@@ -153,6 +153,11 @@ export function createCombat(deps) {
 	function dealDamageToEnemy(e, dmg, atkType) {
 		if (e.hp <= 0) return;
 		const meta = ENEMY_META[e.type];
+		// meleeOnly: only sword and fire damage goes through; everything else is nullified.
+		if (meta?.meleeOnly && atkType && atkType !== 'sword' && atkType !== 'fire') {
+			showDmgPopupFloat(e.x, e.y, 0, true, false);
+			return;
+		}
 		const weakness = meta?.weakness;
 		const isWeak = !!(atkType && weakness && weakness.type === atkType);
 		const effective = isWeak ? Math.round(dmg * (weakness.multiplier ?? 2)) : dmg;

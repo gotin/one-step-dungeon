@@ -31,6 +31,11 @@ import { NPC_SPRITE_MAP } from '../../shared/npcs.js';
 // BLOCKED = HARD_BLOCKED ∪ SOLVABLE_GATES is what pure-walk reachability uses.
 // Mirrors game/passable.js tilePassable (which returns false for SIGN and NPC
 // tiles even though TILE_META marks some passable:true — derive from behavior).
+
+// Tiles that are passable WITH a ladder (water/pit = 1-cell bridge only).
+// Mirrors game/passable.js LADDER_OVER.
+export const LADDER_OVER = new Set([TILE.WATER, TILE.PIT]);
+
 export const HARD_BLOCKED = new Set([
   TILE.WALL,            // '#'
   TILE.WATER,           // '~'
@@ -78,6 +83,31 @@ export function isHardBlocked(ch) {
   return HARD_BLOCKED.has(ch);
 }
 
+/**
+ * Mirrors game/passable.js isLadderBridge: a WATER/PIT cell is crossable with a
+ * ladder only if the cells on BOTH sides along one axis are non-water/pit floor.
+ * (2-wide water blocks crossing — the far side's neighbor is also water.)
+ *
+ * @param {string[][]} tiles  the stage tile grid
+ * @param {number} rows
+ * @param {number} cols
+ * @param {number} r
+ * @param {number} c
+ */
+export function isLadderBridgeCell(tiles, rows, cols, r, c) {
+  const bank = (br, bc) => {
+    if (br < 0 || br >= rows || bc < 0 || bc >= cols) return false;
+    const t = tiles[br]?.[bc];
+    if (t === undefined || t === ' ') return true;   // empty floor
+    return !HARD_BLOCKED.has(t) && !SOLVABLE_GATES.has(t) && !LADDER_OVER.has(t);
+  };
+  // vertical bridge: above and below are both land
+  if (bank(r - 1, c) && bank(r + 1, c)) return true;
+  // horizontal bridge: left and right are both land
+  if (bank(r, c - 1) && bank(r, c + 1)) return true;
+  return false;
+}
+
 const sk = (sx, sy) => `${sx},${sy}`;
 const parse = (key) => key.split(',').map(Number);
 
@@ -88,7 +118,9 @@ const parse = (key) => key.split(',').map(Number);
  *
  * @param {object} stages  layer.stages map ("sx,sy" -> {rows,cols,tiles,...})
  * @param {{stage:string,row:number,col:number}} start
- * @param {{blockedRoom?:string}} [opts]
+ * @param {{blockedRoom?:string, withLadder?:boolean}} [opts]
+ *   withLadder: treat 1-cell-wide WATER/PIT bridge cells as walkable (mirrors
+ *   having the ladder item). Used to verify D5-style "ladder crossing" gates.
  * @returns {{
  *   reachedRooms:Set<string>, reachedCells:Set<string>,
  *   deadEdges:Array<object>, entrances:Set<string>
@@ -97,7 +129,7 @@ const parse = (key) => key.split(',').map(Number);
  *   missing stage → the engine would clamp/stick the player ("隣に行けない/めり込む").
  */
 export function bfsLayer(stages, start, opts = {}) {
-  const { blockedRoom = null } = opts;
+  const { blockedRoom = null, withLadder = false } = opts;
   const reachedRooms = new Set();
   const reachedCells = new Set();
   const entrances = new Set();
@@ -111,7 +143,16 @@ export function bfsLayer(stages, start, opts = {}) {
     const s = stages[k];
     if (!s) return false;
     if (r < 0 || c < 0 || r >= s.rows || c >= s.cols) return false;
-    if (isBlocked(s.tiles[r]?.[c])) return false;
+    const ch = s.tiles[r]?.[c];
+    if (isBlocked(ch)) {
+      // With ladder: a 1-cell-wide WATER/PIT bridge is passable.
+      if (withLadder && LADDER_OVER.has(ch) &&
+          isLadderBridgeCell(s.tiles, s.rows, s.cols, r, c)) {
+        // falls through to enqueue
+      } else {
+        return false;
+      }
+    }
     const ck = cellKey(k, r, c);
     if (reachedCells.has(ck)) return true; // already walkable & queued
     reachedCells.add(ck);
@@ -140,6 +181,13 @@ export function bfsLayer(stages, start, opts = {}) {
     }
     const arrival = dest.tiles[r]?.[c];
     if (isHardBlocked(arrival)) {
+      // With ladder: a 1-cell-wide WATER/PIT bridge at the border is not a dead
+      // edge — it's a legitimate ladder crossing (enq will handle passability).
+      if (withLadder && LADDER_OVER.has(arrival) &&
+          isLadderBridgeCell(dest.tiles, dest.rows, dest.cols, r, c)) {
+        enq(toK, r, c);
+        return;
+      }
       deadEdges.push({ from: fromK, dir, to: toK, at: `${r},${c}`,
                        reason: 'arrival-wall', tile: arrival });
       return;
@@ -254,7 +302,16 @@ export function findOrphanRooms(stages, entrances) {
       if (e.id) idRoom[e.id] = k;
 
   // Walkable-or-solvable-gate cell? (gates count as open for orphan analysis)
-  const passOpen = (ch) => !isHardBlocked(ch); // hard walls only block
+  // Ladder-bridge WATER/PIT cells (1-cell-wide with land on both sides along one
+  // axis) are also treated as passable — the ladder item is always reachable inside
+  // the dungeon, so these are "soft gates" equivalent to key-doors for the purpose
+  // of orphan analysis. Multi-cell water/pit remains hard-blocked.
+  const passOpenCell = (s, r, c) => {
+    const ch = s.tiles[r]?.[c];
+    if (!isHardBlocked(ch)) return true;
+    if (LADDER_OVER.has(ch) && isLadderBridgeCell(s.tiles, s.rows, s.cols, r, c)) return true;
+    return false;
+  };
 
   const adj = {};
   for (const k of Object.keys(stages)) adj[k] = new Set();
@@ -279,7 +336,7 @@ export function findOrphanRooms(stages, entrances) {
       const a = edgeCells(s, side), b = edgeCells(ns, opp[side]);
       for (let i = 0; i < a.length; i++) {
         const [r, c] = a[i], [nr, nc] = b[i];
-        if (passOpen(s.tiles[r]?.[c]) && passOpen(ns.tiles[nr]?.[nc])) {
+        if (passOpenCell(s, r, c) && passOpenCell(ns, nr, nc)) {
           adj[k].add(nk); adj[nk].add(k);
         }
       }

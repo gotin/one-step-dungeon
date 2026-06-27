@@ -238,6 +238,21 @@ export function createProjectile(deps) {
 			for (const e of [...enemies]) {
 				// 占有範囲（AABB）ベース。1×1 敵では従来の 0.6 箱と一致する。
 				if (enemyPointHit(e, proj.x, proj.y, 0.6)) {
+					const eMeta = ENEMY_META[e.type];
+					// reflectsProjectiles: プレイヤーの投擲物をそのまま打ち返す。
+					// 盾 reflect（phase 7-2）と同形だが owner の向きが逆（enemy→player）。
+					if (eMeta?.reflectsProjectiles) {
+						playSound('shieldBlock');
+						showShieldBlockEffect(proj.x, proj.y);
+						proj.owner = 'enemy';
+						proj.ownerId = e.id;
+						proj.dx = -proj.dx;
+						proj.dy = -proj.dy;
+						proj._hitIds = new Set([e.id]); // 打ち返し後の即再ヒット防止
+						proj.x += proj.dx * 0.5;
+						proj.y += proj.dy * 0.5;
+						return; // 消さずに敵の投擲物として飛ばし続ける
+					}
 					// 貫通する投擲物（満タン剣ビーム等）は同じ敵に二重ヒットしない
 					if (proj.piercing) {
 						if (!proj._hitIds) proj._hitIds = new Set();

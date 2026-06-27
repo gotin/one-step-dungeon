@@ -14,8 +14,9 @@
 ## 📍 現在地（常に最新に保つ）
 
 - **進行中フェーズ：** **Phase 9（進行設計＆ダンジョン作り込み）— ゲームの背骨を作る ★★★最高**
-- **進行中タスク：** **Phase 9-2f（D5「氷の廃墟」）🧠 Opus 設計確定（2026-06-25・コード/JSON 変更なし）。** 9-2pre ✅／9-2a ✅／9-2b（D2 砂漠）✅／9-2a2（D1 リメイク）✅／9-2c（沼地ボス部品）✅／D1・D2・D3・D4 JSON 流し込み ✅／9-2e（D4 炎）✅。**次は 9-2f の流し込み＋新規コード実装（⚡ Sonnet・チェッカー拡張＋ボス反射ギミック）。続けて D6・D8・D7 を 1つずつ 🧠 Opus 設計。D3/D4 は 9-2y の Opus 3段階レビュー待ち。並行して 9-3。**
-- **❄️ D5 設計の核（2026-06-25・9-2f）：** dungeon_5「氷の廃墟」＝**20部屋（5×4 フル）**・報酬＝**はしご＋欠片⑥＋鉄の盾**・ボス`L`氷のリヴァイアサン（2×2・HP40・弱点 fire×3＝D4ロウソク炎）。**⚠️ 進行順は数字順でなく D4→D6→D5→D8→D7**＝D5 入場には D6 報酬の爆弾が要る（前ダンジョン＝(A) OK）。**はしご必須化＝"2つの保証"**：① `[1,1]` に横一文字水堀 `~`(row3)＝はしごで縦の1セル橋を渡る以外にボス翼へ道なし（`passable.js:87` isLadderBridge）／② **ボス`L` を `meleeOnly`＋`reflectsProjectiles`**（D5 で弓/ブーメラン/ビーム/爆弾を全所持＝対岸から撃てるなら必須化崩壊するので遠隔は反射、剣・炎の近接だけ通す）。臨界経路 `[1,3]ENTRY(爆弾で!壁)→[1,2]はしご入手→[1,1]氷の堀(はしごで縦断)→[1,0]中ボスW＝鍵K→(D扉)[0,0]BOSS L→欠片⑥`。**⚠️ この設計は新規コードを伴う**＝(a) `connectivity.mjs` に "はしご渡り" 拡張（`--with-ladder`・D3/D4 と違い水/穴は HARD_BLOCKED で誤検出するため必須）／(b) `combat.js`+`projectile.js` にボス近接限定＋遠隔反射（既存盾 reflect `projectile.js:269-284` 流用・爆弾は `dealDamageToEnemy` 側で遮断）／(c) 整合性チェッカー `UNLOCKED_AT` の潜在バグ修正（`dungeon_5` に bomb 追加・`dungeon_6` から ladder 除去）。詳細 PLAN.md 9-2f・DECISIONS.md 2026-06-25「Phase 9-2f」。
+- **進行中タスク：** **9-2f（D5）✅（2026-06-27）。** 9-2pre ✅／9-2a ✅／9-2b（D2 砂漠）✅／9-2a2（D1 リメイク）✅／9-2c（沼地ボス部品）✅／D1・D2・D3・D4 JSON 流し込み ✅／9-2e（D4 炎）✅／**9-2f（D5 氷）✅**。**次は D6「森の聖域」（爆弾）を 🧠 Opus 設計。D3/D4 は 9-2y の Opus 3段階レビュー待ち。並行して 9-3。**
+- **✅ D5 完了（2026-06-27・9-2f）：** dungeon_5「氷の廃墟」20部屋流し込み完了・`connectivity.mjs` に `--with-ladder` 拡張・ボス`L` に `meleeOnly`/`reflectsProjectiles` 実装・整合性チェッカー `UNLOCKED_AT` 修正・全187テストグリーン（melee-only-boss 7本・connectivity-tool 7本追加）。
+- **❄️ D5 設計の核（2026-06-25・9-2f）：** dungeon_5「氷の廃墟」＝**20部屋（5×4 フル）**・報酬＝**はしご＋欠片⑥＋鉄の盾**・ボス`L`氷のリヴァイアサン（2×2・HP40・弱点 fire×3＝D4ロウソク炎）。**⚠️ 進行順は数字順でなく D4→D6→D5→D8→D7**＝D5 入場には D6 報酬の爆弾が要る（前ダンジョン＝(A) OK）。**はしご必須化＝"2つの保証"**：① `[1,1]` に横一文字水堀 `~`(row3)＝はしごで縦の1セル橋を渡る以外にボス翼へ道なし（`passable.js:87` isLadderBridge）／② **ボス`L` を `meleeOnly`＋`reflectsProjectiles`**（D5 で弓/ブーメラン/ビーム/爆弾を全所持＝対岸から撃てるなら必須化崩壊するので遠隔は反射、剣・炎の近接だけ通す）。臨界経路 `[1,3]ENTRY(爆弾で!壁)→[1,2]はしご入手→[1,1]氷の堀(はしごで縦断)→[1,0]中ボスW＝鍵K→(D扉)[0,0]BOSS L→欠片⑥`。詳細 PLAN.md 9-2f・DECISIONS.md 2026-06-25「Phase 9-2f」。
 - **✅ D4 完了（2026-06-25・9-2e）：** dungeon_4「炎の神殿」20部屋流し込み完了・チェッカー PASS・candle-gate.spec.js 3本グリーン・全174テストグリーン。D1〜D4 完了。
 - **🔥 D4 設計の核（参考）：** dungeon_4「炎の神殿」＝**20部屋（5×4 フル）**・報酬＝**ロウソク＋欠片④**・ボス`A`炎のサラマンドラ（HP35・弱点 arrow＝D3 の弓で◎・剣可）。**ロウソク必須化＝実コード精査で唯一成立する "ロウソク専用かつ通行を開く" 配線＝`[1,1]` かがり火の間で消灯 `H`×3 を全点灯（`torchesLit`）→ 隠し `>`MAP_ENTER 出現 → ボス翼へワープ**。剣は茂みを切れても `bushBurned` を立てず（combat.js:310）・ブーメラン炎運搬は点いた篝火がある時だけ（projectile.js:333）・矢/ビームは篝火無効＝事前点灯ゼロなら**ロウソク以外では開けられない**。ボス翼 `{[1,0]中ボス+鍵,[0,0]ボス}` は grid 隣接を全て `#` で塞いだ**テレポート専用の島**（D3 の「部屋内迂回」穴①を踏まないための地形保証）。臨界経路 `[1,3]ENTRY→[1,2]ロウソク→[1,1]かがり火→(テレポート)[1,0]中ボスW＝鍵K→(D扉)[0,0]ボスA→欠片④`。詳細 PLAN.md 9-2e・DECISIONS.md 2026-06-25「Phase 9-2e」。
 - **📐 ダンジョン規模は「進むほど漸増」（2026-06-24 ユーザー確定）：** 16固定をやめ **D1=16/D2=16/D3=18/D4=20/D5=20/D6=22/D7=22/D8=24/暗黒の塔=28+**（15〜25 レンジ内で漸増・ラスダンのみ超え）。正方形に縛らず長方形＋袋小路の欠けで端数を作る。PLAN「📐 規模基準」に表で明記。D1/D2 は流し込み済みで据え置き。**暗黒の塔は現状2フロアスタブ＝9-2 終盤で 28室+へ本格拡張が別途必要。**
@@ -44,6 +45,31 @@
 ## セッションログ
 
 <!-- 新しいエントリを上に追加していく（最新が一番上） -->
+
+### 2026-06-27 — Phase 9-2f dungeon_5「氷の廃墟」流し込み完了（⚡ Sonnet・20部屋・チェッカー PASS・melee-only-boss 7本・connectivity-tool 7本追加・全187テストグリーン）
+
+**やったこと：**
+- **`connectivity.mjs` に `--with-ladder` 拡張（PLAN 9-2f・第2タスク）：**
+  - `isLadderBridgeCell(tiles, rows, cols, r, c)` を新設（`passable.js:isLadderBridge` の静的版。上下または左右が両方陸なら1セル水/穴を橋とみなす）。
+  - `bfsLayer()` に `withLadder` オプションを追加（trueのとき `isLadderBridgeCell` が成立する水/穴を通行可として扱う）。`cross()`（辺越え到達チェック）も同様に拡張し、橋セルでの dead edge 誤報を抑止。
+  - `findOrphanRooms()` の `passOpenCell()` を更新し、1セル橋の水/穴を孤立判定でも通行可（ダンジョン内で必ず入手できるはしごは鍵と同格）。
+  - `check-dungeon-connectivity.mjs` に `--with-ladder` フラグを伝播。
+  - 検証：`dungeon_5 --with-ladder` → PASS（20部屋全到達）／フラグ無し → `[1,0][0,0]` unreached（水堀ゲート成立）／`--block-room=1,1` → boss 到達不能。
+- **ボス`L`「近接限定・遠隔反射」実装：**
+  - `shared/enemies.js` の `ICE_LEVIATHAN` に `meleeOnly:true`・`reflectsProjectiles:true` を追加。
+  - `game/combat.js` `dealDamageToEnemy`：`meta.meleeOnly` かつ `atkType ∉ {sword,fire}` なら dmg=0（dmgPopup 0 で「効かない」を示す）。
+  - `game/projectile.js` `checkProjHit`：`reflectsProjectiles` の敵に当たった player 投擲物は `owner='enemy'`・dx/dy 反転・即離して戻す（既存 Phase 7-2 の盾 reflect と同形）。
+- **整合性チェッカー `UNLOCKED_AT` 修正：** `dungeon_5` に `'bomb'` 追加（D6 で入手済みの進行順が正しい）・`dungeon_6` から `'ladder'` 除去（D6 時点では未所持）。
+- **dungeon_5 を20部屋に流し込み：** 5×4フル・入口 `[1,3]`（爆弾壁 `!`）・はしご入手 `[1,2]`・水堀 `[1,1]`（row3 `~` 10列）・中ボス `[1,0]`（`W` killAll→鍵）・ボス `[0,0]`（`L`・D扉・ハートの器チェスト・lore tablet「其の五」）・鉄の盾 `[0,1]`・地図 `[3,2]`・コンパス `[3,1]`・寄道複数。layer メタ（`bossStage:"0,0"` / `triforceId:6` / `name:"氷の廃墟"`）整備。
+- **heart-containers.spec.js 修正：** dungeon_3/4 のボス部屋を実際の `0,0` に合わせて修正（旧テストが `1,0` を指していた）。dungeon_5 も `0,0` を参照。
+- **新規テスト：** `tests/melee-only-boss.spec.js`（7本）・`connectivity-tool.spec.js` に `--with-ladder` テスト（7本）追加。
+
+**学び・気づき：**
+- **`findOrphanRooms()` の `passOpenCell` は孤立判定なので "常にはしご考慮" が正しい設計。** はしごはダンジョン内で必ず入手できる（鍵/ゲートと同格）なので、水/穴を孤立の判定に使うのは誤り。PLAN.md の「デッドエッジ／孤立の判定は常にはしご考慮」が設計意図として正確だった。
+- **遠隔反射の実装は「owner='enemy' に変更して飛ばし続ける」だけ。** 既存の `player→enemy` 向きの reflect（Phase 7-2）と鏡像で、dx/dy 反転 + 少し離す = 全く同じパターン。盾 reflect を先に作っておいたことが D5 実装を軽くした。
+- **`isLadderBridgeCell` は tiles の静的解析のみ。** `passable.js` の `isLadderBank` はゲームエンジン依存（getStageData()）だが、connectivity.mjs は tiles を直接受け取るのでシンプルに移植できた。
+
+**▶ 次やること：** **D6「森の聖域」設計（🧠 Opus）** → 報酬＝爆弾・ボス（未定）・弱点（未定）・22部屋（漸増 D5=20→D6=22）・臨界経路確定 → 設計確定後に ⚡ Sonnet 流し込み。続けて D8（沼地・新設）・D7（笛）。並行して 9-3。
 
 ### 2026-06-25 — Phase 9-2f dungeon_5「氷の廃墟」設計確定（🧠 Opus・20部屋・はしご報酬＋ボス近接限定/遠隔反射・コード/JSON 変更なし）
 

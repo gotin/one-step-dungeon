@@ -66,9 +66,9 @@ test('③: ダンジョン1〜7のボスルームにハートの器の宝箱が�
   const bossRooms = [
     { layer: 'dungeon_1', stage: '0,0' },
     { layer: 'dungeon_2', stage: '0,0' },
-    { layer: 'dungeon_3', stage: '1,0' },
-    { layer: 'dungeon_4', stage: '1,0' },
-    { layer: 'dungeon_5', stage: '1,0' },
+    { layer: 'dungeon_3', stage: '0,0' },
+    { layer: 'dungeon_4', stage: '0,0' },
+    { layer: 'dungeon_5', stage: '0,0' },
     { layer: 'dungeon_6', stage: '1,0' },
     { layer: 'dungeon_7', stage: '1,0' },
   ];

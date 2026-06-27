@@ -210,6 +210,8 @@ export const ENEMY_META = {
 		isBoss: true,
 		dropsTriforce: true,
 		weakness: { type: 'fire', multiplier: 3 },   // ロウソクの炎で氷が溶ける
+		meleeOnly: true,           // 遠隔（arrow/beam/boomerang/bomb）は無効
+		reflectsProjectiles: true, // 投擲物はそのままプレイヤーへ打ち返す
 		hitAndAway: true,
 		attacks: [
 			{ type: 'sword', range: 2.5, cooldown: 1100 },  // 咬みつき（リーチが長い）
