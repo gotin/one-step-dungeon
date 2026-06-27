@@ -400,10 +400,11 @@ export function createUi(deps) {
 			const PASS_W = Math.floor(CELL * 0.4), PASS_H = PAD;
 			const passColor = isCurrent ? '#80c0f0' : (isVisited ? '#3a5060' : '#1a2a38');
 			ctx.fillStyle = passColor;
-			if (stageSet.has(`${sx + 1},${sy}`)) ctx.fillRect(x + CELL, y + (CELL - PASS_W) / 2, PASS_H, PASS_W);
-			if (stageSet.has(`${sx},${sy + 1}`)) ctx.fillRect(x + (CELL - PASS_W) / 2, y + CELL, PASS_W, PASS_H);
-			if (stageSet.has(`${sx - 1},${sy}`)) ctx.fillRect(x - PASS_H, y + (CELL - PASS_W) / 2, PASS_H, PASS_W);
-			if (stageSet.has(`${sx},${sy - 1}`)) ctx.fillRect(x + (CELL - PASS_W) / 2, y - PASS_H, PASS_W, PASS_H);
+			const t = ld.stages[sk].tiles;
+			if (stageSet.has(`${sx + 1},${sy}`) && (t[4][11] !== '#' || t[5][11] !== '#')) ctx.fillRect(x + CELL, y + (CELL - PASS_W) / 2, PASS_H, PASS_W);
+			if (stageSet.has(`${sx},${sy + 1}`) && (t[9][5] !== '#' || t[9][6] !== '#')) ctx.fillRect(x + (CELL - PASS_W) / 2, y + CELL, PASS_W, PASS_H);
+			if (stageSet.has(`${sx - 1},${sy}`) && (t[4][0] !== '#' || t[5][0] !== '#')) ctx.fillRect(x - PASS_H, y + (CELL - PASS_W) / 2, PASS_H, PASS_W);
+			if (stageSet.has(`${sx},${sy - 1}`) && (t[0][5] !== '#' || t[0][6] !== '#')) ctx.fillRect(x + (CELL - PASS_W) / 2, y - PASS_H, PASS_W, PASS_H);
 
 			if (isBoss) {
 				ctx.fillStyle = '#ffffff';

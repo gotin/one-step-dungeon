@@ -1588,7 +1588,7 @@ input.js     161 / passable.js 161 / conditions.js 117 / save.js 87 / main.js 78
 >
 > **🔑鉄則の検算：** D7 は「**剣・全ティアの盾・ブーメラン・弓矢・ロウソク・爆弾・はしご・笛・鍵（D7 入場時点で全所持）**」でクリアできること。**D7 より後の報酬は存在しない**（D7 がアイテム配布の最後＝祭壇直前）＝(A) を自動的に満たす。**SKY `%` を臨界経路にも寄道にも置かない**（翼の羽衣＝祭壇後入手が無いと詰む）。
 
-- [ ] **22部屋レイアウト＋接続グラフを確定**（5列×5行=25 から袋小路3室を欠いて22・辺スクロール接続・`check-dungeon-connectivity.mjs` で論理検証）。**stage 座標は `sx,sy`（sx=列／sy=行）。** D6 と同じ欠き方・同粒度：
+- [x] **22部屋レイアウト＋接続グラフを確定**（5列×5行=25 から袋小路3室を欠いて22・辺スクロール接続・`check-dungeon-connectivity.mjs` で論理検証）。**stage 座標は `sx,sy`（sx=列／sy=行）。** D6 と同じ欠き方・同粒度：
 
   ```
   配置（5列×5行=25 から [4,0]/[0,4]/[4,4] の3室を欠いて22。左上が sx,sy 小）：
@@ -1649,12 +1649,12 @@ input.js     161 / passable.js 161 / conditions.js 117 / save.js 87 / main.js 78
     - 寄道`[0,3][3,4][4,1][4,2]`：ルピー`r`/回復薬`7`（任意・袋小路・詰みなし）
 - [x] **新規ゲームコードは不要であることを確認（D6/D8 と同じ性質・実コード精査済み）：** 笛ワープ（`game.js:1172-1192`・`fluteEffect:warp` 実装済み）＋弓ゲート（D3 既実装 `Y`→`toggleSwitch`→`links`）＋爆弾`!`壁（D6 既実装）＝**新サブシステムゼロ**。ボス`U`（`enemies.js:301-321` 定義・`stormEagle` スプライト・`TRIFORCE_BOSS_TILES`/`UNLOCKED_AT.dungeon_7` 登録済み）＝**ボスコードも不要**。接続チェッカーも `--with-ladder` 等の拡張不要（水/穴は `v`BRIDGE で渡る＝純歩行 BFS で PASS）。→ **流し込みは純 JSON 編集＋テスト座標調整のみ＝⚡ Sonnet 向き。**
 - [x] **欠片是正は不要（D8 との違い）：** ボス`U` は現状スタブ `dungeon_7/1,0 (5,2)` に既配置＝`countTriforces()` に既にカウント済み。リメイクで `0,0` へ再配置するだけ（数は不変）。D8 のような `Q`タイル撤去・新規ボス配置は D7 では不要。
-- [ ] **接続グラフの機械検証（流し込み後）：** `check-dungeon-connectivity.mjs dungeon_7` → PASS（orphan 0・dead edge 0・全22室到達）／`--block-room=1,2` で boss `[0,0]` 到達不能（弓ゲート関門が成立）
-- [ ] **整合性チェッカーを通す（流し込み後）：** `check-dungeon-integrity.mjs dungeon_7` → エラー0（`bossStage:"0,0"`/`triforceId:8`/`name:"空中の遺跡"`／ボス部屋に `U`＋ハート器／地図`m`・コンパス`n`。`UNLOCKED_AT.dungeon_7` は全6道具で既存＝変更不要）
-- [ ] **dungeon_7 の layer メタを整備（流し込み時）：** layer 直下に `bossStage:"0,0"` / `triforceId:8` / `name:"空中の遺跡"` / `bgm:"dungeon"` / `bossBgm:"boss"`。旧 `1,0` の `isBossRoom:true` ボス部屋を `0,0` へ再配置
-- [ ] **テスト整備（流し込み時）：** `heart-containers.spec.js` の `dungeon_7` ボス部屋 `1,0`→`0,0` に修正（`:73`）。lore-tablets は `dungeon_7 / 0,0 / [1,5]` 其の七を参照＝**新ボス部屋 `0,0` に石碑を置けば変更不要**（D6 と同じ・要確認）
-- [ ] **笛ワープ入場の検算（最重要）：** 笛を持たない（D8 未クリア）状態では D7 に入れないこと。フィールド発射元の `fluteEffect:warp` 以外に dungeon_7 への入口（徒歩 MAP_ENTER）を残さない（現状 `field/2,0 (7,9)` の徒歩入口 `field_dungeon7` をどう扱うか＝**笛ワープ専用にするなら徒歩入口を撤去 or 戻り出口専用に変更**＝流し込み時にユーザー確認）。`fromEditor=1` で「笛ワープ→弓ゲート→爆弾!壁→中ボス→鍵→D扉→ボスU 弓/剣撃破→欠片⑧」を実プレイ確認
-- [ ] **(A) ソフトロック検算：** D7 内に SKY `%` なし・D7 より後の報酬を要求しない（D7 が最後のダンジョン）・既得6道具のみで解ける
+- [x] **接続グラフの機械検証（流し込み後）：** ✅ `check-dungeon-connectivity.mjs dungeon_7` → PASS（orphan 0・dead edge 0・全22室到達）／`--block-room=1,2` で boss `[0,0]` 到達不能（弓ゲート関門が成立）
+- [x] **整合性チェッカーを通す（流し込み後）：** ✅ `check-dungeon-integrity.mjs dungeon_7` → エラー0・警告0
+- [x] **dungeon_7 の layer メタを整備（流し込み時）：** ✅ `bossStage:"0,0"` / `triforceId:8` / `name:"空中の遺跡"` / `bgm:"dungeon"` / `bossBgm:"boss"` 設定済み。ボス`U`を `0,0` に配置。
+- [x] **テスト整備（流し込み時）：** ✅ `heart-containers.spec.js:73` の `1,0`→`0,0` 修正。`field-connectivity.spec.js` FOOT_DUNGEONS から dungeon_7 除外（笛ワープ専用）。lore-tablets は `dungeon_7/0,0/[1,5]` に石碑配置済みで変更不要（確認済み）。全187テストグリーン。
+- [x] **笛ワープ入場の検算：** ✅ `field/2,0 (7,9)` の徒歩入口を撤去（ユーザー確認済み）。笛ワープ発射元を `field/3,0` に追加（`fluteEffect:warp→dungeon_7/1,3`）。`field/2,0` の `fluteEffect:reveal`（secret_grotto 用）はそのまま保持。
+- [x] **(A) ソフトロック検算：** ✅ D7 内に SKY `%` なし・D7 は最後のダンジョン（後の報酬なし）・既得6道具のみで解ける
 
 #### 9-2x. ダンジョン整合性チェッカー `check-dungeon-integrity.mjs`　✅ 完了（2026-06-23）
 > **目的：** ダンジョン作り込み時に「後ダンジョンのアイテムがないと詰む部屋」を機械検出する。Opus の設計・Sonnet の流し込みの両工程でチェッカーを通すことで品質基準を統一する。
@@ -1684,7 +1684,7 @@ input.js     161 / passable.js 161 / conditions.js 117 / save.js 87 / main.js 78
   - [ ] dungeon_5「氷の廃墟」（はしご・L）（✅流し込み完了 2026-06-27・9-2f）
   - [ ] dungeon_6「森の聖域」（爆弾・O）（✅流し込み完了 2026-06-27・9-2g）
   - [ ] dungeon_8「沼地の神殿」（笛・I）（✅流し込み完了 2026-06-27・9-2h）
-  - [ ] dungeon_7「空中の遺跡」（笛ワープ入場・新アイテムなし・U）（✅設計確定 2026-06-27・9-2i → ⚡ 流し込み待ち）
+  - [ ] dungeon_7「空中の遺跡」（笛ワープ入場・新アイテムなし・U）（✅流し込み完了 2026-06-27・9-2i）
 
 #### 9-2c. 8体目の大型ボス（沼地の大蝦蟇）を「部品」として新規作成　🧠→⚡　✅ 部品作成のみ完了（2026-06-24）
 > ⚠️ **位置づけの修正（2026-06-24・ユーザー指摘）：** 当初この 9-2c で「cave_1 をボスダンジョン化して沼地ボスを置く」実装をしたが、**これは根本的な誤り**。`cave_1` は**小さな洞窟用に作ったレイヤー**であり、欠片ボスを置く場所ではない。**欠片ダンジョンは `dungeon_1〜8` の8個に統一すべき**（現状 `dungeon_1〜7` ＋ ラスダン `dark_tower` で、`dungeon_8` が欠けている）。→ **cave_1 への配置データは revert（小洞窟のまま維持）し、沼地ボスは新設する dungeon_8 に置く**ことに決定。dungeon_8 の連鎖位置・テーマ・フィールド入口は**ゼロから設計し直す**（9-2{d〜} で実施）。
@@ -1721,7 +1721,7 @@ input.js     161 / passable.js 161 / conditions.js 117 / save.js 87 / main.js 78
 2. `ui.js:393` の判定を `getSS(lk, sk).visited === true` に変更
 
 #### チェックリスト
-- [ ] `ui.js` の通路描画（`renderPauseDungeonMap` 内）を修正：隣ステージの存在確認に加え、**当該部屋の `tiles` で辺の開口を確認**してから通路を描く
+- [x] `ui.js` の通路描画（`renderPauseDungeonMap` 内）を修正：隣ステージの存在確認に加え、**当該部屋の `tiles` で辺の開口を確認**してから通路を描く
 - [ ] ステージ入室時に `getSS(currentLayer, stageKey).visited = true` をセットする（`game.js` の `changeStage`/`initStage` 付近）
 - [ ] `ui.js:393` の訪問判定を `ss.visited === true || isCurrent` に変更
 - [ ] **テスト：** dungeon_1〜4 で実プレイ確認：①接続のない辺に通路が出ない、②入った部屋だけ明るくなる、③まだ入っていない部屋は暗い（コンパスなしでも部屋の存在は薄く見える）

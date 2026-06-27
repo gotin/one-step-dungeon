@@ -70,7 +70,7 @@ test('③: ダンジョン1〜8のボスルームにハートの器の宝箱が�
     { layer: 'dungeon_4', stage: '0,0' },
     { layer: 'dungeon_5', stage: '0,0' },
     { layer: 'dungeon_6', stage: '0,0' },
-    { layer: 'dungeon_7', stage: '1,0' },
+    { layer: 'dungeon_7', stage: '0,0' },
     { layer: 'dungeon_8', stage: '0,0' },
   ];
   const missing = bossRooms.filter(({ layer, stage }) => !hasHeartContainer(layer, stage));

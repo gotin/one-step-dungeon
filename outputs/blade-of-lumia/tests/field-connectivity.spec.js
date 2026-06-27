@@ -85,7 +85,8 @@ test.describe('Blade of Lumia – フィールド接続（全ダンジョン到�
   // gates). dark_tower is intentionally flight-only (endgame) and excluded here.
   const FOOT_DUNGEONS = [
     'dungeon_1', 'dungeon_2', 'dungeon_3', 'dungeon_4',
-    'dungeon_5', 'dungeon_6', 'dungeon_7', 'cave_1',
+    'dungeon_5', 'dungeon_6', 'cave_1',
+    // dungeon_7 is flute-warp only (no walking entrance)
   ];
 
   test('全8ダンジョン入口が開始村から徒歩（ギミック解放込み）で到達可能', () => {
