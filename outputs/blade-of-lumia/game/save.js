@@ -12,6 +12,7 @@
 // 新規ステージ状態エントリを生成する（getSS が未登録キーで使う初期値）。
 export function createStageState() {
 	return {
+		visited:         false,
 		openGates:       new Set(),
 		pickedKeys:      new Set(),
 		defeatedEnemies: new Set(),
@@ -35,6 +36,7 @@ export function serializeStageState(stageState) {
 	const ss = {};
 	for (const [k, v] of Object.entries(stageState)) {
 		ss[k] = {
+			visited:         v.visited ?? false,
 			openGates:       [...v.openGates],
 			pickedKeys:      [...v.pickedKeys],
 			defeatedEnemies: [...v.defeatedEnemies],
@@ -62,6 +64,7 @@ export function deserializeStageState(rawSS) {
 	const stageState = {};
 	for (const [k, v] of Object.entries(rawSS ?? {})) {
 		stageState[k] = {
+			visited:         v.visited ?? false,
 			openGates:       new Set(v.openGates ?? []),
 			pickedKeys:      new Set(v.pickedKeys ?? []),
 			defeatedEnemies: new Set(v.defeatedEnemies ?? []),

@@ -298,6 +298,8 @@ function enterStage(lk, sk, pRow, pCol) {
 	stageData    = getStageData(lk, sk);
 	if (!stageData) { console.error(`Stage not found: ${lk}/${sk}`); return; }
 
+	getSS(lk, sk).visited = true;
+
 	// パズル解決済みのステージに再入する場合、石位置スナップショットを復元する
 	{
 		const ss = getSS(lk, sk);

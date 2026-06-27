@@ -390,7 +390,7 @@ export function createUi(deps) {
 			const y = PAD + (sy - minY) * (CELL + PAD);
 			const isCurrent = (sx === curX && sy === curY);
 			const isBoss    = (sk === bossStageKey && hasCompass);
-			const isVisited = getSS(lk, sk).defeatedEnemies.size > 0 || isCurrent;
+			const isVisited = getSS(lk, sk).visited || isCurrent;
 
 			if (isCurrent)   ctx.fillStyle = '#80c0f0';
 			else if (isBoss) ctx.fillStyle = '#c04040';
