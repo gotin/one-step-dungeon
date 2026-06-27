@@ -15,7 +15,7 @@ import { waitForBoard } from './helpers.js';
 const MAP_PATH = fileURLToPath(new URL('../work/blade-of-lumia.json', import.meta.url));
 const GAME = '/blade-of-lumia/game/';
 
-// 期待する8石碑（読む順 = 物語の順）
+// 期待する9石碑（読む順 = 物語の順）
 const TABLETS = [
 	{ layer: 'dungeon_1', stage: '0,0', key: '1,9', frag: '其の一' },
 	{ layer: 'dungeon_2', stage: '0,0', key: '1,1', frag: '其の二' },
@@ -24,6 +24,7 @@ const TABLETS = [
 	{ layer: 'dungeon_5', stage: '0,0', key: '1,5', frag: '其の五' },
 	{ layer: 'dungeon_6', stage: '0,0', key: '1,5', frag: '其の六' },
 	{ layer: 'dungeon_7', stage: '0,0', key: '1,5', frag: '其の七' },
+	{ layer: 'dungeon_8', stage: '0,0', key: '1,5', frag: '其の八' },
 	{ layer: 'dark_tower', stage: '0,1', key: '1,1', frag: '終章' },
 ];
 
@@ -67,10 +68,10 @@ test.describe('Blade of Lumia – ザーネルの記憶 石碑（Phase 6-2）', 
 		}
 	});
 
-	test('8断片が其の一〜七＋終章まで揃っている', () => {
+	test('9断片が其の一〜八＋終章まで揃っている', () => {
 		const { layers } = loadMap();
 		const frags = TABLETS.map((t) => layers[t.layer].stages[t.stage].signData[t.key].name);
-		for (const expected of ['其の一', '其の二', '其の三', '其の四', '其の五', '其の六', '其の七', '終章']) {
+		for (const expected of ['其の一', '其の二', '其の三', '其の四', '其の五', '其の六', '其の七', '其の八', '終章']) {
 			expect(frags.some((n) => n.includes(expected)), `${expected} の石碑が存在するべき`).toBe(true);
 		}
 	});

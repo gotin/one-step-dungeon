@@ -1,14 +1,13 @@
-// tests/swamp-boss.spec.js – 沼地の大蝦蟇（8体目の大型ボス・Phase 9-2c）
+// tests/swamp-boss.spec.js – 沼地の大蝦蟇（8体目の大型ボス・Phase 9-2c/9-2h）
 //
-// ⚠️ このボスは「部品」として作成済みだが、まだどのマップにも配置していない。
-// 配置先＝新設予定の dungeon_8（9-2{d〜} で設計・配置）。cave_1 は小さな洞窟の
-// ままで、欠片ダンジョンにはしない（位置づけ修正・2026-06-24）。
+// ボスは dungeon_8/0,0 に配置済み（Phase 9-2h・2026-06-27）。
+// cave_1 は小洞窟のまま（欠片ダンジョンにしない）。
 //
-// よってここでは「ボス定義（部品）が正しく揃っているか」だけを検証する：
+// 検証：
 //   ① ENEMY_META に SWAMP_TOAD('I') が dropsTriforce な 2×2 ボスとして定義済み
 //   ② スプライト・パレット・向きエイリアスが揃っている
 //   ③ タイル定義（TILE.SWAMP_TOAD / TILE_META）が存在する
-//   ④ まだライブマップ（dungeon_*/cave_1）には未配置である（誤配置の回帰防止）
+//   ④ 配置は dungeon_8/0,0 のみ（他のレイヤーには誤配置していない）
 
 import { test, expect } from '@playwright/test';
 import { readFileSync } from 'fs';
@@ -47,14 +46,15 @@ test.describe('Phase 9-2c – 沼地の大蝦蟇（部品としての定義）',
     expect(TILE_META[TILE.SWAMP_TOAD]).toBeTruthy();
   });
 
-  test('④ まだライブマップには未配置（dungeon_8 設計まで誤配置しない）', () => {
+  test('④ 配置は dungeon_8/0,0 のみ（他のレイヤーへの誤配置がない）', () => {
     for (const [layerName, layer] of Object.entries(MAP.layers ?? {})) {
       for (const [sk, stage] of Object.entries(layer.stages ?? {})) {
+        if (layerName === 'dungeon_8' && sk === '0,0') continue; // 正規配置
         const flat = (stage.tiles ?? [])
           .map(row => (Array.isArray(row) ? row.join('') : String(row)))
           .join('');
         expect(flat.includes(TILE.SWAMP_TOAD),
-          `${layerName}/${sk} に未配置のはずの 'I' がある`).toBe(false);
+          `${layerName}/${sk} に誤配置の 'I' がある`).toBe(false);
       }
     }
   });

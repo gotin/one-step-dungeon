@@ -1488,7 +1488,7 @@ input.js     161 / passable.js 161 / conditions.js 117 / save.js 87 / main.js 78
 - [x] **(A) ソフトロック検算：** D6 内に `~`/`x` なし・`flutePlayed` 不使用・爆弾入手前に `!`壁なし ✅
 - [x] **アイテム移設（9-2a 表 #2）：** `field/1,1 floorItems["4,6"]` 爆弾撤去・`tile[4][6]='.'`・`field/2,0 shopData["6,7"]` から bomb 撤去 ✅
 
-#### 9-2h. dungeon_8「沼地の神殿」設計確定（D8＝笛報酬・終盤2番目・レイヤー新設／⚠️ 進行順は D4→D6→D5→**D8**→D7）　🧠 Opus 設計確定（2026-06-27・24部屋・新規ゲームコード/接続チェッカー拡張すべて不要・コード/JSON 変更なし）
+#### 9-2h. dungeon_8「沼地の神殿」流し込み完了（D8＝笛報酬・終盤2番目・レイヤー新設／⚠️ 進行順は D4→D6→D5→**D8**→D7）　✅（2026-06-27・23部屋・チェッカー PASS・全187テストグリーン）
 > **役割：** アイテム連鎖の終盤段（**入場に D5 報酬のはしごが要る**＝D7「空」の笛ワープ入場へ橋渡し）。報酬＝**笛＋欠片⑦＋ミラーシールド**。**規模＝24部屋**（漸増カーブ：D6=22 → **D8=24** → ※カーブ表では D7=22 だが D8=24＝沼地が連鎖の最深ダンジョン。5列×5行=25 から袋小路1室 `[4,0]` を欠いて24）。テーマ＝沼地の神殿（床は沼地 `,`/`.`／**毒沼 `~`水・足場 `x`穴・茂み `u`・木 `t`** を地形の主役にする）。ボス＝`I`沼地の大蝦蟇（2×2・**HP40 / atk5 / def2**・`dropsTriforce:true`・`hitAndAway`・弱点 **fire**×2＝ロウソク＝D4報酬の炎で◎・剣でも可）。**`shared/enemies.js:355-375` に定義済み・`TRIFORCE_BOSS_TILES`/`ALL_BOSS_TILES` に `'I'` 登録済み（`check-dungeon-integrity.mjs:28,30`）・スプライト codegen 済み（`sprites-enemies.js:1116-1257`）＝新規ボスコード不要。**
 >
 > **⚠️⚠️ レイヤー新設＋欠片の整合是正がこのダンジョン固有の最重要事項（実データ精査 2026-06-27）：** `dungeon_8` はマップに**存在しない**（layers に無い）＝**ゼロから新設**する。現状 `cave_1` は 9-2c の revert で**小洞窟に戻っており、沼地ボス`I` はマップ上のどこにも置かれていない**（`I` の placement 0件）。現在の欠片総数 `countTriforces()`（`shared/triforce.js:16-31`）＝**ボス`dropsTriforce`×7（G/N/J/A/L/O/U）＋直置き `Q` タイル×2（`field/2,0 [6,10]`・`cave_1/1,0 [8,10]`）＝計9**で、8欠片前提とズレている。→ **D8 流し込みで「ボス`I` を `dungeon_8/0,0` に配置（→ボス8体）＋ `Q` タイル2枚を撤去（→直置き0）」を同時にやって `countTriforces()=8` ちょうどに是正する**（PLAN 9-1 の「Q整理」をここで実施）。
@@ -1507,7 +1507,7 @@ input.js     161 / passable.js 161 / conditions.js 117 / save.js 87 / main.js 78
 >
 > **🔑鉄則の検算：** D8 は「**剣・木の盾／鉄の盾／ミラーシールド・ブーメラン・弓矢・ロウソク・爆弾・はしご・鍵・笛（D8 内で入手）**」だけでクリアできること。**後ダンジョンの報酬は存在しない**（D7 は新アイテムを配らない＝D8 が連鎖の最後の道具配布）＝(A) を自動的に満たす。笛入手前の区間は笛不要で進めること（隠し `>` を `[1,2]` 以前の臨界経路に置かない）。**入場のはしご＝D5 報酬は "前のダンジョン" なので (A) に反しない**（連鎖順 D4→D6→D5→D8）。
 
-- [ ] **24部屋レイアウト＋接続グラフを確定**（5列×5行=25 から袋小路1室 `[4,0]` を欠いて24・辺スクロール接続・`check-dungeon-connectivity.mjs dungeon_8 --with-ladder` で論理検証）。**stage 座標は `sx,sy`（sx=列／sy=行）。** D5/D6 と同粒度：
+- [x] **23部屋レイアウト＋接続グラフを確定**（5列×5行=25 から `[4,0]`・`[0,4]` の2室を欠いて23・辺スクロール接続・`check-dungeon-connectivity.mjs dungeon_8 --with-ladder` → PASS・orphan 0・dead edge 0・全23室到達・`--block-room=1,1` でボス到達不能 ✅ 2026-06-27）。**stage 座標は `sx,sy`（sx=列／sy=行）。** D5/D6 と同粒度：
 
   ```
   配置（5列×5行=25 から [4,0] の1室を欠いて24。左上が sx,sy 小）：
@@ -1562,18 +1562,15 @@ input.js     161 / passable.js 161 / conditions.js 117 / save.js 87 / main.js 78
     - 分岐ハブ`[2,2]`：寄道サブ網の結節点（東2列・下段へ）／枝宝`[0,1][0,2]`：小宝（`[1,1]` の左の袋小路チェーン）
     - 宝`[3,2]`地図`m`・`[3,1]`コンパス`n`（整合性チェッカー必須）／寄道宝`[2,0][1,4][2,4][4,3]`
     - 寄道`[0,3][3,4][4,1][4,2][4,4]`：ルピー`r`/回復薬`7`（任意・袋小路・詰みなし）
-- [ ] **新規ゲームコードは不要であることを確認（D6 と同じ性質）：** D8 の関門は **`conditions.js:96` 実装済みの `flutePlayed`→隠し `>`テレポート**（D4/D6 の `torchesLit` をトリガー差し替え）と **D5 で `connectivity.mjs` に移植済みの `--with-ladder` 水堀渡り** の組合せ＝新サブシステム不要。ボス`I` も定義済み・登録済み・スプライト済み。
-- [ ] **レイヤー新設＋欠片是正（D8 固有・最重要）：** (1) `dungeon_8` を layers に新設（layer メタ `bossStage:"0,0"` / `triforceId:7` / `name:"沼地の神殿"` / `bgm:"dungeon"` / `bossBgm:"boss"`）。(2) ボス`I` を `dungeon_8/0,0` に配置（→ `dropsTriforce` ボス8体）。(3) **直置き `Q` タイル2枚を撤去**（`field/2,0 tiles[6][10]='Q'`→`.`・`cave_1/1,0 tiles[8][10]='Q'`→`.`）＝`countTriforces()`=8 ちょうど（ボスドロップのみ）に是正。(4) `check-dungeon-integrity.mjs` の `UNLOCKED_AT` に `dungeon_8: new Set(['boomerang','bow','candle','bomb','ladder'])` を追加（笛は D8 で入手するので入場時は未所持＝はしごまで）。**⚠️ `cave_1` キーは現状残っているが cave_1 はボスダンジョンではない**ので、整合性チェッカーの cave_1 エラー（bossStage/m/n 無し）は既知＝D8 とは無関係（cave_1 を `all` 対象から外すか別途整理は 9-3）。
-- [ ] **接続グラフの機械検証**（`check-dungeon-connectivity.mjs dungeon_8 --with-ladder` → PASS：orphan 0・dead edge 0・全24室到達／`--block-room=1,1 --with-ladder` で boss `[0,0]` 到達不能＝笛の祭壇関門が成立）。**⚠️ `findEntrances` は「他レイヤーの destId が指す部屋」を入口とみなす**ので、field 側に `destId:"dungeon_8"`（→`[1,3]`着地）の `>`MAP_ENTER を1枚張ること（張らないと「入口なし」で全室 dead と誤検出）
-- [ ] **整合性チェッカーを通す**（`check-dungeon-integrity.mjs dungeon_8` → ❌0 / ⚠️0。`~`毒沼が `[1,3]` の出口を塞ぐが `UNLOCKED_AT.dungeon_8` には `ladder` があるので「未取得で封鎖」エラーにはならない＝WARNING も出ない）
-- [ ] **フィールド入口の新設（ゼロから設計）：** D8 は「はしごで入る沼地」なので、はしご入手後（D5クリア後）に到達できる field 画面に `>`MAP_ENTER（`{id:"field_dungeon8", destId:"dungeon_8"}`）を1枚置く。**⚠️ 現状 field は10画面しかなく沼地エリアが無い**＝既存の沼地寄りの画面（`field/3,1` cave_1 周辺 or `field/2,0`）に仮入口を置くか、9-2 のフィールド拡張で沼地画面を新設してそこに置く（流し込み時に1つ確定）。`secret_grotto/0,0` の `fluteEffect:{type:'warp', destId:'field_secret_back'}` が既存の笛ワープ参照例（`tests/flute.spec.js:6`）
-- [ ] **テスト整備（D8 はテスト拡張が要る＝D6 より重い）：**
-  - `heart-containers.spec.js` の `BOSS_ROOMS` 配列に `{ layer:'dungeon_8', stage:'0,0' }` を追加（現状 dungeon_1〜7 のみ・`tests/heart-containers.spec.js:67-73`）
-  - `lore-tablets.spec.js` の `TABLETS` 配列：現状8石碑は「其の一〜七＋終章(dark_tower)」（`tests/lore-tablets.spec.js:19-28`）。D8 を加えると9石碑になる＝**物語の断片名を「其の八」に整理し直す**必要がある（dark_tower の「終章」を其の八の後ろに繰り下げる or D8=其の八/D7=其の七 のまま終章を9番目にする）。⚠️ これは物語設計に関わるので**流し込み時にユーザー確認 or IDEA.md と突き合わせ**て確定する
-  - 笛の reveal 関門は既存 `tests/flute.spec.js`（4本・`flutePlayed`/warp を実エンジンで固定）がカバー＝**D8 専用の笛テストは不要**（D6 が candle-gate.spec.js を流用したのと同じ）
-- [ ] **必須化の検算：** `check-dungeon-connectivity --block-room=1,1 --with-ladder` → boss 到達不能（笛の祭壇が唯一のボス翼入口）
-- [ ] **(A) ソフトロック検算：** D8 内に後ダンジョン報酬を要求するタイルなし（D7 は新アイテムを配らない＝D8 が最後の道具配布）。入場のはしごは前ダンジョン D5 報酬＝(A) OK。笛入手前に隠し `>`（`flutePlayed` gate）を臨界経路へ置かない
-- [ ] **アイテム移設（9-2a 表 #6）＋欠片是正：** `field/2,0 chestContents["4,3"]` 笛宝箱を撤去して D8 `[1,2]` に移設・対応する `B`タイルも撤去／`Q`タイル2枚撤去（上記）
+- [x] **新規ゲームコードは不要であることを確認（D6 と同じ性質）：** ✅ 確認済み
+- [x] **レイヤー新設＋欠片是正（D8 固有・最重要）：** ✅（2026-06-27）`dungeon_8` 新設（bossStage:"0,0"/triforceId:7/name:"沼地の神殿"）・ボス`I` を `[0,0]` に配置（dropsTriforce ボス8体）・`Q`タイル2枚撤去（field/2,0・cave_1/1,0）・`UNLOCKED_AT.dungeon_8` 追加。
+- [x] **接続グラフの機械検証** ✅ PASS（orphan 0・dead edge 0・全23室到達・`--block-room=1,1` でボス到達不能）
+- [x] **整合性チェッカーを通す** ✅ ❌0 / ⚠️0
+- [x] **フィールド入口の新設：** `field/3,1 [2,4]` に `>`MAP_ENTER（`{id:"field_dungeon8", destId:"dungeon_8"}`）を配置 ✅
+- [x] **テスト整備：** `heart-containers.spec.js` に `dungeon_8/0,0` 追加・`lore-tablets.spec.js` に D8「其の八」追加（9石碑・ユーザー確認済み）・`swamp-boss.spec.js` ④ を「dungeon_8/0,0 のみ配置」に更新 ✅ 全187テストグリーン
+- [x] **必須化の検算：** ✅ `--block-room=1,1` → boss 到達不能
+- [x] **(A) ソフトロック検算：** ✅
+- [x] **アイテム移設（9-2a 表 #6）＋欠片是正：** ✅ `field/2,0 chestContents["4,3"]` 笛宝箱撤去・D8 `[1,2]` に移設・`Q`タイル2枚撤去済み
 
 #### 9-2x. ダンジョン整合性チェッカー `check-dungeon-integrity.mjs`　✅ 完了（2026-06-23）
 > **目的：** ダンジョン作り込み時に「後ダンジョンのアイテムがないと詰む部屋」を機械検出する。Opus の設計・Sonnet の流し込みの両工程でチェッカーを通すことで品質基準を統一する。
