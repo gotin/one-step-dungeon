@@ -190,14 +190,26 @@ test.describe('connectivity tool — detects known defects', () => {
 
   test('regression: real FIELD has no dead stages (entrance = startPos)', () => {
     // The field is a real layer too — lock in that it has zero dead stages from
-    // the player start. Sky island (8,0) and tower (6,0) are flight-only and
-    // added in M2+; they are not yet in the field layer. If a future field edit
-    // strands a screen, this turns red.
+    // the player start. Sea ('~') and mountain ('#'/'M') border stages (M4
+    // additions) are intentionally fully-impassable and will always be
+    // unreachable on foot; exclude them from the orphan check.
+    // If a WALKABLE screen is ever stranded, this turns red.
     const url = new URL('../work/blade-of-lumia.json', import.meta.url);
     const d = JSON.parse(readFileSync(url, 'utf8'));
     const entrances = findEntrances(d, 'field');
     expect(entrances).toEqual([d.startPos.stage]); // startPos drives the field entrance
-    const { orphans } = findOrphanRooms(d.layers.field.stages, entrances);
+
+    // Filter out fully-impassable border stages (every tile is '~', '#', or 'M').
+    const BORDER_TILES = new Set(['~', '#', 'M', '%']);
+    const walkableStages = {};
+    for (const [k, s] of Object.entries(d.layers.field.stages)) {
+      const allImpassable = s.tiles.every(row =>
+        (Array.isArray(row) ? row : row.split('')).every(ch => BORDER_TILES.has(ch))
+      );
+      if (!allImpassable) walkableStages[k] = s;
+    }
+
+    const { orphans } = findOrphanRooms(walkableStages, entrances);
     expect(orphans).toEqual([]);
   });
 
