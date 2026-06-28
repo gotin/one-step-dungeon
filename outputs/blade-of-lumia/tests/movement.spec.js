@@ -55,7 +55,7 @@ test.describe('Blade of Lumia – セーブ / ロード', () => {
         },
         stageState: {},
         currentLayer: 'field',
-        stageKey: '1,0',
+        stageKey: '7,14',
         heroDir: 'down',
       };
       localStorage.setItem(key, JSON.stringify(data));

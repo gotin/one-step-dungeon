@@ -1,7 +1,7 @@
 // Phase 4-2: 笛（フルート）のスモークテスト
 //
 // デモ配置（work/blade-of-lumia.json）：
-//   field 2,0 …… fluteEffect={type:'reveal'}。(5,3) に flutePlayed で gate された
+//   field 9,9 …… fluteEffect={type:'reveal'}。(5,3) に flutePlayed で gate された
 //                  隠しダンジョン入口 '>' （destId='secret_grotto'）。
 //   secret_grotto 0,0 …… fluteEffect={type:'warp', destId:'field_secret_back'}。
 //
@@ -15,7 +15,7 @@ import { waitForBoard } from './helpers.js';
 
 const GAME = '/blade-of-lumia/game/';
 
-function previewUrl({ layer = 'field', stage = '2,0', row, col, flute = true }) {
+function previewUrl({ layer = 'field', stage = '9,9', row, col, flute = true }) {
 	const p = new URLSearchParams({
 		fromEditor: '1', layer, stage,
 		row: String(row), col: String(col),
@@ -55,9 +55,9 @@ test.describe('Blade of Lumia – 笛', () => {
 		// 遷移 setTimeout（100ms）が起きないことを確かめるため少し実時間を待つ
 		await page.waitForTimeout(300);
 		const st = await page.evaluate(() => window.__game.getState());
-		// field 2,0 に留まったまま（secret_grotto に飛んでいない）
+		// field 9,9 に留まったまま（secret_grotto に飛んでいない）
 		expect(st.currentLayer).toBe('field');
-		expect(st.stageKey).toBe('2,0');
+		expect(st.stageKey).toBe('9,9');
 	});
 
 	test('笛を吹く（reveal）と隠し入口が出現し secret_grotto へ入れる', async ({ page }) => {

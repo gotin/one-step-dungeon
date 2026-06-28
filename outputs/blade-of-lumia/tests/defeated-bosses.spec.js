@@ -13,7 +13,7 @@ const GAME = '/blade-of-lumia/game/';
 // field 1,0 の村人タロは (3,5) にいる。(3,4) からスポーンして話しかける。
 function previewUrl({ row = 3, col = 4, triforce = 0 }) {
 	const p = new URLSearchParams({
-		fromEditor: '1', layer: 'field', stage: '1,0',
+		fromEditor: '1', layer: 'field', stage: '7,14',
 		row: String(row), col: String(col),
 	});
 	if (triforce > 0) p.set('ps_triforce', String(triforce));

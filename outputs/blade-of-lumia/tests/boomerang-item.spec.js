@@ -8,7 +8,7 @@
 import { test, expect } from '@playwright/test';
 import { GAME_URL, SAVE_KEY } from './helpers.js';
 
-// field '1,1' に配置されたブーメランパズル：
+// field '6,13' に配置されたブーメランパズル：
 //   (2,7)=f (fence)  (2,8)=K (key)  (2,9)=f (fence)
 // プレイヤーを (2,6) に置いて右向きにブーメランを投げると、
 // fence (passable for projectile) を越えて key K を回収できる。
@@ -45,9 +45,9 @@ async function seedBoomerang(page, stageKey, px, py, extraSave = {}) {
 test.describe('Blade of Lumia – ブーメランでアイテム回収（Phase 4-4）', () => {
 
   test('ブーメランが K（鍵）を通過すると player.keys が 1 増加する', async ({ page }) => {
-    // field '1,1' (2,6) に立って右向きにブーメランを投げる
+    // field '6,13' (2,6) に立って右向きにブーメランを投げる
     // ブーメランは (2,7)=fence を通過し (2,8)=K に到達して回収する
-    await seedBoomerang(page, '1,1', 6, 2);
+    await seedBoomerang(page, '6,13', 6, 2);
 
     const result = await page.evaluate(async () => {
       const before = window.__game.getState().player.keys;
@@ -65,7 +65,7 @@ test.describe('Blade of Lumia – ブーメランでアイテム回収（Phase 4
 
   test('回収済みの鍵はブーメランで再収集されない（pickedKeys ガード）', async ({ page }) => {
     // 同じ鍵を2回投げても keys は 1 のまま
-    await seedBoomerang(page, '1,1', 6, 2);
+    await seedBoomerang(page, '6,13', 6, 2);
 
     const result = await page.evaluate(async () => {
       // 1回目：鍵を回収
@@ -85,9 +85,9 @@ test.describe('Blade of Lumia – ブーメランでアイテム回収（Phase 4
   });
 
   test('ブーメランが r（ルピー）を通過すると player.rupees が増加する', async ({ page }) => {
-    // field '1,1' にはルピー r が (8,6) にある
+    // field '6,13' にはルピー r が (8,6) にある
     // プレイヤーを (8,4) に置いて右向きに投げると r (8,6) に届く
-    await seedBoomerang(page, '1,1', 4, 8);
+    await seedBoomerang(page, '6,13', 4, 8);
 
     const result = await page.evaluate(() => {
       const before = window.__game.getState().player.rupees;

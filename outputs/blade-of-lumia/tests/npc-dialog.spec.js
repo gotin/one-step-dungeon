@@ -13,7 +13,7 @@ const GAME = '/blade-of-lumia/game/';
 // field 1,0 の老賢者は (3,3) にいる。隣 (3,2) からスポーンして話しかける。
 function previewUrl({ row = 3, col = 2, triforce = 0 }) {
 	const p = new URLSearchParams({
-		fromEditor: '1', layer: 'field', stage: '1,0',
+		fromEditor: '1', layer: 'field', stage: '7,14',
 		row: String(row), col: String(col),
 	});
 	if (triforce > 0) p.set('ps_triforce', String(triforce));

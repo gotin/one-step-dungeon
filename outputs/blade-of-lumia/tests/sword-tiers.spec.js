@@ -27,7 +27,7 @@ async function seedWithSword(page, swordTier) {
     },
     stageState: {},
     currentLayer: 'field',
-    stageKey: '1,0',
+    stageKey: '7,14',
     heroDir: 'right',
   });
   await page.addInitScript(({ key, value }) => {
@@ -57,7 +57,7 @@ async function seedNoSword(page) {
     },
     stageState: {},
     currentLayer: 'field',
-    stageKey: '1,0',
+    stageKey: '7,14',
     heroDir: 'right',
   });
   await page.addInitScript(({ key, value }) => {

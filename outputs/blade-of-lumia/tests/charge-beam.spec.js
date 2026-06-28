@@ -30,7 +30,7 @@ async function seedAndStart(page, swordTier = 1) {
     },
     stageState: {},
     currentLayer: 'field',
-    stageKey: '1,0',
+    stageKey: '7,14',
     heroDir: 'right',
   });
   await page.addInitScript(({ key, value }) => {

@@ -188,19 +188,17 @@ test.describe('connectivity tool — detects known defects', () => {
     expect(orphans).toEqual([]);
   });
 
-  test('regression: real FIELD has no dead stages (entrance = startPos, sky island reached via portal)', () => {
+  test('regression: real FIELD has no dead stages (entrance = startPos)', () => {
     // The field is a real layer too — lock in that it has zero dead stages from
-    // the player start. Note 4,0 (sky island) is reachable via the darkTower
-    // portal from 3,0 (flight is only needed for the void INSIDE the island), so
-    // it must NOT be flagged dead. If a future field edit strands a screen, this
-    // turns red.
+    // the player start. Sky island (8,0) and tower (6,0) are flight-only and
+    // added in M2+; they are not yet in the field layer. If a future field edit
+    // strands a screen, this turns red.
     const url = new URL('../work/blade-of-lumia.json', import.meta.url);
     const d = JSON.parse(readFileSync(url, 'utf8'));
     const entrances = findEntrances(d, 'field');
     expect(entrances).toEqual([d.startPos.stage]); // startPos drives the field entrance
-    const { orphans, reachable } = findOrphanRooms(d.layers.field.stages, entrances);
+    const { orphans } = findOrphanRooms(d.layers.field.stages, entrances);
     expect(orphans).toEqual([]);
-    expect(reachable.has('4,0'), 'sky island reachable via darkTower portal').toBe(true);
   });
 
   test('(c) correctly aligned rooms => clean (no dead edges, all reached)', () => {

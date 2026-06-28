@@ -36,7 +36,7 @@ async function seedGame(page, override = {}) {
     },
     stageState: {},
     currentLayer: 'field',
-    stageKey: '1,0',
+    stageKey: '7,14',
     heroDir: 'down',
   });
   await page.addInitScript(({ key, value }) => {
@@ -77,7 +77,7 @@ test('③: ダンジョン1〜8のボスルームにハートの器の宝箱が�
   expect(missing, `ハートの器が不足: ${JSON.stringify(missing)}`).toHaveLength(0);
 });
 
-test('④: 隠し場所（field/3,0 と dungeon_1/3,3）にハートの器がある（データレベル）', () => {
-  expect(hasHeartContainer('field', '3,0'), 'field/3,0 にハートの器がない').toBe(true);
+test('④: 隠し場所（field/7,3 と dungeon_1/3,3）にハートの器がある（データレベル）', () => {
+  expect(hasHeartContainer('field', '7,3'), 'field/7,3 にハートの器がない').toBe(true);
   expect(hasHeartContainer('dungeon_1', '3,3'), 'dungeon_1/3,3 にハートの器がない').toBe(true);
 });

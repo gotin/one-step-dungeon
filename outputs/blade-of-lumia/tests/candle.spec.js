@@ -17,7 +17,7 @@ import { waitForBoard, SAVE_KEY } from './helpers.js';
 
 const GAME = '/blade-of-lumia/game/';
 
-function previewUrl({ layer = 'field', stage = '2,0', row, col, candle = true }) {
+function previewUrl({ layer = 'field', stage = '9,9', row, col, candle = true }) {
 	const p = new URLSearchParams({
 		fromEditor: '1', layer, stage,
 		row: String(row), col: String(col),
@@ -56,7 +56,7 @@ test.describe('Blade of Lumia – ロウソク', () => {
 		await page.waitForTimeout(300);
 		const st = await page.evaluate(() => window.__game.getState());
 		expect(st.currentLayer).toBe('field');
-		expect(st.stageKey).toBe('2,0');
+		expect(st.stageKey).toBe('9,9');
 	});
 
 	test('ロウソクで茂みを燃やすと隠し入口が出現し secret_grotto へ入れる', async ({ page }) => {
@@ -102,7 +102,7 @@ test.describe('Blade of Lumia – ロウソク', () => {
 		await page.waitForTimeout(300);
 		const st = await page.evaluate(() => window.__game.getState());
 		expect(st.currentLayer).toBe('field');
-		expect(st.stageKey).toBe('2,0');
+		expect(st.stageKey).toBe('9,9');
 	});
 
 	test('前方に敵がいるとき炎ダメージが入る', async ({ page }) => {
@@ -146,7 +146,7 @@ test.describe('Blade of Lumia – ロウソク', () => {
 			},
 			stageState: {},
 			currentLayer: 'field',
-			stageKey: '1,0',
+			stageKey: '7,14',
 			heroDir: 'right',
 		});
 		await page.addInitScript(({ key, value }) => {

@@ -10,7 +10,7 @@ import { waitForBoard, GAME_URL, SAVE_KEY } from './helpers.js';
 // なので queueInput で押下状態にし、実ループ（setInterval）を waitForTimeout で
 // 回して観測する（movePlayer を手動で1回ずつ呼ぶのは実機を再現していない）。
 //
-// 利用マップ：field "0,1" の (r=2, c=7) に石。左に床が続く。
+// 利用マップ：field "12,2" の (r=2, c=7) に石。左に床が続く。
 // プレイヤーを石の左隣 (x=6,y=2) に置き、右(→)を押しっぱなしにする。
 
 test.describe('Blade of Lumia – 石押し', () => {
@@ -25,7 +25,7 @@ test.describe('Blade of Lumia – 石押し', () => {
         },
         stageState: {},
         currentLayer: 'field',
-        stageKey: '0,1',
+        stageKey: '12,2',
         heroDir: 'right',
       };
       localStorage.setItem(key, JSON.stringify(data));

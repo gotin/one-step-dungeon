@@ -30,7 +30,7 @@ async function seedAndStart(page, subItems, activeSubItem) {
     },
     stageState: {},
     currentLayer: 'field',
-    stageKey: '1,0',
+    stageKey: '7,14',
     heroDir: 'right',
   });
 
@@ -106,7 +106,7 @@ test.describe('Blade of Lumia – 投擲物（弓矢・ブーメラン）', () =
       },
       stageState: {},
       currentLayer: 'field',
-      stageKey: '1,0',
+      stageKey: '7,14',
       heroDir: 'right',
     });
 

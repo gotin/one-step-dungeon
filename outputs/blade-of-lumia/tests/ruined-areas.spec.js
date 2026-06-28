@@ -1,11 +1,11 @@
 // Phase 6-3: フィールドの充実（廃城・廃村・壊れた遺跡）テスト
 //
 // 検証:
-//  1) field 0,2 に廃城エリア（石畳 'o'・壁 '#'・壊せる壁 '!'）が存在する
-//  2) field 0,2 に廃村エリア（家の外壁 'h'・屋根 'p'・ドア 'e'）が存在する
+//  1) field 5,3 に廃城エリア（石畳 'o'・壁 '#'・壊せる壁 '!'）が存在する
+//  2) field 5,3 に廃村エリア（家の外壁 'h'・屋根 'p'・ドア 'e'）が存在する
 //  3) 廃城の石碑・廃村の石碑が signData 付きで配置されている
 //  4) 石碑に隣接して立てる床が存在する（読みに行ける）
-//  5) 実プレイ: field 0,2 の廃城石碑を読むとダイアログが開きJSエラーが出ない
+//  5) 実プレイ: field 5,3 の廃城石碑を読むとダイアログが開きJSエラーが出ない
 
 import { test, expect } from '@playwright/test';
 import { readFileSync } from 'fs';
@@ -25,10 +25,10 @@ function rowArr(tiles, r) {
 }
 
 test.describe('Blade of Lumia – 廃城・廃村エリア（Phase 6-3）', () => {
-	test('field 0,2 に廃城タイルが存在する（石畳・壁）', () => {
+	test('field 5,3 に廃城タイルが存在する（石畳・壁）', () => {
 		const { layers } = loadMap();
-		const st = layers.field.stages['0,2'];
-		expect(st, 'field 0,2 が存在するべき').toBeTruthy();
+		const st = layers.field.stages['5,3'];
+		expect(st, 'field 5,3 が存在するべき').toBeTruthy();
 
 		// 廃城エリア（rows 0-4）に石畳 'o' が存在する
 		let stoneFloorCount = 0;
@@ -47,9 +47,9 @@ test.describe('Blade of Lumia – 廃城・廃村エリア（Phase 6-3）', () =
 		expect(wallCount, '廃城に壁タイルが必要').toBeGreaterThan(0);
 	});
 
-	test('field 0,2 に廃村タイルが存在する（家の外壁・屋根・ドア）', () => {
+	test('field 5,3 に廃村タイルが存在する（家の外壁・屋根・ドア）', () => {
 		const { layers } = loadMap();
-		const st = layers.field.stages['0,2'];
+		const st = layers.field.stages['5,3'];
 
 		// 廃村エリア（rows 5-9）に家の外壁 'h' が存在する
 		let houseWallCount = 0;
@@ -70,7 +70,7 @@ test.describe('Blade of Lumia – 廃城・廃村エリア（Phase 6-3）', () =
 
 	test('廃城・廃村の石碑が signData 付きで存在する', () => {
 		const { layers } = loadMap();
-		const st = layers.field.stages['0,2'];
+		const st = layers.field.stages['5,3'];
 		expect(st.signData, 'signData が必要').toBeTruthy();
 
 		const castleSign = st.signData['3,3'];
@@ -90,7 +90,7 @@ test.describe('Blade of Lumia – 廃城・廃村エリア（Phase 6-3）', () =
 
 	test('各石碑に隣接して立てる床がある（読みに行ける）', () => {
 		const { layers } = loadMap();
-		const st = layers.field.stages['0,2'];
+		const st = layers.field.stages['5,3'];
 
 		for (const [r, c] of [[3, 3], [8, 3]]) {
 			const standable = [
@@ -103,12 +103,12 @@ test.describe('Blade of Lumia – 廃城・廃村エリア（Phase 6-3）', () =
 		}
 	});
 
-	test('実プレイ: field 0,2 廃城石碑(3,3)を読むとダイアログが開く', async ({ page }) => {
+	test('実プレイ: field 5,3 廃城石碑(3,3)を読むとダイアログが開く', async ({ page }) => {
 		const errors = [];
 		page.on('pageerror', (e) => errors.push(e.message));
 		// 石碑は (3,3)。左隣 (3,2) からスポーンして右を向いて読む。
 		const p = new URLSearchParams({
-			fromEditor: '1', layer: 'field', stage: '0,2', row: '3', col: '2',
+			fromEditor: '1', layer: 'field', stage: '5,3', row: '3', col: '2',
 		});
 		await page.goto(`${GAME}?${p.toString()}`);
 		await waitForBoard(page);

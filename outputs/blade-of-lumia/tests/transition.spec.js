@@ -4,13 +4,13 @@ import {
 } from './helpers.js';
 
 // Phase 0-0 スモーク：ステージ遷移
-// field "1,0"（12×10）の右端を越えると field "2,0" へ遷移することを確認する。
-// #hud-stage-label が "[field] 1,0" → "[field] 2,0" に変わることで検証。
+// field "7,14"（12×10）の右端を越えると field "8,14" へ遷移することを確認する。
+// #hud-stage-label が "[field] 7,14" → "[field] 8,14" に変わることで検証。
 
 test.describe('Blade of Lumia – ステージ遷移', () => {
   test('右端に到達すると隣のステージに遷移する', async ({ page }) => {
-    // field "1,0" の右端付近（x=10, y=5）に seed する。
-    // cols=12 なので ArrowRight を数回押せば x>=12 を越えて "2,0" へ遷移する。
+    // field "7,14" の右端付近（x=10, y=5）に seed する。
+    // cols=12 なので ArrowRight を数回押せば x>=12 を越えて "8,14" へ遷移する。
     await page.addInitScript(({ key }) => {
       const data = {
         player: {
@@ -21,7 +21,7 @@ test.describe('Blade of Lumia – ステージ遷移', () => {
         },
         stageState: {},
         currentLayer: 'field',
-        stageKey: '1,0',
+        stageKey: '7,14',
         heroDir: 'down',
       };
       localStorage.setItem(key, JSON.stringify(data));
@@ -36,16 +36,16 @@ test.describe('Blade of Lumia – ステージ遷移', () => {
 
     await waitForBoard(page);
 
-    // 初期ステージが "1,0" であることを確認
+    // 初期ステージが "7,14" であることを確認
     const labelEl = page.locator('#hud-stage-label');
     await expect(labelEl).toBeVisible();
-    await expect(labelEl).toContainText('1,0');
+    await expect(labelEl).toContainText('7,14');
 
     // ArrowRight を押し続けて右端を越える。
     // 1 tick = 120ms・1セル程度移動。x=10→12 で遷移するので十分な時間を確保。
     await page.keyboard.down('ArrowRight');
-    // ステージが "2,0" に変わるまで最大 3 秒待つ
-    await expect(labelEl).toContainText('2,0', { timeout: 3000 });
+    // ステージが "8,14" に変わるまで最大 3 秒待つ
+    await expect(labelEl).toContainText('8,14', { timeout: 3000 });
     await page.keyboard.up('ArrowRight');
 
     // 遷移後もボードが描画されていること（enterStage が正常完了している）

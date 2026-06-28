@@ -42,7 +42,7 @@ async function seedAndStart(page) {
       subItems: {}, activeSubItem: null,
       rupees: 0, triforceCount: 0,
     },
-    stageState: {}, currentLayer: 'field', stageKey: '1,0', heroDir: 'right',
+    stageState: {}, currentLayer: 'field', stageKey: '7,14', heroDir: 'right',
   });
   await page.addInitScript(({ key, value }) => {
     try { localStorage.setItem(key, value); } catch { /* noop */ }

@@ -29,7 +29,7 @@ async function seed(page, extra = {}) {
   };
   const saveData = JSON.stringify({
     player, stageState: {},
-    currentLayer: 'field', stageKey: '1,0', heroDir: 'right',
+    currentLayer: 'field', stageKey: '7,14', heroDir: 'right',
   });
   await page.addInitScript(({ key, value }) => {
     try { localStorage.setItem(key, value); } catch { /* noop */ }

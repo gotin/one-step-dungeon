@@ -39,7 +39,7 @@ async function seed(page, { armorTier = -1, shieldTier = -1, swordTier = -1 } = 
   };
   const saveData = JSON.stringify({
     player, stageState: {},
-    currentLayer: 'field', stageKey: '1,0', heroDir: 'right',
+    currentLayer: 'field', stageKey: '7,14', heroDir: 'right',
   });
   await page.addInitScript(({ key, value }) => {
     try { localStorage.setItem(key, value); } catch { /* noop */ }

@@ -91,7 +91,7 @@ test.describe('Blade of Lumia – フィールド接続（全ダンジョン到�
 
   test('全8ダンジョン入口が開始村から徒歩（ギミック解放込み）で到達可能', () => {
     const field = loadField();
-    const start = { stage: '1,0', row: 2, col: 2 };
+    const start = field.startPos || { stage: '7,14', row: 2, col: 2 };
     const reachable = bfsReachableEntrances(field, { start });
     for (const id of FOOT_DUNGEONS) {
       expect(reachable, `${id} へ到達できること`).toContain(id);
@@ -100,9 +100,9 @@ test.describe('Blade of Lumia – フィールド接続（全ダンジョン到�
 
   test('沼地の洞窟（cave_1）への道に鍵・扉のヒント石碑がある', () => {
     const field = loadField();
-    const s30 = field.stages['3,0'];
-    // 石碑が配置され、鍵か扉に言及していること（プレイヤーが詰まないための保証）
-    const npcTexts = Object.values(s30.npcData || {})
+    // cave_1 入口ステージ 9,15 に石碑あり（旧 3,1 の石碑を移設）
+    const s = field.stages['9,15'];
+    const npcTexts = Object.values(s?.npcData || {})
       .flatMap(n => n.lines || []).join('\n');
     expect(npcTexts).toMatch(/鍵|扉/);
   });
