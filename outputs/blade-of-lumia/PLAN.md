@@ -1834,8 +1834,8 @@ input.js     161 / passable.js 161 / conditions.js 117 / save.js 87 / main.js 78
 - [x] ミラーシールド重複の撤去（`dark_tower/0,1[1,9]` 孤児＝正は `dungeon_8/0,0` 報酬）。**✅ 2026-06-29: 撤去済み。**
 
 **(b) ガイド導線（あらすじ準拠・9-2F1 質パスと連動・⚡ Sonnet）：**
-- [ ] **ガイド導線（フィールドは塞がない・誘導のみ）：** 村NPC・各ダンジョン入口の看板（`signData`）・`linesAfterBoss[type]` を使い、**「次はどこを目指すか／そこに入るには何が要るか」**を段階的に提示する。`defeatedBosses` の進行に合わせて NPC 台詞が次の行き先へ進む（ボスを倒すたびにガイドが更新＝Phase 6-1b 機構の再利用・ほぼゼロコード）。**台詞素材は `IDEA.md`「🎬 あらすじ」の各レグ「次が開く理由」を使う。**
-- [ ] ※ 「D1→D2 の NPC 門番（通行ゲート）」案は撤回（フルオープン方針と矛盾）。順序強制は 9-2 のアイテムロックで効かせ、NPC はガイドに徹する
+- [x] **ガイド導線（フィールドは塞がない・誘導のみ）：** 村NPC・各ダンジョン入口の看板（`signData`）・`linesAfterBoss[type]` を使い、**「次はどこを目指すか／そこに入るには何が要るか」**を段階的に提示する。✅ 2026-06-29: `scripts/migrate-guide-b.mjs` で老賢者・村人タロ・D1〜D8 各入口看板に `linesAfterBoss` を追加。**あらすじ準拠の全8ボス対応（G→N→J→A→O→L→I→U）＋D8入口看板新規追加・defeated-bosses テスト更新・全184/187緑。**
+- [x] ※ 「D1→D2 の NPC 門番（通行ゲート）」案は撤回（フルオープン方針と矛盾）。順序強制は 9-2 のアイテムロックで効かせ、NPC はガイドに徹する
 - [ ] 着手時に D3 の番兵`F`配置（盾ガード導線が寄道に埋もれている・9-2y 指摘）も併せて再検討。
 
 **機構メモ（実コード精査済み・新規コード不要）：** `npcData` の台詞選択優先＝`linesAfterBoss[bossChar]→linesAfterBoss.default→linesAfter(triforceCount>0)→lines`（`game/ui.js:174-191`）。`signData`＝`{name,lines}` を `i`SIGN タイルで剣ボタン読み（`combat.js:243`）。`defeatedBosses` はボス撃破で `boss.type`(='G','N'...) を add（`boss.js:190`）・save/load 対応済み（`game.js:215/230`）。NPC タイル＝`a`/`b`/`$`/`P`、看板＝`i`。floorItem は歩行ピックアップ。

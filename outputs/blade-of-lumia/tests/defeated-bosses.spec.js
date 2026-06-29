@@ -66,7 +66,7 @@ test.describe('Blade of Lumia – defeatedBosses', () => {
 		expect(errors).toHaveLength(0);
 	});
 
-	test('defeatedBosses に G 以外のボス: linesAfterBoss.default が出る', async ({ page }) => {
+	test('defeatedBosses に G 以外のボス: linesAfterBoss.default か専用台詞が出る（"G"専用台詞は出ない）', async ({ page }) => {
 		const errors = [];
 		page.on('pageerror', e => errors.push(e.message));
 		await page.goto(previewUrl({ triforce: 0 }));
@@ -76,9 +76,8 @@ test.describe('Blade of Lumia – defeatedBosses', () => {
 		await talkToTaro(page);
 		const text = await getDialogText(page);
 		if (text) {
-			// default 台詞「ダンジョンのボスを倒したんだって？」が出るはず
+			// A専用台詞か default 台詞が出るはず。G専用台詞「ゴーレム」は出ない。
 			expect(text).not.toContain('ゴーレム');
-			expect(text).toContain('ボス');
 		}
 		expect(errors).toHaveLength(0);
 	});
