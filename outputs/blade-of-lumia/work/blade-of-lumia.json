@@ -34,7 +34,7 @@
               ".",
               ".",
               "t",
-              ".",
+              "1",
               "t",
               "t",
               "t",
@@ -105,7 +105,7 @@
               "t",
               ".",
               "t",
-              "1",
+              ".",
               ".",
               "i",
               ".",
@@ -278,16 +278,11 @@
           },
           "links": [],
           "enemyDirs": {},
-          "chestContents": {
-            "7,6": {
-              "type": "item",
-              "item": "boomerang",
-              "name": "ブーメラン"
-            }
-          },
+          "chestContents": {},
           "floorItems": {
-            "6,7": {
-              "name": "わりばしの袋"
+            "1,6": {
+              "name": "木の剣",
+              "swordTier": 0
             }
           },
           "objects": {},
@@ -446,7 +441,7 @@
             ],
             [
               "t",
-              "4",
+              ".",
               ".",
               ".",
               ".",
@@ -1251,7 +1246,7 @@
               "P",
               ".",
               ".",
-              "1",
+              ".",
               ".",
               ".",
               "."
@@ -1503,12 +1498,7 @@
           },
           "breakableWalls": {},
           "isBossRoom": false,
-          "floorItems": {
-            "4,8": {
-              "name": "木の剣",
-              "swordTier": 0
-            }
-          }
+          "floorItems": {}
         },
         "2,4": {
           "cols": 12,
@@ -1637,7 +1627,7 @@
               ".",
               "C",
               ".",
-              "B",
+              ".",
               "t"
             ],
             [
@@ -1779,13 +1769,7 @@
           },
           "links": [],
           "enemyDirs": {},
-          "chestContents": {
-            "8,10": {
-              "type": "weapon",
-              "name": "木の剣",
-              "swordTier": 0
-            }
-          },
+          "chestContents": {},
           "floorItems": {},
           "objects": {},
           "npcData": {
@@ -92822,7 +92806,7 @@
               ".",
               ".",
               ".",
-              "2",
+              ".",
               ".",
               "#"
             ],
@@ -92970,12 +92954,7 @@
               ]
             }
           },
-          "floorItems": {
-            "1,9": {
-              "name": "ミラーシールド",
-              "shieldTier": 2
-            }
-          }
+          "floorItems": {}
         },
         "0,0": {
           "cols": 12,
