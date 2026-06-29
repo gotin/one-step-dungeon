@@ -15,16 +15,18 @@ import { waitForBoard } from './helpers.js';
 const MAP_PATH = fileURLToPath(new URL('../work/blade-of-lumia.json', import.meta.url));
 const GAME = '/blade-of-lumia/game/';
 
-// 期待する9石碑（読む順 = 物語の順）
+// 期待する9石碑（読む順 = 攻略順 = 物語の順）
+// 攻略順は数字順ではない：D1,D2,D3,D4,D6,D5,D8,D7,(塔=終章)。
+// 石碑番号は攻略順に振る（其の五=D6森・其の六=D5雪・其の七=D8沼・其の八=D7空）。
 const TABLETS = [
 	{ layer: 'dungeon_1', stage: '0,0', key: '1,9', frag: '其の一' },
 	{ layer: 'dungeon_2', stage: '0,0', key: '1,1', frag: '其の二' },
 	{ layer: 'dungeon_3', stage: '0,0', key: '1,9', frag: '其の三' },
 	{ layer: 'dungeon_4', stage: '0,0', key: '1,5', frag: '其の四' },
-	{ layer: 'dungeon_5', stage: '0,0', key: '1,5', frag: '其の五' },
-	{ layer: 'dungeon_6', stage: '0,0', key: '1,5', frag: '其の六' },
-	{ layer: 'dungeon_7', stage: '0,0', key: '1,5', frag: '其の七' },
-	{ layer: 'dungeon_8', stage: '0,0', key: '1,5', frag: '其の八' },
+	{ layer: 'dungeon_6', stage: '0,0', key: '1,5', frag: '其の五' },
+	{ layer: 'dungeon_5', stage: '0,0', key: '1,5', frag: '其の六' },
+	{ layer: 'dungeon_8', stage: '0,0', key: '1,5', frag: '其の七' },
+	{ layer: 'dungeon_7', stage: '0,0', key: '1,5', frag: '其の八' },
 	{ layer: 'dark_tower', stage: '0,1', key: '1,1', frag: '終章' },
 ];
 
