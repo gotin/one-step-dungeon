@@ -1836,7 +1836,7 @@ input.js     161 / passable.js 161 / conditions.js 117 / save.js 87 / main.js 78
 **(b) ガイド導線（あらすじ準拠・9-2F1 質パスと連動・⚡ Sonnet）：**
 - [x] **ガイド導線（フィールドは塞がない・誘導のみ）：** 村NPC・各ダンジョン入口の看板（`signData`）・`linesAfterBoss[type]` を使い、**「次はどこを目指すか／そこに入るには何が要るか」**を段階的に提示する。✅ 2026-06-29: `scripts/migrate-guide-b.mjs` で老賢者・村人タロ・D1〜D8 各入口看板に `linesAfterBoss` を追加。**あらすじ準拠の全8ボス対応（G→N→J→A→O→L→I→U）＋D8入口看板新規追加・defeated-bosses テスト更新・全184/187緑。**
 - [x] ※ 「D1→D2 の NPC 門番（通行ゲート）」案は撤回（フルオープン方針と矛盾）。順序強制は 9-2 のアイテムロックで効かせ、NPC はガイドに徹する
-- [ ] 着手時に D3 の番兵`F`配置（盾ガード導線が寄道に埋もれている・9-2y 指摘）も併せて再検討。
+- [x] 着手時に D3 の番兵`F`配置（盾ガード導線が寄道に埋もれている・9-2y 指摘）も併せて再検討。**✅ 2026-06-29: `[2,1]` 寄道の F×2 を `[1,3]` 入口室へ移動（row3,col8 / row5,col8）。入口看板に盾ヒントを追加。`[2,1]` は矢(15)フロアアイテムで探索報酬化。connectivity PASS・全184/187緑。**
 
 **機構メモ（実コード精査済み・新規コード不要）：** `npcData` の台詞選択優先＝`linesAfterBoss[bossChar]→linesAfterBoss.default→linesAfter(triforceCount>0)→lines`（`game/ui.js:174-191`）。`signData`＝`{name,lines}` を `i`SIGN タイルで剣ボタン読み（`combat.js:243`）。`defeatedBosses` はボス撃破で `boss.type`(='G','N'...) を add（`boss.js:190`）・save/load 対応済み（`game.js:215/230`）。NPC タイル＝`a`/`b`/`$`/`P`、看板＝`i`。floorItem は歩行ピックアップ。
 
