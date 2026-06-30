@@ -8,12 +8,10 @@ import { waitForBoard } from './helpers.js';
 
 const GAME = '/blade-of-lumia/game/';
 
-// 空島 field は M1 ではまだ未追加（8,0 はフライト専用で M2+ で追加予定）。
-// sky island スモークテストは M2 で sky stage が追加されたら .skip を外す。
-// 現状は field 7,14（村）の山タイル(M)で飛行制限テストを行う。
+// 空島は field/8,1（9-2T で復元）。col2=着地足場 / col4-7=虚空SKY / col9=塔ポータル。
 function previewUrl({ row, col, wing }) {
 	const p = new URLSearchParams({
-		fromEditor: '1', layer: 'field', stage: '8,0',
+		fromEditor: '1', layer: 'field', stage: '8,1',
 		row: String(row), col: String(col),
 	});
 	if (wing) p.set('ps_wingrobe', '1');
@@ -21,7 +19,7 @@ function previewUrl({ row, col, wing }) {
 }
 
 test.describe('Blade of Lumia – 暗黒の塔・飛行', () => {
-	test.skip('翼の羽衣があれば飛行トグルでき、虚空(SKY)を越えて塔入口へ渡れる', async ({ page }) => {
+	test('翼の羽衣があれば飛行トグルでき、虚空(SKY)を越えて塔入口へ渡れる', async ({ page }) => {
 		const errors = [];
 		page.on('pageerror', e => errors.push(e.message));
 		// 足場の左端 row3,col2（到着地点）にスポーン。翼の羽衣あり。
@@ -50,7 +48,7 @@ test.describe('Blade of Lumia – 暗黒の塔・飛行', () => {
 		expect(errors).toEqual([]);
 	});
 
-	test.skip('翼の羽衣が無いと飛行トグルは効かない（虚空を越えられない）', async ({ page }) => {
+	test('翼の羽衣が無いと飛行トグルは効かない（虚空を越えられない）', async ({ page }) => {
 		await page.goto(previewUrl({ row: 3, col: 2, wing: false }));
 		await waitForBoard(page);
 
@@ -94,8 +92,8 @@ test.describe('Blade of Lumia – 暗黒の塔・飛行', () => {
 		expect(st.player.x).toBeGreaterThanOrEqual(1); // 山(col0)を越えられず留まる
 	});
 
-	test.skip('塔入口に乗ると暗黒の塔(dark_tower 0,1)へ遷移する', async ({ page }) => {
-		// 塔入口の隣 row3,col8 にスポーン（飛行で島に渡った後の状態を模擬）。
+	test('塔入口に乗ると暗黒の塔(dark_tower 0,1)へ遷移する', async ({ page }) => {
+		// 空島(8,1) の塔ポータル手前 row3,col8 にスポーン（飛行で渡った後の状態）。
 		await page.goto(previewUrl({ row: 3, col: 8, wing: true }));
 		await waitForBoard(page);
 
