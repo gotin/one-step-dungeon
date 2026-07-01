@@ -33,6 +33,7 @@ import {
 	callUpdateHud,
 	callGainHeartContainer,
 	callGrantReward,
+	callGiveSubItem,
 } from './game.js';
 
 // ── アニメーション ────────────────────────────────────────────
@@ -119,4 +120,6 @@ window.__game = {
 	gainHeartContainer: () => callGainHeartContainer(),
 	// Phase 7-4: grantReward テスト用
 	grantReward: (content) => callGrantReward(content),
+	// Phase 9-5a: giveSubItem テスト用（quiver/bombBag 等の passive 拡充アイテム）
+	giveSubItem: (id) => callGiveSubItem(id),
 };

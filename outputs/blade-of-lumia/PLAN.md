@@ -1958,15 +1958,15 @@ input.js     161 / passable.js 161 / conditions.js 117 / save.js 87 / main.js 78
 3. **矢・爆弾に保持上限を設ける**（デフォルト各 **8**）。
 4. **容量拡充アイテム（矢筒・爆弾袋）** を各3個ずつゲーム内に配置。1個取ると上限 +8 → **最大 32**（8 + 8×3）。置き場は**ボスなしの小ダンジョン**（9-4D で各地に配置する `cave_*`）。
 
-#### 9-5a. 弾数上限＋容量拡充アイテム　⚡ 実装（設計済み）
+#### 9-5a. 弾数上限＋容量拡充アイテム　✅ 完了（2026-07-01・⚡ Sonnet）
 > **実コードでの実現性：** `player` オブジェクトは save で丸ごと spread 保存される（`game.js:215`）＝新フィールド `maxBombs`/`maxArrows` は追加すれば自動永続。上限は「拾得・ドロップ時に `Math.min(count+n, max)` でクランプ」するだけ。
-- [ ] **`player` に `maxBombs`/`maxArrows` を追加**（初期値 **8**）。新規ゲーム初期化（`game.js:1407` 付近の player 生成）とロード時のデフォルト補完（`sanitizeLoadedPlayer` or loadGame）に入れる。
-- [ ] **拾得・ドロップ時に上限クランプ**：`player.js:775`（爆弾）・`785`（矢）の `+= count` を `= Math.min(count + n, player.maxBombs)` へ。ショップ購入（`ui.js:554`）・報酬（`grantReward`）も同様にクランプ。上限到達時は `pulse('もう持てない！')` 等で通知。
-- [ ] **容量拡充アイテムを新設**（`shared/items.js` ITEM_META）：`quiver`（矢筒・矢上限+8）・`bombBag`（爆弾袋・爆弾上限+8）を `type:'passive'` で追加。`giveSubItem`（`player.js:599`）の passive 分岐に「quiver→maxArrows+=8／bombBag→maxBombs+=8」を追加（heartContainer/ladder と同型）。
-- [ ] **拡充アイテムのタイル＋スプライト**：field/cave に置くための floorItem 拾得 or chest 報酬に対応（既存の chestContents `{type:'item', item:'quiver'}` で流せる想定＝要確認）。
-- [ ] **HUD 表示**：`ui.js:137` の `×${cnt}` を `×${cnt}/${max}` 形式にするか検討（任意）。
+- [x] **`player` に `maxBombs`/`maxArrows` を追加**（初期値 **8**）。新規ゲーム初期化（`game.js`）とロード時のデフォルト補完（`save.js:sanitizeLoadedPlayer`）に入れた。
+- [x] **拾得・ドロップ時に上限クランプ**：`player.js`（爆弾・矢の floorItem 拾得）と `giveSubItem`（bomb/bow の count++）をクランプ。ショップ購入（`ui.js`）も対応。上限到達時は `pulse('もう持てない！')` で通知。
+- [x] **容量拡充アイテムを新設**（`shared/items.js` ITEM_META）：`quiver`（矢筒・矢上限+8）・`bombBag`（爆弾袋・爆弾上限+8）を `type:'passive'` で追加。`giveSubItem` passive 分岐に「quiver→maxArrows+=8／bombBag→maxBombs+=8」を追加（heartContainer/ladder と同型）。
+- [x] **拡充アイテムのタイル＋スプライト**：`{type:'item', item:'quiver'}` チェスト報酬で流せる（`grantReward` の item 分岐が `giveSubItem` を呼ぶため追加コード不要）。floorItem は既存 ITEM_BOW/BOMB タイルと別の専用タイルが必要＝**配置は 9-4D 連動の課題として残す**。
+- [ ] **HUD 表示**：`ui.js:137` の `×${cnt}` を `×${cnt}/${max}` 形式にするか検討（任意・後回し）。
 - [ ] **配置（⚠️ 9-4D と連動）：** 矢筒×3・爆弾袋×3 をボスなし小ダンジョンに分散配置。取得順に依存しないよう、序盤〜中盤で徒歩到達できる位置に置く。
-- [ ] **テスト**：上限クランプ（8で頭打ち・拡充で16→24→32）・拡充アイテム取得で max が増える・ロード後も max 保持。
+- [x] **テスト**：`tests/ammo-capacity.spec.js`（9本・全グリーン）＝上限クランプ・拡充で max 増加・ロード後も max 保持・旧セーブ補完。
 
 #### 9-5b. 雑魚リスポーン（N回ステージ移動で復活）　⚡ 実装（設計済み）
 > **実コードでの実現性：** ステージ遷移は `enterStage()`（`game.js:266`）が単一チョークポイント＝ここにグローバル移動カウンタを置ける。リスポーン対象＝**`isBoss=false` の E/C/F のみ**（`ENEMY_META` で W中ボス含む他は全て `isBoss=true`＝機械的に区別可能）。撃破記録は `ss.defeatedEnemies`（posKey の Set・`game.js:377` で参照）。

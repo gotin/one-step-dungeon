@@ -551,7 +551,7 @@ export function createUi(deps) {
 		const meta = ITEM_META[g.id];
 		if (g.id === 'bomb') {
 			if (!player.subItems.bomb) player.subItems.bomb = { count: 0 };
-			player.subItems.bomb.count += g.count ?? 1;
+			player.subItems.bomb.count = Math.min(player.subItems.bomb.count + (g.count ?? 1), player.maxBombs ?? 8);
 			if (!player.activeSubItem) player.activeSubItem = 'bomb';
 		} else if (g.id === 'healPotion' || g.id === 'bigHealPotion') {
 			if (giveSubItemFn) giveSubItemFn(g.id);

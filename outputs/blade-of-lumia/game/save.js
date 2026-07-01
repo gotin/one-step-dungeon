@@ -98,5 +98,8 @@ export function sanitizeLoadedPlayer(player, itemMeta) {
 	if (player.activeSubItem && itemMeta[player.activeSubItem]?.type === 'passive') {
 		player.activeSubItem = Object.keys(player.subItems)[0] ?? null;
 	}
+	// Phase 9-5a: 旧セーブデータへのデフォルト補完
+	if (player.maxArrows == null) player.maxArrows = 8;
+	if (player.maxBombs  == null) player.maxBombs  = 8;
 	return player;
 }

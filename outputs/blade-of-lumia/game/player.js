@@ -601,11 +601,16 @@ export function createPlayer(deps) {
 		const meta = ITEM_META[id];
 		if (meta?.type === 'passive') {
 			if (id === 'heartContainer') gainHeartContainer();
-			else if (id === 'ladder') player.hasLadder = true;  // Phase 4-1
+			else if (id === 'ladder')    player.hasLadder  = true;
+			else if (id === 'quiver')    player.maxArrows  = (player.maxArrows  ?? 8) + 8;
+			else if (id === 'bombBag')   player.maxBombs   = (player.maxBombs   ?? 8) + 8;
 			return;
 		}
 		if (!player.subItems[id]) player.subItems[id] = { count: meta?.uses === Infinity ? Infinity : 1 };
 		else if (meta?.uses !== Infinity) player.subItems[id].count++;
+		// 矢/爆弾は上限でクランプ（quiver/bombBag 拡充後の新上限も反映）
+		if (id === 'bomb') player.subItems.bomb.count = Math.min(player.subItems.bomb.count, player.maxBombs ?? 8);
+		if (id === 'bow')  player.subItems.bow.count  = Math.min(player.subItems.bow.count,  player.maxArrows ?? 8);
 		if (!player.activeSubItem) player.activeSubItem = id;
 		maybeShowSubItemHint();
 	}
@@ -772,7 +777,12 @@ export function createPlayer(deps) {
 			ss.pickedKeys.add(posKey);
 			const bombCount = stageData.floorItems?.[posKey]?.count ?? 3;
 			if (!player.subItems.bomb) player.subItems.bomb = { count: 0 };
-			player.subItems.bomb.count += bombCount;
+			const maxB = player.maxBombs ?? 8;
+			const prevB = player.subItems.bomb.count;
+			player.subItems.bomb.count = Math.min(prevB + bombCount, maxB);
+			if (player.subItems.bomb.count <= prevB) {
+				pulse('💣 もう持てない！'); renderBoard(); renderChars(); updateHud(); saveGame(); return;
+			}
 			if (!player.activeSubItem) player.activeSubItem = 'bomb';
 			playSound('item'); pulse(`💣 爆弾 ×${bombCount} を手に入れた！`);
 			renderBoard(); renderChars(); updateHud(); saveGame();
@@ -782,7 +792,12 @@ export function createPlayer(deps) {
 			ss.pickedKeys.add(posKey);
 			const arrowCount = stageData.floorItems?.[posKey]?.count ?? 10;
 			if (!player.subItems.bow) player.subItems.bow = { count: 0 };
-			player.subItems.bow.count += arrowCount;
+			const maxA = player.maxArrows ?? 8;
+			const prevA = player.subItems.bow.count;
+			player.subItems.bow.count = Math.min(prevA + arrowCount, maxA);
+			if (player.subItems.bow.count <= prevA) {
+				pulse('🏹 もう持てない！'); renderBoard(); renderChars(); updateHud(); saveGame(); return;
+			}
 			if (!player.activeSubItem) player.activeSubItem = 'bow';
 			playSound('item'); pulse(`🏹 弓矢 ×${arrowCount} を手に入れた！`);
 			renderBoard(); renderChars(); updateHud(); saveGame();

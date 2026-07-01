@@ -92,6 +92,8 @@ let player = {
 	weapon: null, shield: null, armor: null,
 	subItems: {}, activeSubItem: null,
 	rupees: 0, triforceCount: 0,
+	// Phase 9-5a: 矢/爆弾の所持上限（quiver/bombBag で +8 ずつ拡張・最大 32）。
+	maxArrows: 8, maxBombs: 8,
 	// Phase 1-3: 翼の羽衣（古代の祭壇で授かる）。暗黒の塔の入り口を通れるようになる。
 	hasWingRobe: false,
 	// Phase 1-5: 飛行中フラグ（翼の羽衣で離陸中。SKY/WATER を越えられる）。
@@ -1401,6 +1403,7 @@ function startNewGame() {
 		weapon: null, shield: null, armor: null,
 		subItems: {}, activeSubItem: null,
 		rupees: 0, triforceCount: 0,
+		maxArrows: 8, maxBombs: 8,
 		hasWingRobe: false,
 		flying: false,
 		hasLadder: false,
@@ -1588,6 +1591,9 @@ export function getGameState() {
 			swordTier: player.swordTier ?? -1,
 			armorTier: player.armorTier ?? -1,
 			shieldTier: player.shieldTier ?? -1,
+			// Phase 9-5a: 弾数上限（容量拡充確認用）
+			maxArrows: player.maxArrows ?? 8,
+			maxBombs: player.maxBombs ?? 8,
 		},
 		heroDir,
 		enemyCount: enemies.length,
@@ -1685,3 +1691,6 @@ export function callGainHeartContainer() { return gainHeartContainer(); }
 
 // Phase 7-4: grantReward テスト用（player への付与を確認するため）
 export function callGrantReward(content) { return grantReward(content); }
+
+// Phase 9-5a: giveSubItem テスト用（容量拡充アイテムの passive 分岐を確認するため）
+export function callGiveSubItem(id) { return giveSubItem(id); }

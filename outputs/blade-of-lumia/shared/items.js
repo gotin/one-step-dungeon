@@ -127,6 +127,20 @@ export const ITEM_META = {
 		type: 'passive',
 		uses: null,
 	},
+	quiver: {
+		// Phase 9-5a: 矢筒。所持するだけで矢の上限 +8（player.maxArrows+=8）。
+		// 最大3個配置 → 上限 8+8+8+8=32。heartContainer/ladder と同型の passive。
+		name: '矢筒', icon: '🏹', sprite: 'arrow',
+		type: 'passive',
+		uses: null,
+	},
+	bombBag: {
+		// Phase 9-5a: 爆弾袋。所持するだけで爆弾の上限 +8（player.maxBombs+=8）。
+		// 最大3個配置 → 上限 8+8+8+8=32。heartContainer/ladder と同型の passive。
+		name: '爆弾袋', icon: '💣', sprite: 'bomb',
+		type: 'passive',
+		uses: null,
+	},
 };
 
 // ── 各攻撃の breakPower ────────────────────────────────────────
