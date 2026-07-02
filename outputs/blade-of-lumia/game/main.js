@@ -34,6 +34,8 @@ import {
 	callGainHeartContainer,
 	callGrantReward,
 	callGiveSubItem,
+	getFloorDropsSnapshot,
+	callPickupFloorDropAt,
 } from './game.js';
 
 // ── アニメーション ────────────────────────────────────────────
@@ -122,4 +124,7 @@ window.__game = {
 	grantReward: (content) => callGrantReward(content),
 	// Phase 9-5a: giveSubItem テスト用（quiver/bombBag 等の passive 拡充アイテム）
 	giveSubItem: (id) => callGiveSubItem(id),
+	// Phase 9-5c: フロアドロップ確認・手動拾得（テスト用）
+	getFloorDrops: () => getFloorDropsSnapshot(),
+	pickupFloorDrop: (r, c) => callPickupFloorDropAt(r, c),
 };

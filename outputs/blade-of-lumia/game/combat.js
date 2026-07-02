@@ -51,7 +51,8 @@ import { enemyW, enemyH, enemyCenter } from './hitbox.js';
  *   hasCleared()                 – クリア済み判定
  *   isShieldBlockingDir(dx, dy)  – 盾ブロック判定
  *   showShieldBlockEffect(x, y)  – 盾ブロックエフェクト
- *   spawnDropEffect(r, c, icon, color) – ドロップエフェクト
+ *   spawnDropEffect(r, c, icon, color) – ドロップエフェクト（視覚のみ）
+ *   spawnFloorDrop(r, c, type)        – フロアドロップ配置（踏んで拾う・Phase 9-5c）
  *   gameoverOverlayEl            – ゲームオーバーオーバーレイ DOM
  */
 export function createCombat(deps) {
@@ -143,6 +144,29 @@ export function createCombat(deps) {
 		removeCharEl(`enemy-${e.id}`);
 		setEnemies(getEnemies().filter(x => x !== e));
 		evaluateConditions();
+		// ── 雑魚ドロップ（矢/爆弾/ハート/ルピー）────────────────
+		if (Math.random() < 0.35) {
+			const player = getPlayer();
+			const maxB = player.maxBombs ?? 8;
+			const maxA = player.maxArrows ?? 8;
+			const bombCount  = player.subItems?.bomb?.count ?? 0;
+			const arrowCount = player.subItems?.bow?.count  ?? 0;
+			// 所持数に応じた重み（満タンなら0）
+			const wBomb  = bombCount  >= maxB ? 0 : bombCount  < maxB / 2 ? 4 : 2;
+			const wArrow = arrowCount >= maxA ? 0 : arrowCount < maxA / 2 ? 4 : 2;
+			const wHeart  = 2;
+			const wRupee  = 2;
+			const total = wBomb + wArrow + wHeart + wRupee;
+			let r = Math.random() * total;
+			const dr = Math.round(toTileRow(e.y));
+			const dc = Math.round(toTileCol(e.x));
+			let dropType = null;
+			if ((r -= wBomb) < 0)        dropType = 'bomb';
+			else if ((r -= wArrow) < 0)  dropType = 'arrow';
+			else if ((r -= wHeart) < 0)  dropType = 'heart';
+			else                         dropType = 'rupee';
+			deps.spawnFloorDrop?.(dr, dc, dropType);
+		}
 		saveGame();
 	}
 

@@ -114,6 +114,13 @@ let player = {
 let enemies = [];
 let heroDir = 'down';
 
+// ── フロアドロップ（Phase 9-5c）──────────────────────────────────
+// 雑魚撃破時にマップ上に一時出現するアイテム。踏むと拾える。
+// { r, c, type, timerId, el } の配列。ステージ遷移で全消去。
+const FLOOR_DROP_ICONS = { bomb: '💣', arrow: '🏹', heart: '❤', rupee: '◆' };
+const FLOOR_DROP_COLORS = { bomb: '#ff8c00', arrow: '#c0a000', heart: '#ff4040', rupee: '#20c040' };
+let activeFloorDrops = [];
+
 let gameTimer       = null;
 // ── 論理時間（Phase 0-1）─────────────────────────────────────
 // gameTime は step() が 1 フレームごとに TICK_MS 加算する「ゲーム内の論理時刻」(ms)。
@@ -295,6 +302,7 @@ function enterStage(lk, sk, pRow, pCol) {
 		}
 	}
 
+	clearAllFloorDrops();
 	currentLayer = lk;
 	stageKey     = sk;
 	stageData    = getStageData(lk, sk);
@@ -852,9 +860,10 @@ const { checkStoneOnSwitch, evaluateConditions } = createConditions({
 		hasCleared,
 		isShieldBlockingDir:   (dx, dy) => isShieldBlockingDir(dx, dy),
 		showShieldBlockEffect: (x, y) => showShieldBlockEffect(x, y),
-		spawnDropEffect: (r, c, icon, color) => spawnDropEffect(r, c, icon, color),
-		toggleSwitch:    (r, c) => toggleSwitch(r, c),
-		setActiveColor:  (r, c) => setActiveColor(r, c),
+		spawnDropEffect:  (r, c, icon, color) => spawnDropEffect(r, c, icon, color),
+		spawnFloorDrop:   (r, c, type) => spawnFloorDrop(r, c, type),
+		toggleSwitch:     (r, c) => toggleSwitch(r, c),
+		setActiveColor:   (r, c) => setActiveColor(r, c),
 		gameoverOverlayEl,
 		openSignDialog: (sd) => openDialog(sd.name ?? '看板', sd.lines ?? ['（何も書かれていない）']),
 		renderBoard:  () => renderBoard(),
@@ -900,6 +909,7 @@ const { checkStoneOnSwitch, evaluateConditions } = createConditions({
 		getHeroSpriteName, getHeroPalName,
 		hasCleared,
 		updateDungeonHud: (lk) => updateDungeonHud(lk),
+		pickupFloorDropAt: (r, c) => pickupFloorDropAt(r, c),
 	});
 
 	// factory が生成した関数で旧インライン実装を上書き
@@ -1103,6 +1113,77 @@ function hasCleared() {
 
 function saveCleared() {
 	localStorage.setItem(CLEARED_KEY, '1');
+}
+
+// ── フロアドロップ管理（Phase 9-5c）──────────────────────────────
+// 重複座標を隣接マスにずらす（最大8方向探索）。
+const DROP_OFFSETS = [[0,0],[0,1],[1,0],[0,-1],[-1,0],[1,1],[-1,-1],[1,-1],[-1,1]];
+function spawnFloorDrop(r, c, type) {
+	// 占有されていない座標を探す
+	let dr = r, dc = c;
+	for (const [or, oc] of DROP_OFFSETS) {
+		const nr = r + or, nc = c + oc;
+		if (!activeFloorDrops.some(d => d.r === nr && d.c === nc)) {
+			dr = nr; dc = nc; break;
+		}
+	}
+	const cellPx = getCellPx();
+	const el = document.createElement('div');
+	el.style.cssText = `
+		position:absolute;
+		left:${(dc + 0.5) * cellPx}px;
+		top:${(dr + 0.5) * cellPx}px;
+		transform:translate(-50%,-50%);
+		font-size:${Math.round(cellPx * 0.55)}px;
+		color:${FLOOR_DROP_COLORS[type] ?? '#fff'};
+		z-index:20;
+		pointer-events:none;
+	`;
+	el.textContent = FLOOR_DROP_ICONS[type] ?? '?';
+	if (charLayerEl) charLayerEl.appendChild(el);
+	const timerId = setTimeout(() => removeFloorDrop(drop), 5000);
+	const drop = { r: dr, c: dc, type, timerId, el };
+	activeFloorDrops.push(drop);
+}
+function removeFloorDrop(drop) {
+	clearTimeout(drop.timerId);
+	drop.el?.remove();
+	activeFloorDrops = activeFloorDrops.filter(d => d !== drop);
+}
+function clearAllFloorDrops() {
+	for (const d of activeFloorDrops) { clearTimeout(d.timerId); d.el?.remove(); }
+	activeFloorDrops = [];
+}
+function pickupFloorDropAt(r, c) {
+	const drop = activeFloorDrops.find(d => d.r === r && d.c === c);
+	if (!drop) return;
+	removeFloorDrop(drop);
+	const maxB = player.maxBombs ?? 8;
+	const maxA = player.maxArrows ?? 8;
+	if (drop.type === 'bomb') {
+		if (!player.subItems.bomb) player.subItems.bomb = { count: 0 };
+		const prev = player.subItems.bomb.count;
+		player.subItems.bomb.count = Math.min(prev + 3, maxB);
+		if (player.subItems.bomb.count > prev) {
+			playSound('item'); pulse('💣 ×3'); updateHud(); saveGame();
+		}
+	} else if (drop.type === 'arrow') {
+		if (!player.subItems.bow) player.subItems.bow = { count: 0 };
+		const prev = player.subItems.bow.count;
+		player.subItems.bow.count = Math.min(prev + 3, maxA);
+		if (player.subItems.bow.count > prev) {
+			playSound('item'); pulse('🏹 ×3'); updateHud(); saveGame();
+		}
+	} else if (drop.type === 'heart') {
+		const prev = player.hp;
+		player.hp = Math.min(player.maxHp, player.hp + 1);
+		if (player.hp > prev) {
+			playSound('item'); pulse('❤ HP+1'); updateHud(); saveGame();
+		}
+	} else if (drop.type === 'rupee') {
+		player.rupees = (player.rupees ?? 0) + 1;
+		playSound('item'); pulse('◆ ルピー ×1'); updateHud(); saveGame();
+	}
 }
 
 // ── ショップ状態（ui.js factory が getter/setter 経由で操作）────────────────
@@ -1694,3 +1775,11 @@ export function callGrantReward(content) { return grantReward(content); }
 
 // Phase 9-5a: giveSubItem テスト用（容量拡充アイテムの passive 分岐を確認するため）
 export function callGiveSubItem(id) { return giveSubItem(id); }
+
+// Phase 9-5c: フロアドロップ一覧（テスト用）
+export function getFloorDropsSnapshot() {
+	return activeFloorDrops.map(d => ({ r: d.r, c: d.c, type: d.type }));
+}
+
+// Phase 9-5c: プレイヤーをフロアドロップ座標に移動させて拾わせる（テスト用）
+export function callPickupFloorDropAt(r, c) { return pickupFloorDropAt(r, c); }

@@ -864,6 +864,8 @@ export function createPlayer(deps) {
 			showHouseDoorAnimation(r, c);
 			return;
 		}
+		// フロアドロップを踏んだら拾う（雑魚撃破ドロップ・Phase 9-5c）
+		deps.pickupFloorDropAt?.(r, c);
 	}
 
 	// ── ブーメランによるフィールドアイテム回収 ───────────────
