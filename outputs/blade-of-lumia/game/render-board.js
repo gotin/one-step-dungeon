@@ -28,6 +28,9 @@ const BG_TILE_COLOR_CLASS = {
 	[TILE.SAND]:        'bg-sand',
 	[TILE.STONE_FLOOR]: 'bg-stonefloor',
 	[TILE.BRIDGE]:      'bg-bridge',
+	[TILE.SNOW]:        'bg-snow',
+	[TILE.ASH]:         'bg-ash',
+	[TILE.MUD]:         'bg-mud',
 };
 
 // 末尾の共通スプライト fallback で「静的に描いてよい落ちアイテム」タイルの集合。
@@ -339,6 +342,9 @@ export function createRenderBoard(deps) {
 			[TILE.SAND]:        ['sand',       'sand'],
 			[TILE.STONE_FLOOR]: ['stoneFloor', 'stoneFloor'],
 			[TILE.BRIDGE]:      ['bridge',     'bridge'],
+			[TILE.SNOW]:        ['grass',      'snow'],
+			[TILE.ASH]:         ['sand',       'ash'],
+			[TILE.MUD]:         ['grass',      'mud'],
 			[TILE.TREE]:        ['tree',       'tree'],
 			[TILE.MOUNTAIN]:    ['mountain',   'mountain'],
 			[TILE.FENCE]:       ['fence',      'fence'],

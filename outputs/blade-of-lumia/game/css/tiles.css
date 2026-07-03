@@ -39,6 +39,19 @@ canvas.sprite.ladder-sprite {
     background: #8a6030;
 }
 
+/* Phase 9-4a: テーマ地形タイル */
+.cell.bg-snow {
+    background: #c8dce8;
+}
+
+.cell.bg-ash {
+    background: #4a3028;
+}
+
+.cell.bg-mud {
+    background: #3a4a28;
+}
+
 /* ── Phase 8: フィールドタイル背景色（tiles[r][c] がそれ自体の場合） */
 .cell[data-tile-type="grass"],
 .cell.tile-grass {

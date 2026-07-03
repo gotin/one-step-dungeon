@@ -83,6 +83,9 @@ export const TILE = {
 	SAND:        'd',  // 砂地・砂漠
 	STONE_FLOOR: 'o',  // 石畳（町・城内）
 	BRIDGE:      'v',  // 橋（水の上を渡れる）
+	SNOW:        's',  // 雪原（通行可・白系）
+	ASH:         'c',  // 火山灰/岩肌（通行可・黒赤系）
+	MUD:         'w',  // 泥/沼床（通行可・暗緑褐色）
 	// 地形（通行不可）
 	TREE:        't',  // 木（通行不可）
 	MOUNTAIN:    'M',  // 山（通行不可）
@@ -174,6 +177,10 @@ export const TILE_META = {
 	[TILE.HOUSE_DOOR]:  { label: '家のドア',   color: '#8a4020', passable: true,  icon: '⊟' },
 	[TILE.HOUSE_ROOF]:  { label: '家の屋根',   color: '#c03020', passable: false, icon: '△' },
 	[TILE.SIGN]:        { label: '看板',       color: '#b08040', passable: true,  icon: '📋' },
+	// Phase 9-4a: テーマ地形タイル
+	[TILE.SNOW]:        { label: '雪原',       color: '#c8dce8', passable: true,  icon: '❄' },
+	[TILE.ASH]:         { label: '火山灰',     color: '#4a3028', passable: true,  icon: '▪' },
+	[TILE.MUD]:         { label: '泥/沼床',   color: '#3a4a28', passable: true,  icon: '∿' },
 };
 
 // タイルの一覧（パレット表示用）
@@ -186,6 +193,7 @@ export const DEFAULT_ROWS = 10;
 // フィールド地形タイル（bgTiles に書き込む通行可タイル）
 export const BG_TILES = new Set([
 	TILE.FLOOR, TILE.GRASS, TILE.SAND, TILE.STONE_FLOOR, TILE.BRIDGE,
+	TILE.SNOW, TILE.ASH, TILE.MUD,
 ]);
 
 // 空のステージデータを生成する

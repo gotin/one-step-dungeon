@@ -8,12 +8,9 @@ import {
 } from './editor-state.js';
 import { TILE_SPRITE_MAP, drawSpriteAt } from './editor-palette.js';
 
-const MINIMAP_BG_COLORS = {
-	[TILE.GRASS]:       '#3a6e28',
-	[TILE.SAND]:        '#c8a84a',
-	[TILE.STONE_FLOOR]: '#6a6878',
-	[TILE.BRIDGE]:      '#8a6030',
-};
+function minimapBgColor(tileChar) {
+	return TILE_META[tileChar]?.color ?? TILE_META[TILE.FLOOR].color;
+}
 
 const MINIMAP_COLORS = {
 	[TILE.WALL]: '#3a4448', [TILE.FLOOR]: '#1a2228', [TILE.WATER]: '#0e2040',
@@ -50,8 +47,8 @@ export function drawMinimap(sd) {
 			let bgColor;
 			if (t === TILE.WALL || t === TILE.WATER) {
 				bgColor = MINIMAP_COLORS[t] ?? '#1a2228';
-			} else if (bgTile && MINIMAP_BG_COLORS[bgTile]) {
-				bgColor = MINIMAP_BG_COLORS[bgTile];
+			} else if (bgTile) {
+				bgColor = minimapBgColor(bgTile);
 			} else {
 				bgColor = MINIMAP_COLORS[TILE.FLOOR] ?? '#1a2228';
 			}
@@ -96,9 +93,7 @@ export function drawWorldPreview(sd) {
 			if (t === TILE.WALL || t === TILE.WATER) {
 				bgColor = PREVIEW_BG[t] ?? '#1a2228';
 			} else {
-				bgColor = (bgTile && MINIMAP_BG_COLORS[bgTile])
-					? MINIMAP_BG_COLORS[bgTile]
-					: (PREVIEW_BG[t] ?? '#1a2228');
+				bgColor = bgTile ? minimapBgColor(bgTile) : (PREVIEW_BG[t] ?? '#1a2228');
 			}
 			ctx.fillStyle = bgColor;
 			ctx.fillRect(x, y, PREVIEW_CELL, PREVIEW_CELL);

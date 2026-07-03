@@ -10,13 +10,10 @@ export const canvas    = document.getElementById('stage-canvas');
 export const canvasCtx = canvas.getContext('2d');
 export const CELL_SIZE = 40;
 
-// bgTile → エディタ上での背景色マップ
-const BG_TILE_EDITOR_COLORS = {
-	[TILE.GRASS]:       '#3a6e28',
-	[TILE.SAND]:        '#c8a84a',
-	[TILE.STONE_FLOOR]: '#6a6878',
-	[TILE.BRIDGE]:      '#8a6030',
-};
+// bgTile → エディタ上での背景色（TILE_META.color を使う）
+function bgTileColor(tileChar) {
+	return TILE_META[tileChar]?.color ?? TILE_META[TILE.FLOOR].color;
+}
 
 export function drawCell(c, r, tileChar) {
 	const sd = getCurrentStage();
@@ -28,7 +25,7 @@ export function drawCell(c, r, tileChar) {
 	if (tileChar === TILE.WALL || tileChar === TILE.WATER) {
 		bgColor = (TILE_META[tileChar] ?? TILE_META[TILE.FLOOR]).color;
 	} else {
-		bgColor = BG_TILE_EDITOR_COLORS[bgTile] ?? TILE_META[TILE.FLOOR].color;
+		bgColor = bgTileColor(bgTile);
 	}
 	canvasCtx.fillStyle = bgColor;
 	canvasCtx.fillRect(x, y, CELL_SIZE, CELL_SIZE);

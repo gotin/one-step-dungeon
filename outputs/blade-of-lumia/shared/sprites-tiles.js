@@ -42,6 +42,10 @@ export const TILE_PAL = {
 	// フィールドタイル
 	grass:       ['transparent','#2a5c1a','#3a7a28','#50a038','#6aba48','#ffffff','#1a4010'],
 	sand:        ['transparent','#a07830','#c8a84a','#e0c068','#f0d888','#ffffff','#806020'],
+	// Phase 9-4a: テーマ地形パレット
+	snow:        ['transparent','#8aaec0','#b0ccd8','#cce0ec','#e0f0f8','#ffffff','#6090a8'],
+	ash:         ['transparent','#2a1810','#503828','#705040','#9a7060','#ffffff','#1a1008'],
+	mud:         ['transparent','#283818','#384a24','#4a6030','#608040','#ffffff','#182010'],
 	stoneFloor:  ['transparent','#3a3848','#5a5868','#7a7888','#9a9aa8','#ffffff','#2a2838'],
 	bridge:      ['transparent','#5a3a18','#8a6030','#b08050','#d0a070','#ffffff','#3a2010'],
 	tree:        ['transparent','#0e3008','#1a4810','#286018','#407830','#8a5020','#5a3010'],

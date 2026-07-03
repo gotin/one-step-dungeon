@@ -1937,14 +1937,14 @@ input.js     161 / passable.js 161 / conditions.js 117 / save.js 87 / main.js 78
 - [ ] **全テストグリーン**（地形置換は接続に影響しないことを確認）。
 - [ ] 実プレイ（`fromEditor=1`）で村→各地域を歩き、地下床でなく地域らしい見た目・水が渡れることを確認。
 
-#### 9-4a. テーマ地形タイルの新設　🧠 設計確定（2026-07-01）／⚡ 実装
+#### 9-4a. テーマ地形タイルの新設　✅ 完了（2026-07-02・⚡ Sonnet）
 > **目的：** 雪原/火山/沼地/森を地形で描き分けるための通行可地面タイルを追加する。**新規ゲームロジックは不要**（通行可の見た目違いタイル＝`g`GRASS と同じ扱い）。追加は tiles.js + スプライトのみ。
-- [ ] **タイル追加**（`shared/tiles.js`）：`SNOW`（雪原・白系）・`ASH`（火山灰/岩肌・黒赤系）・`MUD`（泥/沼床・暗緑褐色）の3種を通行可地形として追加（`GRASS` と同じ `passable:true`）。文字は既存と衝突しない記号を選ぶ（`shared/tiles.js` の使用済み文字を grep で確認してから確定）。森は専用タイルを作らず `g`草地＋木 `t` の密度で表現（YAGNI）。
-- [ ] **スプライト**（`shared/tile-sprites.js` ＋ `shared/sprites-tiles.js`）：`g`GRASS/`d`SAND のスプライトを下敷きにパレット替えで雪/灰/泥を作る（絵文字は使わない＝[[blade-tile-sprite-single-source]]）。
-- [x] **passable.js は変更不要（実コード確認済み）：** `tilePassable`（`passable.js:125`）は**ブロックリスト方式**（WALL/WATER/SKY/PIT/TREE/MOUNTAIN 等だけ `return false`、それ以外はデフォルト通行可）。∴ 新地形タイルをブロックリストに**入れなければ自動で通行可**になる＝passable.js のコード追加は不要。
-- [ ] **エディタ確認**：tiles.js に足せば自動でパレットに出る（[[blade-tile-sprite-single-source]]）。editor-io.js/editor.js の両方で新タイルが選べるか確認（[[blade-preview-settings-duplicated]] と同型の二重定義に注意）。
-- [ ] **テスト**：`tests/` に「新タイルが passable」「スプライト定義が存在」の最小テストを追加。
-- [ ] **⚠️ 飛行バイパス注意（[[dark_tower]] と同じ制約）：** 新地形タイルはすべて通行可＝ゲート機能は持たせない（地形ゲートは既存の `~`水/`x`穴/`M`山で作る）。
+- [x] **タイル追加**（`shared/tiles.js`）：`SNOW('s')`（雪原・白系）・`ASH('c')`（火山灰/岩肌・黒赤系）・`MUD('w')`（泥/沼床・暗緑褐色）の3種を追加。passable:true。BG_TILES にも追加済み。
+- [x] **スプライト**（`shared/tile-sprites.js` ＋ `shared/sprites-tiles.js`）：SNOW→grassスプライト+snowパレット、ASH→sandスプライト+ashパレット、MUD→grassスプライト+mudパレット。絵文字不使用。
+- [x] **passable.js は変更不要（実コード確認済み）：** ブロックリスト方式∴ 追加不要。
+- [x] **エディタ確認**：`editor/editor-palette.js:41` の `PALETTE_CATEGORIES` に SNOW/ASH/MUD を追加。`editor-canvas.js` / `editor-world.js` のハードコード色マップを `TILE_META.color` 参照に統一（新タイルが自動対応）。
+- [x] **テスト**：`tests/terrain-tiles.spec.js` 新設（12本・全グリーン）。passable/スプライト参照/パレット/BG_TILES を各タイルで検証。
+- [x] **⚠️ 飛行バイパス注意：** 新地形タイルはすべて通行可・ゲート機能なし。
 
 ---
 
