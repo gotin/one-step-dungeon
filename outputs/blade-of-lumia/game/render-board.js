@@ -17,7 +17,7 @@
 // は直接 import する（game.js スコープ外・再代入なし）。
 
 import { TILE } from '../shared/tiles.js';
-import { SPRITES, PAL, drawSpriteFrame, makeSprite } from '../shared/sprites.js';
+import { SPRITES, PAL, drawSpriteFrame, makeSprite, applyBgSpriteToCell } from '../shared/sprites.js';
 import { TILE_SPRITE_MAP } from '../shared/tile-sprites.js';
 import { NPC_SPRITE_MAP } from '../shared/npcs.js';
 
@@ -66,12 +66,19 @@ export function createRenderBoard(deps) {
 		getDoorwayState,
 	} = deps;
 
-	// bgTile 背景クラスを cellEl に適用するヘルパー（内部用）
+	// bgTile 背景クラス＋スプライトを cellEl に適用するヘルパー（内部用）
 	function applyBgTileClass(cellEl, posKey) {
 		const stageData = getStageData();
 		const bgTile = stageData.bgTiles?.[posKey] ?? TILE.FLOOR;
 		const cls = BG_TILE_COLOR_CLASS[bgTile];
 		if (cls) cellEl.classList.add(cls);
+		// bgTile のスプライトを CSS background-image repeat で背景に敷く
+		if (bgTile !== TILE.FLOOR) {
+			const si = TILE_SPRITE_MAP[bgTile];
+			if (si && SPRITES[si.spr]) {
+				applyBgSpriteToCell(cellEl, si.spr, si.pal);
+			}
+		}
 	}
 
 	function setCellClass(cellEl, tile, posKey, ss) {
@@ -356,7 +363,8 @@ export function createRenderBoard(deps) {
 		if (fieldSpriteMap[tile]) {
 			const [spr, pal] = fieldSpriteMap[tile];
 			if (SPRITES[spr]) {
-				const cv = makeSprite(spr, pal, tile === TILE.GRASS || tile === TILE.TREE || tile === TILE.BUSH);
+				const ANIMATED_FIELD = new Set([TILE.GRASS, TILE.SAND, TILE.SNOW, TILE.ASH, TILE.MUD, TILE.TREE, TILE.BUSH]);
+				const cv = makeSprite(spr, pal, ANIMATED_FIELD.has(tile));
 				if (cv) { cv.classList.add('obj-sprite'); cellEl.appendChild(cv); }
 			}
 			return;

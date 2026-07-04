@@ -40,7 +40,7 @@ export const TILE_PAL = {
 	// 条件付きドアウェイ（暗青・鉄）
 	doorwayLocked: ['transparent','#0a0a14','#182030','#304060','#506090','#8090c0'],
 	// フィールドタイル
-	grass:       ['transparent','#2a5c1a','#3a7a28','#50a038','#6aba48','#ffffff','#1a4010'],
+	grass:       ['transparent','#3a7028','#427830','#4a8038','#528840','#ffffff','#386828'],
 	sand:        ['transparent','#a07830','#c8a84a','#e0c068','#f0d888','#ffffff','#806020'],
 	// Phase 9-4a: テーマ地形パレット
 	snow:        ['transparent','#8aaec0','#b0ccd8','#cce0ec','#e0f0f8','#ffffff','#6090a8'],

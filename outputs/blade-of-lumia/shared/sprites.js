@@ -108,4 +108,43 @@ export function redrawAnimSprites() {
 		const flipX  = cv.dataset.flipX === '1';
 		if (frames && frames.length > 1) drawSprite(cv, frames, pal, flipX);
 	});
+	// bg-tile はアニメーションしない（静止）
+}
+
+// 1フレーム分のスプライトを scale 倍のピクセルで描いた dataURL を返す（bg CSS repeat 用）
+// scale=2 なら 1dot=2px でcanvasに描くのでCSS拡大不要・pixelated 不要
+function makeBgDataUrl(frames, palette, scale = 1) {
+	const f    = animFrame % frames.length;
+	const grid = frames[f];
+	const rows = grid.length;
+	const cols = grid[0].length;
+	const cv   = document.createElement('canvas');
+	cv.width = cols * scale; cv.height = rows * scale;
+	const ctx = cv.getContext('2d');
+	for (let r = 0; r < rows; r++) {
+		for (let c = 0; c < cols; c++) {
+			const idx = grid[r][c];
+			if (idx === 0) continue;
+			ctx.fillStyle = palette[idx] ?? 'transparent';
+			ctx.fillRect(c * scale, r * scale, scale, scale);
+		}
+	}
+	return cv.toDataURL();
+}
+
+// bgTile を CSS background-image repeat で cellEl に適用する
+// BG_DOT_SCALE=2 → 1dot=2px（32dot×2=64px表示 ≈ プレイヤーの粒感に近い）
+const BG_DOT_SCALE = 2;
+export function applyBgSpriteToCell(cellEl, spriteName, palName) {
+	const frames = SPRITES[spriteName];
+	if (!frames) return;
+	const pal  = PAL[palName] || PAL.hero;
+	const grid = frames[0];
+	const w = grid[0].length * BG_DOT_SCALE;
+	const h = grid.length   * BG_DOT_SCALE;
+	cellEl.dataset.bgSprite = spriteName;
+	cellEl.dataset.bgPal    = palName;
+	cellEl.style.backgroundImage  = `url(${makeBgDataUrl(frames, pal, BG_DOT_SCALE)})`;
+	cellEl.style.backgroundSize   = `${w}px ${h}px`;
+	cellEl.style.backgroundRepeat = 'repeat';
 }

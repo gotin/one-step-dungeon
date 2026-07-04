@@ -157,6 +157,7 @@ canvas.sprite {
     pointer-events: none;
 }
 
+
 /* キャラクター（大きめ）*/
 canvas.sprite.char-sprite {
     width: calc(var(--cell) * 0.85);
