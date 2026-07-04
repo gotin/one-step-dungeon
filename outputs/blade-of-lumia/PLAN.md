@@ -387,10 +387,23 @@ input.js     161 / passable.js 161 / conditions.js 117 / save.js 87 / main.js 78
 - [x] 定義内容を JS コードとしてエクスポート
 - ※ 実装：`editor/index.html`（📦タブ＋`#view-item`）/ `editor/editor-item.js`（自己完結モジュール）/ `editor/editor-item.css`。スモークテスト3本追加。**26テストグリーン**（デグレなし）
 
-#### 背景タイルスプライト編集機能　⚡ Sonnet（実装のみ）
+#### 背景タイルスプライト編集機能　⚡ Sonnet（実装のみ）　← **次タスク（2026-07-04 時点）**
 > **目的：** `sprites-tiles.js` の `TILE_SPRITES.grass` 等をコード直書きせずにブラウザ上で編集できるようにする。既存のスプライトエディタ（`editor-sprite.js`）を流用・拡張するのが最小コスト。
+>
+> **実装方針（確認済み）：**
+> - 実装先：`editor/editor-tile.js`（既存タイルエディタに追記）+ `editor/index.html`（🗺タブ内）
+> - `editor-sprite.js` のピクセルグリッド描画ロジックを **コピーせずに import して流用**（または同一ファイル内で再利用）
+> - 対象タイル：`TILE_SPRITE_MAP`（`shared/tile-sprites.js`）に登録済みの全エントリ（grass/sand/stone/snow/ash/mud 等）
+> - スプライトは **8×8・2フレーム**（既存の TILE_SPRITES 形式に合わせる）
+> - パレットは **4色**（既存の TILE_PAL 形式に合わせる）
+>
+> **参照すべきファイル（実装前に必ず読む）：**
+> - `editor/editor-sprite.js`（ピクセルグリッドUI・パレット編集・エクスポートのリファレンス実装）
+> - `editor/editor-tile.js`（追記先・TILE_PAL 読み込み・テーマプレビュー実装の参考）
+> - `shared/tile-sprites.js`（TILE_SPRITE_MAP・TILE_SPRITES・TILE_PAL の実データ）
+> - `editor/index.html`（🗺タブ `#view-tile` のDOM構造確認）
 - [ ] 「🗺 タイル」タブ（`#view-tile`）に「背景スプライト編集」セクションを追加
-  - ドロップダウン or リストで編集対象タイルを選択（grass/sand/snow/ash/mud 等 `TILE_SPRITE_MAP` に登録済みのもの）
+  - ドロップダウン or リストで編集対象タイルを選択（`TILE_SPRITE_MAP` に登録済みのもの）
   - 選択するとスプライトエディタ（8×8・2フレーム）が開く
   - 既存スプライト（`TILE_SPRITES[spr]`）と既存パレット（`TILE_PAL[pal]`）を読み込んで編集可能
 - [ ] エクスポート：`TILE_SPRITES.xxx = [...]` + `TILE_PAL.xxx = [...]` 形式で textarea 出力 → クリップボードコピー

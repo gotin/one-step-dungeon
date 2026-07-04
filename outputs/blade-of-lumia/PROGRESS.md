@@ -68,7 +68,7 @@
 - `enterStage` を同じステージに再呼び出しすると `isStageChange=false` になりカウンタが増えない。テストでは STAGE→OTHER→STAGE と必ず交互に遷移させる必要があった。
 - リスポーン判定は「再入先の field ステージ」に対して走る（発信元ではない）。チェックタイミングは `currentLayer/stageKey` 更新より前の `lk/sk` 引数時点で実行し、完了後に `currentLayer=lk` に更新するため、`getStageData(lk, sk)` の呼び出しが安全。
 
-**▶ 次やること：** **9-4a エディタ確認（残1項目：editor-palette.js への SNOW/ASH/MUD 追加）**（⚡ Sonnet）、または **Phase 8-4（本格リバランス・🧠 Opus）**。
+**▶ 次やること：** **Phase 0-5 背景タイルスプライト編集機能**（⚡ Sonnet）。`editor/editor-tile.js` に背景タイルのピクセル編集UIを追加する。詳細・参照ファイルは PLAN.md「背景タイルスプライト編集機能」セクション参照。
 
 ---
 
