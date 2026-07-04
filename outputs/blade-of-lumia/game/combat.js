@@ -53,6 +53,7 @@ import { enemyW, enemyH, enemyCenter } from './hitbox.js';
  *   showShieldBlockEffect(x, y)  – 盾ブロックエフェクト
  *   spawnDropEffect(r, c, icon, color) – ドロップエフェクト（視覚のみ）
  *   spawnFloorDrop(r, c, type)        – フロアドロップ配置（踏んで拾う・Phase 9-5c）
+ *   getStageMoves()              – player.stageMoves を返す（Phase 9-5b: lastKillMove 記録用）
  *   gameoverOverlayEl            – ゲームオーバーオーバーレイ DOM
  */
 export function createCombat(deps) {
@@ -77,6 +78,7 @@ export function createCombat(deps) {
 		hasCleared,
 		isShieldBlockingDir, showShieldBlockEffect,
 		spawnDropEffect,
+		getStageMoves,
 		gameoverOverlayEl,
 	} = deps;
 
@@ -140,7 +142,10 @@ export function createCombat(deps) {
 			return;
 		}
 		playSound('enemyDie');
-		getSS(getCurrentLayer(), getStageKey()).defeatedEnemies.add(e.id);
+		const _ss = getSS(getCurrentLayer(), getStageKey());
+		_ss.defeatedEnemies.add(e.id);
+		// Phase 9-5b: 撃破時点の stageMoves を記録してリスポーンタイマーを開始する。
+		_ss.lastKillMove = getStageMoves?.() ?? 0;
 		removeCharEl(`enemy-${e.id}`);
 		setEnemies(getEnemies().filter(x => x !== e));
 		evaluateConditions();

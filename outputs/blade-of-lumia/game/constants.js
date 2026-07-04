@@ -63,3 +63,7 @@ export const BOOMERANG_STUN_MS = 1500; // スタン持続時間（ms）
 
 // ── Phase 4-3b: ロウソク炎ダメージ ────────────────────────────
 export const CANDLE_FIRE_DMG = 3; // ロウソクの炎による基本ダメージ（控えめ・発見用途の補助）
+
+// ── Phase 9-5b: 雑魚リスポーン ────────────────────────────────
+// 雑魚（isBoss=false・E/C/F）が復活するまでに必要なステージ移動回数。
+export const RESPAWN_MOVES = 8;

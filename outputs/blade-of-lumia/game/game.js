@@ -16,7 +16,7 @@ import {
 	MOVE_STEP, TICK_MS, INVINCIBLE_MS, HP_PER_HEART,
 	MAP_JSON_URL, SAVE_KEY, CLEARED_KEY, DIR_DELTA,
 	SWORD_REACH, SWORD_COOLDOWN_MS, STONE_PUSH_COOLDOWN_MS,
-	DARK_TOWER_EXIT_ID, CANDLE_FIRE_DMG,
+	DARK_TOWER_EXIT_ID, CANDLE_FIRE_DMG, RESPAWN_MOVES,
 } from './constants.js';
 // ── セーブ/ロードの純粋変換ロジック（Phase 0-2 Step 1b: save.js へ切り出し）──
 import {
@@ -94,6 +94,8 @@ let player = {
 	rupees: 0, triforceCount: 0,
 	// Phase 9-5a: 矢/爆弾の所持上限（quiver/bombBag で +8 ずつ拡張・最大 32）。
 	maxArrows: 8, maxBombs: 8,
+	// Phase 9-5b: ステージ移動カウンタ（雑魚リスポーン判定用）。
+	stageMoves: 0,
 	// Phase 1-3: 翼の羽衣（古代の祭壇で授かる）。暗黒の塔の入り口を通れるようになる。
 	hasWingRobe: false,
 	// Phase 1-5: 飛行中フラグ（翼の羽衣で離陸中。SKY/WATER を越えられる）。
@@ -303,6 +305,31 @@ function enterStage(lk, sk, pRow, pCol) {
 	}
 
 	clearAllFloorDrops();
+
+	// Phase 9-5b: 別ステージへの移動時にカウンタを増やし、フィールド雑魚のリスポーンを判定する。
+	const isStageChange = stageKey !== null && (currentLayer !== lk || stageKey !== sk);
+	if (isStageChange) {
+		player.stageMoves = (player.stageMoves ?? 0) + 1;
+		// field レイヤーに再入する際、一定回数移動が経過していたら雑魚を復活させる。
+		if (lk === 'field') {
+			const ss = getSS(lk, sk);
+			if ((player.stageMoves - (ss.lastKillMove ?? 0)) >= RESPAWN_MOVES) {
+				// isBoss=true の敵（W/V 等の中ボス含む）と noRespawn フラグ付きはスキップ
+				const sd = getStageData(lk, sk);
+				if (sd) {
+					for (const posKey of [...(ss.defeatedEnemies)]) {
+						const [r, c] = posKey.split(',').map(Number);
+						const tile = sd.tiles?.[r]?.[c];
+						if (!tile) continue;
+						const meta = ENEMY_META[tile];
+						if (!meta || meta.isBoss || meta.noRespawn) continue;
+						ss.defeatedEnemies.delete(posKey);
+					}
+				}
+			}
+		}
+	}
+
 	currentLayer = lk;
 	stageKey     = sk;
 	stageData    = getStageData(lk, sk);
@@ -862,6 +889,7 @@ const { checkStoneOnSwitch, evaluateConditions } = createConditions({
 		showShieldBlockEffect: (x, y) => showShieldBlockEffect(x, y),
 		spawnDropEffect:  (r, c, icon, color) => spawnDropEffect(r, c, icon, color),
 		spawnFloorDrop:   (r, c, type) => spawnFloorDrop(r, c, type),
+		getStageMoves:    () => player.stageMoves ?? 0,
 		toggleSwitch:     (r, c) => toggleSwitch(r, c),
 		setActiveColor:   (r, c) => setActiveColor(r, c),
 		gameoverOverlayEl,
@@ -1783,3 +1811,14 @@ export function getFloorDropsSnapshot() {
 
 // Phase 9-5c: プレイヤーをフロアドロップ座標に移動させて拾わせる（テスト用）
 export function callPickupFloorDropAt(r, c) { return pickupFloorDropAt(r, c); }
+
+// Phase 9-5b: リスポーンテスト用 — 現在の stageMoves を返す
+export function getStageMoves() { return player.stageMoves ?? 0; }
+
+// Phase 9-5b: リスポーンテスト用 — 指定ステージへ強制遷移する
+export function callEnterStage(lk, sk, r, c) { return enterStage(lk, sk, r, c); }
+
+// Phase 9-5b: リスポーンテスト用 — 指定ステージの defeatedEnemies スナップショット
+export function getDefeatedEnemiesSnapshot(lk, sk) {
+	return [...getSS(lk, sk).defeatedEnemies];
+}

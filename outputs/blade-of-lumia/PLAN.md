@@ -1977,13 +1977,12 @@ input.js     161 / passable.js 161 / conditions.js 117 / save.js 87 / main.js 78
 - [ ] **配置（⚠️ 9-4D と連動）：** 矢筒×3・爆弾袋×3 をボスなし小ダンジョンに分散配置。取得順に依存しないよう、序盤〜中盤で徒歩到達できる位置に置く。
 - [x] **テスト**：`tests/ammo-capacity.spec.js`（9本・全グリーン）＝上限クランプ・拡充で max 増加・ロード後も max 保持・旧セーブ補完。
 
-#### 9-5b. 雑魚リスポーン（N回ステージ移動で復活）　⚡ 実装（設計済み）
+#### 9-5b. 雑魚リスポーン（N回ステージ移動で復活）　✅ 完了（2026-07-04・⚡ Sonnet）
 > **実コードでの実現性：** ステージ遷移は `enterStage()`（`game.js:266`）が単一チョークポイント＝ここにグローバル移動カウンタを置ける。リスポーン対象＝**`isBoss=false` の E/C/F のみ**（`ENEMY_META` で W中ボス含む他は全て `isBoss=true`＝機械的に区別可能）。撃破記録は `ss.defeatedEnemies`（posKey の Set・`game.js:377` で参照）。
-- [ ] **グローバル移動カウンタ**：`enterStage()` で「別ステージへ移動した回数」をカウント（`player.stageMoves++` 等・save 対応は player spread で自動）。
-- [ ] **リスポーン判定**：各 stageState に「最後に敵を倒した移動カウント」`ss.lastKillMove` を記録。ステージ再入時、`stageMoves - ss.lastKillMove >= RESPAWN_MOVES`（例 **8** 回）なら `ss.defeatedEnemies` から**雑魚（E/C/F）の posKey のみ**を削除して復活させる。**ボス/中ボス（isBoss=true）と、パズル用に配置した敵は復活させない**（isBoss で除外＝W も復活しない）。
-  - ⚠️ パズル用の雑魚（5-3 の石押し CHASER 等）が復活すると困る場合の扱い＝**ステージ or 敵配置に `noRespawn` フラグ**を持たせて除外（要・パズル配置の棚卸し）。dungeon 内の雑魚は復活させるか field のみ復活させるかは実装時に判断（**まず field の雑魚のみ復活で最小実装→必要なら dungeon へ拡大**を推奨）。
-- [ ] **`RESPAWN_MOVES` 定数**を `constants.js` に追加（初期値 8・要プレイ調整）。
-- [ ] **テスト**：撃破→8回未満の移動で再入=復活しない／8回以上で再入=雑魚のみ復活・ボスは復活しない／パズル敵は復活しない。
+- [x] **グローバル移動カウンタ**：`enterStage()` で「別ステージへ移動した回数」をカウント（`player.stageMoves++`・save 対応は player spread で自動）。`RESPAWN_MOVES=8` を `constants.js` に追加。
+- [x] **リスポーン判定**：各 stageState に `ss.lastKillMove` を追加（`save.js` に serialize/deserialize 追加）。`combat.js:killEnemy` で雑魚撃破時に `ss.lastKillMove = getStageMoves()` を記録。`enterStage()` で `field` レイヤー再入時、`stageMoves - ss.lastKillMove >= 8` なら `ss.defeatedEnemies` から `isBoss=false` の posKey を削除して復活。**field のみ・ダンジョンは対象外（最小実装）**。
+- [x] **`RESPAWN_MOVES` 定数**を `constants.js` に追加（初期値 8）。
+- [x] **テスト**：`tests/enemy-respawn.spec.js`（4本・全グリーン）＝stageMoves 増加・7回移動では復活しない・8回移動後に復活・ダンジョンは復活しない。218本全通過。
 
 #### 9-5c. 雑魚ドロップ（矢/爆弾/ハート/ルピー・所持数連動確率）　⚡ 実装（設計済み）
 > **実コードでの実現性：** `killEnemy`（`combat.js:135`）にドロップ処理を足す。既存の「茂み切りドロップ」（`combat.js:321`＝確率でハート/ルピー＋`spawnDropEffect`）が参考実装として使える。ドロップは**その場で即時取得**（floorItem を置くのでなく、撃破時に直接 player に加算＋エフェクト）で最小実装。

@@ -36,6 +36,9 @@ import {
 	callGiveSubItem,
 	getFloorDropsSnapshot,
 	callPickupFloorDropAt,
+	getStageMoves,
+	callEnterStage,
+	getDefeatedEnemiesSnapshot,
 } from './game.js';
 
 // ── アニメーション ────────────────────────────────────────────
@@ -127,4 +130,8 @@ window.__game = {
 	// Phase 9-5c: フロアドロップ確認・手動拾得（テスト用）
 	getFloorDrops: () => getFloorDropsSnapshot(),
 	pickupFloorDrop: (r, c) => callPickupFloorDropAt(r, c),
+	// Phase 9-5b: リスポーンテスト用
+	getStageMoves: () => getStageMoves(),
+	enterStage: (lk, sk, r, c) => callEnterStage(lk, sk, r ?? 1, c ?? 1),
+	getDefeatedEnemies: (lk, sk) => getDefeatedEnemiesSnapshot(lk, sk),
 };

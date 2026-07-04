@@ -27,6 +27,7 @@ export function createStageState() {
 		switchToggles:   new Set(),  // Phase 4-5 ①: 武器の攻撃で ON にしたトグルスイッチ
 		litTorches:      new Set(),  // Phase 4-5 ②: 点灯したかがり火
 		activeColor:     null,       // Phase 5-1: 現在アクティブな色（'red'|'blue'|null）
+		lastKillMove:    0,          // Phase 9-5b: 最後に雑魚を倒した時点の stageMoves
 	};
 }
 
@@ -53,6 +54,7 @@ export function serializeStageState(stageState) {
 			switchToggles:   [...(v.switchToggles ?? [])],  // Phase 4-5 ①
 			litTorches:      [...(v.litTorches ?? [])],     // Phase 4-5 ②
 			activeColor:     v.activeColor ?? null,          // Phase 5-1
+			lastKillMove:    v.lastKillMove ?? 0,            // Phase 9-5b
 		};
 	}
 	return ss;
@@ -81,6 +83,7 @@ export function deserializeStageState(rawSS) {
 			switchToggles:   new Set(v.switchToggles ?? []),  // Phase 4-5 ①
 			litTorches:      new Set(v.litTorches ?? []),     // Phase 4-5 ②
 			activeColor:     v.activeColor ?? null,            // Phase 5-1
+			lastKillMove:    v.lastKillMove ?? 0,              // Phase 9-5b
 		};
 	}
 	return stageState;
@@ -101,5 +104,7 @@ export function sanitizeLoadedPlayer(player, itemMeta) {
 	// Phase 9-5a: 旧セーブデータへのデフォルト補完
 	if (player.maxArrows == null) player.maxArrows = 8;
 	if (player.maxBombs  == null) player.maxBombs  = 8;
+	// Phase 9-5b: 旧セーブデータへのデフォルト補完
+	if (player.stageMoves == null) player.stageMoves = 0;
 	return player;
 }
