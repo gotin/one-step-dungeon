@@ -133,18 +133,34 @@ function makeBgDataUrl(frames, palette, scale = 1) {
 }
 
 // bgTile を CSS background-image repeat で cellEl に適用する
-// BG_DOT_SCALE=2 → 1dot=2px（32dot×2=64px表示 ≈ プレイヤーの粒感に近い）
-const BG_DOT_SCALE = 2;
+// BG_DOT_SCALE=2 が基準（キャラスプライトと同等の粒感）。ただし
+// tilePx = dotCount×scale が cellPx を割り切れないとセル境界でパターンがズレるため、
+// 「cellPx % (dotCount×s) === 0 を満たす s のうち 2 に最も近い値」を動的に選ぶ。
+// --cell=48 → s=2（16px、3タイル/cell、元通り）
+// --cell=72 → s=3（24px、3タイル/cell、1dot≒3px）
 export function applyBgSpriteToCell(cellEl, spriteName, palName) {
 	const frames = SPRITES[spriteName];
 	if (!frames) return;
 	const pal  = PAL[palName] || PAL.hero;
 	const grid = frames[0];
-	const w = grid[0].length * BG_DOT_SCALE;
-	const h = grid.length   * BG_DOT_SCALE;
+	const dotCols = grid[0].length;
+	const dotRows = grid.length;
+	const cellPx = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--cell')) || 48;
+	// cellPx を (dotCount×s) で割り切れる s を探し、2 に最も近い値を選ぶ（同距離なら大きい方）
+	let scale = 1, bestDist = Infinity;
+	for (let s = 1; s <= 16; s++) {
+		if (cellPx % (dotCols * s) === 0) {
+			const dist = Math.abs(s - 2);
+			if (dist < bestDist || (dist === bestDist && s > scale)) {
+				bestDist = dist; scale = s;
+			}
+		}
+	}
+	const w = dotCols * scale;
+	const h = dotRows * scale;
 	cellEl.dataset.bgSprite = spriteName;
 	cellEl.dataset.bgPal    = palName;
-	cellEl.style.backgroundImage  = `url(${makeBgDataUrl(frames, pal, BG_DOT_SCALE)})`;
+	cellEl.style.backgroundImage  = `url(${makeBgDataUrl(frames, pal, scale)})`;
 	cellEl.style.backgroundSize   = `${w}px ${h}px`;
 	cellEl.style.backgroundRepeat = 'repeat';
 }

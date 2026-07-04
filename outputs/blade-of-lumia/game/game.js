@@ -372,8 +372,8 @@ function enterStage(lk, sk, pRow, pCol) {
 	// 解決済み石パズルのゲートを再入時に開く
 	checkStoneOnSwitch();
 
-	renderBoard();
 	updateBoardScale();
+	renderBoard();
 	renderChars();
 	updateHud();
 

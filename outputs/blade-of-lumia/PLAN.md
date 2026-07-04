@@ -402,12 +402,12 @@ input.js     161 / passable.js 161 / conditions.js 117 / save.js 87 / main.js 78
 > - `editor/editor-tile.js`（追記先・TILE_PAL 読み込み・テーマプレビュー実装の参考）
 > - `shared/tile-sprites.js`（TILE_SPRITE_MAP・TILE_SPRITES・TILE_PAL の実データ）
 > - `editor/index.html`（🗺タブ `#view-tile` のDOM構造確認）
-- [ ] 「🗺 タイル」タブ（`#view-tile`）に「背景スプライト編集」セクションを追加
+- [x] 「🗺 タイル」タブ（`#view-tile`）に「背景スプライト編集」セクションを追加
   - ドロップダウン or リストで編集対象タイルを選択（`TILE_SPRITE_MAP` に登録済みのもの）
   - 選択するとスプライトエディタ（8×8・2フレーム）が開く
   - 既存スプライト（`TILE_SPRITES[spr]`）と既存パレット（`TILE_PAL[pal]`）を読み込んで編集可能
-- [ ] エクスポート：`TILE_SPRITES.xxx = [...]` + `TILE_PAL.xxx = [...]` 形式で textarea 出力 → クリップボードコピー
-- [ ] スモークテスト（タブ表示・セクション存在確認）を追加
+- [x] エクスポート：`TILE_SPRITES.xxx = [...]` + `TILE_PAL.xxx = [...]` 形式で textarea 出力 → クリップボードコピー
+- [x] スモークテスト（タブ表示・セクション存在確認）を追加
 
 #### タイルバリエーション設計支援 ✅ 完了（2026-06-15）
 - [x] ダンジョンテーマ別タイルセットのプレビュー表示

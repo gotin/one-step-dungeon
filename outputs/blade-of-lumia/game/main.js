@@ -3,6 +3,7 @@
 // init() の呼び出し・ゲームループ起動・window イベント・テストフック公開のみを担う。
 // ゲームロジックは game.js に集約されており、必要な関数を import して使う。
 
+import { applyBgSpriteToCell } from '../shared/sprites.js';
 import {
 	init,
 	updateBoardScale,
@@ -51,7 +52,13 @@ init().catch(err => {
 });
 
 // ── ウィンドウリサイズ ─────────────────────────────────────────
-window.addEventListener('resize', () => updateBoardScale());
+// updateBoardScale() が --cell を変更した後、既存セルの background-size を再計算する
+window.addEventListener('resize', () => {
+	updateBoardScale();
+	document.querySelectorAll('.cell[data-bg-sprite]').forEach(cell => {
+		applyBgSpriteToCell(cell, cell.dataset.bgSprite, cell.dataset.bgPal);
+	});
+});
 
 // ── デバッグ用：コンソールから呼び出せるようにグローバルに公開 ──
 window._debugEnding = () => startEnding();

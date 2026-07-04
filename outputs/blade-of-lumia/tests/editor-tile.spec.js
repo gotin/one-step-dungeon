@@ -104,3 +104,91 @@ test.describe('editor: tile tab', () => {
 	});
 
 });
+
+test.describe('editor: bg tile sprite editor', () => {
+
+	test('bg sprite editor section is visible in tile tab', async ({ page }) => {
+		const jsErrors = [];
+		page.on('pageerror', err => jsErrors.push(err.message));
+		page.on('console', msg => {
+			if (msg.type() === 'error') jsErrors.push(msg.text());
+		});
+
+		await page.goto('http://localhost:18080/blade-of-lumia/editor/');
+		await page.waitForLoadState('networkidle');
+
+		await page.locator('#tab-tile').click();
+
+		// タイルセレクタが存在し、BG タイル選択肢を持つ
+		const bgSelect = page.locator('#bg-tile-select');
+		await expect(bgSelect).toBeVisible();
+		const optCount = await bgSelect.locator('option').count();
+		expect(optCount).toBeGreaterThan(3);
+
+		// キャンバスが存在する
+		const bgCanvas = page.locator('#bg-tile-canvas');
+		await expect(bgCanvas).toBeVisible();
+
+		// パレット行が存在する
+		const bgPalette = page.locator('#bg-tile-palette');
+		await expect(bgPalette).toBeVisible();
+
+		// エクスポートエリアが存在する
+		const bgExport = page.locator('#bg-tile-export-out');
+		await expect(bgExport).toBeVisible();
+
+		expect(jsErrors).toEqual([]);
+	});
+
+	test('bg sprite editor: selecting different tile loads its sprite', async ({ page }) => {
+		const jsErrors = [];
+		page.on('pageerror', err => jsErrors.push(err.message));
+		page.on('console', msg => {
+			if (msg.type() === 'error') jsErrors.push(msg.text());
+		});
+
+		await page.goto('http://localhost:18080/blade-of-lumia/editor/');
+		await page.waitForLoadState('networkidle');
+
+		await page.locator('#tab-tile').click();
+
+		const bgSelect = page.locator('#bg-tile-select');
+		await bgSelect.selectOption('sand');
+
+		// フレーム一覧に少なくとも1フレームが表示される
+		const frames = page.locator('.bg-frame-thumb');
+		await expect(frames.first()).toBeVisible();
+
+		// パレットにスウォッチが表示される
+		const swatches = page.locator('.bg-swatch');
+		await expect(swatches.first()).toBeVisible();
+		const count = await swatches.count();
+		expect(count).toBeGreaterThan(1);
+
+		expect(jsErrors).toEqual([]);
+	});
+
+	test('bg sprite editor: export generates TILE_SPRITES code', async ({ page }) => {
+		const jsErrors = [];
+		page.on('pageerror', err => jsErrors.push(err.message));
+		page.on('console', msg => {
+			if (msg.type() === 'error') jsErrors.push(msg.text());
+		});
+
+		await page.goto('http://localhost:18080/blade-of-lumia/editor/');
+		await page.waitForLoadState('networkidle');
+
+		await page.locator('#tab-tile').click();
+
+		// 「生成」ボタンを押す
+		await page.locator('#bg-tile-export-btn').click();
+
+		const exportOut = page.locator('#bg-tile-export-out');
+		const code = await exportOut.inputValue();
+		expect(code).toContain('TILE_SPRITES.');
+		expect(code).toContain('TILE_PAL');
+
+		expect(jsErrors).toEqual([]);
+	});
+
+});

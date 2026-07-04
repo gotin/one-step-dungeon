@@ -1,7 +1,7 @@
 // ── editor-tile.js ── タイルバリエーション設計支援 ──────────────
 // ダンジョンテーマ別パレットをプレビュー・編集・エクスポートする
 import { SPRITES } from '../shared/sprites.js';
-import { TILE_PAL } from '../shared/sprites-tiles.js';
+import { TILE_PAL, TILE_SPRITES } from '../shared/sprites-tiles.js';
 
 // ── 表示対象ダンジョンタイル ─────────────────────────────────────
 const DUNGEON_TILES = [
@@ -349,6 +349,249 @@ function generateExportCode() {
 	elExportOut.value = lines.join('\n');
 }
 
+// ══════════════════════════════════════════════════════════════════
+// 背景スプライト編集（BG タイルのピクセルグリッドエディタ）
+// ══════════════════════════════════════════════════════════════════
+
+// 編集対象のフィールド/BG タイル一覧（tile-sprites.js の TILE_SPRITE_MAP 由来）
+const BG_TILE_LIST = [
+	{ key: 'grass',     spr: 'grass',      pal: 'grass',      label: '草地'   },
+	{ key: 'sand',      spr: 'sand',       pal: 'sand',       label: '砂地'   },
+	{ key: 'stoneFloor',spr: 'stoneFloor', pal: 'stoneFloor', label: '石畳'   },
+	{ key: 'snow',      spr: 'grass',      pal: 'snow',       label: '雪地'   },
+	{ key: 'ash',       spr: 'sand',       pal: 'ash',        label: '灰地'   },
+	{ key: 'mud',       spr: 'grass',      pal: 'mud',        label: '泥地'   },
+	{ key: 'bridge',    spr: 'bridge',     pal: 'bridge',     label: '橋'     },
+	{ key: 'tree',      spr: 'tree',       pal: 'tree',       label: '木'     },
+	{ key: 'mountain',  spr: 'mountain',   pal: 'mountain',   label: '山'     },
+	{ key: 'bush',      spr: 'bush',       pal: 'bush',       label: '茂み'   },
+	{ key: 'fence',     spr: 'fence',      pal: 'fence',      label: '柵'     },
+	{ key: 'houseWall', spr: 'houseWall',  pal: 'houseWall',  label: '家の壁' },
+	{ key: 'houseDoor', spr: 'houseDoor',  pal: 'houseDoor',  label: '家のドア'},
+	{ key: 'houseRoof', spr: 'houseRoof',  pal: 'houseRoof',  label: '屋根'   },
+	{ key: 'sign',      spr: 'sign',       pal: 'sign',       label: '看板'   },
+];
+
+const BG_CELL_PX = 18;
+
+// ── BG スプライトエディタ状態 ─────────────────────────────────
+const bgState = {
+	selectedKey: BG_TILE_LIST[0].key,
+	// 編集中フレームデータの作業コピー（key → frames[][]）
+	framesCache: {},
+	// 編集中パレットの作業コピー（key → palette[]）
+	palCache: {},
+	currentFrame: 0,
+	isDrawing: false,
+	selColor: 1,
+	tool: 'pen',
+};
+
+// DOM refs（init 時に取得）
+let elBgSelector, elBgCanvas, elBgFrameList, elBgPaletteRow,
+	elBgColorInput, elBgExportOut;
+
+// ── ヘルパー ──────────────────────────────────────────────────
+function bgMakeEmptyGrid() {
+	return Array.from({ length: 8 }, () => Array.from({ length: 8 }, () => 0));
+}
+
+function bgCurrentEntry() {
+	return BG_TILE_LIST.find(e => e.key === bgState.selectedKey) ?? BG_TILE_LIST[0];
+}
+
+function bgEnsureCache(key) {
+	const entry = BG_TILE_LIST.find(e => e.key === key);
+	if (!entry) return;
+	if (!bgState.framesCache[key]) {
+		const src = TILE_SPRITES[entry.spr];
+		bgState.framesCache[key] = src
+			? src.map(g => g.map(row => row.slice()))
+			: [bgMakeEmptyGrid()];
+	}
+	if (!bgState.palCache[key]) {
+		const src = TILE_PAL[entry.pal];
+		bgState.palCache[key] = src ? src.slice() : ['transparent','#000000','#ffffff','#808080','#c0c0c0'];
+	}
+}
+
+function bgCurFrames() {
+	bgEnsureCache(bgState.selectedKey);
+	return bgState.framesCache[bgState.selectedKey];
+}
+
+function bgCurPal() {
+	bgEnsureCache(bgState.selectedKey);
+	return bgState.palCache[bgState.selectedKey];
+}
+
+function bgCurGrid() {
+	const frames = bgCurFrames();
+	const fi = Math.min(bgState.currentFrame, frames.length - 1);
+	return frames[fi];
+}
+
+// ── 描画ユーティリティ ────────────────────────────────────────
+function bgDrawGridToCanvas(cv, grid, palette, cellPx) {
+	const rows = grid.length, cols = grid[0].length;
+	cv.width  = cols * cellPx;
+	cv.height = rows * cellPx;
+	const ctx = cv.getContext('2d');
+	ctx.clearRect(0, 0, cv.width, cv.height);
+	for (let r = 0; r < rows; r++) {
+		for (let c = 0; c < cols; c++) {
+			const idx = grid[r][c];
+			const x = c * cellPx, y = r * cellPx;
+			if (idx === 0) {
+				ctx.fillStyle = ((r + c) % 2 === 0) ? '#2a2f33' : '#22262a';
+			} else {
+				ctx.fillStyle = palette[idx] ?? '#ff00ff';
+			}
+			ctx.fillRect(x, y, cellPx, cellPx);
+		}
+	}
+	// グリッド線
+	ctx.strokeStyle = 'rgba(255,255,255,0.08)';
+	ctx.lineWidth = 1;
+	for (let r = 0; r <= rows; r++) {
+		ctx.beginPath(); ctx.moveTo(0, r * cellPx); ctx.lineTo(cols * cellPx, r * cellPx); ctx.stroke();
+	}
+	for (let c = 0; c <= cols; c++) {
+		ctx.beginPath(); ctx.moveTo(c * cellPx, 0); ctx.lineTo(c * cellPx, rows * cellPx); ctx.stroke();
+	}
+}
+
+// ── メインキャンバス描画 ──────────────────────────────────────
+function bgRenderCanvas() {
+	if (!elBgCanvas) return;
+	bgDrawGridToCanvas(elBgCanvas, bgCurGrid(), bgCurPal(), BG_CELL_PX);
+}
+
+// ── フレーム一覧 ──────────────────────────────────────────────
+function bgRenderFrames() {
+	if (!elBgFrameList) return;
+	elBgFrameList.innerHTML = '';
+	const frames = bgCurFrames();
+	const pal    = bgCurPal();
+	frames.forEach((grid, i) => {
+		const btn = document.createElement('button');
+		btn.className = 'bg-frame-thumb' + (i === bgState.currentFrame ? ' selected' : '');
+		btn.title = `フレーム ${i}`;
+		const cv = document.createElement('canvas');
+		bgDrawGridToCanvas(cv, grid, pal, 3);
+		cv.className = 'bg-frame-cv';
+		btn.appendChild(cv);
+		const lbl = document.createElement('span');
+		lbl.textContent = i;
+		btn.appendChild(lbl);
+		btn.addEventListener('click', () => {
+			bgState.currentFrame = i;
+			bgRenderFrames();
+			bgRenderCanvas();
+		});
+		elBgFrameList.appendChild(btn);
+	});
+}
+
+// ── パレット行 ────────────────────────────────────────────────
+function bgRenderPalette() {
+	if (!elBgPaletteRow) return;
+	elBgPaletteRow.innerHTML = '';
+	const pal = bgCurPal();
+	pal.forEach((color, i) => {
+		const sw = document.createElement('button');
+		sw.className = 'bg-swatch' + (i === bgState.selColor ? ' selected' : '');
+		sw.title = `index ${i}: ${color}`;
+		if (i === 0) {
+			sw.classList.add('transparent');
+			sw.textContent = '∅';
+		} else {
+			sw.style.background = color;
+		}
+		sw.addEventListener('click', () => {
+			bgState.selColor = i;
+			if (i > 0 && elBgColorInput) elBgColorInput.value = bgNormalizeHex(color);
+			bgRenderPalette();
+		});
+		elBgPaletteRow.appendChild(sw);
+	});
+}
+
+function bgNormalizeHex(c) {
+	if (typeof c === 'string' && /^#[0-9a-fA-F]{6}$/.test(c)) return c;
+	return '#ffffff';
+}
+
+// ── ドット描画 ────────────────────────────────────────────────
+function bgCellFromEvent(e) {
+	const rect = elBgCanvas.getBoundingClientRect();
+	const px = (e.clientX - rect.left) * (elBgCanvas.width / rect.width);
+	const py = (e.clientY - rect.top) * (elBgCanvas.height / rect.height);
+	return {
+		r: Math.floor(py / BG_CELL_PX),
+		c: Math.floor(px / BG_CELL_PX),
+	};
+}
+
+function bgPaintAt(r, c) {
+	const grid = bgCurGrid();
+	if (r < 0 || c < 0 || r >= grid.length || c >= grid[0].length) return;
+	const val = bgState.tool === 'erase' ? 0 : bgState.selColor;
+	if (grid[r][c] === val) return;
+	grid[r][c] = val;
+	bgRenderCanvas();
+	bgRenderFrames();
+}
+
+// ── エクスポートコード生成 ────────────────────────────────────
+function bgGridToCode(grid) {
+	return '[\n' + grid.map(row => '\t\t[' + row.join(',') + ']').join(',\n') + '\n\t]';
+}
+
+function bgGenerateExport() {
+	if (!elBgExportOut) return;
+	const entry = bgCurrentEntry();
+	const frames = bgCurFrames();
+	const pal    = bgCurPal();
+	const sprName = entry.spr;
+	const palName = entry.pal;
+	const framesCode = frames.map(g => bgGridToCode(g)).join(',\n\t');
+	const palCode = pal.map(c => `'${c}'`).join(', ');
+	elBgExportOut.value =
+		`// ── パレット (sprites-tiles.js の TILE_PAL に追加) ──\n` +
+		`${palName}: [${palCode}],\n\n` +
+		`// ── スプライト (sprites-tiles.js の TILE_SPRITES に追加/置換) ──\n` +
+		`TILE_SPRITES.${sprName} = [\n\t${framesCode}\n];\n`;
+}
+
+// ── 選択タイル切り替え ────────────────────────────────────────
+function bgLoadTile(key) {
+	bgState.selectedKey = key;
+	bgState.currentFrame = 0;
+	bgState.selColor = 1;
+	bgEnsureCache(key);
+	bgRenderCanvas();
+	bgRenderFrames();
+	bgRenderPalette();
+	bgGenerateExport();
+}
+
+// ── タイル選択一覧の描画 ─────────────────────────────────────
+function bgRenderSelector() {
+	if (!elBgSelector) return;
+	elBgSelector.innerHTML = '';
+	BG_TILE_LIST.forEach(({ key, spr, pal, label }) => {
+		const opt = document.createElement('option');
+		opt.value = key;
+		opt.textContent = label;
+		elBgSelector.appendChild(opt);
+	});
+	elBgSelector.value = bgState.selectedKey;
+	elBgSelector.addEventListener('change', () => {
+		bgLoadTile(elBgSelector.value);
+	});
+}
+
 // ── 公開 API ─────────────────────────────────────────────────────
 export function initTileEditor() {
 	elThemeSelect  = document.getElementById('tile-theme-select');
@@ -393,6 +636,109 @@ export function initTileEditor() {
 	renderTileGrid();
 	renderPaletteEditor();
 	generateExportCode();
+
+	// ── 背景スプライト編集セクションを初期化 ──────────────────
+	elBgSelector    = document.getElementById('bg-tile-select');
+	elBgCanvas      = document.getElementById('bg-tile-canvas');
+	elBgFrameList   = document.getElementById('bg-tile-frames');
+	elBgPaletteRow  = document.getElementById('bg-tile-palette');
+	elBgColorInput  = document.getElementById('bg-tile-color-input');
+	elBgExportOut   = document.getElementById('bg-tile-export-out');
+
+	if (!elBgCanvas) return;
+
+	bgRenderSelector();
+	bgLoadTile(bgState.selectedKey);
+
+	// マウス描画
+	elBgCanvas.addEventListener('mousedown', e => {
+		bgState.isDrawing = true;
+		const { r, c } = bgCellFromEvent(e);
+		bgPaintAt(r, c);
+	});
+	elBgCanvas.addEventListener('mousemove', e => {
+		if (!bgState.isDrawing) return;
+		const { r, c } = bgCellFromEvent(e);
+		bgPaintAt(r, c);
+	});
+	window.addEventListener('mouseup', () => { bgState.isDrawing = false; });
+	elBgCanvas.addEventListener('mouseleave', () => { bgState.isDrawing = false; });
+
+	// ツール
+	const bgBtnPen   = document.getElementById('bg-tile-tool-pen');
+	const bgBtnErase = document.getElementById('bg-tile-tool-erase');
+	if (bgBtnPen)   bgBtnPen.addEventListener('click', () => {
+		bgState.tool = 'pen';
+		bgBtnPen.classList.add('active');
+		if (bgBtnErase) bgBtnErase.classList.remove('active');
+	});
+	if (bgBtnErase) bgBtnErase.addEventListener('click', () => {
+		bgState.tool = 'erase';
+		bgBtnErase.classList.add('active');
+		if (bgBtnPen) bgBtnPen.classList.remove('active');
+	});
+
+	// 色変更
+	if (elBgColorInput) {
+		elBgColorInput.addEventListener('input', () => {
+			if (bgState.selColor > 0) {
+				bgCurPal()[bgState.selColor] = elBgColorInput.value;
+				bgRenderPalette();
+				bgRenderCanvas();
+				bgRenderFrames();
+				bgGenerateExport();
+			}
+		});
+	}
+
+	// リセット
+	const bgBtnReset = document.getElementById('bg-tile-reset');
+	if (bgBtnReset) {
+		bgBtnReset.addEventListener('click', () => {
+			const entry = bgCurrentEntry();
+			delete bgState.framesCache[entry.key];
+			delete bgState.palCache[entry.key];
+			bgLoadTile(entry.key);
+		});
+	}
+
+	// フレーム追加/複製/削除
+	const bgBtnAddFrame = document.getElementById('bg-tile-add-frame');
+	const bgBtnDupFrame = document.getElementById('bg-tile-dup-frame');
+	const bgBtnDelFrame = document.getElementById('bg-tile-del-frame');
+	if (bgBtnAddFrame) bgBtnAddFrame.addEventListener('click', () => {
+		bgCurFrames().push(bgMakeEmptyGrid());
+		bgState.currentFrame = bgCurFrames().length - 1;
+		bgRenderFrames();
+		bgRenderCanvas();
+	});
+	if (bgBtnDupFrame) bgBtnDupFrame.addEventListener('click', () => {
+		const copy = bgCurGrid().map(row => row.slice());
+		bgCurFrames().splice(bgState.currentFrame + 1, 0, copy);
+		bgState.currentFrame += 1;
+		bgRenderFrames();
+		bgRenderCanvas();
+	});
+	if (bgBtnDelFrame) bgBtnDelFrame.addEventListener('click', () => {
+		if (bgCurFrames().length <= 1) return;
+		bgCurFrames().splice(bgState.currentFrame, 1);
+		bgState.currentFrame = Math.max(0, bgState.currentFrame - 1);
+		bgRenderFrames();
+		bgRenderCanvas();
+	});
+
+	// エクスポート
+	const bgBtnExport = document.getElementById('bg-tile-export-btn');
+	const bgBtnCopy   = document.getElementById('bg-tile-copy-btn');
+	if (bgBtnExport) bgBtnExport.addEventListener('click', bgGenerateExport);
+	if (bgBtnCopy)   bgBtnCopy.addEventListener('click', () => {
+		bgGenerateExport();
+		navigator.clipboard.writeText(elBgExportOut.value).then(() => {
+			const orig = bgBtnCopy.textContent;
+			bgBtnCopy.textContent = '✔ コピー完了';
+			setTimeout(() => { bgBtnCopy.textContent = orig; }, 1500);
+		});
+	});
 }
 
 export function onLeaveTileEditor() {

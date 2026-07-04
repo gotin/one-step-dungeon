@@ -444,6 +444,59 @@
         </aside>
 
       </div>
+
+      <!-- ── 背景スプライト編集セクション ── -->
+      <div class="bg-sprite-section">
+        <h2 class="panel-title">🖌 背景スプライト編集</h2>
+        <p class="hint">フィールド/BGタイルのピクセルデータを編集し、<code>sprites-tiles.js</code> に貼り付けるコードを生成します。</p>
+
+        <div class="bg-sprite-layout">
+          <!-- 左：タイル選択 + フレーム一覧 -->
+          <div class="bg-sprite-left">
+            <label class="bg-sprite-label">編集するタイル
+              <select id="bg-tile-select" class="input-med"></select>
+            </label>
+            <div class="bg-sprite-toolbar">
+              <button id="bg-tile-tool-pen" class="btn btn-sm active">✏ ペン</button>
+              <button id="bg-tile-tool-erase" class="btn btn-sm">✕ 消去</button>
+              <button id="bg-tile-reset" class="btn btn-sm">↩ 初期値</button>
+            </div>
+            <div class="bg-sprite-frame-section">
+              <span class="bg-sprite-sublabel">フレーム</span>
+              <div class="bg-sprite-frame-buttons">
+                <button id="bg-tile-add-frame" class="btn btn-sm">＋追加</button>
+                <button id="bg-tile-dup-frame" class="btn btn-sm">複製</button>
+                <button id="bg-tile-del-frame" class="btn btn-sm">削除</button>
+              </div>
+              <div id="bg-tile-frames" class="bg-tile-frames"></div>
+            </div>
+          </div>
+
+          <!-- 中央：ピクセルキャンバス -->
+          <div class="bg-sprite-center">
+            <canvas id="bg-tile-canvas" class="bg-tile-canvas"></canvas>
+          </div>
+
+          <!-- 右：パレット + エクスポート -->
+          <div class="bg-sprite-right">
+            <span class="bg-sprite-sublabel">パレット（クリックで選択・ライブ編集）</span>
+            <div id="bg-tile-palette" class="bg-tile-palette"></div>
+            <label class="bg-sprite-label" style="margin-top:8px;">
+              色
+              <input id="bg-tile-color-input" type="color" value="#ffffff">
+            </label>
+            <div class="bg-sprite-export-section">
+              <span class="bg-sprite-sublabel">エクスポート</span>
+              <textarea id="bg-tile-export-out" class="bg-tile-export-out" readonly placeholder="// コードがここに出力されます"></textarea>
+              <div class="bg-sprite-export-buttons">
+                <button id="bg-tile-export-btn" class="btn btn-sm">生成</button>
+                <button id="bg-tile-copy-btn" class="btn btn-sm">クリップボードにコピー</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
     </section>
 
   </main>

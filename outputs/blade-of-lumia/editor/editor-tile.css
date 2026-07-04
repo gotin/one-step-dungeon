@@ -137,6 +137,173 @@
 	white-space: nowrap;
 }
 
+/* ══════════════════════════════════════════════════════════════
+   背景スプライト編集セクション
+══════════════════════════════════════════════════════════════ */
+
+.bg-sprite-section {
+	border-top: 1px solid #444;
+	padding: 12px;
+	margin-top: 4px;
+}
+
+.bg-sprite-layout {
+	display: flex;
+	gap: 16px;
+	align-items: flex-start;
+	margin-top: 8px;
+}
+
+.bg-sprite-left {
+	display: flex;
+	flex-direction: column;
+	gap: 10px;
+	width: 180px;
+	flex-shrink: 0;
+}
+
+.bg-sprite-center {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+}
+
+.bg-sprite-right {
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+	flex: 1;
+	min-width: 0;
+}
+
+.bg-sprite-label {
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+	font-size: 0.82em;
+	color: #bbb;
+}
+
+.bg-sprite-sublabel {
+	font-size: 0.78em;
+	color: #888;
+	font-weight: bold;
+}
+
+.bg-sprite-toolbar {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 4px;
+}
+
+.bg-sprite-frame-section {
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+}
+
+.bg-sprite-frame-buttons {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 4px;
+}
+
+.bg-tile-canvas {
+	image-rendering: pixelated;
+	image-rendering: crisp-edges;
+	border: 1px solid #555;
+	cursor: crosshair;
+	display: block;
+}
+
+.bg-tile-frames {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 6px;
+}
+
+.bg-frame-thumb {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	gap: 2px;
+	border: 2px solid #555;
+	border-radius: 4px;
+	background: #1a1a1a;
+	cursor: pointer;
+	padding: 3px;
+	font-size: 0.7em;
+	color: #888;
+}
+
+.bg-frame-thumb.selected {
+	border-color: #4a8aaa;
+}
+
+.bg-frame-cv {
+	image-rendering: pixelated;
+	image-rendering: crisp-edges;
+	width: 36px;
+	height: 36px;
+}
+
+.bg-tile-palette {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 6px;
+}
+
+.bg-swatch {
+	width: 32px;
+	height: 32px;
+	border: 2px solid #555;
+	border-radius: 4px;
+	cursor: pointer;
+	padding: 0;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	font-size: 1em;
+}
+
+.bg-swatch.selected {
+	border-color: #4a8aaa;
+	box-shadow: 0 0 0 2px #4a8aaa;
+}
+
+.bg-swatch.transparent {
+	background:
+		linear-gradient(45deg, #555 25%, transparent 25%) 0 0/10px 10px,
+		linear-gradient(-45deg, #555 25%, transparent 25%) 0 0/10px 10px,
+		#333;
+	color: #bbb;
+	cursor: default;
+}
+
+.bg-sprite-export-section {
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+}
+
+.bg-tile-export-out {
+	width: 100%;
+	min-height: 140px;
+	font-family: 'Courier New', monospace;
+	font-size: 0.8em;
+	background: #1a1a1a;
+	color: #ddd;
+	border: 1px solid #555;
+	border-radius: 4px;
+	padding: 8px;
+	resize: vertical;
+}
+
+.bg-sprite-export-buttons {
+	display: flex;
+	gap: 6px;
+}
+
 /* 右：エクスポート */
 .tile-export-panel {
 	width: 380px;
