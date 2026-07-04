@@ -87,3 +87,64 @@ test.describe('Phase 9-4 – themed field ground (bgTiles)', () => {
     expect(counts.w, 'mud cells in M zone').toBeGreaterThan(0);
   });
 });
+
+// Phase 9-4: lake (W-zone) rework — the 12 lake screens were 2 identical stamped
+// grass-causeway patterns with zero bridges. They're now central-island +
+// bridge-arm crossings, each with distinct islets. These are DATA-level guards
+// so a future field edit can't silently revert them to the crude stamp.
+//
+// The border openings (top/bottom @ cols 5,6; left/right @ rows 4,5) MUST stay
+// walkable or the edge-scroll transition into the neighbour breaks — that's the
+// connectivity invariant the migration preserves.
+
+const LAKE_KEYS = [
+  '9,7', '10,7', '8,8', '9,8', '10,8', '11,8',
+  '10,9', '8,10', '9,10', '10,10', '9,11', '10,11',
+];
+const WALKABLE_GROUND = new Set(['.', 'g', 'v']); // floor, grass islet, bridge
+
+// A cell value works whether tiles are stored as char-arrays or as row strings.
+const cellAt = (tiles, r, c) => (Array.isArray(tiles[r]) ? tiles[r][c] : tiles[r][c]);
+
+test.describe('Phase 9-4 – lake region rework (bridges + islands)', () => {
+  test('every lake screen keeps its border openings walkable (transition-safe)', () => {
+    const stages = loadField();
+    const bad = [];
+    for (const k of LAKE_KEYS) {
+      const s = stages[k];
+      const t = s.tiles, R = s.rows, C = s.cols;
+      const openings = [
+        [0, 5], [0, 6], [R - 1, 5], [R - 1, 6],       // top / bottom
+        [4, 0], [5, 0], [4, C - 1], [5, C - 1],        // left / right
+      ];
+      for (const [r, c] of openings) {
+        if (!WALKABLE_GROUND.has(cellAt(t, r, c))) bad.push(`${k}@${r},${c}=${cellAt(t, r, c)}`);
+      }
+    }
+    expect(bad, `lake border openings no longer walkable:\n${bad.join('\n')}`).toEqual([]);
+  });
+
+  test('lake screens actually use bridges (first bridges on the field map)', () => {
+    const stages = loadField();
+    for (const k of LAKE_KEYS) {
+      const t = stages[k].tiles;
+      let bridges = 0;
+      for (let r = 0; r < stages[k].rows; r++)
+        for (let c = 0; c < stages[k].cols; c++)
+          if (cellAt(t, r, c) === 'v') bridges++;
+      expect(bridges, `${k} has no bridge tiles`).toBeGreaterThan(0);
+    }
+  });
+
+  test('lake screens are not all identical stamps (interior variety)', () => {
+    const stages = loadField();
+    const sigs = new Set();
+    for (const k of LAKE_KEYS) {
+      const t = stages[k].tiles;
+      const sig = t.map(row => (Array.isArray(row) ? row.join('') : row)).join('|');
+      sigs.add(sig);
+    }
+    // Was 2 distinct patterns across 12 screens; the rework gives many more.
+    expect(sigs.size, 'lake screens still collapse into too few distinct patterns').toBeGreaterThan(4);
+  });
+});
