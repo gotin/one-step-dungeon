@@ -36,13 +36,16 @@ const loadMap = () => JSON.parse(readFileSync(MAP_PATH, 'utf8'));
 //   8,1  = fieldToTower flight-warp landing   ┘
 const TWO_AXIS_ALLOWLIST = ['7,14', '8,0', '8,1'];
 
-// RATCHET CEILINGS — measured 2026-07-05 on the pre-rework map. LOWER these as
-// 9-6 流し込み drives each number down. GOAL for every one is 0.
+// RATCHET CEILINGS — LOWER these as 9-6 流し込み drives each number down. GOAL 0.
+// 2026-07-05 pre-rework baseline: seams 91 / under-2-axis 110.
+// 2026-07-06 設計⑤ forest prototype (26 screens rebuilt): seams 91→89,
+//   under-2-axis 110→94 (16 forest 素通り screens cleared). W1/W2/dup unchanged
+//   (all remaining in the still-untouched outer border). Tightened accordingly.
 const BASELINE = {
-  seams: 91,        // honest seam bugs (reachable→reachable but walled) → goal 0
+  seams: 89,        // honest seam bugs (reachable→reachable but walled) → goal 0
   w1: 110,          // all-blocked screens (border/waste) → goal 0 (★4 全作り替え)
   w2: 110,          // orphan screens (walkable but unreachable) → goal 0
-  underTwoAxis: 110, // reachable screens carrying <2 axes (素通り) → goal 0
+  underTwoAxis: 94, // reachable screens carrying <2 axes (素通り) → goal 0
   dupLayouts: 3,    // groups sharing an identical layout → goal 0. Currently the
                     // all-water(84)/all-mountain(13)/all-wall(13) border groups;
                     // under B方針 these are 塗り絵 to rework, not legit borders.
