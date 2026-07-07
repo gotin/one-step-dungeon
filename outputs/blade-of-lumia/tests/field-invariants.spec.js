@@ -41,11 +41,14 @@ const TWO_AXIS_ALLOWLIST = ['7,14', '8,0', '8,1'];
 // 2026-07-06 設計⑤ forest prototype (26 screens rebuilt): seams 91→89,
 //   under-2-axis 110→94 (16 forest 素通り screens cleared). W1/W2/dup unchanged
 //   (all remaining in the still-untouched outer border). Tightened accordingly.
+// 2026-07-07 ⑥ desert region (14 screens rebuilt): under-2-axis 94→80 (all 14
+//   desert 素通り cleared), seams 89→88 (mirror-ring rule removed the 2,14→2,13
+//   seam). W1/W2/dup unchanged (outer border still untouched). Tightened.
 const BASELINE = {
-  seams: 89,        // honest seam bugs (reachable→reachable but walled) → goal 0
+  seams: 88,        // honest seam bugs (reachable→reachable but walled) → goal 0
   w1: 110,          // all-blocked screens (border/waste) → goal 0 (★4 全作り替え)
   w2: 110,          // orphan screens (walkable but unreachable) → goal 0
-  underTwoAxis: 94, // reachable screens carrying <2 axes (素通り) → goal 0
+  underTwoAxis: 80, // reachable screens carrying <2 axes (素通り) → goal 0
   dupLayouts: 3,    // groups sharing an identical layout → goal 0. Currently the
                     // all-water(84)/all-mountain(13)/all-wall(13) border groups;
                     // under B方針 these are 塗り絵 to rework, not legit borders.
