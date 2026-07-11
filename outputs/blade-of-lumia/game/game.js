@@ -1035,6 +1035,52 @@ function unlockLockedDoor(posKey) {
 	renderBoard(); renderChars();
 }
 
+// 徒歩で決して立てない「壁」タイル集合（山・木・柵・水・穴・空・家・看板・
+// かがり火・スイッチ・石・切る前の茂み等）。開閉しうるゲート/ドア/破壊壁は
+// 含めない（遷移先で開いている可能性があるので従来どおり通す）。
+// connectivity.mjs の HARD_BLOCKED と同じ基準 → traps 指標とエンジン挙動が一致。
+const ARRIVAL_WALL_TILES = new Set([
+	TILE.WALL, TILE.WATER, TILE.SKY, TILE.PIT, TILE.DOORWAY_LOCKED,
+	TILE.SWITCH, TILE.SWITCH_RED, TILE.SWITCH_BLUE, TILE.STONE,
+	TILE.TREE, TILE.MOUNTAIN, TILE.BUSH, TILE.FENCE,
+	TILE.HOUSE_WALL, TILE.HOUSE_ROOF, TILE.SIGN, TILE.TORCH,
+]);
+for (const ch of Object.keys(NPC_SPRITE_MAP)) ARRIVAL_WALL_TILES.add(ch);
+
+// 遷移先ステージの着地 footprint が徒歩不可の壁を含むか？（すり抜け防止判定）。
+// プレイヤーは半セル幅で最大2×2セルにまたがる（col0.5 は col0-1 を占める）ので、
+// passable.js の isPassable と同じく floor(n)〜floor(n+0.999) の footprint 全体を
+// 走査する（中心セルだけ見ると角の壁を見逃してめり込む）。
+// 水/穴は、はしご所持かつ 1セル幅の橋なら渡れるので壁扱いしない。
+function arrivalIsWall(destStage, nRow, nCol) {
+	const r0 = Math.floor(nRow), r1 = Math.floor(nRow + 0.999);
+	const c0 = Math.floor(nCol), c1 = Math.floor(nCol + 0.999);
+	for (let r = r0; r <= r1; r++) {
+		for (let c = c0; c <= c1; c++) {
+			const tile = destStage.tiles?.[r]?.[c];
+			if (tile === undefined) continue;         // 範囲外セルは無視（端クランプ側）
+			if (!ARRIVAL_WALL_TILES.has(tile)) continue;
+			if (player.hasLadder && (tile === TILE.WATER || tile === TILE.PIT)
+				&& isBorderLadderBridge(destStage, r, c)) continue;
+			return true;                              // footprint 内に壁 → めり込む
+		}
+	}
+	return false;
+}
+
+// 遷移先の (r,c) が、はしごで渡れる 1セル幅の水/穴橋か（軸不問）。橋脚＝水/穴/
+// 壁でない通行可タイル。passable.js の isLadderBridge と同じ考え方を、まだロード
+// していない遷移先ステージのタイル配列に対して自己完結で判定する。
+function isBorderLadderBridge(s, r, c) {
+	const bank = (br, bc) => {
+		const t = s.tiles?.[br]?.[bc];
+		if (t === undefined) return false;
+		if (t === ' ') return true;                 // 床
+		return !ARRIVAL_WALL_TILES.has(t);          // 壁でも水/穴でもない＝陸
+	};
+	return (bank(r - 1, c) && bank(r + 1, c)) || (bank(r, c - 1) && bank(r, c + 1));
+}
+
 // ── ステージ端遷移チェック ────────────────────────────────────
 function checkStageTransition() {
 	if (isTransitioning) return;
@@ -1056,6 +1102,25 @@ function checkStageTransition() {
 	else if (x >= cols) { newKey = `${sx + 1},${sy}`; newRow = y; newCol = 0.5; }
 
 	if (newKey && getStageData(newLayer, newKey)) {
+		// 到着セルが壁（山・木・柵・水など徒歩で立てないタイル）だと、遷移しても
+		// 壁の中にめり込む → そこから隣の床へ動けて「壁をすり抜けた」ように見える
+		// バグになる。到着が徒歩不可なら遷移をキャンセルし、出ようとした方向にだけ
+		// 押し戻して元のステージに留める（反対軸はいじらない＝斜めズレを起こさない）。
+		// ※ 本来は「端が壁に面したマップを作らない」ことで防ぐべき事象だが、エンジン
+		//   側でも入り込みを起こさない安全網を張る（該当マップの是正は別途）。
+		const destStage = getStageData(newLayer, newKey);
+		// 飛行中は水/空へ着地して留まれる（塔の空島入口など）ので遷移を許す。
+		// 徒歩時のみ、到着 footprint が壁ならブロックする（はしごで渡れる 1セル幅の
+		// 水/穴橋は正当な渡りなので通す）。着地は float 座標（newRow/newCol）で判定。
+		if (!player.flying && arrivalIsWall(destStage, newRow, newCol)) {
+			if (y < 0) player.y = 0.5;
+			else if (y >= rows) player.y = rows - 1.5;
+			else if (x < 0) player.x = 0.5;
+			else if (x >= cols) player.x = cols - 1.5;
+			moveCharEl('player', player.x, player.y);
+			updatePlayerCharEl();
+			return;
+		}
 		isTransitioning = true;
 		playSound('stageTransition');
 		saveGame();

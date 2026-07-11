@@ -53,4 +53,51 @@ test.describe('Blade of Lumia – ステージ遷移', () => {
     await expect(board).toBeVisible();
     await expect(page.locator('#char-player')).toBeVisible();
   });
+
+  // ── 壁すり抜け防止（arrival-wall）────────────────────────────────
+  // engine の checkStageTransition は「隣ステージが在れば無条件で移動」する仕様
+  // だったため、開いた辺の対岸が壁（山/水/#等）だと壁の中にめり込み → そこから
+  // 隣の床へ動けて「すり抜けた」ように見えるバグがあった。着地 footprint が壁なら
+  // 遷移をキャンセルして出ようとした方向にだけ押し戻す修正を回帰固定する。
+  // 例：field 13,2 の (0,11) から右へ出ると 14,2 の (0,0)=山 'M' に着地する。
+  function previewUrl({ stage, row, col }) {
+    const p = new URLSearchParams({
+      fromEditor: '1', layer: 'field', stage,
+      row: String(row), col: String(col), ps_weapon: '1',
+    });
+    return `${GAME_URL}?${p.toString()}`;
+  }
+  const stageKeyNow = (page) => page.evaluate(() => window.__game.getState().stageKey);
+
+  test('壁に面した端は遷移せず留まる（山すり抜け防止・13,2→14,2)', async ({ page }) => {
+    await page.goto(previewUrl({ stage: '13,2', row: 0, col: 11 }));
+    await waitForBoard(page);
+    for (let i = 0; i < 8; i++) {
+      await page.evaluate(() => window.__game.movePlayer('right'));
+      await page.waitForTimeout(50);
+    }
+    expect(await stageKeyNow(page)).toBe('13,2'); // 山 14,2 に入っていない
+  });
+
+  test('壁に面した端は遷移せず留まる（壁すり抜け防止・13,2→13,1)', async ({ page }) => {
+    // 13,1 の下端 row9 は '#####..#####' なので col0 は壁 '#'。
+    await page.goto(previewUrl({ stage: '13,2', row: 0, col: 0 }));
+    await waitForBoard(page);
+    for (let i = 0; i < 8; i++) {
+      await page.evaluate(() => window.__game.movePlayer('up'));
+      await page.waitForTimeout(50);
+    }
+    expect(await stageKeyNow(page)).toBe('13,2');
+  });
+
+  test('開いた辺（床）は従来どおり正常遷移する（13,2 col5→13,1)', async ({ page }) => {
+    // 13,1 の row9 col5 は '.'（'#####..#####' の隙間）＝正当な開口。
+    await page.goto(previewUrl({ stage: '13,2', row: 0, col: 5 }));
+    await waitForBoard(page);
+    for (let i = 0; i < 8; i++) {
+      await page.evaluate(() => window.__game.movePlayer('up'));
+      await page.waitForTimeout(50);
+    }
+    expect(await stageKeyNow(page)).toBe('13,1');
+  });
 });
