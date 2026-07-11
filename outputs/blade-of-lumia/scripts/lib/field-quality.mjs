@@ -117,7 +117,7 @@ function allBlockedScreens(stages) {
  * @param {object} mapData  the whole map (needs startPos + all layers)
  * @returns {{
  *   reached:Set<string>, orphans:string[], w1:string[],
- *   seams:string[], rawDeadEdges:number
+ *   seams:string[], traps:string[], rawDeadEdges:number
  * }}
  */
 export function fieldHonestMetrics(mapData) {
@@ -134,6 +134,20 @@ export function fieldHonestMetrics(mapData) {
   const orphanSet = new Set(orphans);
 
   const seams = new Set();
+  // TRAP edges (user principle 1: "入った後に動けなくなるステージを作ってはならない").
+  // A trap = you step off an open edge of a REACHED screen and the engine scrolls
+  // you into an EXISTING destination stage (checkStageTransition moves whenever a
+  // stage exists there) but the arrival cell is hard-blocked → you clamp/stick,
+  // and if that dest is all-blocked (W1) you can never leave = soft-lock. Unlike
+  // `seams`, this does NOT exempt W1/orphan destinations — landing in one is the
+  // very bug. It only requires the SOURCE be reached (an actually-walkable screen
+  // the player can get to) so it flags real, reachable soft-locks.
+  const traps = new Set();
+  for (const e of deadEdges) {
+    if (!stages[e.to]) continue;          // no dest stage → engine clamps in place, safe
+    if (!reachedRooms.has(e.from)) continue; // source unreachable → not a live trap
+    if (e.reason === 'arrival-wall') traps.add(`${e.from} -> ${e.to}`);
+  }
   for (const e of deadEdges) {
     if (!stages[e.to]) continue;       // no stage there → world edge, not a seam bug
     if (w1Set.has(e.to)) continue;     // dest all-blocked → intended border
@@ -145,6 +159,7 @@ export function fieldHonestMetrics(mapData) {
     orphans: [...orphanSet].sort(),
     w1: [...w1Set].sort(),
     seams: [...seams].sort(),
+    traps: [...traps].sort(),
     rawDeadEdges: deadEdges.length,
   };
 }

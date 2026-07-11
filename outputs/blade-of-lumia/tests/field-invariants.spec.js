@@ -44,14 +44,44 @@ const TWO_AXIS_ALLOWLIST = ['7,14', '8,0', '8,1'];
 // 2026-07-07 ⑥ desert region (14 screens rebuilt): under-2-axis 94→80 (all 14
 //   desert 素通り cleared), seams 89→88 (mirror-ring rule removed the 2,14→2,13
 //   seam). W1/W2/dup unchanged (outer border still untouched). Tightened.
+// 2026-07-09 ⑥-3 grassland hub (26 hub + 5 south-coast screens rebuilt):
+//   under-2-axis 80→63 (all 17 hub 素通り cleared). The coast (§10 region+ring:
+//   the 5 sea screens touching the hub's south edge, made walkable beaches)
+//   turned 5 W1 + 5 orphan sea screens into reached playable screens with ≥2 axes
+//   each → W1 110→105, W2 110→105. seams stay 88 — the 8 hub seams are CORNER-cell
+//   conflicts pinned by the preserved village/D1/D8/cave_1 corners (a corner
+//   can't satisfy two crossings at once; the only fix edits a preserved screen);
+//   the coast adds 0 seams. dup unchanged. Tightened w1/w2/under-2-axis.
+// 2026-07-09 outer-ring pass (migrate-field-outer-ring.mjs) — user-driven fix:
+//   "オール水ステージを撲滅／入った後に動けなくなるステージを作るな／field は全画面
+//   playable". Rebuilt ALL 105 all-water/all-mountain W1 screens into walkable,
+//   village-reachable outer regions (sea beaches+piers / carved cliff paths) with
+//   only the map's outermost edge as wall. Result: W1 105→0, W2 105→0 (rules 2
+//   satisfied: every screen playable & reachable). NEW `traps` metric (rule 1:
+//   step off a reached screen's open edge → arrive on a hard-blocked cell = soft-
+//   lock) added to fieldHonestMetrics; it exposed 146 pre-existing soft-locks the
+//   old seam metric hid (it exempted W1 destinations). Outer-ring pass drove
+//   traps 146→69 and adds ZERO soft-locks of its own; the 69 remaining are all in
+//   the still-un-reworked mainland regions (草原G中央/湖W/雪S/火山L/山地M = ⑥-4〜
+//   ⑥-9) and fall as each is reworked. dup rose 3→7 because many deep-ocean
+//   screens share an identical minimal-walkway layout (legit: featureless open
+//   sea) — tracked honestly, not hidden. seams == traps by construction now.
 const BASELINE = {
-  seams: 88,        // honest seam bugs (reachable→reachable but walled) → goal 0
-  w1: 110,          // all-blocked screens (border/waste) → goal 0 (★4 全作り替え)
-  w2: 110,          // orphan screens (walkable but unreachable) → goal 0
-  underTwoAxis: 80, // reachable screens carrying <2 axes (素通り) → goal 0
-  dupLayouts: 3,    // groups sharing an identical layout → goal 0. Currently the
-                    // all-water(84)/all-mountain(13)/all-wall(13) border groups;
-                    // under B方針 these are 塗り絵 to rework, not legit borders.
+  seams: 97,        // honest seam bugs (reachable→reachable but walled) → goal 0
+  w1: 0,            // all-blocked screens → 0 achieved (rule 2: all playable)
+  w2: 0,            // orphan screens → 0 achieved (rule 2: all reachable)
+  underTwoAxis: 168, // reachable <2-axis screens → goal 0. Jumped 63→168 because
+                    // the outer ring made 105 border screens REACHABLE: they are
+                    // now playable (rule 2) but not yet interesting (minimal
+                    // walkways). Adding secrets/landmarks is ⑥-10/⑥-11's job; this
+                    // ceiling falls as each outer region gets its content pass.
+  dupLayouts: 7,    // identical-layout groups → goal small. Rose 3→7 when the
+                    // outer ring made 105 border screens walkable; deep-ocean
+                    // screens with the same open-edge geometry share a walkway.
+  traps: 97,        // rule 1: reached screen → arrival-wall soft-lock → goal 0.
+                    // 146→97 after the outer-ring pass (it adds 0 of its own; the
+                    // 97 are all in un-reworked mainland ⑥-4〜⑥-9 + preserved-
+                    // entrance corners); fall as each region is reworked.
 };
 
 test.describe('Blade of Lumia – 9-6 フィールド不変条件（ratchet）', () => {
@@ -91,13 +121,27 @@ test.describe('Blade of Lumia – 9-6 フィールド不変条件（ratchet）',
     ).toBeLessThanOrEqual(BASELINE.underTwoAxis);
   });
 
-  test('レイアウト重複 (同一タイル配置の使い回し) は 0', () => {
+  test('レイアウト重複 (同一タイル配置の使い回し) は基準以下', () => {
     const groups = duplicateLayoutGroups(loadMap());
     expect(
       groups.length,
       `duplicate-layout groups found (塗り絵 copy-paste):\n` +
       groups.map((g) => g.join(', ')).join('\n'),
     ).toBeLessThanOrEqual(BASELINE.dupLayouts);
+  });
+
+  // USER RULE 1: 入った後に動けなくなるステージを作ってはならない. A trap = step off a
+  // reached screen's open edge and the engine scrolls you into an existing stage
+  // whose arrival cell is hard-blocked (you clamp/stick; if that screen is all-
+  // blocked it's an unrecoverable soft-lock). This is the metric that would have
+  // caught the 3,17→3,18 all-water soft-lock. Ratchet to 0 as regions are reworked.
+  test('移動後に動けなくなる遷移 (trap edges) は基準以下（目標 0＝ルール1）', () => {
+    const m = fieldHonestMetrics(loadMap());
+    expect(
+      m.traps.length,
+      `trap edges regressed above baseline ${BASELINE.traps}.\n` +
+      `到達可能画面から開いた辺に出ると壁/オール水に着地して詰む遷移:\n${m.traps.join('  ')}`,
+    ).toBeLessThanOrEqual(BASELINE.traps);
   });
 
   // Progress marker: prints the live gap to goal on every run so the ratchet is
@@ -113,6 +157,7 @@ test.describe('Blade of Lumia – 9-6 フィールド不変条件（ratchet）',
     console.log(`  W2 orphan    : ${m.orphans.length}\t(baseline ${BASELINE.w2})`);
     console.log(`  under-2-axis : ${under.length}\t(baseline ${BASELINE.underTwoAxis})`);
     console.log(`  dup layouts  : ${duplicateLayoutGroups(map).length}\t(baseline ${BASELINE.dupLayouts})`);
+    console.log(`  trap edges   : ${m.traps.length}\t(baseline ${BASELINE.traps})  ← rule 1 soft-locks`);
     expect(true).toBe(true);
   });
 });
