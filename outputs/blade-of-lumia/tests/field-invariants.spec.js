@@ -66,22 +66,27 @@ const TWO_AXIS_ALLOWLIST = ['7,14', '8,0', '8,1'];
 //   ⑥-9) and fall as each is reworked. dup rose 3→7 because many deep-ocean
 //   screens share an identical minimal-walkway layout (legit: featureless open
 //   sea) — tracked honestly, not hidden. seams == traps by construction now.
+// 2026-07-11 ⑥-4 grassland G-B (central-east lake-side, 50 screens rebuilt):
+//   under-2-axis 168→146 (all 50 G-B 素通り screens cleared — each now ≥2 axes).
+//   The mirror rule removed every EDGE seam/trap touching G-B → seams 97→88,
+//   traps 97→88. The 25 remaining G-B-source traps are ALL CORNER cells (0 edge,
+//   measured) facing still-塗り絵 neighbours (forest F / lake W / G-C / hub G-A) —
+//   the §11-1 corner limit; they vanish when those regions are reworked (⑥-5..
+//   ⑥-9). dup unchanged (7). W1/W2 unchanged (0). Tightened seams/traps/under.
 const BASELINE = {
-  seams: 97,        // honest seam bugs (reachable→reachable but walled) → goal 0
+  seams: 88,        // honest seam bugs (reachable→reachable but walled) → goal 0
   w1: 0,            // all-blocked screens → 0 achieved (rule 2: all playable)
   w2: 0,            // orphan screens → 0 achieved (rule 2: all reachable)
-  underTwoAxis: 168, // reachable <2-axis screens → goal 0. Jumped 63→168 because
-                    // the outer ring made 105 border screens REACHABLE: they are
-                    // now playable (rule 2) but not yet interesting (minimal
-                    // walkways). Adding secrets/landmarks is ⑥-10/⑥-11's job; this
-                    // ceiling falls as each outer region gets its content pass.
-  dupLayouts: 7,    // identical-layout groups → goal small. Rose 3→7 when the
-                    // outer ring made 105 border screens walkable; deep-ocean
-                    // screens with the same open-edge geometry share a walkway.
-  traps: 97,        // rule 1: reached screen → arrival-wall soft-lock → goal 0.
-                    // 146→97 after the outer-ring pass (it adds 0 of its own; the
-                    // 97 are all in un-reworked mainland ⑥-4〜⑥-9 + preserved-
-                    // entrance corners); fall as each region is reworked.
+  underTwoAxis: 146, // reachable <2-axis screens → goal 0. 168→146 after ⑥-4
+                    // cleared all 50 G-B mainland 素通り screens. Remaining are the
+                    // outer ring's minimal walkways (⑥-10/⑥-11 content pass) plus
+                    // the still-un-reworked mainland regions (⑥-5..⑥-9).
+  dupLayouts: 7,    // identical-layout groups → goal small. Deep-ocean minimal
+                    // walkways still share geometry (⑥-11 content pass clears them).
+  traps: 88,        // rule 1: reached screen → arrival-wall soft-lock → goal 0.
+                    // 97→88 after ⑥-4. The 25 G-B-source traps left are ALL corner
+                    // cells (§11-1) facing un-reworked neighbours; they fall as
+                    // ⑥-5..⑥-9 rework the adjacent regions.
 };
 
 test.describe('Blade of Lumia – 9-6 フィールド不変条件（ratchet）', () => {
