@@ -8,20 +8,20 @@
 
 > **これはゲーム機能ではなく Claude Code（開発ハーネス）側の改善タスク。** 次の `/workflow` 実行時、9-6 ⑥-5 や 4-6 より**先にこれを実装する**。理由＝下記の再発防止（AIが context 逼迫に気づけず、長い/重いセッション終盤で新規実装の続行を提案した問題）。
 
-### H-1. モデルに context 利用率を注入する（`UserPromptSubmit` フック）　🧠→⚡　⏳ 次にやる
+### H-1. モデルに context 利用率を注入する（`UserPromptSubmit` フック）　🧠→⚡　✅ 完了（2026-07-11）
 
 **背景（2026-07-11）：** モデル（Claude）は**デフォルトで自分の context 窓の利用率を見ていない**（クライアント側で計算されユーザーにだけ表示・サブエージェント調査で確認）。そのため長い/重いセッションの終盤でも残量に気づかず「このまま続けますか？」と新規実装の続行を提案してしまった。→ **フックで利用率をモデルの context に毎ターン注入し、逼迫時は区切りを進言できるようにする。**
 
 **方針＝A案（実機検証を先に）：**
-- [ ] **① 実機でフック入力 JSON を検証する（最優先・幻覚回避）。** `settings.json` に一時的な `UserPromptSubmit` フックを仕込み、`stdin` の JSON を丸ごと `/tmp` に吐き出して**実際に来るフィールド名**を確認する。サブエージェント調査は `transcript_path` / `hookSpecificOutput.additionalContext`（10k字上限）/ `UserPromptSubmit` が毎ターン発火、と回答したが、**フィールド名の精密な列挙（`context_window.used_percentage` 等）はバージョン依存で捏造の恐れがあるため必ず実機で裏取りする。**
-- [ ] **② 利用率の算出方法を決める。** 第一候補＝`transcript_path`（JSONL）の文字数からの**概算**（速い・「80%超で区切り進言」の判断には精度不要）。正確さが要るなら `/messages/count_tokens` API（遅い・APIキー/quota消費）だが、毎ターン走るフックなので概算を推奨。
-- [ ] **③ フック実装。** `UserPromptSubmit` フックが `hookSpecificOutput.additionalContext` に「Context 利用率 ~X%（≈Yk / Ztok）」の一文を返す（`~/.claude/hooks/` にスクリプト・`settings.json` に登録）。`update-config` スキルを使って設定する（設定変更の正道）。
-- [ ] **④ 方針を CLAUDE.md に追記（フックと両輪）。** フックで数値が入っても「どう振る舞うか」の指針が要る。下記 H-2 の文面を `~/.claude/CLAUDE.md`（またはプロジェクト CLAUDE.md）へ。
-- [ ] **完了条件：** 新しいプロンプト送信時に、注入された利用率が実際にモデルの応答判断に使える形で見えること（利用率が高いとき区切りを進言する挙動を1回確認）。
+- [x] **① 実機でフック入力 JSON を検証済み（2026-07-11）。** 一時フック `_tmp-dump-prompt.sh` で stdin を `/tmp/claude-hook-input.json` にダンプ。**実在フィールド＝`transcript_path`/`session_id`/`cwd`/`prompt_id`/`permission_mode`/`hook_event_name`/`prompt`。`context_window`/`used_percentage` は存在しない（捏造だった）＝裏取りが正解。**
+- [x] **② 算出方法を確定（文字数概算より上位の手段を実機で発見）。** transcript JSONL の各 assistant 行に実 `message.usage` が記録されており、**`input_tokens + cache_creation_input_tokens + cache_read_input_tokens`＝その時点でモデルが実際に読んだ context トークン数**。最後の assistant 行のこの和を採用（概算不要・API 呼び出し不要）。
+- [x] **③ フック実装（`~/.claude/hooks/context-usage.py`）＋登録済み。** `additionalContext` に `[context] 利用率 ~X% (≈Yk / Ztok)` を返す。**ウィンドウは適応判定**＝used>200k なら 1M 窓（1M-context ベータのセッションで 200% 超になるバグを実機で発見→修正）。エッジ（transcript無/不正JSON/ファイル欠落）は無出力・exit 0 でプロンプトを絶対ブロックしない。`settings.json` の `UserPromptSubmit` に登録・一時診断フックは削除済み。
+- [x] **④ 方針を `~/.claude/CLAUDE.md` に追記済み（グローバル＝全セッションで発火するフックと対応）。** 下記 H-2 の文面。
+- [ ] **完了条件（残：実セッションでの発火確認）：** 次のプロンプト送信時に system-reminder 内へ `[context] 利用率 ~X%` が注入されるのを1回確認する（オフラインでは全 transcript で正しい値を確認済み＝自セッション~40%/別1M窓~45%）。
 
-### H-2. セッション継続判断のルールを CLAUDE.md に明記　⚡（文面追記のみ）
+### H-2. セッション継続判断のルールを CLAUDE.md に明記　⚡（文面追記のみ）　✅ 完了（2026-07-11・`~/.claude/CLAUDE.md` 冒頭「セッション継続の判断」節）
 
-- [ ] 以下の趣旨を CLAUDE.md に追記する（H-1 フックが無くても効くよう、長さ・読込量からの推論も含める）：
+- [x] 以下の趣旨を CLAUDE.md に追記済み（H-1 フックが無くても効くよう、長さ・読込量からの推論も含める）：
   - 長い/重いセッションの終盤で、新規の重いタスク（実装の新規着手等）を「このまま続けますか？」と提案しない。**利用率（フック注入値）または セッションの長さ・読込量から逼迫を推論し、区切りを進言する**（記録済みなら中断で失われる物はない）。
   - 作業を前に進める提案をデフォルトにしない。「次に何ができるか」より「今ここで区切るべきか」を先に検討する。
   - 中身のない前のめりな愛想（"次も手伝えます"）を書かない。
