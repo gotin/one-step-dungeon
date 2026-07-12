@@ -823,12 +823,12 @@ input.js     161 / passable.js 161 / conditions.js 117 / save.js 87 / main.js 78
 > 1. **運搬なし：** `collectFieldItem`（`game/player.js:874`）は**ブーメランが通過した瞬間に即入手**（`player.rupees += 1` 等）＝初代ゼルダの「拾ったアイテムがブーメランにくっついて戻り、キャッチで入手」演出が無い。
 > 2. **復路の攻撃判定消失：** `boomerangStep`（`game/projectile.js:310`）の往路（`!returning`・315-321行）は `checkProjHit` を呼ぶが、**復路（else・322-335行）は呼ばない**＝戻り道の敵は素通り。かつ往路で1体に当たると即 `returning=true`（271行）＝1投で当たるのは実質「最初の1体」だけ。
 
-- [ ] **① アイテム運搬（入手タイミング＝戻ってキャッチ時・ユーザー確定）：** `collectFieldItem` を「即加算」から「carried に保持して加算保留」へ変更。ブーメラン往路で `r`/`R`/`K` セルを通過したら `proj.carried` に積む（`player` にはまだ加算しない）。
-- [ ] **② 付随描画：** 復路でブーメランに拾ったアイテムのアイコンを追従表示（`proj-${id}` 要素に付随アイコン）。
-- [ ] **③ 入手/取り逃し確定：** キャッチ成立（`boomerangStep` の `d < step+0.3`・327行）で `proj.carried` を `player` に確定加算。**戻れず消滅した場合（壁で復路が阻まれ得る設計なら）取り逃し**＝破棄 or その場に残す（どちらにするか実装時に決定）。
-- [ ] **④ 復路の攻撃判定復活：** `boomerangStep` の復路 else 分岐にも `checkProjHit(proj)` を通し、往路・復路とも敵に当たるようにする（往路ヒットで即 `returning` にする挙動は維持しつつ、復路も削れるように）。
-- [ ] **テスト：** ①往路でアイテムに触れても即入手しない ②戻ってキャッチで入手 ③復路で敵にダメージが入る ④（取り逃し仕様を入れるなら）戻れないと入手しない。`tests/boomerang-item.spec.js` 拡張＋新規。
-- [ ] **完了条件：** 全テスト緑＋実ブラウザで「アイテムがブーメランに付いて戻る→キャッチで入手」「復路で敵が削れる」を目視確認。
+- [x] **① アイテム運搬（入手タイミング＝戻ってキャッチ時・ユーザー確定）：** `collectFieldItem` を「即加算」から「carried 記述子を返す（`player` 加算保留）」へ変更。往路/復路で `r`/`R`/`K` セルを通過したら `proj.carried[]` に積む＋タイルは `pickedKeys` で隠す（運搬アイコンと二重表示させない）。
+- [x] **② 付随描画：** `moveProjEl` のブーメラン分岐で拾ったアイテムのアイコン（`.boomerang-carry`・`makeSprite(spr,pal)`）を追従表示。**🔑 `collectFieldItem`/炎点火の `renderBoard()`（char-layer 作り直し）で proj 要素が消えるので `moveProjEl` を "無ければ再生成" に修正**（炎オーラの既存潜在バグも同時に解消）。
+- [x] **③ 入手/取り逃し確定：** キャッチ成立（`d < step+0.3`）で `finalizeCarried()` が `player.keys/rupees` に確定加算。取り逃し（`clearProjectiles`＝ステージ遷移で未キャッチ消滅）は `restoreCarried()` でタイルを復活＝**その場に残す**（永久ロス回避）に決定。
+- [x] **④ 復路の攻撃判定復活：** `boomerangStep` 復路 else にも `checkProjHit(proj)` を追加。`checkProjHit` のブーメラン分岐に `_hitIds` を導入＝同一敵は1回だけヒット・往路は1体目で即 `returning`（従来挙動維持）・復路は貫通で複数体削れる。
+- [x] **テスト：** ①往路で即入手しない（carriedKeys=1・keys=0）②付随アイコン表示 ②戻ってキャッチで入手 ③復路で敵にダメージ ④取り逃し＝入手されずタイルは残り再回収可。`tests/boomerang-item.spec.js` に5本追加（`getProjectiles` snapshot に carriedKeys/carriedRupees 露出）。
+- [x] **完了条件：** 全254テスト緑＋実ブラウザで運搬アイコン追従・キャッチ入手・復路ダメージ・0 pageerror を確認。
 - ※ **⑥-4 `8,6` のブーメラン島（`R`大ルピー）は現状の通過回収でも成立するので作り直し不要**（本タスク実装後は自然に運搬演出が乗る）。
 
 ---

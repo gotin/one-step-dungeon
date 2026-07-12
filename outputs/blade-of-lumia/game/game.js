@@ -121,6 +121,13 @@ let heroDir = 'down';
 // { r, c, type, timerId, el } の配列。ステージ遷移で全消去。
 const FLOOR_DROP_ICONS = { bomb: '💣', arrow: '🏹', heart: '❤', rupee: '◆' };
 const FLOOR_DROP_COLORS = { bomb: '#ff8c00', arrow: '#c0a000', heart: '#ff4040', rupee: '#20c040' };
+// ドロップ表示用スプライト（[spr, pal]）＝マップ配置アイテムと同じ絵に揃える。
+const FLOOR_DROP_SPRITES = {
+	rupee: ['rupee', 'rupee'],
+	heart: ['heart', 'heart'],
+	bomb:  ['bombItem', 'bombItem'],
+	arrow: ['arrow', 'arrow'],
+};
 let activeFloorDrops = [];
 
 let gameTimer       = null;
@@ -503,7 +510,9 @@ let giveSubItem         = () => {};
 let gainHeartContainer  = () => {};
 let spawnDropEffect     = () => {};
 let toggleFlight        = () => {};
-let collectFieldItem    = () => {};
+let collectFieldItem    = () => null;
+let finalizeCarried     = () => {};
+let restoreCarried      = () => {};
 let equipSwordTier      = () => false;
 let equipArmorTier      = () => false;
 let equipShieldTier     = () => false;
@@ -729,6 +738,9 @@ const { checkStoneOnSwitch, evaluateConditions } = createConditions({
 		pulse:              (t, d) => pulse(t, d),
 		hasCleared,
 		collectFieldItem:   (r, c) => collectFieldItem(r, c),
+		collectFloorDrop:   (r, c) => collectBoomerangDrop(r, c),
+		finalizeCarried:    (carried) => finalizeCarried(carried),
+		restoreCarried:     (carried) => restoreCarried(carried),
 		toggleSwitch:       (r, c) => toggleSwitch(r, c),
 		setActiveColor:     (r, c) => setActiveColor(r, c),
 		// Phase 7-2: 盾は剣振り中・チャージ中はオフ
@@ -952,6 +964,8 @@ const { checkStoneOnSwitch, evaluateConditions } = createConditions({
 	spawnDropEffect   = _player.spawnDropEffect;
 	toggleFlight      = _player.toggleFlight;
 	collectFieldItem  = _player.collectFieldItem;
+	finalizeCarried   = _player.finalizeCarried;
+	restoreCarried    = _player.restoreCarried;
 	equipSwordTier    = _player.equipSwordTier;
 	equipArmorTier    = _player.equipArmorTier;
 	equipShieldTier   = _player.equipShieldTier;
@@ -1227,12 +1241,22 @@ function spawnFloorDrop(r, c, type) {
 		left:${(dc + 0.5) * cellPx}px;
 		top:${(dr + 0.5) * cellPx}px;
 		transform:translate(-50%,-50%);
-		font-size:${Math.round(cellPx * 0.55)}px;
-		color:${FLOOR_DROP_COLORS[type] ?? '#fff'};
 		z-index:20;
 		pointer-events:none;
 	`;
-	el.textContent = FLOOR_DROP_ICONS[type] ?? '?';
+	// ドロップの見た目は、マップに落ちているアイテムと同じスプライトに揃える
+	// （絵文字テキストだと落下ルピー ◆ と配置ルピー rupee スプライトで見た目が食い違う）。
+	const sprMap = FLOOR_DROP_SPRITES[type];
+	const cv = sprMap ? makeSprite(sprMap[0], sprMap[1], false) : null;
+	if (cv) {
+		cv.classList.add('item-sprite');
+		el.appendChild(cv);
+	} else {
+		// スプライト未定義の型は従来どおり絵文字でフォールバック
+		el.style.fontSize = `${Math.round(cellPx * 0.55)}px`;
+		el.style.color = FLOOR_DROP_COLORS[type] ?? '#fff';
+		el.textContent = FLOOR_DROP_ICONS[type] ?? '?';
+	}
 	if (charLayerEl) charLayerEl.appendChild(el);
 	const timerId = setTimeout(() => removeFloorDrop(drop), 5000);
 	const drop = { r: dr, c: dc, type, timerId, el };
@@ -1247,36 +1271,59 @@ function clearAllFloorDrops() {
 	for (const d of activeFloorDrops) { clearTimeout(d.timerId); d.el?.remove(); }
 	activeFloorDrops = [];
 }
-function pickupFloorDropAt(r, c) {
-	const drop = activeFloorDrops.find(d => d.r === r && d.c === c);
-	if (!drop) return;
-	removeFloorDrop(drop);
+// ドロップ種別の効果を player に適用する（踏んで拾う／ブーメランキャッチ共通）。
+function applyFloorDropEffect(type) {
 	const maxB = player.maxBombs ?? 8;
 	const maxA = player.maxArrows ?? 8;
-	if (drop.type === 'bomb') {
+	if (type === 'bomb') {
 		if (!player.subItems.bomb) player.subItems.bomb = { count: 0 };
 		const prev = player.subItems.bomb.count;
 		player.subItems.bomb.count = Math.min(prev + 3, maxB);
 		if (player.subItems.bomb.count > prev) {
 			playSound('item'); pulse('💣 ×3'); updateHud(); saveGame();
 		}
-	} else if (drop.type === 'arrow') {
+	} else if (type === 'arrow') {
 		if (!player.subItems.bow) player.subItems.bow = { count: 0 };
 		const prev = player.subItems.bow.count;
 		player.subItems.bow.count = Math.min(prev + 3, maxA);
 		if (player.subItems.bow.count > prev) {
 			playSound('item'); pulse('🏹 ×3'); updateHud(); saveGame();
 		}
-	} else if (drop.type === 'heart') {
+	} else if (type === 'heart') {
 		const prev = player.hp;
 		player.hp = Math.min(player.maxHp, player.hp + 1);
 		if (player.hp > prev) {
 			playSound('item'); pulse('❤ HP+1'); updateHud(); saveGame();
 		}
-	} else if (drop.type === 'rupee') {
+	} else if (type === 'rupee') {
 		player.rupees = (player.rupees ?? 0) + 1;
 		playSound('item'); pulse('◆ ルピー ×1'); updateHud(); saveGame();
 	}
+}
+
+function pickupFloorDropAt(r, c) {
+	const drop = activeFloorDrops.find(d => d.r === r && d.c === c);
+	if (!drop) return;
+	removeFloorDrop(drop);
+	applyFloorDropEffect(drop.type);
+}
+
+// ブーメランが通過したセルの敵ドロップを "運搬" する（Phase 4-6）。
+// 拾った瞬間はドロップを画面から消す（加算保留）＝キャッチで apply、取り逃しで restore。
+function collectBoomerangDrop(r, c) {
+	const drop = activeFloorDrops.find(d => d.r === r && d.c === c);
+	if (!drop) return null;
+	removeFloorDrop(drop);
+	const type    = drop.type;
+	const sprMap  = FLOOR_DROP_SPRITES[type];
+	return {
+		spr: sprMap?.[0] ?? 'rupee', pal: sprMap?.[1] ?? 'rupee',
+		apply() { applyFloorDropEffect(type); },
+		// 取り逃し＝ドロップは失われる（no-op）。敵ドロップは元々ステージ遷移で
+		// clearAllFloorDrops により消える儚い存在で、ブーメラン未キャッチ消滅も遷移時のみ。
+		// 遷移後は別ステージなので撒き直すと誤ったステージに湧く＝何もしないのが正しい。
+		restore() {},
+	};
 }
 
 // ── ショップ状態（ui.js factory が getter/setter 経由で操作）────────────────
@@ -1876,6 +1923,9 @@ export function getFloorDropsSnapshot() {
 
 // Phase 9-5c: プレイヤーをフロアドロップ座標に移動させて拾わせる（テスト用）
 export function callPickupFloorDropAt(r, c) { return pickupFloorDropAt(r, c); }
+
+// Phase 4-6: 指定座標に敵ドロップを撒く（ブーメラン運搬テスト用）
+export function callSpawnFloorDrop(r, c, type) { return spawnFloorDrop(r, c, type); }
 
 // Phase 9-5b: リスポーンテスト用 — 現在の stageMoves を返す
 export function getStageMoves() { return player.stageMoves ?? 0; }

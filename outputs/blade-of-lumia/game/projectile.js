@@ -37,7 +37,10 @@ import { enemyPointHit, enemyCenter } from './hitbox.js';
  *   updateHud()               – HUD 更新
  *   pulse(text, dur?)         – メッセージ表示
  *   hasCleared()              – クリア済みか
- *   collectFieldItem(r, c)    – ブーメランが通過したセルのアイテム回収
+ *   collectFieldItem(r, c)    – ブーメランが拾えるタイルアイテムがあれば carried 記述子を返す（Phase 4-6）
+ *   collectFloorDrop(r, c)    – ブーメランが拾える敵ドロップがあれば carried 記述子を返す（Phase 4-6）
+ *   finalizeCarried(carried)  – キャッチ成立時に運搬アイテムを player へ確定加算（Phase 4-6）
+ *   restoreCarried(carried)   – 取り逃し時にタイルを復活（Phase 4-6）
  *   toggleSwitch(r, c)        – 矢が当たったスイッチをトグル（Phase 4-5 ①）
  *   setActiveColor(r, c)     – 矢が当たった色スイッチで activeColor をセット（Phase 5-1）
  */
@@ -50,7 +53,7 @@ export function createProjectile(deps) {
 		dealDamageToEnemy, takeDamage,
 		evaluateConditions, renderBoard, renderChars,
 		saveGame, updateHud, pulse, hasCleared,
-		collectFieldItem, toggleSwitch, setActiveColor,
+		collectFieldItem, collectFloorDrop, finalizeCarried, restoreCarried, toggleSwitch, setActiveColor,
 		// Phase 7-2: 盾は剣振り中・チャージ中はオフ（これらが無ければ常に盾有効）
 		getLastSwordTime, getIsCharging,
 	} = deps;
@@ -209,8 +212,14 @@ export function createProjectile(deps) {
 	}
 
 	function moveProjEl(proj) {
-		const el = document.getElementById(`proj-${proj.id}`);
-		if (!el) return;
+		let el = document.getElementById(`proj-${proj.id}`);
+		// 飛行中に renderBoard()（char-layer 作り直し）が走ると proj 要素が消える。
+		// ブーメランはアイテム回収・炎点火で renderBoard を呼ぶので、消えていたら再生成する。
+		if (!el) {
+			createProjEl(proj);
+			el = document.getElementById(`proj-${proj.id}`);
+			if (!el) return;
+		}
 		const cellPx = getCellPx();
 		el.style.left = `${proj.x * cellPx}px`;
 		el.style.top  = `${proj.y * cellPx}px`;
@@ -223,6 +232,19 @@ export function createProjectile(deps) {
 				el.appendChild(aura);
 			} else if (!proj.flaming && aura) {
 				aura.remove();
+			}
+			// Phase 4-6: 拾ったアイテムを付随アイコンで追従表示（最後に拾った1個）
+			const carry = proj.carried?.[proj.carried.length - 1];
+			let icon = el.querySelector('.boomerang-carry');
+			if (carry && !icon) {
+				const cv = makeSprite(carry.spr, carry.pal, false);
+				if (cv) {
+					cv.className = 'boomerang-carry';
+					const isz = Math.round(getCellPx() * 0.3) + 'px';
+					cv.style.setProperty('width',  isz, 'important');
+					cv.style.setProperty('height', isz, 'important');
+					el.appendChild(cv);
+				}
 			}
 		}
 	}
@@ -261,15 +283,25 @@ export function createProjectile(deps) {
 						dealDamageToEnemy(e, proj.atk, proj.type);
 						continue;  // 貫通：消えずに飛び続ける
 					}
-					dealDamageToEnemy(e, proj.atk, proj.type);
-					if (proj.type !== 'boomerang') {
-						removeProjEl(proj);
-						_projectiles = _projectiles.filter(p => p !== proj);
-					} else {
+					if (proj.type === 'boomerang') {
+						// Phase 4-6: 往路・復路とも敵に当たる。同じ敵への多段ヒットは
+						// _hitIds で1回に絞る（往路で1体目に当たったら折り返し、
+						// 復路は貫通のように touched した敵を1回ずつ削る）。
+						if (!proj._hitIds) proj._hitIds = new Set();
+						if (proj._hitIds.has(e.id)) continue;
+						proj._hitIds.add(e.id);
+						dealDamageToEnemy(e, proj.atk, proj.type);
 						e.stunUntil = gameNow() + BOOMERANG_STUN_MS;
 						showStunEffect(e);
-						proj.returning = true;  // ブーメランは折り返す
+						if (!proj.returning) {
+							proj.returning = true;  // 往路：1体目で折り返す（従来挙動）
+							return;
+						}
+						continue;  // 復路：貫通して次の敵も削れるようにする
 					}
+					dealDamageToEnemy(e, proj.atk, proj.type);
+					removeProjEl(proj);
+					_projectiles = _projectiles.filter(p => p !== proj);
 					return;
 				}
 			}
@@ -325,17 +357,27 @@ export function createProjectile(deps) {
 			const tdy = player.y - proj.y;
 			const d   = Math.sqrt(tdx * tdx + tdy * tdy);
 			if (d < step + 0.3) {
+				// Phase 4-6: キャッチ成立＝運搬アイテムをここで確定加算する。
 				removeProjEl(proj);
 				_projectiles = _projectiles.filter(p => p !== proj);
 				playSound('item'); pulse('🪃 ブーメランをキャッチした！');
+				if (finalizeCarried) for (const c of (proj.carried || [])) finalizeCarried(c);
 				return;
 			}
 			proj.x += (tdx / d) * step;
 			proj.y += (tdy / d) * step;
+			checkProjHit(proj);  // Phase 4-6: 復路も敵に当たる
 		}
-		// 往路・復路どちらでも通過セルのアイテムを回収する
+		// 往路・復路どちらでも通過セルのアイテムを拾う（Phase 4-6: 即入手せず carried に積む）
+		const cr = toTileRow(proj.y), cc = toTileCol(proj.x);
 		if (collectFieldItem) {
-			collectFieldItem(toTileRow(proj.y), toTileCol(proj.x));
+			const c = collectFieldItem(cr, cc);
+			if (c) (proj.carried = proj.carried || []).push(c);
+		}
+		// 敵ドロップ（heart/rupee/bomb/arrow）もブーメランで運搬する（Phase 4-6）
+		if (collectFloorDrop) {
+			const d = collectFloorDrop(cr, cc);
+			if (d) (proj.carried = proj.carried || []).push(d);
 		}
 		// Phase 4-5 ②: ブーメランで炎を運ぶ
 		const br  = toTileRow(proj.y);
@@ -361,6 +403,9 @@ export function createProjectile(deps) {
 			const step = proj.speed * MOVE_STEP;
 			if (proj.type === 'boomerang' && proj.owner === 'player') {
 				boomerangStep(proj, step);
+				// キャッチ/壁/命中で除去済みなら moveProjEl を呼ばない
+				// （呼ぶと moveProjEl の「要素が無ければ再生成」が残骸を復活させる）
+				if (!_projectiles.includes(proj)) continue;
 			} else {
 				// ── 高速投擲物のトンネリング防止：区間補間チェック ──────
 				// 1tick の移動量が大きいと敵のヒットボックス（0.6セル）を
@@ -475,7 +520,11 @@ export function createProjectile(deps) {
 
 	// 全投擲物を消去（ステージ遷移時など）
 	function clearProjectiles() {
-		for (const p of _projectiles) removeProjEl(p);
+		for (const p of _projectiles) {
+			// Phase 4-6: 未キャッチで消えるブーメランの運搬アイテムは取り逃し＝その場に残す。
+			if (restoreCarried) for (const c of (p.carried || [])) restoreCarried(c);
+			removeProjEl(p);
+		}
 		_projectiles = [];
 	}
 

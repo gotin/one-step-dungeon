@@ -869,37 +869,55 @@ export function createPlayer(deps) {
 	}
 
 	// ── ブーメランによるフィールドアイテム回収 ───────────────
-	// ブーメランが通過したセル (r, c) の鍵・ルピーを回収する。
+	// ブーメランが通過したセル (r, c) の鍵・ルピーを拾う。
+	// 初代ゼルダ式（Phase 4-6）＝拾った瞬間に加算せず、ブーメランに「くっつけて」
+	// 持ち帰り、キャッチ成立時に確定加算する。
+	//   collectFieldItem(r, c)      … 拾えるアイテムがあれば carried 記述子を返す（無ければ null）。
+	//                                 記述子を返す時点でタイルは pickedKeys で隠す（二重表示回避）が、
+	//                                 player への加算はしない（＝運搬中）。
+	//   finalizeCarried(carried)    … キャッチ成立時に player へ確定加算する。
+	//   restoreCarried(carried)     … 取り逃し（戻れず消滅）時にタイルを復活させる（その場に残す）。
 	// pickedKeys に登録済みならスキップ（handleTileEvent と同じガード）。
 	function collectFieldItem(r, c) {
 		const stageData = getStageData();
-		const player    = getPlayer();
 		const tile      = stageData.tiles[r]?.[c];
-		if (!tile) return false;
+		if (!tile) return null;
 		const ss     = getSS(getCurrentLayer(), getStageKey());
 		const posKey = `${r},${c}`;
-		if (ss.pickedKeys.has(posKey)) return false;
+		if (ss.pickedKeys.has(posKey)) return null;
 
+		let info = null;
 		if (tile === TILE.KEY) {
-			ss.pickedKeys.add(posKey); player.keys++;
-			playSound('key'); pulse('🪃🗝 ブーメランが鍵を回収した！');
-			renderBoard(); renderChars(); updateHud(); saveGame();
-			return true;
+			info = { keys: 1, rupees: 0, spr: 'key',   pal: 'key',       sound: 'key',   msg: '🪃🗝 ブーメランが鍵を持ち帰った！' };
+		} else if (tile === TILE.ITEM_RUPEE) {
+			info = { keys: 0, rupees: 1, spr: 'rupee', pal: 'rupee',     sound: 'rupee', msg: '🪃◆ ブーメランがルピーを持ち帰った！' };
+		} else if (tile === TILE.ITEM_RUPEE_LARGE) {
+			info = { keys: 0, rupees: 5, spr: 'rupee', pal: 'rupeeBlue', sound: 'rupee', msg: '🪃◇ ブーメランがルピー×5を持ち帰った！' };
 		}
-		if (tile === TILE.ITEM_RUPEE) {
-			ss.pickedKeys.add(posKey); player.rupees += 1;
-			playSound('rupee'); pulse('🪃◆ ブーメランがルピーを回収した！');
-			renderBoard(); renderChars(); updateHud(); saveGame();
-			return true;
-		}
-		if (tile === TILE.ITEM_RUPEE_LARGE) {
-			ss.pickedKeys.add(posKey); player.rupees += 5;
-			playSound('rupee'); pulse('🪃◇ ブーメランがルピー×5を回収した！');
-			renderBoard(); renderChars(); updateHud(); saveGame();
-			return true;
-		}
-		return false;
+		if (!info) return null;
+
+		// タイルを隠す（運搬アイコンと重複表示させない）。加算は保留。
+		ss.pickedKeys.add(posKey);
+		renderBoard();
+		// carried 記述子＝運搬アイコン用の spr/pal ＋ キャッチ/取り逃し時の closure。
+		return {
+			spr: info.spr, pal: info.pal,
+			apply() {
+				const player = getPlayer();
+				player.keys   += info.keys   || 0;
+				player.rupees += info.rupees || 0;
+				playSound(info.sound); pulse(info.msg);
+				renderChars(); updateHud(); saveGame();
+			},
+			restore() { ss.pickedKeys.delete(posKey); renderBoard(); },
+		};
 	}
+
+	// キャッチ成立：運搬中アイテムの効果を確定適用する。
+	function finalizeCarried(carried) { carried?.apply?.(); }
+
+	// 取り逃し：運搬中アイテムを元の位置に戻す（永久ロス回避）。
+	function restoreCarried(carried) { carried?.restore?.(); }
 
 	// ── ドロップエフェクト ────────────────────────────────
 	function spawnDropEffect(r, c, icon, color) {
@@ -935,6 +953,8 @@ export function createPlayer(deps) {
 		spawnDropEffect,
 		toggleFlight,
 		collectFieldItem,
+		finalizeCarried,  // Phase 4-6: ブーメラン運搬アイテムの確定加算
+		restoreCarried,   // Phase 4-6: 取り逃し時にタイルを戻す
 		equipSwordTier,   // Phase 7-1: テスト・外部からのティア装備
 		equipArmorTier,   // Phase 7-2: 防具ティア装備
 		equipShieldTier,  // Phase 7-2: 盾ティア装備

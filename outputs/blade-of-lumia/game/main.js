@@ -37,6 +37,7 @@ import {
 	callGiveSubItem,
 	getFloorDropsSnapshot,
 	callPickupFloorDropAt,
+	callSpawnFloorDrop,
 	getStageMoves,
 	callEnterStage,
 	getDefeatedEnemiesSnapshot,
@@ -101,6 +102,8 @@ window.__game = {
 		atk: p.atk,
 		returning: p.returning ?? false,
 		flaming: p.flaming ?? false,
+		// Phase 4-6: ブーメランが運搬中のアイテム数（テスト観測用）
+		carriedCount: (p.carried ?? []).length,
 	})),
 	getState() {
 		return getGameState();
@@ -137,6 +140,7 @@ window.__game = {
 	// Phase 9-5c: フロアドロップ確認・手動拾得（テスト用）
 	getFloorDrops: () => getFloorDropsSnapshot(),
 	pickupFloorDrop: (r, c) => callPickupFloorDropAt(r, c),
+	spawnFloorDrop: (r, c, type) => callSpawnFloorDrop(r, c, type),
 	// Phase 9-5b: リスポーンテスト用
 	getStageMoves: () => getStageMoves(),
 	enterStage: (lk, sk, r, c) => callEnterStage(lk, sk, r ?? 1, c ?? 1),

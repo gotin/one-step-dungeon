@@ -16,6 +16,25 @@
 - **代替案：** ①文字数概算＝usage が取れる以上わざわざ不正確な近似を使う理由が無い＝却下。②`/messages/count_tokens` API＝毎ターン走るフックで遅い・quota 消費＝却下。
 - **結果／影響：** エッジ（transcript無/不正JSON/ファイル欠落）は無出力・exit 0 でプロンプトを絶対ブロックしない設計。`~/.claude/CLAUDE.md` 冒頭に「セッション継続の判断」節を追記（フック非対応環境向けに長さ・読込量からの推論も明記）。**残＝完了条件の実セッション発火目視（次プロンプトで system-reminder に `[context]` が出るか）。** 純ハーネス改善＝ゲームコード・テストへの影響ゼロ。
 
+### 2026-07-12 — Phase 4-6 実装＝運搬の"取り逃し=その場に残す"／moveProjEl 自己修復／ブーメラン _hitIds
+- **決定（実装時論点3つを確定）：**
+  1. **取り逃し（キャッチ前にブーメランが消える＝ステージ遷移）は "その場に残す"**（破棄しない）。`collectFieldItem` は拾った瞬間にタイルを `pickedKeys` で隠すだけで加算は保留し、`clearProjectiles` で未キャッチ消滅した carried は `restoreCarried()` が `pickedKeys.delete` してタイルを復活させる。∴ 取り逃してもルピー/鍵は永久ロスにならず再訪で再回収できる。
+  2. **`moveProjEl` を "要素が無ければ再生成" に変更。** ブーメランは `collectFieldItem`（アイテム回収）と炎点火で `renderBoard()` を呼ぶが、`renderBoard` は `boardEl.innerHTML=''` で char-layer ごと作り直す＝**飛行中の proj-el が消える**。付随アイコンが出ないどころか、既存の炎オーラ（`.boomerang-flaming`）も同じ理由で出ていない潜在バグがあった（テストは snapshot の `flaming` フラグを先に見ていたので緑だった）。`moveProjEl` 冒頭で要素欠落時に `createProjEl` し直して解消。
+  3. **ブーメランの `checkProjHit` に `_hitIds` を導入。** 復路 else に `checkProjHit` を足すと同一敵に毎tick当たり続けるので、`_hitIds` で「1投1敵1回」に絞る。往路は1体目ヒットで即 `returning`（従来挙動を維持）・復路は貫通扱い（`continue`）で軌道上の複数体を削れる。
+- **理由：** 入手タイミングは「戻ってキャッチ時」でユーザー確定済み（2026-07-11）。取り逃しの扱いは PLAN で "破棄 or その場に残す＝実装時決定" だったので、初代ゼルダの体験（拾い物を落としても消えない）と永久ロス回避を優先して "その場に残す" を採用。
+- **代替案：** ①取り逃し＝破棄（永久ロス）＝理不尽なので却下。②`collectFieldItem` 内で `renderBoard` を呼ばずタイル非表示を別手段で＝レンダリング経路が二重化するので却下、`moveProjEl` 自己修復の方が影響が局所的。
+- **結果／影響：** 全255テスト緑（Phase 4-6 で6本追加）・実ブラウザで運搬アイコン追従／キャッチ入手／復路ダメージ／0 pageerror 確認。`getProjectiles` snapshot に `carriedCount/carriedKeys/carriedRupees` を露出（テスト観測用）。⑥-4 `8,6` のブーメラン島は本改修で運搬演出が自然に乗る（据え置き通り）。
+- **⚠️ 追記（同日・ユーザー報告バグ修正）：** 上記 #2 の「`moveProjEl` 自己修復」が新たな残骸バグを生んでいた＝`projectileTick` 末尾は `moveProjEl(proj)` を**無条件**に呼ぶため、キャッチ/壁/往路命中でブーメランが `removeProjEl`+除去された直後に `moveProjEl` が走り、"要素が無ければ再生成" が**除去済みブーメランの DOM を復活**させ画面に残骸が残った（キャッチ直前の位置に1枚）。非ブーメラン分岐は `hit` 時に `continue` で `moveProjEl` を回避していたがブーメラン分岐に同等の防御が無かった。→ `boomerangStep` 後に `if (!_projectiles.includes(proj)) continue;` を追加して解決。回帰テスト「キャッチ後に `.proj-el` が残らない」を追加（255緑）。**教訓＝"要素が無ければ再生成"は「生存中の投擲物だけ」に限定すべき＝除去チェックとセットで初めて安全。**
+
+### 2026-07-12 — Phase 4-6 拡張＝敵ドロップもブーメランで拾える／敵ドロップの見た目をマップアイテムに統一（ユーザー要望）
+- **決定（ユーザー要望2件）：**
+  1. **敵ドロップ（`activeFloorDrops`＝heart/rupee/bomb/arrow）もブーメランで運搬・キャッチ入手できるようにした。** projectile に `collectFloorDrop(r,c)` dep を追加＝`boomerangStep` の通過セルで敵ドロップも拾う（タイルアイテムと同じ carried 経路）。
+  2. **敵ドロップの見た目をマップ配置アイテムに揃えた。** 従来 `spawnFloorDrop` はルピーを `◆` 絵文字テキスト（緑・見た目が配置ルピーの `rupee` スプライトと食い違う）で描いていた→ `FLOOR_DROP_SPRITES`（rupee/heart/bomb/arrow の `[spr,pal]`）で `makeSprite` の `.item-sprite` canvas に変更。スプライト未定義型は絵文字フォールバック維持。
+- **実装の要点：** carried 記述子を「生 keys/rupees フィールド」から **`apply()`/`restore()` closure** に一般化＝タイルアイテム（player.js）と敵ドロップ（game.js）を同じ運搬パスに載せた。`pickupFloorDropAt` の効果適用を `applyFloorDropEffect(type)` に切り出し、踏んで拾う経路とブーメランキャッチ経路で共有（重複排除）。運搬アイコン用に carried は `spr`/`pal` だけ露出。
+- **取り逃し（敵ドロップ）＝失われる（no-op restore）。** タイルアイテムは `pickedKeys.delete` で戻すが、敵ドロップは元々ステージ遷移の `clearAllFloorDrops` で消える儚い存在＋未キャッチ消滅も遷移時のみ＝遷移後は別ステージなので撒き直すと誤ステージに湧く。∴ restore は何もしないのが正しい（タイルアイテムと非対称）。
+- **代替案：** ①carried に生 keys/rupees を持たせたまま敵ドロップ用に別フィールド追加＝型ごとに分岐が増える→closure 一般化で吸収（却下）。②敵ドロップの絵文字はそのまま＝ユーザー要望に反する（却下）。
+- **結果／影響：** テスト2本追加（ルピー運搬キャッチ入手・ハート運搬キャッチHP回復）＝全257緑。実ブラウザでドロップルピーが配置ルピーと同じ緑ジェムスプライトで描画されることをスクショ確認。`__game.spawnFloorDrop(r,c,type)` テストフック追加。`getProjectiles` snapshot は closure 化に伴い `carriedKeys/carriedRupees` を廃し `carriedCount` のみに。
+
 ### 2026-07-11 — ブーメランのアイテム運搬（初代ゼルダ式）＋復路の攻撃判定復活は別Phase送り
 - **決定：** ユーザー指摘2件を**別Phase**の実装確定タスクとして記録（9-6 は新規ゲームコードを足さない方針＝論点3を維持）。①ブーメランで拾ったアイテムは**ブーメランにくっついて戻り、キャッチした瞬間に入手**（初代ゼルダ式・入手タイミングは"戻ってキャッチ時"でユーザー確定）。②ブーメラン**復路の攻撃判定が消えている**バグも同時に直す。`FIELD-FUN-CATALOG.md` 別Phase表に「a6改」として追記。
 - **理由（実コード根拠）：**
