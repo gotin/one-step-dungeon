@@ -87,81 +87,67 @@ const field = data.layers.field.stages;
 // shared border open) is this same target set: two adjacent outer screens both
 // get carved, so they must mirror each other as "open".
 const COAST_DONE = new Set(['3,17', '4,18', '5,19', '6,19', '7,18']); // ⑥-3 beaches
+// zone K top-edge screens (7,0 / 8,0) are not ~/^ in ZONE_MAP but sit on the
+// northern border and need the same AND-ring treatment so they don't source
+// arrival-wall holes toward 8,1 (tower island) and 7,1 (G-C mainland).
+const EXTRA_TARGET = new Set(['7,0', '8,0']);
 const TARGET = [];
 for (let sy = 0; sy < GRID_H; sy++) for (let sx = 0; sx < GRID_W; sx++) {
   const z = zoneAt(sx, sy);
   const k = `${sx},${sy}`;
-  if ((z === '~' || z === '^') && !COAST_DONE.has(k) && field[k]) TARGET.push(k);
+  if ((z === '~' || z === '^' || EXTRA_TARGET.has(k)) && !COAST_DONE.has(k) && field[k]) TARGET.push(k);
 }
-const W1set = new Set(TARGET); // "will be carved" set for the mirror rule
+const W1set = new Set(TARGET); // "will be rebuilt" set
 
-// ── mirror ring: open a ring cell iff neighbour is walkable there; map edge = wall ──
-function ringOpenMap(key) {
-  const [sx, sy] = key.split(',').map(Number);
-  const crossingsAt = (r, c) => {
-    const out = [];
-    if (r === 0) out.push([`${sx},${sy - 1}`, ROWS - 1, c]);
-    if (r === ROWS - 1) out.push([`${sx},${sy + 1}`, 0, c]);
-    if (c === 0) out.push([`${sx - 1},${sy}`, r, COLS - 1]);
-    if (c === COLS - 1) out.push([`${sx + 1},${sy}`, r, 0]);
-    return out;
-  };
-  const open = Array.from({ length: ROWS }, () => Array(COLS).fill(false));
-  const ring = [];
-  for (let c = 0; c < COLS; c++) { ring.push([0, c]); ring.push([ROWS - 1, c]); }
-  for (let r = 1; r < ROWS - 1; r++) { ring.push([r, 0]); ring.push([r, COLS - 1]); }
-  for (const [r, c] of ring) {
-    // AND rule (fixes corner traps): a ring cell is OPEN iff it has ≥1 existing
-    // crossing AND EVERY existing crossing neighbour is walkable at its facing
-    // cell. A corner takes part in TWO crossings; opening it when only one side
-    // is walkable would trap the player stepping toward the walled side. A TARGET
-    // (outer) neighbour "is walkable at the facing cell" iff IT opens the mirror
-    // — which, since both sides run this identical symmetric AND, is decided the
-    // same way, so two outer screens always agree. We resolve the TARGET case by
-    // its facing cell's *eventual* walkability: an outer neighbour opens the
-    // mirrored cell under the same predicate, so we substitute a recursive check
-    // guarded against infinite loops by only recursing into TARGET neighbours one
-    // level (enough: a cell's mirror depends only on ITS neighbours' raw tiles /
-    // TARGET membership, and mainland raw tiles terminate the recursion).
-    const crossings = crossingsAt(r, c);
-    let anyExisting = false, allWalkable = true;
-    for (const [nk, nr, nc] of crossings) {
-      const ns = field[nk];
-      if (!ns) continue;                    // map edge → not a constraint (world's end)
-      anyExisting = true;
-      let walkableThere;
-      if (W1set.has(nk)) walkableThere = targetOpensCell(nk, nr, nc); // outer: mirror
-      else walkableThere = !isHardBlocked(ns.tiles[nr]?.[nc]);        // frozen: raw tile
-      if (!walkableThere) { allWalkable = false; break; }
-    }
-    open[r][c] = anyExisting && allWalkable;
-  }
-  return open;
+// ── ring cell enumeration ─────────────────────────────────────────────────────
+const RING_CELLS = [];
+for (let c = 0; c < COLS; c++) { RING_CELLS.push([0, c]); RING_CELLS.push([ROWS - 1, c]); }
+for (let r = 1; r < ROWS - 1; r++) { RING_CELLS.push([r, 0]); RING_CELLS.push([r, COLS - 1]); }
+
+function crossingsOf(sx, sy, r, c) {
+  const out = [];
+  if (r === 0)         out.push([`${sx},${sy - 1}`, ROWS - 1, c]);
+  if (r === ROWS - 1)  out.push([`${sx},${sy + 1}`, 0, c]);
+  if (c === 0)         out.push([`${sx - 1},${sy}`, r, COLS - 1]);
+  if (c === COLS - 1)  out.push([`${sx + 1},${sy}`, r, 0]);
+  return out;
 }
 
-// Would the TARGET (outer) screen `key` open its ring cell (r,c)? Uses the SAME
-// AND predicate but, to avoid mutual recursion between two TARGET screens, treats
-// a TARGET neighbour's facing cell as walkable iff its RAW requirement holds:
-// a TARGET screen will always be carved walkable along a shared border UNLESS the
-// map edge or a walled frozen neighbour forbids it. So we check (r,c)'s own
-// crossings: open iff every existing crossing is (another TARGET) or (frozen &
-// walkable). This terminates (one level, no TARGET→TARGET→… chain).
-function targetOpensCell(key, r, c) {
-  const [sx, sy] = key.split(',').map(Number);
-  const cr = [];
-  if (r === 0) cr.push([`${sx},${sy - 1}`, ROWS - 1, c]);
-  if (r === ROWS - 1) cr.push([`${sx},${sy + 1}`, 0, c]);
-  if (c === 0) cr.push([`${sx - 1},${sy}`, r, COLS - 1]);
-  if (c === COLS - 1) cr.push([`${sx + 1},${sy}`, r, 0]);
-  let anyExisting = false, allWalkable = true;
-  for (const [nk, nr, nc] of cr) {
+// AND fixed-point ring rule (same as migrate-field-grassland-c.mjs):
+// ring cell open IFF ALL on-map crossings face open cells.
+// Rebuilt neighbours are evaluated from the in-progress rings Map; frozen
+// neighbours use their actual tiles. Iterates to convergence (monotone).
+function computeAllRings(field, W1set) {
+  const rings = new Map();
+  for (const key of W1set)
+    rings.set(key, Array.from({ length: ROWS }, () => Array(COLS).fill(FLOOR)));
+  const ringTileOpen = (nk, nr, nc) => {
+    if (rings.has(nk)) return !isHardBlocked(rings.get(nk)[nr][nc]);
     const ns = field[nk];
-    if (!ns) continue;
-    anyExisting = true;
-    const walkableThere = W1set.has(nk) ? true : !isHardBlocked(ns.tiles[nr]?.[nc]);
-    if (!walkableThere) { allWalkable = false; break; }
+    // off-map (no neighbour screen) = world's edge = treat as wall constraint.
+    // This forces world-edge ring cells closed so players can't walk to the void.
+    return ns ? !isHardBlocked(ns.tiles[nr]?.[nc]) : false;
+  };
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (const key of W1set) {
+      const [sx, sy] = key.split(',').map(Number);
+      const g = rings.get(key);
+      for (const [r, c] of RING_CELLS) {
+        let allPresentOpen = true, hasPresentCrossing = false;
+        for (const [nk, nr, nc] of crossingsOf(sx, sy, r, c)) {
+          // off-map counts as a present crossing with a wall (false)
+          const open = ringTileOpen(nk, nr, nc);
+          hasPresentCrossing = true;
+          if (!open) allPresentOpen = false;
+        }
+        const want = (hasPresentCrossing && allPresentOpen) ? FLOOR : MTN;
+        if (g[r][c] !== want) { g[r][c] = want; changed = true; }
+      }
+    }
   }
-  return anyExisting && allWalkable;
+  return rings; // Map<key, FLOOR/MTN character grid>
 }
 
 // ── deterministic per-screen PRNG (no Math.random — stable output) ────────────
@@ -171,16 +157,18 @@ function rng(seed) {
 }
 
 // ── carve a walkable spine connecting all open ring cells + a center hub ──────
-// Returns the tile grid. base = fill tile (SEA or MTN). path = FLOOR/BRIDGE.
-function buildScreen(key, idx) {
+// Returns the tile grid. precomputedRing is the FLOOR/MTN row array from computeAllRings.
+function buildScreen(key, idx, precomputedRing) {
   const [sx, sy] = key.split(',').map(Number);
   const zone = zoneAt(sx, sy);
+  // EXTRA_TARGET screens (7,0/8,0) are 'K' in ZONE_MAP — treat as mountain border.
   const isSea = zone === '~';
   const base = isSea ? SEA : MTN;
   const rand = rng(idx * 2654435761 + sx * 131 + sy);
 
   const g = Array.from({ length: ROWS }, () => Array(COLS).fill(base));
-  const open = ringOpenMap(key);
+  // Derive boolean open[][] from the fixed-point FLOOR/MTN ring grid.
+  const open = precomputedRing.map(row => row.map(ch => !isHardBlocked(ch)));
 
   // walkable spine target cells = a central cross (rows 4-5 or cols 5-6 band) to
   // anchor connectivity, plus every open ring cell and a short spur to each.
@@ -307,6 +295,9 @@ function assertScreen(g, open, key) {
 }
 
 // ── apply ─────────────────────────────────────────────────────────────────────
+// Pre-compute all rings with AND fixed-point rule before writing any tiles.
+const rings = computeAllRings(field, W1set);
+
 const seenLayouts = new Map();
 let sea = 0, mtn = 0, dupWaived = 0;
 
@@ -314,7 +305,8 @@ TARGET.sort().forEach((key, idx) => {
   const stage = field[key];
   if (stage.rows !== ROWS || stage.cols !== COLS)
     throw new Error(`unexpected size on ${key}: ${stage.rows}x${stage.cols}`);
-  const { g, open, isSea } = buildScreen(key, idx);
+  const precomputedRing = rings.get(key);
+  const { g, open, isSea } = buildScreen(key, idx, precomputedRing);
   assertScreen(g, open, key);
 
   // dup guard among THIS script's screens (uniform fill is expected to collide a
@@ -335,7 +327,7 @@ TARGET.sort().forEach((key, idx) => {
 
 writeFileSync(MAP_PATH, JSON.stringify(data, null, 2));
 
-// ── post-write verification against the real checker ──────────────────────────
+// ── post-write verification ────────────────────────────────────────────────────
 const m = fieldHonestMetrics(JSON.parse(readFileSync(MAP_PATH, 'utf8')));
 console.log(`9-6 outer-ring: rebuilt ${TARGET.length} outer screens → sea ${sea} / mountain ${mtn}`);
 console.log(`  (deep-interior screens sharing a uniform ring: ${dupWaived} identical layouts, all playable)`);
@@ -346,3 +338,23 @@ console.log(`  honest seams   : ${m.seams.length}`);
 if (m.w1.length) console.log('  W1 left:', m.w1.join(' '));
 if (m.orphans.length) console.log('  orphans left:', m.orphans.join(' '));
 if (m.traps.length) console.log('  traps left:', m.traps.slice(0, 40).join('  '));
+
+// zero-hole self-check: every rebuilt open ring cell must face a walkable cell
+const reloaded = JSON.parse(readFileSync(MAP_PATH, 'utf8')).layers.field.stages;
+const holes = [];
+for (const key of W1set) {
+  const [sx, sy] = key.split(',').map(Number);
+  const myTiles = reloaded[key]?.tiles;
+  if (!myTiles) continue;
+  for (const [r, c] of RING_CELLS) {
+    if (isHardBlocked(myTiles[r][c])) continue; // wall → not a hole source
+    for (const [nk, nr, nc] of crossingsOf(sx, sy, r, c)) {
+      const ns = reloaded[nk];
+      if (!ns) { holes.push(`${key}[${r},${c}] faces off-map`); continue; }
+      if (isHardBlocked(ns.tiles[nr]?.[nc]))
+        holes.push(`${key}[${r},${c}] -> ${nk}[${nr},${nc}]`);
+    }
+  }
+}
+if (holes.length)
+  throw new Error(`outer-ring sources ${holes.length} arrival-wall hole(s):\n  ${holes.join('\n  ')}`);
