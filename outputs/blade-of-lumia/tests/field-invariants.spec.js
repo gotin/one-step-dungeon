@@ -74,19 +74,23 @@ const TWO_AXIS_ALLOWLIST = ['7,14', '8,0', '8,1'];
 //   the §11-1 corner limit; they vanish when those regions are reworked (⑥-5..
 //   ⑥-9). dup unchanged (7). W1/W2 unchanged (0). Tightened seams/traps/under.
 const BASELINE = {
-  seams: 88,        // honest seam bugs (reachable→reachable but walled) → goal 0
+  seams: 74,        // honest seam bugs (reachable→reachable but walled) → goal 0
+                    // 88→83 after ⑥-5 OR-rule; 83→74 after ⑥-5 AND fixed-point rule.
+                    // AND rule: ring cell open IFF ALL on-map crossings face open cells,
+                    // computed to convergence — each rebuilt region sources 0 holes.
   w1: 0,            // all-blocked screens → 0 achieved (rule 2: all playable)
   w2: 0,            // orphan screens → 0 achieved (rule 2: all reachable)
-  underTwoAxis: 146, // reachable <2-axis screens → goal 0. 168→146 after ⑥-4
-                    // cleared all 50 G-B mainland 素通り screens. Remaining are the
-                    // outer ring's minimal walkways (⑥-10/⑥-11 content pass) plus
-                    // the still-un-reworked mainland regions (⑥-5..⑥-9).
+  underTwoAxis: 125, // reachable <2-axis screens → goal 0. 146→125 after ⑥-5
+                    // cleared all 21 G-C north-grassland 素通り screens. Remaining are
+                    // the outer ring's minimal walkways (⑥-10/⑥-11 content pass) plus
+                    // the still-un-reworked mainland regions (⑥-6..⑥-9).
   dupLayouts: 7,    // identical-layout groups → goal small. Deep-ocean minimal
                     // walkways still share geometry (⑥-11 content pass clears them).
-  traps: 88,        // rule 1: reached screen → arrival-wall soft-lock → goal 0.
-                    // 97→88 after ⑥-4. The 25 G-B-source traps left are ALL corner
-                    // cells (§11-1) facing un-reworked neighbours; they fall as
-                    // ⑥-5..⑥-9 rework the adjacent regions.
+  traps: 74,        // rule 1: reached screen → arrival-wall soft-lock → goal 0.
+                    // 88→83 after ⑥-5 OR-rule; 83→74 after ⑥-5 AND fixed-point rule.
+                    // Residuals: corner cells (§11-1) facing un-reworked neighbours
+                    // (F/^/S/L) + one external (8,0→8,1 village K), which fall as
+                    // ⑥-6..⑥-9 rework the adjacent regions.
 };
 
 test.describe('Blade of Lumia – 9-6 フィールド不変条件（ratchet）', () => {
