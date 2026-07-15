@@ -83,22 +83,29 @@ const TWO_AXIS_ALLOWLIST = ['7,14', '8,0', '8,1'];
 //   The 10 remaining "into lake" traps are all sourced from adjacent un-reworked
 //   land screens (their walls face the lake's open cells) and fall as ⑥-7..⑥-9
 //   rework those. dup unchanged (7 — every lake layout is distinct). W1/W2 = 0.
+// 2026-07-15 ⑥-7 mountain/swamp M (14 screens rebuilt, 10,14 D8 + 9,15 cave_1
+//   preserved): M is a FLOOR-default highland (bgTile 'w' mud carved by 'M' into
+//   1本道 corridors), NOT a water-skin region — so it uses grassland-c's mirror-AND
+//   fixed-point (§14-3), NOT the ⑥-6 lake hybrid (the hand-off note was corrected
+//   against the data). Result: seams 64→61, traps 64→61 — M-SOURCED seams/traps = 0.
+//   The 3 remaining M-touching residuals are corner cells (§11-1) + edges facing the
+//   PRESERVED D8 fence / still-un-reworked grassland (⑥-8/⑥-9). under-2-axis 124→114
+//   (all 14 M screens now ≥2 axes). dup/W1/W2 unchanged.
 const BASELINE = {
-  seams: 64,        // honest seam bugs (reachable→reachable but walled) → goal 0
-                    // 74→70 after outer-ring fix; 70→64 after ⑥-6 lake hybrid rule
-                    // (lake-sourced seams = 0).
+  seams: 61,        // honest seam bugs (reachable→reachable but walled) → goal 0
+                    // 70→64 after ⑥-6 lake; 64→61 after ⑥-7 M (M-sourced seams = 0).
   w1: 0,            // all-blocked screens → 0 achieved (rule 2: all playable)
   w2: 0,            // orphan screens → 0 achieved (rule 2: all reachable)
-  underTwoAxis: 124, // reachable <2-axis screens → goal 0. 146→125 after ⑥-5;
-                    // 125→124 after ⑥-6 (8,9 lake west hub → route+obstacle).
+  underTwoAxis: 114, // reachable <2-axis screens → goal 0. 125→124 after ⑥-6;
+                    // 124→114 after ⑥-7 (all 14 M screens → ≥2 axes).
                     // Remaining: the outer ring's minimal walkways (⑥-10/⑥-11) plus
-                    // the still-un-reworked mainland regions (⑥-7..⑥-9).
+                    // the still-un-reworked mainland regions (⑥-8/⑥-9).
   dupLayouts: 7,    // identical-layout groups → goal small. Deep-ocean minimal
                     // walkways still share geometry (⑥-11 content pass clears them).
-  traps: 64,        // rule 1: reached screen → arrival-wall soft-lock → goal 0.
-                    // 74→70 after outer-ring fix; 70→64 after ⑥-6 lake hybrid rule.
-                    // Residuals: corner cells (§11-1) + adjacent un-reworked land
-                    // (F/^/S/M) facing the lake, which fall as ⑥-7..⑥-9 rework them.
+  traps: 61,        // rule 1: reached screen → arrival-wall soft-lock → goal 0.
+                    // 70→64 after ⑥-6 lake; 64→61 after ⑥-7 M (M-sourced traps = 0).
+                    // Residuals: corner cells (§11-1) + edges facing the preserved D8
+                    // fence + un-reworked grassland, which fall as ⑥-8/⑥-9 rework them.
 };
 
 test.describe('Blade of Lumia – 9-6 フィールド不変条件（ratchet）', () => {
