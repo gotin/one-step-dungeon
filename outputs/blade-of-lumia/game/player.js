@@ -897,8 +897,10 @@ export function createPlayer(deps) {
 		if (!info) return null;
 
 		// タイルを隠す（運搬アイコンと重複表示させない）。加算は保留。
+		// renderBoard() は char-layer を作り直す＝直後に renderChars() を呼ばないと
+		// プレイヤー/敵スプライトが消える（ブーメラン飛行中に発火するのでこれが必須）。
 		ss.pickedKeys.add(posKey);
-		renderBoard();
+		renderBoard(); renderChars();
 		// carried 記述子＝運搬アイコン用の spr/pal ＋ キャッチ/取り逃し時の closure。
 		return {
 			spr: info.spr, pal: info.pal,
@@ -909,7 +911,7 @@ export function createPlayer(deps) {
 				playSound(info.sound); pulse(info.msg);
 				renderChars(); updateHud(); saveGame();
 			},
-			restore() { ss.pickedKeys.delete(posKey); renderBoard(); },
+			restore() { ss.pickedKeys.delete(posKey); renderBoard(); renderChars(); },
 		};
 	}
 

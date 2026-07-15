@@ -58,6 +58,18 @@
 
 <!-- 新しいエントリを上に追加していく（最新が一番上） -->
 
+### 2026-07-15 — バグ修正：ブーメラン回収中にプレイヤースプライトが消える（分岐B・🧠 Opus）
+
+**症状（ユーザー報告・スクショ）：** 湖 `10,7` でブーメランを投げて大ルピーを回収した辺りで、**プレイヤーの表示が消える**（ブーメランは飛行継続・ルピーは加算済み）。
+
+**原因：** `collectFieldItem`（`player.js`）が拾った瞬間に **`renderBoard()` を単独で呼んでいた**。`renderBoard()`（`render-board.js`）は `boardEl.innerHTML=''` で char-layer を**空の新規要素に作り直す**が、`renderChars()` を呼ばないとプレイヤー/敵スプライトが再描画されない。ゲーム内の他の全呼び出し箇所は `renderBoard(); renderChars();` とペアなのに、ここと `restore()` だけ `renderBoard()` 単独だった＝ブーメラン飛行中（キャッチ前）の間プレイヤーが消え、キャッチ時の `apply()→renderChars()` で復活していた。**Phase 4-6 で "飛行中の proj-el が renderBoard で消える" は手当てしたが、同じ renderBoard 呼びが player/enemy スプライトも消すことは見落としていた**（[[blade-tile-sprite-single-source]] と同種＝renderBoard 単独呼びは常にスプライト消失を招く）。
+
+**修正：** `collectFieldItem` の pickup（901行）と `restore()`（912行）を `renderBoard(); renderChars();` に。**回帰テスト追加**（`lake-boomerang-preview.spec.js`＝投擲→30フレーム tick ごとに `#char-player` の存在を assert）＝修正前で fail・修正後 pass を両方確認。全260テスト緑。
+
+**学び：** **`renderBoard()` は char-layer を破棄する＝単独で呼ぶと必ずスプライトが消える。以後 `renderBoard()` は必ず `renderChars()` とペアで呼ぶ**（飛行中の投擲物が誘発する経路＝アイテム回収/炎点火では特に見えやすい）。snapshot テストや connectivity は緑でも実ブラウザ目視でしか気づけない種のバグ（[[field-tiles-are-char-arrays]] と同じ教訓）。
+
+---
+
 ### 2026-07-13 — Phase 9-6 ⑥-6 湖 W を完成（前回の接続詰まりを"ハイブリッド規則"で解決・🧠 Opus）
 
 **やったこと（🟢 デフォルトフロー・⑥-6・完了）：**
