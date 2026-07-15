@@ -106,10 +106,29 @@ const WALKABLE_GROUND = new Set(['.', 'g', 'v']); // floor, grass islet, bridge
 // A cell value works whether tiles are stored as char-arrays or as row strings.
 const cellAt = (tiles, r, c) => (Array.isArray(tiles[r]) ? tiles[r][c] : tiles[r][c]);
 
+// Hard-blocked border tiles (water/mountain/tree/…). A border cell is trap-free iff
+// it MIRRORS its facing neighbour: both walkable (a real crossing) or both blocked.
+const BLOCKED_BORDER = new Set(['~', 'M', 't', '#', 'x', '%', 'u', 'f']);
+const isWalk = (ch) => WALKABLE_GROUND.has(ch);
+
 test.describe('Phase 9-4 – lake region rework (bridges + islands)', () => {
-  test('every lake screen keeps its border openings walkable (transition-safe)', () => {
+  // ⑥-6 (2026-07-13): the earlier blanket "all 8 standard border cells walkable"
+  // rule predated the preserved D3 corridor (9,9 has wall edges: M top / t bottom)
+  // and the stronger traps=0 invariant. Opening a lake border cell that faces a
+  // wall would CREATE a soft-lock. The real intent is "lake transitions are safe":
+  // a walkable lake border cell must face a walkable neighbour (a genuine crossing),
+  // never a wall. Assert that mirror/trap-free condition at the standard cells.
+  test('lake border openings are trap-free (walkable cell faces walkable neighbour)', () => {
     const stages = loadField();
     const bad = [];
+    const facing = (k, r, c, R, C) => {
+      const [sx, sy] = k.split(',').map(Number);
+      if (r === 0) return [`${sx},${sy - 1}`, R - 1, c];
+      if (r === R - 1) return [`${sx},${sy + 1}`, 0, c];
+      if (c === 0) return [`${sx - 1},${sy}`, r, C - 1];
+      if (c === C - 1) return [`${sx + 1},${sy}`, r, 0];
+      return null;
+    };
     for (const k of LAKE_KEYS) {
       const s = stages[k];
       const t = s.tiles, R = s.rows, C = s.cols;
@@ -118,10 +137,16 @@ test.describe('Phase 9-4 – lake region rework (bridges + islands)', () => {
         [4, 0], [5, 0], [4, C - 1], [5, C - 1],        // left / right
       ];
       for (const [r, c] of openings) {
-        if (!WALKABLE_GROUND.has(cellAt(t, r, c))) bad.push(`${k}@${r},${c}=${cellAt(t, r, c)}`);
+        if (!isWalk(cellAt(t, r, c))) continue;         // closed cell → no crossing here
+        const f = facing(k, r, c, R, C);
+        const ns = f && stages[f[0]];
+        if (!ns) continue;                               // off-map → engine clamps, safe
+        const nch = cellAt(ns.tiles, f[1], f[2]);
+        if (BLOCKED_BORDER.has(nch) || !isWalk(nch))
+          bad.push(`${k}@${r},${c}=${cellAt(t, r, c)} → ${f[0]}@${f[1]},${f[2]}=${nch} (trap)`);
       }
     }
-    expect(bad, `lake border openings no longer walkable:\n${bad.join('\n')}`).toEqual([]);
+    expect(bad, `lake border openings lead into a wall (soft-lock):\n${bad.join('\n')}`).toEqual([]);
   });
 
   test('lake screens actually use bridges (first bridges on the field map)', () => {
