@@ -91,21 +91,29 @@ const TWO_AXIS_ALLOWLIST = ['7,14', '8,0', '8,1'];
 //   The 3 remaining M-touching residuals are corner cells (§11-1) + edges facing the
 //   PRESERVED D8 fence / still-un-reworked grassland (⑥-8/⑥-9). under-2-axis 124→114
 //   (all 14 M screens now ≥2 axes). dup/W1/W2 unchanged.
+// 2026-07-15 ⑥-8 snow S (13 screens rebuilt, 13,5 D5 entrance preserved): snow is a
+//   FLOOR-default region (bgTile 's' carved by 'M' into 石/迷路 with local '~' pools),
+//   the same class as grassland/mountain-M — so it reuses the mirror-AND fixed-point
+//   (§14-3/§16-1), NOT the lake hybrid. Result: seams 61→43, traps 61→43 — S-SOURCED
+//   seams/traps = 0 (the arrival-hole guard passes). under-2-axis 114→110 (all 13 S
+//   screens now ≥2 axes). dup/W1/W2 unchanged. 9-6-P: the showcase 石押し (13,4 —
+//   order-dependent 2-stone allSwitchesOn) and 弓ゲート (11,6 — sword-unreachable Y
+//   across a frozen moat) raise the puzzle bar.
 const BASELINE = {
-  seams: 61,        // honest seam bugs (reachable→reachable but walled) → goal 0
-                    // 70→64 after ⑥-6 lake; 64→61 after ⑥-7 M (M-sourced seams = 0).
+  seams: 43,        // honest seam bugs (reachable→reachable but walled) → goal 0
+                    // 64→61 after ⑥-7 M; 61→43 after ⑥-8 snow (S-sourced seams = 0).
   w1: 0,            // all-blocked screens → 0 achieved (rule 2: all playable)
   w2: 0,            // orphan screens → 0 achieved (rule 2: all reachable)
-  underTwoAxis: 114, // reachable <2-axis screens → goal 0. 125→124 after ⑥-6;
-                    // 124→114 after ⑥-7 (all 14 M screens → ≥2 axes).
+  underTwoAxis: 110, // reachable <2-axis screens → goal 0. 124→114 after ⑥-7;
+                    // 114→110 after ⑥-8 (all 13 S screens → ≥2 axes).
                     // Remaining: the outer ring's minimal walkways (⑥-10/⑥-11) plus
-                    // the still-un-reworked mainland regions (⑥-8/⑥-9).
+                    // the still-un-reworked volcano region (⑥-9).
   dupLayouts: 7,    // identical-layout groups → goal small. Deep-ocean minimal
                     // walkways still share geometry (⑥-11 content pass clears them).
-  traps: 61,        // rule 1: reached screen → arrival-wall soft-lock → goal 0.
-                    // 70→64 after ⑥-6 lake; 64→61 after ⑥-7 M (M-sourced traps = 0).
-                    // Residuals: corner cells (§11-1) + edges facing the preserved D8
-                    // fence + un-reworked grassland, which fall as ⑥-8/⑥-9 rework them.
+  traps: 43,        // rule 1: reached screen → arrival-wall soft-lock → goal 0.
+                    // 64→61 after ⑥-7 M; 61→43 after ⑥-8 snow (S-sourced traps = 0).
+                    // Residuals: corner cells (§11-1) + edges facing the un-reworked
+                    // volcano L, which fall as ⑥-9 reworks them.
 };
 
 test.describe('Blade of Lumia – 9-6 フィールド不変条件（ratchet）', () => {
