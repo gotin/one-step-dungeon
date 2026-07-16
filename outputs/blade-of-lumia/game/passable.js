@@ -14,12 +14,16 @@ import { NPC_SPRITE_MAP } from '../shared/npcs.js';
 // ルール：自然物（空・水・木・茂み・柵）は飛び越え可。
 //        山・壁・建造物（家）・閉じた門/扉は飛んでも越えられない＝マップ境界として機能し続ける。
 // ※ per-instance のデータ追加は不要（タイル種別だけで分類できる）。
+// 飛行で越えられる。溶岩も含む＝溶岩には着地できないので、飛行中に溶岩上へ来たら
+// 飛行を維持する必要がある（水/空と同じ。外すと溶岩に落ちて詰む）。
 const FLYABLE_OVER = new Set([
-	TILE.SKY, TILE.WATER, TILE.TREE, TILE.BUSH, TILE.FENCE,
+	TILE.SKY, TILE.WATER, TILE.LAVA, TILE.TREE, TILE.BUSH, TILE.FENCE,
 ]);
 
 // Phase 4-1: はしごで「両隣が地上の1セルだけ」渡れる障害物タイル。
 // 水・穴のみ対象（空 SKY は飛行専用、山などは渡れない）。
+// ⚠️ 溶岩(LAVA)は含めない＝はしごを架けても熱くて渡れない（ユーザー判断 2026-07-16）。
+// 溶岩は恒久の `v` 橋（足場）で渡る設計＝はしご越えを要する箇所は無い（進行に影響なし）。
 const LADDER_OVER = new Set([
 	TILE.WATER, TILE.PIT,
 ]);
@@ -131,6 +135,7 @@ export function createPassable(d) {
 		const debugMode = getDebugMode();
 		if (tile === TILE.WALL) return false;
 		if (tile === TILE.WATER) return false;
+		if (tile === TILE.LAVA) return false;  // 溶岩：地上では通れない（飛行/はしごは isPassable で許可＝水と同じ）
 		if (tile === TILE.SKY) return false;  // 空（虚空）：地上では通れない（飛行は isPassable で許可）
 		if (tile === TILE.PIT) return false;  // 穴：地上では通れない（はしごは isPassable で許可）
 		if (tile === TILE.GATE   && !ss.openGates.has(posKey)) return false;

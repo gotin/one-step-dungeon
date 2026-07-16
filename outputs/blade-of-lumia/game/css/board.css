@@ -103,6 +103,10 @@
     background: #0e2040;
 }
 
+.cell.lava {
+    background: #5a1408;
+}
+
 .cell.gate {
     background: #1a2c40;
 }

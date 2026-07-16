@@ -22,7 +22,7 @@ export function drawCell(c, r, tileChar) {
 	const x = c * CELL_SIZE, y = r * CELL_SIZE;
 
 	let bgColor;
-	if (tileChar === TILE.WALL || tileChar === TILE.WATER) {
+	if (tileChar === TILE.WALL || tileChar === TILE.WATER || tileChar === TILE.LAVA) {
 		bgColor = (TILE_META[tileChar] ?? TILE_META[TILE.FLOOR]).color;
 	} else {
 		bgColor = bgTileColor(bgTile);

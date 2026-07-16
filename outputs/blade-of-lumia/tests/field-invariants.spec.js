@@ -100,20 +100,20 @@ const TWO_AXIS_ALLOWLIST = ['7,14', '8,0', '8,1'];
 //   order-dependent 2-stone allSwitchesOn) and 弓ゲート (11,6 — sword-unreachable Y
 //   across a frozen moat) raise the puzzle bar.
 const BASELINE = {
-  seams: 43,        // honest seam bugs (reachable→reachable but walled) → goal 0
-                    // 64→61 after ⑥-7 M; 61→43 after ⑥-8 snow (S-sourced seams = 0).
+  seams: 35,        // honest seam bugs (reachable→reachable but walled) → goal 0
+                    // 61→43 after ⑥-8 snow; 43→35 after ⑥-9 volcano (L-sourced seams = 0).
   w1: 0,            // all-blocked screens → 0 achieved (rule 2: all playable)
   w2: 0,            // orphan screens → 0 achieved (rule 2: all reachable)
-  underTwoAxis: 110, // reachable <2-axis screens → goal 0. 124→114 after ⑥-7;
-                    // 114→110 after ⑥-8 (all 13 S screens → ≥2 axes).
-                    // Remaining: the outer ring's minimal walkways (⑥-10/⑥-11) plus
-                    // the still-un-reworked volcano region (⑥-9).
+  underTwoAxis: 108, // reachable <2-axis screens → goal 0. 114→110 after ⑥-8;
+                    // 110→108 after ⑥-9 (all 7 L screens → ≥2 axes; only 2 were flagged
+                    // before, the rest passed the heuristic as filler but were 塗り絵).
+                    // Remaining: the outer ring's minimal walkways (⑥-10/⑥-11) + the hub.
   dupLayouts: 7,    // identical-layout groups → goal small. Deep-ocean minimal
                     // walkways still share geometry (⑥-11 content pass clears them).
-  traps: 43,        // rule 1: reached screen → arrival-wall soft-lock → goal 0.
-                    // 64→61 after ⑥-7 M; 61→43 after ⑥-8 snow (S-sourced traps = 0).
-                    // Residuals: corner cells (§11-1) + edges facing the un-reworked
-                    // volcano L, which fall as ⑥-9 reworks them.
+  traps: 35,        // rule 1: reached screen → arrival-wall soft-lock → goal 0.
+                    // 61→43 after ⑥-8 snow; 43→35 after ⑥-9 volcano (L-sourced traps = 0).
+                    // Residuals: corner cells (§11-1) + edges facing the un-reworked hub
+                    // (7,14/6,13 preserved) — cleared when the hub corners are revisited.
 };
 
 test.describe('Blade of Lumia – 9-6 フィールド不変条件（ratchet）', () => {

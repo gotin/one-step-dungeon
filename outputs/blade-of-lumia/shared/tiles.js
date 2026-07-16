@@ -6,6 +6,7 @@ export const TILE = {
 	FLOOR:   '.',  // 床
 	WALL:    '#',  // 壁
 	WATER:   '~',  // 水（通行不可）
+	LAVA:    'l',  // 溶岩（通行不可・水と全く同じ挙動＝飛行/はしごで越える・投擲物は飛び越える。見た目のみ赤橙）
 	// プレイヤー
 	PLAYER:  '@',  // プレイヤー開始位置
 	// 敵
@@ -103,6 +104,7 @@ export const TILE_META = {
 	[TILE.FLOOR]:   { label: '床',           color: '#2a3540', passable: true,  icon: '　' },
 	[TILE.WALL]:    { label: '壁',           color: '#4a5560', passable: false, icon: '█' },
 	[TILE.WATER]:   { label: '水',           color: '#1a3a5a', passable: false, icon: '≈' },
+	[TILE.LAVA]:    { label: '溶岩',         color: '#8a2a10', passable: false, icon: '≈' },
 	[TILE.PLAYER]:  { label: 'プレイヤー開始', color: '#2a5020', passable: true,  icon: '＠' },
 	// 敵
 	[TILE.PATROL]:  { label: '巡回兵',       color: '#8a2a2a', passable: true,  icon: 'Ｅ' },

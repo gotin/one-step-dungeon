@@ -86,6 +86,7 @@ export function createRenderBoard(deps) {
 		switch (tile) {
 			case TILE.WALL:           cellEl.classList.add('wall'); return;
 			case TILE.WATER:          cellEl.classList.add('water'); return;
+			case TILE.LAVA:           cellEl.classList.add('lava'); return;
 			case TILE.GATE:
 				// 開いたゲートは床と同じ背景に（bgTile に任せる）。閉じている時だけ gate 色。
 				// ※ 以前は開時に switch-on を付けていたが、これはスイッチ ON の緑色で
@@ -246,6 +247,11 @@ export function createRenderBoard(deps) {
 		}
 		if (tile === TILE.WATER) {
 			const cv = makeSprite('water', 'water', true);
+			if (cv) { cv.classList.add('obj-sprite'); cellEl.appendChild(cv); }
+			return;
+		}
+		if (tile === TILE.LAVA) {
+			const cv = makeSprite('water', 'lava', true);   // water 形状＋lava 赤橙パレット
 			if (cv) { cv.classList.add('obj-sprite'); cellEl.appendChild(cv); }
 			return;
 		}

@@ -13,7 +13,7 @@ function minimapBgColor(tileChar) {
 }
 
 const MINIMAP_COLORS = {
-	[TILE.WALL]: '#3a4448', [TILE.FLOOR]: '#1a2228', [TILE.WATER]: '#0e2040',
+	[TILE.WALL]: '#3a4448', [TILE.FLOOR]: '#1a2228', [TILE.WATER]: '#0e2040', [TILE.LAVA]: '#8a2a10',
 	[TILE.PLAYER]: '#4cd964',
 	[TILE.PATROL]: '#4888c0', [TILE.CHASER]: '#c03030', [TILE.SENTRY]: '#9040c0',
 	[TILE.BOSS]: '#f0c040', [TILE.MONSTER]: '#9060d0', [TILE.DARK_LORD]: '#8800ff',
@@ -27,7 +27,7 @@ const MINIMAP_COLORS = {
 
 const PREVIEW_CELL = 40;
 const PREVIEW_BG = {
-	[TILE.WALL]: '#3a4448', [TILE.FLOOR]: '#1a2228', [TILE.WATER]: '#0e2040',
+	[TILE.WALL]: '#3a4448', [TILE.FLOOR]: '#1a2228', [TILE.WATER]: '#0e2040', [TILE.LAVA]: '#5a1408',
 	[TILE.PLAYER]: '#2a5020',
 	[TILE.PATROL]: '#1a3060', [TILE.CHASER]: '#3a0808', [TILE.SENTRY]: '#2a0840',
 	[TILE.BOSS]: '#1a1a0a', [TILE.MONSTER]: '#180830', [TILE.DARK_LORD]: '#0a0a18',
@@ -45,7 +45,7 @@ export function drawMinimap(sd) {
 			const bgTile = sd.bgTiles?.[posKey];
 
 			let bgColor;
-			if (t === TILE.WALL || t === TILE.WATER) {
+			if (t === TILE.WALL || t === TILE.WATER || t === TILE.LAVA) {
 				bgColor = MINIMAP_COLORS[t] ?? '#1a2228';
 			} else if (bgTile) {
 				bgColor = minimapBgColor(bgTile);
@@ -55,7 +55,7 @@ export function drawMinimap(sd) {
 			ctx.fillStyle = bgColor;
 			ctx.fillRect(c, r, 1, 1);
 
-			if (t !== TILE.FLOOR && t !== TILE.WALL && t !== TILE.WATER) {
+			if (t !== TILE.FLOOR && t !== TILE.WALL && t !== TILE.WATER && t !== TILE.LAVA) {
 				const fgColor = MINIMAP_COLORS[t];
 				if (fgColor) {
 					ctx.fillStyle = fgColor;
@@ -90,7 +90,7 @@ export function drawWorldPreview(sd) {
 			const bgTile = sd.bgTiles?.[posKey];
 			const x = c * PREVIEW_CELL, y = r * PREVIEW_CELL;
 			let bgColor;
-			if (t === TILE.WALL || t === TILE.WATER) {
+			if (t === TILE.WALL || t === TILE.WATER || t === TILE.LAVA) {
 				bgColor = PREVIEW_BG[t] ?? '#1a2228';
 			} else {
 				bgColor = bgTile ? minimapBgColor(bgTile) : (PREVIEW_BG[t] ?? '#1a2228');

@@ -34,11 +34,12 @@ import { NPC_SPRITE_MAP } from '../../shared/npcs.js';
 
 // Tiles that are passable WITH a ladder (water/pit = 1-cell bridge only).
 // Mirrors game/passable.js LADDER_OVER.
-export const LADDER_OVER = new Set([TILE.WATER, TILE.PIT]);
+export const LADDER_OVER = new Set([TILE.WATER, TILE.PIT]);  // 溶岩は含めない（はしごで渡れない）
 
 export const HARD_BLOCKED = new Set([
   TILE.WALL,            // '#'
   TILE.WATER,           // '~'
+  TILE.LAVA,            // 'l' (same as water: blocks foot, flyable/ladder-crossable)
   TILE.SKY,             // '%' (flight-only)
   TILE.PIT,             // 'x' (ladder-only)
   TILE.DOORWAY_LOCKED,  // '|' (dead code — never opens => effectively a wall)

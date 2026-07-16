@@ -18,6 +18,7 @@ export const TILE_SPRITE_MAP = {
 	[TILE.STONE]:     { spr: 'block',    pal: 'block'    },
 	[TILE.CHEST]:     { spr: 'chest',    pal: 'chest'    },
 	[TILE.WATER]:     { spr: 'water',    pal: 'water'    },
+	[TILE.LAVA]:      { spr: 'water',    pal: 'lava'     },  // 溶岩＝water 形状＋lava 赤橙パレット
 	[TILE.PATROL]:    { spr: 'patrol',   pal: 'patrol'   },
 	[TILE.CHASER]:    { spr: 'chaser',   pal: 'chaser'   },
 	[TILE.SENTRY]:    { spr: 'sentry',   pal: 'sentry'   },

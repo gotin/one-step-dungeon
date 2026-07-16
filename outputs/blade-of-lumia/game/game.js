@@ -364,7 +364,7 @@ function enterStage(lk, sk, pRow, pCol) {
 	// 到着セルが空・水（塔の空島入口など）なら飛行を維持してその場に留まれる。
 	if (player.flying) {
 		const arrTile = stageData.tiles?.[Math.floor((pRow ?? 1) + 0.5)]?.[Math.floor((pCol ?? 1) + 0.5)];
-		if (arrTile !== TILE.SKY && arrTile !== TILE.WATER) player.flying = false;
+		if (arrTile !== TILE.SKY && arrTile !== TILE.WATER && arrTile !== TILE.LAVA) player.flying = false;
 	}
 
 	// ステージ遷移時に飛翔物・設置爆弾をリセット
@@ -1054,7 +1054,7 @@ function unlockLockedDoor(posKey) {
 // 含めない（遷移先で開いている可能性があるので従来どおり通す）。
 // connectivity.mjs の HARD_BLOCKED と同じ基準 → traps 指標とエンジン挙動が一致。
 const ARRIVAL_WALL_TILES = new Set([
-	TILE.WALL, TILE.WATER, TILE.SKY, TILE.PIT, TILE.DOORWAY_LOCKED,
+	TILE.WALL, TILE.WATER, TILE.LAVA, TILE.SKY, TILE.PIT, TILE.DOORWAY_LOCKED,
 	TILE.SWITCH, TILE.SWITCH_RED, TILE.SWITCH_BLUE, TILE.STONE,
 	TILE.TREE, TILE.MOUNTAIN, TILE.BUSH, TILE.FENCE,
 	TILE.HOUSE_WALL, TILE.HOUSE_ROOF, TILE.SIGN, TILE.TORCH,
@@ -1075,7 +1075,7 @@ function arrivalIsWall(destStage, nRow, nCol) {
 			if (tile === undefined) continue;         // 範囲外セルは無視（端クランプ側）
 			if (!ARRIVAL_WALL_TILES.has(tile)) continue;
 			if (player.hasLadder && (tile === TILE.WATER || tile === TILE.PIT)
-				&& isBorderLadderBridge(destStage, r, c)) continue;
+				&& isBorderLadderBridge(destStage, r, c)) continue;   // 溶岩は含めない（はしごで渡れない）
 			return true;                              // footprint 内に壁 → めり込む
 		}
 	}

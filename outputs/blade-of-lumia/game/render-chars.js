@@ -227,7 +227,7 @@ export function createRenderChars(deps) {
 		for (let r = r0; r <= r1; r++) {
 			for (let c = c0; c <= c1; c++) {
 				const t = stageData.tiles[r]?.[c];
-				if (t !== TILE.WATER && t !== TILE.PIT) continue;
+				if (t !== TILE.WATER && t !== TILE.PIT) continue;   // 溶岩ははしごで渡れない
 				const orient = ladderOrientationAt(r, c, axis);  // 進入軸で向き決定
 				if (!orient) continue;  // 進入軸の橋でない水/穴には出さない
 				const d = (c + 0.5 - pcx) ** 2 + (r + 0.5 - pcy) ** 2;
