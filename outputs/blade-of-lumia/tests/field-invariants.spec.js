@@ -100,9 +100,20 @@ const TWO_AXIS_ALLOWLIST = ['7,14', '8,0', '8,1'];
 //   screens now ≥2 axes). dup/W1/W2 unchanged. 9-6-P: the showcase 石押し (13,4 —
 //   order-dependent 2-stone allSwitchesOn) and 弓ゲート (11,6 — sword-unreachable Y
 //   across a frozen moat) raise the puzzle bar.
+// 2026-07-16 ⑥-trap cross-map arrival-wall root-out (migrate-field-trap-corners.mjs):
+//   the FINAL trap pass. With every region + outer ring finished, the last 35 traps
+//   (== 35 seams) were all §11-1 CORNER RESIDUALS: an open corner cell on a reached
+//   screen faced a wall corner (t/M/~/f) on a region-boundary neighbour — a grid
+//   corner answers to two crossings on two neighbours, so it couldn't be resolved
+//   until BOTH were reworked. The global mirror-AND fixed point walls each open
+//   source corner to match the wall it faces (54 empty corners; 't'/'M' kept, '~'/'f'
+//   → 'M'), except the preserved D6 approach (2,4) which mirrors on its plain-forest
+//   dest side (2,3 cells 9,4/9,7 opened). Result: seams 43→0, traps 43→0 — BOTH GOALS
+//   MET. reached 319 unchanged (a corner is decorative border, never load-bearing),
+//   W1/W2/dup/under-2-axis all unchanged. seams & traps ceilings are now hard 0.
 const BASELINE = {
-  seams: 35,        // honest seam bugs (reachable→reachable but walled) → goal 0
-                    // 61→43 after ⑥-8 snow; 43→35 after ⑥-9 volcano (L-sourced seams = 0).
+  seams: 0,         // honest seam bugs (reachable→reachable but walled) → GOAL MET (0).
+                    // 43→35 after ⑥-9 volcano; 35→0 after ⑥-trap (all §11-1 corners closed).
   w1: 0,            // all-blocked screens → 0 achieved (rule 2: all playable)
   w2: 0,            // orphan screens → 0 achieved (rule 2: all reachable)
   underTwoAxis: 108, // reachable <2-axis screens → goal 0. 114→110 after ⑥-8;
@@ -111,10 +122,9 @@ const BASELINE = {
                     // Remaining: the outer ring's minimal walkways (⑥-10/⑥-11) + the hub.
   dupLayouts: 7,    // identical-layout groups → goal small. Deep-ocean minimal
                     // walkways still share geometry (⑥-11 content pass clears them).
-  traps: 35,        // rule 1: reached screen → arrival-wall soft-lock → goal 0.
-                    // 61→43 after ⑥-8 snow; 43→35 after ⑥-9 volcano (L-sourced traps = 0).
-                    // Residuals: corner cells (§11-1) + edges facing the un-reworked hub
-                    // (7,14/6,13 preserved) — cleared when the hub corners are revisited.
+  traps: 0,         // rule 1: reached screen → arrival-wall soft-lock → GOAL MET (0).
+                    // 43→35 after ⑥-9 volcano; 35→0 after ⑥-trap (mirror-AND fixed point
+                    // closes every §11-1 corner residual across region boundaries).
 };
 
 test.describe('Blade of Lumia – 9-6 フィールド不変条件（ratchet）', () => {
