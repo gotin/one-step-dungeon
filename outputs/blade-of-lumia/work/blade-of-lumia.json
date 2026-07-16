@@ -119086,8 +119086,8 @@
             "type": "warp",
             "layer": "field",
             "stage": "2,0",
-            "row": 4,
-            "col": 4,
+            "row": 8,
+            "col": 6,
             "message": "🎵 竜巻に運ばれ 地上へ戻った！"
           },
           "mapEnters": {

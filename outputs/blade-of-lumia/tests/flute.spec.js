@@ -98,5 +98,15 @@ test.describe('Blade of Lumia – 笛', () => {
 
 		st = await page.evaluate(() => window.__game.getState());
 		expect(st.currentLayer).toBe('field');
+
+		// ⑥-warp regression: the tornado must drop the player on a walkable cell,
+		// not embedded in the mountain fort at field 2,0 (4,4)=M. Land at 8,6 and
+		// prove the player can actually MOVE afterwards (no soft-lock).
+		expect(st.stageKey).toBe('2,0');
+		const before = { x: Math.round(st.player.x), y: Math.round(st.player.y) };
+		expect(before).toEqual({ x: 6, y: 8 });
+		await walk(page, 'left', 2); // MOVE_STEP 0.5 → two steps = one full cell west
+		st = await page.evaluate(() => window.__game.getState());
+		expect(st.player.x).toBeLessThan(6); // moved west onto floor — not stuck in a wall
 	});
 });

@@ -3,6 +3,7 @@ import { readFileSync } from 'fs';
 import { fileURLToPath } from 'url';
 import {
   fieldHonestMetrics, underTwoAxisScreens, duplicateLayoutGroups,
+  warpEnterLandings,
 } from '../scripts/lib/field-quality.mjs';
 
 // ── Phase 9-6 設計④: フィールド不変条件テスト ─────────────────────────────────
@@ -174,6 +175,41 @@ test.describe('Blade of Lumia – 9-6 フィールド不変条件（ratchet）',
       `trap edges regressed above baseline ${BASELINE.traps}.\n` +
       `到達可能画面から開いた辺に出ると壁/オール水に着地して詰む遷移:\n${m.traps.join('  ')}`,
     ).toBeLessThanOrEqual(BASELINE.traps);
+  });
+
+  // ⑥-warp: ワープ/テレポート着地が「詰み」でないこと. bfsLayer/traps only model
+  // edge-scrolls; NEITHER inspects where a teleport DROPS the player. game.js
+  // enterStage() places the player at the exact (row,col) with no wall-clamping,
+  // so a landing on a hard-blocked tile is an unrecoverable soft-lock. This is the
+  // metric that catches the secret_grotto flute-warp landing on field 2,0 (4,4)=M
+  // (fixed by moving it to 8,6), and it guards every future warp/MAP_ENTER too.
+  //
+  // KNOWN out-of-⑥-scope residuals (must NOT regress, tracked as an allow-list):
+  //   field/8,1 mapEnter fieldToTower → field 8,0(3,2)=M  — the sky-island was
+  //     dropped in the M1-M4 re-key; restoring it (+ this landing) is 9-2T bug①
+  //     (PLAN 9-2T「空島復元」). Until then the tower is unreachable anyway.
+  //   dungeon_7/1,3 exit destId=field_dungeon7 → unresolved — the field-side
+  //     receiver for D7's return exit is not wired (9-2i/9-2T scope; D7 is entered
+  //     by flute-warp so this only affects the return trip).
+  // Drop a key from KNOWN_BAD_LANDINGS the moment its owning task fixes it.
+  const KNOWN_BAD_LANDINGS = new Set([
+    'mapEnter field/8,1@3,2',      // fieldToTower → 8,0(3,2)=M (9-2T sky-island)
+    'mapEnter dungeon_7/1,3@7,2',  // field_dungeon7 unresolved (9-2i D7 return)
+  ]);
+
+  test('ワープ/テレポート着地が壁でない (warp-landing soft-lock) — ⑥-warp', () => {
+    const bad = warpEnterLandings(loadMap());
+    const live = bad.filter(
+      (b) => !KNOWN_BAD_LANDINGS.has(`${b.kind} ${b.from}@${b.at}`),
+    );
+    const fmt = (b) =>
+      `${b.kind} ${b.from}@${b.at} → ${b.dest ?? '(unresolved)'}` +
+      `${b.tile ? ` tile='${b.tile}'` : ''} [${b.reason}]`;
+    expect(
+      live.map(fmt),
+      '笛/テレポートの着地セルが徒歩不可の壁＝spawn 即詰み（enterStage は壁でも' +
+      'クランプしない）。着地点を歩けるセルに直すこと:\n' + live.map(fmt).join('\n'),
+    ).toEqual([]);
   });
 
   // Progress marker: prints the live gap to goal on every run so the ratchet is

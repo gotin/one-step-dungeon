@@ -212,3 +212,83 @@ export function duplicateLayoutGroups(mapData) {
   }
   return [...byHash.values()].filter((g) => g.length >= 2).map((g) => g.sort());
 }
+
+// ── Warp / MAP_ENTER landing guard (ワープ着地の詰み検出・⑥-warp) ──────────────
+/**
+ * Verify every TELEPORT LANDING is a cell the player can stand on. This is the
+ * blind spot behind the ⑥-warp bug (and 9-2T's "tower warp source vanished"):
+ * bfsLayer only follows edge-scrolls, and `traps` only inspects edge crossings —
+ * NEITHER models where a teleport actually DROPS the player. game.js enterStage()
+ * places the player at the exact (row,col) with NO wall-clamping, so a landing on
+ * a hard-blocked tile ('M' / '#' / '~' / 'l' ...) is an unrecoverable soft-lock:
+ * you spawn embedded in a wall and can't move (unless you arrive flying — which
+ * only happens for SKY/WATER/LAVA landings, handled below).
+ *
+ * Two teleport kinds are checked:
+ *   1. `stageData.fluteEffect` of type 'warp' — direct {layer,stage,row,col} or
+ *      {destId} → exitRegistry (mirrors game.js playFlute()).
+ *   2. `stageData.mapEnters[cell].destId` — the '>' teleport / door / stair /
+ *      flight-warp, landing on the (row,col) of the MAP_ENTER whose `id` matches
+ *      destId (mirrors game.js buildExitRegistry() + enterStage()).
+ *
+ * A landing is BAD when it is unresolved (destId points nowhere) OR the arrival
+ * tile is hard-blocked AND not a flight/ladder tile (SKY/WATER/LAVA landings are
+ * survivable because the arriving actor keeps flying — see enterStage:365-368).
+ *
+ * @param {object} mapData  the whole map (all layers + startPos)
+ * @returns {Array<{kind:'flute'|'mapEnter', from:string, at:string,
+ *   dest:string|null, tile:string|null, reason:'unresolved'|'arrival-wall'}>}
+ *   Empty = every teleport lands somewhere standable.
+ */
+export function warpEnterLandings(mapData) {
+  const layers = mapData.layers || {};
+  // id -> {layer,stage,row,col} (mirrors game.js buildExitRegistry).
+  const registry = {};
+  for (const lk of Object.keys(layers))
+    for (const [sk, sd] of Object.entries(layers[lk].stages || {}))
+      for (const [pk, e] of Object.entries(sd.mapEnters || {}))
+        if (e.id) {
+          const [row, col] = pk.split(',').map(Number);
+          registry[e.id] = { layer: lk, stage: sk, row, col };
+        }
+
+  // A landing survives on a flight/ladder tile: the actor keeps flying (SKY on
+  // the sky-island / WATER / LAVA) rather than embedding in a solid wall.
+  const FLIGHT_LAND = new Set(['%', '~', 'l']);
+  const tileAt = (d) =>
+    d && layers[d.layer]?.stages?.[d.stage]?.tiles?.[d.row]?.[d.col];
+
+  const bad = [];
+  const check = (kind, from, at, dest) => {
+    if (!dest || !layers[dest.layer]?.stages?.[dest.stage]) {
+      bad.push({ kind, from, at, dest: null, tile: null, reason: 'unresolved' });
+      return;
+    }
+    const tile = tileAt(dest);
+    if (isHardBlocked(tile) && !FLIGHT_LAND.has(tile)) {
+      bad.push({
+        kind, from, at,
+        dest: `${dest.layer}/${dest.stage}(${dest.row},${dest.col})`,
+        tile: tile ?? null, reason: 'arrival-wall',
+      });
+    }
+  };
+
+  for (const lk of Object.keys(layers))
+    for (const [sk, sd] of Object.entries(layers[lk].stages || {})) {
+      const from = `${lk}/${sk}`;
+      const fx = sd.fluteEffect;
+      if (fx && fx.type === 'warp') {
+        let dest = null;
+        if (fx.layer && fx.stage) {
+          dest = { layer: fx.layer, stage: fx.stage, row: fx.row ?? 5, col: fx.col ?? 5 };
+        } else if (fx.destId) {
+          dest = registry[fx.destId] || null;
+        }
+        check('flute', from, 'fluteEffect', dest);
+      }
+      for (const [pk, e] of Object.entries(sd.mapEnters || {}))
+        if (e.destId) check('mapEnter', from, pk, registry[e.destId] || null);
+    }
+  return bad;
+}
