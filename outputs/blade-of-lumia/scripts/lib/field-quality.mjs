@@ -16,6 +16,175 @@
 // field-invariants spec both import from here.
 import { bfsLayer, findOrphanRooms, findEntrances, isHardBlocked } from './connectivity.mjs';
 
+// ── Region label map (叩き台 ZONE_MAP from analyze-zone-rebalance.mjs) ────────
+// Rows = sy (0=north), cols = sx (0=west). Key format: "sx,sy" = stageKey.
+// Note: ZONE_MAP[row][col] → stageKey "col,row".
+// Outer ^/~ cells are reassigned to adjacent theme regions below (draft ZONE).
+// Specials (T/K/V) kept as-is.
+const _ZONE_RAW = [
+  ['^','^','^','^','^','^','T','K','K','^','^','^','L','^','^','^'],
+  ['^','^','F','^','^','G','G','G','G','G','^','L','L','L','^','^'],
+  ['^','F','F','F','G','G','G','G','G','G','G','L','L','L','^','^'],
+  ['F','F','F','F','G','G','G','G','G','G','G','G','L','S','^','^'],
+  ['F','F','F','F','G','G','G','G','G','G','G','G','S','S','S','^'],
+  ['F','F','F','F','G','G','G','G','G','G','G','S','S','S','S','^'],
+  ['F','F','F','G','G','G','G','G','G','G','S','S','S','S','~','~'],
+  ['F','F','F','G','G','G','G','G','G','W','W','S','S','~','~','~'],
+  ['F','F','F','G','G','G','G','G','W','W','W','W','~','~','~','~'],
+  ['F','F','G','G','G','G','G','G','W','W','W','~','~','~','~','~'],
+  ['G','G','G','G','G','G','G','G','W','W','W','~','~','~','~','~'],
+  ['G','G','G','G','G','G','G','G','G','W','W','~','~','~','~','~'],
+  ['D','G','G','G','G','G','G','G','G','G','M','M','~','~','~','~'],
+  ['D','D','G','G','G','G','G','G','G','M','M','M','~','~','~','~'],
+  ['D','D','D','G','G','G','G','V','G','G','M','M','~','~','~','~'],
+  ['D','D','D','G','G','G','G','G','G','M','M','M','~','~','~','~'],
+  ['D','D','D','D','G','G','G','M','M','M','M','~','~','~','~','~'],
+  ['~','D','D','~','G','G','G','M','M','~','~','~','~','~','~','~'],
+  ['~','~','~','~','~','G','G','~','~','~','~','~','~','~','~','~'],
+  ['~','~','~','~','~','~','~','~','~','~','~','~','~','~','~','~'],
+];
+const _GW = 16, _GH = 20;
+const _OUTER = new Set(['^', '~']);
+const _SPECIAL = new Set(['T', 'K', 'V']);
+const _DEEP = 4;
+
+// Build draft zone (outer → nearest-land; deep-sea → 'O'; M → M/P split).
+// This mirrors analyze-zone-rebalance.mjs so both are in sync.
+function _buildDraftZone() {
+  const dist = Array.from({ length: _GH }, () => Array(_GW).fill(Infinity));
+  const lbl  = Array.from({ length: _GH }, () => Array(_GW).fill(null));
+  const q = [];
+  for (let y = 0; y < _GH; y++) for (let x = 0; x < _GW; x++) {
+    const z = _ZONE_RAW[y][x];
+    if (!_OUTER.has(z) && !_SPECIAL.has(z)) { dist[y][x] = 0; lbl[y][x] = z; q.push([x,y]); }
+  }
+  let head = 0;
+  while (head < q.length) {
+    const [x, y] = q[head++];
+    for (const [dx,dy] of [[1,0],[-1,0],[0,1],[0,-1]]) {
+      const nx=x+dx, ny=y+dy;
+      if (nx<0||nx>=_GW||ny<0||ny>=_GH) continue;
+      if (dist[ny][nx] > dist[y][x]+1) { dist[ny][nx]=dist[y][x]+1; lbl[ny][nx]=lbl[y][x]; q.push([nx,ny]); }
+    }
+  }
+  const draft = _ZONE_RAW.map(r => r.slice());
+  for (let y=0;y<_GH;y++) for (let x=0;x<_GW;x++) {
+    const z = _ZONE_RAW[y][x];
+    if (_SPECIAL.has(z)) continue;
+    if (!_OUTER.has(z)) continue;
+    draft[y][x] = (z==='~' && dist[y][x]>=_DEEP) ? 'O' : lbl[y][x];
+  }
+  // M → M(north)/P(south) split using the same dual-BFS from analyze-zone-rebalance.
+  const mCells = [];
+  for (let y=0;y<_GH;y++) for (let x=0;x<_GW;x++) if (draft[y][x]==='M') mCells.push([x,y]);
+  const inM = new Set(mCells.map(([x,y])=>`${x},${y}`));
+  const mtnSeed = mCells.slice().sort((a,b)=>a[1]-b[1]||a[0]-b[0])[0];
+  const swampSeeds = [[10,14],[9,15]].filter(([x,y])=>inM.has(`${x},${y}`));
+  const owner = {};
+  const qM = [`${mtnSeed[0]},${mtnSeed[1]}`];
+  const qP = swampSeeds.map(([x,y])=>`${x},${y}`);
+  owner[qM[0]]='M'; for (const k of qP) owner[k]='P';
+  const refM={h:0}, refP={h:0};
+  const grow=(gq,ref,tag)=>{
+    while(ref.h<gq.length){
+      const[x,y]=gq[ref.h].split(',').map(Number);
+      for(const[dx,dy] of [[0,1],[0,-1],[1,0],[-1,0]]){
+        const k=`${x+dx},${y+dy}`;
+        if(inM.has(k)&&owner[k]===undefined){owner[k]=tag;gq.push(k);return true;}
+      }
+      ref.h++;
+    }
+    return false;
+  };
+  let cntM=1, cntP=qP.length, liveM=true, liveP=true;
+  while((liveM||liveP)&&(cntM+cntP)<mCells.length){
+    if(cntP<=cntM&&liveP){liveP=grow(qP,refP,'P');if(liveP)cntP++;}
+    else if(liveM){liveM=grow(qM,refM,'M');if(liveM)cntM++;}
+    else if(liveP){liveP=grow(qP,refP,'P');if(liveP)cntP++;}
+  }
+  for(const[x,y] of mCells) draft[y][x]=owner[`${x},${y}`]||'M';
+  return draft;
+}
+const _DRAFT_ZONE = _buildDraftZone();
+
+/** Return the draft region label for a field stageKey "col,row". */
+export function regionOf(stageKey) {
+  const [sx, sy] = stageKey.split(',').map(Number);
+  if (sy<0||sy>=_GH||sx<0||sx>=_GW) return '?';
+  return _DRAFT_ZONE[sy][sx];
+}
+
+// ── Region → expected player power at arrival (§8-1 progression table) ────────
+// Items accumulated in dungeon order D1→D2→D3→D4→D6→D5→D8→D7.
+// Power score = sword_tier + (has_shield?1:0) + tool_count.
+// Regions are ordered by when the player first reaches them.
+const _REGION_POWER = {
+  // Village hub + near regions (D1 done, {sword1,shield})
+  'G': 2, 'D': 2, 'M': 2, 'P': 2,
+  // After D2 boomerang  (+1 tool)
+  'W': 4,
+  // After D3 bow (+1 tool) — forests F surround D6
+  'F': 5, 'L': 5,
+  // After D4 candle (+1 tool) — snow S is D5 approach
+  'S': 6,
+  // After D6 bomb (+1 tool) — deep-ocean O reached mid-game
+  'O': 7,
+  // After D5 ladder (+1 tool)
+  // After D8 flute (+1 tool) — late specials
+  'T': 8, 'K': 8, 'V': 8,
+};
+
+function expectedPower(region) {
+  return _REGION_POWER[region] ?? 3; // default mid-game if unknown
+}
+
+// ── Enemy threat score (per tile character on the field) ──────────────────────
+// threat(tile) = hp * atk / max(1, def)
+// Values sourced from shared/enemies.js.
+const _THREAT = {
+  'E': 3  * 1 / 1,   // PATROL  hp3 atk1 def0
+  'C': 5  * 2 / 1,   // CHASER  hp5 atk2 def0
+  'F': 6  * 2 / 2,   // SENTRY  hp6 atk2 def1
+  'V': 20 * 4 / 3,   // BOSS(魔将) hp20 atk4 def2
+  'W': 12 * 3 / 2,   // MONSTER hp12 atk3 def1
+  'X': 50 * 6 / 4,   // DARK_LORD hp50 atk6 def3
+  'Z': 80 * 8 / 5,   // ZARNEL   hp80 atk8 def4
+  'G': 30 * 4 / 3,   // ROCK_GOLEM
+  'N': 32 * 5 / 2,   // SAND_SCORPION
+  'J': 38 * 4 / 4,   // SEA_SERPENT
+  'A': 35 * 5 / 3,   // FIRE_SALAMANDER
+  'L': 40 * 4 / 4,   // ICE_LEVIATHAN
+  'O': 42 * 5 / 3,   // FOREST_GIANT
+  'U': 36 * 6 / 2,   // STORM_EAGLE
+  'I': 40 * 5 / 3,   // SWAMP_TOAD
+};
+
+// Hazard tiles on field (lava/pit/water-ford obstacles that threaten the player).
+const _HAZARD_TILES = new Set(['l', 'x', '~']);
+
+/** Compute battle difficulty score for a single screen.
+ *  score = (enemyThreat + hazardScore) / expectedPower(region)
+ */
+export function battleScore(stage, region) {
+  const flat = stage.tiles.flat();
+  let threat = 0;
+  const enemyCounts = {};
+  for (const ch of flat) {
+    if (_THREAT[ch] !== undefined) {
+      threat += _THREAT[ch];
+      enemyCounts[ch] = (enemyCounts[ch] || 0) + 1;
+    }
+  }
+  // Number-of-enemies multiplier: 1 enemy = ×1, 2 = ×1.3, 3+ = ×1.6
+  const count = Object.values(enemyCounts).reduce((a,b)=>a+b, 0);
+  const mult = count === 0 ? 0 : count === 1 ? 1 : count === 2 ? 1.3 : 1.6;
+  threat *= mult;
+  // Hazard score: each hazard tile adds a small amount
+  const hazard = flat.filter(ch => _HAZARD_TILES.has(ch)).length * 0.5;
+  const power = Math.max(1, expectedPower(region));
+  return (threat + hazard) / power;
+}
+
 // ── Screen-axis inference ────────────────────────────────────────────────────
 // The five axes from FIELD-9-6-DESIGN.md §2-1 ("128画面すべてが意味を持つ" 分解).
 // Inference is deliberately CONSERVATIVE: a screen only earns an axis when a
@@ -291,4 +460,163 @@ export function warpEnterLandings(mapData) {
         if (e.destId) check('mapEnter', from, pk, registry[e.destId] || null);
     }
   return bad;
+}
+
+// ── 3 new quality checks (Phase 9-6-BASE implementation) ─────────────────────
+
+// Tiles that represent a "puzzle / obstacle" element (B-axis, environment puzzle).
+const _PUZZLE_TILES = new Set(['!', 'T', '(', ')', '*', 'v', 'x', 'H', 'Y', '[', ']', 'S']);
+// Tiles that represent a "showpiece combat" element (killAll gate handled separately).
+const _COMBAT_SHOWPIECE = new Set(['F', 'V', 'W', 'X', 'Z', 'G', 'N', 'J', 'A', 'L', 'O', 'U', 'I']);
+// Tiles that signal a "one-off" unique element (C-axis).
+const _UNIQUE_TILES = new Set(['^', 'o', 'h', 'p', 'i']);
+// Tiles that are a "story anchor" (A-axis).
+const _ANCHOR_TILES = new Set(['^', 'o', 'p', 'i']);
+
+function _classifyScreen(s) {
+  const flat = s.tiles.flat();
+  const has = (ch) => flat.includes(ch);
+  const scVals = Object.values(s.showConditions || {});
+  const killAll = scVals.some(v => v && v.trigger === 'killAll');
+  const hasEnemy = [...ENEMY_TILES].some(has);
+  return {
+    puzzle:   [..._PUZZLE_TILES].some(has),
+    combat:   hasEnemy && (killAll || [..._COMBAT_SHOWPIECE].some(has) || has('B')),
+    unique:   [..._UNIQUE_TILES].some(has),
+    anchor:   [..._ANCHOR_TILES].some(has),
+  };
+}
+
+/**
+ * Compute density metrics per region.
+ * @param {object} mapData
+ * @returns {Map<string, {screens:number, puzzle:number, combat:number, unique:number, anchor:number}>}
+ */
+export function regionDensityMetrics(mapData) {
+  const field = (mapData.layers && mapData.layers.field) || mapData.field;
+  const stages = field.stages;
+  const { reached } = fieldHonestMetrics(mapData);
+  const byRegion = new Map();
+  for (const k of reached) {
+    const r = regionOf(k);
+    if (!byRegion.has(r)) byRegion.set(r, { screens:0, puzzle:0, combat:0, unique:0, anchor:0 });
+    const rec = byRegion.get(r);
+    rec.screens++;
+    const cls = _classifyScreen(stages[k]);
+    if (cls.puzzle)  rec.puzzle++;
+    if (cls.combat)  rec.combat++;
+    if (cls.unique)  rec.unique++;
+    if (cls.anchor)  rec.anchor++;
+  }
+  return byRegion;
+}
+
+/**
+ * Compute battle-score distribution per region.
+ * @param {object} mapData
+ * @returns {Map<string, {scores: number[], mean: number, max: number, zeroCount: number}>}
+ */
+export function regionBattleScores(mapData) {
+  const field = (mapData.layers && mapData.layers.field) || mapData.field;
+  const stages = field.stages;
+  const { reached } = fieldHonestMetrics(mapData);
+  const byRegion = new Map();
+  for (const k of reached) {
+    const r = regionOf(k);
+    if (!byRegion.has(r)) byRegion.set(r, { scores: [] });
+    const score = battleScore(stages[k], r);
+    byRegion.get(r).scores.push(score);
+  }
+  const out = new Map();
+  for (const [r, {scores}] of byRegion) {
+    const mean = scores.length ? scores.reduce((a,b)=>a+b,0)/scores.length : 0;
+    const max  = scores.length ? Math.max(...scores) : 0;
+    const zeroCount = scores.filter(s=>s===0).length;
+    out.set(r, { scores, mean: Math.round(mean*100)/100, max: Math.round(max*100)/100, zeroCount });
+  }
+  return out;
+}
+
+/**
+ * Detect structurally-similar screen pairs within the same region.
+ * Similarity = cosine similarity of a feature vector derived from tile-type
+ * distribution + gimmick positions (relative to centre).
+ * Pairs with similarity >= threshold are flagged as "diff too small".
+ *
+ * @param {object} mapData
+ * @param {{threshold?: number}} [opts]  default threshold 0.97
+ * @returns {Array<{region:string, a:string, b:string, similarity:number}>}
+ */
+export function structuralSimilarityWarnings(mapData, opts = {}) {
+  const threshold = opts.threshold ?? 0.995;
+  const field = (mapData.layers && mapData.layers.field) || mapData.field;
+  const stages = field.stages;
+  const { reached } = fieldHonestMetrics(mapData);
+
+  // Feature vector: tile-type histogram (14 buckets) + 4 corner quadrant gimmick counts.
+  const BUCKETS = [
+    ['floor',   (ch) => ch==='.'||ch===' '||ch===undefined],
+    ['wall',    (ch) => ch==='#'||ch==='M'||ch==='t'],
+    ['water',   (ch) => ch==='~'||ch==='l'],
+    ['enemy',   (ch) => _THREAT[ch]!==undefined],
+    ['gate',    (ch) => ['T','!','D','(',')',':'].includes(ch)],
+    ['secret',  (ch) => ['u','*','Q'].includes(ch)],
+    ['chest',   (ch) => ch==='B'||ch==='R'||ch==='b'],
+    ['pit',     (ch) => ch==='x'],
+    ['bridge',  (ch) => ch==='v'],
+    ['switch',  (ch) => ['S','Y','H','[',']'].includes(ch)],
+    ['enter',   (ch) => ch==='>'],
+    ['npc',     (ch) => ch==='n'||ch==='i'],
+    ['landmark',(ch) => ['o','h','^','p'].includes(ch)],
+    ['stone',   (ch) => ch==='*'],
+  ];
+
+  function featureVec(s) {
+    const flat = s.tiles.flat();
+    const total = flat.length || 1;
+    const hist = BUCKETS.map(([,pred]) => flat.filter(pred).length / total);
+    // 4-quadrant gimmick density
+    const { rows, cols } = s;
+    const mid_r = rows >> 1, mid_c = cols >> 1;
+    const quads = [0,0,0,0];
+    const GIMMICK = new Set(['!','T','*','u','Y','H','S','B','R','b','x','v','o','^']);
+    for (let r=0; r<rows; r++) for (let c=0; c<cols; c++) {
+      const ch = s.tiles[r]?.[c];
+      if (!GIMMICK.has(ch)) continue;
+      const q = (r<mid_r?0:2)+(c<mid_c?0:1);
+      quads[q]++;
+    }
+    const qtotal = Math.max(1, quads.reduce((a,b)=>a+b,0));
+    return [...hist, ...quads.map(v=>v/qtotal)];
+  }
+
+  function cosineSim(a, b) {
+    let dot=0, na=0, nb=0;
+    for (let i=0; i<a.length; i++) { dot+=a[i]*b[i]; na+=a[i]*a[i]; nb+=b[i]*b[i]; }
+    return (na===0||nb===0) ? 0 : dot/Math.sqrt(na*nb);
+  }
+
+  // Group by region — only screens with ≥2 axes (素通り = under-2-axis are already
+  // captured by underTwoAxisScreens; single-feature screens produce noisy similarities).
+  const groups = new Map();
+  for (const k of reached) {
+    if (screenAxes(stages[k]).size < 2) continue;
+    const r = regionOf(k);
+    if (!groups.has(r)) groups.set(r, []);
+    groups.get(r).push(k);
+  }
+
+  const warnings = [];
+  for (const [region, keys] of groups) {
+    const vecs = keys.map(k => ({ k, v: featureVec(stages[k]) }));
+    for (let i=0; i<vecs.length; i++) {
+      for (let j=i+1; j<vecs.length; j++) {
+        const sim = cosineSim(vecs[i].v, vecs[j].v);
+        if (sim >= threshold) {
+          warnings.push({ region, a: vecs[i].k, b: vecs[j].k, similarity: Math.round(sim*1000)/1000 });
+        }
+      }
+    }
+  }
+  return warnings.sort((a,b)=>b.similarity-a.similarity);
 }
