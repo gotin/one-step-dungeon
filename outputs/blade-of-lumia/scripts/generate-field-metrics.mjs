@@ -30,10 +30,13 @@ const density  = regionDensityMetrics(mapData);
 const battle   = regionBattleScores(mapData);
 const simWarn  = structuralSimilarityWarnings(mapData, { threshold: 0.995 });
 
-// Region display order
-const REGION_ORDER = ['G','F','D','W','L','S','M','P','O','T','K','V','?'];
+// Region display order — grassland G is split into sub-regions G0..G7 by corridor
+// destination (see field-quality.mjs / FIELD-BASELINE-BRAINSTORM.md「草原Gのサブ地域分割」).
+const REGION_ORDER = ['G0','G1','G2','G3','G4','G5','G6','G7','F','D','W','L','S','M','P','O','T','K','V','?'];
 const REGION_NAME = {
-  G:'草原 G', F:'森 F', D:'砂漠 D', W:'湖 W', L:'火山 L', S:'雪 S',
+  G0:'草原 G0 村ハブ', G1:'草原 G1 北の森辺', G2:'草原 G2 南の森辺', G3:'草原 G3 砂漠回廊',
+  G4:'草原 G4 湖回廊', G5:'草原 G5 北の登り', G6:'草原 G6 北東の登り', G7:'草原 G7 南',
+  F:'森 F', D:'砂漠 D', W:'湖 W', L:'火山 L', S:'雪 S',
   M:'山地 M', P:'沼 P', O:'深洋 O', T:'空島 T', K:'黒の城 K', V:'村 V', '?':'不明',
 };
 

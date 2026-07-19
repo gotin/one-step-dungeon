@@ -113,8 +113,10 @@ test.describe('field-quality — regionOf', () => {
   test('森 F ゾーン 0,3 は F', () => expect(regionOf('0,3')).toBe('F'));
   // Desert D: raw ZONE_MAP[12][0]='D' → stageKey "0,12"
   test('砂漠 D ゾーン 0,12 は D', () => expect(regionOf('0,12')).toBe('D'));
-  // Grassland: raw ZONE_MAP[10][4]='G' → stageKey "4,10"
-  test('草原 G ゾーン 4,10 は G', () => expect(regionOf('4,10')).toBe('G'));
+  // Grassland is split into sub-regions G0..G7 by corridor destination.
+  // raw ZONE_MAP[10][4]='G' → stageKey "4,10" now maps to a sub-region (G2).
+  test('草原 4,10 は G サブ地域(G2)', () => expect(regionOf('4,10')).toBe('G2'));
+  test('草原サブ地域は G で始まる', () => expect(regionOf('4,10').startsWith('G')).toBe(true));
   test('範囲外は ? を返す', () => expect(regionOf('99,99')).toBe('?'));
 });
 
@@ -153,10 +155,10 @@ test.describe('field-quality — 3検査（smoke）', () => {
     for (let r = 1; r <= 8; r++) { s1.tiles[r][0] = '.'; s1.tiles[r][11] = '.'; }
     const s2 = screen([{ r: 4, c: 4, ch: 't' }]);
     for (let c = 1; c <= 10; c++) { s2.tiles[0][c] = '.'; s2.tiles[9][c] = '.'; }
-    // 4,10 and 5,10 are both 'G' zone
-    const mapData = makeMap({ '4,10': s1, '5,10': s2 });
+    // 4,2 and 5,2 are both grassland sub-region G1
+    const mapData = makeMap({ '4,2': s1, '5,2': s2 });
     const density = regionDensityMetrics(mapData);
-    const g = density.get('G');
+    const g = density.get('G1');
     expect(g).toBeDefined();
     expect(g.puzzle).toBeGreaterThanOrEqual(1);
   });
@@ -165,9 +167,9 @@ test.describe('field-quality — 3検査（smoke）', () => {
     const s = screen([{ r: 4, c: 4, ch: 'F' }]); // sentry = elite
     for (let c = 1; c <= 10; c++) { s.tiles[0][c] = '.'; s.tiles[9][c] = '.'; }
     for (let r = 1; r <= 8; r++) { s.tiles[r][0] = '.'; s.tiles[r][11] = '.'; }
-    const mapData = makeMap({ '4,10': s });
+    const mapData = makeMap({ '4,2': s });
     const b = regionBattleScores(mapData);
-    const g = b.get('G');
+    const g = b.get('G1');
     expect(g).toBeDefined();
     expect(g.scores.some(v => v > 0)).toBe(true);
   });
@@ -180,8 +182,8 @@ test.describe('field-quality — 3検査（smoke）', () => {
       for (let r = 1; r <= 8; r++) { s.tiles[r][0] = '.'; s.tiles[r][11] = '.'; }
       return s;
     }
-    // 4,10 and 5,10 are both 'G' zone (ZONE_MAP[10][4]='G', ZONE_MAP[10][5]='G')
-    const mapData = makeMap({ '4,10': s2axis(), '5,10': s2axis() });
+    // 4,2 and 5,2 are both grassland sub-region G1
+    const mapData = makeMap({ '4,2': s2axis(), '5,2': s2axis() });
     const warn = structuralSimilarityWarnings(mapData, { threshold: 0.99 });
     expect(warn.length).toBeGreaterThanOrEqual(1);
     expect(warn[0].similarity).toBeCloseTo(1.0, 2);

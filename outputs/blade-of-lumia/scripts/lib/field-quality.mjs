@@ -103,6 +103,36 @@ function _buildDraftZone() {
     else if(liveP){liveP=grow(qP,refP,'P');if(liveP)cntP++;}
   }
   for(const[x,y] of mCells) draft[y][x]=owner[`${x},${y}`]||'M';
+  // Grassland G (121 screens) is too large to manage as one region. Split it
+  // into sub-regions by "which theme region this corridor leads to" — grassland
+  // is the connective road (IDEA:163), so nearest-theme labels give each slice a
+  // narrative/skin identity. See FIELD-BASELINE-BRAINSTORM.md「草原Gのサブ地域分割」.
+  // 8 sub-regions: G0 村ハブ / G1 北森辺 / G2 南森辺 / G3 砂漠回廊 / G4 湖回廊 /
+  //                G5 北の登り(黒城・空島) / G6 北東の登り(雪・火山) / G7 南(沼・山地)
+  const _THEME_TO_GSUB = { V:'G0', F:null, D:'G3', W:'G4', K:'G5', T:'G5', S:'G6', L:'G6', P:'G7', M:'G7', O:'G4' };
+  const gCells = [];
+  for (let y=0;y<_GH;y++) for (let x=0;x<_GW;x++) if (draft[y][x]==='G') gCells.push([x,y]);
+  // multi-source BFS from every non-G cell → nearest theme label per G cell.
+  const gDist = Array.from({ length: _GH }, () => Array(_GW).fill(Infinity));
+  const gLbl  = Array.from({ length: _GH }, () => Array(_GW).fill(null));
+  const gq = [];
+  for (let y=0;y<_GH;y++) for (let x=0;x<_GW;x++) if (draft[y][x]!=='G') { gDist[y][x]=0; gLbl[y][x]=draft[y][x]; gq.push([x,y]); }
+  let gh = 0;
+  while (gh < gq.length) {
+    const [x,y] = gq[gh++];
+    for (const [dx,dy] of [[1,0],[-1,0],[0,1],[0,-1]]) {
+      const nx=x+dx, ny=y+dy;
+      if (nx<0||nx>=_GW||ny<0||ny>=_GH) continue;
+      if (gDist[ny][nx] > gDist[y][x]+1) { gDist[ny][nx]=gDist[y][x]+1; gLbl[ny][nx]=gLbl[y][x]; gq.push([nx,ny]); }
+    }
+  }
+  for (const [x,y] of gCells) {
+    const theme = gLbl[y][x];
+    let sub;
+    if (theme === 'F') sub = y<=6 ? 'G1' : 'G2'; // forest corridor: split north/south
+    else sub = _THEME_TO_GSUB[theme] ?? 'G0';    // fallback → village hub
+    draft[y][x] = sub;
+  }
   return draft;
 }
 const _DRAFT_ZONE = _buildDraftZone();
@@ -120,7 +150,9 @@ export function regionOf(stageKey) {
 // Regions are ordered by when the player first reaches them.
 const _REGION_POWER = {
   // Village hub + near regions (D1 done, {sword1,shield})
-  'G': 2, 'D': 2, 'M': 2, 'P': 2,
+  // Grassland sub-regions G0..G7 all sit in the early-game power band like G.
+  'G': 2, 'G0': 2, 'G1': 2, 'G2': 2, 'G3': 2, 'G4': 2, 'G5': 2, 'G6': 2, 'G7': 2,
+  'D': 2, 'M': 2, 'P': 2,
   // After D2 boomerang  (+1 tool)
   'W': 4,
   // After D3 bow (+1 tool) — forests F surround D6
