@@ -93,6 +93,11 @@ export function createRenderBoard(deps) {
 				//    「ゲート跡が草地っぽく緑になる」誤表示の原因だった。
 				if (!ss.openGates.has(posKey)) cellEl.classList.add('gate');
 				applyBgTileClass(cellEl, posKey); return;
+			case TILE.TIDE_GATE:
+				// Phase 9-6 深洋O: 潮ゲート。閉（満潮）＝水の背景／開（引き潮）＝床。
+				// 実際の水スプライトは addCellSprite が閉時のみ描く（GATE と同じ構造）。
+				if (!ss.openGates.has(posKey)) cellEl.classList.add('water');
+				applyBgTileClass(cellEl, posKey); return;
 			case TILE.DOOR:
 				cellEl.classList.add('door');
 				applyBgTileClass(cellEl, posKey); return;
@@ -253,6 +258,16 @@ export function createRenderBoard(deps) {
 		if (tile === TILE.LAVA) {
 			const cv = makeSprite('water', 'lava', true);   // water 形状＋lava 赤橙パレット
 			if (cv) { cv.classList.add('obj-sprite'); cellEl.appendChild(cv); }
+			return;
+		}
+		if (tile === TILE.TIDE_GATE) {
+			// Phase 9-6 深洋O: 潮ゲート。閉（満潮＝openGates に無い）ときだけ水を描く。
+			// 開（引き潮）なら何も描かない＝床（GATE と同じ「閉時のみ描画」構造。
+			// return を忘れると末尾 fallback が再描画して「引いても水が残る」バグになる）。
+			if (!ss.openGates.has(posKey)) {
+				const cv = makeSprite('water', 'tide', true);  // water 形状＋tide 青緑パレット
+				if (cv) { cv.classList.add('obj-sprite'); cellEl.appendChild(cv); }
+			}
 			return;
 		}
 		if (tile === TILE.BREAKABLE_WALL) {

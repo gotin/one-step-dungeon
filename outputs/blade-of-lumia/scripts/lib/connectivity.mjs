@@ -68,6 +68,7 @@ export const SOLVABLE_GATES = new Set([
   TILE.GATE_BLUE,       // ')'
   TILE.BREAKABLE_WALL,  // '!' (breaks with bomb)
   TILE.DOORWAY_BOSS,    // ':' (walk-through; locks only AFTER entering)
+  TILE.TIDE_GATE,       // '=' (Phase 9-6 深洋O: opens via switch/button — tide recedes)
 ]);
 
 export const BLOCKED = new Set([...HARD_BLOCKED, ...SOLVABLE_GATES]);

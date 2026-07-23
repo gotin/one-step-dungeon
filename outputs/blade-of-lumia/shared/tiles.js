@@ -51,6 +51,13 @@ export const TILE = {
 	GATE_RED:    '(',  // 色ゲート（赤）。activeColor==='red' のときだけ通行可（開く）
 	GATE_BLUE:   ')',  // 色ゲート（青）。activeColor==='blue' のときだけ通行可（開く）
 
+	// ── Phase 9-6 深洋O: 潮ゲート（潮の満ち引き・スイッチ式／タイマー無し） ──
+	// GATE(T) と同じ links→openGates 機構で開閉する（リアルタイム tick 不要）。
+	// 閉（openGates に無い）＝潮が満ちて水（徒歩不可・飛行で越え可・はしご不可）／
+	// 開（openGates に有る）＝潮が引いて床（通行可）。GATE との違いは「閉じたときの
+	// 見た目と挙動が『壁』ではなく『水』」である点だけ。
+	TIDE_GATE:   '=',  // 潮ゲート。スイッチ/ボタン ON で潮が引き通行可になる
+
 	// NPC（複数種）
 	NPC_A:     'a',  // NPC（村人など）
 	NPC_B:     'b',  // NPC（商人など）
@@ -147,6 +154,8 @@ export const TILE_META = {
 	[TILE.SWITCH_BLUE]: { label: '色スイッチ（青）', color: '#203060', passable: true,  icon: '◎' },
 	[TILE.GATE_RED]:    { label: '色ゲート（赤）',   color: '#601010', passable: false, icon: '⊟' },
 	[TILE.GATE_BLUE]:   { label: '色ゲート（青）',   color: '#102050', passable: false, icon: '⊟' },
+	// Phase 9-6 深洋O: 潮ゲート（閉＝水／開＝床。デフォルトは閉＝通行不可）
+	[TILE.TIDE_GATE]:   { label: '潮ゲート',         color: '#1a3a5a', passable: false, icon: '≋' },
 	// アイテム
 	[TILE.ITEM_SWORD]:           { label: '剣',           color: '#607080', passable: true, icon: '⚔' },
 	[TILE.ITEM_SHIELD]:          { label: 'たて',         color: '#607080', passable: true, icon: '🛡' },

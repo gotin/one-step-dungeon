@@ -18,6 +18,9 @@ import { NPC_SPRITE_MAP } from '../shared/npcs.js';
 // 飛行を維持する必要がある（水/空と同じ。外すと溶岩に落ちて詰む）。
 const FLYABLE_OVER = new Set([
 	TILE.SKY, TILE.WATER, TILE.LAVA, TILE.TREE, TILE.BUSH, TILE.FENCE,
+	// Phase 9-6 深洋O: 閉じた潮ゲートは水と同じ＝飛行で越えられる（着地不可で詰むのを防ぐ）。
+	// 開いた潮ゲートは tilePassable が通すのでここには来ない。
+	TILE.TIDE_GATE,
 ]);
 
 // Phase 4-1: はしごで「両隣が地上の1セルだけ」渡れる障害物タイル。
@@ -139,6 +142,9 @@ export function createPassable(d) {
 		if (tile === TILE.SKY) return false;  // 空（虚空）：地上では通れない（飛行は isPassable で許可）
 		if (tile === TILE.PIT) return false;  // 穴：地上では通れない（はしごは isPassable で許可）
 		if (tile === TILE.GATE   && !ss.openGates.has(posKey)) return false;
+		// Phase 9-6 深洋O: 潮ゲート。openGates に無い＝潮が満ちて水（不通）／
+		// 有る＝潮が引いて床（通行可）。GATE と同じ links→openGates 機構で開閉する。
+		if (tile === TILE.TIDE_GATE && !ss.openGates.has(posKey)) return false;
 		// Phase 5-1: 色ゲートは activeColor が自色のときだけ通行可（links とは独立）
 		if (tile === TILE.GATE_RED)  return ss.activeColor === 'red';
 		if (tile === TILE.GATE_BLUE) return ss.activeColor === 'blue';
