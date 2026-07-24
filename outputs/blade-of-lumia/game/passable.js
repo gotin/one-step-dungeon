@@ -90,8 +90,9 @@ export function createPassable(d) {
 					// 飛行中は自然物（空・水・木・茂み・柵）の上を飛び越えられる。
 					// 山・壁・家・閉じた門/扉などは飛んでもブロック（マップ境界を維持）。
 					const t = stageData.tiles[r]?.[c];
-					if (flying && FLYABLE_OVER.has(t)) continue;
-					if (hasLadder && LADDER_OVER.has(t)) {
+					// Phase 9-6: bgTiles 層の水下地も飛行で越えられる（tiles 層は床なので isWaterAt で判定）。
+					if (flying && (FLYABLE_OVER.has(t) || isWaterAt(r, c))) continue;
+					if (hasLadder && (LADDER_OVER.has(t) || isWaterAt(r, c))) {
 						// 既にそのセルに乗っているなら通す（橋の上から陸へ・軸を問わず抜けられる）。
 						const alreadyOn = (r >= pr0 && r <= pr1 && c >= pc0 && c <= pc1);
 						// Phase 4-1c: 新規に踏み込む水/穴は「進入軸の橋（その軸の両隣が陸）」のときだけ
@@ -129,6 +130,16 @@ export function createPassable(d) {
 		return true;
 	}
 
+	// Phase 9-6 深洋O: そのセルが「水」か（tiles 層の水 `~` または bgTiles 層の水下地）。
+	// 水は本来「地形」なので bgTiles に置けるようにした（敵を水上に立たせるため）。
+	// tiles 水（既存の湖/海/堀）と bgTiles 水（敵の足元）を同じ扱いにする単一の判定点。
+	function isWaterAt(r, c) {
+		const stageData = getStageData();
+		if (!stageData) return false;
+		if (stageData.tiles[r]?.[c] === TILE.WATER) return true;
+		return stageData.bgTiles?.[`${r},${c}`] === TILE.WATER;
+	}
+
 	function tilePassable(r, c) {
 		const stageData = getStageData();
 		const tile   = stageData.tiles[r]?.[c];
@@ -137,7 +148,8 @@ export function createPassable(d) {
 		const ss     = getSS(getCurrentLayer(), getStageKey());
 		const debugMode = getDebugMode();
 		if (tile === TILE.WALL) return false;
-		if (tile === TILE.WATER) return false;
+		// 水は tiles 層でも bgTiles 層（下地）でも不通（はしご/飛行は isPassable で上書き）。
+		if (isWaterAt(r, c)) return false;
 		if (tile === TILE.LAVA) return false;  // 溶岩：地上では通れない（飛行/はしごは isPassable で許可＝水と同じ）
 		if (tile === TILE.SKY) return false;  // 空（虚空）：地上では通れない（飛行は isPassable で許可）
 		if (tile === TILE.PIT) return false;  // 穴：地上では通れない（はしごは isPassable で許可）
@@ -219,6 +231,7 @@ export function createPassable(d) {
 		if (r < 0 || r >= stageData.rows || c < 0 || c >= stageData.cols) return false;
 		const t = stageData.tiles[r]?.[c];
 		if (LADDER_OVER.has(t)) return false;  // 水/穴は橋脚にならない
+		if (isWaterAt(r, c)) return false;     // Phase 9-6: bgTiles 水下地も橋脚にならない
 		return tilePassable(r, c);
 	}
 
@@ -231,7 +244,8 @@ export function createPassable(d) {
 		const stageData = getStageData();
 		if (!stageData) return null;
 		const t = stageData.tiles[r]?.[c];
-		if (!LADDER_OVER.has(t)) return null;
+		// Phase 9-6: tiles 層の水/穴 または bgTiles 層の水下地が対象。
+		if (!LADDER_OVER.has(t) && !isWaterAt(r, c)) return null;
 		if (axis === 'h') return isHorizBridge(r, c) ? 'h' : null;
 		if (axis === 'v') return isVertBridge(r, c) ? 'v' : null;
 		if (isHorizBridge(r, c)) return 'h';
@@ -247,9 +261,8 @@ export function createPassable(d) {
 	//   それ以外     … 従来どおり tilePassable に従う（水は不通）。
 	// 戻り値：そのセルがこの敵にとって通行可なら true。
 	function enemyTilePassable(r, c, move) {
-		const stageData = getStageData();
-		const tile = stageData.tiles[r]?.[c];
-		if (tile === TILE.WATER) {
+		// 水は tiles 層でも bgTiles 層（下地）でも「水」＝水棲/両生だけが泳げる。
+		if (isWaterAt(r, c)) {
 			return move === 'water' || move === 'amphibious';
 		}
 		// 乾いた陸（床・草など＝tilePassable が通す通行可タイル）へは水棲は上がれない。

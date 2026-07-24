@@ -209,6 +209,10 @@ export const DEFAULT_ROWS = 10;
 export const BG_TILES = new Set([
 	TILE.FLOOR, TILE.GRASS, TILE.SAND, TILE.STONE_FLOOR, TILE.BRIDGE,
 	TILE.SNOW, TILE.ASH, TILE.MUD,
+	// Phase 9-6 深洋O: 水は「地形」なので bgTiles 層に置ける（下地）。これにより
+	// 敵（tiles 層）と水（bgTiles 層）が同一セルに共存できる＝水棲敵を水上に立たせられる。
+	// tilePassable は bgTiles 水も不通と判定する（passable.js の isWaterAt）。
+	TILE.WATER,
 ]);
 
 // 空のステージデータを生成する

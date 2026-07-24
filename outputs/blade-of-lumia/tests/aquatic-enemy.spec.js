@@ -34,9 +34,9 @@ import { waitForBoard } from './helpers.js';
 
 const GAME = '/blade-of-lumia/game/';
 const FIXTURE_SRC = '../tests/fixtures/test-stages.json';
-function fishSwimUrl() {
+function fishSwimUrl(stage = 'fish_swim') {
   const p = new URLSearchParams({
-    fromEditor: '1', layer: 'test_mechanics', stage: 'fish_swim',
+    fromEditor: '1', layer: 'test_mechanics', stage,
     row: '1', col: '5', ps_mapSrc: FIXTURE_SRC,
   });
   return `${GAME}?${p.toString()}`;
@@ -46,12 +46,14 @@ const MAP_PATH = fileURLToPath(new URL('../work/blade-of-lumia.json', import.met
 const MAP = JSON.parse(readFileSync(MAP_PATH, 'utf8'));
 
 // Build isPassableForEnemy over a stage we control (no DOM).
-function makePassable(tiles) {
-  const stageData = { rows: tiles.length, cols: tiles[0].length, tiles };
+// bgTiles: optional { "r,c": tile } 下地層（Phase 9-6: 水を下地に置くケース）。
+// player: optional 上書き（飛行/はしごの isPassable テスト用）。
+function makePassable(tiles, { bgTiles = {}, player = { x: -9, y: -9 } } = {}) {
+  const stageData = { rows: tiles.length, cols: tiles[0].length, tiles, bgTiles };
   return createPassable({
     getStageData: () => stageData,
     getEnemies: () => [],
-    getPlayer: () => ({ x: -9, y: -9 }),   // player far away → never blocks
+    getPlayer: () => player,
     getCurrentLayer: () => 'field',
     getStageKey: () => '0,0',
     getDebugMode: () => false,
@@ -160,6 +162,78 @@ test.describe('Phase 9-6 深洋O – aquatic enemy movement + 魚群', () => {
     // 水プールは cols4-6∴x は 4〜6 の範囲を出ない。
     expect(fish.x, `魚が水プール外へ出た（x=${fish.x}）`).toBeGreaterThanOrEqual(4);
     expect(fish.x).toBeLessThanOrEqual(6);
+  });
+
+  // ── 19-11-D: 水を bgTiles 下地に置く（敵と水が同一セルに共存）───────────
+  // 水は「地形」なので bgTiles 層に置けるようにした（BG_TILES に WATER 追加）。
+  // これで敵（tiles 層）と水（bgTiles 層）を同一セルに置ける＝水棲敵を水上に立たせられる。
+  // tilePassable/enemyTilePassable/飛行/はしごの水判定は tiles 水と bgTiles 水を同一に扱う。
+
+  test('⑧ bgTiles 下地の水はプレイヤー不通（tiles 層は床でも通れない）', () => {
+    const tiles = [
+      ['.', '.', '.'],
+      ['.', '.', '.'],   // tiles は全部床
+      ['.', '.', '.'],
+    ];
+    const bgTiles = { '1,1': '~' };   // 中央だけ bgTiles 水下地
+    const p = makePassable(tiles, { bgTiles });
+    expect(p.tilePassable(1, 1), 'bgTiles 水は不通').toBe(false);
+    expect(p.tilePassable(0, 0), '水でない床は通行可').toBe(true);
+  });
+
+  test('⑨ bgTiles 下地の水も飛行で越えられる・はしごで渡れる', () => {
+    const tiles = [
+      ['.', '.', '.'],
+      ['.', '.', '.'],
+      ['.', '.', '.'],
+    ];
+    const bgTiles = { '1,1': '~' };   // 単独の水下地（上下左右が陸＝橋成立）
+    // 飛行中：水下地を越えられる
+    const pFly = makePassable(tiles, { bgTiles, player: { x: -9, y: -9, flying: true } });
+    expect(pFly.isPassable(1, 1), '飛行で bgTiles 水を越えられる').toBe(true);
+    // はしご所持：単独水は縦横どちらの橋も成立＝渡れる
+    const pLad = makePassable(tiles, { bgTiles, player: { x: -9, y: -9, hasLadder: true } });
+    expect(pLad.isPassable(1, 1), 'はしごで bgTiles 水（単独）を渡れる').toBe(true);
+    // 素の徒歩：渡れない
+    const pWalk = makePassable(tiles, { bgTiles });
+    expect(pWalk.isPassable(1, 1), '徒歩では bgTiles 水を渡れない').toBe(false);
+  });
+
+  test('⑩ 水棲の敵は bgTiles 水を泳ぐ・陸には上がれない（tiles 水と同じ）', () => {
+    const tiles = [
+      ['.', '.', '.'],
+      ['.', '.', '.'],
+      ['.', '.', '.'],
+    ];
+    const bgTiles = { '1,1': '~' };
+    const p = makePassable(tiles, { bgTiles });
+    expect(p.isPassableForEnemy(1, 1, { move: 'water' }), '水棲は bgTiles 水を泳ぐ').toBe(true);
+    expect(p.isPassableForEnemy(0, 0, { move: 'water' }), '水棲は陸に上がれない').toBe(false);
+    expect(p.isPassableForEnemy(1, 1, {}), '陸敵は bgTiles 水に入れない').toBe(false);
+  });
+
+  test('⑪ 実 spawn：bgTiles 水プールの魚は陸へ出られない（tiles に水無し）', async ({ page }) => {
+    const errors = [];
+    page.on('pageerror', e => errors.push(e.message));
+    // この試作は tiles 層に水を持たず bgTiles のみ（fixture を直接確認）。
+    const fx = JSON.parse(readFileSync(fileURLToPath(new URL('./fixtures/test-stages.json', import.meta.url)), 'utf8'));
+    const st = fx.layers.test_mechanics.stages.fish_swim_bg;
+    expect(st.tiles.map(r => r.join('')).join('').includes('~'), 'tiles 層に水を持たない（bgTiles のみ）').toBe(false);
+    expect(st.bgTiles['4,5'], '中心セルは bgTiles 水').toBe('~');
+    await page.goto(fishSwimUrl('fish_swim_bg'));
+    await waitForBoard(page);
+    const fish0 = (await page.evaluate(() => window.__game.getEnemies())).find(e => e.type === '&');
+    expect(fish0, '魚群が spawn していない').toBeTruthy();
+    expect(fish0.move, '魚群インスタンスに move:water が乗っている').toBe('water');
+    for (let i = 0; i < 120; i++) await page.evaluate(() => window.__game.step(1));
+    const fish = (await page.evaluate(() => window.__game.getEnemies())).find(e => e.type === '&');
+    expect(fish, '魚群が消えた').toBeTruthy();
+    // 水プールは rows3-5,cols4-6。陸へ上がれないので範囲を出ない。
+    expect(fish.y, `魚が水プール外(上)へ出た y=${fish.y}`).toBeGreaterThanOrEqual(3);
+    expect(fish.y).toBeLessThanOrEqual(5);
+    expect(fish.x, `魚が水プール外へ出た x=${fish.x}`).toBeGreaterThanOrEqual(4);
+    expect(fish.x).toBeLessThanOrEqual(6);
+    expect(errors).toEqual([]);
   });
 
   test('⑤ FISH_SCHOOL はまだライブマップに配置していない（部品のみ）', () => {

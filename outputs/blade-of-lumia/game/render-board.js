@@ -31,6 +31,8 @@ const BG_TILE_COLOR_CLASS = {
 	[TILE.SNOW]:        'bg-snow',
 	[TILE.ASH]:         'bg-ash',
 	[TILE.MUD]:         'bg-mud',
+	// Phase 9-6 深洋O: 水下地（bgTiles 層の水）。tiles 層の水と同じ 'water' クラスで青く描く。
+	[TILE.WATER]:       'water',
 };
 
 // 末尾の共通スプライト fallback で「静的に描いてよい落ちアイテム」タイルの集合。
