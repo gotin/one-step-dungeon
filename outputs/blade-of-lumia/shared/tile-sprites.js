@@ -26,6 +26,7 @@ export const TILE_SPRITE_MAP = {
 	[TILE.BOSS]:      { spr: 'escape',   pal: 'escape'   },
 	[TILE.MONSTER]:   { spr: 'monster',  pal: 'monster'  },
 	[TILE.DARK_LORD]: { spr: 'darklord', pal: 'darklord' },
+	[TILE.FISH_SCHOOL]:{ spr: 'fishSchool', pal: 'fishSchool' },
 	[TILE.PRINCESS]:  { spr: 'princess', pal: 'princess' },
 	[TILE.PLAYER]:    { spr: 'heroD',    pal: 'hero'     },
 	[TILE.NPC_A]:     { spr: 'npcA',     pal: 'npcA'     },

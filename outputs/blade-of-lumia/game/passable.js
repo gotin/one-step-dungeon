@@ -239,6 +239,24 @@ export function createPassable(d) {
 		return null;
 	}
 
+	// Phase 9-6 深洋O: 敵の移動媒体（self.move）で「水セルに入れるか／陸セルに
+	// 上がれるか」を判定する。tilePassable は水を万人に不通とするので、敵の水棲/両生は
+	// ここで上書きする（プレイヤーの飛行/はしごが isPassable で上書きするのと同じ構図）。
+	//   'water'      … 水は可・乾いた陸は不可（陸に上がれない）。溶岩/空は不可。
+	//   'amphibious' … 水も陸も可。溶岩/空は不可。
+	//   それ以外     … 従来どおり tilePassable に従う（水は不通）。
+	// 戻り値：そのセルがこの敵にとって通行可なら true。
+	function enemyTilePassable(r, c, move) {
+		const stageData = getStageData();
+		const tile = stageData.tiles[r]?.[c];
+		if (tile === TILE.WATER) {
+			return move === 'water' || move === 'amphibious';
+		}
+		// 乾いた陸（床・草など＝tilePassable が通す通行可タイル）へは水棲は上がれない。
+		if (move === 'water' && tilePassable(r, c)) return false;
+		return tilePassable(r, c);
+	}
+
 	// 敵向けの通行可否（占有 w×h セルすべてをチェック）
 	// 大型敵（Phase 3-2）は self.w/self.h で占有範囲が広がる。
 	// nx/ny は移動後の top-left 座標。
@@ -246,6 +264,7 @@ export function createPassable(d) {
 		const stageData = getStageData();
 		if (!stageData) return false;
 		const ew = self?.w ?? 1, eh = self?.h ?? 1;
+		const move = self?.move;
 		// 占有範囲：top-left から w×h セル（半セル移動分の +0.999 も考慮）
 		const c0 = Math.floor(nx);
 		const c1 = Math.floor(nx + ew - 1 + 0.999);
@@ -255,7 +274,7 @@ export function createPassable(d) {
 		for (let r = r0; r <= r1; r++) {
 			for (let c = c0; c <= c1; c++) {
 				if (r < 0 || r >= stageData.rows || c < 0 || c >= stageData.cols) return false;
-				if (!tilePassable(r, c)) return false;
+				if (!enemyTilePassable(r, c, move)) return false;
 			}
 		}
 		// 移動後の石があるセルには通れない（占有範囲のどれかに重なれば不可）

@@ -373,6 +373,23 @@ export const ENEMY_META = {
 			{ hpThreshold: 0.5, speedMultiplier: 1.5, attackCooldownMultiplier: 0.8 },
 		],
 	},
+
+	// ── Phase 9-6 深洋O: 海棲雑魚 ─────────────────────────────────
+	// move: 敵の移動媒体を表す（passable.js / enemy-ai.js が参照）。
+	//   undefined | 'land' … 従来の陸棲（水/溶岩/空は通れない）。既存の全敵はこれ。
+	//   'water'            … 水棲（水は泳げる／乾いた陸には上がれない）。溶岩/空は不可。
+	//   'amphibious'       … 両生（水も陸も通れる。moveSpeed で地形別に速度を変える）。
+	// moveSpeed: { water, land } … amphibious 専用。地形ごとの速度倍率（省略時は speed）。
+	[TILE.FISH_SCHOOL]: {
+		name: '魚群',
+		hp: 2, atk: 1, def: 0, exp: 4,     // 1体は脆い＝数で包囲する
+		speed: ENEMY_SPEED_FAST,           // 素早く群がる
+		sprite: 'fishSchool',
+		pal:    'fishSchool',
+		isBoss: false,
+		move:   'water',                   // 水しか泳げない＝陸に上がれない（海の顔）
+		attack: { type: 'charge' },        // 接触ダメージのみ（飛び道具なし）
+	},
 };
 
 // 投擲物のスプライト対応表

@@ -428,6 +428,10 @@ function buildEnemies(sd, lk, sk) {
 				hp:    m.hp, maxHp: m.hp,
 				atk:   m.atk, def: m.def,
 				speed: m.speed ?? ENEMY_SPEED_NORMAL,
+				// Phase 9-6 深洋O: 遊泳属性。isPassableForEnemy が self.move を見て
+				// 水/陸の通行可否を切り替える（未指定=陸棲）。これを渡さないと水棲敵が
+				// 陸を歩けてしまう。moveSpeed は両生の地形別速度（将来の enemy-ai 用）。
+				move:  m.move, moveSpeed: m.moveSpeed,
 				sprite: m.sprite, pal: m.pal,
 				// Phase 3-2: 占有セル数（大型敵）。省略時は 1×1。
 				w:      m.size?.w ?? 1,
@@ -1848,6 +1852,7 @@ export function getEnemiesSnapshot() {
 		id: e.id, type: e.type,
 		x: e.x, y: e.y,
 		hp: e.hp, maxHp: e.maxHp,
+		move: e.move ?? null,   // Phase 9-6: 遊泳属性（spawn 経路で敵に乗ったか観測用）
 		stunUntil: e.stunUntil ?? null,
 	}));
 }
