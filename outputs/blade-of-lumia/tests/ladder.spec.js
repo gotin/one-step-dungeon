@@ -264,4 +264,47 @@ test.describe('Blade of Lumia – はしご', () => {
 		st = await page.evaluate(() => window.__game.getState());
 		expect(st.player.hasLadder).toBe(true);
 	});
+
+	// ── Phase 9-6: bgTiles 下地の水も、はしごで渡れる＋渡り中にはしごが出る ──────────
+	// 回帰：水の単一ソース化で湖/海/堀は bgTiles '~' に移行した。render-chars の
+	// はしごオーバーレイと game.js の遷移/着地判定が tiles 層の '~' だけを見ていると、
+	// 移行後は「はしごが表示されない／水に踏み込める」バグになる（ユーザー報告：
+	// dungeon_5 1,1 ではしごが出なかった）。bgTiles 水でも同じ挙動になることを固定する。
+	test('bgTiles 下地の水もはしごで渡れる＋渡り中に char-ladder が出る（移行回帰）', async ({ page }) => {
+		const errors = [];
+		page.on('pageerror', e => errors.push(e.message));
+		// fixture ladder_bg_bridge：row3 col4 だけ bgTiles 水（tiles は床）。上(2,4)/下(4,4)が
+		// 床＝縦橋成立。プレイヤー(8,4)から上へ進むと row3 の水を1セル渡って row2 以上へ抜ける。
+		await page.goto(previewUrl({ stage: 'ladder_bg_bridge', row: 8, col: 4, ladder: true }));
+		await waitForBoard(page);
+
+		// 陸（row8）では足元が水でないのではしごは出ない
+		expect(await page.locator('.char-ladder').count()).toBe(0);
+
+		// 上へ進んで row3 の bgTiles 水セルに乗る（row8→row3 = 縦5セル ⇒ 0.5刻みで10歩）
+		await walk(page, 'up', 10);
+		let st = await page.evaluate(() => window.__game.getState());
+		expect(Math.round(st.player.y), 'bgTiles 水セル(row3)の上に乗れていない').toBe(3);
+		// 渡っている最中は char-ladder が縦向きで1枚出る（tiles 水と同じ挙動）
+		const ladder = page.locator('.char-ladder');
+		expect(await ladder.count(), 'bgTiles 水の上ではしごが出ない（tiles 層だけ見ている回帰）').toBeGreaterThanOrEqual(1);
+		expect(await ladder.first().getAttribute('data-orient')).toBe('v');
+
+		// 渡り切って上の陸（row2 以下）へ抜けると、はしごは消える
+		await walk(page, 'up', 4);
+		st = await page.evaluate(() => window.__game.getState());
+		expect(st.player.y, 'bgTiles 水を渡り切って上の陸へ抜けられない').toBeLessThan(3);
+		expect(await page.locator('.char-ladder').count()).toBe(0);
+
+		expect(errors).toEqual([]);
+	});
+
+	test('bgTiles 下地の水は、はしご無しでは渡れない（tiles 水と同じ）', async ({ page }) => {
+		// はしごを持たなければ row3 の bgTiles 水で止まる（水は徒歩不可）。
+		await page.goto(previewUrl({ stage: 'ladder_bg_bridge', row: 8, col: 4, ladder: false }));
+		await waitForBoard(page);
+		await walk(page, 'up', 10);
+		const st = await page.evaluate(() => window.__game.getState());
+		expect(st.player.y, 'はしご無しで bgTiles 水を渡れてしまった').toBeGreaterThan(3);
+	});
 });

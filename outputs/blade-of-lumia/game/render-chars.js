@@ -227,7 +227,11 @@ export function createRenderChars(deps) {
 		for (let r = r0; r <= r1; r++) {
 			for (let c = c0; c <= c1; c++) {
 				const t = stageData.tiles[r]?.[c];
-				if (t !== TILE.WATER && t !== TILE.PIT) continue;   // 溶岩ははしごで渡れない
+				// Phase 9-6: 水は tiles 層でも bgTiles 下地でもよい（水の単一ソース化で
+				// 湖/海/堀は bgTiles '~' に移行済み）。tiles 水/穴 または bgTiles 水を橋対象にする。
+				// 溶岩ははしごで渡れないので対象外（TILE.LAVA は含めない）。
+				const isBgWater = stageData.bgTiles?.[`${r},${c}`] === TILE.WATER;
+				if (t !== TILE.WATER && t !== TILE.PIT && !isBgWater) continue;
 				const orient = ladderOrientationAt(r, c, axis);  // 進入軸で向き決定
 				if (!orient) continue;  // 進入軸の橋でない水/穴には出さない
 				const d = (c + 0.5 - pcx) ** 2 + (r + 0.5 - pcy) ** 2;

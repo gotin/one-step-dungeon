@@ -363,8 +363,11 @@ function enterStage(lk, sk, pRow, pCol) {
 	// Phase 1-5: ステージ遷移時の着陸処理。到着セルが地上なら自動着陸する。
 	// 到着セルが空・水（塔の空島入口など）なら飛行を維持してその場に留まれる。
 	if (player.flying) {
-		const arrTile = stageData.tiles?.[Math.floor((pRow ?? 1) + 0.5)]?.[Math.floor((pCol ?? 1) + 0.5)];
-		if (arrTile !== TILE.SKY && arrTile !== TILE.WATER && arrTile !== TILE.LAVA) player.flying = false;
+		// bgTiles 水下地も「水の上」＝飛行維持（tiles/bgTiles どちらの水でも落ちない）。
+		const ar = Math.floor((pRow ?? 1) + 0.5), ac = Math.floor((pCol ?? 1) + 0.5);
+		const arrTile = stageData.tiles?.[ar]?.[ac];
+		const arrIsWater = arrTile === TILE.WATER || stageData.bgTiles?.[`${ar},${ac}`] === TILE.WATER;
+		if (arrTile !== TILE.SKY && !arrIsWater && arrTile !== TILE.LAVA) player.flying = false;
 	}
 
 	// ステージ遷移時に飛翔物・設置爆弾をリセット
@@ -1065,6 +1068,17 @@ const ARRIVAL_WALL_TILES = new Set([
 ]);
 for (const ch of Object.keys(NPC_SPRITE_MAP)) ARRIVAL_WALL_TILES.add(ch);
 
+// Phase 9-6: 水は tiles 層でも bgTiles 下地でもよい（水の単一ソース化で湖/海/堀は
+// bgTiles '~' へ移行済み）。まだロードしていない遷移先ステージの (r,c) の「実効タイル」を
+// 返す＝tiles 水 OR bgTiles 水なら '~'。passable.js の isWaterAt と同じ畳み込みを、
+// stageData 未ロードの遷移先タイル配列に対して自己完結で行う。
+function effArrivalTile(stage, r, c) {
+	const t = stage.tiles?.[r]?.[c];
+	if (t === TILE.WATER) return t;
+	if (stage.bgTiles?.[`${r},${c}`] === TILE.WATER) return TILE.WATER;
+	return t;
+}
+
 // 遷移先ステージの着地 footprint が徒歩不可の壁を含むか？（すり抜け防止判定）。
 // プレイヤーは半セル幅で最大2×2セルにまたがる（col0.5 は col0-1 を占める）ので、
 // passable.js の isPassable と同じく floor(n)〜floor(n+0.999) の footprint 全体を
@@ -1075,7 +1089,7 @@ function arrivalIsWall(destStage, nRow, nCol) {
 	const c0 = Math.floor(nCol), c1 = Math.floor(nCol + 0.999);
 	for (let r = r0; r <= r1; r++) {
 		for (let c = c0; c <= c1; c++) {
-			const tile = destStage.tiles?.[r]?.[c];
+			const tile = effArrivalTile(destStage, r, c);  // tiles 水/bgTiles 水を '~' に畳む
 			if (tile === undefined) continue;         // 範囲外セルは無視（端クランプ側）
 			if (!ARRIVAL_WALL_TILES.has(tile)) continue;
 			if (player.hasLadder && (tile === TILE.WATER || tile === TILE.PIT)
@@ -1091,10 +1105,10 @@ function arrivalIsWall(destStage, nRow, nCol) {
 // していない遷移先ステージのタイル配列に対して自己完結で判定する。
 function isBorderLadderBridge(s, r, c) {
 	const bank = (br, bc) => {
-		const t = s.tiles?.[br]?.[bc];
+		const t = effArrivalTile(s, br, bc);         // tiles 水/bgTiles 水を '~' に畳む
 		if (t === undefined) return false;
 		if (t === ' ') return true;                 // 床
-		return !ARRIVAL_WALL_TILES.has(t);          // 壁でも水/穴でもない＝陸
+		return !ARRIVAL_WALL_TILES.has(t);          // 壁でも水/穴でもない＝陸（bgTiles 水は橋脚にならない）
 	};
 	return (bank(r - 1, c) && bank(r + 1, c)) || (bank(r, c - 1) && bank(r, c + 1));
 }
