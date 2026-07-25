@@ -1,5 +1,6 @@
 // ── editor-canvas.js ── ステージキャンバス描画・マウス操作 ────
 import { TILE, TILE_META, BG_TILES, makeEmptyStage } from '../shared/tiles.js';
+import { isTestLayer, gameLayerEntries } from '../shared/layers.js';
 import {
 	state, stageKey, getCurrentStage, getCurrentStages,
 	stageLabelEl, stageInfoEl, borderWarnEl, cellInfoEl, countTile,
@@ -218,12 +219,20 @@ function applyTool(c, r, renderSidePanel) {
 			}
 		} else {
 			if (state.selectedTile === TILE.PLAYER) {
-				for (const ld of Object.values(state.mapData.layers)) {
-					for (const s of Object.values(ld.stages ?? {})) {
-						for (let pr = 0; pr < s.rows; pr++)
-							for (let pc = 0; pc < s.cols; pc++)
-								if (s.tiles[pr][pc] === TILE.PLAYER) s.tiles[pr][pc] = TILE.FLOOR;
-					}
+				// PLAYER('@') の重複消去。走査範囲は本編とテストレイヤーで違う：
+				//  - 本編：ゲーム開始位置は1箇所だけ（editor-io.js buildSaveData が最初の '@' を
+				//    startPos にする）→ 本編レイヤー全体から消す。
+				//  - テストレイヤー：各検証ステージが自分のスポーン地点を持つ（fish_swim と
+				//    lurk_shark は別々に '@' が要る）→ 編集中のステージ内だけで消す。
+				//    ここを全レイヤー走査にすると、テストステージに '@' を置くだけで
+				//    本編の開始位置が消える（2026-07-25 テストレイヤー移設時に判明）。
+				const stagesToScan = isTestLayer(state.currentLayer)
+					? [sd]
+					: gameLayerEntries(state.mapData).flatMap(([, ld]) => Object.values(ld.stages ?? {}));
+				for (const s of stagesToScan) {
+					for (let pr = 0; pr < s.rows; pr++)
+						for (let pc = 0; pc < s.cols; pc++)
+							if (s.tiles[pr][pc] === TILE.PLAYER) s.tiles[pr][pc] = TILE.FLOOR;
 				}
 			}
 			sd.tiles[r][c] = state.selectedTile;

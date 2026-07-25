@@ -4,7 +4,7 @@
 //   - ボタン BUTTON('S')：プレイヤー/石が乗っている間だけ ON＝モーメンタリ式（従来のスイッチ）
 //   - スイッチ SWITCH('Y')：矢・剣など武器の攻撃で ON↔OFF をトグル（攻撃まで状態維持）
 //
-// パズル配置（tests/fixtures/test-stages.json）：test_mechanics ステージ "arrow_switch"
+// パズル配置：ライブマップ test_mechanics レイヤーの検証ステージ "arrow_switch"
 //   スイッチ Y(8,9) は南側。北エリア（rows1-6）から下向きに矢を射ると Y(8,9) に当たる。
 //   ON → ゲート T(2,9) が開く（links: switchId 8,9 → gateId 2,9）。もう一度撃つと閉じる。
 //
@@ -15,16 +15,14 @@
 //  4) 剣でもトグルできる（前方のスイッチを剣で叩くと ON になる）
 import { test, expect } from '@playwright/test';
 import { waitForBoard } from './helpers.js';
+import { TEST_LAYER, stageKey } from './test-stage-keys.js';
 
 const GAME = '/blade-of-lumia/game/';
 
-const FIXTURE_SRC = '../tests/fixtures/test-stages.json';
-
-function previewUrl({ layer = 'test_mechanics', stage = 'arrow_switch', row, col, bow = true, weapon = false }) {
+function previewUrl({ layer = TEST_LAYER, stage = 'arrow_switch', row, col, bow = true, weapon = false }) {
 	const p = new URLSearchParams({
-		fromEditor: '1', layer, stage,
+		fromEditor: '1', layer, stage: stageKey(stage),
 		row: String(row), col: String(col),
-		ps_mapSrc: FIXTURE_SRC,
 	});
 	if (bow) p.set('ps_bow', '1');
 	if (weapon) p.set('ps_weapon', '1');

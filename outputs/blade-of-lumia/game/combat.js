@@ -182,6 +182,12 @@ export function createCombat(deps) {
 	function dealDamageToEnemy(e, dmg, atkType) {
 		if (e.hp <= 0) return;
 		const meta = ENEMY_META[e.type];
+		// Phase 9-6 深洋O: 潜行中（潜み鮫が水中に隠れている間）は全ての攻撃が無効。
+		// 浮上した瞬間だけ殴れる＝リズム戦闘（meleeOnly と同じ「0ダメージポップアップ」）。
+		if (e.submerged) {
+			showDmgPopupFloat(e.x, e.y, 0, true, false);
+			return;
+		}
 		// meleeOnly: only sword and fire damage goes through; everything else is nullified.
 		if (meta?.meleeOnly && atkType && atkType !== 'sword' && atkType !== 'fire') {
 			showDmgPopupFloat(e.x, e.y, 0, true, false);

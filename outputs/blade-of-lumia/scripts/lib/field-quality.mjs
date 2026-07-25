@@ -15,6 +15,7 @@
 // there is one BFS, one BLOCKED rule. check-field-connectivity.mjs and the
 // field-invariants spec both import from here.
 import { bfsLayer, findOrphanRooms, findEntrances, isHardBlocked, cellTile } from './connectivity.mjs';
+import { gameLayerEntries } from '../../shared/layers.js';
 
 // ── Region label map (叩き台 ZONE_MAP from analyze-zone-rebalance.mjs) ────────
 // Rows = sy (0=north), cols = sx (0=west). Key format: "sx,sy" = stageKey.
@@ -189,6 +190,12 @@ const _THREAT = {
   'O': 42 * 5 / 3,   // FOREST_GIANT
   'U': 36 * 6 / 2,   // STORM_EAGLE
   'I': 40 * 5 / 3,   // SWAMP_TOAD
+  // Phase 9-6 深洋O: aquatic mobs (記号タイル). They live on water, so a sea
+  // screen with only these still counts as a battle screen — without them the
+  // 25 深洋 screens would score 0 threat and read as "empty" in the metrics.
+  '&': 2  * 1 / 1,   // FISH_SCHOOL  hp2 atk1 def0
+  '<': 6  * 3 / 2,   // LURK_SHARK   hp6 atk3 def1
+  '/': 3  * 2 / 1,   // ARCHER_FISH  hp3 atk2 def0
 };
 
 // Hazard tiles on field (lava/pit/water-ford obstacles that threaten the player).
@@ -244,7 +251,8 @@ export function battleScore(stage, region) {
 // safe — they show up as "work still to do", which is the point of 設計④.
 
 const ENEMY_TILES = new Set(['E', 'C', 'F', 'V', 'W', 'X', 'Z',
-  'G', 'N', 'J', 'A', 'L', 'O', 'U', 'I']); // patrol/chaser..bosses
+  'G', 'N', 'J', 'A', 'L', 'O', 'U', 'I',
+  '&', '<', '/']); // patrol/chaser..bosses + 深洋の海棲雑魚（魚群/潜み鮫/射水魚）
 const ELITE_TILES = new Set(['F', 'V', 'W', 'X', 'Z',
   'G', 'N', 'J', 'A', 'L', 'O', 'U', 'I']); // sentry + all named/mid/bosses
 // Secret-bearing tiles: cuttable bush / breakable wall / pushable stone / a
@@ -471,7 +479,10 @@ export function duplicateLayoutGroups(mapData) {
  *   Empty = every teleport lands somewhere standable.
  */
 export function warpEnterLandings(mapData) {
-  const layers = mapData.layers || {};
+  // ⚠️ テストレイヤー（`test_` 接頭辞）は除外する。ギミック検証ステージは
+  // レイヤー内で閉じたテレポート（受け側を持たない destId を含む）を持つので、
+  // 対象に入れると本編と無関係な unresolved 着地で赤くなる（2026-07-25 移設時に確認）。
+  const layers = Object.fromEntries(gameLayerEntries(mapData));
   // id -> {layer,stage,row,col} (mirrors game.js buildExitRegistry).
   const registry = {};
   for (const lk of Object.keys(layers))

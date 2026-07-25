@@ -339,11 +339,19 @@ export function createRenderChars(deps) {
 
 		// 敵
 		for (const e of enemies) {
+			// Phase 9-6: 横向きシルエットの敵（sideView）はプレイヤーの左右に合わせて反転する。
+			// 素の絵は右向きなので「プレイヤーが左にいる」時だけ flipX。上下移動では向きを
+			// 変えない（e.dir を使うと上下移動中に左右が固まる）＝プレイヤーの x 差で判定。
+			const sideFlip = !!ENEMY_META[e.type]?.sideView && (player.x < e.x);
 			const wrapper = addCharEl(e.x, e.y, `enemy-${e.id}`, () => {
-				return makeSprite(e.sprite, e.pal, true);
+				return makeSprite(e.sprite, e.pal, true, sideFlip);
 			});
 			if (wrapper) {
 				wrapper.dataset.enemyId = e.id;
+				// Phase 9-6: 潜行中の敵（潜み鮫）は半透明＋波紋（無敵で寄ってくる状態の可視化）。
+				// renderChars は char-layer を作り直すので、潜行中に再描画されても状態が残るよう
+				// ここでもクラスを付ける（enemy-ai.js の applySubmergedClass と同じクラス）。
+				if (e.submerged) wrapper.classList.add('submerged');
 				// 大型敵（Phase 3-2）：wrapper を w×h セルに拡げ、canvas を全面に追従させる
 				applyEnemySize(wrapper, e, cellPx0);
 				if (ENEMY_META[e.type]?.aura) {

@@ -5,19 +5,18 @@
 //   - arrow / beam / boomerang / bomb はダメージ0（meleeOnly ガード）
 //   - 投擲物（arrow/beam）はプレイヤーへ跳ね返る（reflectsProjectiles）
 //
-// fixtures/test-stages.json の test_mechanics/melee_only_boss を使用
-// （ライブマップ非参照・[[blade-gimmick-tests-use-fixtures]]）。
+// test_mechanics レイヤーの検証ステージ melee_only_boss を使用（本編ステージ非参照）。
 
 import { test, expect } from '@playwright/test';
 import { GAME_URL, SAVE_KEY } from './helpers.js';
+import { TEST_LAYER, stageKey } from './test-stage-keys.js';
 
-const FIXTURE_SRC = '../tests/fixtures/test-stages.json';
 const GAME = '/blade-of-lumia/game/';
 
 function previewUrl(row, col, opts = {}) {
   const p = new URLSearchParams({
-    fromEditor: '1', layer: 'test_mechanics', stage: 'melee_only_boss',
-    row: String(row), col: String(col), ps_mapSrc: FIXTURE_SRC,
+    fromEditor: '1', layer: TEST_LAYER, stage: stageKey('melee_only_boss'),
+    row: String(row), col: String(col),
     ps_weapon: '1',
   });
   if (opts.bow)       p.set('ps_bow', '1');

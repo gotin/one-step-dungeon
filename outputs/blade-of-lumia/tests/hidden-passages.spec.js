@@ -1,7 +1,7 @@
 // Phase 5-2: 隠し通路・隠し入口のスモークテスト
 //
-// ギミック①②③ 共通：tests/fixtures/test-stages.json　test_mechanics ステージ "bomb_wall"
-//   field/1,1 のレイアウトをそのままコピーしたフィクスチャを使用
+// ギミック①②③ 共通：ライブマップ test_mechanics レイヤーの検証ステージ "bomb_wall"
+//   field/1,1 のレイアウトをそのままコピーした検証ステージを使用
 //
 // ギミック①: 爆弾壊し壁 → 隠し宝箱
 //   row1: t.i#!B..f..t  col2=i（看板） col3=# col4=!（壊せる壁） col5=B（隠し宝箱）
@@ -15,16 +15,14 @@
 
 import { test, expect } from '@playwright/test';
 import { waitForBoard } from './helpers.js';
+import { TEST_LAYER, stageKey } from './test-stage-keys.js';
 
 const GAME = '/blade-of-lumia/game/';
 
-const FIXTURE_SRC = '../tests/fixtures/test-stages.json';
-
-function previewUrl({ layer = 'test_mechanics', stage = 'bomb_wall', row, col, bomb = false, candle = false }) {
+function previewUrl({ layer = TEST_LAYER, stage = 'bomb_wall', row, col, bomb = false, candle = false }) {
 	const p = new URLSearchParams({
-		fromEditor: '1', layer, stage,
+		fromEditor: '1', layer, stage: stageKey(stage),
 		row: String(row), col: String(col),
-		ps_mapSrc: FIXTURE_SRC,
 	});
 	if (bomb)   p.set('ps_bomb',   '1');
 	if (candle) p.set('ps_candle', '1');
@@ -138,15 +136,17 @@ test.describe('Blade of Lumia – 隠し通路・隠し入口（Phase 5-2）', (
 		}
 
 		// 遷移待ち（setTimeout 100ms + マージン）
-		// フィクスチャでは hidden_cave_test は test_mechanics レイヤー内のステージ
+		// 検証ステージでは hidden_cave_test は test_mechanics レイヤー内のステージ
 		// （実ゲームの hidden_cave はレイヤー）。よって stageKey の変化で遷移を判定する。
-		await page.waitForFunction(() => {
-			const s = window.__game.getState();
-			return s.stageKey === 'hidden_cave_test';
-		}, { timeout: 3000 });
+		const destKey = stageKey('hidden_cave_test');
+		await page.waitForFunction(
+			(k) => window.__game.getState().stageKey === k,
+			destKey,
+			{ timeout: 3000 },
+		);
 
 		const st = await page.evaluate(() => window.__game.getState());
-		expect(st.stageKey).toBe('hidden_cave_test');
+		expect(st.stageKey).toBe(destKey);
 		expect(errors).toEqual([]);
 	});
 });

@@ -886,10 +886,27 @@ row 11    12    13    14    15
   - **実装＝`tiles.js`（`FISH_SCHOOL='&'`＋TILE_META）／`enemies.js`（`move:'water'`・hp2・FAST・接触攻撃・`move`/`moveSpeed` の定義コメント）／`passable.js`（`enemyTilePassable(r,c,move)` 新設＝tilePassable の水不通を敵の move で上書き。`isPassableForEnemy` が `self.move` を渡す＝プレイヤーの飛行/はしご上書きと同じ構図）／`sprites-enemies.js`（`fishSchool` パレット青緑＋12×16 2フレーム＝群れが泳ぐ）／`tile-sprites.js`（スプライトマップ）／`editor-palette.js`（敵カテゴリに追加）。**新規 spawn 関数・新規 AI は不要**（`buildEnemies` のタイル走査・`enemyChase` を流用＝魚群は同一文字を複数セルに置けば複数個体が各自追跡＝「包囲」が自然発生）。**魚は水しか歩けないので配置は WATER セルに置く。**
   - テスト＝`tests/aquatic-enemy.spec.js` 6本（①魚群の定義／②タイル・スプライト・パレット・スプライトマップ／③水棲は泳ぐ・陸に上がれない・陸敵は水不通の回帰／③b 溶岩/空は誰も泳げない／④両生は水陸両方／⑤ライブマップ未配置）。**全298テスト緑**（既存292＋6・VRT 緑）。実ブラウザで魚群スプライト2フレーム＋エディタパレット 0 pageerror 目視。
   - **⚠️ `moveSpeed`（両生の地形別速度）は定義コメント＋passable の分岐のみ＝実際の速度切替は enemy-ai 未実装**（両生の敵＝接近型 or 遠隔型が要るまで dead code になるので保留）。両生敵を作るとき `enemyChase` で足元タイルを見て速度を選ぶ処理を足す。
-- **未着手＝海棲雑魚②接近型・③遠隔型・海の主ミニボス・銀ブーメラン。**
+- **✅ 海棲雑魚②接近型 潜み鮫 `LURK_SHARK`（記号 `<`）・③遠隔型 射水魚 `ARCHER_FISH`（記号 `/`）完了（2026-07-25）：** アーム7の「海が敵」の残り2種（§19-8-A）。0.5 の水単一ソース化（bgTiles 水）で水上配置が可能になったため、両方とも `move:'water'` を付けて bgTiles 水セルに置くだけで成立する。
+  - **②潜み鮫＝「潜行中は無敵（リズム戦闘）」（ユーザー確定・AskUserQuestion）：** `ENEMY_META.submerge = { hiddenMs:2000, surfacedMs:1200 }` を新設。潜行中（`e.submerged=true`）は **追跡だけ続き・攻撃しない・接触ダメージなし・こちらの攻撃も通らない（無敵）**。浮上中だけ噛みつき（`attack:{type:'sword', range:1.6, cooldown:800}`＝岸に立つプレイヤー〈距離1.0〉に届くリーチ）＋被弾可。**∴「浮上した 1.2 秒だけが殴れる窓」＝海のリズム。** hp6/atk3/def1＝手数が限られるぶん硬め。見た目＝潜行中は半透明＋波紋リング（`.char-abs.submerged` / `@keyframes submerge-ripple`・board.css）。
+  - **③射水魚＝「水弾スプライト新設＋stone型」（ユーザー確定）：** `attack:{type:'waterShot', range:6, cooldown:2200, projectileSpeed:1.2}`。`'stone'` と同じ**任意角**型＝斜めにも撃つ（`ndx=dx/dist, ndy=dy/dist`）＝陸のプレイヤーを水中から狙える。hp3/atk2/def0・SLOW＝脆いが遠くから削る。
+  - **🔑 `projectile.js` は無改造で済む＝`createProjEl` が `makeSprite(proj.type, proj.type)` を呼ぶ＝投擲物の `type` 名がスプライト名とパレット名を兼ねる。** ∴ `ITEM_SPRITES.waterShot` ＋ `ITEM_PAL.waterShot`（8×8 の青い水塊・2フレーム）を足すだけで飛翔・壁/画面外衝突・盾ブロック・命中の全経路が既存のまま動く（`PROJECTILE_SPRITE.waterShot` も対応表に追加）。
+  - **🔑 潜行の状態管理は既存の `stunUntil` と同じ構図＝`enemyTick` 内の per-enemy タイマー（`tickSubmerge(e, meta, now)`）。** 時刻は `gameNow()`（論理時間）基準∴テストから `step()` で決定論的に再現できる（TICK_MS=120 → 潜行2.0s≒17tick・浮上1.2s=10tick）。**無敵は `dealDamageToEnemy` 冒頭の 1 箇所だけで実現**（`meleeOnly` と同じダメージ漏斗＝0ダメージのポップアップを出して return）＝弓/ブーメラン/爆弾/ビーム全てが自動的に無効化される。
+  - 実装＝`tiles.js`（2定数＋TILE_META）／`enemies.js`（ENEMY_META 2件＋`PROJECTILE_SPRITE.waterShot`）／`sprites-enemies.js`（`lurkShark`/`archerFish` パレット＋12×16 2フレーム）／`sprites-items.js`（`waterShot` パレット＋8×8 2フレーム）／`tile-sprites.js`／`editor-palette.js`（敵カテゴリ）／`enemy-ai.js`（`waterShot` 攻撃分岐・`tickSubmerge`・接触スキップ・潜行中は攻撃スキップ）／`combat.js`（潜行中は無敵）／`render-chars.js`（再描画でも submerged クラスを維持）／`css/board.css`（半透明＋波紋）／`game.js`（`buildEnemies` が `submerged: !!m.submerge` で潜行状態から spawn・`getEnemiesSnapshot` が `submerged` を公開）。
+  - **併せて `scripts/lib/field-quality.mjs` の `_THREAT`／`ENEMY_TILES` に海棲雑魚3種（`&`/`<`/`/`）を登録。** 未登録だと深洋25画面が「敵ゼロ＝battleScore 0・combat 軸なし」と誤って読める（指標が海の戦闘を見落とす）。
+  - テスト＝`tests/sea-enemies.spec.js` 9本（①2種の定義／②タイル・スプライト・パレット・スプライトマップ・`waterShot` の名前解決〈マージ後 `SPRITES`/`PAL` まで〉／③潜行↔浮上の周期が論理時間どおり＋陸に上がらない／④潜行中は無敵・浮上中は通る／⑤潜行中は接触ダメージなし〈`createEnemyAi` 単体・DOM 不要〉／⑥潜行中は攻撃しない・浮上中だけ噛みつく／⑦水弾が任意角＝斜めに飛ぶ／⑧クールダウン前は撃たない＝⑦が空振り成功でない証明／⑨2種ともライブマップ未配置）。fixture `lurk_shark`・`archer_fish` を `tests/fixtures/test-stages.json` に追加（[[blade-gimmick-tests-use-fixtures]]）。**全318テスト緑**（既存309＋9・VRT 緑）。実ブラウザ目視＝潜行中は薄い影＋波紋・浮上で鮫が実体化・射水魚が斜め上へ青い水弾を発射（描画ピクセル数を canvas から実測）・エディタパレットに3種のスプライト付きボタン・0 pageerror。
+  - **🔴 同日のユーザー指摘2件で設計修正（DECISIONS 2026-07-25「潜み鮫の二段構え＋横向き敵の向き」）：**
+    - **①潜み鮫は近接だけでは成立しない＝二段構えにした（ユーザー確定）。** `range:1.6` の噛みつきだけだと**プレイヤーが岸から2マス離れて立つだけで完全に無害な置物**（鮫は `move:'water'` で陸に上がれない＝距離を詰める手段もない）。∴ **離れていれば遠隔・隣接すれば噛みつき**に変更＝既存 `attacks:[]` 配列（海蛇の sword＋stone が前例）に2本持たせる。遠隔＝**水刃 `waterBlade`（新スプライト・三日月型の衝撃波）**＝`{minRange:1.6, range:6, cooldown:1800, projectileSpeed:1.4}`・任意角。射水魚の水弾（軽い弾を連射して削る丸い粒）と**形で役割差を出す**（水刃は重い1発）。
+    - **`minRange`（この距離より近いとその攻撃を出さない下限）を汎用フィールドとして新設。** 近接＋遠隔を1体に持たせる時「隣接では遠隔を撃たず噛みつきに切り替わる」を宣言的に書ける。**`minRange` は噛みつき range と同値（1.6）**＝両者の間に「どちらも出ない隙間」を作らない。
+    - **却下＝「浮上時に飛びかかって噛む（lunge）」**＝ユーザー指摘「飛びかかった先が陸の時そのサメどうなるの？」で潰れた。論理座標を陸に置くと `enemyTilePassable(r,c,'water')` を破ってスタックする／許すと `move:'water'`（海の顔）が崩れる。**∴座標は水から出さず「届く手段」を増やす。**
+    - **水刃は任意角なので `rotate` を連続角で当てる**＝矢（8方向を if 連鎖）と違い `Math.atan2(dy,dx)` をそのまま度に直す（素の絵は右向きに膨らむ刃）。
+    - **②全敵が常に右を向いていたバグを修正＝`ENEMY_META.sideView` を新設。** 原因＝`render-chars.js` の敵描画が `makeSprite(e.sprite, e.pal, true)` で **`flipX` を渡していなかった**（プレイヤーだけ `heroDir==='left'` で反転していた）。既存敵は正面向きの絵なので露見せず、横向きシルエットの鮫・魚で初めて露骨に出た。**`sideView:true` の敵だけ `player.x < e.x` で反転**（`e.dir` は使わない＝上下移動中に向きが固まる）。反映は**「描く時（render-chars）」と「毎 tick 向き直る時（enemy-ai `applySideFacing`＝`canvas.dataset.flipX` を書き換える）」の2箇所が1セット**（`submerged` クラスと同じ構図＝char-layer 作り直しで戻らないため）。
+    - **テストの穴も是正＝tick 数を `await` をまたいで数えると落ちる**（ゲームループ `setInterval(step,120)` も `gameTime` を進める）。③⑩を「1回の `evaluate` 内で状態が切り替わった tick 番号を拾う」形に書き換え、`--repeat-each=3` で 36/36 緑を確認。
+    - 追加テスト3本（⑩遠隔／⑪minRange＝隣接では遠隔を撃たない／⑫向き反転）＝**全321テスト緑**。実ブラウザ目視＝プレイヤーが左に立つと鮫・魚とも向き直る／真上のプレイヤーへ水刃（`rotate(-90deg)`）／0 pageerror。
+- **未着手＝海の主ミニボス・銀ブーメラン。**
 
 #### 19-11-B. ✅ 敵タイル記号の枯渇＝ユーザー確定「記号タイルを敵に割り当てる」（2026-07-23）
 **英大文字 A〜Z は26個すべて敵に使用済み**（`tiles.js`＝E/C/F/V/W/X/Z＋2×2ボス G/N/J/A/L/O/U/I）。海棲雑魚3種＋海の主で敵タイルが4つ要るが大文字の空きはゼロ。→ **ユーザー確定＝(a) 記号タイルを敵に割り当てる**（色スイッチ `[]()` が前例）。空き記号＝`&`（魚群に割当済み）／残り候補 `-` `_` `+` `{` `}` `<` `?` `/` `` ` `` 等。接近型・遠隔型・海の主に順次割り当てる。
+**割当実績（2026-07-25）＝`&` 魚群／`<` 潜み鮫（水面から出る背びれの形）／`/` 射水魚（斜めに飛ぶ水弾の軌跡）。** 引用符 `'` `"` は JS/JSON の文字列リテラルと衝突しやすいので敵タイルには使わない（`/` を選んだ理由）。海の主は `{` or `}` を候補として残す。
 
 #### 19-11-D. ✅ 「敵の足元に水を敷けない」＝方向A確定・仕組み実装完了（2026-07-24・🧠 Opus）
 **症状（ユーザー報告 2026-07-23）＝** エディタで魚群を水上に置こうとすると、(1) 敵を tiles に置くと足元背景がデフォルト地形（草原）になる／(2) 背景を水にしようと `~` を tiles に塗ると魚群タイルを上書きして消える。
@@ -900,8 +917,9 @@ row 11    12    13    14    15
 - **⚠️ 残＝既存 153 画面・5720 水セル（field132/dungeon_3:6/5:1/7:3/8:11）の tiles 水 → bgTiles 移行は別セッション。** `isWaterAt` が tiles 水 OR bgTiles 水を両方見るので既存 tiles 水はそのまま動く∴移行は「水を単一ソース(bgTiles)に寄せる整理」であって機能上は必須でない。migrate スクリプト1本（tiles`~`→FLOOR＋bgTiles`~`）＋connectivity 完全一致の自己検証で一括実施予定。
 
 #### 19-11-C. 次（④の残り）
-0. **✅ 19-11-D の仕組み完了（2026-07-24）。次の 0.5＝既存 153 画面の tiles 水 → bgTiles 移行（別セッション・migrate スクリプト1本）。**
-1. **海棲雑魚②接近型（`move:'water'`・水中を潜って迷い寄る）＝記号タイル割当→enemies.js→スプライト→エディタ。** ③遠隔型（`move:'water'`＋spear/stone 攻撃で水飛ばし）。魚群と同じ経路で軽い（19-11-D 解決済み∴水上配置は bgTiles 水でできる）。
+0. **✅ 19-11-D の仕組み完了（2026-07-24）。✅ 0.5 の tiles 水 → bgTiles 移行完了（2026-07-25）。**
+1. **✅ 海棲雑魚②接近型 潜み鮫 `<`・③遠隔型 射水魚 `/` 完了（2026-07-25）＝19-11-A 参照。** 残る海棲は「海の主ミニボス」だけ。
+1.5. **海の主ミニボス（`12,19`・クジラ型・§19-9）＝敵記号1つ（候補 `{`）＋2×2 大型＋`dropsTriforce` 無し＋勝利報酬（銀のブーメラン＋ハートの器）。** 既存8ボスと差別化＝敵対でなく「認めて力を授ける」演出∴撃破時の授与経路（`boss.js onBossDefeated` でのアイテム/器授与）が現状未実装＝ここで初めて要る（銀ブーメランと同時にやるのが自然）。
 2. **銀のブーメラン**（`ITEM_META` に `silverBoomerang` 追加＋`game.js` 発射ブロック複製で `speed`/`maxRange`/`atk` 強化。`boomerangStep` は `proj.maxRange`/`proj.speed` 参照済み＝ロジック改変不要。報酬授与は `grantReward` 統一処理＋`boss.js onBossDefeated` に授与を足す＝現状ボス撃破でのアイテム/器授与は未実装）。
 3. **25画面のタイル配置**（アーム/廊下/デルタ）＝新規物が揃ってから migrate で流し込み。廊下の潮ゲートはここで初めて実ステージに配置＝**実ブラウザ目視**（閉→スイッチ→潮引き→渡る）。
 

@@ -15,6 +15,7 @@ import { fileURLToPath } from 'url';
 import { TILE, TILE_META } from '../shared/tiles.js';
 import { ENEMY_META } from '../shared/enemies.js';
 import { ENEMY_SPRITES, ENEMY_PAL } from '../shared/sprites-enemies.js';
+import { gameLayerEntries } from '../shared/layers.js';
 
 const MAP_PATH = fileURLToPath(new URL('../work/blade-of-lumia.json', import.meta.url));
 const MAP = JSON.parse(readFileSync(MAP_PATH, 'utf8'));
@@ -46,8 +47,9 @@ test.describe('Phase 9-2c – 沼地の大蝦蟇（部品としての定義）',
     expect(TILE_META[TILE.SWAMP_TOAD]).toBeTruthy();
   });
 
-  test('④ 配置は dungeon_8/0,0 のみ（他のレイヤーへの誤配置がない）', () => {
-    for (const [layerName, layer] of Object.entries(MAP.layers ?? {})) {
+  test('④ 配置は dungeon_8/0,0 のみ（他の本編レイヤーへの誤配置がない）', () => {
+    // テストレイヤー（test_*）は除外＝ギミック検証ステージの配置は誤配置ではない。
+    for (const [layerName, layer] of gameLayerEntries(MAP)) {
       for (const [sk, stage] of Object.entries(layer.stages ?? {})) {
         if (layerName === 'dungeon_8' && sk === '0,0') continue; // 正規配置
         const flat = (stage.tiles ?? [])

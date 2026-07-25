@@ -13,7 +13,12 @@ export const ENEMY_SPEED_NORMAL = 0.5;  // 通常敵
 export const ENEMY_SPEED_FAST   = 1.0;  // 高速敵
 
 // ── 敵パラメータ ──────────────────────────────────────────────
-// attack.type: 'charge' | 'spear' | 'stone' | 'sword'
+// attack.type: 'charge' | 'spear' | 'stone' | 'sword' | 'waterShot' | 'waterBlade'
+//
+// attack.range   … この距離以内なら出す（上限）
+// attack.minRange（任意・Phase 9-6）… この距離より近いと出さない（下限）。
+//   近接と遠隔を1体に持たせるとき「隣接では遠隔を撃たず噛みつきに切り替わる」を
+//   宣言的に書くためのフィールド。省略時は下限なし＝従来挙動（後方互換）。
 //
 // weakness（Phase 3-3・任意）: { type, multiplier }
 //   type … 弱点となる攻撃種別 'sword' | 'beam' | 'arrow' | 'boomerang' | 'bomb'
@@ -390,6 +395,53 @@ export const ENEMY_META = {
 		move:   'water',                   // 水しか泳げない＝陸に上がれない（海の顔）
 		attack: { type: 'charge' },        // 接触ダメージのみ（飛び道具なし）
 	},
+	// ── ②接近型：潜み鮫（潜行↔浮上のリズム戦闘）────────────────
+	// submerge: { hiddenMs, surfacedMs } … 潜行/浮上を繰り返す敵の周期（enemy-ai.js が管理）。
+	//   潜行中（e.submerged=true）＝水中に隠れて寄ってくるが「無敵・攻撃なし・接触ダメージなし」。
+	//   浮上中（e.submerged=false）＝噛みつき（sword）で攻撃し、こちらの攻撃も通る。
+	// ∴「浮上した瞬間だけ殴れる」＝海のリズム戦闘（ユーザー確定 2026-07-25）。
+	//
+	// 攻撃は二段構え＝**離れていれば遠隔（水刃）・隣接すれば噛みつき**（ユーザー確定 2026-07-25）。
+	//   理由＝鮫は move:'water' で陸に上がれない∴近接だけだと「岸から2マス離れて立つ」
+	//   だけで完全に無害な置物になる（敵単体で成立しない）。遠隔を持たせて岸から離れた
+	//   プレイヤーも狙う＝海が危ないという体験になる。
+	//   代替案（飛びかかって陸に乗る）は却下＝論理座標が陸に出ると move:'water' の通行判定を
+	//   破りスタックする（ユーザー指摘）。∴座標は水から出さず、届く手段を増やす。
+	[TILE.LURK_SHARK]: {
+		name: '潜み鮫',
+		hp: 6, atk: 3, def: 1, exp: 12,    // 浮上の一瞬に殴る＝手数が限られるぶん硬め
+		speed: ENEMY_SPEED_NORMAL,
+		sprite: 'lurkShark',
+		pal:    'lurkShark',
+		sideView: true,                    // 横向きシルエット＝プレイヤーの左右で反転する
+		isBoss: false,
+		move:   'water',
+		submerge: { hiddenMs: 2000, surfacedMs: 1200 },
+		attacks: [
+			// 噛みつき（岸のプレイヤーに届く）。minRange 無し＝どんなに近くても出る。
+			{ type: 'sword', range: 1.6, cooldown: 800 },
+			// 水刃＝噛みつきリーチの外だけで撃つ（minRange）。射水魚の水弾より
+			// 重く遅い1発＝「連射で削る射水魚」との役割差。
+			{ type: 'waterBlade', minRange: 1.6, range: 6, cooldown: 1800, projectileSpeed: 1.4 },
+		],
+		// 単発 attack も残す＝attacks を持たないコード経路（テスト・将来の参照）向けの代表値。
+		attack: { type: 'sword', range: 1.6, cooldown: 800 },
+	},
+	// ── ③遠隔型：射水魚（水中から水弾を任意角で撃つ）──────────
+	// attack.type:'waterShot' は 'stone' と同じ「任意角へ飛ばす」型（斜めにも撃つ）。
+	// 投擲物スプライトは ITEM_SPRITES.waterShot / ITEM_PAL.waterShot（projectile.js の
+	// createProjEl が makeSprite(proj.type, proj.type) を呼ぶ＝type 名がスプライト名も兼ねる）。
+	[TILE.ARCHER_FISH]: {
+		name: '射水魚',
+		hp: 3, atk: 2, def: 0, exp: 8,     // 脆いが遠くから削る＝近づけば早く潰せる
+		speed: ENEMY_SPEED_SLOW,           // 撃つのが仕事＝あまり動かない
+		sprite: 'archerFish',
+		pal:    'archerFish',
+		sideView: true,                    // 横向きシルエット＝プレイヤーの左右で反転する
+		isBoss: false,
+		move:   'water',
+		attack: { type: 'waterShot', range: 6, cooldown: 2200, projectileSpeed: 1.2 },
+	},
 };
 
 // 投擲物のスプライト対応表
@@ -398,4 +450,6 @@ export const PROJECTILE_SPRITE = {
 	stone:     'stone',
 	boomerang: 'boomerang',
 	arrow:     'arrow',
+	waterShot: 'waterShot',  // Phase 9-6: 射水魚の水弾（ITEM_SPRITES/ITEM_PAL に同名で存在）
+	waterBlade: 'waterBlade', // Phase 9-6: 潜み鮫の水刃（尾で薙いだ三日月型の衝撃波）
 };

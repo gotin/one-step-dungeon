@@ -5,17 +5,17 @@
 // 2枚目が永久に開かない死にタイルになる。→ 連結した D を「1枚の2セル幅ドア」と
 // して扱い、1個の鍵でまとめて開く（将来 field の城門にも流用可）。
 //
-// ⚠️ ライブマップ非参照。test_mechanics/double_door フィクスチャで固定。
+// ⚠️ 本編ステージ非参照。test_mechanics レイヤーの検証ステージ double_door で固定。
 import { test, expect } from '@playwright/test';
 import { waitForBoard } from './helpers.js';
+import { TEST_LAYER, stageKey } from './test-stage-keys.js';
 
 const GAME = '/blade-of-lumia/game/';
-const FIXTURE_SRC = '../tests/fixtures/test-stages.json';
 
 function previewUrl({ row, col }) {
 	const p = new URLSearchParams({
-		fromEditor: '1', layer: 'test_mechanics', stage: 'double_door',
-		row: String(row), col: String(col), ps_mapSrc: FIXTURE_SRC,
+		fromEditor: '1', layer: TEST_LAYER, stage: stageKey('double_door'),
+		row: String(row), col: String(col),
 	});
 	return `${GAME}?${p.toString()}`;
 }

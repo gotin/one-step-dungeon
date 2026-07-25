@@ -61,6 +61,29 @@
     50%      { transform: translateY(-16%); }
 }
 
+/* Phase 9-6 深洋O: 潜行中の水棲敵（潜み鮫）。
+   水中に隠れている＝無敵・攻撃なし・接触なしの状態を「薄く沈んで波紋だけ見える」で表す。
+   浮上するとクラスが外れて実体化する＝「浮上した瞬間だけ殴れる」が目で分かる。 */
+.char-abs.submerged canvas.sprite {
+    opacity: 0.32;
+    filter: blur(0.4px) brightness(0.75) saturate(0.7);
+}
+.char-abs.submerged::after {
+    content: '';
+    position: absolute;
+    left: 12%;
+    top: 22%;
+    width: 76%;
+    height: 56%;
+    border: 2px solid rgba(140, 225, 255, 0.55);
+    border-radius: 50%;
+    animation: submerge-ripple 1.6s ease-out infinite;
+}
+@keyframes submerge-ripple {
+    0%   { transform: scale(0.45); opacity: 0.75; }
+    100% { transform: scale(1.15); opacity: 0;    }
+}
+
 /* Phase 3-2: 大型敵（岩のゴーレム等）の重々しい揺れ。
    常に微妙に上下＋左右に揺れて「正面固定で止まって見える」のを防ぐ。
    ※ 内側 canvas に当てる（wrapper は left/top を transition で動かすため）。 */

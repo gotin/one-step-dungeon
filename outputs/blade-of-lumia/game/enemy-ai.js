@@ -522,6 +522,9 @@ export function createEnemyAi(deps) {
 			if (now - lastTime < cooldown) continue;
 
 			if (dist > (atk.range ?? 5)) continue;
+			// Phase 9-6: minRange＝近すぎる時はこの攻撃を出さない（下限）。
+			// 近接＋遠隔を持つ敵（潜み鮫）で「隣接したら遠隔でなく噛みつき」を宣言的に表す。
+			if (atk.minRange !== undefined && dist < atk.minRange) continue;
 
 			if (atk.type === 'spear') {
 				const sameCol = Math.abs(dx) < 1.0;
@@ -535,6 +538,20 @@ export function createEnemyAi(deps) {
 				const ndx = dx / dist;
 				const ndy = dy / dist;
 				fireEnemyProjectile(e, 'stone', ndx, ndy, atk.projectileSpeed ?? 1.0);
+				e._attackTimes[i] = now;
+			} else if (atk.type === 'waterShot') {
+				// Phase 9-6 深洋O: 射水魚の水弾。stone と同じ「任意角へ飛ばす」型
+				// （斜めにも撃つ）。投擲物の飛翔・盾ブロック・命中は既存の共通経路。
+				const ndx = dx / dist;
+				const ndy = dy / dist;
+				fireEnemyProjectile(e, 'waterShot', ndx, ndy, atk.projectileSpeed ?? 1.2);
+				e._attackTimes[i] = now;
+			} else if (atk.type === 'waterBlade') {
+				// Phase 9-6 深洋O: 潜み鮫の水刃（尾で薙いだ衝撃波）。任意角。
+				// minRange（上のゲート）で「隣接時は撃たない」＝噛みつきに譲る。
+				const ndx = dx / dist;
+				const ndy = dy / dist;
+				fireEnemyProjectile(e, 'waterBlade', ndx, ndy, atk.projectileSpeed ?? 1.4);
 				e._attackTimes[i] = now;
 			} else if (atk.type === 'sword') {
 				const range = atk.range ?? 1.5;
@@ -606,11 +623,69 @@ export function createEnemyAi(deps) {
 		setTimeout(() => el.remove(), 260);
 	}
 
+	// ── Phase 9-6 深洋O: 潜行↔浮上（潜み鮫のリズム戦闘）──────────
+	// meta.submerge = { hiddenMs, surfacedMs } を持つ敵は、水中に潜る時間と
+	// 浮上する時間を交互に繰り返す。潜行中（e.submerged=true）は
+	//   ・攻撃しない（enemyTick が enemyAttack を飛ばす）
+	//   ・接触ダメージを与えない（checkEnemyContact が飛ばす）
+	//   ・こちらの攻撃も通らない（combat.js dealDamageToEnemy が無効化）
+	// 追跡（enemyChase）だけは潜行中も続く＝「水中を潜って迷い寄る」（§19-8-A）。
+	// ∴ 浮上した 1.2 秒だけが殴れる窓＝海のリズム戦闘。
+	// 時間は gameNow()（論理時間）基準なのでテストから step() で決定論的に再現できる。
+	// 初期状態は「潜行」＝タイル名（潜み鮫）どおり水中から現れる。
+	function tickSubmerge(e, meta, now) {
+		const cfg = meta.submerge;
+		if (!cfg) return;
+		const hiddenMs   = cfg.hiddenMs   ?? 2000;
+		const surfacedMs = cfg.surfacedMs ?? 1200;
+		if (e._submergeUntil === undefined) {
+			e.submerged = true;
+			e._submergeUntil = now + hiddenMs;
+			applySubmergedClass(e);
+			return;
+		}
+		if (now < e._submergeUntil) return;
+		e.submerged = !e.submerged;
+		e._submergeUntil = now + (e.submerged ? hiddenMs : surfacedMs);
+		applySubmergedClass(e);
+	}
+
+	// 潜行状態を見た目に反映（半透明＋波紋は CSS の .char-abs.submerged が担当）。
+	// DOM は charLayerEl 経由でだけ触る（getCharLayerEl() が null の環境＝DOM 無しの
+	// ユニットテストでも enemyTick が動くようにするため）。
+	// 敵 id は "4,5" のような座標文字列なので querySelector（CSS セレクタ）は使えない。
+	function applySubmergedClass(e) {
+		const layer = getCharLayerEl();
+		const el = layer?.ownerDocument?.getElementById(`char-enemy-${e.id}`);
+		if (!el) return;
+		el.classList.toggle('submerged', !!e.submerged);
+	}
+
+	// ── Phase 9-6: 横向き敵の向き（sideView）────────────────────
+	// 鮫・魚のような横向きシルエットは、素の絵（右向き）のままだと常に右を向いて
+	// 見える＝プレイヤーが左にいると背中で噛みつく不自然な絵になる。
+	// ∴ ENEMY_META[type].sideView の敵は、プレイヤーの x 差で canvas を左右反転する。
+	//   ・移動方向（e.dir）ではなくプレイヤー位置で決める＝上下移動中も向きが固まらない
+	//   ・アニメループ（redrawAnimSprites）が dataset.flipX を読んで再描画するので、
+	//     ここで dataset を書き換えるだけで次フレームから反転が反映される
+	//   ・renderChars（char-layer 作り直し）側でも同じ判定を持つ＝再描画で戻らない
+	function applySideFacing(e, meta) {
+		if (!meta?.sideView) return;
+		const layer = getCharLayerEl();
+		const el = layer?.ownerDocument?.getElementById(`char-enemy-${e.id}`);
+		const cv = el?.querySelector?.('canvas.sprite');
+		if (!cv) return;
+		const flip = getPlayer().x < e.x ? '1' : '';
+		if (cv.dataset.flipX !== flip) cv.dataset.flipX = flip;
+	}
+
 	// ── 敵との接触ダメージ ────────────────────────────────────
 	function checkEnemyContact() {
 		const player  = getPlayer();
 		const enemies = getEnemies();
 		for (const e of enemies) {
+			// Phase 9-6: 潜行中の敵は水中＝触れてもダメージを与えない（無敵と対の扱い）
+			if (e.submerged) continue;
 			// 占有範囲（AABB）ベース。1×1 敵では従来の 0.9 箱と一致する。
 			if (enemyPointHit(e, player.x, player.y, 0.9)) {
 				takeDamage(ENEMY_META[e.type]?.atk ?? 1);
@@ -626,11 +701,17 @@ export function createEnemyAi(deps) {
 			const meta = ENEMY_META[e.type];
 			if (!meta) continue;
 			if (e.stunUntil && now < e.stunUntil) continue;  // スタン中は移動・攻撃スキップ
+			// Phase 9-6: 潜行↔浮上の周期を更新（submerge を持つ敵のみ）
+			tickSubmerge(e, meta, now);
+			// Phase 9-6: 横向き敵の向きをプレイヤーに合わせる（毎 tick・移動しなくても向き直る）
+			applySideFacing(e, meta);
 			if (meta.hitAndAway) {
 				bossTickHitAndAway(e, meta);
 			} else {
 				enemyChase(e, meta.speed);
 			}
+			// 潜行中は攻撃しない（水中に隠れて寄るだけ）
+			if (e.submerged) continue;
 			enemyAttack(e, meta);
 		}
 	}

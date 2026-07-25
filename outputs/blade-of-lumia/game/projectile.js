@@ -205,6 +205,12 @@ export function createProjectile(deps) {
 				else if (adx > 0 && ady < 0)    deg = 315;
 				if (deg !== 0) cv.style.setProperty('transform', `translate(-50%,-50%) rotate(${deg}deg)`, 'important');
 			}
+			// Phase 9-6: 水刃（waterBlade）は三日月の刃＝任意角で飛ぶので連続回転する。
+			// 素の絵は右向き（進行方向＝右）に膨らむ形なので atan2 をそのまま度に直す。
+			if (proj.type === 'waterBlade') {
+				const deg = Math.atan2(proj.dy, proj.dx) * 180 / Math.PI;
+				cv.style.setProperty('transform', `translate(-50%,-50%) rotate(${deg}deg)`, 'important');
+			}
 			div.appendChild(cv);
 		}
 		charLayerEl.appendChild(div);

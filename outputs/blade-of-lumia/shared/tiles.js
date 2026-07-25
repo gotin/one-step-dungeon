@@ -28,6 +28,8 @@ export const TILE = {
 	// ── Phase 9-6 深洋O: 海棲雑魚（記号タイル。英大文字 A〜Z は全て使用済み＝
 	//   ユーザー確定で記号タイルを敵に割り当てる。色スイッチ [ ] ( ) が記号タイルの前例）──
 	FISH_SCHOOL:  '&',  // 魚群（水棲・低HP多数で包囲する雑魚。水しか泳げない＝陸に上がれない）
+	LURK_SHARK:   '<',  // 潜み鮫（水棲・接近型。潜行↔浮上を繰り返す＝潜行中は無敵で寄ってくる）
+	ARCHER_FISH:  '/',  // 射水魚（水棲・遠隔型。水中から水弾を任意角で飛ばす＝陸のプレイヤーを狙う）
 	// NPC（Dungeon World 継承）
 	PRINCESS: 'P',   // 姫
 	// ギミック（Dungeon World 継承）
@@ -133,6 +135,8 @@ export const TILE_META = {
 	[TILE.STORM_EAGLE]:    { label: '嵐の鷲王',             color: '#1e2840', passable: true, icon: 'Ｕ' },
 	[TILE.SWAMP_TOAD]:     { label: '沼地の大蝦蟇',         color: '#274a1e', passable: true, icon: 'Ｉ' },
 	[TILE.FISH_SCHOOL]:    { label: '魚群',                 color: '#1a6a7a', passable: true, icon: '＆' },
+	[TILE.LURK_SHARK]:     { label: '潜み鮫',               color: '#14485c', passable: true, icon: '＜' },
+	[TILE.ARCHER_FISH]:    { label: '射水魚',               color: '#2a7a9a', passable: true, icon: '／' },
 	// NPC
 	[TILE.PRINCESS]:{ label: '姫',           color: '#aa4488', passable: true,  icon: '♀' },
 	[TILE.NPC_A]:   { label: 'NPC（村人）',  color: '#448844', passable: true,  icon: 'Ａ' },

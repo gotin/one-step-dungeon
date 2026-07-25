@@ -14,6 +14,8 @@
 ## 📍 現在地（常に最新に保つ）
 
 - **進行中フェーズ：** **Phase 9（進行設計＆ダンジョン作り込み）— ゲームの背骨を作る ★★★最高**
+- **✅ ギミック検証ステージを fixture → ライブマップ `test_mechanics` レイヤーへ移設完了（2026-07-25・🧠 Opus・ユーザー指摘・PLAN 0-7）：** 症状＝検証ステージが `tests/fixtures/test-stages.json` に居るので**エディタで開けず、直すたびに生 JSON の手編集**（ユーザー原文「それじゃ作業しづらいからやめてよ。テスト用のレイヤーつくればいいじゃん」）。**決定＝fixture 廃止・18ステージ全部を `work/blade-of-lumia.json` の `test_mechanics` レイヤーへ移設・キーはグリッド座標（`0,0`〜`17,0`）に振り直し（ユーザー確定2件）。** 🔑 **危ないのは「全レイヤー横断コード」＝3箇所だけと実コードで特定＝`countTriforces`（検証用ボス `J`/`L` を数えると必要な星の欠片が 8→10＝クリア不能）・`altarExists`・`warpEnterLandings`（受け側の無いテスト用ワープ）。除外判定は `shared/layers.js`（`isTestLayer`/`gameLayerEntries`）1箇所に置いて3つを全部通した。** キーを座標にするのは必須＝`editor-world.js` が `k.split(',').map(Number)` でキーを座標解釈する∴名前キーは NaN でワールドグリッドに出ない（**名前↔座標の対応表は `tests/test-stage-keys.js` が唯一の定義**・spec も migrate もそこを読む・PLAN 0-7 に表の写し・`comment` 先頭に `[元の名前]`）。移設は自己検証型 `scripts/migrate-test-layer-to-live.mjs`（本編レイヤー byte 不変・欠片数不変・ステージ deep-equal を assert してから書く）。**本文の無い看板5枚には実文を書いた**＝`no-empty-signs` は全レイヤーを走査する∴「テストレイヤーは除外」で赤を消すのは検証ステージだけ品質を落とす裏口。**`ps_mapSrc`（プレビューでマップ JSON を差し替える口）は撤去**＝fixture を読ませるためだけの機構。**エディタの `@` 重複排除をレイヤー内に限定**＝全レイヤー走査のままだと検証ステージに `@` を置いた瞬間に本編の開始位置が消える。13 spec を `stageKey(名前)` 経由に再配線＋`tests/test-layer.spec.js` 5本で不変条件を固定（**①は「除外なしで数えると10」も assert＝vacuous pass 防止**）＝**全326テスト緑**（321＋5）。実ブラウザ＝`test_mechanics` タブ・18セル（`(12,0)`は👑）・キャンバス編集可・欠片サマリ8のまま・プレビューで潜み鮫・0 pageerror。**∴ [[blade-gimmick-tests-use-fixtures]] は廃止＝以後「検証ステージは `test_` レイヤー／横断コードは `gameLayerEntries` 経由」。**
+- **✅ Phase 9-6 深洋O ④＝海棲雑魚②接近型 潜み鮫 `<`・③遠隔型 射水魚 `/` 完了（2026-07-25・🧠 Opus・DESIGN §19-11-A/C）：** アーム7「海が敵」の残り2種。0.5 の水単一ソース化（bgTiles 水）のおかげで、両方 `move:'water'` を付けて bgTiles 水セルに置くだけで成立する。**②潜み鮫＝「潜行中は無敵（リズム戦闘）」をユーザー確定（AskUserQuestion）＝`ENEMY_META.submerge{hiddenMs:2000, surfacedMs:1200}` を新設。潜行中は追跡だけ続き「無敵・攻撃なし・接触ダメージなし」・浮上中だけ噛みつき（sword range1.6＝岸のプレイヤー〈距離1.0〉に届く）＋被弾可＝「浮上した1.2秒だけが殴れる窓」＝海のリズム。** hp6/atk3/def1（手数が限られるぶん硬め）・見た目は潜行中だけ半透明＋波紋リング（board.css）。**③射水魚＝「水弾スプライト新設＋stone型」をユーザー確定＝`attack:{type:'waterShot', range:6, cooldown:2200, projectileSpeed:1.2}`＝`stone` と同じ任意角型（斜めにも撃つ）で陸のプレイヤーを水中から狙う。** hp3/atk2/def0・SLOW。**🔑 実装で効いた2つの単一点：(1) 無敵は `dealDamageToEnemy` 冒頭の1箇所だけ（`meleeOnly` と同じダメージ漏斗）＝剣/弓/ブーメラン/爆弾/ビーム全てが自動で無効化される。(2) `projectile.js` は無改造で済む＝`createProjEl` が `makeSprite(proj.type, proj.type)` を呼ぶ＝投擲物の `type` 名がスプライト名とパレット名を兼ねる∴`ITEM_SPRITES.waterShot`＋`ITEM_PAL.waterShot` を足すだけで飛翔/壁衝突/盾ブロック/命中の全経路が既存のまま動く。** 潜行の状態管理は `stunUntil` と同型の per-enemy タイマー（`tickSubmerge`）＋`gameNow()` 論理時間基準∴`step()` で決定論再現可（TICK_MS=120 → 潜行2.0s≒17tick・浮上1.2s=10tick）。実装11ファイル（tiles/enemies/sprites-enemies/sprites-items/tile-sprites/editor-palette/enemy-ai/combat/render-chars/board.css/game.js）。**併せて `field-quality.mjs` の `_THREAT`/`ENEMY_TILES` に海棲雑魚3種（`&`/`<`/`/`）を登録＝未登録だと深洋25画面が「敵ゼロ＝battleScore 0・combat 軸なし」と誤って読める（指標が海の戦闘を見落とす穴を塞いだ）。** `tests/sea-enemies.spec.js` 9本＋fixture 2種（`lurk_shark`/`archer_fish`）。**🔴 直後のユーザー指摘2件で設計修正（同セッション）＝(1) 潜み鮫が「置物」だった＝近接だけ＋`move:'water'` で陸に上がれない∴岸から2マス離れて立つと完全に無害。→ ユーザー確定「距離が離れている時は遠隔攻撃、隣接してる時は噛みつき攻撃」＝`attacks:[]`（前例＝海蛇）で噛みつき（sword range1.6 cd800）＋遠隔「水刃」（`waterBlade` minRange1.6 range6 cd1800 speed1.4）の二段構え。汎用フィールド `attack.minRange`（これより近いと出さない下限）を新設し `minRange` = 噛みつきの `range` にして「どちらも出ない隙間」を消した。私の飛びかかり案はユーザーが「飛びかかった先が陸の時そのサメどうなるの？」と穴を指摘して却下（陸に論理座標を置くと `enemyTilePassable(...,'water')` で動けない）。水刃は新スプライト（8×8 2フレーム三日月＋`projectile.js` の `atan2` 連続回転＝射水魚の丸い水弾と役割が違うので流用しない）。(2) 敵スプライトが常に右向き＝新規2種でなく全敵の既存バグ（`render-chars.js` が敵に `flipX` を渡していなかった）→ `ENEMY_META.sideView` opt-in ＋反転条件 `player.x < e.x`・適用は生成（render-chars）と毎tick（enemy-ai `applySideFacing` が `dataset.flipX` を書き換え→`redrawAnimSprites` が反映）の2箇所（片方だけだと「最初だけ正しい」or「再描画で戻る」）。** テスト3本追加（⑩遠隔・⑪minRange 切替・⑫左右反転）＝sea-enemies 12本・**全321テスト緑**（318＋3・`--repeat-each=3` で 36/36・VRT 緑）。**教訓＝ゲームループも `gameTime` を進める∴tick 検証は1回の `page.evaluate` に閉じ込める（await をまたぐと単体緑・ファイル内赤の flaky になった）。** 実ブラウザ目視＝潜行の薄い影＋波紋／浮上で鮫が実体化／鮫と魚がプレイヤー側を向く／青い三日月が上方向（rotate(-90deg)）へ飛ぶ／斜め上へ青い水弾／エディタパレットに3種のスプライト付きボタン／0 pageerror。**次は海の主ミニボス（記号1つ・2×2・報酬授与経路が要る）＋銀ブーメラン → 25画面配置。**
 - **🔴 0.5 直後のユーザー報告バグ→即修正（2026-07-25・🧠 Opus・分岐B）：** 症状＝「dungeon_5 1,1 ではしごが表示されなかった」。**根因＝移行で「tiles 層の水を直接見ていた実ゲームコード」が複数壊れた（Step B で検証チェッカーだけ直し実ゲームコードの直接比較を見落とした私のミス）。** 具体＝(1) `render-chars.js:234` はしごオーバーレイの `t !== WATER && t !== PIT` が tiles だけ判定＝bgTiles 水に乗ってもはしごが出ない／(2) `game.js:367` 飛行着地＝bgTiles 水着地で flying 解除／(3) `game.js:arrivalIsWall`/`isBorderLadderBridge`＝遷移先の bgTiles 水を「壁でない＝歩ける」と誤判定＝水に踏み込める。**修正＝game.js に `effArrivalTile(stage,r,c)`（tiles水 OR bgTiles水を`~`に畳む＝isWaterAt の写し）を新設し3箇所を経由・render-chars は `isBgWater` 判定を追加。** 全 game/shared を「WATER 直接比較」で再走査し漏れゼロを確認（残りは isWaterAt/effArrivalTile 経由 or 定義集合のみ）。fixture `ladder_bg_bridge`（bgTiles 水の縦橋）追加＋`ladder.spec.js` 2本（渡り中にはしご出る／はしご無しで渡れない）＝**修正を戻すと赤・当てると緑を確認（回帰を正しく捕捉）**。**🔴 併せて 0.5 コミット(08825d6)に誤混入していた `field/11,16` の `&`（魚群2セル・前回破棄しきれなかった手動プレビュー残骸）を除去**（`aquatic-enemy` ⑤ ライブ未配置テストが検出）＝11,16 は水プールに正常復帰。**全309テスト緑**（既存307＋ladder2）・実ブラウザで dungeon_5 1,1 の水堀上に縦はしご表示を目視。**教訓＝データの単一ソース化は「読み手」を全部直すまでが1セット＝チェッカーだけでなく実ゲームの描画/遷移/着地の水判定も。**
 - **✅ Phase 9-6 深洋O ④＝0.5「tiles 水 → bgTiles 水 移行」完了（2026-07-25・🧠 Opus・方向B＝移行＋アニメ化）：** 水を単一ソース（bgTiles）へ集約。全レイヤーの tiles `~` 5720セル（field5628/d3:29/d5:10/d7:15/d8:38）を tiles`.`(FLOOR)＋bgTiles`~` に移行（`migrate-water-to-bgtiles.mjs`・移行後 tiles`~`=0/bgTiles`~`=5720）。**🔑 ユーザー確認で「移行方式の違いで全水のアニメが死ぬ」問題を発見し方向Bを確定＝2つの隠れコストを両方対応：(A) tiles水は canvas obj-sprite の2フレーム波アニメ／bgTiles水は CSS background で静止だった → `shared/sprites.js` の `redrawAnimSprites` に bgTiles 水セル（`ANIMATED_BG_SPRITES={water}`・`.cell[data-bg-sprite]` を走査）の再描画を追加＝湖/海の波が移行後も動く。(B) `connectivity.mjs`／`field-quality.mjs` は tiles 1文字だけで水/壁を判定＝移行後は水を床と誤認する偽の緑になる → `cellTile()`（tiles水 OR bgTiles水を`~`に畳む単一点＝実ゲーム isWaterAt の写し）を connectivity.mjs に新設し bfsLayer/cross/orphan(passOpenCell)/firstWalkable/isLadderBridgeCell(bank) を全経由・field-quality.mjs に `effectiveFlat()` を新設し allBlockedScreens(W1)/battleScore(hazard)/screenAxes(route)/openEdgeCount/duplicateLayout(hash)/similarity(featureVec)/warpEnterLandings(tileAt) を全経由。** migrate は自己検証型（`--dry`＝全レイヤー reachability〈walk＋ladder・全room起点union〉と field 全指標〈reached/orphans/w1/seams/traps/under2/dups〉が移行前後で byte 一致を assert＝throw で保証）。テスト＝`connectivity-tool.spec.js` に cellTile／全bgTiles水画面が徒歩不能 の2本・`aquatic-enemy.spec.js` ⑫（bgTiles水がアニメ対象＝背景消去→redraw復元で配線検証）・`field-terrain.spec.js` の湖 border 判定を `effCellAt`（bgTiles水を`~`に畳む）化。**全307テスト緑（VRT 緑＝起動直後の見た目 byte 不変）**・実ブラウザで field 9,8 湖（bgWater86セル・全て波背景 background-image あり）＋dungeon_5 堀を目視＋0 pageerror。**⚠️ 既存の tiles 水は移行済み＝今後の水は bgTiles 単一ソースで扱う。** 次は海棲雑魚②接近型・③遠隔型（記号タイル割当→enemies→スプライト→エディタ・水上配置は bgTiles水で可）→海の主→銀ブーメラン→25画面配置。**
 - **✅ Phase 9-6 深洋O ④＝19-11-D「敵の足元に水を敷けない」仕組み完了（2026-07-24・🧠 Opus・DESIGN §19-11-D）：** 水棲敵を水上に立たせる仕組み。**ユーザーとディスカッションで方向A確定＝水は「地形」なので bgTiles 層に置けるようにする（`BG_TILES` に WATER 追加）。** ユーザーの本質指摘＝「今のエディタ/通行仕組みを前提にするから記号を分ける話になる。**通行判定側を『bgTiles が水なら通れない（はしご/飛行は別）』に変えればいい**」＝記号を分けず `~` を bgTiles にも置けるようにするだけ。🔑 層モデル見直し＝bgTiles は「通れる飾り」でなく「地形そのもの（通れない水も入る）」・通行＝bgTiles(地形)通れる AND tiles(上の物)通れる。**安全＝今 bgTiles には通れる地面しか無い∴両層 AND に変えても既存全画面は不変**（新規 bgTiles 水だけが止める）。実装＝`passable.js` に **`isWaterAt(r,c)` 新設＝tiles 水 OR bgTiles 水の単一判定点**（tilePassable/enemyTilePassable/飛行・はしご上書き/isLadderBank/ladderOrientationAt を全て経由）／`shared/tiles.js`（BG_TILES+WATER）／`render-board.js`（bgTiles 水の色クラス・スプライトは既存経路で自動）／`editor-canvas.js`（`~` が BG_TILES 入りで水塗りが自動 bgTiles 行き＝コード改変不要）。`aquatic-enemy.spec.js` に⑧〜⑪の4本追加＝**全304テスト緑**（298＋6・VRT 緑）。試作 fixture `fish_swim_bg`（tiles に水無し・bgTiles 3×3 水プール＋魚群）で実ブラウザ目視＝**青い水プールの上に魚群スプライトが乗る**＋エディタ 0 pageerror。**⚠️ 既存 153 画面・5720 水セル（field132/d3:6/d5:1/d7:3/d8:11）の tiles 水 → bgTiles 移行は別セッション**（isWaterAt が両方見るので既存 tiles 水はそのまま動く＝移行は単一ソース化の整理・機能上は必須でない・migrate 1本＋connectivity 完全一致で一括）。次は 0.5 移行 → 海棲雑魚②接近型・③遠隔型（水上配置が bgTiles 水でできる）→ 海の主 → 銀ブーメラン → 25画面配置。**
@@ -76,6 +78,87 @@
 ## セッションログ
 
 <!-- 新しいエントリを上に追加していく（最新が一番上） -->
+
+### 2026-07-25 — ギミック検証ステージを fixture → ライブマップ `test_mechanics` レイヤーへ移設（🧠 Opus・ユーザー指摘・PLAN 0-7）
+
+**きっかけ（ユーザー指摘2連）：**
+- 「ちょっとまって、そのテストステージどこに定義してあるの？ `outputs/blade-of-lumia/work/blade-of-lumia.json` には見当たらないのだけど。」→ 検証ステージは `tests/fixtures/test-stages.json`（ライブマップ非参照＝[[blade-gimmick-tests-use-fixtures]]）に隔離してあると説明。
+- 「**いや、それじゃ作業しづらいからやめてよ。テスト用のレイヤーつくればいいじゃん。別に問題ないよね？**」→ その通り。**隔離は「マップを壊さない」目的では正しかったが、コストを人間が払っていた**＝fixture はエディタで開けない∴タイル1枚直すのも生 JSON の手編集で、プレビューのために `ps_mapSrc` という専用の口までゲーム側に開けていた。
+
+**着手前にユーザー確定（AskUserQuestion）：**
+- **移設範囲＝18ステージ全部**（部分移設は fixture とレイヤーの二重管理が残る＝一番悪い）。
+- **キー＝グリッド座標に振り直す**（名前↔座標の対応表はドキュメントに残す）。
+
+**やったこと：**
+- **`shared/layers.js` 新設＝`test_` 接頭辞レイヤーを本編から除外する単一の判定点**（`TEST_LAYER_PREFIX`/`isTestLayer`/`gameLayerEntries`）。**先に「全レイヤーを横断して数える/検査するコード」を実コードで洗い出し＝危険なのは3箇所だけ**と特定してから移設した：
+  - `countTriforces`/`listTriforceEntries`（`shared/triforce.js`）＝検証レイヤーには `dropsTriforce` のボスが2体（`J`＝ladder_water2・`L`＝melee_only_boss）∴素朴に数えると**必要な星の欠片が 8→10＝クリア不能**。
+  - `altarExists`（`game/boss.js`）＝テスト用祭壇で終盤フローが誤作動。
+  - `warpEnterLandings`（`scripts/lib/field-quality.mjs`）＝`candle_gate_exit → candle_gate_dest` は受け側の無いテスト専用ワープ＝不正着地で赤。
+- **移設＝`scripts/migrate-test-layer-to-live.mjs`（自己検証型・1回だけ実行・入力 fixture は同コミットで削除∴再実行不可）。** 本編レイヤーが byte 不変／`countTriforces` 不変／各ステージが `comment` 接頭辞と看板本文以外 deep-equal／全キーが整数座標／看板本文の不変条件（no-empty-signs と同じ判定）を**書き込み前に assert して throw する**。
+- **キーはグリッド座標（1行 y=0 に1ステージ1列）。** `editor/editor-world.js` が `k.split(',').map(Number)` でキーを座標解釈する（`getWorldSize`/`insertRow`/`insertCol`/`renderWorldGrid`）∴名前キーは NaN でワールドグリッドに出ない＝移設の意味が無い。**対応表は `tests/test-stage-keys.js` が唯一の定義**（spec も migrate もここを読む＝spec に座標をハードコードしない）。ステージの `comment` 先頭に `[元の名前]` を残した（エディタで開いて何のテストか分かる）。表は PLAN 0-7 に写しを置いた：`0,0` color_switch／`1,0` torch_relay／`2,0` arrow_switch／`3,0` bomb_wall／`4,0` enemy_stone／`5,0` hidden_cave_test／`6,0` ladder_isolated／`7,0` ladder_pit／`8,0` ladder_water2／`9,0` bow_gate／`10,0` double_door／`11,0` candle_gate／`12,0` melee_only_boss（👑）／`13,0` fish_swim／`14,0` fish_swim_bg／`15,0` lurk_shark／`16,0` archer_fish／`17,0` ladder_bg_bridge。**新ステージは次の空き列 `18,0`＋対応表に1行。**
+- **本文の無い看板5枚に実文を書いた**（bomb_wall 2枚・ladder_pit 2枚・bow_gate 1枚）。`no-empty-signs.spec.js` は全レイヤーの `i` タイルに `{name, lines}` を要求する（[[blade-sign-two-formats]]）＝fixture 時代は走査対象外で無本文が通っていた。置き場は `npcData`（エディタの看板 UI が読み書きするのはこちら・`signData` は `combat.js` が読むだけ）。
+- **`ps_mapSrc` 撤去**（`game/game.js`）＝プレビュー URL でマップ JSON を差し替える口。存在理由は fixture を読ませることだけ∴移設で不要（本番が任意 URL からマップを読める口を残さない）。
+- **エディタの `@` 重複排除をレイヤー内に限定**（`editor/editor-canvas.js`）＝全レイヤー走査のままだと**検証ステージに `@` を置いた瞬間に本編の開始位置が消える**（検証ステージはそれぞれ自前の `@` が要る）。
+- **13 spec を再配線**（arrow-switch/color-switch/torch/bomb-torch/enemy-stone-puzzle/hidden-passages/bow-gate/candle-gate/double-door/melee-only-boss/ladder/aquatic-enemy/sea-enemies）＝`stageKey(名前)` で座標を解決。「まだ本編に配置していない」系の走査（aquatic-enemy⑤・sea-enemies⑨・swamp-boss④）は `gameLayerEntries` 経由に変更。`tests/fixtures/` は削除。
+- **テスト（先に設計＝WORKFLOW Step 3）＝`tests/test-layer.spec.js` 5本：** ①欠片総数8＋**除外なしで同じ規則で数えると 8 より大きい（実測10）**も assert／②`test_` 接頭辞の規約／③全キーが整数グリッド座標／④対応表とライブマップの一致＋`comment` の `[名前]`／⑤`startPos` は本編 field。**全326テスト緑**（321＋5）。
+- **実ブラウザ検証：** エディタ＝`test_mechanics` タブ（全14レイヤー）・ワールドグリッドに18セル（`(0,0)`〜`(17,0)`・`(12,0)`は👑＝isBossRoom）・セルを開いて `#btn-edit-stage` でキャンバス描画・欠片サマリ 8 のまま。ゲーム＝通常起動 field `7,14`／プレビュー `?fromEditor=1&layer=test_mechanics&stage=15,0&...` で潜み鮫 `<` が想定位置に。**0 pageerror。**
+- **記録**＝PLAN 0-7（新設・対応表）・PROGRESS 現在地＋本ログ・DECISIONS 2026-07-25。
+
+**学び・気づき：**
+- **🔴 隔離の「作業コスト」を測っていなかった。** fixture 隔離は「ライブマップを編集で壊さない」という正しい目的から出た決定だが、**エディタで開けない＝人間が生 JSON を触る**という代償を勘定に入れていなかった。しかも代償を支払うための機構（`ps_mapSrc`）を製品コードに足していた＝**「テストのために製品に口を開ける」は、隔離が間違っている合図**。
+- **移設の前に「危険な読み手」を列挙する。** ライブマップに何か足すとき壊れるのは**全レイヤー横断コード**だけ＝今回は3箇所（欠片数・祭壇・ワープ着地）。特に欠片数は「必要数が増えてクリア不能」＝テストが無ければ気づかず出荷される種類のバグ。**列挙してから除外点を1箇所（`shared/layers.js`）に作る**＝[[blade-water-single-source-readers]] の裏返し。
+- **エディタが受け付けるキー形式を先に確認する。** 名前キーのままなら「移設したのにエディタに出てこない」で全部やり直しだった。**`k.split(',').map(Number)` という1行が仕様**。
+- **テストレイヤーを不変条件の例外にしない。** 無本文看板を「テストレイヤーは skip」で通すのは一番簡単だが、そこから検証ステージだけ品質が落ちていく。**本文を書くほうが安い**（5枚）。
+- **除外テストは「除外なしなら壊れる」ことまで assert する。** `countTriforces===8` だけだと、検証レイヤーにボスが1体も無い状態でも緑＝除外の壊れを検知できない。**素朴版も本物の規則（`ENEMY_META[t]?.dropsTriforce` 等）で書く**＝初稿はタイル集合をハードコードして 4 を数え、自分の assert で落ちた。
+- **⚠️ 自分の作業手順の反省＝機械的な複数ファイル編集に `python3` ヒアドキュメントを使った**（[[use-edit-write-not-shell]] に反する）。以後 Edit/Write に統一する。
+- **既知の scope 外＝`editor-canvas.js:83` の「敵」カウントは固定タイル表**（PATROL/CHASER/SENTRY/BOSS/MONSTER/DARK_LORD）∴記号タイルの新敵（`&`/`<`/`/`）は 0 と表示される（移設前からの挙動・別タスク）。
+
+**▶ 次やること（着手前にユーザーとディスカッション＝確定手順）：**
+1. **海の主ミニボス**（§19-9・`12,19`）＝敵記号1つ（候補 `{`）＋2×2 大型＋`dropsTriforce` 無し＋勝利報酬（銀ブーメラン＋ハートの器）。**🔴 ボス撃破時のアイテム/器授与が現状未実装＝ここで初めて必要になる**∴銀ブーメランと同時に設計する。
+2. **銀のブーメラン** → **25画面のタイル配置**（廊下の潮ゲートはここで初めて実ステージに配置＝実ブラウザ目視）。なお**潮ゲートの実エンジン動作確認（PLAN 9-6 ④の未了項目）は `test_mechanics/18,0` に1組置けば済む**＝移設でエディタから作れるようになった。
+**コミット未実行＝下記メッセージ案の提示まで（WORKFLOW規定）。**
+
+---
+
+### 2026-07-25 — Phase 9-6 深洋O ④＝海棲雑魚②接近型 潜み鮫・③遠隔型 射水魚 完了＋🔴 直後のユーザー指摘2件で設計修正（潜み鮫の二段構え・横向き敵の向き反転）（🧠 Opus）
+
+**やったこと（🟢 デフォルトフロー・PROGRESS「▶ 次やること」の1＝着手前にユーザーと設計確認）：**
+- **着手前に2種の挙動をユーザー確定（AskUserQuestion）：**
+  - **②接近型＝「潜行中は無敵（リズム戦闘）」**＝潜行2.0s → 浮上1.2s のサイクル。潜行中は攻撃無効・接触なし・半透明+波紋／浮上中は噛みつき（sword range1.6）＋被弾可。
+  - **③遠隔型＝「水弾スプライト新設＋stone型」**＝`attack:{type:'waterShot', range:6, cooldown:2200, projectileSpeed:1.2}`・任意角（斜めにも撃つ）。
+- **記号タイル割当（§19-11-B の続き）**＝`<` 潜み鮫（水面に出る背びれの形）／`/` 射水魚（斜めに飛ぶ水弾の軌跡）。**引用符 `'` `"` は JS/JSON の文字列リテラルと衝突しやすいので敵タイルには使わない**（初稿で `'` を選びかけて `/` に変更）。
+- **実装（11ファイル）：** `tiles.js`（2定数＋TILE_META）／`enemies.js`（ENEMY_META 2件＋`PROJECTILE_SPRITE.waterShot`）／`sprites-enemies.js`（`lurkShark`/`archerFish` パレット＋12×16 2フレーム）／`sprites-items.js`（`waterShot` パレット＋8×8 2フレームの水塊）／`tile-sprites.js`／`editor-palette.js`（敵カテゴリ）／`enemy-ai.js`（`waterShot` 攻撃分岐・`tickSubmerge` 潜行FSM・`checkEnemyContact` の潜行スキップ・`enemyTick` の潜行中は攻撃スキップ）／`combat.js`（潜行中は全ダメージ無効）／`render-chars.js`（再描画でも submerged クラス維持）／`css/board.css`（半透明＋`@keyframes submerge-ripple`）／`game.js`（`buildEnemies` が `submerged: !!m.submerge` で潜行状態から spawn・`getEnemiesSnapshot` が `submerged` 公開）。
+- **指標側の穴を塞いだ**＝`scripts/lib/field-quality.mjs` の `_THREAT`／`ENEMY_TILES` に海棲雑魚3種（`&`/`<`/`/`）を登録。未登録だと深洋25画面に海棲敵を置いても battleScore=0・combat 軸なし＝「敵ゼロの空画面」と読める（魚群を作った時点から空いていた穴）。
+- **テスト（先に設計＝WORKFLOW Step 3）**＝`tests/sea-enemies.spec.js` 9本。fixture 2種を `tests/fixtures/test-stages.json` に追加（`lurk_shark`＝水プール rows4-6 に鮫・プレイヤーは真上の陸／`archer_fish`＝斜め4.24マス先に魚）。tick 数は論理時間から導出（TICK_MS=120・潜行2000ms→18tick目で浮上・浮上1200ms→28tick目で再潜行・cooldown2200ms→19tick目に初弾）。**全318テスト緑**（既存309＋9・VRT 緑）。
+- **実ブラウザ検証**＝潜行中は薄い影＋波紋リング／浮上で鮫が実体化（`.submerged` クラスの着脱を DOM で確認）／射水魚が斜め右上へ青い水弾を発射（`dx=+0.707, dy=-0.707`・canvas の描画ピクセル数を実測して「見えない弾」でないことを確認）／エディタパレットに魚群・潜み鮫・射水魚の3種がスプライト付きで並ぶ／0 pageerror。
+- **記録**＝PLAN ④に完了行・PROGRESS 現在地＋本ログ・DECISIONS 2026-07-25・DESIGN §19-11-A/B/C。
+
+**🔴 直後のユーザー指摘2件で設計修正（同日・同セッション）：**
+- **① 潜み鮫が「置物」だった（設計ミス）。** 症状（ユーザー原文）＝「この敵って、遠距離攻撃はしないってこと？１セルとなりじゃないと攻撃はこない？」「ないと常に水の中だから、ほぼ攻撃できなくならない？」。**根因＝噛みつき（range1.6）だけの近接敵にしたが、`move:'water'` で陸に上がれない∴プレイヤーが岸から2マス離れて立つと鮫は距離を詰める手段が一切なく完全に無害。** 「配置で解決する（岸ぎわに置く）」前提で敵を作ったのが誤り＝敵は単体で成立させる。
+- **修正＝二段構え（ユーザー確定）＝「距離が離れている時は遠隔攻撃、隣接してる時は噛みつき攻撃」。** `attacks:[]` 配列（前例＝海蛇の sword+stone）に噛みつき（sword range1.6 cd800）と遠隔（`waterBlade` minRange1.6 range6 cd1800 speed1.4）の2本。**汎用フィールド `attack.minRange` を新設**＝「これより近いとこの攻撃は出さない」下限。**`minRange` は噛みつきの `range` と同値にする＝どちらも出ない隙間を作らない。**
+- **私の飛びかかり案はユーザーが穴を指摘して却下**＝「飛びかかった先が陸の時はそのサメどうなるの？陸の上に出て動けなくなる？」＝論理座標を陸に置けば `enemyTilePassable(r,c,'water')` で動けなくなるか `move:'water'` が壊れる。代替の水中ダッシュ／見た目だけの跳躍も「1も2も無理がある」と却下＝素直に遠隔攻撃が正解だった。
+- **遠隔の見た目＝新スプライト「水刃」（`waterBlade`・ユーザー確定）**＝射水魚の水弾（丸い水塊）と役割が違うので流用しない。8×8 2フレームの三日月＋`projectile.js` で `atan2` の連続回転（矢の4方向回転とは別処理＝任意角の刃を進行方向に向ける）。
+- **② 敵スプライトが常に右向き（既存バグ・新規2種に限らず全敵）。** 症状（ユーザー原文）＝「両方とも、常に右側を向いている状態になっていて、プレーヤーがいる場所にあわせて向きを変えないとおかしいです」。**根因＝`render-chars.js` の敵ループが `makeSprite(e.sprite, e.pal, true)` で `flipX` を渡していなかった（プレイヤーだけ `heroDir==='left'` で反転していた）。**
+- **修正＝`ENEMY_META.sideView`（横向きシルエットの敵だけ opt-in）＋反転条件は `player.x < e.x`。** 上下移動で左右が固まらないようプレイヤーの x 差で判定（`e.dir` は使わない）。**適用は2箇所（生成＝render-chars／毎tick更新＝enemy-ai の `applySideFacing` が `canvas.dataset.flipX` を書き換え→`redrawAnimSprites` が次フレームで反映）＝どちらか片方だと「最初だけ正しい」or「再描画で戻る」になる。**
+- **テスト3本追加（⑩遠隔が飛ぶ・⑪minRange で隣接時は噛みつきに切替・⑫左右反転）＝`sea-enemies.spec.js` 12本・全321テスト緑**（318＋3・`--repeat-each=3` で 36/36）。実ブラウザ＝鮫がプレイヤー側を向く／青い三日月が上方向（`rotate(-90deg)`）へ飛ぶ／射水魚も反転する／0 pageerror。
+
+**学び・気づき：**
+- **「無敵」も「見えない敵」も、単一の漏斗を1箇所いじるだけで全経路に効く。** ダメージは `dealDamageToEnemy` が唯一の入口（`meleeOnly` の前例）∴冒頭で `e.submerged` を弾けば剣・弓・ブーメラン・爆弾・ビーム全てが自動的に無効化される。攻撃種別ごとに書くと必ずどれかを取りこぼす。
+- **投擲物の新種は `projectile.js` に触らなくても足せる**＝`createProjEl` が `makeSprite(proj.type, proj.type)` を呼ぶ＝`type` 名がスプライト名とパレット名を兼ねる契約。∴ 新種の追加＝`ITEM_SPRITES`/`ITEM_PAL` に同名で登録するだけ（飛翔・壁衝突・盾ブロック・命中は全部共通）。**逆に言うと名前を登録し忘れると「弾は飛ぶが見えない」＝テストでは気づけない不具合になる**∴spec でマージ後の `SPRITES`/`PAL` まで存在確認した。
+- **時間で状態が変わる敵は `gameNow()`（論理時間）で書くとテストが決定論になる**＝`stunUntil` と同じ構図。実時間 `Date.now()` を使うと潜行周期の検証が flaky になる。tick 数はコメントで「2000ms→18tick目」まで算術を書き残す（後から読む人が周期を変えたときに直せる）。
+- **敵を足したら指標テーブルにも足す。** 魚群のとき `_THREAT`/`ENEMY_TILES` を更新していなかったので、深洋25画面を作り込む前に気づけたのは運。**「新タイルを足す」チェックリストは tiles/enemies/sprite/tile-sprites/editor だけでなく `field-quality.mjs` の脅威表まで含む。**
+- **記号タイルは文字リテラル安全性で選ぶ**＝`'` `"` `\` は JS/JSON 両方で潜在的な事故（fixture が JSON なので特に）。見た目の連想（`<`＝背びれ／`/`＝水弾の軌跡）と安全性を両立させた。
+- **🔴 移動制約のある敵は「その制約下で本当に攻撃が届くか」を距離で検算する。** 水しか泳げない敵に近接攻撃だけ持たせると、プレイヤーが1マス下がるだけで無害になる。**「岸ぎわに配置すれば成立する」は敵の設計を配置に依存させている＝置き方を間違えれば死にコンテンツ**∴敵単体で成立させる（配置は難易度調整の手段でしかない）。
+- **攻撃の下限（`minRange`）は上限（`range`）と対で要る。** 近接＋遠隔の二段構えは「遠隔に下限を付ける」だけで自然に切り替わる（AI に状態を持たせなくていい）。**下限＝近接の上限と同値**にすれば「どちらも出ない距離」が生まれない＝1つの数値で境界を共有するのが一番安全。
+- **dataset ベースのスプライト再描画は「生成時」と「毎tick」の2箇所を直して初めて完成する。** `makeSprite(..., animated=true)` は `dataset.sprite/pal/flipX` を書き、`redrawAnimSprites` が毎フレームそこから描き直す∴tick 側で dataset を書き換えれば1行で反転できるが、生成側を直さないと「出た瞬間だけ逆向き」になる（逆も同様）。
+- **🔴 ゲームループも `gameTime` を進めるので、tick 数の検証は1回の `page.evaluate` 内で完結させる。** `step(1)` を await 越しに数回に分けると、その間に実時間の `setInterval(step, 120)` が割り込んで tick 番号がずれる＝**単体では緑・ファイル内では赤**という典型的な flaky になった（潜行周期テスト③）。計測ループは全部ブラウザ側に閉じ込め、`--repeat-each=3` で安定を裏取りする。
+
+**▶ 次やること（着手前にユーザーとディスカッション＝確定手順）：**
+1. **海の主ミニボス**（§19-9・`12,19`）＝敵記号1つ（候補 `{`）＋2×2 大型＋`dropsTriforce` 無し＋勝利報酬（銀ブーメラン＋ハートの器）。**🔴 ボス撃破時のアイテム/器授与が現状未実装＝ここで初めて必要になる**∴銀ブーメランと同時に設計するのが自然。
+2. **銀のブーメラン**（§19-11-C 2）→ **25画面のタイル配置**（廊下の潮ゲートはここで初めて実ステージに配置＝実ブラウザ目視）。
+**コミット未実行＝下記メッセージ案の提示まで（WORKFLOW規定）。**
+
+---
 
 ### 2026-07-25 — Phase 9-6 深洋O ④＝0.5「tiles 水 → bgTiles 水 移行（単一ソース化）」完了（🧠 Opus・方向B）
 

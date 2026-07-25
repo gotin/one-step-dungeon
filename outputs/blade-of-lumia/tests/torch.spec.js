@@ -1,6 +1,6 @@
 // tests/torch.spec.js – TORCH タイル + ブーメラン炎運搬（Phase 4-5 ②）
 //
-// パズル配置（tests/fixtures/test-stages.json）：test_mechanics ステージ "torch_relay"
+// パズル配置：ライブマップ test_mechanics レイヤーの検証ステージ "torch_relay"
 //   (3,2)=H 点灯済み（initLitTorches: ['3,2']）
 //   (3,3)=H 消灯
 //   (7,5)=H 消灯
@@ -19,27 +19,25 @@
 
 import { test, expect } from '@playwright/test';
 import { waitForBoard } from './helpers.js';
+import { TEST_LAYER, stageKey } from './test-stage-keys.js';
 
 const GAME = '/blade-of-lumia/game/';
-
-const FIXTURE_SRC = '../tests/fixtures/test-stages.json';
 
 function previewUrl({ row, col }) {
 	const p = new URLSearchParams({
 		fromEditor: '1',
-		layer: 'test_mechanics',
-		stage: 'torch_relay',
+		layer: TEST_LAYER,
+		stage: stageKey('torch_relay'),
 		row: String(row),
 		col: String(col),
 		ps_boomerang: '1',
-		ps_mapSrc: FIXTURE_SRC,
 	});
 	return `${GAME}?${p.toString()}`;
 }
 
 test.describe('Blade of Lumia – TORCH + ブーメラン炎運搬（Phase 4-5 ②）', () => {
 
-	test('initLitTorches: ステージ初期化時に (3,2) が litTorches に入っている（フィクスチャ）', async ({ page }) => {
+	test('initLitTorches: ステージ初期化時に (3,2) が litTorches に入っている（検証ステージ）', async ({ page }) => {
 		const errors = [];
 		page.on('pageerror', e => errors.push(e.message));
 

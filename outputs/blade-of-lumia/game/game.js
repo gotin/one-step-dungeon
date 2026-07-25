@@ -255,9 +255,8 @@ function loadGame() {
 }
 
 // ── マップ読み込み ────────────────────────────────────────────
-async function loadMapData(overrideUrl) {
-	const url = overrideUrl ?? MAP_JSON_URL;
-	const res = await fetch(url);
+async function loadMapData() {
+	const res = await fetch(MAP_JSON_URL);
 	mapData   = await res.json();
 	buildExitRegistry();
 }
@@ -435,6 +434,9 @@ function buildEnemies(sd, lk, sk) {
 				// 水/陸の通行可否を切り替える（未指定=陸棲）。これを渡さないと水棲敵が
 				// 陸を歩けてしまう。moveSpeed は両生の地形別速度（将来の enemy-ai 用）。
 				move:  m.move, moveSpeed: m.moveSpeed,
+				// Phase 9-6: 潜行↔浮上する敵（潜み鮫）は「水中に潜った状態」で登場する。
+				// 周期の進行は enemy-ai.js の tickSubmerge（gameNow 基準）が担当。
+				submerged: !!m.submerge,
 				sprite: m.sprite, pal: m.pal,
 				// Phase 3-2: 占有セル数（大型敵）。省略時は 1×1。
 				w:      m.size?.w ?? 1,
@@ -1696,14 +1698,15 @@ async function init() {
 	const paramStage = params.get('stage');
 	const paramRow   = params.get('row');
 	const paramCol   = params.get('col');
-	const paramMapSrc = params.get('ps_mapSrc') ?? null;
 
 	if (fromEditor) {
 		// エディタプレビューモード：実際のJSONを優先して読み込み（確実に最新データを使う）
-		// ps_mapSrc が指定された場合はそのURLを使う（テスト用フィクスチャ向け）
 		// localStorage は古い可能性があるためフォールバックのみ
+		// ※ 以前あった ps_mapSrc（別 JSON を読ませるテスト用の口）は廃止した。
+		//   ギミック検証ステージはライブマップの test_mechanics レイヤーに入っている
+		//   （2026-07-25・エディタで開けないフィクスチャは作業しづらい）。
 		try {
-			await loadMapData(paramMapSrc ?? undefined); // 実際のJSONファイルを読む
+			await loadMapData(); // 実際のJSONファイルを読む
 		} catch {
 			// JSONファイルが読めない場合はlocalStorageにフォールバック
 			const saved = localStorage.getItem('bladeOfLumiaMapData');
@@ -1868,6 +1871,7 @@ export function getEnemiesSnapshot() {
 		hp: e.hp, maxHp: e.maxHp,
 		move: e.move ?? null,   // Phase 9-6: 遊泳属性（spawn 経路で敵に乗ったか観測用）
 		stunUntil: e.stunUntil ?? null,
+		submerged: e.submerged ?? false,  // Phase 9-6: 潜行中（潜み鮫のリズム観測用）
 	}));
 }
 

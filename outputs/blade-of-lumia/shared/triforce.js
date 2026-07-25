@@ -4,19 +4,24 @@
 
 import { TILE } from './tiles.js';
 import { ENEMY_META } from './enemies.js';
+import { gameLayerEntries } from './layers.js';
 
 /**
- * mapData 全レイヤーを横断して「集めるべき星の欠片の総数」を返す。
+ * mapData の本編レイヤーを横断して「集めるべき星の欠片の総数」を返す。
  * 対象：
  *   - ITEM_TRIFORCE_PIECE('Q') タイル：直接拾える欠片
  *   - DARK_LORD('X') タイル：撃破で欠片を落とす魔王
  *   - ENEMY_META[tile].dropsTriforce === true なタイル：大型ボス等
  * ZARNEL('Z') は isFinalBoss で欠片を落とさないため含めない。
+ *
+ * ⚠️ テストレイヤー（`test_` 接頭辞）は除外する。ギミック検証ステージには
+ * dropsTriforce のボス（`J`/`L`）が置かれており、数えると必要な欠片数が
+ * 8 より増えてクリア不能になる（2026-07-25 テストレイヤー移設時に確認）。
  */
 export function countTriforces(mapData) {
 	if (!mapData) return 0;
 	let total = 0;
-	for (const ld of Object.values(mapData.layers ?? {})) {
+	for (const [, ld] of gameLayerEntries(mapData)) {
 		for (const sd of Object.values(ld.stages ?? {})) {
 			for (const row of sd.tiles ?? []) {
 				for (const tile of row) {
@@ -31,13 +36,14 @@ export function countTriforces(mapData) {
 }
 
 /**
- * mapData 全レイヤーを横断して欠片の所在リストを返す。
+ * mapData の本編レイヤーを横断して欠片の所在リストを返す。
  * 各エントリ: { kind: 'piece'|'boss', tile, label, layer, stage, r, c }
+ * countTriforces と同じ定義＝テストレイヤーは除外（エディタの欠片サマリも同数になる）。
  */
 export function listTriforceEntries(mapData) {
 	if (!mapData) return [];
 	const entries = [];
-	for (const [lk, ld] of Object.entries(mapData.layers ?? {})) {
+	for (const [lk, ld] of gameLayerEntries(mapData)) {
 		for (const [sk, sd] of Object.entries(ld.stages ?? {})) {
 			const tiles = sd.tiles ?? [];
 			for (let r = 0; r < tiles.length; r++) {

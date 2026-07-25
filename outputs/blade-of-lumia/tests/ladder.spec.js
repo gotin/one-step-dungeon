@@ -1,27 +1,25 @@
 // Phase 4-1: はしご（自動わたり）のスモークテスト
 //
-// ⚠️ ギミックテストはライブマップ（work/blade-of-lumia.json）を参照しない。
+// ⚠️ ギミックテストは本編ステージを参照しない。
 // dungeon_3 は Phase 9-2d で「水の迷宮」へ再設計され、旧はしごパズル（0,0/1,0）は
 // 撤去された（はしご＝D5報酬なので D3 に置くとソフトロック違反）。そのため
-// 旧 0,0/1,0 のジオメトリは tests/fixtures/test-stages.json の
-//   test_mechanics/ladder_pit    … 旧 0,0（PIT・単セル穴・横橋／縦連続水・はしご宝箱）
-//   test_mechanics/ladder_water2 … 旧 1,0（2連続水＝橋脚なしで渡れない不変条件）
-//   test_mechanics/ladder_isolated … (3,2) 孤立水（進入軸で向きが決まる回帰）
+// 旧 0,0/1,0 のジオメトリは test_mechanics レイヤーの
+//   ladder_pit      … 旧 0,0（PIT・単セル穴・横橋／縦連続水・はしご宝箱）
+//   ladder_water2   … 旧 1,0（2連続水＝橋脚なしで渡れない不変条件）
+//   ladder_isolated … (3,2) 孤立水（進入軸で向きが決まる回帰）
 // として複製・固定してある。ライブ dungeon_3 を編集してもこのテストは壊れない。
 import { test, expect } from '@playwright/test';
 import { waitForBoard } from './helpers.js';
+import { TEST_LAYER, stageKey } from './test-stage-keys.js';
 
 const GAME = '/blade-of-lumia/game/';
 
-const FIXTURE_SRC = '../tests/fixtures/test-stages.json';
-
-function previewUrl({ stage = 'ladder_pit', layer = 'test_mechanics', row, col, ladder, mapSrc = FIXTURE_SRC }) {
+function previewUrl({ stage = 'ladder_pit', layer = TEST_LAYER, row, col, ladder }) {
 	const p = new URLSearchParams({
-		fromEditor: '1', layer, stage,
+		fromEditor: '1', layer, stage: stageKey(stage),
 		row: String(row), col: String(col),
 	});
 	if (ladder) p.set('ps_ladder', '1');
-	if (mapSrc) p.set('ps_mapSrc', mapSrc);
 	return `${GAME}?${p.toString()}`;
 }
 
@@ -69,7 +67,7 @@ test.describe('Blade of Lumia – はしご', () => {
 	});
 
 	test('はしご所持でも2連続の水は渡れない（橋脚が無い）', async ({ page }) => {
-		// fixture ladder_water2（旧 dungeon_3 1,0）：row2 = "#..~~~~~~..#"（col3-8 が連続した水）。
+		// 検証ステージ ladder_water2（旧 dungeon_3 1,0）：row2 = "#..~~~~~~..#"（col3-8 が連続した水）。
 		// col2 から右へ進んでも、連続水は両隣が地上にならないため渡れない。
 		await page.goto(previewUrl({ stage: 'ladder_water2', row: 2, col: 2, ladder: true }));
 		await waitForBoard(page);
@@ -150,13 +148,13 @@ test.describe('Blade of Lumia – はしご', () => {
 	});
 
 	test('はしごの向きは進入軸で決まる：縦移動で入れば縦向き／横移動で入れば横向き', async ({ page }) => {
-		// フィクスチャ test_mechanics/ladder_isolated の (3,2) は孤立した水
+		// 検証ステージ ladder_isolated の (3,2) は孤立した水
 		//（上下左右すべて床＝陸）＝縦橋でも横橋でも成立する。
 		// 上から下へ入れば縦向き(ladderV)・左右から入れば横向き(ladderH) になるべき。
 		// （セルの地形だけで横優先に決めると、下移動なのに横向きになる不具合の回帰テスト）
 
 		// ── 縦（下移動）で進入 → 縦向き ──
-		await page.goto(previewUrl({ layer: 'test_mechanics', stage: 'ladder_isolated', row: 2, col: 2, ladder: true, mapSrc: FIXTURE_SRC }));
+		await page.goto(previewUrl({ stage: 'ladder_isolated', row: 2, col: 2, ladder: true }));
 		await waitForBoard(page);
 		await walk(page, 'down', 2);  // row2 → row3（c2 の水へ縦移動で入る）
 		let st = await page.evaluate(() => window.__game.getState());
@@ -167,7 +165,7 @@ test.describe('Blade of Lumia – はしご', () => {
 		expect(await ladder.first().getAttribute('data-orient')).toBe('v');  // 縦向き
 
 		// ── 横（右移動）で進入 → 横向き ──
-		await page.goto(previewUrl({ layer: 'test_mechanics', stage: 'ladder_isolated', row: 3, col: 1, ladder: true, mapSrc: FIXTURE_SRC }));
+		await page.goto(previewUrl({ stage: 'ladder_isolated', row: 3, col: 1, ladder: true }));
 		await waitForBoard(page);
 		await walk(page, 'right', 2);  // c1 → c2（水へ横移動で入る）
 		st = await page.evaluate(() => window.__game.getState());
@@ -201,7 +199,7 @@ test.describe('Blade of Lumia – はしご', () => {
 
 	// ── Phase 4-1c: 進入軸の通行判定 ──────────────────────────────
 	test('縦連続の水は縦方向には渡れない（col4 を下に進んでも止まる）', async ({ page }) => {
-		// fixture ladder_pit（旧 dungeon_3 0,0）の col4 は row2〜7 が水で縦に連続している（橋 v 含む）。
+		// 検証ステージ ladder_pit（旧 dungeon_3 0,0）の col4 は row2〜7 が水で縦に連続している（橋 v 含む）。
 		// 各セルは左右(col3,col5)が陸なので「横橋」としては成立するが、縦移動では
 		// 縦橋（上下が陸）でないため進入できない＝縦にスルスル渡れてはいけない。
 		await page.goto(previewUrl({ row: 1, col: 4, ladder: true }));
@@ -273,7 +271,7 @@ test.describe('Blade of Lumia – はしご', () => {
 	test('bgTiles 下地の水もはしごで渡れる＋渡り中に char-ladder が出る（移行回帰）', async ({ page }) => {
 		const errors = [];
 		page.on('pageerror', e => errors.push(e.message));
-		// fixture ladder_bg_bridge：row3 col4 だけ bgTiles 水（tiles は床）。上(2,4)/下(4,4)が
+		// 検証ステージ ladder_bg_bridge：row3 col4 だけ bgTiles 水（tiles は床）。上(2,4)/下(4,4)が
 		// 床＝縦橋成立。プレイヤー(8,4)から上へ進むと row3 の水を1セル渡って row2 以上へ抜ける。
 		await page.goto(previewUrl({ stage: 'ladder_bg_bridge', row: 8, col: 4, ladder: true }));
 		await waitForBoard(page);

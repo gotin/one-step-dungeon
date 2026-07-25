@@ -31,13 +31,14 @@ import { ENEMY_SPRITES, ENEMY_PAL } from '../shared/sprites-enemies.js';
 import { TILE_SPRITE_MAP } from '../shared/tile-sprites.js';
 import { createPassable } from '../game/passable.js';
 import { waitForBoard } from './helpers.js';
+import { TEST_LAYER, stageKey } from './test-stage-keys.js';
+import { gameLayerEntries } from '../shared/layers.js';
 
 const GAME = '/blade-of-lumia/game/';
-const FIXTURE_SRC = '../tests/fixtures/test-stages.json';
 function fishSwimUrl(stage = 'fish_swim') {
   const p = new URLSearchParams({
-    fromEditor: '1', layer: 'test_mechanics', stage,
-    row: '1', col: '5', ps_mapSrc: FIXTURE_SRC,
+    fromEditor: '1', layer: TEST_LAYER, stage: stageKey(stage),
+    row: '1', col: '5',
   });
   return `${GAME}?${p.toString()}`;
 }
@@ -215,9 +216,8 @@ test.describe('Phase 9-6 深洋O – aquatic enemy movement + 魚群', () => {
   test('⑪ 実 spawn：bgTiles 水プールの魚は陸へ出られない（tiles に水無し）', async ({ page }) => {
     const errors = [];
     page.on('pageerror', e => errors.push(e.message));
-    // この試作は tiles 層に水を持たず bgTiles のみ（fixture を直接確認）。
-    const fx = JSON.parse(readFileSync(fileURLToPath(new URL('./fixtures/test-stages.json', import.meta.url)), 'utf8'));
-    const st = fx.layers.test_mechanics.stages.fish_swim_bg;
+    // この試作は tiles 層に水を持たず bgTiles のみ（ステージ定義を直接確認）。
+    const st = MAP.layers[TEST_LAYER].stages[stageKey('fish_swim_bg')];
     expect(st.tiles.map(r => r.join('')).join('').includes('~'), 'tiles 層に水を持たない（bgTiles のみ）').toBe(false);
     expect(st.bgTiles['4,5'], '中心セルは bgTiles 水').toBe('~');
     await page.goto(fishSwimUrl('fish_swim_bg'));
@@ -261,8 +261,9 @@ test.describe('Phase 9-6 深洋O – aquatic enemy movement + 魚群', () => {
     expect(errors).toEqual([]);
   });
 
-  test('⑤ FISH_SCHOOL はまだライブマップに配置していない（部品のみ）', () => {
-    for (const [layerName, layer] of Object.entries(MAP.layers ?? {})) {
+  test('⑤ FISH_SCHOOL はまだ本編レイヤーに配置していない（部品のみ）', () => {
+    // テストレイヤー（test_*）は除外：検証ステージには当然 '&' が置いてある。
+    for (const [layerName, layer] of gameLayerEntries(MAP)) {
       for (const [sk, stage] of Object.entries(layer.stages ?? {})) {
         const flat = (stage.tiles ?? [])
           .map(row => (Array.isArray(row) ? row.join('') : String(row)))

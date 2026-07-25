@@ -5,6 +5,7 @@
 import { TILE } from '../shared/tiles.js';
 import { ENEMY_META } from '../shared/enemies.js';
 import { countTriforces } from '../shared/triforce.js';
+import { gameLayerEntries } from '../shared/layers.js';
 import { makeSprite } from '../shared/sprites.js';
 import { playSound, playBgm, stopBgm } from '../shared/sounds.js';
 import { SAVE_KEY, CLEARED_KEY, ALTAR_EXIT_ID } from './constants.js';
@@ -290,7 +291,8 @@ export function createBoss(deps) {
 	function altarExists() {
 		const mapData = getMapData();
 		if (!mapData) return false;
-		for (const ld of Object.values(mapData.layers ?? {})) {
+		// ⚠️ テストレイヤーは除外（ギミック検証ステージの祭壇で終盤フローが誤作動しない）。
+		for (const [, ld] of gameLayerEntries(mapData)) {
 			for (const sd of Object.values(ld.stages ?? {})) {
 				for (const row of sd.tiles ?? []) {
 					if (row.includes(TILE.ALTAR)) return true;

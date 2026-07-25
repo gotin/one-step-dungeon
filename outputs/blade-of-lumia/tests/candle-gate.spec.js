@@ -1,21 +1,21 @@
 // Phase 9-2e: ロウソク関門（H かがり火を全点灯 → torchesLit → 隠し > テレポートが出現）の不変条件テスト。
 //
-// ⚠️ ライブマップを参照しない。dungeon_4「炎の神殿」[1,1] かがり火の間のジオメトリを
-// tests/fixtures/test-stages.json の test_mechanics/candle_gate として複製・固定する。
+// ⚠️ 本編ステージを参照しない。dungeon_4「炎の神殿」[1,1] かがり火の間のジオメトリを
+// test_mechanics レイヤーの検証ステージ candle_gate として複製・固定する。
 //
 // 設計の核：消灯 H が 3 つ（initLitTorches なし）。ロウソクで全点灯すると
 // torchesLit → conditionsMet に '4,9' が追加 → 隠し > テレポートが出現・通行可。
 // 剣・矢・ブーメランでは torchesLit が成立しない（篝火に無効）。
 import { test, expect } from '@playwright/test';
 import { waitForBoard } from './helpers.js';
+import { TEST_LAYER, stageKey } from './test-stage-keys.js';
 
 const GAME = '/blade-of-lumia/game/';
-const FIXTURE_SRC = '../tests/fixtures/test-stages.json';
 
 function previewUrl({ row, col, candle = false, weapon = true, bow = false }) {
 	const p = new URLSearchParams({
-		fromEditor: '1', layer: 'test_mechanics', stage: 'candle_gate',
-		row: String(row), col: String(col), ps_mapSrc: FIXTURE_SRC,
+		fromEditor: '1', layer: TEST_LAYER, stage: stageKey('candle_gate'),
+		row: String(row), col: String(col),
 	});
 	if (candle) p.set('ps_candle', '1');
 	if (weapon) p.set('ps_weapon', '1');

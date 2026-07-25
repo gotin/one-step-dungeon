@@ -1,7 +1,7 @@
 // Phase 5-1: 色スイッチ（SWITCH_RED '['・SWITCH_BLUE ']'）と
 //            色ゲート（GATE_RED '('・GATE_BLUE ')'）のスモークテスト
 //
-// パズル配置（tests/fixtures/test-stages.json）：test_mechanics ステージ "color_switch"
+// パズル配置：ライブマップ test_mechanics レイヤーの検証ステージ "color_switch"
 //   row2: #[.......].#  ← [ = SWITCH_RED(2,1)  / ] = SWITCH_BLUE(2,9)
 //   row4: #..(...)..... ← ( = GATE_RED(4,3)    / ) = GATE_BLUE(4,7)
 //
@@ -13,16 +13,14 @@
 //  4) 剣でも色スイッチをアクティブ化できる
 import { test, expect } from '@playwright/test';
 import { waitForBoard } from './helpers.js';
+import { TEST_LAYER, stageKey } from './test-stage-keys.js';
 
 const GAME = '/blade-of-lumia/game/';
 
-const FIXTURE_SRC = '../tests/fixtures/test-stages.json';
-
-function previewUrl({ layer = 'test_mechanics', stage = 'color_switch', row, col, bow = true, weapon = false }) {
+function previewUrl({ layer = TEST_LAYER, stage = 'color_switch', row, col, bow = true, weapon = false }) {
 	const p = new URLSearchParams({
-		fromEditor: '1', layer, stage,
+		fromEditor: '1', layer, stage: stageKey(stage),
 		row: String(row), col: String(col),
-		ps_mapSrc: FIXTURE_SRC,
 	});
 	if (bow)    p.set('ps_bow',    '1');
 	if (weapon) p.set('ps_weapon', '1');
