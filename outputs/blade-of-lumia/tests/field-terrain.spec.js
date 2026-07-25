@@ -106,6 +106,14 @@ const WALKABLE_GROUND = new Set(['.', 'g', 'v']); // floor, grass islet, bridge
 // A cell value works whether tiles are stored as char-arrays or as row strings.
 const cellAt = (tiles, r, c) => (Array.isArray(tiles[r]) ? tiles[r][c] : tiles[r][c]);
 
+// Phase 9-6: water may now live on the bgTiles underlay (tiles cell is FLOOR).
+// The EFFECTIVE tile folds a bgTiles-water cell back to '~' so border/trap analysis
+// sees water the same whether it sits on tiles or bgTiles (mirrors passable.js
+// isWaterAt / connectivity.mjs cellTile). Without this, a moved water border cell
+// reads as a walkable '.' and the crossing looks open when the engine blocks it.
+const effCellAt = (s, r, c) =>
+  (s.bgTiles?.[`${r},${c}`] === '~' ? '~' : cellAt(s.tiles, r, c));
+
 // Hard-blocked border tiles (water/mountain/tree/…). A border cell is trap-free iff
 // it MIRRORS its facing neighbour: both walkable (a real crossing) or both blocked.
 const BLOCKED_BORDER = new Set(['~', 'M', 't', '#', 'x', '%', 'u', 'f']);
@@ -137,13 +145,13 @@ test.describe('Phase 9-4 – lake region rework (bridges + islands)', () => {
         [4, 0], [5, 0], [4, C - 1], [5, C - 1],        // left / right
       ];
       for (const [r, c] of openings) {
-        if (!isWalk(cellAt(t, r, c))) continue;         // closed cell → no crossing here
+        if (!isWalk(effCellAt(s, r, c))) continue;       // closed cell → no crossing here
         const f = facing(k, r, c, R, C);
         const ns = f && stages[f[0]];
         if (!ns) continue;                               // off-map → engine clamps, safe
-        const nch = cellAt(ns.tiles, f[1], f[2]);
+        const nch = effCellAt(ns, f[1], f[2]);
         if (BLOCKED_BORDER.has(nch) || !isWalk(nch))
-          bad.push(`${k}@${r},${c}=${cellAt(t, r, c)} → ${f[0]}@${f[1]},${f[2]}=${nch} (trap)`);
+          bad.push(`${k}@${r},${c}=${effCellAt(s, r, c)} → ${f[0]}@${f[1]},${f[2]}=${nch} (trap)`);
       }
     }
     expect(bad, `lake border openings lead into a wall (soft-lock):\n${bad.join('\n')}`).toEqual([]);

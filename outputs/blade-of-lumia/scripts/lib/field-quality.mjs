@@ -14,7 +14,7 @@
 // author — data can't lie). The connectivity numbers reuse connectivity.mjs so
 // there is one BFS, one BLOCKED rule. check-field-connectivity.mjs and the
 // field-invariants spec both import from here.
-import { bfsLayer, findOrphanRooms, findEntrances, isHardBlocked } from './connectivity.mjs';
+import { bfsLayer, findOrphanRooms, findEntrances, isHardBlocked, cellTile } from './connectivity.mjs';
 
 // ── Region label map (叩き台 ZONE_MAP from analyze-zone-rebalance.mjs) ────────
 // Rows = sy (0=north), cols = sx (0=west). Key format: "sx,sy" = stageKey.
@@ -194,11 +194,31 @@ const _THREAT = {
 // Hazard tiles on field (lava/pit/water-ford obstacles that threaten the player).
 const _HAZARD_TILES = new Set(['l', 'x', '~']);
 
+/**
+ * The stage's tiles as a flat array, but with each bgTiles-water cell folded to
+ * '~' (Phase 9-6 深洋O: water can live on the bgTiles underlay). This keeps the
+ * quality metrics (hazard count, route-terrain, similarity) seeing water the same
+ * whether it sits on the tiles layer or the bgTiles layer — so migrating water
+ * from tiles '~' to bgTiles '~' leaves every metric unchanged (Step C 自己検証の前提).
+ */
+function effectiveFlat(s) {
+  const bg = s.bgTiles;
+  if (!bg) return s.tiles.flat();
+  const out = [];
+  for (let r = 0; r < s.tiles.length; r++) {
+    const row = s.tiles[r];
+    for (let c = 0; c < row.length; c++) {
+      out.push(bg[`${r},${c}`] === '~' ? '~' : row[c]);
+    }
+  }
+  return out;
+}
+
 /** Compute battle difficulty score for a single screen.
  *  score = (enemyThreat + hazardScore) / expectedPower(region)
  */
 export function battleScore(stage, region) {
-  const flat = stage.tiles.flat();
+  const flat = effectiveFlat(stage);
   let threat = 0;
   const enemyCounts = {};
   for (const ch of flat) {
@@ -239,10 +259,10 @@ const LANDMARK_TILES = new Set(['^', 'o', 'h', 'p']);
 
 /** Count edge cells that are steppable-off (a proxy for real branch junctions). */
 function openEdgeCount(s) {
-  const { rows, cols, tiles } = s;
+  const { rows, cols } = s;
   let open = 0;
   const walk = (r, c) => {
-    const ch = tiles[r]?.[c];
+    const ch = cellTile(s, r, c);  // folds bgTiles water → '~' (blocked edge)
     return !(ch === undefined || isHardBlocked(ch));
   };
   // top / bottom
@@ -260,7 +280,7 @@ function openEdgeCount(s) {
  */
 export function screenAxes(s) {
   const axes = new Set();
-  const flat = s.tiles.flat();
+  const flat = effectiveFlat(s);
   const has = (ch) => flat.includes(ch);
   const mapEnters = s.mapEnters || {};
   const scVals = Object.values(s.showConditions || {});
@@ -307,7 +327,10 @@ function allBlockedScreens(stages) {
     let anyWalk = false;
     for (let r = 0; r < s.rows && !anyWalk; r++)
       for (let c = 0; c < s.cols; c++)
-        if (!isHardBlocked(s.tiles[r]?.[c])) { anyWalk = true; break; }
+        // cellTile folds bgTiles water underlay into '~' so an all-water screen
+        // (water on the bgTiles layer, floor on tiles) still counts as W1, matching
+        // the engine (isWaterAt) rather than seeing a walkable floor.
+        if (!isHardBlocked(cellTile(s, r, c))) { anyWalk = true; break; }
     if (!anyWalk) out.add(k);
   }
   return out;
@@ -407,7 +430,13 @@ export function duplicateLayoutGroups(mapData) {
   const byHash = new Map();
   for (const k of Object.keys(stages)) {
     const s = stages[k];
-    const hash = s.tiles.map((row) => row.join('')).join('|');
+    // Hash the EFFECTIVE tiles (bgTiles water folded into '~') so a screen keeps the
+    // same fingerprint whether its water sits on the tiles or bgTiles layer — the
+    // tiles '~' → bgTiles '~' migration must not change dup grouping (Step C 自己検証).
+    const bg = s.bgTiles;
+    const hash = s.tiles
+      .map((row, r) => row.map((ch, c) => (bg?.[`${r},${c}`] === '~' ? '~' : ch)).join(''))
+      .join('|');
     if (!byHash.has(hash)) byHash.set(hash, []);
     byHash.get(hash).push(k);
   }
@@ -456,8 +485,13 @@ export function warpEnterLandings(mapData) {
   // A landing survives on a flight/ladder tile: the actor keeps flying (SKY on
   // the sky-island / WATER / LAVA) rather than embedding in a solid wall.
   const FLIGHT_LAND = new Set(['%', '~', 'l']);
-  const tileAt = (d) =>
-    d && layers[d.layer]?.stages?.[d.stage]?.tiles?.[d.row]?.[d.col];
+  const tileAt = (d) => {
+    const st = d && layers[d.layer]?.stages?.[d.stage];
+    if (!st) return undefined;
+    // Fold bgTiles water underlay into '~' so a landing on a bgTiles-water cell is
+    // treated as a flight/ladder landing (survivable), matching isWaterAt.
+    return cellTile(st, d.row, d.col);
+  };
 
   const bad = [];
   const check = (kind, from, at, dest) => {
@@ -604,10 +638,12 @@ export function structuralSimilarityWarnings(mapData, opts = {}) {
   ];
 
   function featureVec(s) {
-    const flat = s.tiles.flat();
+    // effectiveFlat folds bgTiles water into '~' so the water histogram bucket is
+    // invariant under the tiles '~' → bgTiles '~' migration (Step C 自己検証).
+    const flat = effectiveFlat(s);
     const total = flat.length || 1;
     const hist = BUCKETS.map(([,pred]) => flat.filter(pred).length / total);
-    // 4-quadrant gimmick density
+    // 4-quadrant gimmick density (bgTiles water carries no gimmick, so tiles is fine here)
     const { rows, cols } = s;
     const mid_r = rows >> 1, mid_c = cols >> 1;
     const quads = [0,0,0,0];

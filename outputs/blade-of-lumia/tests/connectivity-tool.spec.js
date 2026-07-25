@@ -2,7 +2,7 @@ import { test, expect } from '@playwright/test';
 import {
   bfsLayer, isBlocked, isHardBlocked, BLOCKED, HARD_BLOCKED, SOLVABLE_GATES,
   findEntryRoom, firstWalkable, findOrphanRooms, findEntrances,
-  isLadderBridgeCell,
+  isLadderBridgeCell, cellTile,
 } from '../scripts/lib/connectivity.mjs';
 import { readFileSync } from 'fs';
 
@@ -346,6 +346,42 @@ test.describe('connectivity tool — --with-ladder (1-cell bridge)', () => {
     // No orphans (ladder bridges count as passable)
     const { orphans } = findOrphanRooms(stages, entrances);
     expect(orphans).toEqual([]);
+  });
+
+  // Phase 9-6 深洋O: water may live on the bgTiles underlay (so enemies can stand on
+  // it). cellTile folds bgTiles '~' into '~' so the checker blocks it the same as a
+  // tiles-layer '~', matching the engine's isWaterAt (tiles water OR bgTiles water).
+  // This is the safety net that makes the tiles '~' → bgTiles '~' migration honest:
+  // without it the checker would call a bgTiles-water cell walkable while the engine
+  // blocks it (a false green).
+  test('cellTile: bgTiles water underlay folds to ~ (tiles floor + bgTiles water = water)', () => {
+    const s = { rows: 3, cols: 3, tiles: [['.', '.', '.'], ['.', '.', '.'], ['.', '.', '.']],
+                bgTiles: { '1,1': '~' } };
+    expect(cellTile(s, 0, 0), 'plain floor stays floor').toBe('.');
+    expect(cellTile(s, 1, 1), 'floor over bgTiles water reads as water').toBe('~');
+    expect(isBlocked(cellTile(s, 1, 1)), 'bgTiles water blocks the walk').toBe(true);
+  });
+
+  test('bfsLayer: an all-bgTiles-water screen blocks foot travel (matches tiles water)', () => {
+    // Two rooms side by side; the right one is floored on the tiles layer but has a
+    // full bgTiles water underlay. Walking right must NOT enter it (it's a lake).
+    const left  = room([{ side: 'right', idx: 5 }], [{ r: 5, c: 11, ch: '.' }]);
+    const right = room([{ side: 'left',  idx: 5 }]);
+    // Paint the right room entirely as bgTiles water — including its left-edge
+    // opening cell (5,0), which is the exact cell you land on crossing right.
+    const bg = {};
+    for (let r = 0; r < right.rows; r++) for (let c = 0; c < right.cols; c++) bg[`${r},${c}`] = '~';
+    right.bgTiles = bg;
+    const stages = {
+      '0,0': { ...left, mapEnters: { '1,1': { id: 'e', destId: 'field' } } },
+      '1,0': right,
+    };
+    const { reachedRooms, deadEdges } = bfsLayer(stages, { stage: '0,0', row: 1, col: 1 });
+    // Crossing right lands on a bgTiles-water cell = hard-blocked arrival = dead edge,
+    // and the water room is never walked into.
+    expect(reachedRooms.has('1,0'), 'bgTiles-water room is not walkable').toBe(false);
+    expect(deadEdges.some(e => e.to === '1,0' && e.reason === 'arrival-wall'),
+      'stepping into bgTiles water is a dead edge').toBe(true);
   });
 });
 

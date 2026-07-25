@@ -236,6 +236,31 @@ test.describe('Phase 9-6 深洋O – aquatic enemy movement + 魚群', () => {
     expect(errors).toEqual([]);
   });
 
+  test('⑫ bgTiles 下地の水はアニメループの再描画対象（tiles 水と同じ揺らぎ・静止水にならない）', async ({ page }) => {
+    // Phase 9-6: tiles 水→bgTiles 水移行後も湖/海が波打つよう、redrawAnimSprites が
+    // bgTiles 水セルを再描画対象に含めることを検証する。animFrame はモジュール private で
+    // 外から進められないので、フレーム差分でなく「アニメループが water 下地を作り直す配線」を
+    // 決定的に確認する＝背景を消して redrawAnimSprites を呼ぶと復元されれば対象に入っている。
+    const errors = [];
+    page.on('pageerror', e => errors.push(e.message));
+    await page.goto(fishSwimUrl('fish_swim_bg'));
+    await waitForBoard(page);
+    const waterSel = '#board .cell[data-row="4"][data-col="5"]'; // bgTiles 水（中心）
+    await expect(page.locator(waterSel).first()).toHaveAttribute('data-bg-sprite', 'water');
+    const result = await page.evaluate(async (sel) => {
+      const mod = await import('/blade-of-lumia/shared/sprites.js');
+      const el = document.querySelector(sel);
+      const had = el.style.backgroundImage.includes('data:image');
+      el.style.backgroundImage = '';            // 波の1フレームを消す
+      mod.redrawAnimSprites();                   // アニメループ相当を1回
+      const restored = el.style.backgroundImage.includes('data:image');
+      return { had, restored };
+    }, waterSel);
+    expect(result.had, 'bgTiles 水に背景画像が敷かれていない').toBe(true);
+    expect(result.restored, 'redrawAnimSprites が bgTiles 水を再描画しない（静止水＝アニメ対象外）').toBe(true);
+    expect(errors).toEqual([]);
+  });
+
   test('⑤ FISH_SCHOOL はまだライブマップに配置していない（部品のみ）', () => {
     for (const [layerName, layer] of Object.entries(MAP.layers ?? {})) {
       for (const [sk, stage] of Object.entries(layer.stages ?? {})) {

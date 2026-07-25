@@ -108,8 +108,20 @@ export function redrawAnimSprites() {
 		const flipX  = cv.dataset.flipX === '1';
 		if (frames && frames.length > 1) drawSprite(cv, frames, pal, flipX);
 	});
-	// bg-tile はアニメーションしない（静止）
+	// bgTile は原則アニメーションしない（草/砂/雪…は静止）。ただし水下地
+	// （bgTiles 層の水 '~'）は tiles 層の水と同じ波アニメで揺らす（Phase 9-6 深洋O・
+	// tiles 水→bgTiles 水移行後も湖/海の見た目を保つため）。ANIMATED_BG_SPRITES に
+	// 載ったスプライトを敷いた cell だけ animFrame で background-image を作り直す。
+	document.querySelectorAll('.cell[data-bg-sprite]').forEach(cell => {
+		const sprName = cell.dataset.bgSprite;
+		if (!ANIMATED_BG_SPRITES.has(sprName)) return;
+		applyBgSpriteToCell(cell, sprName, cell.dataset.bgPal);
+	});
 }
+
+// 水下地のようにアニメーションさせる bgTile スプライト（波の揺らぎ）。
+// water 形状（普通の水／溶岩／潮ゲート）はこの集合に入れて背景でも動かす。
+const ANIMATED_BG_SPRITES = new Set(['water']);
 
 // 1フレーム分のスプライトを scale 倍のピクセルで描いた dataURL を返す（bg CSS repeat 用）
 // scale=2 なら 1dot=2px でcanvasに描くのでCSS拡大不要・pixelated 不要

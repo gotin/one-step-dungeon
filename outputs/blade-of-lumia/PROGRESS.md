@@ -14,6 +14,7 @@
 ## 📍 現在地（常に最新に保つ）
 
 - **進行中フェーズ：** **Phase 9（進行設計＆ダンジョン作り込み）— ゲームの背骨を作る ★★★最高**
+- **✅ Phase 9-6 深洋O ④＝0.5「tiles 水 → bgTiles 水 移行」完了（2026-07-25・🧠 Opus・方向B＝移行＋アニメ化）：** 水を単一ソース（bgTiles）へ集約。全レイヤーの tiles `~` 5720セル（field5628/d3:29/d5:10/d7:15/d8:38）を tiles`.`(FLOOR)＋bgTiles`~` に移行（`migrate-water-to-bgtiles.mjs`・移行後 tiles`~`=0/bgTiles`~`=5720）。**🔑 ユーザー確認で「移行方式の違いで全水のアニメが死ぬ」問題を発見し方向Bを確定＝2つの隠れコストを両方対応：(A) tiles水は canvas obj-sprite の2フレーム波アニメ／bgTiles水は CSS background で静止だった → `shared/sprites.js` の `redrawAnimSprites` に bgTiles 水セル（`ANIMATED_BG_SPRITES={water}`・`.cell[data-bg-sprite]` を走査）の再描画を追加＝湖/海の波が移行後も動く。(B) `connectivity.mjs`／`field-quality.mjs` は tiles 1文字だけで水/壁を判定＝移行後は水を床と誤認する偽の緑になる → `cellTile()`（tiles水 OR bgTiles水を`~`に畳む単一点＝実ゲーム isWaterAt の写し）を connectivity.mjs に新設し bfsLayer/cross/orphan(passOpenCell)/firstWalkable/isLadderBridgeCell(bank) を全経由・field-quality.mjs に `effectiveFlat()` を新設し allBlockedScreens(W1)/battleScore(hazard)/screenAxes(route)/openEdgeCount/duplicateLayout(hash)/similarity(featureVec)/warpEnterLandings(tileAt) を全経由。** migrate は自己検証型（`--dry`＝全レイヤー reachability〈walk＋ladder・全room起点union〉と field 全指標〈reached/orphans/w1/seams/traps/under2/dups〉が移行前後で byte 一致を assert＝throw で保証）。テスト＝`connectivity-tool.spec.js` に cellTile／全bgTiles水画面が徒歩不能 の2本・`aquatic-enemy.spec.js` ⑫（bgTiles水がアニメ対象＝背景消去→redraw復元で配線検証）・`field-terrain.spec.js` の湖 border 判定を `effCellAt`（bgTiles水を`~`に畳む）化。**全307テスト緑（VRT 緑＝起動直後の見た目 byte 不変）**・実ブラウザで field 9,8 湖（bgWater86セル・全て波背景 background-image あり）＋dungeon_5 堀を目視＋0 pageerror。**⚠️ 既存の tiles 水は移行済み＝今後の水は bgTiles 単一ソースで扱う。** 次は海棲雑魚②接近型・③遠隔型（記号タイル割当→enemies→スプライト→エディタ・水上配置は bgTiles水で可）→海の主→銀ブーメラン→25画面配置。**
 - **✅ Phase 9-6 深洋O ④＝19-11-D「敵の足元に水を敷けない」仕組み完了（2026-07-24・🧠 Opus・DESIGN §19-11-D）：** 水棲敵を水上に立たせる仕組み。**ユーザーとディスカッションで方向A確定＝水は「地形」なので bgTiles 層に置けるようにする（`BG_TILES` に WATER 追加）。** ユーザーの本質指摘＝「今のエディタ/通行仕組みを前提にするから記号を分ける話になる。**通行判定側を『bgTiles が水なら通れない（はしご/飛行は別）』に変えればいい**」＝記号を分けず `~` を bgTiles にも置けるようにするだけ。🔑 層モデル見直し＝bgTiles は「通れる飾り」でなく「地形そのもの（通れない水も入る）」・通行＝bgTiles(地形)通れる AND tiles(上の物)通れる。**安全＝今 bgTiles には通れる地面しか無い∴両層 AND に変えても既存全画面は不変**（新規 bgTiles 水だけが止める）。実装＝`passable.js` に **`isWaterAt(r,c)` 新設＝tiles 水 OR bgTiles 水の単一判定点**（tilePassable/enemyTilePassable/飛行・はしご上書き/isLadderBank/ladderOrientationAt を全て経由）／`shared/tiles.js`（BG_TILES+WATER）／`render-board.js`（bgTiles 水の色クラス・スプライトは既存経路で自動）／`editor-canvas.js`（`~` が BG_TILES 入りで水塗りが自動 bgTiles 行き＝コード改変不要）。`aquatic-enemy.spec.js` に⑧〜⑪の4本追加＝**全304テスト緑**（298＋6・VRT 緑）。試作 fixture `fish_swim_bg`（tiles に水無し・bgTiles 3×3 水プール＋魚群）で実ブラウザ目視＝**青い水プールの上に魚群スプライトが乗る**＋エディタ 0 pageerror。**⚠️ 既存 153 画面・5720 水セル（field132/d3:6/d5:1/d7:3/d8:11）の tiles 水 → bgTiles 移行は別セッション**（isWaterAt が両方見るので既存 tiles 水はそのまま動く＝移行は単一ソース化の整理・機能上は必須でない・migrate 1本＋connectivity 完全一致で一括）。次は 0.5 移行 → 海棲雑魚②接近型・③遠隔型（水上配置が bgTiles 水でできる）→ 海の主 → 銀ブーメラン → 25画面配置。**
 - **✅ Phase 9-6 深洋O ④実装フェーズ＝敵の遊泳属性 `move` 基盤＋海棲雑魚①魚群 完了（2026-07-23・🧠 Opus・DESIGN §19-11-A）：** アーム7「海が敵」の基盤（§19-8-A）。**①敵タイル記号枯渇はユーザー確定＝(a) 記号タイルを敵に割当**（AskUserQuestion・色スイッチ `[]()` が前例）＝魚群に `&`。**②遊泳属性 `ENEMY_META.move` を新設**（ユーザー確定＝「水陸両用は水と陸で動きを変えたい」）＝`land`(デフォルト・後方互換)／`water`(水泳ぐ・陸に上がれない)／`amphibious`(両生・`moveSpeed:{water,land}` で地形別速度)。**LAVA/SKY は誰も泳がない**。**③魚群 `FISH_SCHOOL`＝`move:'water'`・hp2・FAST・接触攻撃**（1体脆い＝数で包囲・同一文字を複数セルに置けば `enemyChase` の各自追跡で「包囲」が自然発生＝新規AI/spawn不要）。実装7ファイル＝`tiles.js`／`enemies.js`／`passable.js`（`enemyTilePassable(r,c,move)` 新設＝tilePassable の水不通を敵の move で上書き＝プレイヤーの飛行/はしご上書きと同じ構図）／`sprites-enemies.js`（青緑12×16・2フレーム＝群れが泳ぐ）／`tile-sprites.js`／`editor-palette.js`。`tests/aquatic-enemy.spec.js` 6本＋**全298テスト緑**（既存292＋6・VRT緑）。**実ブラウザで魚群スプライト2フレーム＋パレット 0 pageerror 目視。** **⚠️ `moveSpeed`(両生の地形別速度)は定義＋passable分岐のみ＝enemy-ai の速度切替は未実装**（両生敵が要るまで dead code 回避で保留）。**🔴 直後にユーザー報告バグ→即修正（2026-07-23・下記）＝`buildEnemies` が `move` を敵インスタンスにコピーし忘れ→水棲敵が陸を歩けていた。`game.js:430` に `move`/`moveSpeed` コピー追加＋実 spawn 経路の回帰テスト2本（fixture `fish_swim` ステージ新設）＝全300テスト緑。🔴 さらにユーザー報告で新論点＝「敵の足元に水を敷けない」（全敵共通・敵と水が両方 tiles 層で共存不可・bgTiles に WATER 無し＝水棲敵を水上に立たせる経路が無い＝DESIGN §19-11-D）。仕組み変更が要る∴次セッション最初に方向(A/B)をディスカッションしてから海棲雑魚②③へ。次は④残り＝【最優先】19-11-D 水下地の仕組み→海棲雑魚②接近型・③遠隔型→海の主→銀ブーメラン→25画面配置。**
 - **✅ Phase 9-6 深洋O ④実装フェーズ 着手＝潮ゲートタイル完了（2026-07-22・🧠 Opus・DESIGN §19-11）：** ④の着手順をユーザー確定＝**「新規コード基盤を先に固める→その後25画面のタイル配置」**（AskUserQuestion／新規敵・タイルが無いと画面設計が確定できない相互依存を断つため）。まず独立した部品＝**潮ゲートタイル `TILE.TIDE_GATE`（記号 `=`）を TDD で実装完了**（廊下C1〜C4の潮の満ち引き＝§19-8-B の中核）。**🔑 GATE(`T`) と同じ `links`→`ss.openGates` 機構を流用＝リアルタイム tick 不要**（スイッチ/ボタン ON で潮が引く）・GATE との唯一の違い＝**閉時の見た目と挙動が『壁』でなく『水』**。実装7ファイル＝`tiles.js`（定数＋META）／`passable.js`（`openGates` 分岐＋`FLYABLE_OVER` 追加＝閉時は飛行越え可・**`LADDER_OVER` 非追加**＝はしごで渡れると潮パズル無意味化）／`render-board.js`（閉時のみ水描画・開時床）／`tile-sprites.js`＋`sprites-tiles.js`（water 形状＋新 `tide` 青緑パレット＝普通の水と見分けがつく）／`connectivity.mjs`（`SOLVABLE_GATES` 追加＝スイッチで開く解ける門）／`editor-palette.js`（ギミックに追加）。`tests/tide-gate.spec.js` 5本＋**全292テスト緑**（既存287＋5・VRT緑）。**🔴 次のユーザー確認事項＝敵タイル記号の枯渇（英大文字A〜Z 26個すべて使用済み・海棲雑魚3種＋海の主で4記号要る＝記号タイル `&`/`-`/`+` 等を敵に割り当てる方針を確認してから海棲雑魚実装）。** 実ブラウザ目視は廊下画面設計時（配置先が未実装＝テスト④が `createPassable` 実ロジックで閉→開遷移を検証済み）。**次は④残り＝敵記号確認→海棲雑魚1種試作→残り2種＋海の主→銀ブーメラン→25画面配置。**
@@ -74,6 +75,37 @@
 ## セッションログ
 
 <!-- 新しいエントリを上に追加していく（最新が一番上） -->
+
+### 2026-07-25 — Phase 9-6 深洋O ④＝0.5「tiles 水 → bgTiles 水 移行（単一ソース化）」完了（🧠 Opus・方向B）
+
+**やったこと（🟢 デフォルトフロー・PROGRESS「▶ 次やること」の 0.5・着手前ディスカッション確定手順）：**
+- **着手前の調査で「migrate 1本」想定より広いスコープを発見し、方向をユーザー確認：**
+  - **水セル分布実測**＝tiles`~` 5720セル・153画面（field132/d3:6/d5:1/d7:3/d8:11）・bgTiles水は0（PROGRESS 記載と完全一致）。tiles`~`セルの下地は `g`5602/`s`13/`w`13/none92（水スプライトが覆っていた隠れテーマ）。
+  - **render-board 精読で描画方式の違いを発見**＝tiles水は `addCellSprite` の `makeSprite('water','water',true)`＝canvas obj-sprite で2フレーム波アニメ（`redrawAnimSprites` が毎tick再描画）／bgTiles水は `applyBgTileClass`→`applyBgSpriteToCell`＝CSS background で静止（コメントに「bg-tile はアニメーションしない」）。∴ 単純移行すると**既存の全水5720セルが波アニメを失う**。
+  - **connectivity.mjs／field-quality.mjs 精読**＝両方 tiles の1文字だけで水/壁を判定（bgTiles を見ない）。移行で tiles`~`→FLOOR にすると**チェッカーが水を床と誤認＝偽の緑**。
+  - → ユーザーに方式を確認＝**方向B（移行＋bgTiles水もアニメ化）** 確定。
+- **Step A：`shared/sprites.js` の `redrawAnimSprites` に bgTiles 水アニメ化を追加**＝`.cell[data-bg-sprite]` を走査し `ANIMATED_BG_SPRITES={water}` のものだけ `applyBgSpriteToCell` で作り直す（草/砂/雪は静止のまま）。`aquatic-enemy.spec.js` ⑫追加（背景を消して redraw→復元で「アニメループが bgTiles水を再描画対象に含む」配線を決定的に検証。animFrame は module-private でフレーム差分は外から作れないため）。
+- **Step B：検証基盤を bgTiles水対応（B-1＝両層OR判定に拡張・ユーザー確定）**
+  - `connectivity.mjs`＝**`cellTile(stage,r,c)` 新設**（tiles`~` OR bgTiles`~` を`~`に畳む＝実ゲーム isWaterAt の写し）。`isBlocked`/`isHardBlocked` はシグネチャ維持（テスト15本が1文字で呼ぶ）、**セル参照側を cellTile 経由に**＝bfsLayer の enq/cross/main、findOrphanRooms の passOpenCell、firstWalkable。`isLadderBridgeCell` に後方互換の第6引数 `bgTiles` を足し、bank が bgTiles水を橋脚から除外（passable.js isLadderBank と一致）。
+  - `field-quality.mjs`＝**`effectiveFlat(s)` 新設**（bgTiles水を`~`に畳んだ flat 配列）。allBlockedScreens(W1)/battleScore(hazard)/screenAxes(route)/openEdgeCount/duplicateLayout(hash)/similarity(featureVec)/warpEnterLandings(tileAt) を全経由。
+  - `connectivity-tool.spec.js` に2本追加（cellTile の畳み込み／全 bgTiles水画面が徒歩不能＝dead edge）。
+- **Step C：`migrate-water-to-bgtiles.mjs`（自己検証型）**＝全レイヤー走査で tiles`~`→`.`＋bgTiles`~`。`--dry` で**移行前後の snapshot が byte 一致を assert**（全レイヤー reachability〈walk＋ladder・全room起点 union〉＋field 全指標〈reached/orphans/w1/seams/traps/under2/dups〉）。dry で PASS 確認後に本実行＝5720セル移動（field5628/d3:29/d5:10/d7:15/d8:38）・tiles`~`=0/bgTiles`~`=5720。
+- **Step D：検証**＝全307テスト緑（VRT 緑＝起動直後の見た目 byte 不変）。実ブラウザで field 9,8 湖＝86セルが bgTiles水として波背景つきで描画（スクショ目視で移行前と同じ見た目・橋/小島/敵/プレイヤー正常）・dungeon_5 堀も描画・0 pageerror。
+- **回帰1件を修正**＝`field-terrain.spec.js` の湖 border trap テストが tiles を直接見て水判定していた（移行で tiles`~`→`.`＝歩ける開口と誤認）→ `effCellAt(s,r,c)`（bgTiles水を`~`に畳む）に置換して移行前と同一判定に戻した。
+- **記録**＝PLAN ④に 0.5 完了行・PROGRESS 現在地＋本ログ・DECISIONS 2026-07-25。
+
+**学び・気づき：**
+- **「migrate 1本」という当初想定は表層で、実体は「データ移行＋描画経路＋検証基盤」の3点セットだった。** 着手前に render-board と connectivity/field-quality を精読したから、移行後に「水のアニメが全部死ぬ」「チェッカーが偽の緑を出す」の2つを事前に潰せた。実装ありきで migrate だけ書いていたら、テストは緑なのに実ゲームで水が静止＋チェッカーが壊れる二重の劣化になっていた（[[field-tiles-are-char-arrays]]＝テスト緑でもゲームが落ちる、の同型リスク）。
+- **`cellTile`／`effectiveFlat` の「単一の畳み込み点」化が効いた**＝水判定が passable.js（6箇所）・connectivity.mjs（5箇所）・field-quality.mjs（7箇所）に散っていたが、各ファイルで「tiles水 OR bgTiles水を`~`に畳む」1関数に集約して全経由させた＝tiles水と bgTiles水を「同じ水」として扱う一貫性を各層1箇所で担保。[[field-water-tile-no-skins]]（水は単一の真実）の精神をチェッカー層にも徹底。
+- **自己検証型 migrate（移行前後の snapshot byte 一致）が「機能上必須でない整理」の安全網になった**＝isWaterAt が両層を見るので移行しても機能は不変のはず、を「実際に reachability と全指標が1バイトも変わらない」で機械証明。整理系の移行こそ「何も変わっていない」を証明できないと壊れても気づけない。
+- **VRT が起動直後1フレームのスナップショットである性質が、アニメ追加の安全確認に効いた**＝bgTiles水アニメを足しても animFrame=0 の初期見た目は不変＝VRT 緑が「既存描画を壊していない」の裏取りになった。
+
+**▶ 次やること（着手前にユーザーとディスカッション＝確定手順）：**
+1. **海棲雑魚②接近型**（`move:'water'`・水中を潜って迷い寄る）＝記号タイル割当→enemies.js→スプライト→エディタ。**③遠隔型**（水飛ばし）。水上配置は bgTiles 水でできる（0.5 完了で水は単一ソース）。
+2. **海の主ミニボス**（§19-9）→ **銀のブーメラン**（§19-11-C 2）→ **25画面のタイル配置**。
+**コミット未実行＝下記メッセージ案の提示まで（WORKFLOW規定）。**
+
+---
 
 ### 2026-07-24 — Phase 9-6 深洋O ④＝19-11-D「敵の足元に水を敷けない」仕組み完了（🧠 Opus）
 

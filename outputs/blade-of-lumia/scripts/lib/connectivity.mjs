@@ -73,6 +73,22 @@ export const SOLVABLE_GATES = new Set([
 
 export const BLOCKED = new Set([...HARD_BLOCKED, ...SOLVABLE_GATES]);
 
+/**
+ * The EFFECTIVE tile at (r,c) for walk analysis, folding the bgTiles water underlay
+ * into the tiles layer. Mirrors game/passable.js isWaterAt: a cell is water if the
+ * tiles layer is '~' OR the bgTiles layer is '~'. Phase 9-6 深洋O put water on the
+ * bgTiles layer (so enemies can stand on it), so a stage whose tiles cell is FLOOR
+ * but whose bgTiles cell is '~' must be treated as water here too — otherwise the
+ * checker would call it walkable while the engine blocks it (a false green).
+ * Any non-water bgTiles value is ignored (only the tiles char carries walls/gates).
+ */
+export function cellTile(stage, r, c) {
+  const ch = stage.tiles[r]?.[c];
+  if (ch === TILE.WATER) return ch;                        // already water
+  if (stage.bgTiles?.[`${r},${c}`] === TILE.WATER) return TILE.WATER; // water underlay
+  return ch;
+}
+
 /** A tile char blocks the pure walk? (undefined / ' ' = empty floor = walkable.) */
 export function isBlocked(ch) {
   if (ch === undefined || ch === ' ') return false;
@@ -96,9 +112,12 @@ export function isHardBlocked(ch) {
  * @param {number} r
  * @param {number} c
  */
-export function isLadderBridgeCell(tiles, rows, cols, r, c) {
+export function isLadderBridgeCell(tiles, rows, cols, r, c, bgTiles = null) {
   const bank = (br, bc) => {
     if (br < 0 || br >= rows || bc < 0 || bc >= cols) return false;
+    // Phase 9-6: a bank cell that is bgTiles water is NOT land (mirrors passable.js
+    // isLadderBank, which excludes bgTiles water underlay from being a bridge pier).
+    if (bgTiles?.[`${br},${bc}`] === TILE.WATER) return false;
     const t = tiles[br]?.[bc];
     if (t === undefined || t === ' ') return true;   // empty floor
     return !HARD_BLOCKED.has(t) && !SOLVABLE_GATES.has(t) && !LADDER_OVER.has(t);
@@ -145,11 +164,11 @@ export function bfsLayer(stages, start, opts = {}) {
     const s = stages[k];
     if (!s) return false;
     if (r < 0 || c < 0 || r >= s.rows || c >= s.cols) return false;
-    const ch = s.tiles[r]?.[c];
+    const ch = cellTile(s, r, c);
     if (isBlocked(ch)) {
       // With ladder: a 1-cell-wide WATER/PIT bridge is passable.
       if (withLadder && LADDER_OVER.has(ch) &&
-          isLadderBridgeCell(s.tiles, s.rows, s.cols, r, c)) {
+          isLadderBridgeCell(s.tiles, s.rows, s.cols, r, c, s.bgTiles)) {
         // falls through to enqueue
       } else {
         return false;
@@ -181,12 +200,12 @@ export function bfsLayer(stages, start, opts = {}) {
       deadEdges.push({ from: fromK, dir, to: toK, at: `${r},${c}`, reason: 'oob' });
       return;
     }
-    const arrival = dest.tiles[r]?.[c];
+    const arrival = cellTile(dest, r, c);
     if (isHardBlocked(arrival)) {
       // With ladder: a 1-cell-wide WATER/PIT bridge at the border is not a dead
       // edge — it's a legitimate ladder crossing (enq will handle passability).
       if (withLadder && LADDER_OVER.has(arrival) &&
-          isLadderBridgeCell(dest.tiles, dest.rows, dest.cols, r, c)) {
+          isLadderBridgeCell(dest.tiles, dest.rows, dest.cols, r, c, dest.bgTiles)) {
         enq(toK, r, c);
         return;
       }
@@ -309,9 +328,9 @@ export function findOrphanRooms(stages, entrances) {
   // the dungeon, so these are "soft gates" equivalent to key-doors for the purpose
   // of orphan analysis. Multi-cell water/pit remains hard-blocked.
   const passOpenCell = (s, r, c) => {
-    const ch = s.tiles[r]?.[c];
+    const ch = cellTile(s, r, c);
     if (!isHardBlocked(ch)) return true;
-    if (LADDER_OVER.has(ch) && isLadderBridgeCell(s.tiles, s.rows, s.cols, r, c)) return true;
+    if (LADDER_OVER.has(ch) && isLadderBridgeCell(s.tiles, s.rows, s.cols, r, c, s.bgTiles)) return true;
     return false;
   };
 
@@ -380,7 +399,7 @@ export function checkGridAdjacency(stages) {
 export function firstWalkable(stage) {
   for (let r = 0; r < stage.rows; r++)
     for (let c = 0; c < stage.cols; c++)
-      if (!isBlocked(stage.tiles[r]?.[c])) return { row: r, col: c };
+      if (!isBlocked(cellTile(stage, r, c))) return { row: r, col: c };
   return { row: 1, col: 1 };
 }
 

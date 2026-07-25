@@ -8,6 +8,23 @@
 
 ---
 
+### 2026-07-25 — Phase 9-6 深洋O ④＝0.5「tiles 水 → bgTiles 水 移行（単一ソース化）」を方向B（移行＋アニメ化）で完了（🧠 Opus・ユーザーとディスカッション）
+- **決定＝全レイヤーの tiles 水 `~`（5720セル・field/d3/d5/d7/d8）を tiles`.`(FLOOR)＋bgTiles`~` に移行し、水を bgTiles 単一ソースへ集約する。** 19-11-D で水が両層に居られるようになった（isWaterAt が tiles水 OR bgTiles水）＝水の置き場が2つある状態の整理。
+- **🔑 着手前の調査で「migrate 1本」想定が誤りと判明＝実体は「データ移行＋描画経路＋検証基盤」の3点セット。** render-board 精読で(A) tiles水は canvas obj-sprite の2フレーム波アニメ／bgTiles水は CSS background で静止、connectivity/field-quality 精読で(B) 両方 tiles 1文字だけで水判定（移行で水を床と誤認＝偽の緑）を事前に発見。
+- **方式をユーザー確認＝方向B（移行＋bgTiles水もアニメ化）。** 代替＝(A)移行しない〈isWaterAt が両層吸収済みなので tiles水=湖/海・bgTiles水=敵の足元 で両立〉／(C)移行して静止水を許容〈見た目後退〉。→ ユーザーは「湖/海の波を保ちつつ単一ソース化」＝B を選択。
+- **理由＝水の置き場が2つあると今後の水作業がどちらを触るか毎回迷う＝単一ソース（bgTiles）に寄せると以後は下地だけ触ればよい**（[[field-water-tile-no-skins]] の「水は単一の真実」をデータ層でも徹底）。見た目後退（アニメ喪失）は描画経路を1箇所直せば回避できるので B が正しい。
+- **実装＝A/B/C/D の4ステップ：**
+  - **A（描画）** `shared/sprites.js` の `redrawAnimSprites` に `.cell[data-bg-sprite]` 走査を追加し `ANIMATED_BG_SPRITES={water}` のセルだけ `applyBgSpriteToCell` で作り直す（草/砂/雪は静止のまま）。→ 湖/海の波が移行後も動く。
+  - **B（検証基盤・B-1＝両層OR判定に拡張）** `connectivity.mjs` に **`cellTile(stage,r,c)`**（tiles水 OR bgTiles水を`~`に畳む＝isWaterAt の写し）を新設し bfsLayer/cross/orphan/firstWalkable/isLadderBridgeCell(bank・後方互換の第6引数 bgTiles) を全経由。`field-quality.mjs` に **`effectiveFlat(s)`** を新設し W1/battleScore/screenAxes/openEdgeCount/duplicateLayout(hash)/similarity/warp着地 を全経由。**`isBlocked`/`isHardBlocked` のシグネチャは1文字のまま維持**（依存テスト15本を壊さない）＝セル参照側だけ実効タイル化。
+  - **C（移行）** `migrate-water-to-bgtiles.mjs`（自己検証型）＝`--dry` で移行前後の snapshot が byte 一致を assert（全レイヤー reachability〈walk＋ladder・全room起点union〉＋field 全指標）してから本実行。
+  - **D（検証）** 全307テスト緑（VRT 緑＝見た目 byte 不変）＋実ブラウザ目視（field 9,8 湖 bgWater86セル波背景・0 pageerror）。
+- **安全性の根拠＝isWaterAt が両層を見る＋移行前は bgTiles水が0だった**＝cellTile/effectiveFlat は移行前は tiles.flat と完全同一を返す（既存指標が1バイトも動かない＝Step B 単体で全76テスト緑・baseline 不変で確認）。移行後は bgTiles水を`~`に畳んで実ゲームと一致。
+- **回帰1件＝`field-terrain.spec.js` の湖 border trap テストが tiles を直接見て水判定していた**（移行で tiles`~`→`.`＝歩ける開口と誤認）→ `effCellAt`（bgTiles水を`~`に畳む）に置換。
+- **学び＝「整理系の移行」こそ自己検証（移行前後の byte 一致）が命綱。** 「isWaterAt が両層見るから機能不変のはず」を口約束にせず、reachability と全指標が1バイトも変わらないと機械証明した。着手前に描画/検証コードを精読したから、テストは緑なのに実ゲームで水が静止＋チェッカーが偽の緑、という二重劣化を事前に潰せた（[[field-tiles-are-char-arrays]] の「テスト緑でもゲームが落ちる」と同型のリスク）。
+- **次＝海棲雑魚②接近型・③遠隔型（水上配置が bgTiles水でできる）→ 海の主 → 銀ブーメラン → 25画面配置（着手前ディスカッション）。**
+
+---
+
 ### 2026-07-24 — Phase 9-6 深洋O ④＝19-11-D「敵の足元に水を敷けない」を方向A（水を bgTiles 下地に）で解決（🧠 Opus・TDD・ユーザーとディスカッション）
 - **決定＝水を「地形」として bgTiles 層に置けるようにする（`BG_TILES` に WATER 追加）＝敵（tiles 層）と水（bgTiles 層）を同一セルに共存させる。** 症状＝水棲敵（魚群 `&`）を水上に置けない（敵も水も tiles 層で1セル共存不可）。
 - **🔑 方向確定の経緯＝最初は「1記号=1層」制約から記号分割案（`~`=壁の水／新記号=下地の水）を提示したが、ユーザーが根本の思い込みを指摘。** 「今のエディタ実装＋今の通行仕組みを前提にするから記号を分ける話になる。**通行判定側を『bgTiles が水なら通れない（はしご/飛行は別）』に変えればいいだけ**」。→ 記号は分けず、通行判定を「tiles 水 OR bgTiles 水で不通」に一般化する方向Aに確定。
