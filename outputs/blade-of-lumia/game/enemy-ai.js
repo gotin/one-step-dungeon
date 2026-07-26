@@ -51,7 +51,27 @@ export function createEnemyAi(deps) {
 		// Phase 5-3: 敵が石を押すパズル
 		getCurrentLayer, getStageKey, getSS, tilePassable,
 		checkStoneOnSwitch, evaluateConditions, renderBoard, renderChars,
+		// Phase 9-6: 両生敵（amphibious）の地形別速度に使う水判定
+		isWaterAt,
 	} = deps;
+
+	// ── 速度の解決（Phase 9-6）─────────────────────────────────
+	// 敵の1tickあたりの移動量を返す。
+	//   基準は **e.speed**（インスタンス値）… boss.js の checkBossPhase が
+	//   フェーズ移行で e.speed を書き換えるため。meta.speed を直接読むと
+	//   フェーズ加速が無視される（従来の実装はここが meta.speed だった）。
+	//   その上に **地形倍率** を掛ける … meta.moveSpeed = { water, land } を持つ
+	//   両生敵（海の主）は水では速く陸では鈍い。moveSpeed が無い敵（＝既存の全敵）は
+	//   倍率 1 ＝従来どおりの挙動。
+	function resolveEnemySpeed(e, meta) {
+		const base = e.speed ?? meta?.speed ?? 0;
+		const ms = meta?.moveSpeed;
+		if (!ms) return base;
+		const r = toTileRow(e.y), c = toTileCol(e.x);
+		const onWater = isWaterAt ? isWaterAt(r, c) : false;
+		const factor = (onWater ? ms.water : ms.land) ?? 1;
+		return base * factor;
+	}
 
 	// ── Phase 5-3: 敵が石を押す ────────────────────────────────
 	// プレイヤーの tryPushStone（player.js）と同じ規則で、敵が移動しようとした
@@ -323,7 +343,7 @@ export function createEnemyAi(deps) {
 					}
 				}
 
-				e.accum = (e.accum ?? 0) + meta.speed;
+				e.accum = (e.accum ?? 0) + resolveEnemySpeed(e, meta);
 				if (e.accum >= 1.0) {
 					e.accum -= 1.0;
 					const step = MOVE_STEP;
@@ -438,7 +458,7 @@ export function createEnemyAi(deps) {
 					const step = MOVE_STEP;
 					const cands = Math.abs(dy) >= Math.abs(dx)
 						? [[rdy*step,0],[0,rdx*step]] : [[0,rdx*step],[rdy*step,0]];
-					e.accum = (e.accum ?? 0) + meta.speed;
+					e.accum = (e.accum ?? 0) + resolveEnemySpeed(e, meta);
 					if (e.accum >= 1.0) {
 						e.accum -= 1.0;
 						for (const [my,mx] of cands) {
@@ -708,7 +728,7 @@ export function createEnemyAi(deps) {
 			if (meta.hitAndAway) {
 				bossTickHitAndAway(e, meta);
 			} else {
-				enemyChase(e, meta.speed);
+				enemyChase(e, resolveEnemySpeed(e, meta));
 			}
 			// 潜行中は攻撃しない（水中に隠れて寄るだけ）
 			if (e.submerged) continue;
@@ -719,6 +739,7 @@ export function createEnemyAi(deps) {
 	return {
 		enemyTick,
 		enemyChase,
+		resolveEnemySpeed,   // Phase 9-6: 地形別速度（両生敵）のテスト用
 		bossTickHitAndAway,
 		enemyAttack,
 		checkEnemyContact,

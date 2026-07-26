@@ -44,6 +44,8 @@ import { enemyW, enemyH, enemyCenter } from './hitbox.js';
  *   stopGameLoop()               – ゲームループ停止
  *   startGameLoop()              – ゲームループ開始
  *   onBossDefeated(boss)         – ボス撃破演出（boss.js から注入）
+ *   shouldBossYield(boss)        – yieldAt ボスが合格ラインに達したか（Phase 9-6）
+ *   onBossYielded(boss)          – yieldAt ボスの戦闘終了＝合格演出（Phase 9-6）
  *   updateBossHpBar(boss)        – ボスHPバー更新
  *   checkBossPhase(boss)         – ボスフェーズチェック
  *   openShop(shopData)           – ショップ
@@ -73,6 +75,7 @@ export function createCombat(deps) {
 		updateHud, pulse, saveGame,
 		stopGameLoop, startGameLoop,
 		onBossDefeated,
+		shouldBossYield, onBossYielded,
 		updateBossHpBar, checkBossPhase,
 		openShop, startDialog,
 		hasCleared,
@@ -182,6 +185,13 @@ export function createCombat(deps) {
 	function dealDamageToEnemy(e, dmg, atkType) {
 		if (e.hp <= 0) return;
 		const meta = ENEMY_META[e.type];
+		// Phase 9-6 深洋O: 合格済みの yieldAt ボス（海の主）はもう傷つかない。
+		// onBossYielded は async（await sleep を挟む）∴演出中も攻撃は届き続ける。
+		// _yielded で弾かないと「合格 → 追撃で HP0 → killEnemy」＝倒せてしまう。
+		if (e._yielded) {
+			showDmgPopupFloat(e.x, e.y, 0, true, false);
+			return;
+		}
 		// Phase 9-6 深洋O: 潜行中（潜み鮫が水中に隠れている間）は全ての攻撃が無効。
 		// 浮上した瞬間だけ殴れる＝リズム戦闘（meleeOnly と同じ「0ダメージポップアップ」）。
 		if (e.submerged) {
@@ -197,7 +207,11 @@ export function createCombat(deps) {
 		const isWeak = !!(atkType && weakness && weakness.type === atkType);
 		const effective = isWeak ? Math.round(dmg * (weakness.multiplier ?? 2)) : dmg;
 		const actual = Math.max(1, effective - e.def);
-		e.hp -= actual;
+		// Phase 9-6: yieldAt ボスの HP は合格ラインより下へは落とさない。
+		// 大ダメージ1発で 0 まで飛ぶと HP バーが空＝見た目は「倒した」になる。
+		// 床を張れば「HP を残して戦いが終わった」が画面上でも読める。
+		const yieldFloor = meta?.yieldAt ? Math.max(1, Math.ceil(e.maxHp * meta.yieldAt)) : null;
+		e.hp = yieldFloor != null ? Math.max(yieldFloor, e.hp - actual) : e.hp - actual;
 		if (isWeak) {
 			playSound('key');          // 弱点ヒットは高めの「キンッ」で区別（専用SE代用）
 			showWeaknessBurst(e);
@@ -208,6 +222,9 @@ export function createCombat(deps) {
 		if (meta?.isBoss) {
 			updateBossHpBar(e);
 			checkBossPhase(e);
+			// Phase 9-6: yieldAt を持つボス（海の主）は HP0 を待たず、閾値以下で
+			// 戦闘終了＝合格に分岐する。撃破（killEnemy → 爆発 → 欠片）には流さない。
+			if (shouldBossYield?.(e)) { onBossYielded?.(e); return; }
 		}
 		if (e.hp <= 0) killEnemy(e);
 	}

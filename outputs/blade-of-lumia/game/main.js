@@ -31,6 +31,7 @@ import {
 	callEquipSwordTier,
 	callEquipArmorTier,
 	callEquipShieldTier,
+	callEquipBoomerangTier,
 	callUpdateHud,
 	callGainHeartContainer,
 	callGrantReward,
@@ -100,6 +101,9 @@ window.__game = {
 		id: p.id, owner: p.owner, type: p.type,
 		x: p.x, y: p.y, dx: p.dx, dy: p.dy,
 		atk: p.atk,
+		// Phase 9-6: ブーメランティア（速度・射程）の検証用
+		speed: p.speed,
+		maxRange: p.maxRange,
 		returning: p.returning ?? false,
 		flaming: p.flaming ?? false,
 		// Phase 4-6: ブーメランが運搬中のアイテム数（テスト観測用）
@@ -130,6 +134,8 @@ window.__game = {
 	// Phase 7-2: 防具・盾ティアテスト用
 	equipArmorTier: (idx) => callEquipArmorTier(idx),
 	equipShieldTier: (idx) => callEquipShieldTier(idx),
+	// Phase 9-6: ブーメランティアテスト用
+	equipBoomerangTier: (idx) => callEquipBoomerangTier(idx),
 	updateHud: () => callUpdateHud(),
 	// Phase 7-3: ハートの器テスト用
 	gainHeartContainer: () => callGainHeartContainer(),

@@ -47,6 +47,24 @@ export const SHIELD_TIERS = [
 	{ key: 'mirror', name: 'ミラーシールド', sprite: 'shieldMirror', pal: 'shieldMirror', reflect: 1.0 },
 ];
 
+// ── ブーメランティア定義（Phase 9-6 深洋O）── ブーメランの段階の単一の真実 ──
+// player.boomerangTier (-1=未所持, 0..1=ティア) で管理する。
+// 「銀のブーメラン」を別サブアイテムにせず**木のブーメランを置き換える**（ユーザー確定
+// 2026-07-26）。理由＝サブアイテム枠を2つ使うと「木と銀を持ち替える」無意味な選択が
+// 生まれる。剣/防具/盾（SWORD_TIERS 等）と同じティア方式に揃える＝下位は拾っても無視。
+//   atk      … ブーメランの固定ダメージ（剣 ATK は使わない）
+//   speed    … 飛翔速度（projectile.js boomerangStep が proj.speed を参照）
+//   maxRange … 折り返し距離（同 proj.maxRange を参照）
+// ∴ 発射時に値を差し替えるだけでよく、飛翔ロジックの改変は不要。
+export const BOOMERANG_TIERS = [
+	// index 0: 木のブーメラン（従来の値そのまま＝既存挙動の回帰）
+	{ key: 'wood',   name: 'ブーメラン',     atk: 3, speed: 2.0, maxRange: 3 },
+	// index 1: 銀のブーメラン（海の主の報酬。速く・遠く・強い）
+	// speed 5.0 ＝ 20.8セル/秒＝弓矢（4.5＝18.8）より速い（ユーザー確定 2026-07-26
+	// 「もっと速くてよさそう」＝3.0 では上位品なのに矢より鈍かった）。
+	{ key: 'silver', name: '銀のブーメラン', atk: 6, speed: 5.0, maxRange: 6 },
+];
+
 // ── ITEM_META: サブアイテム定義 ───────────────────────────────
 export const ITEM_META = {
 	boomerang: {

@@ -30,6 +30,7 @@ export const TILE = {
 	FISH_SCHOOL:  '&',  // 魚群（水棲・低HP多数で包囲する雑魚。水しか泳げない＝陸に上がれない）
 	LURK_SHARK:   '<',  // 潜み鮫（水棲・接近型。潜行↔浮上を繰り返す＝潜行中は無敵で寄ってくる）
 	ARCHER_FISH:  '/',  // 射水魚（水棲・遠隔型。水中から水弾を任意角で飛ばす＝陸のプレイヤーを狙う）
+	SEA_LORD:     '{',  // 海の主（両生・2×2 ミニボス。聖域の門番＝倒さず「認められる」＝欠片は落とさない）
 	// NPC（Dungeon World 継承）
 	PRINCESS: 'P',   // 姫
 	// ギミック（Dungeon World 継承）
@@ -137,6 +138,7 @@ export const TILE_META = {
 	[TILE.FISH_SCHOOL]:    { label: '魚群',                 color: '#1a6a7a', passable: true, icon: '＆' },
 	[TILE.LURK_SHARK]:     { label: '潜み鮫',               color: '#14485c', passable: true, icon: '＜' },
 	[TILE.ARCHER_FISH]:    { label: '射水魚',               color: '#2a7a9a', passable: true, icon: '／' },
+	[TILE.SEA_LORD]:       { label: '海の主',               color: '#123a5a', passable: true, icon: '｛' },
 	// NPC
 	[TILE.PRINCESS]:{ label: '姫',           color: '#aa4488', passable: true,  icon: '♀' },
 	[TILE.NPC_A]:   { label: 'NPC（村人）',  color: '#448844', passable: true,  icon: 'Ａ' },

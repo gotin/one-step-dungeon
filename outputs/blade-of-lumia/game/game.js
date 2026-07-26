@@ -2,7 +2,7 @@
 // Phase 1: マップ読み込み・プレイヤー移動（半セル）・ステージ遷移
 import { TILE, BG_TILES } from '../shared/tiles.js';
 import { ENEMY_META, ENEMY_SPEED_NORMAL } from '../shared/enemies.js';
-import { ITEM_META, EQUIP_META } from '../shared/items.js';
+import { ITEM_META, EQUIP_META, BOOMERANG_TIERS } from '../shared/items.js';
 import { NPC_SPRITE_MAP, NPC_DEFAULT_DIALOG } from '../shared/npcs.js';
 import {
 	SPRITES, PAL, drawSpriteFrame,
@@ -109,6 +109,8 @@ let player = {
 	// Phase 7-2: 防具ティア（-1=なし, 0=布, 1=鎖, 2=伝説）/ 盾ティア（-1=なし, 0=木, 1=鉄, 2=ミラー）。
 	armorTier: -1,
 	shieldTier: -1,
+	// Phase 9-6: ブーメランティア（-1=未所持, 0=木, 1=銀）。
+	boomerangTier: -1,
 	// Phase 7-4: ガチャ天井カウンタ。キー="layer:stageKey:posKey"→引いた回数。プレーンオブジェクトなので saveGame で自動保持。
 	gachaPulls: {},
 };
@@ -525,6 +527,7 @@ let restoreCarried      = () => {};
 let equipSwordTier      = () => false;
 let equipArmorTier      = () => false;
 let equipShieldTier     = () => false;
+let equipBoomerangTier  = () => false;
 let grantReward         = () => '';
 let toggleSwitch        = () => {};
 let setActiveColor      = () => {};
@@ -571,7 +574,7 @@ function setIsShielding(v){ isShielding = v; }
 // これらの関数は再代入される可変状態を参照するため、状態 getter と依存関数を
 // factory に注入して生成する（getter 経由で常に最新状態を読む）。生成された
 // 関数は呼び出し側を変えずにそのまま使える。
-const { isPassable, tilePassable, isPassableForEnemy, ladderOrientationAt } = createPassable({
+const { isPassable, tilePassable, isPassableForEnemy, ladderOrientationAt, isWaterAt } = createPassable({
 	getStageData:    () => stageData,
 	getEnemies:      () => enemies,
 	getPlayer:       () => player,
@@ -780,6 +783,8 @@ const { checkStoneOnSwitch, evaluateConditions } = createConditions({
 		getStageKey:           () => stageKey,
 		getSS,
 		tilePassable:          (r, c) => tilePassable(r, c),
+		// Phase 9-6: 両生敵（海の主）の地形別速度に使う水判定
+		isWaterAt:             (r, c) => isWaterAt(r, c),
 		checkStoneOnSwitch:    () => checkStoneOnSwitch(),
 		evaluateConditions:    () => evaluateConditions(),
 		renderBoard:           () => renderBoard(),
@@ -863,6 +868,8 @@ const { checkStoneOnSwitch, evaluateConditions } = createConditions({
 		saveGame:     () => saveGame(),
 		stopGameLoop, startGameLoop,
 		showExplosionEffect: (r, c) => showExplosionEffect(r, c),
+		// Phase 9-6: stageData.bossReward の授与（player.js の共通付与口を注入）
+		grantReward:  (content) => grantReward(content),
 		bossHpbarEl, bossNameEl, bossHpFillEl,
 		endingOverlayEl,
 		hasCleared, saveCleared,
@@ -901,6 +908,9 @@ const { checkStoneOnSwitch, evaluateConditions } = createConditions({
 		saveGame:      () => saveGame(),
 		stopGameLoop, startGameLoop,
 		onBossDefeated:  (b) => _boss.onBossDefeated(b),
+		// Phase 9-6: yieldAt ボス（海の主）の合格判定と戦闘終了演出
+		shouldBossYield: (b) => _boss.shouldBossYield(b),
+		onBossYielded:   (b) => _boss.onBossYielded(b),
 		updateBossHpBar: (b) => _boss.updateBossHpBar(b),
 		checkBossPhase:  (b) => _boss.checkBossPhase(b),
 		openShop:    (sd) => openShop(sd),
@@ -978,6 +988,7 @@ const { checkStoneOnSwitch, evaluateConditions } = createConditions({
 	equipSwordTier    = _player.equipSwordTier;
 	equipArmorTier    = _player.equipArmorTier;
 	equipShieldTier   = _player.equipShieldTier;
+	equipBoomerangTier = _player.equipBoomerangTier;
 	grantReward       = _player.grantReward;
 
 	swordAttack       = _combat.swordAttack;
@@ -1554,15 +1565,18 @@ function useSubItem() {
 		const ndx = dx / MOVE_STEP;
 		const ndy = dy / MOVE_STEP;
 		resumeAudio(); playSound('slash');
+		// Phase 9-6: ティアで性能が決まる（BOOMERANG_TIERS が単一の真実）。
+		// 未定義セーブは 0（木）扱い＝既存挙動そのまま。
+		const bt = BOOMERANG_TIERS[player.boomerangTier ?? 0] ?? BOOMERANG_TIERS[0];
 		addProjectile({
 			owner: 'player', type: 'boomerang',
 			x: player.x + ndx * 0.5, y: player.y + ndy * 0.5,
 			startX: player.x, startY: player.y,
 			dx: ndx, dy: ndy,
-			speed: hasCleared() ? 4.0 : 2.0,  // 二周目は2倍速
-			atk: 3,  // ブーメランは固定ダメージ（剣ATK不使用）
+			speed: bt.speed * (hasCleared() ? 2 : 1),  // 二周目は2倍速
+			atk: bt.atk,  // ブーメランは固定ダメージ（剣ATK不使用）
 			returning: false,
-			maxRange: 3,
+			maxRange: bt.maxRange,
 		});
 		return;
 	}
@@ -1652,6 +1666,7 @@ function startNewGame() {
 		swordTier: -1,
 		armorTier: -1,
 		shieldTier: -1,
+		boomerangTier: -1,
 		gachaPulls: {},
 	};
 	heroDir = 'down';
@@ -1736,6 +1751,7 @@ async function init() {
 		const psArmor    = params.get('ps_armor');
 		const psBow      = params.get('ps_bow');
 		const psBoomerang= params.get('ps_boomerang');
+		const psSilverBoomerang = params.get('ps_silverboomerang');  // Phase 9-6: 銀ティア
 		const psBomb     = params.get('ps_bomb');
 		const psFlute    = params.get('ps_flute');
 		const psCandle   = params.get('ps_candle');
@@ -1754,7 +1770,9 @@ async function init() {
 		if (psWingRobe === '1') player.hasWingRobe = true;
 		if (psLadder   === '1') player.hasLadder = true;
 		if (psBow      === '1') { player.subItems.bow       = { count: 10 };       if (!player.activeSubItem) player.activeSubItem = 'bow'; }
-		if (psBoomerang=== '1') { player.subItems.boomerang = { count: Infinity };  if (!player.activeSubItem) player.activeSubItem = 'boomerang'; }
+		if (psBoomerang=== '1') equipBoomerangTier(0);   // 木のブーメラン（所持＋ティア0）
+		// Phase 9-6: 銀のブーメラン。ps_boomerang が無くても単独で所持状態になる。
+		if (psSilverBoomerang === '1') equipBoomerangTier(1);
 		if (psBomb     === '1') { player.subItems.bomb      = { count: 10 };        if (!player.activeSubItem) player.activeSubItem = 'bomb'; }
 		if (psFlute    === '1') { player.subItems.flute     = { count: Infinity };  if (!player.activeSubItem) player.activeSubItem = 'flute'; }
 		if (psCandle   === '1') { player.subItems.candle    = { count: Infinity };  if (!player.activeSubItem) player.activeSubItem = 'candle'; }
@@ -1826,6 +1844,7 @@ export function getGameState() {
 			defeatedBosses: [...(player.defeatedBosses ?? [])],
 			hasFlute: !!player.subItems?.flute,
 			hasCandle: !!player.subItems?.candle,
+			hasBoomerang: !!player.subItems?.boomerang,
 			activeSubItem: player.activeSubItem,
 			keys: player.keys ?? 0,
 			rupees: player.rupees ?? 0,
@@ -1833,6 +1852,8 @@ export function getGameState() {
 			swordTier: player.swordTier ?? -1,
 			armorTier: player.armorTier ?? -1,
 			shieldTier: player.shieldTier ?? -1,
+			// Phase 9-6: ブーメランティア（-1=未所持, 0=木, 1=銀）
+			boomerangTier: player.boomerangTier ?? -1,
 			// Phase 9-5a: 弾数上限（容量拡充確認用）
 			maxArrows: player.maxArrows ?? 8,
 			maxBombs: player.maxBombs ?? 8,
@@ -1840,6 +1861,8 @@ export function getGameState() {
 		heroDir,
 		enemyCount: enemies.length,
 		isPaused, isDialog, isGameover, isTransitioning,
+		// Phase 9-6: ボス部屋ロック（true の間は全方向の退出を禁止＝checkStageTransition）
+		bossRoomLocked,
 	};
 }
 
@@ -1926,6 +1949,9 @@ export function callEquipSwordTier(tierIndex) { return equipSwordTier(tierIndex)
 // テスト用：防具/盾ティア装備を外部から呼べるよう再公開する（Phase 7-2）
 export function callEquipArmorTier(tierIndex)  { return equipArmorTier(tierIndex); }
 export function callEquipShieldTier(tierIndex) { return equipShieldTier(tierIndex); }
+
+// テスト用：ブーメランティア装備を外部から呼べるよう再公開する（Phase 9-6）
+export function callEquipBoomerangTier(tierIndex) { return equipBoomerangTier(tierIndex); }
 
 // テスト用：updateHud を外部から呼べるよう再公開する（Phase 7-1）
 export function callUpdateHud() { return updateHud(); }

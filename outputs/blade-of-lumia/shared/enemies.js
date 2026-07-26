@@ -442,6 +442,44 @@ export const ENEMY_META = {
 		move:   'water',
 		attack: { type: 'waterShot', range: 6, cooldown: 2200, projectileSpeed: 1.2 },
 	},
+
+	// ── Phase 9-6 深洋O: 海の主（2×2 ミニボス・聖域の門番）───────────
+	// デルタ最奥の聖域を守る巨大クジラ。既存8ボスと決定的に違うのは
+	// **倒すのではなく「認められる」** こと（ユーザー確定 2026-07-26）：
+	//   ・dropsTriforce を持たない … 星の欠片の総数8を狂わせない
+	//   ・isFinalBoss を持たない   … エンディングを誤発火しない
+	//   ・yieldAt: 0.25（新設）    … HP が 25% 以下になった時点で戦闘終了＝合格。
+	//     killEnemy（爆発→消滅）ではなく「戦闘終了→報酬授与→深みへ退場」に分岐する
+	//     （combat.js の dealDamageToEnemy が yieldAt を見て boss.js の yieldBoss を呼ぶ）。
+	//   ・報酬は stageData.bossReward（データ駆動）… 何を配るかは stage JSON 側が決める。
+	//     ∴ ここは「配るタイミング（yieldAt）」だけを定義し、中身を知らない。
+	// move:'amphibious' … クジラなので水では速く、陸に乗り上げると鈍い（moveSpeed）。
+	// 弱点は持たない＝「腕試し」なので特定装備の有無で難度が激変しないようにする。
+	[TILE.SEA_LORD]: {
+		name: '海の主',
+		hp: 48, atk: 5, def: 4, exp: 0,    // exp0＝撃破しない相手（経験値の概念で報われない）
+		speed: ENEMY_SPEED_SLOW,
+		sprite: 'seaLord',
+		pal:    'seaLord',
+		size:   { w: 2, h: 2 },
+		isBoss: true,
+		// 撃破ではなく合格。HP 25% 以下で戦闘終了する。
+		yieldAt: 0.25,
+		move:   'amphibious',
+		moveSpeed: { water: 1.0, land: 0.5 },   // 水では定速・陸では半速
+		hitAndAway: true,
+		attacks: [
+			{ type: 'sword', range: 2.8, cooldown: 1100 },   // 巨体の体当たり
+			// 潮吹き＝水弾（射水魚と同じ waterShot 型。任意角へ飛ぶ）
+			{ type: 'waterShot', range: 8, cooldown: 2400, projectileSpeed: 1.3 },
+		],
+		attack: { type: 'sword', range: 2.8, cooldown: 1100 },
+		initialModeWeights: { flank: 0.3, direct: 1.4, wander: 0.3, strafe: 0 },
+		phases: [
+			// 半分削ると本気になる（＝合格ラインの 25% までが一番の山場）
+			{ hpThreshold: 0.5, speedMultiplier: 1.3, attackCooldownMultiplier: 0.75 },
+		],
+	},
 };
 
 // ── 敵タイルの集合（ENEMY_META から自動導出＝単一の真実）────────────

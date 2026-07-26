@@ -345,36 +345,70 @@ export function createProjectile(deps) {
 	}
 
 	// ── ブーメランのステップ処理 ──────────────────────────────
+	// 1tick 分の移動を「当たり判定を飛び越えない大きさ」に分割してから進める。
+	// 銀のブーメラン（speed 5.0 → 1tick 2.5セル）は当たり判定 0.6 セルの箱を
+	// 丸ごと飛び越える∴分割しないと敵・アイテム・かがり火をすり抜ける
+	// （非ブーメランの投擲物は projectileTick 側で同じ補間をしている）。
+	// ⚠️ 「折り返す／キャッチする」の判定は **tick 境界のまま**にする。
+	// 分割ごとに判定すると木のブーメランの実到達・往復時間が変わる（既存挙動の
+	// 回帰）∴分割で細かくするのは「進む」「当たる」「拾う」だけ。
 	function boomerangStep(proj, step) {
+		const SUB_STEP = 0.4;                                   // = HIT_RADIUS(0.5) * 0.8
+		const numSubs = Math.max(1, Math.ceil(step / SUB_STEP));
 		const player = getPlayer();
-		const dist = Math.sqrt(
-			(proj.x - proj.startX) ** 2 + (proj.y - proj.startY) ** 2,
-		);
+
 		if (!proj.returning) {
-			proj.x += proj.dx * step;
-			proj.y += proj.dy * step;
-			const hitWall = !isInBounds(proj.x, proj.y) ||
-				!isTilePassableForProj(toTileRow(proj.y), toTileCol(proj.x));
-			if (hitWall || dist >= proj.maxRange) proj.returning = true;
-			checkProjHit(proj);
-		} else {
-			// 復路：プレイヤーへ向かう
-			const tdx = player.x - proj.x;
-			const tdy = player.y - proj.y;
-			const d   = Math.sqrt(tdx * tdx + tdy * tdy);
-			if (d < step + 0.3) {
-				// Phase 4-6: キャッチ成立＝運搬アイテムをここで確定加算する。
-				removeProjEl(proj);
-				_projectiles = _projectiles.filter(p => p !== proj);
-				playSound('item'); pulse('🪃 ブーメランをキャッチした！');
-				if (finalizeCarried) for (const c of (proj.carried || [])) finalizeCarried(c);
-				return;
+			// 往路：tick 冒頭の距離で折り返しを決める（従来と同じ）
+			const dist = Math.sqrt(
+				(proj.x - proj.startX) ** 2 + (proj.y - proj.startY) ** 2,
+			);
+			// ⚠️ 座標は「tick 冒頭 + 進捗率」で出す（proj.x += sub の累積は禁止）。
+			// sub を足し込むと 6.5 + (1/3)*3 = 7.49999… となり toTileCol が 8 でなく
+			// 7 を返す＝tick 末尾のセルが1つ手前にずれてアイテムを拾い落とす。
+			const x0 = proj.x, y0 = proj.y;
+			for (let i = 0; i < numSubs; i++) {
+				const t = (i + 1) / numSubs;
+				proj.x = x0 + proj.dx * step * t;
+				proj.y = y0 + proj.dy * step * t;
+				const hitWall = !isInBounds(proj.x, proj.y) ||
+					!isTilePassableForProj(toTileRow(proj.y), toTileCol(proj.x));
+				checkProjHit(proj);
+				if (!_projectiles.includes(proj)) return;   // 命中で除去された
+				collectAlongBoomerang(proj);
+				if (hitWall) { proj.returning = true; return; }
 			}
-			proj.x += (tdx / d) * step;
-			proj.y += (tdy / d) * step;
-			checkProjHit(proj);  // Phase 4-6: 復路も敵に当たる
+			if (dist >= proj.maxRange) proj.returning = true;
+			return;
 		}
-		// 往路・復路どちらでも通過セルのアイテムを拾う（Phase 4-6: 即入手せず carried に積む）
+
+		// 復路：tick 冒頭でプレイヤーに届いていればキャッチ（従来と同じ）
+		const tdx0 = player.x - proj.x;
+		const tdy0 = player.y - proj.y;
+		const d0   = Math.sqrt(tdx0 * tdx0 + tdy0 * tdy0);
+		if (d0 < step + 0.3) {
+			// Phase 4-6: キャッチ成立＝運搬アイテムをここで確定加算する。
+			removeProjEl(proj);
+			_projectiles = _projectiles.filter(p => p !== proj);
+			playSound('item'); pulse('🪃 ブーメランをキャッチした！');
+			if (finalizeCarried) for (const c of (proj.carried || [])) finalizeCarried(c);
+			return;
+		}
+		// 向きは tick 冒頭のプレイヤー位置で決める（プレイヤーは tick 内で動かない）。
+		// 往路と同じく座標は「tick 冒頭 + 進捗率」で出す＝累積の丸め誤差を作らない。
+		const ux = tdx0 / (d0 || 1), uy = tdy0 / (d0 || 1);
+		const rx0 = proj.x, ry0 = proj.y;
+		for (let i = 0; i < numSubs; i++) {
+			const t = (i + 1) / numSubs;
+			proj.x = rx0 + ux * step * t;
+			proj.y = ry0 + uy * step * t;
+			checkProjHit(proj);  // Phase 4-6: 復路も敵に当たる
+			if (!_projectiles.includes(proj)) return;
+			collectAlongBoomerang(proj);
+		}
+	}
+
+	// 通過セルのアイテム回収・かがり火の受け渡し（往路・復路とも1サブステップ毎）
+	function collectAlongBoomerang(proj) {
 		const cr = toTileRow(proj.y), cc = toTileCol(proj.x);
 		if (collectFieldItem) {
 			const c = collectFieldItem(cr, cc);

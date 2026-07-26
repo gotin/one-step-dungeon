@@ -106,5 +106,10 @@ export function sanitizeLoadedPlayer(player, itemMeta) {
 	if (player.maxBombs  == null) player.maxBombs  = 8;
 	// Phase 9-5b: 旧セーブデータへのデフォルト補完
 	if (player.stageMoves == null) player.stageMoves = 0;
+	// Phase 9-6: ブーメランティアの補完。ティア導入前のセーブは
+	// 「ブーメランを持っている＝木ティア(0)」「持っていない＝未所持(-1)」。
+	if (player.boomerangTier == null) {
+		player.boomerangTier = player.subItems?.boomerang ? 0 : -1;
+	}
 	return player;
 }

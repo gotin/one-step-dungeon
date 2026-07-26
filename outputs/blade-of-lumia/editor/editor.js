@@ -143,6 +143,8 @@ document.addEventListener('editor:previewClickAt', e => {
 			armor:     document.getElementById('ps-armor').checked,
 			bow:       document.getElementById('ps-bow').checked,
 			boomerang: document.getElementById('ps-boomerang').checked,
+			// Phase 9-6: 銀のブーメラン（ティア1）。editor-io.js の getPreviewSettings にも同じ定義がある。
+			silverboomerang: document.getElementById('ps-silverboomerang').checked,
 			bomb:      document.getElementById('ps-bomb').checked,
 			// Phase 4-1c 修正：はしご・翼の羽衣が欠落していたため openPreview で
 			// ps_ladder=0/ps_wingrobe=0 になっていた（プレビュー設定が効かない原因）。

@@ -27,7 +27,9 @@ const d = JSON.parse(readFileSync(MAP_PATH, 'utf8'));
 // Boss tiles that have dropsTriforce:true (from shared/enemies.js)
 const TRIFORCE_BOSS_TILES = new Set(['A', 'L', 'N', 'J', 'O', 'U', 'G', 'I']);
 // All boss tiles (isBoss:true) — used to detect "has a boss"
-const ALL_BOSS_TILES      = new Set(['W', 'V', 'X', 'Z', 'A', 'L', 'N', 'J', 'O', 'U', 'G', 'I']);
+// '{' = sea lord (Phase 9-6): isBoss but NOT dropsTriforce (it is yielded to, not killed),
+// so it belongs here only and must stay out of TRIFORCE_BOSS_TILES.
+const ALL_BOSS_TILES      = new Set(['W', 'V', 'X', 'Z', 'A', 'L', 'N', 'J', 'O', 'U', 'G', 'I', '{']);
 
 // Item unlock order: dungeonLayer → items available when the player enters
 // (i.e. items won from the PREVIOUS dungeon and earlier)

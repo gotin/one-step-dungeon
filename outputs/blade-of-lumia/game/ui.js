@@ -27,8 +27,19 @@
 
 import { HP_PER_HEART } from './constants.js';
 import { SPRITES, PAL, makeSprite } from '../shared/sprites.js';
-import { ITEM_META } from '../shared/items.js';
+import { ITEM_META, BOOMERANG_TIERS } from '../shared/items.js';
 import { playSound } from '../shared/sounds.js';
+
+// ── サブアイテムの表示名（Phase 9-6）───────────────────────────
+// ブーメランはティア（木／銀）で名前が変わる。他のアイテムは ITEM_META の名前。
+// HUD のツールチップとポーズのアイテム一覧で共用する。
+function subItemDisplayName(id, player) {
+	if (id === 'boomerang') {
+		const tier = BOOMERANG_TIERS[player?.boomerangTier ?? 0];
+		if (tier) return tier.name;
+	}
+	return ITEM_META[id]?.name ?? id;
+}
 
 /**
  * UI 関数群を生成して返す factory。
@@ -133,10 +144,13 @@ export function createUi(deps) {
 		if (ai && player.subItems[ai]) {
 			const meta = ITEM_META[ai];
 			subIconEl.textContent  = meta?.icon ?? ai;
+			// Phase 9-6: ブーメランはティア名（木／銀）を表示名にする
+			subIconEl.title        = subItemDisplayName(ai, player);
 			const cnt = player.subItems[ai].count;
 			subCountEl.textContent = (cnt && cnt !== Infinity) ? `×${cnt}` : '';
 		} else {
 			subIconEl.textContent  = '—';
+			subIconEl.title        = '';
 			subCountEl.textContent = '';
 		}
 	}
@@ -287,7 +301,7 @@ export function createUi(deps) {
 				div.appendChild(iconDiv);
 				const nameDiv = document.createElement('div');
 				nameDiv.className = 'pause-item-name';
-				nameDiv.textContent = meta?.name ?? id;
+				nameDiv.textContent = subItemDisplayName(id, player);
 				div.appendChild(nameDiv);
 				const cntDiv = document.createElement('div');
 				cntDiv.className = 'pause-item-count';
@@ -558,6 +572,8 @@ export function createUi(deps) {
 		} else if (g.id === 'boomerang') {
 			if (!player.subItems.boomerang) player.subItems.boomerang = { count: Infinity };
 			if (!player.activeSubItem) player.activeSubItem = 'boomerang';
+			// Phase 9-6: 店売りは木ティア。既に銀を持っていれば下げない。
+			if ((player.boomerangTier ?? -1) < 0) player.boomerangTier = 0;
 		} else {
 			if (giveSubItemFn) giveSubItemFn(g.id);
 		}

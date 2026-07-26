@@ -44,6 +44,7 @@ import { SAVE_KEY, CLEARED_KEY, ALTAR_EXIT_ID } from './constants.js';
  *   stopGameLoop()               – ゲームループ停止
  *   startGameLoop()              – ゲームループ開始
  *   showExplosionEffect(r, c)    – 爆発エフェクト（projectile.js から注入）
+ *   grantReward(content)         – 報酬付与の共通口（player.js。bossReward で使用）
  *   bossHpbarEl / bossNameEl / bossHpFillEl – DOM 要素
  *   endingOverlayEl              – エンディングオーバーレイ DOM
  *   hasCleared() / saveCleared() – クリア済み判定・保存
@@ -65,6 +66,8 @@ export function createBoss(deps) {
 		pulse, saveGame,
 		stopGameLoop, startGameLoop,
 		showExplosionEffect,
+		// Phase 9-6: stageData.bossReward の授与に使う（player.js の共通付与口）
+		grantReward,
 		bossHpbarEl, bossNameEl, bossHpFillEl,
 		endingOverlayEl,
 		hasCleared, saveCleared,
@@ -224,6 +227,75 @@ export function createBoss(deps) {
 		}
 		setBossDefeating(false);
 		startGameLoop();
+	}
+
+	// ── ボス戦「合格」演出（Phase 9-6 深洋O・海の主）───────────────
+	// ENEMY_META に yieldAt を持つボス専用の終幕。撃破（onBossDefeated）と違い：
+	//   ・爆発・撃破 SE を出さない（倒したのではなく認められた）
+	//   ・星の欠片を生成しない・defeatedBosses に入れない（＝撃破フラグを立てない）
+	//   ・報酬は stageData.bossReward（grantReward 形の配列）を順に授与する
+	//     ∴ ここは「何を配るか」を知らない＝ステージ側のデータで決まる
+	// 呼び出しは combat.js の dealDamageToEnemy（HP が閾値以下になった瞬間）。
+	async function onBossYielded(boss) {
+		if (getBossDefeating()) return;
+		setBossDefeating(true);
+		stopGameLoop();
+
+		const meta = ENEMY_META[boss.type];
+		const stageData = getStageData();
+		// 1. 「合格」の合図（撃破ではないが節目なのでファンファーレは共通）
+		playSound('fanfare');
+		pulse('よくやった、若き剣よ', 3000);
+		await sleep(700);
+
+		// 2. 報酬授与（データ駆動）。grantReward がメッセージを返すので順に見せる。
+		//    ⚠️ 退場フェードより先に配る：主が消えるのを待たせると、プレイヤーは
+		//    「何を貰ったか」を数秒後まで知れない。授与→見送りの順が自然。
+		for (const content of stageData?.bossReward ?? []) {
+			const msg = grantReward ? grantReward(content) : '';
+			playSound('item');
+			if (msg) pulse(`✨ ${msg}`, 2600);
+			updateHud();
+			await sleep(900);
+		}
+
+		// 3. HP バーを消し、ボス部屋のロックを解く
+		hideBossHpBar();
+		setBossRoomLocked(false);
+		const hasBossDoors = stageData?.tiles?.some(row => row.includes(TILE.DOORWAY_BOSS));
+		unlockBossDoors();
+		if (hasBossDoors) pulse('🔓 扉が開いた！', 2000);
+		evaluateConditions();
+
+		// 4. 深みへ退場（フェードアウト。爆発は出さない）
+		//    敵リストから外すのはフェードの前（renderChars が要素を作り直さないように）。
+		getSS(getCurrentLayer(), getStageKey()).defeatedEnemies.add(boss.id);
+		setEnemies(getEnemies().filter(x => x !== boss));
+		const bossEl = document.getElementById(`char-enemy-${boss.id}`);
+		if (bossEl) {
+			bossEl.style.transition = 'opacity 1.2s ease-out';
+			bossEl.style.opacity = '0';
+			await sleep(1250);
+			bossEl.remove();
+		}
+		renderBoard(); renderChars(); updateHud();
+		if (!(stageData?.bossReward ?? []).length) {
+			pulse(`${meta?.name ?? 'ボス'} は 深みへ帰っていった`, 2500);
+		}
+		saveGame();
+		setBossDefeating(false);
+		startGameLoop();
+	}
+
+	// ボスが「合格ライン」に達したか（combat.js が毎ダメージで問い合わせる）。
+	// yieldAt を持たないボス（既存8体）は常に false ＝従来の撃破フローのまま。
+	function shouldBossYield(boss) {
+		const meta = ENEMY_META[boss.type];
+		if (!meta?.yieldAt) return false;
+		if (boss._yielded) return false;         // 二重発火防止（連打しても一度だけ）
+		if (boss.hp / boss.maxHp > meta.yieldAt) return false;
+		boss._yielded = true;
+		return true;
 	}
 
 	// ── ボス戦開始 ────────────────────────────────────────
@@ -445,6 +517,9 @@ export function createBoss(deps) {
 
 	return {
 		onBossDefeated,
+		// Phase 9-6: yieldAt ボス（海の主）の戦闘終了＝合格フロー
+		onBossYielded,
+		shouldBossYield,
 		startBossBattle,
 		startEnding,
 		updateBossHpBar,

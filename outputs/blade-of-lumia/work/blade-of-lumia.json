@@ -126189,6 +126189,49 @@
           "breakableWalls": {},
           "isBossRoom": false,
           "signData": {}
+        },
+        "19,0": {
+          "comment": "[sea_lord] Phase 9-6: umi-no-nushi '{' (2x2 amphibious mini-boss). migi-han (rows1-8 cols6-10) ga bgTiles mizu / hidari-han wa kawaita riku. nushi wa (4,7) no mizu ni iru node ryosei no sokudo-kirikae (water 1.0 / land 0.5) ga kansoku dekiru. player start (4,2) = riku. isBossRoom:true de HP bar to tobira-lock ga hairu. yieldAt 0.25 made kezuru to sento shuryo (gekiha de nai) + bossReward de gin-no-boomerang to heart container ga sazukeraeru.",
+          "rows": 10,
+          "cols": 12,
+          "tiles": [
+            ["#","#","#","#","#","#","#","#","#","#","#","#"],
+            ["#",".",".",".",".",".",".",".",".",".",".","#"],
+            ["#",".",".",".",".",".",".",".",".",".",".","#"],
+            ["#",".",".",".",".",".",".",".",".",".",".","#"],
+            ["#",".",".",".",".",".",".","{",".",".",".","#"],
+            ["#",".",".",".",".",".",".",".",".",".",".","#"],
+            ["#",".",".",".",".",".",".",".",".",".",".","#"],
+            ["#",".",".",".",".",".",".",".",".",".",".","#"],
+            ["#",".",".",".",".",".",".",".",".",".",".","#"],
+            ["#","#","#","#","#","#","#","#","#","#","#","#"]
+          ],
+          "bgTiles": {
+            "1,6": "~", "1,7": "~", "1,8": "~", "1,9": "~", "1,10": "~",
+            "2,6": "~", "2,7": "~", "2,8": "~", "2,9": "~", "2,10": "~",
+            "3,6": "~", "3,7": "~", "3,8": "~", "3,9": "~", "3,10": "~",
+            "4,6": "~", "4,7": "~", "4,8": "~", "4,9": "~", "4,10": "~",
+            "5,6": "~", "5,7": "~", "5,8": "~", "5,9": "~", "5,10": "~",
+            "6,6": "~", "6,7": "~", "6,8": "~", "6,9": "~", "6,10": "~",
+            "7,6": "~", "7,7": "~", "7,8": "~", "7,9": "~", "7,10": "~",
+            "8,6": "~", "8,7": "~", "8,8": "~", "8,9": "~", "8,10": "~"
+          },
+          "links": [],
+          "enemyDirs": {},
+          "chestContents": {},
+          "floorItems": {},
+          "objects": {},
+          "npcData": {},
+          "shopData": {},
+          "mapEnters": {},
+          "showConditions": {},
+          "breakableWalls": {},
+          "isBossRoom": true,
+          "bossReward": [
+            { "type": "boomerang", "boomerangTier": 1, "name": "銀のブーメラン" },
+            { "type": "heartContainer" }
+          ],
+          "signData": {}
         }
       }
     }

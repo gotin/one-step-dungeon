@@ -3,7 +3,7 @@
 // movePlayer / handleTileEvent を提供。
 
 import { TILE } from '../shared/tiles.js';
-import { ITEM_META, EQUIP_META, SWORD_TIERS, BASE_ATK, ARMOR_TIERS, BASE_DEF, SHIELD_TIERS } from '../shared/items.js';
+import { ITEM_META, EQUIP_META, SWORD_TIERS, BASE_ATK, ARMOR_TIERS, BASE_DEF, SHIELD_TIERS, BOOMERANG_TIERS } from '../shared/items.js';
 import { NPC_SPRITE_MAP } from '../shared/npcs.js';
 import { SPRITES, PAL, makeSprite } from '../shared/sprites.js';
 import { playSound, resumeAudio } from '../shared/sounds.js';
@@ -132,6 +132,24 @@ export function createPlayer(deps) {
 		player.shieldTier = tierIndex;
 		if (!player._equip) player._equip = {};
 		player._equip.shieldName = tier.name;
+		return true;
+	}
+
+	// ── ブーメランティア装備（Phase 9-6 深洋O）──────────────────
+	// tierIndex: BOOMERANG_TIERS のインデックス（0=木 / 1=銀）
+	// 剣/防具/盾と同型で上位のみ受け付ける。ブーメランはサブアイテムなので
+	// ティアを上げると同時に subItems.boomerang を（未所持なら）所持状態にする
+	// ＝「銀のブーメランを貰う」だけでブーメラン自体が使えるようになる。
+	function equipBoomerangTier(tierIndex) {
+		const player = getPlayer();
+		const tier = BOOMERANG_TIERS[tierIndex];
+		if (!tier) return false;
+		if (tierIndex <= (player.boomerangTier ?? -1)) return false;  // 下位は無視
+		player.boomerangTier = tierIndex;
+		if (!player.subItems.boomerang) player.subItems.boomerang = { count: Infinity };
+		if (!player.activeSubItem) player.activeSubItem = 'boomerang';
+		if (!player._equip) player._equip = {};
+		player._equip.boomerangName = tier.name;
 		return true;
 	}
 
@@ -616,7 +634,7 @@ export function createPlayer(deps) {
 	}
 
 	// ── 報酬付与（チェストとガチャの共通ロジック）──────────
-	// content: { type, item?, swordTier?, armorTier?, shieldTier?, value? }
+	// content: { type, item?, swordTier?, armorTier?, shieldTier?, boomerangTier?, value? }
 	// 戻り値: メッセージ文字列（pulse は呼び出し側で行う）
 	function grantReward(content) {
 		const player = getPlayer();
@@ -649,6 +667,16 @@ export function createPlayer(deps) {
 				return `${tier.name} を手に入れた！`;
 			} else {
 				return `${tier?.name ?? 'たて'} を拾った（今の盾の方が強い）`;
+			}
+		} else if (content.type === 'boomerang') {
+			// Phase 9-6: 銀のブーメラン（ティア差し替え。海の主の bossReward で使う）
+			const tierIndex = content.boomerangTier ?? 0;
+			const tier = BOOMERANG_TIERS[tierIndex];
+			if (equipBoomerangTier(tierIndex)) {
+				updateHud();
+				return `${tier.name} を手に入れた！（ATK${tier.atk}・射程${tier.maxRange}）`;
+			} else {
+				return `${tier?.name ?? 'ブーメラン'} を拾った（今のブーメランの方が強い）`;
 			}
 		} else if (content.type === 'rupee') {
 			player.rupees += content.value ?? 1;
@@ -765,11 +793,15 @@ export function createPlayer(deps) {
 		}
 		if (tile === TILE.ITEM_BOOMERANG && !ss.pickedKeys.has(posKey)) {
 			ss.pickedKeys.add(posKey);
-			if (!player.subItems.boomerang) {
-				player.subItems.boomerang = { count: Infinity };
+			// Phase 9-6: 床置きブーメランもティアを持てる（剣/盾/防具と同型）。
+			// 既定は 0（木）＝既存マップのブーメランは今までどおり。
+			const tierIndex = stageData.floorItems?.[posKey]?.boomerangTier ?? 0;
+			const tier = BOOMERANG_TIERS[tierIndex];
+			if (equipBoomerangTier(tierIndex)) {
+				playSound('item'); pulse(`🪃 ${tier.name}を手に入れた！`);
+			} else {
+				playSound('item'); pulse(`🪃 ${tier?.name ?? 'ブーメラン'}を拾った（今のブーメランの方が強い）`);
 			}
-			if (!player.activeSubItem) player.activeSubItem = 'boomerang';
-			playSound('item'); pulse('🪃 ブーメランを手に入れた！');
 			renderBoard(); renderChars(); updateHud(); saveGame();
 			maybeShowSubItemHint(); return;
 		}
@@ -960,6 +992,7 @@ export function createPlayer(deps) {
 		equipSwordTier,   // Phase 7-1: テスト・外部からのティア装備
 		equipArmorTier,   // Phase 7-2: 防具ティア装備
 		equipShieldTier,  // Phase 7-2: 盾ティア装備
+		equipBoomerangTier, // Phase 9-6: ブーメランティア装備（銀のブーメラン）
 		grantReward,      // Phase 7-4: 報酬付与の共通化（チェスト/ガチャ共用）
 	};
 }

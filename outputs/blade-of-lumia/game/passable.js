@@ -311,5 +311,7 @@ export function createPassable(d) {
 		return true;
 	}
 
-	return { isPassable, tilePassable, isPassableForEnemy, ladderOrientationAt, isLadderCrossable };
+	// isWaterAt は「そのセルが水か」の単一の判定点（Phase 9-6）。
+	// enemy-ai.js が両生敵（amphibious）の地形別速度に使うため公開する。
+	return { isPassable, tilePassable, isPassableForEnemy, ladderOrientationAt, isLadderCrossable, isWaterAt };
 }
