@@ -176,3 +176,53 @@ test('editor: ps-ladder checkbox reaches preview iframe as ps_ladder=1', async (
 		{ timeout: 3000 },
 	).toContain('ps_ladder=1');
 });
+
+// ─── ⑨ 敵カウントは ENEMY_META 全種を数える（2026-07-25 の数え落とし回帰）──
+// ステージ情報／ワールドパネルの「敵」は手書きのタイル表を持っていたため、
+// 記号タイルの海棲雑魚（& < /）と名前付きボス（Z A L N J O U G I）＝計13種を
+// 数え落としていた（該当ステージが「敵0」と表示される）。表を
+// shared/enemies.js の ENEMY_TILES（ENEMY_META 由来）に一本化した回帰テスト。
+test('editor: enemy count includes symbol mobs and named bosses', async ({ page }) => {
+	const errors = [];
+	page.on('pageerror', e => errors.push(e.message));
+
+	// 数え落としていた3種（& 魚群 / < 潜み鮫 / L 氷のリヴァイアサン）＋
+	// 元から数えられていた E パトロール = 4体。E を混ぜてあるのは「全部数えない」
+	// 回帰と区別するため（旧実装ならこのステージは 1 と表示される）。
+	const ENEMY_STAMP = [
+		{ r: 2, c: 2, ch: '&' },
+		{ r: 2, c: 4, ch: '<' },
+		{ r: 4, c: 2, ch: 'L' },
+		{ r: 4, c: 4, ch: 'E' },
+	];
+	await page.goto(EDITOR_URL);
+	await page.evaluate((stamp) => {
+		const rows = 10, cols = 12;
+		const tiles = Array.from({ length: rows }, (_, r) => Array.from({ length: cols }, (_, c) =>
+			(r === 0 || r === rows - 1 || c === 0 || c === cols - 1) ? '#' : '.'));
+		for (const { r, c, ch } of stamp) tiles[r][c] = ch;
+		tiles[1][1] = '@';
+		localStorage.setItem('bladeOfLumiaMapData', JSON.stringify({
+			version: 1,
+			startPos: { layer: 'field', stage: '0,0', row: 1, col: 1 },
+			layers: { field: { stages: { '0,0': { rows, cols, tiles } } } },
+		}));
+	}, ENEMY_STAMP);
+	await page.reload();
+	await page.waitForSelector('#world-grid .world-cell.has-stage', { state: 'visible' });
+
+	// ワールドパネル側の「敵」
+	await page.locator('#world-grid .world-cell.has-stage').first().click();
+	const worldEnemy = page.locator('#world-stage-info .info-row')
+		.filter({ has: page.locator('.info-label', { hasText: '敵' }) })
+		.locator('.info-value');
+	await expect(worldEnemy).toHaveText(String(ENEMY_STAMP.length));
+
+	// ステージ編集ビュー側の「敵」
+	await page.locator('#btn-edit-stage').click();
+	await expect(page.locator('#view-stage')).not.toHaveClass(/hidden/);
+	const info = await page.locator('#stage-info').textContent();
+	expect(info).toMatch(new RegExp(`敵:\\s*${ENEMY_STAMP.length}`));
+
+	expect(errors).toEqual([]);
+});

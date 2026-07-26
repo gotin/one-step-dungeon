@@ -1,6 +1,7 @@
 // ── editor-world.js ── ワールドグリッド・ミニマップ・プレビュー ─
 import { TILE, TILE_META, makeEmptyStage, DEFAULT_COLS, DEFAULT_ROWS } from '../shared/tiles.js';
 import { countTriforces, listTriforceEntries } from '../shared/triforce.js';
+import { ENEMY_TILES } from '../shared/enemies.js';
 import {
 	state, stageKey, countTile, getCurrentStages,
 	worldGridEl, worldStageInfoEl, worldActionsEl, worldPreviewWrap, worldPreviewCv,
@@ -123,12 +124,14 @@ export function updateWorldSidePanel(x, y) {
 		worldPreviewWrap.classList.add('hidden');
 		return;
 	}
-	const enemyTiles = [TILE.PATROL, TILE.CHASER, TILE.SENTRY, TILE.BOSS, TILE.MONSTER, TILE.DARK_LORD];
+	// 敵カウントは shared/enemies.js の ENEMY_TILES（ENEMY_META 由来）を使う。
+	// ここにタイル文字を並べると敵を足すたび更新漏れになる（名前付きボスと海棲雑魚が
+	// 実際に漏れていた）＝キャンバス側の敵カウントと同じ単一ソース。
 	worldStageInfoEl.innerHTML = `
 		<div class="info-row"><span class="info-label">座標</span><span class="info-value">(${x}, ${y})</span></div>
 		<div class="info-row"><span class="info-label">サイズ</span><span class="info-value">${sd.cols}×${sd.rows}</span></div>
 		<div class="info-row"><span class="info-label">プレイヤー</span><span class="info-value">${countTile(sd,[TILE.PLAYER])}</span></div>
-		<div class="info-row"><span class="info-label">敵</span><span class="info-value">${countTile(sd,enemyTiles)}</span></div>
+		<div class="info-row"><span class="info-label">敵</span><span class="info-value">${countTile(sd, ENEMY_TILES)}</span></div>
 		<div class="info-row"><span class="info-label">宝箱</span><span class="info-value">${countTile(sd,[TILE.CHEST])}</span></div>
 		<div class="info-row"><span class="info-label">MAP_ENTER</span><span class="info-value">${countTile(sd,[TILE.MAP_ENTER])}</span></div>
 		<div class="info-row"><span class="info-label">NPC</span><span class="info-value">${countTile(sd,[TILE.NPC_A,TILE.NPC_B,TILE.NPC_SHOP,TILE.PRINCESS])}</span></div>

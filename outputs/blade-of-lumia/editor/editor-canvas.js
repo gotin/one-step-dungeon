@@ -1,5 +1,6 @@
 // ── editor-canvas.js ── ステージキャンバス描画・マウス操作 ────
 import { TILE, TILE_META, BG_TILES, makeEmptyStage } from '../shared/tiles.js';
+import { ENEMY_TILES } from '../shared/enemies.js';
 import { isTestLayer, gameLayerEntries } from '../shared/layers.js';
 import {
 	state, stageKey, getCurrentStage, getCurrentStages,
@@ -80,7 +81,7 @@ function drawNeighborEdges(sd) {
 function updateStageInfo(sd) {
 	stageInfoEl.innerHTML = `
 		<div>プレイヤー: <b>${countTile(sd,[TILE.PLAYER])}</b></div>
-		<div>敵: <b>${countTile(sd,[TILE.PATROL,TILE.CHASER,TILE.SENTRY,TILE.BOSS,TILE.MONSTER,TILE.DARK_LORD])}</b></div>
+		<div>敵: <b>${countTile(sd, ENEMY_TILES)}</b></div>
 		<div>宝箱: <b>${countTile(sd,[TILE.CHEST])}</b>　鍵: <b>${countTile(sd,[TILE.KEY])}</b></div>
 		<div>NPC: <b>${countTile(sd,[TILE.NPC_A,TILE.NPC_B,TILE.NPC_SHOP,TILE.PRINCESS])}</b></div>
 		<div>MAP_ENTER: <b>${countTile(sd,[TILE.MAP_ENTER])}</b></div>

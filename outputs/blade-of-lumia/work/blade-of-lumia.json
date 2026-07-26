@@ -126149,6 +126149,46 @@
           "breakableWalls": {},
           "isBossRoom": false,
           "signData": {}
+        },
+        "18,0": {
+          "comment": "[tide_gate] Phase 9-6: shio-gate '=' (4,5) ga kabe-retsu col5 no yuiitsu no kirime. Y switch(3,3) wo ken de tataku to links de (4,5) ga hiraku. hidari=start(4,3)/migi=takarabako(7,8). = no ryodonari (4,4)/(4,6) wa yuka = mizu nara hashigo de watareru geometry dakedo shio-gate wa LADDER_OVER de nai node hashigo de mo watarenai (hashigo-fuka no kensho ga vacuous ni naranai).",
+          "rows": 10,
+          "cols": 12,
+          "tiles": [
+            ["#","#","#","#","#","#","#","#","#","#","#","#"],
+            ["#",".",".",".",".","#",".",".",".",".",".","#"],
+            ["#",".",".",".",".","#",".",".",".",".",".","#"],
+            ["#",".",".","Y",".","#",".",".",".",".",".","#"],
+            ["#",".",".",".",".","=",".",".",".",".",".","#"],
+            ["#",".",".",".",".","#",".",".",".",".",".","#"],
+            ["#",".",".",".",".","#",".",".",".",".",".","#"],
+            ["#",".",".",".",".","#",".",".","B",".",".","#"],
+            ["#",".",".",".",".","#",".",".",".",".",".","#"],
+            ["#","#","#","#","#","#","#","#","#","#","#","#"]
+          ],
+          "links": [
+            {
+              "switchId": "3,3",
+              "gateId": "4,5"
+            }
+          ],
+          "enemyDirs": {},
+          "chestContents": {
+            "7,8": {
+              "type": "rupee",
+              "value": 30,
+              "name": "ルピー×30"
+            }
+          },
+          "floorItems": {},
+          "objects": {},
+          "npcData": {},
+          "shopData": {},
+          "mapEnters": {},
+          "showConditions": {},
+          "breakableWalls": {},
+          "isBossRoom": false,
+          "signData": {}
         }
       }
     }

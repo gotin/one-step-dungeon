@@ -16,6 +16,8 @@
 // field-invariants spec both import from here.
 import { bfsLayer, findOrphanRooms, findEntrances, isHardBlocked, cellTile } from './connectivity.mjs';
 import { gameLayerEntries } from '../../shared/layers.js';
+import { ENEMY_META, ENEMY_TILES as ENEMY_TILE_CHARS } from '../../shared/enemies.js';
+import { TILE } from '../../shared/tiles.js';
 
 // ── Region label map (叩き台 ZONE_MAP from analyze-zone-rebalance.mjs) ────────
 // Rows = sy (0=north), cols = sx (0=west). Key format: "sx,sy" = stageKey.
@@ -172,31 +174,15 @@ function expectedPower(region) {
 }
 
 // ── Enemy threat score (per tile character on the field) ──────────────────────
-// threat(tile) = hp * atk / max(1, def)
-// Values sourced from shared/enemies.js.
-const _THREAT = {
-  'E': 3  * 1 / 1,   // PATROL  hp3 atk1 def0
-  'C': 5  * 2 / 1,   // CHASER  hp5 atk2 def0
-  'F': 6  * 2 / 2,   // SENTRY  hp6 atk2 def1
-  'V': 20 * 4 / 3,   // BOSS(魔将) hp20 atk4 def2
-  'W': 12 * 3 / 2,   // MONSTER hp12 atk3 def1
-  'X': 50 * 6 / 4,   // DARK_LORD hp50 atk6 def3
-  'Z': 80 * 8 / 5,   // ZARNEL   hp80 atk8 def4
-  'G': 30 * 4 / 3,   // ROCK_GOLEM
-  'N': 32 * 5 / 2,   // SAND_SCORPION
-  'J': 38 * 4 / 4,   // SEA_SERPENT
-  'A': 35 * 5 / 3,   // FIRE_SALAMANDER
-  'L': 40 * 4 / 4,   // ICE_LEVIATHAN
-  'O': 42 * 5 / 3,   // FOREST_GIANT
-  'U': 36 * 6 / 2,   // STORM_EAGLE
-  'I': 40 * 5 / 3,   // SWAMP_TOAD
-  // Phase 9-6 深洋O: aquatic mobs (記号タイル). They live on water, so a sea
-  // screen with only these still counts as a battle screen — without them the
-  // 25 深洋 screens would score 0 threat and read as "empty" in the metrics.
-  '&': 2  * 1 / 1,   // FISH_SCHOOL  hp2 atk1 def0
-  '<': 6  * 3 / 2,   // LURK_SHARK   hp6 atk3 def1
-  '/': 3  * 2 / 1,   // ARCHER_FISH  hp3 atk2 def0
-};
+// threat(tile) = hp * atk / (def + 1)
+// ENEMY_META から導出する（表を手で並べない）。理由＝手書きの表は敵を足すたび
+// 更新漏れが起き、その画面が threat 0 = 「敵がいない」と読まれる（実例：Phase 9-6 の
+// 海棲雑魚 & < / が漏れて深洋 25 画面が全部「空」判定だった。同じ穴でエディタの
+// 敵カウントも 13 タイル数え落としていた）。式は 2026-07-25 時点の手書き 18 種の値と
+// 完全一致することを検算済み（field-quality-lib.spec.js が導出式を固定する）。
+const _THREAT = Object.fromEntries(
+  Object.entries(ENEMY_META).map(([tile, m]) => [tile, m.hp * m.atk / ((m.def ?? 0) + 1)]),
+);
 
 // Hazard tiles on field (lava/pit/water-ford obstacles that threaten the player).
 const _HAZARD_TILES = new Set(['l', 'x', '~']);
@@ -250,11 +236,17 @@ export function battleScore(stage, region) {
 // concrete tile/data feature proves it. False negatives (under-counting) are
 // safe — they show up as "work still to do", which is the point of 設計④.
 
-const ENEMY_TILES = new Set(['E', 'C', 'F', 'V', 'W', 'X', 'Z',
-  'G', 'N', 'J', 'A', 'L', 'O', 'U', 'I',
-  '&', '<', '/']); // patrol/chaser..bosses + 深洋の海棲雑魚（魚群/潜み鮫/射水魚）
-const ELITE_TILES = new Set(['F', 'V', 'W', 'X', 'Z',
-  'G', 'N', 'J', 'A', 'L', 'O', 'U', 'I']); // sentry + all named/mid/bosses
+// Derived from ENEMY_META so a new enemy is never missing here (a hand-written
+// list silently made the 深洋 sea mobs read as "no enemies at all" until 2026-07-25;
+// the same hole is what made the editor's enemy counter miss 13 tiles).
+const ENEMY_TILES = new Set(ENEMY_TILE_CHARS);
+// 精鋭＝ボス全種＋センチネル(F)。「1体でも置けば戦闘軸が立つ」強さの敵。
+// isBoss も ENEMY_META 由来なので新ボスを足せば自動で精鋭になる（雑魚は入らない）。
+const ELITE_TILES = new Set(
+  Object.entries(ENEMY_META)
+    .filter(([tile, m]) => m.isBoss || tile === TILE.SENTRY)
+    .map(([tile]) => tile),
+);
 // Secret-bearing tiles: cuttable bush / breakable wall / pushable stone / a
 // star-fragment sitting in the open behind one of them.
 const SECRET_TILES = new Set(['u', '!', '*', 'Q']);

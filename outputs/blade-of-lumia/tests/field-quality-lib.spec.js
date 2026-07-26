@@ -4,6 +4,7 @@ import {
   regionOf, battleScore,
   regionDensityMetrics, regionBattleScores, structuralSimilarityWarnings,
 } from '../scripts/lib/field-quality.mjs';
+import { ENEMY_META } from '../shared/enemies.js';
 
 // Phase 9-6 設計④: like connectivity-tool.spec.js, the axis-inference rules ARE
 // the invariant, so the rules themselves must be tested against hand-built
@@ -134,6 +135,50 @@ test.describe('field-quality — battleScore', () => {
     const scoreD = battleScore(s, 'D'); // expectedPower 2
     const scoreF = battleScore(s, 'F'); // expectedPower 5
     expect(scoreD).toBeGreaterThan(scoreF);
+  });
+});
+
+// ── 敵表の単一ソース（2026-07-25）──────────────────────────────────────────
+// _THREAT / ELITE_TILES / ENEMY_TILES はすべて shared/enemies.js の ENEMY_META
+// 由来。手書きの表だった頃、Phase 9-6 の海棲雑魚 & < / が漏れて深洋 25 画面が
+// threat 0＝「敵がいない」と判定されていた。同じ穴が二度開かないよう
+// 「ENEMY_META に敵を足したら自動でここに現れる」ことを敵ごとに固定する。
+test.describe('field-quality — 敵表は ENEMY_META 由来', () => {
+  const entries = Object.entries(ENEMY_META);
+
+  test(`ENEMY_META の全 ${entries.length} 種が battleScore に計上される`, () => {
+    const missing = entries
+      .filter(([tile]) => battleScore(screen([{ r: 4, c: 4, ch: tile }]), 'G') <= 0)
+      .map(([tile]) => tile);
+    expect(missing).toEqual([]);
+  });
+
+  test('threat は hp*atk/(def+1)＝敵ごとの score 比が能力値比と一致する', () => {
+    // battleScore = threat / expectedPower（敵1体なら体数倍率は ×1）∴同じ地域なら
+    // score の比 = threat の比。基準を PATROL(E) に取って全敵で突き合わせる。
+    const base = battleScore(screen([{ r: 4, c: 4, ch: 'E' }]), 'G');
+    const baseThreat = ENEMY_META['E'].hp * ENEMY_META['E'].atk / ((ENEMY_META['E'].def ?? 0) + 1);
+    for (const [tile, m] of entries) {
+      const threat = m.hp * m.atk / ((m.def ?? 0) + 1);
+      const score = battleScore(screen([{ r: 4, c: 4, ch: tile }]), 'G');
+      expect(score / base, `threat ratio for ${tile} (${m.name})`)
+        .toBeCloseTo(threat / baseThreat, 6);
+    }
+  });
+
+  test('ボスは1体で combat 軸を立てる（精鋭＝ELITE_TILES も ENEMY_META 由来）', () => {
+    const bosses = entries.filter(([, m]) => m.isBoss).map(([tile]) => tile);
+    expect(bosses.length).toBeGreaterThan(0);
+    for (const tile of bosses) {
+      expect(screenAxes(screen([{ r: 4, c: 4, ch: tile }])).has('combat'), `boss ${tile}`).toBe(true);
+    }
+  });
+
+  test('雑魚は1体だけでは combat 軸を立てない（センチネル F は精鋭扱い）', () => {
+    const mobs = entries.filter(([tile, m]) => !m.isBoss && tile !== 'F').map(([tile]) => tile);
+    for (const tile of mobs) {
+      expect(screenAxes(screen([{ r: 4, c: 4, ch: tile }])).has('combat'), `mob ${tile}`).toBe(false);
+    }
   });
 });
 

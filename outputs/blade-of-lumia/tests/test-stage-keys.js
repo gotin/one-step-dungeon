@@ -40,6 +40,7 @@ export const TEST_STAGE_KEYS = {
 	lurk_shark:       '15,0',
 	archer_fish:      '16,0',
 	ladder_bg_bridge: '17,0',
+	tide_gate:        '18,0',
 };
 
 /**

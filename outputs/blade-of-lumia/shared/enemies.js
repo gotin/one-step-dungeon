@@ -444,6 +444,17 @@ export const ENEMY_META = {
 	},
 };
 
+// ── 敵タイルの集合（ENEMY_META から自動導出＝単一の真実）────────────
+// 「このタイルは敵か？」を判定したい側（エディタのステージ情報の敵カウント等）は
+// タイル文字を並べたローカル表を持たず、必ずここを使う。
+// 理由＝ハードコードした表は敵を足すたびに更新漏れが起きる（実例：記号タイルの
+// 海棲雑魚 & < / だけでなく、名前付きボス Z A L N J O U G I も
+// エディタの敵カウントから漏れていた＝13種が 0 と表示されていた）。
+export const ENEMY_TILES = Object.freeze(Object.keys(ENEMY_META));
+export function isEnemyTile(tileChar) {
+	return Object.hasOwn(ENEMY_META, tileChar);
+}
+
 // 投擲物のスプライト対応表
 export const PROJECTILE_SPRITE = {
 	spear:     'spear',
