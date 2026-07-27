@@ -261,16 +261,28 @@ test.describe('Phase 9-6 深洋O – aquatic enemy movement + 魚群', () => {
     expect(errors).toEqual([]);
   });
 
-  test('⑤ FISH_SCHOOL はまだ本編レイヤーに配置していない（部品のみ）', () => {
-    // テストレイヤー（test_*）は除外：検証ステージには当然 '&' が置いてある。
+  test('⑤ FISH_SCHOOL は深洋Oアーム7に配置済み・かつ必ず水上に立つ', () => {
+    // 2026-07-26 の 9-6④ アーム7 で初配置。水は bgTiles 単一ソースなので水判定は bgTiles。
+    const placed = [];
     for (const [layerName, layer] of gameLayerEntries(MAP)) {
       for (const [sk, stage] of Object.entries(layer.stages ?? {})) {
-        const flat = (stage.tiles ?? [])
-          .map(row => (Array.isArray(row) ? row.join('') : String(row)))
-          .join('');
-        expect(flat.includes(TILE.FISH_SCHOOL),
-          `${layerName}/${sk} に配置済みの '&' がある（まだ部品のみのはず）`).toBe(false);
+        const tiles = stage.tiles ?? [];
+        for (let r = 0; r < tiles.length; r++) {
+          const row = Array.isArray(tiles[r]) ? tiles[r] : String(tiles[r]).split('');
+          for (let c = 0; c < row.length; c++) {
+            if (row[c] !== TILE.FISH_SCHOOL) continue;
+            expect(stage.bgTiles?.[`${r},${c}`] === TILE.WATER,
+              `${layerName}/${sk} (${r},${c}) の '&' が水上にいない（水棲敵は動けない）`).toBe(true);
+            placed.push(`${layerName}/${sk}`);
+          }
+        }
       }
+    }
+    expect(placed.length, '魚群が本編レイヤーに1体もいない').toBeGreaterThan(0);
+    const ARM = new Set(['15,8', '14,9', '15,9', '14,10', '15,10', '14,11', '15,11']
+      .map(k => `field/${k}`));
+    for (const key of placed) {
+      expect(ARM.has(key), `'&' がアーム7外の ${key} にいる（配置範囲の想定外）`).toBe(true);
     }
   });
 });

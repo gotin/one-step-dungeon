@@ -116,10 +116,12 @@ const BASELINE = {
                     // 43→35 after ⑥-9 volcano; 35→0 after ⑥-trap (all §11-1 corners closed).
   w1: 0,            // all-blocked screens → 0 achieved (rule 2: all playable)
   w2: 0,            // orphan screens → 0 achieved (rule 2: all reachable)
-  underTwoAxis: 108, // reachable <2-axis screens → goal 0. 114→110 after ⑥-8;
+  underTwoAxis: 101, // reachable <2-axis screens → goal 0. 114→110 after ⑥-8;
                     // 110→108 after ⑥-9 (all 7 L screens → ≥2 axes; only 2 were flagged
                     // before, the rest passed the heuristic as filler but were 塗り絵).
-                    // Remaining: the outer ring's minimal walkways (⑥-10/⑥-11) + the hub.
+                    // 108→101 after 9-6④ アーム7 (the 7 深洋O entrance screens, designed
+                    // one screen at a time — each earns ≥2 axes).
+                    // Remaining: the rest of 深洋O (廊下/デルタ/聖域) + the hub.
   dupLayouts: 7,    // identical-layout groups → goal small. Deep-ocean minimal
                     // walkways still share geometry (⑥-11 content pass clears them).
   traps: 0,         // rule 1: reached screen → arrival-wall soft-lock → GOAL MET (0).

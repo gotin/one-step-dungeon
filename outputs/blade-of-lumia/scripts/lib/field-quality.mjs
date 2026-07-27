@@ -193,7 +193,13 @@ const _HAZARD_TILES = new Set(['l', 'x', '~']);
  * quality metrics (hazard count, route-terrain, similarity) seeing water the same
  * whether it sits on the tiles layer or the bgTiles layer — so migrating water
  * from tiles '~' to bgTiles '~' leaves every metric unchanged (Step C 自己検証の前提).
+ *
+ * ただし bg 水は「床が空のセル」だけ '~' に畳む。水上に敵/宝箱/看板を置くのが
+ * 深洋O の作法なので（敵は bgTiles 水の上に tiles 文字で立つ）、無条件に畳むと
+ * その敵が指標から消えて「戦闘0画面」に見えてしまう。tiles 側に中身がある
+ * セルは中身を優先する（接続判定は cellTile 側が水として扱うので不変）。
  */
+const _BG_WATER_FOLDABLE = new Set(['.', ' ', '~']);
 function effectiveFlat(s) {
   const bg = s.bgTiles;
   if (!bg) return s.tiles.flat();
@@ -201,7 +207,9 @@ function effectiveFlat(s) {
   for (let r = 0; r < s.tiles.length; r++) {
     const row = s.tiles[r];
     for (let c = 0; c < row.length; c++) {
-      out.push(bg[`${r},${c}`] === '~' ? '~' : row[c]);
+      const ch = row[c];
+      const foldable = ch === undefined || _BG_WATER_FOLDABLE.has(ch);
+      out.push(foldable && bg[`${r},${c}`] === '~' ? '~' : ch);
     }
   }
   return out;

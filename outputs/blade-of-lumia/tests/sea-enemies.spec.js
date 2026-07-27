@@ -387,17 +387,34 @@ test.describe('Phase 9-6 深洋O – 海棲雑魚②接近型・③遠隔型', (
     expect(errors).toEqual([]);
   });
 
-  test('⑨ 潜み鮫・射水魚はまだ本編レイヤーに配置していない（部品のみ）', () => {
-    // テストレイヤー（test_*）は除外：検証ステージには当然 '<'/'/' が置いてある。
+  test('⑨ 潜み鮫・射水魚は深洋Oアーム7に配置済み・かつ必ず水上に立つ', () => {
+    // 2026-07-26 の 9-6④ アーム7 で初配置。以降は「未配置」ではなく
+    // 「配置されている・かつ水棲の不変条件を守っている」を守る。
+    // 水は bgTiles 単一ソース（tiles に '~' は書かない）なので、水判定は bgTiles を見る。
+    const placed = { [TILE.LURK_SHARK]: [], [TILE.ARCHER_FISH]: [] };
     for (const [layerName, layer] of gameLayerEntries(MAP)) {
       for (const [sk, stage] of Object.entries(layer.stages ?? {})) {
-        const flat = (stage.tiles ?? [])
-          .map(row => (Array.isArray(row) ? row.join('') : String(row)))
-          .join('');
-        for (const ch of [TILE.LURK_SHARK, TILE.ARCHER_FISH]) {
-          expect(flat.includes(ch),
-            `${layerName}/${sk} に配置済みの '${ch}' がある（まだ部品のみのはず）`).toBe(false);
+        const tiles = stage.tiles ?? [];
+        for (let r = 0; r < tiles.length; r++) {
+          const row = Array.isArray(tiles[r]) ? tiles[r] : String(tiles[r]).split('');
+          for (let c = 0; c < row.length; c++) {
+            const ch = row[c];
+            if (ch !== TILE.LURK_SHARK && ch !== TILE.ARCHER_FISH) continue;
+            expect(stage.bgTiles?.[`${r},${c}`] === TILE.WATER,
+              `${layerName}/${sk} (${r},${c}) の '${ch}' が水上にいない（水棲敵は動けない）`).toBe(true);
+            placed[ch].push(`${layerName}/${sk}`);
+          }
         }
+      }
+    }
+    expect(placed[TILE.LURK_SHARK].length, '潜み鮫が本編レイヤーに1体もいない').toBeGreaterThan(0);
+    expect(placed[TILE.ARCHER_FISH].length, '射水魚が本編レイヤーに1体もいない').toBeGreaterThan(0);
+    // 初配置は深洋O アーム7（field 15,8〜15,11 / 14,9〜14,11）に限る。
+    const ARM = new Set(['15,8', '14,9', '15,9', '14,10', '15,10', '14,11', '15,11']
+      .map(k => `field/${k}`));
+    for (const [ch, keys] of Object.entries(placed)) {
+      for (const key of keys) {
+        expect(ARM.has(key), `'${ch}' がアーム7外の ${key} にいる（配置範囲の想定外）`).toBe(true);
       }
     }
   });
