@@ -259,7 +259,10 @@ const ELITE_TILES = new Set(
 // star-fragment sitting in the open behind one of them.
 const SECRET_TILES = new Set(['u', '!', '*', 'Q']);
 // Solvable道具ゲート + pit + bridge: a traversal challenge (障害と解法).
-const GATE_TILES = new Set(['!', 'T', '(', ')', 'D', 'x', 'v']);
+// '=' 潮ゲート（スイッチ/ボタンで開く水の門）も解ける障害。2026-07-27 に追加:
+// 深洋O の廊下は戦闘ゼロ・秘密ゼロで「潮ゲート＋石押し」だけで成立させる設計なので、
+// これが抜けていると作り込んだ画面が 0 軸＝素通り判定になっていた。
+const GATE_TILES = new Set(['!', 'T', '(', ')', 'D', 'x', 'v', TILE.TIDE_GATE]);
 // Explicit landmark markers: altar / stone-floor plaza / buildings. Bare '#'
 // (generic wall) is deliberately NOT here — a wall is just an obstacle border,
 // not a memorable place. Ruins register as landmarks via their 'o' stone floor.
@@ -346,9 +349,21 @@ function allBlockedScreens(stages) {
 
 /**
  * Compute the 9-6 honest metrics for the field layer.
+ *
+ * `reached` is the STRICT walk (solvable gates stay shut) — that's what seam/trap
+ * analysis needs. `reachedWithGates` additionally walks THROUGH solvable gates
+ * (door/gate/tide-gate/breakable/…), i.e. the set of screens a player with the
+ * right items/switches can actually stand in.
+ *
+ * 2026-07-27 深洋O 廊下: the two must be kept separate. Putting tide gates '=' in the
+ * corridor dropped the 17 screens BEHIND them out of `reached`, which made
+ * under-2-axis "improve" 101→83 without a single screen gaining an axis — i.e. an
+ * unfinished screen could be hidden from the invariant just by gating it. Quality
+ * metrics whose population is "screens the player will see" must use
+ * `reachedWithGates`; connectivity bug-finding keeps using `reached`.
  * @param {object} mapData  the whole map (needs startPos + all layers)
  * @returns {{
- *   reached:Set<string>, orphans:string[], w1:string[],
+ *   reached:Set<string>, reachedWithGates:Set<string>, orphans:string[], w1:string[],
  *   seams:string[], traps:string[], rawDeadEdges:number
  * }}
  */
@@ -361,7 +376,12 @@ export function fieldHonestMetrics(mapData) {
     col: mapData.startPos?.col ?? 2,
   };
   const { reachedRooms, deadEdges } = bfsLayer(stages, start);
-  const { orphans } = findOrphanRooms(stages, findEntrances(mapData, 'field'));
+  const entrances = findEntrances(mapData, 'field');
+  const { orphans, reachable } = findOrphanRooms(stages, entrances);
+  // findOrphanRooms walks WITH solvable gates open (that is exactly its definition of
+  // "enterable"), so its `reachable` is the gates-open population we need. Union with
+  // the strict walk so a screen reached only by an edge-scroll is never dropped.
+  const reachedWithGates = new Set([...reachable, ...reachedRooms]);
   const w1Set = allBlockedScreens(stages);
   const orphanSet = new Set(orphans);
 
@@ -388,6 +408,7 @@ export function fieldHonestMetrics(mapData) {
   }
   return {
     reached: reachedRooms,
+    reachedWithGates,
     orphans: [...orphanSet].sort(),
     w1: [...w1Set].sort(),
     seams: [...seams].sort(),
@@ -398,6 +419,11 @@ export function fieldHonestMetrics(mapData) {
 
 /**
  * List reachable playable screens that carry fewer than 2 axes (素通り画面).
+ *
+ * The population is `reachedWithGates` — every screen the player can actually stand
+ * in, INCLUDING those behind a solvable gate. Using the strict `reached` here was a
+ * loophole: gating an unfinished screen removed it from the count (深洋O 廊下 dropped
+ * 17 screens and "improved" the metric 101→83 with zero content change).
  * @param {object} mapData
  * @param {{allowlist?:Set<string>|string[]}} [opts]  screen keys to skip (e.g.
  *   the start village / tower approach — documented exemptions).
@@ -407,9 +433,9 @@ export function underTwoAxisScreens(mapData, opts = {}) {
   const field = (mapData.layers && mapData.layers.field) || mapData.field;
   const stages = field.stages;
   const allow = new Set(opts.allowlist || []);
-  const { reached } = fieldHonestMetrics(mapData);
+  const { reachedWithGates } = fieldHonestMetrics(mapData);
   const out = [];
-  for (const k of reached) {
+  for (const k of reachedWithGates) {
     if (allow.has(k)) continue;
     const axes = screenAxes(stages[k]);
     if (axes.size < 2) out.push({ key: k, axes: [...axes] });
@@ -449,6 +475,25 @@ export function duplicateLayoutGroups(mapData) {
     byHash.get(hash).push(k);
   }
   return [...byHash.values()].filter((g) => g.length >= 2).map((g) => g.sort());
+}
+
+/**
+ * How many screens are caught in SOME duplicate group. This — not the group COUNT —
+ * is the honest ratchet metric.
+ *
+ * 2026-07-27 深洋O 廊下: sealing the west perimeter added an 'M' to the outer ring of
+ * many still-塗り絵 screens. Their interiors did not change by a single cell, but the
+ * 37-screen dup group SPLIT into 21+4+4+3+… because each screen's added wall shape
+ * differed → group count 7→13 while the actual duplication went DOWN (64→59 screens).
+ * Ratcheting on group count therefore punishes progress: it rewards leaving the
+ * paint-by-numbers screens byte-identical and penalises touching their borders.
+ * Screen count is monotone in the thing we actually care about (how many screens are
+ * still copies of another screen), so that is what the invariant locks.
+ * @param {object} mapData
+ * @returns {number} count of screens that share their layout with at least one other
+ */
+export function duplicateLayoutScreenCount(mapData) {
+  return duplicateLayoutGroups(mapData).reduce((n, g) => n + g.length, 0);
 }
 
 // ── Warp / MAP_ENTER landing guard (ワープ着地の詰み検出・⑥-warp) ──────────────
@@ -542,9 +587,12 @@ export function warpEnterLandings(mapData) {
 // ── 3 new quality checks (Phase 9-6-BASE implementation) ─────────────────────
 
 // Tiles that represent a "puzzle / obstacle" element (B-axis, environment puzzle).
-const _PUZZLE_TILES = new Set(['!', 'T', '(', ')', '*', 'v', 'x', 'H', 'Y', '[', ']', 'S']);
+// '=' 潮ゲートは GATE_TILES と同じ理由で 2026-07-27 に追加（廊下がパズル密度に乗らない）。
+const _PUZZLE_TILES = new Set(['!', 'T', '(', ')', '*', 'v', 'x', 'H', 'Y', '[', ']', 'S', TILE.TIDE_GATE]);
 // Tiles that represent a "showpiece combat" element (killAll gate handled separately).
-const _COMBAT_SHOWPIECE = new Set(['F', 'V', 'W', 'X', 'Z', 'G', 'N', 'J', 'A', 'L', 'O', 'U', 'I']);
+// ELITE_TILES（= ENEMY_META のボス全種 + センチネル）と同義なので導出して使う。
+// 手書きの表だった頃、海の主 '{' が漏れてボス部屋が戦闘画面に数えられなかった。
+const _COMBAT_SHOWPIECE = ELITE_TILES;
 // Tiles that signal a "one-off" unique element (C-axis).
 const _UNIQUE_TILES = new Set(['^', 'o', 'h', 'p', 'i']);
 // Tiles that are a "story anchor" (A-axis).

@@ -1,10 +1,11 @@
 import { test, expect } from '@playwright/test';
 import {
-  screenAxes, duplicateLayoutGroups,
-  regionOf, battleScore,
+  screenAxes, duplicateLayoutGroups, duplicateLayoutScreenCount,
+  regionOf, battleScore, underTwoAxisScreens, fieldHonestMetrics,
   regionDensityMetrics, regionBattleScores, structuralSimilarityWarnings,
 } from '../scripts/lib/field-quality.mjs';
 import { ENEMY_META } from '../shared/enemies.js';
+import { TILE } from '../shared/tiles.js';
 
 // Phase 9-6 設計④: like connectivity-tool.spec.js, the axis-inference rules ARE
 // the invariant, so the rules themselves must be tested against hand-built
@@ -66,6 +67,14 @@ test.describe('field-quality — screenAxes inference', () => {
     expect(screenAxes(screen([{ r: 4, c: 4, ch: '^' }])).has('landmark')).toBe(true);
   });
 
+  // 2026-07-27 深洋O 廊下: 潮ゲート '=' は「スイッチで開く水の門」＝解ける障害の
+  // 代表そのものなのに GATE_TILES に無く、潮ゲートだけの画面が 0 軸＝素通り判定に
+  // なっていた（廊下C1〜C4 は戦闘ゼロ・秘密ゼロの設計なので、これを塞がないと
+  // 「作ったのに素通り扱い」になる）。TILE 定数から引いて手書きの取り違えも防ぐ。
+  test('潮ゲート(=)は obstacle 軸（スイッチで開く水の門＝解ける障害）', () => {
+    expect(screenAxes(screen([{ r: 4, c: 4, ch: TILE.TIDE_GATE }])).has('obstacle')).toBe(true);
+  });
+
   test('2軸を満たす画面（分岐路の水堀＋橋の奥に茂み秘密）', () => {
     // bridge (obstacle) + bush (secret) = 2 axes → passes the invariant.
     const axes = screenAxes(screen([{ r: 4, c: 4, ch: 'v' }, { r: 6, c: 6, ch: 'u' }]));
@@ -103,6 +112,76 @@ test.describe('field-quality — duplicateLayoutGroups', () => {
     const b = screen([{ r: 5, c: 5, ch: 't' }]);
     const map = { layers: { field: { stages: { '0,0': a, '1,0': b } } } };
     expect(duplicateLayoutGroups(map).length).toBe(0);
+  });
+
+  // 2026-07-27 深洋O 廊下: 「グループ数」を天井にしていた穴。廊下の封鎖で外周に
+  // 'M' を足したら、同一だった 37枚の塗り絵グループが「足した壁の形が違う」だけで
+  // 21+4+4+3… に**分裂**し、groups 7→13 に増えた。内側の塗り絵は 1マスも変わって
+  // いないのに指標が悪化する＝「作り込みを進めるほど dup が増える」誤った圧力。
+  // 実態を表すのは「重複に巻き込まれている画面数」（64→59 と正しく減る）。
+  // グループ数は分裂で増減するので天井に使えない。
+  test('duplicateLayoutScreenCount — 分裂しても重複画面数は増えない（グループ数は増える）', () => {
+    const withWall = (cells) => {
+      const s = screen([{ r: 4, c: 4, ch: 't' }]);
+      for (const [r, c] of cells) s.tiles[r][c] = 'M';
+      return s;
+    };
+    // 4枚すべて中身は同一の塗り絵。外周の壁（＝封鎖の形）だけ違う。
+    const split = { layers: { field: { stages: {
+      '0,0': withWall([[0, 3]]), '1,0': withWall([[0, 3]]),
+      '2,0': withWall([[9, 3]]), '3,0': withWall([[9, 3]]),
+    } } } };
+    const same = { layers: { field: { stages: {
+      '0,0': withWall([]), '1,0': withWall([]),
+      '2,0': withWall([]), '3,0': withWall([]),
+    } } } };
+    // グループ数は分裂で 1→2 に増える（＝天井にすると偽の悪化になる）。
+    expect(duplicateLayoutGroups(same).length).toBe(1);
+    expect(duplicateLayoutGroups(split).length).toBe(2);
+    // 画面数は 4 のまま（＝作り込みが進んでいないことを正しく表す）。
+    expect(duplicateLayoutScreenCount(same)).toBe(4);
+    expect(duplicateLayoutScreenCount(split)).toBe(4);
+  });
+});
+
+// ── ゲートの奥を指標から消さない（2026-07-27）─────────────────────────────────
+// 深洋O 廊下に潮ゲート '=' を置いたら under-2-axis が 101→83 に「改善」した。中身は
+// 悪化していない — bfsLayer の reached は解けるゲートを通らないので、ゲートの奥の
+// 17画面が reached から落ち、素通り画面としてカウントされなくなっただけだった。
+// これを許すと「未完成の画面をゲートで封じれば指標が良くなる」＝最悪の抜け道になる。
+// ∴ 「2軸を満たすべき画面」の母集団は **ゲートを開けた到達集合**（findOrphanRooms が
+// 使っているのと同じ、solvable gate を開と見る到達性）で取る。
+test.describe('field-quality — ゲートの奥も指標に残る', () => {
+  // 2画面: 入口 0,0 の南辺 → 1画面南 0,1。0,1 は素通りの塗り絵。
+  // 境界に潮ゲートを置いて「ゲートの奥」にする。
+  function gatedPair({ gate }) {
+    const open = (s) => {
+      for (let c = 1; c <= 10; c++) { s.tiles[0][c] = '.'; s.tiles[9][c] = '.'; }
+      return s;
+    };
+    const entry = open(screen([{ r: 4, c: 4, ch: 't' }, { r: 5, c: 5, ch: 'u' }]));
+    const behind = open(screen());          // 0 軸の塗り絵（素通り）
+    if (gate) entry.tiles[9][5] = TILE.TIDE_GATE;   // 南へ出る唯一の口を潮ゲートで封じる
+    for (let c = 1; c <= 10; c++) if (c !== 5) { entry.tiles[9][c] = '#'; behind.tiles[0][c] = c === 5 ? '.' : '#'; }
+    entry.tiles[9][5] = gate ? TILE.TIDE_GATE : '.';
+    behind.tiles[0][5] = '.';
+    return { startPos: { stage: '0,0', row: 1, col: 1 }, layers: { field: { stages: { '0,0': entry, '0,1': behind } } } };
+  }
+
+  test('ゲート無しなら奥の塗り絵は素通り画面として数えられる（対照）', () => {
+    const keys = underTwoAxisScreens(gatedPair({ gate: false })).map((u) => u.key);
+    expect(keys).toContain('0,1');
+  });
+
+  test('潮ゲートで封じても奥の塗り絵は素通り画面のまま（ゲートで隠せない）', () => {
+    const keys = underTwoAxisScreens(gatedPair({ gate: true })).map((u) => u.key);
+    expect(keys).toContain('0,1');
+  });
+
+  test('fieldHonestMetrics は「ゲートを開けた到達集合」も返す', () => {
+    const m = fieldHonestMetrics(gatedPair({ gate: true }));
+    expect(m.reached.has('0,1')).toBe(false);          // 厳密到達（ゲート閉）には入らない
+    expect(m.reachedWithGates.has('0,1')).toBe(true);  // ゲートを開ければ到達できる
   });
 });
 
@@ -206,6 +285,32 @@ test.describe('field-quality — 3検査（smoke）', () => {
     const g = density.get('G1');
     expect(g).toBeDefined();
     expect(g.puzzle).toBeGreaterThanOrEqual(1);
+  });
+
+  // 2026-07-27: 潮ゲートは screenAxes だけでなく密度検査（§18 の「地域あたり
+  // パズル画面3枚」目標）にも計上されないと、廊下4枚を作っても深洋O のパズル密度が
+  // 上がらない＝目標未達の見落としになる。
+  test('regionDensityMetrics — 潮ゲート(=)だけの画面もパズル密度に計上される', () => {
+    const s = screen([{ r: 4, c: 4, ch: TILE.TIDE_GATE }]);
+    for (let c = 1; c <= 10; c++) { s.tiles[0][c] = '.'; s.tiles[9][c] = '.'; }
+    for (let r = 1; r <= 8; r++) { s.tiles[r][0] = '.'; s.tiles[r][11] = '.'; }
+    const density = regionDensityMetrics(makeMap({ '4,2': s }));
+    expect(density.get('G1').puzzle).toBe(1);
+  });
+
+  // 手書きの敵表が二度目の穴を開けていた: _COMBAT_SHOWPIECE（1体で戦闘画面と
+  // 数える精鋭）に海の主 '{' が無く、ボス部屋がボス部屋と数えられなかった。
+  // ENEMY_META 由来にして「ボスを足したら自動で入る」ことを全ボスで固定する。
+  test('regionDensityMetrics — ENEMY_META の全ボスが1体で戦闘画面に数えられる', () => {
+    const bosses = Object.entries(ENEMY_META).filter(([, m]) => m.isBoss).map(([t]) => t);
+    const missing = [];
+    for (const tile of bosses) {
+      const s = screen([{ r: 4, c: 4, ch: tile }]);
+      for (let c = 1; c <= 10; c++) { s.tiles[0][c] = '.'; s.tiles[9][c] = '.'; }
+      for (let r = 1; r <= 8; r++) { s.tiles[r][0] = '.'; s.tiles[r][11] = '.'; }
+      if (regionDensityMetrics(makeMap({ '4,2': s })).get('G1').combat !== 1) missing.push(tile);
+    }
+    expect(missing).toEqual([]);
   });
 
   test('regionBattleScores — 戦闘画面が分布に含まれる', () => {

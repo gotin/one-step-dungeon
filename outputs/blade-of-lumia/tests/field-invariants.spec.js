@@ -3,7 +3,7 @@ import { readFileSync } from 'fs';
 import { fileURLToPath } from 'url';
 import {
   fieldHonestMetrics, underTwoAxisScreens, duplicateLayoutGroups,
-  warpEnterLandings,
+  duplicateLayoutScreenCount, warpEnterLandings,
 } from '../scripts/lib/field-quality.mjs';
 
 // ── Phase 9-6 設計④: フィールド不変条件テスト ─────────────────────────────────
@@ -111,19 +111,40 @@ const TWO_AXIS_ALLOWLIST = ['7,14', '8,0', '8,1'];
 //   dest side (2,3 cells 9,4/9,7 opened). Result: seams 43→0, traps 43→0 — BOTH GOALS
 //   MET. reached 319 unchanged (a corner is decorative border, never load-bearing),
 //   W1/W2/dup/under-2-axis all unchanged. seams & traps ceilings are now hard 0.
+// 2026-07-27 ⑤ 深洋O 廊下C1〜C4 + 西外周封鎖 (migrate-field-corridor-o.mjs): 4 corridor
+//   screens authored as combat-zero 潮ゲート+石押し puzzles (each verified by full
+//   state-space search: solvable, zero dead states, gate cannot be bypassed), and the
+//   O west perimeter sealed (26 screens / 266 cells; sea side = bgTiles water, land
+//   side = 'M') so the corridor is the ONLY road into the delta and the sanctuary is
+//   reachable only past the sea lord. under-2-axis 101→97 (the 4 corridor screens).
+//   seams/traps/W1/W2 stay 0. TWO metric holes were found and closed first, because
+//   both made this very change look better than it was:
+//   (a) under-2-axis counted only the STRICT walk, so the 17 screens behind the new
+//       tide gates fell out of the population and the number "improved" 101→83 with
+//       zero content change — i.e. gating an unfinished screen hid it. Population is
+//       now `reachedWithGates` (320, unchanged by this pass).
+//   (b) dupLayouts was ratcheted on GROUP COUNT. Adding a wall to the outer ring of
+//       still-塗り絵 neighbours split the 37-screen group into 21+4+4+3+… → 7→13 groups
+//       while actual duplication FELL (64→59 screens). Group count punishes progress,
+//       so the ceiling is now duplicateLayoutScreenCount (64→59 here).
 const BASELINE = {
   seams: 0,         // honest seam bugs (reachable→reachable but walled) → GOAL MET (0).
                     // 43→35 after ⑥-9 volcano; 35→0 after ⑥-trap (all §11-1 corners closed).
   w1: 0,            // all-blocked screens → 0 achieved (rule 2: all playable)
   w2: 0,            // orphan screens → 0 achieved (rule 2: all reachable)
-  underTwoAxis: 101, // reachable <2-axis screens → goal 0. 114→110 after ⑥-8;
+  underTwoAxis: 97, // <2-axis screens the player can stand in (gates OPEN — see
+                    // reachedWithGates) → goal 0. 114→110 after ⑥-8;
                     // 110→108 after ⑥-9 (all 7 L screens → ≥2 axes; only 2 were flagged
                     // before, the rest passed the heuristic as filler but were 塗り絵).
                     // 108→101 after 9-6④ アーム7 (the 7 深洋O entrance screens, designed
                     // one screen at a time — each earns ≥2 axes).
-                    // Remaining: the rest of 深洋O (廊下/デルタ/聖域) + the hub.
-  dupLayouts: 7,    // identical-layout groups → goal small. Deep-ocean minimal
-                    // walkways still share geometry (⑥-11 content pass clears them).
+                    // 101→97 after ⑤ 廊下C1〜C4.
+                    // Remaining: the rest of 深洋O (デルタ14/聖域) + the hub.
+  dupScreens: 59,   // screens caught in SOME identical-layout group → goal small.
+                    // Ratcheted on screen COUNT, not group count (group count splits
+                    // when a wall is added to an untouched 塗り絵 → false regression).
+                    // 64→59 after ⑤ (the 4 corridor screens + 15,16 left their groups).
+                    // Deep-ocean minimal walkways still share geometry (⑥-11 clears them).
   traps: 0,         // rule 1: reached screen → arrival-wall soft-lock → GOAL MET (0).
                     // 43→35 after ⑥-9 volcano; 35→0 after ⑥-trap (mirror-AND fixed point
                     // closes every §11-1 corner residual across region boundaries).
@@ -166,13 +187,20 @@ test.describe('Blade of Lumia – 9-6 フィールド不変条件（ratchet）',
     ).toBeLessThanOrEqual(BASELINE.underTwoAxis);
   });
 
+  // Ratchet on the number of SCREENS caught in a dup group, not the number of groups.
+  // 2026-07-27: sealing the O perimeter added one wall to the outer ring of many
+  // untouched 塗り絵 screens; their interiors were byte-identical before and after, but
+  // the differing wall shapes SPLIT one 37-screen group into 21+4+4+3+… → group count
+  // 7→13 (a "regression" that was actually 64→59 fewer duplicated screens). Group
+  // count therefore rewards never touching a copy-pasted screen's border.
   test('レイアウト重複 (同一タイル配置の使い回し) は基準以下', () => {
-    const groups = duplicateLayoutGroups(loadMap());
+    const map = loadMap();
+    const groups = duplicateLayoutGroups(map);
     expect(
-      groups.length,
-      `duplicate-layout groups found (塗り絵 copy-paste):\n` +
+      duplicateLayoutScreenCount(map),
+      `duplicate-layout screens found (塗り絵 copy-paste):\n` +
       groups.map((g) => g.join(', ')).join('\n'),
-    ).toBeLessThanOrEqual(BASELINE.dupLayouts);
+    ).toBeLessThanOrEqual(BASELINE.dupScreens);
   });
 
   // USER RULE 1: 入った後に動けなくなるステージを作ってはならない. A trap = step off a
@@ -235,8 +263,9 @@ test.describe('Blade of Lumia – 9-6 フィールド不変条件（ratchet）',
     console.log(`  seams        : ${m.seams.length}\t(baseline ${BASELINE.seams})`);
     console.log(`  W1           : ${m.w1.length}\t(baseline ${BASELINE.w1})`);
     console.log(`  W2 orphan    : ${m.orphans.length}\t(baseline ${BASELINE.w2})`);
-    console.log(`  under-2-axis : ${under.length}\t(baseline ${BASELINE.underTwoAxis})`);
-    console.log(`  dup layouts  : ${duplicateLayoutGroups(map).length}\t(baseline ${BASELINE.dupLayouts})`);
+    console.log(`  under-2-axis : ${under.length}\t(baseline ${BASELINE.underTwoAxis})  ← gates-open population`);
+    console.log(`  dup screens  : ${duplicateLayoutScreenCount(map)}\t(baseline ${BASELINE.dupScreens})  in ${duplicateLayoutGroups(map).length} groups`);
+    console.log(`  reached      : strict ${m.reached.size} / gates-open ${m.reachedWithGates.size} of ${Object.keys(map.layers.field.stages).length}`);
     console.log(`  trap edges   : ${m.traps.length}\t(baseline ${BASELINE.traps})  ← rule 1 soft-locks`);
     expect(true).toBe(true);
   });
