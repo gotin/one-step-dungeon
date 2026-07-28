@@ -148,7 +148,50 @@ const BASELINE = {
   traps: 0,         // rule 1: reached screen → arrival-wall soft-lock → GOAL MET (0).
                     // 43→35 after ⑥-9 volcano; 35→0 after ⑥-trap (mirror-AND fixed point
                     // closes every §11-1 corner residual across region boundaries).
+  footprintBlocked: 67, // 見えない壁: seam looks open, engine bounces you back → goal 0.
+                    // NEW class (2026-07-27 ⑥-footprint), see the note below. NOT folded
+                    // into traps/seams — those two mean "no 1-cell arrival wall" and are
+                    // already at hard 0; merging would silently un-meet a met goal.
+                    // 71→67 after ⑥-footprint fixed 深洋O (the 4 corridor screens + the
+                    //   arm's E3 tablet), the region the user actually walked:
+                    //     15,11→15,12 @0,9='Y'   Y moved row1→row2
+                    //     15,12→15,11 @9,9='i'   arm tablet moved off the south shore row8
+                    //     15,13→15,14 @0,5='*'   push lane dropped row1→row2 (C3)
+                    //     15,14→15,15 @0,5='*'   同 (C4)
+                    //   + C2: sealed the cells a stone could be pushed to on row0 (a stone
+                    //     on the top row can never be pushed back → permanent invisible wall).
+                    //   The remaining 67 are all in the outer ring (⑥-11 scope) — see
+                    //   PLAN.md ⑥-footprint step 5. dungeon_7 3,2→3,3 @0,6='x' is tracked
+                    //   separately by FOOTPRINT_BASELINE in connectivity-tool.spec.js.
 };
+
+// 2026-07-27 ⑥-footprint — the metric hole the USER found by playing, not by measuring:
+// 「15,13 から南に歩いても弾き返される」 while seams/traps/W1/W2 all read 0.
+//
+// Root cause (game.js:1144-1147 + arrivalIsWall): checkStageTransition is symmetric in
+// FLOAT coords (0.5 / size-1.5) but asymmetric in TILES — entering downward lands on tile
+// row 0, entering upward on row rows-2. Either way the half-cell landing puts the 1-cell
+// hitbox across TWO rows (or cols), and the transition is CANCELLED if either holds a
+// wall. So the real data rule — undocumented until now, and violated 72× map-wide — is:
+//   ⚠️ an open crossing must keep the boundary row/col AND the next row/col inward clear.
+// Every checker measured only the boundary cell, so 72 invisible walls coexisted with
+// traps = 0. Lesson (DECISIONS.md): 画面の中を検証するテストは、画面に入れることを検証しない.
+//
+// For now the DATA is fixed and the rule is encoded in footprintBlockedEdges(). The
+// alternative — an INTEGER landing (row 0 / rows-1 instead of 0.5 / rows-1.5) so the
+// footprint spans one row — was MEASURED on 2026-07-28, not dismissed: it drops
+// footprintBlocked 68→0 and the whole suite still passes, i.e. the layouts do NOT depend
+// on the half-cell landing. Its real cost is elsewhere: 15 crossings whose boundary cell
+// is a CLOSED solvable gate (field 5,13→6,13 @'!', dungeon_7 1,0→1,1 @'T', …) would drop
+// the player onto the gate itself, and in-engine probes confirm the player is then frozen
+// in all four directions — an unrecoverable soft-lock. So the integer landing is only safe
+// PAIRED with "refuse a transition whose arrival cell is a closed gate" (':' exempt, it
+// starts open; dungeon_7 0,0 needs a key-door carve-out). Tracked in DECISIONS.md
+// 2026-07-28 / PLAN.md ⑥-landing.
+//
+// ⚠️ Note the CURRENT landing has the mirror-image defect, also measured in-engine: the
+// half cell straddles the gate row, so an edge scroll walks the player THROUGH a closed
+// gate (field 5,13→6,13 sails past the unbroken '!'). Neither landing is correct alone.
 
 test.describe('Blade of Lumia – 9-6 フィールド不変条件（ratchet）', () => {
   test('接続シーム破綻 (honest seam bugs) は基準以下（目標 0）', () => {
@@ -217,6 +260,22 @@ test.describe('Blade of Lumia – 9-6 フィールド不変条件（ratchet）',
     ).toBeLessThanOrEqual(BASELINE.traps);
   });
 
+  // ⑥-footprint: 見えない壁. Unlike `traps` (arrival cell IS a wall → you clamp and stick)
+  // this crossing LOOKS open from both sides: the player walks into the seam and is
+  // silently pushed back, with no wall in sight to explain it. Ratcheted separately, and
+  // NOT filtered by reachability — the strict walk keeps gates shut, and filtering hid
+  // the user's own case (15,13→15,14 is behind the corridor tide gates).
+  test('見えない壁 (arrival footprint) は基準以下（目標 0＝⑥-footprint）', () => {
+    const m = fieldHonestMetrics(loadMap());
+    expect(
+      m.footprintBlocked.length,
+      `footprint-blocked crossings regressed above baseline ${BASELINE.footprintBlocked}.\n` +
+      `継ぎ目は開いて見えるのに、着地 footprint（境界の1つ内側）が壁で遷移が` +
+      `キャンセルされる＝プレイヤーには理由の分からない「見えない壁」:\n` +
+      m.footprintBlocked.slice(0, 40).join('  '),
+    ).toBeLessThanOrEqual(BASELINE.footprintBlocked);
+  });
+
   // ⑥-warp: ワープ/テレポート着地が「詰み」でないこと. bfsLayer/traps only model
   // edge-scrolls; NEITHER inspects where a teleport DROPS the player. game.js
   // enterStage() places the player at the exact (row,col) with no wall-clamping,
@@ -267,6 +326,7 @@ test.describe('Blade of Lumia – 9-6 フィールド不変条件（ratchet）',
     console.log(`  dup screens  : ${duplicateLayoutScreenCount(map)}\t(baseline ${BASELINE.dupScreens})  in ${duplicateLayoutGroups(map).length} groups`);
     console.log(`  reached      : strict ${m.reached.size} / gates-open ${m.reachedWithGates.size} of ${Object.keys(map.layers.field.stages).length}`);
     console.log(`  trap edges   : ${m.traps.length}\t(baseline ${BASELINE.traps})  ← rule 1 soft-locks`);
+    console.log(`  見えない壁   : ${m.footprintBlocked.length}\t(baseline ${BASELINE.footprintBlocked})  ← arrival footprint (⑥-footprint)`);
     expect(true).toBe(true);
   });
 });

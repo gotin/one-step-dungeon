@@ -273,12 +273,17 @@ const SCREENS = {
     [7, 3, 'B'],
     // 海の石碑B: the arm's closing line. Kept OFF the col7 descent junction (8,7) —
     // a sign is hard-blocked, and putting it there severed the only path down.
-    [8, 9, 'i'],
+    // ⚠️ ALSO off row8 (⑥-footprint): row8 is the full-width south shore = the whole
+    // northward crossing from C1 `15,12`, whose landing row 8.5 spans rows 8+9. The
+    // draft put it at (8,9) and that column bounced the player back with no visible
+    // wall. It now sits on the reward ledge, still readable from the shore below
+    // (8,4), and the chest at (7,3) stays reachable from (8,3).
+    [7, 4, 'i'],
   ], {
     chest: { pos: '7,3', content: rupee(25) },
     show: { pos: '7,3', cond: { trigger: 'killAll', message: '⚔ 海の 難所を 越えた！宝箱が 現れた！' } },
     sign: {
-      pos: '8,9',
+      pos: '7,4',
       name: '潮 廊 (しおろう) の 手前',
       lines: ['海の 難所は ここで 尽きる。', 'この先の 廊は 潮が 満ちて 塞ぐ。', '潮を 引かせる 術を 探せ。'],
     },

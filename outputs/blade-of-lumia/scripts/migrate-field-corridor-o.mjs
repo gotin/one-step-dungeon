@@ -40,6 +40,17 @@
  *     あるとそこをはしごで渡ってパズルを迂回できる。∴ 水は必ず 2セル以上の幅で
  *     置く。この不変条件はスクリプト内 assertNoLadderBypass() で機械的に守る。
  *
+ * ── 継ぎ目は「境界＋1つ内側」の2行/2列が要る（2026-07-28 ⑥-footprint 修正）───
+ * checkStageTransition の着地は float で対称（0.5 / size-1.5）だがタイルでは
+ * **非対称**：下へ入ると row0、上へ入ると row rows-2 に立つ。どちらも半セル
+ * ずれるのでプレイヤーの当たり判定は 2行（横なら2列）をまたぎ、arrivalIsWall は
+ * その **どちらかが壁なら遷移をキャンセル** する。
+ *   ∴ 開いている継ぎ目の列/行は、境界セルだけでなく **1つ内側も** 空けること。
+ * 初稿はこれを知らずに C1 の Y を (1,9)、C3/C4 の石を (1,5) に置いていた。継ぎ目は
+ * 開いて見えるのに南へ歩くと弾き返される「見えない壁」で、seams/traps は 0 のまま
+ * だった（＝旧チェッカーは境界1セルしか見ていなかった）。今は
+ * assertNoFootprintWall() が両方向・全4辺を機械的に見る。
+ *
  * ── スイッチ2種の混同は致命的（memory: blade-button-vs-switch）─────────────
  *   'Y' SWITCH … 武器で叩くトグル。ss.switchToggles。showConditions の
  *                 'switchOn' は **効かない**（あれは switchStates を見る）。
@@ -102,10 +113,13 @@ const SCREENS = {
       '~~~~~oo~~~~~',
       '~~~~~oo~~~~~',
     ],
+    // ⚠️ row1 に固い物を置かない（⑥-footprint）。北隣 E3 の row9 は cols1-10 が陸なので
+    // row0 の全域が継ぎ目。着地は row 0.5 ＝ row0 と **row1** をまたぐので、row1 の Y は
+    // その列の遷移をキャンセルする「見えない壁」になる（初稿は 1,9 に置いていた）。
     tiles: [
       '............',
-      '.........Y..',
-      '...h........',
+      '............',
+      '...h.....Y..',
       '.....==.....',
       '.....==.....',
       '........B...',
@@ -114,14 +128,14 @@ const SCREENS = {
       '............',
       '............',
     ],
-    links: [['1,9', ['3,5', '3,6', '4,5', '4,6']]],
+    links: [['2,9', ['3,5', '3,6', '4,5', '4,6']]],
     chest: { pos: '5,8', content: { type: 'rupee', value: 20, name: 'ルピー×20' } },
     // Y はトグル＝switchStates を使わないので switchOn 封印は付けない（付けても
     // 永久に開かない看板になる）。宝箱は「渡れた者だけが届く」ことで守られている。
     sign: null,
     solve: {
       // 潮が満ちている状態で「Y を叩ける位置」に立てること。
-      closedMustReach: ['1,8', '2,9'],
+      closedMustReach: ['2,8', '1,9'],
       // 潮が引いた状態で宝箱と南出口に届くこと。
       openMustReach: ['5,8', '9,5', '9,6'],
     },
@@ -180,6 +194,10 @@ const SCREENS = {
   //   ・回り込みは row1（石の無い行）に移し、B の右 (2,9) を水にして横押しを封じた
   //   ・降り道 col7 をレーン col8 の隣に足した（B が S2 に載ると col8 が塞がるので、
   //     これが無いとプレイヤーが 4,8 で行き止まりになる）
+  //
+  // ⚠️ 石Aと S1 は row1 ではなく **row2** に置く（⑥-footprint）。北の継ぎ目は cols5,6
+  // で、着地 row 0.5 は row0 と row1 をまたぐ ＝ row1 の '*' はその列の遷移を無言で
+  // キャンセルする。押しレーンを row2 に下げ、回り込みの通路として row1 を空ける。
   '15,14': {
     role: 'C3 順序依存',
     bg: [
@@ -196,8 +214,8 @@ const SCREENS = {
     ],
     tiles: [
       '............',
-      '..S..*......',
-      '........*...',
+      '............',
+      '..S..*..*...',
       '........=...',
       '........=...',
       '........S...',
@@ -207,7 +225,7 @@ const SCREENS = {
       '............',
     ],
     links: [
-      ['1,2', ['3,8', '4,8']],                // S1（石A）→ 縦レーン GA
+      ['2,2', ['3,8', '4,8']],                // S1（石A）→ 縦レーン GA
       ['5,8', ['7,5', '7,6', '8,5', '8,6']],  // S2（石B）→ 出口 GB
     ],
     chest: { pos: '6,3', content: { type: 'rupee', value: 30, name: 'ルピー×30' } },
@@ -219,6 +237,8 @@ const SCREENS = {
   // 廊下の締め。石で GB を開けて中州へ渡り、中州の Y で GA を開けて出る＝
   // 2枚の潮ゲートが直列。GB を渡る前に Y には届かないので、順序も強制される。
   // 報酬は物ではなく 海の石碑（デルタ導入のロア）。
+  //
+  // ⚠️ C3 と同じ理由で石と S は row2（⑥-footprint）。row1 は空けて回り込み通路にする。
   '15,15': {
     role: 'C4 複合',
     bg: [
@@ -235,8 +255,8 @@ const SCREENS = {
     ],
     tiles: [
       '............',
-      '..S..*......',
       '............',
+      '..S..*......',
       '.....==.....',
       '.....==.....',
       '...Y....i...',
@@ -246,7 +266,7 @@ const SCREENS = {
       '............',
     ],
     links: [
-      ['1,2', ['3,5', '3,6', '4,5', '4,6']],   // S（石）→ GB（前半）
+      ['2,2', ['3,5', '3,6', '4,5', '4,6']],   // S（石）→ GB（前半）
       ['5,3', ['7,5', '7,6', '8,5', '8,6']],   // Y（トグル）→ GA（後半）
     ],
     chest: null,
@@ -500,7 +520,7 @@ function makeSolver(tiles, bg, linkSpec) {
  *   ① 入口から出口まで **実際の手順で** 抜けられる（solvable）
  *   ② どの到達状態からも画面外に出られる（＝入って詰まない）
  *   ③ ゲートを永久に閉じたままだと抜けられない（＝パズルが飾りでない）
- * @returns {{states:number, playerCells:Set<string>}}
+ * @returns {{states:number, playerCells:Set<string>, stoneCells:Set<string>}}
  */
 function verifyPuzzle(tiles, bg, linkSpec, key) {
   const S = makeSolver(tiles, bg, linkSpec);
@@ -579,7 +599,79 @@ function verifyPuzzle(tiles, bg, linkSpec, key) {
   if (bypass) throw new Error(`${key}: 潮ゲートを開けずに南へ抜けられる＝パズルが飾り`);
 
   const playerCells = new Set([...seen].map((st) => st.split('|')[0]));
-  return { states: seen.size, playerCells };
+  // 実手順で石が置かれ得る全セル。⑥-footprint の判定に渡す: 継ぎ目の1つ内側へ石を
+  // **運び込める**なら、その瞬間に実機で見えない壁が生える（初期配置だけでは足りない）。
+  const stoneCells = new Set();
+  for (const st of seen) {
+    const s = st.split('|')[1];
+    if (s) for (const cell of s.split(';')) stoneCells.add(cell);
+  }
+  // 再入時に石が居るセル ＝ ボタン（game.js enterStage: 全ボタンが石で埋まった時だけ
+  // solvedStonePositions として保存・復元される。それ以外の石位置は破棄）。
+  const persistentStoneCells = new Set(S.buttons.filter((b) => stoneCells.has(b)));
+  return { states: seen.size, playerCells, stoneCells, persistentStoneCells };
+}
+
+/**
+ * 継ぎ目の「見えない壁」を作らないこと（⑥-footprint）。
+ *
+ * 着地は半セルずれる（下へ入ると row 0.5、上へ入ると row rows-1.5）＝当たり判定は
+ * 境界行と **その1つ内側** の2行にまたがり、arrivalIsWall はどちらかが壁なら遷移を
+ * キャンセルする。よって「境界行が開いていれば通れる」は誤りで、開いている継ぎ目の
+ * 列（横なら行）は 2行/2列とも空けねばならない。
+ *
+ * ここでは **画面単体で自己完結する形** に閉じる：外周に開いた列/行があるなら、その
+ * 1つ内側も固い物を置かない。隣の画面の形を知らなくても守れる（隣がどう開いても
+ * 破れない）＝ authored 画面が「見えない壁」の発生源に絶対ならない、という
+ * region rework の作法（arrival-wall 版）と同じ強さの不変条件。
+ *
+ * @param {string[][]} tiles
+ * @param {string[][]} bg
+ * @param {Set<string>} extraSolid  **画面に再入したとき石が載っている** セル。
+ *   押している最中の石は数えない: game.js enterStage (288-312) は画面を離れる時に
+ *   stonePositions を捨てるので、途中の石位置は次の到達判定には残らない。残るのは
+ *   「全ボタンが石で埋まった＝解決済み」の solvedStonePositions だけ（351-357 で復元）
+ *   ＝ボタンのセル。そこが継ぎ目の footprint に入っていると、解いた後に再入した時
+ *   だけ見えない壁が生える（初回は通れるので手動テストで最も見つけにくい形）。
+ */
+function assertNoFootprintWall(tiles, bg, key, extraSolid = new Set()) {
+  // 「継ぎ目か？」は **静的なデータ** で決める。ここに extraSolid を混ぜると、石を
+  // 境界セルへ押せる画面で「境界が塞がる形もあるのだから継ぎ目ではない」と自分の検査を
+  // 無効化してしまう（最初の実装のバグ：全画面すり抜けた）。
+  const isSeam = (r, c) => !isHardBlocked(effTile(tiles, bg, r, c));
+  // 「塞がるか？」は解決後に復元される石も含める（実機で石が居るなら壁と同じ）。
+  const canBlock = (r, c) =>
+    extraSolid.has(`${r},${c}`) || isHardBlocked(effTile(tiles, bg, r, c));
+  const why = (r, c) => (extraSolid.has(`${r},${c}`) && !isHardBlocked(effTile(tiles, bg, r, c))
+    ? '解決後の石が復元される' : `'${effTile(tiles, bg, r, c)}'`);
+
+  const bad = [];
+  // 上下の辺: 境界行が開いた列は、境界行も1つ内側の行も塞がらないこと。
+  for (let c = 0; c < COLS; c++) {
+    if (isSeam(0, c)) {
+      if (canBlock(0, c)) bad.push(`北の継ぎ目 col${c}: 境界 (0,${c}) ${why(0, c)}`);
+      if (canBlock(1, c)) bad.push(`北の継ぎ目 col${c}: (1,${c}) ${why(1, c)}`);
+    }
+    if (isSeam(ROWS - 1, c)) {
+      if (canBlock(ROWS - 1, c)) bad.push(`南の継ぎ目 col${c}: 境界 (${ROWS - 1},${c}) ${why(ROWS - 1, c)}`);
+      if (canBlock(ROWS - 2, c)) bad.push(`南の継ぎ目 col${c}: (${ROWS - 2},${c}) ${why(ROWS - 2, c)}`);
+    }
+  }
+  // 左右の辺: 境界列が開いた行は、境界列も1つ内側の列も塞がらないこと。
+  for (let r = 0; r < ROWS; r++) {
+    if (isSeam(r, 0)) {
+      if (canBlock(r, 0)) bad.push(`西の継ぎ目 row${r}: 境界 (${r},0) ${why(r, 0)}`);
+      if (canBlock(r, 1)) bad.push(`西の継ぎ目 row${r}: (${r},1) ${why(r, 1)}`);
+    }
+    if (isSeam(r, COLS - 1)) {
+      if (canBlock(r, COLS - 1)) bad.push(`東の継ぎ目 row${r}: 境界 (${r},${COLS - 1}) ${why(r, COLS - 1)}`);
+      if (canBlock(r, COLS - 2)) bad.push(`東の継ぎ目 row${r}: (${r},${COLS - 2}) ${why(r, COLS - 2)}`);
+    }
+  }
+  if (bad.length)
+    throw new Error(
+      `${key}: 継ぎ目の着地 footprint が塞がる＝「見えない壁」（境界は開いて見えるのに` +
+      `遷移がキャンセルされる） ${bad.length} 件:\n  ${bad.join('\n  ')}`);
 }
 
 /** はしごで 1セル幅の水を渡ってパズルを迂回できないこと（passable.js と同じ判定）。 */
@@ -658,7 +750,11 @@ function buildScreen(key, spec, sealOf) {
   }
 
   // 実手順の全探索: 解ける / 詰まない / ゲートを迂回できない を同時に固定する。
-  const { states, playerCells } = verifyPuzzle(tiles, bg, spec.links, key);
+  const { states, playerCells, persistentStoneCells } = verifyPuzzle(tiles, bg, spec.links, key);
+
+  // ⑥-footprint: 継ぎ目の1つ内側に固い物を置かない。押している最中の石は数えない
+  // （画面を離れるとリセットされる）が、解決後に復元される石＝ボタン上の石は数える。
+  assertNoFootprintWall(tiles, bg, key, persistentStoneCells);
 
   // 宝箱は「実手順のどこかで隣に立てる」こと（潮を開けた状態を含む）。
   // 静的 BFS で「開けば届く」だけ見ると、開けた瞬間に石が道を塞ぐ形を見逃す。

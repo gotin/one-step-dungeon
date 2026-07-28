@@ -14,7 +14,10 @@
 // author — data can't lie). The connectivity numbers reuse connectivity.mjs so
 // there is one BFS, one BLOCKED rule. check-field-connectivity.mjs and the
 // field-invariants spec both import from here.
-import { bfsLayer, findOrphanRooms, findEntrances, isHardBlocked, cellTile } from './connectivity.mjs';
+import {
+  bfsLayer, findOrphanRooms, findEntrances, isHardBlocked, cellTile,
+  footprintBlockedEdges,
+} from './connectivity.mjs';
 import { gameLayerEntries } from '../../shared/layers.js';
 import { ENEMY_META, ENEMY_TILES as ENEMY_TILE_CHARS } from '../../shared/enemies.js';
 import { TILE } from '../../shared/tiles.js';
@@ -361,10 +364,16 @@ function allBlockedScreens(stages) {
  * unfinished screen could be hidden from the invariant just by gating it. Quality
  * metrics whose population is "screens the player will see" must use
  * `reachedWithGates`; connectivity bug-finding keeps using `reached`.
+ * 2026-07-27 ⑥-footprint: `footprintBlocked` is a THIRD, previously invisible class.
+ * `traps`/`seams` only see a wall ON the boundary cell; the engine drops the player half
+ * a cell INWARD, so a wall one row/col in cancels the transition too — the player walks
+ * into an open-looking seam and is pushed back ("見えない壁"). It is a separate list, not
+ * folded into traps/seams, because those two are already at a hard-0 ratchet meaning
+ * "no 1-cell arrival walls"; mixing the classes would silently redefine a met goal.
  * @param {object} mapData  the whole map (needs startPos + all layers)
  * @returns {{
  *   reached:Set<string>, reachedWithGates:Set<string>, orphans:string[], w1:string[],
- *   seams:string[], traps:string[], rawDeadEdges:number
+ *   seams:string[], traps:string[], footprintBlocked:string[], rawDeadEdges:number
  * }}
  */
 export function fieldHonestMetrics(mapData) {
@@ -406,6 +415,18 @@ export function fieldHonestMetrics(mapData) {
     if (orphanSet.has(e.to)) continue; // dest never enterable → W2 class
     seams.add(`${e.from} -> ${e.to}`);
   }
+  // FOOTPRINT-blocked crossings (見えない壁): the boundary cell is open so the player
+  // sees a normal seam, but the engine's half-cell landing makes their hitbox cover the
+  // next row/col inward, and a wall there cancels the transition.
+  //
+  // Deliberately NOT filtered by `reachedRooms` (unlike traps). The strict walk keeps
+  // solvable gates SHUT, so filtering would have dropped the very case the user reported
+  // (15,13→15,14 sits behind the new corridor tide gates) — 69 instead of 71. Same
+  // loophole as the under-2-axis population above: a metric must not improve because a
+  // screen got gated. footprintBlockedEdges() is a structural sweep for that reason.
+  const footprintBlocked = new Set(
+    footprintBlockedEdges(stages).map((e) => `${e.from} -> ${e.to} @${e.at}='${e.tile}'`),
+  );
   return {
     reached: reachedRooms,
     reachedWithGates,
@@ -413,6 +434,7 @@ export function fieldHonestMetrics(mapData) {
     w1: [...w1Set].sort(),
     seams: [...seams].sort(),
     traps: [...traps].sort(),
+    footprintBlocked: [...footprintBlocked].sort(),
     rawDeadEdges: deadEdges.length,
   };
 }

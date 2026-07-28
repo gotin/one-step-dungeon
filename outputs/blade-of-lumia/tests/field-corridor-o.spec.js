@@ -161,7 +161,9 @@ test.describe('Phase 9-6 深洋O ⑤ – 廊下C1〜C4 実エンジン検証', (
 
     const stage = FIELD['15,12'];
     // データ側の前提（画面を作り替えたらここで気づく）
-    expect(cellsWith(stage, TILE.SWITCH), 'C1 の Y が 1,9 でない').toEqual(['1,9']);
+    // ⚠ row1 ではなく row2（⑥-footprint）: 北の継ぎ目の着地は row0/row1 をまたぐので、
+    //   row1 に固い 'Y' があるとその列の遷移が無言でキャンセルされる（見えない壁）。
+    expect(cellsWith(stage, TILE.SWITCH), 'C1 の Y が 2,9 でない').toEqual(['2,9']);
     expect(stage.links.map((l) => l.gateId).sort(), 'C1 の links が潮ゲート4枚に繋がっていない')
       .toEqual(['3,5', '3,6', '4,5', '4,6']);
     // 罠: ゲートの下地が水だと openGates に入っても永久に不通。
@@ -177,9 +179,9 @@ test.describe('Phase 9-6 深洋O ⑤ – 廊下C1〜C4 実エンジン検証', (
     const closed = await at(page);
     expect(closed.r, '潮が満ちている（ゲート閉）のに渡れてしまう＝パズルが飾り').toBe(2);
 
-    // Y (1,9) の2タイル左 (1,7) から右へ1タイル歩き、(1,9) を剣で叩く → 潮が引く。
+    // Y (2,9) の2タイル左 (2,7) から右へ1タイル歩き、(2,9) を剣で叩く → 潮が引く。
     // ※ 'Y' は歩いて乗れるタイルなので「壁に弾かれて向きだけ変わる」当てにはできない。
-    await page.goto(previewUrl('15,12', 1, 7));
+    await page.goto(previewUrl('15,12', 2, 7));
     await waitForBoard(page);
     await page.evaluate(() => window.__game.step(1));
     await walkAndStrike(page, 'right', 1);
@@ -188,15 +190,14 @@ test.describe('Phase 9-6 深洋O ⑤ – 廊下C1〜C4 実エンジン検証', (
       const ss = window.__game.getStageState();
       return { openGates: ss.openGates.sort(), toggles: ss.switchToggles };
     });
-    expect(opened.toggles, 'Y のトグルが switchToggles に入っていない').toContain('1,9');
+    expect(opened.toggles, 'Y のトグルが switchToggles に入っていない').toContain('2,9');
     expect(opened.openGates, 'Y を叩いても潮ゲートが開かない').toEqual(['3,5', '3,6', '4,5', '4,6']);
 
     // 開いた状態で本当に歩いて渡れるか（isWaterAt が先に効く罠の実地検出）。
     const beforeWalk = await at(page);
-    expect(beforeWalk, 'Y を叩いた後の立ち位置が (1,8) でない（半セル移動の取り違え）')
-      .toMatchObject({ r: 1, c: 8 });
-    await walkTiles(page, 'left', 3);    // (1,5) へ
-    await walkTiles(page, 'down', 1);    // (2,5)
+    expect(beforeWalk, 'Y を叩いた後の立ち位置が (2,8) でない（半セル移動の取り違え）')
+      .toMatchObject({ r: 2, c: 8 });
+    await walkTiles(page, 'left', 3);    // (2,5) へ
     const atTop = await at(page);
     expect(atTop, 'ゲート上端 (2,5) に歩けなかった（前提崩れ）').toMatchObject({ r: 2, c: 5 });
     await walkTiles(page, 'down', 3);    // 潮ゲート 3,5 / 4,5 を渡って (5,5)
@@ -292,7 +293,8 @@ test.describe('Phase 9-6 深洋O ⑤ – 廊下C1〜C4 実エンジン検証', (
     const stage = FIELD['15,15'];
     // 前半 GB は石のボタン、後半 GA は Y のトグル＝別機構が直列に並んでいること。
     const byGate = new Map(stage.links.map((l) => [l.gateId, l.switchId]));
-    expect(byGate.get('3,5'), 'C4 前半ゲートが S(1,2) に繋がっていない').toBe('1,2');
+    // ⚠ S と石は row1 ではなく row2（⑥-footprint: 北の継ぎ目の着地が row0/row1 をまたぐ）。
+    expect(byGate.get('3,5'), 'C4 前半ゲートが S(2,2) に繋がっていない').toBe('2,2');
     expect(byGate.get('7,5'), 'C4 後半ゲートが Y(5,3) に繋がっていない').toBe('5,3');
     expect(stage.signData['5,8']?.lines?.length, 'C4 の海の石碑に本文が無い').toBeGreaterThan(0);
 
@@ -306,18 +308,18 @@ test.describe('Phase 9-6 深洋O ⑤ – 廊下C1〜C4 実エンジン検証', (
       .toBe(2);
 
     // 後半 GA も同じ: 前半を石で開けても、Y を叩くまで南へは抜けられない。
-    // 石 (1,5) を左に3回押して (1,2) のボタンへ載せる → GB(3,5..4,6) が開く。
-    await page.goto(previewUrl('15,15', 1, 6));
+    // 石 (2,5) を左に3回押して (2,2) のボタンへ載せる → GB(3,5..4,6) が開く。
+    await page.goto(previewUrl('15,15', 2, 6));
     await waitForBoard(page);
     await page.evaluate(() => window.__game.step(1));
-    await push(page, 'left');   // 石 1,5 → 1,4
-    await push(page, 'left');   // 石 1,4 → 1,3
-    await push(page, 'left');   // 石 1,3 → 1,2（ボタン）
+    await push(page, 'left');   // 石 2,5 → 2,4
+    await push(page, 'left');   // 石 2,4 → 2,3
+    await push(page, 'left');   // 石 2,3 → 2,2（ボタン）
     const half = await page.evaluate(() => window.__game.getStageState().openGates.sort());
     expect(half, '石で前半ゲートが開かない').toEqual(['3,5', '3,6', '4,5', '4,6']);
 
     // 前半を通って南へ降り、後半ゲートの前で止まる（直列であることの確認）。
-    await walkTiles(page, 'right', 2);   // (1,5)
+    await walkTiles(page, 'right', 2);   // (2,5)
     await walkTiles(page, 'down', 8);    // 3,5/4,5 は渡れるが 7,5 は閉じている
     expect((await at(page)).r, '後半ゲートが閉じているのに南へ抜けられた（直列になっていない）')
       .toBe(6);
@@ -372,7 +374,7 @@ test.describe('Phase 9-6 深洋O ⑤ – 廊下C1〜C4 実エンジン検証', (
     expect(errors).toEqual([]);
   });
 
-  // C3 は順序依存パズル: 石Aを北のボタン(1,2)に載せて col8 の潮ゲート(3,8/4,8)を
+  // C3 は順序依存パズル: 石Aを北のボタン(2,2)に載せて col8 の潮ゲート(3,8/4,8)を
   // 開け、その開いた縦レーンを通して石Bを南のボタン(5,8)まで落とす。順序を逆にすると
   // 石Bは col8 のレーンに入れない（＝これが「順序依存」の中身）。宝箱 6,3 は後半
   // ボタン 5,8 の switchOn で封印されているので、通し切るまで現れない。
@@ -387,17 +389,17 @@ test.describe('Phase 9-6 深洋O ⑤ – 廊下C1〜C4 実エンジン検証', (
     expect(stage.tiles[5][8], 'C3 の 5,8 がボタン(S)でない＝switchOn が永久に成立しない')
       .toBe(TILE.BUTTON);
 
-    // 石A (1,5) の右 (1,6) から始める。
-    await page.goto(previewUrl('15,14', 1, 6));
+    // 石A (2,5) の右 (2,6) から始める（⑥-footprint で押しレーンを row2 に下げた）。
+    await page.goto(previewUrl('15,14', 2, 6));
     await waitForBoard(page);
     await page.evaluate(() => window.__game.step(1));
     expect(await page.evaluate(() => window.__game.getStageState().conditionsMet),
       '何もしていないのに宝箱の封印が解けている').toEqual([]);
 
-    // ① 石A を西へ3回押して北のボタン (1,2) へ → col8 の潮ゲートが開く。
-    await push(page, 'left');   // 石A 1,5 → 1,4
-    await push(page, 'left');   // 石A 1,4 → 1,3
-    await push(page, 'left');   // 石A 1,3 → 1,2（ボタン）
+    // ① 石A を西へ3回押して北のボタン (2,2) へ → col8 の潮ゲートが開く。
+    await push(page, 'left');   // 石A 2,5 → 2,4
+    await push(page, 'left');   // 石A 2,4 → 2,3
+    await push(page, 'left');   // 石A 2,3 → 2,2（ボタン）
     const phase1 = await page.evaluate(() => {
       const ss = window.__game.getStageState();
       return { gates: ss.openGates.sort(), met: ss.conditionsMet };
@@ -406,7 +408,10 @@ test.describe('Phase 9-6 深洋O ⑤ – 廊下C1〜C4 実エンジン検証', (
     expect(phase1.met, '前半だけで宝箱の封印が解けた（順序依存になっていない）').toEqual([]);
 
     // ② 開いた col8 レーンを使って石B (2,8) を南のボタン (5,8) まで落とす。
-    expect(await at(page), '石A を押し終えた立ち位置が (1,3) でない').toMatchObject({ r: 1, c: 3 });
+    //    石Bの真上 (1,8) へは row1（石の無い回り込み通路）を通る。row2 を東へ歩くと
+    //    石Bを右へ押し出してレーン col8 から永久に外す（ソルバーが見つけた詰み）。
+    expect(await at(page), '石A を押し終えた立ち位置が (2,3) でない').toMatchObject({ r: 2, c: 3 });
+    await walkTiles(page, 'up', 1);      // (1,3) 回り込み通路へ
     await walkTiles(page, 'right', 5);   // (1,8) 石B の真上
     expect(await at(page), '石B の真上 (1,8) に立てていない').toMatchObject({ r: 1, c: 8 });
     await push(page, 'down');   // 石B 2,8 → 3,8（開いた潮ゲートの上）
@@ -422,7 +427,7 @@ test.describe('Phase 9-6 深洋O ⑤ – 廊下C1〜C4 実エンジン検証', (
         button58: ss.switchStates['5,8'] ?? false,
       };
     });
-    expect(phase2.stones, '石が (1,2) と (5,8) の両ボタンに載っていない').toEqual(['1,2', '5,8']);
+    expect(phase2.stones, '石が (2,2) と (5,8) の両ボタンに載っていない').toEqual(['2,2', '5,8']);
     expect(phase2.button58, '石B を載せても後半ボタンが ON にならない').toBe(true);
     expect(phase2.gates, '二つの潮が引いていない（南の出口が開かない）')
       .toEqual(['3,8', '4,8', '7,5', '7,6', '8,5', '8,6']);
@@ -451,9 +456,23 @@ test.describe('Phase 9-6 深洋O ⑤ – 廊下C1〜C4 実エンジン検証', (
   //   ためのもので、プレイヤーが col7 から横を通り抜けるのは設計どおり＝そこを禁じては
   //   いけない。∴ 見るのは「南端の行（row9）に到達できるか」1点。
   //
-  //   ボタン 'S' はモーメンタリなので、DFS がボタンを踏んでもゲートは踏んでいる間だけ開き、
+  //   ボタン 'S' はモーメンタリなので、探索がボタンを踏んでもゲートは踏んでいる間だけ開き、
   //   離れた瞬間に閉じる＝「解かずに抜ける」経路にはならない（この自己整合性も同時に効く）。
   //   石は押すと不可逆なので踏み込まない（探索が状態を壊さないため）。
+  //
+  // ⚠ 「石を踏まない」を stonePositions だけで判定してはいけない。あれは **押した後** の
+  //   位置表で、初期状態では空＝探索が authored な '*' に踏み込んで1回押してしまう。
+  //   （そうなると押しクールダウン 600ms が同期 evaluate 中は絶対に明けないので、以降の
+  //   movePlayer が半歩で弾かれ、探索が「戻れない」と誤報する。）
+  //   ∴ 除外集合は「tiles の '*'（未押し）∪ stonePositions（押した後）」の和で持つ。
+  //
+  // ⚠ 探索は **DFS＋歩いて戻る** で書いてはいけない。実エンジンの通行は非対称で、
+  //   来た道をそのまま戻れないことがある。石の隣のセルがそれで、半セル位置からの1歩は
+  //   1つ先のタイル（toTileCol=floor(x+0.5)+dir）を向くので、戻る動作が石を押してしまう
+  //   ＝「押さない」規則の下では物理的に戻れない（`2,3 --right--> 2,4` が C3 で発生）。
+  //   ∴ BFS にして、各辺の試行ごとに **開始セルへ座標を置き直して経路を再生** する。
+  //   置き直しは __game.getPlayer()（game.js getPlayerForTest）で x/y を直接書く。
+  //   経路再生はすでに歩けたと確認済みの辺だけを辿るので、状態を壊さない。
   test('⑨ パズルを解かずに南の出口へは出られない（実エンジンで歩ける範囲を全探索）', async ({ page }) => {
     const errors = [];
     page.on('pageerror', (e) => errors.push(e.message));
@@ -475,49 +494,99 @@ test.describe('Phase 9-6 深洋O ⑤ – 廊下C1〜C4 実エンジン検証', (
 
       await page.goto(previewUrl(key, sr, sc));
       await waitForBoard(page);
-      const reached = await page.evaluate(({ r0, c0 }) => {
+      const reached = await page.evaluate(({ r0, c0, authoredStones }) => {
+        const raw = () => {
+          const p = window.__game.getState().player;
+          return [p.y, p.x];
+        };
         const cur = () => {
           const p = window.__game.getState().player;
           return [Math.floor(p.y + 0.5), Math.floor(p.x + 0.5)];
         };
-        const walk = (d) => { for (let i = 0; i < 2; i++) { window.__game.movePlayer(d); window.__game.step(1); } };
         const OPP = { up: 'down', down: 'up', left: 'right', right: 'left' };
         const DIRS = [['up', -1, 0], ['down', 1, 0], ['left', 0, -1], ['right', 0, 1]];
+        const DELTA = { up: [-1, 0], down: [1, 0], left: [0, -1], right: [0, 1] };
+        // 探索の起点へワープして状態をリセットする（歩いて戻らないための足場）。
+        const reset = () => {
+          const p = window.__game.getPlayer();
+          p.y = r0; p.x = c0;
+          window.__game.step(1);
+        };
+        // authored な '*'（まだ押していない）と押した後の位置、両方を避ける。
         const stoneCells = () => {
           const ss = window.__game.getStageState();
-          return new Set(Object.values(ss.stonePositions ?? {}).map((s) => `${s.r},${s.c}`));
+          const out = new Set(Object.values(ss.stonePositions ?? {}).map((s) => `${s.r},${s.c}`));
+          const moved = new Set(Object.keys(ss.stonePositions ?? {}));
+          for (const k of authoredStones) if (!moved.has(k)) out.add(k);   // 未押しの '*'
+          return out;
         };
-        const visited = new Set([`${r0},${c0}`]);
-        const stack = [[r0, c0, 0]];   // [row, col, 試した方向数]
-        while (stack.length) {
-          const top = stack[stack.length - 1];
-          if (top[2] >= DIRS.length) {                       // この頂点は掃き終わり → 戻る
-            stack.pop();
-            if (stack.length) {
-              const parent = stack[stack.length - 1];
-              const d = DIRS.find(([, dr, dc]) => parent[0] + dr === top[0] && parent[1] + dc === top[1]);
-              walk(OPP[d[0]]);
-              const [br, bc] = cur();
-              if (br !== parent[0] || bc !== parent[1]) throw new Error(`backtrack failed at ${br},${bc}`);
-            }
-            continue;
+        // 1タイル歩く = movePlayer 2回。ただし単純に2回送ってはいけない理由が2つある:
+        //  (a) **片方だけ通る**ことがある（footprint が2セルにまたがるので半歩目が通って
+        //      一歩目が壁）。半セル位置のまま探索を続けると floor(y+0.5) が隣タイルに
+        //      丸まって「動けた」と誤認し、さらに端へ半歩出ると checkStageTransition が
+        //      isTransitioning を立てる → その setTimeout は同期 evaluate 中に走らないので
+        //      以降の movePlayer が全て無視され「戻れない」と誤報する（探索の自己汚染）。
+        //  (b) 半セル位置からの2歩目は **1つ先のタイル** を向く（toTileCol=floor(x+0.5)）。
+        //      そこに石があると探索が石を押してしまい、押しクールダウン 600ms は同期
+        //      evaluate 中に絶対明けない＝以降の移動が全部半歩で弾かれる。
+        // ∴ 半歩ごとに「次の1歩が石を押さないか」を見て、押すなら踏み出さずに巻き戻す。
+        const wouldPush = (d) => {
+          const [y, x] = raw();
+          const [dr, dc] = DELTA[d];
+          const tr = Math.floor(y + 0.5) + dr, tc = Math.floor(x + 0.5) + dc;
+          return stoneCells().has(`${tr},${tc}`);
+        };
+        const walk = (d) => {
+          const [y0, x0] = raw();
+          for (let i = 0; i < 2; i++) {
+            if (wouldPush(d)) break;
+            window.__game.movePlayer(d); window.__game.step(1);
           }
-          const [d, dr, dc] = DIRS[top[2]++];
-          const nr = top[0] + dr, nc = top[1] + dc;
-          if (nr < 0 || nr > 9 || nc < 0 || nc > 11) continue;   // 画面外＝遷移するので踏まない
-          if (visited.has(`${nr},${nc}`)) continue;
-          if (stoneCells().has(`${nr},${nc}`)) continue;         // 石＝押すと不可逆
-          walk(d);
-          const [ar, ac] = cur();
-          if (ar === nr && ac === nc) {
-            visited.add(`${nr},${nc}`);
-            stack.push([nr, nc, 0]);
-          } else if (ar !== top[0] || ac !== top[1]) {
-            throw new Error(`unexpected move ${top[0]},${top[1]} -> ${ar},${ac}`);
+          let [y1, x1] = raw();
+          if (Number.isInteger(y1) && Number.isInteger(x1)) return;
+          for (let i = 0; i < 2 && !(Number.isInteger(y1) && Number.isInteger(x1)); i++) {
+            window.__game.movePlayer(OPP[d]); window.__game.step(1);
+            [y1, x1] = raw();
+          }
+          if (y1 !== y0 || x1 !== x0)
+            throw new Error(`half-step rewind failed: ${y0},${x0} --${d}--> ${y1},${x1}`);
+        };
+        // 起点から各セルへの「歩けると確認済みの経路」。再生用。
+        const pathTo = new Map([[`${r0},${c0}`, []]]);
+        const queue = [[r0, c0]];
+        for (let qi = 0; qi < queue.length; qi++) {
+          const [r, c] = queue[qi];
+          const prefix = pathTo.get(`${r},${c}`);
+          for (const [d, dr, dc] of DIRS) {
+            const nr = r + dr, nc = c + dc;
+            if (nr < 0 || nr > 9 || nc < 0 || nc > 11) continue;   // 画面外＝遷移するので踏まない
+            if (pathTo.has(`${nr},${nc}`)) continue;
+            if (stoneCells().has(`${nr},${nc}`)) continue;         // 石＝押すと不可逆
+            // 起点に戻して既知の経路を再生 → その先頭セルから1歩だけ試す。
+            reset();
+            for (const pd of prefix) walk(pd);
+            const [pr, pc] = cur();
+            if (pr !== r || pc !== c)
+              throw new Error(`replay failed: want ${r},${c} got ${pr},${pc} path=${prefix.join('>')} stage=${window.__game.getState().stageKey ?? '?'}`);
+            walk(d);
+            const [ar, ac] = cur();
+            if (ar === nr && ac === nc) {
+              pathTo.set(`${nr},${nc}`, [...prefix, d]);
+              queue.push([nr, nc]);
+            } else if (ar !== r || ac !== c) {
+              throw new Error(`unexpected move ${r},${c} --${d}--> ${ar},${ac}`);
+            }
           }
         }
-        return [...visited];
-      }, { r0: sr, c0: sc });
+        return [...pathTo.keys()];
+      }, { r0: sr, c0: sc, authoredStones: cellsWith(stage, TILE.STONE) });
+
+      // ⚠ 「南に出られない」は探索が **すぐ詰まっても** 緑になる（空振り検査）。
+      //   歩き回れていること自体を先に固定する: 廊下の北半分（row0..4）は解かずに歩ける。
+      expect(
+        reached.length,
+        `${key} で探索がほとんど動けていない＝この検査は空振り（到達 ${reached.join(' ')}）`,
+      ).toBeGreaterThan(8);
 
       const south = reached.filter((k) => Number(k.split(',')[0]) === 9);
       if (south.length) escapes.push(`${key}(${role}) ${sr},${sc} から ${south.join(' ')} に到達`);
@@ -553,6 +622,72 @@ test.describe('Phase 9-6 深洋O ⑤ – 廊下C1〜C4 実エンジン検証', (
       return { stage: s.stageKey ?? s.stage ?? null, x: s.player.x };
     });
     expect(res.x, '西端の海に踏み込めた（bgTiles 水の通行判定が抜けている）').toBeGreaterThan(0);
+    expect(errors).toEqual([]);
+  });
+
+  // ── ⑥-footprint: 「開いて見える継ぎ目」を実際に歩いて越える ────────────────
+  // これがユーザーが手で見つけたバグの直接の回帰テスト。「15,13 から南に歩いても
+  // 弾き返される」のに seams/traps/W1/W2 が全部 0 だった。原因は checkStageTransition の
+  // 着地が半セル（0.5 / rows-1.5）で、プレイヤーの1セル判定が **境界の行と1つ内側の行**
+  // にまたがること。内側の行に石/スイッチ/看板があると遷移が無言でキャンセルされる。
+  //
+  // ⚠ 「開いている継ぎ目」の候補は **旧1セル判定** だけで選ぶ（境界セルが通行可なら候補）。
+  //   新しい footprint チェッカーで候補を絞ると「チェッカーが OK と言う継ぎ目はエンジンでも
+  //   通れる」を確かめるだけの循環になり、チェッカーの見落としを検出できない。
+  //
+  // ⚠ 遷移は setTimeout(100) を挟む＝同期 evaluate の中では絶対に完了しない。
+  //   ∴ 歩いた後に waitForFunction で stageKey が変わるのを実時間で待つ。
+  test('⑥-footprint 廊下の継ぎ目は見た目どおり通れる（南北とも実際に画面が変わる）', async ({ page }) => {
+    const errors = [];
+    page.on('pageerror', (e) => errors.push(e.message));
+
+    const isOpen = (stage, r, c) =>
+      stage.bgTiles?.[`${r},${c}`] !== TILE.WATER
+      && [TILE.FLOOR, ' '].includes(stage.tiles[r][c]);
+
+    // 廊下は C1 の北で腕の最終画面 15,11 とつながり、C4 の南でデルタ 15,16 へ抜ける。
+    const CHAIN = ['15,11', '15,12', '15,13', '15,14', '15,15', '15,16'];
+    const walls = [];
+    for (let i = 0; i < CHAIN.length - 1; i++) {
+      const [aKey, bKey] = [CHAIN[i], CHAIN[i + 1]];
+      const [a, b] = [FIELD[aKey], FIELD[bKey]];
+      expect(a && b, `${aKey} / ${bKey} が地図に無い`).toBeTruthy();
+      const lastRow = a.tiles.length - 1;
+
+      // 南向き（a の最下行 → b の row0）と北向き（b の row0 → a の最下行）の両方。
+      const crossings = [];
+      for (let c = 0; c < a.tiles[0].length; c++) {
+        if (isOpen(a, lastRow, c)) crossings.push({ from: aKey, to: bKey, dir: 'down', r: lastRow, c });
+        if (isOpen(b, 0, c)) crossings.push({ from: bKey, to: aKey, dir: 'up', r: 0, c });
+      }
+      expect(crossings.length, `${aKey}↔${bKey} に開いた継ぎ目が1つも無い`).toBeGreaterThan(0);
+
+      for (const x of crossings) {
+        // ⚠ 開始位置は継ぎ目セルの **真上**（1タイル内側）ではなく **継ぎ目セル自身**。
+        //   内側には潮ゲート帯が来る（C3/C4 の row7-8）ので、内側から歩き始めると
+        //   「未解決のパズルで止まった」のを「見えない壁」と誤報する。ここで見たいのは
+        //   到着側の footprint だけ。継ぎ目まで歩いて行けるかは ⑨ が担当する。
+        await page.goto(previewUrl(x.from, x.r, x.c));
+        await waitForBoard(page);
+        await walkTiles(page, x.dir, 1);
+        const moved = await page
+          .waitForFunction((want) => window.__game.getState().stageKey === want, x.to, { timeout: 1500 })
+          .then(() => true).catch(() => false);
+        if (!moved) {
+          const now = await page.evaluate(() => {
+            const s = window.__game.getState();
+            return `${s.stageKey} @${s.player.y},${s.player.x}`;
+          });
+          walls.push(`${x.from} (${x.r},${x.c}) --${x.dir}--> ${x.to} で弾き返された（現在 ${now}）`);
+        }
+      }
+    }
+
+    expect(
+      walls,
+      '継ぎ目は開いて見えるのに遷移がキャンセルされる＝「見えない壁」'
+      + '（着地 footprint の境界行/列 と 1つ内側 のどちらかが壁）:\n' + walls.join('\n'),
+    ).toEqual([]);
     expect(errors).toEqual([]);
   });
 });

@@ -2,7 +2,8 @@ import { test, expect } from '@playwright/test';
 import {
   bfsLayer, isBlocked, isHardBlocked, BLOCKED, HARD_BLOCKED, SOLVABLE_GATES,
   findEntryRoom, firstWalkable, findOrphanRooms, findEntrances,
-  isLadderBridgeCell, cellTile,
+  isLadderBridgeCell, cellTile, footprintBlockedEdges, edgeLanding,
+  arrivalFootprintBlocked,
 } from '../scripts/lib/connectivity.mjs';
 import { readFileSync } from 'fs';
 
@@ -68,6 +69,113 @@ test.describe('connectivity tool — detects known defects', () => {
     const e = deadEdges.find(x => x.from === '0,0' && x.dir === 'down');
     expect(e, 'dead edge from 0,0 going down').toBeTruthy();
     expect(e.reason).toBe('arrival-wall');
+  });
+
+  // 2026-07-27 ⑥-footprint. The user's report: 「15,13 から南に歩いても弾き返される」.
+  // The boundary cell was open, so every checker said the crossing was fine — but the
+  // engine lands the player at a HALF-CELL offset (checkStageTransition: down → row 0.5,
+  // up → rows-1.5), their 1-cell hitbox straddles the boundary row AND the row one
+  // INWARD, and arrivalIsWall cancels the transition if EITHER holds a wall. Result: a
+  // 見えない壁. 72 of these existed map-wide while `traps` read 0.
+  //
+  // This test pins the hole: the 1-cell analysis (deadEdges) must come back CLEAN on
+  // this fixture — that assertion was GREEN before the footprint check existed, which
+  // is the proof the blind spot was real — while footprintEdges flags both directions.
+  test('(a3) 壁は境界の1つ内側 => 1セル判定は無罪、footprint が「見えない壁」を検出', () => {
+    // Three stages stacked vertically. Every seam is open at BOTH col5 and col8; col8
+    // is the clean lane that keeps the middle/bottom screens reachable, col5 is the
+    // defective one. 0,1 holds a stone at (1,5) and at (8,5) — one row inside each of
+    // its own boundaries, i.e. inside the arrival footprint of the col5 crossings.
+    const stages = {
+      '0,0': room([{ side: 'bottom', idx: 5 }, { side: 'bottom', idx: 8 }]),
+      // down-entry lands at row 0.5 → footprint covers rows 0 AND 1 → (1,5) refuses it.
+      // up-entry lands at row rows-1.5 = 8.5 → covers rows 8 AND 9 → (8,5) refuses it.
+      '0,1': room([{ side: 'top', idx: 5 }, { side: 'top', idx: 8 },
+                   { side: 'bottom', idx: 5 }, { side: 'bottom', idx: 8 }],
+                  [{ r: 1, c: 5, ch: '*' }, { r: 8, c: 5, ch: '*' }]),
+      '0,2': room([{ side: 'top', idx: 5 }, { side: 'top', idx: 8 }]),
+    };
+
+    // (1) the blind spot: nothing here is an arrival-WALL, the boundary cells are open,
+    // so the 1-cell walk reports a perfectly clean map. This assertion is exactly what
+    // was GREEN before footprintBlockedEdges() existed = proof the hole was real.
+    const { deadEdges, reachedRooms } = bfsLayer(stages, { stage: '0,0', row: 1, col: 1 });
+    expect(deadEdges.filter((e) => e.reason === 'arrival-wall'),
+      '境界セル自体は開いている＝旧1セル判定では検出不能（これが見逃していた穴）').toEqual([]);
+    expect(reachedRooms.has('0,1'), 'col8 の正常レーンで到達はできる').toBe(true);
+
+    // (2) the footprint sweep catches both directions.
+    const foot = footprintBlockedEdges(stages);
+    const down = foot.find((e) => e.from === '0,0' && e.dir === 'down');
+    expect(down, '上から入る側: row0 は開いているが row1 の石で弾かれる').toBeTruthy();
+    expect(down.to).toBe('0,1');
+    expect(down.at).toBe('0,5');
+    expect(down.tile).toBe('*');
+    expect(down.landing, '着地は row 0.5＝row0 と row1 にまたがる').toBe('0.5,5');
+    expect(down.blockedAt).toContain('1,5');
+
+    const up = foot.find((e) => e.from === '0,2' && e.dir === 'up');
+    expect(up, '下から入る側: row9 は開いているが row8 の石で弾かれる').toBeTruthy();
+    expect(up.to).toBe('0,1');
+    expect(up.landing, '着地は row rows-1.5 = 8.5＝row8 と row9 にまたがる').toBe('8.5,5');
+    expect(up.blockedAt).toContain('8,5');
+
+    // (3) only the defective lane is flagged — col8 is clean in both directions.
+    expect(foot.filter((e) => e.at.endsWith(',8')), 'col8 レーンは正常').toEqual([]);
+  });
+
+  test('(a4) footprint 内が床なら検出しない（正常な継ぎ目を誤検出しない）', () => {
+    const stages = {
+      '0,0': room([{ side: 'bottom', idx: 5 }]),
+      '0,1': room([{ side: 'top', idx: 5 }]),
+    };
+    const { deadEdges } = bfsLayer(stages, { stage: '0,0', row: 1, col: 1 });
+    expect(deadEdges).toEqual([]);
+    expect(footprintBlockedEdges(stages), '境界＋1つ内側が空いていれば正当な継ぎ目').toEqual([]);
+  });
+
+  // The enumeration must NOT depend on the player's route or on gate state. The strict
+  // walk keeps solvable gates shut, so a reached-source filter dropped the user's own
+  // reported case (15,13→15,14 lives behind the corridor tide gates) — 69 instead of 71.
+  test('(a5) footprint 検出はゲートの奥でも列挙される（進行状況で数が減らない）', () => {
+    const stages = {
+      '0,0': room([{ side: 'bottom', idx: 5 }]),
+      // A full-width '=' tide gate line across 0,1: the strict walk stops at it, so
+      // 0,1's own south half AND all of 0,2 are "unreached" — but the player WILL walk
+      // there once the gate opens.
+      '0,1': room([{ side: 'top', idx: 5 }, { side: 'bottom', idx: 5 }]),
+      '0,2': room([{ side: 'top', idx: 5 }], [{ r: 1, c: 5, ch: '*' }]),
+    };
+    for (let c = 1; c <= 10; c++) stages['0,1'].tiles[5][c] = '=';
+    const { reachedRooms } = bfsLayer(stages, { stage: '0,0', row: 1, col: 1 });
+    expect(reachedRooms.has('0,2'), 'ゲート閉状態では 0,2 は未到達').toBe(false);
+    const foot = footprintBlockedEdges(stages);
+    expect(foot.map((e) => `${e.from}->${e.to}`),
+      'ゲートの奥の見えない壁も必ず列挙される').toEqual(['0,1->0,2']);
+  });
+
+  // The root cause, pinned. game.js checkStageTransition is SYMMETRIC in float coords
+  // (0.5 / size-1.5) but ASYMMETRIC in logical tiles: entering downward lands on tile
+  // row 0 while entering upward lands on tile row rows-2, one row INWARD. Combined with
+  // the 1-cell hitbox this means every crossing needs TWO clear rows/cols — the data rule
+  // nobody had written down. If these numbers ever drift from game.js, every footprint
+  // finding silently becomes wrong, so they are asserted literally.
+  test('edgeLanding は checkStageTransition の着地座標そのもの（2行/2列必要の根拠）', () => {
+    const dest = { rows: 10, cols: 12 };
+    expect(edgeLanding('down',  dest, 0, 5)).toEqual({ row: 0.5, col: 5 });
+    expect(edgeLanding('up',    dest, 9, 5)).toEqual({ row: 8.5, col: 5 });
+    expect(edgeLanding('right', dest, 4, 0)).toEqual({ row: 4, col: 0.5 });
+    expect(edgeLanding('left',  dest, 4, 11)).toEqual({ row: 4, col: 10.5 });
+
+    // The footprint of a half-cell landing spans TWO rows (or cols), never one.
+    const stage = { rows: 10, cols: 12, tiles: Array.from({ length: 10 }, () => Array(12).fill('.')) };
+    stage.tiles[1][5] = '*';                     // one row inward from the top edge
+    expect(arrivalFootprintBlocked(stage, 0.5, 5).map((h) => `${h.r},${h.c}`)).toEqual(['1,5']);
+    expect(arrivalFootprintBlocked(stage, 2.5, 5), 'row2/3 は無関係').toEqual([]);
+    // Integer coords (cross-axis) span one cell only, so a lateral crossing checks the
+    // arrival row plus the two boundary columns.
+    stage.tiles[4][1] = '*';
+    expect(arrivalFootprintBlocked(stage, 4, 0.5).map((h) => `${h.r},${h.c}`)).toEqual(['4,1']);
   });
 
   test('(a2) edge opening to a NON-EXISTENT stage => DEAD EDGE (no-stage)', () => {
@@ -211,6 +319,27 @@ test.describe('connectivity tool — detects known defects', () => {
 
     const { orphans } = findOrphanRooms(walkableStages, entrances);
     expect(orphans).toEqual([]);
+  });
+
+  // ⑥-footprint, DUNGEON side. field's 71 are ratcheted in field-invariants.spec.js;
+  // the same defect exists in dungeon layers and had no owner, so it is ratcheted here.
+  // LOWER these as the cases are fixed. GOAL: every layer 0.
+  const FOOTPRINT_BASELINE = { dungeon_7: 1 };
+  test('見えない壁 (arrival footprint) — 全ダンジョン層で基準以下（目標 0）', () => {
+    const url = new URL('../work/blade-of-lumia.json', import.meta.url);
+    const d = JSON.parse(readFileSync(url, 'utf8'));
+    for (const [name, layer] of Object.entries(d.layers)) {
+      if (name === 'field' || !layer.stages) continue;   // field: field-invariants.spec.js
+      const found = footprintBlockedEdges(layer.stages);
+      const ceiling = FOOTPRINT_BASELINE[name] || 0;
+      expect(
+        found.length,
+        `${name}: 継ぎ目は開いて見えるのに着地 footprint が壁で弾き返される遷移が ` +
+        `基準 ${ceiling} を超えた:\n` +
+        found.map((e) => `  ${e.from} -${e.dir}-> ${e.to} @${e.at} tile='${e.tile}' ` +
+                         `(blocked ${e.blockedAt})`).join('\n'),
+      ).toBeLessThanOrEqual(ceiling);
+    }
   });
 
   test('(c) correctly aligned rooms => clean (no dead edges, all reached)', () => {
