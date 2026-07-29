@@ -130,49 +130,56 @@ export function isLadderBridgeCell(tiles, rows, cols, r, c, bgTiles = null) {
 }
 
 /**
- * Where an edge crossing actually DROPS the player, in float coords — the exact
- * mirror of game.js checkStageTransition (2026-07-27 ⑥-footprint):
+ * Where an edge crossing actually DROPS the player — the exact mirror of
+ * game.js checkStageTransition.
  *
- *   if (y < 0)          newRow = rows - 1.5   // up    → 8.5 with rows=10
- *   else if (y >= rows) newRow = 0.5          // down  → 0.5
- *   else if (x < 0)     newCol = cols - 1.5   // left  → 10.5 with cols=12
- *   else if (x >= cols) newCol = 0.5          // right → 0.5
+ *   if (y < 0)          newRow = rows - 1   // up    → 9 with rows=10
+ *   else if (y >= rows) newRow = 0          // down  → 0
+ *   else if (x < 0)     newCol = cols - 1   // left  → 11 with cols=12
+ *   else if (x >= cols) newCol = 0          // right → 0
+ *
+ * ⚠️ 2026-07-29 ⑥-landing: these were HALF-CELL offsets (0.5 / rows-1.5) until the
+ * engine was changed to land on the boundary cell itself. The half-cell landing made
+ * the player's 1-cell hitbox straddle the boundary row/col AND one row/col inward,
+ * which caused two opposite bugs at once: a wall one row inward silently cancelled the
+ * crossing (68 "見えない壁" map-wide), and a CLOSED gate on the boundary cell could be
+ * walked through (the hitbox rested half on the floor behind it). Integer landing makes
+ * the footprint exactly one cell, so both classes are structurally impossible.
  *
  * The cross-axis coordinate is preserved (the player's own x/y), so we keep the
- * integer cell the BFS crossed at. A player aligned to a half cell (MOVE_STEP is
- * 0.5) straddles two columns, but then BOTH integer crossings exist and are
- * checked separately, so integer alignment is sufficient coverage.
+ * integer cell the BFS crossed at.
  *
  * @param {string} dir  'up' | 'down' | 'left' | 'right'
  * @param {object} dest destination stage ({rows, cols, ...})
  * @param {number} r    arrival cell row    (the cell bfsLayer crossed into)
  * @param {number} c    arrival cell column
- * @returns {{row:number, col:number}} float landing coords for the footprint test
+ * @returns {{row:number, col:number}} landing coords for the footprint test
  */
 export function edgeLanding(dir, dest, r, c) {
-  if (dir === 'up')    return { row: dest.rows - 1.5, col: c };
-  if (dir === 'down')  return { row: 0.5, col: c };
-  if (dir === 'left')  return { row: r, col: dest.cols - 1.5 };
-  return { row: r, col: 0.5 };   // 'right'
+  if (dir === 'up')    return { row: dest.rows - 1, col: c };
+  if (dir === 'down')  return { row: 0, col: c };
+  if (dir === 'left')  return { row: r, col: dest.cols - 1 };
+  return { row: r, col: 0 };   // 'right'
 }
 
 /**
  * Does the arrival FOOTPRINT contain a wall? The single source of truth mirroring
  * game.js arrivalIsWall (2026-07-27 ⑥-footprint).
  *
- * 🔑 Why a footprint and not one cell: the player's hitbox is a full cell, and the
- * landing coords above are half-cell offsets, so the player always straddles the
- * BOUNDARY row/col AND ONE ROW/COL INWARD (floor(v)..floor(v+0.999)). The engine
- * cancels the transition if ANY of those cells is a wall — so an edge whose
- * boundary cell is open but whose second row/col holds a stone/switch/sign is a
- * "見えない壁": the player walks into it and is silently pushed back.
+ * 🔑 History — why this is a footprint scan at all. Until 2026-07-29 the engine landed
+ * the player HALF a cell inside the border, so their 1-cell hitbox straddled the
+ * BOUNDARY row/col AND ONE ROW/COL INWARD (floor(v)..floor(v+0.999)). The engine cancels
+ * the transition if ANY of those cells is a wall, so an edge whose boundary cell was open
+ * but whose second row/col held a stone/switch/sign was a "見えない壁": the player walked
+ * into it and was silently pushed back. 72 such crossings existed map-wide while every
+ * checker reported traps = 0, because the old 1-cell check could not see them.
  *
- * The old 1-cell check (`isHardBlocked(cellTile(dest, r, c))`) could not see this;
- * 72 such crossings existed map-wide while every checker reported traps = 0. The
- * 1-cell case is the SUBSET of this test where the boundary cell itself is a wall.
- *
- * ⚠️ Data-side rule this implies (previously undocumented): **an open crossing must
- * keep BOTH the boundary row/col AND the next row/col inward free of walls.**
+ * ⚠️ ⑥-landing (2026-07-29) made the engine land on the boundary cell itself, so the
+ * footprint is now exactly ONE cell and this test collapses into the 1-cell check —
+ * i.e. footprintBlockedEdges() is 0 BY CONSTRUCTION, not because the data was fixed.
+ * The scan is kept as the ENGINE↔CHECKER SYNC GUARD: it stays a faithful mirror of
+ * game.js arrivalIsWall, so if the landing ever drifts back off the boundary cell, the
+ * whole class of invisible walls is enumerated again instead of silently reappearing.
  *
  * @param {object} dest  destination stage (rows/cols/tiles/bgTiles)
  * @param {number} nRow  float landing row (see edgeLanding)
@@ -346,7 +353,14 @@ export function bfsLayer(stages, start, opts = {}) {
  *   landing:string,blockedAt:string}>}
  */
 export function footprintBlockedEdges(stages, opts = {}) {
-  const { withLadder = false } = opts;
+  // landingOf: injectable landing function, defaults to the engine's real one.
+  // ⚠️ 2026-07-29 ⑥-landing: with the integer landing this sweep returns [] BY
+  // CONSTRUCTION (the footprint is one cell, and a wall ON that cell is already the
+  // `traps` class, skipped below). That makes the sweep's own behaviour untestable
+  // against live data, so tests inject the historical half-cell landing to prove the
+  // guard still ENUMERATES — i.e. that a landing drift would resurface the 68 invisible
+  // walls loudly instead of silently. Production callers never pass this.
+  const { withLadder = false, landingOf = edgeLanding } = opts;
   const out = [];
   const DIRS = [
     // [dir, does the source cell sit on this edge?, arrival cell in dest]
@@ -371,7 +385,7 @@ export function footprintBlockedEdges(stages, opts = {}) {
           if (ar < 0 || ac < 0 || ar >= dest.rows || ac >= dest.cols) continue;
           // A wall ON the boundary cell is the 'arrival-wall' class (traps) — not ours.
           if (isHardBlocked(cellTile(dest, ar, ac))) continue;
-          const land = edgeLanding(dir, dest, ar, ac);
+          const land = landingOf(dir, dest, ar, ac);
           const foot = arrivalFootprintBlocked(dest, land.row, land.col, { withLadder });
           if (!foot.length) continue;
           out.push({

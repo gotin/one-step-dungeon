@@ -23,7 +23,7 @@ import {
 	createStageState, serializeStageState, deserializeStageState, sanitizeLoadedPlayer,
 } from './save.js';
 // ── 通行可否判定・条件評価（Phase 0-2 Step 2: passable.js / conditions.js へ切り出し）──
-import { createPassable } from './passable.js';
+import { createPassable, STATEFUL_TILES, statefulTileClosed } from './passable.js';
 import { createConditions } from './conditions.js';
 // ── 描画系（Phase 0-2 Step 3: render-board.js / render-chars.js へ切り出し）──────
 import { createRenderBoard } from './render-board.js';
@@ -1070,16 +1070,32 @@ function unlockLockedDoor(posKey) {
 }
 
 // 徒歩で決して立てない「壁」タイル集合（山・木・柵・水・穴・空・家・看板・
-// かがり火・スイッチ・石・切る前の茂み等）。開閉しうるゲート/ドア/破壊壁は
-// 含めない（遷移先で開いている可能性があるので従来どおり通す）。
+// かがり火・スイッチ等）＝**タイル種別だけで確定する**もの。
 // connectivity.mjs の HARD_BLOCKED と同じ基準 → traps 指標とエンジン挙動が一致。
+//
+// ⚠️ Phase 9-6 ⑥-landing（2026-07-29）: 開閉しうるタイルはここに入れない＝
+// STATEFUL_TILES（'T'/'='/'('/')'/'!'/'|'/'u'/'*'）は着地先の ss を見て「今」の
+// 状態で判定する（arrivalIsWall）。従来は '|' を常に壁（開いていても着地拒否＝
+// 過剰ブロック）・'T'/'='/'!' 等を常に素通り（閉じていても着地許可＝門のすり抜け）
+// として扱っていた＝どちらも「状態を見ていない」1つの判定漏れだった。
+// ⚠️ SWITCH/SWITCH_RED/SWITCH_BLUE/TORCH は tilePassable では通行可だが、着地では
+// 従来どおり常にブロックを維持する（footprintBlocked/traps の既存ベースラインの前提）。
 const ARRIVAL_WALL_TILES = new Set([
-	TILE.WALL, TILE.WATER, TILE.LAVA, TILE.SKY, TILE.PIT, TILE.DOORWAY_LOCKED,
-	TILE.SWITCH, TILE.SWITCH_RED, TILE.SWITCH_BLUE, TILE.STONE,
-	TILE.TREE, TILE.MOUNTAIN, TILE.BUSH, TILE.FENCE,
+	TILE.WALL, TILE.WATER, TILE.LAVA, TILE.SKY, TILE.PIT,
+	TILE.SWITCH, TILE.SWITCH_RED, TILE.SWITCH_BLUE,
+	TILE.TREE, TILE.MOUNTAIN, TILE.FENCE,
 	TILE.HOUSE_WALL, TILE.HOUSE_ROOF, TILE.SIGN, TILE.TORCH,
 ]);
 for (const ch of Object.keys(NPC_SPRITE_MAP)) ARRIVAL_WALL_TILES.add(ch);
+
+// 着地セルが「今」通行不可か（種別で確定する壁 or 状態を見て閉じている開閉タイル）。
+// tilePassable（passable.js）と statefulTileClosed を共有する＝同じ条件を2箇所に
+// 書かないことで「通行判定は状態を見るのに着地判定は見ない」食い違いを防ぐ。
+function arrivalTileBlocked(tile, posKey, destSS) {
+	if (ARRIVAL_WALL_TILES.has(tile)) return true;
+	if (STATEFUL_TILES.has(tile)) return statefulTileClosed(tile, posKey, destSS);
+	return false;   // 床・'D' ドア・':' ボス扉など＝着地可
+}
 
 // Phase 9-6: 水は tiles 層でも bgTiles 下地でもよい（水の単一ソース化で湖/海/堀は
 // bgTiles '~' へ移行済み）。まだロードしていない遷移先ステージの (r,c) の「実効タイル」を
@@ -1093,20 +1109,22 @@ function effArrivalTile(stage, r, c) {
 }
 
 // 遷移先ステージの着地 footprint が徒歩不可の壁を含むか？（すり抜け防止判定）。
-// プレイヤーは半セル幅で最大2×2セルにまたがる（col0.5 は col0-1 を占める）ので、
-// passable.js の isPassable と同じく floor(n)〜floor(n+0.999) の footprint 全体を
-// 走査する（中心セルだけ見ると角の壁を見逃してめり込む）。
+// Phase 9-6 ⑥-landing（2026-07-29）以降、着地座標は整数セル＝footprint は 1×1 セル
+// だが、飛行や将来の半セル着地でも壊れないよう floor(n)〜floor(n+0.999) の走査は残す
+// （整数なら r0===r1 で1セルだけを見る）。
 // 水/穴は、はしご所持かつ 1セル幅の橋なら渡れるので壁扱いしない。
-function arrivalIsWall(destStage, nRow, nCol) {
+// destSS は着地先ステージの stageState＝開閉しうるタイル（門/破壊壁/茂み/石）の
+// 「今」の状態を見るために必要（種別だけで判定すると閉じた門をすり抜ける）。
+function arrivalIsWall(destStage, nRow, nCol, destSS) {
 	const r0 = Math.floor(nRow), r1 = Math.floor(nRow + 0.999);
 	const c0 = Math.floor(nCol), c1 = Math.floor(nCol + 0.999);
 	for (let r = r0; r <= r1; r++) {
 		for (let c = c0; c <= c1; c++) {
 			const tile = effArrivalTile(destStage, r, c);  // tiles 水/bgTiles 水を '~' に畳む
 			if (tile === undefined) continue;         // 範囲外セルは無視（端クランプ側）
-			if (!ARRIVAL_WALL_TILES.has(tile)) continue;
+			if (!arrivalTileBlocked(tile, `${r},${c}`, destSS)) continue;
 			if (player.hasLadder && (tile === TILE.WATER || tile === TILE.PIT)
-				&& isBorderLadderBridge(destStage, r, c)) continue;   // 溶岩は含めない（はしごで渡れない）
+				&& isBorderLadderBridge(destStage, r, c, destSS)) continue;   // 溶岩は含めない（はしごで渡れない）
 			return true;                              // footprint 内に壁 → めり込む
 		}
 	}
@@ -1116,12 +1134,14 @@ function arrivalIsWall(destStage, nRow, nCol) {
 // 遷移先の (r,c) が、はしごで渡れる 1セル幅の水/穴橋か（軸不問）。橋脚＝水/穴/
 // 壁でない通行可タイル。passable.js の isLadderBridge と同じ考え方を、まだロード
 // していない遷移先ステージのタイル配列に対して自己完結で判定する。
-function isBorderLadderBridge(s, r, c) {
+function isBorderLadderBridge(s, r, c, destSS) {
 	const bank = (br, bc) => {
 		const t = effArrivalTile(s, br, bc);         // tiles 水/bgTiles 水を '~' に畳む
 		if (t === undefined) return false;
 		if (t === ' ') return true;                 // 床
-		return !ARRIVAL_WALL_TILES.has(t);          // 壁でも水/穴でもない＝陸（bgTiles 水は橋脚にならない）
+		// 壁でも水/穴でもない＝陸（bgTiles 水は橋脚にならない）。閉じた門も橋脚にならない
+		// ＝passable.js isLadderBank が tilePassable を要求するのと同じ基準。
+		return !arrivalTileBlocked(t, `${br},${bc}`, destSS);
 	};
 	return (bank(r - 1, c) && bank(r + 1, c)) || (bank(r, c - 1) && bank(r, c + 1));
 }
@@ -1141,10 +1161,18 @@ function checkStageTransition() {
 	let newRow = Math.round(y), newCol = Math.round(x);
 	const [sx, sy] = stageKey.split(',').map(Number);
 
-	if (y < 0)    { newKey = `${sx},${sy - 1}`; newRow = rows - 1.5; newCol = x; }
-	else if (y >= rows) { newKey = `${sx},${sy + 1}`; newRow = 0.5; newCol = x; }
-	else if (x < 0)    { newKey = `${sx - 1},${sy}`; newRow = y; newCol = cols - 1.5; }
-	else if (x >= cols) { newKey = `${sx + 1},${sy}`; newRow = y; newCol = 0.5; }
+	// Phase 9-6 ⑥-landing（2026-07-29）: 着地は「境界セルそのもの」の整数座標。
+	// 旧実装は境界から半セル内側（0.5 / rows-1.5）に落としていた＝プレイヤーの当たり箱
+	// （1セル幅）が境界の行/列と1つ内側の行/列の**2行に跨る**ため、
+	//   (a) 1つ内側に石/看板/スイッチがあると遷移が無言でキャンセルされる（見えない壁・
+	//       ユーザーが実プレイで踏んだ 68件）／
+	//   (b) 逆に境界セルが閉じた門だと、当たり箱が内側の床に半分乗るので**門をすり抜けて**
+	//       入れてしまう
+	// の両方が起きていた。整数着地なら footprint は境界セル1つだけ＝どちらも構造的に消える。
+	if (y < 0)    { newKey = `${sx},${sy - 1}`; newRow = rows - 1; newCol = x; }
+	else if (y >= rows) { newKey = `${sx},${sy + 1}`; newRow = 0; newCol = x; }
+	else if (x < 0)    { newKey = `${sx - 1},${sy}`; newRow = y; newCol = cols - 1; }
+	else if (x >= cols) { newKey = `${sx + 1},${sy}`; newRow = y; newCol = 0; }
 
 	if (newKey && getStageData(newLayer, newKey)) {
 		// 到着セルが壁（山・木・柵・水など徒歩で立てないタイル）だと、遷移しても
@@ -1157,11 +1185,15 @@ function checkStageTransition() {
 		// 飛行中は水/空へ着地して留まれる（塔の空島入口など）ので遷移を許す。
 		// 徒歩時のみ、到着 footprint が壁ならブロックする（はしごで渡れる 1セル幅の
 		// 水/穴橋は正当な渡りなので通す）。着地は float 座標（newRow/newCol）で判定。
-		if (!player.flying && arrivalIsWall(destStage, newRow, newCol)) {
-			if (y < 0) player.y = 0.5;
-			else if (y >= rows) player.y = rows - 1.5;
-			else if (x < 0) player.x = 0.5;
-			else if (x >= cols) player.x = cols - 1.5;
+		// 着地先の状態（開閉しうる門/破壊壁/茂み/石が「今」開いているか）を渡す。
+		// getSS は未登録キーなら初期状態を生成して返す＝未訪問ステージでも安全。
+		if (!player.flying && arrivalIsWall(destStage, newRow, newCol, getSS(newLayer, newKey))) {
+			// 押し戻しも整数へ（着地と対称）。出ようとした軸だけを境界セルに戻す＝
+			// プレイヤーが元々居たセルそのものなので、その場で遷移が再トリガーされない。
+			if (y < 0) player.y = 0;
+			else if (y >= rows) player.y = rows - 1;
+			else if (x < 0) player.x = 0;
+			else if (x >= cols) player.x = cols - 1;
 			moveCharEl('player', player.x, player.y);
 			updatePlayerCharEl();
 			return;
@@ -1823,6 +1855,12 @@ export {
 	getProjectiles,
 	startEnding,
 };
+// テスト用：実時間ループ（setInterval(step,120)）の停止/再開を公開。
+// window.__game.step(n) で手動 tick する検証は、実ループが裏で並走していると
+// wall-clock 依存で余分な tick が入り込み結果が揺れる（flaky の原因）。
+// 手動 step 前に stopGameLoop すれば実ループの割り込みを排除できる。
+export function callStopGameLoop() { return stopGameLoop(); }
+export function callStartGameLoop() { return startGameLoop(); }
 // テスト用：飛行トグルを公開（main.js の __game から呼ぶ）
 export function callToggleFlight() { return toggleFlight(); }
 // テスト用：チャージ攻撃（剣ビーム）を公開（Phase 3-1）

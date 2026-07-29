@@ -31,6 +31,45 @@ const LADDER_OVER = new Set([
 	TILE.WATER, TILE.PIT,
 ]);
 
+// Phase 9-6 ⑥-landing: 「タイル種別だけでは通行可否が決まらない」タイル＝ステージ状態
+// （ss）を見なければ開いているか閉じているか分からないもの。
+// ⚠️ ここに載っているタイルを「種別だけ」で壁扱い/素通り扱いすると必ず食い違いが出る。
+// 実際に arrivalIsWall（着地判定）は '|' を常に壁・'T'/'='/'('/')'/'!' を常に素通りとして
+// 扱っていて、前者は過剰ブロック・後者は閉じた門のすり抜けを許していた（2026-07-29 修正）。
+// ⚠️ DOOR('D') と DOORWAY_BOSS(':') は意図的に含めない：
+//   - 'D' は境界を跨ぐとき source 側の通行判定が先に鍵をガードする（＝越えられた時点で開いている）
+//   - ':' を着地でブロックするとボス戦から逃げた後の再入場が塞がる
+export const STATEFUL_TILES = new Set([
+	TILE.GATE, TILE.TIDE_GATE, TILE.GATE_RED, TILE.GATE_BLUE,
+	TILE.BREAKABLE_WALL, TILE.DOORWAY_LOCKED, TILE.BUSH, TILE.STONE,
+]);
+
+/**
+ * STATEFUL_TILES のセルが「今」閉じている（通行不可）か？
+ * 通行判定（tilePassable）と着地判定（game.js arrivalIsWall）の共有の単一点。
+ * 同じ条件を2箇所に書くと片方だけ状態を見ないバグ（⑥-landing の根因）が再発する。
+ *
+ * @param {string} tile   タイル文字
+ * @param {string} posKey `"r,c"`
+ * @param {object} ss     そのセルが属するステージの stageState（getSS の戻り値）
+ * @returns {boolean} 閉じている＝通れないなら true
+ */
+export function statefulTileClosed(tile, posKey, ss) {
+	switch (tile) {
+		// 潮ゲート（'='）は GATE と同じ links→openGates 機構で開閉する（潮が引く＝開）。
+		case TILE.GATE:
+		case TILE.TIDE_GATE:      return !ss?.openGates?.has(posKey);
+		case TILE.GATE_RED:       return ss?.activeColor !== 'red';
+		case TILE.GATE_BLUE:      return ss?.activeColor !== 'blue';
+		case TILE.BREAKABLE_WALL: return !ss?.brokenWalls?.has(posKey);
+		case TILE.DOORWAY_LOCKED: return (ss?.doorwayStates?.[posKey] ?? 'closed') !== 'open';
+		case TILE.BUSH:           return !ss?.cutBushes?.has(posKey);
+		// 石は stonePositions に登録された時点で「動かされた」＝元のセルは床。
+		case TILE.STONE:          return !ss?.stonePositions?.[posKey];
+		default: return false;
+	}
+}
+
 /**
  * 通行可否判定関数群を生成する。
  * @param {object} d 依存（状態 getter と関数）
@@ -153,16 +192,13 @@ export function createPassable(d) {
 		if (tile === TILE.LAVA) return false;  // 溶岩：地上では通れない（飛行/はしごは isPassable で許可＝水と同じ）
 		if (tile === TILE.SKY) return false;  // 空（虚空）：地上では通れない（飛行は isPassable で許可）
 		if (tile === TILE.PIT) return false;  // 穴：地上では通れない（はしごは isPassable で許可）
-		if (tile === TILE.GATE   && !ss.openGates.has(posKey)) return false;
-		// Phase 9-6 深洋O: 潮ゲート。openGates に無い＝潮が満ちて水（不通）／
-		// 有る＝潮が引いて床（通行可）。GATE と同じ links→openGates 機構で開閉する。
-		if (tile === TILE.TIDE_GATE && !ss.openGates.has(posKey)) return false;
-		// Phase 5-1: 色ゲートは activeColor が自色のときだけ通行可（links とは独立）
-		if (tile === TILE.GATE_RED)  return ss.activeColor === 'red';
-		if (tile === TILE.GATE_BLUE) return ss.activeColor === 'blue';
+		// Phase 9-6 ⑥-landing: 開閉しうるタイル（'T'/'='/'('/')'/'!'/'|'/'u'/'*'）の
+		// 「今」の状態は statefulTileClosed が単一の判定点（着地判定と共有）。
+		// ⚠️ ここで早期 return しない＝'u'/'*' は「開いている（切られた/押された）」場合に
+		// 通行可、閉じている場合に不通というだけなので、閉→false・開→後段の判定へ流す。
+		if (STATEFUL_TILES.has(tile) && statefulTileClosed(tile, posKey, ss)) return false;
 		// デバッグモード中はドアを素通り（鍵不要）
 		if (tile === TILE.DOOR   && !ss.openedDoors?.has(posKey) && !debugMode) return false;
-		if (tile === TILE.BREAKABLE_WALL && !ss.brokenWalls.has(posKey)) return false;
 		if (NPC_SPRITE_MAP[tile]) return false;
 		// Phase 8: フィールドタイル通行判定
 		if (tile === TILE.TREE)        return false;
@@ -171,31 +207,9 @@ export function createPassable(d) {
 		if (tile === TILE.HOUSE_WALL)  return false;
 		if (tile === TILE.HOUSE_ROOF)  return false;
 		if (tile === TILE.SIGN)        return false; // 看板は通行不可（隣接して剣で読む）
-		if (tile === TILE.BUSH) {
-			// 茂み：切られていれば通行可
-			if (ss.cutBushes?.has(posKey)) return true;
-			return false;
-		}
-		// 石（STONE）の通行判定：元のタイル位置で判断
-		if (tile === TILE.STONE) {
-			const _ss = getSS(getCurrentLayer(), getStageKey());
-			// stonePositions に登録されていれば石は移動済み → 元の位置は床として通行可
-			if (_ss.stonePositions?.[posKey]) return true;
-			return false; // 移動されていない → 石がある → 通れない
-		}
-		// Phase 6.5: ドアウェイの通行判定
-		if (tile === TILE.DOORWAY_BOSS || tile === TILE.DOORWAY_LOCKED) {
-			const dwState = ss.doorwayStates?.[posKey];
-			// DOORWAY_LOCKED: 閉じている間は通れない
-			if (tile === TILE.DOORWAY_LOCKED) {
-				const state = dwState ?? 'closed';
-				if (state !== 'open') return false;
-			}
-			// DOORWAY_BOSS: boss_closed 状態は通れない
-			if (tile === TILE.DOORWAY_BOSS) {
-				if (dwState === 'boss_closed') return false;
-			}
-		}
+		// Phase 6.5: ドアウェイの通行判定（'|' は STATEFUL_TILES 側で判定済み）。
+		// DOORWAY_BOSS: boss_closed 状態は通れない（着地判定では常に通す＝逃走後の再入場を塞がない）
+		if (tile === TILE.DOORWAY_BOSS && ss.doorwayStates?.[posKey] === 'boss_closed') return false;
 		return true;
 	}
 

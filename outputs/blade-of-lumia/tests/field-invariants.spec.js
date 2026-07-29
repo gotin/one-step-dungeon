@@ -148,21 +148,15 @@ const BASELINE = {
   traps: 0,         // rule 1: reached screen → arrival-wall soft-lock → GOAL MET (0).
                     // 43→35 after ⑥-9 volcano; 35→0 after ⑥-trap (mirror-AND fixed point
                     // closes every §11-1 corner residual across region boundaries).
-  footprintBlocked: 67, // 見えない壁: seam looks open, engine bounces you back → goal 0.
-                    // NEW class (2026-07-27 ⑥-footprint), see the note below. NOT folded
-                    // into traps/seams — those two mean "no 1-cell arrival wall" and are
-                    // already at hard 0; merging would silently un-meet a met goal.
-                    // 71→67 after ⑥-footprint fixed 深洋O (the 4 corridor screens + the
-                    //   arm's E3 tablet), the region the user actually walked:
-                    //     15,11→15,12 @0,9='Y'   Y moved row1→row2
-                    //     15,12→15,11 @9,9='i'   arm tablet moved off the south shore row8
-                    //     15,13→15,14 @0,5='*'   push lane dropped row1→row2 (C3)
-                    //     15,14→15,15 @0,5='*'   同 (C4)
-                    //   + C2: sealed the cells a stone could be pushed to on row0 (a stone
-                    //     on the top row can never be pushed back → permanent invisible wall).
-                    //   The remaining 67 are all in the outer ring (⑥-11 scope) — see
-                    //   PLAN.md ⑥-footprint step 5. dungeon_7 3,2→3,3 @0,6='x' is tracked
-                    //   separately by FOOTPRINT_BASELINE in connectivity-tool.spec.js.
+  footprintBlocked: 0,  // 見えない壁: seam looks open, engine bounces you back → GOAL MET (0).
+                    // NEW class (2026-07-27 ⑥-footprint). 71→67 by moving the offending
+                    // tiles in 深洋O (the region the user actually walked), then 67→0 on
+                    // 2026-07-29 by ⑥-landing making the engine land on the BOUNDARY CELL
+                    // instead of half a cell inward — the footprint is now one cell, so the
+                    // whole class is impossible BY CONSTRUCTION rather than fixed per screen.
+                    // ⚠️ Keep this at 0 and keep footprintBlockedEdges() a faithful mirror of
+                    // game.js arrivalIsWall: it is now the guard that catches the landing
+                    // drifting back off the boundary cell (which would resurrect all 68).
 };
 
 // 2026-07-27 ⑥-footprint — the metric hole the USER found by playing, not by measuring:
@@ -177,21 +171,22 @@ const BASELINE = {
 // Every checker measured only the boundary cell, so 72 invisible walls coexisted with
 // traps = 0. Lesson (DECISIONS.md): 画面の中を検証するテストは、画面に入れることを検証しない.
 //
-// For now the DATA is fixed and the rule is encoded in footprintBlockedEdges(). The
-// alternative — an INTEGER landing (row 0 / rows-1 instead of 0.5 / rows-1.5) so the
-// footprint spans one row — was MEASURED on 2026-07-28, not dismissed: it drops
-// footprintBlocked 68→0 and the whole suite still passes, i.e. the layouts do NOT depend
-// on the half-cell landing. Its real cost is elsewhere: 15 crossings whose boundary cell
-// is a CLOSED solvable gate (field 5,13→6,13 @'!', dungeon_7 1,0→1,1 @'T', …) would drop
-// the player onto the gate itself, and in-engine probes confirm the player is then frozen
-// in all four directions — an unrecoverable soft-lock. So the integer landing is only safe
-// PAIRED with "refuse a transition whose arrival cell is a closed gate" (':' exempt, it
-// starts open; dungeon_7 0,0 needs a key-door carve-out). Tracked in DECISIONS.md
-// 2026-07-28 / PLAN.md ⑥-landing.
-//
-// ⚠️ Note the CURRENT landing has the mirror-image defect, also measured in-engine: the
-// half cell straddles the gate row, so an edge scroll walks the player THROUGH a closed
-// gate (field 5,13→6,13 sails past the unbroken '!'). Neither landing is correct alone.
+// ✅ RESOLVED 2026-07-29 (⑥-landing) — the fix was in the ENGINE, not the data. The landing
+// is now the BOUNDARY CELL itself (row 0 / rows-1), so the footprint is exactly one cell.
+// The half-cell landing had TWO opposite defects, both measured in-engine, and neither
+// landing was correct alone:
+//   - half cell → a wall one row inward silently cancels the crossing (68 invisible walls)
+//   - integer  → the player would land ON a closed solvable gate and freeze there …
+//     UNLESS the arrival check also refuses that. Which turned out not to be a second
+//     feature but the SAME missing check: arrivalIsWall judged gates by TILE TYPE, so '|'
+//     was always a wall (over-block) while 'T'/'='/'('/')'/'!' were always walk-through
+//     (the half cell then let the player sail THROUGH the unbroken '!' at 5,13→6,13).
+//     Both directions are fixed by judging the arrival cell against the destination's ss
+//     via the shared statefulTileClosed() (passable.js) — one source of truth with
+//     tilePassable, so the two can't drift apart again.
+// 'D' (key door) and ':' (boss doorway) are deliberately exempt: crossing a border 'D'
+// means the source side already unlocked it, and blocking ':' would seal re-entry after
+// fleeing a boss. See DECISIONS.md 2026-07-29 / PLAN.md ⑥-landing.
 
 test.describe('Blade of Lumia – 9-6 フィールド不変条件（ratchet）', () => {
   test('接続シーム破綻 (honest seam bugs) は基準以下（目標 0）', () => {

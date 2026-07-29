@@ -36,6 +36,19 @@ function room(openings = [], stamp = []) {
   return { rows, cols, tiles: t };
 }
 
+// The landing checkStageTransition used BEFORE ⑥-landing (2026-07-29): half a cell inside
+// the border, so the player's 1-cell hitbox straddled the boundary row/col AND one inward.
+// The engine no longer does this — it is kept here as the DEFECT GENERATOR: the footprint
+// sweep is silent under the integer landing (0 by construction), so the only way to prove
+// the sweep still catches the "見えない壁" class is to feed it this landing. If someone
+// reverts the engine to a half-cell landing, the sweep produces exactly this output again.
+const LEGACY_HALF_CELL_LANDING = (dir, dest, r, c) => {
+  if (dir === 'up')    return { row: dest.rows - 1.5, col: c };
+  if (dir === 'down')  return { row: 0.5, col: c };
+  if (dir === 'left')  return { row: r, col: dest.cols - 1.5 };
+  return { row: r, col: 0.5 };   // 'right'
+};
+
 test.describe('connectivity tool — BLOCKED categories (single source of truth)', () => {
   test('hard walls block AND count as dead-end material; solvable gates block walk but are not hard', () => {
     expect(isBlocked('#')).toBe(true);
@@ -73,70 +86,77 @@ test.describe('connectivity tool — detects known defects', () => {
 
   // 2026-07-27 ⑥-footprint. The user's report: 「15,13 から南に歩いても弾き返される」.
   // The boundary cell was open, so every checker said the crossing was fine — but the
-  // engine lands the player at a HALF-CELL offset (checkStageTransition: down → row 0.5,
-  // up → rows-1.5), their 1-cell hitbox straddles the boundary row AND the row one
-  // INWARD, and arrivalIsWall cancels the transition if EITHER holds a wall. Result: a
+  // engine landed the player at a HALF-CELL offset (checkStageTransition: down → row 0.5,
+  // up → rows-1.5), their 1-cell hitbox straddled the boundary row AND the row one
+  // INWARD, and arrivalIsWall cancelled the transition if EITHER held a wall. Result: a
   // 見えない壁. 72 of these existed map-wide while `traps` read 0.
   //
-  // This test pins the hole: the 1-cell analysis (deadEdges) must come back CLEAN on
-  // this fixture — that assertion was GREEN before the footprint check existed, which
-  // is the proof the blind spot was real — while footprintEdges flags both directions.
-  test('(a3) 壁は境界の1つ内側 => 1セル判定は無罪、footprint が「見えない壁」を検出', () => {
-    // Three stages stacked vertically. Every seam is open at BOTH col5 and col8; col8
-    // is the clean lane that keeps the middle/bottom screens reachable, col5 is the
-    // defective one. 0,1 holds a stone at (1,5) and at (8,5) — one row inside each of
-    // its own boundaries, i.e. inside the arrival footprint of the col5 crossings.
+  // ⚠️ 2026-07-29 ⑥-landing: the ENGINE was fixed (landing = the boundary cell itself), so
+  // a wall one row inward no longer blocks anything and this fixture is legitimately clean
+  // in both analyses. What must still hold — and what this test now pins — is that the
+  // checker and the engine agree on WHERE the player lands: run the same fixture through
+  // both landings and assert the half-cell one WOULD have flagged it. If edgeLanding ever
+  // drifts back off the boundary cell, the mismatch shows up here (and 68 invisible walls
+  // come back with it).
+  test('(a3) 境界の1つ内側の壁は整数着地では無害（旧 半セル着地なら見えない壁になる形）', () => {
+    // Three stages stacked vertically. Every seam is open at BOTH col5 and col8; 0,1 holds
+    // a stone at (1,5) and (8,5) — one row inside each of its own boundaries, i.e. inside
+    // the footprint the OLD half-cell landing would have covered.
     const stages = {
       '0,0': room([{ side: 'bottom', idx: 5 }, { side: 'bottom', idx: 8 }]),
-      // down-entry lands at row 0.5 → footprint covers rows 0 AND 1 → (1,5) refuses it.
-      // up-entry lands at row rows-1.5 = 8.5 → covers rows 8 AND 9 → (8,5) refuses it.
       '0,1': room([{ side: 'top', idx: 5 }, { side: 'top', idx: 8 },
                    { side: 'bottom', idx: 5 }, { side: 'bottom', idx: 8 }],
                   [{ r: 1, c: 5, ch: '*' }, { r: 8, c: 5, ch: '*' }]),
       '0,2': room([{ side: 'top', idx: 5 }, { side: 'top', idx: 8 }]),
     };
 
-    // (1) the blind spot: nothing here is an arrival-WALL, the boundary cells are open,
-    // so the 1-cell walk reports a perfectly clean map. This assertion is exactly what
-    // was GREEN before footprintBlockedEdges() existed = proof the hole was real.
+    // (1) integer landing: the boundary cells are open and the footprint is ONE cell, so
+    // nothing is flagged — by construction, not because the data was moved.
     const { deadEdges, reachedRooms } = bfsLayer(stages, { stage: '0,0', row: 1, col: 1 });
-    expect(deadEdges.filter((e) => e.reason === 'arrival-wall'),
-      '境界セル自体は開いている＝旧1セル判定では検出不能（これが見逃していた穴）').toEqual([]);
-    expect(reachedRooms.has('0,1'), 'col8 の正常レーンで到達はできる').toBe(true);
+    expect(deadEdges.filter((e) => e.reason === 'arrival-wall'), '境界セル自体は開いている').toEqual([]);
+    expect(reachedRooms.has('0,1')).toBe(true);
+    expect(footprintBlockedEdges(stages),
+      '整数着地なら footprint は境界セル1つ＝1つ内側の石は無害').toEqual([]);
 
-    // (2) the footprint sweep catches both directions.
-    const foot = footprintBlockedEdges(stages);
-    const down = foot.find((e) => e.from === '0,0' && e.dir === 'down');
-    expect(down, '上から入る側: row0 は開いているが row1 の石で弾かれる').toBeTruthy();
+    // (2) the guard: the SAME fixture under the old half-cell landing IS blocked, in both
+    // directions and only on the defective col5 lane. This is what makes (1) meaningful —
+    // it proves the fixture still contains the hazard and that the only reason it passes
+    // is the landing coordinate. If the engine's landing ever drifts back off the boundary
+    // cell, this is the shape that comes back (68 crossings map-wide).
+    const legacy = footprintBlockedEdges(stages, { landingOf: LEGACY_HALF_CELL_LANDING });
+    const down = legacy.find((e) => e.from === '0,0' && e.dir === 'down');
+    expect(down, '旧着地: 上から入る側は row1 の石で弾かれていた').toBeTruthy();
     expect(down.to).toBe('0,1');
     expect(down.at).toBe('0,5');
     expect(down.tile).toBe('*');
-    expect(down.landing, '着地は row 0.5＝row0 と row1 にまたがる').toBe('0.5,5');
+    expect(down.landing, '旧着地は row 0.5＝row0 と row1 にまたがる').toBe('0.5,5');
     expect(down.blockedAt).toContain('1,5');
 
-    const up = foot.find((e) => e.from === '0,2' && e.dir === 'up');
-    expect(up, '下から入る側: row9 は開いているが row8 の石で弾かれる').toBeTruthy();
+    const up = legacy.find((e) => e.from === '0,2' && e.dir === 'up');
+    expect(up, '旧着地: 下から入る側は row8 の石で弾かれていた').toBeTruthy();
     expect(up.to).toBe('0,1');
-    expect(up.landing, '着地は row rows-1.5 = 8.5＝row8 と row9 にまたがる').toBe('8.5,5');
+    expect(up.landing, '旧着地は row rows-1.5 = 8.5＝row8 と row9 にまたがる').toBe('8.5,5');
     expect(up.blockedAt).toContain('8,5');
-
-    // (3) only the defective lane is flagged — col8 is clean in both directions.
-    expect(foot.filter((e) => e.at.endsWith(',8')), 'col8 レーンは正常').toEqual([]);
+    expect(legacy.filter((e) => e.at.endsWith(',8')), 'col8 レーンは旧着地でも正常').toEqual([]);
   });
 
-  test('(a4) footprint 内が床なら検出しない（正常な継ぎ目を誤検出しない）', () => {
+  test('(a4) 着地セルが壁でなければ検出しない（正常な継ぎ目を誤検出しない）', () => {
     const stages = {
       '0,0': room([{ side: 'bottom', idx: 5 }]),
       '0,1': room([{ side: 'top', idx: 5 }]),
     };
     const { deadEdges } = bfsLayer(stages, { stage: '0,0', row: 1, col: 1 });
     expect(deadEdges).toEqual([]);
-    expect(footprintBlockedEdges(stages), '境界＋1つ内側が空いていれば正当な継ぎ目').toEqual([]);
+    expect(footprintBlockedEdges(stages), '境界セルが空いていれば正当な継ぎ目').toEqual([]);
   });
 
   // The enumeration must NOT depend on the player's route or on gate state. The strict
   // walk keeps solvable gates shut, so a reached-source filter dropped the user's own
   // reported case (15,13→15,14 lives behind the corridor tide gates) — 69 instead of 71.
+  // Still a property of the sweep after ⑥-landing, and it matters precisely WHEN the guard
+  // fires: a landing drift must resurface hazards behind gates too, not just the ones on
+  // the player's current strict-walk frontier. Driven through the legacy landing because
+  // that is the only landing under which the sweep produces output at all.
   test('(a5) footprint 検出はゲートの奥でも列挙される（進行状況で数が減らない）', () => {
     const stages = {
       '0,0': room([{ side: 'bottom', idx: 5 }]),
@@ -149,33 +169,35 @@ test.describe('connectivity tool — detects known defects', () => {
     for (let c = 1; c <= 10; c++) stages['0,1'].tiles[5][c] = '=';
     const { reachedRooms } = bfsLayer(stages, { stage: '0,0', row: 1, col: 1 });
     expect(reachedRooms.has('0,2'), 'ゲート閉状態では 0,2 は未到達').toBe(false);
-    const foot = footprintBlockedEdges(stages);
+    const foot = footprintBlockedEdges(stages, { landingOf: LEGACY_HALF_CELL_LANDING });
     expect(foot.map((e) => `${e.from}->${e.to}`),
-      'ゲートの奥の見えない壁も必ず列挙される').toEqual(['0,1->0,2']);
+      'ゲートの奥の見えない壁も必ず列挙される（到達済みで絞らない）').toEqual(['0,1->0,2']);
+    expect(footprintBlockedEdges(stages), '現行の整数着地では無害').toEqual([]);
   });
 
-  // The root cause, pinned. game.js checkStageTransition is SYMMETRIC in float coords
-  // (0.5 / size-1.5) but ASYMMETRIC in logical tiles: entering downward lands on tile
-  // row 0 while entering upward lands on tile row rows-2, one row INWARD. Combined with
-  // the 1-cell hitbox this means every crossing needs TWO clear rows/cols — the data rule
-  // nobody had written down. If these numbers ever drift from game.js, every footprint
-  // finding silently becomes wrong, so they are asserted literally.
-  test('edgeLanding は checkStageTransition の着地座標そのもの（2行/2列必要の根拠）', () => {
+  // The engine↔checker contract, pinned literally. game.js checkStageTransition lands the
+  // player on the BOUNDARY CELL (⑥-landing 2026-07-29): down → row 0, up → rows-1,
+  // right → col 0, left → cols-1. If these numbers ever drift from game.js, every
+  // footprint finding silently becomes wrong, so they are asserted literally.
+  test('edgeLanding は checkStageTransition の着地座標そのもの（整数＝境界セル）', () => {
     const dest = { rows: 10, cols: 12 };
-    expect(edgeLanding('down',  dest, 0, 5)).toEqual({ row: 0.5, col: 5 });
-    expect(edgeLanding('up',    dest, 9, 5)).toEqual({ row: 8.5, col: 5 });
-    expect(edgeLanding('right', dest, 4, 0)).toEqual({ row: 4, col: 0.5 });
-    expect(edgeLanding('left',  dest, 4, 11)).toEqual({ row: 4, col: 10.5 });
+    expect(edgeLanding('down',  dest, 0, 5)).toEqual({ row: 0, col: 5 });
+    expect(edgeLanding('up',    dest, 9, 5)).toEqual({ row: 9, col: 5 });
+    expect(edgeLanding('right', dest, 4, 0)).toEqual({ row: 4, col: 0 });
+    expect(edgeLanding('left',  dest, 4, 11)).toEqual({ row: 4, col: 11 });
 
-    // The footprint of a half-cell landing spans TWO rows (or cols), never one.
+    // An integer landing's footprint is exactly ONE cell: the boundary cell blocks,
+    // the row/col one inward does not.
     const stage = { rows: 10, cols: 12, tiles: Array.from({ length: 10 }, () => Array(12).fill('.')) };
     stage.tiles[1][5] = '*';                     // one row inward from the top edge
-    expect(arrivalFootprintBlocked(stage, 0.5, 5).map((h) => `${h.r},${h.c}`)).toEqual(['1,5']);
-    expect(arrivalFootprintBlocked(stage, 2.5, 5), 'row2/3 は無関係').toEqual([]);
-    // Integer coords (cross-axis) span one cell only, so a lateral crossing checks the
-    // arrival row plus the two boundary columns.
+    expect(arrivalFootprintBlocked(stage, 0, 5), '1つ内側の石は着地に無関係').toEqual([]);
+    stage.tiles[0][6] = '*';                     // ON the boundary row
+    expect(arrivalFootprintBlocked(stage, 0, 6).map((h) => `${h.r},${h.c}`)).toEqual(['0,6']);
+    // Lateral crossing: only the boundary column is checked.
     stage.tiles[4][1] = '*';
-    expect(arrivalFootprintBlocked(stage, 4, 0.5).map((h) => `${h.r},${h.c}`)).toEqual(['4,1']);
+    expect(arrivalFootprintBlocked(stage, 4, 0), '横入りも1セル＝col1 の石は無関係').toEqual([]);
+    stage.tiles[4][0] = '*';
+    expect(arrivalFootprintBlocked(stage, 4, 0).map((h) => `${h.r},${h.c}`)).toEqual(['4,0']);
   });
 
   test('(a2) edge opening to a NON-EXISTENT stage => DEAD EDGE (no-stage)', () => {
@@ -321,11 +343,16 @@ test.describe('connectivity tool — detects known defects', () => {
     expect(orphans).toEqual([]);
   });
 
-  // ⑥-footprint, DUNGEON side. field's 71 are ratcheted in field-invariants.spec.js;
-  // the same defect exists in dungeon layers and had no owner, so it is ratcheted here.
-  // LOWER these as the cases are fixed. GOAL: every layer 0.
-  const FOOTPRINT_BASELINE = { dungeon_7: 1 };
-  test('見えない壁 (arrival footprint) — 全ダンジョン層で基準以下（目標 0）', () => {
+  // ⑥-footprint, DUNGEON side. field's are ratcheted in field-invariants.spec.js;
+  // the same defect existed in dungeon layers and had no owner, so it is ratcheted here.
+  //
+  // ✅ 2026-07-29 ⑥-landing: the last one (dungeon_7: 1) is gone, and every layer is now
+  // 0 BY CONSTRUCTION — the engine lands on the boundary cell, so the footprint is a single
+  // cell and a wall there is already the `traps` class. The ratchet stays as the
+  // ENGINE↔CHECKER sync guard: any drift back toward a multi-cell landing re-enumerates the
+  // whole class here instead of it silently reappearing in-game.
+  const FOOTPRINT_BASELINE = {};   // ⚠️ 全層 0。緩めるな（増えたら着地がずれた合図）
+  test('見えない壁 (arrival footprint) — 全ダンジョン層で 0（整数着地で構造的に不可能）', () => {
     const url = new URL('../work/blade-of-lumia.json', import.meta.url);
     const d = JSON.parse(readFileSync(url, 'utf8'));
     for (const [name, layer] of Object.entries(d.layers)) {
