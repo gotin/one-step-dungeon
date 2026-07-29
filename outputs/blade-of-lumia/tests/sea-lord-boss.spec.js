@@ -194,19 +194,37 @@ test.describe('Phase 9-6 – 海の主（部品としての定義）', () => {
     await page.goto(previewUrl(4, 2));
     await waitForBoard(page);
     const res = await page.evaluate(() => {
-      // ⚠️ 起動から数フレーム経つと実ループ（setInterval(step,120)）が既に主を
-      // 動かしている∴「配置セル」を基準にする（観測時の座標だと出発点が曖昧）。
+      // 実ループ（setInterval(step,120)）を止めてから手動 step する。
+      // 止めないと goto→evaluate 間の wall-clock 経過で実ループが余分な tick を
+      // 挟み、hitAndAway の approach/retreat フェーズが manual step 開始時点で揺れる。
+      window.__game.pause();
       const spawnX = 7;                       // tiles の '{' は (4,7)＝水域(cols6-10)
       const start = window.__game.getEnemies().find(e => e.type === '{');
-      for (let i = 0; i < 60; i++) window.__game.step(1);
+      // ⚠️ pause() は evaluate の中＝goto〜evaluate の隙間で走った実 tick は消せない。
+      // その分だけ hitAndAway の _haTimer と gameTime のズレが残り、さらに接近モードは
+      // Math.random()（direct 1.4 / flank 0.3 / wander 0.3）で選ばれる＝pause だけでは
+      // 決定論にならない（2026-07-29 実測：フル実行6回中2回赤・単独25回は全緑）。
+      // ∴ 測りたいもの（両生＝水から陸へ上がれるか）に無関係な AI のクジ引きを固定する。
+      start._haPhase     = 'approach';
+      start._haTimer     = Number.MAX_SAFE_INTEGER;  // 計測中に retreat へ落ちない
+      start._approachMode = 'direct';                // 迂回（flank/wander）を選ばせない
+      let minX = start.x;
+      for (let i = 0; i < 60; i++) {
+        window.__game.step(1);
+        const cur = window.__game.getEnemies().find(e => e.type === '{');
+        if (cur) minX = Math.min(minX, cur.x);
+      }
       const now = window.__game.getEnemies().find(e => e.type === '{');
-      return { spawnX, seenX: start.x, to: now ? { x: now.x, y: now.y } : null };
+      window.__game.resume();
+      return { spawnX, seenX: start.x, minX, to: now ? { x: now.x, y: now.y } : null };
     });
     expect(res.to, '主が消えた').toBeTruthy();
-    expect(res.to.x, '主が全く動いていない').toBeLessThan(res.spawnX);
+    expect(res.minX, '主が全く動いていない').toBeLessThan(res.spawnX);
     // 水域は cols6-10・配置は (4,7) ∴ x<6 まで来たら「水から陸へ上がった」＝両生の証明
     // （水棲 move:'water' ならここで止まる・陸棲なら水上に配置できない）
-    expect(res.to.x, '主が水域から陸へ上がれていない').toBeLessThan(6);
+    // 最終位置ではなく「計測中に到達した最小 x」で判定する＝接触後の押し戻しや
+    // 攻撃命中による retreat で戻っても「陸に上がった事実」は消えない。
+    expect(res.minX, '主が水域から陸へ上がれていない').toBeLessThan(6);
     expect(errors).toEqual([]);
   });
 });

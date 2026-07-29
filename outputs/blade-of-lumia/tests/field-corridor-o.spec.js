@@ -474,6 +474,10 @@ test.describe('Phase 9-6 深洋O ⑤ – 廊下C1〜C4 実エンジン検証', (
   //   置き直しは __game.getPlayer()（game.js getPlayerForTest）で x/y を直接書く。
   //   経路再生はすでに歩けたと確認済みの辺だけを辿るので、状態を壊さない。
   test('⑨ パズルを解かずに南の出口へは出られない（実エンジンで歩ける範囲を全探索）', async ({ page }) => {
+    // 実測28秒＝デフォルトタイムアウト30秒に近接。並列実行時のCPU競合で
+    // わずかに遅くなるだけで超過し flaky になる（2026-07-28 実測）。
+    // test.slow() でこのテストのタイムアウトを3倍(90秒)にし、計算量そのものは変えない。
+    test.slow();
     const errors = [];
     page.on('pageerror', (e) => errors.push(e.message));
 

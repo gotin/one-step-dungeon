@@ -27,6 +27,8 @@ import {
 	callToggleFlight,
 	callStartCharge,
 	callReleaseCharge,
+	callStopGameLoop,
+	callStartGameLoop,
 	getPlayerForTest,
 	callEquipSwordTier,
 	callEquipArmorTier,
@@ -76,6 +78,11 @@ window._debugEnding = () => startEnding();
 // 本番動作には影響しない（読み取り＋既存関数の呼び出しのみ）。
 window.__game = {
 	step,
+	// 実時間ループ（setInterval(step,120)）を止める/戻す。
+	// 手動 step(n) 系の検証で実ループの余分な tick が混ざる flaky を避けるため、
+	// 手動 step 前に pause() → 検証後 resume() で使う。
+	pause: () => callStopGameLoop(),
+	resume: () => callStartGameLoop(),
 	queueInput(dir) {
 		const keyMap = { up: 'ArrowUp', down: 'ArrowDown', left: 'ArrowLeft', right: 'ArrowRight' };
 		const k = keyMap[dir];
