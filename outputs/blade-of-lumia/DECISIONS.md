@@ -8,6 +8,20 @@
 
 ---
 
+### 2026-07-29 — デルタ14画面 設計確定：14枚を上半5枚/下半9枚に割る／1画面1道具は実コードから逆算する／⑥-footprint の作法は ⑥-landing で失効した
+
+- **決定1＝14画面を1タスクにしない。上半5枚（`14,16`/`15,16`/`13,17`/`14,17`/`15,17`）と下半9枚（D6〜D11＋石碑A `12,18`／B `15,18`＋聖域 `11,19`＋海の主 `12,19`＋隠し `15,19`）に割り、実行キューを 3番/4番 に分けた（ユーザー確定）。** 理由＝廊下4枚（2026-07-27）の実測で1枚あたりの検証コスト（状態空間全探索ソルバー＋実エンジン Playwright＋実ブラウザ目視）が高い∴14枚を1セッションに詰めると必ず「1画面ずつ設計して作り込む」が崩れて塗り絵になる（[[blade-no-mass-production]]＝ユーザー2回指摘）。**下半を上半の直後に置いた理由＝上半で確定する「デルタ内部シームの開き方」と拡張したソルバー（`brokenWalls`/`litTorches`/はしご渡りを状態に持つ版）を下半がそのまま使う**∴順序を逆にすると同じ判断を2回することになる。
+  - **番号の付け替えを記録しておく＝旧3番（14画面いっぺん）を 3番＝上半／4番＝下半 に割った∴旧4番「⑥-完了検査」は5番・旧5番「外周解体」は6番。** 過去ログ（DECISIONS/PROGRESS）に出てくる「キュー4番＝⑥-完了検査」等は分割前の番号。
+- **決定2＝上半の芯は「1画面1道具」（ユーザー確定）＝爆弾壁 `!`／弓ゲート `Y`／石押し `*`／はしご水渡り／ブーメラン運搬 `H`。** 深洋O は `_REGION_POWER` が **7**＝§8-1 の道具フィルタで全道具所持済みになる**唯一の地域**∴「今まで覚えた道具の総復習」が地域の性格として最も自然（廊下C1〜C4 が「渡る技術」の4段階だったので、その次は「持ち物の使い分け」になる）。
+- **決定3＝海の主 `12,19` は「ボス扉 `:` で囲んだ闘技場」（`isBossRoom:true`＋`DOORWAY_BOSS`）（ユーザー確定）。** 理由＝`bossRoomLocked` は `checkStageTransition` の**冒頭で全辺遷移を無条件に禁じる**∴扉を置くかどうかに関係なく閉じ込めは起きる。ならば「扉が見える」形にしないとプレイヤーには理由の無い見えない壁になる＝**扉を置くのがエンジンと整合する唯一の形**。
+- **決定4＝道具の作法は実コードから逆算して先に確定した（設計を書く前にコードを読む）。** 6件：**①`Y`(SWITCH) は `tilePassable` に阻止規則が無く歩ける**が `connectivity.mjs HARD_BLOCKED` は壁扱い（意図的な非対称）∴`Y` は水/壁で隔離し**撃てる方向に1レーンだけ開ける**（[[blade-projectile-switch-gate-isolation]]）。**②`showConditions.switchOn` は `ss.switchStates`＝`S`(BUTTON) だけを見る**∴`Y` に封印報酬を紐づけると永久に開かない（[[blade-button-vs-switch]]）。**③`!`(爆弾壁) は爆弾でしか壊れない**（`breakPower 3` vs `breakDef`）が **`isTilePassableForProj` は未破壊の `!` を弾く**∴矢/ブーメランの道を `!` で塞ぐと「弓で解く」設計と両立しない。**④`wallBroken` showCondition は現マップに 0 件**＝`!` は「報酬を封印できる唯一の道具」だが前例が無い∴実エンジンで発火を確認する。**⑤はしご渡りは `isLadderBridge`＝幅1の水**∴意図した軸に幅1・両岸が本物（`isLadderBank`＝水でも `LADDER_OVER` でもなく `tilePassable`）で、かつ**意図しない幅1水路を作らない**（`assertNoLadderBypass`）。**⑥ブーメラン運搬（`collectAlongBoomerang` の火の受け渡し）は torch 2本以上＋事前点火はちょうど1本**（`stageData.initLitTorches` で全部点けると `torchesLit` が spawn 時点で成立）＋**`H` は `ARRIVAL_WALL_TILES` ∴継ぎ目の境界セルには置けない**。
+- **決定5＝landmark 軸は bgTiles の `o`（石畳）では立たない∴上半のランドマークは tiles 層の `h`/`p`。** `field-quality.mjs effectiveFlat()` は **bg 水だけ**を畳む（しかも tiles が `_BG_WATER_FOLDABLE` の時だけ）∴bgTiles に何を敷いても軸の判定には出ない。アーム7 で「`o` のランドマークが実画面で bg スキンと見分けられない」（[[field-axis-met-not-noticed]]）と同じ問題の**指標側**＝廃都の崩れた壁 `h`／残った屋根 `p` は設定にも合う。
+- **決定6＝⑥-footprint の作法「開いた継ぎ目は1つ内側も空ける」は ⑥-landing（2026-07-29）で失効した。実測で確認した。** 一時プローブで全レイヤーを掃引＝**整数着地後に交差軸の半セル跨ぎで遷移がキャンセルされるケースは field で 0 件**（全ダンジョンも 0・`test_mechanics` の検証ステージに 2 件だけ）。交差軸は今も float（縦の crossing で `newCol = x` のまま）だが、migrate の**双方向 arrival-wall ガード**（境界セルの開閉を out/in 両側で一致させる）がこのクラスを構造的に潰している。∴**デルタ以降は石 `*`・`Y`・看板 `i`・`h`・`H` を継ぎ目の1つ内側に置いてよい**＝`migrate-field-corridor-o.mjs` の `assertNoFootprintWall` は廊下の既存データを固定する回帰ガードとして残すが、**新規 migrate では使わない**（失効した制約で設計の自由度を縛るため）。PLAN のデルタ節と PROGRESS 📍現在地の該当記述も差し替えた。
+- **決定7＝設計を doc に落として実装は次セッションに回した。** 判断根拠＝この時点で context 利用率 ~68% ∴migrate スクリプトを書き始めると途中で切れる。**migrate は `work/blade-of-lumia.json` を書き換える∴半分書いた状態で中断すると「マップが不整合のままコミット待ち」という一番悪い状態になる**（設計だけなら doc に残って何も失われない）。
+- **学び＝`scripts/generate-field-metrics.mjs` が ratchet と別の定義を使っていた（既存の食い違い・未修正）。** (a) under-2-axis の母集団が `underTwoAxisScreens(mapData)` の strict walk ＝ratchet の `reachedWithGates` と違う／(b) dup が `duplicateLayoutGroups`（群の数）＝ratchet の `duplicateLayoutScreenCount`（画面数）と違う。∴生成すると `under-2-axis 100 / dup 13群 / reached 302` と出て PLAN・PROGRESS の `97 / 59画面 / 319` と食い違う。**これは 2026-07-27 に ratchet 側だけ直したときの取り残し＝デルタ由来の退行ではない**が、**デルタの before/after を引用する前に直す**（直さないと「デルタで悪化した」と誤読する数字が出る）。詳細＝DESIGN §19-11-H。
+
+---
+
 ### 2026-07-29 — ⑥-landing 実装：着地判定と通行判定を1つの関数に統合／0 になった検査は「まだ見ている」ことを別に証明する／実エンジンで座標を測る作法
 
 - **決定1＝状態判定は `passable.js` の `statefulTileClosed(tile, posKey, ss)` ただ1つ。`tilePassable`（通行判定）と `game.js` の着地判定（`arrivalTileBlocked`）が**両方**そこを呼ぶ。** ⑥-landing の根因は「同じ問い（この門は今開いているか）を2箇所に書いて片方が状態を見ていなかった」こと＝**着地判定側に状態チェックを"追加"するだけでは同じ形の再発を許す**（次に新しい開閉タイルを足したとき、また片方だけ更新される）。∴ `STATEFUL_TILES`（`T`/`=`/`(`/`)`/`!`/`|`/`u`/`*`）を単一の集合として定義し、`tilePassable` の per-tile 分岐もそれに畳んだ（等価性は `tilePassable === !statefulTileClosed` の総当たりテストで固定）。

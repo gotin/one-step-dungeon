@@ -992,6 +992,46 @@ row 11    12    13    14    15
 
 **⚠️ 次（デルタ14画面）への申し送り：** 封鎖の計算（`computeSeal`）は「O の `sy>=12`」を内側として固定点を取る∴デルタを作り込むときに境界を触ると**再計算が必要**（手で壁を足さない）。海の主 `{` の `12,19` 配置＋`bossReward` を本編画面で通すのはまだ未実施。
 
+#### 19-11-G. デルタ14画面 の設計確定（2026-07-29・🧠 Opus・ユーザー確定3件）
+
+**スコープ分割（ユーザー確定・AskUserQuestion 2026-07-29）＝デルタ14画面を上半5枚と下半9枚の2セッションに割る。** 今回確定するのは**上半 D1〜D5**（`14,16` D1脇／`15,16` D2 デルタ玄関／`13,17` D3／`14,17` D4／`15,17` D5）の設計。下半9枚（D6〜D11 のロア探索＋海の石碑A `12,18`／B `15,18`＋聖域 `11,19`＋海の主 `12,19`＋隠し報酬 `15,19`）は次セッション。**理由＝廊下4枚で1枚あたり「全探索ソルバー＋実エンジン Playwright」の検証コストが実測で高く、14枚を1セッションに詰めると1枚ずつの作り込み（PLAN の「量産と呼ぶな」原則）が崩れる。**
+
+- **①上半の芯＝1画面1道具の使い分け（ユーザー確定）。** 廊下 C1〜C4 が「1画面1テーマで潮ゲートを段階的に難化」だったのに対し、上半は**画面ごとに道具を替える**（§19-8-C「既得道具で切り開く分岐した回路」の実装形）。到達時の所持道具は §8-1 で O=7＝**はしご・弓・爆弾・ロウソク・ブーメラン・笛すべて所持済み**∴予告編フィルタの制約がない唯一の地域＝「今まで貰った道具の総復習」が地域の性格になる。割り付け＝**爆弾壁 `!`／弓ゲート（対岸の `Y` を矢で叩く）／石押し `*`／はしご水渡り／ブーメラン運搬（かがり火 `H`）**。
+- **②海の主 `12,19` ＝ボス扉 `:` で囲んだ闘技場（ユーザー確定）。** `isBossRoom: true` ＋ `DOORWAY_BOSS`。**採れる形はこれだけ**＝`bossRoomLocked`（`game.js checkStageTransition` 冒頭）は**扉の有無に関係なく全方向の辺遷移を禁止**する∴「開いた辺から逃げられる闘技場」は作れず、扉で囲って入場を1点に絞る形が唯一エンジンと整合する。実装は次セッション（上半には含めない）。
+- **③戦闘は上半に混ぜない。** §19-8-B/19-8-C の分離原則（アーム＝戦闘／廊下＝パズル／デルタ＝探索）を上半でも守る＝敵ゼロ。**ただし combat 軸を捨てるのではなく**、軸は route/obstacle/secret/landmark で満たす（下記④）。
+
+**🔑 5道具それぞれの「実コードで裏取りした制約」（2026-07-29・設計前に全部確認した）。** §19-11-F の潮ゲート3罠と同じ性質の、**設計を実装前に殺す種類の制約**なので設計側に固定する：
+
+1. **弓ゲート（`Y` を矢で叩く）＝`Y` を水/壁で隔離し、矢が飛ぶ1レーンだけ開ける。** `projectile.js isTilePassableForProj`（151-160）は `TILE.WALL` と未破壊の `!` **だけ**を遮る∴**矢は水も潮ゲートも自由に飛び越える**＝水越しの弓ゲートは成立する。逆に `Y` に隣接して立てると剣で叩けて弓の意味が消える∴隔離が要る。**接続チェッカーでは迂回を検出できない**（`connectivity.mjs HARD_BLOCKED` が `Y` を壁として扱う一方、`passable.js tilePassable` には `Y` の阻止規則が無く**エンジンでは `Y` の上に立てる**＝チェッカーとエンジンの意図的な非対称）。∴ 弓ゲートの成否は migrate のソルバー側で見る。
+2. **`Y` に `switchOn` の封印を紐づけてはいけない**（§19-11-F の罠3の再掲＝`showConditions.switchOn` は `ss.switchStates`＝BUTTON `S` のみを見る）。`Y` の画面の報酬は「開けた者だけが届く」で守る。
+3. **爆弾壁 `!` ＝`wallBroken` で封印できる唯一の道具。** `breakPower` は 爆弾3／剣0・ブーメラン0・弓0 ∴`breakDef` 1〜3 なら爆弾専用。破壊は `ss.brokenWalls` に入って `evaluateConditions()` が走る（`projectile.js explodeBomb` 625-661）∴`showConditions: {trigger:'wallBroken', wallId}` が使える。**データ形式は `stage.breakableWalls[posKey] = {breakDef: N}` のオブジェクト**（実データで確認＝`field 6,13` が `{"6,3":{"breakDef":2}}`）。爆弾は**プレイヤー自身のセルに置かれ**円形 AOE 半径2（`placeBomb` 577-608）∴壁の隣に立てれば届く。未破壊の `!` は**矢とブーメランも遮る**（上記1）∴弓ゲートと同じ画面に置くとレーンを塞ぐ。
+4. **はしご水渡り＝「渡らせたい軸で幅1」かつ「渡らせたくない所に幅1を作らない」の両立。** `isLadderCrossable(r,c,axis)` は**進入軸**の橋だけ許す（縦連続水を縦に渡れない核心）∴縦に渡らせたいなら上下が陸、横なら左右が陸。橋脚（`isLadderBank`）は「水でない・`LADDER_OVER` でない・`tilePassable`」＝**閉じた潮ゲートも bg 水も橋脚にならない**。裏返しが migrate の `assertNoLadderBypass`＝**意図しない幅1の水は全部 throw**。
+5. **ブーメラン運搬（かがり火）＝かがり火2本以上＋`torchesLit` 封印、かつ spawn 時点で未充足。** `collectAlongBoomerang`（`projectile.js` 410-437）は通過セルが `TILE.TORCH` なら「点いていれば炎を拾う（`proj.flaming`）／消えていて `flaming` なら点ける」∴**火元が1本要る**。火元は `stageData.initLitTorches`（`game.js` 220-224 が `getSS` 経由で事前点灯）か、ロウソク（`playCandle` 1519-1531＝前方1セルを点ける）。**⚠️ `initLitTorches` で全部点けると `torchesLit` が spawn 時に充足＝テストが「何もしなくても緑」になる**（WORKFLOW の警告どおり）∴火元1本＋未点灯1本以上。`torchesLit` は**画面上の全 `H` が `ss.litTorches` に入ること**を要求（`conditions.js` 110-118）＝飾りのかがり火を置けない。`H` は `passable:false`＝立てない・`ARRIVAL_WALL_TILES` にも入る＝**継ぎ目の境界セルに置けない**。
+6. **石押し＝全探索ソルバー必須**（§19-11-F の実証済み教訓）。加えて「**ボタン上の石は再入時に復元される**」（`game.js enterStage` の `solvedStonePositions`）∴ボタンの位置が継ぎ目の footprint に入ると「解いた後だけ見えない壁」になる。
+
+**🔑 landmark 軸は bgTiles の `o` では立たない（実コードで裏取り）。** `field-quality.mjs effectiveFlat` は **bg の水だけ** `'~'` に畳む＝bg の `o`（石畳）は `screenAxes` から見えない∴`LANDMARK_TILES = {^,o,h,p}` を満たすには **tiles 層に** `h`（立ち壁）/`p`（屋根）/`^`（祭壇）/`o` を置く必要がある。廊下 C1 で番小屋 `h` を使ったのと同じ理由（memory: field-axis-met-not-noticed＝「指標を満たした」と「プレイヤーが気づく」は別）。**廃墟の都という設定と噛み合うので上半のランドマークは `h`（崩れた壁）と `p`（残った屋根）で作る。**
+
+**🔑 ⑥-footprint の作法は ⑥-landing（2026-07-29）で失効した＝「継ぎ目の1つ内側を空ける」制約はもう無い。** 実測（`field` レイヤー全画面の掃引）＝**整数着地後、交差軸の半セル跨ぎによる遷移キャンセルは field で 0 件**（`test_mechanics` に 2 件だけ残るが検証ステージ）。交差軸は今も float（`newCol = x`）なので原理的には「境界列 c と c+1 の片方だけが壁」で起きうるが、**migrate の双方向 arrival-wall ガード（`out:`/`in:` 両向きで境界セルの開閉を一致させる）がこのクラスを構造的に潰している**＝境界セルの開閉が両側で一致していれば、跨いだ2列はどちらも開いているか どちらも壁。∴**デルタ上半は「継ぎ目の1つ内側」に石・`Y`・看板・`h`・`H` を置いてよい**（廊下 C1〜C4 で row1 を空けるために払った設計コストは、もう払わなくてよい）。`migrate-field-corridor-o.mjs` の `assertNoFootprintWall` は廊下の既存データを固定する回帰ガードとして残すが、**デルタ側の migrate では使わない**（使うと失効した制約で設計を縛る）。
+
+**④軸の割り付け（各画面2軸以上＝under-2-axis を 97→92 に落とす）：** 全画面が `obstacle`（道具ゲートは全部 `GATE_TILES` か `!`）＋以下。
+- **D1 `14,16` 脇（爆弾壁）** … obstacle（`!`）＋secret（`!` は `SECRET_TILES` にも入る＋`wallBroken` 封印の報酬）。
+- **D2 `15,16` デルタ玄関（はしご水渡り）** … obstacle＋landmark（`h`/`p` の崩れた門＝廊下から降りてきた者が最初に見る「都」）＋route（廊下からの唯一の入口＝開いた辺3つ以上＋内部に水）。
+- **D3 `13,17`（弓ゲート）** … obstacle（`Y`→`T`/`=`）＋secret（開けた先の報酬）。
+- **D4 `14,17`（石押し）** … obstacle＋secret（`*`）。**デルタ中央＝4辺すべてがデルタ内部**∴回路の交差点として route も狙える。
+- **D5 `15,17`（ブーメラン運搬・かがり火）** … obstacle＋secret（`torchesLit` 封印＝非 killAll トリガー）＋landmark（かがり火の廃祠に `h`）。
+
+**⑤接続の作法（この地域の形）＝デルタ内部は現状すべて全開（実測）／外周は既に封鎖済み。** 実測した継ぎ目＝**デルタへの入口は `15,16` の北 cols5,6 だけ**（廊下 C4 `15,15` の南出口とミラー）・デルタ内部の縦横シームは全部全開・西/北の封鎖は §19-11-F で完了・`*,20` と `16,*` は**地図外＝ステージが存在しない**（エンジンはクランプ＝安全）。∴上半の作り込みで触るのは**デルタ内部のシームだけ**で、外側との境界は動かさない＝`computeSeal` の再計算は「内側の壁を外へ伝播させる」経路だけが効く（PLAN 2170 の警告どおり手で壁を足さない）。**入口 `15,16` 北 cols5,6 は変えない**＝`field-corridor-o.spec.js` の ⑥-footprint 連鎖テスト（`15,11`→…→`15,16`）が通り続ける条件。
+
+**⑥次セッションの実装手順（この設計を流し込むだけの形にしてある）：**
+1. `scripts/migrate-field-delta-o.mjs` を新規作成。`migrate-field-corridor-o.mjs` から `computeSeal`／`makeSolver`／`verifyPuzzle`／`assertNoLadderBypass`／`paintShore`／`parseGrid`／双方向 arrival-wall ガード／dup ハッシュを流用。**`assertNoFootprintWall` は流用しない**（上記のとおり失効）。**ソルバーは拡張が要る**＝廊下は潮ゲート＋石＋`Y` だけだったが、上半は `!`（`brokenWalls`＝一度壊すと不可逆）と `torchesLit`（`litTorches`＝不可逆）と はしご渡り（幅1水の通行）を状態に足す。**不可逆な要素は状態爆発しない**（単調増加のビット）ので `mask` に足せる。
+2. `tests/field-delta-o.spec.js` を新規作成。`field-corridor-o.spec.js` のヘルパー（`previewUrl` に **`ps_ladder` 必須**・`walkTiles` は1タイル=`movePlayer`×2・`push` は 700ms 待ち・看板は1行ずつページ送り）をそのまま持ってくる。**爆弾は `ps_bomb=1`（count 10）／弓は `ps_bow=1`（10本）／ロウソクは `ps_candle=1`。**
+3. before/after 指標。**⚠️ `scripts/generate-field-metrics.mjs` は ratchet と定義がズレている**（下記 §19-11-H）＝指標を引用する前に直す。
+4. 実ブラウザで5画面＋`15,15`→`15,16` の遷移を目視（0 pageerror・爆風で `!` が消える・矢が水越しに `Y` を叩く・ブーメランが炎を運ぶ）。
+
+#### 19-11-H. `generate-field-metrics.mjs` が ratchet と別の定義を使っている（未修正・次セッションで直す）
+
+`tests/field-invariants.spec.js` の ratchet は §19-11-F で母集団を締めたが、**`scripts/generate-field-metrics.mjs` は古い定義のまま**＝(a) under-2-axis の母集団に `underTwoAxisScreens(mapData)`（strict walk）を使う（ratchet は `reachedWithGates`）／(b) dup を `duplicateLayoutGroups`（群の数）で数える（ratchet は `duplicateLayoutScreenCount`＝画面数）。∴ 今 METRICS を再生成すると `under-2-axis 100 / dup 13群 / reached 302` と出て、PLAN/PROGRESS の `97 / 59画面 / 319` と食い違う。**これは既存の食い違いでデルタ作業による退行ではない**が、**デルタの before/after を引用する前に直さないと「直した数字」と「壊した数字」の区別がつかない**。
+
 ---
 
 ## 5. 未確定・次に詰める設計サブタスク
