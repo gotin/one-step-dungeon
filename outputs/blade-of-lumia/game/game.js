@@ -1981,6 +1981,12 @@ export function addDefeatedBossForTest(bossType) {
 // テスト用：player オブジェクトへの参照を返す（Phase 7-1 剣ティアテスト用）
 export function getPlayerForTest() { return player; }
 
+// テスト用: heroDir を直接向ける。movePlayer は先頭で必ず heroDir を更新するが、
+// 「壁で弾かれる向き」が無い画面（例: かがり火列が通り抜けられる D5）では
+// 半歩踏んで半歩戻す方式が rewind で heroDir を反転させてしまう。位置を変えず
+// 向きだけ確定させたい検証（道具の発射方向）でこれを使う。
+export function callSetHeroDir(dir) { heroDir = dir; }
+
 // テスト用：equipSwordTier をゲームモジュール外から呼べるよう再公開する（Phase 7-1）
 export function callEquipSwordTier(tierIndex) { return equipSwordTier(tierIndex); }
 

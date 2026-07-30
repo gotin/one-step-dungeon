@@ -132,18 +132,21 @@ const BASELINE = {
                     // 43→35 after ⑥-9 volcano; 35→0 after ⑥-trap (all §11-1 corners closed).
   w1: 0,            // all-blocked screens → 0 achieved (rule 2: all playable)
   w2: 0,            // orphan screens → 0 achieved (rule 2: all reachable)
-  underTwoAxis: 97, // <2-axis screens the player can stand in (gates OPEN — see
+  underTwoAxis: 92, // <2-axis screens the player can stand in (gates OPEN — see
                     // reachedWithGates) → goal 0. 114→110 after ⑥-8;
                     // 110→108 after ⑥-9 (all 7 L screens → ≥2 axes; only 2 were flagged
                     // before, the rest passed the heuristic as filler but were 塗り絵).
                     // 108→101 after 9-6④ アーム7 (the 7 深洋O entrance screens, designed
                     // one screen at a time — each earns ≥2 axes).
                     // 101→97 after ⑤ 廊下C1〜C4.
-                    // Remaining: the rest of 深洋O (デルタ14/聖域) + the hub.
-  dupScreens: 59,   // screens caught in SOME identical-layout group → goal small.
+                    // 97→92 after ④ デルタ上半 D1〜D5 (each of the 5 delta screens earns
+                    // ≥2 axes: a tool-gated secret + a landmark/route, designed one at a time).
+                    // Remaining: the rest of 深洋O (デルタ下半9/聖域) + the hub.
+  dupScreens: 54,   // screens caught in SOME identical-layout group → goal small.
                     // Ratcheted on screen COUNT, not group count (group count splits
                     // when a wall is added to an untouched 塗り絵 → false regression).
                     // 64→59 after ⑤ (the 4 corridor screens + 15,16 left their groups).
+                    // 59→54 after ④ (the 5 delta screens left their all-water dup group).
                     // Deep-ocean minimal walkways still share geometry (⑥-11 clears them).
   traps: 0,         // rule 1: reached screen → arrival-wall soft-lock → GOAL MET (0).
                     // 43→35 after ⑥-9 volcano; 35→0 after ⑥-trap (mirror-AND fixed point

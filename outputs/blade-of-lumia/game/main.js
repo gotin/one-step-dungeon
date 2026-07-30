@@ -44,6 +44,7 @@ import {
 	getStageMoves,
 	callEnterStage,
 	getDefeatedEnemiesSnapshot,
+	callSetHeroDir,
 } from './game.js';
 
 // ── アニメーション ────────────────────────────────────────────
@@ -97,6 +98,8 @@ window.__game = {
 		if (k) (_inputModule ? _inputModule.heldKeys : null)?.delete(k);
 	},
 	movePlayer: (dir) => movePlayer(dir),
+	// 位置を変えず heroDir だけ向ける（道具の発射方向を確定させる検証用）。
+	setHeroDir: (dir) => callSetHeroDir(dir),
 	swordAttack: () => swordAttack(),
 	// チャージ攻撃（剣ビーム）テスト用（Phase 3-1）
 	startCharge: () => callStartCharge(),

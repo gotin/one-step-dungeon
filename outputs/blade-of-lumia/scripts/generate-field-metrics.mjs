@@ -14,7 +14,15 @@ import {
   fieldHonestMetrics,
   underTwoAxisScreens,
   duplicateLayoutGroups,
+  duplicateLayoutScreenCount,
 } from './lib/field-quality.mjs';
+
+// Keep these two definitions IN SYNC with tests/field-invariants.spec.js — the
+// ratchet is the source of truth for what a "metric" means (§19-11-H). Diverging
+// here makes "the number we fixed" indistinguishable from "the number we broke".
+// - under-2-axis population = reachedWithGates (inside the lib) MINUS this allowlist.
+// - dup is counted by SCREEN, not by group (group count punishes progress; see spec).
+const TWO_AXIS_ALLOWLIST = ['7,14', '8,0', '8,1'];
 
 const __dir = dirname(fileURLToPath(import.meta.url));
 const MAP_PATH = join(__dir, '../work/blade-of-lumia.json');
@@ -23,9 +31,10 @@ const OUT_PATH = join(__dir, '../FIELD-BASELINE-METRICS.md');
 const mapData = JSON.parse(readFileSync(MAP_PATH, 'utf8'));
 
 // ── Compute all metrics ───────────────────────────────────────────────────────
-const { reached, w1, seams, traps, orphans } = fieldHonestMetrics(mapData);
-const under2 = underTwoAxisScreens(mapData);
+const { reached, reachedWithGates, w1, seams, traps, orphans } = fieldHonestMetrics(mapData);
+const under2 = underTwoAxisScreens(mapData, { allowlist: TWO_AXIS_ALLOWLIST });
 const dupGroups = duplicateLayoutGroups(mapData);
+const dupScreens = duplicateLayoutScreenCount(mapData);
 const density  = regionDensityMetrics(mapData);
 const battle   = regionBattleScores(mapData);
 const simWarn  = structuralSimilarityWarnings(mapData, { threshold: 0.995 });
@@ -63,13 +72,14 @@ lines.push('');
 // ── 1. Honest connectivity ────────────────────────────────────────────────────
 lines.push('## 1. 接続指標（ハード目標=全0）');
 lines.push('');
-lines.push(`- reached: **${reached.size}** / 320`);
+lines.push(`- reached (strict walk): **${reached.size}** / 320`);
+lines.push(`- reached (gates-open ＝ ratchet 母集団): **${reachedWithGates.size}** / 320`);
 lines.push(`- W1 (全封鎖): **${w1.length}** 画面`);
 lines.push(`- seams (継ぎ目バグ): **${seams.length}**`);
 lines.push(`- traps (到達後詰み): **${traps.length}**`);
 lines.push(`- orphans: **${orphans.length}**`);
-lines.push(`- under-2-axis (素通り): **${under2.length}**`);
-lines.push(`- dup groups (完全一致重複): **${dupGroups.length}**`);
+lines.push(`- under-2-axis (素通り・gates-open母集団・allowlist除外後): **${under2.length}**`);
+lines.push(`- dup screens (同一配置に巻き込まれた画面数 ＝ ratchet 定義): **${dupScreens}** （${dupGroups.length}群）`);
 lines.push('');
 
 // ── 2. Density metrics per region ─────────────────────────────────────────────
@@ -137,5 +147,5 @@ lines.push('');
 
 writeFileSync(OUT_PATH, lines.join('\n'), 'utf8');
 console.log(`✅ Written: ${OUT_PATH}`);
-console.log(`   reached=${reached.size} seams=${seams.length} traps=${traps.length} under2=${under2.length} dups=${dupGroups.length}`);
+console.log(`   reached=${reached.size} (gates-open ${reachedWithGates.size}) seams=${seams.length} traps=${traps.length} under2=${under2.length} dupScreens=${dupScreens} (${dupGroups.length} groups)`);
 console.log(`   similarity warnings: ${simWarn.length}`);
