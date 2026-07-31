@@ -307,7 +307,6 @@ function enterStage(lk, sk, pRow, pCol) {
 				// 未解決：通常リセット（スナップショットも消す）
 				prevSS.stonePositions = {};
 				prevSS.solvedStonePositions = null;
-				if (prevSS.stoneSwitches) prevSS.stoneSwitches = new Set();
 			}
 		}
 	}
@@ -350,10 +349,6 @@ function enterStage(lk, sk, pRow, pCol) {
 		const ss = getSS(lk, sk);
 		if (ss.solvedStonePositions && Object.keys(ss.stonePositions).length === 0) {
 			ss.stonePositions = { ...ss.solvedStonePositions };
-			if (!ss.stoneSwitches) ss.stoneSwitches = new Set();
-			for (const [pk, st] of Object.entries(ss.stonePositions)) {
-				if (stageData.tiles[st.r]?.[st.c] === TILE.BUTTON) ss.stoneSwitches.add(`${st.r},${st.c}`);
-			}
 		}
 	}
 

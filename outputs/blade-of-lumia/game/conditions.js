@@ -35,49 +35,25 @@ export function createConditions(d) {
 		const player    = getPlayer();
 		const ss = getSS(getCurrentLayer(), getStageKey());
 		if (!ss.stonePositions) return;
-		// まずスイッチ状態を「石によるON」をリセット（石がないスイッチはOFF）
-		// ただしプレイヤーが踏んでいる場合は維持する
+		// ボタン（BUTTON）はモーメンタリ式：石またはプレイヤーが乗っている間だけ ON、
+		// どちらも居なければ OFF。石/プレイヤーで挙動を分けない（離れれば必ず閉じる）。
+		// ※ OFF 側（乗っていない→閉じる）は player.js checkSwitchOff が移動ごとに担う。
+		//    ここは石が乗った瞬間の ON（＋ゲート開）だけを担当する。
 		for (let r = 0; r < stageData.rows; r++) {
 			for (let c = 0; c < stageData.cols; c++) {
 				if (stageData.tiles[r][c] !== TILE.BUTTON) continue;
 				const pk = `${r},${c}`;
-				// 石がこのスイッチの上にあるか確認
 				const stoneHere = Object.values(ss.stonePositions).some(st => st.r === r && st.c === c);
-				// プレイヤーが踏んでいるか確認
 				const playerHere = toTileRow(player.y) === r && toTileCol(player.x) === c;
-				if (stoneHere || playerHere) {
-					if (!ss.switchStates[pk]) {
-						ss.switchStates[pk] = true;
-						// スイッチに連動するゲートを開く
-						for (const link of stageData.links ?? []) {
-							if (link.switchId === pk) {
-								ss.openGates.add(link.gateId);
-								playSound('gateOpen');
-							}
-						}
-					}
-				} else {
-					// 石もプレイヤーもいない → スイッチを最初に踏んだプレイヤーによる永続ONでない場合のみOFF
-					// ※ STONE タイル元位置でのスイッチ（石が最初からスイッチの上）は永続ON扱い
-					// プレイヤーが踏んでONになったスイッチは石が離れてもON維持
-					// → 石による一時スイッチ = ss.stoneSwitches に記録している場合のみリセット
-					if (!ss.stoneSwitches) ss.stoneSwitches = new Set();
-					if (ss.stoneSwitches.has(pk)) {
-						ss.switchStates[pk] = false;
-						// 閉じるゲート処理
-						for (const link of stageData.links ?? []) {
-							if (link.switchId === pk) ss.openGates.delete(link.gateId);
+				if ((stoneHere || playerHere) && !ss.switchStates[pk]) {
+					ss.switchStates[pk] = true;
+					for (const link of stageData.links ?? []) {
+						if (link.switchId === pk) {
+							ss.openGates.add(link.gateId);
+							playSound('gateOpen');
 						}
 					}
 				}
-			}
-		}
-		// 今石が乗っているスイッチを stoneSwitches に記録
-		if (!ss.stoneSwitches) ss.stoneSwitches = new Set();
-		for (const st of Object.values(ss.stonePositions)) {
-			const pk = `${st.r},${st.c}`;
-			if (stageData.tiles[st.r]?.[st.c] === TILE.BUTTON) {
-				ss.stoneSwitches.add(pk);
 			}
 		}
 	}
