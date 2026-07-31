@@ -36,6 +36,7 @@ export function makeSolver(tiles, bg, linkSpec, breakDefs, litInit, { hasLadder 
   const toggleCells = [];   // Y の位置
   const stoneKeys = [];     // '*' の元位置
   const buttons = [];
+  const gatesT = [];        // T（GATE）の位置＝新ルール「全ボタンON→全T開」の対象
   const breakCells = [];    // '!' の位置（インデックス＝bit）
   const torchCells = [];    // 'H' の位置（インデックス＝bit）
   for (let r = 0; r < ROWS; r++) for (let c = 0; c < COLS; c++) {
@@ -43,6 +44,7 @@ export function makeSolver(tiles, bg, linkSpec, breakDefs, litInit, { hasLadder 
     if (ch === TILE.SWITCH) toggleCells.push(`${r},${c}`);
     if (ch === TILE.STONE) stoneKeys.push(`${r},${c}`);
     if (ch === TILE.BUTTON) buttons.push(`${r},${c}`);
+    if (ch === TILE.GATE) gatesT.push(`${r},${c}`);
     if (ch === TILE.BREAKABLE_WALL) breakCells.push(`${r},${c}`);
     if (ch === TILE.TORCH) torchCells.push(`${r},${c}`);
   }
@@ -54,14 +56,27 @@ export function makeSolver(tiles, bg, linkSpec, breakDefs, litInit, { hasLadder 
   const encode = (pr, pc, stones, mask, broken, lit) =>
     `${pr},${pc}|${stones.join(';')}|${mask}|${broken}|${lit}`;
 
+  // ゲート開閉は実ゲーム game/conditions.js refreshGates() と同じ規則：
+  //   ① ボタン S が1個以上あれば「全ボタン ON のときだけ全ゲート T を開く」（新仕様）。
+  //   ② links（switchId→gateId）は潮ゲート = と、ボタンの無い盤面の Y→T を担う。
+  //      ボタンがある盤面の T は①が担うので links の T エントリはスキップ（競合回避）。
   const openGatesOf = (pr, pc, stones, mask) => {
     const open = new Set();
-    toggleCells.forEach((cell, i) => {
-      if (mask & (1 << i)) for (const g of linksBySwitch.get(cell) ?? []) open.add(g);
-    });
     const here = `${pr},${pc}`;
-    for (const b of buttons) {
-      if (b === here || stones.includes(b)) for (const g of linksBySwitch.get(b) ?? []) open.add(g);
+    const onSwitch = (sw) => {
+      const ti = toggleCells.indexOf(sw);
+      if (ti >= 0) return (mask & (1 << ti)) !== 0;   // Y はマスク
+      return sw === here || stones.includes(sw);       // ボタンは足/石
+    };
+    // ① 全ボタン ON → 全 T 開
+    if (buttons.length > 0 && buttons.every(onSwitch)) for (const g of gatesT) open.add(g);
+    // ② links 連動（潮 = と、ボタン無し盤面の Y→T）
+    for (const [sw, gates] of linksBySwitch) {
+      if (!onSwitch(sw)) continue;
+      for (const g of gates) {
+        if (buttons.length > 0 && gatesT.includes(g)) continue;   // ボタン盤面の T は①が担う
+        open.add(g);
+      }
     }
     return open;
   };

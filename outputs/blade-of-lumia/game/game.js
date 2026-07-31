@@ -581,7 +581,7 @@ const { isPassable, tilePassable, isPassableForEnemy, ladderOrientationAt, isWat
 	toTileCol,
 });
 
-const { checkStoneOnSwitch, evaluateConditions } = createConditions({
+const { checkStoneOnSwitch, evaluateConditions, refreshGates } = createConditions({
 	getStageData:    () => stageData,
 	getEnemies:      () => enemies,
 	getPlayer:       () => player,
@@ -948,6 +948,7 @@ const { checkStoneOnSwitch, evaluateConditions } = createConditions({
 		tilePassable: (r, c) => tilePassable(r, c),
 		checkStoneOnSwitch: () => checkStoneOnSwitch(),
 		evaluateConditions: () => evaluateConditions(),
+		refreshGates: () => refreshGates(),
 		checkStageTransition: () => checkStageTransition(),
 		updatePlayerCharEl: () => updatePlayerCharEl(),
 		moveCharEl:   (id, x, y) => moveCharEl(id, x, y),

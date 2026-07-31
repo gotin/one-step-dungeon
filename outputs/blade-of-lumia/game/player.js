@@ -72,7 +72,7 @@ export function createPlayer(deps) {
 		toTileRow, toTileCol,
 		getSS,
 		isPassable, tilePassable,
-		checkStoneOnSwitch, evaluateConditions,
+		checkStoneOnSwitch, evaluateConditions, refreshGates,
 		checkStageTransition,
 		updatePlayerCharEl, moveCharEl,
 		renderBoard, renderChars, updateHud,
@@ -307,12 +307,7 @@ export function createPlayer(deps) {
 		if (nowOn) ss.switchToggles.add(pk);
 		else       ss.switchToggles.delete(pk);
 		playSound('switch');
-		for (const link of stageData.links ?? []) {
-			if (link.switchId === pk) {
-				if (nowOn) { ss.openGates.add(link.gateId); playSound('gateOpen'); }
-				else         ss.openGates.delete(link.gateId);
-			}
-		}
+		refreshGates();   // Y スイッチ→ゲート/潮の連動は refreshGates が担う（gateOpen 音も内包）
 		evaluateConditions();
 		renderBoard(); renderChars(); saveGame();
 		return true;
@@ -351,14 +346,11 @@ export function createPlayer(deps) {
 				const playerHere = toTileRow(player.y) === r && toTileCol(player.x) === c;
 				if (!playerHere) {
 					ss.switchStates[pk] = false;
-					for (const link of stageData.links ?? []) {
-						if (link.switchId === pk) ss.openGates.delete(link.gateId);
-					}
 					changed = true;
 				}
 			}
 		}
-		if (changed) { renderBoard(); renderChars(); evaluateConditions(); saveGame(); }
+		if (changed) { refreshGates(); renderBoard(); renderChars(); evaluateConditions(); saveGame(); }
 	}
 
 	// ── プレイヤー移動 ────────────────────────────────────
@@ -747,9 +739,7 @@ export function createPlayer(deps) {
 			if (!ss.switchStates[posKey]) {
 				ss.switchStates[posKey] = true;
 				playSound('switch');
-				for (const link of stageData.links ?? []) {
-					if (link.switchId === posKey) { ss.openGates.add(link.gateId); playSound('gateOpen'); }
-				}
+				refreshGates();
 				evaluateConditions();
 				renderBoard(); renderChars(); saveGame();
 			}
