@@ -58,9 +58,13 @@ export function createConditions(d) {
 		const hasButtons = buttons.length > 0;
 		if (hasButtons) {
 			const allOn = buttons.every(pk => ss.switchStates?.[pk] === true);
-			for (const g of gatesT) {
-				if (allOn) ss.openGates.add(g);
-				else       ss.openGates.delete(g);
+			if (allOn) {
+				for (const g of gatesT) ss.openGates.add(g);
+				// Phase 4.56: 全ボタン ON を一度達成したら石をロックする（恒久・崩れを未然に防ぐ）。
+				ss.stonesLocked = true;
+			} else if (!ss.stonesLocked) {
+				// ロック済みなら仕様上崩れない＝ここに来ない。ロック前だけ通常の閉じ挙動。
+				for (const g of gatesT) ss.openGates.delete(g);
 			}
 		}
 

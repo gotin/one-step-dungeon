@@ -91,6 +91,7 @@ export function createEnemyAi(deps) {
 		const sc = ec + ndc;
 		const ss = getSS(getCurrentLayer(), getStageKey());
 		if (!ss.stonePositions) ss.stonePositions = {};
+		if (ss.stonesLocked) return false;  // Phase 4.56: ロック後は敵も石を押せない
 
 		// (sr,sc) に石があるか（元位置の STONE タイル or 移動済みの石）
 		let stoneKey = null;

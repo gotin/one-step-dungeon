@@ -94,21 +94,74 @@ test.describe('Blade of Lumia – 石＋ボタン→全ゲート開（Phase 4.55
 		expect(ss.openGates).toContain('9,5');
 		expect(ss.openGates).toContain('9,6');
 
-		// 石を1個外すとゲートは閉じる（vacuous pass 防止＝反対側も確認）。
-		// プレイヤーは 7,4、その上 6,4 のボタンに石が乗っている。上へ2回押すと：
-		//   1回目: 石 6,4→5,4、プレイヤー 7,4→6,4（ボタン 6,4 はまだ ON＝プレイヤーが乗る）
-		//   2回目: 石 5,4→4,4、プレイヤー 6,4→5,4（ボタン 6,4 は石もプレイヤーも無く OFF）
-		// ＝ボタンが1個 OFF になれば「全ボタン ON」条件が崩れ、全ゲートが閉じる。
-		// （押すとプレイヤーが空いたセルへ入るので1回では必ずボタンに乗る＝2回必要）
+		// Phase 4.56: 全ボタンONを一度達成した瞬間に石がロックされる（恒久）。
+		// ⚠️ このテストは fromEditor プレビュー＝debugMode=true 経路（壁/石すり抜け許可）
+		// なので「押そうとしても動かない」の実証はここではできない（debugMode だと通常移動が
+		// 素通りする）。その実証は tests/stone-lock.spec.js（非デバッグのセーブ経由）が担う。
+		// ここではロックフラグと、石位置・ゲート状態が変わらないことだけを確認する。
+		expect(ss.stonesLocked, '全ボタンON達成でロックが立つ').toBe(true);
+		expect(ss.switchStates['6,4'], 'ロック直後もボタン 6,4 は ON のまま').toBe(true);
+		expect(ss.openGates, 'ロック直後もゲートは開いたまま').toContain('9,5');
+		expect(ss.openGates).toContain('9,6');
+
+		expect(errors).toEqual([]);
+	});
+
+	// ロック導入前の閉側検証（旧テストの後半）を分離：全ボタンONに達する「前」に
+	// 1個だけボタンへ乗せて外す形で refreshGates() の閉じ側ロジックを検証する
+	// （vacuous pass 防止＝新ルールが実際に閉じ側も動くことの確認）。
+	test('全ボタンONに達する前は、ボタンから石が外れるとゲートは閉じたまま', async ({ page }) => {
+		const errors = [];
+		page.on('pageerror', e => errors.push(e.message));
+
+		await page.goto(previewUrl(1, 1));
+		await waitForBoard(page);
+		await page.evaluate(() => window.__game.pause());
+
+		const pos = async () => page.evaluate(() => {
+			const p = window.__game.getState().player;
+			return { x: p.x, y: p.y };
+		});
+		const moveTo = async (waypoints) => {
+			for (let i = 1; i < waypoints.length; i++) {
+				const [tr, tc] = waypoints[i].split(',').map(Number);
+				const [fr, fc] = waypoints[i - 1].split(',').map(Number);
+				const dir = tr < fr ? 'up' : tr > fr ? 'down' : tc < fc ? 'left' : 'right';
+				await page.evaluate((d) => window.__game.setHeroDir(d), dir);
+				for (let guard = 0; guard < 6; guard++) {
+					const p = await pos();
+					if (p.x === tc && p.y === tr) break;
+					await page.evaluate((d) => window.__game.movePlayer(d), dir);
+					await page.waitForTimeout(650);
+				}
+			}
+		};
+
+		// 石(6,6)をボタン(6,4)へ1個だけ押し込む（他のボタンは ON にしない＝ロックが立たない）。
+		// 石の右隣(6,7)から左を2回押すと (6,6)→(6,5)→(6,4)＝ボタンに直接乗る。
+		await moveTo(['1,1', '1,2', '1,3', '1,4', '1,5', '1,6', '1,7', '2,7', '3,7', '4,7', '5,7', '6,7']);
+		await page.evaluate((d) => window.__game.setHeroDir(d), 'left');
+		await page.evaluate((d) => window.__game.movePlayer(d), 'left');
+		await page.waitForTimeout(650);
+		await page.evaluate((d) => window.__game.movePlayer(d), 'left');
+		await page.waitForTimeout(650);
+
+		let ss = await page.evaluate(() => window.__game.getStageState());
+		expect(ss.switchStates['6,4'], 'ボタン 6,4 が ON').toBe(true);
+		expect(ss.stonesLocked, '1個だけでは全ボタンONに達さずロックしない').toBeFalsy();
+		expect(ss.openGates, '1個だけでは全ゲート開の条件を満たさず閉じたまま').not.toContain('9,5');
+
+		// ボタンの真下 (7,4) へ回り込み、上へ2回押して石をボタンから外す。
+		await moveTo(['6,5', '7,5', '7,4']);
 		await page.evaluate((d) => window.__game.setHeroDir(d), 'up');
 		for (let n = 0; n < 2; n++) {
 			await page.evaluate((d) => window.__game.movePlayer(d), 'up');
 			await page.waitForTimeout(650);
 		}
-		const ssClosed = await page.evaluate(() => window.__game.getStageState());
-		expect(ssClosed.switchStates['6,4'], 'ボタン 6,4 が OFF に戻る').toBeFalsy();
-		expect(ssClosed.openGates, 'ボタンが1個外れたらゲートは閉じる').not.toContain('9,5');
-		expect(ssClosed.openGates).not.toContain('9,6');
+		ss = await page.evaluate(() => window.__game.getStageState());
+		expect(ss.switchStates['6,4'], 'ボタン 6,4 が OFF に戻る').toBeFalsy();
+		expect(ss.openGates).not.toContain('9,5');
+		expect(ss.openGates).not.toContain('9,6');
 
 		expect(errors).toEqual([]);
 	});

@@ -84,6 +84,14 @@ export function createRenderChars(deps) {
 		div.appendChild(glow);
 	}
 
+	// Phase 4.56: ロック済みの石は「固定された感」を静的に見せる（動かせないことが分かるように）。
+	function addStoneLockedMark(div) {
+		div.style.filter = 'brightness(1.15) saturate(0.4)';
+		const mark = document.createElement('div');
+		mark.style.cssText = 'position:absolute;inset:0;border:2px solid rgba(255,230,140,0.8);border-radius:3px;box-shadow:0 0 4px 2px rgba(255,230,140,0.4);pointer-events:none;z-index:5;';
+		div.appendChild(mark);
+	}
+
 	// ── 大型敵（w×h）の見た目サイズを適用（Phase 3-2）─────────
 	// wrapper（.char-abs）は既定で 1セル四方。w×h 敵はそれを拡げ、
 	// 内部 canvas を wrapper 全面に追従させる（CSS の 1セル !important を上書き）。
@@ -332,7 +340,8 @@ export function createRenderChars(deps) {
 				stDiv.appendChild(makeStoneCanvas(cellPxSt));
 				// 石がボタンの上にある場合はグロー追加（押されている演出）
 				const onSwitch = stageData.tiles[st.r]?.[st.c] === TILE.BUTTON;
-				if (onSwitch) addStoneGlow(stDiv);
+				if (ss.stonesLocked) addStoneLockedMark(stDiv);
+				else if (onSwitch) addStoneGlow(stDiv);
 				charLayerEl.appendChild(stDiv);
 			}
 		}

@@ -24,6 +24,7 @@ export function createStageState() {
 		openedDoors:     new Set(),  // 鍵で開いたドア
 		stonePositions:       {},    // { 'r,c': {r, c} } 石の移動後位置
 		solvedStonePositions: null,  // 全ボタン充足時の石位置スナップショット（再入時に復元）
+		stonesLocked:         false, // Phase 4.56: 全ボタンONを一度達成したら true（恒久・石を押せなくする）
 		switchToggles:   new Set(),  // Phase 4-5 ①: 武器の攻撃で ON にしたトグルスイッチ
 		litTorches:      new Set(),  // Phase 4-5 ②: 点灯したかがり火
 		activeColor:     null,       // Phase 5-1: 現在アクティブな色（'red'|'blue'|null）
@@ -51,6 +52,7 @@ export function serializeStageState(stageState) {
 			openedDoors:     [...(v.openedDoors ?? [])],    // 鍵で開いたドア
 			stonePositions:       v.stonePositions ?? {},
 			solvedStonePositions: v.solvedStonePositions ?? null,
+			stonesLocked:         v.stonesLocked ?? false,
 			switchToggles:   [...(v.switchToggles ?? [])],  // Phase 4-5 ①
 			litTorches:      [...(v.litTorches ?? [])],     // Phase 4-5 ②
 			activeColor:     v.activeColor ?? null,          // Phase 5-1
@@ -80,6 +82,7 @@ export function deserializeStageState(rawSS) {
 			openedDoors:     new Set(v.openedDoors ?? []),    // 鍵で開いたドア
 			stonePositions:       v.solvedStonePositions ?? {},  // パズル解決済みなら復元
 			solvedStonePositions: v.solvedStonePositions ?? null,
+			stonesLocked:         v.stonesLocked ?? false,
 			switchToggles:   new Set(v.switchToggles ?? []),  // Phase 4-5 ①
 			litTorches:      new Set(v.litTorches ?? []),     // Phase 4-5 ②
 			activeColor:     v.activeColor ?? null,            // Phase 5-1

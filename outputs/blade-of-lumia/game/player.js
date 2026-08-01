@@ -390,7 +390,10 @@ export function createPlayer(deps) {
 		// pr/pc = 押し元セル（＝スナップ先・アニメの始点）、nextR/nextC = 石のセル。
 		let stoneKey = null;
 		let pr = null, pc = null;
-		{
+		// Phase 4.56: 全ボタンONで一度パズルを解いたステージは石をロックする。
+		// ロック後は石検出そのものを行わない＝通常移動へ落ち、石は壁と同じ通行不可のまま
+		// 自然にブロックされる（＝ボタンから石をどかせない＝ゲートは開いたまま）。
+		if (!ss.stonesLocked) {
 			const axisAligned = pdc !== 0 ? Number.isInteger(player.x) : Number.isInteger(player.y);
 			if (axisAligned) {
 				const candidates = [];

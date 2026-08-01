@@ -144,17 +144,20 @@ export function createPassable(d) {
 			}
 		}
 
-		const debugMode = getDebugMode();
-		// デバッグモード中は敵すり抜け可能
-		if (debugMode) return true;
-
-		// 移動後の石があるセルには移動できない（範囲チェック）
-		if (stageData && !debugMode) {
+		// 移動後の石があるセルには移動できない（範囲チェック）。石は「動かされた後もそこに
+		// 存在する物体」なので、デバッグモード（敵すり抜け）でも素通りさせない＝ここは
+		// debugMode 判定より前に置く（過去は debugMode の早期 return が先にあり、石を
+		// 押しきった後さらに押すとプレイヤーが石のセル＝スイッチの上へすり抜けていた）。
+		if (stageData) {
 			const _ssp = getSS(getCurrentLayer(), getStageKey());
 			for (const st of Object.values(_ssp.stonePositions ?? {})) {
 				if (st.r >= r0 && st.r <= r1 && st.c >= c0 && st.c <= c1) return false;
 			}
 		}
+
+		const debugMode = getDebugMode();
+		// デバッグモード中は敵すり抜け可能
+		if (debugMode) return true;
 
 		// 敵と同じタイルセルには移動できない（重なり防止）
 		// ※ 「0.6未満」判定だと半セル移動時に動けなくなるため、タイル単位で比較する

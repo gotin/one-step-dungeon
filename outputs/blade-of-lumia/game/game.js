@@ -288,25 +288,30 @@ function enterStage(lk, sk, pRow, pCol) {
 	if (stageKey !== null && (currentLayer !== lk || stageKey !== sk)) {
 		const prevSS = getSS(currentLayer, stageKey);
 		if (prevSS.stonePositions && Object.keys(prevSS.stonePositions).length > 0) {
-			// 全ボタンの上に石が乗っているか確認
-			const prevSD = getStageData(currentLayer, stageKey);
-			const buttons = [];
-			for (let r = 0; r < (prevSD?.rows ?? 0); r++) {
-				for (let c = 0; c < (prevSD?.cols ?? 0); c++) {
-					if (prevSD.tiles[r][c] === TILE.BUTTON) buttons.push(`${r},${c}`);
-				}
-			}
-			const allSolved = buttons.length > 0 && buttons.every(pk => {
-				const [br, bc] = pk.split(',').map(Number);
-				return Object.values(prevSS.stonePositions).some(st => st.r === br && st.c === bc);
-			});
-			if (allSolved) {
-				// パズル解決済み：石位置スナップショットを保存してリセットしない
+			if (prevSS.stonesLocked) {
+				// Phase 4.56: ロック済み＝崩れないので石位置は常に保持（防御的にスナップショットも残す）。
 				prevSS.solvedStonePositions = { ...prevSS.stonePositions };
 			} else {
-				// 未解決：通常リセット（スナップショットも消す）
-				prevSS.stonePositions = {};
-				prevSS.solvedStonePositions = null;
+				// 全ボタンの上に石が乗っているか確認
+				const prevSD = getStageData(currentLayer, stageKey);
+				const buttons = [];
+				for (let r = 0; r < (prevSD?.rows ?? 0); r++) {
+					for (let c = 0; c < (prevSD?.cols ?? 0); c++) {
+						if (prevSD.tiles[r][c] === TILE.BUTTON) buttons.push(`${r},${c}`);
+					}
+				}
+				const allSolved = buttons.length > 0 && buttons.every(pk => {
+					const [br, bc] = pk.split(',').map(Number);
+					return Object.values(prevSS.stonePositions).some(st => st.r === br && st.c === bc);
+				});
+				if (allSolved) {
+					// パズル解決済み：石位置スナップショットを保存してリセットしない
+					prevSS.solvedStonePositions = { ...prevSS.stonePositions };
+				} else {
+					// 未解決：通常リセット（スナップショットも消す）
+					prevSS.stonePositions = {};
+					prevSS.solvedStonePositions = null;
+				}
 			}
 		}
 	}
@@ -1917,6 +1922,7 @@ export function getStageStateSnapshot() {
 		activeColor:   ss.activeColor ?? null,
 		brokenWalls:   [...(ss.brokenWalls ?? [])],
 		stonePositions: { ...(ss.stonePositions ?? {}) },  // Phase 5-3: 敵が押した石の確認用
+		stonesLocked:  !!ss.stonesLocked,  // Phase 4.56
 	};
 }
 
