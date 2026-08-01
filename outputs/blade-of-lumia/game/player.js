@@ -86,6 +86,13 @@ export function createPlayer(deps) {
 	// 祭壇の連続発火を防ぐガード（乗りっぱなしで毎フレーム発火しないように）
 	let _lastAltarPosKey = null;
 
+	// 石押しアニメーションの世代カウンタ（Phase 4.55 バグ(A) 対策）。
+	// 押すたびに ++ し、押しごとの後始末 setTimeout にこの世代を捕捉させる。
+	// 次の押しが始まって世代が進んでいたら、古い後始末は renderChars を呼ばず
+	// 早期 return する＝走行中の新しいアニメ要素を stale な後始末が消してしまい
+	// 「押しっぱなしでアニメが飛ぶ」現象を防ぐ。
+	let _stonePushGen = 0;
+
 	// ── 剣ティア装備（Phase 7-1）────────────────────────────────
 	// tierIndex: SWORD_TIERS のインデックス（0..3）
 	// 現在のティアより高い場合のみ更新し、atk を再計算する（差分加算を廃止）。
@@ -263,23 +270,19 @@ export function createPlayer(deps) {
 		const tc = c + ndc;
 		const stageData = getStageData();
 		const enemies   = getEnemies();
-		console.log(`[STONE] tryPushStone(${r},${c}) dir=${dir} → dest=(${tr},${tc}) origKey=${origKey}`);
-		if (tr < 0 || tr >= stageData.rows || tc < 0 || tc >= stageData.cols) { console.log('[STONE] blocked: out of bounds'); return false; }
-		const destTile = stageData.tiles[tr]?.[tc];
+		if (tr < 0 || tr >= stageData.rows || tc < 0 || tc >= stageData.cols) return false;
 		const passable = tilePassable(tr, tc);
-		console.log(`[STONE] destTile=${destTile} tilePassable=${passable}`);
 		if (!passable) return false;
 		const ss = getSS(getCurrentLayer(), getStageKey());
 		if (!ss.stonePositions) ss.stonePositions = {};
 		for (const st of Object.values(ss.stonePositions)) {
-			if (st.r === tr && st.c === tc) { console.log('[STONE] blocked: another moved stone'); return false; }
+			if (st.r === tr && st.c === tc) return false;
 		}
 		for (const e of enemies) {
-			if (toTileRow(e.y) === tr && toTileCol(e.x) === tc) { console.log('[STONE] blocked: enemy'); return false; }
+			if (toTileRow(e.y) === tr && toTileCol(e.x) === tc) return false;
 		}
 
 		const key = origKey ?? `${r},${c}`;
-		console.log(`[STONE] PUSHED! key=${key} → (${tr},${tc}) stonePositions=`, JSON.stringify(ss.stonePositions));
 		ss.stonePositions[key] = { r: tr, c: tc };
 
 		checkStoneOnSwitch();
@@ -368,22 +371,53 @@ export function createPlayer(deps) {
 		const moveAxis = (dir === 'left' || dir === 'right') ? 'h' : 'v';
 
 		// ── 石の押し判定 ────────────────────────────────
-		const pr = toTileRow(player.y);
-		const pc = toTileCol(player.x);
 		const pdr = Math.sign(dy);
 		const pdc = Math.sign(dx);
-		const nextR = pr + pdr;
-		const nextC = pc + pdc;
 		const ss = getSS(getCurrentLayer(), getStageKey());
 
+		// Phase 4.55 バグ(B): 石に対して「押し方向と直交する軸だけ」0.5 セルずれた
+		// 位置から石へ向かったとき、石に隣接する整数セルへプレイヤーをスナップして押す。
+		// 旧実装は「x/y とも整数のときだけ押す」ガードだったため、例えば縦に 0.5
+		// ずれた（y=2.5）状態で横の石へ向かうと押しも通常移動もできず、プレイヤーが
+		// 石にめり込んだまま停止していた。
+		//
+		// ルール：
+		//   ・押し「軸」の座標は整数でなければならない（＝石に本当に隣接している）。
+		//     半セルずれ（例 x=4.5 で右押し）は石まで 1.5 セルあるので押さず通常移動で
+		//     整数へ揃える。ここを緩めると 1.5 セル先の石へワープしてしまう。
+		//   ・押し「直交軸」は 0.5 ずれていてよい。プレイヤーがまたぐ 2 レーンのうち
+		//     石があるレーンへ直交座標をスナップして押す。
+		// pr/pc = 押し元セル（＝スナップ先・アニメの始点）、nextR/nextC = 石のセル。
 		let stoneKey = null;
-		if (stageData.tiles[nextR]?.[nextC] === TILE.STONE && !ss.stonePositions?.[`${nextR},${nextC}`]) {
-			stoneKey = `${nextR},${nextC}`;
-		} else {
-			for (const [k, st] of Object.entries(ss.stonePositions ?? {})) {
-				if (st.r === nextR && st.c === nextC) { stoneKey = k; break; }
+		let pr = null, pc = null;
+		{
+			const axisAligned = pdc !== 0 ? Number.isInteger(player.x) : Number.isInteger(player.y);
+			if (axisAligned) {
+				const candidates = [];
+				if (pdc !== 0) {                         // 横押し：押し軸=x（整数）。直交=y をまたぐ各行。
+					const oC = player.x;
+					const rr0 = Math.floor(player.y), rr1 = Math.floor(player.y + 0.999);
+					for (let r = rr0; r <= rr1; r++) candidates.push([r, oC]);
+				} else {                                 // 縦押し：押し軸=y（整数）。直交=x をまたぐ各列。
+					const oR = player.y;
+					const cc0 = Math.floor(player.x), cc1 = Math.floor(player.x + 0.999);
+					for (let c = cc0; c <= cc1; c++) candidates.push([oR, c]);
+				}
+				for (const [oR, oC] of candidates) {
+					const tR = oR + pdr, tC = oC + pdc;   // 石がある想定セル
+					if (stageData.tiles[tR]?.[tC] === TILE.STONE && !ss.stonePositions?.[`${tR},${tC}`]) {
+						stoneKey = `${tR},${tC}`;
+					} else {
+						for (const [k, st] of Object.entries(ss.stonePositions ?? {})) {
+							if (st.r === tR && st.c === tC) { stoneKey = k; break; }
+						}
+					}
+					if (stoneKey !== null) { pr = oR; pc = oC; break; }
+				}
 			}
 		}
+		const nextR = pr + pdr;
+		const nextC = pc + pdc;
 
 		if (stoneKey !== null) {
 			// 石を押す：クールダウンチェック（実時間）
@@ -403,6 +437,7 @@ export function createPlayer(deps) {
 				const stoneFromC = (ss.stonePositions[stoneKey] ?? { r: nextR, c: nextC }).c;
 				ss.stonePositions[stoneKey] = { r: stoneDestR, c: stoneDestC };
 				setLastStonePushTime(nowSt);
+				const _pushGen = ++_stonePushGen;   // この押しの世代（後始末ガード用）
 				checkStoneOnSwitch();
 				evaluateConditions();
 
@@ -511,6 +546,11 @@ export function createPlayer(deps) {
 
 				updateHud();
 				setTimeout(() => {
+					// バグ(A): この後始末が走る前に次の押しが始まっていたら
+					// （世代が進んでいたら）renderChars を呼ばない。走行中の新しい
+					// アニメ要素を stale な後始末が消して「アニメが飛ぶ」のを防ぐ。
+					// 次の押しの後始末が最新状態を描き直す。
+					if (_pushGen !== _stonePushGen) return;
 					renderChars();
 					saveGame();
 					handleTileEvent();

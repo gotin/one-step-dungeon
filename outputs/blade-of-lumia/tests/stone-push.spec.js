@@ -86,4 +86,32 @@ test.describe('Blade of Lumia – 石押し', () => {
       document.querySelectorAll('[id^="char-stone-"]').length);
     expect(count, '移動した石の要素は1つだけ').toBe(1);
   });
+
+  // Phase 4.55 バグ(B) 回帰＝押し方向と直交する軸が 0.5 セルずれた位置から石へ
+  // 向かったとき、石にめり込んで凍結せず、直交軸をスナップして押せること。
+  // 旧「x/y 両方整数」ガードでは y=2.5 で右押し＝押しも通常移動もできず凍結していた。
+  test('バグ(B): 直交軸が0.5ずれた位置(y=2.5)から石へ向かうとスナップして押せる', async ({ page }) => {
+    // まず縦に半セルだけ動かして y=2.5 を作る（石(2,7)に対し押し軸x=6は整数・直交軸yが半セルずれ）
+    await page.evaluate(() => window.__game.movePlayer('down'));
+    const mid = await page.evaluate(() => window.__game.getState().player);
+    expect(mid.y, '0.5セルの直交ずれを作れている(y=2.5)').toBe(2.5);
+
+    // 右を押しっぱなし＝実入力経路（processHeldKeys）で観測する
+    await page.evaluate(() => window.__game.queueInput('right'));
+    await page.waitForTimeout(1400); // スナップ＋押し（CD 600ms×2回ぶん）
+    await page.evaluate(() => window.__game.releaseInput('right'));
+    await page.waitForTimeout(300);
+
+    const end = await page.evaluate(() => ({
+      p: window.__game.getState().player,
+      ss: window.__game.getStageState(),
+    }));
+    // 直交軸(y)が整数セルにスナップされている（半セルで凍結していない）
+    expect(Number.isInteger(end.p.y), 'y が整数にスナップされている(凍結でない)').toBe(true);
+    // 石が実際に押されて元位置(2,7)から移動している
+    const moved = Object.values(end.ss.stonePositions ?? {}).some(s => s.c > 7 && s.r === 2);
+    expect(moved, '石(2,7)が右へ押されている').toBe(true);
+    // プレイヤーも前進している（凍結なら x=6 のまま）
+    expect(end.p.x, 'プレイヤーが石を押して前進している').toBeGreaterThan(6);
+  });
 });
