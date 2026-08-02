@@ -42,6 +42,18 @@ export const TEST_STAGE_KEYS = {
 	ladder_bg_bridge: '17,0',
 	tide_gate:        '18,0',
 	sea_lord:         '19,0',
+	// 石パズルのお試し4枚（Phase 4.6 方法論の実プレイ検証）。易/中/難は石3、激難は石4。
+	// 盤面は scripts/generate-sokoban-playable.mjs が生成・4軸測定し、
+	// scripts/migrate-test-sokoban-tiers.mjs が測定値を再現確認して書き込んだもの。
+	sokoban_easy:     '20,0',
+	sokoban_medium:   '21,0',
+	sokoban_hard:     '22,0',
+	sokoban_extreme:  '23,0',
+	// 回帰フィクスチャ（旧 Phase 5-1「合成」）＝石3＋色スイッチ/色ゲートの直列2枚。
+	// 2026-08-02 に「閉じた門の中に立って石を押せない」バグ修正を入れた結果**解なし**になった
+	// ＝パズルではなく、抜け道（閉じた門の中に立って石を先へ押す）の回帰用の盤面。
+	// ⚠️ 石を**開いた**門へ押し込むのは正当（廊下C3 = field 15,14 がその設計）。
+	sokoban_color:    '24,0',
 };
 
 /**

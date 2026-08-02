@@ -7,11 +7,17 @@
  *   2. 難易度測定（measure-puzzle.mjs）＝ PUZZLE-DESIGN §4 の4軸
  * 別実装にすると「測定では難しいが実ゲームでは違う」乖離が起きる∴遷移は1箇所。
  *
- * 状態 = プレイヤー位置 × 石位置 × Yトグルマスク × brokenWalls集合 × litTorches集合。
+ * 状態 = プレイヤー位置 × 石位置 × Yトグルマスク × brokenWalls集合 × litTorches集合
+ *        × 石ロック × activeColor（色スイッチ）。
  * brokenWalls / litTorches は不可逆な単調増加ビットなので状態爆発しない。
+ * activeColor は 3 値（none/red/blue）＝状態が3倍になるだけ（可逆・非単調）。
  *
  * エンジンから写した規則（ここがズレると「テスト緑・実機で詰む」）:
  *   ・ボタン S はモーメンタリ。ON ⟺ プレイヤー or 石が今その上にいる。
+ *   ・石ロック（Phase 4.56/4.6）＝全ボタンに**石**が乗った瞬間に恒久ロック。以後
+ *     石は押せず、全ゲート T は開いたまま（＝解いたパズルを解き直させない）。
+ *     状態に locked ビットを持つ（単調増加）。これが無いと「ロック後に石をどかして
+ *     通路を空ける」実ゲームの近道を見落とし、L を過大に測る。
  *   ・Y は武器で叩くトグル。隣接（射程1）から叩ける。踏むのではなく叩く。
  *   ・弓: 向いた方向へ矢が飛ぶ。WALL と未破壊 '!' だけ遮る（水/潮は飛び越える）。
  *     矢が 'Y' に当たるとトグル。プレイヤーは動かない（弓ゲート）。
@@ -19,6 +25,19 @@
  *   ・ブーメラン: 向いた方向へ飛び、通過した 'H' に炎を運ぶ（火元→未点灯を点ける）。
  *   ・はしご: 進入軸の幅1水（両隣が陸）を1セルだけ渡れる。
  *   ・潮ゲートは openGates にある時だけ通れる。
+ *   ・色スイッチ `[`（赤）/`]`（青）を武器で叩くと activeColor を**その色にセット**
+ *     （トグルではない＝排他）。剣なら隣接（combat.js:321）、**矢/ビームでも当たればセット**
+ *     （projectile.js:501）＝Y スイッチと同じ扱い∴遠くから色を変える手を見落とすと L を過大に測る。
+ *     矢を止めるのは WALL と未破壊 '!' だけ（isTilePassableForProj）＝石や門は飛び越える。
+ *     色ゲート `(` は activeColor==='red'、`)` は 'blue' のときだけ通行可。初期値は未設定＝**両方閉**。
+ *     ∴色ゲートは「開くと同時に反対色が閉じる」非単調な関門＝潮ゲート `=`（開くだけ＝単調）と
+ *     難しさの性質が違う。⚠️ `(`/`)` は `SOLVABLE_GATES` ＝`isHardBlocked` が false なので、
+ *     ここで明示的に色を見ないと「常に通行可」として測ってしまう（T/= と同じ罠）。
+ *   ・石を押した後プレイヤーは石の元セルへ入る∴その**下地**（門の開閉）が閉じていたら押せない
+ *     （2026-08-02・ユーザー報告のバグ修正）。⚠️ これが無いと「閉じた門の中に立って石を押し出す」
+ *     実エンジンのバグ挙動を前提に L を測ってしまう（旧 Phase 5-1 の色ゲート合成盤面が実際に
+ *     それで成立していた＝撤回）。**押し先は通常の通行判定に任せる**＝開いた門へ石を押し込むのは
+ *     正当な語彙（廊下C3 は「石でボタンを押さえて開けた潮ゲートを通して別の石を運ぶ」設計）。
  */
 
 import { isHardBlocked } from './connectivity.mjs';
@@ -39,8 +58,11 @@ export function makeSolver(tiles, bg, linkSpec, breakDefs, litInit, { hasLadder 
   const gatesT = [];        // T（GATE）の位置＝新ルール「全ボタンON→全T開」の対象
   const breakCells = [];    // '!' の位置（インデックス＝bit）
   const torchCells = [];    // 'H' の位置（インデックス＝bit）
+  const colorCells = [];    // 色スイッチ '['/']' の位置（[cell, 1|2]）
   for (let r = 0; r < ROWS; r++) for (let c = 0; c < COLS; c++) {
     const ch = tiles[r][c];
+    if (ch === TILE.SWITCH_RED) colorCells.push([`${r},${c}`, 1]);
+    if (ch === TILE.SWITCH_BLUE) colorCells.push([`${r},${c}`, 2]);
     if (ch === TILE.SWITCH) toggleCells.push(`${r},${c}`);
     if (ch === TILE.STONE) stoneKeys.push(`${r},${c}`);
     if (ch === TILE.BUTTON) buttons.push(`${r},${c}`);
@@ -53,14 +75,20 @@ export function makeSolver(tiles, bg, linkSpec, breakDefs, litInit, { hasLadder 
   const initStones = stoneKeys.map((k) => k);
   // brokenWalls / litTorches はビットマスク。litInit（初期点灯）は最初から立てる。
   const litInitMask = torchCells.reduce((m, cell, i) => (litInit.has(cell) ? m | (1 << i) : m), 0);
-  const encode = (pr, pc, stones, mask, broken, lit) =>
-    `${pr},${pc}|${stones.join(';')}|${mask}|${broken}|${lit}`;
+  // locked は 6 番目・color は 7 番目の任意フィールド（既存の呼び出し側は 5 引数のまま＝
+  // locked=0 / color=0＝色未設定＝色ゲートは両方閉）。フィールドを**末尾に足す**のは
+  // 呼び出し側が `state.split('|')` の f[0]/f[1]/f[5] を見ているため（既存の索引を動かさない）。
+  const encode = (pr, pc, stones, mask, broken, lit, locked = 0, color = 0) =>
+    `${pr},${pc}|${stones.join(';')}|${mask}|${broken}|${lit}|${locked}|${color}`;
+  // 全ボタンに石が乗ったか（＝実ゲームのロック条件・プレイヤーの足踏みは数えない）
+  const allButtonsOnStones = (stones) =>
+    buttons.length > 0 && buttons.every((b) => stones.includes(b));
 
   // ゲート開閉は実ゲーム game/conditions.js refreshGates() と同じ規則：
   //   ① ボタン S が1個以上あれば「全ボタン ON のときだけ全ゲート T を開く」（新仕様）。
   //   ② links（switchId→gateId）は潮ゲート = と、ボタンの無い盤面の Y→T を担う。
   //      ボタンがある盤面の T は①が担うので links の T エントリはスキップ（競合回避）。
-  const openGatesOf = (pr, pc, stones, mask) => {
+  const openGatesOf = (pr, pc, stones, mask, locked = 0) => {
     const open = new Set();
     const here = `${pr},${pc}`;
     const onSwitch = (sw) => {
@@ -68,8 +96,8 @@ export function makeSolver(tiles, bg, linkSpec, breakDefs, litInit, { hasLadder 
       if (ti >= 0) return (mask & (1 << ti)) !== 0;   // Y はマスク
       return sw === here || stones.includes(sw);       // ボタンは足/石
     };
-    // ① 全ボタン ON → 全 T 開
-    if (buttons.length > 0 && buttons.every(onSwitch)) for (const g of gatesT) open.add(g);
+    // ① 全ボタン ON → 全 T 開（ロック済みなら足を離しても開いたまま）
+    if (locked || (buttons.length > 0 && buttons.every(onSwitch))) for (const g of gatesT) open.add(g);
     // ② links 連動（潮 = と、ボタン無し盤面の Y→T）
     for (const [sw, gates] of linksBySwitch) {
       if (!onSwitch(sw)) continue;
@@ -81,12 +109,41 @@ export function makeSolver(tiles, bg, linkSpec, breakDefs, litInit, { hasLadder 
     return open;
   };
 
-  // passable.js tilePassable の写し。broken は brokenWalls マスク。
-  const passableFor = (r, c, stones, open, broken, { forStone }) => {
+  /**
+   * 石の元セル（押した後プレイヤーが入るセル）の**下地**が開いているか。
+   * 石そのものは今から動くので無視し、下のタイルだけを見る（passable.js statefulTileClosed
+   * と同じ規則）。石は「押した時点で通行可だったセル」にしか居られない∴後から閉じ得るのは
+   * 状態で開閉する門だけ＝ここでは門だけを見れば必要十分。
+   */
+  const underOpen = (r, c, open, color) => {
+    const ch = tiles[r]?.[c];
+    if (ch === TILE.GATE || ch === TILE.TIDE_GATE) return open.has(`${r},${c}`);
+    if (ch === TILE.GATE_RED) return color === 1;
+    if (ch === TILE.GATE_BLUE) return color === 2;
+    return true;                        // 床・ボタン・未移動石の元セル等はそのまま通れる
+  };
+
+  // passable.js tilePassable の写し。broken は brokenWalls マスク。color は activeColor（0/1/2）。
+  const passableFor = (r, c, stones, open, broken, { forStone }, color = 0) => {
     if (r < 0 || r >= ROWS || c < 0 || c >= COLS) return false;
     if (bg[r][c] === W) return false;                       // 水（bg 単一ソース）
     const ch = tiles[r][c];
-    if (ch === TILE.TIDE_GATE) return open.has(`${r},${c}`);
+    // 色ゲートは activeColor が一致する時だけ通れる（初期 color=0 は両方閉＝実ゲームと同じ）。
+    if (ch === TILE.GATE_RED) return color === 1;
+    if (ch === TILE.GATE_BLUE) return color === 2;
+    // 色スイッチ '['/']' は**踏める**（passable.js tilePassable は SWITCH_RED/BLUE を
+    // どのブランチでも落とさない＝通行可。game.js の ARRIVAL_WALL_TILES がこれらを
+    // 拒むのは「画面遷移の着地」だけでステージ内の歩行には効かない）。
+    // ⚠️ connectivity.mjs の HARD_BLOCKED は field 指標（traps/dead-edge）のベースライン
+    //    維持のため保守的に壁扱いしている∴ここで明示的に上書きしないと
+    //    「スイッチの上に立って石を押す」立ち位置が消える（実測：合成盤面の石が1個も
+    //    押せず状態 730 で解なしになった）。
+    if (ch === TILE.SWITCH_RED || ch === TILE.SWITCH_BLUE) return true;
+    // ゲート T / 潮ゲート = は openGates に載っている時だけ通れる。
+    // ⚠️ T は connectivity.mjs の SOLVABLE_GATES 側＝isHardBlocked('T') は false なので、
+    //    ここで明示的に開閉を見ないと「T は常に通行可」として測ってしまう
+    //    （＝ゲートで隔離した報酬が測定上は素通り＝L も貪欲も嘘になる）。
+    if (ch === TILE.GATE || ch === TILE.TIDE_GATE) return open.has(`${r},${c}`);
     if (ch === TILE.BREAKABLE_WALL) {
       const bi = breakCells.indexOf(`${r},${c}`);
       return bi >= 0 && (broken & (1 << bi)) !== 0;          // 壊れていれば床
@@ -108,7 +165,9 @@ export function makeSolver(tiles, bg, linkSpec, breakDefs, litInit, { hasLadder 
     if (bg[r][c] === W) return false;
     const ch = tiles[r][c];
     if (isHardBlocked(ch)) return false;
-    if (ch === TILE.TIDE_GATE) return false;           // 閉じた潮ゲートも橋脚にならない
+    // ゲート（T/=/色）は橋脚にならない（保守側）
+    if (ch === TILE.GATE || ch === TILE.TIDE_GATE
+      || ch === TILE.GATE_RED || ch === TILE.GATE_BLUE) return false;
     if (ch === TILE.BREAKABLE_WALL) {
       const bi = breakCells.indexOf(`${r},${c}`);
       return bi >= 0 && (broken & (1 << bi)) !== 0;
@@ -126,28 +185,50 @@ export function makeSolver(tiles, bg, linkSpec, breakDefs, litInit, { hasLadder 
   const DIRS = [[-1, 0, 'v'], [1, 0, 'v'], [0, -1, 'h'], [0, 1, 'h']];
 
   function nextStates(state) {
-    const [pos, stonesStr, maskStr, brokenStr, litStr] = state.split('|');
+    const [pos, stonesStr, maskStr, brokenStr, litStr, lockedStr, colorStr] = state.split('|');
     const [pr, pc] = pos.split(',').map(Number);
     const stones = stonesStr ? stonesStr.split(';') : [];
     const mask = Number(maskStr);
     const broken = Number(brokenStr);
     const lit = Number(litStr);
-    const open = openGatesOf(pr, pc, stones, mask);
+    const color = Number(colorStr) || 0;
+    // ロックは単調増加＝一度全ボタンに石が乗ったら以後ずっと立つ（実ゲームと同じ）。
+    const locked = (Number(lockedStr) || allButtonsOnStones(stones)) ? 1 : 0;
+    const open = openGatesOf(pr, pc, stones, mask, locked);
     const out = [];
+    // 後継状態のロックは「今ロック済み or その配置で全ボタンに石が乗った」＝正規化
+    // （同じ石配置なのに locked 0/1 の2キーに割れると状態数と最短解本数が狂う）。
+    const enc = (npr, npc, nstones, nmask, nbroken, nlit, ncolor = color) =>
+      encode(npr, npc, nstones, nmask, nbroken, nlit,
+        (locked || allButtonsOnStones(nstones)) ? 1 : 0, ncolor);
 
     // Y を叩く（隣接・剣）。プレイヤーは動かない。
     for (const [dr, dc] of DIRS) {
       const i = toggleCells.indexOf(`${pr + dr},${pc + dc}`);
-      if (i >= 0) out.push(encode(pr, pc, stones, mask ^ (1 << i), broken, lit));
+      if (i >= 0) out.push(enc(pr, pc, stones, mask ^ (1 << i), broken, lit));
+    }
+
+    // 色スイッチ '['/']' を剣で叩く（隣接）。activeColor を**セット**（トグルではない）
+    // ∴同じ色を叩き直す遷移は出さない（状態が増えるだけで意味が無い）。
+    for (const [dr, dc] of DIRS) {
+      const hit = colorCells.find(([cell]) => cell === `${pr + dr},${pc + dc}`);
+      if (hit && hit[1] !== color) out.push(enc(pr, pc, stones, mask, broken, lit, hit[1]));
     }
 
     // 弓: 4方向へ矢を飛ばす。WALL/未破壊'!'で止まる。途中の 'Y' に当たるとトグル。
+    // 色スイッチに当たれば activeColor をセット（矢/ビームも setActiveColor を呼ぶ＝
+    // 実エンジン projectile.js:501。これを落とすと「遠くから色を変える」手を見落とす）。
     if (!noTools) for (const [dr, dc] of DIRS) {
       let rr = pr + dr, cc = pc + dc;
       while (rr >= 0 && rr < ROWS && cc >= 0 && cc < COLS) {
         const ch = tiles[rr][cc];
         const yi = toggleCells.indexOf(`${rr},${cc}`);
-        if (yi >= 0) { out.push(encode(pr, pc, stones, mask ^ (1 << yi), broken, lit)); break; }
+        if (yi >= 0) { out.push(enc(pr, pc, stones, mask ^ (1 << yi), broken, lit)); break; }
+        const ci = colorCells.find(([cell]) => cell === `${rr},${cc}`);
+        if (ci) {
+          if (ci[1] !== color) out.push(enc(pr, pc, stones, mask, broken, lit, ci[1]));
+          break;   // 矢は色スイッチに当たって消える（貫通しない）
+        }
         if (ch === TILE.WALL) break;
         if (ch === TILE.BREAKABLE_WALL) {
           const bi = breakCells.indexOf(`${rr},${cc}`);
@@ -164,7 +245,7 @@ export function makeSolver(tiles, bg, linkSpec, breakDefs, litInit, { hasLadder 
         const [br, bc] = cell.split(',').map(Number);
         if (Math.sqrt((br - pr) ** 2 + (bc - pc) ** 2) <= 2 && (breakDefs[cell] ?? 1) <= 3) nb |= (1 << i);
       });
-      if (nb !== broken) out.push(encode(pr, pc, stones, mask, nb, lit));
+      if (nb !== broken) out.push(enc(pr, pc, stones, mask, nb, lit));
     }
 
     // ブーメラン: 火元があれば、4方向へ飛ばして通過した 'H' を点ける。
@@ -185,7 +266,7 @@ export function makeSolver(tiles, bg, linkSpec, breakDefs, litInit, { hasLadder 
           if (ti >= 0) nl |= (1 << ti);
           rr += dr; cc += dc;
         }
-        if (nl !== lit) out.push(encode(pr, pc, stones, mask, broken, nl));
+        if (nl !== lit) out.push(enc(pr, pc, stones, mask, broken, nl));
       }
     }
 
@@ -195,21 +276,28 @@ export function makeSolver(tiles, bg, linkSpec, breakDefs, litInit, { hasLadder 
       if (nr < 0 || nr >= ROWS || nc < 0 || nc >= COLS) continue;
       const si = stones.indexOf(`${nr},${nc}`);
       if (si >= 0) {
+        if (locked) continue;   // ロック後は石を押せない（石は壁と同じ通行不可のまま）
         const sr = nr + dr, sc = nc + dc;
-        if (!passableFor(sr, sc, stones, open, broken, { forStone: true })) continue;
+        if (!passableFor(sr, sc, stones, open, broken, { forStone: true }, color)) continue;
         if (stones.includes(`${sr},${sc}`)) continue;
+        // 2026-08-02: 実エンジンと同じ規則＝押した後にプレイヤーが入る「石の元セル」の
+        // 下地が閉じていたら押せない。これが無いと「閉じた門の中に立って石を押し出す」
+        // 実エンジンのバグ挙動を前提に L を測ってしまう（Phase 5-1 の色ゲート合成盤面が
+        // 実際にそれで成立していた＝撤回）。押し先は通常の通行判定（passableFor＝開いた門は
+        // 通れる）に任せる＝**開いた門へ石を押し込むのは正当**（廊下C3 がその設計）。
+        if (!underOpen(nr, nc, open, color)) continue;
         const ns = stones.slice();
         ns[si] = `${sr},${sc}`;
-        out.push(encode(nr, nc, ns, mask, broken, lit));
+        out.push(enc(nr, nc, ns, mask, broken, lit));
         continue;
       }
       if (bg[nr][nc] === W) {
         if (canLadderCross(nr, nc, axis, stones, broken))
-          out.push(encode(nr, nc, stones, mask, broken, lit));
+          out.push(enc(nr, nc, stones, mask, broken, lit));
         continue;
       }
-      if (!passableFor(nr, nc, stones, open, broken, { forStone: false })) continue;
-      out.push(encode(nr, nc, stones, mask, broken, lit));
+      if (!passableFor(nr, nc, stones, open, broken, { forStone: false }, color)) continue;
+      out.push(enc(nr, nc, stones, mask, broken, lit));
     }
     return out;
   }
@@ -223,5 +311,5 @@ export function makeSolver(tiles, bg, linkSpec, breakDefs, litInit, { hasLadder 
     exitCells.push(`${r},${c}`);
   }
 
-  return { initStones, litInitMask, encode, nextStates, exitCells, toggleCells, stoneKeys, buttons, breakCells, torchCells };
+  return { initStones, litInitMask, encode, nextStates, exitCells, toggleCells, stoneKeys, buttons, breakCells, torchCells, colorCells };
 }

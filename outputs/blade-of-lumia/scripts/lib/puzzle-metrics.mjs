@@ -20,8 +20,12 @@ const WAY_CAP = 1e9;
  * @param {(state:string)=>boolean} goalTest ゴール（報酬取得）状態か
  * @param {(state:string)=>number}  h        貪欲法のヒューリスティック（小さいほどゴールに近い）
  * @param {number} guardMax 状態数の上限（超えたら throw）
+ * @param {(S:object, starts:string[], goalTest:Function)=>boolean} [greedyFn]
+ *        軸②の貪欲モデルを差し替える。既定は1手単位のヒルクライム（h を使う）。
+ *        倉庫番は「石の裏へ回り込む歩行」が必ず h を増やす＝1手単位では常に詰まり、
+ *        軸②が空虚になる∴石パズルは押し単位のマクロ貪欲を渡す（呼び出し側で実装）。
  */
-export function measureMetrics(S, starts, goalTest, h, { guardMax = 6000000 } = {}) {
+export function measureMetrics(S, starts, goalTest, h, { guardMax = 6000000, greedyFn } = {}) {
   // BFS：距離・逆辺・最短解本数。
   const dist = new Map();
   const rev = new Map();
@@ -80,8 +84,8 @@ export function measureMetrics(S, starts, goalTest, h, { guardMax = 6000000 } = 
   }
   const forcedRatio = branchTotal ? forced / branchTotal : 0;
 
-  // 軸②：貪欲法（ヒルクライム）で解けるか。h を増やす手しか無い＝行き詰まり。
-  const greedy = greedySolvable(S, starts, goalTest, h);
+  // 軸②：貪欲法で解けるか。既定は1手単位のヒルクライム（h を増やす手しか無い＝行き詰まり）。
+  const greedy = greedyFn ? greedyFn(S, starts, goalTest) : greedySolvable(S, starts, goalTest, h);
 
   return {
     states: seen.length,

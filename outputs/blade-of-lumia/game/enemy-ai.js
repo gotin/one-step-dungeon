@@ -7,6 +7,7 @@ import { TILE } from '../shared/tiles.js';
 import { makeSprite } from '../shared/sprites.js';
 import { playSound } from '../shared/sounds.js';
 import { MOVE_STEP } from './constants.js';
+import { statefulTileClosed } from './passable.js';
 import { enemyPointHit } from './hitbox.js';
 
 /**
@@ -109,6 +110,11 @@ export function createEnemyAi(deps) {
 		const dc = sc + ndc;
 		if (dr < 0 || dr >= stageData.rows || dc < 0 || dc >= stageData.cols) return false;
 		if (!tilePassable(dr, dc)) return false;           // 壁/水/穴は押せない
+		// 2026-08-02: 敵は押した後 (sr,sc)＝石の元セルへ入る（enemyChase の e.y/e.x 代入）∴下地が
+		// 閉じていたら押せない（石を無視して下のタイルだけ見る＝プレイヤー側と同じ判定・片方だけ
+		// 直すと敵に押させて「閉じた門越しに石を渡す」抜け道が残る）。
+		const underEnemy = stageData.tiles[sr]?.[sc];
+		if (underEnemy !== TILE.STONE && statefulTileClosed(underEnemy, `${sr},${sc}`, ss)) return false;
 		// 押し先に別の石・敵・プレイヤーがいないか
 		for (const st of Object.values(ss.stonePositions)) {
 			if (st.r === dr && st.c === dc) return false;

@@ -29,6 +29,19 @@ export function createConditions(d) {
 		getSS, toTileRow, toTileCol, renderBoard, renderChars,
 	} = d;
 
+	// 全ボタンが「石で」押されているか（プレイヤーの足踏みは数えない）。
+	// 石は押されて初めて ss.stonePositions に載る（未移動の石はタイル上のまま）＝
+	// タイルが '*' の石はボタン上に居られない∴石がボタン上に居る ⟺ stonePositions に
+	// そのセルのエントリがある、で必要十分。
+	function allButtonsHeldByStones(buttons, ss) {
+		const stones = Object.values(ss.stonePositions ?? {});
+		if (!stones.length) return false;
+		return buttons.every(pk => {
+			const [br, bc] = pk.split(',').map(Number);
+			return stones.some(st => st.r === br && st.c === bc);
+		});
+	}
+
 	// ── ゲート開閉の単一ソース（冪等・毎回全再計算） ─────────────────
 	// 仕様（2026-07-31 ユーザー確定）：1ステージ内の全ボタン S が ON になったら、
 	// 同じステージの全ゲート T を開く（＝倉庫番の「全石がスイッチに乗ったらクリア」の
@@ -61,7 +74,12 @@ export function createConditions(d) {
 			if (allOn) {
 				for (const g of gatesT) ss.openGates.add(g);
 				// Phase 4.56: 全ボタン ON を一度達成したら石をロックする（恒久・崩れを未然に防ぐ）。
-				ss.stonesLocked = true;
+				// ⚠️ Phase 4.6 で条件を絞った＝ロックは「全ボタンに石が乗っている」ときだけ。
+				// ボタンはモーメンタリで**プレイヤーが踏んでも ON**（1-2 の既知の抜け道）∴
+				// 「石を n-1 個だけ運び、最後の1個は自分が踏む」で恒久開放できてしまい、
+				// 石パズルが常に1手ぶん飛ばせる（＝倉庫番として成立しない）。石だけを
+				// ロック条件にすれば、足踏みは従来どおりモーメンタリ（離れれば閉じる）のまま。
+				if (allButtonsHeldByStones(buttons, ss)) ss.stonesLocked = true;
 			} else if (!ss.stonesLocked) {
 				// ロック済みなら仕様上崩れない＝ここに来ない。ロック前だけ通常の閉じ挙動。
 				for (const g of gatesT) ss.openGates.delete(g);

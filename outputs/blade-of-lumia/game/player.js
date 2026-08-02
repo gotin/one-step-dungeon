@@ -3,6 +3,7 @@
 // movePlayer / handleTileEvent を提供。
 
 import { TILE } from '../shared/tiles.js';
+import { statefulTileClosed } from './passable.js';
 import { ITEM_META, EQUIP_META, SWORD_TIERS, BASE_ATK, ARMOR_TIERS, BASE_DEF, SHIELD_TIERS, BOOMERANG_TIERS } from '../shared/items.js';
 import { NPC_SPRITE_MAP } from '../shared/npcs.js';
 import { SPRITES, PAL, makeSprite } from '../shared/sprites.js';
@@ -434,7 +435,15 @@ export function createPlayer(deps) {
 			const stoneDestOk = stageData.tiles[stoneDestR]?.[stoneDestC] != null
 				&& tilePassable(stoneDestR, stoneDestC)
 				&& !Object.values(ss.stonePositions ?? {}).some(st => st.r === stoneDestR && st.c === stoneDestC);
-			if (stoneDestOk) {
+			// プレイヤーは押した後「石が居たセル」へ入る（下の player.x/y 代入）∴そこの**下地**が
+			// 閉じていたら押せない。石そのものは今から動くので無視して下のタイルだけを見る
+			// （tiles が '*' の未移動石＝下は床／移動済みの石が乗っているセル＝下は本来のタイル）。
+			// 石は「押した時点で通行可だったセル」にしか居られない∴後から通行不可になり得るのは
+			// 状態で閉じるタイルだけ＝statefulTileClosed の判定で必要十分。
+			const underPlayer = stageData.tiles[nextR]?.[nextC];
+			const playerDestOk = underPlayer === TILE.STONE
+				|| !statefulTileClosed(underPlayer, `${nextR},${nextC}`, ss);
+			if (stoneDestOk && playerDestOk) {
 				if (!ss.stonePositions) ss.stonePositions = {};
 				const stoneFromR = (ss.stonePositions[stoneKey] ?? { r: nextR, c: nextC }).r;
 				const stoneFromC = (ss.stonePositions[stoneKey] ?? { r: nextR, c: nextC }).c;
