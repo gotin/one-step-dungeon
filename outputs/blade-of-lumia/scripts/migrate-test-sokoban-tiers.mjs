@@ -60,7 +60,10 @@ const BOARDS = [
 			'############',
 		],
 		entry: '1,0',
-		EXPECT: { L: 33, greedy: false, deadlocks: 31158, forcedRatio: 0.06, solCount: 1, states: 37505 },
+		// noEscape＝画面外へ戻れない状態の数（I3）。⚠️ 0 ではない＝連絡通路への口の真下 (3,2) に
+		// 石を押し込むと画面内では出られない（石は row0-2 へ押せない）。出荷済み∴値を固定して
+		// 退行検出だけ行う（詳細は下の remeasure のコメント）。
+		EXPECT: { L: 33, greedy: false, deadlocks: 31158, forcedRatio: 0.06, solCount: 1, states: 37505, noEscape: 385 },
 		chest: { type: 'rupee', value: 30, name: 'ルピー×30' },
 	},
 	{
@@ -80,7 +83,7 @@ const BOARDS = [
 			'############',
 		],
 		entry: '1,0',
-		EXPECT: { L: 40, greedy: false, deadlocks: 165442, forcedRatio: 0.12, solCount: 6, states: 204550 },
+		EXPECT: { L: 40, greedy: false, deadlocks: 165442, forcedRatio: 0.12, solCount: 6, states: 204550, noEscape: 4604 },
 		chest: { type: 'rupee', value: 50, name: 'ルピー×50' },
 	},
 	{
@@ -100,7 +103,7 @@ const BOARDS = [
 			'############',
 		],
 		entry: '1,0',
-		EXPECT: { L: 56, greedy: false, deadlocks: 1590600, forcedRatio: 0.07, solCount: 22, states: 1917870 },
+		EXPECT: { L: 56, greedy: false, deadlocks: 1590600, forcedRatio: 0.07, solCount: 22, states: 1917870, noEscape: 21252 },
 		// 報酬はルピーで統一する。ハートの器（heartContainer）は「配置総数＝最大ハート数」
 		// という設計予算そのものなので、検証用ステージに置くと本編の予算を汚す。
 		chest: { type: 'rupee', value: 100, name: 'ルピー×100' },
@@ -124,12 +127,18 @@ const BOARDS = [
 			'############',
 		],
 		entry: '1,0',
-		EXPECT: { L: 89, greedy: false, deadlocks: 1852062, forcedRatio: 0.13, solCount: 2, states: 2348945 },
+		// noEscape=103249（全到達状態の約4.4%）＝激難は「石で口を塞いで出られなくなる」余地が
+		// 一番広い。ユーザー判定済み・出荷済み∴値の固定だけ行う（新盤面は requireEscape で 0 を要求）。
+		EXPECT: { L: 89, greedy: false, deadlocks: 1852062, forcedRatio: 0.13, solCount: 2, states: 2348945, noEscape: 103249 },
 		chest: { type: 'rupee', value: 200, name: 'ルピー×200' },
 	},
 	{
-		key: '24,0', name: 'sokoban_color',
+		key: '25,0', name: 'sokoban_gate_push_regression',
 		label: '回帰フィクスチャ：閉じた門の中に立って石を押せない（旧「合成」盤面・パズルとしては未成立）',
+		// ⚠️ 2026-08-02（キュー 4.7 の第1段）＝この盤面を 24,0 から **25,0 へ退避**した。
+		//   理由＝24,0 を可解な合成パズルに作り直すと「解けたら失敗」の assert（下の fixture 分岐）が
+		//   成立しなくなる。抜け道を実機で直接踏めるジオメトリはこの盤面しか無い∴座標を移して残す。
+		//   24,0 には新パズルを書き込むまで旧盤面が残置される（同じ盤面が2枚並ぶ状態＝一時的）。
 		// ⚠️ 2026-08-02 撤回：この盤面は**実エンジンのバグの上に成立していた**（ユーザー報告
 		//   「石が閉まってるゲートを通れるし、そのときはプレイヤーも通れてしまう」）。
 		//   バグ＝押し成功時プレイヤーは**通行判定なしで**石の元セルへ入る＝閉じた門の中に立てる。
@@ -164,7 +173,10 @@ const BOARDS = [
 		],
 		entry: '1,0',
 		// 修正後の実測（＝L が null でなくなったら「閉じた門の中に立てる」バグが再発している）。
-		EXPECT: { L: null, greedy: false, deadlocks: 46836, forcedRatio: 0, solCount: 0, states: 46836 },
+		// noEscape=0＝皮肉にもこの旧盤面だけは I3 を満たす（部屋が col5 の仕切りで割れており、
+		// 連絡通路への口が2つある＝石で口を塞いでも反対側から出られる）。
+		EXPECT: { L: null, greedy: false, deadlocks: 46836, forcedRatio: 0, solCount: 0, states: 46836, noEscape: 0 },
+		requireEscape: true,
 		chest: { type: 'rupee', value: 300, name: 'ルピー×300' },
 	},
 ];
@@ -337,8 +349,13 @@ function remeasure(b, a) {
 		return false;
 	};
 	const h = () => 0;   // 軸②は greedyFn が担う（既定のヒルクライムは使わない）
+	// I3（ハードロック検査・PUZZLE-DESIGN §3-2e）＝プレイヤーが画面外セル（リングの床）に
+	// 立てている状態。ここから逆に塗って「戻れない状態」を数える（noEscape）。
+	// ⚠️ 歩行だけの静的検査（旧 I2）では石による閉じ込めを見逃す∴状態空間で測る。
+	const exits = new Set(S.exitCells);
+	const escapeTest = (state) => exits.has(state.split('|')[0]);
 	// 石4は状態が桁で増える（激難＝235万）∴上限を generate 側と揃えて 900万にする。
-	return measureMetrics(S, [start], goalTest, h, { guardMax: 9000000, greedyFn });
+	return measureMetrics(S, [start], goalTest, h, { guardMax: 9000000, greedyFn, escapeTest });
 }
 
 // ── 実行 ────────────────────────────────────────────────────────────────────
@@ -355,7 +372,16 @@ for (const b of BOARDS) {
 	const v = verdict(m);
 	console.log(`── ${b.name} (${b.key}) ──`);
 	console.log(`   L=${m.L} 貪欲=${m.greedy} デッドロック=${m.deadlocks} 強制手率=${m.forcedRatio} `
-		+ `最短解本数=${m.solCount} 状態=${m.states} ${v.label}`);
+		+ `最短解本数=${m.solCount} 状態=${m.states} 脱出不能=${m.noEscape} ${v.label}`);
+	// I3（PUZZLE-DESIGN §3-2e）：どの到達状態からも画面外へ戻れること。
+	// ⚠️ 2026-08-02 の実測で判明＝**既存の帯4枚（20,0〜23,0）は満たしていない**（易=385 件ほか）。
+	//    形＝連絡通路への口の真下（例 20,0 の (3,2)）に石を押し込むと、その石は row0-2 へ
+	//    押せない（検査③）∴プレイヤーは画面内に閉じ込められる。**画面内では回復不能**。
+	//    ゲーム全体では回復できる（セーブ→ロードで `stonePositions` は破棄される＝§1-1）が、
+	//    体験としては悪い。既存4枚は出荷済み＋ユーザー判定済み∴ここでは値を EXPECT で
+	//    固定して**退行を検出**するだけにし、0 を要求するのは `requireEscape` を立てた盤面だけ。
+	if (b.requireEscape && m.noEscape) fail(`${b.name}: 画面外へ戻れない状態が ${m.noEscape} 件ある`
+		+ '（ハードロック＝倉庫番の「やり直せる詰み」ではない）＝PUZZLE-DESIGN §3-2e の I3 違反');
 	// フィクスチャは「解けないこと」が仕様＝§2 の下限（パズルとしての合格）は当てない。
 	// 逆に解けてしまったら「閉じた門の中に立って石を押せる」バグの再発なので落とす。
 	if (b.fixture) {
@@ -370,14 +396,26 @@ for (const b of BOARDS) {
 	built.push({ b, a });
 }
 
-// ⑤ 3枚が横に繋がっているか（row1 の連絡通路：右端と左端が床）
+// ⑤ 横に繋がっているか（row1 の連絡通路：右端と左端が床）。
+// ⚠️ BOARDS に載っていない座標（例＝再設計中の 24,0）は**このスクリプトの管轄外**＝隣接して
+//    いないペアを繋がり検査すると「検査したつもり」になる∴x が +1 のペアだけ検査し、
+//    飛んでいるペアは黙って通さずログに出す（欠番の画面は別途ライブマップ側で繋がっている）。
+let checked = 0;
 for (let i = 0; i + 1 < built.length; i++) {
+	const [ax, ay] = parse(built[i].b.key), [bx, by] = parse(built[i + 1].b.key);
+	if (ay !== by || bx !== ax + 1) {
+		console.log(`… ${built[i].b.key} → ${built[i + 1].b.key} は隣接していない`
+			+ '∴連絡通路の検査を飛ばした（間の座標は BOARDS 管轄外）');
+		continue;
+	}
 	const east = built[i].a.grid[1][COLS - 1], west = built[i + 1].a.grid[1][0];
 	if (east === TILE.WALL || west === TILE.WALL)
 		fail(`${built[i].b.name} → ${built[i + 1].b.name} の連絡通路が塞がっている`
 			+ '（詰んだとき隣へ出て石をリセットできない）');
+	checked++;
 }
-console.log(`✅ 連絡通路 OK（${built.map((x) => x.b.key).join(' ⇄ ')}：隣へ出て戻れば未解決の石はリセットされる）`);
+console.log(`✅ 連絡通路 OK（隣接ペア ${checked} 組を検査：${built.map((x) => x.b.key).join(' / ')}`
+	+ '：隣へ出て戻れば未解決の石はリセットされる）');
 
 if (dry) { console.log('\n--dry ∴ 書き込みなし'); process.exit(0); }
 

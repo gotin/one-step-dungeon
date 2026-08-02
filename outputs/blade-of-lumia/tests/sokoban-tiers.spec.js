@@ -39,8 +39,9 @@ const TIERS = [
 	{ name: 'sokoban_medium',  label: '中',   reward: 50,  stones: 3, expectL: 40 },
 	{ name: 'sokoban_hard',    label: '難',   reward: 100, stones: 3, expectL: 56 },
 	{ name: 'sokoban_extreme', label: '激難', reward: 200, stones: 4, expectL: 89 },
-	// ⚠️ 5枚目（24,0 sokoban_color）は帯に含めない＝パズルとして未成立（解なし）。
-	// 詳細はファイル末尾の「バグ回帰」describe。
+	// ⚠️ 合成の1枚（sokoban_color = 24,0）は帯に含めない＝再設計中（PLAN 4.7・設計は
+	// PUZZLE-DESIGN.md §3-2e）。旧盤面は解なし＝25,0（sokoban_gate_push_regression）へ
+	// 退避してバグ回帰専用にした。詳細はファイル末尾の「バグ回帰」describe。
 ];
 
 // 石数で一段上げた帯（＝激難）＝TIERS の末尾。名前で指す（帯の並びを変えても壊れない）。
@@ -356,8 +357,10 @@ test.describe('Phase 4.6 – 石パズルお試し4枚（易/中/難/激難）',
 // ⚠️ 一度は「石は開いていても門へ押し込めない」という強い規則も入れたが**撤回した**＝
 //    廊下C3（`field 15,14`）が「石でボタンを押さえて開けた潮ゲートを通して別の石を運ぶ」
 //    設計で、強い規則はこの出荷済みパズルを壊した。**開いた門への押し込みは正当**。
-// 24,0 はその回帰フィクスチャとして残す（石 (4,4) が赤ゲート (4,5) の隣＝抜け道を実機で
+// この盤面はその回帰フィクスチャとして残す（石 (4,4) が赤ゲート (4,5) の隣＝抜け道を実機で
 // 直接踏める唯一のジオメトリ）。パズルとしては解なし＝帯（TIERS）には含めない。
+// ⚠️ 2026-08-02（キュー 4.7 の第1段）＝盤面を 24,0 から **25,0**（sokoban_gate_push_regression）
+// へ退避した。24,0 は可解な合成パズルに作り直す枠＝そこで「解けたら失敗」を assert できなくなる。
 test.describe('バグ回帰 – 閉じた門の中に立って石を押せない（旧 Phase 5-1 合成盤面を流用）', () => {
 	const AIRLOCK = { red: '4,5', blue: '4,6' };   // 直列に並んだ色ゲート2枚
 
@@ -369,7 +372,7 @@ test.describe('バグ回帰 – 閉じた門の中に立って石を押せない
 	const stonesOf = (state) => state.split('|')[1];
 
 	test('Ⓐ フィクスチャのジオメトリ：色ゲート直列2枚と、その手前に石がある（静的）', () => {
-		const st = loadStage('sokoban_color');
+		const st = loadStage('sokoban_gate_push_regression');
 		expect(st.colorGates.sort(), '色ゲートは (4,5) 赤 → (4,6) 青 の直列2枚')
 			.toEqual([AIRLOCK.red, AIRLOCK.blue].sort());
 		expect(st.sd.tiles[4][5], '(4,5) は赤ゲート').toBe(TILE.GATE_RED);
@@ -387,7 +390,7 @@ test.describe('バグ回帰 – 閉じた門の中に立って石を押せない
 	});
 
 	test('Ⓑ ソルバー：この盤面は解なし（旧 L=91 はバグ依存だった）', () => {
-		const st = loadStage('sokoban_color');
+		const st = loadStage('sokoban_gate_push_regression');
 		const S = fixtureSolver(st);
 		// 「全ボタンに石を乗せて宝に立つ」を BFS で探す（修正前は L=91 で解けていた）。
 		const start = S.encode(ENTRY.r, ENTRY.c, S.initStones, 0, 0, 0);
@@ -409,7 +412,7 @@ test.describe('バグ回帰 – 閉じた門の中に立って石を押せない
 	});
 
 	test('Ⓒ ソルバー：開いた門へは押し込めるが、閉じた門の中に立つ押しは出ない', () => {
-		const st = loadStage('sokoban_color');
+		const st = loadStage('sokoban_gate_push_regression');
 		const S = fixtureSolver(st);
 		// ① 赤（color=1）で赤ゲート (4,5) は**開いている**∴石 (4,4) を押し込めるのが正当
 		//    （廊下C3 と同じ語彙＝これを禁じると出荷済みパズルが壊れる）。
@@ -429,8 +432,13 @@ test.describe('バグ回帰 – 閉じた門の中に立って石を押せない
 		expect(pushed, '床への普通の押しは今も成立する（修正が押し全体を壊していない）').toBe(true);
 	});
 
-	test('Ⓓ 色ゲートが閉じたままでも入口から全床へ歩ける（ハードロックしない）', () => {
-		const st = loadStage('sokoban_color');
+	// ⚠️ この検査は**このフィクスチャ盤面の性質**を固定するだけ＝合成パズルの設計上の不変条件
+	//    ではない（2026-08-02 ユーザー指摘で削除した旧 I2。門を閉じても全床へ歩けるなら門が
+	//    飾りになる＝パズルの条件として自己矛盾。詳細は PUZZLE-DESIGN.md §3-2d (b) の訂正）。
+	//    新パズル（24,0）のハードロック検査は §3-2e の I3＝状態空間で「全到達状態から画面外へ
+	//    戻れる（noEscape=0）」を測る側で行う∴この静的検査を新盤面に流用しない。
+	test('Ⓓ このフィクスチャは色ゲートが閉じたままでも入口から全床へ歩ける（盤面固有の性質）', () => {
+		const st = loadStage('sokoban_gate_push_regression');
 		// ゲート T は開いた状態で見る（T の奥＝宝室は解いた後にしか入れない＝閉じ込めの元に
 		// ならない）。色ゲートだけを壁として扱い、入口から全床に届くことを確認する。
 		const pass = (k) => (st.floors.has(k) || st.gates.includes(k)) && !st.colorGates.includes(k);
@@ -468,7 +476,7 @@ test.describe('バグ回帰 – 閉じた門の中に立って石を押せない
 		page.on('pageerror', (e) => errors.push(String(e)));
 
 		// (5,2) から開始＝青スイッチ (5,1) の隣。
-		await startAt(page, 'sokoban_color', { r: 5, c: 2 });
+		await startAt(page, 'sokoban_gate_push_regression', { r: 5, c: 2 });
 
 		const stoneAt = () => page.evaluate(() => {
 			const ss = window.__game.getStageState();

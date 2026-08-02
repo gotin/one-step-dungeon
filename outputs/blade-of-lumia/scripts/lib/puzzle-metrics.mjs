@@ -10,6 +10,10 @@
  *   軸② 気づきにくさ   … 貪欲法（h を増やさない手だけ選ぶ）で解けるか＝insight
  *   軸③ デッドロック D … 到達状態のうち「もうゴールへ戻れない」非ゴール状態の数
  *   軸④ 解の細さ      … 最短解の本数＋強制手率（ゴールへ進む手が1つの状態の割合）
+ *
+ * 加えて（軸ではなく**成立条件**）：
+ *   noEscape … 到達状態のうち「画面外へ戻れない」状態の数＝ハードロック検査
+ *              （PUZZLE-DESIGN.md §3-2e の I3）。`escapeTest` を渡したときだけ測る。
  */
 
 const WAY_CAP = 1e9;
@@ -24,8 +28,13 @@ const WAY_CAP = 1e9;
  *        軸②の貪欲モデルを差し替える。既定は1手単位のヒルクライム（h を使う）。
  *        倉庫番は「石の裏へ回り込む歩行」が必ず h を増やす＝1手単位では常に詰まり、
  *        軸②が空虚になる∴石パズルは押し単位のマクロ貪欲を渡す（呼び出し側で実装）。
+ * @param {(state:string)=>boolean} [escapeTest]
+ *        「画面外へ出られる状態」（プレイヤーが `S.exitCells` に立っている）か。
+ *        渡すとハードロック検査（I3）を測る＝到達状態から逆到達で塗り、塗られなかった
+ *        状態数を `noEscape` で返す。⚠️ 歩行だけの静的検査で代用しないこと
+ *        （石や色で閉じ込められる状態を見逃す＝2026-08-02 の訂正）。
  */
-export function measureMetrics(S, starts, goalTest, h, { guardMax = 6000000, greedyFn } = {}) {
+export function measureMetrics(S, starts, goalTest, h, { guardMax = 6000000, greedyFn, escapeTest } = {}) {
   // BFS：距離・逆辺・最短解本数。
   const dist = new Map();
   const rev = new Map();
@@ -74,6 +83,24 @@ export function measureMetrics(S, starts, goalTest, h, { guardMax = 6000000, gre
   const goalSet = new Set(goals);
   const deadlocks = seen.filter((st) => !canReachGoal.has(st) && !goalSet.has(st));
 
+  // 成立条件（I3）：どの到達状態からも画面外へ戻れるか。デッドロックと同じ rev グラフを
+  // 使い、脱出できる状態から逆に塗る。塗られなかった状態＝**ハードロック**（石をリセット
+  // する手段が無い＝倉庫番の「やり直せる詰み」ではなく本当の詰み）。
+  // ⚠️ ゴール状態も除外しない＝宝を取った後に出られない盤面も不可（`T` は解けば開いたまま）。
+  let noEscape = null;
+  if (escapeTest) {
+    const escaped = seen.filter(escapeTest);
+    const canEscape = new Set(escaped);
+    const eq = [...escaped];
+    let ehead = 0;
+    while (ehead < eq.length) {
+      for (const prev of rev.get(eq[ehead++]) ?? []) {
+        if (!canEscape.has(prev)) { canEscape.add(prev); eq.push(prev); }
+      }
+    }
+    noEscape = seen.reduce((n, st) => n + (canEscape.has(st) ? 0 : 1), 0);
+  }
+
   // 軸④b：強制手率。ゴールへ戻れる非ゴール状態のうち「ゴールへ進む後継が1つだけ」の割合。
   let forced = 0, branchTotal = 0;
   for (const st of seen) {
@@ -95,6 +122,7 @@ export function measureMetrics(S, starts, goalTest, h, { guardMax = 6000000, gre
     solCount: solCount >= WAY_CAP ? `≥${WAY_CAP}` : solCount,
     forcedRatio: Number(forcedRatio.toFixed(2)),
     goals: goals.length,
+    noEscape,                              // null = 未測定（escapeTest を渡していない）
   };
 }
 
