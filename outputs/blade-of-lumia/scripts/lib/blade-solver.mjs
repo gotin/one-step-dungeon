@@ -59,10 +59,14 @@ export function makeSolver(tiles, bg, linkSpec, breakDefs, litInit, { hasLadder 
   const breakCells = [];    // '!' の位置（インデックス＝bit）
   const torchCells = [];    // 'H' の位置（インデックス＝bit）
   const colorCells = [];    // 色スイッチ '['/']' の位置（[cell, 1|2]）
+  const redGateCells = [];  // 色ゲート赤 '(' の位置
+  const blueGateCells = []; // 色ゲート青 ')' の位置
   for (let r = 0; r < ROWS; r++) for (let c = 0; c < COLS; c++) {
     const ch = tiles[r][c];
     if (ch === TILE.SWITCH_RED) colorCells.push([`${r},${c}`, 1]);
     if (ch === TILE.SWITCH_BLUE) colorCells.push([`${r},${c}`, 2]);
+    if (ch === TILE.GATE_RED) redGateCells.push(`${r},${c}`);
+    if (ch === TILE.GATE_BLUE) blueGateCells.push(`${r},${c}`);
     if (ch === TILE.SWITCH) toggleCells.push(`${r},${c}`);
     if (ch === TILE.STONE) stoneKeys.push(`${r},${c}`);
     if (ch === TILE.BUTTON) buttons.push(`${r},${c}`);
@@ -70,6 +74,15 @@ export function makeSolver(tiles, bg, linkSpec, breakDefs, litInit, { hasLadder 
     if (ch === TILE.BREAKABLE_WALL) breakCells.push(`${r},${c}`);
     if (ch === TILE.TORCH) torchCells.push(`${r},${c}`);
   }
+  // 2026-08-04（再設計・PLAN 4.7）：色ゲートは閉じている間、石にもプレイヤーと同じ「壁」を
+  // 適用する（下の passableFor が石にも同じ color 判定を課す＝既に単一の通行規則）。
+  // ∴開いたゲートに乗った石を残したまま反対色へ切り替えると、その石は閉じるゲートの中に
+  // 埋まる＝この切替を**不発**にする（実エンジン game/player.js setActiveColor と同じ規則）。
+  // これで「押し込みの直線を幾何で禁止する」旧 I1/I1' は不要になる（ユーザー指摘で撤回）。
+  const colorSwitchBlocked = (toColor, stones) => {
+    const closing = toColor === 1 ? blueGateCells : redGateCells;
+    return closing.some((g) => stones.includes(g));
+  };
   if (toggleCells.length > 6) throw new Error('Y が多すぎる（ビットマスクの上限）');
 
   const initStones = stoneKeys.map((k) => k);
@@ -131,14 +144,14 @@ export function makeSolver(tiles, bg, linkSpec, breakDefs, litInit, { hasLadder 
     // 色ゲートは activeColor が一致する時だけ通れる（初期 color=0 は両方閉＝実ゲームと同じ）。
     if (ch === TILE.GATE_RED) return color === 1;
     if (ch === TILE.GATE_BLUE) return color === 2;
-    // 色スイッチ '['/']' は**踏める**（passable.js tilePassable は SWITCH_RED/BLUE を
-    // どのブランチでも落とさない＝通行可。game.js の ARRIVAL_WALL_TILES がこれらを
-    // 拒むのは「画面遷移の着地」だけでステージ内の歩行には効かない）。
+    // 色スイッチ '['/']' はプレイヤーは**踏める**が石は通せない（2026-08-04・PLAN 4.7
+    // 再設計＝押し込み経路の一部にせず「叩くための的」のまま保つ・player.js stoneDestOk
+    // と同じ規則）。これで旧 I1'（幾何での押し込み禁止）が丸ごと不要になる。
     // ⚠️ connectivity.mjs の HARD_BLOCKED は field 指標（traps/dead-edge）のベースライン
-    //    維持のため保守的に壁扱いしている∴ここで明示的に上書きしないと
+    //    維持のため保守的に壁扱いしている∴プレイヤー側はここで明示的に上書きしないと
     //    「スイッチの上に立って石を押す」立ち位置が消える（実測：合成盤面の石が1個も
     //    押せず状態 730 で解なしになった）。
-    if (ch === TILE.SWITCH_RED || ch === TILE.SWITCH_BLUE) return true;
+    if (ch === TILE.SWITCH_RED || ch === TILE.SWITCH_BLUE) return !forStone;
     // ゲート T / 潮ゲート = は openGates に載っている時だけ通れる。
     // ⚠️ T は connectivity.mjs の SOLVABLE_GATES 側＝isHardBlocked('T') は false なので、
     //    ここで明示的に開閉を見ないと「T は常に通行可」として測ってしまう
@@ -210,9 +223,10 @@ export function makeSolver(tiles, bg, linkSpec, breakDefs, litInit, { hasLadder 
 
     // 色スイッチ '['/']' を剣で叩く（隣接）。activeColor を**セット**（トグルではない）
     // ∴同じ色を叩き直す遷移は出さない（状態が増えるだけで意味が無い）。
+    // 閉じる側のゲートに石が乗っていたら不発（colorSwitchBlocked＝§3-2e 再設計）。
     for (const [dr, dc] of DIRS) {
       const hit = colorCells.find(([cell]) => cell === `${pr + dr},${pc + dc}`);
-      if (hit && hit[1] !== color) out.push(enc(pr, pc, stones, mask, broken, lit, hit[1]));
+      if (hit && hit[1] !== color && !colorSwitchBlocked(hit[1], stones)) out.push(enc(pr, pc, stones, mask, broken, lit, hit[1]));
     }
 
     // 弓: 4方向へ矢を飛ばす。WALL/未破壊'!'で止まる。途中の 'Y' に当たるとトグル。
@@ -226,7 +240,7 @@ export function makeSolver(tiles, bg, linkSpec, breakDefs, litInit, { hasLadder 
         if (yi >= 0) { out.push(enc(pr, pc, stones, mask ^ (1 << yi), broken, lit)); break; }
         const ci = colorCells.find(([cell]) => cell === `${rr},${cc}`);
         if (ci) {
-          if (ci[1] !== color) out.push(enc(pr, pc, stones, mask, broken, lit, ci[1]));
+          if (ci[1] !== color && !colorSwitchBlocked(ci[1], stones)) out.push(enc(pr, pc, stones, mask, broken, lit, ci[1]));
           break;   // 矢は色スイッチに当たって消える（貫通しない）
         }
         if (ch === TILE.WALL) break;

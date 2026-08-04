@@ -320,12 +320,27 @@ export function createPlayer(deps) {
 	// ── Phase 5-1: 色スイッチをセット（activeColor をその色に変更） ──
 	// SWITCH_RED/SWITCH_BLUE を武器で叩くと activeColor をセット。
 	// トグルではなく常に「この色に切替」＝排他制御が自然に成立する。
+	//
+	// 2026-08-04（再設計・PLAN 4.7）：色ゲートは閉じている間、石にもプレイヤーと同じ
+	// 「壁」を適用する（passable.js statefulTileClosed が両方に効く＝単一の通行規則）。
+	// ∴開いたゲートに石が乗ったまま反対色へ切り替えようとすると、その石は閉じるゲートの
+	// 中に埋まってしまう＝この切替を**不発**にする（石を先に動かさないと色を変えられない）。
+	// これで「押し込みの直線を幾何で禁止する」旧規則（I1/I1'）が丸ごと不要になる
+	// （旧規則は§3-2eの曲がり角強制が設計の自由度を奪っていたため撤回・ユーザー指摘）。
 	function setActiveColor(r, c) {
 		const stageData = getStageData();
 		const tile = stageData?.tiles[r]?.[c];
 		const color = tile === TILE.SWITCH_RED ? 'red' : tile === TILE.SWITCH_BLUE ? 'blue' : null;
 		if (!color) return false;
 		const ss = getSS(getCurrentLayer(), getStageKey());
+		const closingGateTile = color === 'red' ? TILE.GATE_BLUE : TILE.GATE_RED;
+		const stones = Object.values(ss.stonePositions ?? {});
+		for (const st of stones) {
+			if (stageData.tiles[st.r]?.[st.c] === closingGateTile) {
+				playSound('switchDenied');
+				return false;   // 閉じる側のゲートに石がある∴切替不発（石を退避させてから再挑戦）
+			}
+		}
 		ss.activeColor = color;
 		playSound('switch');
 		evaluateConditions();
@@ -432,7 +447,12 @@ export function createPlayer(deps) {
 			}
 			const stoneDestR = nextR + pdr;
 			const stoneDestC = nextC + pdc;
-			const stoneDestOk = stageData.tiles[stoneDestR]?.[stoneDestC] != null
+			const stoneDestTile = stageData.tiles[stoneDestR]?.[stoneDestC];
+			// 2026-08-04（再設計・PLAN 4.7）：色スイッチは石を通さない（プレイヤーは踏めるが石は
+			// 押し込めない＝恒久的な地形制約。ゲートの開閉状態とは無関係）。押し込み経路の一部に
+			// せず「叩くための的」のまま保つ＝旧 I1'（幾何での押し込み禁止）が丸ごと不要になる。
+			const stoneDestOk = stoneDestTile != null
+				&& stoneDestTile !== TILE.SWITCH_RED && stoneDestTile !== TILE.SWITCH_BLUE
 				&& tilePassable(stoneDestR, stoneDestC)
 				&& !Object.values(ss.stonePositions ?? {}).some(st => st.r === stoneDestR && st.c === stoneDestC);
 			// プレイヤーは押した後「石が居たセル」へ入る（下の player.x/y 代入）∴そこの**下地**が

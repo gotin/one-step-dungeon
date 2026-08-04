@@ -1431,11 +1431,14 @@ function step(frames = 1) {
 	}
 }
 
-// ── 笛を奏でる（Phase 4-2）─────────────────────────────────────
+// ── 笛を奏でる（Phase 4-2／resetStones は 2026-08-04 PLAN 4.7）───────────
 // 効果は現在ステージの stageData.fluteEffect で決まる：
 //   { type:'reveal' } → ss.flutePlayed=true → evaluateConditions() で
 //                       flutePlayed トリガーの隠しタイル（入口/アイテム）が出現
 //   { type:'warp', destId } → exitRegistry[destId] のワープポイントへ移動
+//   { type:'resetStones' } → 石パズルが色ゲート等で画面外に出られない状態に嵌ったときの
+//                       救済＝enterStage の石リセットと同じ規則をその場で発動する
+//                       （全ボタンに石が乗って解決済みなら不発＝解けたパズルは壊さない）
 //   未設定           → 何も起きない（音だけ鳴る）
 function playFlute() {
 	if (isDialog || isPaused || isGameover || isTransitioning) return;
@@ -1453,6 +1456,43 @@ function playFlute() {
 		evaluateConditions();
 		renderBoard(); renderChars();
 		pulse(fx.message ?? '🎵 音色に応えて 何かが現れた！', 2200);
+		saveGame();
+		return;
+	}
+	// 2026-08-04（PLAN 4.7）：石パズルが色ゲート等で画面外に出られない状態に嵌ったときの
+	// 救済＝ステージ移動と同じリセット（enterStage の石リセットと同じ規則）をその場で発動する。
+	// ⚠️ 全ボタンに石が乗って解決済み（stonesLocked、または未ロックでも全ボタン充足）なら
+	// リセットしない＝解けたパズルを台無しにしない（enterStage と同じ防御）。
+	if (fx.type === 'resetStones') {
+		const ss = getSS(currentLayer, stageKey);
+		if (!ss.stonePositions || Object.keys(ss.stonePositions).length === 0) {
+			pulse('🎵 音色は響いたが 特に何も起きない', 1800);
+			return;
+		}
+		if (ss.stonesLocked) {
+			pulse('🎵 音色は響いたが 石はもう動かない', 1800);
+			return;
+		}
+		const buttons = [];
+		for (let r = 0; r < (stageData?.rows ?? 0); r++) {
+			for (let c = 0; c < (stageData?.cols ?? 0); c++) {
+				if (stageData.tiles[r][c] === TILE.BUTTON) buttons.push(`${r},${c}`);
+			}
+		}
+		const allSolved = buttons.length > 0 && buttons.every((pk) => {
+			const [br, bc] = pk.split(',').map(Number);
+			return Object.values(ss.stonePositions).some((st) => st.r === br && st.c === bc);
+		});
+		if (allSolved) {
+			pulse('🎵 音色は響いたが 石はもう動かない', 1800);
+			return;
+		}
+		ss.stonePositions = {};
+		ss.activeColor = null;
+		refreshGates();
+		evaluateConditions();
+		renderBoard(); renderChars();
+		pulse(fx.message ?? '🎵 音色に応えて 石が元の位置に戻った！', 2200);
 		saveGame();
 		return;
 	}

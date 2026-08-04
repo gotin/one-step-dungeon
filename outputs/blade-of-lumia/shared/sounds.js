@@ -436,6 +436,11 @@ export function playSound(kind) {
 		tone(ctx, now + 0.05, 660, 0.08, 'triangle', 0.06);
 		tone(ctx, now + 0.12, 880, 0.10, 'sine',     0.05);
 	}
+	// 色スイッチ不発「ブブッ」（閉じる側のゲートに石が乗っていて切替が通らない・低く短い2音）
+	if (kind === 'switchDenied') {
+		tone(ctx, now,        180, 0.08, 'square', 0.06);
+		tone(ctx, now + 0.09, 140, 0.10, 'square', 0.06);
+	}
 	// 盾ブロック「カーン」
 	if (kind === 'shieldBlock') {
 		tone(ctx, now,        1200, 0.01, 'square',   0.12);

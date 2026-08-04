@@ -110,6 +110,9 @@ export function createEnemyAi(deps) {
 		const dc = sc + ndc;
 		if (dr < 0 || dr >= stageData.rows || dc < 0 || dc >= stageData.cols) return false;
 		if (!tilePassable(dr, dc)) return false;           // 壁/水/穴は押せない
+		// 2026-08-04（再設計・PLAN 4.7）：色スイッチは石を通さない（player.js と同じ規則）。
+		const destTile = stageData.tiles[dr]?.[dc];
+		if (destTile === TILE.SWITCH_RED || destTile === TILE.SWITCH_BLUE) return false;
 		// 2026-08-02: 敵は押した後 (sr,sc)＝石の元セルへ入る（enemyChase の e.y/e.x 代入）∴下地が
 		// 閉じていたら押せない（石を無視して下のタイルだけ見る＝プレイヤー側と同じ判定・片方だけ
 		// 直すと敵に押させて「閉じた門越しに石を渡す」抜け道が残る）。

@@ -123,75 +123,67 @@ const TIERS = [
 		],
 	},
 	{
-		// ⚠️⚠️ この帯（合成）は 2026-08-02 に**撤回**した。この帯を再生成しても解は出ない。
-		//   理由：下に書いた「石を色ゲート越しに渡す」手順（①②③）は**実エンジンのバグ**に
-		//   依存していた＝押し成功時プレイヤーは通行判定なしで石の元セルへ入る＝閉じた門の
-		//   中に立てる（B1）。修正後の規則は「押した後に入る石の元セルの下地が閉じていたら
-		//   押せない」∴**エアロックで石は渡せない**（24,0 は解なし＝
-		//   tests/sokoban-tiers.spec.js の回帰フィクスチャ）。
-		//   ⚠️ 石を**開いた**門へ押し込むのは正当（廊下C3 = field 15,14 がその設計）＝
-		//   一度入れた「閉じ直せる門へは開いていても押し込めない」という禁止は撤回した。
-		//   ＝色ゲートは「石の搬送路」ではなく「**プレイヤーの通路**」に使うのが正しい設計
-		//   （赤にしないと石Aの押し位置へ行けない／青にしないと石Bの押し位置へ行けない
-		//    ＝排他を順序制約にする）。再設計は PLAN 実行キューに積んである。
-		//   ⚠️ 下の「並列だと赤が飾りで L=70」という実測もバグ入りエンジンでの値∴再利用不可。
-		//   残す価値があるのは「単調な関門（潮 `=`／弓 `Y`）では難しくならない」という判断だけ。
+		// 合成（再設計・2026-08-02／PLAN 4.7・PUZZLE-DESIGN §3-2e）＝石3＋色スイッチ/色ゲート。
 		//
-		// 合成：石3＋**色スイッチ/色ゲート**（PUZZLE-DESIGN §1-4「Blade 固有の追加軸＝道具の混在」）。
+		// ⚠️ 旧「合成」テンプレ（エアロックで**石**を色ゲート越しに渡す形）は撤回した＝実エンジンの
+		//    バグ（押し成功時プレイヤーが通行判定なしで石の元セルへ入る＝閉じた門の中に立てる）に
+		//    依存していた。バグ修正（4.57）後は解なし∴回帰フィクスチャ 25,0 に退避した（旧グリッドは
+		//    そちらと git 履歴に残る）。旧設計の実測値（L=70/91 など）は**再利用しない**。
+		//    残す学び＝単調な関門（潮 `=`／弓 `Y`）では難しくならない（開くだけ＝以後放置でよい）。
 		//
-		// なぜ第2ギミックが色ゲートなのか（設計時に潮ゲート `=`／弓 `Y` を捨てた理由）：
-		//   潮ゲートと弓ゲートは「開くと通れる場所が増えるだけ」＝**単調**。最適プレイは
-		//   「最初に開けて以後放置」＝手数が数手伸びるだけで思考は増えない（＝激難で学んだ
-		//   「長いだけ」と同じ罠）。色スイッチは**その色にセット**＝赤を開けると青が閉じる
-		//   **排他＝非単調**。∴石の搬送路そのものが「今どちらの色か」に依存し、順序制約
-		//   （§6.1）と新種のデッドロックが生まれる。
+		// 再設計の機構（§3-2e）＝色ゲートは「石の搬送路」ではなく「**プレイヤーの通路**」に使う。
+		//   ・押し位置（石を目標へ押すためにプレイヤーが立つマス）を色ゲートの**奥**に置く。
+		//     赤の奥にしか石Aを目標へ向けて押す立ち位置が無く、青の奥にしか石Bのそれが無い
+		//     ＝静的に両色が必須（色ゲートを1枚壁化すれば即解なし＝I4）。
+		//   ・色は排他（赤にすると青が閉じる）∴「今どちらの押し位置に立てるか」が一意に決まり、
+		//     押す順序が色の切替順に縛られる（順序制約）。切替はスイッチまでの往復コスト付き。
+		//   ・**石は門を渡らない**（4.57 の押し規則）。門を跨ぐのはプレイヤーだけ。
 		//
-		// 幾何：col5 の仕切りで部屋を東西に分け、通れる穴は row4 の1レーンだけ。そこに
-		//   **色ゲートを直列2枚**（(4,5) 赤 `(` → (4,6) 青 `)`）並べた「エアロック」にする。
-		//   ⚠️ 穴を2箇所（上=赤・下=青）に分ける案を先に測ったら **赤を壁で塞いでも L=70 のまま**
-		//      ＝最短解は青の穴しか使わず赤が飾りだった。穴が並列だとプレイヤーは片方だけで
-		//      済ませられる∴**直列にして両方を通らせる**のが「合成」の作り方。
-		//   直列だと石1個を渡すのに**必ず赤と青の両方**を使う（実エンジンの規則から導出）：
-		//     ① 赤 … (4,3) に立ち (4,4) の石を (4,5) へ押す（押し先が赤ゲート＝赤でないと入らない）
-		//     ② 青 … (4,4) に立ち石を (4,6) へ押す（石が乗っている (4,5) が閉じているのは無関係＝
-		//             押し判定は**行き先セルだけ**を見る。実エンジン player.js:434 も同じ）
-		//     ③ 色不問 … (4,5) に立ち石を (4,7) へ押し出す
-		//   ②の後にプレイヤーが (4,5)＝閉じた赤ゲートの上に立てるのは、押し成功時に
-		//   player.js:447 が `player.x/y` を石の元セルへ**通行判定なしで**移す実装だから
-		//   （ソルバーの押し遷移も同じく行き先だけを見る＝乖離なし）。この上に居ても普通の
-		//   移動で降りられるので詰まない。
-		//   ＝排他（非単調）が「どちらの色を今開けるか」の順序制約として必ず効く。
-		//   色スイッチは各部屋に赤青1組ずつ置く（切替を安くして、難しさを「歩く距離」では
-		//   なく「順序」に寄せる）。ボタンは西1（7,1）・東2（3,10 / 7,10）。
-		//   エアロックは west→east の一方通行（(4,7) の石を西へ押すには壁 (4,8) に立つ必要がある）
-		//   ∴渡す順番を間違えると戻せない＝新種のデッドロック（軸③）。
-		//   初期 activeColor は未設定＝**両方閉**∴最初の一手が「どちらの色を開けるか」。
+		// 幾何（§3-2e の型）：
+		//   ・入口区画（中央 cols4-7・石とボタンの本体）を連絡通路 row1 と**2つの口**で繋ぐ
+		//     （(2,4)/(2,7)）＝片方を石で塞がれても反対から出られる（I3＝noEscape=0 の担保）。
+		//   ・西ポケット（赤の奥）／東ポケット（青の奥）に L 字で入る＝色ゲートを潜って
+		//     ポケットへ入り、直角に曲がって押し位置に立つ。曲げることで色ゲートの手前に
+		//     「押しの直線」を作らない（I1）＝石を門へ押し込む形が幾何的に存在しない。
+		//   ・ボタンは入口区画の隅寄り。第3ボタンは色不問（中央で普通に押す）。
+		//   ・色スイッチは押し位置まで往復が要る位置に置く（隣接に置くと切替が無コスト）。
+		//   ・宝は row8 の T の奥（既存4枚と同じ型）。
 		//
-		// ハードロックを作らない仕掛け（重要）：連絡通路への口を西 (2,2)・東 (2,8) の2つ開け、
-		//   その真下 (4,2)/(4,8) をピラーで塞ぐ。
-		//   ・プレイヤーはどちらの部屋からも通路へ出られる＝色ゲートが両方閉でも詰まない
-		//     （出て戻れば未解決の石はリセットされる＝game.js enterStage）。
-		//   ・石は通路へ押し出せない（(3,2) の石を north に押すには (4,2) に立つ必要がある）
-		//     ∴石の東西移動は色ゲート経由に限られる＝プレイヤーの自由歩行と両立する。
-		//   ・ロック成立＝全ボタンに石＝**穴の上に石は残らない**（石数＝ボタン数）∴
-		//     「解けたのに宝へ行けない」は原理的に起きない。
-		name: '合成', pick: 'maxThin', guardMax: 9000000, candCap: 500, maxMeasure: 8,
-		// 石の島（色ゲートを閉じたときの連結成分）で石数とボタン数が食い違う配置だけを採る
-		// ＝色ゲートを1度も通らずに解ける盤面を弾く（＝ギミックを飾りにしない）。
-		forceCross: true,
-		// 石は部屋（row3 以降）にだけ置く＝連絡通路 row1 に石を置く候補を弾く
-		// （通路の石は隣ステージへの継ぎ目を塞ぐ）。既存4帯は生成済み＝再現性のため無効のまま。
+		// ⚠️ 幾何は手で数えない（§3-2e）＝この盤面は assertGeometry（①②③/I1/I1'）＋測定側の
+		//    I3（noEscape=0）・I4（色ゲート1枚壁化で解なし）で弾かせて直した。石配置は逆算生成。
+		name: '合成', pick: 'maxThin', guardMax: 12000000, candCap: 600, maxMeasure: 10,
+		// 石は部屋（row3 以降）にだけ置く＝連絡通路 row1 に石を置く候補を弾く。
 		noStonesAbove: 3,
+		// v17b（2026-08-04）＝v14 は「ボタンをゲート直後のデッドエンド1マスに置くと、押し込む
+		// 石がゲートセル自体を一時的な停留点に使うしかなく、pull-BFS がゲートセルに石を置く
+		// 配置しか出さない（＝石とギミックは同居できないのでフィルタで全滅・候補0件）」という
+		// 別の穴があった。∴ゲートの先で**もう1回90度折れて**からボタンへ着くL字ポケットに
+		// 変えた（＝ゲート通過直後のセルとボタンのセルが別で、どちらも一直線には並ばない）：
+		//   ・入口区画（rows3-4・cols1-10）は連絡通路への口を2つ（(2,2)/(2,8)）持ち、口の直下
+		//     （(4,2)/(4,8)）をピラーで塞ぐ＝③（通路への押し出し禁止）。
+		//   ・row5 を隔離壁にし、赤の接近口 (5,4)・青の接近口 (5,7) だけを開ける。
+		//   ・row6 で接近口の直下が肘（(6,4)/(6,7)）＝横に折れてゲート（赤 (6,3)・青 (6,8)）へ。
+		//   ・ゲート通過後 (6,2)/(6,9) は素の床（直後で止めず更に南へ）、row7 で**もう1回折れて**
+		//     ボタン（西 (7,1)・東 (7,10)）へ着く＝ゲート単体では直線を作らず（I1）、ボタンの
+		//     手前も直線にならない。
+		//   ・色スイッチは row5 の隔離壁の別列に彫った（赤 (5,3)・青 (5,10)）。縦方向は
+		//     (4,3)/(4,10) を壁にして断ち、横方向はゲート接近口の列（4/7）とも十分離れている
+		//     ので直線を作らない＝I1'。
+		//   ・中立ボタンは入口区画中央 (3,6)。
+		//   ・宝 (8,6) は row8 の T (8,5) の奥＝row8 は T 以外すべて壁。
+		//   ・机上の歩行到達性チェック（.scratch/build17.mjs で事前確認）で
+		//     onlyRed=[6,2/6,3/7,1/7,2]（ボタン含む）・onlyBlue=[6,8/6,9/7,9/7,10]（ボタン含む）
+		//     が非空＝両方に押し位置＋ボタンが含まれる。本物の I4（動的検査）は全測定で確認する。
 		template: [
 			'############',
 			'@...........',
 			'##.#####.###',
-			'#[...#....S#',
-			'#.#..().#..#',
-			'#]...#]...[#',
-			'#.#..#..#..#',
-			'#S#..#....S#',
-			'##BT########',
+			'#.....S....#',
+			'#.##....####',
+			'###[.##.##]#',
+			'##.(.##.).##',
+			'#S.######.S#',
+			'#####TB#####',
 			'############',
 		],
 	},
@@ -257,12 +249,27 @@ function walkSet(start, pass) {
 }
 
 /**
- * 幾何の不変条件：
+ * 幾何の不変条件（PUZZLE-DESIGN §3-2e）：
  *   ① 宝はゲートを閉じたままでは到達不能（＝ゲートが本当に関門）。
  *   ② どのボタンからもゲートセルまでの歩行距離が 2 以上（足踏みで開いた瞬間に
  *      1歩でゲートへ入る「すり抜け」を封じる）。石も入口も無視した素の床で測る。
  *   ③ 石を連絡通路（row0-2）へ押し出せない（通路の石は隣ステージへの継ぎ目を塞ぐ）。
- *   ④ 色ギミックがある帯だけ：色ゲートが関門として効いていて、かつ詰ませないこと。
+ *
+ * ⚠️ 旧 I2（色ゲートを閉じても全床へ歩ける・石の島の数合わせ）は削除した
+ *    （2026-08-02 ユーザー指摘＝門を閉じても全床へ歩けるなら門は飾り＝自己矛盾）。
+ *    ハードロック回避は I3（noEscape=0・状態空間で測る）が、両色必須は I4（色ゲートを
+ *    1枚ずつ壁化して解なし）が担う＝どちらも測定側（pick 段）で当てる。
+ * ⚠️ 旧 I1/I1'（色ゲート/色スイッチへの押し込み直線を幾何で禁止）も削除した
+ *    （2026-08-04 ユーザー指摘＝曲がり角を強制する設計上の制約が窮屈すぎた）。
+ *    代わりに実エンジン／ソルバー側の通行規則そのものを直した：
+ *      ・色ゲートは閉じている間、石にもプレイヤーと同じ「壁」を適用する（既存の
+ *        passableFor が両方に color 判定を課す＝単一の通行規則）。開いたゲートに
+ *        石が乗ったまま反対色へ切り替える操作は**不発**にする（player.js setActiveColor・
+ *        blade-solver.mjs colorSwitchBlocked）。
+ *      ・色スイッチは石を通さない（プレイヤーは踏めるが石は押し込めない＝押し込み経路の
+ *        一部にせず「叩くための的」のまま保つ。player.js stoneDestOk・enemy-ai.js
+ *        tryEnemyPushStone・blade-solver.mjs passableFor が同じ規則）。
+ *    ∴石が絡む押し込み直線があっても、動作規則そのものが矛盾を起こさない＝幾何の形は自由。
  */
 function assertGeometry(t) {
 	const passable = (k) => t.floors.has(k);            // ゲート T は通行不可として扱う
@@ -290,28 +297,47 @@ function assertGeometry(t) {
 				throw new Error(`石を通路 ${g} へ押し出せる（石 ${sr},${sc} の背後 ${sr + dr},${sc + dc} が床）`);
 		}
 	}
-	if (!t.colorGates.size) return;
-	// ④-a 色ゲートを閉じると、部屋（row3 以降＝石が入れる範囲）のボタンが2つ以上の
-	//     連結成分に分かれること＝**石を渡すには色ゲートを開けるしかない**（＝飾りでない）。
-	//     ⚠️ プレイヤーは通路を回れる∴この検査は「石の搬送路」の話。プレイヤーの歩行は ④-b。
-	const roomPass = (k) => t.floors.has(k) && !t.colorGates.has(k) && parse(k)[0] >= 3;
-	const comps = [];
+}
+
+/**
+ * I4（両色必須）の軽量プロキシ検査（GEOM_ONLY で即判定・pull-BFS/全測定より前に弾く）。
+ *
+ * 本物の I4 は「石を運ぶ経路」まで含めた動的検査（色ゲートを1枚ずつ壁化して再測定し
+ * 両方とも解なしになること）で、これは全測定（数分〜十数分）を回すまで分からない。
+ * ここでは**石を無視した素の歩行到達性**だけで必要条件を先に見る：
+ *   ・各ボタンについて「両ゲート開」「赤ゲートだけ塞ぐ」「青ゲートだけ塞ぐ」の3パターンで
+ *     歩行 BFS を回し、そのボタンへの押し位置（＝ボタン自身のマス。歩いて立てるかで代用）が
+ *     赤無しでも青無しでも到達できるか見る。
+ *   ・歩いて行けない場所には押しに行けない∴「赤を塞ぐと届かない」は「赤必須の可能性がある」
+ *     の必要条件になる（十分条件ではない＝本物の I4 は必ず全測定で確認する）。
+ * 欲しい形＝赤必須ボタン（赤を塞ぐと届かない）が1個以上・青必須ボタン（青を塞ぐと届かない）が
+ * 1個以上。0個ならこの時点で I4 が成立する見込みはゼロ＝pull-BFS も全測定も回さずに次へ進める。
+ */
+function proxyCheckI4(t) {
+	if (!t.colorGates.size) return { ok: true, lines: [] };
+	const redGates = [...t.colorGates].filter((k) => t.grid[parse(k)[0]][parse(k)[1]] === '(');
+	const blueGates = [...t.colorGates].filter((k) => t.grid[parse(k)[0]][parse(k)[1]] === ')');
+	const reach = (blocked) => walkSet(t.entry, (k) => t.floors.has(k) && !blocked.has(k));
+	const seenAll = reach(new Set());
+	const seenNoRed = reach(new Set(redGates));
+	const seenNoBlue = reach(new Set(blueGates));
+	const lines = [];
+	let redCount = 0, blueCount = 0, deco = 0, unreach = 0;
 	for (const b of t.buttons) {
-		if (comps.some((s) => s.has(b))) continue;
-		comps.push(walkSet(b, roomPass));
+		const viaAll = seenAll.has(b);
+		const viaNoRed = seenNoRed.has(b);   // 赤を塞いでも届く
+		const viaNoBlue = seenNoBlue.has(b); // 青を塞いでも届く
+		let label;
+		if (!viaAll) { label = '到達不能（①②で本来弾かれるはず）'; unreach++; }
+		else if (!viaNoRed && !viaNoBlue) { label = '赤も青も塞ぐと届かない（矛盾＝要確認）'; }
+		else if (!viaNoRed) { label = '赤必須（赤を塞ぐと届かない）'; redCount++; }
+		else if (!viaNoBlue) { label = '青必須（青を塞ぐと届かない）'; blueCount++; }
+		else { label = '両方OK（色と無関係＝飾りの可能性）'; deco++; }
+		lines.push(`  [I4簡易] ボタン ${b}: ${label}`);
 	}
-	if (comps.length < 2)
-		throw new Error('色ゲートを閉じてもボタンが1つの部屋に繋がる＝色ゲートが石の関門になっていない');
-	// ④-b 色ゲートを両方閉じたままでも、入口から色ゲート以外の全床へ歩けること。
-	//     ＝どちらの部屋からも連絡通路へ出られる（出入りで石はリセット＝詰みからの復帰路）し、
-	//       どの色スイッチにも辿り着ける（＝初手で色を選べる）。ハードロック不可の保証。
-	//     ゲート T は開いた状態で見る（T の奥＝宝室は解けた後にしか入れない＝閉じ込めの元にならない）。
-	const noColor = (k) => (t.floors.has(k) || t.gates.includes(k)) && !t.colorGates.has(k);
-	const free = walkSet(t.entry, noColor);
-	for (const f of t.floors) {
-		if (t.colorGates.has(f) || free.has(f)) continue;
-		throw new Error(`色ゲートを閉じると ${f} から出られない＝ハードロックの恐れ`);
-	}
+	const ok = redCount >= 1 && blueCount >= 1;
+	lines.push(`  [I4簡易] 赤必須=${redCount} 青必須=${blueCount} 両方OK=${deco} 到達不能=${unreach} → ${ok ? 'OK（両色必須の見込みあり・全測定へ進める）' : 'NG（このままでは I4 を満たせない・幾何を直す）'}`);
+	return { ok, lines };
 }
 
 /**
@@ -522,6 +548,10 @@ function buildProblem(t, stonePlacement, wallOff) {
 
 function measurePlacement(t, stonePlacement, guardMax, wallOff) {
 	const { S, start, goalTest } = buildProblem(t, stonePlacement, wallOff);
+	// I3（PUZZLE-DESIGN §3-2e）＝プレイヤーが画面外セル（リングの床）に立てている状態から
+	// 逆に塗り「戻れない状態」を数える（noEscape）。色帯はこれを 0 に絞る（下の pick 段）。
+	const exits = new Set(S.exitCells);
+	const escapeTest = (state) => exits.has(state.split('|')[0]);
 	const man = (a, b) => Math.abs(a[0] - b[0]) + Math.abs(a[1] - b[1]);
 	const bpos = t.buttons.map(parse);
 	const [gr, gc] = parse(t.chest);
@@ -544,7 +574,9 @@ function measurePlacement(t, stonePlacement, guardMax, wallOff) {
 		// 石を目標へ近づける手を最優先（×8）、同点なら未設置の石へ歩く手を選ぶ。
 		return sum * 8 + (near === Infinity ? 0 : near);
 	};
-	return measureMetrics(S, [start], goalTest, h, { guardMax, greedyFn: makeGreedyPush(t) });
+	// 色帯だけ escapeTest を渡して I3（noEscape）を測る（石だけの帯は不要＝測定コスト節約）。
+	return measureMetrics(S, [start], goalTest, h,
+		{ guardMax, greedyFn: makeGreedyPush(t), escapeTest: t.colorGates.size ? escapeTest : undefined });
 }
 
 /**
@@ -574,15 +606,19 @@ function pickByL(list, pick) {
 const only = process.argv.slice(2)[0];
 const tiers = only ? TIERS.filter((t) => t.name === only) : TIERS;
 
+const GEOM_ONLY = !!process.env.GEOM_ONLY;   // テンプレ幾何の assert だけ回す（BFS を回さない・設計反復用）
+
 for (const tier of tiers) {
 	const t = analyze(tier.template);
 	assertGeometry(t);
 	console.log(`\n════ ${tier.name}帯（pick=${tier.pick}）════`);
 	tier.template.forEach((row, r) => console.log('  ', String(r).padStart(2), row));
 	console.log(`  ボタン ${t.buttons.join(' / ')}  ゲート ${t.gates.join(' / ')}  宝 ${t.chest}  入口 ${t.entry}`);
+	const i4proxy = proxyCheckI4(t);
+	i4proxy.lines.forEach((l) => console.log(l));
+	if (GEOM_ONLY) { console.log('  (GEOM_ONLY: assertGeometry を通過)'); continue; }
 
 	// 可解性が保証された候補だけに絞る（同じ石配置は最小引き距離の1件に代表させる）。
-	const roomLabel = t.colorGates.size ? roomComponents(t) : new Map();
 	const seenStones = new Set();
 	const cands = [];
 	for (const c of pullBFS(t)) {
@@ -591,8 +627,6 @@ for (const tier of tiers) {
 		if (c.stones.some((s) => t.colorGates.has(s) || t.colorSwitches.has(s))) continue;
 		// 通路に石を置く初期配置を弾く（帯オプション・既存4帯は再現性のため無効のまま）。
 		if (tier.noStonesAbove && c.stones.some((s) => parse(s)[0] < tier.noStonesAbove)) continue;
-		// 色ゲートを通らずに解ける配置を弾く（＝ギミックが飾りになる）。
-		if (tier.forceCross && !forcesCrossing(roomLabel, t.buttons, c.stones)) continue;
 		const sk = c.stones.join(';');
 		if (seenStones.has(sk)) continue;
 		if (!walkReachable(t, c.stones, c.player)) continue;   // 逆再生できない＝押しの解が保証されない
@@ -628,25 +662,50 @@ for (const tier of tiers) {
 	const step = Math.max(1, Math.floor(insight.length / maxMeasure));
 	const sample = insight.filter((_, i) => i % step === 0).slice(0, maxMeasure);
 	const passed = [];
-	let tooBig = 0;
+	let tooBig = 0, escFail = 0;
 	for (const cand of sample) {
 		let m;
 		try { m = measurePlacement(t, cand.stones, tier.guardMax); }
 		catch (e) { tooBig++; continue; }
 		const v = verdict(m);
-		console.log(`    · 石 ${cand.stones.join(' ')} pull${cand.pulls} L=${m.L} dl=${m.deadlocks} fr=${m.forcedRatio} sol=${m.solCount} states=${m.states} ${v.label}`);
-		if (v.pass) passed.push({ cand, m });
+		const esc = t.colorGates.size ? ` noEsc=${m.noEscape}` : '';
+		console.log(`    · 石 ${cand.stones.join(' ')} pull${cand.pulls} L=${m.L} dl=${m.deadlocks} fr=${m.forcedRatio} sol=${m.solCount} states=${m.states}${esc} ${v.label}`);
+		if (!v.pass) continue;
+		// I3（PUZZLE-DESIGN §3-2e）＝色帯は「どの到達状態からも画面外へ戻れる」（noEscape=0）を要求。
+		//   石で口を塞いで画面内に閉じ込められる盤面は不採用（新盤面は必ず 0）。
+		if (t.colorGates.size && m.noEscape) { escFail++; continue; }
+		passed.push({ cand, m });
 	}
-	console.log(`  フル測定 ${sample.length} 件（状態超過スキップ ${tooBig} 件）→ 下限クリア ${passed.length} 件`
+	console.log(`  フル測定 ${sample.length} 件（状態超過スキップ ${tooBig} 件・I3 脱出不能で除外 ${escFail} 件）→ 下限クリア ${passed.length} 件`
 		+ (passed.length ? `（L 範囲 ${Math.min(...passed.map((p) => p.m.L))}〜${Math.max(...passed.map((p) => p.m.L))}）` : ''));
-	const picked = pickByL(passed, tier.pick);
+
+	// I4（両色必須）を**下限クリア候補に対して**当てる＝色ゲートを1枚ずつ壁化して再測定し、
+	//   「どちらを塞いでも解なし」の候補だけ残す。押し位置を奥に置く設計なら静的に成り立つが、
+	//   生成された石配置が入口区画で自足してしまう場合を動的に弾く（§3-2e I4）。
+	let pool2 = passed;
+	if (t.colorGates.size) {
+		pool2 = [];
+		for (const p of passed) {
+			let bothNeeded = true;
+			for (const g of t.colorGates) {
+				try {
+					const mm = measurePlacement(t, p.cand.stones, tier.guardMax, new Set([g]));
+					if (mm.L !== null) { bothNeeded = false; break; }   // その穴を塞いでも解ける＝飾り
+				} catch { /* 状態超過は「塞ぐと重すぎ」＝実質必須寄り∴通す（下の採用時ログで再掲） */ }
+			}
+			if (bothNeeded) pool2.push(p);
+			else console.log(`    ✗ I4 未達（色ゲートの片方を塞いでも解ける）石 ${p.cand.stones.join(' ')}`);
+		}
+		console.log(`  I4（両色必須）クリア ${pool2.length}/${passed.length} 件`);
+	}
+	const picked = pickByL(pool2, tier.pick);
 	if (!picked) { console.log(`  ✗ ${tier.name}帯：下限クリア盤面が見つからず（テンプレ調整）`); continue; }
 
 	const { cand, m } = picked;
-	console.log(`  ✅ 採用 石 ${cand.stones.join(' ')}（引き${cand.pulls}）→ L=${m.L} 貪欲NG deadlock=${m.deadlocks} 強制手率=${m.forcedRatio} 最短解本数=${m.solCount} 状態=${m.states}`);
-	// 色ゲートの必須性：穴を1つずつ壁で塞いで測り直す。
-	//   L=null（解なし）＝その穴は解に必ず要る／L が出る＝その穴だけでも解ける。
-	//   両方 null なら「どちらの色でも解けるが色ゲート自体は必須」＝排他が効いている。
+	console.log(`  ✅ 採用 石 ${cand.stones.join(' ')}（引き${cand.pulls}）→ L=${m.L} 貪欲NG deadlock=${m.deadlocks} 強制手率=${m.forcedRatio} 最短解本数=${m.solCount} 状態=${m.states}`
+		+ (t.colorGates.size ? ` 脱出不能=${m.noEscape}` : ''));
+	// 色ゲートの必須性（I4 の内訳を採用盤面について再掲）：穴を1つずつ壁で塞いで測り直す。
+	//   L=null（解なし）＝その穴は解に必ず要る／L が出る＝その穴だけでも解ける（I4 で除外済みのはず）。
 	for (const g of t.colorGates) {
 		let lab;
 		try {

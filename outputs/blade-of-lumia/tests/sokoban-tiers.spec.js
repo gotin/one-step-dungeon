@@ -138,8 +138,9 @@ function shortestPlan(st) {
  * セーブを仕込んで検証ステージから開始する（＝debugMode OFF の素の状態で遊ぶ）。
  * at で開始セルを変えられる（色ゲートの検証は部屋の奥から始めたい＝入口から
  * 20 手歩かせると押しクールダウン込みでテストが長くなるだけ）。
+ * withFlute=true で笛を所持済みの状態にする（resetStones 検証用・2026-08-04）。
  */
-async function startAt(page, name, at = ENTRY) {
+async function startAt(page, name, at = ENTRY, withFlute = false) {
 	await page.addInitScript(({ k, v }) => {
 		try { localStorage.setItem(k, v); } catch { /* noop */ }
 	}, {
@@ -149,7 +150,10 @@ async function startAt(page, name, at = ENTRY) {
 				x: at.c, y: at.r,
 				hp: 6, maxHp: 6, maxHearts: 3, atk: 2, def: 0, keys: 0,
 				weapon: 'sword', shield: null, armor: null,
-				subItems: {}, activeSubItem: null, rupees: 0, triforceCount: 0,
+				// JSON.stringify は Infinity を保持できない（null になる）ので有限の大きい値にする。
+				subItems: withFlute ? { flute: { count: 999 } } : {},
+				activeSubItem: withFlute ? 'flute' : null,
+				rupees: 0, triforceCount: 0,
 			},
 			stageState: {},
 			currentLayer: TEST_LAYER,
@@ -343,153 +347,154 @@ test.describe('Phase 4.6 – 石パズルお試し4枚（易/中/難/激難）',
 	});
 });
 
-// ── バグ回帰: 閉じた門の中に立って石を押せない（2026-08-02） ─────────────────
+// ── バグ回帰: 色ゲートは石も通さない・石が乗ったゲートを閉じる切替は不発（2026-08-04 再設計）
 //
-// ユーザー報告：「石がしまってるゲートをとおれるし、そのときはプレーヤーも通れてしまう」。
-// 実体＝押し成功時、player.js は**通行判定なしで**プレイヤーを石の元セルへ移していた
-// ＝閉じた門の中に立てる。∴「開いた門へ石を押し込む → 門を閉じる → 閉じた門の中に立って
-// さらに押す」で閉じた門越しに石とプレイヤーを渡せた。色ゲートに限らず T ゲート／潮ゲート
-// `=` でも同型＝背骨のバグ。Phase 5-1 の合成パズル（24,0・旧 L=91）はこの抜け道の上に
-// 成立していた＝**盤面ごと撤回した**。
+// 旧規則（2026-08-02）は「押した後プレイヤーが入る石の元セルの下地が閉じていたら押せない」
+// という押し側だけの補正だった。曲がり角を強制する幾何制約（旧 I1/I1'）が窮屈すぎる
+// （ユーザー指摘）＝規則そのものを直した：
+//   ・色ゲートは閉じている間、石にもプレイヤーと同じ「壁」を適用する（既存の passableFor が
+//     両方に同じ color 判定を課す＝単一の通行規則）。開いたゲートに石が乗ったまま反対色へ
+//     切り替える操作は**不発**にする（player.js setActiveColor・blade-solver.mjs
+//     colorSwitchBlocked）。不発時は switchDenied 音を鳴らす。
+//   ・色スイッチは石を通さない（プレイヤーは踏めるが石は押し込めない＝押し込み経路の一部に
+//     せず「叩くための的」のまま保つ。player.js stoneDestOk・enemy-ai.js tryEnemyPushStone）。
+// これで旧 I1/I1'（幾何での押し込み直線禁止・曲がり角強制）が丸ごと不要になった＝幾何は自由。
 //
-// 修正（player.js / enemy-ai.js の押し判定＋passable.js statefulTileClosed）：
-//   ・押した後にプレイヤー（敵）が入る「石の元セル」の**下地**が閉じていたら押せない。
-// ⚠️ 一度は「石は開いていても門へ押し込めない」という強い規則も入れたが**撤回した**＝
-//    廊下C3（`field 15,14`）が「石でボタンを押さえて開けた潮ゲートを通して別の石を運ぶ」
-//    設計で、強い規則はこの出荷済みパズルを壊した。**開いた門への押し込みは正当**。
-// この盤面はその回帰フィクスチャとして残す（石 (4,4) が赤ゲート (4,5) の隣＝抜け道を実機で
-// 直接踏める唯一のジオメトリ）。パズルとしては解なし＝帯（TIERS）には含めない。
-// ⚠️ 2026-08-02（キュー 4.7 の第1段）＝盤面を 24,0 から **25,0**（sokoban_gate_push_regression）
-// へ退避した。24,0 は可解な合成パズルに作り直す枠＝そこで「解けたら失敗」を assert できなくなる。
-test.describe('バグ回帰 – 閉じた門の中に立って石を押せない（旧 Phase 5-1 合成盤面を流用）', () => {
-	const AIRLOCK = { red: '4,5', blue: '4,6' };   // 直列に並んだ色ゲート2枚
+// 盤面は 25,0（sokoban_gate_push_regression）。既存24,0が解なしだった頃の残骸を、23,0（激難）
+// の壁構造を土台に赤ゲート1枚のパズル（石3・可解・L=74）へ作り直した。ゲートは赤(4,5)の
+// 1枚だけ＝新しいポケットは作らず、既存の2つのスイッチ（(3,1)/(5,10)）を赤・青に分けた
+// （ユーザー指摘＝わざわざ別の青ゲートを新設しなくても、既存の赤ゲートに石を乗せた状態で
+// 青スイッチを叩けば「閉じる側への切替が不発」を確認できる）。青スイッチは赤ゲートを一切
+// 開けない＝押しには無関係（パズル本体の解 L=74 は不変）。
+test.describe('バグ回帰 – 色ゲートは石も通さない・不発は音で分かる（2026-08-04 再設計）', () => {
+	const RED_GATE = '4,5';
+	const RED_SWITCH = '3,1';
+	const BLUE_SWITCH = '5,10';   // パズル本体には無関係＝不発検証専用
 
-	/** フィクスチャ盤面のソルバー（実エンジンの押し規則の写し）。 */
+	/** フィクスチャ盤面のソルバー（実エンジンの通行規則の写し）。 */
 	function fixtureSolver(st) {
 		const bg = Array.from({ length: ROWS }, () => Array(COLS).fill('g'));
 		return makeSolver(st.sd.tiles, bg, [], {}, new Set(), { hasLadder: false });
 	}
 	const stonesOf = (state) => state.split('|')[1];
 
-	test('Ⓐ フィクスチャのジオメトリ：色ゲート直列2枚と、その手前に石がある（静的）', () => {
+	test('Ⓐ フィクスチャのジオメトリ：赤ゲート1枚のみ（青ゲートは無い）＋赤/青スイッチ各1個', () => {
 		const st = loadStage('sokoban_gate_push_regression');
-		expect(st.colorGates.sort(), '色ゲートは (4,5) 赤 → (4,6) 青 の直列2枚')
-			.toEqual([AIRLOCK.red, AIRLOCK.blue].sort());
+		expect(st.colorGates, '色ゲートは赤(4,5) の1枚だけ').toEqual([RED_GATE]);
 		expect(st.sd.tiles[4][5], '(4,5) は赤ゲート').toBe(TILE.GATE_RED);
-		expect(st.sd.tiles[4][6], '(4,6) は青ゲート').toBe(TILE.GATE_BLUE);
-		// 色を替えられなければゲートは開けられない＝スイッチは両色そろっている必要がある。
-		const kinds = new Set(st.colorSwitches.map((k) => {
-			const [r, c] = k.split(',').map(Number);
-			return st.sd.tiles[r][c];
-		}));
-		expect(kinds.has(TILE.SWITCH_RED), '赤スイッチがある').toBe(true);
-		expect(kinds.has(TILE.SWITCH_BLUE), '青スイッチがある').toBe(true);
-		// 抜け道を踏むための本体：石 (4,4) が赤ゲート (4,5) の**真西**に隣接している。
-		expect(st.stones, '石 (4,4) がエアロックの手前にある').toContain('4,4');
-		expect(st.sd.tiles[4][3], '(4,3) は床＝石 (4,4) を東へ押す立ち位置がある').toBe(TILE.FLOOR);
+		expect(st.sd.tiles[3][1], '(3,1) は赤スイッチ').toBe(TILE.SWITCH_RED);
+		expect(st.sd.tiles[5][10], '(5,10) は青スイッチ（赤ゲートは開けない・不発検証専用）').toBe(TILE.SWITCH_BLUE);
+		expect(st.buttons.length, 'ボタン3個（パズル本体）').toBe(3);
+		expect(st.stones.length, '石3個（パズル本体）').toBe(3);
 	});
 
-	test('Ⓑ ソルバー：この盤面は解なし（旧 L=91 はバグ依存だった）', () => {
+	test('Ⓑ ソルバー：この盤面は解ける（新規則で赤ゲートのパズルとして成立・L=74）', () => {
 		const st = loadStage('sokoban_gate_push_regression');
 		const S = fixtureSolver(st);
-		// 「全ボタンに石を乗せて宝に立つ」を BFS で探す（修正前は L=91 で解けていた）。
 		const start = S.encode(ENTRY.r, ENTRY.c, S.initStones, 0, 0, 0);
 		const seen = new Set([start]);
 		const q = [start];
+		const dist = new Map([[start, 0]]);
 		let goal = null;
 		for (let i = 0; i < q.length && goal === null; i++) {
 			for (const nx of S.nextStates(q[i])) {
 				if (seen.has(nx)) continue;
-				seen.add(nx);
+				seen.add(nx); dist.set(nx, dist.get(q[i]) + 1);
 				const f = nx.split('|');
 				if (f[0] === st.chest && f[5] === '1') { goal = nx; break; }
 				q.push(nx);
 			}
 		}
-		expect(goal, '閉じた門の中に立てない∴エアロックを抜けられず解けない').toBeNull();
-		// 状態数まで固定する＝押し規則が緩むと状態が増えるので、解の有無より早く気づける。
-		expect(seen.size, '到達状態数（修正後の実測値）').toBe(46836);
+		expect(goal, '赤ゲートを開けば全ボタンに石を乗せて宝へ届く').not.toBeNull();
+		expect(dist.get(goal), '最短手数（実測値の記録・退行検出用）').toBe(74);
 	});
 
-	test('Ⓒ ソルバー：開いた門へは押し込めるが、閉じた門の中に立つ押しは出ない', () => {
+	test('Ⓒ ソルバー：色ゲートは閉じている間、石もプレイヤーと同じ壁になる', () => {
 		const st = loadStage('sokoban_gate_push_regression');
 		const S = fixtureSolver(st);
-		// ① 赤（color=1）で赤ゲート (4,5) は**開いている**∴石 (4,4) を押し込めるのが正当
-		//    （廊下C3 と同じ語彙＝これを禁じると出荷済みパズルが壊れる）。
+		// 閉じた赤ゲート（color=0＝両方閉）へは石を押し込めない。
+		const atRedClosed = S.encode(4, 3, S.initStones, 0, 0, 0, 0, 0);
+		const intoClosed = S.nextStates(atRedClosed).some((nx) => stonesOf(nx).split(';').includes('4,5'));
+		expect(intoClosed, '閉じた赤ゲートへは石を押し込めない').toBe(false);
+		// 赤（color=1）にすれば開く＝石を押し込める（正当な操作）。
 		const atRedOpen = S.encode(4, 3, S.initStones, 0, 0, 0, 0, 1);
-		const intoOpen = S.nextStates(atRedOpen).some((nx) => stonesOf(nx).split(';')[0] === '4,5');
+		const intoOpen = S.nextStates(atRedOpen).some((nx) => stonesOf(nx).split(';').includes('4,5'));
 		expect(intoOpen, '開いた赤ゲートへは石を押し込める').toBe(true);
-		// ② ★本体：石が赤ゲート (4,5) に乗った状態で青に替える（＝赤が閉じる）と、
-		//    行き先 (4,6) は開いていても押せない＝プレイヤーが入る (4,5) が閉じているから。
-		const onRedGate = ['4,5', ...S.initStones.slice(1)];
-		const closedBehind = S.encode(4, 4, onRedGate, 0, 0, 0, 0, 2);
-		for (const nx of S.nextStates(closedBehind)) {
-			expect(stonesOf(nx), '閉じた門の中に立つ押しは遷移に出ない').not.toContain('4,6');
-		}
-		// ③ 過剰ブロックの回帰：門が絡まない普通の押し（石 (4,4) を北の床 (3,4) へ）は通る。
-		const plain = S.encode(5, 4, S.initStones, 0, 0, 0, 0, 0);
-		const pushed = S.nextStates(plain).some((nx) => stonesOf(nx).includes('3,4'));
-		expect(pushed, '床への普通の押しは今も成立する（修正が押し全体を壊していない）').toBe(true);
 	});
 
-	// ⚠️ この検査は**このフィクスチャ盤面の性質**を固定するだけ＝合成パズルの設計上の不変条件
-	//    ではない（2026-08-02 ユーザー指摘で削除した旧 I2。門を閉じても全床へ歩けるなら門が
-	//    飾りになる＝パズルの条件として自己矛盾。詳細は PUZZLE-DESIGN.md §3-2d (b) の訂正）。
-	//    新パズル（24,0）のハードロック検査は §3-2e の I3＝状態空間で「全到達状態から画面外へ
-	//    戻れる（noEscape=0）」を測る側で行う∴この静的検査を新盤面に流用しない。
-	test('Ⓓ このフィクスチャは色ゲートが閉じたままでも入口から全床へ歩ける（盤面固有の性質）', () => {
+	test('Ⓒ2 ソルバー：石が乗った色ゲートを閉じる側の切替は不発', () => {
 		const st = loadStage('sokoban_gate_push_regression');
-		// ゲート T は開いた状態で見る（T の奥＝宝室は解いた後にしか入れない＝閉じ込めの元に
-		// ならない）。色ゲートだけを壁として扱い、入口から全床に届くことを確認する。
-		const pass = (k) => (st.floors.has(k) || st.gates.includes(k)) && !st.colorGates.includes(k);
-		const seen = new Set([key(ENTRY.r, ENTRY.c)]), q = [...seen];
-		for (let i = 0; i < q.length; i++) {
-			const [r, c] = q[i].split(',').map(Number);
+		const S = fixtureSolver(st);
+		// 開いた赤ゲート (4,5) に石が乗った状態で、青スイッチ (5,10) の隣に立ち青へ切り替えを
+		// 試す（青は赤ゲートを開けない＝この切替は「赤ゲートを閉じる」ことそのもの）。
+		const stonesOnRedGate = [...S.initStones];
+		stonesOnRedGate[0] = RED_GATE;
+		const st2 = S.encode(5, 9, stonesOnRedGate.sort(), 0, 0, 0, 0, 1);   // color=red（赤ゲート開）
+		const next = S.nextStates(st2);
+		const colorChanges = next.filter((n) => n.split('|')[6] !== '1');
+		expect(colorChanges.length, '石が開いた赤ゲートに乗っている間は青への切替が不発（遷移が出ない）').toBe(0);
+		// 石が赤ゲートから離れていれば、同じ位置から普通に青へ切り替えられる。
+		const stonesClear = [...S.initStones];
+		const st3 = S.encode(5, 9, stonesClear.sort(), 0, 0, 0, 0, 1);
+		const next3 = S.nextStates(st3);
+		const colorChanges3 = next3.filter((n) => n.split('|')[6] === '2');
+		expect(colorChanges3.length, '石が赤ゲートから離れていれば青への切替は成立する').toBeGreaterThan(0);
+	});
+
+	test('Ⓓ ソルバー：色スイッチのマスへは石を絶対に押し込めない', () => {
+		const st = loadStage('sokoban_gate_push_regression');
+		const S = fixtureSolver(st);
+		for (const sw of st.colorSwitches) {
+			const [sr, sc] = sw.split(',').map(Number);
+			// スイッチの隣接4方向それぞれについて「そこに立ってスイッチへ押せる石がある」形を
+			// 総当たりし、押し遷移が一度も石をスイッチのマスへ運ばないことを確認する。
 			for (const [dr, dc] of DIRS) {
-				const nk = key(r + dr, c + dc);
-				if (seen.has(nk) || !pass(nk)) continue;
-				seen.add(nk); q.push(nk);
+				const stoneCell = `${sr - dr},${sc - dc}`;
+				const playerCell = `${sr - 2 * dr},${sc - 2 * dc}`;
+				if (!st.floors.has(stoneCell) || !st.floors.has(playerCell)) continue;
+				const stones = [...S.initStones];
+				stones[0] = stoneCell;
+				const [pr, pc] = playerCell.split(',').map(Number);
+				const stateStr = S.encode(pr, pc, stones.sort(), 0, 0, 0, 0, 1);   // color=1 で両ゲート片方は開くが無関係
+				const next = S.nextStates(stateStr);
+				const reachedSwitch = next.some((nx) => nx.split('|')[1].split(';').includes(sw));
+				expect(reachedSwitch, `${sw} へ石が押し込まれる遷移は存在しない`).toBe(false);
 			}
 		}
-		for (const f of st.floors) {
-			if (st.colorGates.includes(f)) continue;
-			expect(seen.has(f), `色ゲート閉でも ${f} から出られる`).toBe(true);
-		}
 	});
 
-	// Ⓔ 実機（この修正の本体）。盤面:
-	//   3 #[...#....S#     [=赤スイッチ(3,1)  ]=青スイッチ(5,1)/(5,6)  [=赤(5,10)
-	//   4 #.#.*().#*.#     石(4,4) / 赤ゲート(4,5) / 青ゲート(4,6) / 石(4,9)
-	//   5 #]...#]...[#
+	// Ⓔ 実機。盤面（row3-8）：
+	//   3 #[...#....S#     [=赤スイッチ(3,1)          S=ボタン(3,10)
+	//   4 #.#.*(..#*.#     石(4,4) / 赤ゲート(4,5) / 石(4,9)
+	//   5 #....#....]#     ]=青スイッチ(5,10)（パズル本体に無関係・赤ゲートを開けない）
 	//   6 #.#.*#..#..#     石(6,4)
-	// 確認するのは4つ（A→D の順に実際に歩く）：
-	//   A 青（＝赤ゲート閉）では石 (4,4) を (4,5) へ押せない（押し先が閉じている）
-	//   B 赤（＝赤ゲート開）にすれば押し込める＝**開いた門への押し込みは正当**
-	//     （廊下C3 と同じ語彙。ここを禁じた強い規則は撤回した）
-	//   C ★本体：そのまま青に戻す（赤ゲートが閉じる）と、押し先 (4,6) が開いていても
-	//     石 (4,5) を押せない＝プレイヤーが入る (4,5) が閉じているから
-	//     （修正前はここで閉じた赤ゲートの中に立って石を東へ渡せた＝ユーザー報告のバグ）
-	//   D 過剰ブロックの回帰：門が絡まない普通の押し（石 (6,4)→(5,4)）は今も通る
-	test('Ⓔ 実機：閉じた門の中に立って石を押せない（開いた門へは押せる）', async ({ page }) => {
+	//   7 #S#..#....S#     ボタン(7,1)/(7,10)
+	//   8 ##BT########
+	// 確認するのは3つ（既存の赤ゲート1枚だけで検証する＝新しいポケットは作らない）：
+	//   A 閉じた赤ゲートへは石を押し込めない（押し先が閉じている）
+	//   B 赤にすれば押し込める＝正当な操作
+	//   C ★本体：石が乗った開いた赤ゲートを、青スイッチを叩いて閉じようとしても不発
+	//     （赤は変わらないままであることを確認。音は switchDenied）
+	test('Ⓔ 実機：色ゲートは石も通さない・石が乗ったゲートを閉じる切替は不発', async ({ page }) => {
 		test.setTimeout(120_000);
 		const errors = [];
 		page.on('pageerror', (e) => errors.push(String(e)));
 
-		// (5,2) から開始＝青スイッチ (5,1) の隣。
-		await startAt(page, 'sokoban_gate_push_regression', { r: 5, c: 2 });
+		// (5,3) から開始＝赤ゲート (4,5) の押し位置 (4,3) のすぐ南、赤スイッチ (3,1)/青スイッチ
+		// (5,10) のどちらへも歩いて行ける中間地点。
+		await startAt(page, 'sokoban_gate_push_regression', { r: 5, c: 3 });
 
 		const stoneAt = () => page.evaluate(() => {
 			const ss = window.__game.getStageState();
 			return Object.entries(ss.stonePositions).map(([k, v]) => `${k}→${v.r},${v.c}`).sort().join(' ');
 		});
 		const color = () => page.evaluate(() => window.__game.getStageState().activeColor);
-		// 剣で色スイッチを叩く。入場直後は gameNow() がまだ 0 付近で
-		// `now - lastSwordTime < SWORD_COOLDOWN_MS(100)` が成立してしまい**初回の一振りが
-		// 空振りになる**（combat.js:305）∴色が変わるまで振り直す。
+		// 入場直後は gameNow() がまだ 0 付近で `now - lastSwordTime < SWORD_COOLDOWN_MS(100)` が
+		// 成立してしまい**初回の一振りが空振りになる**（combat.js:305）∴数回振り直す。
 		const hitSwitch = async (dir, want) => {
 			await page.evaluate((d) => window.__game.setHeroDir(d), dir);
 			for (let guard = 0; guard < 4; guard++) {
-				if (await color() === want) break;
+				if (want !== undefined && await color() === want) break;
 				await page.evaluate(() => window.__game.swordAttack());
 				await page.waitForTimeout(150);   // SWORD_COOLDOWN_MS=100
 			}
@@ -500,71 +505,114 @@ test.describe('バグ回帰 – 閉じた門の中に立って石を押せない
 			await page.waitForTimeout(650);   // STONE_PUSH_COOLDOWN_MS=600
 		};
 
-		expect(await playerPos(page), '(5,2) から開始').toMatchObject({ x: 2, y: 5 });
 		expect(await color(), '入場時は activeColor 未設定＝色ゲートは両方閉').toBeFalsy();
 
-		// A 青にする → 赤ゲート (4,5) は閉じる∴石 (4,4) を東へ押せない（押し先が閉じている）
-		await hitSwitch('left', 'blue');
-		expect(await color(), '青スイッチ (5,1) を剣で叩くと青').toBe('blue');
+		// A 閉じた赤ゲート (4,5) へは石 (4,4) を押し込めない（押し位置 (4,3) から東へ）。
 		await replay(page, [
-			{ dir: 'right', to: { r: 5, c: 3 }, push: false },
 			{ dir: 'up', to: { r: 4, c: 3 }, push: false },
 		]);
 		const before = await stoneAt();
 		await tryPush('right');
-		expect(await playerPos(page), '赤ゲートが閉じているので押しは失敗しプレイヤーも動かない')
-			.toMatchObject({ x: 3, y: 4 });
-		expect(await stoneAt(), '石は動いていない').toBe(before);
+		expect(await stoneAt(), '赤ゲートが閉じているので石は動かない').toBe(before);
 
-		// B 赤にする（＝赤ゲートが**開く**）→ 石は押し込める。開いた門への押し込みは正当な
-		//   語彙（廊下C3 = field 15,14 が「石でボタンを押さえて開けた潮ゲートを通して別の石を
-		//   運ぶ」設計）∴ここを禁じる強い規則は入れない（一度入れて出荷済みパズルを壊した）。
+		// B 赤スイッチ (3,1) を叩いて赤にする → 赤ゲートが開く → 石を押し込める。
+		// プレイヤーは (4,1) に立ち、北 (up) を向いて (3,1) のスイッチを叩く
+		// （スイッチのマスへ乗ってから隣を向くと別セルを叩くので、隣接床から向くのが正しい）。
 		await replay(page, [
-			{ dir: 'up', to: { r: 3, c: 3 }, push: false },
-			{ dir: 'left', to: { r: 3, c: 2 }, push: false },
+			{ dir: 'down', to: { r: 5, c: 3 }, push: false },
+			{ dir: 'left', to: { r: 5, c: 2 }, push: false },
+			{ dir: 'left', to: { r: 5, c: 1 }, push: false },
+			{ dir: 'up', to: { r: 4, c: 1 }, push: false },
 		]);
-		await hitSwitch('left', 'red');
-		expect(await color(), '赤スイッチ (3,1) を叩くと赤（青は閉じる＝排他）').toBe('red');
+		await hitSwitch('up', 'red');
+		expect(await color(), '赤スイッチを叩くと赤').toBe('red');
 		await replay(page, [
-			{ dir: 'right', to: { r: 3, c: 3 }, push: false },
-			{ dir: 'down', to: { r: 4, c: 3 }, push: false },
+			{ dir: 'down', to: { r: 5, c: 1 }, push: false },
+			{ dir: 'right', to: { r: 5, c: 2 }, push: false },
+			{ dir: 'right', to: { r: 5, c: 3 }, push: false },
+			{ dir: 'up', to: { r: 4, c: 3 }, push: false },
 			{ dir: 'right', to: { r: 4, c: 4 }, push: true },
 		]);
 		expect(await stoneAt(), '開いた赤ゲートへは石を押し込める（石 (4,4)→(4,5)）')
 			.toContain('4,4→4,5');
 
-		// C ★本体：青に戻す（＝赤ゲート (4,5) が閉じ、押し先の青ゲート (4,6) が開く）。
-		//   それでも石 (4,5) は押せない＝押した後にプレイヤーが入る (4,5) が閉じているから。
-		//   修正前はここで閉じた赤ゲートの中に立って石を東へ渡せた（＝ユーザー報告のバグ）。
+		// C ★本体：石 (4,4)→(4,5) が今まさに開いた赤ゲートに乗っている。青スイッチ (5,10) を
+		// 叩いて青（＝赤ゲートを閉じる側）へ切り替えようとしても**不発**（activeColor が red
+		// のまま・石も (4,5) に留まる）であることを確認する。row1（連絡通路）経由で右側へ回る
+		// （col5 は row3-7 が全部壁＝赤ゲート以外に左右を繋ぐ通路が無く、今そこは石で塞がれて
+		// いるので通れない）。
 		await replay(page, [
-			{ dir: 'down', to: { r: 5, c: 4 }, push: false },
-			{ dir: 'left', to: { r: 5, c: 3 }, push: false },
-			{ dir: 'left', to: { r: 5, c: 2 }, push: false },
+			{ dir: 'left', to: { r: 4, c: 3 }, push: false },
+			{ dir: 'up', to: { r: 3, c: 3 }, push: false },
+			{ dir: 'left', to: { r: 3, c: 2 }, push: false },
+			{ dir: 'up', to: { r: 2, c: 2 }, push: false },
+			{ dir: 'up', to: { r: 1, c: 2 }, push: false },
+			{ dir: 'right', to: { r: 1, c: 4 }, push: false },
+			{ dir: 'right', to: { r: 1, c: 6 }, push: false },
+			{ dir: 'right', to: { r: 1, c: 8 }, push: false },
+			{ dir: 'down', to: { r: 2, c: 8 }, push: false },
+			{ dir: 'down', to: { r: 3, c: 8 }, push: false },
+			{ dir: 'left', to: { r: 3, c: 7 }, push: false },
+			{ dir: 'down', to: { r: 4, c: 7 }, push: false },
+			{ dir: 'down', to: { r: 5, c: 7 }, push: false },
+			{ dir: 'right', to: { r: 5, c: 8 }, push: false },
+			{ dir: 'right', to: { r: 5, c: 9 }, push: false },
 		]);
-		await hitSwitch('left', 'blue');
-		expect(await color(), '青に戻すと赤ゲート (4,5) が閉じる').toBe('blue');
-		await replay(page, [
-			{ dir: 'right', to: { r: 5, c: 3 }, push: false },
-			{ dir: 'right', to: { r: 5, c: 4 }, push: false },
-			{ dir: 'up', to: { r: 4, c: 4 }, push: false },
-		]);
-		await tryPush('right');
-		expect(await stoneAt(), '閉じた赤ゲートの中に立てない∴石は (4,5) のまま')
-			.toContain('4,4→4,5');
-		expect(await playerPos(page), '押しは失敗しプレイヤーも (4,4) に留まる')
-			.toMatchObject({ x: 4, y: 4 });
+		await hitSwitch('right');
+		expect(await color(), '石が乗った開いた赤ゲートを閉じる側（青）への切替は不発').toBe('red');
+		expect(await stoneAt(), '石は (4,5) に留まったまま').toContain('4,4→4,5');
 
-		// D 過剰ブロックの回帰：門が絡まない普通の押し（石 (6,4) を北の床 (5,4) へ）は今も通る。
+		expect(errors, `page errors:\n${errors.join('\n')}`).toEqual([]);
+	});
+
+	// Ⓕ 実機：笛の resetStones（2026-08-04 新規追加）＝色ゲートに嵌ったときの救済。
+	// 未解決の状態（石が (4,4)→(4,5) へ押されているだけ・全ボタンは埋まっていない）で
+	// 笛を吹くと、石が元の位置に戻り activeColor も未設定に戻ることを確認する。
+	test('Ⓕ 実機：笛を吹くと未解決の石がリセットされる（resetStones）', async ({ page }) => {
+		test.setTimeout(60_000);
+		const errors = [];
+		page.on('pageerror', (e) => errors.push(String(e)));
+
+		await startAt(page, 'sokoban_gate_push_regression', { r: 5, c: 3 }, true);
+
+		const stoneAt = () => page.evaluate(() => {
+			const ss = window.__game.getStageState();
+			return Object.entries(ss.stonePositions).map(([k, v]) => `${k}→${v.r},${v.c}`).sort().join(' ');
+		});
+		const color = () => page.evaluate(() => window.__game.getStageState().activeColor);
+		const hitSwitch = async (dir, want) => {
+			await page.evaluate((d) => window.__game.setHeroDir(d), dir);
+			for (let guard = 0; guard < 4; guard++) {
+				if (want !== undefined && await color() === want) break;
+				await page.evaluate(() => window.__game.swordAttack());
+				await page.waitForTimeout(150);
+			}
+		};
+
+		// 赤にして石 (4,4) を (4,5) へ押し込む（未解決＝ボタンには乗っていない）。
 		await replay(page, [
-			{ dir: 'down', to: { r: 5, c: 4 }, push: false },
-			{ dir: 'left', to: { r: 5, c: 3 }, push: false },
-			{ dir: 'down', to: { r: 6, c: 3 }, push: false },
-			{ dir: 'down', to: { r: 7, c: 3 }, push: false },
-			{ dir: 'right', to: { r: 7, c: 4 }, push: false },
-			{ dir: 'up', to: { r: 6, c: 4 }, push: true },
+			{ dir: 'left', to: { r: 5, c: 2 }, push: false },
+			{ dir: 'left', to: { r: 5, c: 1 }, push: false },
+			{ dir: 'up', to: { r: 4, c: 1 }, push: false },
 		]);
-		expect(await stoneAt(), '床への普通の押しは成立する（石 (6,4)→(5,4)）')
-			.toContain('6,4→5,4');
+		await hitSwitch('up', 'red');
+		await replay(page, [
+			{ dir: 'down', to: { r: 5, c: 1 }, push: false },
+			{ dir: 'right', to: { r: 5, c: 2 }, push: false },
+			{ dir: 'right', to: { r: 5, c: 3 }, push: false },
+			{ dir: 'up', to: { r: 4, c: 3 }, push: false },
+			{ dir: 'right', to: { r: 4, c: 4 }, push: true },
+		]);
+		expect(await stoneAt(), '前提：石が (4,5) に乗っている').toContain('4,4→4,5');
+		expect(await color(), '前提：色は red').toBe('red');
+
+		await page.evaluate(() => window.__game.useSubItem());
+		await page.waitForTimeout(300);
+
+		// リセット後 stonePositions は空＝タイル配列の '*'（元の位置）がそのまま石の位置になる。
+		expect(await stoneAt(), '笛で stonePositions が空に戻る（石は元の位置へ）').toBe('');
+		expect(await color(), '笛で activeColor も未設定に戻る').toBeFalsy();
+
 		expect(errors, `page errors:\n${errors.join('\n')}`).toEqual([]);
 	});
 });
