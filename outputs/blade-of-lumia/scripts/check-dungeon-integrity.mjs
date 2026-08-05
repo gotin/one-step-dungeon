@@ -11,6 +11,16 @@
 //          (water/pit without ladder, breakable-wall without bomb, arrow-switch
 //           without bow) — and specifically whether those tiles block the room's
 //           only exit (making it a softlock)
+//   [MUST] links が全部屋で配列であること（`{}` は refreshGates を TypeError で殺す）
+//   [MUST] 鍵 'K' の総数 == 鍵扉 'D' の論理枚数（境界跨ぎの DD は1枚に畳む）
+//   [MUST] 各鍵に showConditions の関門が付いていること（床置きの鍵を禁じる）
+//   [MUST] 各鍵が「その鍵で開ける扉を通らずに」到達できること（順序＝鍵が自分の扉の奥にない）
+//
+// ⚠️ 2026-08-05（キュー5番）に上4件を追加した経緯：それまで本チェッカーは
+//    鍵の収支も links の形式も見ておらず、**dungeon_5 と dungeon_8 は入室した瞬間に
+//    TypeError で死ぬ（links:{}）のに「合格」と表示していた**。さらに D5〜D8 は
+//    鍵ゼロで鍵扉があり、ボスに到達できなかった＝進行の背骨が半分折れていた。
+//    「機械チェックが緑」は「壊れていない」を意味しない＝検査していない軸は必ず壊れる。
 //
 // Item unlock order (PLAN.md 9-1):
 //   D1: none | D2: boomerang | D3: bow | D4: candle | D5: ladder | D6: bomb
@@ -20,6 +30,7 @@
 //   node scripts/check-dungeon-integrity.mjs [dungeon_1|all]
 //
 import { readFileSync } from 'fs';
+import { bfsLayer, SOLVABLE_GATES, findEntryRoom, firstWalkable } from './lib/connectivity.mjs';
 
 const MAP_PATH = new URL('../work/blade-of-lumia.json', import.meta.url);
 const d = JSON.parse(readFileSync(MAP_PATH, 'utf8'));
@@ -43,7 +54,81 @@ const UNLOCKED_AT = {
   dungeon_8: new Set(['boomerang', 'bow', 'candle', 'bomb', 'ladder']),
   cave_1:    new Set(['boomerang', 'bow', 'candle', 'ladder', 'bomb']),
   dungeon_7: new Set(['boomerang', 'bow', 'candle', 'ladder', 'bomb', 'flute']),
+  // 最終ダンジョン。ここに来る時点で全アイテム所持（PLAN 9-1 の進行順）。
+  // ⚠️ このエントリが無いと unlocked が空集合になり「はしご必須の水で出口封鎖」を
+  //    誤検出する。そもそも dark_tower は 2026-08-05 まで検査対象から漏れていた。
+  dark_tower: new Set(['boomerang', 'bow', 'candle', 'ladder', 'bomb', 'flute']),
 };
+
+// レイヤーの種別。トライフォース8ダンジョン以外は「ボスがトライフォースを落とす」
+// 「ハートの器がある」「地図とコンパスがある」を要求してはいけない。
+//   final = dark_tower（最終ダンジョン。ボスは Z＝トライフォースを落とさない終幕役）
+//   side  = cave_1（笛の洞窟。ボスもフロアマップも持たない寄道）
+// 鍵の収支・links・関門・順序（5〜8）は種別に関係なく全レイヤーへ効かせる。
+const LAYER_KIND = { dark_tower: 'final', cave_1: 'side' };
+
+// 鍵扉 D を「物理的な1枚の扉」に畳むための隣接規則。
+//  ① 同一部屋内の4近傍で連結した D は1枚（game/player.js collectDoorRun と同じ）。
+//  ② 部屋の境界にある D は、隣室の対向セルにも D が描かれていれば同じ1枚
+//     （＝境界を跨ぐ扉は両画面に描かれる。DECISIONS.md 2026-07-29 決定2）。
+// これを畳まずに D セル数を数えると、境界扉が2枚に見えて鍵の収支が狂う。
+// 実際 PLAN.md の初期監査はこれで D4 を「鍵不足」と誤判定していた。
+function logicalDoors(stages) {
+  const parent = new Map();
+  const find = (x) => { while (parent.get(x) !== x) { parent.set(x, parent.get(parent.get(x))); x = parent.get(x); } return x; };
+  const add = (x) => { if (!parent.has(x)) parent.set(x, x); };
+  const union = (a, b) => { add(a); add(b); const ra = find(a), rb = find(b); if (ra !== rb) parent.set(ra, rb); };
+
+  const doorCells = [];
+  for (const [k, s] of Object.entries(stages)) {
+    const rows = s.rows, cols = s.cols;
+    for (let r = 0; r < rows; r++) {
+      for (let c = 0; c < cols; c++) {
+        if (tileAt(s, r, c) !== 'D') continue;
+        const id = `${k}:${r},${c}`;
+        add(id);
+        doorCells.push({ k, s, r, c, id });
+      }
+    }
+  }
+  for (const { k, s, r, c, id } of doorCells) {
+    // ① 同室4近傍
+    for (const [dr, dc] of [[-1,0],[1,0],[0,-1],[0,1]]) {
+      if (tileAt(s, r + dr, c + dc) === 'D') union(id, `${k}:${r+dr},${c+dc}`);
+    }
+    // ② 境界を跨ぐ対向セル
+    const [sx, sy] = k.split(',').map(Number);
+    const mirrors = [];
+    if (r === 0)            mirrors.push([`${sx},${sy-1}`, s.rows - 1, c]);
+    if (r === s.rows - 1)   mirrors.push([`${sx},${sy+1}`, 0, c]);
+    if (c === 0)            mirrors.push([`${sx-1},${sy}`, r, s.cols - 1]);
+    if (c === s.cols - 1)   mirrors.push([`${sx+1},${sy}`, r, 0]);
+    for (const [mk, mr, mc] of mirrors) {
+      const ms = stages[mk];
+      if (ms && tileAt(ms, mr, mc) === 'D') union(id, `${mk}:${mr},${mc}`);
+    }
+  }
+  const groups = new Map();
+  for (const { id } of doorCells) {
+    const root = find(id);
+    if (!groups.has(root)) groups.set(root, []);
+    groups.get(root).push(id);
+  }
+  return [...groups.values()];
+}
+
+/** レイヤー内の鍵 'K' セルを列挙する。 */
+function keyCells(stages) {
+  const out = [];
+  for (const [k, s] of Object.entries(stages)) {
+    for (let r = 0; r < s.rows; r++) {
+      for (let c = 0; c < s.cols; c++) {
+        if (tileAt(s, r, c) === 'K') out.push({ room: k, r, c, posKey: `${r},${c}` });
+      }
+    }
+  }
+  return out;
+}
 
 // Tiles that are impassable without a specific item (ignoring in-dungeon solvable gates)
 // Format: tile → { item, label }
@@ -63,6 +148,10 @@ function tilesOf(stage) {
 
 function tileAt(stage, r, c) {
   const row = stage.tiles[r];
+  // ⚠️ 範囲外は必ず undefined を返す。ガード無しだと String(undefined).split('')
+  //    ＝ ['u','n','d','e','f','i','n','e','d'] になり、c=2 で 'd'（＝鍵扉 D ではないが
+  //    小文字 d）等の幽霊タイルを返して隣接判定を壊す。
+  if (row === undefined || row === null) return undefined;
   return (Array.isArray(row) ? row : String(row).split(''))[c];
 }
 
@@ -148,19 +237,20 @@ function checkDungeon(layerName) {
 
   const stages = layer.stages || {};
   const allTiles = Object.values(stages).flatMap(tilesOf);
+  const kind = LAYER_KIND[layerName] ?? 'triforce';
 
   // ── 1. bossStage + triforceId ────────────────────────────────────────────
   if (!layer.bossStage) {
-    err('bossStage が未設定');
+    if (kind === 'triforce') err('bossStage が未設定');
   } else if (!stages[layer.bossStage]) {
     err(`bossStage "${layer.bossStage}" に対応するステージが存在しない`);
   }
-  if (layer.triforceId == null) {
+  if (layer.triforceId == null && kind === 'triforce') {
     err('triforceId が未設定');
   }
 
   // ── 2. Boss room contents ────────────────────────────────────────────────
-  if (layer.bossStage && stages[layer.bossStage]) {
+  if (kind === 'triforce' && layer.bossStage && stages[layer.bossStage]) {
     const bs = stages[layer.bossStage];
     if (!bs.isBossRoom) {
       err(`bossStage "${layer.bossStage}" に isBossRoom:true がない`);
@@ -180,8 +270,11 @@ function checkDungeon(layerName) {
   // ── 3. Map + Compass ─────────────────────────────────────────────────────
   const hasMap = allTiles.includes('m');
   const hasCompass = allTiles.includes('n');
-  if (!hasMap)     err('地図タイル (m) がどの部屋にも存在しない');
-  if (!hasCompass) err('コンパスタイル (n) がどの部屋にも存在しない');
+  // 寄道の洞窟（side）はフロアマップもコンパスも持たない設計なので要求しない。
+  if (kind !== 'side') {
+    if (!hasMap)     err('地図タイル (m) がどの部屋にも存在しない');
+    if (!hasCompass) err('コンパスタイル (n) がどの部屋にも存在しない');
+  }
 
   // ── 4. Late-item dependency ──────────────────────────────────────────────
   const unlocked = UNLOCKED_AT[layerName] ?? new Set();
@@ -210,13 +303,122 @@ function checkDungeon(layerName) {
     }
   }
 
+  // ── 5. links は必ず配列 ──────────────────────────────────────────────────
+  // `links: {}` は game/conditions.js refreshGates の for...of を TypeError で殺す。
+  // refreshGates は enterStage から必ず呼ばれる∴入室した瞬間に board も描かれず死ぬ。
+  // dungeon_5 / dungeon_8 が全部屋これで、まる1フェーズ気づかれなかった。
+  for (const [stageKey, stage] of Object.entries(stages)) {
+    if (stage.links === undefined) continue;
+    if (!Array.isArray(stage.links)) {
+      err(`ステージ [${stageKey}] の links が配列でない (${JSON.stringify(stage.links)})`
+        + ` ← 入室時に refreshGates が TypeError で落ちる`);
+    }
+  }
+
+  // ── 6. 鍵と鍵扉の収支 ────────────────────────────────────────────────────
+  const doors = logicalDoors(stages);
+  const keys  = keyCells(stages);
+  if (doors.length !== keys.length) {
+    const sign = keys.length - doors.length;
+    err(`鍵の収支が合わない：鍵 K ${keys.length}個 / 鍵扉 ${doors.length}枚 (${sign > 0 ? '+' : ''}${sign})`
+      + `  扉=[${doors.map(g => g.join('+')).join('] [')}]`);
+  }
+
+  // ── 7. 全ての鍵に関門（showConditions）が付いているか ───────────────────
+  // 床に置いただけの鍵は「歩いて拾うだけ」＝進行の壁として何の意味も持たない。
+  // 2026-08-05 ユーザー確定：まず killAll（部屋の敵全滅）で背骨を通し、後で強化する。
+  for (const kc of keys) {
+    const cond = stages[kc.room].showConditions?.[kc.posKey];
+    if (!cond) {
+      err(`鍵 [${kc.room}] (${kc.posKey}) に showConditions の関門が無い（床置きの鍵）`);
+    }
+  }
+
+  // ── 8. 鍵の順序：鍵ゼロから始めて全ての扉を開けきれるか ─────────────────
+  // ⚠️ 「全ての鍵が扉を1枚も通らずに取れること」では検査にならない。dark_tower は
+  //    扉①の奥に鍵②がある＝正当な段階進行（鍵①で①を開け、その先で鍵②を拾い②を開ける）。
+  //    単発 BFS で「扉ゼロ到達」を要求すると、これを softlock だと誤検出する。
+  //    ∴「開けた扉を開に足して再走する」状態探索にする。
+  //
+  // 状態＝開けた扉集合（bitmask）。遷移＝「今の鍵の在庫（到達できる K の数 − 既に
+  // 開けた扉の数）が1以上」かつ「その扉に触れる（開けると到達範囲が広がる）」とき
+  // その扉を開ける。全ての扉を開けた状態に到達できれば合格。
+  // 歩行自体は D 以外のゲート（T / 色 / 爆弾壁 / 潮 / ボス戸口）を開・はしご所持とみなす
+  // 寛容な近似なので、誤検出（実際は解けるのにエラー）は出ない側に倒れる。
+  // 鍵の持ち越しは 0 と仮定する（player.keys は実際はグローバルだが、単体で成立させる）。
+  if (doors.length > 0) {
+    const entryRoom = findEntryRoom(stages);
+    const start = entryRoom ? firstWalkable(stages[entryRoom]) : null;
+    if (!start) {
+      warn('入口部屋（field へ戻る > を持つ部屋）が特定できず、鍵の順序検査をスキップ');
+    } else if (doors.length > 12) {
+      warn(`鍵扉が ${doors.length} 枚あり状態探索を打ち切った（順序検査は未実施）`);
+    } else {
+      const openExceptDoor = new Set([...SOLVABLE_GATES].filter(t => t !== 'D'));
+      // 状態 mask の到達範囲。mask のビットが立った扉のセルを床に差し替えて歩く。
+      const reachCache = new Map();
+      const reachOf = (mask) => {
+        if (reachCache.has(mask)) return reachCache.get(mask);
+        const view = {};
+        for (const [k, s] of Object.entries(stages)) {
+          view[k] = { ...s, tiles: s.tiles.map(row => (Array.isArray(row) ? [...row] : String(row).split(''))) };
+        }
+        for (let i = 0; i < doors.length; i++) {
+          if (!(mask & (1 << i))) continue;
+          for (const cellId of doors[i]) {
+            const [room, pos] = cellId.split(':');
+            const [r, c] = pos.split(',').map(Number);
+            view[room].tiles[r][c] = '.';
+          }
+        }
+        const res = bfsLayer(view, { stage: entryRoom, row: start.row, col: start.col }, {
+          withLadder: true, openTiles: openExceptDoor, followMapEnters: true,
+        });
+        reachCache.set(mask, res.reachedCells);
+        return res.reachedCells;
+      };
+      const popcount = (m) => { let n = 0; while (m) { n += m & 1; m >>= 1; } return n; };
+      const ALL = (1 << doors.length) - 1;
+
+      let best = 0, bestReach = reachOf(0);
+      const seen = new Set([0]);
+      const queue = [0];
+      while (queue.length) {
+        const mask = queue.shift();
+        const reached = reachOf(mask);
+        if (popcount(mask) > popcount(best)) { best = mask; bestReach = reached; }
+        if (mask === ALL) { best = ALL; bestReach = reached; break; }
+        const inStock = keys.filter(kc => reached.has(`${kc.room}:${kc.r},${kc.c}`)).length - popcount(mask);
+        if (inStock <= 0) continue;
+        for (let i = 0; i < doors.length; i++) {
+          if (mask & (1 << i)) continue;
+          const next = mask | (1 << i);
+          if (seen.has(next)) continue;
+          // 「触れる扉」だけ開けられる＝開けて到達範囲が増えないなら手が届いていない。
+          if (reachOf(next).size <= reached.size) continue;
+          seen.add(next);
+          queue.push(next);
+        }
+      }
+
+      if (best !== ALL) {
+        const stuck = doors.filter((_, i) => !(best & (1 << i))).map(g => g.join('+'));
+        const gotKeys = keys.filter(kc => bestReach.has(`${kc.room}:${kc.r},${kc.c}`)).length;
+        err(`鍵の順序が詰む：鍵ゼロから開けられる扉は ${popcount(best)}/${doors.length} 枚まで`
+          + `（その時点で取れる鍵 ${gotKeys}/${keys.length}個）`
+          + `  開けられない扉=[${stuck.join('] [')}]`);
+      }
+    }
+  }
+
   return issues;
 }
 
 // ── CLI ──────────────────────────────────────────────────────────────────────
 const target = process.argv[2] || 'all';
 const dungeons = target === 'all'
-  ? Object.keys(d.layers).filter(l => l.startsWith('dungeon') || l === 'cave_1')
+  // dark_tower も対象（2026-08-05 まで漏れていた＝最終ダンジョンだけ無検査だった）。
+  ? Object.keys(d.layers).filter(l => l.startsWith('dungeon') || l === 'cave_1' || l === 'dark_tower')
   : [target];
 
 let totalErrors = 0;

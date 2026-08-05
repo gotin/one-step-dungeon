@@ -803,6 +803,10 @@ export function createPlayer(deps) {
 		if (tile !== TILE.ALTAR) _lastAltarPosKey = null;
 
 		if (tile === TILE.KEY && !ss.pickedKeys.has(posKey)) {
+			// 未出現（showConditions 未達）の鍵は踏んでも拾えない＝描画とガードを一致させる。
+			// これが無いと「見えない鍵の上を歩いて取る」抜け道で関門が無意味になる。
+			const keyCond = stageData.showConditions?.[posKey];
+			if (keyCond && !ss.conditionsMet.has(posKey)) return;
 			ss.pickedKeys.add(posKey); player.keys++;
 			playSound('key'); pulse('🗝 鍵を手に入れた！');
 			renderBoard(); renderChars(); updateHud(); saveGame(); return;
@@ -979,6 +983,11 @@ export function createPlayer(deps) {
 		const ss     = getSS(getCurrentLayer(), getStageKey());
 		const posKey = `${r},${c}`;
 		if (ss.pickedKeys.has(posKey)) return null;
+		// 未出現（showConditions 未達）のアイテムはブーメランでも運べない。
+		// handleTileEvent 側だけ塞いでここを開けておくと、関門を解かずに
+		// ブーメランで鍵だけ持ち帰れてしまう（＝関門が無意味になる）。
+		const itemCond = stageData.showConditions?.[posKey];
+		if (itemCond && !ss.conditionsMet.has(posKey)) return null;
 
 		let info = null;
 		if (tile === TILE.KEY) {

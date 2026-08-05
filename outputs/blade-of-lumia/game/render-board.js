@@ -162,6 +162,11 @@ export function createRenderBoard(deps) {
 			return;
 		}
 		if (tile === TILE.KEY && !ss.pickedKeys.has(posKey)) {
+			// 鍵も showConditions（killAll 等）で出現を遅らせられる＝「関門を解いて得る鍵」。
+			// 他のアイテム（itemMap / ITEM_FALLBACK_TILES 側）は既にこの扱いだが、KEY は
+			// ここで早期 return するため長らく条件を無視していた（キュー5番で是正）。
+			const keyCond = stageData.showConditions?.[posKey];
+			if (keyCond && !ss.conditionsMet.has(posKey)) return;
 			const cv = makeSprite('key', 'key', true);
 			if (cv) { cv.classList.add('item-sprite'); cellEl.appendChild(cv); }
 			return;

@@ -88,7 +88,12 @@ export function createConditions(d) {
 
 		// ② links 連動：潮ゲート = と、ボタンの無いステージの Y→T を担う。
 		//    ボタンがあるステージの T は①が担うので links の T エントリはスキップ（競合回避）。
-		for (const link of stageData.links ?? []) {
+		// ⚠️ `stageData.links ?? []` では守れない：links が空オブジェクト `{}` のとき
+		//    `{} ?? []` は `{}` を返し、for...of が TypeError で落ちる。dungeon_5/dungeon_8 は
+		//    実際に全部屋が `links:{}` で、refreshGates が enterStage から必ず呼ばれるため
+		//    **入室した瞬間に board も描画されずゲームが死んでいた**（キュー5番で発覚）。
+		//    データ側は `[]` に正したうえで、ここでも形式を問わず落ちないようにする。
+		for (const link of (Array.isArray(stageData.links) ? stageData.links : [])) {
 			const [gr, gc] = link.gateId.split(',').map(Number);
 			if (hasButtons && stageData.tiles[gr]?.[gc] === TILE.GATE) continue;
 			const on = ss.switchToggles?.has(link.switchId) || ss.switchStates?.[link.switchId] === true;

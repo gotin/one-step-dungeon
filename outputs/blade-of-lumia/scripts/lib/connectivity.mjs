@@ -216,9 +216,21 @@ const parse = (key) => key.split(',').map(Number);
  *
  * @param {object} stages  layer.stages map ("sx,sy" -> {rows,cols,tiles,...})
  * @param {{stage:string,row:number,col:number}} start
- * @param {{blockedRoom?:string, withLadder?:boolean}} [opts]
+ * @param {{blockedRoom?:string, withLadder?:boolean,
+ *          openTiles?:Set<string>, followMapEnters?:boolean}} [opts]
  *   withLadder: treat 1-cell-wide WATER/PIT bridge cells as walkable (mirrors
  *   having the ladder item). Used to verify D5-style "ladder crossing" gates.
+ *
+ *   openTiles: SOLVABLE_GATES chars to treat as ALREADY OPEN (walk through them).
+ *   followMapEnters: also traverse '>' ワープ（mapEnters の id⇔destId ペア）.
+ *
+ *   ⚠️ この2つは既定 off ＝ 既存の呼び出し（field の dead-edge 計測など）の意味を
+ *      一切変えない。追加した理由は鍵の順序検査（2026-08-05 キュー5番）：
+ *      「鍵は、その鍵で開ける扉 D を通らずに到達できるか」を測るには
+ *      **D だけを閉じ、他のゲートは全部開いた** 歩行が必要だった。
+ *      全ゲート閉（既定）では、鍵部屋への正規ルートが爆弾壁 '!' や潮ゲートを
+ *      通る dungeon_6 型のダンジョンで誤検出する。ワープ追跡が必要な理由も同じで、
+ *      D6/D8 の鍵部屋 [1,0] は '>' 経由でしか繋がっていない。
  * @returns {{
  *   reachedRooms:Set<string>, reachedCells:Set<string>,
  *   deadEdges:Array<object>, entrances:Set<string>
@@ -229,7 +241,20 @@ const parse = (key) => key.split(',').map(Number);
  *   footprint refusal ("見えない壁") use footprintBlockedEdges().
  */
 export function bfsLayer(stages, start, opts = {}) {
-  const { blockedRoom = null, withLadder = false } = opts;
+  const { blockedRoom = null, withLadder = false,
+          openTiles = null, followMapEnters = false } = opts;
+  // openTiles に入っているゲート文字は「開いている」＝壁でも障害でもない扱いにする。
+  const isOpened = (ch) => openTiles !== null && openTiles.has(ch);
+  // '>' ワープの行き先表：mapEnters の id → その '>' が置かれたセル。
+  // 対向は destId で引く（データ上 id/destId は相互に指し合う）。
+  const warpById = new Map();
+  if (followMapEnters) {
+    for (const [k, s] of Object.entries(stages)) {
+      for (const [pk, me] of Object.entries(s.mapEnters || {})) {
+        if (me?.id) warpById.set(me.id, { room: k, pos: pk });
+      }
+    }
+  }
   const reachedRooms = new Set();
   const reachedCells = new Set();
   const entrances = new Set();
@@ -244,7 +269,7 @@ export function bfsLayer(stages, start, opts = {}) {
     if (!s) return false;
     if (r < 0 || c < 0 || r >= s.rows || c >= s.cols) return false;
     const ch = cellTile(s, r, c);
-    if (isBlocked(ch)) {
+    if (isBlocked(ch) && !isOpened(ch)) {
       // With ladder: a 1-cell-wide WATER/PIT bridge is passable.
       if (withLadder && LADDER_OVER.has(ch) &&
           isLadderBridgeCell(s.tiles, s.rows, s.cols, r, c, s.bgTiles)) {
@@ -310,6 +335,13 @@ export function bfsLayer(stages, start, opts = {}) {
     if (ch === TILE.MAP_ENTER) {
       const me = s.mapEnters?.[`${r},${c}`];
       if (me?.destId) entrances.add(me.destId);
+      // followMapEnters: 同一レイヤー内に対向の '>' があればワープ先を歩行に含める。
+      // 別レイヤーへ出る入口（ダンジョン出口など）は warpById に無いので何もしない。
+      if (followMapEnters && me?.destId && warpById.has(me.destId)) {
+        const dst = warpById.get(me.destId);
+        const [dr, dc] = parse(dst.pos);
+        enq(dst.room, dr, dc);
+      }
     }
     const [sx, sy] = parse(k);
     enq(k, r - 1, c); enq(k, r + 1, c); enq(k, r, c - 1); enq(k, r, c + 1);

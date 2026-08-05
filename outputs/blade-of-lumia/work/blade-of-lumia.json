@@ -91959,7 +91959,11 @@
           "npcData": {},
           "shopData": {},
           "mapEnters": {},
-          "showConditions": {},
+          "showConditions": {
+            "8,9": {
+              "trigger": "killAll"
+            }
+          },
           "breakableWalls": {},
           "isBossRoom": false,
           "signData": {}
@@ -95968,7 +95972,11 @@
           "npcData": {},
           "shopData": {},
           "mapEnters": {},
-          "showConditions": {},
+          "showConditions": {
+            "7,6": {
+              "trigger": "killAll"
+            }
+          },
           "breakableWalls": {},
           "isBossRoom": false,
           "floorItems": {},
@@ -98949,7 +98957,11 @@
           "npcData": {},
           "shopData": {},
           "mapEnters": {},
-          "showConditions": {},
+          "showConditions": {
+            "7,6": {
+              "trigger": "killAll"
+            }
+          },
           "breakableWalls": {},
           "isBossRoom": false,
           "floorItems": {},
@@ -100435,7 +100447,11 @@
           "npcData": {},
           "shopData": {},
           "mapEnters": {},
-          "showConditions": {},
+          "showConditions": {
+            "5,8": {
+              "trigger": "killAll"
+            }
+          },
           "breakableWalls": {},
           "isBossRoom": false,
           "signData": {}
@@ -108724,7 +108740,7 @@
             ]
           ],
           "bgTiles": {},
-          "links": {},
+          "links": [],
           "enemyDirs": {},
           "chestContents": {
             "7,3": {
@@ -108897,7 +108913,7 @@
             ]
           ],
           "bgTiles": {},
-          "links": {},
+          "links": [],
           "enemyDirs": {},
           "chestContents": {
             "4,6": {
@@ -109062,7 +109078,7 @@
             ]
           ],
           "bgTiles": {},
-          "links": {},
+          "links": [],
           "enemyDirs": {},
           "chestContents": {
             "5,5": {
@@ -109226,7 +109242,7 @@
             ]
           ],
           "bgTiles": {},
-          "links": {},
+          "links": [],
           "enemyDirs": {},
           "chestContents": {},
           "floorItems": {
@@ -109326,7 +109342,7 @@
               ".",
               ".",
               ".",
-              ".",
+              "K",
               ".",
               ".",
               ".",
@@ -109390,7 +109406,7 @@
             ]
           ],
           "bgTiles": {},
-          "links": {},
+          "links": [],
           "enemyDirs": {},
           "chestContents": {
             "2,9": {
@@ -109410,6 +109426,9 @@
           "mapEnters": {},
           "showConditions": {
             "6,5": {
+              "trigger": "killAll"
+            },
+            "5,7": {
               "trigger": "killAll"
             }
           },
@@ -109574,7 +109593,7 @@
             "3,9": "~",
             "3,10": "~"
           },
-          "links": {},
+          "links": [],
           "enemyDirs": {},
           "chestContents": {},
           "floorItems": {},
@@ -109740,7 +109759,7 @@
             ]
           ],
           "bgTiles": {},
-          "links": {},
+          "links": [],
           "enemyDirs": {},
           "chestContents": {
             "4,5": {
@@ -109912,7 +109931,7 @@
             ]
           ],
           "bgTiles": {},
-          "links": {},
+          "links": [],
           "enemyDirs": {},
           "chestContents": {},
           "floorItems": {},
@@ -110084,7 +110103,7 @@
             ]
           ],
           "bgTiles": {},
-          "links": {},
+          "links": [],
           "enemyDirs": {},
           "chestContents": {
             "4,5": {
@@ -110248,7 +110267,7 @@
             ]
           ],
           "bgTiles": {},
-          "links": {},
+          "links": [],
           "enemyDirs": {},
           "chestContents": {},
           "floorItems": {},
@@ -110407,7 +110426,7 @@
             ]
           ],
           "bgTiles": {},
-          "links": {},
+          "links": [],
           "enemyDirs": {},
           "chestContents": {},
           "floorItems": {},
@@ -110566,7 +110585,7 @@
             ]
           ],
           "bgTiles": {},
-          "links": {},
+          "links": [],
           "enemyDirs": {},
           "chestContents": {},
           "floorItems": {},
@@ -110725,7 +110744,7 @@
             ]
           ],
           "bgTiles": {},
-          "links": {},
+          "links": [],
           "enemyDirs": {},
           "chestContents": {},
           "floorItems": {
@@ -110889,7 +110908,7 @@
             ]
           ],
           "bgTiles": {},
-          "links": {},
+          "links": [],
           "enemyDirs": {},
           "chestContents": {},
           "floorItems": {},
@@ -111048,7 +111067,7 @@
             ]
           ],
           "bgTiles": {},
-          "links": {},
+          "links": [],
           "enemyDirs": {},
           "chestContents": {},
           "floorItems": {},
@@ -111380,7 +111399,7 @@
             ]
           ],
           "bgTiles": {},
-          "links": {},
+          "links": [],
           "enemyDirs": {},
           "chestContents": {},
           "floorItems": {
@@ -111544,7 +111563,7 @@
             ]
           ],
           "bgTiles": {},
-          "links": {},
+          "links": [],
           "enemyDirs": {},
           "chestContents": {},
           "floorItems": {
@@ -111708,7 +111727,7 @@
             ]
           ],
           "bgTiles": {},
-          "links": {},
+          "links": [],
           "enemyDirs": {},
           "chestContents": {},
           "floorItems": {
@@ -111872,7 +111891,7 @@
             ]
           ],
           "bgTiles": {},
-          "links": {},
+          "links": [],
           "enemyDirs": {},
           "chestContents": {},
           "floorItems": {
@@ -112152,7 +112171,7 @@
               ".",
               ".",
               ".",
-              ".",
+              "K",
               ".",
               ".",
               ".",
@@ -112236,6 +112255,9 @@
           },
           "showConditions": {
             "6,5": {
+              "trigger": "killAll"
+            },
+            "5,7": {
               "trigger": "killAll"
             }
           },
@@ -115777,6 +115799,9 @@
           "showConditions": {
             "6,5": {
               "trigger": "killAll"
+            },
+            "5,7": {
+              "trigger": "killAll"
             }
           },
           "breakableWalls": {},
@@ -115861,7 +115886,7 @@
               ".",
               ".",
               ".",
-              ".",
+              "K",
               ".",
               ".",
               ".",
@@ -119786,7 +119811,7 @@
             "8,3": "~",
             "8,4": "~"
           },
-          "links": {},
+          "links": [],
           "enemyDirs": {},
           "chestContents": {
             "7,7": {
@@ -119901,7 +119926,7 @@
               ".",
               ".",
               ".",
-              ".",
+              "K",
               ".",
               ".",
               ".",
@@ -119965,7 +119990,7 @@
             ]
           ],
           "bgTiles": {},
-          "links": {},
+          "links": [],
           "enemyDirs": {},
           "chestContents": {},
           "floorItems": {
@@ -119985,6 +120010,9 @@
           },
           "showConditions": {
             "6,5": {
+              "trigger": "killAll"
+            },
+            "5,7": {
               "trigger": "killAll"
             }
           },
@@ -120138,7 +120166,7 @@
             ]
           ],
           "bgTiles": {},
-          "links": {},
+          "links": [],
           "enemyDirs": {},
           "chestContents": {
             "3,5": {
@@ -120307,7 +120335,7 @@
             "3,2": "~",
             "3,9": "~"
           },
-          "links": {},
+          "links": [],
           "enemyDirs": {},
           "chestContents": {},
           "floorItems": {},
@@ -120486,7 +120514,7 @@
             ]
           ],
           "bgTiles": {},
-          "links": {},
+          "links": [],
           "enemyDirs": {},
           "chestContents": {},
           "floorItems": {},
@@ -120645,7 +120673,7 @@
             ]
           ],
           "bgTiles": {},
-          "links": {},
+          "links": [],
           "enemyDirs": {},
           "chestContents": {},
           "floorItems": {},
@@ -120804,7 +120832,7 @@
             ]
           ],
           "bgTiles": {},
-          "links": {},
+          "links": [],
           "enemyDirs": {},
           "chestContents": {},
           "floorItems": {},
@@ -120963,7 +120991,7 @@
             ]
           ],
           "bgTiles": {},
-          "links": {},
+          "links": [],
           "enemyDirs": {},
           "chestContents": {
             "4,5": {
@@ -121131,7 +121159,7 @@
             "7,5": "~",
             "7,6": "~"
           },
-          "links": {},
+          "links": [],
           "enemyDirs": {},
           "chestContents": {
             "2,5": {
@@ -121306,7 +121334,7 @@
             "5,5": "~",
             "5,6": "~"
           },
-          "links": {},
+          "links": [],
           "enemyDirs": {},
           "chestContents": {},
           "floorItems": {},
@@ -121465,7 +121493,7 @@
             ]
           ],
           "bgTiles": {},
-          "links": {},
+          "links": [],
           "enemyDirs": {},
           "chestContents": {},
           "floorItems": {},
@@ -121624,7 +121652,7 @@
             ]
           ],
           "bgTiles": {},
-          "links": {},
+          "links": [],
           "enemyDirs": {},
           "chestContents": {},
           "floorItems": {},
@@ -121788,7 +121816,7 @@
             "6,8": "~",
             "6,9": "~"
           },
-          "links": {},
+          "links": [],
           "enemyDirs": {},
           "chestContents": {},
           "floorItems": {},
@@ -121958,7 +121986,7 @@
             "3,9": "~",
             "3,10": "~"
           },
-          "links": {},
+          "links": [],
           "enemyDirs": {},
           "chestContents": {},
           "floorItems": {},
@@ -122134,7 +122162,7 @@
             "4,9": "~",
             "5,8": "~"
           },
-          "links": {},
+          "links": [],
           "enemyDirs": {},
           "chestContents": {},
           "floorItems": {},
@@ -122297,7 +122325,7 @@
             "6,5": "~",
             "6,6": "~"
           },
-          "links": {},
+          "links": [],
           "enemyDirs": {},
           "chestContents": {
             "1,8": {
@@ -122467,7 +122495,7 @@
             ]
           ],
           "bgTiles": {},
-          "links": {},
+          "links": [],
           "enemyDirs": {},
           "chestContents": {
             "4,5": {
@@ -122633,7 +122661,7 @@
             ]
           ],
           "bgTiles": {},
-          "links": {},
+          "links": [],
           "enemyDirs": {},
           "chestContents": {
             "4,5": {
@@ -122803,7 +122831,7 @@
             "6,7": "~",
             "6,8": "~"
           },
-          "links": {},
+          "links": [],
           "enemyDirs": {},
           "chestContents": {
             "4,5": {
@@ -122972,7 +123000,7 @@
             "7,2": "~",
             "7,9": "~"
           },
-          "links": {},
+          "links": [],
           "enemyDirs": {},
           "chestContents": {
             "2,8": {
@@ -123142,7 +123170,7 @@
             ]
           ],
           "bgTiles": {},
-          "links": {},
+          "links": [],
           "enemyDirs": {},
           "chestContents": {
             "3,5": {
@@ -123308,7 +123336,7 @@
             ]
           ],
           "bgTiles": {},
-          "links": {},
+          "links": [],
           "enemyDirs": {},
           "chestContents": {},
           "floorItems": {},
@@ -123470,7 +123498,7 @@
             "6,3": "~",
             "6,4": "~"
           },
-          "links": {},
+          "links": [],
           "enemyDirs": {},
           "chestContents": {},
           "floorItems": {},
@@ -125576,7 +125604,7 @@
             ]
           ],
           "bgTiles": {},
-          "links": {},
+          "links": [],
           "enemyDirs": {},
           "chestContents": {},
           "floorItems": {},
