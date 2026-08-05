@@ -312,15 +312,23 @@ export function createCombat(deps) {
 		const slashY = player.y + ndy * 0.7;
 		showSwordSlashFloat(slashX, slashY);
 
-		// Phase 4-5 ①：前方がスイッチ（SWITCH）なら剣でトグルする（矢と同じ作用）。
-		// ボタン（BUTTON）はモーメンタリ式なので剣では反応しない＝役割分離。
-		if (tile === TILE.SWITCH && deps.toggleSwitch) {
-			deps.toggleSwitch(tr, tc);
+		// Phase 4-5 ①／5-1：スイッチ判定は「0.5 だけ重なった手前セル」も対象にする。
+		// tr/tc（前方1マス固定オフセット）は、プレイヤーが半セルだけそのセルへ入り込んだ
+		// 状態だと本来のセルを1マス飛び越えてしまう（狭い通路では1歩離れて向きだけ変える
+		// 動きができず、0.5セル重なった位置から叩くしかないケースが実在する＝ユーザー報告）。
+		// 手前（0.5 先＝プレイヤーに近い側）を先に見て、無ければ従来の tr/tc（1マス先）を見る
+		// ＝両方がスイッチのときは近い方を優先する（ユーザー指定の優先順）。
+		const isSwitchTile = (t) => t === TILE.SWITCH || t === TILE.SWITCH_RED || t === TILE.SWITCH_BLUE;
+		const nearR = toTileRow(player.y + ndy * 0.5);
+		const nearC = toTileCol(player.x + ndx * 0.5);
+		const nearTile = stageData.tiles[nearR]?.[nearC];
+		const [swR, swC, swTile] = isSwitchTile(nearTile) ? [nearR, nearC, nearTile] : [tr, tc, tile];
+		if (swTile === TILE.SWITCH && deps.toggleSwitch) {
+			deps.toggleSwitch(swR, swC);
 			return;
 		}
-		// Phase 5-1：前方が色スイッチなら剣で activeColor をセット。
-		if ((tile === TILE.SWITCH_RED || tile === TILE.SWITCH_BLUE) && deps.setActiveColor) {
-			deps.setActiveColor(tr, tc);
+		if ((swTile === TILE.SWITCH_RED || swTile === TILE.SWITCH_BLUE) && deps.setActiveColor) {
+			deps.setActiveColor(swR, swC);
 			return;
 		}
 

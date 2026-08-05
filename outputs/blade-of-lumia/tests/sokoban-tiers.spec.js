@@ -39,8 +39,9 @@ const TIERS = [
 	{ name: 'sokoban_medium',  label: '中',   reward: 50,  stones: 3, expectL: 40 },
 	{ name: 'sokoban_hard',    label: '難',   reward: 100, stones: 3, expectL: 56 },
 	{ name: 'sokoban_extreme', label: '激難', reward: 200, stones: 4, expectL: 89 },
-	// ⚠️ 合成の1枚（sokoban_color = 24,0）は帯に含めない＝再設計中（PLAN 4.7・設計は
-	// PUZZLE-DESIGN.md §3-2e）。旧盤面は解なし＝25,0（sokoban_gate_push_regression）へ
+	// ⚠️ 合成の1枚（sokoban_color = 26,0・2026-08-05 ユーザーがeditorで直接配置して確定）は
+	// 帯に含めない＝実測 L=106 で23,0を超えるが専用テストは未整備（次タスク）。
+	// 旧24,0（バグ依存で解なしだった当時の盤面）は25,0（sokoban_gate_push_regression）へ
 	// 退避してバグ回帰専用にした。詳細はファイル末尾の「バグ回帰」describe。
 ];
 
@@ -132,6 +133,97 @@ function shortestPlan(st) {
 		steps.push({ dir, to: { r: r1, c: c1 }, push: stones0 !== stones1 });
 	}
 	return steps;
+}
+
+/**
+ * shortestPlan の合成パズル版（26,0）。色スイッチを叩く手を含む＝道具（弓）で色を
+ * 変える手を許すと L が過小に測られる（blade-solver.mjs ヘッダ参照）ので
+ * `noTools:true` で剣叩き隣接限定の解を探す（記録 L=106 と一致する解＝実測どおり）。
+ * 戻り値は {type:'move', dir, to, push} と {type:'hit', dir, color} の混在列。
+ */
+function shortestPlanColor(st) {
+	const bg = Array.from({ length: ROWS }, () => Array(COLS).fill('g'));
+	const linkSpec = (st.sd.links ?? []).map((l) => [l.switchId, [l.gateId]]);
+	const S = makeSolver(st.sd.tiles, bg, linkSpec, {}, new Set(), { hasLadder: false, noTools: true });
+	const start = S.encode(ENTRY.r, ENTRY.c, S.initStones, 0, 0, 0);
+	const goalTest = (state) => {
+		const f = state.split('|');
+		return f[0] === st.chest && f[5] === '1';
+	};
+	const prev = new Map([[start, null]]);
+	const q = [start];
+	let goal = null;
+	for (let i = 0; i < q.length && goal === null; i++) {
+		for (const nx of S.nextStates(q[i])) {
+			if (prev.has(nx)) continue;
+			prev.set(nx, q[i]);
+			if (goalTest(nx)) { goal = nx; break; }
+			q.push(nx);
+		}
+	}
+	expect(goal, '道具なしでも最短解が見つかる（＝剣叩きだけで解ける盤面）').toBeTruthy();
+	const chain = [];
+	for (let s = goal; s !== null; s = prev.get(s)) chain.push(s);
+	chain.reverse();
+	const findSwitchDir = (r, c, color) => {
+		const want = color === 1 ? TILE.SWITCH_RED : TILE.SWITCH_BLUE;
+		for (const [dir, dr, dc] of [['up', -1, 0], ['down', 1, 0], ['left', 0, -1], ['right', 0, 1]]) {
+			if (st.sd.tiles[r + dr]?.[c + dc] === want) return dir;
+		}
+		return null;
+	};
+	const steps = [];
+	for (let i = 1; i < chain.length; i++) {
+		const prevF = chain[i - 1].split('|');
+		const curF = chain[i].split('|');
+		const [r0, c0] = prevF[0].split(',').map(Number);
+		const [r1, c1] = curF[0].split(',').map(Number);
+		if (r0 === r1 && c0 === c1) {
+			const color = Number(curF[6]);
+			const dir = findSwitchDir(r0, c0, color);
+			expect(dir, `色スイッチが隣接する（${r0},${c0}・color=${color}）`).toBeTruthy();
+			steps.push({ type: 'hit', dir, color });
+		} else {
+			expect(Math.abs(r1 - r0) + Math.abs(c1 - c0), '1手＝1セル移動').toBe(1);
+			const dir = r1 < r0 ? 'up' : r1 > r0 ? 'down' : c1 < c0 ? 'left' : 'right';
+			steps.push({ type: 'move', dir, to: { r: r1, c: c1 }, push: prevF[1] !== curF[1] });
+		}
+	}
+	return steps;
+}
+
+/**
+ * shortestPlanColor が返す move/hit 混在列を実際の入力経路で再生する。
+ * move は replay と同じ規則。hit は setHeroDir→swordAttack で色スイッチを叩く
+ * （入場直後は SWORD_COOLDOWN_MS=100 に食われて空振りするので activeColor が
+ * 目的の色になるまで振り直す＝Ⓔ 実機テストの hitSwitch と同じ規則）。
+ */
+async function replayMixed(page, steps) {
+	const color = () => page.evaluate(() => window.__game.getStageState().activeColor);
+	const wantColor = (c) => (c === 1 ? 'red' : 'blue');
+	for (let i = 0; i < steps.length; i++) {
+		const s = steps[i];
+		if (s.type === 'hit') {
+			await page.evaluate((d) => window.__game.setHeroDir(d), s.dir);
+			const want = wantColor(s.color);
+			for (let guard = 0; guard < 4 && await color() !== want; guard++) {
+				await page.evaluate(() => window.__game.swordAttack());
+				await page.waitForTimeout(150);
+			}
+			expect(await color(), `手順${i + 1}（色スイッチ${s.dir}）で ${want} になる`).toBe(want);
+			continue;
+		}
+		await page.evaluate((d) => window.__game.setHeroDir(d), s.dir);
+		for (let guard = 0; guard < 6; guard++) {
+			const p = await playerPos(page);
+			if (p.x === s.to.c && p.y === s.to.r) break;
+			await page.evaluate((d) => window.__game.movePlayer(d), s.dir);
+			await page.waitForTimeout(s.push ? 650 : 30);
+		}
+		const p = await playerPos(page);
+		expect(`${p.y},${p.x}`, `手順${i + 1}（${s.dir}${s.push ? '・石押し' : ''}）で ${s.to.r},${s.to.c} へ`)
+			.toBe(`${s.to.r},${s.to.c}`);
+	}
 }
 
 /**
@@ -344,6 +436,121 @@ test.describe('Phase 4.6 – 石パズルお試し4枚（易/中/難/激難）',
 			expect(result.allStones.open, `ロック後はゲート ${g} が開いたまま`).toContain(g);
 		}
 		expect(errors, `page errors:\n${errors.join('\n')}`).toEqual([]);
+	});
+});
+
+// ── 26,0（sokoban_color・合成パズル）専用の実機再生テスト（PLAN 4.7）───────────
+//
+// TIERS（4.6 の4枚）とは別枠：石4＋色ゲート2枚＋色スイッチ2個の合成盤面。2026-08-05に
+// ユーザーが editor で直接配置して確定した盤面（PLAN 4.7 (B)）。ソルバー実測＝L=106・
+// 貪欲NG・デッドロック=2,653,649・強制手率0.18・最短解本数320・状態3,272,882（23,0の
+// L=89を質で超える）。I4（両色必須）は静的に確認済み（PLAN参照）。
+//
+// noEscape=343,552（非ゼロ＝色ゲートで詰む状態がある）＝25,0（sokoban_gate_push_regression）
+// と同種の正常な倉庫番の詰み（バグではない）＝笛の resetStones で回復できる前提を採用し、
+// このタスクで 26,0 にも fluteEffect:{type:'resetStones'} を付与した（PLAN の申し送り事項）。
+test.describe('Phase 4.7 – 合成パズル 26,0（sokoban_color）', () => {
+	const STAGE = 'sokoban_color';
+
+	test('静的：色ゲート2枚＋色スイッチ2個＋ゲートT・色ゲート閉のままでは宝に届かない', () => {
+		const st = loadStage(STAGE);
+		expect(st.stones.length, '石4個').toBe(4);
+		expect(st.colorGates.length, '色ゲート2枚').toBe(2);
+		expect(st.colorSwitches.length, '色スイッチ2個').toBe(2);
+		expect(st.gates.length, 'ゲートT 1個以上').toBeGreaterThan(0);
+		expect(st.chest, '宝がある').toBeTruthy();
+		expect(st.sd.chestContents?.[st.chest]?.value, '宝の中身が入っている').toBe(200);
+
+		// ゲートT・色ゲートの両方を閉じたまま（＝初期状態）歩ける床だけを見る。
+		// loadStage の floors は色ゲートのセルも含む（閉判定は BFS 側で除外する必要がある）。
+		const blocked = new Set([...st.gates, ...st.colorGates]);
+		const seen = new Set([key(ENTRY.r, ENTRY.c)]), q = [...seen];
+		for (let i = 0; i < q.length; i++) {
+			const [r, c] = q[i].split(',').map(Number);
+			for (const [dr, dc] of DIRS) {
+				const nk = key(r + dr, c + dc);
+				if (seen.has(nk) || !st.floors.has(nk) || blocked.has(nk)) continue;
+				seen.add(nk); q.push(nk);
+			}
+		}
+		expect(seen.has(st.chest), 'ゲート閉のままでは宝に届かない').toBe(false);
+	});
+
+	test('実機：初期状態はゲートT・色ゲート両方閉じている（pageerror 0）', async ({ page }) => {
+		const errors = [];
+		page.on('pageerror', (e) => errors.push(String(e)));
+		const st = loadStage(STAGE);
+		await startAt(page, STAGE);
+
+		const state = await page.evaluate(() => window.__game.getState());
+		expect(state.currentLayer, '検証レイヤーで始まる').toBe(TEST_LAYER);
+		expect(state.stageKey, 'seed したステージで始まる').toBe(stageKey(STAGE));
+
+		const ss = await page.evaluate(() => window.__game.getStageState());
+		for (const g of st.gates) expect(ss.openGates, `ゲート ${g} は閉じている`).not.toContain(g);
+		expect(ss.activeColor, '色は未設定＝色ゲートは両方閉').toBeFalsy();
+		expect(ss.stonesLocked, '初期状態はロックされていない').toBeFalsy();
+		expect(errors, `page errors:\n${errors.join('\n')}`).toEqual([]);
+	});
+
+	test('実機：ソルバーの最短手順（道具なし・剣叩きのみ）を再生すると宝まで取れる', async ({ page }) => {
+		test.setTimeout(180_000);
+		const errors = [];
+		page.on('pageerror', (e) => errors.push(String(e)));
+
+		const st = loadStage(STAGE);
+		const steps = shortestPlanColor(st);
+		expect(steps.length, '手数が下限（L=106）を満たす').toBeGreaterThanOrEqual(100);
+
+		await startAt(page, STAGE);
+		await replayMixed(page, steps);
+
+		const ss = await page.evaluate(() => window.__game.getStageState());
+		for (const b of st.buttons) {
+			const onStone = Object.values(ss.stonePositions).some((s) => `${s.r},${s.c}` === b);
+			expect(onStone, `ボタン ${b} に石が乗っている`).toBe(true);
+		}
+		for (const g of st.gates) expect(ss.openGates, `ゲート ${g} が開く`).toContain(g);
+		expect(ss.stonesLocked, '全ボタンを石で埋めたのでロックされる').toBe(true);
+
+		const p = await playerPos(page);
+		expect(p.rupees, '宝の報酬（ルピー200）が入る').toBe(200);
+		expect(errors, `page errors:\n${errors.join('\n')}`).toEqual([]);
+	});
+
+	// 笛の resetStones（このタスクで 26,0 に追加）＝色ゲートに嵌ったときの詰み救済。
+	// 石を1個だけ動かした未解決状態（全ボタンは埋まっていない）で笛を吹くと、
+	// 石が元の位置に戻り activeColor も未設定に戻ることを確認する（25,0 Ⓕ と同型）。
+	test('実機：笛を吹くと未解決の石配置がリセットされる（resetStones）', async ({ page }) => {
+		test.setTimeout(60_000);
+		const errors = [];
+		page.on('pageerror', (e) => errors.push(String(e)));
+		const st = loadStage(STAGE);
+
+		await startAt(page, STAGE, ENTRY, true);
+
+		// 石(3,3)を左に1回押すだけ（全ボタンには乗らない＝未解決のまま）。
+		await replay(page, [
+			{ dir: 'down', to: { r: 2, c: 2 }, push: false },
+			{ dir: 'down', to: { r: 3, c: 2 }, push: false },
+			{ dir: 'right', to: { r: 3, c: 3 }, push: true },
+		]);
+
+		const stoneAt = () => page.evaluate(() => {
+			const ss = window.__game.getStageState();
+			return Object.entries(ss.stonePositions).map(([k, v]) => `${k}→${v.r},${v.c}`).sort().join(' ');
+		});
+		const before = await stoneAt();
+		expect(before, '前提：石が1個だけ動いている（未解決）').not.toBe('');
+
+		await page.evaluate(() => window.__game.useSubItem());
+		await page.waitForTimeout(300);
+
+		const ss = await page.evaluate(() => window.__game.getStageState());
+		expect(Object.keys(ss.stonePositions).length, '笛で stonePositions が空に戻る（石は元の位置へ）').toBe(0);
+		expect(ss.stonesLocked, '未解決状態なのでロックはされていない').toBeFalsy();
+		expect(errors, `page errors:\n${errors.join('\n')}`).toEqual([]);
+		void st;
 	});
 });
 
