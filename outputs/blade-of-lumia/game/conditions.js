@@ -140,7 +140,12 @@ export function createConditions(d) {
 			if (cond.trigger === 'killAll')    met = enemies.length === 0;
 			else if (cond.trigger === 'flutePlayed') met = ss.flutePlayed === true;  // Phase 4-2: 笛を吹いた
 			else if (cond.trigger === 'bushBurned') met = ss.bushBurned === true;  // Phase 4-3: ロウソクで茂みを燃やした
-			else if (cond.trigger === 'switchOn') met = ss.switchStates?.[cond.switchId] === true;
+			// ⚠️ スイッチの ON は2系統ある：ボタン 'S' は switchStates（踏む/石を乗せる）、
+			//    スイッチ 'Y' は switchToggles（武器・矢で叩く）。上の refreshGates と
+			//    同じ論理で**両方**を見る。片方だけだと 'Y' を指した関門が永久に開かない。
+			else if (cond.trigger === 'switchOn') {
+				met = ss.switchToggles?.has(cond.switchId) === true || ss.switchStates?.[cond.switchId] === true;
+			}
 			else if (cond.trigger === 'wallBroken') met = ss.brokenWalls?.has(cond.wallId);
 			else if (cond.trigger === 'hasItem') met = !!player.subItems[cond.item] || player.weapon === cond.item;
 			else if (cond.trigger === 'allSwitchesOn') {

@@ -38,7 +38,7 @@ const ROOM  = '1,0';
 const KEY_R = 5, KEY_C = 7;
 
 /** セーブを仕込んで「つづきから」で入る＝debugMode OFF の素の状態。 */
-async function startAt(page, { row, col, boomerang = false }) {
+async function startAt(page, { row, col, boomerang = false, layer = LAYER, room = ROOM, dir = 'right' }) {
   const save = JSON.stringify({
     player: {
       x: col, y: row,
@@ -49,9 +49,9 @@ async function startAt(page, { row, col, boomerang = false }) {
       rupees: 0, triforceCount: 0,
     },
     stageState: {},
-    currentLayer: LAYER,
-    stageKey: ROOM,
-    heroDir: 'right',
+    currentLayer: layer,
+    stageKey: room,
+    heroDir: dir,
   });
   await page.addInitScript(({ k, v }) => {
     try { localStorage.setItem(k, v); } catch { /* noop */ }
@@ -112,22 +112,41 @@ test.describe('Blade of Lumia – ダンジョンの鍵（進行の背骨）', (
     }
   });
 
-  test('① 全ての鍵に killAll 関門が付いている（床置きの鍵ゼロ）', () => {
-    let total = 0;
+  test('① 10個の鍵すべてに、その部屋の型どおりの関門が付いている', () => {
+    // キュー5番では全部 killAll で背骨を通し、5.5 で1部屋ずつ本物の型へ差し替える
+    // （型の割り当ては PUZZLE-DESIGN.md §7-4）。**差し替え済みの部屋はその型を固定し、
+    // 未着手の部屋は killAll のまま**であることを明示的に縛る＝どちらの方向の
+    // 事故（強化の取り消し／未着手部屋の放置）も検出する。
+    // 5.5c 以降、部屋を1つ強化するたびにこの表を1行書き換える。
+    const EXPECTED = {
+      'dungeon_1/1,0':  'killAll',      // A 戦闘型
+      'dungeon_2/0,1':  'torchesLit',   // B 道具型①（ブーメランで炎を運ぶ・5.5b 済）
+      'dungeon_3/1,0':  'killAll',      // → B 道具型②（弓）5.5c
+      'dungeon_4/1,0':  'killAll',      // → C 倉庫番① 5.5e
+      'dungeon_5/1,0':  'killAll',      // → B 道具型③（はしご）5.5d
+      'dungeon_6/1,0':  'killAll',      // → C+B（倉庫番＋爆弾壁）5.5f
+      'dungeon_7/1,0':  'killAll',      // → A 戦闘型（強化）5.5h
+      'dungeon_8/1,0':  'killAll',      // → C 倉庫番② 5.5g
+      'dark_tower/1,2': 'killAll',      // → A 戦闘型（強化）5.5h
+      'dark_tower/4,3': 'killAll',      // → D 複合 5.5i
+    };
+    const found = {};
     for (const layerName of DUNGEONS) {
       for (const [stageKey, stage] of Object.entries(map.layers[layerName].stages)) {
         for (let r = 0; r < stage.rows; r++) {
           for (let c = 0; c < stage.cols; c++) {
             if (stage.tiles[r]?.[c] !== 'K') continue;
-            total++;
+            const id = `${layerName}/${stageKey}`;
             const cond = stage.showConditions?.[`${r},${c}`];
-            expect(cond?.trigger, `${layerName} [${stageKey}] (${r},${c}) の鍵の関門`).toBe('killAll');
+            expect(cond?.trigger, `${id} (${r},${c}) の鍵の関門`).toBe(EXPECTED[id]);
+            found[id] = (found[id] ?? 0) + 1;
           }
         }
       }
     }
     // 鍵が消える方向の回帰（K を消せば「全ての鍵に関門」は自明に真になる）も防ぐ。
-    expect(total, 'ダンジョン内の鍵の総数').toBe(10);
+    expect(Object.keys(found).sort()).toEqual(Object.keys(EXPECTED).sort());
+    expect(Object.values(found).reduce((a, b) => a + b, 0), 'ダンジョン内の鍵の総数').toBe(10);
   });
 
   test('② 敵を倒す前：鍵は描画されず、踏んでも拾えない', async ({ page }) => {
@@ -189,6 +208,139 @@ test.describe('Blade of Lumia – ダンジョンの鍵（進行の背骨）', (
       return window.__game.getState().player.keys;
     });
     expect(after).toBe(1);
+  });
+
+  // ── ③ D2 の鍵部屋＝道具型①「ブーメランで炎を運ぶ」（キュー 5.5b） ────────
+  //
+  // 盤面（dungeon_2 [0,1]）：L(6,4) だけが initLitTorches で点灯。A(6,6) は L と
+  // 同じ行、B(4,6) は A と同じ列だが L とは行も列も共有しない。ブーメランは
+  // 「通過した点灯 H から炎を拾い、消えた H を通ると点火する」＝直線上しか運べない
+  // ので、L→A を点けてから投げ位置を変えて A→B を点ける2段手順になる。
+  // 全点灯（torchesLit）で鍵 (5,5) が出現する。
+  const D2 = { layer: 'dungeon_2', room: '0,1', key: { r: 5, c: 5 } };
+  const LIT0 = '6,4', TORCH_A = '6,6', TORCH_B = '4,6';
+
+  /** D2 の鍵部屋に入り、外周の追跡敵を消してから実時間ループを止める。 */
+  async function startD2(page, { row, col, boomerang = true }) {
+    await startAt(page, { row, col, boomerang, layer: D2.layer, room: D2.room });
+    await page.evaluate(() => {
+      for (const e of window.__game.getEnemies()) window.__game.dealDamage(e.id, 9999);
+    });
+    await page.waitForFunction(() => window.__game.getEnemies().length === 0, null, { timeout: 15_000 });
+    await page.evaluate(() => window.__game.pause());   // 手動 step だけで進める
+  }
+
+  /** movePlayer 1回＝0.5セル ∴ n セル進むには 2n 回。 */
+  async function walkCells(page, dir, cells) {
+    await walk(page, dir, cells * 2);
+  }
+
+  /** dir を向いてブーメランを投げ、targetPk が点灯するまで tick を進める。 */
+  async function throwAt(page, dir, targetPk) {
+    const res = await page.evaluate(({ d, pk }) => {
+      window.__game.setHeroDir(d);
+      window.__game.useSubItem();
+      for (let i = 0; i < 40; i++) {
+        window.__game.step(1);
+        const lit = window.__game.getStageState().litTorches ?? [];
+        if (lit.includes(pk)) return { ok: true, ticks: i + 1, lit };
+      }
+      return { ok: false, lit: window.__game.getStageState().litTorches ?? [] };
+    }, { d: dir, pk: targetPk });
+    return res;
+  }
+
+  test('③ D2：盤面の幾何が「2投・順序強制」を保っている', () => {
+    // 実機リプレイ（次のテスト）は「解ける」ことしか示さない。1投で両方点いてしまう
+    // 配置に戻る劣化（＝段数1へ落ちる）を止めるのは幾何の不変条件なので別に縛る。
+    const stage = map.layers[D2.layer].stages[D2.room];
+    const torches = [];
+    for (let r = 0; r < stage.rows; r++) {
+      for (let c = 0; c < stage.cols; c++) if (stage.tiles[r]?.[c] === 'H') torches.push(`${r},${c}`);
+    }
+    expect(torches.sort()).toEqual([LIT0, TORCH_B, TORCH_A].sort());
+    expect(stage.initLitTorches, '火元は1本だけ').toEqual([LIT0]);
+
+    const [lr, lc] = LIT0.split(',').map(Number);
+    const [ar, ac] = TORCH_A.split(',').map(Number);
+    const [br, bc] = TORCH_B.split(',').map(Number);
+    // A は火元と同一直線上＝1投で運べる。
+    expect(ar === lr || ac === lc, 'A が火元と同じ行/列にない＝1投目が成立しない').toBe(true);
+    // B は火元と行も列も共有しない＝A を先に点けないと運べない（順序が強制される）。
+    expect(br === lr || bc === lc, 'B が火元と同じ行/列にある＝連鎖が強制されない').toBe(false);
+    // B は A と同一直線上＝連鎖の2投目が成立する。
+    expect(br === ar || bc === ac, 'B が A と同じ行/列にない＝2投目が成立しない').toBe(true);
+  });
+
+  test('③ D2：敵を全滅させても鍵は出ない（関門は敵ではなく炎）', async ({ page }) => {
+    const errors = [];
+    page.on('pageerror', e => errors.push(e.message));
+    await startD2(page, { row: 6, col: 3 });
+
+    const ss = await page.evaluate(() => window.__game.getStageState());
+    expect(ss.conditionsMet ?? [], '敵全滅では torchesLit を満たさない').not.toContain(
+      `${D2.key.r},${D2.key.c}`);
+    expect(ss.litTorches ?? [], '火元だけが点いている状態で始まる').toEqual([LIT0]);
+    const sprite = await page.locator(
+      `.cell[data-row="${D2.key.r}"][data-col="${D2.key.c}"] .item-sprite`).count();
+    expect(sprite, '鍵はまだ描かれない').toBe(0);
+    expect(errors).toEqual([]);
+  });
+
+  test('③ D2：ブーメラン2投で炎を連鎖させると鍵が出現し、拾える', async ({ page }) => {
+    const errors = [];
+    page.on('pageerror', e => errors.push(e.message));
+    await startD2(page, { row: 6, col: 3 });
+
+    // 1投目：(6,3) から右へ。射線 (6,4)(6,5)(6,6) ＝ 火元 L から A へ運ぶ。
+    const first = await throwAt(page, 'right', TORCH_A);
+    expect(first.ok, `1投目で ${TORCH_A} が点かない（litTorches=${first.lit}）`).toBe(true);
+
+    // この時点では B が消えている＝関門は未成立。
+    let ss = await page.evaluate(() => window.__game.getStageState());
+    expect(ss.litTorches.sort()).toEqual([LIT0, TORCH_A].sort());
+    expect(ss.conditionsMet ?? []).not.toContain(`${D2.key.r},${D2.key.c}`);
+
+    // 2投目：投げ位置を (7,6) へ移して上へ。射線 (6,6)(5,6)(4,6) ＝ A から B へ。
+    await walkCells(page, 'down', 1);    // (6,3) → (7,3)
+    await walkCells(page, 'right', 3);   // (7,3) → (7,6)
+    const pos = await page.evaluate(() => window.__game.getState().player);
+    expect([Math.round(pos.y), Math.round(pos.x)], '2投目の立ち位置').toEqual([7, 6]);
+
+    const second = await throwAt(page, 'up', TORCH_B);
+    expect(second.ok, `2投目で ${TORCH_B} が点かない（litTorches=${second.lit}）`).toBe(true);
+
+    // 全点灯 → 鍵が出現して描画される。
+    ss = await page.evaluate(() => window.__game.getStageState());
+    expect(ss.litTorches.sort()).toEqual([LIT0, TORCH_A, TORCH_B].sort());
+    expect(ss.conditionsMet ?? [], 'torchesLit 成立で鍵が出現する').toContain(
+      `${D2.key.r},${D2.key.c}`);
+    const sprite = await page.locator(
+      `.cell[data-row="${D2.key.r}"][data-col="${D2.key.c}"] .item-sprite`).count();
+    expect(sprite, '鍵が描画される').toBe(1);
+
+    // 拾いに行く（(6,6) はかがり火＝通れないので (7,5) 経由で北上）。
+    await walkCells(page, 'left', 1);    // (7,6) → (7,5)
+    await walkCells(page, 'up', 2);      // (7,5) → (5,5) ＝ 鍵
+    const st = await page.evaluate(() => window.__game.getState());
+    expect(st.player.keys, '鍵を拾えた').toBe(1);
+    expect(errors).toEqual([]);
+  });
+
+  test('③ D2：剣ではかがり火に火が点かない（ブーメラン無しでは解けない）', async ({ page }) => {
+    // D2 時点でロウソク（D4 の道具）は未所持なので、点火手段はブーメランだけ。
+    // 「隣で剣を振れば点く」抜け道が無いことを実機で確かめる。
+    await startD2(page, { row: 6, col: 5, boomerang: false });
+
+    const lit = await page.evaluate(() => {
+      for (const d of ['left', 'right', 'up', 'down']) {
+        window.__game.setHeroDir(d);
+        window.__game.swordAttack();
+        window.__game.step(6);
+      }
+      return window.__game.getStageState().litTorches ?? [];
+    });
+    expect(lit, '剣を振っても火元以外は点かない').toEqual([LIT0]);
   });
 
   test('② dungeon_5 に入って落ちない（links:{} の入室即死クラッシュの回帰）', async ({ page }) => {

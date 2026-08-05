@@ -15,6 +15,8 @@
 //   [MUST] 鍵 'K' の総数 == 鍵扉 'D' の論理枚数（境界跨ぎの DD は1枚に畳む）
 //   [MUST] 各鍵に showConditions の関門が付いていること（床置きの鍵を禁じる）
 //   [MUST] 各鍵が「その鍵で開ける扉を通らずに」到達できること（順序＝鍵が自分の扉の奥にない）
+//   [MUST] 各鍵の関門トリガーの対象が部屋に実在し、その時点の所持アイテムで成立し得ること
+//          （例: torchesLit なのに 'H' が無い部屋＝鍵が永久に出現しない）
 //
 // ⚠️ 2026-08-05（キュー5番）に上4件を追加した経緯：それまで本チェッカーは
 //    鍵の収支も links の形式も見ておらず、**dungeon_5 と dungeon_8 は入室した瞬間に
@@ -31,6 +33,7 @@
 //
 import { readFileSync } from 'fs';
 import { bfsLayer, SOLVABLE_GATES, findEntryRoom, firstWalkable } from './lib/connectivity.mjs';
+import { isEnemyTile } from '../shared/enemies.js';
 
 const MAP_PATH = new URL('../work/blade-of-lumia.json', import.meta.url);
 const d = JSON.parse(readFileSync(MAP_PATH, 'utf8'));
@@ -408,6 +411,102 @@ function checkDungeon(layerName) {
           + `（その時点で取れる鍵 ${gotKeys}/${keys.length}個）`
           + `  開けられない扉=[${stuck.join('] [')}]`);
       }
+    }
+  }
+
+  // ── 9. 関門トリガーの対象が部屋に実在するか ─────────────────────────────
+  // 検査(7) は「showConditions が付いているか」しか見ない＝**トリガーの対象が
+  // 部屋に無くても合格する**。例：trigger:'torchesLit' なのに 'H' が1本も無い部屋は
+  // evaluateConditions の `allTorches.length > 0` が偽になり続け、鍵が永久に
+  // 出現しない＝ダンジョンが詰む。killAll から本物の関門へ移す（キュー5.5）なら
+  // この穴を先に塞いでおく必要がある。
+  // ⚠️ game/conditions.js evaluateConditions にトリガーを足したら、ここにも足す。
+  //    未知のトリガーは error にしてあるので、足し忘れは必ず検査で落ちる。
+  for (const kc of keys) {
+    const stage = stages[kc.room];
+    const cond = stage.showConditions?.[kc.posKey];
+    if (!cond) continue;                       // 検査(7) が既に error を出している
+    const where = `鍵 [${kc.room}] (${kc.posKey}) の関門 '${cond.trigger}'`;
+    const st = tilesOf(stage);
+    const cellsOf = (tile) => {
+      const out = [];
+      for (let r = 0; r < stage.rows; r++) {
+        for (let c = 0; c < stage.cols; c++) if (tileAt(stage, r, c) === tile) out.push(`${r},${c}`);
+      }
+      return out;
+    };
+    const needItem = (item, why) => {
+      if (!unlocked.has(item)) err(`${where}：${why}が必要だがこのダンジョン時点で未所持`);
+    };
+
+    switch (cond.trigger) {
+      case 'killAll':
+        if (!st.some(t => isEnemyTile(t))) err(`${where}：部屋に敵が1体も居ない＝入室時点で条件成立`);
+        break;
+
+      case 'torchesLit': {
+        const torches = cellsOf('H');
+        const lit = new Set(stage.initLitTorches ?? []);
+        for (const pk of lit) {
+          if (!torches.includes(pk)) err(`${where}：initLitTorches の ${pk} が 'H' でない`);
+        }
+        if (!torches.length) {
+          err(`${where}：部屋にかがり火 'H' が無い＝鍵が永久に出現しない`);
+        } else if (torches.every(pk => lit.has(pk))) {
+          err(`${where}：'H' が全て initLitTorches で点灯済み＝入室時点で条件成立`);
+        } else if (![...lit].length) {
+          // 火元が無いので自力で点ける＝ロウソクが要る
+          needItem('candle', '火元（initLitTorches）が無いためロウソク');
+        } else {
+          // 火元がある＝運ぶ手段（ブーメラン）かロウソクのどちらかが要る
+          if (!unlocked.has('boomerang') && !unlocked.has('candle')) {
+            err(`${where}：炎を運ぶ手段（ブーメラン）もロウソクも未所持＝点火できない`);
+          }
+        }
+        break;
+      }
+
+      case 'switchOn': {
+        // ボタン 'S'（踏む）とスイッチ 'Y'（武器で叩く）の両方が対象になり得る
+        // （evaluateConditions が switchStates / switchToggles の両方を見る）。
+        if (!cond.switchId) { err(`${where}：switchId が無い`); break; }
+        const t = tileAt(stage, ...cond.switchId.split(',').map(Number));
+        if (t !== 'S' && t !== 'Y') {
+          err(`${where}：switchId ${cond.switchId} が 'S'/'Y' でない（'${t}'）＝永久に ON にならない`);
+        }
+        // 'Y' に弓が要るかは幾何次第（隣が床なら剣で届く）なのでここでは要求しない。
+        // 「歩いても剣でも届かない Y」の検査は幾何の問題＝移行スクリプト側で担保する。
+        break;
+      }
+
+      case 'allSwitchesOn':
+        if (!cellsOf('S').length) err(`${where}：部屋にボタン 'S' が無い＝鍵が永久に出現しない`);
+        break;
+
+      case 'wallBroken': {
+        if (!cond.wallId) { err(`${where}：wallId が無い`); break; }
+        const t = tileAt(stage, ...cond.wallId.split(',').map(Number));
+        if (t !== '!') err(`${where}：wallId ${cond.wallId} が壊せる壁 '!' でない（'${t}'）`);
+        needItem('bomb', '壁を壊す爆弾');
+        break;
+      }
+
+      case 'bushBurned':
+        if (!st.includes('u')) err(`${where}：部屋に茂み 'u' が無い＝鍵が永久に出現しない`);
+        needItem('candle', '茂みを燃やすロウソク');
+        break;
+
+      case 'flutePlayed':
+        needItem('flute', '笛');
+        break;
+
+      case 'hasItem':
+        if (!cond.item) err(`${where}：item が無い`);
+        else needItem(cond.item, `所持を条件にしている ${cond.item}`);
+        break;
+
+      default:
+        err(`${where}：未知のトリガー（game/conditions.js に無い＝永久に成立しない）`);
     }
   }
 
