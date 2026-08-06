@@ -43,11 +43,12 @@ const ROOM  = '1,0';
 const KEY_R = 8, KEY_C = 9;
 
 /** セーブを仕込んで「つづきから」で入る＝debugMode OFF の素の状態。 */
-async function startAt(page, { row, col, boomerang = false, bow = false, layer = LAYER, room = ROOM, dir = 'right' }) {
+async function startAt(page, { row, col, boomerang = false, bow = false, bombs = 0, layer = LAYER, room = ROOM, dir = 'right' }) {
   const subItems = {};
   if (boomerang) subItems.boomerang = { count: 99 };
   if (bow) subItems.bow = { count: 99 };
-  const active = boomerang ? 'boomerang' : bow ? 'bow' : null;
+  if (bombs) subItems.bomb = { count: bombs };
+  const active = boomerang ? 'boomerang' : bow ? 'bow' : bombs ? 'bomb' : null;
   const save = JSON.stringify({
     player: {
       x: col, y: row,
@@ -133,7 +134,7 @@ test.describe('Blade of Lumia – ダンジョンの鍵（進行の背骨）', (
       'dungeon_3/1,0':  'switchOn',     // B 道具型②（弓の2段関門・5.5c 済）
       'dungeon_4/1,0':  'stonesPlaced', // C 倉庫番①（石3・純・5.5e 済）
       'dungeon_5/1,0':  'switchOn',     // B 道具型③（はしご水路の2段関門・5.5d 済）
-      'dungeon_6/1,0':  'killAll',      // → C+B（倉庫番＋爆弾壁）5.5f
+      'dungeon_6/1,0':  'stonesPlaced', // D 複合（倉庫番＋爆弾壁・5.5f 済）
       'dungeon_7/1,0':  'killAll',      // → A 戦闘型（強化）5.5h
       'dungeon_8/1,0':  'killAll',      // → C 倉庫番② 5.5g
       'dark_tower/1,2': 'killAll',      // → A 戦闘型（強化）5.5h
@@ -156,6 +157,23 @@ test.describe('Blade of Lumia – ダンジョンの鍵（進行の背骨）', (
     // 鍵が消える方向の回帰（K を消せば「全ての鍵に関門」は自明に真になる）も防ぐ。
     expect(Object.keys(found).sort()).toEqual(Object.keys(EXPECTED).sort());
     expect(Object.values(found).reduce((a, b) => a + b, 0), 'ダンジョン内の鍵の総数').toBe(10);
+  });
+
+  test('① ダンジョンに「床置きの鍵」（floorItems の key）が1個も無い', () => {
+    // 2026-08-06（5.5f）に見つけた既存バグの回帰テスト。D6/D7/D8 の鍵部屋 [1,0] は
+    // タイル 'K'(5,7) と floorItems['6,5'] で**鍵を2個ずつ持っていた**のに、
+    // checker の keyCells() が 'K' しか数えていなかったため検査は緑のままだった。
+    // player.keys はグローバル∴余剰の3個で dark_tower の鍵扉2枚をパズル抜きで開けられた。
+    // 上の表（EXPECTED）はタイル 'K' しか見ないので、この軸は別に縛らないと再発する。
+    const strays = [];
+    for (const layerName of DUNGEONS) {
+      for (const [stageKey, stage] of Object.entries(map.layers[layerName].stages)) {
+        for (const [cell, it] of Object.entries(stage.floorItems ?? {})) {
+          if (it?.item === 'key') strays.push(`${layerName} [${stageKey}] (${cell})`);
+        }
+      }
+    }
+    expect(strays, '床置きの鍵は鍵の収支を狂わせる（関門を丸ごと迂回できる）').toEqual([]);
   });
 
   test('② 敵を倒す前：鍵は描画されず、踏んでも拾えない', async ({ page }) => {
@@ -892,6 +910,375 @@ test.describe('Blade of Lumia – ダンジョンの鍵（進行の背骨）', (
     await walk(page, 'left', 10);
     const pos = await page.evaluate(() => window.__game.getState().player);
     expect(Math.round(pos.x), '西出口まで歩ける').toBe(0);
+    expect(errors).toEqual([]);
+  });
+
+  // ── ⑦ D6 の鍵部屋＝倉庫番＋道具「石3＋爆弾壁」（キュー 5.5f） ─────────────
+  //
+  // 盤面（dungeon_6 [1,0]・孤島＝ワープ `>`(7,9) で入る）：ボタン S 3個（1,1 / 4,4 / 8,7）
+  // すべてに石 '*' 3個（3,4 / 7,6 / 8,4）を乗せると showConditions(`stonesPlaced`) で
+  // 鍵(5,7) が出現し、西の鍵扉 D(4,0)(5,0) からボス部屋へ進める。
+  //
+  // D4（純倉庫番）との違いが1点だけあり、それがこの部屋の芯：
+  //   ボタン (1,1) は**壊せる壁 '!'(1,2) が喉になった1セルの袋（ポケット）**の中にある。
+  //   (1,1) の床の隣人は '!' ただ1つ∴石をそこへ押し込む向きは「'!' の上の石を押す」だけ
+  //   ＝**爆弾で壁を壊すまで石は絶対に届かない**（＝道具の必須性）。
+  //
+  // 守るものは D4 の3点（幾何の安全地帯／足踏みでは成立しない／実機再生）＋2点：
+  //   ⑦-d 爆弾の必須性を**動的に**縛る（PUZZLE-DESIGN の I4 と同じ検査＝壁を戻して再測定）。
+  //        '!' を '#' に固定→解なし。'!' を「歩けるが石は通れない」タイルに→やはり解なし
+  //        ＝この壁はプレイヤーの通路ではなく**石の搬送路**である、まで言い切る。
+  //   ⑦-e 実機で「壊す前は袋に入れない／壊すと入れる」を確認する（壁が本当に喉である証拠）。
+  const D6 = { layer: 'dungeon_6', room: '1,0', key: { r: 5, c: 7 } };
+  const D6_BUTTONS = ['1,1', '4,4', '8,7'];
+  const D6_STONES  = ['3,4', '7,6', '8,4'];
+  const D6_WARP = '7,9';
+  const D6_BREAK = '1,2';           // 壊せる壁 '!'（ポケットの喉）
+  const D6_POCKET_BUTTON = '1,1';   // 袋の中のボタン（床の隣人は '!' だけ）
+  const D6_EXPECT_L = 39;           // migrate-key-room-d6.mjs が記録した実測 L（ワープ始点・帯 34〜39）
+  const D6_REPLAY_START = '6,9';    // 実機再生の始点＝ワープの1つ北（D4 と同じ理由：ワープ上から始めると飛ばされる）
+  const D6_SAFE = ['3,8', '3,9', '4,9', '5,9', '6,8', '6,9', '7,9', '8,9'];
+  const D6_KEY_PK = `${D6.key.r},${D6.key.c}`;
+
+  const d6Stage = () => map.layers[D6.layer].stages[D6.room];
+
+  /**
+   * D6 鍵部屋のタイル。鍵扉 'D' は鍵ゼロでは壁＝ソルバーにも壁として渡す。
+   * bangAs を渡すと壊せる壁 '!' をそのタイルに差し替える（I4 の再測定用）。
+   */
+  function d6Tiles(bangAs = null) {
+    const sd = d6Stage();
+    expect(Array.isArray(sd.tiles[0]), 'tiles は文字配列の配列').toBe(true);
+    return sd.tiles.map(row => row.map(ch => {
+      if (ch === 'D') return '#';
+      if (ch === '!' && bangAs) return bangAs;
+      return ch;
+    }));
+  }
+
+  /**
+   * 最短手順を求める（D4 の d4Plan と同じ作法＋爆弾の手に対応）。
+   * 返り値 steps===null は「そのゴールに到達できない」＝I4 の「解なし」判定に使う。
+   * goalKind: 'solve' ＝全ボタンに石が乗り鍵セルに立つ／'footFake' ＝石2個がボタン上・
+   *           残る1個のボタンをプレイヤーが踏んでいる（⑦-b用）。
+   */
+  function d6Search(startPk, goalKind, bangAs = null) {
+    const tiles = d6Tiles(bangAs);
+    const bg = Array.from({ length: 10 }, () => Array(12).fill('g'));
+    // 壊せる壁の硬さはライブデータから渡す（ソルバーは数値を期待する＝{breakDef:n} を
+    // そのまま渡すと比較が NaN になり「壊せない壁」に化ける）。爆弾の breakPower は 3。
+    const breakDefs = Object.fromEntries(
+      Object.entries(d6Stage().breakableWalls ?? {}).map(([cell, def]) => [cell, def?.breakDef ?? 1]));
+    const S = makeSolver(tiles, bg, [], breakDefs, new Set(), { hasLadder: false });
+    const [sr, sc] = startPk.split(',').map(Number);
+    const start = S.encode(sr, sc, S.initStones, 0, 0, 0);
+    const onButtons = (stonesField) =>
+      (stonesField ? stonesField.split(';') : []).filter(s => D6_BUTTONS.includes(s)).length;
+    const goalTest = goalKind === 'solve'
+      ? (state) => { const f = state.split('|'); return f[0] === D6_KEY_PK && f[5] === '1'; }
+      : (state) => {
+        const f = state.split('|');
+        const stones = f[1] ? f[1].split(';') : [];
+        return f[5] === '0' && onButtons(f[1]) === 2
+          && D6_BUTTONS.includes(f[0]) && !stones.includes(f[0]);
+      };
+    const prev = new Map([[start, null]]);
+    const q = [start];
+    let goal = null;
+    for (let i = 0; i < q.length && goal === null; i++) {
+      for (const nx of S.nextStates(q[i])) {
+        if (prev.has(nx)) continue;
+        prev.set(nx, q[i]);
+        if (goalTest(nx)) { goal = nx; break; }
+        q.push(nx);
+      }
+    }
+    if (goal === null) return { steps: null, states: prev.size };
+
+    const chain = [];
+    for (let s = goal; s !== null; s = prev.get(s)) chain.push(s);
+    chain.reverse();
+    const steps = [];
+    for (let i = 1; i < chain.length; i++) {
+      const [pos0, stones0, , broken0] = chain[i - 1].split('|');
+      const [pos1, stones1, , broken1] = chain[i].split('|');
+      const [r0, c0] = pos0.split(',').map(Number);
+      const [r1, c1] = pos1.split(',').map(Number);
+      if (pos0 === pos1) {
+        // この部屋には Y/'['/H が無い＝プレイヤーが動かない遷移は「爆弾を置く」しかない。
+        expect(broken0, '動かない手は爆弾（brokenWalls が増える）').not.toBe(broken1);
+        steps.push({ kind: 'bomb', to: { r: r1, c: c1 } });
+        continue;
+      }
+      expect(Math.abs(r1 - r0) + Math.abs(c1 - c0), '1手＝1セル移動').toBe(1);
+      const dir = r1 < r0 ? 'up' : r1 > r0 ? 'down' : c1 < c0 ? 'left' : 'right';
+      steps.push({ kind: 'move', dir, to: { r: r1, c: c1 }, push: stones0 !== stones1 });
+    }
+    if (startPk !== D6_WARP) {
+      for (const s of steps) {
+        expect(`${s.to.r},${s.to.c}`, '再生手順がワープセルを踏まない').not.toBe(D6_WARP);
+      }
+    }
+    return { steps, states: prev.size };
+  }
+
+  const d6Plan = (startPk, goalKind) => {
+    const { steps } = d6Search(startPk, goalKind);
+    expect(steps, `${goalKind} の手順が見つかる`).toBeTruthy();
+    return steps;
+  };
+
+  /** '!' が壊れるのを待つ（爆弾の導火線は実時間 2000ms＝pause できない）。 */
+  async function waitBroken(page, cell) {
+    await page.waitForFunction(
+      (pk) => (window.__game.getStageState().brokenWalls ?? []).includes(pk),
+      cell, { timeout: 8000 });
+  }
+
+  /** 手順を実機の入力で再生する（d4Replay ＋ 爆弾の手）。 */
+  async function d6Replay(page, steps) {
+    for (let i = 0; i < steps.length; i++) {
+      const s = steps[i];
+      // ⚠️ 座標は丸めずに素で比べる（通常移動は半セル刻み＝丸めると「まだ半分」の位置を
+      //    到着と誤判定し、次の手が半セルずれた場所から始まって再生が崩れる）。
+      const at = async () => await page.evaluate(() => {
+        const pl = window.__game.getState().player;
+        return `${pl.y},${pl.x}`;
+      });
+      if (s.kind === 'bomb') {
+        expect(await at(), `手順${i + 1}（爆弾）を置く位置`).toBe(`${s.to.r},${s.to.c}`);
+        await page.evaluate(() => window.__game.useSubItem());
+        await waitBroken(page, D6_BREAK);
+        continue;
+      }
+      await page.evaluate(d => window.__game.setHeroDir(d), s.dir);
+      for (let guard = 0; guard < 6; guard++) {
+        if (await at() === `${s.to.r},${s.to.c}`) break;
+        await page.evaluate(d => window.__game.movePlayer(d), s.dir);
+        await page.waitForTimeout(s.push ? 650 : 30);
+      }
+      expect(await at(), `手順${i + 1}（${s.dir}${s.push ? '・石押し' : ''}）で ${s.to.r},${s.to.c} へ`)
+        .toBe(`${s.to.r},${s.to.c}`);
+    }
+  }
+
+  test('⑦ D6：盤面が「石3＋爆弾壁」の形（ボタン3・石3・壊せる壁1・敵なし・ゲートなし）', () => {
+    const stage = d6Stage();
+    const cells = (ch) => {
+      const out = [];
+      for (let r = 0; r < stage.rows; r++) {
+        for (let c = 0; c < stage.cols; c++) if (stage.tiles[r]?.[c] === ch) out.push(`${r},${c}`);
+      }
+      return out;
+    };
+    expect(cells('S').sort(), 'ボタン3個').toEqual([...D6_BUTTONS].sort());
+    expect(cells('*').sort(), '石3個').toEqual([...D6_STONES].sort());
+    expect(cells('!'), "壊せる壁は1枚（ポケットの喉）").toEqual([D6_BREAK]);
+    expect(cells('T'), 'ゲート T は無い（関門は showConditions＝物理ゲートではない）').toEqual([]);
+    expect(cells('B'), '宝箱は無い（この部屋の報酬は鍵だけ）').toEqual([]);
+    expect(cells('K'), '鍵は1個').toEqual([D6_KEY_PK]);
+    expect(cells('>'), 'ワープ（詰み救済の出口）は1個').toEqual([D6_WARP]);
+    expect(stage.showConditions, '関門は鍵の stonesPlaced だけ')
+      .toEqual({ [D6_KEY_PK]: { trigger: 'stonesPlaced' } });
+    expect(stage.floorItems ?? {}, '余剰の床置き鍵(6,5)は削除済み').toEqual({});
+    expect(stage.links, 'links は空配列（{} は refreshGates を殺す）').toEqual([]);
+    expect(stage.chestContents ?? {}, '開けられない宝箱の中身が残っていない').toEqual({});
+    expect(stage.mapEnters?.[D6_WARP]?.destId, 'ワープは隣室へ抜ける（＝石リセットの救済）').toBeTruthy();
+    expect(stage.fluteEffect, '笛の resetStones（再訪時の保険）').toEqual({ type: 'resetStones' });
+    // 爆弾の breakPower は 3（shared/items.js）∴breakDef はそれ以下でなければ壊せない。
+    expect(stage.breakableWalls?.[D6_BREAK]?.breakDef, '壊せる壁の硬さは爆弾で壊せる範囲')
+      .toBeLessThanOrEqual(3);
+    // 敵が居てはいけない（enemy-ai.js tryEnemyPushStone が石を押す＝測定した解が崩れる）。
+    const flat = stage.tiles.flat().join('');
+    expect(/[WECFVXZALNJOUGI]/.test(flat), '倉庫番の部屋に敵を置いていない').toBe(false);
+  });
+
+  test('⑦ D6：ポケットのボタン(1,1) の床の隣人は壊せる壁だけ（爆弾必須が幾何で決まる）', () => {
+    const stage = d6Stage();
+    const at = (r, c) => stage.tiles[r]?.[c];
+    const [br, bc] = D6_POCKET_BUTTON.split(',').map(Number);
+    const nbrs = [[-1, 0], [1, 0], [0, -1], [0, 1]]
+      .map(([dr, dc]) => [`${br + dr},${bc + dc}`, at(br + dr, bc + dc)])
+      .filter(([, ch]) => ch !== undefined && ch !== '#' && ch !== 'D');
+    // 壊せる壁 '!' を含めても隣人はそれ1つ＝石を (1,1) に入れる押しは「'!' の上の石を押す」だけ。
+    expect(nbrs.map(([pk]) => pk), 'ポケットの隣人は喉の1セルだけ').toEqual([D6_BREAK]);
+    expect(at(br, bc), 'ポケットの中身はボタン').toBe('S');
+    // 壊せる壁のもう一方の隣（ポケットの外側）は床＝壊せば本体から袋へ通じる。
+    const [kr, kc] = D6_BREAK.split(',').map(Number);
+    const outside = `${kr + (kr - br)},${kc + (kc - bc)}`;
+    const [or_, oc] = outside.split(',').map(Number);
+    expect(at(or_, oc), `喉の外側 ${outside} は床（壊せば石を押し込める直線になる）`).toBe('.');
+  });
+
+  test('⑦ D6：前室（ワープ）へ石を押し込める向きが1つも無い／口は2つ以上', () => {
+    // ワープはこの孤島で唯一の脱出口＝石で塞がれたら本当のハードロック
+    // （笛の resetStones は cave_1 の報酬＝D6 攻略時には未所持）。
+    const stage = d6Stage();
+    const isFloor = (pk) => {
+      const [r, c] = pk.split(',').map(Number);
+      const t = stage.tiles[r]?.[c];
+      // 未破壊の '!' は石もプレイヤーも通れない＝ここでは壁として扱う（壊した後の
+      // 最悪ケースは下の「'!' を床とみなす」側で別に見る）。
+      return t !== undefined && t !== '#' && t !== 'D' && t !== '!';
+    };
+    const safe = new Set(D6_SAFE);
+    expect(safe.has(D6_WARP), 'ワープは前室の中').toBe(true);
+    for (const pk of D6_SAFE) expect(isFloor(pk), `前室 ${pk} が床`).toBe(true);
+    for (const s of D6_STONES) expect(safe.has(s), `石 ${s} が前室の外から始まる`).toBe(false);
+
+    // 押し＝プレイヤー X-2d → 石 X-d → 行き先 X。外（前室以外）から入る押しが存在しないこと。
+    // '!' を「壊れて床になった」最悪ケースでも成り立つことを見る（壊した後も詰まない）。
+    const isFloorAfterBomb = (pk) => isFloor(pk) || pk === D6_BREAK;
+    for (const x of D6_SAFE) {
+      const [xr, xc] = x.split(',').map(Number);
+      for (const [dr, dc] of [[-1, 0], [1, 0], [0, -1], [0, 1]]) {
+        const src = `${xr - dr},${xc - dc}`;
+        const stand = `${xr - 2 * dr},${xc - 2 * dc}`;
+        if (safe.has(src)) continue;                    // 前室の中→中は「入れない」ので無関係
+        const canPush = isFloorAfterBomb(src) && isFloorAfterBomb(stand);
+        expect(canPush, `前室 ${x} へ外から石を押し込める（石 ${src} をプレイヤー ${stand} から）`).toBe(false);
+      }
+    }
+    // 口（前室と本体の境界）が2つ以上＝片方の手前に石が居座っても反対から脱出できる。
+    const mouths = [];
+    for (const x of D6_SAFE) {
+      const [xr, xc] = x.split(',').map(Number);
+      for (const [dr, dc] of [[-1, 0], [1, 0], [0, -1], [0, 1]]) {
+        const nk = `${xr + dr},${xc + dc}`;
+        if (isFloor(nk) && !safe.has(nk)) mouths.push(`${nk}→${x}`);
+      }
+    }
+    expect(mouths.length, `前室と本体の口（${mouths.join(' ')}）は2つ以上`).toBeGreaterThanOrEqual(2);
+  });
+
+  test('⑦ D6：ソルバーの最短解が記録値 L=39（帯 34〜39）と一致し、爆弾を置く手を1手含む', () => {
+    test.setTimeout(60_000);
+    const steps = d6Plan(D6_WARP, 'solve');
+    expect(steps.length, 'ワープ始点の最短手数').toBe(D6_EXPECT_L);
+    expect(steps.filter(s => s.kind === 'bomb').length, '爆弾を置く手はちょうど1手').toBe(1);
+    expect(steps.filter(s => s.push).length, '石を押す手が3個以上ある').toBeGreaterThanOrEqual(3);
+    const comment = d6Stage().comment ?? '';
+    expect(comment, 'comment に実測 L が焼かれている').toContain(`L=${D6_EXPECT_L}`);
+  });
+
+  test('⑦ D6：爆弾壁を壊さないと解が無い＝壁は「石の搬送路」（I4）', () => {
+    test.setTimeout(120_000);
+    // ① '!' を壊せない壁 '#' に固定＝袋が永久に閉じる → 解なし（＝爆弾は必須）。
+    const asWall = d6Search(D6_WARP, 'solve', '#');
+    expect(asWall.steps, "'!' を '#' に固定すると解が無い").toBeNull();
+    // ② '!' を「プレイヤーは歩けるが石は通れない」タイルに差し替え → やはり解なし。
+    //    ＝この壁が塞いでいるのはプレイヤーの通路ではなく**石の搬送路**である。
+    const asStoneBlock = d6Search(D6_WARP, 'solve', '[');
+    expect(asStoneBlock.steps, "歩けるだけでは足りない（石が通れないと解が無い）").toBeNull();
+    // 状態空間を実際に探索し尽くした上での「解なし」であることを添える（空振り防止）。
+    expect(asWall.states, '探索した状態数').toBeGreaterThan(100_000);
+    expect(asStoneBlock.states, '探索した状態数').toBeGreaterThan(100_000);
+  });
+
+  test('⑦ D6：入室時は鍵が描画されず、踏んでも拾えない', async ({ page }) => {
+    const errors = [];
+    page.on('pageerror', e => errors.push(e.message));
+    // (5,6) は鍵の西隣＝鍵セルへ1歩で踏み込める位置。
+    await startAt(page, { row: 5, col: 6, layer: D6.layer, room: D6.room });
+
+    const ss0 = await page.evaluate(() => window.__game.getStageState());
+    expect(ss0.conditionsMet ?? [], '入室時点で関門は成立していない').not.toContain(D6_KEY_PK);
+    expect(ss0.stonesLocked, '石はロックされていない').toBeFalsy();
+    expect(ss0.brokenWalls ?? [], '壊せる壁は最初は壊れていない').not.toContain(D6_BREAK);
+    expect(await page.locator(
+      `.cell[data-row="${D6.key.r}"][data-col="${D6.key.c}"] .item-sprite`).count(),
+    '鍵は描かれない').toBe(0);
+
+    await walk(page, 'right', 2);   // (5,6) → (5,7)＝鍵セルを踏む
+    const st = await page.evaluate(() => window.__game.getState());
+    expect(Math.round(st.player.x), '鍵セルまで歩けている').toBe(D6.key.c);
+    expect(st.player.keys, '見えない鍵は踏んでも拾えない').toBe(0);
+    expect(errors).toEqual([]);
+  });
+
+  test('⑦ D6：未出現の鍵はブーメランでも運べない', async ({ page }) => {
+    await startAt(page, { row: 5, col: 6, layer: D6.layer, room: D6.room, boomerang: true });
+    const res = await page.evaluate(() => {
+      const before = window.__game.getState().player.keys;
+      window.__game.setHeroDir('right');
+      window.__game.useSubItem();     // (5,7) の鍵の上を通過する
+      window.__game.step(12);
+      return { before, after: window.__game.getState().player.keys };
+    });
+    expect(res.after, 'ブーメランでも運べない（描画ガードだけでは塞げない抜け道）').toBe(res.before);
+  });
+
+  test('⑦ D6：実機でも壊す前はポケットに入れず、爆弾で壊すと入れる', async ({ page }) => {
+    test.setTimeout(60_000);
+    const errors = [];
+    page.on('pageerror', e => errors.push(e.message));
+    // (1,3) ＝喉 '!'(1,2) の東隣。ここから西へ歩こうとしても壁で止まる。
+    await startAt(page, { row: 1, col: 3, layer: D6.layer, room: D6.room, bombs: 1, dir: 'left' });
+
+    await walk(page, 'left', 4);
+    let pos = await page.evaluate(() => window.__game.getState().player);
+    expect(Math.round(pos.x), "未破壊の '!' は通り抜けられない").toBe(3);
+
+    // 爆弾を足元(1,3) に置く＝AOE 半径2 に '!'(1,2) が入る。導火線は実時間 2000ms。
+    await page.evaluate(() => window.__game.useSubItem());
+    const after = await page.evaluate(() => window.__game.getState().player.subItems?.bomb);
+    expect(after, '爆弾は消費される（1個しか持たせていない）').toBeFalsy();
+    await waitBroken(page, D6_BREAK);
+
+    await walk(page, 'left', 4);
+    pos = await page.evaluate(() => window.__game.getState().player);
+    expect([Math.round(pos.y), Math.round(pos.x)], '壊した穴を通ってポケットのボタンへ入れる')
+      .toEqual(D6_POCKET_BUTTON.split(',').map(Number));
+    // ボタンは踏めば ON になる（モーメンタリ）が、それでは鍵は出ない（次のテストの前提）。
+    const ss = await page.evaluate(() => window.__game.getStageState());
+    expect(ss.switchStates?.[D6_POCKET_BUTTON], 'ボタンは足踏みで ON').toBe(true);
+    expect(ss.conditionsMet ?? [], '足踏みだけでは関門は成立しない').not.toContain(D6_KEY_PK);
+    expect(errors).toEqual([]);
+  });
+
+  test('⑦ D6：石2個＋最後のボタンを足で踏んでも鍵は出ない（stonesPlaced は石だけ数える）', async ({ page }) => {
+    test.setTimeout(120_000);
+    const errors = [];
+    page.on('pageerror', e => errors.push(e.message));
+    const steps = d6Plan(D6_REPLAY_START, 'footFake');
+    await startAt(page, { row: 6, col: 9, layer: D6.layer, room: D6.room, bombs: 3 });
+    await d6Replay(page, steps);
+
+    const ss = await page.evaluate(() => window.__game.getStageState());
+    const onFoot = await page.evaluate(() => {
+      const p = window.__game.getState().player;
+      return `${Math.round(p.y)},${Math.round(p.x)}`;
+    });
+    expect(D6_BUTTONS, 'プレイヤーは残る1個のボタンを踏んでいる').toContain(onFoot);
+    for (const b of D6_BUTTONS) expect(ss.switchStates?.[b], `ボタン ${b} は ON`).toBe(true);
+    expect(ss.conditionsMet ?? [], '足踏みでは stonesPlaced は成立しない').not.toContain(D6_KEY_PK);
+    expect(ss.stonesLocked, '足踏みでは石ロックも立たない').toBeFalsy();
+    expect(await page.locator(
+      `.cell[data-row="${D6.key.r}"][data-col="${D6.key.c}"] .item-sprite`).count(),
+    '鍵は描かれない').toBe(0);
+    expect(errors).toEqual([]);
+  });
+
+  test('⑦ D6：ソルバーの最短手順（爆弾込み）を再生すると鍵が出現し、拾える', async ({ page }) => {
+    test.setTimeout(180_000);
+    const errors = [];
+    page.on('pageerror', e => errors.push(e.message));
+    const steps = d6Plan(D6_REPLAY_START, 'solve');
+    expect(steps.filter(s => s.kind === 'bomb').length, '再生手順にも爆弾の手が1手ある').toBe(1);
+    // 爆弾は1個だけ持たせる＝解が「爆弾1個で通る」ことも同時に縛る
+    // （宝箱の爆弾は1個＝player.js giveSubItem count=1 で入室し得る）。
+    await startAt(page, { row: 6, col: 9, layer: D6.layer, room: D6.room, bombs: 1 });
+    await d6Replay(page, steps);
+
+    const ss = await page.evaluate(() => window.__game.getStageState());
+    expect(ss.brokenWalls ?? [], '壊せる壁は壊れている').toContain(D6_BREAK);
+    expect(ss.conditionsMet ?? [], '全ボタンに石が乗って stonesPlaced が成立').toContain(D6_KEY_PK);
+    expect(ss.stonesLocked, '石は恒久ロックされる（崩して詰まない）').toBe(true);
+    const st = await page.evaluate(() => window.__game.getState());
+    // 最後の手順で鍵セルに立つ＝出現した鍵をその足で拾っている。
+    expect(st.player.keys, '鍵を拾えた').toBe(1);
+    expect(st.currentLayer, '途中でワープしていない').toBe(D6.layer);
+    expect(st.stageKey, '途中でワープしていない').toBe(D6.room);
     expect(errors).toEqual([]);
   });
 
