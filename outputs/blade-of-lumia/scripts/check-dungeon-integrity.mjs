@@ -35,7 +35,12 @@ import { readFileSync } from 'fs';
 import { bfsLayer, SOLVABLE_GATES, findEntryRoom, firstWalkable } from './lib/connectivity.mjs';
 import { isEnemyTile } from '../shared/enemies.js';
 
-const MAP_PATH = new URL('../work/blade-of-lumia.json', import.meta.url);
+// BLADE_MAP_PATH で読むマップを差し替えられる（既定は実マップ）。
+// 用途＝「わざと壊したコピー」を食わせて検査そのものが本当に落ちるかを確かめる
+// （検査を足したのに落ちない＝検査が空虚、という事故を防ぐ）。実マップは触らない。
+const MAP_PATH = process.env.BLADE_MAP_PATH
+  ? new URL(`file://${process.env.BLADE_MAP_PATH}`)
+  : new URL('../work/blade-of-lumia.json', import.meta.url);
 const d = JSON.parse(readFileSync(MAP_PATH, 'utf8'));
 
 // Boss tiles that have dropsTriforce:true (from shared/enemies.js)
@@ -482,6 +487,29 @@ function checkDungeon(layerName) {
       case 'allSwitchesOn':
         if (!cellsOf('S').length) err(`${where}：部屋にボタン 'S' が無い＝鍵が永久に出現しない`);
         break;
+
+      case 'stonesPlaced': {
+        // 倉庫番型（キュー 5.5e / PUZZLE-DESIGN §7-5）。allSwitchesOn と違い
+        // **石だけ**を数える∴ボタンに加えて石そのものが必要で、しかも石が足りないと
+        // 永久に成立しない。さらに敵は石を押す（enemy-ai.js tryEnemyPushStone）ので
+        // 測定した倉庫番が壊れる＝この型の部屋に敵を置くのは error にする。
+        const buttons = cellsOf('S');
+        const stones  = cellsOf('*');
+        if (!buttons.length) { err(`${where}：部屋にボタン 'S' が無い＝鍵が永久に出現しない`); break; }
+        if (!stones.length)  { err(`${where}：部屋に石 '*' が無い＝ボタンに石を乗せられない`); break; }
+        if (stones.length < buttons.length) {
+          err(`${where}：石 ${stones.length} 個 < ボタン ${buttons.length} 個＝全ボタンに石を乗せられない`);
+        }
+        // ⚠️ 「石が初期からボタン上にある（＝一部解けた状態）」はここでは検査できない：
+        //    1セルは 'S' か '*' のどちらか一方しか持てない＝その状態が tiles で表現できず、
+        //    データ上は単に「ボタンが1個少ない部屋」になる（実際に壊して確認済み）。
+        //    石とボタンを別リストで重ねる移行スクリプト側（migrate-key-room-d4.mjs の検査④・
+        //    generate-key-room-d4.mjs の pullBFS）でだけ表現でき、そこで弾いている。
+        if (st.some(t => isEnemyTile(t))) {
+          err(`${where}：倉庫番の部屋に敵が居る（敵が石を押す＝測定した解が崩れる/詰む）`);
+        }
+        break;
+      }
 
       case 'wallBroken': {
         if (!cond.wallId) { err(`${where}：wallId が無い`); break; }

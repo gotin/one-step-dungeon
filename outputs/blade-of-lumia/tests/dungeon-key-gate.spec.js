@@ -21,6 +21,9 @@ import { execFileSync } from 'child_process';
 import { readFileSync } from 'fs';
 import { fileURLToPath } from 'url';
 import { GAME_URL, SAVE_KEY } from './helpers.js';
+// 倉庫番型（D4・5.5e）の最短手順を実機で再生するために状態空間ソルバーを使う
+// （tests/sokoban-tiers.spec.js と同じ作法＝手順をテストに焼かない）。
+import { makeSolver } from '../scripts/lib/blade-solver.mjs';
 
 const MAP_PATH   = fileURLToPath(new URL('../work/blade-of-lumia.json', import.meta.url));
 const CHECKER    = fileURLToPath(new URL('../scripts/check-dungeon-integrity.mjs', import.meta.url));
@@ -128,7 +131,7 @@ test.describe('Blade of Lumia – ダンジョンの鍵（進行の背骨）', (
       'dungeon_1/1,0':  'killAll',      // A 戦闘型
       'dungeon_2/0,1':  'torchesLit',   // B 道具型①（ブーメランで炎を運ぶ・5.5b 済）
       'dungeon_3/1,0':  'switchOn',     // B 道具型②（弓の2段関門・5.5c 済）
-      'dungeon_4/1,0':  'killAll',      // → C 倉庫番① 5.5e
+      'dungeon_4/1,0':  'stonesPlaced', // C 倉庫番①（石3・純・5.5e 済）
       'dungeon_5/1,0':  'switchOn',     // B 道具型③（はしご水路の2段関門・5.5d 済）
       'dungeon_6/1,0':  'killAll',      // → C+B（倉庫番＋爆弾壁）5.5f
       'dungeon_7/1,0':  'killAll',      // → A 戦闘型（強化）5.5h
@@ -605,6 +608,278 @@ test.describe('Blade of Lumia – ダンジョンの鍵（進行の背骨）', (
     await walk(page, 'right', 2);
     const st = await page.evaluate(() => window.__game.getState());
     expect(st.player.keys, '鍵を拾えた').toBe(1);
+    expect(errors).toEqual([]);
+  });
+
+  // ── ⑥ D4 の鍵部屋＝倉庫番型①「石3・純」（キュー 5.5e） ───────────────────
+  //
+  // 盤面（dungeon_4 [1,0]・孤島＝ワープ `>`(7,9) で入る）：ボタン S 3個（1,1 / 4,4 / 8,7）
+  // すべてに石 '*' 3個（3,1 / 7,6 / 8,2）を乗せると showConditions(`stonesPlaced`) で
+  // 鍵(5,7) が出現し、西の鍵扉 D(4,0)(5,0) からボス部屋へ進める。
+  //
+  // ここで守る肝は3つ。
+  //   ⑥-a 幾何：東列（宝箱 2,9 とワープ 7,9 を含む前室）へ**石を押し込める向きが1つも無い**
+  //        ＝詰み救済のワープを石で塞げない（笛の resetStones は D8 の報酬＝D4 では使えない）。
+  //        口は2つ以上（1つだと口の手前に石が居座った瞬間に脱出できない）。
+  //   ⑥-b 関門の芯：**足踏みでは成立しない。** 石2個をボタンに乗せ、残る1個のボタンを
+  //        プレイヤーが踏むと switchStates は全 ON になる（＝`allSwitchesOn` なら成立して
+  //        しまう）が `stonesPlaced` は石だけを数えるので鍵は出ない。§7-5 がこの
+  //        トリガーを新設した理由そのものなので、実機で明示的に縛る。
+  //   ⑥-c 実機再生：ソルバーの最短手順を実際の入力で再生すると鍵が出て拾える
+  //        （＝測定した解が実機で通る）。
+  const D4 = { layer: 'dungeon_4', room: '1,0', key: { r: 5, c: 7 } };
+  const D4_BUTTONS = ['1,1', '4,4', '8,7'];
+  const D4_STONES  = ['3,1', '7,6', '8,2'];
+  const D4_WARP = '7,9', D4_CHEST = '2,9';
+  const D4_EXPECT_L = 32;   // migrate-key-room-d4.mjs が記録した実測 L（ワープ始点・帯 20〜35）
+  // 実機再生の始点＝ワープの1つ北（前室の中）。
+  // ⚠️ ワープセル(7,9) に立って始めることはできない：MAP_ENTER の再遷移クールダウンは
+  //    「ワープで到着した直後」だけ効くので、そこへ歩き込むと即座に隣室へ飛ばされる
+  //    （実測で確認＝room が 1,1 に変わる）。∴再生用の手順は (6,9) 始点で別に求める。
+  const D4_REPLAY_START = '6,9';
+  // 前室（安全地帯）＝石が絶対に入れない区画。generate-key-room-d4.mjs のテンプレの ',' と一致。
+  const D4_SAFE = ['2,9', '3,8', '3,9', '4,9', '5,9', '6,8', '6,9', '7,9', '8,9'];
+  const D4_KEY_PK = `${D4.key.r},${D4.key.c}`;
+
+  /** D4 鍵部屋のタイル。鍵扉 'D' は鍵ゼロでは壁＝ソルバーにも壁として渡す（'D' は解ける関門扱いなので素通りされる）。 */
+  function d4Tiles() {
+    const sd = map.layers[D4.layer].stages[D4.room];
+    expect(Array.isArray(sd.tiles[0]), 'tiles は文字配列の配列').toBe(true);
+    return sd.tiles.map(row => row.map(ch => (ch === 'D' ? '#' : ch)));
+  }
+
+  /**
+   * 石パズルの最短手順を求めて {dir,to,push} 列にする（tests/sokoban-tiers.spec.js と同じ作法）。
+   * goalKind: 'solve' ＝全ボタンに石が乗り鍵セルに立つ／
+   *           'footFake' ＝石2個がボタン上・残る1個のボタンをプレイヤーが踏んでいる（⑥-b用）。
+   */
+  function d4Plan(startPk, goalKind) {
+    const tiles = d4Tiles();
+    const bg = Array.from({ length: 10 }, () => Array(12).fill('g'));
+    const S = makeSolver(tiles, bg, [], {}, new Set(), { hasLadder: false });
+    const [sr, sc] = startPk.split(',').map(Number);
+    const start = S.encode(sr, sc, S.initStones, 0, 0, 0);
+    const onButtons = (stonesField) => {
+      const stones = stonesField ? stonesField.split(';') : [];
+      return stones.filter(s => D4_BUTTONS.includes(s)).length;
+    };
+    const goalTest = goalKind === 'solve'
+      ? (state) => { const f = state.split('|'); return f[0] === D4_KEY_PK && f[5] === '1'; }
+      : (state) => {
+        const f = state.split('|');
+        const stones = f[1] ? f[1].split(';') : [];
+        // 石2個がボタン上・プレイヤーは「石が乗っていない残り1個のボタン」を踏んでいる。
+        return f[5] === '0' && onButtons(f[1]) === 2
+          && D4_BUTTONS.includes(f[0]) && !stones.includes(f[0]);
+      };
+    const prev = new Map([[start, null]]);
+    const q = [start];
+    let goal = null;
+    for (let i = 0; i < q.length && goal === null; i++) {
+      for (const nx of S.nextStates(q[i])) {
+        if (prev.has(nx)) continue;
+        prev.set(nx, q[i]);
+        if (goalTest(nx)) { goal = nx; break; }
+        q.push(nx);
+      }
+    }
+    expect(goal, `${goalKind} の手順が見つかる`).toBeTruthy();
+    const chain = [];
+    for (let s = goal; s !== null; s = prev.get(s)) chain.push(s);
+    chain.reverse();
+    const steps = [];
+    for (let i = 1; i < chain.length; i++) {
+      const [pos0, stones0] = chain[i - 1].split('|');
+      const [pos1, stones1] = chain[i].split('|');
+      const [r0, c0] = pos0.split(',').map(Number);
+      const [r1, c1] = pos1.split(',').map(Number);
+      // この部屋には Y/'!'/H が無い＝遷移は必ず「歩き」か「石押し」＝1セル移動。
+      expect(Math.abs(r1 - r0) + Math.abs(c1 - c0), '1手＝1セル移動').toBe(1);
+      const dir = r1 < r0 ? 'up' : r1 > r0 ? 'down' : c1 < c0 ? 'left' : 'right';
+      steps.push({ dir, to: { r: r1, c: c1 }, push: stones0 !== stones1 });
+    }
+    // 再生用の手順がワープセルを踏むと隣室へ飛ばされて再生が壊れる（＝手順ではなく
+    // テストの前提が崩れる）ので、踏まないことを明示的に確かめる。
+    if (startPk !== D4_WARP) {
+      for (const s of steps) {
+        expect(`${s.to.r},${s.to.c}`, '再生手順がワープセルを踏まない').not.toBe(D4_WARP);
+      }
+    }
+    return steps;
+  }
+
+  /**
+   * 手順を実際の入力（movePlayer）で再生する。通常移動は半セル刻み（1セル＝2回）、
+   * 石押しは1回で1セル動くが実時間クールダウン（STONE_PUSH_COOLDOWN_MS=600）がある
+   * ∴押しの後だけ長く待つ（tests/sokoban-tiers.spec.js の replay と同じ）。
+   * ⚠️ pause() しない＝押しクールダウンは実時間で進むため。この部屋に敵は居ないので安全。
+   */
+  async function d4Replay(page, steps) {
+    for (let i = 0; i < steps.length; i++) {
+      const s = steps[i];
+      await page.evaluate(d => window.__game.setHeroDir(d), s.dir);
+      for (let guard = 0; guard < 6; guard++) {
+        const p = await page.evaluate(() => {
+          const pl = window.__game.getState().player;
+          return { x: pl.x, y: pl.y };
+        });
+        if (p.x === s.to.c && p.y === s.to.r) break;
+        await page.evaluate(d => window.__game.movePlayer(d), s.dir);
+        await page.waitForTimeout(s.push ? 650 : 30);
+      }
+      const p = await page.evaluate(() => {
+        const pl = window.__game.getState().player;
+        return { x: pl.x, y: pl.y };
+      });
+      expect(`${p.y},${p.x}`, `手順${i + 1}（${s.dir}${s.push ? '・石押し' : ''}）で ${s.to.r},${s.to.c} へ`)
+        .toBe(`${s.to.r},${s.to.c}`);
+    }
+  }
+
+  test('⑥ D4：盤面が「石3・純倉庫番」の形（ボタン3・石3・敵なし・ゲートなし）', () => {
+    const stage = map.layers[D4.layer].stages[D4.room];
+    const cells = (ch) => {
+      const out = [];
+      for (let r = 0; r < stage.rows; r++) {
+        for (let c = 0; c < stage.cols; c++) if (stage.tiles[r]?.[c] === ch) out.push(`${r},${c}`);
+      }
+      return out;
+    };
+    expect(cells('S').sort(), 'ボタン3個').toEqual([...D4_BUTTONS].sort());
+    expect(cells('*').sort(), '石3個').toEqual([...D4_STONES].sort());
+    expect(cells('T'), 'ゲート T は無い（関門は showConditions＝物理ゲートではない）').toEqual([]);
+    expect(cells('K'), '鍵は1個').toEqual([D4_KEY_PK]);
+    expect(cells('>'), 'ワープ（詰み救済の出口）は1個').toEqual([D4_WARP]);
+    expect(stage.showConditions[D4_KEY_PK]).toEqual({ trigger: 'stonesPlaced' });
+    expect(stage.links, 'links は空配列（{} は refreshGates を殺す）').toEqual([]);
+    expect(stage.chestContents?.[D4_CHEST]?.type, 'ハートの器は前室に残っている').toBe('heartContainer');
+    expect(stage.mapEnters?.[D4_WARP]?.destId, 'ワープは隣室へ抜ける（＝石リセットの救済）').toBeTruthy();
+    expect(stage.fluteEffect, '笛の resetStones（再訪時の保険）').toEqual({ type: 'resetStones' });
+    // 敵が居てはいけない（enemy-ai.js tryEnemyPushStone が石を押す＝測定した解が崩れる）。
+    const flat = stage.tiles.flat().join('');
+    expect(/[WECFVXZALNJOUGI]/.test(flat), '倉庫番の部屋に敵を置いていない').toBe(false);
+  });
+
+  test('⑥ D4：前室（宝箱＋ワープ）へ石を押し込める向きが1つも無い／口は2つ以上', () => {
+    // ワープはこの孤島で唯一の脱出口＝石で塞がれたら本当のハードロック（笛は D8 の報酬）。
+    // 「石が前室に入れない」ことは幾何で決まる＝実機テストでは示せないので静的に縛る。
+    const stage = map.layers[D4.layer].stages[D4.room];
+    const isFloor = (pk) => {
+      const [r, c] = pk.split(',').map(Number);
+      const t = stage.tiles[r]?.[c];
+      return t !== undefined && t !== '#' && t !== 'D';
+    };
+    const safe = new Set(D4_SAFE);
+    expect(safe.has(D4_WARP) && safe.has(D4_CHEST), 'ワープと宝箱は前室の中').toBe(true);
+    for (const pk of D4_SAFE) expect(isFloor(pk), `前室 ${pk} が床`).toBe(true);
+    for (const s of D4_STONES) expect(safe.has(s), `石 ${s} が前室の外から始まる`).toBe(false);
+
+    // 押し＝プレイヤー X-2d → 石 X-d → 行き先 X。外（前室以外）から入る押しが存在しないこと。
+    for (const x of D4_SAFE) {
+      const [xr, xc] = x.split(',').map(Number);
+      for (const [dr, dc] of [[-1, 0], [1, 0], [0, -1], [0, 1]]) {
+        const src = `${xr - dr},${xc - dc}`;
+        const stand = `${xr - 2 * dr},${xc - 2 * dc}`;
+        if (safe.has(src)) continue;                    // 前室の中→中は「入れない」ので無関係
+        const canPush = isFloor(src) && isFloor(stand);
+        expect(canPush, `前室 ${x} へ外から石を押し込める（石 ${src} をプレイヤー ${stand} から）`).toBe(false);
+      }
+    }
+    // 口（前室と本体の境界）が2つ以上＝片方の手前に石が居座っても反対から脱出できる。
+    const mouths = [];
+    for (const x of D4_SAFE) {
+      const [xr, xc] = x.split(',').map(Number);
+      for (const [dr, dc] of [[-1, 0], [1, 0], [0, -1], [0, 1]]) {
+        const nk = `${xr + dr},${xc + dc}`;
+        if (isFloor(nk) && !safe.has(nk)) mouths.push(`${nk}→${x}`);
+      }
+    }
+    expect(mouths.length, `前室と本体の口（${mouths.join(' ')}）は2つ以上`).toBeGreaterThanOrEqual(2);
+  });
+
+  test('⑥ D4：ソルバーの最短解が記録値 L=32（帯 20〜35）と一致する', () => {
+    // migrate-key-room-d4.mjs が焼いた実測値のアンカー。盤面を触って浅く（または解なしに）
+    // なったら赤くなる。BFS だけなので安い（状態 12万台）。
+    const steps = d4Plan(D4_WARP, 'solve');
+    expect(steps.length, 'ワープ始点の最短手数').toBe(D4_EXPECT_L);
+    expect(steps.filter(s => s.push).length, '石を押す手が3個以上ある').toBeGreaterThanOrEqual(3);
+    const comment = map.layers[D4.layer].stages[D4.room].comment ?? '';
+    expect(comment, 'comment に実測 L が焼かれている').toContain(`L=${D4_EXPECT_L}`);
+  });
+
+  test('⑥ D4：入室時は鍵が描画されず、踏んでも拾えない', async ({ page }) => {
+    const errors = [];
+    page.on('pageerror', e => errors.push(e.message));
+    // (5,6) は鍵の西隣＝鍵セルへ1歩で踏み込める位置。
+    await startAt(page, { row: 5, col: 6, layer: D4.layer, room: D4.room });
+
+    const ss0 = await page.evaluate(() => window.__game.getStageState());
+    expect(ss0.conditionsMet ?? [], '入室時点で関門は成立していない').not.toContain(D4_KEY_PK);
+    expect(ss0.stonesLocked, '石はロックされていない').toBeFalsy();
+    expect(await page.locator(
+      `.cell[data-row="${D4.key.r}"][data-col="${D4.key.c}"] .item-sprite`).count(),
+    '鍵は描かれない').toBe(0);
+
+    await walk(page, 'right', 2);   // (5,6) → (5,7)＝鍵セルを踏む
+    const st = await page.evaluate(() => window.__game.getState());
+    expect(Math.round(st.player.x), '鍵セルまで歩けている').toBe(D4.key.c);
+    expect(st.player.keys, '見えない鍵は踏んでも拾えない').toBe(0);
+    expect(errors).toEqual([]);
+  });
+
+  test('⑥ D4：未出現の鍵はブーメランでも運べない', async ({ page }) => {
+    await startAt(page, { row: 5, col: 6, layer: D4.layer, room: D4.room, boomerang: true });
+    const res = await page.evaluate(() => {
+      const before = window.__game.getState().player.keys;
+      window.__game.setHeroDir('right');
+      window.__game.useSubItem();     // (5,7) の鍵の上を通過する
+      window.__game.step(12);
+      return { before, after: window.__game.getState().player.keys };
+    });
+    expect(res.after, 'ブーメランでも運べない（描画ガードだけでは塞げない抜け道）').toBe(res.before);
+  });
+
+  test('⑥ D4：石2個＋最後のボタンを足で踏んでも鍵は出ない（stonesPlaced は石だけ数える）', async ({ page }) => {
+    const errors = [];
+    page.on('pageerror', e => errors.push(e.message));
+    // ボタンはモーメンタリ＝プレイヤーが踏んでも switchStates は ON になる。
+    // ∴`allSwitchesOn` を鍵に使うと「石を2個運び、最後は自分が踏む」で1手飛ばせてしまう。
+    const steps = d4Plan(D4_REPLAY_START, 'footFake');
+    await startAt(page, { row: 6, col: 9, layer: D4.layer, room: D4.room });
+    await d4Replay(page, steps);
+
+    const ss = await page.evaluate(() => window.__game.getStageState());
+    const onFoot = await page.evaluate(() => {
+      const p = window.__game.getState().player;
+      return `${Math.round(p.y)},${Math.round(p.x)}`;
+    });
+    expect(D4_BUTTONS, 'プレイヤーは残る1個のボタンを踏んでいる').toContain(onFoot);
+    // 全ボタンが（石2＋足踏み1で）ON になっている＝allSwitchesOn なら成立してしまう状態。
+    for (const b of D4_BUTTONS) expect(ss.switchStates?.[b], `ボタン ${b} は ON`).toBe(true);
+    // それでも鍵は出ない／石もロックされない。
+    expect(ss.conditionsMet ?? [], '足踏みでは stonesPlaced は成立しない').not.toContain(D4_KEY_PK);
+    expect(ss.stonesLocked, '足踏みでは石ロックも立たない').toBeFalsy();
+    expect(await page.locator(
+      `.cell[data-row="${D4.key.r}"][data-col="${D4.key.c}"] .item-sprite`).count(),
+    '鍵は描かれない').toBe(0);
+    expect(errors).toEqual([]);
+  });
+
+  test('⑥ D4：ソルバーの最短手順を再生すると鍵が出現し、拾える', async ({ page }) => {
+    const errors = [];
+    page.on('pageerror', e => errors.push(e.message));
+    const steps = d4Plan(D4_REPLAY_START, 'solve');
+    await startAt(page, { row: 6, col: 9, layer: D4.layer, room: D4.room });
+    await d4Replay(page, steps);
+
+    const ss = await page.evaluate(() => window.__game.getStageState());
+    expect(ss.conditionsMet ?? [], '全ボタンに石が乗って stonesPlaced が成立').toContain(D4_KEY_PK);
+    expect(ss.stonesLocked, '石は恒久ロックされる（崩して詰まない）').toBe(true);
+    const st = await page.evaluate(() => window.__game.getState());
+    // 最後の手順で鍵セルに立つ＝出現した鍵をその足で拾っている。
+    expect(st.player.keys, '鍵を拾えた').toBe(1);
+    expect(st.currentLayer, '途中でワープしていない').toBe(D4.layer);
+    expect(st.stageKey, '途中でワープしていない').toBe(D4.room);
     expect(errors).toEqual([]);
   });
 

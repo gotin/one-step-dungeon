@@ -157,6 +157,21 @@ export function createConditions(d) {
 				}
 				met = allSw.length > 0 && allSw.every(pk => ss.switchStates?.[pk] === true);
 			}
+			// Phase 5.5e: 倉庫番型の関門（PUZZLE-DESIGN §7-5）。
+			// allSwitchesOn との違い＝**石だけを数える**。ボタン 'S' はモーメンタリで
+			// プレイヤーが踏んでも switchStates が true になる∴allSwitchesOn を鍵に
+			// 使うと「石を n-1 個運び、最後の1個は自分が踏む」で1手ぶん飛ばせてしまい、
+			// 倉庫番として成立しない（refreshGates の stonesLocked と同じ理由）。
+			// ここは stonesLocked と同じ判定関数を共有する＝ロックと関門が必ず同時に成立する。
+			else if (cond.trigger === 'stonesPlaced') {
+				const allBtn = [];
+				for (let _r = 0; _r < stageData.rows; _r++) {
+					for (let _c = 0; _c < stageData.cols; _c++) {
+						if (stageData.tiles[_r][_c] === TILE.BUTTON) allBtn.push(`${_r},${_c}`);
+					}
+				}
+				met = allBtn.length > 0 && allButtonsHeldByStones(allBtn, ss);
+			}
 			else if (cond.trigger === 'torchesLit') {  // Phase 4-5 ②: 全かがり火点灯
 				const allTorches = [];
 				for (let _r = 0; _r < stageData.rows; _r++) {
