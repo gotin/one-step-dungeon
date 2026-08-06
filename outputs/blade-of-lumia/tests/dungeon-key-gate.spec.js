@@ -38,14 +38,18 @@ const ROOM  = '1,0';
 const KEY_R = 5, KEY_C = 7;
 
 /** セーブを仕込んで「つづきから」で入る＝debugMode OFF の素の状態。 */
-async function startAt(page, { row, col, boomerang = false, layer = LAYER, room = ROOM, dir = 'right' }) {
+async function startAt(page, { row, col, boomerang = false, bow = false, layer = LAYER, room = ROOM, dir = 'right' }) {
+  const subItems = {};
+  if (boomerang) subItems.boomerang = { count: 99 };
+  if (bow) subItems.bow = { count: 99 };
+  const active = boomerang ? 'boomerang' : bow ? 'bow' : null;
   const save = JSON.stringify({
     player: {
       x: col, y: row,
       hp: 6, maxHp: 6, maxHearts: 3, atk: 99, def: 0, keys: 0,
       weapon: 'sword', shield: null, armor: null,
-      subItems: boomerang ? { boomerang: { count: 99 } } : {},
-      activeSubItem: boomerang ? 'boomerang' : null,
+      subItems,
+      activeSubItem: active,
       rupees: 0, triforceCount: 0,
     },
     stageState: {},
@@ -121,7 +125,7 @@ test.describe('Blade of Lumia – ダンジョンの鍵（進行の背骨）', (
     const EXPECTED = {
       'dungeon_1/1,0':  'killAll',      // A 戦闘型
       'dungeon_2/0,1':  'torchesLit',   // B 道具型①（ブーメランで炎を運ぶ・5.5b 済）
-      'dungeon_3/1,0':  'killAll',      // → B 道具型②（弓）5.5c
+      'dungeon_3/1,0':  'switchOn',     // B 道具型②（弓の2段関門・5.5c 済）
       'dungeon_4/1,0':  'killAll',      // → C 倉庫番① 5.5e
       'dungeon_5/1,0':  'killAll',      // → B 道具型③（はしご）5.5d
       'dungeon_6/1,0':  'killAll',      // → C+B（倉庫番＋爆弾壁）5.5f
@@ -341,6 +345,125 @@ test.describe('Blade of Lumia – ダンジョンの鍵（進行の背骨）', (
       return window.__game.getStageState().litTorches ?? [];
     });
     expect(lit, '剣を振っても火元以外は点かない').toEqual([LIT0]);
+  });
+
+  // ── ④ D3 の鍵部屋＝道具型②「弓の2段関門」（キュー 5.5c） ────────────────
+  //
+  // 盤面（dungeon_3 [1,0]）：Y①(2,3) は水(1,3)(2,2)(2,4)(3,3)で完全隔離＝隣接セルが
+  // 全て水/壁なので剣では絶対に叩けない。row4 の (4,3) から矢を上へ飛ばすと水を
+  // 越えて Y① に当たり、links で gate T(5,8) が開く。開いたゲートの奥（チャンバー2）
+  // に入って (6,9) から矢を下へ飛ばすと、水(7,9)(8,8)(8,10)で隔離された Y②(8,9) に
+  // 当たる。showConditions(switchOn) で鍵(6,10) が出現する。
+  const D3 = { layer: 'dungeon_3', room: '1,0', key: { r: 6, c: 10 } };
+  const Y1_D3 = '2,3', GATE_D3 = '5,8', Y2_D3 = '8,9';
+
+  test('④ D3：盤面の幾何が「弓必須・段数2」を保っている', () => {
+    const stage = map.layers[D3.layer].stages[D3.room];
+    const [y1r, y1c] = Y1_D3.split(',').map(Number);
+    const [y2r, y2c] = Y2_D3.split(',').map(Number);
+
+    // Y①/Y②とも4近傍が全て水/壁＝剣で絶対に叩けない。
+    for (const [r, c, label] of [[y1r, y1c, 'Y①'], [y2r, y2c, 'Y②']]) {
+      for (const [dr, dc] of [[-1, 0], [1, 0], [0, -1], [0, 1]]) {
+        const t = stage.tiles[r + dr]?.[c + dc];
+        expect(['~', '#', undefined], `${label}(${r},${c}) の隣接(${r + dr},${c + dc})`).toContain(t);
+      }
+    }
+    // links: Y① → gate T。
+    expect(stage.links).toEqual([{ switchId: Y1_D3, gateId: GATE_D3 }]);
+    // showConditions: 鍵は Y② の switchOn。
+    expect(stage.showConditions[`${D3.key.r},${D3.key.c}`]).toEqual({ trigger: 'switchOn', switchId: Y2_D3 });
+  });
+
+  test('④ D3：通り抜けの本道（東入口↔南出口）はゲートの状態に関わらず常時通行可', () => {
+    // 整合性チェッカー・接続チェッカーが機械的に保証している内容を、鍵部屋の
+    // 位相（PUZZLE-DESIGN §7-2＝通り抜け部屋）としてここでも明示的に固定する。
+    const stage = map.layers[D3.layer].stages[D3.room];
+    const rows = stage.tiles.map(r => r.join(''));
+    expect(rows[4][11], '東入口 row4').toBe('.');
+    expect(rows[5][11], '東入口 row5').toBe('.');
+    expect(rows[9][5], '南出口 col5').toBe('.');
+    expect(rows[9][6], '南出口 col6').toBe('.');
+    // row4 の本道（col2〜col10）はゲート/水/壁を含まない（col1 は入口寄りの壁の内側）。
+    for (let c = 2; c <= 10; c++) {
+      expect('~#TYK'.includes(rows[4][c]), `row4 col${c} が本道を塞いでいる: '${rows[4][c]}'`).toBe(false);
+    }
+  });
+
+  test('④ D3：Y①を矢で撃つ前は gate T が閉じ、チャンバー2（Y②/鍵）に入れない', async ({ page }) => {
+    const errors = [];
+    page.on('pageerror', e => errors.push(e.message));
+    await startAt(page, { row: 4, col: 3, layer: D3.layer, room: D3.room, bow: true });
+
+    const ss0 = await page.evaluate(() => window.__game.getStageState());
+    expect(ss0.openGates ?? []).not.toContain(GATE_D3);
+
+    // gate 手前 (4,8) まで歩けるが、T(5,8) を越えてチャンバー2へは入れない。
+    await walk(page, 'right', 10);   // (4,3) → (4,8)
+    const pos = await page.evaluate(() => window.__game.getState().player);
+    expect(Math.round(pos.x), 'gate 手前まで歩ける').toBe(8);
+
+    await walk(page, 'down', 4);     // T(5,8) を越えようとする
+    const posAfter = await page.evaluate(() => window.__game.getState().player);
+    expect(Math.round(posAfter.y), '閉じた gate を越えられない').toBeLessThan(6);
+    expect(errors).toEqual([]);
+  });
+
+  test('④ D3：Y①→Y②の順に矢を撃つと gate が開き鍵が出現し、拾える', async ({ page }) => {
+    const errors = [];
+    page.on('pageerror', e => errors.push(e.message));
+    await startAt(page, { row: 4, col: 3, layer: D3.layer, room: D3.room, bow: true });
+    await page.evaluate(() => window.__game.pause());   // 手動 step だけで進める
+
+    // 1本目：(4,3) から北へ矢を飛ばす → 水を越えて Y①(2,3) に当たる。
+    await page.evaluate(() => window.__game.setHeroDir('up'));
+    await page.evaluate(() => window.__game.step(1));
+    await page.evaluate(() => window.__game.useSubItem());
+    await page.evaluate(() => window.__game.step(10));
+
+    let ss = await page.evaluate(() => window.__game.getStageState());
+    expect(ss.switchToggles, 'Y① が矢でトグルされる').toContain(Y1_D3);
+    expect(ss.openGates, 'gate T が開く').toContain(GATE_D3);
+    expect(ss.conditionsMet ?? [], 'まだ鍵は出現しない').not.toContain(`${D3.key.r},${D3.key.c}`);
+
+    // gate が開いたのでチャンバー2へ進む：(4,3)→(4,8)→(6,8)→(6,9)。
+    await walk(page, 'right', 10);   // (4,3) → (4,8)
+    await walk(page, 'down', 4);     // (4,8) → (6,8)
+    await walk(page, 'right', 2);    // (6,8) → (6,9)
+    const pos = await page.evaluate(() => window.__game.getState().player);
+    expect([Math.round(pos.y), Math.round(pos.x)], 'チャンバー2の射撃位置に到達').toEqual([6, 9]);
+
+    // 2本目：(6,9) から南へ矢を飛ばす → 水を越えて Y②(8,9) に当たる。
+    await page.evaluate(() => window.__game.setHeroDir('down'));
+    await page.evaluate(() => window.__game.step(1));
+    await page.evaluate(() => window.__game.useSubItem());
+    await page.evaluate(() => window.__game.step(10));
+
+    ss = await page.evaluate(() => window.__game.getStageState());
+    expect(ss.switchToggles, 'Y② が矢でトグルされる').toContain(Y2_D3);
+    expect(ss.conditionsMet ?? [], 'switchOn 成立で鍵が出現する').toContain(`${D3.key.r},${D3.key.c}`);
+    const sprite = await page.locator(
+      `.cell[data-row="${D3.key.r}"][data-col="${D3.key.c}"] .item-sprite`).count();
+    expect(sprite, '鍵が描画される').toBe(1);
+
+    // 拾いに行く：(6,9) → (6,10)。
+    await walk(page, 'right', 2);
+    const st = await page.evaluate(() => window.__game.getState());
+    expect(st.player.keys, '鍵を拾えた').toBe(1);
+    expect(errors).toEqual([]);
+  });
+
+  test('④ D3：剣ではYに届かない（Y①/Y②とも隣接セルが水/壁で歩いて近づけない）', async ({ page }) => {
+    // 弓なしで Y① へ最短で近づこうとしても、水(1,3)(2,2)(2,4)(3,3)に阻まれて
+    // Y①(2,3) の隣に立てない＝剣が届く範囲に入れない。
+    await startAt(page, { row: 4, col: 3, layer: D3.layer, room: D3.room, bow: false });
+    await walk(page, 'up', 4);
+    const pos = await page.evaluate(() => window.__game.getState().player);
+    expect(pos.y, '水に阻まれて Y① の隣まで進めない').toBeGreaterThanOrEqual(3);
+
+    const ss = await page.evaluate(() => window.__game.getStageState());
+    expect(ss.switchToggles ?? []).not.toContain(Y1_D3);
+    expect(ss.openGates ?? []).not.toContain(GATE_D3);
   });
 
   test('② dungeon_5 に入って落ちない（links:{} の入室即死クラッシュの回帰）', async ({ page }) => {
