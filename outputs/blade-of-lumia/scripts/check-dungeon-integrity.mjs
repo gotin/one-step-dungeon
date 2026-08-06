@@ -13,6 +13,7 @@
 //           only exit (making it a softlock)
 //   [MUST] links が全部屋で配列であること（`{}` は refreshGates を TypeError で殺す）
 //   [MUST] 鍵 'K' の総数 == 鍵扉 'D' の論理枚数（境界跨ぎの DD は1枚に畳む）
+//   [MUST] 境界を跨ぐ鍵扉を両面 D で描いていないこと（抜けた先で扉に埋まる恒久詰みになる）
 //   [MUST] 各鍵に showConditions の関門が付いていること（床置きの鍵を禁じる）
 //   [MUST] 各鍵が「その鍵で開ける扉を通らずに」到達できること（順序＝鍵が自分の扉の奥にない）
 //   [MUST] 各鍵の関門トリガーの対象が部屋に実在し、その時点の所持アイテムで成立し得ること
@@ -125,14 +126,29 @@ function logicalDoors(stages) {
   return [...groups.values()];
 }
 
-/** レイヤー内の鍵 'K' セルを列挙する。 */
+/**
+ * レイヤー内の鍵を列挙する。
+ *
+ * ⚠️ 鍵はタイル 'K' だけではない：`floorItems` の `{ item:'key' }` も実ゲームでは
+ *    まったく同じ鍵（player.keys が増える）。2026-08-06 までここは 'K' しか数えておらず、
+ *    dungeon_6/7/8 の鍵部屋 [1,0] が**鍵を2個ずつ持っている**（'K'(5,7) と
+ *    floorItems['6,5']）のを検査(6)「鍵の数 == 鍵扉の枚数」が緑のまま見逃していた
+ *    ＝実ゲームでは鍵が3個余り、dark_tower の鍵扉2枚をパズル抜きで開けられた。
+ *    余剰鍵は scripts/fix-stray-floor-keys.mjs で削除済み。ここで両方を数えるのは
+ *    「同じ事故を次に持ち込まない」ため（検査していない軸は必ず壊れる）。
+ */
 function keyCells(stages) {
   const out = [];
   for (const [k, s] of Object.entries(stages)) {
     for (let r = 0; r < s.rows; r++) {
       for (let c = 0; c < s.cols; c++) {
-        if (tileAt(s, r, c) === 'K') out.push({ room: k, r, c, posKey: `${r},${c}` });
+        if (tileAt(s, r, c) === 'K') out.push({ room: k, r, c, posKey: `${r},${c}`, kind: 'tile' });
       }
+    }
+    for (const [posKey, item] of Object.entries(s.floorItems ?? {})) {
+      if (item?.item !== 'key') continue;
+      const [r, c] = posKey.split(',').map(Number);
+      out.push({ room: k, r, c, posKey, kind: 'floorItem' });
     }
   }
   return out;
@@ -330,6 +346,36 @@ function checkDungeon(layerName) {
     const sign = keys.length - doors.length;
     err(`鍵の収支が合わない：鍵 K ${keys.length}個 / 鍵扉 ${doors.length}枚 (${sign > 0 ? '+' : ''}${sign})`
       + `  扉=[${doors.map(g => g.join('+')).join('] [')}]`);
+  }
+
+  // ── 6b. 境界を跨ぐ鍵扉を「両面 D」で描いてはいけない ────────────────────
+  // 2026-08-06 バグ（ユーザー報告「鍵をとって左のステージに移動したらドアの上に埋まって
+  // 動けなくなった」）。エンジンの扉は部屋単位（ss.openedDoors／collectDoorRun は部屋内の
+  // 連結成分だけ）∴同じ扉を両画面に D で描くと、手前を鍵1個で開けて抜けた先の D は閉じたまま
+  // 残り、その閉じた扉セルに着地して4方向すべて塞がる（鍵は消費済み＝恒久詰み）。
+  // 正しい描き方＝扉は鍵を持って来る側の1面だけに置き、着地側は ';'（常時開放の境界通路）。
+  // ※ logicalDoors ② の畳み込みは残してある（両面 D を作ってしまった時に検査(6) の収支まで
+  //   同時に崩れて原因が分かりにくくなるのを避けるため）∴ここで別に error を出す。
+  for (const [stageKey, stage] of Object.entries(stages)) {
+    const [sx, sy] = stageKey.split(',').map(Number);
+    for (let r = 0; r < stage.rows; r++) {
+      for (let c = 0; c < stage.cols; c++) {
+        if (tileAt(stage, r, c) !== 'D') continue;
+        const mirrors = [];
+        if (r === 0)             mirrors.push([`${sx},${sy - 1}`, stage.rows - 1, c]);
+        if (r === stage.rows - 1) mirrors.push([`${sx},${sy + 1}`, 0, c]);
+        if (c === 0)             mirrors.push([`${sx - 1},${sy}`, r, stage.cols - 1]);
+        if (c === stage.cols - 1) mirrors.push([`${sx + 1},${sy}`, r, 0]);
+        for (const [mk, mr, mc] of mirrors) {
+          const ms = stages[mk];
+          if (ms && tileAt(ms, mr, mc) === 'D') {
+            err(`境界を跨ぐ鍵扉が両面 D：[${stageKey}] (${r},${c}) ↔ [${mk}] (${mr},${mc})`
+              + ` ← 着地側を ';' にする（scripts/migrate-boundary-doors.mjs）。`
+              + `そのままだと扉を抜けた先で閉じた扉に埋まって動けなくなる`);
+          }
+        }
+      }
+    }
   }
 
   // ── 7. 全ての鍵に関門（showConditions）が付いているか ───────────────────

@@ -84,9 +84,10 @@ test.describe('⑥-landing ① 状態つきタイルの開閉判定は単一点�
       [TILE.GATE, TILE.TIDE_GATE, TILE.GATE_RED, TILE.GATE_BLUE,
        TILE.BREAKABLE_WALL, TILE.DOORWAY_LOCKED, TILE.BUSH, TILE.STONE].sort(),
     );
-    // 'D'（鍵扉）と ':'（ボス扉）は意図的に対象外。境界を越えられた時点で 'D' は
-    // source 側の通行判定が鍵をガード済み／':' を着地でブロックするとボス戦から
-    // 逃げた後の再入場が塞がる。
+    // 'D'（鍵扉）と ':'（ボス扉）は意図的に対象外。'D' の通行判定は debugMode 免除を
+    // 持つのでこの Set には入れず、着地判定（game.js arrivalTileBlocked）が openedDoors を
+    // 直接見て「閉じた鍵扉には着地しない」を担保する（2026-08-06 修正・下の ④ で固定）。
+    // ':' を着地でブロックするとボス戦から逃げた後の再入場が塞がる。
     expect(STATEFUL_TILES.has(TILE.DOOR), 'D は着地判定の対象外').toBe(false);
     expect(STATEFUL_TILES.has(TILE.DOORWAY_BOSS), ': は着地判定の対象外').toBe(false);
   });
@@ -178,8 +179,8 @@ test.describe('⑥-landing ② tilePassable が同じ単一点を使う（2箇�
   }
 
   test("デバッグモードのバイパスは 'D' だけ＝門はデバッグでも閉じたまま", () => {
-    // 着地判定は debugMode を見ない。'D' は STATEFUL_TILES 外なので着地では常時通行可
-    // ＝両者は既に整合している（PLAN ⑥-landing step 3）。門でバイパスが増えると
+    // 着地判定は debugMode を見ない。'D' は STATEFUL_TILES 外だが、着地判定側で
+    // openedDoors を見てブロックする（2026-08-06 修正）＝両者は整合している。門でバイパスが増えると
     // 着地判定と食い違うので、ここで「デバッグでも門は閉」を固定する。
     const tiles = [['.', '.', '.'], ['.', TILE.GATE, '.'], ['.', '.', '.']];
     const ss = { openGates: new Set(), stonePositions: {}, conditionsMet: new Set() };

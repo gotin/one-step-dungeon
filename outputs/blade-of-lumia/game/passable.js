@@ -37,7 +37,10 @@ const LADDER_OVER = new Set([
 // 実際に arrivalIsWall（着地判定）は '|' を常に壁・'T'/'='/'('/')'/'!' を常に素通りとして
 // 扱っていて、前者は過剰ブロック・後者は閉じた門のすり抜けを許していた（2026-07-29 修正）。
 // ⚠️ DOOR('D') と DOORWAY_BOSS(':') は意図的に含めない：
-//   - 'D' は境界を跨ぐとき source 側の通行判定が先に鍵をガードする（＝越えられた時点で開いている）
+//   - 'D' の通行判定は debugMode 免除（エディタからのプレビュー）を持つ∴この Set に入れると
+//     免除が消える。着地判定は game.js arrivalTileBlocked が openedDoors を直接見て
+//     「閉じた鍵扉には着地しない」を担保する（2026-08-06 修正。それ以前は 'D' を常に着地可
+//     としていて、両面 D の扉を抜けた先で閉じた扉の中に埋まる恒久詰みが起きた）。
 //   - ':' を着地でブロックするとボス戦から逃げた後の再入場が塞がる
 export const STATEFUL_TILES = new Set([
 	TILE.GATE, TILE.TIDE_GATE, TILE.GATE_RED, TILE.GATE_BLUE,

@@ -1094,8 +1094,21 @@ for (const ch of Object.keys(NPC_SPRITE_MAP)) ARRIVAL_WALL_TILES.add(ch);
 // 書かないことで「通行判定は状態を見るのに着地判定は見ない」食い違いを防ぐ。
 function arrivalTileBlocked(tile, posKey, destSS) {
 	if (ARRIVAL_WALL_TILES.has(tile)) return true;
+	// 2026-08-06 バグ修正（ユーザー報告「鍵をとって左のステージに移動したらドアの上に埋まって
+	// 動けなくなった」）: 閉じた鍵扉への着地を拒否する。
+	// 旧実装は 'D' を常に着地可としていた（「境界を跨ぐとき source 側の通行判定が先に鍵を
+	// ガードする」＝越えられた時点で開いている、という前提だった）。ところが扉の開閉は
+	// **部屋ごと**（ss.openedDoors／player.js collectDoorRun は部屋内の連結成分だけ）∴
+	// 同じ扉を両画面に D で描くと、手前側を開けて抜けた先の D は閉じたまま残り、その
+	// **閉じた扉セルの中に着地**する。半セル移動＋floor(v+0.5) のタイル解決では、そこから
+	// 4方向すべての次の半歩が同じ扉セルに解決される＝一切動けない（鍵は消費済みで自力では
+	// 開けられず、セーブにも残る恒久詰み）。⑥-landing 以前は半セル着地で当たり箱が内側の床に
+	// 半分乗り、閉じた扉をすり抜けて入れていた＝上のコメント (b) のバグで偶然通れていた。
+	// ここでブロックすると、鍵が足りないまま境界扉へ向かった時点で遷移が拒否される（＝
+	// 押し戻して元の部屋に留まる）。両面 D 自体は migrate-boundary-doors.mjs で片面化済み。
+	if (tile === TILE.DOOR) return !destSS?.openedDoors?.has(posKey);
 	if (STATEFUL_TILES.has(tile)) return statefulTileClosed(tile, posKey, destSS);
-	return false;   // 床・'D' ドア・':' ボス扉など＝着地可
+	return false;   // 床・';' 通路・':' ボス扉など＝着地可
 }
 
 // Phase 9-6: 水は tiles 層でも bgTiles 下地でもよい（水の単一ソース化で湖/海/堀は
