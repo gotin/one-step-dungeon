@@ -495,6 +495,12 @@ function checkDungeon(layerName) {
         if (!st.some(t => isEnemyTile(t))) err(`${where}：部屋に敵が1体も居ない＝入室時点で条件成立`);
         break;
 
+      // Phase 5.5h: 戦闘型の2段目（PUZZLE-DESIGN §7-4 D7）＝全滅＋笛の両方が要る。
+      case 'killAllAndFlute':
+        if (!st.some(t => isEnemyTile(t))) err(`${where}：部屋に敵が1体も居ない＝入室時点で条件成立`);
+        needItem('flute', '笛');
+        break;
+
       case 'torchesLit': {
         const torches = cellsOf('H');
         const lit = new Set(stage.initLitTorches ?? []);

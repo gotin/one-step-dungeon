@@ -43,12 +43,13 @@ const ROOM  = '1,0';
 const KEY_R = 8, KEY_C = 9;
 
 /** セーブを仕込んで「つづきから」で入る＝debugMode OFF の素の状態。 */
-async function startAt(page, { row, col, boomerang = false, bow = false, bombs = 0, layer = LAYER, room = ROOM, dir = 'right' }) {
+async function startAt(page, { row, col, boomerang = false, bow = false, bombs = 0, flute = false, layer = LAYER, room = ROOM, dir = 'right' }) {
   const subItems = {};
   if (boomerang) subItems.boomerang = { count: 99 };
   if (bow) subItems.bow = { count: 99 };
   if (bombs) subItems.bomb = { count: bombs };
-  const active = boomerang ? 'boomerang' : bow ? 'bow' : bombs ? 'bomb' : null;
+  if (flute) subItems.flute = { count: 99 };
+  const active = flute ? 'flute' : boomerang ? 'boomerang' : bow ? 'bow' : bombs ? 'bomb' : null;
   const save = JSON.stringify({
     player: {
       x: col, y: row,
@@ -135,9 +136,9 @@ test.describe('Blade of Lumia – ダンジョンの鍵（進行の背骨）', (
       'dungeon_4/1,0':  'stonesPlaced', // C 倉庫番①（石3・純・5.5e 済）
       'dungeon_5/1,0':  'switchOn',     // B 道具型③（はしご水路の2段関門・5.5d 済）
       'dungeon_6/1,0':  'stonesPlaced', // D 複合（倉庫番＋爆弾壁・5.5f 済）
-      'dungeon_7/1,0':  'killAll',      // → A 戦闘型（強化）5.5h
+      'dungeon_7/1,0':  'killAllAndFlute', // A 戦闘型②（強化＋笛の2段目・5.5h 済）
       'dungeon_8/1,0':  'stonesPlaced', // C 倉庫番②（石4・関門の上限帯・5.5g 済）
-      'dark_tower/1,2': 'killAll',      // → A 戦闘型（強化）5.5h
+      'dark_tower/1,2': 'killAll',      // A 戦闘型③（強化・5.5h 済）
       'dark_tower/4,3': 'killAll',      // → D 複合 5.5i
     };
     const found = {};
@@ -1536,6 +1537,81 @@ test.describe('Blade of Lumia – ダンジョンの鍵（進行の背骨）', (
     expect(st.player.keys, '鍵を拾えた').toBe(1);
     expect(st.currentLayer, '途中でワープしていない').toBe(D8.layer);
     expect(st.stageKey, '途中でワープしていない').toBe(D8.room);
+    expect(errors).toEqual([]);
+  });
+
+  // ── ⑨ D7・dark_tower：戦闘型の強化（5.5h） ─────────────────────────────
+  // 脅威度（ENEMY_META から HP*ATK/(DEF+1) の合計）が進行順で単調増加すること。
+  // D1（§7-2⑥＝据え置き確定）を基準に、D7・dark_tower[1,2] を強化した。
+  const THREAT = { E: 3, C: 10, F: 6, W: 18 };
+  function threatOfStage(stage) {
+    let total = 0;
+    for (const row of stage.tiles) for (const t of row) if (THREAT[t] != null) total += THREAT[t];
+    return total;
+  }
+
+  test('⑨ 脅威度が進行順（D1 → D7 → dark_tower[1,2]）で単調増加する', () => {
+    const d1 = threatOfStage(map.layers.dungeon_1.stages['1,0']);
+    const d7 = threatOfStage(map.layers.dungeon_7.stages['1,0']);
+    const dt = threatOfStage(map.layers.dark_tower.stages['1,2']);
+    expect(d1, 'D1 の脅威度（既存の基準）').toBe(24);
+    expect(d7, 'D7 の脅威度は D1 を上回る').toBeGreaterThan(d1);
+    expect(dt, 'dark_tower[1,2] の脅威度は D7 を上回る').toBeGreaterThan(d7);
+  });
+
+  test('⑨ D7：全滅だけでは鍵が出ない（笛も要求する killAllAndFlute）', async ({ page }) => {
+    const errors = [];
+    page.on('pageerror', e => errors.push(e.message));
+    await startAt(page, { row: 1, col: 1, layer: 'dungeon_7', room: '1,0' });
+    await killEveryEnemy(page);
+
+    const ss = await page.evaluate(() => window.__game.getStageState());
+    expect(ss.conditionsMet ?? [], '全滅だけでは成立しない').not.toContain('5,7');
+    expect(await page.locator('.cell[data-row="5"][data-col="7"] .item-sprite').count(),
+      '鍵は描かれない').toBe(0);
+    expect(errors).toEqual([]);
+  });
+
+  test('⑨ D7：笛だけでは鍵が出ない（敵が残っていると killAllAndFlute は不成立）', async ({ page }) => {
+    const errors = [];
+    page.on('pageerror', e => errors.push(e.message));
+    await startAt(page, { row: 1, col: 1, layer: 'dungeon_7', room: '1,0', flute: true });
+    await page.evaluate(() => window.__game.useSubItem());
+
+    const ss = await page.evaluate(() => window.__game.getStageState());
+    expect(ss.flutePlayed, '笛は吹けている').toBe(true);
+    expect(ss.conditionsMet ?? [], '敵が残っていると成立しない').not.toContain('5,7');
+    expect(errors).toEqual([]);
+  });
+
+  test('⑨ D7：全滅＋笛の両方で鍵が出現し、拾える（順序は問わない）', async ({ page }) => {
+    const errors = [];
+    page.on('pageerror', e => errors.push(e.message));
+    await startAt(page, { row: 1, col: 1, layer: 'dungeon_7', room: '1,0', flute: true });
+    await killEveryEnemy(page);
+    await page.evaluate(() => window.__game.useSubItem());
+
+    const ss = await page.evaluate(() => window.__game.getStageState());
+    expect(ss.conditionsMet ?? [], '全滅＋笛の両方が揃うと成立する').toContain('5,7');
+    await walk(page, 'down', 8);    // movePlayer 1回＝0.5セル ∴ row1 → row5 は4セル
+    await walk(page, 'right', 12);  // col1 → col7 は6セル
+    const st = await page.evaluate(() => window.__game.getState());
+    expect(st.player.keys, '鍵を拾えた').toBe(1);
+    expect(errors).toEqual([]);
+  });
+
+  test('⑨ dark_tower[1,2]：全滅させると鍵が出現し、拾える（強化後の敵構成でも killAll は不変）', async ({ page }) => {
+    const errors = [];
+    page.on('pageerror', e => errors.push(e.message));
+    await startAt(page, { row: 1, col: 1, layer: 'dark_tower', room: '1,2' });
+    await killEveryEnemy(page);
+
+    const ss = await page.evaluate(() => window.__game.getStageState());
+    expect(ss.conditionsMet ?? [], '全滅で成立する').toContain('7,6');
+    await walk(page, 'down', 12);   // row1 → row7 は6セル
+    await walk(page, 'right', 10);  // col1 → col6 は5セル
+    const st = await page.evaluate(() => window.__game.getState());
+    expect(st.player.keys, '鍵を拾えた').toBe(1);
     expect(errors).toEqual([]);
   });
 

@@ -139,6 +139,10 @@ export function createConditions(d) {
 			let met = false;
 			if (cond.trigger === 'killAll')    met = enemies.length === 0;
 			else if (cond.trigger === 'flutePlayed') met = ss.flutePlayed === true;  // Phase 4-2: 笛を吹いた
+			// Phase 5.5h: 戦闘型の2段目（PUZZLE-DESIGN §7-4 D7）。全滅だけでは鍵が出ない＝
+			// 笛を吹くことも要求する（両方揃えばよい・順序は問わない＝いつ揃っても成立する
+			// 通常の AND 条件。既得道具の総合試験＝道具を使ったかも見る、という体験の狙い）。
+			else if (cond.trigger === 'killAllAndFlute') met = enemies.length === 0 && ss.flutePlayed === true;
 			else if (cond.trigger === 'bushBurned') met = ss.bushBurned === true;  // Phase 4-3: ロウソクで茂みを燃やした
 			// ⚠️ スイッチの ON は2系統ある：ボタン 'S' は switchStates（踏む/石を乗せる）、
 			//    スイッチ 'Y' は switchToggles（武器・矢で叩く）。上の refreshGates と

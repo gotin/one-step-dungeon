@@ -2012,6 +2012,7 @@ export function getStageStateSnapshot() {
 		brokenWalls:   [...(ss.brokenWalls ?? [])],
 		stonePositions: { ...(ss.stonePositions ?? {}) },  // Phase 5-3: 敵が押した石の確認用
 		stonesLocked:  !!ss.stonesLocked,  // Phase 4.56
+		flutePlayed:   !!ss.flutePlayed,   // Phase 5.5h: killAllAndFlute の検証用
 	};
 }
 

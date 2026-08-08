@@ -8,6 +8,20 @@
 
 ---
 
+### 2026-08-08 — 鍵部屋の戦闘型2段目は既存の AND トリガーで作る（`killAllAndFlute`）
+
+**決定：** D7 の鍵部屋（§7-4「A 戦闘②＋笛を2段目に足す」）は `game/conditions.js evaluateConditions` に新規トリガー `killAllAndFlute`（`enemies.length===0 && ss.flutePlayed===true`）を1つ足すだけで実現した。既存の `killAll`/`flutePlayed` を混ぜた AND であって、笛と全滅の順序は問わない（どちらが先でもよい・両方揃った時点で成立）。
+
+**ハマり（実装前に見落としていた）：** `ss.flutePlayed` は `playFlute()` の `type:'reveal'` 分岐でしか true にならない（`game/game.js`）。D7 の鍵部屋 `1,0` には元々 `fluteEffect` が無かった＝トリガーを足しただけでは笛を吹いても `ss.flutePlayed` が立たず、`killAllAndFlute` が永久に成立しない。**「笛を吹いたことを条件に使う」には、そのステージに `fluteEffect:{type:'reveal', message:...}` を必ずセットで置く**（4-2 で作った「隠しタイル出現」の演出用フラグを、5.5h では鍵の関門判定にも間借りする形）。
+
+**理由：** 新規のフラグ（例：`ss.flutePlayedInThisRoom` 等）を増やさず、既存の `flutePlayed` トリガー・`ss.flutePlayed` を再利用した。理由は `stonesPlaced` が `refreshGates` の `stonesLocked` と同じ判定関数を共有した前例（5.5e）と同じ＝判定を二重化すると「片方だけ成立してもう片方が食い違う」事故を作る。
+
+**テストで固定：** `tests/dungeon-key-gate.spec.js` ⑨に5本（脅威度単調増加・全滅だけ不成立・笛だけ不成立・両方で成立・dark_tower は素の killAll のまま）。AND を一時的に OR に変えて2本が赤化することを確認済み（歯があるテスト）。
+
+**副産物のハマり2件：** ①`startAt` テストヘルパーに `subItems.flute={count:Infinity}` を渡すと `JSON.stringify` が `Infinity` を `null` に変換し実質カウント0になる＝`count:99` に修正。②`walk()` ヘルパーは1コール=0.5セル移動＝鍵までの歩数を「セル数」で書くと届かない（2倍で書く必要がある）。
+
+---
+
 ### 2026-08-08 — 見た目の寿命は実時間タイマーではなく状態の窓が持つ（溜め中は剣を構えたまま）
 
 **決定：**
