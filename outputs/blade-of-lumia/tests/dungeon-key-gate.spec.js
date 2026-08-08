@@ -136,7 +136,7 @@ test.describe('Blade of Lumia – ダンジョンの鍵（進行の背骨）', (
       'dungeon_5/1,0':  'switchOn',     // B 道具型③（はしご水路の2段関門・5.5d 済）
       'dungeon_6/1,0':  'stonesPlaced', // D 複合（倉庫番＋爆弾壁・5.5f 済）
       'dungeon_7/1,0':  'killAll',      // → A 戦闘型（強化）5.5h
-      'dungeon_8/1,0':  'killAll',      // → C 倉庫番② 5.5g
+      'dungeon_8/1,0':  'stonesPlaced', // C 倉庫番②（石4・関門の上限帯・5.5g 済）
       'dark_tower/1,2': 'killAll',      // → A 戦闘型（強化）5.5h
       'dark_tower/4,3': 'killAll',      // → D 複合 5.5i
     };
@@ -1279,6 +1279,263 @@ test.describe('Blade of Lumia – ダンジョンの鍵（進行の背骨）', (
     expect(st.player.keys, '鍵を拾えた').toBe(1);
     expect(st.currentLayer, '途中でワープしていない').toBe(D6.layer);
     expect(st.stageKey, '途中でワープしていない').toBe(D6.room);
+    expect(errors).toEqual([]);
+  });
+
+  // ── ⑧ D8 の鍵部屋＝倉庫番型②「石4・純（関門の上限帯）」（キュー 5.5g） ─────────
+  //
+  // 盤面（dungeon_8 [1,0]・孤島＝ワープ `>`(7,9) で入る）：ボタン S 4個（1,1 / 4,4 / 8,1 / 8,7）
+  // すべてに石 '*' 4個（3,2 / 3,4 / 6,1 / 8,4）を乗せると showConditions(`stonesPlaced`) で
+  // 鍵(5,7) が出現し、西の鍵扉 D(4,0)(5,0) からボス部屋へ進める。
+  //
+  // D4（石3・純倉庫番）と同型だが石が4個＝§3-2c の上限。L の帯は §7-4/§7-6手順11 で
+  // D4(20〜35)/D6(34〜39) と重ねない排他帯 **40〜60**（＝§7-3 C の関門の絶対上限そのもの）。
+  // 実測 L=60 は帯の上限に張り付いているが、この盤面は最短解4本（強制手率0.07）で
+  // 帯内の他候補より細い＝§7-6手順11「上限に張り付いたら細い解を優先」で採用した。
+  //
+  // 守るものは D4 の3点（幾何の安全地帯／足踏みでは成立しない／実機再生）と同じ。
+  // 宝箱は無い（この部屋の chestContents は元から空）＝D4 にあった宝箱まわりの検査は無い。
+  const D8 = { layer: 'dungeon_8', room: '1,0', key: { r: 5, c: 7 } };
+  const D8_BUTTONS = ['1,1', '4,4', '8,1', '8,7'];
+  const D8_STONES  = ['3,2', '3,4', '6,1', '8,4'];
+  const D8_WARP = '7,9';
+  const D8_EXPECT_L = 60;   // migrate-key-room-d8.mjs が記録した実測 L（ワープ始点・帯 40〜60）
+  // 実機再生の始点＝ワープの1つ北（前室の中）。D4/D6 と同じ理由（ワープ上から始めると飛ばされる）。
+  const D8_REPLAY_START = '6,9';
+  // 前室（安全地帯）＝石が絶対に入れない区画。generate-key-room-d8.mjs のテンプレの ',' と一致。
+  const D8_SAFE = ['3,8', '3,9', '4,9', '5,9', '6,8', '6,9', '7,9', '8,9'];
+  const D8_KEY_PK = `${D8.key.r},${D8.key.c}`;
+
+  const d8Stage = () => map.layers[D8.layer].stages[D8.room];
+
+  /** D8 鍵部屋のタイル。鍵扉 'D' は鍵ゼロでは壁＝ソルバーにも壁として渡す。 */
+  function d8Tiles() {
+    const sd = d8Stage();
+    expect(Array.isArray(sd.tiles[0]), 'tiles は文字配列の配列').toBe(true);
+    return sd.tiles.map(row => row.map(ch => (ch === 'D' ? '#' : ch)));
+  }
+
+  /**
+   * 石パズルの最短手順を求めて {dir,to,push} 列にする（d4Plan と同じ作法・石4個）。
+   * goalKind: 'solve' ＝全ボタンに石が乗り鍵セルに立つ／
+   *           'footFake' ＝石3個がボタン上・残る1個のボタンをプレイヤーが踏んでいる（⑧-b用）。
+   */
+  function d8Plan(startPk, goalKind) {
+    const tiles = d8Tiles();
+    const bg = Array.from({ length: 10 }, () => Array(12).fill('g'));
+    const S = makeSolver(tiles, bg, [], {}, new Set(), { hasLadder: false });
+    const [sr, sc] = startPk.split(',').map(Number);
+    const start = S.encode(sr, sc, S.initStones, 0, 0, 0);
+    const onButtons = (stonesField) => {
+      const stones = stonesField ? stonesField.split(';') : [];
+      return stones.filter(s => D8_BUTTONS.includes(s)).length;
+    };
+    const goalTest = goalKind === 'solve'
+      ? (state) => { const f = state.split('|'); return f[0] === D8_KEY_PK && f[5] === '1'; }
+      : (state) => {
+        const f = state.split('|');
+        const stones = f[1] ? f[1].split(';') : [];
+        // 石3個がボタン上・プレイヤーは「石が乗っていない残り1個のボタン」を踏んでいる。
+        return f[5] === '0' && onButtons(f[1]) === 3
+          && D8_BUTTONS.includes(f[0]) && !stones.includes(f[0]);
+      };
+    const prev = new Map([[start, null]]);
+    const q = [start];
+    let goal = null;
+    for (let i = 0; i < q.length && goal === null; i++) {
+      for (const nx of S.nextStates(q[i])) {
+        if (prev.has(nx)) continue;
+        prev.set(nx, q[i]);
+        if (goalTest(nx)) { goal = nx; break; }
+        q.push(nx);
+      }
+    }
+    expect(goal, `${goalKind} の手順が見つかる`).toBeTruthy();
+    const chain = [];
+    for (let s = goal; s !== null; s = prev.get(s)) chain.push(s);
+    chain.reverse();
+    const steps = [];
+    for (let i = 1; i < chain.length; i++) {
+      const [pos0, stones0] = chain[i - 1].split('|');
+      const [pos1, stones1] = chain[i].split('|');
+      const [r0, c0] = pos0.split(',').map(Number);
+      const [r1, c1] = pos1.split(',').map(Number);
+      // この部屋には Y/'!'/H が無い＝遷移は必ず「歩き」か「石押し」＝1セル移動。
+      expect(Math.abs(r1 - r0) + Math.abs(c1 - c0), '1手＝1セル移動').toBe(1);
+      const dir = r1 < r0 ? 'up' : r1 > r0 ? 'down' : c1 < c0 ? 'left' : 'right';
+      steps.push({ dir, to: { r: r1, c: c1 }, push: stones0 !== stones1 });
+    }
+    if (startPk !== D8_WARP) {
+      for (const s of steps) {
+        expect(`${s.to.r},${s.to.c}`, '再生手順がワープセルを踏まない').not.toBe(D8_WARP);
+      }
+    }
+    return steps;
+  }
+
+  /** 手順を実際の入力（movePlayer）で再生する（d4Replay と同じ作法）。 */
+  async function d8Replay(page, steps) {
+    for (let i = 0; i < steps.length; i++) {
+      const s = steps[i];
+      await page.evaluate(d => window.__game.setHeroDir(d), s.dir);
+      for (let guard = 0; guard < 6; guard++) {
+        const p = await page.evaluate(() => {
+          const pl = window.__game.getState().player;
+          return { x: pl.x, y: pl.y };
+        });
+        if (p.x === s.to.c && p.y === s.to.r) break;
+        await page.evaluate(d => window.__game.movePlayer(d), s.dir);
+        await page.waitForTimeout(s.push ? 650 : 30);
+      }
+      const p = await page.evaluate(() => {
+        const pl = window.__game.getState().player;
+        return { x: pl.x, y: pl.y };
+      });
+      expect(`${p.y},${p.x}`, `手順${i + 1}（${s.dir}${s.push ? '・石押し' : ''}）で ${s.to.r},${s.to.c} へ`)
+        .toBe(`${s.to.r},${s.to.c}`);
+    }
+  }
+
+  test('⑧ D8：盤面が「石4・純倉庫番」の形（ボタン4・石4・敵なし・ゲートなし・宝箱なし）', () => {
+    const stage = d8Stage();
+    const cells = (ch) => {
+      const out = [];
+      for (let r = 0; r < stage.rows; r++) {
+        for (let c = 0; c < stage.cols; c++) if (stage.tiles[r]?.[c] === ch) out.push(`${r},${c}`);
+      }
+      return out;
+    };
+    expect(cells('S').sort(), 'ボタン4個').toEqual([...D8_BUTTONS].sort());
+    expect(cells('*').sort(), '石4個').toEqual([...D8_STONES].sort());
+    expect(cells('T'), 'ゲート T は無い（関門は showConditions＝物理ゲートではない）').toEqual([]);
+    expect(cells('B'), '宝箱は無い（この部屋の chestContents は元から空）').toEqual([]);
+    expect(cells('K'), '鍵は1個').toEqual([D8_KEY_PK]);
+    expect(cells('>'), 'ワープ（詰み救済の出口）は1個').toEqual([D8_WARP]);
+    expect(stage.showConditions[D8_KEY_PK]).toEqual({ trigger: 'stonesPlaced' });
+    expect(stage.links, 'links は空配列（{} は refreshGates を殺す）').toEqual([]);
+    expect(stage.chestContents ?? {}, '開けられない宝箱の中身が残っていない').toEqual({});
+    expect(stage.floorItems ?? {}, '余剰の床置き鍵(6,5)は削除済み').toEqual({});
+    expect(stage.mapEnters?.[D8_WARP]?.destId, 'ワープは隣室へ抜ける（＝石リセットの救済）').toBeTruthy();
+    expect(stage.fluteEffect, '笛の resetStones（再訪時の保険。D8 は笛の報酬部屋そのもの）').toEqual({ type: 'resetStones' });
+    // 敵が居てはいけない（enemy-ai.js tryEnemyPushStone が石を押す＝測定した解が崩れる）。
+    const flat = stage.tiles.flat().join('');
+    expect(/[WECFVXZALNJOUGI]/.test(flat), '倉庫番の部屋に敵を置いていない').toBe(false);
+  });
+
+  test('⑧ D8：前室（ワープ）へ石を押し込める向きが1つも無い／口は2つ以上', () => {
+    // ワープはこの孤島で唯一の脱出口＝石で塞がれたら本当のハードロック
+    // （笛の resetStones は D8 そのものの報酬＝初回攻略時は未所持で入室する）。
+    const stage = d8Stage();
+    const isFloor = (pk) => {
+      const [r, c] = pk.split(',').map(Number);
+      const t = stage.tiles[r]?.[c];
+      return t !== undefined && t !== '#' && t !== 'D';
+    };
+    const safe = new Set(D8_SAFE);
+    expect(safe.has(D8_WARP), 'ワープは前室の中').toBe(true);
+    for (const pk of D8_SAFE) expect(isFloor(pk), `前室 ${pk} が床`).toBe(true);
+    for (const s of D8_STONES) expect(safe.has(s), `石 ${s} が前室の外から始まる`).toBe(false);
+
+    for (const x of D8_SAFE) {
+      const [xr, xc] = x.split(',').map(Number);
+      for (const [dr, dc] of [[-1, 0], [1, 0], [0, -1], [0, 1]]) {
+        const src = `${xr - dr},${xc - dc}`;
+        const stand = `${xr - 2 * dr},${xc - 2 * dc}`;
+        if (safe.has(src)) continue;
+        const canPush = isFloor(src) && isFloor(stand);
+        expect(canPush, `前室 ${x} へ外から石を押し込める（石 ${src} をプレイヤー ${stand} から）`).toBe(false);
+      }
+    }
+    const mouths = [];
+    for (const x of D8_SAFE) {
+      const [xr, xc] = x.split(',').map(Number);
+      for (const [dr, dc] of [[-1, 0], [1, 0], [0, -1], [0, 1]]) {
+        const nk = `${xr + dr},${xc + dc}`;
+        if (isFloor(nk) && !safe.has(nk)) mouths.push(`${nk}→${x}`);
+      }
+    }
+    expect(mouths.length, `前室と本体の口（${mouths.join(' ')}）は2つ以上`).toBeGreaterThanOrEqual(2);
+  });
+
+  test('⑧ D8：ソルバーの最短解が記録値 L=60（帯 40〜60・関門の上限）と一致する', () => {
+    test.setTimeout(60_000);
+    const steps = d8Plan(D8_WARP, 'solve');
+    expect(steps.length, 'ワープ始点の最短手数').toBe(D8_EXPECT_L);
+    expect(steps.filter(s => s.push).length, '石を押す手が4個以上ある').toBeGreaterThanOrEqual(4);
+    const comment = d8Stage().comment ?? '';
+    expect(comment, 'comment に実測 L が焼かれている').toContain(`L=${D8_EXPECT_L}`);
+  });
+
+  test('⑧ D8：入室時は鍵が描画されず、踏んでも拾えない', async ({ page }) => {
+    const errors = [];
+    page.on('pageerror', e => errors.push(e.message));
+    // (4,7) は鍵の北隣（鍵の西 (5,6) は壁）＝鍵セルへ1歩で踏み込める位置。
+    await startAt(page, { row: 4, col: 7, layer: D8.layer, room: D8.room, dir: 'down' });
+
+    const ss0 = await page.evaluate(() => window.__game.getStageState());
+    expect(ss0.conditionsMet ?? [], '入室時点で関門は成立していない').not.toContain(D8_KEY_PK);
+    expect(ss0.stonesLocked, '石はロックされていない').toBeFalsy();
+    expect(await page.locator(
+      `.cell[data-row="${D8.key.r}"][data-col="${D8.key.c}"] .item-sprite`).count(),
+    '鍵は描かれない').toBe(0);
+
+    await walk(page, 'down', 2);   // (4,7) → (5,7)＝鍵セルを踏む
+    const st = await page.evaluate(() => window.__game.getState());
+    expect(Math.round(st.player.y), '鍵セルまで歩けている').toBe(D8.key.r);
+    expect(st.player.keys, '見えない鍵は踏んでも拾えない').toBe(0);
+    expect(errors).toEqual([]);
+  });
+
+  test('⑧ D8：未出現の鍵はブーメランでも運べない', async ({ page }) => {
+    await startAt(page, { row: 4, col: 7, layer: D8.layer, room: D8.room, boomerang: true, dir: 'down' });
+    const res = await page.evaluate(() => {
+      const before = window.__game.getState().player.keys;
+      window.__game.setHeroDir('down');
+      window.__game.useSubItem();     // (5,7) の鍵の上を通過する
+      window.__game.step(12);
+      return { before, after: window.__game.getState().player.keys };
+    });
+    expect(res.after, 'ブーメランでも運べない（描画ガードだけでは塞げない抜け道）').toBe(res.before);
+  });
+
+  test('⑧ D8：石3個＋最後のボタンを足で踏んでも鍵は出ない（stonesPlaced は石だけ数える）', async ({ page }) => {
+    test.setTimeout(120_000);
+    const errors = [];
+    page.on('pageerror', e => errors.push(e.message));
+    const steps = d8Plan(D8_REPLAY_START, 'footFake');
+    await startAt(page, { row: 6, col: 9, layer: D8.layer, room: D8.room });
+    await d8Replay(page, steps);
+
+    const ss = await page.evaluate(() => window.__game.getStageState());
+    const onFoot = await page.evaluate(() => {
+      const p = window.__game.getState().player;
+      return `${Math.round(p.y)},${Math.round(p.x)}`;
+    });
+    expect(D8_BUTTONS, 'プレイヤーは残る1個のボタンを踏んでいる').toContain(onFoot);
+    for (const b of D8_BUTTONS) expect(ss.switchStates?.[b], `ボタン ${b} は ON`).toBe(true);
+    expect(ss.conditionsMet ?? [], '足踏みでは stonesPlaced は成立しない').not.toContain(D8_KEY_PK);
+    expect(ss.stonesLocked, '足踏みでは石ロックも立たない').toBeFalsy();
+    expect(await page.locator(
+      `.cell[data-row="${D8.key.r}"][data-col="${D8.key.c}"] .item-sprite`).count(),
+    '鍵は描かれない').toBe(0);
+    expect(errors).toEqual([]);
+  });
+
+  test('⑧ D8：ソルバーの最短手順を再生すると鍵が出現し、拾える', async ({ page }) => {
+    test.setTimeout(180_000);
+    const errors = [];
+    page.on('pageerror', e => errors.push(e.message));
+    const steps = d8Plan(D8_REPLAY_START, 'solve');
+    await startAt(page, { row: 6, col: 9, layer: D8.layer, room: D8.room });
+    await d8Replay(page, steps);
+
+    const ss = await page.evaluate(() => window.__game.getStageState());
+    expect(ss.conditionsMet ?? [], '全ボタンに石が乗って stonesPlaced が成立').toContain(D8_KEY_PK);
+    expect(ss.stonesLocked, '石は恒久ロックされる（崩して詰まない）').toBe(true);
+    const st = await page.evaluate(() => window.__game.getState());
+    expect(st.player.keys, '鍵を拾えた').toBe(1);
+    expect(st.currentLayer, '途中でワープしていない').toBe(D8.layer);
+    expect(st.stageKey, '途中でワープしていない').toBe(D8.room);
     expect(errors).toEqual([]);
   });
 
