@@ -71,11 +71,19 @@ export function createProjectile(deps) {
 	}
 
 	// 盾が今この瞬間に機能するか（Phase 7-2）。
-	// 剣を振っている最中（クールダウン中）・チャージ中は盾オフ＝正面でも食らう。
+	// 剣を振っている最中・チャージ中は盾オフ＝正面でも食らう。
+	// Phase 5.5g3: 無効になる窓は **見た目と同じ 1 つの窓**＝`player._atkUntil`
+	// （攻撃ポーズ中は盾が右手側へ回っていて正面を守っていない＝render-chars.js
+	//  SHIELD_ATK_GEO）。以前は `SWORD_COOLDOWN_MS`(100ms) で判定していたが、
+	// ポーズは `ATTACK_POSE_MS`(180ms) 続く∴差の 80ms は「盾が横を向いて見えているのに
+	// 正面から防げる」食い違いになっていた。`_atkUntil` は論理時間∴step() でも一致する。
+	// `getLastSwordTime` によるフォールバックは残す（_atkUntil を持たない古いセーブや、
+	// swordAttack を経ずに lastSwordTime だけ動く経路のため）。
 	function isShieldActive() {
 		const player = getPlayer();
 		if (!player.shield) return false;
 		if (getIsCharging && getIsCharging()) return false;
+		if (player._atkUntil != null && gameNow() < player._atkUntil) return false;
 		if (getLastSwordTime && (gameNow() - getLastSwordTime() < SWORD_COOLDOWN_MS)) return false;
 		return true;
 	}

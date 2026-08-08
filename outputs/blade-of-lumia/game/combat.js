@@ -6,8 +6,11 @@ import { TILE } from '../shared/tiles.js';
 import { ENEMY_META } from '../shared/enemies.js';
 import { NPC_SPRITE_MAP } from '../shared/npcs.js';
 import { playSound, resumeAudio, stopBgm } from '../shared/sounds.js';
+import { makeSprite } from '../shared/sprites.js';
+import { SWORD_TIERS } from '../shared/items.js';
 import {
 	MOVE_STEP, DIR_DELTA, SWORD_REACH, SWORD_COOLDOWN_MS, INVINCIBLE_MS,
+	ATTACK_POSE_MS,
 } from './constants.js';
 import { enemyW, enemyH, enemyCenter } from './hitbox.js';
 
@@ -38,6 +41,7 @@ import { enemyW, enemyH, enemyCenter } from './hitbox.js';
  *   getSS(lk, sk)                – ステージ状態取得
  *   evaluateConditions()         – 条件評価
  *   removeCharEl(id)             – キャラ要素の削除
+ *   updatePlayerCharEl()         – プレイヤースプライトの再描画（攻撃ポーズ切替・Phase 5.5g3）
  *   updateHud()                  – HUD 更新
  *   pulse(text, dur)             – メッセージ表示
  *   saveGame()                   – セーブ
@@ -85,24 +89,71 @@ export function createCombat(deps) {
 		gameoverOverlayEl,
 	} = deps;
 
-	// ── 剣エフェクト ────────────────────────────────────────
-	function showSwordSlashFloat(fx, fy) {
+	// ── 剣エフェクト（Phase 5.5g3）────────────────────────────
+	// 旧実装は CSS グラデーションの光線（`.sword-thrust`）で「まっすぐのビーム」に
+	// 見えていた（ユーザー指摘）。初代ゼルダと同じ2レイヤー構成に置き換える：
+	//   ① プレイヤー本体＝剣を構えたポーズ（heroDAtk 等・game.js getHeroSpriteName）
+	//   ② その手の先に剣そのもののスプライト（swordHeld*＝ティアパレット）
+	// ※ `.sword-thrust` は敵の攻撃演出（enemy-ai.js）が今も使うので CSS は残す。
+	//
+	// 位置は「プレイヤーのセル左上」を原点にしたセル単位のオフセット（ox, oy）で持つ。
+	// 剣の柄がポーズの手の位置に来て、刃が前方のセルへ食い込む長さになるよう向きごとに
+	// 出し分ける（初代ゼルダの突きと同じ「1セル弱だけ前に出る」長さ）。
+	//   幅 0.24 セル・長さ 0.84 セル＝スプライト 8×28 の比率をそのまま保つ
+	// ⚠️ canvas.sprite は board.css で transform:translate(-50%,-50%) が掛かっている
+	//    （`.char-abs` 配下だけ transform:none で打ち消されている）。ここは .char-abs では
+	//    ないので、transform を明示的に none へ戻さないと半分ずれる。
+	const SWORD_HELD_THIN = 0.24;
+	const SWORD_HELD_LONG = SWORD_HELD_THIN * 28 / 8;   // = 0.84
+	const L = SWORD_HELD_LONG, T = SWORD_HELD_THIN;
+	// プレイヤーは左利き（初代ゼルダと同じ）＝**剣は左手・盾は右手**。
+	// ∴ 下向き（正面）では剣が我々から見て「右」に、上向き（背面）では「左」に来る
+	//   （盾はその反対側＝render-chars.js SHIELD_ATK_GEO と必ず対になる）。
+	// zi＝z-index。上向き（背面）だけ **プレイヤーより後ろ**（-1）に置く：
+	//   背面では剣は体の向こう側にある∴頭や上げた腕の上に剣が乗るのはおかしい。
+	//   char-layer 内で z-index:-1＝盤面セルより上・.char-abs（z-index auto）より下
+	//   （はしごオーバーレイと同じ手）。
+	const SWORD_HELD_GEO = {
+		//        スプライト名        ox      oy      w  h   flipX   zi
+		down:  { spr: 'swordHeldDown',  ox:  0.47, oy:  0.64, w: T, h: L, flipX: false, zi: '8'  },
+		// 上向きは剣を「頭の真裏」に立てる＝柄と手は頭に隠れ、刃だけが頭上に出る
+		// （前へ突き出した手は奥にある∴カメラからは頭の陰＝sprites-player heroUAtk）。
+		up:    { spr: 'swordHeldUp',    ox:  0.36, oy: -0.34, w: T, h: L, flipX: false, zi: '-1' },
+		right: { spr: 'swordHeldRight', ox:  0.78, oy:  0.61, w: L, h: T, flipX: false, zi: '8'  },
+		left:  { spr: 'swordHeldRight', ox: -0.62, oy:  0.61, w: L, h: T, flipX: true,  zi: '8'  },
+	};
+
+	function showSwordSlashFloat() {
 		const charLayerEl = getCharLayerEl();
 		if (!charLayerEl) return;
-		const heroDir  = getHeroDir();
-		const cellPx   = getCellPx();
-		const player   = getPlayer();
-		const tierKey  = (player?.swordTier ?? -1) >= 0
-			? ['wood','bronze','silver','holy'][player.swordTier] ?? ''
-			: '';
+		const heroDir = getHeroDir();
+		const cellPx  = getCellPx();
+		const player  = getPlayer();
+		const tier    = SWORD_TIERS[player?.swordTier ?? -1];
+		const geo     = SWORD_HELD_GEO[heroDir] ?? SWORD_HELD_GEO.down;
+
+		const cv = makeSprite(geo.spr, tier?.pal ?? 'sword', false, geo.flipX);
+		if (!cv) return;
+
 		const el = document.createElement('div');
-		el.className    = `sword-thrust dir-${heroDir}${tierKey ? ` tier-${tierKey}` : ''}`;
-		el.style.left   = `${fx * cellPx}px`;
-		el.style.top    = `${fy * cellPx}px`;
-		el.style.width  = `${cellPx}px`;
-		el.style.height = `${cellPx}px`;
+		el.className    = `sword-held dir-${heroDir}${tier ? ` tier-${tier.key}` : ''}`;
+		el.dataset.tier = tier?.key ?? '';
+		el.style.cssText = `position:absolute;pointer-events:none;z-index:${geo.zi ?? '8'};`
+			+ `left:${Math.round((player.x + geo.ox) * cellPx)}px;`
+			+ `top:${Math.round((player.y + geo.oy) * cellPx)}px;`
+			+ `width:${Math.round(geo.w * cellPx)}px;height:${Math.round(geo.h * cellPx)}px;`;
+
+		cv.style.cssText = 'position:absolute;left:0;top:0;transform:none;'
+			+ 'image-rendering:pixelated;pointer-events:none;';
+		cv.style.setProperty('width',  '100%', 'important');
+		cv.style.setProperty('height', '100%', 'important');
+		// 上位ティアだけ淡く光らせる（形は同じで格の差を出す）
+		if ((player?.swordTier ?? -1) >= 2) {
+			cv.style.filter = `drop-shadow(0 0 ${Math.round(cellPx * 0.12)}px ${tier.key === 'holy' ? '#fff080' : '#c0e8ff'})`;
+		}
+		el.appendChild(cv);
 		charLayerEl.appendChild(el);
-		setTimeout(() => el.remove(), 260);
+		setTimeout(() => el.remove(), ATTACK_POSE_MS);
 	}
 
 	// ── ダメージポップアップ ──────────────────────────────
@@ -307,10 +358,12 @@ export function createCombat(deps) {
 		setLastSwordTime(now);
 		resumeAudio(); playSound('slash');
 
-		// 剣エフェクト
-		const slashX = player.x + ndx * 0.7;
-		const slashY = player.y + ndy * 0.7;
-		showSwordSlashFloat(slashX, slashY);
+		// 剣エフェクト＝①構えのポーズ（本体スプライト差し替え）②剣スプライト
+		// ポーズは論理時間で切れる（game.js gameTick の tickAttackPose が戻す）
+		// ＝step() の手動 tick でも実時間ループでも同じ挙動になる。
+		player._atkUntil = now + ATTACK_POSE_MS;
+		deps.updatePlayerCharEl?.();
+		showSwordSlashFloat();
 
 		// Phase 4-5 ①／5-1：スイッチ判定は「0.5 だけ重なった手前セル」も対象にする。
 		// tr/tc（前方1マス固定オフセット）は、プレイヤーが半セルだけそのセルへ入り込んだ

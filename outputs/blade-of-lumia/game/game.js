@@ -454,6 +454,13 @@ function buildEnemies(sd, lk, sk) {
 
 
 function getHeroSpriteName() {
+	// Phase 5.5g3: 剣を振っている間だけ「構えのポーズ」に差し替える（初代ゼルダ式の
+	// 2レイヤー構成の①）。player._atkUntil は論理時間（combat.js が設定、
+	// tickAttackPose が戻す）＝step() の手動 tick でも実ループでも同じ挙動になる。
+	const atk = player?._atkUntil != null && gameNow() < player._atkUntil;
+	if (atk) {
+		return { down: 'heroDAtk', right: 'heroRAtk', left: 'heroRAtk', up: 'heroUAtk' }[heroDir] ?? 'heroDAtk';
+	}
 	return { down: 'heroD', right: 'heroR', left: 'heroR', up: 'heroU' }[heroDir] ?? 'heroD';
 }
 
@@ -626,6 +633,7 @@ const { checkStoneOnSwitch, evaluateConditions, refreshGates } = createCondition
 		charLayerElRef,
 		getHeroSpriteName: () => getHeroSpriteName(),
 		getHeroPalName:    () => getHeroPalName(),
+		getGameNow:        () => gameNow(),
 		ladderOrientationAt,
 	});
 
@@ -903,6 +911,7 @@ const { checkStoneOnSwitch, evaluateConditions, refreshGates } = createCondition
 		getSS,
 		evaluateConditions: () => evaluateConditions(),
 		removeCharEl:  (id) => removeCharEl(id),
+		updatePlayerCharEl: () => updatePlayerCharEl(),
 		updateHud:     () => updateHud(),
 		pulse:         (t, d) => pulse(t, d),
 		saveGame:      () => saveGame(),
@@ -1429,7 +1438,16 @@ function gameTick() {
 	bombTick();
 	checkEnemyContact();
 	checkPendingTriforce(); // 魔王撃破後の星の欠片収集チェック
+	tickAttackPose();    // 剣の構えポーズを論理時間で解除（Phase 5.5g3）
 	redrawAnimSprites();
+}
+
+// Phase 5.5g3: 攻撃ポーズの期限切れ。論理時間で判定するので step() でも実ループでも同じ。
+function tickAttackPose() {
+	if (player._atkUntil == null) return;
+	if (gameNow() < player._atkUntil) return;
+	player._atkUntil = null;
+	updatePlayerCharEl();
 }
 
 // step(frames): frames 分だけ世界を進める。

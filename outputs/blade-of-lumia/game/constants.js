@@ -46,6 +46,9 @@ export const SWORD_REACH = 1.2;
 export const SWORD_COOLDOWN_MS = 100;
 // 石を押すクールダウン：600ms（重い石はゆっくりしか押せない）
 export const STONE_PUSH_COOLDOWN_MS = 600;
+// Phase 5.5g3: 剣を構えたポーズ＋剣スプライトを出しておく時間（論理時間 ms）。
+// クールダウン（100ms）より長い＝連打中はポーズが途切れずに継続する。
+export const ATTACK_POSE_MS = 180;
 
 // ── Phase 3-1: チャージ攻撃（剣ビーム）─────────────────────────
 // 攻撃ボタンを押した瞬間に通常の剣が出る。押しっぱなしでチャージが溜まり、

@@ -13,14 +13,16 @@
 //   getSS(lk, sk)     → ステージ状態オブジェクト
 //   getCellPx()       → セルサイズ (px)
 //   charLayerElRef    → { value: HTMLElement|null } ラッパー（render-board が更新）
-//   getHeroSpriteName() → 'heroD' | 'heroR' | 'heroU'
+//   getHeroSpriteName() → 'heroD' | 'heroR' | 'heroU'（攻撃中は 'heroDAtk' 等）
 //   getHeroPalName()    → 'hero' | 'princess'
+//   getGameNow()        → 論理時間（攻撃ポーズ中は盾を描かない判定に使う）
 //
 // TILE / SPRITES / PAL / ENEMY_META / makeSprite は直接 import する。
 
 import { TILE } from '../shared/tiles.js';
 import { SPRITES, PAL, makeSprite } from '../shared/sprites.js';
 import { ENEMY_META } from '../shared/enemies.js';
+import { SHIELD_TIERS } from '../shared/items.js';
 
 /**
  * キャラクター描画関数群を生成して返す factory。
@@ -50,6 +52,7 @@ export function createRenderChars(deps) {
 		charLayerElRef,
 		getHeroSpriteName,
 		getHeroPalName,
+		getGameNow,
 		ladderOrientationAt,
 	} = deps;
 
@@ -110,21 +113,84 @@ export function createRenderChars(deps) {
 	}
 
 	// ── 盾オーバーレイ ───────────────────────────────────────
+	// プレイヤーは左利き（初代ゼルダと同じ）＝**盾は右手・剣は左手**。
+	// 規則は1つだけ：
+	//   待機中＝盾は「向いている方向（正面）」に構える。
+	//   攻撃中＝盾がプレイヤーの右手側へ回る（ワールドで 90°）。
+	// ∴ 攻撃中に我々に見える面は「プレイヤーの右がカメラに対してどこを向くか」で決まる：
+	//   下向き … 右＝我々の左  → 側面が見える（我々の左に置く）
+	//   上向き … 右＝我々の右  → 側面が見える（我々の右に置く）
+	//   右向き … 右＝カメラ側  → **正面**が見える（手前＝下寄り・プレイヤーより前）
+	//   左向き … 右＝奥        → 裏面が見える（奥＝上寄り・プレイヤーより後ろでプレイヤーが重なる）
+	// 位置とサイズはセル単位（.char-abs は 1 セル四方）。zi は z-index。
+	// 横向き（right/left）は**右手の位置が盾の中心**になるよう置く。左利き＝剣を持つ
+	// 左手が進行方向へ伸びる∴右手は必ず「後ろ側」に残る：
+	//   右向き … 右手＝我々から見て左（heroR の col 10・row 24 の手）→ 中心 (0.33, 0.77)
+	//   左向き … その左右反転（col 21）                              → 中心 (0.67, 0.77)
+	const SHIELD_ATK_GEO = {
+		down:  { spr: 'shieldSide', flipX: false, x: 0.16, y: 0.46, w: 0.17, h: 0.44, zi: '4'  },
+		up:    { spr: 'shieldSide', flipX: true,  x: 0.68, y: 0.50, w: 0.17, h: 0.44, zi: '4'  },
+		// 右向きは盾の正面がカメラ側を向く＝プレイヤーより前面（zi 5）に置く。
+		right: { spr: 'shield',     flipX: false, x: 0.18, y: 0.62, w: 0.30, h: 0.30, zi: '5'  },
+		// 左向きは右手が奥＝盾の裏面が見え、プレイヤーが上に重なる（zi -1）。
+		left:  { spr: 'shieldBack', flipX: false, x: 0.50, y: 0.66, w: 0.34, h: 0.21, zi: '-1' },
+	};
+
+	// 盾 canvas を作って共通の属性を付ける（テストから配色/ティアを観測するため）
+	function makeShieldCanvas(spriteName, flipX) {
+		const player  = getPlayer();
+		// Phase 5.5g3: 装備している盾のティアで色を変える（形状は共通）。
+		// SHIELD_TIERS[].pal＝'shieldWood'/'shieldIron'/'shieldMirror'。
+		const palName = SHIELD_TIERS[player.shieldTier]?.pal ?? 'shield';
+		const cv = makeSprite(spriteName, palName, false, flipX);
+		if (!cv) return null;
+		cv.classList.add('shield-overlay');
+		cv.dataset.pal        = palName;
+		cv.dataset.shieldTier = String(player.shieldTier ?? -1);
+		cv.dataset.shieldSpr  = spriteName;   // どの面が見えているか（正面/側面/裏面）
+		cv.style.position       = 'absolute';
+		cv.style.imageRendering = 'pixelated';
+		cv.style.pointerEvents  = 'none';
+		cv.style.transform      = 'none';
+		return cv;
+	}
+
+	// 攻撃中の盾＝右手側へ回った盾を1枚置く（上の SHIELD_ATK_GEO のとおり）
+	function addShieldOverlayAttacking(div, heroDir) {
+		const geo = SHIELD_ATK_GEO[heroDir] ?? SHIELD_ATK_GEO.down;
+		const cv  = makeShieldCanvas(geo.spr, geo.flipX);
+		if (!cv) return;
+		const cellPx = getCellPx();
+		cv.dataset.shieldState = 'attack';
+		cv.style.setProperty('width',  `${Math.round(geo.w * cellPx)}px`, 'important');
+		cv.style.setProperty('height', `${Math.round(geo.h * cellPx)}px`, 'important');
+		cv.style.setProperty('z-index', geo.zi, 'important');
+		cv.style.left = `${Math.round(geo.x * cellPx)}px`;
+		cv.style.top  = `${Math.round(geo.y * cellPx)}px`;
+		div.appendChild(cv);
+	}
+
 	function addShieldOverlay(div) {
 		const player  = getPlayer();
 		const heroDir = getHeroDir();
 		if (!player.shield) return;
+		// 攻撃中（剣を構えている間）は盾が右手側へ回る＝別の配置表を使う。
+		// 判定は論理時間（_atkUntil）＝盾の防御が無効になる窓と同じ1つの窓を見る
+		// （見た目と当たり判定が食い違わないように・projectile.js isShieldActive）。
+		if (player._atkUntil != null && getGameNow?.() < player._atkUntil) {
+			addShieldOverlayAttacking(div, heroDir);
+			return;
+		}
 
 		let spriteName = 'shield';
 		let flipX = false;
 		if (heroDir === 'right') { spriteName = 'shieldSide'; }
 		else if (heroDir === 'left') { spriteName = 'shieldSide'; flipX = true; }
 
-		const cv = makeSprite(spriteName, 'shield', false, flipX);
+		// 未所持（shieldTier=-1）は上の !player.shield で return 済み。
+		const cv = makeShieldCanvas(spriteName, flipX);
 		if (!cv) return;
-		cv.style.position       = 'absolute';
-		cv.style.imageRendering = 'pixelated';
-		cv.style.pointerEvents  = 'none';
+		cv.dataset.shieldState = 'idle';
 		const cellPx = getCellPx();
 
 		if (heroDir === 'down') {
