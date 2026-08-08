@@ -28,6 +28,8 @@ import {
  *   getIsPaused()                – isPaused
  *   getIsGameover()              – isGameover
  *   getIsTransitioning()         – isTransitioning
+ *   getIsCharging()              – チャージ（剣ビームの溜め）中か（Phase 5.5g5）
+ *   drawSwordHeld()              – 構えた剣を今の向きで描き直す（Phase 5.5g6）
  *   getLastStonePushTime()       – 最後に石を押した実時間
  *   setLastStonePushTime(v)      – setter
  *   getLastSwordTime()           – 最後に剣を使った論理時間
@@ -67,6 +69,7 @@ export function createPlayer(deps) {
 		getHeroDir, setHeroDir,
 		getCharLayerEl,
 		getIsDialog, getIsPaused, getIsGameover, getIsTransitioning,
+		getIsCharging, drawSwordHeld,
 		getLastStonePushTime, setLastStonePushTime,
 		getLastSwordTime, setLastSwordTime,
 		gameNow, getCellPx,
@@ -375,6 +378,28 @@ export function createPlayer(deps) {
 	// ── プレイヤー移動 ────────────────────────────────────
 	function movePlayer(dir) {
 		if (getIsDialog() || getIsPaused() || getIsGameover() || getIsTransitioning()) return;
+		// Phase 5.5g5: チャージ（剣ビームの溜め）中は足を止める。ただし向き変更は通す
+		// ＝離した瞬間に飛ぶビームの狙いを付けられないと溜めそのものが使えなくなる。
+		// Phase 5.5g6 で溜め中も剣を構えたまま（出しっぱなし）にしたので、向きを変えたら
+		// 構えている剣も描き直す（そうしないと古い向きの剣が置き去りになる）。
+		// チャージの判定は charge.js の _chargeStart（isCharging）＝オーラ表示と同じ窓。
+		// このブロックは下の攻撃ポーズ判定より先に置く：溜め中は _atkUntil を延長し続けて
+		// いる（game.js tickAttackPose）ので、順番を逆にすると向き変更まで塞がれる。
+		if (getIsCharging()) {
+			setHeroDir(dir);
+			updatePlayerCharEl();
+			drawSwordHeld();
+			return;
+		}
+
+		// Phase 5.5g4: 剣を構えている間は足を止める（初代ゼルダと同じ）。
+		// 窓は _atkUntil ＝ 攻撃ポーズの絵・構えた剣・盾の防御無効と同じ 1 つの窓を見る
+		// （窓を増やすと必ず食い違う）。setHeroDir より前に return する＝向きだけ
+		// 変わると剣スプライトが古い向きのまま残って同じ「宙に浮く」破綻が出る。
+		{
+			const p = getPlayer();
+			if (p?._atkUntil != null && gameNow() < p._atkUntil) return;
+		}
 		setHeroDir(dir);
 
 		const player    = getPlayer();

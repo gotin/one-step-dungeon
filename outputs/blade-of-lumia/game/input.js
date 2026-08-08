@@ -63,7 +63,6 @@ export function initInput(deps) {
 		pauseSelectNext,
 		hasCleared,
 		updateShieldHud,
-		getChargeMoveSpeedFactor,
 	} = deps;
 
 	// 現在押されているキーを管理（押しっぱなし移動用）
@@ -183,8 +182,9 @@ export function initInput(deps) {
 		if (!dir) { _moveSpeedAccum = 0; return; }
 
 		// 二周目（姫パレット）は移動速度1.2倍
-		// チャージ中（剣ビーム溜め）は移動速度を落とす（Phase 3-1）
-		const speed = (hasCleared() ? 1.2 : 1.0) * (getChargeMoveSpeedFactor?.() ?? 1);
+		// チャージ中の半速は撤去した（Phase 5.5g5）＝溜め中は movePlayer 側で
+		// 足が止まる∴ここで係数を掛ける意味が無い（規則を2箇所に置かない）。
+		const speed = hasCleared() ? 1.2 : 1.0;
 		_moveSpeedAccum += speed;
 		const times = Math.floor(_moveSpeedAccum);
 		_moveSpeedAccum -= times;

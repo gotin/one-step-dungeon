@@ -17,6 +17,7 @@ import {
 	MAP_JSON_URL, SAVE_KEY, CLEARED_KEY, DIR_DELTA,
 	SWORD_REACH, SWORD_COOLDOWN_MS, STONE_PUSH_COOLDOWN_MS,
 	DARK_TOWER_EXIT_ID, CANDLE_FIRE_DMG, RESPAWN_MOVES,
+	ATTACK_POSE_MS,
 } from './constants.js';
 // ── セーブ/ロードの純粋変換ロジック（Phase 0-2 Step 1b: save.js へ切り出し）──
 import {
@@ -482,7 +483,6 @@ let startCharge        = () => {};
 let releaseCharge      = () => {};
 let cancelCharge       = () => {};
 let tickCharge         = () => {};
-let getChargeMoveSpeedFactor = () => 1;
 let getIsCharging      = () => false;
 let startDialog      = () => {};
 let showDialogLine   = () => {};
@@ -540,6 +540,9 @@ let toggleSwitch        = () => {};
 let setActiveColor      = () => {};
 // ── combat.js ──
 let swordAttack         = () => {};
+let drawSwordHeld       = () => {};
+let clearSwordHeld      = () => {};
+let ensureSwordHeld     = () => {};
 let dealDamageToEnemy   = () => {};
 let takeDamage          = () => {};
 let gameOver            = () => {};
@@ -722,7 +725,6 @@ const { checkStoneOnSwitch, evaluateConditions, refreshGates } = createCondition
 		pauseSelectNext,
 		hasCleared,
 		updateShieldHud,
-		getChargeMoveSpeedFactor: () => getChargeMoveSpeedFactor(),
 	});
 
 	// heldKeys と processHeldKeys を factory 生成版で上書き
@@ -837,7 +839,6 @@ const { checkStoneOnSwitch, evaluateConditions, refreshGates } = createCondition
 	releaseCharge      = _charge.releaseCharge;
 	cancelCharge       = _charge.cancelCharge;
 	tickCharge         = _charge.tickCharge;
-	getChargeMoveSpeedFactor = _charge.getMoveSpeedFactor;
 	getIsCharging      = _charge.isCharging;
 }
 
@@ -951,6 +952,8 @@ const { checkStoneOnSwitch, evaluateConditions, refreshGates } = createCondition
 		getIsPaused:    () => isPaused,
 		getIsGameover:  () => isGameover,
 		getIsTransitioning: () => isTransitioning,
+		getIsCharging:  () => getIsCharging(),
+		drawSwordHeld:  () => drawSwordHeld(),
 		getLastStonePushTime: () => lastStonePushTime,
 		setLastStonePushTime: (v) => { lastStonePushTime = v; },
 		getLastSwordTime:     () => lastSwordTime,
@@ -1002,6 +1005,9 @@ const { checkStoneOnSwitch, evaluateConditions, refreshGates } = createCondition
 	grantReward       = _player.grantReward;
 
 	swordAttack       = _combat.swordAttack;
+	drawSwordHeld     = _combat.drawSwordHeld;
+	clearSwordHeld    = _combat.clearSwordHeld;
+	ensureSwordHeld   = _combat.ensureSwordHeld;
 	dealDamageToEnemy = _combat.dealDamageToEnemy;
 	takeDamage        = _combat.takeDamage;
 	gameOver          = _combat.gameOver;
@@ -1444,9 +1450,21 @@ function gameTick() {
 
 // Phase 5.5g3: 攻撃ポーズの期限切れ。論理時間で判定するので step() でも実ループでも同じ。
 function tickAttackPose() {
+	// Phase 5.5g6: チャージ（剣ビームの溜め）中は剣を出しっぱなしにする＝
+	// ポーズの窓（_atkUntil）を毎tick延長し続ける。窓は1つだけに保つのが要点で、
+	// これ1つで「ポーズの絵・構えた剣・盾の防御無効・足止め」が全部同期する。
+	// ∴ 溜め中は盾で防御できない（剣を突き出し盾は利き手側へ回っている絵と一致）。
+	if (getIsCharging()) {
+		const wasIdle = player._atkUntil == null;
+		player._atkUntil = gameNow() + ATTACK_POSE_MS;
+		if (wasIdle) updatePlayerCharEl();   // 剣を振らずに溜めだけ始めた場合の絵合わせ
+		ensureSwordHeld();
+		return;
+	}
 	if (player._atkUntil == null) return;
 	if (gameNow() < player._atkUntil) return;
 	player._atkUntil = null;
+	clearSwordHeld();
 	updatePlayerCharEl();
 }
 

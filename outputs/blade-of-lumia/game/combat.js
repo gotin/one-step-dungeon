@@ -123,9 +123,16 @@ export function createCombat(deps) {
 		left:  { spr: 'swordHeldRight', ox: -0.62, oy:  0.61, w: L, h: T, flipX: true,  zi: '8'  },
 	};
 
-	function showSwordSlashFloat() {
+	// 構えている剣を「今の向き」で描き直す（既にあれば捨ててから作る）。
+	// Phase 5.5g6: 寿命は setTimeout（実時間）ではなく攻撃ポーズの窓（_atkUntil・論理時間）
+	// が持つ＝game.js tickAttackPose が消す。理由は2つ：
+	//   ① チャージ中はポーズの窓を延長する＝剣を出しっぱなしにしたいので、実時間 180ms で
+	//      勝手に消えられると絵とポーズが食い違う（窓を2つ持つと必ずずれる）。
+	//   ② ポーズ中は世界が止まっていれば剣も止まる（ポーズ・ダイアログ中に消えない）。
+	function drawSwordHeld() {
 		const charLayerEl = getCharLayerEl();
 		if (!charLayerEl) return;
+		clearSwordHeld();
 		const heroDir = getHeroDir();
 		const cellPx  = getCellPx();
 		const player  = getPlayer();
@@ -153,7 +160,18 @@ export function createCombat(deps) {
 		}
 		el.appendChild(cv);
 		charLayerEl.appendChild(el);
-		setTimeout(() => el.remove(), ATTACK_POSE_MS);
+	}
+
+	// 構えている剣を消す（攻撃ポーズの窓が切れたときに game.js から呼ぶ）
+	function clearSwordHeld() {
+		document.querySelectorAll('.sword-held').forEach(el => el.remove());
+	}
+
+	// 出ていなければ描く（チャージ中の「出しっぱなし」維持用。
+	// 毎tick作り直すとちらつくので、無いときだけ描く）
+	function ensureSwordHeld() {
+		if (document.querySelector('.sword-held')) return;
+		drawSwordHeld();
 	}
 
 	// ── ダメージポップアップ ──────────────────────────────
@@ -363,7 +381,7 @@ export function createCombat(deps) {
 		// ＝step() の手動 tick でも実時間ループでも同じ挙動になる。
 		player._atkUntil = now + ATTACK_POSE_MS;
 		deps.updatePlayerCharEl?.();
-		showSwordSlashFloat();
+		drawSwordHeld();
 
 		// Phase 4-5 ①／5-1：スイッチ判定は「0.5 だけ重なった手前セル」も対象にする。
 		// tr/tc（前方1マス固定オフセット）は、プレイヤーが半セルだけそのセルへ入り込んだ
@@ -451,6 +469,9 @@ export function createCombat(deps) {
 
 	return {
 		swordAttack,
+		drawSwordHeld,
+		clearSwordHeld,
+		ensureSwordHeld,
 		dealDamageToEnemy,
 		takeDamage,
 		gameOver,

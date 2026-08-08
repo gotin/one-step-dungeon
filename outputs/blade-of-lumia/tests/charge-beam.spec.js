@@ -12,6 +12,8 @@
 //   条件1: 少ししか溜めずに離すとビームは出ない（1/4 未満）
 //   条件2: 十分溜めてから離すと beam 投擲物が前方に生成される
 //   条件3: 満タンまで溜めたビームは piercing=true（貫通）かつ強い
+//   条件4: 溜めている間は移動できない（向き変更だけは通る）（Phase 5.5g5）
+//   条件5: 溜めている間は剣を構えたまま（出しっぱなし）で、離すと戻る（Phase 5.5g6）
 
 import { test, expect } from '@playwright/test';
 import { GAME_URL, SAVE_KEY } from './helpers.js';
@@ -100,6 +102,89 @@ test.describe('Blade of Lumia – チャージ攻撃（剣ビーム）', () => {
     // 貫通ビームは2体とも倒す（非貫通なら手前1体で消えて2体目が残る）
     expect(e1, '手前の敵が倒れていない').toBeNull();
     expect(e2, '奥の敵が倒れていない（貫通していない可能性）').toBeNull();
+  });
+
+  test('条件4: チャージ中は移動できない（向きだけは変えられる）', async ({ page }) => {
+    // 溜めている間に歩けると「溜めながら間合いを詰める」ができてしまい、
+    // 攻撃ポーズ（Phase 5.5g4）で足を止めた規則と食い違う。窓は charge.js の
+    // _chargeStart（isCharging）＝オーラ表示と同じ1つの窓。
+    await seedAndStart(page);
+    // 実ループを止めてから論理時間を進める（余分な tick を排除）
+    await page.evaluate(() => { window.__game.pause(); window.__game.step(3); });
+
+    const posOf = () => page.evaluate(() => {
+      const p = window.__game.getPlayer();
+      return { x: p.x, y: p.y };
+    });
+    const heroSprite = () => page.evaluate(() =>
+      document.querySelector('#char-player canvas[data-sprite]')?.dataset.sprite ?? null);
+    // 構えた剣の向き（class の dir-* から取る。未描画なら null）
+    const swordHeldDir = () => page.evaluate(() => {
+      const el = document.querySelector('.sword-held');
+      if (!el) return null;
+      return [...el.classList].find(c => c.startsWith('dir-'))?.slice(4) ?? null;
+    });
+
+    // 前提：チャージしていなければ右へ動ける（field 7,14 の (2,5) の右は床）
+    const before = await posOf();
+    await page.evaluate(() => window.__game.movePlayer('right'));
+    const moved = await posOf();
+    expect(moved.x, 'チャージしていない状態で右へ動けていない（盤面が変わった？）')
+      .toBeGreaterThan(before.x);
+
+    // チャージ中：movePlayer でも押しっぱなし（heldKeys）でも動かない
+    await page.evaluate(() => window.__game.startCharge());
+    const charging = await posOf();
+    await page.evaluate(() => window.__game.movePlayer('right'));
+    expect(await posOf(), 'チャージ中に movePlayer で動いてしまった').toEqual(charging);
+    await page.evaluate(() => { window.__game.queueInput('right'); window.__game.step(1); });
+    expect(await posOf(), 'チャージ中に押しっぱなし経路で動いてしまった').toEqual(charging);
+    await page.evaluate(() => window.__game.releaseInput('right'));
+
+    // 向きは変えられる（＝離した瞬間に飛ぶビームの狙いを付けられる）
+    // Phase 5.5g6 で溜め中は剣を構えたまま＝スプライトは攻撃ポーズ（*Atk）になり、
+    // 構えた剣（.sword-held）も向きに合わせて描き直される。
+    expect(await heroSprite(), 'チャージ中に剣を構えていない（右向き）').toBe('heroRAtk');
+    expect(await swordHeldDir(), '構えた剣の向きが右でない').toBe('right');
+    await page.evaluate(() => window.__game.movePlayer('down'));
+    expect(await heroSprite(), 'チャージ中に向きを変えられない（ビームを狙えない）')
+      .toBe('heroDAtk');
+    expect(await swordHeldDir(), '向きを変えたのに構えた剣が古い向きのまま残っている')
+      .toBe('down');
+    expect(await posOf(), '向き変更で位置まで動いてしまった').toEqual(charging);
+
+    // 離せば再び動ける（向きは下に変わっているので右へ向け直してから歩く）
+    await page.evaluate(() => { window.__game.releaseCharge(); window.__game.step(2); });
+    await page.evaluate(() => window.__game.movePlayer('right'));
+    const after = await posOf();
+    expect(after.x, 'チャージを離した後も動けない').toBeGreaterThan(charging.x);
+  });
+
+  test('条件5: 溜めている間は剣を構えたまま（出しっぱなし）で、離すと戻る', async ({ page }) => {
+    // 攻撃ポーズは通常 ATTACK_POSE_MS=180ms で切れる∴溜め（CHARGE_FULL_MS=720ms）の
+    // 途中で剣が消えてしまうのがバグ（ユーザー報告）。窓は _atkUntil 1 つのままで、
+    // チャージ中だけ game.js tickAttackPose が延長し続ける。
+    await seedAndStart(page);
+    await page.evaluate(() => { window.__game.pause(); window.__game.step(3); });
+
+    const held = () => page.evaluate(() => ({
+      sword:  document.querySelectorAll('.sword-held').length,
+      sprite: document.querySelector('#char-player canvas[data-sprite]')?.dataset.sprite ?? null,
+    }));
+
+    // 実プレイと同じ順（押した瞬間に剣が出る → 押しっぱなしで溜まる）
+    await page.evaluate(() => { window.__game.swordAttack(); window.__game.startCharge(); });
+    expect(await held(), '攻撃直後に剣が出ていない').toEqual({ sword: 1, sprite: 'heroRAtk' });
+
+    // 満タン（720ms＝6フレーム）を越えて進めても剣は出たまま・重複もしない
+    await page.evaluate(() => window.__game.step(8));
+    expect(await held(), '溜めている途中で剣が消えた／二重に出た')
+      .toEqual({ sword: 1, sprite: 'heroRAtk' });
+
+    // 離せばポーズの窓（180ms＝2フレーム）が切れて通常の絵に戻る
+    await page.evaluate(() => { window.__game.releaseCharge(); window.__game.step(2); });
+    expect(await held(), '離した後も剣が出しっぱなしになっている')
+      .toEqual({ sword: 0, sprite: 'heroR' });
   });
 
 });

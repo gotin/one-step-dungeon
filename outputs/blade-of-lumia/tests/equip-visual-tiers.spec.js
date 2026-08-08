@@ -9,6 +9,8 @@
 //   ⑥: 剣を持っていなければ剣スプライトは出ない
 //   ⑦: 攻撃ポーズの窓（ATTACK_POSE_MS）の間は盾の防御が効かない
 //       ＝見た目（盾が右手側へ回っている）と当たり判定が同じ1つの窓を見る
+//   ⑧: 攻撃ポーズの窓の間は移動も向き変更もできない（Phase 5.5g4）
+//       ＝剣スプライトは生成時の座標に固定される使い捨て要素∴動くと剣だけ置き去りになる
 //
 // ※ 敵の攻撃演出（.sword-thrust）は別要素として残っている。そちらは
 //    tests/sea-enemies.spec.js が担保する。
@@ -171,6 +173,48 @@ test.describe('Blade of Lumia – 剣・盾のティア別見た目', () => {
 		await page.evaluate(() => window.__game.step(1));
 		const hp3 = await page.evaluate(() => window.__game.getPlayer().hp);
 		expect(hp3, 'ポーズが切れた後に盾がブロックしていない').toBe(hp2);
+	});
+
+	test('⑧: 攻撃ポーズの窓の間は移動できない（剣が置き去りにならない）', async ({ page }) => {
+		// .sword-held は生成時の player.x/y で left/top を固定する使い捨て要素
+		// （プレイヤーに追従しない）∴攻撃中に動けると剣だけが宙に浮く。
+		// 窓は _atkUntil（ポーズの絵・盾の防御無効と同じ1つの窓）。
+		await seed(page, { swordTier: 3, heroDir: 'down' });
+		const posOf = () => page.evaluate(() => {
+			const p = window.__game.getPlayer();
+			return { x: p.x, y: p.y };
+		});
+
+		// 前提：攻撃していなければ左へ動ける（この盤面で左が壁でないことの確認も兼ねる。
+		// field 7,14 の (4,5) の右隣 (5,5) は木 `t` ＝右は塞がっている）
+		const before = await posOf();
+		await page.evaluate(() => window.__game.movePlayer('left'));
+		const moved = await posOf();
+		expect(moved.x, '攻撃していない状態で左へ動けていない（盤面が変わった？）').toBeLessThan(before.x);
+
+		// 攻撃中：movePlayer でも押しっぱなし（heldKeys）でも動かない・向きも変わらない
+		// （上の baseline で左へ動いた＝heroDir は 'left' ∴ポーズは heroRAtk）
+		await page.evaluate(() => window.__game.swordAttack());
+		const atkPos = await posOf();
+		expect(await heroSprite(page)).toBe('heroRAtk');
+
+		await page.evaluate(() => window.__game.movePlayer('left'));
+		expect(await posOf(), '攻撃中に movePlayer で動いてしまった').toEqual(atkPos);
+		// 別の向きを入力しても向きは変わらない（変わると剣スプライトが古い向きのまま残る）
+		await page.evaluate(() => window.__game.movePlayer('up'));
+		expect(await heroSprite(page), '攻撃中に向きが変わった（剣が古い向きのまま残る）')
+			.toBe('heroRAtk');
+
+		await page.evaluate(() => { window.__game.queueInput('left'); window.__game.step(1); });
+		expect(await posOf(), '攻撃中に押しっぱなし経路で動いてしまった').toEqual(atkPos);
+		await page.evaluate(() => window.__game.releaseInput('left'));
+
+		// ポーズが切れたら再び動ける（step(1) で 120ms 経過済み ∴ もう 1 tick で 180ms 超）
+		await page.evaluate(() => window.__game.step(1));
+		expect(await heroSprite(page)).toBe('heroR');
+		await page.evaluate(() => window.__game.movePlayer('left'));
+		const after = await posOf();
+		expect(after.x, 'ポーズが切れた後も動けない').toBeLessThan(atkPos.x);
 	});
 
 });

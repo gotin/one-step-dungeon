@@ -105,7 +105,10 @@ const at = (page) => page.evaluate(() => {
  */
 async function walkAndStrike(page, dir, tiles = 1) {
   await walkTiles(page, dir, tiles);
-  await page.evaluate(() => { window.__game.swordAttack(); window.__game.step(1); });
+  // Phase 5.5g4: 攻撃ポーズ中（ATTACK_POSE_MS=180ms）は movePlayer が足を止める。
+  // TICK_MS=120 ∴ step(2) 進めてポーズを切らないと、この後の walkTiles の
+  // 最初の半歩が黙って捨てられる（歩数が1つ足りずタイルが跨げない）。
+  await page.evaluate(() => { window.__game.swordAttack(); window.__game.step(2); });
 }
 
 /**

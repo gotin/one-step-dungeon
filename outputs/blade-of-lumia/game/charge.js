@@ -8,7 +8,12 @@
 //       1/4(CHARGE_MIN_RATIO)未満 … ビームなし（剣は既に振っている）
 //       1/4以上〜満タン未満        … 弱ビーム（剣ATK・非貫通）
 //       満タン(CHARGE_FULL_MS)     … 強ビーム（剣ATK×BEAM_STRONG_MULT・貫通）
-//   - チャージ中は移動速度が落ちる（getMoveSpeedFactor）。
+//   - チャージ中は移動できない（Phase 5.5g5・向き変更だけは通す）。判定は
+//     player.js movePlayer が isCharging() を見る＝「溜め中の足止め」の規則は
+//     この 1 箇所だけ（旧 getMoveSpeedFactor による半速は撤去した）。
+//   - チャージ中は剣を構えたまま（出しっぱなし）にする（Phase 5.5g6）。実装は
+//     game.js tickAttackPose が isCharging() を見て攻撃ポーズの窓（_atkUntil）を
+//     延長し続ける＝絵・構えた剣・盾の防御無効・足止めが 1 つの窓で同期する。
 //
 // ビーム本体は projectile.js の addProjectile に type:'beam' で乗せる（飛翔・当たり判定を共有）。
 
@@ -142,14 +147,8 @@ export function createCharge(deps) {
 		document.querySelectorAll('.charge-aura').forEach(el => el.remove());
 	}
 
-	// 移動速度係数：チャージ中は半速
-	function getMoveSpeedFactor() {
-		return _chargeStart !== null ? 0.5 : 1;
-	}
-
 	return {
 		startCharge, releaseCharge, cancelCharge,
 		isCharging, getChargeRatio, tickCharge,
-		getMoveSpeedFactor,
 	};
 }
