@@ -29,46 +29,40 @@
 //   node scripts/migrate-key-room-dark-tower-43.mjs --dry   # 検査と差分のみ
 //   node scripts/migrate-key-room-dark-tower-43.mjs         # 書き込み（本番＋test ミラー）
 //   TEST_KEY=24,0 node scripts/migrate-key-room-dark-tower-43.mjs  # ミラー先を変える
+//
+// ⚠️ 2026-08-09 更新（PLAN 5.5i・作り直し確定）：
+//   旧・生成器テンプレ v1（床66・薄い L=42 純倉庫番）は「23,0 より薄い」とユーザー実感で
+//   判定され差し替え確定。ユーザーが editor で test_mechanics[0,1] を手で作り込み、実プレイで
+//   「23,0 と同程度の難しさ」＝合格と判定した（濃さ軸のフル BFS は状態空間が V8 Map 上限
+//   1670万超で完全展開できない＝測れないが、実プレイ判定を合否とする＝4.6/4.7 と同じ運用）。
+//   ∴このスクリプトは「生成器テンプレを組む」のをやめ、SOURCE ステージ（既定 test_mechanics[0,1]）
+//   の盤面をそのまま本番 dark_tower[4,3] と test_mechanics[24,0] ミラーへ写す方式に改めた。
+//   SOURCE_KEY 環境変数でソースを差し替え可。境界（外周・入口・扉・鍵）の一致は下で必ず検査する。
 
 import { readFileSync, writeFileSync } from 'fs';
 import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
-import { analyze, assertGeometry, buildTiles, TEMPLATES } from './generate-key-room-dark-tower-43.mjs';
 
 const __dir = dirname(fileURLToPath(import.meta.url));
 const MAP_PATH = join(__dir, '..', 'work', 'blade-of-lumia.json');
 const DRY = process.argv.includes('--dry');
 
 const LAYER = 'dark_tower', ROOM = '4,3';
-const TEMPLATE = 'v1';
-const STONES = ['4,3', '5,8', '6,6', '7,7'];  // 生成器の採用配置（L=42・貪欲NG）
 const KEY_CELL = [7, 6];
 const ENTRY = ['0,5', '0,6'], DOOR = ['9,5', '9,6'];
+const SOURCE_LAYER = process.env.SOURCE_LAYER ?? 'test_mechanics';
+// ソース＝本採用済みミラー 24,0 を既定にする（自己参照＝再実行しても冪等）。
+// 初回は 0,1（ユーザーが editor で作り込んだ合格盤面）を SOURCE_KEY=0,1 で指定して 24,0/4,3 へ写した。
+// その 0,1 candidate は本採用後に削除済み（24,0 と重複＝役目終了）。
+const SOURCE_KEY = process.env.SOURCE_KEY ?? '24,0';
 
-// ── 生成器の規則を再利用して盤面を組む（規則を二重化しない）─────────────────
-const t = analyze(TEMPLATES.find(x => x.name === TEMPLATE).template);
-assertGeometry(t);
+const data = JSON.parse(readFileSync(MAP_PATH, 'utf8'));
 
-// 採用配置が生成器の幾何と矛盾しないか（石がボタン/壁/入口/鍵と重ならない）。
-const stoneSet = new Set(STONES);
-for (const s of STONES) {
-  if (!t.floors.has(s)) throw new Error(`石 ${s} が床でない`);
-  if (t.buttons.includes(s)) throw new Error(`石 ${s} が初期からボタン上（解が自明になる）`);
-  if (ENTRY.includes(s) || s === t.keyCell) throw new Error(`石 ${s} が入口/鍵に重なる`);
-}
-if (stoneSet.size !== STONES.length) throw new Error('石の位置に重複');
-if (STONES.length !== t.buttons.length) throw new Error(`石${STONES.length}個 ≠ ボタン${t.buttons.length}個`);
-
-// buildTiles は鍵扉 'D' を壁化する（測定用）∴ここでは使わず、テンプレの生地 +
-// 石 '*' を自前で置く（ボタン 'S'・鍵 'K'・扉 'D' はテンプレの文字をそのまま残す）。
-const after = TEMPLATES.find(x => x.name === TEMPLATE).template.map(row => row.split(''));
+// ── ソース盤面を読む（ユーザーが editor で作り込んだ合格盤面）─────────────────
+const srcStage = data.layers?.[SOURCE_LAYER]?.stages?.[SOURCE_KEY];
+if (!srcStage) throw new Error(`ソース部屋が無い: ${SOURCE_LAYER}[${SOURCE_KEY}]`);
+const after = srcStage.tiles.map(row => (Array.isArray(row) ? [...row] : row.split('')));
 const key = (r, c) => `${r},${c}`;
-for (let r = 0; r < 10; r++) for (let c = 0; c < 12; c++) {
-  if (stoneSet.has(key(r, c))) {
-    if (after[r][c] !== '.') throw new Error(`石を置く (${r},${c}) が床 '.' でない: '${after[r][c]}'`);
-    after[r][c] = '*';
-  }
-}
 
 // ── 検査 ────────────────────────────────────────────────────────────────
 function assertShape(board) {
@@ -78,7 +72,6 @@ function assertShape(board) {
 }
 const ENEMY_RE = /[WECFVXZALNJOUGI]/;
 
-const data = JSON.parse(readFileSync(MAP_PATH, 'utf8'));
 const stage = data.layers?.[LAYER]?.stages?.[ROOM];
 if (!stage) throw new Error(`部屋が無い: ${LAYER}[${ROOM}]`);
 const before = stage.tiles.map(r => [...r]);
@@ -101,9 +94,9 @@ const stoneCount = after.flat().filter(x => x === '*').length;
 if (btnCount !== 4 || stoneCount !== 4) throw new Error(`ボタン${btnCount}/石${stoneCount}（各4必要）`);
 
 const COMMENT_43 =
-  '[key_gate dark_tower] 純倉庫番・石4（PUZZLE-DESIGN §7-3 C / キュー 5.5i）。'
-  + '生成器 generate-key-room-dark-tower-43.mjs v1 が発見（石 4,3/5,8/6,6/7,7）。'
-  + '合格基準は再設計後の2軸＝L(押し手数)=42・貪欲NG。解の存在は逆算 pull-BFS が構成的に保証。'
+  '[key_gate dark_tower] 純倉庫番・石4（PUZZLE-DESIGN §7-3 C / キュー 5.5i）＝全10鍵の最終。'
+  + `ユーザーが editor で ${SOURCE_LAYER}[${SOURCE_KEY}] を作り込み、実プレイで「23,0 と同程度の難しさ」＝合格と判定した盤面。`
+  + '合否は実プレイ判定（濃さ軸フル BFS は状態空間 1670万超で完全展開不能＝測れない）。'
   + '詰みは笛(resetStones)で石を初期位置へ戻して回復。敵なし（enemy-ai が石を押すと別物になる）。';
 
 // ── ① 本番 dark_tower[4,3] へ書き込み ─────────────────────────────────────
@@ -139,7 +132,7 @@ const testMirror = {
   cols: 12,
 };
 
-console.log(`# ${LAYER}[${ROOM}] → 純倉庫番（石4・L=42・貪欲NG）`);
+console.log(`# ${LAYER}[${ROOM}] → 純倉庫番（石4・ソース ${SOURCE_LAYER}[${SOURCE_KEY}]・実プレイ合格盤面）`);
 console.log('  before / after:');
 for (let i = 0; i < 10; i++) {
   const a = before[i].join(''), b = after[i].join('');
