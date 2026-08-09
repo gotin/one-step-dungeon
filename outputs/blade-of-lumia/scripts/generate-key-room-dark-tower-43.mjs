@@ -1,69 +1,66 @@
 #!/usr/bin/env node
 /**
  * generate-key-room-dark-tower-43.mjs — dark_tower の鍵部屋 [4,3] を
- * 「純倉庫番（C）・石4・可能な限り深い L」にするための盤面を逆算生成・測定する
- * （PLAN 実行キュー 5.5i）。
+ * 「純倉庫番（C）・石4・狭く濃い」盤面にするため逆算生成＋実ゲーム遷移フル BFS で
+ * 濃さを測って選別する（PLAN 実行キュー 5.5i）。
  *
- * ⚠️ 2026-08-09 の方針転換（ユーザー確定）で、この部屋は **色ゲートを使わない**：
- *   - 色ゲート/色スイッチ込みの合成パズルは AI の自動生成ロジックが未整備＝実質失敗
- *     （26,0 はユーザーが手で作った）。∴ここでは非単調な関門は使わない。
- *   - 代わりに **純倉庫番（石4）で L > 60 を狙う**（D8＝石4・L=60 を「深さ」で超える）。
- *     これは新しい設計能力ではなく、D8 生成器（逆算 pull-BFS）の探索帯を上へ広げるだけ。
- *     ∴「L>60 が出る」と口約束せず、**回して出た最大 L を実測で報告**する。出なければ
- *     正直に報告し A 戦闘型へ切替（PLAN 5.5i の代用案）。
- *   - 26,0（色ゲート合成・L=106）は深洋O（寄り道・上限なし）用に温存する（案A）。
- *   - 旧・色ゲート版の生成器（I5 の過剰条件で袋小路に入った）は本ファイルで破棄した。
+ * ⚠️ 2026-08-09（ユーザー確定・作り直し）の設計方針：
+ *   - この部屋は **色ゲートを使わない純倉庫番（石4）**。合成移植（26,0）は採らない
+ *     （26,0 は深洋O の寄り道用に温存）。
+ *   - 前作（純倉庫番・石4・L=42・床66 の広い盤面）はユーザー実感で否定された
+ *     ＝「簡単。23,0 の方が難しくない?」。**L（押し手数）は必要条件だが十分条件でない**。
+ *     広い盤面は「石を遠くへ運ぶだけ」で L を水増しでき、体感の難しさに繋がらない。
+ *   - **難しさの主役は「濃さ」**＝ deadlock 比（誤手が回復不能になる割合）・強制手率
+ *     （進める手が1つしかない状態の割合）・最短解本数（一本道か）。これらは
+ *     **全到達状態を列挙して初めて測れる**＝盤面を**狭く**保てば（状態が完全展開できる範囲に
+ *     収まれば）測定できる。23,0 は状態 234万で完全展開できた実績がある。
+ *
+ * 「基準機」= test_mechanics 23,0（激難試作・石4）。実測（2026-08-09・.scratch/density.mjs）：
+ *     状態 2,348,945（完全展開）/ L押 21 / L歩 80 / 貪欲NG /
+ *     deadlock 1,852,062（比 0.79）/ 最短解本数 6 / 強制手率 0.13
+ *   → **新盤面はこの全軸を下限として上回る**：L押≥21・最短解本数≤6・強制手率≥0.13・
+ *     deadlock比≥0.79・貪欲NG。かつ **状態が DENSITY_CAP 以内で完全展開できる**
+ *     （＝24,0(=現4,3) はここでフル BFS が OOM＝広すぎ＝不採用。この上限が「狭さ」を強制する）。
  *
  * 部屋の位相（実データで再確認・2026-08-09）：
  *   ・入口＝北 (0,5)(0,6)（`4,2` から歩いて降りてくる。ワープではない）
- *   ・もう一方の出口＝南の鍵扉 `DD`(9,5)(9,6) → `4,4`
- *     ⚠️ ステージキーは "x,y"（列,行）＝[4,3] の南は [4,4]。
+ *   ・もう一方の出口＝南の鍵扉 `DD`(9,5)(9,6) → `4,4`（ステージキーは "x,y"＝[4,3] の南は [4,4]）
  *   ・東西の外周は全壁＝入口と鍵扉の2辺しかない **終端相当**∴部屋を丸ごとパズルに使える。
  *   ・鍵 `K` は (7,6) 据え置き。入場時の道具＝全部（**笛を持っている**）。
  *
  * 詰み救済（D8 と違い笛がある）：
  *   (a) 北の入口 (0,5)(0,6) へ戻って隣室へ出る＝enterStage が未解決の石を初期位置へ戻す
  *   (b) `fluteEffect:{type:'resetStones'}`＝その場で石を初期位置へ戻す
- *   ∴ D8 のような「前室へ石を1個も入れない」帰納法は**不要**（26,0 も noEscape 非ゼロで
- *      笛前提＝正常な倉庫番の詰みは笛で回復できる）。noEscape は**測って報告する**が
- *      不合格にはしない（migrate 側で必ず笛を付ける）。
+ *   ∴ D8 のような「前室へ石を1個も入れない」帰納法は**不要**。noEscape は測っても
+ *      不合格にしない（migrate 側で必ず笛を付ける＝倉庫番の詰みは笛で回復できる）。
  *
- * 部屋固有の不変条件（assertGeometry が検査する。違反は**全部まとめて**投げる）：
+ * 部屋固有の不変条件（assertGeometry が検査・違反は全部まとめて投げる）：
  *   ① 外周：北 (0,5)(0,6) が入口の床・南 (9,5)(9,6) が鍵扉 'D'・他は全壁。
  *   ② 鍵扉の手前 (8,5)(8,6) が床／鍵は (7,6)。
  *   ③ 石ゼロで北入口から鍵・全ボタン・扉の手前・全床へ歩ける（孤立区画が無い）。
  *   ④ 解けた状態（石が全ボタン上＝以後ロックで不動）でも入口から鍵・扉の手前へ歩ける。
  *   ⑤ 各ボタンに石を押し込める向きが1つ以上ある（無いと解なし）。
- *   ⑥ tiles 層に見た目だけの地面タイルを混ぜない／敵を置かない／ゲート 'T' も宝箱 'B' も
- *      色ゲートも無い（敵は enemy-ai.js が石を押す＝測定した倉庫番が別物になる）。
+ *   ⑥ tiles 層に見た目だけの地面タイルを混ぜない／敵を置かない／色ゲート 'T' 'B' も無い。
  *
- * 合格基準（2026-08-09・ユーザーと再設計）＝**2軸だけ**：
- *   ① L（押し手数＝箱を動かす回数）≥ L_MIN。**逆算 pull-BFS の「引き距離」で測る**
- *      ＝押しと引きは厳密に逆操作 ∴ goal から引いた距離 = その配置から goal への最短押し手数。
- *      **後段のフル BFS（全到達状態を rev グラフ付きで保持）は廃止**＝これが OOM の主因だった
- *      （deadlock 数・強制手率・脱出可否は「全到達状態を列挙する」のが定義 ∴ 難しい倉庫番＝
- *      状態空間が指数爆発する盤面ほど列挙不能＝この枠組みで難易度を保証しようとするのが破綻。
- *      倉庫番の求解可否は PSPACE 完全）。pull-BFS は state=石+プレイヤーだけで軽く、PULL_CAP で
- *      深さ打ち切りしても、打ち切り前に確定した引き距離は BFS 順 ∴ 最短で正しい。
- *   ② 貪欲NG＝素朴なヒルクライム（近づく押しだけ選ぶ）では解けない＝一度遠ざける/回り込む
- *      ひらめきが要る。**前向きの探索だけ＝全列挙しない＝OOM しない**（一直線押しの水増しL を弾く保険）。
- *   ・deadlock 数・強制手率・noEscape は**捨てる**（全列挙が要る＝OOM の元凶・体感難易度への寄与も薄い）。
- *   ・盤面サイズは 10×12 で上限が決まっている ∴ L（押し手数）が大きい＝石が曲がりくねった非自明な
- *     経路を強制されている＝難しい（小さい盤面では一直線の水増しが物理的に取れない）。閾値 L_MIN は
- *     未知なので、まず到達可能な最大 L を実測し、その値を見て確定する。
- *   ⚠️ この L は「押し手数」＝D8 旧生成器の L=60（歩き込みの遷移数）とは別尺度で比較不可。再較正する。
+ * 測定（2段）：
+ *   1. 逆算 pull-BFS（石+プレイヤーだけの軽い状態）で「押し手数 L」の候補を作る。
+ *      押しと引きは厳密に逆操作∴ goal から引いた距離 = その配置から goal への最短押し手数。
+ *   2. L 上位を実ゲーム遷移フル BFS（makeSolver + measureMetrics）に掛け、
+ *      deadlock比・強制手率・最短解本数を測る。状態が DENSITY_CAP 超＝広すぎ＝不採用
+ *      （＝これが「狭さ」の強制フィルタ＝23,0 は 234万で通り、24,0 は OOM 域で落ちる）。
  *
  * ⚠️ 実マップ（work/blade-of-lumia.json）は変更しない（採用盤面をコンソールに出すだけ）。
  *    書き込みは scripts/migrate-key-room-dark-tower-43.mjs。
  *
  * 使い方（outputs/blade-of-lumia/ で実行）:
  *   node scripts/generate-key-room-dark-tower-43.mjs               # 全テンプレ
- *   node scripts/generate-key-room-dark-tower-43.mjs v1            # 指定テンプレだけ
- *   GEOM_ONLY=1 node scripts/generate-key-room-dark-tower-43.mjs   # 幾何 assert だけ
- *   MAX_MEASURE=20 CAND_CAP=2000 L_MIN=61 node scripts/generate-key-room-dark-tower-43.mjs
+ *   node scripts/generate-key-room-dark-tower-43.mjs d1            # 指定テンプレだけ
+ *   GEOM_ONLY=1 node scripts/generate-key-room-dark-tower-43.mjs   # 幾何 assert だけ（テンプレ検証）
+ *   CAND_CAP=200 DENSITY_CAP=4000000 node scripts/generate-key-room-dark-tower-43.mjs
  */
 
 import { ROWS, COLS, makeSolver } from './lib/blade-solver.mjs';
+import { measureMetrics } from './lib/puzzle-metrics.mjs';
 import { TILE } from '../shared/tiles.js';
 
 // ── 盤面テンプレ ────────────────────────────────────────────────────────────
@@ -71,65 +68,77 @@ import { TILE } from '../shared/tiles.js';
 //   北 (0,5)(0,6) が入口の床 / 'D' 鍵扉（南 (9,5)(9,6)・測定では壁扱い＝鍵未所持）
 //   石の初期位置は逆算(pull-BFS)で決めるのでテンプレには書かない。
 //
-// 設計方針：部屋は 10x12（内部 rows1-8 × cols1-10＝80セル）で D8（内部 cols1-7）より広い
-//   ∴同じ千鳥ピラーでも搬送距離が伸びて L が深くなり得る。ボタンを4隅寄りに散らし、
-//   中央にピラーを置いて石4の搬送路が必ず交差するようにする（独立に運べない＝貪欲NG）。
-// ⚠️ 2026-08-09 に測定を作り替えた（旧フル BFS の OOM を廃止）＝L は pull-BFS の
-//    引き距離で測る（石+プレイヤーだけの軽い状態）∴**広い盤面でも回る見込み**。
-//    L を伸ばすには広い盤面が要る（10×12 上限で L 大＝石が曲がりくねる＝難しい）ので
-//    v1（床66・広い）を主軸に戻す。pull-BFS が OOM/打ち切りに達したらログに出す。
-//    v2（床34・狭い）は比較用に残す（L の頭打ちを見る）。
-export const TEMPLATES = [
-	{
-		// v1：4隅ボタン＋中央千鳥ピラー。北中央に入口の縦通路 (0,5)(0,6)。
-		//   ボタン (1,1) 北西 / (1,10) 北東 / (7,1) 南西 / (7,10) 南東。鍵 (7,6)。
-		name: 'v1',
-		template: [
-			'#####..#####',
-			'#S..#..#..S#',
-			'#..#....#..#',
-			'#....##....#',
-			'#.#......#.#',
-			'#....##....#',
-			'#..#....#..#',
-			'#S...#K.#.S#',
-			'#..#....#..#',
-			'#####DD#####',
-		],
-	},
-	{
-		// v2：十字（縦通路 col5,6＋横通路 row4,5）。床34＝狭い＝L の頭打ちを見る比較用。
-		name: 'v2',
-		template: [
-			'#####..#####',
-			'#####..#####',
-			'#####..#####',
-			'#####..#####',
-			'#S........S#',
-			'#S........S#',
-			'#####..#####',
-			'#####.K#####',
-			'#####..#####',
-			'#####DD#####',
-		],
-	},
-];
-
+// 設計方針（2026-08-09・23,0 に倣う）：狭く濃くする＝**内部にピラー（#）の格子を敷き**、
+//   床を絞って（目安 40〜52 セル）状態空間が完全展開できる範囲に収める。開けた広間を作らない。
+//   23,0 の DNA＝「ピラー格子＋所々の抜け道」で石の搬送路が曲がりくねり交差する＝独立に運べない
+//   （貪欲NG）・誤手が回復不能（deadlock 多）・進路が一本道（強制手率高・最短解本数少）。
+//   ボタンは隅・袋小路寄りに置き、そこへ石を押し込む向きが幾何で1つに絞られるようにする。
+// ⚠️ テンプレは**座標で組む**（文字列直書きは幅ミスを量産した＝2026-08-09）。
+//   buildTemplate が 10×12 の外周・入口・扉・鍵・ボタン・内部ピラーを機械生成する
+//   ∴行の幅は構造的に必ず 12 になる。ボタンとピラーだけを "r,c" で与える。
 const key = (r, c) => `${r},${c}`;
 const parse = (k) => k.split(',').map(Number);
 const DIRS = [[-1, 0], [1, 0], [0, -1], [0, 1]];
+
+const ENTRY_CELLS = ['0,5', '0,6'];
+const DOOR_CELLS = ['9,5', '9,6'];
+const DOOR_APPROACH = ['8,5', '8,6'];
+const KEY_CELL = '7,6';
+
+/**
+ * 座標指定から 10×12 テンプレ行配列を作る。
+ *   外周＝壁（北 (0,5)(0,6) だけ床・南 (9,5)(9,6) だけ 'D'）／鍵 (7,6)＝'K'／
+ *   buttons＝'S'／pillars＝内部の壁 '#'／それ以外の内部＝床 '.'。
+ */
+function buildTemplate({ buttons, pillars }) {
+	const g = Array.from({ length: ROWS }, () => Array(COLS).fill('.'));
+	for (let r = 0; r < ROWS; r++) for (let c = 0; c < COLS; c++) {
+		const onRing = r === 0 || r === ROWS - 1 || c === 0 || c === COLS - 1;
+		if (onRing) g[r][c] = '#';
+	}
+	for (const e of ENTRY_CELLS) { const [r, c] = parse(e); g[r][c] = '.'; }
+	for (const d of DOOR_CELLS) { const [r, c] = parse(d); g[r][c] = 'D'; }
+	for (const p of pillars) { const [r, c] = parse(p); g[r][c] = '#'; }
+	for (const b of buttons) { const [r, c] = parse(b); g[r][c] = 'S'; }
+	const [kr, kc] = parse(KEY_CELL); g[kr][kc] = 'K';
+	return g.map((row) => row.join(''));
+}
+
+// ⚠️ 設計の要（2026-08-09・実測で確定）：**L 押は広さでなく「狭さ＋不規則ピラー」で稼ぐ**。
+//   規則的千鳥（床61）は石が直進でき L 押 8 止まり。開けた広間（床64-71）は L 押 21+ 出るが
+//   状態が 4M 超で全件 tooWide＝スカスカ＝前作と同じ轍。基準機 23,0 は **床50・不規則な単マス
+//   ピラー散在**で L 押 21・状態 234万（完全展開）＝濃い。∴床を 48〜54 に絞り、ピラーを不規則に
+//   置いて石の回り込みを強制する核にする。ボタンは各象限のポケット。鍵 (7,6)・扉手前 (8,5)(8,6)。
+export const TEMPLATES = [
+	{
+		// e1：内部を単マスピラーで不規則に仕切る。ボタン (1,1)(1,10)(7,1)(7,10)。
+		name: 'e1',
+		buttons: ['1,1', '1,10', '7,1', '7,10'],
+		pillars: ['2,2', '2,7', '3,3', '3,5', '4,1', '4,7', '5,3', '5,5', '6,2', '6,7', '6,9', '8,3', '8,8'],
+	},
+	{
+		// e2：櫛歯を左右非対称にずらして石の左右搬送を折れ線に強制する。
+		name: 'e2',
+		buttons: ['1,1', '1,10', '7,1', '7,10'],
+		pillars: ['2,3', '2,6', '3,4', '3,8', '4,1', '4,5', '5,3', '5,7', '6,4', '6,8', '8,2', '8,4', '8,9'],
+	},
+];
 const GEOM_ONLY = !!process.env.GEOM_ONLY;
-// 石4は状態が桁で増える∴上限を env で動かせる（超過した候補は件数を出す）。
-const GUARD_MAX = Number(process.env.GUARD_MAX ?? 15000000);
 // 逆算(pull-BFS)の展開上限。切ったら「どこまで見たか」をログに出す（黙って切らない）。
 const PULL_CAP = Number(process.env.PULL_CAP ?? 5000000);
-
-// L（押し手数）の下限。閾値は未知 ∴ 既定 1（＝全候補を一覧して実測最大を見てから確定する）。
-// 実測を見たら L_MIN=env で絞る。上限は既定なし（深いほど良い）。
-const L_MIN = Number(process.env.L_MIN ?? 1);
-const L_MAX = Number(process.env.L_MAX ?? Infinity);
+// フル BFS（濃さ測定）の状態上限＝**狭さの強制フィルタ**。超えたら「広すぎ」で不採用。
+// 23,0 は 234万で完全展開できた∴既定 4,000,000（24,0 はこの域で OOM＝落ちる）。
+const DENSITY_CAP = Number(process.env.DENSITY_CAP ?? 4000000);
 
 const STONE_COUNT = 4;
+
+// ── 基準機 23,0 の実測（.scratch/density.mjs・2026-08-09）＝この全軸を下限として超える ──
+const BASE = {
+	Lpush: 21,           // 押し手数（pull-BFS 引き距離）
+	solCount: 6,         // 最短解本数（少ないほど一本道＝難しい）
+	forcedRatio: 0.13,   // 強制手率（高いほど一本道＝難しい）
+	deadlockRatio: 0.79, // deadlock/states（高いほど誤手が回復不能＝濃い）
+};
 
 // tiles 層に置いてはいけない「見た目だけの地面タイル」（塗りは bgTiles の仕事）。
 const DECOR_TILES = new Set(['d', 'g', 'o', 's', 'a', 'm']);
@@ -137,11 +146,6 @@ const DECOR_TILES = new Set(['d', 'g', 'o', 's', 'a', 'm']);
 const ENEMY_RE = /[WECFVXZALNJOUGI]/;
 // 使ってはいけないギミック（色ゲート/色スイッチ/ゲート/宝箱/潮＝この部屋では使わない）。
 const FORBIDDEN_GIMMICKS = new Set(['(', ')', '[', ']', 'T', 'B', '=']);
-
-const ENTRY_CELLS = ['0,5', '0,6'];
-const DOOR_CELLS = ['9,5', '9,6'];
-const DOOR_APPROACH = ['8,5', '8,6'];
-const KEY_CELL = '7,6';
 
 export function analyze(template) {
 	const grid = template.map((row) => row.split(''));
@@ -294,7 +298,7 @@ function walkReachable(t, stones, target) {
 	return walkSet(t.entries[0], (k) => t.floors.has(k) && !blocked.has(k)).has(target);
 }
 
-// ── 候補を実ゲーム遷移＋4軸で測る ───────────────────────────────────────────────
+// ── 候補を実ゲーム遷移で組み立てて測る ───────────────────────────────────────────
 export function buildTiles(t, stonePlacement) {
 	const stoneSet = new Set(stonePlacement);
 	const tiles = t.grid.map((row) => [...row]);
@@ -350,34 +354,67 @@ function makeGreedyPush(t) {
 	};
 }
 
-/** 盤面をソルバー問題に組み立てる。ゴール＝石ロック済み かつ 鍵セルに立っている。 */
+/** 盤面をソルバー問題に組み立てる。ゴール＝石ロック済み（＝全ボタンに石＝stonesPlaced）。 */
 export function buildProblem(t, stonePlacement) {
 	const { tiles, bg } = buildTiles(t, stonePlacement);
 	const S = makeSolver(tiles, bg, [], {}, new Set(), { hasLadder: false });
-	const start = S.encode(...parse(t.entries[0]), S.initStones, 0, 0, 0);
-	const goalTest = (state) => {
-		const f = state.split('|');
-		return f[0] === t.keyCell && f[5] === '1';
-	};
-	return { S, start, goalTest };
+	// 入口2セルの両方を start にする（どちらから降りても最短で何手か）。
+	const starts = t.entries.map((e) => S.encode(...parse(e), S.initStones, 0, 0, 0));
+	// ゴール＝ロックビットが立つ（＝全ボタンに石が乗った＝基準機 23,0 と同じ尺度）。
+	const goalTest = (state) => state.split('|')[5] === '1';
+	return { S, starts, goalTest };
 }
 
-// ⚠️ 旧 measurePlacement（全到達状態を rev グラフ付きで保持する measureMetrics で
-//    deadlock/強制手率/noEscape を測る）は 2026-08-09 に**廃止**した＝これが OOM の主因。
-//    L は pull-BFS の引き距離で無料で取れる ∴ フル BFS は不要。貪欲NG は buildProblem +
-//    makeGreedyPush の前向き探索だけで判定する（下の実行ループ参照）。
+/** 濃さヒューリスティック（貪欲の既定 h と同じ形＝石→最寄りボタンのマンハッタン和）。 */
+function makeHeuristic(t) {
+	const bpos = t.buttons.map(parse);
+	const man = (a, b) => Math.abs(a[0] - b[0]) + Math.abs(a[1] - b[1]);
+	return (state) => {
+		const stonesStr = state.split('|')[1];
+		const stones = stonesStr ? stonesStr.split(';') : [];
+		let h = 0;
+		for (const s of stones) { const sp = parse(s); h += Math.min(...bpos.map((b) => man(sp, b))); }
+		return h;
+	};
+}
+
+/**
+ * 実ゲーム遷移フル BFS で濃さ4軸を測る。状態が DENSITY_CAP 超なら「広すぎ」で null
+ * （＝measureMetrics が throw＝それを捕まえる）。返り＝{states,L,greedy,deadlocks,solCount,forcedRatio,deadlockRatio}。
+ */
+function measureDensity(t, stonePlacement, greedyFn) {
+	const { S, starts, goalTest } = buildProblem(t, stonePlacement);
+	const h = makeHeuristic(t);
+	try {
+		const m = measureMetrics(S, starts, goalTest, h, { guardMax: DENSITY_CAP, greedyFn });
+		if (m.L === null) return null;   // ゴール到達不能（実ゲーム遷移では解けない配置）
+		return { ...m, deadlockRatio: m.states ? m.deadlocks / m.states : 0 };
+	} catch (e) {
+		return { tooWide: true };        // 状態 > DENSITY_CAP＝広すぎ（スカスカ）＝不採用
+	}
+}
+
+/** 23,0（基準機）を全軸で上回るか。 */
+function beatsBaseline(d) {
+	return !d.greedy
+		&& d.L !== null
+		&& (typeof d.solCount === 'number' ? d.solCount : Infinity) <= BASE.solCount
+		&& d.forcedRatio >= BASE.forcedRatio
+		&& d.deadlockRatio >= BASE.deadlockRatio;
+}
 
 // ── 実行 ────────────────────────────────────────────────────────────────────
 const IS_MAIN = process.argv[1]?.endsWith('generate-key-room-dark-tower-43.mjs') ?? false;
 const only = IS_MAIN ? process.argv.slice(2)[0] : undefined;
 const list = IS_MAIN ? (only ? TEMPLATES.filter((x) => x.name === only) : TEMPLATES) : [];
-if (IS_MAIN && !list.length) throw new Error(`テンプレが無い: ${only}`);
+if (IS_MAIN && !list.length && only) throw new Error(`テンプレが無い: ${only}`);
 
 for (const tpl of list) {
-	const t = analyze(tpl.template);
+	const template = buildTemplate(tpl);
+	const t = analyze(template);
 	assertGeometry(t);
 	console.log(`\n════ ${tpl.name} ════`);
-	tpl.template.forEach((row, r) => console.log('  ', String(r).padStart(2), row));
+	template.forEach((row, r) => console.log('  ', String(r).padStart(2), row));
 	console.log(`  ボタン ${t.buttons.join(' / ')}  鍵 ${t.keyCell}  入口 ${t.entries.join(' / ')}  扉 ${t.doors.join(' / ')}`);
 	console.log(`  床 ${t.floors.size} セル（測定では鍵扉は壁扱い＝鍵未所持）`);
 	if (GEOM_ONLY) { console.log('  (GEOM_ONLY: assertGeometry を通過)'); continue; }
@@ -394,60 +431,59 @@ for (const tpl of list) {
 	}
 	console.log(`  逆算(pull-BFS) 展開状態 ${pull.states}`
 		+ (pull.truncatedAt == null ? '（完全展開）'
-			: `  ⚠️ PULL_CAP=${PULL_CAP} で打ち切り＝引き距離 ${pull.truncatedAt} までしか見ていない`
-				+ '（より深い候補を見落としている可能性あり）'));
-	console.log(`  石${STONE_COUNT}配置候補: ${cands.length} 通り（引き距離 ${cands[0]?.pulls}〜${cands[cands.length - 1]?.pulls}）`);
+			: `  ⚠️ PULL_CAP=${PULL_CAP} で打ち切り＝引き距離 ${pull.truncatedAt} まで`));
+	console.log(`  石${STONE_COUNT}配置候補: ${cands.length} 通り（押し手数 ${cands[0]?.pulls}〜${cands[cands.length - 1]?.pulls}）`);
 	if (!cands.length) { console.log(`  ✗ ${tpl.name}：候補ゼロ（ボタンへ石を運べない盤面）`); continue; }
 
-	const candCap = Number(process.env.CAND_CAP ?? 1500);
-	let pool = cands;
-	if (cands.length > candCap) {
-		const st = cands.length / candCap;
-		pool = Array.from({ length: candCap }, (_, i) => cands[Math.floor(i * st)]);
-		console.log(`  ⚠️ 候補を ${cands.length} → ${pool.length} に等間隔サンプル（CAND_CAP=${candCap}）`
-			+ `＝全候補は見ていない（${cands.length - pool.length} 通りは未評価＝見落としの可能性を明示）`);
-	} else {
-		console.log(`  候補は全 ${pool.length} 通りを評価（CAND_CAP=${candCap} に未達＝打ち切りなし）`);
-	}
-
-	// 篩：貪欲（マクロ押し）は安い∴先に軸②で篩う。
-	const greedyFn = makeGreedyPush(t);
-	const insight = [];
-	for (const cand of pool) {
-		const p = buildProblem(t, cand.stones);
-		if (!greedyFn(p.S, [p.start], p.goalTest)) insight.push(cand);
-	}
-	console.log(`  貪欲で解ける（軸②未達）${pool.length - insight.length} 件 / 軸②クリア ${insight.length} 件`);
-	if (!insight.length) { console.log(`  ✗ ${tpl.name}：軸②（貪欲NG）を通る候補が無い`); continue; }
-
-	// L（押し手数）は pull-BFS の引き距離そのもの＝後段のフル BFS は不要（OOM 回避）。
-	// 貪欲NG を満たす候補を L の深い順に並べ、L_MIN 以上を採用可とする。
-	const byL = [...insight].sort((a, b) => b.pulls - a.pulls);
-	const deepest = byL[0];
-	console.log(`  軸②クリア ${insight.length} 件の L（押し手数）分布: 最大 ${deepest.pulls} / 最小 ${byL[byL.length - 1].pulls}`);
-	// 上位を一覧（実測値を見て L_MIN を確定するため）。
-	const topN = Math.min(Number(process.env.TOP_N ?? 12), byL.length);
-	for (let i = 0; i < topN; i++) {
-		const c = byL[i];
-		console.log(`    · L=${c.pulls} 石 ${c.stones.join(' ')} プレイヤー初期 ${c.player}`);
-	}
-	if (pull.truncatedAt != null && deepest.pulls >= pull.truncatedAt)
-		console.log(`  ⚠️ 最大 L=${deepest.pulls} は PULL_CAP 打ち切り(${pull.truncatedAt})に達している＝さらに深い L がある可能性`);
-
-	const passed = byL.filter((c) => c.pulls >= L_MIN && c.pulls <= L_MAX);
-	console.log(`  L≥${L_MIN}${Number.isFinite(L_MAX) ? `かつL≤${L_MAX}` : ''} を満たす貪欲NG候補: ${passed.length} 件`);
-	if (!passed.length) {
-		console.log(`  ✗ ${tpl.name}：L≥${L_MIN} の合格盤面なし（実測最大 L=${deepest.pulls}）`
-			+ `＝テンプレ調整で L を伸ばすか、L_MIN をこの実測値に合わせて再判断（or A戦闘型へ切替）`);
+	// L 押 が 23,0 下限（21）以上の候補だけ濃さ測定に回す（それ未満は基準未達確定）。
+	const eligible = cands.filter((c) => c.pulls >= BASE.Lpush).sort((a, b) => b.pulls - a.pulls);
+	console.log(`  L押≥${BASE.Lpush} の候補: ${eligible.length} 通り`);
+	if (!eligible.length) {
+		console.log(`  ✗ ${tpl.name}：L押≥${BASE.Lpush} の候補なし（実測最大 L押=${cands[cands.length - 1].pulls}）`
+			+ '＝テンプレを狭く/曲げて L を伸ばす必要');
 		continue;
 	}
 
-	// 最も深い L を採る。
-	const cand = passed[0];
-	console.log(`  ✅ 採用 石 ${cand.stones.join(' ')}（L=${cand.pulls}・貪欲NG・プレイヤー初期 ${cand.player}）`);
-	const { tiles } = buildTiles(t, cand.stones);
+	// 濃さ測定は重い∴ L 上位から CAND_CAP 件だけ実ゲーム遷移フル BFS に掛ける。
+	const candCap = Number(process.env.CAND_CAP ?? 150);
+	const pool = eligible.slice(0, candCap);
+	if (eligible.length > candCap)
+		console.log(`  ⚠️ L 上位 ${candCap} 件だけ濃さ測定（残り ${eligible.length - candCap} 件は未評価）`);
+
+	const greedyFn = makeGreedyPush(t);
+	const scored = [];
+	let tooWide = 0, unsolved = 0, greedyOK = 0;
+	for (const c of pool) {
+		const d = measureDensity(t, c.stones, greedyFn);
+		if (!d) { unsolved++; continue; }
+		if (d.tooWide) { tooWide++; continue; }
+		if (d.greedy) { greedyOK++; continue; }   // 貪欲で解ける＝軸②未達
+		scored.push({ ...c, ...d });
+	}
+	console.log(`  濃さ測定 ${pool.length} 件 → 広すぎ棄却 ${tooWide} / 解なし ${unsolved} / 貪欲可 ${greedyOK} / 貪欲NG ${scored.length}`);
+	if (!scored.length) { console.log(`  ✗ ${tpl.name}：貪欲NGかつ完全展開できる候補が無い`); continue; }
+
+	// 23,0 を全軸で超える候補。無ければ「一番惜しい」も見せる。
+	const passed = scored.filter(beatsBaseline);
+	const rank = (d) => [d.deadlockRatio, -d.solCount, d.forcedRatio, d.L];
+	const cmp = (a, b) => { const ra = rank(a), rb = rank(b); for (let i = 0; i < ra.length; i++) if (rb[i] !== ra[i]) return rb[i] - ra[i]; return 0; };
+	scored.sort(cmp);
+	console.log(`  基準機23,0 を全軸で超える候補: ${passed.length} 件`);
+	const topN = Math.min(Number(process.env.TOP_N ?? 8), scored.length);
+	console.log(`  ── 濃さ上位 ${topN} 件（基準: L押≥${BASE.Lpush} 解本数≤${BASE.solCount} 強制≥${BASE.forcedRatio} dl比≥${BASE.deadlockRatio}）──`);
+	for (let i = 0; i < topN; i++) {
+		const c = scored[i];
+		console.log(`    ${beatsBaseline(c) ? '✅' : '  '} L押=${c.pulls} L歩=${c.L} 状態=${c.states} dl比=${c.deadlockRatio.toFixed(2)} 解本数=${c.solCount} 強制=${c.forcedRatio} 石 ${c.stones.join(' ')}`);
+	}
+	if (!passed.length) { console.log(`  ✗ ${tpl.name}：基準機を全軸で超える盤面なし（テンプレの幾何を詰め直す）`); continue; }
+
+	passed.sort(cmp);
+	const win = passed[0];
+	console.log(`\n  ✅ 採用（${tpl.name}）石 ${win.stones.join(' ')}`);
+	console.log(`     L押=${win.pulls} L歩=${win.L} 状態=${win.states} dl比=${win.deadlockRatio.toFixed(2)} 解本数=${win.solCount} 強制=${win.forcedRatio}`);
+	const { tiles } = buildTiles(t, win.stones);
 	const shown = tiles.map((row, r) => row.map((ch, c) => (DOOR_CELLS.includes(key(r, c)) ? 'D' : ch)).join(''));
 	console.log('  ── 採用盤面 ──');
 	shown.forEach((row, r) => console.log('    ', String(r).padStart(2), row));
-	console.log(`  ── migrate 用 ── STONES=${cand.stones.join(' ')}  PLAYER=${cand.player}  ENTRY=${t.entries.join(' ')}  L=${cand.pulls}`);
+	console.log(`  ── migrate 用 ── STONES=${win.stones.join(' ')}  PLAYER=${t.entries[0]}  ENTRY=${t.entries.join(' ')}  L押=${win.pulls}`);
 }
