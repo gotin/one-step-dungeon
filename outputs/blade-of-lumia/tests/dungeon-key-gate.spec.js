@@ -139,7 +139,7 @@ test.describe('Blade of Lumia – ダンジョンの鍵（進行の背骨）', (
       'dungeon_7/1,0':  'killAllAndFlute', // A 戦闘型②（強化＋笛の2段目・5.5h 済）
       'dungeon_8/1,0':  'stonesPlaced', // C 倉庫番②（石4・関門の上限帯・5.5g 済）
       'dark_tower/1,2': 'killAll',      // A 戦闘型③（強化・5.5h 済）
-      'dark_tower/4,3': 'killAll',      // → D 複合 5.5i
+      'dark_tower/4,3': 'stonesPlaced', // C 倉庫番③（石4・純・L=42・全10鍵の最終・5.5i 済）
     };
     const found = {};
     for (const layerName of DUNGEONS) {
@@ -1551,6 +1551,7 @@ test.describe('Blade of Lumia – ダンジョンの鍵（進行の背骨）', (
   }
 
   test('⑨ 脅威度が進行順（D1 → D7 → dark_tower[1,2]）で単調増加する', () => {
+    // dark_tower[4,3] は 5.5i で純倉庫番（C）に確定＝敵ゼロ ∴この戦闘型の単調増加からは外す。
     const d1 = threatOfStage(map.layers.dungeon_1.stages['1,0']);
     const d7 = threatOfStage(map.layers.dungeon_7.stages['1,0']);
     const dt = threatOfStage(map.layers.dark_tower.stages['1,2']);

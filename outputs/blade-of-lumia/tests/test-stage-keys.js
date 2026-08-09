@@ -57,6 +57,12 @@ export const TEST_STAGE_KEYS = {
 	// 位置に意味を持たせる設計上の制約は無かった）とユーザー指摘。migrate-test-sokoban-tiers.mjs
 	// の BOARDS 管轄外（手動管理・ユーザーがeditorで直接編集する運用）。
 	sokoban_color:    '26,0',
+	// dark_tower[4,3]（全10鍵の最終・純倉庫番・石4・L=42）の本番盤面ミラー（キュー 5.5i）。
+	// 本番と1文字違わぬ同一盤面＝ここで試すと本番と同じ挙動（stonesPlaced→鍵 K(7,6) 出現・
+	// 笛 resetStones）になる。北入口 (0,5)(0,6) からスポーン。scripts/migrate-key-room-dark-tower-43.mjs
+	// が本番 dark_tower[4,3] と同時に書く（片方だけ直すと乖離＝両方 migrate で同時更新）。
+	// 検証ステージは fixture でなく test_mechanics に置く決まり（DECISIONS 2026-07-25／PLAN 4.6-(4)）。
+	sokoban_darktower: '24,0',
 	// 回帰フィクスチャ（旧 Phase 5-1「合成」の盤面をそのまま退避したもの）＝石3＋色スイッチ／
 	// 色ゲートの直列2枚。2026-08-02 に「閉じた門の中に立って石を押せない」バグ修正を入れた結果
 	// **解なし**になった＝パズルではなく、抜け道（閉じた門の中に立って石を先へ押す）の回帰用。
