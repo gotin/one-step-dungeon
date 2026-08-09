@@ -31,15 +31,16 @@
  *      押し手 X-2d が壁」⇒ 外から入る押しが存在しない。
  *   ③ 安全地帯は連結で、本体との口が2つ以上（1つだと口の手前に石が座った瞬間に脱出不能）。
  *   ④ 鍵扉の手前 (8,5)(8,6) が床／鍵は (7,6)。
- *   ⑤ **色ゲートは「近道」であって唯一路ではない**＝ゲートを全部壁にしても、入口から
- *      ゲート以外の全ての床へ歩ける。∴色の選択が一方通行の賭けにならない（色スイッチも
- *      両方ゲート抜きで到達できる）＝色による恒久詰みが幾何のレベルで起こり得ない。
- *      ⚠️ 必須性（I4）はこの不変条件と両立する：石が迂回路を塞いだ局面ではゲートしか
- *      残らない＝必須性は**石との相互作用から生まれる**（4.7 の 26,0 と同じ）∴静的な
- *      「唯一路」ではなく動的に測る（下記 I4）。
+ *   ⑤ 弱い版（機構が発見可能）＝色ゲートを1枚も通らずに、少なくとも1つの色スイッチへ
+ *      手が届く（立てる or 隣接して剣で叩ける）＝色の切替を「開始」できる。
+ *      ⚠️ v1 の「ゲート閉で全床へ歩ける」は I4（ゲートを壁にすると解なし）と論理的に衝突する
+ *      ∴捨てた（PLAN 5.5i・[[invariant-that-defeats-gimmick-is-wrong]]）。必須性は石との
+ *      相互作用から生まれる（4.7 の 26,0 と同じ）∴静的な「唯一路」ではなく動的に測る（I4）。
  *   ⑥ 各ボタンに石を押し込める向きが1つ以上ある（無いと解なし）。
- *   ⑦ 石ゼロのとき、ゲート抜きで入口から鍵・全ボタン・扉の手前へ歩ける／孤立床が無い。
- *   ⑧ 解けた状態（石が全ボタン上＝以後ロックで不動）でも、ゲート抜きで鍵と扉の手前へ歩ける。
+ *   ⑦ 両ゲートを開通とみなした歩行で、入口から鍵・全ボタン・扉の手前・全床へ行ける
+ *      （真の孤立区画が無いこと）。
+ *   ⑧（解けた後もゲート抜きで鍵へ歩ける）は捨てた＝最後の一歩をゲートにするのが必須性の
+ *      一番素直な作り方（PLAN 5.5i）。解いた後の安全は noEscape===0 と笛で保証する。
  *   ⑨ tiles 層に見た目だけの地面タイルを混ぜない／敵を置かない／ゲート 'T' も宝箱 'B' も無い
  *      （敵は enemy-ai.js tryEnemyPushStone で石を押す＝測定した倉庫番が別物になる）。
  *
@@ -77,28 +78,36 @@ import { TILE } from '../shared/tiles.js';
 //   石の初期位置は逆算(pull-BFS)で決めるのでテンプレには書かない。
 export const TEMPLATES = [
 	{
-		// v1「玄関ホールと二本の梁」：
-		//   ・row1 が玄関ホール（安全地帯）＝石が絶対に入れない。階段口は (2,2)/(2,9) の2つ
-		//     ＝どちらも真下 (4,2)/(4,9) が壁なので石を押し上げられない（帰納法②）。
-		//   ・本体は row3（上の梁）と row7（下の梁）＋ col1/col10 の縦通路で外周ループ、
-		//     その内側に row5 の1マス幅の背骨（(5,3)〜(5,7)）が走る。
-		//   ・色ゲートは背骨の両端 (5,2)赤 /(5,8)青 ＝ループから背骨への**近道**。
-		//     迂回路は上の梁 (3,3)→(4,3) と 下の梁 (7,7)→(6,7) 等＝石で塞がり得る。
-		//   ・色スイッチは row5 の両端 (5,1)赤 /(5,10)青。row5 は壁で切れていない∴
-		//     背骨に居れば**矢でどちらの色にも切り替えられる**（弓は入場時に所持）。
-		//     縦の射線は col1 が赤・col10 が青だけ＝場所によって選べる色が変わる。
-		//   ・ボタンは (4,5) 中央上のポケット・(7,3) 南西・(7,9) 南東＝搬送路が背骨で交差する。
-		name: 'v1',
+		// v2「二つの作業場（色ゲートでしか入れない）」＝PLAN 5.5i の v2 骨格。
+		//   v1（対称ループ＋中央背骨）は I4 で落ちた＝ゲートを壁にしても迂回で解けた
+		//   （＝ゲートが飾り）。教訓＝「廊下の両端にゲート」では必須性は生まれない。
+		//   ∴ v2 は「ゲート以外の入口をゼロにする」＝左右2つの作業場を色ゲートでしか
+		//   入れないように**完全分離**する。
+		//   ・玄関ホール（安全地帯）＝row1 全幅。降り口は (2,2)/(2,9) の2つ＝どちらも真下が
+		//     壁で石を押し上げられない（帰納法②）。
+		//   ・中央シャフト（cols 5-6）＝入口・色スイッチ・鍵・扉を結ぶ。色ゲートを1枚も
+		//     通らずに色スイッチへ手が届く＝機構を開始できる（弱い⑤）。
+		//   ・西作業場（cols 1-3）＝赤ゲート `(` (4,3) でしか中央から入れない。
+		//     東作業場（cols 8-10）＝青ゲート `)` (4,8) でしか入れない。
+		//   ・ボタンは西2・東1に分ける＝色を替えないと全ボタンを埋められない
+		//     （赤を壁化→西の 2 ボタンへ届かず解なし／青を壁化→東の 1 ボタンへ届かず
+		//      解なし＝I4 が構造で成立する）。
+		//   ・石は各作業場の中に初期配置（pull-BFS が決める）＝ゲートを渡らない（I5）。
+		//   ・安全地帯＝(0,5)(0,6)(1,5)(1,6) の 2×2。口は (2,5)(2,6) の 2 つ。押し上げ防止＝
+		//     (3,5)(3,6) を壁にして「口の真下に石を置いて上へ押し込む」を封じる（帰納法②）。
+		//     ∴中央は (2,4)→(3,4) と (2,7)→(3,7) で降りて row4 で合流する。
+		//   ・色スイッチは中央底 (8,4)赤 /(8,7)青＝ゲートを1枚も通らずに叩ける（弱い⑤）。
+		name: 'v2',
 		template: [
 			'#####,,#####',
-			'#,,,,,,,,,,#',
-			'##,######,##',
-			'#..........#',
-			'#.#.#S#.##.#',
-			'#[(.....).]#',
-			'#.#.#.#.#..#',
-			'#..S..K..S.#',
-			'#.#.#..#.#.#',
+			'#####,,#####',
+			'####....####',
+			'#.S#.##.#..#',
+			'#..#....#..#',
+			'#..(....)..#',
+			'#..#....#S.#',
+			'#S.#..K.#..#',
+			'#..#[..]#..#',
 			'#####DD#####',
 		],
 	},
@@ -259,26 +268,35 @@ export function assertGeometry(t) {
 	for (const a of DOOR_APPROACH) if (!t.floors.has(a)) errs.push(`鍵扉の手前 ${a} が床でない`);
 	// ⑥ 各ボタンに石を押し込める向きが1つ以上ある
 	for (const b of t.buttons) if (!pushableInto(t, b)) errs.push(`ボタン ${b} へ石を押し込める向きが無い＝解なし`);
-	// ⑤⑦ 石ゼロ・**色ゲートを全部閉じた**歩行で、ゲート以外の全ての床へ行ける
-	//     ＝ゲートは近道であって唯一路ではない（色の選択が一方通行の賭けにならない）。
-	const noGate = (k) => t.floors.has(k) && !t.gateCells.includes(k);
-	const openWalk = walkSetMulti(ENTRY_CELLS, noGate);
+	// ⑤⑦ 到達性は「両ゲートを開通とみなした」歩行で測る＝真の孤立区画が無いこと。
+	//     ⚠️ v1 で使った「ゲート閉で全床へ行ける」は I4（ゲートを壁にすると解なし）と
+	//        論理的に衝突する∴捨てた（PLAN 5.5i 設計方針の転換・色は切り替えられるので
+	//        ゲートは通路でよい＝一方通行の賭けにならない・[[invariant-that-defeats-gimmick-is-wrong]]）。
+	const openAll = walkSetMulti(ENTRY_CELLS, (k) => t.floors.has(k));
 	for (const [label, cell] of [['鍵', t.keyCell],
 		...t.buttons.map((b) => ['ボタン', b]), ...DOOR_APPROACH.map((a) => ['扉の手前', a]),
 		...t.switches.red.map((s) => ['色スイッチ赤', s]), ...t.switches.blue.map((s) => ['色スイッチ青', s])]) {
-		if (!openWalk.has(cell)) errs.push(`色ゲートを閉じたまま入口から ${label} ${cell} へ行けない`
-			+ '（＝ゲートが唯一路＝色の選択が一方通行の賭けになる）');
+		if (!openAll.has(cell)) errs.push(`両ゲート開通でも入口から ${label} ${cell} へ行けない＝真の孤立区画`);
 	}
 	for (const f of t.floors) {
-		if (t.gateCells.includes(f)) continue;
-		if (!openWalk.has(f)) errs.push(`床 ${f} が「ゲート閉」では入口から到達できない（孤立区画/ゲート唯一路）`);
+		if (!openAll.has(f)) errs.push(`床 ${f} が（両ゲート開通でも）入口から到達できない＝孤立区画`);
 	}
-	// ⑧ 解けた状態（石が全ボタン上・以後ロックで不動）でもゲート抜きで鍵・扉の手前へ歩ける
-	const solved = new Set(t.buttons);
-	const afterSolve = walkSetMulti(ENTRY_CELLS, (k) => noGate(k) && !solved.has(k));
-	for (const [label, cell] of [['鍵', t.keyCell], ...DOOR_APPROACH.map((a) => ['扉の手前', a])]) {
-		if (!afterSolve.has(cell)) errs.push(`解いた後（石がボタン上で固定）に ${label} ${cell} へ行けない`);
-	}
+	// ⑤(a) 弱い版（機構が発見可能）＝ゲートを1枚も通らずに、少なくとも1つの色スイッチへ
+	//      手が届く（そのセルに立てる or 隣接して剣で叩ける）。色の切替を「開始」できる
+	//      ＝色の選択が一方通行の賭けにならない。全床への到達（v1 の⑤）は要求しない。
+	const noGate = (k) => t.floors.has(k) && !t.gateCells.includes(k);
+	const closedWalk = walkSetMulti(ENTRY_CELLS, noGate);
+	const canStart = t.switchCells.some((s) => {
+		if (closedWalk.has(s)) return true;
+		const [sr, sc] = parse(s);
+		return DIRS.some(([dr, dc]) => closedWalk.has(key(sr + dr, sc + dc)));
+	});
+	if (!canStart) errs.push('色ゲートを1枚も通らずに手が届く色スイッチが無い'
+		+ '＝機構を開始できない（色の選択が一方通行の賭けになる）');
+	t.closedWalk = closedWalk;
+	// ⑧（解けた後もゲート抜きで鍵へ歩ける）は捨てた＝最後の一歩をゲートにするのが
+	//    必須性の一番素直な作り方（PLAN 5.5i）。解いた後の安全は測定の noEscape===0 と
+	//    笛の resetStones で保証する。
 	if (errs.length) throw new Error(`幾何の不変条件に違反:\n  - ${errs.join('\n  - ')}`);
 }
 
@@ -586,7 +604,7 @@ for (const tpl of list) {
 		console.log(`  ⚠️ フル測定は軸②クリア ${insight.length} 件から引き距離で等間隔サンプルした ${sample.length} 件だけ`
 			+ `（MAX_MEASURE=${MAX_MEASURE}）＝残り ${insight.length - sample.length} 件は未測定`);
 	const passed = [];
-	let tooBig = 0, escFail = 0, bandFail = 0, axisFail = 0, gateFail = 0;
+	let tooBig = 0, bandFail = 0, axisFail = 0, gateFail = 0;
 	for (const cand of sample) {
 		let m;
 		try { m = measurePlacement(t, cand.stones, GUARD_MAX); }
@@ -594,7 +612,12 @@ for (const tpl of list) {
 		const v = verdict(m);
 		console.log(`    · 石 ${cand.stones.join(' ')} pull${cand.pulls} L=${m.L} dl=${m.deadlocks} fr=${m.forcedRatio} sol=${m.solCount} states=${m.states} noEsc=${m.noEscape} ${v.label}`);
 		if (!v.pass) { axisFail++; continue; }
-		if (m.noEscape) { escFail++; continue; }
+		// noEscape（歩いて入口へ戻れない状態数）は色ゲート合成型では大量に出るのが本質＝
+		// 4.7 の 26,0（合格済み）も noEscape=343,552。この部屋は笛を必ず所持している∴笛の
+		// resetStones（石を初期配置へ戻し activeColor=null にする＝game.js:1539-40）で
+		// **解ける盤面なら常に初期状態へ戻せる＝真のハードロックは無い**。∴noEscape は記録
+		// するが採用の可否には使わない（純倉庫番 D4/D6/D8＝笛未所持 の noEscape===0 要件を
+		// 合成型へ持ち込むのは誤り／PLAN 5.5i を 4.7 の前例に合わせて訂正）。
 		if (m.L < L_MIN || m.L > L_MAX) { bandFail++; continue; }
 		let gi;
 		try { gi = checkGateInvariants(t, cand.stones, m.L, GUARD_MAX); }
@@ -604,7 +627,8 @@ for (const tpl of list) {
 		passed.push({ cand, m, gi });
 	}
 	console.log(`  フル測定 ${sample.length} 件（状態超過 ${tooBig} / 4軸未達 ${axisFail}`
-		+ ` / I3脱出不能 ${escFail} / 帯外 ${bandFail} / I4・I5未達 ${gateFail}）→ 採用可 ${passed.length} 件`);
+		+ ` / 帯外 ${bandFail} / I4・I5未達 ${gateFail}）→ 採用可 ${passed.length} 件`
+		+ '（noEscape は笛救済前提で可否に使わない）');
 	if (!passed.length) { console.log(`  ✗ ${tpl.name}：帯 ${L_MIN}〜${L_MAX} の合格盤面が見つからず（テンプレ調整）`); continue; }
 
 	// 帯の中で最も深く、同じ深さなら最短解が最も細いものを採る。
