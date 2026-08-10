@@ -13,6 +13,7 @@ export const TILE = {
 	PATROL:    'E',  // 巡回兵（ランダム移動）
 	CHASER:    'C',  // 追跡者（プレイヤーを追いかける）
 	SENTRY:    'F',  // 騎士（強い追跡者）
+	SKELETON:  'k',  // 骸骨剣士（陸上通常敵・徘徊近接・5.5k 新規／文字は暫定）
 	BOSS:      'V',  // 魔将（ボス）
 	MONSTER:   'W',  // 魔物（中ボス）
 	DARK_LORD: 'X',  // 魔王（ダンジョンボス・星の欠片を落とす）
@@ -123,6 +124,7 @@ export const TILE_META = {
 	[TILE.PATROL]:  { label: '巡回兵',       color: '#8a2a2a', passable: true,  icon: 'Ｅ' },
 	[TILE.CHASER]:  { label: '追跡者',       color: '#aa2040', passable: true,  icon: 'Ｃ' },
 	[TILE.SENTRY]:  { label: '騎士',         color: '#501880', passable: true,  icon: 'Ｆ' },
+	[TILE.SKELETON]:{ label: '骸骨剣士',     color: '#c9a06a', passable: true,  icon: '骸' },
 	[TILE.BOSS]:    { label: '魔将',         color: '#184060', passable: true,  icon: 'Ｖ' },
 	[TILE.MONSTER]: { label: '魔物',         color: '#2a1060', passable: true,  icon: 'Ｗ' },
 	[TILE.DARK_LORD]:{ label: '魔王',        color: '#0a0a18', passable: true,  icon: 'Ｘ' },

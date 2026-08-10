@@ -58,6 +58,17 @@ export const ENEMY_META = {
 			projectileSpeed: 1.5,     // 飛翔速度（セル/tick）
 		},
 	},
+	[TILE.SKELETON]: {
+		// 骸骨剣士（陸上通常敵・5.5k 新規）。まずスプライトデータの疎通確認のため最小構成で登録。
+		// AI は既存 chaser（charge・接近）を流用。攻撃/ガードポーズ・4方向表示・弱点は次段で拡張。
+		name: '骸骨剣士',
+		hp: 5, atk: 2, def: 1, exp: 6,
+		speed: ENEMY_SPEED_NORMAL,
+		sprite: 'skeleton',
+		pal:    'skeleton',
+		isBoss: false,
+		attack: { type: 'charge' },
+	},
 	[TILE.MONSTER]: {
 		name: '魔物',
 		hp: 12, atk: 3, def: 1, exp: 18,
