@@ -6,7 +6,7 @@ import { ENEMY_META } from '../shared/enemies.js';
 import { TILE } from '../shared/tiles.js';
 import { makeSprite } from '../shared/sprites.js';
 import { playSound } from '../shared/sounds.js';
-import { MOVE_STEP } from './constants.js';
+import { MOVE_STEP, ATTACK_POSE_MS, TICK_MS } from './constants.js';
 import { statefulTileClosed } from './passable.js';
 import { enemyPointHit } from './hitbox.js';
 
@@ -72,6 +72,45 @@ export function createEnemyAi(deps) {
 		const onWater = isWaterAt ? isWaterAt(r, c) : false;
 		const factor = (onWater ? ms.water : ms.land) ?? 1;
 		return base * factor;
+	}
+
+	// ── Phase 5.5k: 陸上敵の向き別スプライト名解決（DECISIONS 2026-08-10）─────
+	// プレイヤーの getHeroSpriteName()（game.js）が雛形＝攻撃中/構え中/通常の3段を
+	// 1関数に集約する。directional:true の敵だけがこの関数を通る（フラグ無しの既存敵は
+	// 従来どおり meta.sprite 固定＝参照エイリアス方式のまま・後方互換）。
+	// 攻撃/構えのタイムスタンプは player._atkUntil と同型の論理時間窓（e._atkUntil/e._guardUntil）。
+	function resolveEnemySprite(e, meta, now) {
+		const baseName = meta?.sprite ?? e.sprite;
+		const base = baseName.replace(/(Atk|Guard)?[DRLU](Atk|Guard)?$/, '');
+		const dirSuffix = { down: 'D', right: 'R', left: 'R', up: 'U' }[e.dir] ?? 'D';
+		if (e._atkUntil != null && now < e._atkUntil) return `${base}${dirSuffix}Atk`;
+		if (e._guardUntil != null && now < e._guardUntil) return `${base}${dirSuffix}Guard`;
+		return `${base}${dirSuffix}`;
+	}
+
+	// directional な敵の見た目（sprite/flipX）を今の状態に揃え、変わっていれば
+	// DOM の canvas を差し替える。enemyChase（通常追跡）と向き固定の bossTickHitAndAway
+	// 差替ブロックの両方から呼べるよう、差し替え処理そのものをここに集約する。
+	function syncDirectionalSprite(e, meta) {
+		const now = gameNow();
+		const flipX = (e.dir === 'left');
+		const spriteName = resolveEnemySprite(e, meta, now);
+		if (e.sprite === spriteName && e.flipX === flipX) return;
+		e.sprite = spriteName;
+		e.flipX  = flipX;
+		const el = document.getElementById(`char-enemy-${e.id}`);
+		if (el) {
+			const oldCv = el.querySelector('canvas.sprite');
+			if (oldCv) oldCv.remove();
+			const cv = makeSprite(e.sprite, e.pal, true, e.flipX);
+			if (cv) {
+				if ((e.w ?? 1) > 1 || (e.h ?? 1) > 1) {
+					cv.style.setProperty('width',  '100%', 'important');
+					cv.style.setProperty('height', '100%', 'important');
+				}
+				el.insertBefore(cv, el.firstChild);
+			}
+		}
 	}
 
 	// ── Phase 5-3: 敵が石を押す ────────────────────────────────
@@ -620,6 +659,9 @@ export function createEnemyAi(deps) {
 						}
 						showEnemySwordSlash(e);
 						e._attackTimes[i] = now;
+						// Phase 5.5k: directional な敵は剣を振った絵（${base}${Dir}Atk）を
+						// 論理時間窓で出す＝プレイヤーの player._atkUntil と同型（DECISIONS 2026-08-10）。
+						if (meta.directional) e._atkUntil = now + ATTACK_POSE_MS;
 						if (meta.hitAndAway && e._haPhase === 'approach') {
 							e._haPhase = 'retreat';
 							e._haTimer = now + 600 + Math.random() * 400;
@@ -709,6 +751,42 @@ export function createEnemyAi(deps) {
 		if (cv.dataset.flipX !== flip) cv.dataset.flipX = flip;
 	}
 
+	// ── Phase 5.5k: 陸上敵のガード（実効化・ユーザー指示 2026-08-10）───────────
+	// ガードは見た目だけの威圧演出ではなく、実際にダメージを無効化する状態。
+	// 判定＝sword 攻撃のクールダウン待ち中（＝次の攻撃まで間がある）かつ近接圏内なら
+	// ガード状態に入る。ガード中は①移動しない②攻撃しない③向きをその場でロックする
+	// （＝プレイヤーがブーメランで動きを止めてから叩くか、ロックされた向きの側面/背後へ
+	// 回り込むかしないと崩せない、というユーザー設計）。クールダウンが明けたら
+	// ガードを解いて攻撃へ移る（攻撃直後は再びクールダウン中＝自然にガードへ戻る）。
+	// 戻り値：ガード中なら true（呼び出し側はこの tick の移動/攻撃を止める）。
+	function tickGuard(e, meta, now) {
+		const attackList = meta.attacks ?? (meta.attack ? [meta.attack] : []);
+		const idx = attackList.findIndex(a => a?.type === 'sword');
+		if (idx === -1) { e._guarding = false; e._guardDir = null; return false; }
+		const sword = attackList[idx];
+		const player = getPlayer();
+		const dist = Math.hypot(player.x - e.x, player.y - e.y);
+		// ガード圏＝sword.range と同じ（＝プレイヤーの剣が届く距離）。ここを離すと
+		// 「ガード中は剣の射程外にいる」＝近接攻撃自体が届かず何もできなくなる
+		// （見た目だけの旧設計の名残・実効化するなら間合いを一致させる必要がある）。
+		const guardRange = sword.range ?? 1.5;
+		if (dist > guardRange) { e._guarding = false; e._guardDir = null; return false; }
+		const lastTime = e._attackTimes?.[idx] ?? 0;
+		const cooldown = sword.cooldown ?? 3000;
+		// 「攻撃可能」＝クールダウン経過 かつ 実際に sword.range 内（ガード圏内でも range 外なら
+		// enemyAttack は発火しない∴ここで false にすると毎tick誤って移動側に落ちてしまう）。
+		if (now - lastTime >= cooldown && dist <= (sword.range ?? 1.5)) { e._guarding = false; return false; }
+		if (!e._guarding) {
+			// ガード開始の瞬間だけ向きを決める＝以後はプレイヤーが動いても向き直らない（ロック）。
+			const dx = player.x - e.x, dy = player.y - e.y;
+			e.dir = Math.abs(dx) >= Math.abs(dy) ? (dx > 0 ? 'right' : 'left') : (dy > 0 ? 'down' : 'up');
+		}
+		e._guarding = true;
+		e._guardDir = e.dir;
+		e._guardUntil = now + TICK_MS + 40;
+		return true;
+	}
+
 	// ── 敵との接触ダメージ ────────────────────────────────────
 	function checkEnemyContact() {
 		const player  = getPlayer();
@@ -730,26 +808,37 @@ export function createEnemyAi(deps) {
 		for (const e of enemies) {
 			const meta = ENEMY_META[e.type];
 			if (!meta) continue;
-			if (e.stunUntil && now < e.stunUntil) continue;  // スタン中は移動・攻撃スキップ
+			// Phase 5.5k: スタン中はガードも解除する（ブーメランで動きを止めてガード不能にする、
+			// というユーザー設計の実体＝スタンとガードは同時に成立しない）。
+			if (e.stunUntil && now < e.stunUntil) { e._guarding = false; continue; }
 			// Phase 9-6: 潜行↔浮上の周期を更新（submerge を持つ敵のみ）
 			tickSubmerge(e, meta, now);
 			// Phase 9-6: 横向き敵の向きをプレイヤーに合わせる（毎 tick・移動しなくても向き直る）
 			applySideFacing(e, meta);
-			if (meta.hitAndAway) {
-				bossTickHitAndAway(e, meta);
-			} else {
-				enemyChase(e, resolveEnemySpeed(e, meta));
+			// Phase 5.5k: directional な敵はガード判定を移動/攻撃より先に行う＝ガード中は
+			// 両方スキップする（移動しない・攻撃しない・向きはロックされたまま＝ユーザー設計）。
+			const isGuarding = meta.directional ? tickGuard(e, meta, now) : false;
+			if (!isGuarding) {
+				if (meta.hitAndAway) {
+					bossTickHitAndAway(e, meta);
+				} else {
+					enemyChase(e, resolveEnemySpeed(e, meta));
+				}
+				// 潜行中は攻撃しない（水中に隠れて寄るだけ）
+				if (!e.submerged) enemyAttack(e, meta);
 			}
-			// 潜行中は攻撃しない（水中に隠れて寄るだけ）
-			if (e.submerged) continue;
-			enemyAttack(e, meta);
+			// Phase 5.5k: directional な敵は毎tick見た目を今の状態（向き/攻撃窓/構え窓）に
+			// 揃える＝enemyAttack が同tickで _atkUntil を立てた場合も即座に反映される
+			// （プレイヤーの tickAttackPose と同じ「論理時間窓→毎tick同期」の作法）。
+			if (meta.directional) syncDirectionalSprite(e, meta);
 		}
 	}
 
 	return {
 		enemyTick,
 		enemyChase,
-		resolveEnemySpeed,   // Phase 9-6: 地形別速度（両生敵）のテスト用
+		resolveEnemySpeed,     // Phase 9-6: 地形別速度（両生敵）のテスト用
+		resolveEnemySprite,    // Phase 5.5k: 向き別スプライト名解決のテスト用
 		bossTickHitAndAway,
 		enemyAttack,
 		checkEnemyContact,

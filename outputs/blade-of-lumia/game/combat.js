@@ -251,7 +251,24 @@ export function createCombat(deps) {
 	// atkType: 攻撃種別（'sword'|'beam'|'arrow'|'boomerang'|'bomb'）。
 	//   ENEMY_META[type].weakness.type と一致すれば multiplier 倍のダメージ。
 	//   省略時（undefined）は弱点判定なし＝従来挙動（後方互換）。
-	function dealDamageToEnemy(e, dmg, atkType) {
+	// Phase 5.5k: 陸上敵のガード（DECISIONS 2026-08-10・実効化）。
+	// e._guarding の間、e._guardDir（プレイヤー方向へロック済み）と一致する方向からの
+	// 攻撃だけを無効化する（盾ブロックと同じ判定形＝dx/dyの主軸をカーディナル4方向に潰して比較）。
+	// 側面・背後・無方向（爆発等・srcX/srcY省略）は素通り＝回り込みが意味を持つ。
+	function isGuardBlockingDir(e, srcX, srcY) {
+		if (!e._guarding || !e._guardDir) return false;
+		if (srcX == null || srcY == null) return false;
+		const dx = srcX - e.x, dy = srcY - e.y;
+		if (Math.abs(dx) < 0.01 && Math.abs(dy) < 0.01) return false;
+		// 攻撃者が敵から見てどちら側にいるか＝e._guardDir と同じ計算式（enemyChase の
+		// 向き決定と同型）。ロックした向きと一致＝攻撃者は敵が向いている側＝正面ヒット。
+		const attackerDir = Math.abs(dx) >= Math.abs(dy)
+			? (dx > 0 ? 'right' : 'left')
+			: (dy > 0 ? 'down' : 'up');
+		return attackerDir === e._guardDir;
+	}
+
+	function dealDamageToEnemy(e, dmg, atkType, srcX, srcY) {
 		if (e.hp <= 0) return;
 		const meta = ENEMY_META[e.type];
 		// Phase 9-6 深洋O: 合格済みの yieldAt ボス（海の主）はもう傷つかない。
@@ -269,6 +286,13 @@ export function createCombat(deps) {
 		}
 		// meleeOnly: only sword and fire damage goes through; everything else is nullified.
 		if (meta?.meleeOnly && atkType && atkType !== 'sword' && atkType !== 'fire') {
+			showDmgPopupFloat(e.x, e.y, 0, true, false);
+			return;
+		}
+		// Phase 5.5k: ガード方向からの攻撃は無効化＋盾で跳ね返す音（既存の盾ブロックSEを共有）。
+		if (isGuardBlockingDir(e, srcX, srcY)) {
+			playSound('shieldBlock');
+			showShieldBlockEffect(e.x, e.y);
 			showDmgPopupFloat(e.x, e.y, 0, true, false);
 			return;
 		}
@@ -440,7 +464,7 @@ export function createCombat(deps) {
 
 		// 二周目は攻撃力2倍
 		const swordAtk = hasCleared() ? player.atk * 2 : player.atk;
-		if (hitEnemy) { dealDamageToEnemy(hitEnemy, swordAtk, 'sword'); return; }
+		if (hitEnemy) { dealDamageToEnemy(hitEnemy, swordAtk, 'sword', player.x, player.y); return; }
 
 		// 茂みを切る
 		if (tile === TILE.BUSH) {

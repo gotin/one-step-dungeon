@@ -750,7 +750,7 @@ const { checkStoneOnSwitch, evaluateConditions, refreshGates } = createCondition
 		toTileCol,
 		gameNow,
 		getSS,
-		dealDamageToEnemy:  (e, dmg, atkType) => dealDamageToEnemy(e, dmg, atkType),
+		dealDamageToEnemy:  (e, dmg, atkType, srcX, srcY) => dealDamageToEnemy(e, dmg, atkType, srcX, srcY),
 		takeDamage:         (amt) => takeDamage(amt),
 		evaluateConditions: () => evaluateConditions(),
 		renderBoard:        () => renderBoard(),
@@ -1602,7 +1602,7 @@ function playCandle() {
 	// 前方の敵に炎ダメージ（茂みの有無に関わらず判定）
 	const hitEnemy = enemies.find(e => toTileRow(e.y) === tr && toTileCol(e.x) === tc);
 	if (hitEnemy) {
-		dealDamageToEnemy(hitEnemy, CANDLE_FIRE_DMG, 'fire');
+		dealDamageToEnemy(hitEnemy, CANDLE_FIRE_DMG, 'fire', player.x, player.y);
 	}
 
 	// 前方が TORCH なら点灯
@@ -2025,6 +2025,12 @@ export function getEnemiesSnapshot() {
 		move: e.move ?? null,   // Phase 9-6: 遊泳属性（spawn 経路で敵に乗ったか観測用）
 		stunUntil: e.stunUntil ?? null,
 		submerged: e.submerged ?? false,  // Phase 9-6: 潜行中（潜み鮫のリズム観測用）
+		dir: e.dir ?? null,
+		sprite: e.sprite ?? null,          // Phase 5.5k: directional 敵の向き別スプライト名観測用
+		atkUntil: e._atkUntil ?? null,     // Phase 5.5k: 攻撃ポーズ窓の観測用
+		guardUntil: e._guardUntil ?? null, // Phase 5.5k: 構えポーズ窓の観測用
+		guarding: e._guarding ?? false,    // Phase 5.5k: ガード状態（ダメージ無効化の実体）観測用
+		guardDir: e._guardDir ?? null,
 	}));
 }
 

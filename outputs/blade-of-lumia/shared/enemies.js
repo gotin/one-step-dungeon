@@ -59,15 +59,17 @@ export const ENEMY_META = {
 		},
 	},
 	[TILE.SKELETON]: {
-		// 骸骨剣士（陸上通常敵・5.5k 新規）。まずスプライトデータの疎通確認のため最小構成で登録。
-		// AI は既存 chaser（charge・接近）を流用。攻撃/ガードポーズ・4方向表示・弱点は次段で拡張。
+		// 骸骨剣士（陸上通常敵・5.5k 新規）。DECISIONS 2026-08-10「陸上敵の真4方向＋攻撃/ガードポーズ機構」の
+		// 最初の適用対象＝directional:true で resolveEnemySprite() 経由の向き差替・攻撃/ガードポーズに乗る。
+		// スプライトは当面 skeletonD/R/L/U（正面絵のエイリアス）＝機構が先・向き別描画は次段。
 		name: '骸骨剣士',
 		hp: 5, atk: 2, def: 1, exp: 6,
 		speed: ENEMY_SPEED_NORMAL,
-		sprite: 'skeleton',
+		sprite: 'skeletonD',
 		pal:    'skeleton',
 		isBoss: false,
-		attack: { type: 'charge' },
+		directional: true,
+		attack: { type: 'sword', range: 1.5, cooldown: 900 },
 	},
 	[TILE.MONSTER]: {
 		name: '魔物',

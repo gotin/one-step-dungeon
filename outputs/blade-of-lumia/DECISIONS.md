@@ -1863,3 +1863,24 @@
 - **段階（着手順）：** ①エンジン基盤（directional フラグ＋resolveEnemySprite＋enemyChase 向き差替＋敵 _atkUntil/_guardUntil）を
   **まず skeleton の既存正面絵をエイリアスで4方向に割り当てた状態**で通し、機構が動くことを実機確認 → ②量子化を共通スケール化 →
   ③向き別（R/U）＋攻撃/ガードポーズのスプライトを生成し差し込む。データとエンジンを分離して進める（片方の失敗をもう片方に混ぜない）。
+
+- **✅ ①エンジン基盤 完了（2026-08-10・⚡ Sonnet）。**
+  - `shared/enemies.js` の `SKELETON` に `directional:true` を追加、`attack` を `charge`→`{type:'sword', range:1.5, cooldown:900}` に変更（`sprite` も `'skeleton'`→`'skeletonD'` に統一＝base 名の解決が effectiveに）。
+  - `shared/sprites-enemies.js` に `skeletonD/R/U`（既存 skeleton 正面絵の参照エイリアス）＋`skeletonDAtk/RAtk/UAtk`＋`skeletonDGuard/RGuard/UGuard` を追加（**L は登録しない**＝既存 dirSuffix マップ〈`left→'R'`〉どおり R の flipX で代用・専用スプライト不要）。
+  - `game/enemy-ai.js` に `resolveEnemySprite(e, meta, now)`（攻撃窓→`${base}${Dir}Atk`／構え窓→`${base}${Dir}Guard`／通常→`${base}${Dir}`、`game.js getHeroSpriteName()` が雛形）と `syncDirectionalSprite(e, meta)`（差分があれば DOM の canvas を差し替え）を新設。既存の向き差替ブロック（`bossTickHitAndAway` 内・hitAndAway ボス専用）とは独立に、`enemyTick()` が `meta.directional` の敵だけ毎tick `tickGuard()`→`syncDirectionalSprite()` を呼ぶ（hitAndAway ボスは従来経路のまま＝後方互換）。
+  - `tickGuard(e, meta, now)`＝sword 攻撃を持つ敵限定で、プレイヤーが `sword.range*1.6` 以内にいる間 `e._guardUntil` を1tick分更新（見た目のみ・ダメージ無効化はしない）。攻撃発火時（`enemyAttack` の sword 分岐・命中/ブロック分岐の後）に `meta.directional` の敵だけ `e._atkUntil = now + ATTACK_POSE_MS` を立てる（プレイヤーの `player._atkUntil` と同型の論理時間窓）。`resolveEnemySprite` は Atk 窓を Guard 窓より優先。
+  - `game/game.js getEnemiesSnapshot()`（`__game.getEnemies()` の実体）に `dir`/`sprite`/`atkUntil`/`guardUntil` を追加（テスト観測用・既存の `move`/`submerged` と同じ作法）。
+  - **実機確認＝`.scratch/check-skeleton-directional.mjs`（使い捨て）** で `test_mechanics 0,0` の常設 skeleton(3,5) に東西南北から接近→`dir`/`sprite` が `skeletonD/R/U` に追従し、隣接で `skeletonRAtk` 等（攻撃窓）が立つことを確認。
+  - **恒久テスト＝`tests/enemy-directional.spec.js`（新規6本）**＝向き追従／`resolveEnemySprite` の解決／攻撃窓の発火と解除／構え窓の発火／遠距離では Atk・Guard が出ない（誤検出防止）。**歯の確認＝`e._atkUntil` を立てる行を一時的に `if (false && ...)` へ潰すと2本が赤化することを確認済み**（このセッションで裏取り・すぐ復元）。
+  - フルスイート **539 passed**（既存533＋新規6・回帰なし）。
+  - **次段（②③・未着手）＝** 量子化の共通スケール化（`quantize-shared.mjs` を全ポーズ・全向き共通の接地ライン/BBoxスケールに拡張）→ 向き別（R/U）＋攻撃/ガードの実スプライトを生成し `skeletonR/U/*Atk/*Guard` の**エイリアスを実データへ差し替える**（今回のエイリアスは土台＝この段で置き換わる前提・削除ではなく上書き）。
+
+- **✅ ガードの実効化＋②量子化の共通スケール化 完了（2026-08-10・同日追加セッション・⚡ Sonnet）。** ユーザーが①完了直後に実機確認して2件報告＝「攻撃はするようになった／防御全然してくれない／歩行アニメの1コマの身長がでかいまま」。
+  - **防御の再設計（ユーザー指示）＝ガードは見た目だけでなく実際にダメージを無効化する。** 規則＝①ガード中は移動しない②攻撃しない③向きをロック（ガード開始の瞬間だけ`e.dir`を確定し、以後プレイヤーが動いても向き直らない）。ロックした向きから見て「攻撃者がその方向にいる」ときだけ無効化（盾ブロックと同じ音・エフェクト）。側面/背後は通常どおり通る＝回り込みが意味を持つ。ブーメラン命中は常にスタン＋ガード強制解除（ダメージが正面ブロックされても阻害効果は貫通＝「ブーメランで動きを止めてガード不能にしてから殴る」の実体）。
+  - **実装＝** `game/enemy-ai.js tickGuard()` を全面書き換え（旧＝見た目の窓だけ立てる／新＝`e._guarding`/`e._guardDir` の状態機械。「攻撃可能」の判定は cooldown 経過だけでなく `dist<=sword.range` も見る＝これを見落とすとガード圏内かつ射程外で「攻撃可能」と誤判定し毎tick移動側へ落ちて事実上ガードが機能しなくなる）。`enemyTick()` はガード中なら `enemyChase`/`enemyAttack` を丸ごとスキップ。スタン分岐（`stunUntil`）で `e._guarding=false` も落とす。`game/combat.js` に `isGuardBlockingDir(e, srcX, srcY)`（攻撃者座標から見た方向とロック方向の一致判定）を新設し `dealDamageToEnemy()` の無効化チェックに追加（`meleeOnly`/`submerged`と同じ漏斗）。呼び出し元（剣攻撃・矢/ブーメラン/貫通弾・ロウソク）に攻撃発生源座標（`srcX,srcY`）を配線。
+  - **guardRange のバグ＝旧「威圧の見た目」時代の値（`sword.range*1.6`）をそのまま残していた。** 実効化すると「ガード中は剣の射程外にいる」＝プレイヤーが最初に殴った一撃が届かず、ガード判定の有無に関わらず hp が不変になる**空虚テスト**を生んだ（一度これで「潰しても緑のまま」という歯のないテストを書いてしまい、実機再現で気づいて修正）。修正＝`guardRange = sword.range`（プレイヤーの剣が届く距離と一致させる）。
+  - **副作用の確認＝プレイヤーは敵と同じタイルセルへ進入できない（`isPassable` の重なり防止）**＝ガードで位置固定された敵の真横（同じ行/列）を直接すり抜けて回り込むことはできない＝内側の通路を迂回する必要がある（実機で正しい制約と確認）。
+  - **テスト＝`tests/enemy-directional.spec.js` に4本追加**（ガード中は移動停止／正面攻撃は無効化／ブーメランでスタン→ガード解除→隣接攻撃が通る／側面・背後からの攻撃は無効化されない）。**歯の確認＝`isGuardBlockingDir` の判定を一時的に `if(false&&...)` へ潰すと該当テストが赤化することを確認**（最初は guardRange バグのせいで潰しても緑のままだった＝直してから歯があることを確認し直した）。
+  - **②量子化の共通スケール化＝`.scratch/quantize-shared.mjs` を全面改稿。** 旧実装は画像ごとに独立してBBox正規化（`side=max(bw,bh)`を画像ごとに計算）＝生成PNGの体格差（実測＝skeleton walk1 高さ22px／walk2 高さ32px＝frame端まで描かれていた）が32×32内のスケール差に増幅され「歩行でなくズーム」に見えていた。**修正＝全フレームの `maxY`（接地ライン）と `side`（bboxの最大辺）を先に計算し、その共通値を全フレームに適用**（左右中心は各フレームのbbox中心を保つ＝歩行の左右差はそのまま残す）。skeleton の確定4枚（walk1/walk2/atk/guard）を再量子化→`shared/sprites-enemies.js` の `ENEMY_SPRITES.skeleton`（歩行2フレーム）・新設 `skeletonAtk`/`skeletonGuard`（1フレームずつ）に実データを書き込み、`skeletonD/RAtk/UAtk`等のエイリアスを新フレームへ向け直した（パレットも新しい量子化結果に更新）。R/U方向の実描画はまだ無い＝正面絵のエイリアスのまま（次段）。
+  - **実機確認＝`.scratch/shot-skel-walk2.mjs`（使い捨て）** で`animFrame`（`startAnimLoop`の実時間`setInterval(400ms)`＝`step()`では進まないので`waitForTimeout`で待つ必要があると気づいた）の切り替わりを跨いで2枚撮影、walk1/walk2で頭からブーツまでの高さが揃っていることを確認。
+  - フルスイート **543 passed**（既存533＋新規10・回帰なし）。

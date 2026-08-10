@@ -294,7 +294,7 @@ export function createProjectile(deps) {
 						if (!proj._hitIds) proj._hitIds = new Set();
 						if (proj._hitIds.has(e.id)) continue;
 						proj._hitIds.add(e.id);
-						dealDamageToEnemy(e, proj.atk, proj.type);
+						dealDamageToEnemy(e, proj.atk, proj.type, proj.x, proj.y);
 						continue;  // 貫通：消えずに飛び続ける
 					}
 					if (proj.type === 'boomerang') {
@@ -304,8 +304,13 @@ export function createProjectile(deps) {
 						if (!proj._hitIds) proj._hitIds = new Set();
 						if (proj._hitIds.has(e.id)) continue;
 						proj._hitIds.add(e.id);
-						dealDamageToEnemy(e, proj.atk, proj.type);
+						dealDamageToEnemy(e, proj.atk, proj.type, proj.x, proj.y);
+						// Phase 5.5k: ブーメランの命中は「動きを止める」＝スタン＋ガード解除を
+						// 常に与える（ダメージが正面ブロックされても阻害効果は貫通する）。
+						// ユーザー設計＝ブーメランは削りの道具でなくガードを崩すための道具＝
+						// 「ブーメランで動きを止めてガード不能にしてから攻撃する」の実体。
 						e.stunUntil = gameNow() + BOOMERANG_STUN_MS;
+						e._guarding = false;
 						showStunEffect(e);
 						if (!proj.returning) {
 							proj.returning = true;  // 往路：1体目で折り返す（従来挙動）
@@ -313,7 +318,7 @@ export function createProjectile(deps) {
 						}
 						continue;  // 復路：貫通して次の敵も削れるようにする
 					}
-					dealDamageToEnemy(e, proj.atk, proj.type);
+					dealDamageToEnemy(e, proj.atk, proj.type, proj.x, proj.y);
 					removeProjEl(proj);
 					_projectiles = _projectiles.filter(p => p !== proj);
 					return;
