@@ -7,6 +7,15 @@
 
 コミットメッセージは `prefix: summary` 形式のみ（例: `feat: add bow gate mechanic`）。
 
+## Blade of Lumia：敵キャラ作業前の必読
+
+`outputs/blade-of-lumia/` で敵キャラ（陸上敵の directional 機構・スプライト生成）関連のタスクに着手する前に、必ず以下2文書を読むこと：
+
+- `outputs/blade-of-lumia/ENEMY-DIRECTIONAL-GUIDE.md`（向き別スプライト・攻撃・ガード機構の実装知見。guardRangeの罠・敵と重なれない制約・歯の確認の落とし穴など）
+- `outputs/blade-of-lumia/SPRITE-PIPELINE.md`（スプライト生成〜量子化の手順書。複数フレームは `quantize-shared.mjs` 必須）
+
+これは2026-08-10、skeleton（骸骨剣士）の①エンジン基盤実装で手戻りが発生した反省から追加した恒久ルール。残り14種の敵実装・今後の新規敵追加のいずれも対象。
+
 ## 文体（原始人モードとの関係）
 
 原始人モード（genshijin）が有効でも、**チャット以外のあらゆる出力先には常に通常日本語を使う**。
