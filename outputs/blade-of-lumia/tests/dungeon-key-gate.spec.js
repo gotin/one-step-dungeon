@@ -139,7 +139,7 @@ test.describe('Blade of Lumia – ダンジョンの鍵（進行の背骨）', (
       'dungeon_7/1,0':  'killAllAndFlute', // A 戦闘型②（強化＋笛の2段目・5.5h 済）
       'dungeon_8/1,0':  'stonesPlaced', // C 倉庫番②（石4・関門の上限帯・5.5g 済）
       'dark_tower/1,2': 'killAll',      // A 戦闘型③（強化・5.5h 済）
-      'dark_tower/4,3': 'stonesPlaced', // C 倉庫番③（石4・純・L=42・全10鍵の最終・5.5i 済）
+      'dark_tower/4,3': 'stonesPlaced', // C 倉庫番③（石4・ユーザー作り込み盤面＝23,0 と同程度の難しさで実プレイ合格・全10鍵の最終・5.5i 済）
     };
     const found = {};
     for (const layerName of DUNGEONS) {
