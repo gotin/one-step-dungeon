@@ -2031,6 +2031,12 @@ export function getEnemiesSnapshot() {
 		guardUntil: e._guardUntil ?? null, // Phase 5.5k: 構えポーズ窓の観測用
 		guarding: e._guarding ?? false,    // Phase 5.5k: ガード状態（ダメージ無効化の実体）観測用
 		guardDir: e._guardDir ?? null,
+		// Phase 5.5k（2026-08-12）: 攻撃硬直と遠隔/近接の二相の観測用
+		// （このスナップショットは**ホワイトリスト**＝ここに足さない内部フィールドは
+		//  テストから見えない。`e._foo` を直接読むテストは常に undefined になる）。
+		freezeUntil: e._freezeUntil ?? null,  // 攻撃硬直の窓（この間は移動も攻撃もしない）
+		cmode: e._cmode ?? null,              // 'ranged' | 'melee'（combat を持つ敵のみ）
+		cmodeUntil: e._cmodeUntil ?? null,    // 現在のモードが切り替わる論理時刻
 	}));
 }
 

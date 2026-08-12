@@ -74,6 +74,110 @@ export function createEnemyAi(deps) {
 		return base * factor;
 	}
 
+	// ── Phase 5.5k: 攻撃硬直（2026-08-12 ユーザー指摘「攻撃動作中は動かないようにすべき」）──
+	// プレイヤーは剣を振っている間（_atkUntil の窓）足が止まる（player.js movePlayer）。
+	// 敵側に同じ規則が無かった＝振りながら詰めてくる非対称だった ∴ 攻撃が成立した瞬間に
+	// e._freezeUntil を立て、enemyTick がその窓の間は移動も攻撃も止める。
+	//   ・既定＝ATTACK_POSE_MS（＝攻撃ポーズの絵が出ている間だけ止まる＝絵と挙動が一致）
+	//   ・meta.attackFreezeMs で敵ごとに延ばせる（高機動の敵は硬直を長くして隙を作る）
+	//   ・directional でない既存敵は硬直 0＝従来どおり（後方互換）
+	function resolveAttackFreezeMs(meta) {
+		if (meta?.attackFreezeMs != null) return meta.attackFreezeMs;
+		return meta?.directional ? ATTACK_POSE_MS : 0;
+	}
+
+	// 攻撃が成立したときの共通後処理＝クールダウン記録・攻撃ポーズ窓・攻撃硬直。
+	// 攻撃種別ごとに散っていた3行を1か所に集める（＝硬直を入れ忘れた攻撃種が出ない）。
+	function markAttack(e, meta, i, now) {
+		if (!e._attackTimes) e._attackTimes = {};
+		e._attackTimes[i] = now;
+		if (meta?.directional) e._atkUntil = now + ATTACK_POSE_MS;
+		const freeze = resolveAttackFreezeMs(meta);
+		if (freeze > 0) e._freezeUntil = now + freeze;
+	}
+
+	// ── Phase 5.5k: 遠隔／近接の二相（2026-08-12 ユーザー指摘）────────────────
+	// 「遠隔攻撃を持つ敵が 1 セルまで詰めてくる＝常にくっついてくるキャラ」を直す。
+	// meta.combat = { keepMin, keepMax, rangedMs, meleeMs } を持つ敵は
+	//   ・遠隔モード … keepMin〜keepMax の距離を保ち、プレイヤーの行/列に自分を揃える
+	//                  （揃うと swordBeam の発射条件が満たされる＝ちゃんと撃ってくる）
+	//   ・近接モード … 従来どおり詰めて斬る
+	// を交互に繰り返す。**周期は固定値（乱数を混ぜない）**＝プレイヤーがリズムを読んで
+	// 「今は近づく番だから引く」と対処できる（初代ゼルダ的な読み合い）＋テストが決定論的。
+	// 位相だけは敵 id（"行,列" の文字列）から導いてずらす＝同じ部屋の複数体が同時に
+	// 近接モードへ入って一斉突撃にならない（乱数を使わないので再現性は保たれる）。
+	function phaseOffsetMs(e, span) {
+		if (!span) return 0;
+		let h = 0;
+		for (const ch of String(e.id)) h = (h * 31 + ch.charCodeAt(0)) % 100003;
+		return h % span;
+	}
+
+	function tickCombatMode(e, meta, now) {
+		const cfg = meta?.combat;
+		if (!cfg) return null;
+		const rangedMs = cfg.rangedMs ?? 3000;
+		const meleeMs  = cfg.meleeMs  ?? 1800;
+		if (e._cmode == null) {
+			// 初期は遠隔モード＝「離れた敵が斬撃を飛ばしてくる」から戦闘が始まる。
+			e._cmode = cfg.startMode ?? 'ranged';
+			e._cmodeUntil = now + rangedMs + phaseOffsetMs(e, rangedMs + meleeMs);
+		} else if (now >= e._cmodeUntil) {
+			e._cmode = e._cmode === 'ranged' ? 'melee' : 'ranged';
+			e._cmodeUntil = now + (e._cmode === 'ranged' ? rangedMs : meleeMs);
+		}
+		return e._cmode;
+	}
+
+	// 遠隔モードの移動＝間合いを保ちながら行/列を揃える。
+	//   dist < keepMin  … 後退（近づかれ過ぎたら下がる＝密着し続けない）
+	//   dist > keepMax  … 接近（射程外まで離れたら詰める＝棒立ちにならない）
+	//   その間          … 直交方向（ずれている軸）を詰めて行/列を揃える。揃っていたら動かない
+	//                     ＝「撃つ構えで待つ」＝プレイヤーが列から外れる時間ができる
+	function enemyKeepDistance(e, meta, speed, cfg) {
+		e.accum = (e.accum ?? 0) + speed;
+		if (e.accum < 1.0) return;
+		e.accum -= 1.0;
+
+		const player = getPlayer();
+		const dx = player.x - e.x, dy = player.y - e.y;
+		const dist = Math.hypot(dx, dy);
+		const step = MOVE_STEP;
+		const keepMin = cfg.keepMin ?? 3.0;
+		const keepMax = cfg.keepMax ?? 6.5;
+
+		// 向きは常にプレイヤーを見る（撃つ方向と絵を一致させる）
+		e.dir = Math.abs(dy) >= Math.abs(dx) ? (dy > 0 ? 'down' : 'up') : (dx > 0 ? 'right' : 'left');
+
+		const candidates = [];
+		const sy = Math.sign(dy) || 1, sx = Math.sign(dx) || 1;
+		if (dist < keepMin) {
+			// 後退＝離れる向き優先。塞がれていたら横へ逃げる（壁際で固まらない）
+			if (Math.abs(dy) >= Math.abs(dx)) {
+				candidates.push([-sy * step, 0], [0, -sx * step], [0, sx * step]);
+			} else {
+				candidates.push([0, -sx * step], [-sy * step, 0], [sy * step, 0]);
+			}
+		} else if (dist > keepMax) {
+			if (Math.abs(dy) >= Math.abs(dx)) candidates.push([sy * step, 0], [0, sx * step]);
+			else                              candidates.push([0, sx * step], [sy * step, 0]);
+		} else {
+			// 整列＝ずれの小さい軸（＝あと少しで揃う軸）を 0 に近づける。
+			// 揃っている（ずれ < 0.5 セル）なら候補ゼロ＝その場で構える。
+			const alignRow = Math.abs(dy) <= Math.abs(dx);   // 行を揃える（y を合わせる）
+			const offset = alignRow ? Math.abs(dy) : Math.abs(dx);
+			if (offset >= 0.5) {
+				if (alignRow) candidates.push([sy * step, 0], [0, sx * step]);
+				else          candidates.push([0, sx * step], [sy * step, 0]);
+			}
+		}
+
+		for (const [my, mx] of candidates) {
+			if (isPassableForEnemy(e.y + my, e.x + mx, e)) { e.y += my; e.x += mx; break; }
+		}
+		moveCharEl(`enemy-${e.id}`, e.x, e.y);
+	}
+
 	// ── Phase 5.5k: 陸上敵の向き別スプライト名解決（DECISIONS 2026-08-10）─────
 	// プレイヤーの getHeroSpriteName()（game.js）が雛形＝攻撃中/構え中/通常の3段を
 	// 1関数に集約する。directional:true の敵だけがこの関数を通る（フラグ無しの既存敵は
@@ -602,7 +706,7 @@ export function createEnemyAi(deps) {
 				const ndx = sameCol ? 0 : Math.sign(dx);
 				const ndy = sameRow ? 0 : Math.sign(dy);
 				fireEnemyProjectile(e, 'spear', ndx, ndy, atk.projectileSpeed ?? 1.5);
-				e._attackTimes[i] = now;
+				markAttack(e, meta, i, now);
 			} else if (atk.type === 'swordBeam') {
 				// Phase 5.5k #7 剣獣: 飛ぶ斬撃。spear と同じ「縦横が揃ったときだけ撃つ」型
 				// （斜めには飛ばさない＝プレイヤーは列/行から外れれば避けられる）。
@@ -616,28 +720,27 @@ export function createEnemyAi(deps) {
 				// 撃つ方向を向く＝向き別スプライトの攻撃ポーズが斬撃の向きと一致する
 				e.dir = ndx !== 0 ? (ndx > 0 ? 'right' : 'left') : (ndy > 0 ? 'down' : 'up');
 				fireEnemyProjectile(e, 'beam', ndx, ndy, atk.projectileSpeed ?? 2.0);
-				e._attackTimes[i] = now;
-				// 剣を振った絵を論理時間窓で出す（sword 近接と同じ扱い）
-				if (meta.directional) e._atkUntil = now + ATTACK_POSE_MS;
+				// クールダウン記録・剣を振った絵（_atkUntil）・攻撃硬直（_freezeUntil）は markAttack が一括で立てる
+				markAttack(e, meta, i, now);
 			} else if (atk.type === 'stone') {
 				const ndx = dx / dist;
 				const ndy = dy / dist;
 				fireEnemyProjectile(e, 'stone', ndx, ndy, atk.projectileSpeed ?? 1.0);
-				e._attackTimes[i] = now;
+				markAttack(e, meta, i, now);
 			} else if (atk.type === 'waterShot') {
 				// Phase 9-6 深洋O: 射水魚の水弾。stone と同じ「任意角へ飛ばす」型
 				// （斜めにも撃つ）。投擲物の飛翔・盾ブロック・命中は既存の共通経路。
 				const ndx = dx / dist;
 				const ndy = dy / dist;
 				fireEnemyProjectile(e, 'waterShot', ndx, ndy, atk.projectileSpeed ?? 1.2);
-				e._attackTimes[i] = now;
+				markAttack(e, meta, i, now);
 			} else if (atk.type === 'waterBlade') {
 				// Phase 9-6 深洋O: 潜み鮫の水刃（尾で薙いだ衝撃波）。任意角。
 				// minRange（上のゲート）で「隣接時は撃たない」＝噛みつきに譲る。
 				const ndx = dx / dist;
 				const ndy = dy / dist;
 				fireEnemyProjectile(e, 'waterBlade', ndx, ndy, atk.projectileSpeed ?? 1.4);
-				e._attackTimes[i] = now;
+				markAttack(e, meta, i, now);
 			} else if (atk.type === 'sword') {
 				const range = atk.range ?? 1.5;
 				if (dist <= range) {
@@ -674,10 +777,10 @@ export function createEnemyAi(deps) {
 							takeDamage(meta.atk);
 						}
 						showEnemySwordSlash(e);
-						e._attackTimes[i] = now;
-						// Phase 5.5k: directional な敵は剣を振った絵（${base}${Dir}Atk）を
-						// 論理時間窓で出す＝プレイヤーの player._atkUntil と同型（DECISIONS 2026-08-10）。
-						if (meta.directional) e._atkUntil = now + ATTACK_POSE_MS;
+						// Phase 5.5k: クールダウン記録・剣を振った絵（${base}${Dir}Atk の窓 _atkUntil）・
+						// 攻撃硬直（_freezeUntil）を markAttack で一括して立てる
+						// （プレイヤーの player._atkUntil と同型・DECISIONS 2026-08-10 / 2026-08-12）。
+						markAttack(e, meta, i, now);
 						if (meta.hitAndAway && e._haPhase === 'approach') {
 							e._haPhase = 'retreat';
 							e._haTimer = now + 600 + Math.random() * 400;
@@ -838,9 +941,17 @@ export function createEnemyAi(deps) {
 			// Phase 5.5k: directional な敵はガード判定を移動/攻撃より先に行う＝ガード中は
 			// 両方スキップする（移動しない・攻撃しない・向きはロックされたまま＝ユーザー設計）。
 			const isGuarding = meta.directional ? tickGuard(e, meta, now) : false;
-			if (!isGuarding) {
+			// Phase 5.5k（2026-08-12）: 攻撃硬直＝攻撃を出した直後の窓は移動も攻撃もしない。
+			// プレイヤーの movePlayer が _atkUntil 中に足を止めるのと対称（player.js）。
+			const frozen = e._freezeUntil != null && now < e._freezeUntil;
+			// Phase 5.5k（2026-08-12）: 遠隔／近接の二相を持つ敵はどちらのモードかを更新する
+			// （硬直中も時計は進める＝硬直でリズムが狂わない）。
+			const cmode = tickCombatMode(e, meta, now);
+			if (!isGuarding && !frozen) {
 				if (meta.hitAndAway) {
 					bossTickHitAndAway(e, meta);
+				} else if (cmode === 'ranged') {
+					enemyKeepDistance(e, meta, resolveEnemySpeed(e, meta), meta.combat);
 				} else {
 					enemyChase(e, resolveEnemySpeed(e, meta));
 				}
@@ -859,6 +970,9 @@ export function createEnemyAi(deps) {
 		enemyChase,
 		resolveEnemySpeed,     // Phase 9-6: 地形別速度（両生敵）のテスト用
 		resolveEnemySprite,    // Phase 5.5k: 向き別スプライト名解決のテスト用
+		resolveAttackFreezeMs, // Phase 5.5k: 攻撃硬直の長さ（テスト用）
+		tickCombatMode,        // Phase 5.5k: 遠隔／近接の二相（テスト用）
+		enemyKeepDistance,     // Phase 5.5k: 間合いを保つ移動（テスト用）
 		bossTickHitAndAway,
 		enemyAttack,
 		checkEnemyContact,

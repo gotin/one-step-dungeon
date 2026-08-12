@@ -83,12 +83,25 @@ export const ENEMY_META = {
 		// 3方向×(通常/攻撃)の6枚だけで足りる（Guard フレーム不要）。
 		name: '剣獣',
 		hp: 10, atk: 3, def: 2, exp: 20,
-		speed: ENEMY_SPEED_FAST,
+		// 2026-08-12（ユーザー指摘で修正）：ENEMY_SPEED_FAST(1.0) はプレイヤーと**完全同速**
+		// （プレイヤーは 1 tick に MOVE_STEP=0.5 進む＝速度換算 1.0）∴ 密着されたら
+		// 原理的に振り切れない＝「逃げ切れない」。0.85 にして「速いが引き離せる」にする。
+		speed: ENEMY_SPEED_FAST * 0.85,
 		sprite: 'swordBeastD',
 		pal:    'swordBeast',
 		isBoss: false,
 		directional: true,
 		guards: false,
+		// 攻撃硬直（2026-08-12）＝斬った/撃った直後は動けない。プレイヤーの
+		// 「剣を構えている間は足を止める」（player.js movePlayer）と対称。
+		// ポーズの窓（180ms）より長くして、高機動の代償としての隙をはっきり作る。
+		attackFreezeMs: 360,
+		// 遠隔／近接の二相（2026-08-12・ユーザー指摘「近づくモードと遠隔攻撃モードが
+		// ある感じにしないと常にくっついてくるキャラになる」）。
+		//   keepMin 3.0 … swordBeam の minRange 2.5 より外＝遠隔モード中は必ず撃てる距離を保つ
+		//   keepMax 6.5 … range 9 の内側＝射程の端で棒立ちにならない
+		//   周期は固定値（乱数なし）＝プレイヤーがリズムを読める／テストが決定論的
+		combat: { keepMin: 3.0, keepMax: 6.5, rangedMs: 3000, meleeMs: 1800, startMode: 'ranged' },
 		attacks: [
 			{ type: 'sword',     range: 1.5, cooldown: 700 },
 			// 飛ぶ斬撃＝縦横に揃ったときだけ撃つ飛び道具（beam）。minRange で

@@ -46,7 +46,10 @@ const ROOM  = '1,0';
 const KEY_R = 8, KEY_C = 9;
 
 /** セーブを仕込んで「つづきから」で入る＝debugMode OFF の素の状態。 */
-async function startAt(page, { row, col, boomerang = false, bow = false, bombs = 0, flute = false, layer = LAYER, room = ROOM, dir = 'right' }) {
+// hp は既定 6（鍵ギミックの検証には十分）。上げられるようにしてあるのは「長い時間の
+// 圧力を測る」テスト用＝gameover になると step() が世界を止めて時間が進まなくなるため
+// （難易度の主張ではない）。
+async function startAt(page, { row, col, boomerang = false, bow = false, bombs = 0, flute = false, layer = LAYER, room = ROOM, dir = 'right', hp = 6 }) {
   const subItems = {};
   if (boomerang) subItems.boomerang = { count: 99 };
   if (bow) subItems.bow = { count: 99 };
@@ -56,7 +59,7 @@ async function startAt(page, { row, col, boomerang = false, bow = false, bombs =
   const save = JSON.stringify({
     player: {
       x: col, y: row,
-      hp: 6, maxHp: 6, maxHearts: 3, atk: 99, def: 0, keys: 0,
+      hp, maxHp: hp, maxHearts: Math.max(3, Math.ceil(hp / 2)), atk: 99, def: 0, keys: 0,
       weapon: 'sword', shield: null, armor: null,
       subItems,
       activeSubItem: active,
@@ -1566,6 +1569,90 @@ test.describe('Blade of Lumia – ダンジョンの鍵（進行の背骨）', (
     expect(d1, 'D1 の脅威度（既存の基準）').toBe(24);
     expect(d7, 'D7 の脅威度は D1 を上回る').toBeGreaterThan(d1);
     expect(dt, 'dark_tower[1,2] の脅威度は D7 を上回る').toBeGreaterThan(d7);
+    // 5.5k-2 で剣獣（μ）×5 に組み直した＝旧構成（魔物1+チェイサー3＝48.0）より弱くしない。
+    expect(dt, 'dark_tower[1,2] は 5.5h の旧構成（48.0）より弱くしない').toBeGreaterThanOrEqual(48);
+  });
+
+  // ── ⑨ dark_tower[1,2]＝剣獣の巣（5.5k-2）─────────────────────────────
+  // 「通常敵の最強格を塔の鍵部屋に集める」（PLAN 5.5k の5番）を構成で縛る。
+  // 「最強格」は ENEMY_META から導出する（手書きで「剣獣が最強」と書くと敵を足したとき静かに嘘になる）。
+  // 剣獣の脅威度 10.0 はチェイサーと同値（並ぶ）＝この式では最大タイ。実際の強さの差は
+  // HP（10 vs 5）・速度（1 vs 0.5）・剣ビーム（range 9）で、この式は捉えない ∴縛るのは
+  // 「これを上回る通常敵が現れていないこと」＝現れたらこの部屋を見直せ、という警報にする。
+  test('⑨ dark_tower[1,2]：敵は通常敵の最強格（剣獣）だけを集めている', () => {
+    const stage = map.layers.dark_tower.stages['1,2'];
+    const cells = [];
+    stage.tiles.forEach((row, r) => row.forEach((t, c) => { if (THREAT[t] != null) cells.push({ r, c, t }); }));
+    const normals = ENEMY_TILES.filter(t => !ENEMY_META[t].isBoss);
+    expect(Math.max(...normals.map(t => THREAT[t])), '剣獣を上回る通常敵は居ない（居たら巣の構成を見直す）')
+      .toBe(THREAT['μ']);
+    expect(cells.length, '5体そろっている').toBe(5);
+    expect([...new Set(cells.map(c => c.t))], '最強格だけの巣（混ぜていない）').toEqual(['μ']);
+  });
+
+  // 剣獣は離れると剣ビーム（range 9・minRange 2.5）を撃つ ∴入口セルと同じ行/列に
+  // 「壁で遮られていない」敵が居ると入室した瞬間に不可避で撃たれる。柱(2-3,5-6)(5-6,5-6)
+  // はそれを構造で消すために立てた＝柱を消したら落ちるテストにしておく。
+  // 投擲物は TILE.WALL で消える（game/projectile.js の canProjectilePass）＝壁1枚で射線は切れる。
+  test('⑨ dark_tower[1,2]：入口セルへ通る剣ビームの射線が無い（入室即被弾しない）', () => {
+    const tiles = map.layers.dark_tower.stages['1,2'].tiles;
+    const ENTRY = [[0, 5], [0, 6], [1, 5], [1, 6]];   // 北の継ぎ目と、その直下＝入室直後に立つセル
+    const beamMin = (ENEMY_META['μ'].attacks ?? []).find(a => a.type === 'swordBeam')?.minRange ?? 0;
+    const lanes = [];
+    tiles.forEach((row, r) => row.forEach((t, c) => {
+      if (t !== 'μ') return;
+      for (const [pr, pc] of ENTRY) {
+        if (r !== pr && c !== pc) continue;                       // 行も列も揃わない＝撃てない
+        const dist = Math.abs(r - pr) + Math.abs(c - pc);
+        if (dist < beamMin) continue;                              // 近すぎる＝ビームではなく剣の間合い
+        let blocked = false;
+        const steps = dist;
+        for (let i = 1; i < steps; i++) {
+          const mr = r + Math.sign(pr - r) * i, mc = c + Math.sign(pc - c) * i;
+          if (tiles[mr][mc] === '#') { blocked = true; break; }
+        }
+        if (!blocked) lanes.push(`敵(${r},${c}) → 入口(${pr},${pc})`);
+      }
+    }));
+    expect(lanes, '入口へ抜ける射線は柱で全て遮られている').toEqual([]);
+  });
+
+  // 2026-08-12 ユーザー指摘「これどうやって複数のこのキャラがいた時に倒せばいいの？強すぎないか？」
+  // ＝5体が全員くっついてくると袋叩きで手も足も出ない、という報告。原因は剣獣の AI 側
+  // （常時追跡・攻撃硬直なし・遠隔を撃たない）で、直したのは shared/enemies.js の
+  // combat（遠隔／近接の二相・keepMin 3.0）と attackFreezeMs。部屋の構成は据え置き＝
+  // **構成が据え置きでも袋叩きにならないこと**をここで縛る。
+  //
+  // 実測（.scratch/probe-dt12-pressure.mjs・入口(1,6)で立ち止まり 300 tick＝36秒）:
+  //   2セル以内に3体以上 …… 0/300 tick（＝囲まれない）
+  //   剣の間合い(1.2)に敵が居た …… 71/300 tick（＝反撃の窓は 24% ある）
+  //   敵弾が飛んでいた …… 19/300 tick
+  // 二相を外して全員が追跡に戻ると「囲まれない」が崩れる＝この assert が赤くなる。
+  test('⑨ dark_tower[1,2]：剣獣5体でも袋叩きにならない（間合いを取る／反撃の窓がある）', async ({ page }) => {
+    const errors = [];
+    page.on('pageerror', e => errors.push(e.message));
+    // hp 200 ＝ 200 tick 立ち尽くしても gameover で時間が止まらないようにするだけ。
+    await startAt(page, { row: 1, col: 6, layer: 'dark_tower', room: '1,2', hp: 200 });
+    await page.evaluate(() => window.__game.pause());
+    const m = await page.evaluate(() => {
+      const g = window.__game;
+      let pile = 0, reach = 0;
+      for (let i = 0; i < 200; i++) {
+        g.step(1);
+        const p = g.getState().player;
+        const ds = g.getEnemies().filter(e => e.type === 'μ')
+          .map(e => Math.hypot(p.x - e.x, p.y - e.y));
+        if (ds.filter(d => d <= 2.0).length >= 3) pile++;
+        if (ds.some(d => d <= 1.3)) reach++;
+      }
+      return { pile, reach, alive: g.getEnemies().filter(e => e.type === 'μ').length };
+    });
+    expect(m.alive, '立っているだけでは1体も倒れない（測定が空虚でない）').toBe(5);
+    // 実測 0/300 tick。半セル刻みの揺れを見込んで数 tick は許すが、全員追跡に戻ると
+    // ここは数十〜100 tick 規模になる。
+    expect(m.pile, `2セル以内に3体以上が同時に居る tick（実測 0/300）: ${m.pile}`).toBeLessThanOrEqual(5);
+    expect(m.reach, `剣の間合いに敵が来る tick（＝反撃の窓・実測 71/300）: ${m.reach}`).toBeGreaterThan(10);
+    expect(errors).toEqual([]);
   });
 
   test('⑨ D7：全滅だけでは鍵が出ない（笛も要求する killAllAndFlute）', async ({ page }) => {
