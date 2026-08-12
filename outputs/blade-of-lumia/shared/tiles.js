@@ -13,7 +13,16 @@ export const TILE = {
 	PATROL:    'E',  // 巡回兵（ランダム移動）
 	CHASER:    'C',  // 追跡者（プレイヤーを追いかける）
 	SENTRY:    'F',  // 騎士（強い追跡者）
-	SKELETON:  'k',  // 骸骨剣士（陸上通常敵・徘徊近接・5.5k 新規／文字は暫定）
+	// ── Phase 5.5k: 新規の陸上通常敵15種はギリシャ小文字/大文字を1文字タイルに使う ──
+	// 理由＝ASCII の空き文字は残り14個しか無く（英字 A-Z は全て使用済み・空きは
+	// j q y z 0 と記号 " + , - ? _ ` } ' だけ）、敵15種でちょうど使い切ってしまう＝
+	// 今後のギミック/地形タイル（氷ダンジョン等）に1文字も残らない。タイル文字は
+	// 「文字列の1要素」としてしか扱われないので（コード中に charCodeAt / A-Z の
+	// 文字クラス判定は無い・tiles は文字の配列）非 ASCII の BMP 1文字でも動く。
+	// ラテン文字と紛らわしい字形（ε ι κ ν ο ρ τ υ γ χ）は除外する＝マップの
+	// ダンプを目で読むときに o/ο・v/ν を見間違えるのを防ぐ。
+	SKELETON:    'θ',  // 骸骨剣士（陸上通常敵・徘徊近接＋ガード）
+	SWORD_BEAST: 'μ',  // 剣獣（陸上通常敵の最強格・高速接近＋飛ぶ斬撃＝剣ビーム）
 	BOSS:      'V',  // 魔将（ボス）
 	MONSTER:   'W',  // 魔物（中ボス）
 	DARK_LORD: 'X',  // 魔王（ダンジョンボス・星の欠片を落とす）
@@ -125,6 +134,7 @@ export const TILE_META = {
 	[TILE.CHASER]:  { label: '追跡者',       color: '#aa2040', passable: true,  icon: 'Ｃ' },
 	[TILE.SENTRY]:  { label: '騎士',         color: '#501880', passable: true,  icon: 'Ｆ' },
 	[TILE.SKELETON]:{ label: '骸骨剣士',     color: '#c9a06a', passable: true,  icon: '骸' },
+	[TILE.SWORD_BEAST]:{ label: '剣獣',      color: '#a02838', passable: true,  icon: '獣' },
 	[TILE.BOSS]:    { label: '魔将',         color: '#184060', passable: true,  icon: 'Ｖ' },
 	[TILE.MONSTER]: { label: '魔物',         color: '#2a1060', passable: true,  icon: 'Ｗ' },
 	[TILE.DARK_LORD]:{ label: '魔王',        color: '#0a0a18', passable: true,  icon: 'Ｘ' },

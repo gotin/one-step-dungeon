@@ -13,7 +13,9 @@ export const ENEMY_SPEED_NORMAL = 0.5;  // 通常敵
 export const ENEMY_SPEED_FAST   = 1.0;  // 高速敵
 
 // ── 敵パラメータ ──────────────────────────────────────────────
-// attack.type: 'charge' | 'spear' | 'stone' | 'sword' | 'waterShot' | 'waterBlade'
+// attack.type: 'charge' | 'spear' | 'stone' | 'sword' | 'swordBeam' | 'waterShot' | 'waterBlade'
+//   swordBeam（Phase 5.5k #7 剣獣）… 縦横が揃ったときだけ撃つ「飛ぶ斬撃」。
+//   プレイヤーのビーム剣と同じ 'beam' 投擲物を owner:'enemy' で飛ばす。
 //
 // attack.range   … この距離以内なら出す（上限）
 // attack.minRange（任意・Phase 9-6）… この距離より近いと出さない（下限）。
@@ -70,6 +72,30 @@ export const ENEMY_META = {
 		isBoss: false,
 		directional: true,
 		attack: { type: 'sword', range: 1.5, cooldown: 900 },
+	},
+	[TILE.SWORD_BEAST]: {
+		// 剣獣（陸上通常敵の最強格・5.5k #7）。dark_tower [1,2] の戦闘部屋に集める用＝
+		// 「通常陸上敵が3種しか無く最終盤に置く最強格の選択肢が無い」を解消する敵。
+		// 特徴＝①高速で詰めてくる（ENEMY_SPEED_FAST）②離れていると「飛ぶ斬撃」
+		// （swordBeam）を撃つ＝逃げ回るだけでは安全にならない。
+		// guards:false＝高機動の敵が立ち止まって盾を構えるのは設計と矛盾する∴
+		// ガード状態機械には乗せない（ガード役は #4 盾騎士の担当）。∴向き別スプライトは
+		// 3方向×(通常/攻撃)の6枚だけで足りる（Guard フレーム不要）。
+		name: '剣獣',
+		hp: 10, atk: 3, def: 2, exp: 20,
+		speed: ENEMY_SPEED_FAST,
+		sprite: 'swordBeastD',
+		pal:    'swordBeast',
+		isBoss: false,
+		directional: true,
+		guards: false,
+		attacks: [
+			{ type: 'sword',     range: 1.5, cooldown: 700 },
+			// 飛ぶ斬撃＝縦横に揃ったときだけ撃つ飛び道具（beam）。minRange で
+			// 「隣接している間は撃たず近接に切り替わる」を宣言する（SENTRY の spear と同型）。
+			{ type: 'swordBeam', range: 9, minRange: 2.5, cooldown: 1500, projectileSpeed: 2.0 },
+		],
+		attack: { type: 'sword', range: 1.5, cooldown: 700 },
 	},
 	[TILE.MONSTER]: {
 		name: '魔物',

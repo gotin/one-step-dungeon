@@ -24,6 +24,9 @@ import { GAME_URL, SAVE_KEY } from './helpers.js';
 // 倉庫番型（D4・5.5e）の最短手順を実機で再生するために状態空間ソルバーを使う
 // （tests/sokoban-tiers.spec.js と同じ作法＝手順をテストに焼かない）。
 import { makeSolver } from '../scripts/lib/blade-solver.mjs';
+// 敵タイル一覧・脅威度は ENEMY_META から導出する（手書き表は新しい敵を足したときに
+// 静かに漏れる＝過去に13タイル漏れの実害があった。5.5k で敵を15種足すので特に危険）。
+import { ENEMY_META, ENEMY_TILES } from '../shared/enemies.js';
 
 const MAP_PATH   = fileURLToPath(new URL('../work/blade-of-lumia.json', import.meta.url));
 const CHECKER    = fileURLToPath(new URL('../scripts/check-dungeon-integrity.mjs', import.meta.url));
@@ -776,7 +779,7 @@ test.describe('Blade of Lumia – ダンジョンの鍵（進行の背骨）', (
     expect(stage.fluteEffect, '笛の resetStones（再訪時の保険）').toEqual({ type: 'resetStones' });
     // 敵が居てはいけない（enemy-ai.js tryEnemyPushStone が石を押す＝測定した解が崩れる）。
     const flat = stage.tiles.flat().join('');
-    expect(/[WECFVXZALNJOUGI]/.test(flat), '倉庫番の部屋に敵を置いていない').toBe(false);
+    expect(ENEMY_TILES.some(t => flat.includes(t)), '倉庫番の部屋に敵を置いていない').toBe(false);
   });
 
   test('⑥ D4：前室（宝箱＋ワープ）へ石を押し込める向きが1つも無い／口は2つ以上', () => {
@@ -1091,7 +1094,7 @@ test.describe('Blade of Lumia – ダンジョンの鍵（進行の背骨）', (
       .toBeLessThanOrEqual(3);
     // 敵が居てはいけない（enemy-ai.js tryEnemyPushStone が石を押す＝測定した解が崩れる）。
     const flat = stage.tiles.flat().join('');
-    expect(/[WECFVXZALNJOUGI]/.test(flat), '倉庫番の部屋に敵を置いていない').toBe(false);
+    expect(ENEMY_TILES.some(t => flat.includes(t)), '倉庫番の部屋に敵を置いていない').toBe(false);
   });
 
   test('⑦ D6：ポケットのボタン(1,1) の床の隣人は壊せる壁だけ（爆弾必須が幾何で決まる）', () => {
@@ -1420,7 +1423,7 @@ test.describe('Blade of Lumia – ダンジョンの鍵（進行の背骨）', (
     expect(stage.fluteEffect, '笛の resetStones（再訪時の保険。D8 は笛の報酬部屋そのもの）').toEqual({ type: 'resetStones' });
     // 敵が居てはいけない（enemy-ai.js tryEnemyPushStone が石を押す＝測定した解が崩れる）。
     const flat = stage.tiles.flat().join('');
-    expect(/[WECFVXZALNJOUGI]/.test(flat), '倉庫番の部屋に敵を置いていない').toBe(false);
+    expect(ENEMY_TILES.some(t => flat.includes(t)), '倉庫番の部屋に敵を置いていない').toBe(false);
   });
 
   test('⑧ D8：前室（ワープ）へ石を押し込める向きが1つも無い／口は2つ以上', () => {
@@ -1543,7 +1546,12 @@ test.describe('Blade of Lumia – ダンジョンの鍵（進行の背骨）', (
   // ── ⑨ D7・dark_tower：戦闘型の強化（5.5h） ─────────────────────────────
   // 脅威度（ENEMY_META から HP*ATK/(DEF+1) の合計）が進行順で単調増加すること。
   // D1（§7-2⑥＝据え置き確定）を基準に、D7・dark_tower[1,2] を強化した。
-  const THREAT = { E: 3, C: 10, F: 6, W: 18 };
+  // ENEMY_META から導出（hp * atk / (def + 1)）＝敵を足しても表を書き直さなくてよい。
+  // 既存の実測値（E:3 C:10 F:6 W:18・D1 合計 24）はこの式と一致する。
+  const THREAT = Object.fromEntries(ENEMY_TILES.map(t => {
+    const m = ENEMY_META[t];
+    return [t, (m.hp * m.atk) / ((m.def ?? 0) + 1)];
+  }));
   function threatOfStage(stage) {
     let total = 0;
     for (const row of stage.tiles) for (const t of row) if (THREAT[t] != null) total += THREAT[t];

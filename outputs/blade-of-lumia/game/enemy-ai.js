@@ -603,6 +603,22 @@ export function createEnemyAi(deps) {
 				const ndy = sameRow ? 0 : Math.sign(dy);
 				fireEnemyProjectile(e, 'spear', ndx, ndy, atk.projectileSpeed ?? 1.5);
 				e._attackTimes[i] = now;
+			} else if (atk.type === 'swordBeam') {
+				// Phase 5.5k #7 剣獣: 飛ぶ斬撃。spear と同じ「縦横が揃ったときだけ撃つ」型
+				// （斜めには飛ばさない＝プレイヤーは列/行から外れれば避けられる）。
+				// 投擲物はプレイヤーのビーム剣と同じ 'beam'（owner:'enemy' で発射される。
+				// スイッチ類のトグルは owner==='player' に限定済み∴敵ビームでは動かない）。
+				const sameCol = Math.abs(dx) < 1.0;
+				const sameRow = Math.abs(dy) < 1.0;
+				if (!sameCol && !sameRow) continue;
+				const ndx = sameCol ? 0 : Math.sign(dx);
+				const ndy = sameRow ? 0 : Math.sign(dy);
+				// 撃つ方向を向く＝向き別スプライトの攻撃ポーズが斬撃の向きと一致する
+				e.dir = ndx !== 0 ? (ndx > 0 ? 'right' : 'left') : (ndy > 0 ? 'down' : 'up');
+				fireEnemyProjectile(e, 'beam', ndx, ndy, atk.projectileSpeed ?? 2.0);
+				e._attackTimes[i] = now;
+				// 剣を振った絵を論理時間窓で出す（sword 近接と同じ扱い）
+				if (meta.directional) e._atkUntil = now + ATTACK_POSE_MS;
 			} else if (atk.type === 'stone') {
 				const ndx = dx / dist;
 				const ndy = dy / dist;
@@ -760,6 +776,10 @@ export function createEnemyAi(deps) {
 	// ガードを解いて攻撃へ移る（攻撃直後は再びクールダウン中＝自然にガードへ戻る）。
 	// 戻り値：ガード中なら true（呼び出し側はこの tick の移動/攻撃を止める）。
 	function tickGuard(e, meta, now) {
+		// Phase 5.5k #7: guards:false＝ガードを持たない敵（剣獣のような高機動型は
+		// 立ち止まって構えない）。directional な敵でもここで降りる＝${base}${Dir}Guard の
+		// スプライトを用意しなくてよくなる（resolveEnemySprite は _guarding を見る）。
+		if (meta.guards === false) { e._guarding = false; e._guardDir = null; return false; }
 		const attackList = meta.attacks ?? (meta.attack ? [meta.attack] : []);
 		const idx = attackList.findIndex(a => a?.type === 'sword');
 		if (idx === -1) { e._guarding = false; e._guardDir = null; return false; }

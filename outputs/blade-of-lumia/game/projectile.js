@@ -183,7 +183,11 @@ export function createProjectile(deps) {
 		if (proj.type === 'beam') {
 			const horizontal = Math.abs(proj.dx) >= Math.abs(proj.dy);
 			const beam = document.createElement('div');
-			beam.className = 'sword-beam' + (proj.strong ? ' beam-strong' : '');
+			// Phase 5.5k #7: 敵が撃つ飛ぶ斬撃は色を変える（プレイヤーのビームは水色系＝
+			// 同じ絵だと「自分の攻撃」と誤読して避けない）。
+			beam.className = 'sword-beam'
+				+ (proj.strong ? ' beam-strong' : '')
+				+ (proj.owner === 'enemy' ? ' beam-enemy' : '');
 			const longPx  = Math.round(cellPx * (proj.strong ? 0.95 : 0.7));
 			const shortPx = Math.round(cellPx * (proj.strong ? 0.42 : 0.3));
 			beam.style.width  = `${horizontal ? longPx : shortPx}px`;
@@ -556,7 +560,10 @@ export function createProjectile(deps) {
 
 	// ── 敵の飛翔物発射 ────────────────────────────────────────
 	// enemy-ai.js の enemyAttack から呼ぶ
-	function fireEnemyProjectile(e, type, ndx, ndy, speed) {
+	// extra（Phase 5.5k）… 投擲物に追加で載せるフィールド（strong / piercing / range 等）。
+	//   剣獣の飛ぶ斬撃や今後の爆弾鬼・ブーメラン鬼が種別ごとの差を渡すための拡張点。
+	//   type ごとの分岐をここに増やさず、呼び出し側（ENEMY_META の attacks）で宣言する。
+	function fireEnemyProjectile(e, type, ndx, ndy, speed, extra = {}) {
 		const proj = {
 			id:    _nextProjId++,
 			owner: 'enemy',
@@ -566,6 +573,7 @@ export function createProjectile(deps) {
 			dx: ndx, dy: ndy,
 			speed,
 			atk: ENEMY_META[e.type]?.atk ?? 2,
+			...extra,
 		};
 		_projectiles.push(proj);
 		createProjEl(proj);

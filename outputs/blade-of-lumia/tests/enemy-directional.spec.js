@@ -41,7 +41,8 @@ async function startAt(page, { x, y, dir = 'right', boomerang = false }) {
 	await page.evaluate(() => window.__game.pause());
 }
 
-function skeletonOf(list) { return list.find(e => e.type === 'k'); }
+// SKELETON のタイル文字は 5.5k で 'k' → 'θ'（ギリシャ文字）へ移行した（shared/tiles.js 参照）。
+function skeletonOf(list) { return list.find(e => e.type === 'θ'); }
 async function getSkeleton(page) { return skeletonOf(await page.evaluate(() => window.__game.getEnemies())); }
 async function stepN(page, n) { for (let i = 0; i < n; i++) await page.evaluate(() => window.__game.step(1)); }
 

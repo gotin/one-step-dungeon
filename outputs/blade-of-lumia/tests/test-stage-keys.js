@@ -71,6 +71,13 @@ export const TEST_STAGE_KEYS = {
 	// assert が成立しなくなる。石 (4,4) が赤ゲート (4,5) の隣＝抜け道を実機で直接踏める
 	// ジオメトリはこの盤面しか無い∴捨てずに座標を移した。
 	sokoban_gate_push_regression: '25,0',
+	// Phase 5.5k #7 剣獣（swordBeam＝飛ぶ斬撃）の検証ステージ。
+	// 幾何の要点＝**水の水路で敵とプレイヤーを隔てる**。陸上敵は水に入れず
+	// （passable.js enemyTilePassable）投擲物は水を飛び越える（isTilePassableForProj）∴
+	// 「高速で詰めてくる敵に近接される前に遠隔攻撃だけを観測する」状態を作れる。
+	// 剣獣は速度 FAST（0.5セル/tick）＝水路が無いと minRange に達する前に密着して
+	// 近接に切り替わってしまう（＝遠隔の検証が成立しない）。
+	sword_beast:      '27,0',
 };
 
 /**

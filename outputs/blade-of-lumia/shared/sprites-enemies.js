@@ -19,6 +19,12 @@ export const ENEMY_PAL = {
 	lurkShark:['transparent','#050d14','#16303c','#2d5a68','#5f92a0','#e8f6ff','#e04040'],
 	// 射水魚（水棲・遠隔型）：橙鰭の青魚（水弾を吐く口を強調）。1=輪郭 2=暗青 3=中青 4=明水色 5=白 6=橙鰭
 	archerFish:['transparent','#06161f','#124a60','#2088a8','#58cbe4','#eaffff','#e88820'],
+	// 剣獣（陸上通常敵の最強格・Phase 5.5k #7）：暗赤の獣毛＋金の鬣。
+	// ⚠️ 現在はスプライト実体が sentry（騎士）の形の借り物＝パレットだけ専用にして
+	// 「センチネルと見分けが付く」状態を作っている（形は SPRITE-PIPELINE.md §6 の
+	// 手順で 32×32・3方向×3ポーズを作ってから差し替える）。index 数は sentry と
+	// 同じ 6 でなければならない（借りている絵が index 5 まで使う）。
+	swordBeast:['transparent','#0a0a14','#4a0e1c','#a02838','#e0704c','#ffd070'],
 };
 
 export const ENEMY_SPRITES = {};
@@ -2032,3 +2038,20 @@ ENEMY_SPRITES.skeletonUGuard = [
 		[0,0,0,0,0,0,0,0,0,6,6,6,6,6,6,0,0,0,0,0,0,6,6,6,6,6,0,0,0,0,0,0],
 	]
 ];
+
+// ── SWORD_BEAST（剣獣・陸上通常敵の最強格・Phase 5.5k #7）──────────────
+// ⚠️ ここは「参照エイリアス」段階＝機構（directional・剣ビーム）を先に通すための
+// 借り物の絵（sentry の形＋swordBeast パレット）。ENEMY-DIRECTIONAL-GUIDE.md §2 の
+// 「実描画が無い段階ではエイリアスで機構だけ通す」に従う。実データは
+// SPRITE-PIPELINE.md §6 の手順（方向ごとに基準ボディ1枚を生成し、残りはグリッド編集）
+// で 32×32 を作ってから差し替える。
+//
+// 必要な名前は 3方向 × (通常・攻撃) の6個だけ＝剣獣は ENEMY_META.guards:false で
+// ガード状態に入らない（高機動の敵が立ち止まって構えるのは設計と矛盾する）∴
+// ${base}${Dir}Guard は要らない（skeleton は 3方向 × 3ポーズ＝9個）。
+ENEMY_SPRITES.swordBeastD = ENEMY_SPRITES.sentry;
+ENEMY_SPRITES.swordBeastR = ENEMY_SPRITES.sentry;
+ENEMY_SPRITES.swordBeastU = ENEMY_SPRITES.sentry;
+ENEMY_SPRITES.swordBeastDAtk = ENEMY_SPRITES.sentry;
+ENEMY_SPRITES.swordBeastRAtk = ENEMY_SPRITES.sentry;
+ENEMY_SPRITES.swordBeastUAtk = ENEMY_SPRITES.sentry;

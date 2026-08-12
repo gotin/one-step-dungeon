@@ -23,6 +23,10 @@ export const TILE_SPRITE_MAP = {
 	[TILE.PATROL]:    { spr: 'patrol',   pal: 'patrol'   },
 	[TILE.CHASER]:    { spr: 'chaser',   pal: 'chaser'   },
 	[TILE.SENTRY]:    { spr: 'sentry',   pal: 'sentry'   },
+	// Phase 5.5k: 向き別スプライトを持つ陸上敵はエディタでは DOWN（正面）の絵を出す
+	// （エディタは状態を持たないので「その敵の代表となる1枚」＝正面を描く）。
+	[TILE.SKELETON]:    { spr: 'skeletonD',   pal: 'skeleton'   },
+	[TILE.SWORD_BEAST]: { spr: 'swordBeastD', pal: 'swordBeast' },
 	[TILE.BOSS]:      { spr: 'escape',   pal: 'escape'   },
 	[TILE.MONSTER]:   { spr: 'monster',  pal: 'monster'  },
 	[TILE.DARK_LORD]: { spr: 'darklord', pal: 'darklord' },
