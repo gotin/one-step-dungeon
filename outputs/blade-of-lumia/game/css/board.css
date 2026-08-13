@@ -61,27 +61,62 @@
     50%      { transform: translateY(-16%); }
 }
 
-/* Phase 9-6 深洋O: 潜行中の水棲敵（潜み鮫）。
-   水中に隠れている＝無敵・攻撃なし・接触なしの状態を「薄く沈んで波紋だけ見える」で表す。
-   浮上するとクラスが外れて実体化する＝「浮上した瞬間だけ殴れる」が目で分かる。 */
-.char-abs.submerged canvas.sprite {
+/* 隠れ中の敵（Phase 9-6 潜み鮫の潜行 → Phase 5.5k k-3 で陸/空へ一般化）。
+   隠れている＝無敵・攻撃なし・接触なしの状態を「薄く沈んで痕跡だけ見える」で表す。
+   出現するとクラスが外れて実体化する＝「出た瞬間だけ殴れる」が目で分かる。
+   `.hiding` が共通の薄さ、`.hide-water|hide-burrow|hide-air` が痕跡の描き分け
+   （水＝波紋リング／地中＝土の盛り上がり／滞空＝真下の影）。 */
+.char-abs.hiding canvas.sprite {
     opacity: 0.32;
     filter: blur(0.4px) brightness(0.75) saturate(0.7);
 }
-.char-abs.submerged::after {
+.char-abs.hiding::after {
     content: '';
     position: absolute;
     left: 12%;
     top: 22%;
     width: 76%;
     height: 56%;
-    border: 2px solid rgba(140, 225, 255, 0.55);
     border-radius: 50%;
-    animation: submerge-ripple 1.6s ease-out infinite;
 }
-@keyframes submerge-ripple {
+/* 水＝広がって消える波紋リング */
+.char-abs.hiding.hide-water::after {
+    border: 2px solid rgba(140, 225, 255, 0.55);
+    animation: hide-ripple 1.6s ease-out infinite;
+}
+/* 地中＝土が盛り上がって左右に揺れる（掘り進む痕跡） */
+.char-abs.hiding.hide-burrow::after {
+    left: 14%;
+    top: 48%;
+    height: 34%;
+    background: radial-gradient(ellipse at 50% 100%, rgba(150, 110, 60, 0.85), rgba(110, 80, 40, 0.15));
+    border: 1px solid rgba(90, 65, 30, 0.5);
+    animation: hide-burrow-mound 0.9s ease-in-out infinite;
+}
+/* 滞空＝真下に落ちる影だけが見える（跳んでいる間）。
+   ⚠️ 黒い影だけだとダンジョンの暗い床の上では**何も見えない**（実画面で確認）。
+   ∴縁に薄い明色を足して、明るい草地でも暗い石床でも輪郭が出るようにする。 */
+.char-abs.hiding.hide-air::after {
+    left: 22%;
+    top: 72%;
+    width: 56%;
+    height: 20%;
+    background: rgba(0, 0, 0, 0.5);
+    border: 1px solid rgba(225, 235, 255, 0.3);
+    box-shadow: 0 0 3px rgba(0, 0, 0, 0.5);
+    animation: hide-air-shadow 0.4s ease-in-out infinite;
+}
+@keyframes hide-ripple {
     0%   { transform: scale(0.45); opacity: 0.75; }
     100% { transform: scale(1.15); opacity: 0;    }
+}
+@keyframes hide-burrow-mound {
+    0%, 100% { transform: translateX(-8%) scaleY(0.9); }
+    50%      { transform: translateX( 8%) scaleY(1.1); }
+}
+@keyframes hide-air-shadow {
+    0%, 100% { transform: scale(0.8); opacity: 0.5; }
+    50%      { transform: scale(1.0); opacity: 0.3; }
 }
 
 /* Phase 3-2: 大型敵（岩のゴーレム等）の重々しい揺れ。

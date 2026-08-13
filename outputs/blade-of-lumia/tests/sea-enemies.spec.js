@@ -4,7 +4,9 @@
 // ①魚群（'&'）は tests/aquatic-enemy.spec.js で固定済み。ここは②③を固定する。
 //
 // ②接近型 = 潜み鮫 LURK_SHARK ('<')：潜行↔浮上のリズム戦闘（ユーザー確定 2026-07-25）。
-//   潜行中（e.submerged）… 追跡は続くが「無敵・攻撃なし・接触ダメージなし」
+//   潜行中（e.hidden）… 追跡は続くが「無敵・攻撃なし・接触ダメージなし」
+//   ⚠ 2026-08-13（5.5k k-3）に機構名を一般化した＝`meta.submerge`→`meta.hide`（style:'water'）／
+//     `e.submerged`→`e.hidden`。同じ規則を陸（地中蟲）・空（跳躍蜘蛛の滞空）でも使うため。
 //   浮上中               … 噛みつき（sword range1.6）で殴ってくる／こちらの攻撃も通る
 //   ∴「浮上した 1.2 秒だけが殴れる窓」＝海のリズム。
 //   さらに二段構え（ユーザー確定 2026-07-25・追加）＝**離れていれば遠隔・隣接すれば噛みつき**。
@@ -32,7 +34,7 @@
 //   ⑫ 敵スプライトがプレイヤーの左右に応じて反転する（横向き敵の向きバグ）
 //
 // tick 換算（TICK_MS=120・gameNow は step() で 120ms ずつ進む）：
-//   spawn 時 submerged=true → 初 tick(now=120) で _submergeUntil=2120
+//   spawn 時 hidden=true → 初 tick(now=120) で _hideUntil=2120
 //   → now>=2120 で浮上 = tick18(2160)  → 浮上は 2160+1200=3360 まで
 //   → now>=3360 で再潜行 = tick28(3360)
 //   射水魚 cooldown 2200ms・lastTime=0 → now-0>=2200 で初弾 = tick19(2280)
@@ -87,9 +89,10 @@ test.describe('Phase 9-6 深洋O – 海棲雑魚②接近型・③遠隔型', (
     expect(shark, `ENEMY_META['<'] が無い`).toBeTruthy();
     expect(shark.isBoss, '潜み鮫は雑魚').toBeFalsy();
     expect(shark.move, '潜み鮫は水棲').toBe('water');
-    expect(shark.submerge, '潜行周期 submerge が無い').toBeTruthy();
-    expect(shark.submerge.hiddenMs, '潜行時間').toBeGreaterThan(0);
-    expect(shark.submerge.surfacedMs, '浮上時間').toBeGreaterThan(0);
+    expect(shark.hide, '潜行周期 hide が無い').toBeTruthy();
+    expect(shark.hide.hiddenMs, '潜行時間').toBeGreaterThan(0);
+    expect(shark.hide.shownMs, '浮上時間').toBeGreaterThan(0);
+    expect(shark.hide.style, '見た目の種別（水＝波紋）').toBe('water');
     expect(shark.attack?.type, '浮上中は噛みつき（sword）').toBe('sword');
     expect(shark.attack.range, '岸のプレイヤー（距離1.0）に届くリーチ').toBeGreaterThanOrEqual(1.2);
     // 二段構え＝attacks 配列に噛みつき（sword）と遠隔（waterBlade）の2本
@@ -144,7 +147,7 @@ test.describe('Phase 9-6 深洋O – 海棲雑魚②接近型・③遠隔型', (
   test('⑤ 潜行中の敵は接触ダメージを与えない（浮上中は与える）', () => {
     // checkEnemyContact 単体（DOM 不要）。プレイヤーと敵を同一セルに重ねる。
     const calls = [];
-    const enemy = { id: 'e1', type: TILE.LURK_SHARK, x: 5, y: 5, submerged: true };
+    const enemy = { id: 'e1', type: TILE.LURK_SHARK, x: 5, y: 5, hidden: true };
     const ai = createEnemyAi({
       getPlayer:  () => ({ x: 5, y: 5 }),
       getEnemies: () => [enemy],
@@ -152,7 +155,7 @@ test.describe('Phase 9-6 深洋O – 海棲雑魚②接近型・③遠隔型', (
     });
     ai.checkEnemyContact();
     expect(calls, '潜行中は重なってもダメージなし').toEqual([]);
-    enemy.submerged = false;
+    enemy.hidden = false;
     ai.checkEnemyContact();
     expect(calls.length, '浮上中は接触ダメージが入る').toBe(1);
     expect(calls[0], '潜み鮫の atk が入る').toBe(ENEMY_META[TILE.LURK_SHARK].atk);
@@ -169,12 +172,12 @@ test.describe('Phase 9-6 深洋O – 海棲雑魚②接近型・③遠隔型', (
     // ∴「連続 step して状態が切り替わった tick 番号」を1回のループで拾う。
     const flips = await page.evaluate(() => {
       const at = [];
-      let prev = window.__game.getEnemies().find(x => x.type === '<')?.submerged;
+      let prev = window.__game.getEnemies().find(x => x.type === '<')?.hidden;
       const first = prev;
       for (let i = 1; i <= 45; i++) {
         window.__game.step(1);
-        const cur = window.__game.getEnemies().find(x => x.type === '<')?.submerged;
-        if (cur !== prev) { at.push({ tick: i, submerged: cur }); prev = cur; }
+        const cur = window.__game.getEnemies().find(x => x.type === '<')?.hidden;
+        if (cur !== prev) { at.push({ tick: i, hidden: cur }); prev = cur; }
       }
       return { first, at };
     });
@@ -184,8 +187,8 @@ test.describe('Phase 9-6 深洋O – 海棲雑魚②接近型・③遠隔型', (
     // 潜行 2000ms / 浮上 1200ms・TICK_MS=120 ∴ 潜行は 17 tick 続き 18 tick 目で浮上、
     // 浮上は 10 tick 続き 28 tick 目で再潜行（2000/120=16.7→17・1200/120=10）。
     expect(flips.at.length, '1周期ぶんの切り替わりが観測できない').toBeGreaterThanOrEqual(2);
-    expect(flips.at[0], '2.0s 経過で浮上').toEqual({ tick: 18, submerged: false });
-    expect(flips.at[1], '1.2s 経過で再潜行').toEqual({ tick: 28, submerged: true });
+    expect(flips.at[0], '2.0s 経過で浮上').toEqual({ tick: 18, hidden: false });
+    expect(flips.at[1], '1.2s 経過で再潜行').toEqual({ tick: 28, hidden: true });
 
     // 陸へは上がれない（水プール rows4-6 の中に留まる）
     const shark = await page.evaluate(() => window.__game.getEnemies().find(x => x.type === '<'));
@@ -207,9 +210,9 @@ test.describe('Phase 9-6 深洋O – 海棲雑魚②接近型・③遠隔型', (
       const before = e.hp;
       window.__game.dealDamage(e.id, 5, 'sword');
       const after = window.__game.getEnemies().find(x => x.type === '<').hp;
-      return { submerged: e.submerged, loss: before - after };
+      return { hidden: e.hidden, loss: before - after };
     });
-    expect(submergedLoss.submerged, '前提：潜行中').toBe(true);
+    expect(submergedLoss.hidden, '前提：潜行中').toBe(true);
     expect(submergedLoss.loss, '潜行中は無敵＝ダメージ0').toBe(0);
 
     // 浮上まで進めて（合計 18 tick）同じ攻撃 → 通る
@@ -219,9 +222,9 @@ test.describe('Phase 9-6 深洋O – 海棲雑魚②接近型・③遠隔型', (
       const before = e.hp;
       window.__game.dealDamage(e.id, 5, 'sword');
       const after = window.__game.getEnemies().find(x => x.type === '<')?.hp ?? 0;
-      return { submerged: e.submerged, loss: before - after };
+      return { hidden: e.hidden, loss: before - after };
     });
-    expect(surfacedLoss.submerged, '前提：浮上中').toBe(false);
+    expect(surfacedLoss.hidden, '前提：浮上中').toBe(false);
     expect(surfacedLoss.loss, '浮上中はダメージが通る').toBeGreaterThan(0);
     expect(errors).toEqual([]);
   });
@@ -242,7 +245,7 @@ test.describe('Phase 9-6 深洋O – 海棲雑魚②接近型・③遠隔型', (
         const after = document.querySelectorAll('.sword-thrust').length;
         if (after > before) {
           const e = window.__game.getEnemies().find(x => x.type === '<');
-          if (e?.submerged) whileSubmerged++; else whileSurfaced++;
+          if (e?.hidden) whileSubmerged++; else whileSurfaced++;
         }
       }
       return { whileSubmerged, whileSurfaced };
@@ -318,7 +321,7 @@ test.describe('Phase 9-6 深洋O – 海棲雑魚②接近型・③遠隔型', (
         for (const p of window.__game.getProjectiles()) {
           if (p.type !== 'waterBlade' || seen.has(p.id)) continue;
           seen.add(p.id);
-          if (e.submerged) hiddenShots++;
+          if (e.hidden) hiddenShots++;
           else if (!firstSurfacedShot) firstSurfacedShot = p;
         }
       }

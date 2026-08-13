@@ -297,9 +297,20 @@ export function createPassable(d) {
 	// ここで上書きする（プレイヤーの飛行/はしごが isPassable で上書きするのと同じ構図）。
 	//   'water'      … 水は可・乾いた陸は不可（陸に上がれない）。溶岩/空は不可。
 	//   'amphibious' … 水も陸も可。溶岩/空は不可。
+	//   'air'        … 飛行（Phase 5.5k k-3 コウモリ群）。水/溶岩/空（虚空）を飛び越える。
+	//                  壁・閉じた門・壊せる壁など「構造物」は越えられない＝陸上敵と同じ。
+	//                  ∴プレイヤーが水路や虚空で隔離しても飛行敵だけは渡ってくる。
 	//   それ以外     … 従来どおり tilePassable に従う（水は不通）。
 	// 戻り値：そのセルがこの敵にとって通行可なら true。
 	function enemyTilePassable(r, c, move) {
+		if (move === 'air') {
+			// 飛び越える対象＝水（tiles 層／bgTiles 層の下地とも）・溶岩・空（虚空）。
+			// それ以外は陸上敵と同じ判定（壁や閉じた門は通れない）。
+			if (isWaterAt(r, c)) return true;
+			const t = getStageData()?.tiles?.[r]?.[c];
+			if (t === TILE.LAVA || t === TILE.SKY) return true;
+			return tilePassable(r, c);
+		}
 		// 水は tiles 層でも bgTiles 層（下地）でも「水」＝水棲/両生だけが泳げる。
 		if (isWaterAt(r, c)) {
 			return move === 'water' || move === 'amphibious';

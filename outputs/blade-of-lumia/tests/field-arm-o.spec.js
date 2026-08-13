@@ -182,9 +182,9 @@ test.describe('Phase 9-6 深洋O ④ – アーム7 実エンジン検証', () =
     const res = await page.evaluate(() => {
       window.__game.step(1);
       const shark = window.__game.getEnemies().find(e => e.type === '<');
-      return { submerged: shark?.submerged ?? null, hp: window.__game.getState().player.hp };
+      return { hidden: shark?.hidden ?? null, hp: window.__game.getState().player.hp };
     });
-    expect(res.submerged, '登場時に浮上している（潜行から始まらない）').toBe(true);
+    expect(res.hidden, '登場時に浮上している（潜行から始まらない）').toBe(true);
     expect(res.hp, '画面に入った直後に潜行中の鮫でダメージを受けた').toBeGreaterThan(0);
     expect(errors).toEqual([]);
   });

@@ -87,6 +87,18 @@ export const TEST_STAGE_KEYS = {
 	// 幾何＝外周だけ壁・内部は全面床・剣獣1体(4,9)。プレイヤーは save 注入で置く。
 	// scripts/migrate-test-sword-beast-arena.mjs が書き込む。
 	sword_beast_arena: '28,0',
+	// Phase 5.5k k-3（2026-08-13）＝「隠れ↔出現の無敵窓」を陸/空へ一般化したときの検証3枚。
+	// 1体ずつ別ステージに分ける＝どの機構が壊れたか混ざらない（sword_beast_arena と同じ作法）。
+	// 3枚とも scripts/migrate-test-hide-window-arenas.mjs が書き込む（幾何を自己検査する）。
+	//   burrow_worm … 地中蟲1体。外周だけ壁・内部は全面床（遮蔽ゼロ）。隠れ↔出現の周期と
+	//                 「隠れ中は無敵・接触なし・攻撃なし／出現中だけ殴れる」を測る。
+	burrow_worm:      '29,0',
+	//   leap_spider … 跳躍蜘蛛1体。遮蔽ゼロ。溜め→滞空（無敵）→着地硬直（反撃の窓）を測る。
+	//                 プレイヤーを離して置くと maxRange 内で跳躍が始まる。
+	leap_spider:      '30,0',
+	//   bat_swarm   … コウモリ群1体。**中央に水の縦帯**を置く＝`move:'air'` が水を飛び越える
+	//                 （陸上敵は渡れない）ことを確認するための幾何。ジグザグも同じ盤面で測る。
+	bat_swarm:        '31,0',
 };
 
 /**

@@ -23,6 +23,9 @@ export const TILE = {
 	// ダンプを目で読むときに o/ο・v/ν を見間違えるのを防ぐ。
 	SKELETON:    'θ',  // 骸骨剣士（陸上通常敵・徘徊近接＋ガード）
 	SWORD_BEAST: 'μ',  // 剣獣（陸上通常敵の最強格・高速接近＋飛ぶ斬撃＝剣ビーム）
+	BURROW_WORM: 'α',  // 地中蟲（陸上通常敵・潜伏↔浮上のリズム。潜伏中は無敵で寄ってくる）
+	LEAP_SPIDER: 'β',  // 跳躍蜘蛛（陸上通常敵・跳躍で間合いを詰める。滞空中は当たり判定が消える）
+	BAT_SWARM:   'ξ',  // コウモリ群（飛行通常敵・ジグザグ高速飛行。水/溶岩/空も飛び越える）
 	BOSS:      'V',  // 魔将（ボス）
 	MONSTER:   'W',  // 魔物（中ボス）
 	DARK_LORD: 'X',  // 魔王（ダンジョンボス・星の欠片を落とす）
@@ -135,6 +138,9 @@ export const TILE_META = {
 	[TILE.SENTRY]:  { label: '騎士',         color: '#501880', passable: true,  icon: 'Ｆ' },
 	[TILE.SKELETON]:{ label: '骸骨剣士',     color: '#c9a06a', passable: true,  icon: '骸' },
 	[TILE.SWORD_BEAST]:{ label: '剣獣',      color: '#a02838', passable: true,  icon: '獣' },
+	[TILE.BURROW_WORM]:{ label: '地中蟲',    color: '#8a6b3a', passable: true,  icon: '蟲' },
+	[TILE.LEAP_SPIDER]:{ label: '跳躍蜘蛛',  color: '#5b3f7a', passable: true,  icon: '蜘' },
+	[TILE.BAT_SWARM]:{ label: 'コウモリ群',  color: '#4a4a66', passable: true,  icon: '蝠' },
 	[TILE.BOSS]:    { label: '魔将',         color: '#184060', passable: true,  icon: 'Ｖ' },
 	[TILE.MONSTER]: { label: '魔物',         color: '#2a1060', passable: true,  icon: 'Ｗ' },
 	[TILE.DARK_LORD]:{ label: '魔王',        color: '#0a0a18', passable: true,  icon: 'Ｘ' },

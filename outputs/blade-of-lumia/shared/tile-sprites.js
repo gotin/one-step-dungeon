@@ -27,6 +27,10 @@ export const TILE_SPRITE_MAP = {
 	// （エディタは状態を持たないので「その敵の代表となる1枚」＝正面を描く）。
 	[TILE.SKELETON]:    { spr: 'skeletonD',   pal: 'skeleton'   },
 	[TILE.SWORD_BEAST]: { spr: 'swordBeastD', pal: 'swordBeast' },
+	// Phase 5.5k k-3（向き別を持たない3体＝1枚の絵＋左右反転で足りる）
+	[TILE.BURROW_WORM]: { spr: 'burrowWorm', pal: 'burrowWorm' },
+	[TILE.LEAP_SPIDER]: { spr: 'leapSpider', pal: 'leapSpider' },
+	[TILE.BAT_SWARM]:   { spr: 'batSwarm',   pal: 'batSwarm'   },
 	[TILE.BOSS]:      { spr: 'escape',   pal: 'escape'   },
 	[TILE.MONSTER]:   { spr: 'monster',  pal: 'monster'  },
 	[TILE.DARK_LORD]: { spr: 'darklord', pal: 'darklord' },

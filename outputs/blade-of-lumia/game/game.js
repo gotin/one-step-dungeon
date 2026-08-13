@@ -437,9 +437,9 @@ function buildEnemies(sd, lk, sk) {
 				// 水/陸の通行可否を切り替える（未指定=陸棲）。これを渡さないと水棲敵が
 				// 陸を歩けてしまう。moveSpeed は両生の地形別速度（将来の enemy-ai 用）。
 				move:  m.move, moveSpeed: m.moveSpeed,
-				// Phase 9-6: 潜行↔浮上する敵（潜み鮫）は「水中に潜った状態」で登場する。
-				// 周期の進行は enemy-ai.js の tickSubmerge（gameNow 基準）が担当。
-				submerged: !!m.submerge,
+				// 隠れ↔出現する敵（潜み鮫・地中蟲）は「隠れた状態」で登場する。
+				// 周期の進行は enemy-ai.js の tickHide（gameNow 基準）が担当。
+				hidden: !!m.hide,
 				sprite: m.sprite, pal: m.pal,
 				// Phase 3-2: 占有セル数（大型敵）。省略時は 1×1。
 				w:      m.size?.w ?? 1,
@@ -2024,7 +2024,7 @@ export function getEnemiesSnapshot() {
 		hp: e.hp, maxHp: e.maxHp,
 		move: e.move ?? null,   // Phase 9-6: 遊泳属性（spawn 経路で敵に乗ったか観測用）
 		stunUntil: e.stunUntil ?? null,
-		submerged: e.submerged ?? false,  // Phase 9-6: 潜行中（潜み鮫のリズム観測用）
+		hidden: e.hidden ?? false,        // 隠れ中（潜行/地中/滞空＝無敵窓のリズム観測用）
 		dir: e.dir ?? null,
 		sprite: e.sprite ?? null,          // Phase 5.5k: directional 敵の向き別スプライト名観測用
 		atkUntil: e._atkUntil ?? null,     // Phase 5.5k: 攻撃ポーズ窓の観測用
@@ -2037,6 +2037,10 @@ export function getEnemiesSnapshot() {
 		freezeUntil: e._freezeUntil ?? null,  // 攻撃硬直の窓（この間は移動も攻撃もしない）
 		cmode: e._cmode ?? null,              // 'ranged' | 'melee'（combat を持つ敵のみ）
 		cmodeUntil: e._cmodeUntil ?? null,    // 現在のモードが切り替わる論理時刻
+		// Phase 5.5k k-3: 隠れ↔出現の無敵窓と跳躍の観測用
+		hideUntil: e._hideUntil ?? null,      // 今の隠れ/出現が切り替わる論理時刻
+		leapPhase: e._leapPhase ?? null,      // 'ground' | 'windup' | 'air' | 'recover'（leap を持つ敵のみ）
+		leapUntil: e._leapUntil ?? null,      // windup/recover が明ける論理時刻
 	}));
 }
 

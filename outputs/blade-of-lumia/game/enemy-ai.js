@@ -814,42 +814,170 @@ export function createEnemyAi(deps) {
 		setTimeout(() => el.remove(), 260);
 	}
 
-	// ── Phase 9-6 深洋O: 潜行↔浮上（潜み鮫のリズム戦闘）──────────
-	// meta.submerge = { hiddenMs, surfacedMs } を持つ敵は、水中に潜る時間と
-	// 浮上する時間を交互に繰り返す。潜行中（e.submerged=true）は
+	// ── 隠れ↔出現の無敵窓（Phase 9-6 潜み鮫の潜行 → 5.5k k-3 で陸/空へ一般化）──────
+	// meta.hide = { hiddenMs, shownMs, style } を持つ敵は、隠れている時間と
+	// 出ている時間を交互に繰り返す。隠れ中（e.hidden=true）は
 	//   ・攻撃しない（enemyTick が enemyAttack を飛ばす）
 	//   ・接触ダメージを与えない（checkEnemyContact が飛ばす）
 	//   ・こちらの攻撃も通らない（combat.js dealDamageToEnemy が無効化）
-	// 追跡（enemyChase）だけは潜行中も続く＝「水中を潜って迷い寄る」（§19-8-A）。
-	// ∴ 浮上した 1.2 秒だけが殴れる窓＝海のリズム戦闘。
+	// 追跡（enemyChase）だけは隠れ中も続く＝「潜って迷い寄る」（§19-8-A）。
+	// ∴ 出ている数秒だけが殴れる窓＝リズム戦闘。
+	// style は見た目の種別（'water' 潜行／'burrow' 地中／'air' 滞空）＝CSS が
+	// `.char-abs.hiding.hide-<style>` で水面の波紋・土煙・影に描き分ける。
 	// 時間は gameNow()（論理時間）基準なのでテストから step() で決定論的に再現できる。
-	// 初期状態は「潜行」＝タイル名（潜み鮫）どおり水中から現れる。
-	function tickSubmerge(e, meta, now) {
-		const cfg = meta.submerge;
+	// 初期状態は「隠れ」＝タイル名（潜み鮫・地中蟲）どおり見えない所から現れる。
+	const HIDE_STYLES = ['water', 'burrow', 'air'];
+
+	function tickHide(e, meta, now) {
+		const cfg = meta.hide;
 		if (!cfg) return;
-		const hiddenMs   = cfg.hiddenMs   ?? 2000;
-		const surfacedMs = cfg.surfacedMs ?? 1200;
-		if (e._submergeUntil === undefined) {
-			e.submerged = true;
-			e._submergeUntil = now + hiddenMs;
-			applySubmergedClass(e);
+		const hiddenMs = cfg.hiddenMs ?? 2000;
+		const shownMs  = cfg.shownMs  ?? 1200;
+		const style    = cfg.style ?? 'water';
+		if (e._hideUntil === undefined) {
+			e.hidden = true;
+			e._hideUntil = now + hiddenMs;
+			applyHideClass(e, style);
 			return;
 		}
-		if (now < e._submergeUntil) return;
-		e.submerged = !e.submerged;
-		e._submergeUntil = now + (e.submerged ? hiddenMs : surfacedMs);
-		applySubmergedClass(e);
+		if (now < e._hideUntil) return;
+		e.hidden = !e.hidden;
+		e._hideUntil = now + (e.hidden ? hiddenMs : shownMs);
+		applyHideClass(e, style);
 	}
 
-	// 潜行状態を見た目に反映（半透明＋波紋は CSS の .char-abs.submerged が担当）。
+	// 隠れ状態を見た目に反映（半透明＋波紋/土煙は CSS の .char-abs.hiding が担当）。
 	// DOM は charLayerEl 経由でだけ触る（getCharLayerEl() が null の環境＝DOM 無しの
 	// ユニットテストでも enemyTick が動くようにするため）。
 	// 敵 id は "4,5" のような座標文字列なので querySelector（CSS セレクタ）は使えない。
-	function applySubmergedClass(e) {
+	function applyHideClass(e, style) {
 		const layer = getCharLayerEl();
 		const el = layer?.ownerDocument?.getElementById(`char-enemy-${e.id}`);
 		if (!el) return;
-		el.classList.toggle('submerged', !!e.submerged);
+		el.classList.toggle('hiding', !!e.hidden);
+		for (const s of HIDE_STYLES) el.classList.toggle(`hide-${s}`, !!e.hidden && s === style);
+	}
+
+	// 隠れの切り替え（値が変わったときだけ見た目を触る）。タイマー駆動の tickHide と
+	// 行動駆動の tickLeap（跳躍蜘蛛）が同じ無敵窓を共有するための出入口。
+	function setEnemyHidden(e, hidden, style) {
+		if (!!e.hidden === !!hidden) return;
+		e.hidden = !!hidden;
+		applyHideClass(e, style);
+	}
+
+	// ── Phase 5.5k k-3: 跳躍（跳躍蜘蛛）─────────────────────────
+	// meta.leap = { windupMs, cells, airSpeed, cooldownMs, minRange, maxRange, style }
+	// 地上では鈍足な敵に「跳んで間合いを詰める」手段を与える4拍の状態機械：
+	//   ground  … 通常の（鈍い）接近。間合いが minRange〜maxRange に入ると溜めへ
+	//   windup  … 溜め＝動かない・攻撃しない予告の窓（**まだ隠れていない＝殴れる**）
+	//   air     … 滞空＝当たり判定が消える（隠れ＝無敵・接触ダメージなし）。跳ぶ方向は
+	//             溜めで確定したカーディナル1方向∴プレイヤーは軸から外れて避けられる
+	//   recover … 着地硬直＝動かない・攻撃しない（**隠れが解ける＝プレイヤーの反撃の窓**）
+	// 戻り値：true ならこの tick の通常移動/攻撃を呼び出し側がスキップする。
+	// 滞空中の移動は e.accum（速度）を通さない＝跳躍の速さは leap.airSpeed が決める。
+	function tickLeap(e, meta, now) {
+		const cfg = meta?.leap;
+		if (!cfg) return false;
+		const windupMs   = cfg.windupMs   ?? 360;
+		const cells      = cfg.cells      ?? 3;
+		const airSpeed   = cfg.airSpeed   ?? 1.0;
+		const cooldownMs = cfg.cooldownMs ?? 1000;
+		const minRange   = cfg.minRange   ?? 1.8;
+		const maxRange   = cfg.maxRange   ?? 6.0;
+		const style      = cfg.style      ?? 'air';
+		if (!e._leapPhase) e._leapPhase = 'ground';
+
+		if (e._leapPhase === 'air') {
+			const [sy, sx] = e._leapVec ?? [0, 0];
+			const steps = Math.max(1, Math.round(airSpeed / MOVE_STEP));
+			let moved = 0;
+			for (let k = 0; k < steps && e._leapLeft > 0; k++) {
+				const ny = e.y + sy * MOVE_STEP, nx = e.x + sx * MOVE_STEP;
+				// 跳んだ先が通れない（壁・水）なら、そこで力尽きて落ちる＝硬直へ入る
+				if (!isPassableForEnemy(ny, nx, e)) { e._leapLeft = 0; break; }
+				e.y = ny; e.x = nx; e._leapLeft -= MOVE_STEP; moved++;
+			}
+			if (moved) moveCharEl(`enemy-${e.id}`, e.x, e.y);
+			if (e._leapLeft <= 0) {
+				e._leapPhase = 'recover';
+				e._leapUntil = now + cooldownMs;
+				setEnemyHidden(e, false, style);
+			}
+			return true;
+		}
+		if (e._leapPhase === 'recover') {
+			if (now < e._leapUntil) return true;
+			e._leapPhase = 'ground';
+			return false;
+		}
+		if (e._leapPhase === 'windup') {
+			if (now < e._leapUntil) return true;
+			e._leapPhase = 'air';
+			e._leapLeft  = cells;
+			setEnemyHidden(e, true, style);
+			return true;
+		}
+		const player = getPlayer();
+		const dx = player.x - e.x, dy = player.y - e.y;
+		const dist = Math.hypot(dx, dy);
+		// 密着（minRange 未満）では跳ばない＝すり抜けるだけになる。遠すぎ（maxRange 超）
+		// でも跳ばない＝届かない跳躍で隙だけ晒すのは敵として不自然。
+		if (dist < minRange || dist > maxRange) return false;
+		const vertical = Math.abs(dy) >= Math.abs(dx);
+		e._leapVec = vertical ? [Math.sign(dy) || 1, 0] : [0, Math.sign(dx) || 1];
+		e.dir = vertical ? (dy > 0 ? 'down' : 'up') : (dx > 0 ? 'right' : 'left');
+		e._leapPhase = 'windup';
+		e._leapUntil = now + windupMs;
+		return true;
+	}
+
+	// ── Phase 5.5k k-3: ジグザグ飛行（コウモリ群）───────────────
+	// meta.zigzag = { amplitude, periodMs } を持つ敵は、プレイヤーそのものではなく
+	// **プレイヤーの脇 amplitude セル** を目標に取り、periodMs ごとに左右を入れ替える。
+	// ∴進路が振れて狙いを付けにくい（真っすぐ来る敵とは避け方が変わる）。
+	// 位相は e.id から決定的にずらす（乱数なし＝同種を並べても一斉に来ない・テストが安定。
+	// meta.combat の交替と同じ作法＝GUIDE §7-3）。
+	function enemyZigzagFly(e, meta, speed, cfg) {
+		e.accum = (e.accum ?? 0) + speed;
+		if (e.accum < 1.0) return;
+		e.accum -= 1.0;
+
+		const player = getPlayer();
+		const amplitude = cfg.amplitude ?? 1.5;
+		const periodMs  = cfg.periodMs  ?? 720;
+		const now = gameNow();
+		const t = now + phaseOffsetMs(e, periodMs * 2);
+		const sign = Math.floor(t / periodMs) % 2 === 0 ? 1 : -1;
+
+		const dy = player.y - e.y, dx = player.x - e.x;
+		const step = MOVE_STEP;
+		const half = step / 2;
+		// 主軸＝ずれの大きい軸（ここを詰める）／副軸＝それに直交する軸（ここを左右に振る）
+		const vertical = Math.abs(dy) >= Math.abs(dx);
+		const mainDiff = vertical ? dy : dx;
+		const primary = Math.abs(mainDiff) >= half
+			? (vertical ? [Math.sign(mainDiff) * step, 0] : [0, Math.sign(mainDiff) * step])
+			: null;
+		// 副軸の目標＝プレイヤーの脇 amplitude セル（sign が periodMs ごとに入れ替わる）
+		const latDiff = vertical
+			? (player.x + amplitude * sign) - e.x
+			: (player.y + amplitude * sign) - e.y;
+		const lateral = Math.abs(latDiff) >= half
+			? (vertical ? [0, Math.sign(latDiff) * step] : [Math.sign(latDiff) * step, 0])
+			: null;
+		// **1手おきに副軸へ振る**＝直線で寄って来ない（残りの手で主軸を詰める）。
+		// 毎手を副軸に使うと目標の入れ替わりに追いつけず一歩も近づけない／主軸だけ先に
+		// 詰めると「遠距離は直線・密着してから振れる」＝ジグザグが見えない。∴1:1 で交互。
+		e._zzMoves = (e._zzMoves ?? 0) + 1;
+		const swing = lateral && e._zzMoves % 2 === 1;
+		const candidates = (swing ? [lateral, primary] : [primary, lateral]).filter(Boolean);
+		for (const [my, mx] of candidates) {
+			if (isPassableForEnemy(e.y + my, e.x + mx, e)) { e.y += my; e.x += mx; break; }
+		}
+		// 向きはプレイヤーを見る（目標点ではなく本体＝絵が「狙っている」ことを伝える）
+		e.dir = vertical ? (dy > 0 ? 'down' : 'up') : (dx > 0 ? 'right' : 'left');
+		moveCharEl(`enemy-${e.id}`, e.x, e.y);
 	}
 
 	// ── Phase 9-6: 横向き敵の向き（sideView）────────────────────
@@ -915,8 +1043,8 @@ export function createEnemyAi(deps) {
 		const player  = getPlayer();
 		const enemies = getEnemies();
 		for (const e of enemies) {
-			// Phase 9-6: 潜行中の敵は水中＝触れてもダメージを与えない（無敵と対の扱い）
-			if (e.submerged) continue;
+			// 隠れ中の敵（潜行・地中・滞空）は触れてもダメージを与えない（無敵と対の扱い）
+			if (e.hidden) continue;
 			// 占有範囲（AABB）ベース。1×1 敵では従来の 0.9 箱と一致する。
 			if (enemyPointHit(e, player.x, player.y, 0.9)) {
 				takeDamage(ENEMY_META[e.type]?.atk ?? 1);
@@ -934,8 +1062,8 @@ export function createEnemyAi(deps) {
 			// Phase 5.5k: スタン中はガードも解除する（ブーメランで動きを止めてガード不能にする、
 			// というユーザー設計の実体＝スタンとガードは同時に成立しない）。
 			if (e.stunUntil && now < e.stunUntil) { e._guarding = false; continue; }
-			// Phase 9-6: 潜行↔浮上の周期を更新（submerge を持つ敵のみ）
-			tickSubmerge(e, meta, now);
+			// 隠れ↔出現の周期を更新（meta.hide を持つ敵のみ＝潜み鮫・地中蟲）
+			tickHide(e, meta, now);
 			// Phase 9-6: 横向き敵の向きをプレイヤーに合わせる（毎 tick・移動しなくても向き直る）
 			applySideFacing(e, meta);
 			// Phase 5.5k: directional な敵はガード判定を移動/攻撃より先に行う＝ガード中は
@@ -947,16 +1075,21 @@ export function createEnemyAi(deps) {
 			// Phase 5.5k（2026-08-12）: 遠隔／近接の二相を持つ敵はどちらのモードかを更新する
 			// （硬直中も時計は進める＝硬直でリズムが狂わない）。
 			const cmode = tickCombatMode(e, meta, now);
-			if (!isGuarding && !frozen) {
+			// Phase 5.5k k-3: 跳躍（跳躍蜘蛛）は溜め〜滞空〜着地硬直の間 移動/攻撃を専有する。
+			// ガードや硬直と同じ「この tick は他の行動をしない」枠＝先に判定する。
+			const leaping = (!isGuarding && !frozen) ? tickLeap(e, meta, now) : false;
+			if (!isGuarding && !frozen && !leaping) {
 				if (meta.hitAndAway) {
 					bossTickHitAndAway(e, meta);
 				} else if (cmode === 'ranged') {
 					enemyKeepDistance(e, meta, resolveEnemySpeed(e, meta), meta.combat);
+				} else if (meta.zigzag) {
+					enemyZigzagFly(e, meta, resolveEnemySpeed(e, meta), meta.zigzag);
 				} else {
 					enemyChase(e, resolveEnemySpeed(e, meta));
 				}
-				// 潜行中は攻撃しない（水中に隠れて寄るだけ）
-				if (!e.submerged) enemyAttack(e, meta);
+				// 隠れ中は攻撃しない（隠れて寄るだけ）
+				if (!e.hidden) enemyAttack(e, meta);
 			}
 			// Phase 5.5k: directional な敵は毎tick見た目を今の状態（向き/攻撃窓/構え窓）に
 			// 揃える＝enemyAttack が同tickで _atkUntil を立てた場合も即座に反映される
@@ -973,6 +1106,9 @@ export function createEnemyAi(deps) {
 		resolveAttackFreezeMs, // Phase 5.5k: 攻撃硬直の長さ（テスト用）
 		tickCombatMode,        // Phase 5.5k: 遠隔／近接の二相（テスト用）
 		enemyKeepDistance,     // Phase 5.5k: 間合いを保つ移動（テスト用）
+		tickHide,              // Phase 5.5k k-3: 隠れ↔出現の無敵窓（テスト用）
+		tickLeap,              // Phase 5.5k k-3: 跳躍の状態機械（テスト用）
+		enemyZigzagFly,        // Phase 5.5k k-3: ジグザグ飛行（テスト用）
 		bossTickHitAndAway,
 		enemyAttack,
 		checkEnemyContact,

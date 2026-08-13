@@ -110,6 +110,78 @@ export const ENEMY_META = {
 		],
 		attack: { type: 'sword', range: 1.5, cooldown: 700 },
 	},
+	// ── Phase 5.5k k-3: 「隠れ↔出現の無敵窓」を持つ陸/空の敵 3種 ──────────
+	// 共通の考え方＝**プレイヤーが殴れる窓が時間で開閉する**（＝ずっと殴り続けられない）。
+	// 窓を開閉させる駆動が敵ごとに違う：
+	//   地中蟲   … `hide`（タイマー駆動。潜伏↔浮上を一定周期で繰り返す）
+	//   跳躍蜘蛛 … `leap`（行動駆動。跳躍の滞空中だけ隠れ＝着地の硬直が反撃の窓）
+	//   コウモリ群 … 窓を持たない代わりに `move:'air'` ＋ ジグザグ飛行で狙いを付けにくい
+	[TILE.BURROW_WORM]: {
+		// 地中蟲（陸上通常敵・脅威 低）。潜み鮫の潜行を陸に持ってきた敵＝
+		// 潜伏中は地面の下を進み（無敵・攻撃なし・接触ダメージなし）浮上した一瞬だけ
+		// 噛みつく／噛める。逃げる相手ではなく「タイミングを合わせる相手」。
+		// 弱点なし（PLAN 5.5k 名簿）。directional にしない＝土から出る蟲に「向き別の
+		// 構え」は無い（絵は1方向＋左右反転で足りる）∴ガード状態機械にも乗らない。
+		name: '地中蟲',
+		hp: 4, atk: 2, def: 1, exp: 6,        // 脅威度 hp*atk/(def+1) = 4.0（低）
+		speed: ENEMY_SPEED_NORMAL,
+		sprite: 'burrowWorm',
+		pal:    'burrowWorm',
+		isBoss: false,
+		// 浮上（1000ms）より潜伏（1600ms）を長くする＝殴れる窓の方が短い。
+		hide: { hiddenMs: 1600, shownMs: 1000, style: 'burrow' },
+		attack: { type: 'sword', range: 1.4, cooldown: 900 },
+	},
+	[TILE.LEAP_SPIDER]: {
+		// 跳躍蜘蛛（陸上通常敵・脅威 低〜中）。地上では鈍いが、間合いに入ると
+		// 溜め（windup）→ 跳躍（滞空＝当たり判定消失）→ 着地硬直 の3拍で詰めてくる。
+		// leap: { windupMs, cells, airSpeed, cooldownMs, minRange, maxRange }
+		//   windupMs   … 溜め（プレイヤーへの予告。この間は動かない・向きが確定する）
+		//   cells      … 跳ぶ距離（セル）／airSpeed … 滞空中の速度（セル/tick）
+		//   cooldownMs … 着地後の硬直＝**プレイヤーが殴れる窓**（隠れが解ける）
+		//   minRange/maxRange … 跳躍を始める間合い（近すぎ/遠すぎでは跳ばない）
+		// 接触ダメージのみ（飛び道具なし）＝跳んで体を当てるのが攻撃。
+		name: '跳躍蜘蛛',
+		hp: 4, atk: 2, def: 0, exp: 8,        // 脅威度 8.0（低〜中）
+		speed: ENEMY_SPEED_SLOW,              // 地上は鈍足＝距離を詰める手段が跳躍しかない
+		sprite: 'leapSpider',
+		pal:    'leapSpider',
+		isBoss: false,
+		leap: {
+			windupMs: 360,      // 3 tick（TICK_MS 120）＝プレイヤーが見て避けられる予告
+			cells: 3,           // 3セル跳ぶ
+			airSpeed: 1.0,      // 1 tick に MOVE_STEP×2＝3 tick で着地（滞空 360ms）
+			cooldownMs: 1000,   // 着地硬直＝殴れる窓（滞空 360ms より長い）
+			minRange: 1.8,      // 密着では跳ばない（すり抜けて意味が無い）
+			maxRange: 6.0,      // 遠すぎると跳んでも届かない
+			style: 'air',       // 滞空中の隠れ表現（CSS `hide-air`）
+		},
+		attack: { type: 'charge' },
+	},
+	[TILE.BAT_SWARM]: {
+		// コウモリ群（飛行通常敵・脅威 低）。単体は極めて脆いが、
+		//   ①`move:'air'` ＝水/溶岩/空（虚空）を飛び越える＝地形で隔離できない
+		//   ②`zigzag` ＝進路が左右に振れる＝狙いを付けにくい（真っすぐ来ない）
+		// の2点で「数で押す空の敵」になる。接触ダメージのみ。
+		// zigzag: { amplitude, periodMs } … プレイヤーの脇 amplitude セルを目標に取り、
+		//   periodMs ごとに左右を入れ替える（位相は e.id から決定的＝乱数なし）。
+		//   periodMs は「横へ振り切るのに要る時間」で決める：1手おきに横へ振る＝横方向の
+		//   実効速度は 0.167 セル/tick（speed 0.7 → 1.5 tick に1手・その半分が横）。
+		//   ∴入れ替えが速すぎると片側へ振り切る前に折り返して振り幅が出ない（720ms では
+		//   ±0.5 セル・1200ms でも -1.5〜0 の片側だけ、と実測）。
+		//   amplitude 1.0・periodMs 1440（12 tick）＝12 tick で 2.0 セル横移動できる
+		//   ＝−1.0↔+1.0 をちょうど往復する＝左右対称に 2 セル幅で蛇行する。
+		name: 'コウモリ群',
+		hp: 2, atk: 1, def: 0, exp: 4,        // 脅威度 2.0（低・1体は脆い）
+		speed: ENEMY_SPEED_FAST * 0.7,        // 速いがプレイヤーより必ず遅い（GUIDE §7-2）
+		sprite: 'batSwarm',
+		pal:    'batSwarm',
+		sideView: true,                       // 横向きシルエット＝プレイヤーの左右で反転
+		isBoss: false,
+		move:   'air',                        // 飛行＝壁だけが障害（水/溶岩/空は越える）
+		zigzag: { amplitude: 1.0, periodMs: 1440 },
+		attack: { type: 'charge' },
+	},
 	[TILE.MONSTER]: {
 		name: '魔物',
 		hp: 12, atk: 3, def: 1, exp: 18,
@@ -436,6 +508,8 @@ export const ENEMY_META = {
 	//   undefined | 'land' … 従来の陸棲（水/溶岩/空は通れない）。既存の全敵はこれ。
 	//   'water'            … 水棲（水は泳げる／乾いた陸には上がれない）。溶岩/空は不可。
 	//   'amphibious'       … 両生（水も陸も通れる。moveSpeed で地形別に速度を変える）。
+	//   'air'              … 飛行（Phase 5.5k k-3）。水/溶岩/空（虚空）を飛び越える＝
+	//                        壁・閉じた門など「陸上敵も通れない構造物」だけが障害になる。
 	// moveSpeed: { water, land } … amphibious 専用。地形ごとの速度倍率（省略時は speed）。
 	[TILE.FISH_SCHOOL]: {
 		name: '魚群',
@@ -448,9 +522,11 @@ export const ENEMY_META = {
 		attack: { type: 'charge' },        // 接触ダメージのみ（飛び道具なし）
 	},
 	// ── ②接近型：潜み鮫（潜行↔浮上のリズム戦闘）────────────────
-	// submerge: { hiddenMs, surfacedMs } … 潜行/浮上を繰り返す敵の周期（enemy-ai.js が管理）。
-	//   潜行中（e.submerged=true）＝水中に隠れて寄ってくるが「無敵・攻撃なし・接触ダメージなし」。
-	//   浮上中（e.submerged=false）＝噛みつき（sword）で攻撃し、こちらの攻撃も通る。
+	// hide: { hiddenMs, shownMs, style } … 隠れ↔出現を繰り返す敵の周期（enemy-ai.js が管理）。
+	//   2026-08-13（5.5k k-3）に水棲専用の `submerge` から陸/空も含む汎用機構へ一般化した
+	//   （style: 'water' 潜行／'burrow' 地中／'air' 滞空。CSS クラス `hide-<style>` になる）。
+	//   隠れ中（e.hidden=true）＝隠れて寄ってくるが「無敵・攻撃なし・接触ダメージなし」。
+	//   出現中（e.hidden=false）＝噛みつき（sword）で攻撃し、こちらの攻撃も通る。
 	// ∴「浮上した瞬間だけ殴れる」＝海のリズム戦闘（ユーザー確定 2026-07-25）。
 	//
 	// 攻撃は二段構え＝**離れていれば遠隔（水刃）・隣接すれば噛みつき**（ユーザー確定 2026-07-25）。
@@ -468,7 +544,7 @@ export const ENEMY_META = {
 		sideView: true,                    // 横向きシルエット＝プレイヤーの左右で反転する
 		isBoss: false,
 		move:   'water',
-		submerge: { hiddenMs: 2000, surfacedMs: 1200 },
+		hide:   { hiddenMs: 2000, shownMs: 1200, style: 'water' },
 		attacks: [
 			// 噛みつき（岸のプレイヤーに届く）。minRange 無し＝どんなに近くても出る。
 			{ type: 'sword', range: 1.6, cooldown: 800 },

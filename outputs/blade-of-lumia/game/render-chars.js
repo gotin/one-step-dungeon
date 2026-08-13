@@ -423,10 +423,15 @@ export function createRenderChars(deps) {
 			});
 			if (wrapper) {
 				wrapper.dataset.enemyId = e.id;
-				// Phase 9-6: 潜行中の敵（潜み鮫）は半透明＋波紋（無敵で寄ってくる状態の可視化）。
-				// renderChars は char-layer を作り直すので、潜行中に再描画されても状態が残るよう
-				// ここでもクラスを付ける（enemy-ai.js の applySubmergedClass と同じクラス）。
-				if (e.submerged) wrapper.classList.add('submerged');
+				// 隠れ中の敵（潜行/地中/滞空）は半透明＋痕跡（無敵で寄ってくる状態の可視化）。
+				// renderChars は char-layer を作り直すので、隠れ中に再描画されても状態が残るよう
+				// ここでもクラスを付ける（enemy-ai.js の applyHideClass と同じクラス）。
+				// 痕跡の描き分けは style 別クラス（hide-water/hide-burrow/hide-air）。
+				if (e.hidden) {
+					const meta = ENEMY_META[e.type];
+					const style = meta?.hide?.style ?? meta?.leap?.style ?? 'water';
+					wrapper.classList.add('hiding', `hide-${style}`);
+				}
 				// 大型敵（Phase 3-2）：wrapper を w×h セルに拡げ、canvas を全面に追従させる
 				applyEnemySize(wrapper, e, cellPx0);
 				if (ENEMY_META[e.type]?.aura) {

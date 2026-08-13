@@ -278,9 +278,10 @@ export function createCombat(deps) {
 			showDmgPopupFloat(e.x, e.y, 0, true, false);
 			return;
 		}
-		// Phase 9-6 深洋O: 潜行中（潜み鮫が水中に隠れている間）は全ての攻撃が無効。
-		// 浮上した瞬間だけ殴れる＝リズム戦闘（meleeOnly と同じ「0ダメージポップアップ」）。
-		if (e.submerged) {
+		// 隠れ中（潜行＝水中／地中＝土の下／滞空＝跳躍の最中）は全ての攻撃が無効。
+		// 出た瞬間だけ殴れる＝リズム戦闘（meleeOnly と同じ「0ダメージポップアップ」）。
+		// Phase 9-6 の submerge（水棲専用）を 5.5k k-3 で陸/空へ一般化したもの。
+		if (e.hidden) {
 			showDmgPopupFloat(e.x, e.y, 0, true, false);
 			return;
 		}

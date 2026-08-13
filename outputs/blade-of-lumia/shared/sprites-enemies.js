@@ -2370,3 +2370,19 @@ ENEMY_SPRITES.swordBeastUAtk = [
 		[0,0,0,0,0,0,0,0,1,1,1,1,1,1,0,0,0,0,1,1,1,1,1,0,0,0,0,0,0,0,0,0],
 	]
 ];
+
+// ── Phase 5.5k k-3: 隠れ↔出現/跳躍/飛行の3体（地中蟲・跳躍蜘蛛・コウモリ群）──────
+// **参照エイリアスの仮スプライト**（ENEMY-DIRECTIONAL-GUIDE §2 の方式）。
+// エンジン（隠れの無敵窓・跳躍の状態機械・飛行の通行判定）を先に検証するための仮絵で、
+// 実データは k-3b で SPRITE-PIPELINE.md の手順（OpenAI 生成→quantize-shared→grid-tool）に
+// 差し替える。仮絵は「1×1 セルの既存敵」から借りる＝大型（2×2 用）の絵を流用すると
+// セルに対して寸法が合わない。
+//   地中蟲     … 細長い体＝潜み鮫を借りる
+//   跳躍蜘蛛   … 小型の陸上雑魚＝追跡者を借りる
+//   コウモリ群 … 小さい群れ＋横向き（sideView）＝魚群を借りる
+ENEMY_PAL.burrowWorm = ENEMY_PAL.lurkShark;
+ENEMY_PAL.leapSpider = ENEMY_PAL.chaser;
+ENEMY_PAL.batSwarm   = ENEMY_PAL.fishSchool;
+ENEMY_SPRITES.burrowWorm = ENEMY_SPRITES.lurkShark;
+ENEMY_SPRITES.leapSpider = ENEMY_SPRITES.chaser;
+ENEMY_SPRITES.batSwarm   = ENEMY_SPRITES.fishSchool;
