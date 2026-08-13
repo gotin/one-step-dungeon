@@ -1,0 +1,148 @@
+# 敵スプライト生成パイプライン（OpenAI 画像 API → 量子化）
+
+Blade of Lumia の敵スプライトを OpenAI 画像 API（`gpt-image-1`）で生成し、既存の描画形式（パレット番号の2次元配列＋パレット・32×32）へ量子化する手順と、実際に #8 骸骨剣士の DOWN 4枚を作って確定させたときの反復知見をまとめる。残り14種＋既存全敵の 32×32 化でも同じ手順を使う。
+
+初出＝2026-08-10（5.5k・#8 骸骨剣士 DOWN 方向の試作で確立）。
+
+**⚠️ この文書は「作り方（ツールと手順）」。「絵が満たすべき条件（機構の側からの要求）」は `ENEMY-DIRECTIONAL-GUIDE.md` §6 に分けてある＝向き別の敵を作るときは両方読む。** §6 の要点＝構えは歩行と見分けられること（見分けられなければ機構が伝わらない）／同じ物体は全方向で同じシルエットを保ち、変わるのは正面の向きと重なりだけ／絵の根拠はエンジンの実装から取る／検証のラベルは実スプライト名から作る／判定は自分でやる（数えられるものは数える）。
+
+---
+
+## 0. 前提・置き場所
+
+- API キー＝`outputs/blade-of-lumia/.env.local` の `OPEN_API_KEY`（gitignore 済み・秘匿・コミットしない）。
+- 使い捨てスクリプト・生成物は全て `outputs/blade-of-lumia/.scratch/`（gitignore 済み）に置く。プロジェクト外（`/tmp` 等）に置かない。
+- 採用スプライト＝**量子化後の 32×32**（比較画像の下段）。生成 PNG（1024px）はそのままでは使わない。
+- 表示サイズは CSS で固定（`.char-abs canvas.sprite{width:var(--cell)}`＋`image-rendering:pixelated`・`game/css/board.css`）∴配列を 32×32 にしても表示サイズは変わらない（`drawSprite()` は `canvas.width=grid[0].length` で配列のドット数を内部解像度に採るだけ）。
+
+## 1. スクリプト3本（すべて `.scratch/`）
+
+- **`gen-enemy-sprite.mjs`** — OpenAI 画像 API を叩いて元絵 PNG を生成。
+  - 使い方：`node .scratch/gen-enemy-sprite.mjs "<prompt>" <out.png> [ref1.png,ref2.png,...]`
+  - 第4引数に**参照画像**を渡すと `images/edits`（FormData `image[]`）を使い、参照の配色・スタイルに寄せる。無ければ `images/generations`。
+  - API パラメータ＝`{model:'gpt-image-1', size:'1024x1024', background:'transparent', n:1}`。
+- **`quantize-sprite.mjs`** — 生成 PNG（1024px・透明背景）を 32×32 のパレット番号配列＋パレットに量子化。
+  - 使い方：`node .scratch/quantize-sprite.mjs <in.png> <out-basename> [colors]`（既定6色）。
+  - 処理＝①α閾値128でグロー/半透明を落とし不透明ピクセルの BBox を取る ②正方パディングで縦横比を保ちつつ 32×32 へ平均縮小（不透明が35%未満のセルは透明）③**最遠点法 k-means（乱数なし決定版）で約6色に量子化**・index0 を transparent 固定・輝度順ソート ④`quant-<base>.json`（palette＋grid）＋拡大再描画 PNG を出力。
+- **`grid-tool.mjs`** — **量子化後の 32×32 グリッドを直接見る／編集する**（★これが5.5k③で確立した本命の作り方＝§3-1「ポーズ差分はグリッド編集で作る」）。
+  - 表示：`node .scratch/grid-tool.mjs show <quant-base> [frameIndex]` → パレットと 32行のASCII（`.`＝透明・数字＝パレットindex）を出す。**これで「どのセルが盾/刃/骨か」を座標で把握してから編集する。**
+  - 編集：`node .scratch/grid-tool.mjs edit <quant-base> <frameIndex> <out-base> "<op>;<op>;…" [--append]`
+    - op＝`fill x0,y0,x1,y1,idx`／`clear x0,y0,x1,y1`／`copy srcFrame,x0,y0,x1,y1,dx,dy`（別フレームから矩形移植・透明セルは無視）／`keeponly idx,x0,y0,x1,y1`／`map from,to,x0,y0,x1,y1`（index置換＝**方向間で骨の色を揃える**用）／`flipx`（引数なし・左右反転＝**背面視は持ち手が左右入れ替わる**）。
+    - `--append` で元の全フレームを残し編集結果を末尾に足す＝**最終登録用の「生成フレーム＋構築フレーム」を1つの json にまとめられる**（プレビューは全フレーム横並び）。
+  - 選択：`node .scratch/grid-tool.mjs pick <quant-base> <out-base> 0,3,4,5` → **確定した順序**でフレームを選び直す（`--append` を重ねると破棄した候補が混ざるため最後に必ず通す）。
+  - 連結：`node .scratch/grid-tool.mjs merge <palette-base> <out-base> <base1> <base2> …` → 同じパレットの json を順に連結（パレット不一致は即エラー）＝**登録用の12枚**を作る最後の工程。
+  - **⚠️ 座標は量子化の入力セットに依存する**（`commonSide` が変わると同じ絵でもグリッド上の位置が動く）∴**入力セットを変えたら必ず `show` で座標を取り直す。**
+- **`compare-multi.mjs`** — 複数ポーズを1枚のグリッドで目視比較（上段=生成PNG／下段=量子化・市松背景）。
+  - 使い方：`node .scratch/compare-multi.mjs <outname> "label:inPng:quantBase" ...` → `.scratch/shots/compare-<outname>.png`。
+  - （単体用に `compare-sprite.mjs` も有り＝1体を 生成PNG/表示相当48px/拡大 の3枚で。）
+- **`quantize-shared.mjs`** — **1体の複数フレーム（walk1/walk2/atk/guard 等）を「1つの共通パレット＋1つの共通スケール」で量子化する**（`quantize-sprite.mjs` は画像1枚ごとに独立処理＝フレーム間でパレットもスケールもズレる。歩行アニメ等の複数フレームを持つ敵は必ずこちらを使う）。
+  - 使い方：`node .scratch/quantize-shared.mjs <out-basename> <in1.png> <in2.png> ... [--colors N] [--groups 4,1,1] [--height 28]`
+  - 処理＝①全フレームの不透明BBoxを個別に測る（**bbox は連結成分で取る**＝★★下記）②**スケール（正方ウィンドウの辺長）だけを共通にし、下端は各フレーム自身の `maxY` に合わせる（＝足を窓の最下段に揃える）**（左右中心は各フレームのbbox中心を保つ＝歩行の左右差はそのまま残る。**共通の接地ラインにしてはいけない**＝§3-1★参照）③合算した不透明ピクセルから最遠点法で共通パレットを1つ作る ④各フレームをその共通パレットでindex化。
+  - **`--groups 4,1,1`＝スケールを計算する単位を分ける**（パレットは常に全入力で1つ）。方向をまたぐと生成元の描画サイズが違う∴1つのスケールにすると一番大きく描かれた方向が窓を占有して他が小さくなる。
+  - **★★ `--height 28`＝身長を「32行中の何行」に正規化する。向きをまたいでサイズを揃える唯一の正しい軸。** 辺長を `max(幅,高さ)` にすると、横に広い方向（剣を横に構える RIGHT・盾を横に出す DOWN）は**幅**が窓を決めて身長がその分縮む（5.5k③実測＝DOWN 26行／RIGHT 31行／UP 29行＝向きを変えると背が伸び縮みして見える）。辺長 = bbox高さ × 32/行数 で逆算すれば身長が必ず一致し、余白（32−行数）が剣先・盾の縁のはみ出しを吸収する。**#8 は 28 行で確定（結果＝28/27/28）。**
+  - **★★ bbox は「不透明ピクセルの連結成分」から取る。** 単純な min/max も、行/列ごとの不透明数に閾値を掛ける方式も不足＝生成PNGの縁には**長いゴミ線**が残ることがある（5.5k③実測＝DOWN の PNG は row 0 に 162px の横線／RIGHT は row 144 に 8px の点列）。これを図と誤認すると bbox が画像の縁まで伸び、そのグループのスケール基準が巨大化して**同じ方向の全フレームが小さく描かれる**。∴4近傍ラベリングし、最大成分の 2% 未満の成分を捨てる（体から離れて描かれた剣先は残る）。
+  - **1枚ずつ2パス（パス1=bboxのみ／パス2=32×32グリッドのみ）で処理する**＝生ピクセル配列をまとめて page 境界を越えさせると6枚程度で OOM する（§3-★参照）。
+  - **エンジンは敵1体につきパレット1つ（`ENEMY_META.pal`）∴1体の全フレーム（3方向×歩行2/攻撃/ガード＝12枚）を「1回の実行」で共通量子化する**。方向ごとに別実行すると方向間でパレットがズレて登録できない。
+  - **§3-★（新）を必ず読む＝フレームごと独立正規化（`quantize-sprite.mjs`をフレーム分繰り返す）だと、生成PNGの体格差がスケール差に増幅されて「歩行でなくズームして見える」バグになる（5.5k②で実際に発生・原因は下記§3参照）。**
+
+## 2. 確定プロンプトの型（DOWN 方向・#8 で成功したもの）
+
+**プリアンブル（HARD CONSTRAINTS）をポーズ語の前に毎回必ず置く。** これが盾2枚・剣消失・黒縁の再発を最も強く抑える。
+
+```
+A single pixel-art sprite of a skeleton warrior enemy for a top-down 2D action RPG,
+NES Legend of Zelda style, facing DOWN toward the viewer (front view).
+Match the two reference images exactly for palette, proportions and line style.
+HARD CONSTRAINTS: the skeleton holds a sword with a full visible steel-gray blade
+in its LEFT hand (screen-left); exactly ONE round dark-red shield, on the LEFT side
+only, never a shield on the right side; NO black outline anywhere; bold flat colors,
+no anti-aliasing, no gradients, about 6 colors including the dark-red shield and gray
+blade; the figure fills the entire 32x32 frame edge to edge with minimal margin;
+fully transparent background, no floor, no shadow, no border, no text.
+POSE: <ポーズ差分をここに短く。プリアンブルの後ろ>
+```
+
+参照画像は2枚渡す（`images/edits`）：
+1. **色・線の基準**＝最初に合格した横向き素材（`openai-skeleton.png`）。
+2. **構図・持ち物配置の基準**＝**同じ向きで採用済みのフレーム**（DOWN なら歩行1 `skel-down-f1.png`）。
+
+ポーズ差分の実例（DOWN・全て成功した文言）：
+- **歩行2**＝`a front-facing walking frame. The torso, shoulders and skull stay FULLY FRONT-FACING toward the viewer exactly like the reference — do NOT rotate or turn the body to the side, this is NOT a side view. ... ONLY the legs change: one leg is bent and raised (knee up) as if marching in place while still facing forward, the other leg planted.`
+- **攻撃**＝`attacking downward — both hands grip the sword in front of the chest and thrust the full blade straight DOWN toward the viewer, the gray blade pointing downward and clearly visible below the hands. The dark-red shield stays on the LEFT side only.`
+- **盾ガード**＝`raising the round shield forward on its LEFT side to cover the chest; the full skeleton body stays visible behind the shield (do not hide the skeleton, do not cut a hole); the shield is a SOLID round disc, not hollow; the sword stays visible.`
+
+## 3. 反復で分かった注意点（★＝ハマりどころ）
+
+- **★ 持ち物・利き手・線・色は「ポーズ語の前」に定数として毎回書く**（A案）。ポーズごとに文を作り直すと、この定数が抜けて盾2枚・剣消失・黒縁が再発する。今回の最初の失敗はこれ。
+- **★ 参照は2枚（色基準＋同方向の採用済みフレーム）が最適**（B案）。1枚（横向きだけ）だと配色は揃うがポーズが崩れる。正面向きを描くなら正面の採用済みフレームを参照に足す。
+- **★ 参照に「出来の悪い絵」を足すと悪い方に引っ張られる**。旧攻撃 PNG（骨だけ寄り・描き込み弱い）を参照に足したら、剣も盾も消えてベージュ一色に退化した。**参照は良い見本だけにする。**
+- **★ ポーズは参照から大きく動かさない＝最小変形で指示する**。「swinging downward, arm extended」のように参照から離れた大胆なポーズを言うと、モデルが参照を無視して独自の濃い描き込み（黒縁）を足す。「立ち姿勢のまま剣だけ下に突き出す」のように差分を絞ると参照のスタイルが保たれる。
+- **★ 「向き」は明示的に固定する**。DOWN の歩行2で「脚を踏み出す」とだけ言うと、モデルが体ごと横向き（side view）に回して歩かせてしまう。`FULLY FRONT-FACING / do NOT rotate to the side / this is NOT a side view` を明記して初めて正面のまま脚だけ動く絵になった。
+- **★ 生成は非決定的＝同一プロンプトでも当たり外れがある**（D案）。特に黒縁は同じプロンプトで出たり出なかったりする。**重要ポーズは同プロンプトで2枚引いて良い方を選ぶ**のが速くて確実。今回も攻撃・歩行2は2枚引きで採った。
+- **★ 剣は「刃(full blade)」を明示**。単に「sword」だと持ち手だけ描いて刃が消えることがある。`a full visible steel-gray blade` と書く。
+- **量子化パレットで出来を素早く判定できる**。生成 PNG を開く前に `quantize` のログの palette を見て、黒(`#0x...`)が入っていれば黒縁混入の疑い、ベージュ一色なら剣灰・盾赤が消えた疑い＝比較画像を見るまでもなく引き直しを判断できる。
+- **量子化の色初期化は最遠点法（k-means++ 決定版・乱数なし）**。明度順均等サンプルにすると面積の大きい色（骨のベージュ）に種が集中し、剣灰・盾赤など少数の重要色を取りこぼす。最遠点法で `#8b3b31`（盾赤）・`#7f7f7e`（剣灰）を正しく捕捉できた。
+- **★（5.5k②で発生・重要）複数フレームは必ず `quantize-shared.mjs` を使う。`quantize-sprite.mjs` を1体の全フレームに個別に掛けると「歩行アニメが身長でかい/ズームして見える」バグになる。** 原因＝生成PNGはフレームごとにキャラの描画サイズが微妙に違う（walk1は不透明ピクセルの高さ22px・walk2は32px＝フレーム端まで描かれていた、という実例）。フレーム独立でBBox正規化すると「そのフレームの見た目サイズ」で32×32へ引き伸ばす＝体格差がそのままスケール差になる。`quantize-shared.mjs` は全フレームの `maxY`（接地ライン）と `side`（bboxの最大辺）を先に1つ計算して全フレームに同じ値を適用するので、この増幅が起きない。**「動きが激しく見える／キャラがフレームごとに縮んだり伸びたりする」と感じたら、まず量子化を独立処理していないか確認する。**
+- **★（5.5k②で発生）フレームの見た目チェックは `animFrame` の実時間切り替わり（400ms・`shared/sprites.js startAnimLoop`）を待つ必要がある。** `__game.step(n)`（論理時間）だけ進めても歩行アニメの2フレーム目には切り替わらない＝スクショで確認するなら `page.waitForTimeout(450)` 等で実時間を進める（`.scratch/shot-skel-walk2.mjs` 参照）。これに気づかずstepだけ進めて「フレームが変わらない」と誤診断しないこと。
+
+### 3-1. 5.5k③（向き別 R/U 生成）で追加で分かったこと（2026-08-11）
+
+- **★ UP（背面視）は画像生成では剣が描けない＝6回引いて6回とも刃が消えた**（柄の色バーだけ描く）。試した3系統は全滅：①`THE SWORD MUST BE FULLY DRAWN: a long straight light-gray steel blade, at least half the height of the frame ...` と刃を明示、②その刃指定をプロンプトの先頭（制約(1)）へ移動、③参照画像を「刃が大きく写っている RIGHT フレーム」に差し替え。背面視だと剣が体の陰に隠れると解釈されるらしく、プロンプトでは押し切れない。**∴ UP は「胴体だけ生成し、採用済みフレームの灰色の刃を移植する」**。移植は **32×32 量子化後のグリッド上で「灰色 index のセルだけ」貼る**のが正解（1024px の PNG 上でやると半透明グローの灰色まで拾って bbox が画像全面になる＝`.scratch/graft-blade.mjs` の初版で実際に発生）。共通量子化でパレットは揃うのでスタイルは崩れない。
+- **★ 生成が「全面グロー」になり量子化不能になることがある**（`[quantize-shared] no opaque pixels`）。画像全体がぼやけた発光になり全ピクセルが α<128 になる。プロンプトの当たり外れ＝引き直せば直る（`no glow, fully opaque pixels` を制約に足すと出にくい）。**このエラーは「スクリプトの不具合」ではなく「生成失敗」と読む。**
+- **★ 接地は「共通の接地ライン」にしてはいけない＝共通にするのはスケール（辺長）だけ・下端は各フレーム自身の `maxY` に合わせる。** 生成PNGはフレームごとに足の位置（`maxY`）が違う∴共通接地ライン（全フレームの最大 `maxY`）に下端を揃えると、足の位置が高いフレームは上端がウィンドウ外に出て**頭が欠ける**。ここで `oy` を `minY` でクランプする回避を入れたら、今度は**図がウィンドウの中で浮いて「フレームごとに背が高い/低い」に見える**（5.5k③でユーザー指摘＝「1,3 がちょっと低く 2,4 がちょっと高い」）。**確定形＝`oy = box.maxY - commonSide + 1`**（`commonSide >= bbox 高さ` ∴頭も切れない）。**「頭が切れる」も「身長がフレームごとに違う」も、まずここを疑う（生成の失敗ではない）。**
+- **★★ ポーズ差分（歩行2・攻撃・ガード）は生成せず、採用した歩行1のグリッドを編集して作る（`grid-tool.mjs`）。** これが5.5k③の結論。理由＝**生成はポーズごとに体格が変わる**（頭の大きさ・身長・接地が毎回違う。RIGHT では生成した歩行2の bbox が共通スケールを占有＝1枚だけ頭が一段大きくなった）。歩行1↔歩行2 は 400ms で交互に出る∴体格差はそのまま「ズーム」に見える（§3 の 5.5k② と同じ現象で、**量子化を直しても生成側の体格差は消せない**）。**同じボディを流用すれば体格・接地は原理的に一致する**＝1方向につき生成するのは「歩行1」1枚だけ、残り3枚はグリッド編集。副産物として API 呼び出しが 1/4 になり、当たり外れの引き直しも消える。
+- **★ 攻撃・ガードの絵は「機構と描画の実装」に合わせる＝好みで決めない。** RIGHT のガードは**プレーヤーの右向き待機の盾表示**（`game/render-chars.js`＝`shieldSide` を `width:cellPx*0.17`／`height:cellPx*0.44` で右端に置く＝**細い縦の側面バンド**）と同じ見え方にする＝32×32 なら幅5×高14 の赤バンド＋外側1列を暗色の縁。**円盤を正面向きに描くのは誤り**（右を向いている敵の盾は右側が正面）。プロンプトでは作れない＝`the shield is held FORWARD on the screen-RIGHT side` と位置まで指定しても6枚とも参照どおり左に円盤を置いた∴グリッド編集で作る。
+- **★ 6枚以上まとめて量子化すると Node が OOM で落ちる**（1024×1024×4 ≒ 420万要素の生ピクセル配列を全画像分 `page.evaluate` 境界で渡していた）。**対処＝1枚ずつ2パス**（パス1で bbox のみ取得→共通スケール算出→パス2で 32×32 グリッドのみ取得）。12枚を1回で量子化する必要があるので、この形が前提。
+- **★ ガードポーズは「盾が向いている方向」を機構と合わせる**。ガードはロックした向きからの攻撃だけ無効化する（`ENEMY-DIRECTIONAL-GUIDE.md` §3）∴RIGHT のガードは盾を**画面右（進行方向）**へ出した絵にする。**プロンプトでは押し切れない**（位置まで指定しても参照どおり左に置く）∴上の★★どおりグリッド編集で作る。**ただしこの「側面バンド」は横向き専用の形＝UP（背面視）へ流用してはいけない**（§6 の★★「構えの盾は向きごとに幾何を導出し直す」）。
+- **★ 体格の一貫性は「選んで」満たすものではない＝構築で満たす。** 当初はガード候補から「歩行フレームと同じ体格の絵」を選ぶ方針にしたが、生成物の中に体格の揃った組は無かった（4枚のうち2枚が高く2枚が低い＝ユーザー指摘）。**歩行1から構築すれば選ぶ必要がなくなる**（上の★★）。
+
+## 4. 進め方（レビュー駆動）
+
+1. 1体・1方向ずつ作る。一括生成しない（[[blade-no-mass-production]]）。
+2. **生成するのは方向ごとに基準ボディ1枚だけ**（§6）。プロンプトをユーザーに報告 → 生成 → 量子化 → 比較画像 → ユーザーが採用可否を判定。
+3. 採用したら確定名にコピー（`skel-<dir>-final-walk1.png`）。残り3ポーズは生成せずグリッド編集で作る。
+4. **候補をユーザーに見せる前に、自分で画像を読んで明らかな欠陥（身長/接地の不揃い・向きの矛盾・要素の欠落）を潰す**（[[judge-obvious-visual-defects-yourself]]）。判定を仰ぐのは好みが分かれる点だけ。
+5. 全方向（DOWN/UP/RIGHT・左は描画時 flipX）が揃ったら `shared/sprites-enemies.js` に登録し、実機で4方向×3ポーズを撮って確認する（§6-6）。
+
+## 5. #8 骸骨剣士 DOWN の確定結果（2026-08-10）
+
+- walk1 = `skel-down-final-walk1.png`（最初に合格した歩行1）
+- walk2 = `skel-down-final-walk2.png`（正面向きマーチ＝walk1 と交互で足踏みに見える）
+- attack = `skel-down-final-atk.png`（両手で剣を体の前に構え真下へ突き出す）
+- guard = `skel-down-final-guard.png`（盾を前に・ソリッド・骨も見える）
+- 確定比較＝`.scratch/shots/compare-skel-down-FINAL.png`。
+- 4方向表示のエンジン機構は 5.5k① で完成済み（`ENEMY-DIRECTIONAL-GUIDE.md`）。
+
+## 6. #8 骸骨剣士 12枚の確定手順（2026-08-11・5.5k③完了）— 残り14種はこれをそのまま反復する
+
+**生成するのは方向ごとに「基準ボディ1枚」だけ（計3枚）。残り9枚はグリッド編集で作る。**
+
+1. **基準3枚を1回で共通量子化**（パレットを1つにする）。
+   `node .scratch/quantize-shared.mjs base3 <down-walk1.png> <right-walk1.png> <up-body.png> --groups 1,1,1 --height 28`
+   - `--groups 1,1,1`＝方向ごとにスケールを分ける／`--height 28`＝身長を28行に正規化（§1 の★★2件）。
+   - #8 の入力＝`skel-down-final-walk1.png`／`skel-right-walk1.png`／`skel-up-f1b.png`。結果のパレット＝`1=盾赤 2=刃(灰) 3=柄(橙) 4=金具/縁 5=骨影(未使用) 6=骨`。
+2. **`show` で座標を取り直す**（★入力セットが変わるとグリッド座標は動く）。
+3. **方向ごとに3ポーズを構築**（`edit … --append` を鎖でつなぎ、最後に `pick` で順序を確定）。#8 の実際の中身：
+   - **DOWN**＝歩行2は**片足を2行浮かせる**（骨の形は歩行1と同一）／攻撃は上げていた剣を消して**橙の鍔＋幅3の刃を真下（フレーム下端）まで**／ガードは横の盾を消して**大きな赤い凧形の盾を胸の前**に（既存の採用済み `skeletonGuard` と同じ考え方＝体は隠し切らない）。
+   - **RIGHT**＝まず `map 5,6`（★骨色の統一・下記）／歩行2は脚だけ passing に描き替え／攻撃は**水平の刃を右端まで**＋橙の柄／ガードは**幅5×高14の赤バンド＋外側1列の縁**（プレーヤーの `shieldSide` と同じ側面表示）＋剣は背側（画面左）に立てる。
+   - **UP**＝まず `flipx`（★背面視は持ち手が左右入れ替わる＝生成物は参照どおり盾を左に置く）＋**刃をグリッドで足す**（生成では描かれない）／歩行2は片足を2行浮かせる／攻撃は**刃をフレーム上端まで**／**ガードは DOWN と同じ凧形の盾（9×15）を、DOWN の位置を体の中心で鏡像にした場所へ3行持ち上げて置く。盾は体より奥∴`map 0,1` で透明セルだけを盾色にして骨を手前に残す**（★★下記＝側面バンドの流用も長方形の板も誤り）。
+   - **★ 歩行2の差分は「片足を2行」浮かせる。1行だと差分が8ドットしか出ず歩行に見えない**（#8 の DOWN で実際に1行にしていた＝2行に直して 17ドット。RIGHT は脚を描き替えるので 47ドット・UP は 16ドット）。差分ドット数を数えて確認する（`quant-*.json` の歩行1/歩行2を比較）。
+4. **`merge` で12枚に連結**（DOWN 4→RIGHT 4→UP 4 の順）→ 目視確認（`.scratch/shots/quant-<name>.png`）。
+5. **登録は機械的に流し込む**＝`.scratch/emit-skeleton.mjs`（json → `shared/sprites-enemies.js` のセクションを置換＋パレット行も差し替え）。12×32行を手で書き写すと転記ミスが混ざる。
+   - DOWN は spawn 時の既定名 `skeleton` と同じ絵∴`skeletonD/DAtk/DGuard` は参照エイリアスでよい。
+6. **実機確認**＝`.scratch/shot-skel-dirs.mjs`（`test_mechanics 0,0` の常設 skeleton に4方向から寄せ、敵の canvas を直接撮って **4方向×4ポーズ＝16枚**を1枚に並べる）。left は `skeletonR` を**ピクセルに焼いた反転**で出る（CSS transform ではない）。**データそのものを名前どおり並べて見る版＝`.scratch/shot-skel-frames.mjs`**（`shared/sprites-enemies.js` を import して12枚＋各フレームの不透明行数を出す＝身長が揃っているかを数字でも確認できる）。任意の json を大きく見る版＝`.scratch/shot-json-frames.mjs <base> <out.png> <idx:label> …`。
+   - **★★ 実機スクショのラベルは「意図（歩行1/歩行2/ポーズ）」でなく必ず「実際に出ているスプライト名」にする。** 初版は意図でラベルを打っていたため、**隣接して構え窓が立った瞬間の絵が歩行の枠に入り**「歩行2が攻撃に見える／ポーズが歩行1と同じ」という読み違いを生んだ（ユーザー指摘で発覚）。加えて **攻撃窓と構え窓は別々に待って両方撮る**（「先に立った方」だけを撮ると構えが一度も写らない）。
+   - **★ 盤面が出たら即 `pause()` する。** `Continue` クリック後に数百ms 走らせると、**上/下からの接近は距離が2しかないため**その間に敵が構え圏内へ入り、素の歩行フレームが一度も撮れない（左右は距離4なので間に合う＝症状が方向で違う）。
+   - **★ 歩行2枚目待ちで `resume()` してはいけない。** `animFrame` は 400ms の `setInterval`（`shared/sprites.js`）でゲームループとは独立に進み **pause 中も再描画される**∴実時間を待つだけでよい。resume すると敵が寄って構え窓に入る。
+
+- **★ 骨の色も方向間で揃える。** 共通パレットで量子化しても、生成PNGの明るさが方向ごとに違うと**同じ骨が別 index に落ちる**（#8 実測＝DOWN `#fad8aa`／RIGHT `#f0c78f`）＝向きを変えると色が変わる。`grid-tool.mjs` の `map from,to,rect` で寄せる。
+- **★★ 構えの盾は「向きごとに幾何を導出し直す」＝1方向で決めた形を他方向へ流用してはいけない。ただし『同じ盾』であることは全方向で崩さない＝シルエット（形・寸法）は共通、変わるのは向きと重なりだけ。** #8 では2回誤った：**①UP に RIGHT の側面バンドをそのまま置いた**（上を向いているのに盾の側面が画面右を向く絵）／**②UP の盾を長方形の板にした**（DOWN の盾は平らな上辺＋下端が尖る凧形なのに形が違う＝ユーザー指摘「skeletonDGuard の盾と同じ形状になってないとおかしい」）。
+  - **導出の順序（これを飛ばすと上の2つを踏む）：**
+    1. **その向きで盾の「正面」がどこを向くかを決める。** 構えは**向いている方向へ盾の正面を向ける**＝DOWN は正面が画面手前（カメラ側）／RIGHT は正面が画面右／UP は正面が画面奥。
+    2. **カメラから見える形を決める。** 正面がカメラ側／奥＝**盾の全形（凧形）が見える**（奥向きは裏面を見ることになるだけでシルエットは同じ）。正面が画面左右＝**側面バンド**（`shieldSide` 相当の細い帯）。
+    3. **重なりを決める。** 正面が奥（UP）だけは**盾が体より奥にある**∴体（骨）が手前に描かれ、盾は肋骨の隙間から覗く。
+    4. **位置は既に確定した方向の値を「体の中心で鏡像」にして出す。** ⚠️ DOWN の盾が画面左寄りなのは**腕の側だから**で「横に構えている」わけではない（意味的には正面に構えている）∴左右の位置は腕の側とともに反転する。
+    5. **歩行→構えの差分も同じにする。** #8 の DOWN は 歩行(7×9幅・rows17-28) → 構え(9幅・rows14-28)＝**盾を3行持ち上げて体側へ寄せ、一段大きくする**。UP もこの差分を鏡像で当てる（歩行 x24-29/rows15-27 → 構え x20-28/rows12-26）。持ち上げが入ると頭の横に盾の上辺が出て「構えた」と実機で読める＝**構えを他ポーズと見分けられることは機構の要件**（プレイヤーは構えを見て正面が無効化されていると判断する）。
+  - **裏取りはプレイヤー側の実装で取る**（`game/render-chars.js` 待機時の盾）＝**down は正面の `shield` を体の前（z-index 4）／right・left は `shieldSide`（細い側面帯）／up だけは `shield` を z-index -1＝体の裏**。**engine が「上向きだけ盾を体の裏に描く」ことが、上記3の裏取りそのもの。**
+  - 1枚の 32×32 には重ね順が無いので **「盾が体より奥」は `map 0,idx,rect`（透明セルだけを盾色に置換）で表現する**（`fill` だと骨を塗り潰す＝盾が手前になってしまう）。縁は `map 1,4,rect` で盾色のセルだけを縁色に寄せる（骨には掛からない）。
+- **★ 残る非一貫性（許容）＝UP は背面視で頭が塗り潰し（眼窩の抜きが無い）∴同じ身長でも頭が重く見える。** 身長・接地・色は一致しているのでこれは背面視として正しい。

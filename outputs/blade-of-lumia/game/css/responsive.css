@@ -1,0 +1,62 @@
+/* ── PC 向け（@media min-width: 600px） ─────────────────────── */
+@media (min-width: 600px) {
+    #board-wrap {
+        height: 100vh;
+    }
+
+    #mobile-ctrl {
+        display: none;
+    }
+
+    #msg-bar {
+        bottom: 20px;
+    }
+
+    #boss-hpbar {
+        bottom: 20px;
+    }
+
+    #dialog-overlay {
+        padding-bottom: 20px;
+    }
+
+    /* PC向けHUD：ビューポート幅基準で大きく */
+    #hud {
+        padding: 1vh 1.5vw;
+    }
+
+    #hud-left, #hud-right {
+        gap: 0.3vh;
+    }
+
+    #hud-hearts {
+        font-size: 4vw;
+        letter-spacing: 0.3vw;
+    }
+
+    #hud-equip {
+        font-size: 3.5vw;
+        gap: 0.5vw;
+    }
+
+    #hud-sub-icon {
+        font-size: 3.5vw;
+    }
+
+    #hud-sub-item {
+        font-size: 2.5vw;
+        gap: 0.4vw;
+    }
+
+    #hud-sub-count {
+        font-size: 2.2vw;
+    }
+
+    #hud-wallet {
+        font-size: 2.2vw;
+    }
+
+    #hud-stage-label {
+        font-size: 1vw;
+    }
+}

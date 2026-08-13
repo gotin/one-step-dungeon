@@ -1,0 +1,103 @@
+/* ── Phase 1-5: 空（虚空）タイル。翼の羽衣の飛行中のみ越えられる */
+.cell.sky {
+    background:
+        radial-gradient(1px 1px at 20% 30%, rgba(255,255,255,0.9), transparent),
+        radial-gradient(1px 1px at 70% 60%, rgba(200,220,255,0.8), transparent),
+        radial-gradient(1px 1px at 45% 80%, rgba(255,255,255,0.7), transparent),
+        linear-gradient(180deg, #1a1438 0%, #0a0a20 100%);
+}
+
+/* ── Phase 4-1: 穴（落とし穴）タイル。はしごで両隣が地上の1セルだけ渡れる */
+.cell.pit {
+    background:
+        radial-gradient(circle at 50% 38%, #000 0%, #050608 55%, #14181e 100%);
+    box-shadow: inset 0 0 6px 3px rgba(0,0,0,0.85);
+}
+
+/* ── Phase 4-1b: はしご（初代ゼルダ式：渡っている最中だけ足元の水/穴セルに出る） */
+/* char-layer 内の .char-ladder 要素（セル固定・プレイヤー非追従）に入る canvas。
+   親 .char-ladder の z-index:-1 でセル描画より上・プレイヤー/敵より下に重なる。 */
+canvas.sprite.ladder-sprite {
+    width: 100%;
+    height: 100%;
+}
+
+/* ── Phase 8: bgTile 背景色クラス（フォアグラウンドタイルの下に表示） */
+.cell.bg-grass {
+    background: #3a6e28;
+}
+
+.cell.bg-sand {
+    background: #c8a84a;
+}
+
+.cell.bg-stonefloor {
+    background: #6a6878;
+}
+
+.cell.bg-bridge {
+    background: #8a6030;
+}
+
+/* Phase 9-4a: テーマ地形タイル */
+.cell.bg-snow {
+    background: #c8dce8;
+}
+
+.cell.bg-ash {
+    background: #4a3028;
+}
+
+.cell.bg-mud {
+    background: #3a4a28;
+}
+
+/* ── Phase 8: フィールドタイル背景色（tiles[r][c] がそれ自体の場合） */
+.cell[data-tile-type="grass"],
+.cell.tile-grass {
+    background: #3a6e28;
+}
+
+.cell.tile-sand {
+    background: #c8a84a;
+}
+
+.cell.tile-stonefloor {
+    background: #6a6878;
+}
+
+.cell.tile-bridge {
+    background: #8a6030;
+}
+
+.cell.tile-tree {
+    background: #1a4810;
+}
+
+.cell.tile-mountain {
+    background: #6a6060;
+}
+
+.cell.tile-bush {
+    background: #2a6018;
+}
+
+.cell.tile-fence {
+    background: #8a6830;
+}
+
+.cell.tile-housewall {
+    background: #c09060;
+}
+
+.cell.tile-housedoor {
+    background: #8a4020;
+}
+
+.cell.tile-houseroof {
+    background: #c03020;
+}
+
+.cell.tile-sign {
+    background: #b08040;
+}

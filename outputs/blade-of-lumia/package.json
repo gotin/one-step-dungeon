@@ -1,0 +1,17 @@
+{
+  "name": "blade-of-lumia",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "description": "Blade of Lumia – Zelda-like action adventure game",
+  "scripts": {
+    "dev": "vite ../ --port 18080",
+    "test": "playwright test",
+    "test:ui": "playwright test --ui",
+    "test:report": "playwright show-report"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.48.0",
+    "vite": "^5.4.0"
+  }
+}

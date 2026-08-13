@@ -1,0 +1,82 @@
+/* ── HUD（ゲームボード上オーバーレイ） ────────────────────── */
+#hud {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    background: transparent;
+    border-bottom: none;
+    padding: 4px 10px;
+    min-height: 40px;
+    z-index: 20;
+    pointer-events: none;
+}
+
+#hud-left, #hud-right {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+    pointer-events: none;
+    color: #ffffff;
+    text-shadow: 0 1px 3px rgba(0, 0, 0, 0.9), 0 0 6px rgba(0, 0, 0, 0.7);
+}
+
+#hud-right {
+    align-items: flex-end;
+}
+
+#hud-hearts {
+    font-size: 15px;
+    letter-spacing: 1px;
+    line-height: 1;
+}
+
+#hud-stage-label {
+    font-size: 9px;
+    color: #6a8a6a;
+}
+
+#hud-equip {
+    display: flex;
+    gap: 6px;
+    font-size: 18px;
+}
+
+.equip-slot {
+    opacity: 0.3;
+    transition: opacity 0.2s;
+}
+
+.equip-slot.has-item {
+    opacity: 1;
+}
+
+#hud-sub-item {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 13px;
+}
+
+#hud-sub-label {
+    color: #6a8a6a;
+}
+
+#hud-sub-icon {
+    font-size: 18px;
+}
+
+#hud-sub-count {
+    color: #f0d050;
+    font-size: 12px;
+}
+
+#hud-wallet {
+    font-size: 12px;
+    color: #f0d050;
+    letter-spacing: 1px;
+    margin-top: 2px;
+}

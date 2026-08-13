@@ -5,6 +5,10 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Blade of Lumia – Map Editor</title>
   <link rel="stylesheet" href="./editor.css" />
+  <link rel="stylesheet" href="./editor-sprite.css" />
+  <link rel="stylesheet" href="./editor-character.css" />
+  <link rel="stylesheet" href="./editor-item.css" />
+  <link rel="stylesheet" href="./editor-tile.css" />
 </head>
 <body>
 <div class="app">
@@ -19,6 +23,10 @@
     <div class="toolbar-mode">
       <button id="tab-world" class="tab active">ワールドマップ</button>
       <button id="tab-stage" class="tab">ステージ編集</button>
+      <button id="tab-sprite" class="tab">🎨 スプライト</button>
+      <button id="tab-character" class="tab">🧙 キャラクター</button>
+      <button id="tab-item" class="tab">📦 アイテム</button>
+      <button id="tab-tile" class="tab">🗺 タイル</button>
     </div>
   </header>
 
@@ -65,6 +73,9 @@
           </div>
           <div id="world-grid" class="world-grid"></div>
           <p class="hint">ステージをクリックして選択。空きセルをクリックしてステージを追加。</p>
+
+          <!-- 星の欠片サマリ（全レイヤー横断・エンディング条件の確認用） -->
+          <div id="world-shard-summary" class="world-shard-summary"></div>
         </div>
 
         <!-- 右：ステージ情報 + プレビュー -->
@@ -90,7 +101,7 @@
     <section id="view-stage" class="view hidden">
       <div class="stage-layout">
 
-        <!-- 左：タイルパレット + ツール -->
+        <!-- 左1：タイルパレット + ツール -->
         <aside class="palette-panel">
           <h2 class="panel-title">タイルパレット</h2>
           <div id="tile-palette" class="tile-palette"></div>
@@ -109,10 +120,43 @@
             <div id="stage-info" class="stage-info-content"></div>
             <div class="border-warn" id="border-warnings"></div>
           </div>
+        </aside>
 
-          <!-- ステージ設定 -->
-          <div class="stage-settings">
-            <h3 class="panel-title">ステージ設定</h3>
+        <!-- 左2：ステージ設定 -->
+        <aside class="stage-settings-panel">
+          <h2 class="panel-title">ステージ設定</h2>
+
+          <!-- 笛の効果（最上部） -->
+          <div class="props-section">
+            <h3 class="panel-title">🎵 笛の効果</h3>
+            <label class="meta-label">タイプ
+              <select id="stage-flute-type" class="input-med">
+                <option value="">(なし)</option>
+                <option value="reveal">reveal（隠し入口・アイテム出現）</option>
+                <option value="warp">warp（別ステージへ飛ぶ）</option>
+              </select>
+            </label>
+            <div id="stage-flute-warp-fields" style="display:none">
+              <label class="meta-label">ワープ先 レイヤー
+                <input id="stage-flute-layer" type="text" class="input-med" placeholder="例: field">
+              </label>
+              <label class="meta-label">ワープ先 ステージ
+                <input id="stage-flute-stage" type="text" class="input-med" placeholder="例: 2,0">
+              </label>
+              <label class="meta-label">着地 row
+                <input id="stage-flute-row" type="number" class="input-med" placeholder="省略可">
+              </label>
+              <label class="meta-label">着地 col
+                <input id="stage-flute-col" type="number" class="input-med" placeholder="省略可">
+              </label>
+              <label class="meta-label">メッセージ（任意）
+                <input id="stage-flute-message" type="text" class="input-med" placeholder="省略可">
+              </label>
+            </div>
+          </div>
+
+          <!-- その他ステージ設定 -->
+          <div class="props-section">
             <label class="checkbox-label">
               <input id="stage-is-boss-room" type="checkbox"> ボス部屋
             </label>
@@ -124,8 +168,13 @@
                 <option value="boss">boss</option>
               </select>
             </label>
-            <button id="btn-save-stage-settings" class="btn btn-sm btn-primary">✔ 保存</button>
+            <label class="meta-label">🔴 初期アクティブ色（initActiveColor）
+              <input id="stage-init-active-color" type="text" class="input-med"
+                placeholder='例: red / blue（空欄なら null）'>
+            </label>
           </div>
+
+          <button id="btn-save-stage-settings" class="btn btn-sm btn-primary">✔ 保存</button>
         </aside>
 
         <!-- 中央：ステージキャンバス -->
@@ -180,7 +229,7 @@
           <!-- MAP_ENTER 出口設定 -->
           <div class="props-section">
             <h2 class="panel-title">マップ入り口（出口設定）</h2>
-            <p class="hint">出口IDを設定してペアを作成</p>
+            <p class="hint">「>」タイルの出口 + タイルなしの着地点を管理。着地 row/col は省略可（省略時はタイル座標に着地）</p>
             <div id="mapenter-list" class="links-list"></div>
           </div>
 
@@ -198,6 +247,13 @@
             <div id="breakwall-list" class="links-list"></div>
           </div>
 
+          <!-- かがり火（初期点灯設定） -->
+          <div class="props-section">
+            <h2 class="panel-title">かがり火（初期点灯）</h2>
+            <p class="hint">チェックをつけたかがり火はステージ開始時から点灯</p>
+            <div id="torch-list" class="links-list"></div>
+          </div>
+
           <!-- ドアウェイ設定（Phase 6.5） -->
           <div class="props-section">
             <h2 class="panel-title">ドアウェイ設定</h2>
@@ -207,6 +263,240 @@
           </div>
         </aside>
       </div>
+    </section>
+
+    <!-- ── スプライトエディタビュー ── -->
+    <section id="view-sprite" class="view hidden">
+      <div class="sprite-layout">
+
+        <!-- 左：ツール・パレット -->
+        <aside class="sprite-tools-panel">
+          <h2 class="panel-title">🎨 スプライト</h2>
+
+          <div class="sprite-tool-row">
+            <label>グリッド
+              <select id="sprite-grid-size" class="input-med">
+                <option value="32x32">32 × 32（プレイヤー/ボス）</option>
+                <option value="16x16">16 × 16</option>
+                <option value="12x16">12 × 16（敵/扉）</option>
+                <option value="8x8">8 × 8（小物）</option>
+                <option value="6x6">6 × 6（剣/ハート）</option>
+                <option value="64x64">64 × 64（大型ボス）</option>
+              </select>
+            </label>
+            <button id="sprite-resize-btn" class="btn btn-sm">適用（クリア）</button>
+          </div>
+
+          <h3 class="panel-title">ツール</h3>
+          <div class="tool-group">
+            <button id="sprite-tool-pen"   class="tool-btn active">✏️ ペン</button>
+            <button id="sprite-tool-erase" class="tool-btn">🧹 消しゴム</button>
+          </div>
+          <div class="sprite-tool-row">
+            <button id="sprite-flip-btn"  class="btn btn-sm">↔ 左右反転</button>
+            <button id="sprite-clear-btn" class="btn btn-sm btn-danger">クリア</button>
+          </div>
+
+          <h3 class="panel-title">パレット</h3>
+          <p class="hint">クリックで選択色を変更。下のカラーピッカーで現在色を編集。</p>
+          <div id="sprite-palette" class="sprite-palette"></div>
+          <div class="sprite-tool-row">
+            <input id="sprite-color-input" type="color" value="#ffffff">
+            <button id="sprite-set-color-btn" class="btn btn-sm">選択色を変更</button>
+            <button id="sprite-add-color-btn" class="btn btn-sm">＋ 色を追加</button>
+          </div>
+        </aside>
+
+        <!-- 中央：描画キャンバス -->
+        <div class="sprite-editor-center">
+          <div class="sprite-toolbar">
+            <span id="sprite-size-label" class="stage-label">32 × 32</span>
+          </div>
+          <div id="sprite-canvas-wrap" class="sprite-canvas-wrap">
+            <canvas id="sprite-canvas"></canvas>
+          </div>
+        </div>
+
+        <!-- 右：フレーム・読込・エクスポート -->
+        <aside class="sprite-side-panel">
+          <div class="props-section">
+            <h2 class="panel-title">フレーム（アニメ）</h2>
+            <div id="sprite-frames" class="sprite-frames"></div>
+            <div class="sprite-tool-row">
+              <button id="sprite-add-frame-btn"  class="btn btn-sm">＋ フレーム追加</button>
+              <button id="sprite-dup-frame-btn"  class="btn btn-sm">⧉ 複製</button>
+              <button id="sprite-del-frame-btn"  class="btn btn-sm btn-danger">🗑 削除</button>
+            </div>
+            <div class="sprite-tool-row">
+              <button id="sprite-play-btn" class="btn btn-sm">▶ プレビュー再生</button>
+              <canvas id="sprite-preview-canvas" class="sprite-preview-canvas"></canvas>
+            </div>
+          </div>
+
+          <div class="props-section">
+            <h2 class="panel-title">既存スプライト読込</h2>
+            <p class="hint">「形（スプライト）」と「色（パレット）」を選ぶ。スプライトを選ぶと対応するパレットが自動で選ばれます。</p>
+            <label class="meta-label">形（スプライト）
+              <select id="sprite-load-name" class="input-med"></select>
+            </label>
+            <label class="meta-label">色（パレット）
+              <select id="sprite-load-pal" class="input-med"></select>
+            </label>
+            <button id="sprite-load-btn" class="btn btn-sm">📥 読み込んで編集</button>
+          </div>
+
+          <div class="props-section">
+            <h2 class="panel-title">エクスポート</h2>
+            <label class="meta-label">スプライト名
+              <input id="sprite-export-name" type="text" class="input-med" value="newSprite" placeholder="例: heroAttackD">
+            </label>
+            <label class="meta-label">パレット名
+              <input id="sprite-export-pal" type="text" class="input-med" value="newPal" placeholder="例: hero">
+            </label>
+            <button id="sprite-export-btn" class="btn btn-sm btn-primary">📋 コードを生成</button>
+            <textarea id="sprite-export-out" class="sprite-export-out" readonly placeholder="生成されたコードがここに表示されます"></textarea>
+            <button id="sprite-copy-btn" class="btn btn-sm">クリップボードにコピー</button>
+          </div>
+        </aside>
+      </div>
+    </section>
+
+    <!-- ── キャラクター定義エディタビュー ── -->
+    <section id="view-character" class="view hidden">
+      <div class="char-layout">
+
+        <!-- 左：敵リスト -->
+        <aside class="char-list-panel">
+          <h2 class="panel-title">🧙 敵キャラクター</h2>
+          <div id="char-enemy-list"></div>
+          <button id="btn-add-enemy" class="btn btn-sm">＋ 新規追加</button>
+        </aside>
+
+        <!-- 中央：エディタフォーム -->
+        <div class="char-editor-panel" id="char-editor-panel">
+          <p class="hint">敵を選択してください</p>
+        </div>
+
+        <!-- 右：エクスポートコード -->
+        <aside class="char-export-panel">
+          <h2 class="panel-title">エクスポート</h2>
+          <p class="hint">変更を適用すると、ここにコードが生成されます</p>
+          <textarea id="char-export-code" readonly placeholder="// enemies.js の ENEMY_META に貼り付けるコードがここに表示されます"></textarea>
+          <button id="btn-char-copy-code" class="btn btn-sm">クリップボードにコピー</button>
+        </aside>
+
+      </div>
+    </section>
+
+    <!-- ── アイテム定義エディタビュー ── -->
+    <section id="view-item" class="view hidden">
+      <div class="item-layout">
+
+        <!-- 左：アイテムリスト -->
+        <aside class="item-list-panel">
+          <h2 class="panel-title">📦 アイテム定義</h2>
+          <div id="item-list"></div>
+        </aside>
+
+        <!-- 中央：エディタフォーム -->
+        <div class="item-editor-panel" id="item-editor-panel">
+          <p class="hint">アイテムを選択してください</p>
+        </div>
+
+        <!-- 右：エクスポートコード -->
+        <aside class="item-export-panel">
+          <h2 class="panel-title">エクスポート</h2>
+          <p class="hint">変更を適用すると、ここにコードが生成されます</p>
+          <textarea id="item-export-code" readonly placeholder="// items.js の ITEM_META または EQUIP_META に貼り付けるコードがここに表示されます"></textarea>
+          <button id="btn-item-copy-code" class="btn btn-sm">クリップボードにコピー</button>
+        </aside>
+
+      </div>
+    </section>
+
+    <!-- ── タイルバリエーション設計支援ビュー ── -->
+    <section id="view-tile" class="view hidden">
+      <div class="tile-layout">
+
+        <!-- 左：テーマ選択 + タイルグリッド -->
+        <div class="tile-left-panel">
+          <h2 class="panel-title">🗺 タイルバリエーション</h2>
+          <div class="tile-theme-row">
+            <label>テーマ
+              <select id="tile-theme-select" class="input-med"></select>
+            </label>
+          </div>
+          <p class="hint">テーマを選ぶとダンジョンタイルの色パレットが変わります。タイルをクリックすると右パネルで色を編集できます。</p>
+          <div id="tile-preview-grid"></div>
+        </div>
+
+        <!-- 中央：パレットエディタ -->
+        <div class="tile-palette-panel" id="tile-palette-panel">
+          <p class="hint">タイルを選択してください</p>
+        </div>
+
+        <!-- 右：エクスポートコード -->
+        <aside class="tile-export-panel">
+          <h2 class="panel-title">エクスポート</h2>
+          <p class="hint">テーマ別の変更パレットを JS コードで出力します。<code>sprites-tiles.js</code> の <code>TILE_PAL</code> に追加してください。</p>
+          <textarea id="tile-export-code" readonly placeholder="// コードがここに表示されます"></textarea>
+          <button id="btn-tile-copy-code" class="btn btn-sm">クリップボードにコピー</button>
+        </aside>
+
+      </div>
+
+      <!-- ── 背景スプライト編集セクション ── -->
+      <div class="bg-sprite-section">
+        <h2 class="panel-title">🖌 背景スプライト編集</h2>
+        <p class="hint">フィールド/BGタイルのピクセルデータを編集し、<code>sprites-tiles.js</code> に貼り付けるコードを生成します。</p>
+
+        <div class="bg-sprite-layout">
+          <!-- 左：タイル選択 + フレーム一覧 -->
+          <div class="bg-sprite-left">
+            <label class="bg-sprite-label">編集するタイル
+              <select id="bg-tile-select" class="input-med"></select>
+            </label>
+            <div class="bg-sprite-toolbar">
+              <button id="bg-tile-tool-pen" class="btn btn-sm active">✏ ペン</button>
+              <button id="bg-tile-tool-erase" class="btn btn-sm">✕ 消去</button>
+              <button id="bg-tile-reset" class="btn btn-sm">↩ 初期値</button>
+            </div>
+            <div class="bg-sprite-frame-section">
+              <span class="bg-sprite-sublabel">フレーム</span>
+              <div class="bg-sprite-frame-buttons">
+                <button id="bg-tile-add-frame" class="btn btn-sm">＋追加</button>
+                <button id="bg-tile-dup-frame" class="btn btn-sm">複製</button>
+                <button id="bg-tile-del-frame" class="btn btn-sm">削除</button>
+              </div>
+              <div id="bg-tile-frames" class="bg-tile-frames"></div>
+            </div>
+          </div>
+
+          <!-- 中央：ピクセルキャンバス -->
+          <div class="bg-sprite-center">
+            <canvas id="bg-tile-canvas" class="bg-tile-canvas"></canvas>
+          </div>
+
+          <!-- 右：パレット + エクスポート -->
+          <div class="bg-sprite-right">
+            <span class="bg-sprite-sublabel">パレット（クリックで選択・ライブ編集）</span>
+            <div id="bg-tile-palette" class="bg-tile-palette"></div>
+            <label class="bg-sprite-label" style="margin-top:8px;">
+              色
+              <input id="bg-tile-color-input" type="color" value="#ffffff">
+            </label>
+            <div class="bg-sprite-export-section">
+              <span class="bg-sprite-sublabel">エクスポート</span>
+              <textarea id="bg-tile-export-out" class="bg-tile-export-out" readonly placeholder="// コードがここに出力されます"></textarea>
+              <div class="bg-sprite-export-buttons">
+                <button id="bg-tile-export-btn" class="btn btn-sm">生成</button>
+                <button id="bg-tile-copy-btn" class="btn btn-sm">クリップボードにコピー</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
     </section>
 
   </main>
@@ -225,6 +515,12 @@
         <label class="ps-check"><input id="ps-armor"  type="checkbox" checked> ⚚ 防具</label>
         <label class="ps-check"><input id="ps-bow"    type="checkbox" checked> 🏹 弓矢</label>
         <label class="ps-check"><input id="ps-boomerang" type="checkbox" checked> 🪃 ブーメラン</label>
+        <label class="ps-check"><input id="ps-silverboomerang" type="checkbox"> 🪃 銀のブーメラン</label>
+        <label class="ps-check"><input id="ps-bomb" type="checkbox" checked> 💣 爆弾</label>
+        <label class="ps-check"><input id="ps-flute" type="checkbox" checked> 🎵 笛</label>
+        <label class="ps-check"><input id="ps-candle" type="checkbox" checked> 🕯 ロウソク</label>
+        <label class="ps-check"><input id="ps-ladder" type="checkbox" checked> 🪜 はしご</label>
+        <label class="ps-check"><input id="ps-wingrobe" type="checkbox"> 🪽 翼の羽衣</label>
         <label class="ps-check"><input id="ps-cleared" type="checkbox"> 👸 姫状態（二周目）</label>
       </div>
       <div class="preview-settings-actions">

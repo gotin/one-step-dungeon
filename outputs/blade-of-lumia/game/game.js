@@ -2,7 +2,7 @@
 // Phase 1: マップ読み込み・プレイヤー移動（半セル）・ステージ遷移
 import { TILE, BG_TILES } from '../shared/tiles.js';
 import { ENEMY_META, ENEMY_SPEED_NORMAL } from '../shared/enemies.js';
-import { ITEM_META, EQUIP_META } from '../shared/items.js';
+import { ITEM_META, EQUIP_META, BOOMERANG_TIERS } from '../shared/items.js';
 import { NPC_SPRITE_MAP, NPC_DEFAULT_DIALOG } from '../shared/npcs.js';
 import {
 	SPRITES, PAL, drawSpriteFrame,
@@ -11,24 +11,40 @@ import {
 import {
 	playSound, playBgm, stopBgm, resumeAudio,
 } from '../shared/sounds.js';
+// ── 定数（Phase 0-2 Step 1a: constants.js へ切り出し済み）──────
+import {
+	MOVE_STEP, TICK_MS, INVINCIBLE_MS, HP_PER_HEART,
+	MAP_JSON_URL, SAVE_KEY, CLEARED_KEY, DIR_DELTA,
+	SWORD_REACH, SWORD_COOLDOWN_MS, STONE_PUSH_COOLDOWN_MS,
+	DARK_TOWER_EXIT_ID, CANDLE_FIRE_DMG, RESPAWN_MOVES,
+	ATTACK_POSE_MS,
+} from './constants.js';
+// ── セーブ/ロードの純粋変換ロジック（Phase 0-2 Step 1b: save.js へ切り出し）──
+import {
+	createStageState, serializeStageState, deserializeStageState, sanitizeLoadedPlayer,
+} from './save.js';
+// ── 通行可否判定・条件評価（Phase 0-2 Step 2: passable.js / conditions.js へ切り出し）──
+import { createPassable, STATEFUL_TILES, statefulTileClosed } from './passable.js';
+import { createConditions } from './conditions.js';
+// ── 描画系（Phase 0-2 Step 3: render-board.js / render-chars.js へ切り出し）──────
+import { createRenderBoard } from './render-board.js';
+import { createRenderChars } from './render-chars.js';
+// ── 入力・UI（Phase 0-2 Step 4: input.js / ui.js へ切り出し）──────────────────
+import { initInput } from './input.js';
+import { createUi } from './ui.js';
+// ── 投擲物・爆弾（Phase 0-2 Step 5: projectile.js へ切り出し）───────────────
+import { createProjectile } from './projectile.js';
+// ── 敵AI（Phase 0-2 Step 5: enemy-ai.js へ切り出し）──────────────────────────
+import { createEnemyAi } from './enemy-ai.js';
+// ── プレイヤー移動・タイルイベント（Phase 0-2 Step 5: player.js へ切り出し）──
+import { createPlayer } from './player.js';
+// ── 剣攻撃・ダメージ（Phase 0-2 Step 5: combat.js へ切り出し）───────────────
+import { createCombat } from './combat.js';
+// ── ボス戦・エンディング（Phase 0-2 Step 5: boss.js へ切り出し）─────────────
+import { createBoss } from './boss.js';
+// ── チャージ攻撃・剣ビーム（Phase 3-1: charge.js へ切り出し）──────────────────
+import { createCharge } from './charge.js';
 
-// ── 定数 ──────────────────────────────────────────────────────
-// 座標系：x/y はセル単位の float（0.5 刻みで移動）
-// 例: x=1.5 → タイル列 1 の右端 / タイル列 2 の左端の中間
-const MOVE_STEP      = 0.5;   // 1 操作 = 0.5 セル
-const TICK_MS        = 120;   // 敵行動 tick 間隔（ms）
-const INVINCIBLE_MS  = 1500;  // 無敵時間（ms）
-const HP_PER_HEART   = 2;
-const MAP_JSON_URL   = '../work/blade-of-lumia.json';
-const SAVE_KEY       = 'blade-of-lumia-save';
-
-// 移動方向 → (dy, dx) セル単位
-const DIR_DELTA = {
-	up:    [-MOVE_STEP, 0],
-	down:  [ MOVE_STEP, 0],
-	left:  [0, -MOVE_STEP],
-	right: [0,  MOVE_STEP],
-};
 
 // ── DOM ───────────────────────────────────────────────────────
 const boardEl          = document.getElementById('board');
@@ -77,12 +93,55 @@ let player = {
 	weapon: null, shield: null, armor: null,
 	subItems: {}, activeSubItem: null,
 	rupees: 0, triforceCount: 0,
+	// Phase 9-5a: 矢/爆弾の所持上限（quiver/bombBag で +8 ずつ拡張・最大 32）。
+	maxArrows: 8, maxBombs: 8,
+	// Phase 9-5b: ステージ移動カウンタ（雑魚リスポーン判定用）。
+	stageMoves: 0,
+	// Phase 1-3: 翼の羽衣（古代の祭壇で授かる）。暗黒の塔の入り口を通れるようになる。
+	hasWingRobe: false,
+	// Phase 1-5: 飛行中フラグ（翼の羽衣で離陸中。SKY/WATER を越えられる）。
+	flying: false,
+	// Phase 4-1: はしご所持フラグ。両隣が地上の水/穴を1セルだけ自動で渡れる。
+	hasLadder: false,
+	// Phase 6-1b: 撃破済みボスのタイル文字を記録する Set。NPC 台詞の切り替えに使用。
+	defeatedBosses: new Set(),
+	// Phase 7-1: 剣ティア（-1=剣なし, 0=木, 1=銅, 2=銀, 3=聖）。
+	swordTier: -1,
+	// Phase 7-2: 防具ティア（-1=なし, 0=布, 1=鎖, 2=伝説）/ 盾ティア（-1=なし, 0=木, 1=鉄, 2=ミラー）。
+	armorTier: -1,
+	shieldTier: -1,
+	// Phase 9-6: ブーメランティア（-1=未所持, 0=木, 1=銀）。
+	boomerangTier: -1,
+	// Phase 7-4: ガチャ天井カウンタ。キー="layer:stageKey:posKey"→引いた回数。プレーンオブジェクトなので saveGame で自動保持。
+	gachaPulls: {},
 };
 
 let enemies = [];
 let heroDir = 'down';
 
+// ── フロアドロップ（Phase 9-5c）──────────────────────────────────
+// 雑魚撃破時にマップ上に一時出現するアイテム。踏むと拾える。
+// { r, c, type, timerId, el } の配列。ステージ遷移で全消去。
+const FLOOR_DROP_ICONS = { bomb: '💣', arrow: '🏹', heart: '❤', rupee: '◆' };
+const FLOOR_DROP_COLORS = { bomb: '#ff8c00', arrow: '#c0a000', heart: '#ff4040', rupee: '#20c040' };
+// ドロップ表示用スプライト（[spr, pal]）＝マップ配置アイテムと同じ絵に揃える。
+const FLOOR_DROP_SPRITES = {
+	rupee: ['rupee', 'rupee'],
+	heart: ['heart', 'heart'],
+	bomb:  ['bombItem', 'bombItem'],
+	arrow: ['arrow', 'arrow'],
+};
+let activeFloorDrops = [];
+
 let gameTimer       = null;
+// ── 論理時間（Phase 0-1）─────────────────────────────────────
+// gameTime は step() が 1 フレームごとに TICK_MS 加算する「ゲーム内の論理時刻」(ms)。
+// クールダウン・無敵時間・敵AI・爆弾の導火線などゲーム状態に影響するタイマーは
+// すべて gameNow() を基準にする（Date.now() ではなく）。これによりテストから
+// step(frames) でフレーム単位に決定論的な検証ができる。視覚演出（setTimeout 等）は
+// 実時間のままで構わない。
+let gameTime        = 0;
+function gameNow() { return gameTime; }
 let isPaused        = false;
 let isDialog        = false;
 let isGameover      = false;
@@ -102,12 +161,30 @@ let isShielding     = false;
 // Gキーで切り替え。無敵 + 敵すり抜け + 全アイテム即取得可能
 let debugMode = false;
 
-// ── トライフォース待機位置（魔王撃破後に出現したカケラの位置） ──
+// ── 星の欠片・待機位置（魔王撃破後に出現した欠片の位置） ──
 // null = 出現していない。{ x, y } = 拾い待ち
 let pendingTriforcePos = null;
 
 // char-layer DOM 要素（キャラクター絶対配置コンテナ）
+// Phase 0-2 Step 3: render-board.js と render-chars.js が共有する参照ラッパー。
+// renderBoard() が新しい charLayerEl を作成したとき .value を更新し、
+// renderChars() 側は .value 経由で常に最新の要素を読む。
 let charLayerEl = null;
+const charLayerElRef = { value: null };  // ← 両モジュールが共有する参照ラッパー
+
+// ── Phase 0-2 Step 4: input.js factory の戻り値を保持（window.__game から参照）──
+// initInput 後に _inputModule に代入される。宣言はここに置くことで TDZ を回避。
+let _inputModule = null;
+
+// ── ボス撃破・星の欠片収集の状態フラグ（boss.js factory が参照） ──────
+// boss.js（createBoss）の deps が getter/setter 経由で読み書きするため、
+// factory 呼び出し時点で初期化済みになるよう前方で宣言する。
+let _bossDefeating = false;          // ボス撃破演出 実行中フラグ（二重実行防止）
+let _pendingTriforcePieceEl = null;  // 出現中の星の欠片 DOM 要素
+let _collectingTriforce = false;     // 二重収集防止フラグ
+// 剣・石押しのクールダウン論理時刻（combat.js / player.js factory が参照）
+let lastSwordTime = 0;
+let lastStonePushTime = 0;
 
 // ── ユーティリティ ────────────────────────────────────────────
 // float 座標 → タイル整数座標
@@ -134,46 +211,33 @@ function updateBoardScale() {
 }
 
 // ── セーブ・ロード ────────────────────────────────────────────
+// シリアライズ/デシリアライズ等の純粋ロジックは save.js に切り出し済み。
+// ここでは localStorage への read/write と状態の再代入（game.js のスコープ
+// に閉じた副作用）のみを担当する。
 function getSS(lk, sk) {
 	const k = `${lk}_${sk}`;
 	if (!stageState[k]) {
-		stageState[k] = {
-			openGates:       new Set(),
-			pickedKeys:      new Set(),
-			defeatedEnemies: new Set(),
-			openedChests:    new Set(),
-			objects:         {},
-			switchStates:    {},
-			brokenWalls:     new Set(),
-			conditionsMet:   new Set(),
-			openedDoors:     new Set(),  // 鍵で開いたドア
-			stonePositions:  {},         // { 'r,c': {r, c} } 石の移動後位置
-		};
+		stageState[k] = createStageState();
+		// Phase 4-5 ②: stageData.initLitTorches で事前点灯かがり火を初期化
+		const sd = mapData?.layers?.[lk]?.stages?.[sk];
+		for (const pk of sd?.initLitTorches ?? []) {
+			stageState[k].litTorches.add(pk);
+		}
+		// Phase 5-1: stageData.initActiveColor で色スイッチの初期色を設定
+		if (sd?.initActiveColor) {
+			stageState[k].activeColor = sd.initActiveColor;
+		}
 	}
 	return stageState[k];
 }
 
 function saveGame() {
 	try {
-		const ss = {};
-		for (const [k, v] of Object.entries(stageState)) {
-			ss[k] = {
-				openGates:       [...v.openGates],
-				pickedKeys:      [...v.pickedKeys],
-				defeatedEnemies: [...v.defeatedEnemies],
-				openedChests:    [...v.openedChests],
-				objects:         v.objects,
-				switchStates:    v.switchStates,
-				brokenWalls:     [...v.brokenWalls],
-				conditionsMet:   [...v.conditionsMet],
-				doorwayStates:   v.doorwayStates ?? {},  // Phase 6.5
-				cutBushes:       [...(v.cutBushes ?? [])], // Phase 8.2
-				openedDoors:     [...(v.openedDoors ?? [])], // 鍵で開いたドア
-				stonePositions:  v.stonePositions ?? {},      // 石の移動後位置
-			};
-		}
+		const playerForSave = { ...player, defeatedBosses: [...(player.defeatedBosses ?? [])] };
 		localStorage.setItem(SAVE_KEY, JSON.stringify({
-			player, stageState: ss, currentLayer, stageKey, heroDir,
+			player: playerForSave,
+			stageState: serializeStageState(stageState),
+			currentLayer, stageKey, heroDir,
 		}));
 	} catch (e) { console.warn('saveGame failed:', e); }
 }
@@ -183,35 +247,12 @@ function loadGame() {
 		const raw = localStorage.getItem(SAVE_KEY);
 		if (!raw) return false;
 		const data = JSON.parse(raw);
-		player       = { ...player, ...data.player };
+		player       = sanitizeLoadedPlayer({ ...player, ...data.player }, ITEM_META);
+		player.defeatedBosses = new Set(data.player?.defeatedBosses ?? []);
 		heroDir      = data.heroDir ?? 'down';
 		currentLayer = data.currentLayer ?? 'field';
 		stageKey     = data.stageKey ?? null;
-		// 旧セーブデータの修正: passive アイテム（heartContainer 等）が subItems に混入していたら除去
-		for (const k of Object.keys(player.subItems ?? {})) {
-			if (ITEM_META[k]?.type === 'passive') {
-				delete player.subItems[k];
-			}
-		}
-		if (player.activeSubItem && ITEM_META[player.activeSubItem]?.type === 'passive') {
-			player.activeSubItem = Object.keys(player.subItems)[0] ?? null;
-		}
-		for (const [k, v] of Object.entries(data.stageState ?? {})) {
-			stageState[k] = {
-				openGates:       new Set(v.openGates ?? []),
-				pickedKeys:      new Set(v.pickedKeys ?? []),
-				defeatedEnemies: new Set(v.defeatedEnemies ?? []),
-				openedChests:    new Set(v.openedChests ?? []),
-				objects:         v.objects ?? {},
-				switchStates:    v.switchStates ?? {},
-				brokenWalls:     new Set(v.brokenWalls ?? []),
-				conditionsMet:   new Set(v.conditionsMet ?? []),
-				doorwayStates:   v.doorwayStates ?? {},  // Phase 6.5
-				cutBushes:       new Set(v.cutBushes ?? []), // Phase 8.2
-				openedDoors:     new Set(v.openedDoors ?? []), // 鍵で開いたドア
-				stonePositions:  {},         // 石の位置は常にリセット（セーブデータを引き継がない）
-			};
-		}
+		stageState   = deserializeStageState(data.stageState);
 		return true;
 	} catch (e) { console.warn('loadGame failed:', e); return false; }
 }
@@ -248,9 +289,57 @@ function enterStage(lk, sk, pRow, pCol) {
 	if (stageKey !== null && (currentLayer !== lk || stageKey !== sk)) {
 		const prevSS = getSS(currentLayer, stageKey);
 		if (prevSS.stonePositions && Object.keys(prevSS.stonePositions).length > 0) {
-			prevSS.stonePositions = {};
-			// 石がスイッチを押していた記録もリセット
-			if (prevSS.stoneSwitches) prevSS.stoneSwitches = new Set();
+			if (prevSS.stonesLocked) {
+				// Phase 4.56: ロック済み＝崩れないので石位置は常に保持（防御的にスナップショットも残す）。
+				prevSS.solvedStonePositions = { ...prevSS.stonePositions };
+			} else {
+				// 全ボタンの上に石が乗っているか確認
+				const prevSD = getStageData(currentLayer, stageKey);
+				const buttons = [];
+				for (let r = 0; r < (prevSD?.rows ?? 0); r++) {
+					for (let c = 0; c < (prevSD?.cols ?? 0); c++) {
+						if (prevSD.tiles[r][c] === TILE.BUTTON) buttons.push(`${r},${c}`);
+					}
+				}
+				const allSolved = buttons.length > 0 && buttons.every(pk => {
+					const [br, bc] = pk.split(',').map(Number);
+					return Object.values(prevSS.stonePositions).some(st => st.r === br && st.c === bc);
+				});
+				if (allSolved) {
+					// パズル解決済み：石位置スナップショットを保存してリセットしない
+					prevSS.solvedStonePositions = { ...prevSS.stonePositions };
+				} else {
+					// 未解決：通常リセット（スナップショットも消す）
+					prevSS.stonePositions = {};
+					prevSS.solvedStonePositions = null;
+				}
+			}
+		}
+	}
+
+	clearAllFloorDrops();
+
+	// Phase 9-5b: 別ステージへの移動時にカウンタを増やし、フィールド雑魚のリスポーンを判定する。
+	const isStageChange = stageKey !== null && (currentLayer !== lk || stageKey !== sk);
+	if (isStageChange) {
+		player.stageMoves = (player.stageMoves ?? 0) + 1;
+		// field レイヤーに再入する際、一定回数移動が経過していたら雑魚を復活させる。
+		if (lk === 'field') {
+			const ss = getSS(lk, sk);
+			if ((player.stageMoves - (ss.lastKillMove ?? 0)) >= RESPAWN_MOVES) {
+				// isBoss=true の敵（W/V 等の中ボス含む）と noRespawn フラグ付きはスキップ
+				const sd = getStageData(lk, sk);
+				if (sd) {
+					for (const posKey of [...(ss.defeatedEnemies)]) {
+						const [r, c] = posKey.split(',').map(Number);
+						const tile = sd.tiles?.[r]?.[c];
+						if (!tile) continue;
+						const meta = ENEMY_META[tile];
+						if (!meta || meta.isBoss || meta.noRespawn) continue;
+						ss.defeatedEnemies.delete(posKey);
+					}
+				}
+			}
 		}
 	}
 
@@ -259,20 +348,44 @@ function enterStage(lk, sk, pRow, pCol) {
 	stageData    = getStageData(lk, sk);
 	if (!stageData) { console.error(`Stage not found: ${lk}/${sk}`); return; }
 
+	getSS(lk, sk).visited = true;
+
+	// パズル解決済みのステージに再入する場合、石位置スナップショットを復元する
+	{
+		const ss = getSS(lk, sk);
+		if (ss.solvedStonePositions && Object.keys(ss.stonePositions).length === 0) {
+			ss.stonePositions = { ...ss.solvedStonePositions };
+		}
+	}
+
 	// float 座標でプレイヤーを配置（整数セル中央 = そのセルの中心）
 	player.x = pCol ?? 1;
 	player.y = pRow ?? 1;
 
+	// Phase 1-5: ステージ遷移時の着陸処理。到着セルが地上なら自動着陸する。
+	// 到着セルが空・水（塔の空島入口など）なら飛行を維持してその場に留まれる。
+	if (player.flying) {
+		// bgTiles 水下地も「水の上」＝飛行維持（tiles/bgTiles どちらの水でも落ちない）。
+		const ar = Math.floor((pRow ?? 1) + 0.5), ac = Math.floor((pCol ?? 1) + 0.5);
+		const arrTile = stageData.tiles?.[ar]?.[ac];
+		const arrIsWater = arrTile === TILE.WATER || stageData.bgTiles?.[`${ar},${ac}`] === TILE.WATER;
+		if (arrTile !== TILE.SKY && !arrIsWater && arrTile !== TILE.LAVA) player.flying = false;
+	}
+
 	// ステージ遷移時に飛翔物・設置爆弾をリセット
 	clearProjectiles();
 	clearBombs();
+	cancelCharge();   // チャージ中の遷移はキャンセル（Phase 3-1）
 	// ボス部屋ロックをリセット（非ボス部屋に移動したとき）
 	if (!stageData.isBossRoom) bossRoomLocked = false;
 
 	enemies = buildEnemies(stageData, lk, sk);
 
-	renderBoard();
+	// 解決済み石パズルのゲートを再入時に開く
+	checkStoneOnSwitch();
+
 	updateBoardScale();
+	renderBoard();
 	renderChars();
 	updateHud();
 
@@ -320,7 +433,17 @@ function buildEnemies(sd, lk, sk) {
 				hp:    m.hp, maxHp: m.hp,
 				atk:   m.atk, def: m.def,
 				speed: m.speed ?? ENEMY_SPEED_NORMAL,
+				// Phase 9-6 深洋O: 遊泳属性。isPassableForEnemy が self.move を見て
+				// 水/陸の通行可否を切り替える（未指定=陸棲）。これを渡さないと水棲敵が
+				// 陸を歩けてしまう。moveSpeed は両生の地形別速度（将来の enemy-ai 用）。
+				move:  m.move, moveSpeed: m.moveSpeed,
+				// 隠れ↔出現する敵（潜み鮫・地中蟲）は「隠れた状態」で登場する。
+				// 周期の進行は enemy-ai.js の tickHide（gameNow 基準）が担当。
+				hidden: !!m.hide,
 				sprite: m.sprite, pal: m.pal,
+				// Phase 3-2: 占有セル数（大型敵）。省略時は 1×1。
+				w:      m.size?.w ?? 1,
+				h:      m.size?.h ?? 1,
 				accum:  0,
 				dir:    sd.enemyDirs?.[posKey] ?? 'down',
 				el:     null,   // DOM element（後で設定）
@@ -330,382 +453,15 @@ function buildEnemies(sd, lk, sk) {
 	return result;
 }
 
-// ── ボード（タイルグリッド）レンダリング ───────────────────────
-function renderBoard() {
-	if (!stageData) return;
-	const { cols, rows, tiles } = stageData;
-	const ss = getSS(currentLayer, stageKey);
-
-	boardEl.style.gridTemplateColumns = `repeat(${cols}, var(--cell))`;
-	boardEl.style.gridTemplateRows    = `repeat(${rows}, var(--cell))`;
-	boardEl.innerHTML = '';
-
-	// char-layer を作成（キャラクター絶対配置コンテナ）
-	charLayerEl = document.createElement('div');
-	charLayerEl.id = 'char-layer';
-	// boardEl と同サイズにする（後で調整）
-	boardEl.style.position = 'relative';
-
-	for (let r = 0; r < rows; r++) {
-		for (let c = 0; c < cols; c++) {
-			const tile   = tiles[r][c];
-			const posKey = `${r},${c}`;
-			const cellEl = document.createElement('div');
-			cellEl.className    = 'cell';
-			cellEl.dataset.row  = r;
-			cellEl.dataset.col  = c;
-
-			setCellClass(cellEl, tile, posKey, ss);
-			addCellSprite(cellEl, tile, posKey, ss);
-			boardEl.appendChild(cellEl);
-		}
-	}
-
-	// char-layer を board の上に重ねる
-	boardEl.appendChild(charLayerEl);
-	stageLabelEl.textContent = `[${currentLayer}] ${stageKey}`;
-}
-
-// bgTile の背景色を cellEl に適用するヘルパー
-const BG_TILE_COLOR_CLASS = {
-	[TILE.FLOOR]:       '',           // デフォルト（CSS変数そのまま）
-	[TILE.GRASS]:       'bg-grass',
-	[TILE.SAND]:        'bg-sand',
-	[TILE.STONE_FLOOR]: 'bg-stonefloor',
-	[TILE.BRIDGE]:      'bg-bridge',
-};
-function applyBgTileClass(cellEl, posKey) {
-	const bgTile = stageData.bgTiles?.[posKey] ?? TILE.FLOOR;
-	const cls = BG_TILE_COLOR_CLASS[bgTile];
-	if (cls) cellEl.classList.add(cls);
-}
-
-function setCellClass(cellEl, tile, posKey, ss) {
-	// 構造タイル（壁・水など）は bgTile を無視
-	switch (tile) {
-		case TILE.WALL:           cellEl.classList.add('wall'); return;
-		case TILE.WATER:          cellEl.classList.add('water'); return;
-		case TILE.GATE:
-			cellEl.classList.add(ss.openGates.has(posKey) ? 'switch-on' : 'gate');
-			applyBgTileClass(cellEl, posKey); return;
-		case TILE.DOOR:
-			cellEl.classList.add('door');
-			applyBgTileClass(cellEl, posKey); return;
-		case TILE.SWITCH:
-			cellEl.classList.add(ss.switchStates[posKey] ? 'switch-on' : 'switch-off');
-			applyBgTileClass(cellEl, posKey); return;
-		case TILE.BREAKABLE_WALL:
-			cellEl.classList.add(ss.brokenWalls.has(posKey) ? 'floor' : 'breakable-wall');
-			applyBgTileClass(cellEl, posKey); return;
-		case TILE.MAP_ENTER:
-			cellEl.classList.add('map-enter');
-			applyBgTileClass(cellEl, posKey); return;
-		// ── Phase 6.5: ドアウェイ ────────────────────────────────
-		case TILE.DOORWAY:
-			cellEl.classList.add('doorway');
-			applyBgTileClass(cellEl, posKey); return;
-		case TILE.DOORWAY_BOSS: {
-			const dwState = getDoorwayState(posKey);
-			cellEl.classList.add(dwState === 'boss_closed' ? 'doorway-boss-closed' : 'doorway-boss');
-			applyBgTileClass(cellEl, posKey); return;
-		}
-		case TILE.DOORWAY_LOCKED: {
-			const dwState2 = getDoorwayState(posKey);
-			cellEl.classList.add(dwState2 === 'open' ? 'doorway-locked-open' : 'doorway-locked');
-			applyBgTileClass(cellEl, posKey); return;
-		}
-	}
-	// それ以外（FLOOR・アイテム・NPC・フィールドタイルなど）→ bgTile を背景に
-	applyBgTileClass(cellEl, posKey);
-}
-
-function addCellSprite(cellEl, tile, posKey, ss) {
-	if (tile === TILE.WALL || tile === TILE.FLOOR || tile === TILE.PLAYER) return;
-
-	if (tile === TILE.CHEST && !ss.openedChests.has(posKey)) {
-		// 表示条件が設定されていて未達成なら非表示
-		const cond = stageData.showConditions?.[posKey];
-		if (cond && !ss.conditionsMet.has(posKey)) return;
-		const cv = makeSprite('chest', 'chest', true);
-		if (cv) { cv.classList.add('obj-sprite'); cellEl.appendChild(cv); }
-		return;
-	}
-	if (tile === TILE.KEY && !ss.pickedKeys.has(posKey)) {
-		const cv = makeSprite('key', 'key', true);
-		if (cv) { cv.classList.add('item-sprite'); cellEl.appendChild(cv); }
-		return;
-	}
-	if (tile === TILE.SWITCH) {
-		const cv = makeSprite('swG', 'swG', true);
-		if (cv) { cv.classList.add('obj-sprite'); cellEl.appendChild(cv); }
-		return;
-	}
-	if (tile === TILE.GATE && !ss.openGates.has(posKey)) {
-		const cv = makeSprite('gateG', 'gateG', false);
-		if (cv) { cv.classList.add('obj-sprite'); cellEl.appendChild(cv); }
-		return;
-	}
-	if (tile === TILE.DOOR) {
-		// 開いているドア → doorOpen スプライト（枠のみ）
-		// 閉じているドア → door スプライト（扉あり）
-		const isOpen = ss.openedDoors?.has(posKey);
-		const cv = makeSprite(isOpen ? 'doorOpen' : 'door', 'door', false);
-		if (cv) { cv.classList.add('obj-sprite'); cellEl.appendChild(cv); }
-		return;
-	}
-	if (tile === TILE.WATER) {
-		const cv = makeSprite('water', 'water', true);
-		if (cv) { cv.classList.add('obj-sprite'); cellEl.appendChild(cv); }
-		return;
-	}
-	if (tile === TILE.BREAKABLE_WALL && !ss.brokenWalls.has(posKey)) {
-		const cv = makeSprite('breakableWall', 'breakableWall', true);
-		if (cv) { cv.classList.add('obj-sprite'); cellEl.appendChild(cv); }
-		return;
-	}
-	if (tile === TILE.MAP_ENTER) {
-		const cond = stageData.showConditions?.[posKey];
-		if (cond && !ss.conditionsMet.has(posKey)) return;
-		const cv = makeSprite('mapEnter', 'mapEnter', true);
-		if (cv) { cv.classList.add('obj-sprite'); cellEl.appendChild(cv); }
-		return;
-	}
-	if (tile === TILE.STONE) {
-		// 元のタイル位置にある石（移動されていない場合）
-		const _ssSt = getSS(currentLayer, stageKey);
-		if (_ssSt.stonePositions?.[posKey]) return; // 移動済み → 元の場所には描画しない
-		const cv = makeSprite('block', 'block', false);
-		if (cv) { cv.classList.add('obj-sprite'); cellEl.appendChild(cv); }
-		return;
-	}
-	// ── Phase 6.5: ドアウェイスプライト描画 ─────────────────────
-	if (tile === TILE.DOORWAY) {
-		const cv = makeSprite('doorway', 'doorway', true);
-		if (cv) { cv.classList.add('obj-sprite'); cellEl.appendChild(cv); }
-		return;
-	}
-	if (tile === TILE.DOORWAY_BOSS) {
-		const dwState = getDoorwayState(posKey);
-		const frames = SPRITES['doorwayBoss'];
-		const pal    = PAL['doorwayBoss'];
-		if (frames && pal) {
-			const cv = document.createElement('canvas');
-			cv.className = 'sprite obj-sprite';
-			const frameIdx = (dwState === 'boss_closed') ? 1 : 0;
-			drawSpriteFrame(cv, frames, frameIdx, pal);
-			cellEl.appendChild(cv);
-		}
-		return;
-	}
-	if (tile === TILE.DOORWAY_LOCKED) {
-		const dwState = getDoorwayState(posKey);
-		const frames = SPRITES['doorwayLocked'];
-		const pal    = PAL['doorwayLocked'];
-		if (frames && pal) {
-			const cv = document.createElement('canvas');
-			cv.className = 'sprite obj-sprite';
-			const frameIdx = (dwState === 'open') ? 1 : 0;
-			drawSpriteFrame(cv, frames, frameIdx, pal);
-			cellEl.appendChild(cv);
-		}
-		return;
-	}
-	// NPC
-	const npcMeta = NPC_SPRITE_MAP[tile];
-	if (npcMeta) {
-		const cv = makeSprite(npcMeta.sprite, npcMeta.pal, true);
-		if (cv) { cv.classList.add('char-sprite'); cellEl.appendChild(cv); }
-		return;
-	}
-	// 落ちているアイテム（スプライトのあるもの）
-	// アニメーションなし（animated=false）：床に置いてあるものは静止表示
-	const itemMap = {
-		[TILE.ITEM_SWORD]:          ['sword',    'sword'],
-		[TILE.ITEM_SHIELD]:         ['shield',   'shield'],
-		[TILE.ITEM_BOOMERANG]:      ['boomerang','boomerang'],
-		[TILE.ITEM_RUPEE]:          ['rupee',    'rupee'],
-		[TILE.ITEM_RUPEE_LARGE]:    ['rupee',    'rupeeBlue'],
-		[TILE.ITEM_TRIFORCE_PIECE]: ['triforce', 'triforce'],
-	};
-	if (itemMap[tile] && !ss.pickedKeys.has(posKey)) {
-		// 表示条件が設定されていて未達成なら非表示
-		const itemCond = stageData.showConditions?.[posKey];
-		if (itemCond && !ss.conditionsMet.has(posKey)) return;
-		const [spr, pal] = itemMap[tile];
-		const cv = makeSprite(spr, pal, false);  // 静止表示
-		if (cv) { cv.classList.add('item-sprite'); cellEl.appendChild(cv); }
-		return;
-	}
-	// ── Phase 8: フィールドタイルのスプライト描画 ────────────────
-	// 通行可タイル（草・砂・石畳・橋）は背景色のみ（CSS color で表現）
-	// 通行不可タイル（木・山・茂み・柵・建物）はスプライト表示
-	const fieldSpriteMap = {
-		[TILE.GRASS]:       ['grass',      'grass'],
-		[TILE.SAND]:        ['sand',       'sand'],
-		[TILE.STONE_FLOOR]: ['stoneFloor', 'stoneFloor'],
-		[TILE.BRIDGE]:      ['bridge',     'bridge'],
-		[TILE.TREE]:        ['tree',       'tree'],
-		[TILE.MOUNTAIN]:    ['mountain',   'mountain'],
-		[TILE.FENCE]:       ['fence',      'fence'],
-		[TILE.HOUSE_WALL]:  ['houseWall',  'houseWall'],
-		[TILE.HOUSE_DOOR]:  ['houseDoor',  'houseDoor'],
-		[TILE.HOUSE_ROOF]:  ['houseRoof',  'houseRoof'],
-		[TILE.SIGN]:        ['sign',       'sign'],
-	};
-	if (fieldSpriteMap[tile]) {
-		const [spr, pal] = fieldSpriteMap[tile];
-		if (SPRITES[spr]) {
-			const cv = makeSprite(spr, pal, tile === TILE.GRASS || tile === TILE.TREE || tile === TILE.BUSH);
-			if (cv) { cv.classList.add('obj-sprite'); cellEl.appendChild(cv); }
-		}
-		return;
-	}
-	// 茂み：切られていなければスプライト表示
-	if (tile === TILE.BUSH) {
-		if (!ss.cutBushes?.has(posKey)) {
-			const cv = makeSprite('bush', 'bush', true);
-			if (cv) { cv.classList.add('obj-sprite'); cellEl.appendChild(cv); }
-		}
-		return;
-	}
-
-	// スプライト未定義のアイテムは絵文字フォールバック表示
-	const emojiItemMap = {
-		[TILE.ITEM_ARMOR]:          '⚚',
-		[TILE.ITEM_BOMB]:           '💣',
-		[TILE.ITEM_BOW]:            '🏹',
-		[TILE.ITEM_HEAL_POTION]:    '🧪',
-		[TILE.ITEM_BIG_HEAL_POTION]:'💊',
-		[TILE.ITEM_HEART_CONTAINER]:'❤',
-		[TILE.ITEM_TRIFORCE_PIECE]: '◭',
-		[TILE.ITEM_DUNGEON_MAP]:    '🗺',
-		[TILE.ITEM_COMPASS]:        '🧭',
-	};
-	if (emojiItemMap[tile] && !ss.pickedKeys.has(posKey)) {
-		const span = document.createElement('span');
-		span.textContent = emojiItemMap[tile];
-		span.style.cssText = 'position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);font-size:calc(var(--cell)*0.55);pointer-events:none;z-index:3;';
-		cellEl.appendChild(span);
-	}
-}
-
-// ── キャラクター（プレイヤー＋敵）の絶対配置レンダリング ─────────
-// 毎 tick ではなく、位置変化があった時だけ呼ぶ
-function renderChars() {
-	if (!charLayerEl) return;
-	charLayerEl.innerHTML = '';
-
-	// プレイヤー（上向き時は盾を先に描いてキャラを上レイヤーに重ねる）
-	const playerDiv = document.createElement('div');
-	playerDiv.className = 'char-abs';
-	playerDiv.id        = 'char-player';
-	const cellPx0 = getCellPx();
-	playerDiv.style.left = `${player.x * cellPx0}px`;
-	playerDiv.style.top  = `${player.y * cellPx0}px`;
-	charLayerEl.appendChild(playerDiv);
-
-	if (heroDir === 'up') addShieldOverlay(playerDiv);
-	const heroSpr = getHeroSpriteName();
-	const heroFlip = heroDir === 'left';
-	const heroCv = makeSprite(heroSpr, getHeroPalName(), true, heroFlip);
-	if (heroCv) playerDiv.appendChild(heroCv);
-	if (heroDir !== 'up') addShieldOverlay(playerDiv);
-
-	// 移動済みの石を描画（プレイヤーの後ろに配置）
-	{
-		const _ssRc = getSS(currentLayer, stageKey);
-		const _cellPxSt = getCellPx();
-		const _stSize = Math.round(_cellPxSt * 0.7) + 'px'; // obj-sprite と同じ70%サイズ
-		for (const [origKey, st] of Object.entries(_ssRc.stonePositions ?? {})) {
-			const stDiv = document.createElement('div');
-			stDiv.className = 'char-abs';
-			stDiv.id = `char-stone-${origKey.replace(',', '-')}`;
-			stDiv.style.left   = `${st.c * _cellPxSt}px`;
-			stDiv.style.top    = `${st.r * _cellPxSt}px`;
-			stDiv.style.zIndex = '1'; // プレイヤー(z-index:2相当)より下
-			// 石のキャンバスを直接描画（spriteクラスなし→CSSの位置上書きを回避）
-			const stoneCv = document.createElement('canvas');
-			stoneCv.style.cssText = `position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:${_stSize};height:${_stSize};image-rendering:pixelated;`;
-			const _stFrames = SPRITES['block'];
-			const _stPal = PAL['block'];
-			if (_stFrames && _stPal) {
-				const _stGrid = _stFrames[0];
-				stoneCv.width = _stGrid[0].length;
-				stoneCv.height = _stGrid.length;
-				const _stCtx = stoneCv.getContext('2d');
-				for (let _r = 0; _r < _stGrid.length; _r++) {
-					for (let _c = 0; _c < _stGrid[_r].length; _c++) {
-						const idx = _stGrid[_r][_c];
-						if (idx === 0) continue;
-						_stCtx.fillStyle = _stPal[idx] ?? 'transparent';
-						_stCtx.fillRect(_c, _r, 1, 1);
-					}
-				}
-			}
-			stDiv.appendChild(stoneCv);
-			// 石がスイッチの上にある場合は緑色のグローを追加
-			const onSwitch = stageData.tiles[st.r]?.[st.c] === TILE.SWITCH;
-			if (onSwitch) {
-				const glow = document.createElement('div');
-				glow.style.cssText = 'position:absolute;inset:0;background:rgba(80,255,100,0.38);border-radius:3px;box-shadow:0 0 8px 4px rgba(60,255,80,0.6);pointer-events:none;z-index:5;animation:stone-glow 1.2s ease-in-out infinite;';
-				stDiv.appendChild(glow);
-			}
-			charLayerEl.appendChild(stDiv);
-		}
-	}
-	// 敵
-	for (const e of enemies) {
-		const wrapper = addCharEl(e.x, e.y, `enemy-${e.id}`, () => {
-			return makeSprite(e.sprite, e.pal, true);
-		});
-		if (wrapper) {
-			wrapper.dataset.enemyId = e.id;
-			// 魔王オーラ（aura: true の敵に追加）
-			if (ENEMY_META[e.type]?.aura) {
-				const smoke = document.createElement('div');
-				smoke.className = 'dark-lord-aura-smoke';
-				wrapper.appendChild(smoke);
-				const ring2 = document.createElement('div');
-				ring2.className = 'dark-lord-aura-2';
-				wrapper.appendChild(ring2);
-				const ring1 = document.createElement('div');
-				ring1.className = 'dark-lord-aura';
-				wrapper.appendChild(ring1);
-			}
-		}
-	}
-}
-
-// float 座標 (x, y) にキャラ要素を配置して返す
-function addCharEl(x, y, id, makeSpriteFn) {
-	if (!charLayerEl) return null;
-	const cellPx = getCellPx();
-	const div    = document.createElement('div');
-	div.className = 'char-abs';
-	div.id        = `char-${id}`;
-	div.style.left = `${x * cellPx}px`;
-	div.style.top  = `${y * cellPx}px`;
-	const cv = makeSpriteFn();
-	if (cv) div.appendChild(cv);
-	charLayerEl.appendChild(div);
-	return div;
-}
-
-// 既存の char 要素の位置だけ更新（再生成しない）
-function moveCharEl(id, x, y) {
-	const el = document.getElementById(`char-${id}`);
-	if (!el) return;
-	const cellPx   = getCellPx();
-	el.style.left  = `${x * cellPx}px`;
-	el.style.top   = `${y * cellPx}px`;
-}
-
-function removeCharEl(id) {
-	const el = document.getElementById(`char-${id}`);
-	if (el) el.remove();
-}
 
 function getHeroSpriteName() {
+	// Phase 5.5g3: 剣を振っている間だけ「構えのポーズ」に差し替える（初代ゼルダ式の
+	// 2レイヤー構成の①）。player._atkUntil は論理時間（combat.js が設定、
+	// tickAttackPose が戻す）＝step() の手動 tick でも実ループでも同じ挙動になる。
+	const atk = player?._atkUntil != null && gameNow() < player._atkUntil;
+	if (atk) {
+		return { down: 'heroDAtk', right: 'heroRAtk', left: 'heroRAtk', up: 'heroUAtk' }[heroDir] ?? 'heroDAtk';
+	}
 	return { down: 'heroD', right: 'heroR', left: 'heroR', up: 'heroU' }[heroDir] ?? 'heroD';
 }
 
@@ -714,185 +470,560 @@ function getHeroPalName() {
 	return hasCleared() ? 'princess' : 'hero';
 }
 
-// ── HUD ──────────────────────────────────────────────────────
-function updateHud() {
-	// ハートをスプライト canvas で描画（半ハート対応）
-	heartsEl.innerHTML = '';
-	for (let i = 0; i < player.maxHearts; i++) {
-		let sprName, palName;
-		const hpForThis = player.hp - i * HP_PER_HEART;
-		if (hpForThis >= HP_PER_HEART) {
-			sprName = 'heart'; palName = 'heart';
-		} else if (hpForThis === 1) {
-			sprName = 'heartHalf'; palName = 'heartHalf';
-		} else {
-			sprName = 'heartEmpty'; palName = 'heartEmpty';
-		}
-		const frames = SPRITES[sprName];
-		const palette = PAL[palName];
-		if (frames && palette) {
-			const cv = document.createElement('canvas');
-			const grid = frames[0];
-			cv.width  = grid[0].length;
-			cv.height = grid.length;
-			cv.style.cssText = 'width:16px;height:16px;image-rendering:pixelated;display:inline-block;flex-shrink:0;';
-			const ctx = cv.getContext('2d');
-			for (let r = 0; r < grid.length; r++) {
-				for (let c = 0; c < grid[0].length; c++) {
-					const idx = grid[r][c];
-					if (idx === 0) continue;
-					ctx.fillStyle = palette[idx] ?? 'transparent';
-					ctx.fillRect(c, r, 1, 1);
-				}
-			}
-			heartsEl.appendChild(cv);
-		}
-	}
-	equipSwordEl.classList.toggle('has-item',  !!player.weapon);
-	equipShieldEl.classList.toggle('has-item', !!player.shield);
-	equipArmorEl.classList.toggle('has-item',  !!player.armor);
-	document.getElementById('hud-rupees').textContent   = player.rupees;
-	document.getElementById('hud-triforce').textContent = player.triforceCount;
-	const ai = player.activeSubItem;
-	if (ai && player.subItems[ai]) {
-		const meta = ITEM_META[ai];
-		subIconEl.textContent  = meta?.icon ?? ai;
-		const cnt = player.subItems[ai].count;
-		subCountEl.textContent = (cnt && cnt !== Infinity) ? `×${cnt}` : '';
-	} else {
-		subIconEl.textContent  = '—';
-		subCountEl.textContent = '';
-	}
+// ── Phase 0-2 で factory（外部モジュール）に切り出した関数の事前宣言 ────────
+// 各 factory は createXxx(deps) で生成され、その戻り値で下記 let を上書きする。
+// 旧 function 本体は削除済みなので、ホイスティングに頼らず let で前方宣言する。
+// ── ui.js / input.js ──
+let updateHud        = () => {};
+let pulse            = (t, d) => {};
+let updateShieldHud  = () => {};
+let processHeldKeys  = () => {};
+// ── charge.js（Phase 3-1）──
+let startCharge        = () => {};
+let releaseCharge      = () => {};
+let cancelCharge       = () => {};
+let tickCharge         = () => {};
+let getIsCharging      = () => false;
+let startDialog      = () => {};
+let showDialogLine   = () => {};
+let advanceDialog    = () => {};
+let togglePause      = () => {};
+let renderPauseMenu  = () => {};
+let renderPauseDungeonMap = () => {};
+let pauseSelectPrev  = () => {};
+let pauseSelectNext  = () => {};
+let openShop         = () => {};
+let closeShop        = () => {};
+let renderShop       = () => {};
+let shopSelectPrev   = () => {};
+let shopSelectNext   = () => {};
+let shopBuy          = () => {};
+let openDialog       = () => {};
+let maybeShowSubItemHint = () => {};
+// updateDungeonHud は上で function 宣言済みなので let 不要
+// ── projectile.js / enemy-ai.js ──
+let addProjectile    = () => {};
+let getProjectiles   = () => [];
+let enemyTick           = () => {};
+let enemyChase          = () => {};
+let bossTickHitAndAway  = () => {};
+let enemyAttack         = () => {};
+let checkEnemyContact   = () => {};
+let fireEnemyProjectile = () => {};
+let projectileTick       = () => {};
+let clearProjectiles     = () => {};
+let clearBombs           = () => {};
+let bombTick             = () => {};
+let placeBomb            = () => {};
+let isShieldBlocking     = () => false;
+let isShieldBlockingDir  = () => false;
+let showShieldBlockEffect= () => {};
+let showExplosionEffect  = () => {};
+// ── player.js ──
+let movePlayer          = () => {};
+let handleTileEvent     = () => {};
+let tryPushStone        = () => {};
+let checkSwitchOff      = () => {};
+let giveSubItem         = () => {};
+let gainHeartContainer  = () => {};
+let spawnDropEffect     = () => {};
+let toggleFlight        = () => {};
+let collectFieldItem    = () => null;
+let finalizeCarried     = () => {};
+let restoreCarried      = () => {};
+let equipSwordTier      = () => false;
+let equipArmorTier      = () => false;
+let equipShieldTier     = () => false;
+let equipBoomerangTier  = () => false;
+let grantReward         = () => '';
+let toggleSwitch        = () => {};
+let setActiveColor      = () => {};
+// ── combat.js ──
+let swordAttack         = () => {};
+let drawSwordHeld       = () => {};
+let clearSwordHeld      = () => {};
+let ensureSwordHeld     = () => {};
+let dealDamageToEnemy   = () => {};
+let takeDamage          = () => {};
+let gameOver            = () => {};
+let showDmgPopupFloat   = () => {};
+let killEnemy           = () => {};
+// ── boss.js ──
+let onBossDefeated      = () => {};
+let startBossBattle     = () => {};
+let startEnding         = () => {};
+let updateBossHpBar     = () => {};
+let checkBossPhase      = () => {};
+let checkTriforceClear  = () => {};
+let checkPendingTriforce= () => {};
+let showBossHpBar       = () => {};
+let hideBossHpBar       = () => {};
+let showBossRoomLockEffect = () => {};
+// ── 描画系（render-board.js / render-chars.js）──
+let renderBoard;
+let renderChars;
+let addCharEl;
+let moveCharEl;
+let removeCharEl;
+let addShieldOverlay;
+let updatePlayerCharEl;
+
+// ── 状態フラグ getter/setter（Phase 0-2 Step 4: ui.js / input.js に注入するため）──
+// game.js の let 変数を外部モジュールが読み書きできるよう getter/setter を用意する。
+// 直接参照を避けることで read-only binding 問題を回避する。
+function getIsDialog()    { return isDialog; }
+function setIsDialog(v)   { isDialog = v; }
+function getIsShop()      { return isShop; }
+function setIsShop(v)     { isShop = v; }
+function getIsPaused()    { return isPaused; }
+function setIsPaused(v)   { isPaused = v; }
+function getIsShielding() { return isShielding; }
+function setIsShielding(v){ isShielding = v; }
+
+// ── 通行可否・条件評価（Phase 0-2 Step 2: passable.js / conditions.js へ切り出し）──
+// これらの関数は再代入される可変状態を参照するため、状態 getter と依存関数を
+// factory に注入して生成する（getter 経由で常に最新状態を読む）。生成された
+// 関数は呼び出し側を変えずにそのまま使える。
+const { isPassable, tilePassable, isPassableForEnemy, ladderOrientationAt, isWaterAt } = createPassable({
+	getStageData:    () => stageData,
+	getEnemies:      () => enemies,
+	getPlayer:       () => player,
+	getCurrentLayer: () => currentLayer,
+	getStageKey:     () => stageKey,
+	getDebugMode:    () => debugMode,
+	getSS,
+	toTileRow,
+	toTileCol,
+});
+
+const { checkStoneOnSwitch, evaluateConditions, refreshGates } = createConditions({
+	getStageData:    () => stageData,
+	getEnemies:      () => enemies,
+	getPlayer:       () => player,
+	getCurrentLayer: () => currentLayer,
+	getStageKey:     () => stageKey,
+	getSS,
+	toTileRow,
+	toTileCol,
+	renderBoard:     () => renderBoard(),
+	renderChars:     () => renderChars(),
+});
+
+// ── 描画系（Phase 0-2 Step 3: render-board.js / render-chars.js へ切り出し）──────
+// render-board は charLayerElRef.value に新しい charLayerEl を書き込み、
+// render-chars はその .value を読む。game.js は charLayerEl も同期させる。
+{
+	const _rb = createRenderBoard({
+		getStageData:    () => stageData,
+		getCurrentLayer: () => currentLayer,
+		getStageKey:     () => stageKey,
+		getSS,
+		getBoardEl:      () => boardEl,
+		getStageLabelEl: () => stageLabelEl,
+		charLayerElRef,
+		getDoorwayState,
+	});
+
+	const _rc = createRenderChars({
+		getPlayer:         () => player,
+		getEnemies:        () => enemies,
+		getCurrentLayer:   () => currentLayer,
+		getStageKey:       () => stageKey,
+		getStageData:      () => stageData,
+		getHeroDir:        () => heroDir,
+		getSS,
+		getCellPx,
+		charLayerElRef,
+		getHeroSpriteName: () => getHeroSpriteName(),
+		getHeroPalName:    () => getHeroPalName(),
+		getGameNow:        () => gameNow(),
+		ladderOrientationAt,
+	});
+
+	// factory が生成した関数で旧実装を上書き
+	// renderBoard は呼び出し後に charLayerEl を同期する（game.js 内の直接参照のため）
+	renderBoard = () => { _rb.renderBoard(); charLayerEl = charLayerElRef.value; };
+	renderChars = _rc.renderChars;
+	addCharEl   = _rc.addCharEl;
+	moveCharEl  = _rc.moveCharEl;
+	removeCharEl= _rc.removeCharEl;
+	addShieldOverlay    = _rc.addShieldOverlay;
+	updatePlayerCharEl  = _rc.updatePlayerCharEl;
 }
 
-function pulse(text, duration = 2000) {
-	if (msgTimer) clearTimeout(msgTimer);
-	msgBarEl.textContent = text;
-	msgBarEl.classList.remove('hidden');
-	msgTimer = setTimeout(() => msgBarEl.classList.add('hidden'), duration);
+// ── UI・入力（Phase 0-2 Step 4: ui.js / input.js へ切り出し）────────────────
+// createUi: HUD/ポーズ/ダイアログ/ショップを factory で生成し旧実装を上書き
+// initInput: キーボード・モバイル・スワイプリスナーを登録し heldKeys / processHeldKeys を返す
+{
+	const _ui = createUi({
+		getPlayer:         () => player,
+		getMapData:        () => mapData,
+		getCurrentLayer:   () => currentLayer,
+		getStageKey:       () => stageKey,
+		getSS,
+		startGameLoop,
+		stopGameLoop,
+		saveGame,
+		getIsDialog,  setIsDialog,
+		getIsShop,    setIsShop,
+		getIsPaused,  setIsPaused,
+		getIsShielding, setIsShielding,
+	});
+
+	// factory が生成した関数で旧実装を上書き
+	updateHud        = _ui.updateHud;
+	pulse            = _ui.pulse;
+	updateDungeonHud = _ui.updateDungeonHud;
+	updateShieldHud  = _ui.updateShieldHud;
+	startDialog      = (r, c, tileChar) => _ui.startDialog(r, c, tileChar, stageData, NPC_DEFAULT_DIALOG, player);
+	showDialogLine   = _ui.showDialogLine;
+	advanceDialog    = _ui.advanceDialog;
+	togglePause      = _ui.togglePause;
+	renderPauseMenu  = _ui.renderPauseMenu;
+	renderPauseDungeonMap = _ui.renderPauseDungeonMap;
+	pauseSelectPrev  = _ui.pauseSelectPrev;
+	pauseSelectNext  = _ui.pauseSelectNext;
+	openShop         = _ui.openShop;
+	closeShop        = _ui.closeShop;
+	renderShop       = _ui.renderShop;
+	shopSelectPrev   = _ui.shopSelectPrev;
+	shopSelectNext   = _ui.shopSelectNext;
+	shopBuy          = () => _ui.shopBuy(giveSubItem, updateHud, grantReward, () => currentLayer, () => stageKey);
+	openDialog       = (name, lines) => _ui.openDialog(name, lines);
+
+	// maybeShowSubItemHint は ui.js の openDialog を通して開く
+	maybeShowSubItemHint = () => {
+		if (player._shownSubItemHint) return;
+		player._shownSubItemHint = true;
+		_ui.openDialog('！ ヒント', [
+			'サブアイテムを手に入れた！',
+			'Escapeキー（または ≡ボタン）を押すと\nアイテム切り替え画面を開けます。',
+			'左右キーでBボタンに使うアイテムを\n切り替えることができます。',
+		]);
+	};
+
+	const _in = initInput({
+		getIsDialog:     () => getIsDialog(),
+		getIsShop:       () => getIsShop(),
+		getIsPaused:     () => getIsPaused(),
+		getIsShielding:  () => getIsShielding(),
+		setIsShielding,
+		movePlayer:  (dir) => movePlayer(dir),
+		swordAttack: () => swordAttack(),
+		startCharge:   () => startCharge(),
+		releaseCharge: () => releaseCharge(),
+		useSubItem:  () => useSubItem(),
+		toggleFlight: () => toggleFlight(),
+		togglePause,
+		toggleDebugMode,
+		advanceDialog,
+		closeShop,
+		shopSelectPrev,
+		shopSelectNext,
+		shopBuy,
+		pauseSelectPrev,
+		pauseSelectNext,
+		hasCleared,
+		updateShieldHud,
+	});
+
+	// heldKeys と processHeldKeys を factory 生成版で上書き
+	// _inputModule に保存することで window.__game 定義後も参照できる
+	processHeldKeys = _in.processHeldKeys;
+	_inputModule = _in;  // window.__game の queueInput/releaseInput から参照するため保持
 }
 
-// ── 通行可否（半セル移動 対応） ───────────────────────────────
-// x/y はキャラの「左上角」のセル単位 float 座標
-// キャラは 1×1 セルの大きさ
-//
-// キャラが占めるタイル範囲：
-//   列方向: floor(x) 〜 floor(x + 0.999)  （x が整数のとき 1列、0.5のとき 2列）
-//   行方向: floor(y) 〜 floor(y + 0.999)
-//
-// 例: x=1.5 → 列 1 と 列 2 に跨る → 両方チェック
-function isPassable(nx, ny) {
-	if (!stageData) return false;
-	const c0 = Math.floor(nx);
-	const c1 = Math.floor(nx + 0.999);
-	const r0 = Math.floor(ny);
-	const r1 = Math.floor(ny + 0.999);
+// ── 投擲物・爆弾 / 敵AI（Phase 0-2 Step 5: projectile.js / enemy-ai.js へ切り出し）──
+// createProjectile / createEnemyAi の factory を生成し、旧インライン実装を上書きする。
+// deps は getters 経由で常に最新の game.js 状態を読む。
+{
+	const _proj = createProjectile({
+		getStageData:       () => stageData,
+		getPlayer:          () => player,
+		getEnemies:         () => enemies,
+		getCurrentLayer:    () => currentLayer,
+		getStageKey:        () => stageKey,
+		getHeroDir:         () => heroDir,
+		getCharLayerEl:     () => charLayerEl,
+		getCellPx,
+		toTileRow,
+		toTileCol,
+		gameNow,
+		getSS,
+		dealDamageToEnemy:  (e, dmg, atkType, srcX, srcY) => dealDamageToEnemy(e, dmg, atkType, srcX, srcY),
+		takeDamage:         (amt) => takeDamage(amt),
+		evaluateConditions: () => evaluateConditions(),
+		renderBoard:        () => renderBoard(),
+		renderChars:        () => renderChars(),
+		saveGame:           () => saveGame(),
+		updateHud:          () => updateHud(),
+		pulse:              (t, d) => pulse(t, d),
+		hasCleared,
+		collectFieldItem:   (r, c) => collectFieldItem(r, c),
+		collectFloorDrop:   (r, c) => collectBoomerangDrop(r, c),
+		finalizeCarried:    (carried) => finalizeCarried(carried),
+		restoreCarried:     (carried) => restoreCarried(carried),
+		toggleSwitch:       (r, c) => toggleSwitch(r, c),
+		setActiveColor:     (r, c) => setActiveColor(r, c),
+		// Phase 7-2: 盾は剣振り中・チャージ中はオフ
+		getLastSwordTime:   () => lastSwordTime,
+		getIsCharging:      () => getIsCharging(),
+	});
 
-	for (let r = r0; r <= r1; r++) {
-		for (let c = c0; c <= c1; c++) {
-			// マップ外 → ステージ端遷移なので通行可として扱う
-			if (r < 0 || r >= stageData.rows || c < 0 || c >= stageData.cols) continue;
-			if (!tilePassable(r, c)) return false;
-		}
-	}
+	const _ai = createEnemyAi({
+		getStageData:          () => stageData,
+		getPlayer:             () => player,
+		getEnemies:            () => enemies,
+		getHeroDir:            () => heroDir,
+		getCharLayerEl:        () => charLayerEl,
+		getCellPx,
+		toTileRow,
+		toTileCol,
+		gameNow,
+		isPassableForEnemy,
+		moveCharEl:            (id, x, y) => moveCharEl(id, x, y),
+		takeDamage:            (amt) => takeDamage(amt),
+		dealDamageToEnemy:     (e, dmg, atkType) => dealDamageToEnemy(e, dmg, atkType),
+		fireEnemyProjectile:   _proj.fireEnemyProjectile,
+		isShieldBlockingDir:   _proj.isShieldBlockingDir,
+		showShieldBlockEffect: _proj.showShieldBlockEffect,
+		getDebugMode:          () => debugMode,
+		// Phase 5-3: 敵が石を押すパズル
+		getCurrentLayer:       () => currentLayer,
+		getStageKey:           () => stageKey,
+		getSS,
+		tilePassable:          (r, c) => tilePassable(r, c),
+		// Phase 9-6: 両生敵（海の主）の地形別速度に使う水判定
+		isWaterAt:             (r, c) => isWaterAt(r, c),
+		checkStoneOnSwitch:    () => checkStoneOnSwitch(),
+		evaluateConditions:    () => evaluateConditions(),
+		renderBoard:           () => renderBoard(),
+		renderChars:           () => renderChars(),
+	});
 
-	// デバッグモード中は敵すり抜け可能
-	if (debugMode) return true;
-
-	// 移動後の石があるセルには移動できない（範囲チェック）
-	if (stageData && !debugMode) {
-		const _ssp = getSS(currentLayer, stageKey);
-		for (const st of Object.values(_ssp.stonePositions ?? {})) {
-			if (st.r >= r0 && st.r <= r1 && st.c >= c0 && st.c <= c1) return false;
-		}
-	}
-
-	// 敵と同じタイルセルには移動できない（重なり防止）
-	// ※ 「0.6未満」判定だと半セル移動時に動けなくなるため、タイル単位で比較する
-	for (const e of enemies) {
-		if (toTileRow(ny) === toTileRow(e.y) && toTileCol(nx) === toTileCol(e.x)) return false;
-	}
-
-	return true;
+	// factory が生成した関数で旧インライン実装を上書き
+	projectileTick       = _proj.projectileTick;
+	clearProjectiles     = _proj.clearProjectiles;
+	clearBombs           = _proj.clearBombs;
+	bombTick             = _proj.bombTick;
+	placeBomb            = _proj.placeBomb;
+	addProjectile        = (config) => _proj.addProjectile(config);
+	getProjectiles       = () => _proj.getProjectiles();
+	fireEnemyProjectile  = _proj.fireEnemyProjectile;
+	isShieldBlocking     = (proj) => _proj.isShieldBlocking(proj);
+	isShieldBlockingDir  = _proj.isShieldBlockingDir;
+	showShieldBlockEffect= _proj.showShieldBlockEffect;
+	showExplosionEffect  = _proj.showExplosionEffect;
+	enemyTick            = _ai.enemyTick;
+	enemyChase           = _ai.enemyChase;
+	bossTickHitAndAway   = _ai.bossTickHitAndAway;
+	enemyAttack          = _ai.enemyAttack;
+	checkEnemyContact    = _ai.checkEnemyContact;
 }
 
-function tilePassable(r, c) {
-	const tile   = stageData.tiles[r]?.[c];
-	if (!tile) return false;
-	const posKey = `${r},${c}`;
-	const ss     = getSS(currentLayer, stageKey);
-	if (tile === TILE.WALL) return false;
-	if (tile === TILE.WATER) return false;
-	if (tile === TILE.GATE   && !ss.openGates.has(posKey)) return false;
-	// デバッグモード中はドアを素通り（鍵不要）
-	if (tile === TILE.DOOR   && !ss.openedDoors?.has(posKey) && !debugMode) return false;
-	if (tile === TILE.BREAKABLE_WALL && !ss.brokenWalls.has(posKey)) return false;
-	if (NPC_SPRITE_MAP[tile]) return false;
-	// Phase 8: フィールドタイル通行判定
-	if (tile === TILE.TREE)        return false;
-	if (tile === TILE.MOUNTAIN)    return false;
-	if (tile === TILE.FENCE)       return false;
-	if (tile === TILE.HOUSE_WALL)  return false;
-	if (tile === TILE.HOUSE_ROOF)  return false;
-	if (tile === TILE.SIGN)        return false; // 看板は通行不可（隣接して剣で読む）
-	if (tile === TILE.BUSH) {
-		// 茂み：切られていれば通行可
-		if (ss.cutBushes?.has(posKey)) return true;
-		return false;
-	}
-	// 石（STONE）の通行判定：元のタイル位置で判断
-	if (tile === TILE.STONE) {
-		const _ss = getSS(currentLayer, stageKey);
-		// stonePositions に登録されていれば石は移動済み → 元の位置は床として通行可
-		if (_ss.stonePositions?.[posKey]) return true;
-		return false; // 移動されていない → 石がある → 通れない
-	}
-	// Phase 6.5: ドアウェイの通行判定
-	if (tile === TILE.DOORWAY_BOSS || tile === TILE.DOORWAY_LOCKED) {
-		const dwState = ss.doorwayStates?.[posKey];
-		// DOORWAY_LOCKED: 閉じている間は通れない
-		if (tile === TILE.DOORWAY_LOCKED) {
-			const state = dwState ?? 'closed';
-			if (state !== 'open') return false;
-		}
-		// DOORWAY_BOSS: boss_closed 状態は通れない
-		if (tile === TILE.DOORWAY_BOSS) {
-			if (dwState === 'boss_closed') return false;
-		}
-	}
-	return true;
+// ── チャージ攻撃・剣ビーム（Phase 3-1）──────────────────────────
+// addProjectile が上のブロックで設定済みなので、ここで charge factory を生成する。
+{
+	const _charge = createCharge({
+		gameNow,
+		getPlayer:           () => player,
+		getHeroDir:          () => heroDir,
+		getIsDialog:         () => isDialog,
+		getIsPaused:         () => isPaused,
+		getIsGameover:       () => isGameover,
+		getIsTransitioning:  () => isTransitioning,
+		addProjectile:       (config) => addProjectile(config),
+		hasCleared,
+	});
+	startCharge        = _charge.startCharge;
+	releaseCharge      = _charge.releaseCharge;
+	cancelCharge       = _charge.cancelCharge;
+	tickCharge         = _charge.tickCharge;
+	getIsCharging      = _charge.isCharging;
 }
 
-// 敵向けの通行可否（同じ 1セル占有チェック）
-function isPassableForEnemy(ny, nx, self) {
-	if (!stageData) return false;
-	const c0 = Math.floor(nx);
-	const c1 = Math.floor(nx + 0.999);
-	const r0 = Math.floor(ny);
-	const r1 = Math.floor(ny + 0.999);
+// ── プレイヤー / 戦闘 / ボス（Phase 0-2b: player.js / combat.js / boss.js 統合）──
+// 3 モジュールは相互依存（combat→boss の onBossDefeated、player→combat/boss の
+// swordAttack/checkTriforceClear、boss→proj の showExplosionEffect）するため、
+// 1 つのブロックでまとめて factory を生成し、旧インライン実装を上書きする。
+// deps はすべて getter/wrapper 経由なので、後方で宣言される let（bossRoomLocked 等）も
+// 呼び出し時には初期化済みで TDZ にかからない。
+{
+	const _boss = createBoss({
+		getStageData:   () => stageData,
+		getPlayer:      () => player,
+		getEnemies:     () => enemies,
+		setEnemies:     (v) => { enemies = v; },
+		getMapData:     () => mapData,
+		getCurrentLayer:() => currentLayer,
+		getStageKey:    () => stageKey,
+		getCharLayerEl: () => charLayerEl,
+		getBossRoomLocked:  () => bossRoomLocked,
+		setBossRoomLocked:  (v) => { bossRoomLocked = v; },
+		getBossDefeating:   () => _bossDefeating,
+		setBossDefeating:   (v) => { _bossDefeating = v; },
+		getPendingTriforcePieceEl: () => _pendingTriforcePieceEl,
+		setPendingTriforcePieceEl: (v) => { _pendingTriforcePieceEl = v; },
+		getCellPx, toTileRow, toTileCol,
+		getSS,
+		getExitRegistry: () => exitRegistry,
+		evaluateConditions: () => evaluateConditions(),
+		lockBossDoors:   () => lockBossDoors(),
+		unlockBossDoors: () => unlockBossDoors(),
+		renderBoard:  () => renderBoard(),
+		renderChars:  () => renderChars(),
+		updateHud:    () => updateHud(),
+		pulse:        (t, d) => pulse(t, d),
+		saveGame:     () => saveGame(),
+		stopGameLoop, startGameLoop,
+		showExplosionEffect: (r, c) => showExplosionEffect(r, c),
+		// Phase 9-6: stageData.bossReward の授与（player.js の共通付与口を注入）
+		grantReward:  (content) => grantReward(content),
+		bossHpbarEl, bossNameEl, bossHpFillEl,
+		endingOverlayEl,
+		hasCleared, saveCleared,
+		getPendingTriforcePos: () => pendingTriforcePos,
+		setPendingTriforcePos: (v) => { pendingTriforcePos = v; },
+		getCollectingTriforce: () => _collectingTriforce,
+		setCollectingTriforce: (v) => { _collectingTriforce = v; },
+		setIsGameover: (v) => { isGameover = v; },
+	});
 
-	for (let r = r0; r <= r1; r++) {
-		for (let c = c0; c <= c1; c++) {
-			if (r < 0 || r >= stageData.rows || c < 0 || c >= stageData.cols) return false;
-			if (!tilePassable(r, c)) return false;
-		}
-	}
-	// 移動後の石があるセルには通れない
-	if (stageData) {
-		const _sspe = getSS(currentLayer, stageKey);
-		for (const st of Object.values(_sspe.stonePositions ?? {})) {
-			if (toTileRow(ny) === st.r && toTileCol(nx) === st.c) return false;
-		}
-	}
-	// 他の敵と大きく重なっているなら通れない
-	for (const e of enemies) {
-		if (e === self) continue;
-		if (Math.abs(e.x - nx) < 0.6 && Math.abs(e.y - ny) < 0.6) return false;
-	}
-	// プレイヤーと同じタイルセルには移動できない（重なり防止）
-	// 隣接セルへの移動は許可するので体当たり攻撃は成立する
-	if (toTileRow(ny) === toTileRow(player.y) && toTileCol(nx) === toTileCol(player.x)) return false;
-	return true;
+	const _combat = createCombat({
+		getStageData:   () => stageData,
+		getPlayer:      () => player,
+		getEnemies:     () => enemies,
+		setEnemies:     (v) => { enemies = v; },
+		getCurrentLayer:() => currentLayer,
+		getStageKey:    () => stageKey,
+		getHeroDir:     () => heroDir,
+		getCharLayerEl: () => charLayerEl,
+		getIsDialog:    () => isDialog,
+		getIsPaused:    () => isPaused,
+		getIsGameover:  () => isGameover,
+		setIsGameover:  (v) => { isGameover = v; },
+		getInvincibleUntil: () => invincibleUntil,
+		setInvincibleUntil: (v) => { invincibleUntil = v; },
+		getLastSwordTime:   () => lastSwordTime,
+		setLastSwordTime:   (v) => { lastSwordTime = v; },
+		getDebugMode:   () => debugMode,
+		gameNow, getCellPx,
+		toTileRow, toTileCol,
+		getSS,
+		evaluateConditions: () => evaluateConditions(),
+		removeCharEl:  (id) => removeCharEl(id),
+		updatePlayerCharEl: () => updatePlayerCharEl(),
+		updateHud:     () => updateHud(),
+		pulse:         (t, d) => pulse(t, d),
+		saveGame:      () => saveGame(),
+		stopGameLoop, startGameLoop,
+		onBossDefeated:  (b) => _boss.onBossDefeated(b),
+		// Phase 9-6: yieldAt ボス（海の主）の合格判定と戦闘終了演出
+		shouldBossYield: (b) => _boss.shouldBossYield(b),
+		onBossYielded:   (b) => _boss.onBossYielded(b),
+		updateBossHpBar: (b) => _boss.updateBossHpBar(b),
+		checkBossPhase:  (b) => _boss.checkBossPhase(b),
+		openShop:    (sd) => openShop(sd),
+		startDialog: (r, c, t) => startDialog(r, c, t),
+		hasCleared,
+		isShieldBlockingDir:   (dx, dy) => isShieldBlockingDir(dx, dy),
+		showShieldBlockEffect: (x, y) => showShieldBlockEffect(x, y),
+		spawnDropEffect:  (r, c, icon, color) => spawnDropEffect(r, c, icon, color),
+		spawnFloorDrop:   (r, c, type) => spawnFloorDrop(r, c, type),
+		getStageMoves:    () => player.stageMoves ?? 0,
+		toggleSwitch:     (r, c) => toggleSwitch(r, c),
+		setActiveColor:   (r, c) => setActiveColor(r, c),
+		gameoverOverlayEl,
+		openSignDialog: (sd) => openDialog(sd.name ?? '看板', sd.lines ?? ['（何も書かれていない）']),
+		renderBoard:  () => renderBoard(),
+		renderChars:  () => renderChars(),
+	});
+
+	const _player = createPlayer({
+		getStageData:   () => stageData,
+		getPlayer:      () => player,
+		getEnemies:     () => enemies,
+		getCurrentLayer:() => currentLayer,
+		getStageKey:    () => stageKey,
+		getHeroDir:     () => heroDir,
+		setHeroDir:     (v) => { heroDir = v; },
+		getCharLayerEl: () => charLayerEl,
+		getIsDialog:    () => isDialog,
+		getIsPaused:    () => isPaused,
+		getIsGameover:  () => isGameover,
+		getIsTransitioning: () => isTransitioning,
+		getIsCharging:  () => getIsCharging(),
+		drawSwordHeld:  () => drawSwordHeld(),
+		getLastStonePushTime: () => lastStonePushTime,
+		setLastStonePushTime: (v) => { lastStonePushTime = v; },
+		getLastSwordTime:     () => lastSwordTime,
+		setLastSwordTime:     (v) => { lastSwordTime = v; },
+		gameNow, getCellPx,
+		toTileRow, toTileCol,
+		getSS,
+		isPassable:   (nx, ny, axis) => isPassable(nx, ny, axis),
+		tilePassable: (r, c) => tilePassable(r, c),
+		checkStoneOnSwitch: () => checkStoneOnSwitch(),
+		evaluateConditions: () => evaluateConditions(),
+		refreshGates: () => refreshGates(),
+		checkStageTransition: () => checkStageTransition(),
+		updatePlayerCharEl: () => updatePlayerCharEl(),
+		moveCharEl:   (id, x, y) => moveCharEl(id, x, y),
+		renderBoard:  () => renderBoard(),
+		renderChars:  () => renderChars(),
+		updateHud:    () => updateHud(),
+		pulse:        (t, d) => pulse(t, d),
+		saveGame:     () => saveGame(),
+		stopGameLoop, startGameLoop,
+		checkTriforceClear:   () => _boss.checkTriforceClear(),
+		offerAtAltar:         () => _boss.offerAtAltar(),
+		maybeShowSubItemHint: () => maybeShowSubItemHint(),
+		getHeroSpriteName, getHeroPalName,
+		hasCleared,
+		updateDungeonHud: (lk) => updateDungeonHud(lk),
+		pickupFloorDropAt: (r, c) => pickupFloorDropAt(r, c),
+	});
+
+	// factory が生成した関数で旧インライン実装を上書き
+	movePlayer        = _player.movePlayer;
+	handleTileEvent   = _player.handleTileEvent;
+	tryPushStone      = _player.tryPushStone;
+	checkSwitchOff    = _player.checkSwitchOff;
+	toggleSwitch      = _player.toggleSwitch;
+	setActiveColor    = _player.setActiveColor;
+	giveSubItem       = _player.giveSubItem;
+	gainHeartContainer= _player.gainHeartContainer;
+	spawnDropEffect   = _player.spawnDropEffect;
+	toggleFlight      = _player.toggleFlight;
+	collectFieldItem  = _player.collectFieldItem;
+	finalizeCarried   = _player.finalizeCarried;
+	restoreCarried    = _player.restoreCarried;
+	equipSwordTier    = _player.equipSwordTier;
+	equipArmorTier    = _player.equipArmorTier;
+	equipShieldTier   = _player.equipShieldTier;
+	equipBoomerangTier = _player.equipBoomerangTier;
+	grantReward       = _player.grantReward;
+
+	swordAttack       = _combat.swordAttack;
+	drawSwordHeld     = _combat.drawSwordHeld;
+	clearSwordHeld    = _combat.clearSwordHeld;
+	ensureSwordHeld   = _combat.ensureSwordHeld;
+	dealDamageToEnemy = _combat.dealDamageToEnemy;
+	takeDamage        = _combat.takeDamage;
+	gameOver          = _combat.gameOver;
+	showDmgPopupFloat = _combat.showDmgPopupFloat;
+	killEnemy         = _combat.killEnemy;
+
+	onBossDefeated    = _boss.onBossDefeated;
+	startBossBattle   = _boss.startBossBattle;
+	startEnding       = _boss.startEnding;
+	updateBossHpBar   = _boss.updateBossHpBar;
+	checkBossPhase    = _boss.checkBossPhase;
+	checkTriforceClear= _boss.checkTriforceClear;
+	checkPendingTriforce = _boss.checkPendingTriforce;
+	showBossHpBar     = _boss.showBossHpBar;
+	hideBossHpBar     = _boss.hideBossHpBar;
+	showBossRoomLockEffect = _boss.showBossRoomLockEffect;
 }
 
 // ── ドアウェイシステム（Phase 6.5） ──────────────────────────
@@ -954,6 +1085,96 @@ function unlockLockedDoor(posKey) {
 	renderBoard(); renderChars();
 }
 
+// 徒歩で決して立てない「壁」タイル集合（山・木・柵・水・穴・空・家・看板・
+// かがり火・スイッチ等）＝**タイル種別だけで確定する**もの。
+// connectivity.mjs の HARD_BLOCKED と同じ基準 → traps 指標とエンジン挙動が一致。
+//
+// ⚠️ Phase 9-6 ⑥-landing（2026-07-29）: 開閉しうるタイルはここに入れない＝
+// STATEFUL_TILES（'T'/'='/'('/')'/'!'/'|'/'u'/'*'）は着地先の ss を見て「今」の
+// 状態で判定する（arrivalIsWall）。従来は '|' を常に壁（開いていても着地拒否＝
+// 過剰ブロック）・'T'/'='/'!' 等を常に素通り（閉じていても着地許可＝門のすり抜け）
+// として扱っていた＝どちらも「状態を見ていない」1つの判定漏れだった。
+// ⚠️ SWITCH/SWITCH_RED/SWITCH_BLUE/TORCH は tilePassable では通行可だが、着地では
+// 従来どおり常にブロックを維持する（footprintBlocked/traps の既存ベースラインの前提）。
+const ARRIVAL_WALL_TILES = new Set([
+	TILE.WALL, TILE.WATER, TILE.LAVA, TILE.SKY, TILE.PIT,
+	TILE.SWITCH, TILE.SWITCH_RED, TILE.SWITCH_BLUE,
+	TILE.TREE, TILE.MOUNTAIN, TILE.FENCE,
+	TILE.HOUSE_WALL, TILE.HOUSE_ROOF, TILE.SIGN, TILE.TORCH,
+]);
+for (const ch of Object.keys(NPC_SPRITE_MAP)) ARRIVAL_WALL_TILES.add(ch);
+
+// 着地セルが「今」通行不可か（種別で確定する壁 or 状態を見て閉じている開閉タイル）。
+// tilePassable（passable.js）と statefulTileClosed を共有する＝同じ条件を2箇所に
+// 書かないことで「通行判定は状態を見るのに着地判定は見ない」食い違いを防ぐ。
+function arrivalTileBlocked(tile, posKey, destSS) {
+	if (ARRIVAL_WALL_TILES.has(tile)) return true;
+	// 2026-08-06 バグ修正（ユーザー報告「鍵をとって左のステージに移動したらドアの上に埋まって
+	// 動けなくなった」）: 閉じた鍵扉への着地を拒否する。
+	// 旧実装は 'D' を常に着地可としていた（「境界を跨ぐとき source 側の通行判定が先に鍵を
+	// ガードする」＝越えられた時点で開いている、という前提だった）。ところが扉の開閉は
+	// **部屋ごと**（ss.openedDoors／player.js collectDoorRun は部屋内の連結成分だけ）∴
+	// 同じ扉を両画面に D で描くと、手前側を開けて抜けた先の D は閉じたまま残り、その
+	// **閉じた扉セルの中に着地**する。半セル移動＋floor(v+0.5) のタイル解決では、そこから
+	// 4方向すべての次の半歩が同じ扉セルに解決される＝一切動けない（鍵は消費済みで自力では
+	// 開けられず、セーブにも残る恒久詰み）。⑥-landing 以前は半セル着地で当たり箱が内側の床に
+	// 半分乗り、閉じた扉をすり抜けて入れていた＝上のコメント (b) のバグで偶然通れていた。
+	// ここでブロックすると、鍵が足りないまま境界扉へ向かった時点で遷移が拒否される（＝
+	// 押し戻して元の部屋に留まる）。両面 D 自体は migrate-boundary-doors.mjs で片面化済み。
+	if (tile === TILE.DOOR) return !destSS?.openedDoors?.has(posKey);
+	if (STATEFUL_TILES.has(tile)) return statefulTileClosed(tile, posKey, destSS);
+	return false;   // 床・';' 通路・':' ボス扉など＝着地可
+}
+
+// Phase 9-6: 水は tiles 層でも bgTiles 下地でもよい（水の単一ソース化で湖/海/堀は
+// bgTiles '~' へ移行済み）。まだロードしていない遷移先ステージの (r,c) の「実効タイル」を
+// 返す＝tiles 水 OR bgTiles 水なら '~'。passable.js の isWaterAt と同じ畳み込みを、
+// stageData 未ロードの遷移先タイル配列に対して自己完結で行う。
+function effArrivalTile(stage, r, c) {
+	const t = stage.tiles?.[r]?.[c];
+	if (t === TILE.WATER) return t;
+	if (stage.bgTiles?.[`${r},${c}`] === TILE.WATER) return TILE.WATER;
+	return t;
+}
+
+// 遷移先ステージの着地 footprint が徒歩不可の壁を含むか？（すり抜け防止判定）。
+// Phase 9-6 ⑥-landing（2026-07-29）以降、着地座標は整数セル＝footprint は 1×1 セル
+// だが、飛行や将来の半セル着地でも壊れないよう floor(n)〜floor(n+0.999) の走査は残す
+// （整数なら r0===r1 で1セルだけを見る）。
+// 水/穴は、はしご所持かつ 1セル幅の橋なら渡れるので壁扱いしない。
+// destSS は着地先ステージの stageState＝開閉しうるタイル（門/破壊壁/茂み/石）の
+// 「今」の状態を見るために必要（種別だけで判定すると閉じた門をすり抜ける）。
+function arrivalIsWall(destStage, nRow, nCol, destSS) {
+	const r0 = Math.floor(nRow), r1 = Math.floor(nRow + 0.999);
+	const c0 = Math.floor(nCol), c1 = Math.floor(nCol + 0.999);
+	for (let r = r0; r <= r1; r++) {
+		for (let c = c0; c <= c1; c++) {
+			const tile = effArrivalTile(destStage, r, c);  // tiles 水/bgTiles 水を '~' に畳む
+			if (tile === undefined) continue;         // 範囲外セルは無視（端クランプ側）
+			if (!arrivalTileBlocked(tile, `${r},${c}`, destSS)) continue;
+			if (player.hasLadder && (tile === TILE.WATER || tile === TILE.PIT)
+				&& isBorderLadderBridge(destStage, r, c, destSS)) continue;   // 溶岩は含めない（はしごで渡れない）
+			return true;                              // footprint 内に壁 → めり込む
+		}
+	}
+	return false;
+}
+
+// 遷移先の (r,c) が、はしごで渡れる 1セル幅の水/穴橋か（軸不問）。橋脚＝水/穴/
+// 壁でない通行可タイル。passable.js の isLadderBridge と同じ考え方を、まだロード
+// していない遷移先ステージのタイル配列に対して自己完結で判定する。
+function isBorderLadderBridge(s, r, c, destSS) {
+	const bank = (br, bc) => {
+		const t = effArrivalTile(s, br, bc);         // tiles 水/bgTiles 水を '~' に畳む
+		if (t === undefined) return false;
+		if (t === ' ') return true;                 // 床
+		// 壁でも水/穴でもない＝陸（bgTiles 水は橋脚にならない）。閉じた門も橋脚にならない
+		// ＝passable.js isLadderBank が tilePassable を要求するのと同じ基準。
+		return !arrivalTileBlocked(t, `${br},${bc}`, destSS);
+	};
+	return (bank(r - 1, c) && bank(r + 1, c)) || (bank(r, c - 1) && bank(r, c + 1));
+}
+
 // ── ステージ端遷移チェック ────────────────────────────────────
 function checkStageTransition() {
 	if (isTransitioning) return;
@@ -969,12 +1190,43 @@ function checkStageTransition() {
 	let newRow = Math.round(y), newCol = Math.round(x);
 	const [sx, sy] = stageKey.split(',').map(Number);
 
-	if (y < 0)    { newKey = `${sx},${sy - 1}`; newRow = rows - 1.5; newCol = x; }
-	else if (y >= rows) { newKey = `${sx},${sy + 1}`; newRow = 0.5; newCol = x; }
-	else if (x < 0)    { newKey = `${sx - 1},${sy}`; newRow = y; newCol = cols - 1.5; }
-	else if (x >= cols) { newKey = `${sx + 1},${sy}`; newRow = y; newCol = 0.5; }
+	// Phase 9-6 ⑥-landing（2026-07-29）: 着地は「境界セルそのもの」の整数座標。
+	// 旧実装は境界から半セル内側（0.5 / rows-1.5）に落としていた＝プレイヤーの当たり箱
+	// （1セル幅）が境界の行/列と1つ内側の行/列の**2行に跨る**ため、
+	//   (a) 1つ内側に石/看板/スイッチがあると遷移が無言でキャンセルされる（見えない壁・
+	//       ユーザーが実プレイで踏んだ 68件）／
+	//   (b) 逆に境界セルが閉じた門だと、当たり箱が内側の床に半分乗るので**門をすり抜けて**
+	//       入れてしまう
+	// の両方が起きていた。整数着地なら footprint は境界セル1つだけ＝どちらも構造的に消える。
+	if (y < 0)    { newKey = `${sx},${sy - 1}`; newRow = rows - 1; newCol = x; }
+	else if (y >= rows) { newKey = `${sx},${sy + 1}`; newRow = 0; newCol = x; }
+	else if (x < 0)    { newKey = `${sx - 1},${sy}`; newRow = y; newCol = cols - 1; }
+	else if (x >= cols) { newKey = `${sx + 1},${sy}`; newRow = y; newCol = 0; }
 
 	if (newKey && getStageData(newLayer, newKey)) {
+		// 到着セルが壁（山・木・柵・水など徒歩で立てないタイル）だと、遷移しても
+		// 壁の中にめり込む → そこから隣の床へ動けて「壁をすり抜けた」ように見える
+		// バグになる。到着が徒歩不可なら遷移をキャンセルし、出ようとした方向にだけ
+		// 押し戻して元のステージに留める（反対軸はいじらない＝斜めズレを起こさない）。
+		// ※ 本来は「端が壁に面したマップを作らない」ことで防ぐべき事象だが、エンジン
+		//   側でも入り込みを起こさない安全網を張る（該当マップの是正は別途）。
+		const destStage = getStageData(newLayer, newKey);
+		// 飛行中は水/空へ着地して留まれる（塔の空島入口など）ので遷移を許す。
+		// 徒歩時のみ、到着 footprint が壁ならブロックする（はしごで渡れる 1セル幅の
+		// 水/穴橋は正当な渡りなので通す）。着地は float 座標（newRow/newCol）で判定。
+		// 着地先の状態（開閉しうる門/破壊壁/茂み/石が「今」開いているか）を渡す。
+		// getSS は未登録キーなら初期状態を生成して返す＝未訪問ステージでも安全。
+		if (!player.flying && arrivalIsWall(destStage, newRow, newCol, getSS(newLayer, newKey))) {
+			// 押し戻しも整数へ（着地と対称）。出ようとした軸だけを境界セルに戻す＝
+			// プレイヤーが元々居たセルそのものなので、その場で遷移が再トリガーされない。
+			if (y < 0) player.y = 0;
+			else if (y >= rows) player.y = rows - 1;
+			else if (x < 0) player.x = 0;
+			else if (x >= cols) player.x = cols - 1;
+			moveCharEl('player', player.x, player.y);
+			updatePlayerCharEl();
+			return;
+		}
 		isTransitioning = true;
 		playSound('stageTransition');
 		saveGame();
@@ -985,14 +1237,36 @@ function checkStageTransition() {
 		return;
 	}
 
+	// Phase 1-5: 遷移先ステージが無い端に出てしまった場合（飛行で木境界を
+	// 越えると、隣ステージの無い縁に到達できる）はマップ内へクランプして
+	// 引き戻す。これで「場外の虚空に出て詰む」のを防ぐ。
+	if (newKey && !getStageData(newLayer, newKey)) {
+		const margin = 0.5;
+		player.x = Math.min(Math.max(x, margin), cols - 1 - margin);
+		player.y = Math.min(Math.max(y, margin), rows - 1 - margin);
+		moveCharEl('player', player.x, player.y);
+		updatePlayerCharEl();
+		return;
+	}
+
 	// MAP_ENTER タイル（'>' タイルが実際に置かれている場所のみ発動）
 	// mapEnters のメタデータだけ存在してもタイルが '>' でなければ遷移しない
-	if (Date.now() < mapEnterCooldownUntil) return;
+	if (gameNow() < mapEnterCooldownUntil) return;
 	const r = toTileRow(y), c = toTileCol(x);
 	const posKey = `${r},${c}`;
 	const tileAtPos = stageData.tiles[r]?.[c];
 	const enter  = stageData.mapEnters?.[posKey];
 	if (tileAtPos === TILE.MAP_ENTER && enter?.destId && exitRegistry[enter.destId]) {
+		// Phase 4-2: 隠し入口（showConditions で gate された MAP_ENTER）は、
+		// 条件未達のうちは描画されないだけでなく遷移もしない（笛で出現させるまで通れない）。
+		const ssTr = getSS(currentLayer, stageKey);
+		if (stageData.showConditions?.[posKey] && !ssTr.conditionsMet.has(posKey)) return;
+		// Phase 1-5: 暗黒の塔の入り口は翼の羽衣がないと通れない（飛行ゲート）。
+		// 入り口自体が空島にあり飛行しないと到達できないが、安全策として明示判定する。
+		if (enter.destId === DARK_TOWER_EXIT_ID && !player.hasWingRobe) {
+			pulse('🪽 翼の羽衣が なければ 暗黒の塔へは 渡れない', 2500);
+			return;
+		}
 		const dest = exitRegistry[enter.destId];
 		isTransitioning = true;
 		playSound('stageTransition');
@@ -1001,947 +1275,15 @@ function checkStageTransition() {
 			enterStage(dest.layer, dest.stage, dest.row, dest.col);
 			isTransitioning = false;
 			// 遷移後 1.5 秒間は MAP_ENTER 再遷移を無効化
-			mapEnterCooldownUntil = Date.now() + 1500;
+			mapEnterCooldownUntil = gameNow() + 1500;
 		}, 100);
 	}
 }
 
-// ── ドアを鍵で開ける ─────────────────────────────────────────
-// 移動先セルに TILE.DOOR があり、かつ鍵を持っていれば開扉してから通す
-// 戻り値: true = ドアを開けた（通行可）、false = 鍵なし（通行不可のまま）
-function tryOpenDoor(nr, nc) {
-	const posKey = `${nr},${nc}`;
-	const tile   = stageData?.tiles[nr]?.[nc];
-	if (tile !== TILE.DOOR) return false;
-	const ss = getSS(currentLayer, stageKey);
-	if (ss.openedDoors?.has(posKey)) return true; // 既に開いている
-
-	// 鍵を持っていれば消費して開ける
-	if (player.keys <= 0) {
-		pulse('🗝 鍵がない！', 1500);
-		return false;
-	}
-	player.keys--;
-	if (!ss.openedDoors) ss.openedDoors = new Set();
-	ss.openedDoors.add(posKey);
-
-	// ドア開扉アニメーション
-	showDoorOpenEffect(nr, nc);
-	playSound('gateOpen');
-	pulse('🗝 扉を開けた！', 1500);
-	renderBoard(); renderChars(); updateHud(); saveGame();
-	return true;
-}
-
-// ドアが開くアニメーションエフェクト（タイルセル上でフラッシュ）
-function showDoorOpenEffect(r, c) {
-	const cellPx = getCellPx();
-	// char-layer に一時的なフラッシュ要素を配置
-	if (!charLayerEl) return;
-	const el = document.createElement('div');
-	el.style.cssText = `
-		position:absolute;
-		left:${c * cellPx}px;
-		top:${r * cellPx}px;
-		width:${cellPx}px;
-		height:${cellPx}px;
-		background:rgba(255,220,80,0.75);
-		z-index:20;
-		pointer-events:none;
-		border-radius:4px;
-		animation:door-open-flash 0.5s ease-out forwards;
-	`;
-	charLayerEl.appendChild(el);
-	setTimeout(() => el.remove(), 550);
-}
-
-
-// ── 石を押す処理 ──────────────────────────────────────────────
-// r,c: 石のタイル座標（元のタイル位置 or 移動後位置）
-// dir: 押す方向（プレイヤーの移動方向）
-// origKey: stonePositions のキー（移動後の石の場合）
-// 戻り値: true = 石を押せた
-function tryPushStone(r, c, dir, origKey) {
-	const [pdy, pdx] = DIR_DELTA[dir];
-	const ndr = Math.sign(pdy); // -1, 0, +1
-	const ndc = Math.sign(pdx);
-	const tr = r + ndr; // 石の押し先の行
-	const tc = c + ndc; // 石の押し先の列
-	console.log(`[STONE] tryPushStone(${r},${c}) dir=${dir} → dest=(${tr},${tc}) origKey=${origKey}`);
-	if (tr < 0 || tr >= stageData.rows || tc < 0 || tc >= stageData.cols) { console.log('[STONE] blocked: out of bounds'); return false; }
-	// 押し先が壁・水・ゲート（閉）・他の石などならブロック
-	const destTile = stageData.tiles[tr]?.[tc];
-	const passable = tilePassable(tr, tc);
-	console.log(`[STONE] destTile=${destTile} tilePassable=${passable}`);
-	if (!passable) return false;
-	// 押し先に他の移動済み石がいないか確認
-	const ss = getSS(currentLayer, stageKey);
-	if (!ss.stonePositions) ss.stonePositions = {};
-	for (const st of Object.values(ss.stonePositions)) {
-		if (st.r === tr && st.c === tc) { console.log('[STONE] blocked: another moved stone'); return false; }
-	}
-	// 押し先に敵がいないか
-	for (const e of enemies) {
-		if (toTileRow(e.y) === tr && toTileCol(e.x) === tc) { console.log('[STONE] blocked: enemy'); return false; }
-	}
-
-	// origKey が指定されている場合は既存エントリを更新、なければ新規作成
-	const key = origKey ?? `${r},${c}`;
-	console.log(`[STONE] PUSHED! key=${key} → (${tr},${tc}) stonePositions=`, JSON.stringify(ss.stonePositions));
-	ss.stonePositions[key] = { r: tr, c: tc };
-
-	// スイッチとの判定
-	checkStoneOnSwitch();
-
-	playSound('move');
-	renderBoard();
-	renderChars();
-	evaluateConditions();
-	saveGame();
-	return true;
-}
-
-// 石がスイッチの上に乗っているかチェックしてスイッチ状態を更新
-function checkStoneOnSwitch() {
-	const ss = getSS(currentLayer, stageKey);
-	if (!ss.stonePositions) return;
-	// まずスイッチ状態を「石によるON」をリセット（石がないスイッチはOFF）
-	// ただしプレイヤーが踏んでいる場合は維持する
-	for (let r = 0; r < stageData.rows; r++) {
-		for (let c = 0; c < stageData.cols; c++) {
-			if (stageData.tiles[r][c] !== TILE.SWITCH) continue;
-			const pk = `${r},${c}`;
-			// 石がこのスイッチの上にあるか確認
-			const stoneHere = Object.values(ss.stonePositions).some(st => st.r === r && st.c === c);
-			// プレイヤーが踏んでいるか確認
-			const playerHere = toTileRow(player.y) === r && toTileCol(player.x) === c;
-			if (stoneHere || playerHere) {
-				if (!ss.switchStates[pk]) {
-					ss.switchStates[pk] = true;
-					// スイッチに連動するゲートを開く
-					for (const link of stageData.links ?? []) {
-						if (link.switchId === pk) {
-							ss.openGates.add(link.gateId);
-							playSound('gateOpen');
-						}
-					}
-				}
-			} else {
-				// 石もプレイヤーもいない → スイッチを最初に踏んだプレイヤーによる永続ONでない場合のみOFF
-				// ※ STONE タイル元位置でのスイッチ（石が最初からスイッチの上）は永続ON扱い
-				// プレイヤーが踏んでONになったスイッチは石が離れてもON維持
-				// → 石による一時スイッチ = ss.stoneSwitches に記録している場合のみリセット
-				if (!ss.stoneSwitches) ss.stoneSwitches = new Set();
-				if (ss.stoneSwitches.has(pk)) {
-					ss.switchStates[pk] = false;
-					// 閉じるゲート処理
-					for (const link of stageData.links ?? []) {
-						if (link.switchId === pk) ss.openGates.delete(link.gateId);
-					}
-				}
-			}
-		}
-	}
-	// 今石が乗っているスイッチを stoneSwitches に記録
-	if (!ss.stoneSwitches) ss.stoneSwitches = new Set();
-	for (const st of Object.values(ss.stonePositions)) {
-		const pk = `${st.r},${st.c}`;
-		if (stageData.tiles[st.r]?.[st.c] === TILE.SWITCH) {
-			ss.stoneSwitches.add(pk);
-		}
-	}
-}
-
-// ── プレイヤー移動 ────────────────────────────────────────────
-function movePlayer(dir) {
-	if (isDialog || isPaused || isGameover || isTransitioning) return;
-	heroDir = dir;
-
-	const [dy, dx] = DIR_DELTA[dir];
-	const nx = player.x + dx;
-	const ny = player.y + dy;
-
-	// ── 石の押し判定（整数セル単位） ─────────────────────────
-	// プレイヤーの現在タイル位置から1セル先に石があれば押す
-	const pr = toTileRow(player.y);
-	const pc = toTileCol(player.x);
-	const pdr = Math.sign(dy); // 移動方向（行）
-	const pdc = Math.sign(dx); // 移動方向（列）
-	const nextR = pr + pdr;    // 1セル先の行
-	const nextC = pc + pdc;    // 1セル先の列
-	const ss = getSS(currentLayer, stageKey);
-
-	// 1セル先に石（元位置 or 移動後位置）があるか確認
-	let stoneKey = null;
-	if (stageData.tiles[nextR]?.[nextC] === TILE.STONE && !ss.stonePositions?.[`${nextR},${nextC}`]) {
-		stoneKey = `${nextR},${nextC}`; // 元位置の石
-	} else {
-		// 移動後の石を確認
-		for (const [k, st] of Object.entries(ss.stonePositions ?? {})) {
-			if (st.r === nextR && st.c === nextC) { stoneKey = k; break; }
-		}
-	}
-
-	if (stoneKey !== null) {
-		// 石を押す：クールダウンチェック（重い石はゆっくりしか押せない）
-		const nowSt = Date.now();
-		if (nowSt - lastStonePushTime < STONE_PUSH_COOLDOWN_MS) {
-			// クールダウン中 → 向きだけ変えて終わり（石に触れているが動かせない状態）
-			updatePlayerCharEl();
-			return;
-		}
-		// 石を押す：石の移動先
-		const stoneDestR = nextR + pdr;
-		const stoneDestC = nextC + pdc;
-		// 石の移動先が壁・水等でないか、他の石がないか
-		const stoneDestOk = stageData.tiles[stoneDestR]?.[stoneDestC] != null
-			&& tilePassable(stoneDestR, stoneDestC)
-			&& !Object.values(ss.stonePositions ?? {}).some(st => st.r === stoneDestR && st.c === stoneDestC);
-		if (stoneDestOk) {
-			// 石を1セル移動
-			if (!ss.stonePositions) ss.stonePositions = {};
-			// 石の「元の描画位置」を取得（アニメーション開始座標）
-			const stoneFromR = (ss.stonePositions[stoneKey] ?? { r: nextR, c: nextC }).r;
-			const stoneFromC = (ss.stonePositions[stoneKey] ?? { r: nextR, c: nextC }).c;
-			// 位置を更新（アニメーション後の正式座標）
-			ss.stonePositions[stoneKey] = { r: stoneDestR, c: stoneDestC };
-			lastStonePushTime = nowSt; // クールダウンタイマーを更新
-			checkStoneOnSwitch();
-			evaluateConditions();
-
-			// プレイヤーも1セル整数移動（石を押す時だけ整数単位）
-			player.x = nextC;
-			player.y = nextR;
-			playSound('move');
-
-			// ── 石の移動アニメーション ─────────────────────────
-			// renderBoard()でcharLayerElを再作成してから、
-			// 石をアニメーション付きで描画し、完了後にrenderChars()を呼ぶ
-			renderBoard(); // タイル再描画（charLayerElリセット）
-
-			// プレイヤーを押す前の位置に配置して、石と同じ速度でアニメーション移動
-			const _animCellPx = getCellPx();
-			const _animPlayerDiv = document.createElement('div');
-			_animPlayerDiv.className = 'char-abs';
-			_animPlayerDiv.id = 'char-player';
-			// 移動前の位置（player.x/y はすでに nextC/nextR に更新済みなので元の位置 = pr, pc）
-			_animPlayerDiv.style.left = `${pc * _animCellPx}px`;
-			_animPlayerDiv.style.top  = `${pr * _animCellPx}px`;
-			const _animHeroSpr = getHeroSpriteName();
-			const _animHeroCv  = makeSprite(_animHeroSpr, getHeroPalName(), true, heroDir === 'left');
-			if (_animHeroCv) _animPlayerDiv.appendChild(_animHeroCv);
-			charLayerEl.appendChild(_animPlayerDiv);
-
-			// アニメーションしない他の移動済み石を先に描画（グローも含む）
-			{
-				const _otherCellPx = getCellPx();
-				const _otherStSize = Math.round(_otherCellPx * 0.7) + 'px';
-				for (const [otherKey, otherSt] of Object.entries(ss.stonePositions ?? {})) {
-					if (otherKey === stoneKey) continue; // 今動かしている石はスキップ
-					const otherDiv = document.createElement('div');
-					otherDiv.className = 'char-abs';
-					otherDiv.id = `char-stone-${otherKey.replace(',', '-')}`;
-					otherDiv.style.left   = `${otherSt.c * _otherCellPx}px`;
-					otherDiv.style.top    = `${otherSt.r * _otherCellPx}px`;
-					otherDiv.style.zIndex = '1';
-					const otherCv = document.createElement('canvas');
-					otherCv.style.cssText = `position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:${_otherStSize};height:${_otherStSize};image-rendering:pixelated;`;
-					const _otherFrames = SPRITES['block'];
-					const _otherPal    = PAL['block'];
-					if (_otherFrames && _otherPal) {
-						const _otherGrid = _otherFrames[0];
-						otherCv.width  = _otherGrid[0].length;
-						otherCv.height = _otherGrid.length;
-						const _otherCtx = otherCv.getContext('2d');
-						for (let _r = 0; _r < _otherGrid.length; _r++) {
-							for (let _c = 0; _c < _otherGrid[_r].length; _c++) {
-								const idx = _otherGrid[_r][_c];
-								if (idx === 0) continue;
-								_otherCtx.fillStyle = _otherPal[idx] ?? 'transparent';
-								_otherCtx.fillRect(_c, _r, 1, 1);
-							}
-						}
-					}
-					otherDiv.appendChild(otherCv);
-					// スイッチの上にある石はグロー追加
-					const otherOnSwitch = stageData.tiles[otherSt.r]?.[otherSt.c] === TILE.SWITCH;
-					if (otherOnSwitch) {
-						const glow = document.createElement('div');
-						glow.style.cssText = 'position:absolute;inset:0;background:rgba(80,255,100,0.38);border-radius:3px;box-shadow:0 0 8px 4px rgba(60,255,80,0.6);pointer-events:none;z-index:5;animation:stone-glow 1.2s ease-in-out infinite;';
-						otherDiv.appendChild(glow);
-					}
-					charLayerEl.appendChild(otherDiv);
-				}
-			}
-
-			// 石をアニメーション用要素として古い位置に配置
-			const _animStDiv = document.createElement('div');
-			_animStDiv.className = 'char-abs';
-			_animStDiv.id = `char-stone-${stoneKey.replace(',', '-')}`;
-			_animStDiv.style.zIndex = '1';
-			const _animStSize = Math.round(_animCellPx * 0.7) + 'px';
-			const _animStCv = document.createElement('canvas');
-			_animStCv.style.cssText = `position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:${_animStSize};height:${_animStSize};image-rendering:pixelated;`;
-			const _animFrames = SPRITES['block'];
-			const _animPal    = PAL['block'];
-			if (_animFrames && _animPal) {
-				const _animGrid = _animFrames[0];
-				_animStCv.width  = _animGrid[0].length;
-				_animStCv.height = _animGrid.length;
-				const _animCtx = _animStCv.getContext('2d');
-				for (let _r = 0; _r < _animGrid.length; _r++) {
-					for (let _c = 0; _c < _animGrid[_r].length; _c++) {
-						const idx = _animGrid[_r][_c];
-						if (idx === 0) continue;
-						_animCtx.fillStyle = _animPal[idx] ?? 'transparent';
-						_animCtx.fillRect(_c, _r, 1, 1);
-					}
-				}
-			}
-			_animStDiv.appendChild(_animStCv);
-			// 古い位置に配置してからtransitionで新しい位置へ移動
-			_animStDiv.style.left = `${stoneFromC * _animCellPx}px`;
-			_animStDiv.style.top  = `${stoneFromR * _animCellPx}px`;
-			charLayerEl.appendChild(_animStDiv);
-
-			// 2フレーム待ってからtransitionを有効にして移動
-			// （1回のrAFだと古い位置set→新位置setが同フレームに最適化されtransitionが発動しない場合がある）
-			const _animDuration = STONE_PUSH_COOLDOWN_MS - 60; // クールダウンより少し短く
-			requestAnimationFrame(() => {
-				// 1フレーム目: ブラウザに古い位置を確定させる（レイアウト強制）
-				void _animStDiv.offsetLeft;    // reflow強制
-				void _animPlayerDiv.offsetLeft;
-				requestAnimationFrame(() => {
-					// 2フレーム目: transition設定 + 移動先を指定
-					const _t = `left ${_animDuration}ms linear, top ${_animDuration}ms linear`;
-					_animStDiv.style.transition = _t;
-					_animStDiv.style.left = `${stoneDestC * _animCellPx}px`;
-					_animStDiv.style.top  = `${stoneDestR * _animCellPx}px`;
-					_animPlayerDiv.style.transition = _t;
-					_animPlayerDiv.style.left = `${nextC * _animCellPx}px`;
-					_animPlayerDiv.style.top  = `${nextR * _animCellPx}px`;
-				});
-			});
-
-			// アニメーション完了後に正式再描画
-			// handleTileEvent/checkSwitchOff はここでは呼ばない:
-			// プレイヤーがスイッチの上に乗った場合、renderBoard/renderCharsを呼んでアニメを中断してしまうため
-			updateHud();
-			setTimeout(() => {
-				renderChars();   // transition なし・正式座標で再描画
-				saveGame();
-				handleTileEvent();   // ← アニメ完了後に実行
-				checkSwitchOff();    // ← アニメ完了後に実行
-				checkStageTransition(); // ← アニメ完了後に実行
-			}, _animDuration + 10);
-			return;
-		}
-		// 石を押せない → 向きだけ変える
-		updatePlayerCharEl();
-		return;
-	}
-
-	// 壁チェック（通常移動）
-	if (!isPassable(nx, ny)) {
-		// ドア判定
-		const c0 = Math.floor(nx), c1 = Math.floor(nx + 0.999);
-		const r0 = Math.floor(ny), r1 = Math.floor(ny + 0.999);
-		let doorOpened = false;
-		for (let r = r0; r <= r1 && !doorOpened; r++) {
-			for (let c = c0; c <= c1 && !doorOpened; c++) {
-				if (r < 0 || r >= stageData.rows || c < 0 || c >= stageData.cols) continue;
-				if (stageData.tiles[r]?.[c] === TILE.DOOR) {
-					doorOpened = tryOpenDoor(r, c);
-				}
-			}
-		}
-		if (!doorOpened) {
-			updatePlayerCharEl();
-			return;
-		}
-		if (!isPassable(nx, ny)) {
-			updatePlayerCharEl();
-			return;
-		}
-	}
-
-	player.x = nx;
-	player.y = ny;
-
-	playSound('move');
-	moveCharEl('player', player.x, player.y);
-	updatePlayerCharEl();
-	updateHud();
-
-	handleTileEvent();
-	checkSwitchOff();
-	checkStageTransition();
-}
-
-// プレイヤーがスイッチから離れた時にOFFにする
-function checkSwitchOff() {
-	const ss = getSS(currentLayer, stageKey);
-	let changed = false;
-	for (let r = 0; r < stageData.rows; r++) {
-		for (let c = 0; c < stageData.cols; c++) {
-			if (stageData.tiles[r][c] !== TILE.SWITCH) continue;
-			const pk = `${r},${c}`;
-			if (!ss.switchStates[pk]) continue;
-			// 石が乗っているスイッチは維持
-			const stoneHere = Object.values(ss.stonePositions ?? {}).some(st => st.r === r && st.c === c);
-			if (stoneHere) continue;
-			// プレイヤーが乗っているか
-			const playerHere = toTileRow(player.y) === r && toTileCol(player.x) === c;
-			if (!playerHere) {
-				// プレイヤーが離れた → OFF
-				ss.switchStates[pk] = false;
-				for (const link of stageData.links ?? []) {
-					if (link.switchId === pk) ss.openGates.delete(link.gateId);
-				}
-				changed = true;
-			}
-		}
-	}
-	if (changed) { renderBoard(); renderChars(); evaluateConditions(); saveGame(); }
-}
-
-// 盾オーバーレイを char-abs div に追加する（ゼルダスタイル）
-// ※ .char-abs canvas.sprite に width/height: var(--cell) !important があるため
-//   setProperty('width', ..., 'important') で強制上書きする
-function addShieldOverlay(div) {
-	if (!player.shield) return;
-
-	// 向きに応じてスプライトを選択
-	let spriteName = 'shield';
-	let flipX = false;
-	if (heroDir === 'right') { spriteName = 'shieldSide'; }
-	else if (heroDir === 'left') { spriteName = 'shieldSide'; flipX = true; }
-
-	const cv = makeSprite(spriteName, 'shield', false, flipX);
-	if (!cv) return;
-	cv.style.position      = 'absolute';
-	cv.style.imageRendering= 'pixelated';
-	cv.style.pointerEvents = 'none';
-	// !important で CSS 強制上書き
-	const cellPx = getCellPx();
-
-	if (heroDir === 'down') {
-		// 下向き：右手側（左端）。右に1px、下に1px
-		const sz = Math.round(cellPx * 0.40) + 'px';  // 1回り大きく
-		cv.style.setProperty('width',  sz, 'important');
-		cv.style.setProperty('height', sz, 'important');
-		cv.style.zIndex = '4';
-		cv.style.left   = `${Math.round(cellPx * 0.08 + 1)}px`;
-		cv.style.top    = `${Math.round(cellPx * 0.48 + 1)}px`;
-		cv.style.transform = 'none';
-	} else if (heroDir === 'right') {
-		const w = Math.round(cellPx * 0.17) + 'px';
-		const h = Math.round(cellPx * 0.44) + 'px';
-		cv.style.setProperty('width',  w, 'important');
-		cv.style.setProperty('height', h, 'important');
-		cv.style.zIndex = '4';
-		cv.style.right  = '7px';
-		cv.style.left   = 'auto';
-		cv.style.top    = '50%';
-		cv.style.transform = 'none';
-	} else if (heroDir === 'left') {
-		const w = Math.round(cellPx * 0.17) + 'px';
-		const h = Math.round(cellPx * 0.44) + 'px';
-		cv.style.setProperty('width',  w, 'important');
-		cv.style.setProperty('height', h, 'important');
-		cv.style.zIndex = '4';
-		cv.style.left   = '7px';
-		cv.style.top    = '50%';
-		cv.style.transform = 'none';
-	} else {
-		const sz = Math.round(cellPx * 0.34) + 'px';
-		cv.style.setProperty('width',  sz, 'important');
-		cv.style.setProperty('height', sz, 'important');
-		cv.style.setProperty('z-index', '-1', 'important');
-		const rPx  = Math.round(cellPx * 0.08) - 3;
-		const tPct = Math.round(cellPx * 0.45 + 4);
-		cv.style.right  = `${rPx + 4}px`;
-		cv.style.left   = 'auto';
-		cv.style.top    = `${tPct + 3}px`;
-		cv.style.opacity = '1';
-		cv.style.transform = 'none';
-	}
-	div.appendChild(cv);
-}
-
-// プレイヤーのスプライトだけ差し替え（向き変更時）
-function updatePlayerCharEl() {
-	const el = document.getElementById('char-player');
-	if (!el) return;
-	el.innerHTML = '';
-
-	// 上向きのとき盾を先に追加（プレイヤースプライトの下に表示）
-	if (heroDir === 'up') addShieldOverlay(el);
-
-	const spr   = getHeroSpriteName();
-	const flipX = heroDir === 'left';
-	const cv    = makeSprite(spr, getHeroPalName(), true, flipX);
-	if (cv) el.appendChild(cv);
-
-	// 上向き以外は盾をあとで追加（プレイヤースプライトの上に表示）
-	if (heroDir !== 'up') addShieldOverlay(el);
-}
-
-// ── タイルイベント（踏んだセルを整数変換して判定） ──────────────
-function handleTileEvent() {
-	const r   = toTileRow(player.y);
-	const c   = toTileCol(player.x);
-	const posKey = `${r},${c}`;
-	const tile   = stageData.tiles[r]?.[c];
-	const ss     = getSS(currentLayer, stageKey);
-	if (!tile) return;
-
-	if (tile === TILE.KEY && !ss.pickedKeys.has(posKey)) {
-		ss.pickedKeys.add(posKey); player.keys++;
-		playSound('key'); pulse('🗝 鍵を手に入れた！');
-		renderBoard(); renderChars(); updateHud(); saveGame(); return;
-	}
-	if (tile === TILE.SWITCH) {
-		// プレッシャープレート方式：乗っている間だけON
-		if (!ss.switchStates[posKey]) {
-			ss.switchStates[posKey] = true;
-			playSound('switch');
-			for (const link of stageData.links ?? []) {
-				if (link.switchId === posKey) { ss.openGates.add(link.gateId); playSound('gateOpen'); }
-			}
-			evaluateConditions();
-			renderBoard(); renderChars(); saveGame();
-		}
-		return;
-	}
-	if (tile === TILE.ITEM_SWORD && !ss.pickedKeys.has(posKey)) {
-		ss.pickedKeys.add(posKey);
-		// floorItems に atkBonus が設定されていればそちらを使う
-		const swordBonus = stageData.floorItems?.[posKey]?.atkBonus ?? EQUIP_META.sword?.atkBonus ?? 2;
-		// 現在の武器より強い場合のみ装備を更新（ATKが下がらないようにする）
-		const swordName = stageData.floorItems?.[posKey]?.name ?? '剣';
-		if (!player.weapon) {
-			player.weapon = 'sword';
-			if (!player._equip) player._equip = {};
-			player._equip.swordBonus = swordBonus;
-			player._equip.swordName  = swordName;
-			player.atk += swordBonus;
-			playSound('item'); pulse(`⚔ ${swordName}を手に入れた！（ATK+${swordBonus}）`);
-		} else if (swordBonus > (player._equip?.swordBonus ?? 0)) {
-			const diff = swordBonus - (player._equip?.swordBonus ?? 0);
-			if (!player._equip) player._equip = {};
-			player._equip.swordBonus = swordBonus;
-			player._equip.swordName  = swordName;
-			player.atk += diff;
-			playSound('item'); pulse(`⚔ ${swordName}を手に入れた！（ATK+${diff}）`);
-		} else {
-			playSound('item'); pulse(`⚔ ${swordName}を拾った（今の剣の方が強い）`);
-		}
-		renderBoard(); renderChars(); updateHud(); saveGame(); return;
-	}
-	if (tile === TILE.ITEM_SHIELD && !ss.pickedKeys.has(posKey)) {
-		ss.pickedKeys.add(posKey); player.shield = 'shield';
-		playSound('item'); pulse('🛡 たてを手に入れた！');
-		renderBoard(); renderChars(); updateHud(); saveGame(); return;
-	}
-	if (tile === TILE.ITEM_ARMOR && !ss.pickedKeys.has(posKey)) {
-		ss.pickedKeys.add(posKey);
-		// floorItems に defBonus が設定されていればそちらを使う
-		const armorBonus = stageData.floorItems?.[posKey]?.defBonus ?? EQUIP_META.armor?.defBonus ?? 2;
-		// 現在の防具より強い場合のみ装備を更新（DEFが下がらないようにする）
-		const armorName = stageData.floorItems?.[posKey]?.name ?? '防具';
-		if (!player.armor) {
-			player.armor = 'armor';
-			if (!player._equip) player._equip = {};
-			player._equip.armorBonus = armorBonus;
-			player._equip.armorName  = armorName;
-			player.def += armorBonus;
-			playSound('item'); pulse(`⚚ ${armorName}を手に入れた！（DEF+${armorBonus}）`);
-		} else if (armorBonus > (player._equip?.armorBonus ?? 0)) {
-			const diff = armorBonus - (player._equip?.armorBonus ?? 0);
-			if (!player._equip) player._equip = {};
-			player._equip.armorBonus = armorBonus;
-			player._equip.armorName  = armorName;
-			player.def += diff;
-			playSound('item'); pulse(`⚚ ${armorName}を手に入れた！（DEF+${diff}）`);
-		} else {
-			playSound('item'); pulse(`⚚ ${armorName}を拾った（今の防具の方が強い）`);
-		}
-		renderBoard(); renderChars(); updateHud(); saveGame(); return;
-	}
-	if (tile === TILE.ITEM_BOOMERANG && !ss.pickedKeys.has(posKey)) {
-		ss.pickedKeys.add(posKey);
-		if (!player.subItems.boomerang) {
-			player.subItems.boomerang = { count: Infinity };
-		}
-		if (!player.activeSubItem) player.activeSubItem = 'boomerang';
-		playSound('item'); pulse('🪃 ブーメランを手に入れた！');
-		renderBoard(); renderChars(); updateHud(); saveGame();
-		maybeShowSubItemHint(); return;
-	}
-	if (tile === TILE.ITEM_BOMB && !ss.pickedKeys.has(posKey)) {
-		ss.pickedKeys.add(posKey);
-		const bombCount = stageData.floorItems?.[posKey]?.count ?? 3;
-		if (!player.subItems.bomb) player.subItems.bomb = { count: 0 };
-		player.subItems.bomb.count += bombCount;
-		if (!player.activeSubItem) player.activeSubItem = 'bomb';
-		playSound('item'); pulse(`💣 爆弾 ×${bombCount} を手に入れた！`);
-		renderBoard(); renderChars(); updateHud(); saveGame();
-		maybeShowSubItemHint(); return;
-	}
-	if (tile === TILE.ITEM_BOW && !ss.pickedKeys.has(posKey)) {
-		ss.pickedKeys.add(posKey);
-		const arrowCount = stageData.floorItems?.[posKey]?.count ?? 10;
-		if (!player.subItems.bow) player.subItems.bow = { count: 0 };
-		player.subItems.bow.count += arrowCount;
-		if (!player.activeSubItem) player.activeSubItem = 'bow';
-		playSound('item'); pulse(`🏹 弓矢 ×${arrowCount} を手に入れた！`);
-		renderBoard(); renderChars(); updateHud(); saveGame();
-		maybeShowSubItemHint(); return;
-	}
-	if (tile === TILE.ITEM_HEAL_POTION && !ss.pickedKeys.has(posKey)) {
-		ss.pickedKeys.add(posKey);
-		giveSubItem('healPotion');
-		playSound('item'); pulse('🧪 回復薬（小）を手に入れた！');
-		renderBoard(); renderChars(); updateHud(); saveGame(); return;
-	}
-	if (tile === TILE.ITEM_BIG_HEAL_POTION && !ss.pickedKeys.has(posKey)) {
-		ss.pickedKeys.add(posKey);
-		giveSubItem('bigHealPotion');
-		playSound('item'); pulse('💊 回復薬（大）を手に入れた！');
-		renderBoard(); renderChars(); updateHud(); saveGame(); return;
-	}
-	if (tile === TILE.ITEM_HEART_CONTAINER && !ss.pickedKeys.has(posKey)) {
-		ss.pickedKeys.add(posKey);
-		gainHeartContainer();
-		playSound('item'); pulse('❤ ハートコンテナを手に入れた！');
-		renderBoard(); renderChars(); updateHud(); saveGame(); return;
-	}
-	if (tile === TILE.ITEM_RUPEE && !ss.pickedKeys.has(posKey)) {
-		ss.pickedKeys.add(posKey); player.rupees += 1;
-		playSound('rupee'); pulse('◆ ルピー ×1');
-		renderBoard(); renderChars(); updateHud(); saveGame(); return;
-	}
-	if (tile === TILE.ITEM_RUPEE_LARGE && !ss.pickedKeys.has(posKey)) {
-		ss.pickedKeys.add(posKey); player.rupees += 5;
-		playSound('rupee'); pulse('◇ ルピー ×5');
-		renderBoard(); renderChars(); updateHud(); saveGame(); return;
-	}
-	if (tile === TILE.ITEM_TRIFORCE_PIECE && !ss.pickedKeys.has(posKey)) {
-		ss.pickedKeys.add(posKey); player.triforceCount++;
-		console.log(`[TRIFORCE] handleTileEvent: ITEM_TRIFORCE_PIECE picked at ${posKey}, triforceCount=${player.triforceCount}`);
-		playSound('item'); pulse('◭ トライフォースのカケラを手に入れた！');
-		renderBoard(); renderChars(); updateHud(); saveGame();
-		checkTriforceClear(); // 全収集チェック
-		return;
-	}
-	if ((tile === TILE.ITEM_DUNGEON_MAP || tile === TILE.ITEM_COMPASS) && !ss.pickedKeys.has(posKey)) {
-		pickDungeonItem(tile, posKey, ss); return;
-	}
-	if (tile === TILE.CHEST && !ss.openedChests.has(posKey)) {
-		// 表示条件が設定されていて未達成なら取得不可
-		const chestCond = stageData.showConditions?.[posKey];
-		if (chestCond && !ss.conditionsMet.has(posKey)) {
-			pulse('？ 何かが封印されているようだ…', 1500);
-			return;
-		}
-		openChest(posKey, ss); return;
-	}
-	if (tile === TILE.MAP_ENTER) { checkStageTransition(); return; }
-
-	// HOUSE_DOOR を踏んだとき：開閉アニメーション演出
-	if (tile === TILE.HOUSE_DOOR) {
-		showHouseDoorAnimation(r, c);
-		return;
-	}
-}
-
-// 家のドアを通過する時の開閉アニメーション
-function showHouseDoorAnimation(r, c) {
-	if (!charLayerEl) return;
-	const cellPx = getCellPx();
-	// 左右に開く扉エフェクト（2枚の半開き板）
-	// 左側
-	const left = document.createElement('div');
-	left.style.cssText = `
-		position:absolute;
-		left:${c * cellPx}px;
-		top:${r * cellPx}px;
-		width:${cellPx / 2}px;
-		height:${cellPx}px;
-		background:rgba(138,64,32,0.85);
-		z-index:20;
-		pointer-events:none;
-		transform-origin:left center;
-		animation:house-door-open-left 0.4s ease-out forwards;
-	`;
-	// 右側
-	const right = document.createElement('div');
-	right.style.cssText = `
-		position:absolute;
-		left:${c * cellPx + cellPx / 2}px;
-		top:${r * cellPx}px;
-		width:${cellPx / 2}px;
-		height:${cellPx}px;
-		background:rgba(138,64,32,0.85);
-		z-index:20;
-		pointer-events:none;
-		transform-origin:right center;
-		animation:house-door-open-right 0.4s ease-out forwards;
-	`;
-	charLayerEl.appendChild(left);
-	charLayerEl.appendChild(right);
-	setTimeout(() => { left.remove(); right.remove(); }, 450);
-}
-
-function openChest(posKey, ss) {
-	ss.openedChests.add(posKey); playSound('chest');
-	const content = stageData.chestContents?.[posKey];
-	if (content) {
-		if (content.type === 'item') { giveSubItem(content.item); pulse(`☐ ${content.name ?? content.item} を手に入れた！`); }
-		else if (content.type === 'weapon') {
-			player.weapon = 'sword';
-			const atkBonus = content.atkBonus ?? content.value ?? 2;
-			player.atk += atkBonus;
-			pulse(`☐ ${content.name ?? '剣'} を手に入れた！（ATK+${atkBonus}）`);
-			updateHud();
-		}
-		else if (content.type === 'armor') {
-			player.armor = 'armor';
-			const defBonus = content.defBonus ?? content.value ?? 2;
-			player.def += defBonus;
-			pulse(`☐ ${content.name ?? '防具'} を手に入れた！（DEF+${defBonus}）`);
-			updateHud();
-		}
-		else if (content.type === 'rupee') { player.rupees += content.value ?? 1; pulse(`☐ ルピー ×${content.value ?? 1}`); }
-		else if (content.type === 'heartContainer') { gainHeartContainer(); pulse('❤ ハートの器を手に入れた！'); }
-	} else { pulse('☐ 宝箱は空だった…'); }
-	renderBoard(); renderChars(); updateHud(); saveGame();
-}
-
-function giveSubItem(id) {
-	const meta = ITEM_META[id];
-	// passive アイテムは subItems に追加しない（heartContainer は gainHeartContainer で処理）
-	if (meta?.type === 'passive') {
-		if (id === 'heartContainer') gainHeartContainer();
-		return;
-	}
-	if (!player.subItems[id]) player.subItems[id] = { count: meta?.uses === Infinity ? Infinity : 1 };
-	else if (meta?.uses !== Infinity) player.subItems[id].count++;
-	if (!player.activeSubItem) player.activeSubItem = id;
-	maybeShowSubItemHint();
-}
-
-// ── サブアイテム初取得ヒントダイアログ ────────────────────────
-// 初めてBボタン用のサブアイテムを取得した時、Escape画面での切り替え方法を説明する
-function maybeShowSubItemHint() {
-	if (player._shownSubItemHint) return;
-	player._shownSubItemHint = true;
-	dialogLines = [
-		'サブアイテムを手に入れた！',
-		'Escapeキー（または ≡ボタン）を押すと\nアイテム切り替え画面を開けます。',
-		'左右キーでBボタンに使うアイテムを\n切り替えることができます。',
-	];
-	dialogLineIdx = 0;
-	isDialog = true; stopGameLoop();
-	dialogNameEl.textContent = '！ ヒント';
-	showDialogLine();
-	dialogOverlayEl.classList.remove('hidden');
-	playSound('talk');
-}
-
-function gainHeartContainer() {
-	player.maxHearts++; player.maxHp += HP_PER_HEART; player.hp = player.maxHp;
-}
-
-// ── 剣攻撃 ────────────────────────────────────────────────────
-// 剣リーチ：プレイヤー中心から敵中心までの距離で判定するため、
-// 隣接セルの敵との距離 = 1.0 セルなので、1.2 あれば十分届く（少し余裕あり）
-const SWORD_REACH = 1.2;
-// 剣攻撃クールダウン：100ms（1秒10回まで）
-// Phase 3 で攻撃速度UP装備が実装されたらここを短縮する
-const SWORD_COOLDOWN_MS = 100;
-let lastSwordTime = 0;
-
-// 石を押すクールダウン：600ms（重い石はゆっくりしか押せない）
-const STONE_PUSH_COOLDOWN_MS = 600;
-let lastStonePushTime = 0;
-
-function swordAttack() {
-	if (isDialog || isPaused || isGameover) return;
-
-	// 向き方向の単位ベクトル（半セルで正規化）
-	const [dy, dx] = DIR_DELTA[heroDir]; // 例: right → [0, 0.5]
-	const ndx = dx / MOVE_STEP; // 正規化: 0, +1, -1
-	const ndy = dy / MOVE_STEP;
-
-	// NPC・ギミックとのインタラクション（剣なしでも可能）
-	// プレイヤーの正面 1 セルのタイルをチェック
-	const tr = toTileRow(player.y + ndy);
-	const tc = toTileCol(player.x + ndx);
-	const tile = stageData.tiles[tr]?.[tc];
-	const posKey3 = `${tr},${tc}`;
-
-	if (tile === TILE.NPC_SHOP) {
-		const shopData = stageData.shopData?.[posKey3];
-		if (shopData) { openShop(shopData); } else { startDialog(tr, tc, tile); }
-		return;
-	}
-	if (tile && NPC_SPRITE_MAP[tile]) { startDialog(tr, tc, tile); return; }
-
-	// Phase 8.3: 看板を読む（剣なしでも可能）
-	if (tile === TILE.SIGN) {
-		const signData = stageData.signData?.[posKey3] ?? stageData.npcData?.[posKey3] ?? { name: '看板', lines: ['（何も書かれていない）'] };
-		dialogLines = signData.lines ?? ['（何も書かれていない）'];
-		dialogLineIdx = 0;
-		isDialog = true; stopGameLoop();
-		dialogNameEl.textContent = signData.name ?? '看板';
-		showDialogLine();
-		dialogOverlayEl.classList.remove('hidden');
-		playSound('talk');
-		return;
-	}
-
-	// 以降は剣が必要な操作
-	if (!player.weapon) { pulse('剣を持っていない！'); return; }
-
-	// クールダウンチェック（デバッグモードはスキップしない）
-	const now = Date.now();
-	if (now - lastSwordTime < SWORD_COOLDOWN_MS) return;
-	lastSwordTime = now;
-	resumeAudio(); playSound('slash');
-
-	// 剣エフェクト：プレイヤーのセル中心から 0.7 セル先（float座標）
-	const slashX = player.x + ndx * 0.7;
-	const slashY = player.y + ndy * 0.7;
-	showSwordSlashFloat(slashX, slashY);
-
-	// 当たり判定：プレイヤー中心から SWORD_REACH セル以内の正面にいる敵
-	// プレイヤー中心座標
-	const pcx = player.x + 0.5;
-	const pcy = player.y + 0.5;
-
-	let hitEnemy = null;
-	let hitDist  = Infinity;
-	for (const e of enemies) {
-		const ecx = e.x + 0.5;
-		const ecy = e.y + 0.5;
-		const relX = ecx - pcx;
-		const relY = ecy - pcy;
-
-		// 敵が「正面方向」にいるかチェック（内積 > 0）
-		const dot = relX * ndx + relY * ndy;
-		if (dot < 0) continue; // 背後は無視
-
-		// 剣方向に射影した距離
-		const projDist = dot; // = dot / |direction| = dot（単位ベクトルなので）
-		if (projDist > SWORD_REACH) continue;
-
-		// 横方向のずれが小さいか（横幅 0.8 セル以内）
-		const perpX = relX - ndx * projDist;
-		const perpY = relY - ndy * projDist;
-		const perpDist = Math.sqrt(perpX * perpX + perpY * perpY);
-		if (perpDist > 0.8) continue;
-
-		if (projDist < hitDist) { hitDist = projDist; hitEnemy = e; }
-	}
-
-	// 二周目（姫パレット）は攻撃力2倍
-	const swordAtk = hasCleared() ? player.atk * 2 : player.atk;
-	if (hitEnemy) { dealDamageToEnemy(hitEnemy, swordAtk); return; }
-
-	// Phase 8.2: 茂みを切る（剣が必要）
-	if (tile === TILE.BUSH) {
-		const ss = getSS(currentLayer, stageKey);
-		if (!ss.cutBushes) ss.cutBushes = new Set();
-		if (!ss.cutBushes.has(posKey3)) {
-			ss.cutBushes.add(posKey3);
-			playSound('slash');
-			// ランダムドロップ
-			const rand = Math.random();
-			if (rand < 0.12) {
-				// ハート（HP+1）
-				player.hp = Math.min(player.maxHp, player.hp + 1);
-				updateHud();
-				spawnDropEffect(tr, tc, '❤', '#ff4040');
-				pulse('🌿 ❤ HP+1');
-			} else if (rand < 0.16) {
-				// ルピー（小）
-				player.rupees += 1;
-				updateHud();
-				spawnDropEffect(tr, tc, '◆', '#20c040');
-				pulse('🌿 ルピー ×1');
-			}
-			renderBoard(); renderChars(); saveGame();
-		}
-		return;
-	}
-}
-
-// 剣エフェクト：Dungeon World の sword-thrust 方式で char-layer 上に絶対配置
-function showSwordSlashFloat(fx, fy) {
-	if (!charLayerEl) return;
-	const cellPx = getCellPx();
-	const el = document.createElement('div');
-	// Dungeon World と同じクラス名・スタイルを使用
-	el.className    = `sword-thrust dir-${heroDir}`;
-	el.style.left   = `${fx * cellPx}px`;
-	el.style.top    = `${fy * cellPx}px`;
-	el.style.width  = `${cellPx}px`;
-	el.style.height = `${cellPx}px`;
-	charLayerEl.appendChild(el);
-	setTimeout(() => el.remove(), 260);
-}
-
-// 敵の剣エフェクト（敵 e の位置からプレイヤー方向に）
-function showEnemySwordSlash(e) {
-	if (!charLayerEl) return;
-	const dx = player.x - e.x, dy = player.y - e.y;
-	const dist = Math.sqrt(dx * dx + dy * dy);
-	if (dist < 0.01) return;
-	const fx = e.x + dx / dist;
-	const fy = e.y + dy / dist;
-	const dir = Math.abs(dy) >= Math.abs(dx) ? (dy > 0 ? 'down' : 'up') : (dx > 0 ? 'right' : 'left');
-	const cellPx = getCellPx();
-	const el = document.createElement('div');
-	el.className = `sword-thrust dir-${dir}`;
-	el.style.left   = `${fx * cellPx}px`;
-	el.style.top    = `${fy * cellPx}px`;
-	el.style.width  = `${cellPx}px`;
-	el.style.height = `${cellPx}px`;
-	charLayerEl.appendChild(el);
-	setTimeout(() => el.remove(), 260);
-}
-
-function dealDamageToEnemy(e, dmg) {
-	// HP が既に 0 以下（ボス撃破アニメーション中など）は無視
-	if (e.hp <= 0) return;
-	const actual = Math.max(1, dmg - e.def);
-	e.hp -= actual;
-	playSound('hit');
-	showDmgPopupFloat(e.x, e.y, actual, true);
-	// ボスなら HP バー更新・フェーズチェック
-	if (ENEMY_META[e.type]?.isBoss) {
-		updateBossHpBar(e);
-		checkBossPhase(e);
-	}
-	if (e.hp <= 0) killEnemy(e);
-}
-
-function killEnemy(e) {
-	const meta = ENEMY_META[e.type];
-	if (meta?.isBoss) {
-		// ボス撃破演出（非同期）
-		onBossDefeated(e);
-		return;
-	}
-	playSound('enemyDie');
-	getSS(currentLayer, stageKey).defeatedEnemies.add(e.id);
-	removeCharEl(`enemy-${e.id}`);
-	enemies = enemies.filter(x => x !== e);
-	evaluateConditions();
-	saveGame();
-}
+// ── プレイヤー移動・タイルイベント・石押し・宝箱・サブアイテム付与は player.js へ ──
+// ── 剣攻撃・ダメージ・撃破・ゲームオーバーは combat.js へ ──
+// ── ボス戦・HPバー・撃破演出・エンディング・星の欠片収集は boss.js へ ──
+//   （Phase 0-2b で旧本体を削除。factory 生成版で上書き済み）
 
 // ── デバッグモード切り替え ─────────────────────────────────────
 function toggleDebugMode() {
@@ -1952,59 +1294,7 @@ function toggleDebugMode() {
 	stageLabelEl.textContent = `[${currentLayer}] ${stageKey}${debugMode ? ' [DBG]' : ''}`;
 }
 
-// ── ダメージ ──────────────────────────────────────────────────
-function takeDamage(amount) {
-	if (debugMode) return; // デバッグモード中は無敵
-	if (Date.now() < invincibleUntil || isGameover) return;
-	// 二周目（姫パレット）は防御力2倍
-	const effectiveDef = hasCleared() ? player.def * 2 : player.def;
-	const actual = Math.max(1, amount - effectiveDef);
-	player.hp = Math.max(0, player.hp - actual);
-	invincibleUntil = Date.now() + INVINCIBLE_MS;
-	playSound('playerHit');
-	showPlayerBlink();
-	updateHud();
-	if (player.hp <= 0) gameOver();
-}
-
-function showPlayerBlink() {
-	if (blinkTimer) clearInterval(blinkTimer);
-	let cnt = 0;
-	blinkTimer = setInterval(() => {
-		const el = document.getElementById('char-player');
-		if (el) el.style.opacity = (cnt % 2 === 0) ? '0.2' : '1';
-		cnt++;
-		if (cnt >= 10) {
-			clearInterval(blinkTimer); blinkTimer = null;
-			const el2 = document.getElementById('char-player');
-			if (el2) el2.style.opacity = '1';
-		}
-	}, 150);
-}
-
-// ── ダメージポップアップ（float 座標版） ─────────────────────
-function showDmgPopupFloat(ex, ey, dmg, isEnemy) {
-	const cellPx = getCellPx();
-	const el = document.createElement('div');
-	el.className = `dmg-popup ${isEnemy ? 'enemy-dmg' : 'player-dmg'}`;
-	el.textContent = `-${dmg}`;
-	el.style.cssText = `
-		position:absolute;
-		left:${(ex + 0.5) * cellPx}px;
-		top:${(ey - 0.3) * cellPx}px;
-		transform:translateX(-50%);
-		z-index:30;
-	`;
-	charLayerEl?.appendChild(el);
-	setTimeout(() => el.remove(), 700);
-}
-
-// ── ゲームオーバー ────────────────────────────────────────────
-function gameOver() {
-	isGameover = true; stopGameLoop(); stopBgm(); playSound('gameover');
-	gameoverOverlayEl.classList.remove('hidden');
-}
-
+// ── ゲームオーバー後のリトライ ────────────────────────────────
 function retryGame() {
 	isGameover = isPaused = isDialog = isTransitioning = false;
 	invincibleUntil = 0;
@@ -2015,549 +1305,7 @@ function retryGame() {
 	startGameLoop();
 }
 
-// ── 条件評価 ──────────────────────────────────────────────────
-function evaluateConditions() {
-	if (!stageData?.showConditions) return;
-	const ss = getSS(currentLayer, stageKey);
-	for (const [posKey, cond] of Object.entries(stageData.showConditions)) {
-		if (ss.conditionsMet.has(posKey)) continue;
-		let met = false;
-		if (cond.trigger === 'killAll')    met = enemies.length === 0;
-		else if (cond.trigger === 'switchOn') met = ss.switchStates?.[cond.switchId] === true;
-		else if (cond.trigger === 'wallBroken') met = ss.brokenWalls?.has(cond.wallId);
-		else if (cond.trigger === 'hasItem') met = !!player.subItems[cond.item] || player.weapon === cond.item;
-		else if (cond.trigger === 'allSwitchesOn') {
-			const allSw = [];
-			for (let _r = 0; _r < stageData.rows; _r++) {
-				for (let _c = 0; _c < stageData.cols; _c++) {
-					if (stageData.tiles[_r][_c] === TILE.SWITCH) allSw.push(`${_r},${_c}`);
-				}
-			}
-			met = allSw.length > 0 && allSw.every(pk => ss.switchStates?.[pk] === true);
-		}
-		if (met) {
-			ss.conditionsMet.add(posKey);
-			playSound('appear');
-			renderBoard(); renderChars();
-		}
-	}
-}
-
-// ── NPC 会話 ──────────────────────────────────────────────────
-function startDialog(r, c, tileChar) {
-	const posKey = `${r},${c}`;
-	const data   = stageData.npcData?.[posKey] ?? NPC_DEFAULT_DIALOG[tileChar] ?? { name: 'NPC', lines: ['…'] };
-	dialogLines = data.lines ?? ['…'];
-	dialogLineIdx = 0;
-	isDialog = true; stopGameLoop();
-	dialogNameEl.textContent = data.name ?? '';
-	showDialogLine();
-	dialogOverlayEl.classList.remove('hidden');
-	playSound('talk');
-}
-
-function showDialogLine() {
-	dialogTextEl.textContent = dialogLines[dialogLineIdx] ?? '';
-	const isLast = dialogLineIdx >= dialogLines.length - 1;
-	document.getElementById('dialog-next').textContent =
-		isLast ? '▼ 閉じる（Spaceキー）' : '▼ 次へ（Spaceキー）';
-}
-
-function advanceDialog() {
-	dialogLineIdx++;
-	if (dialogLineIdx >= dialogLines.length) {
-		isDialog = false; dialogOverlayEl.classList.add('hidden'); startGameLoop();
-	} else { showDialogLine(); playSound('talk'); }
-}
-
-// ── ポーズ ────────────────────────────────────────────────────
-function togglePause() {
-	if (isDialog || isGameover) return;
-	isPaused = !isPaused;
-	if (isPaused) {
-		stopGameLoop(); pauseOverlayEl.classList.remove('hidden'); renderPauseMenu();
-	} else {
-		pauseOverlayEl.classList.add('hidden'); startGameLoop();
-	}
-}
-
-function renderPauseMenu() {
-	pauseItemKeys = Object.keys(player.subItems).filter(k => {
-		const s = player.subItems[k];
-		if (!s || (s.count !== Infinity && s.count <= 0)) return false;
-		// passive アイテム（heartContainer等）はサブアイテムスロットに表示しない
-		const meta = ITEM_META[k];
-		if (meta?.type === 'passive') return false;
-		return true;
-	});
-	if (pauseItemIdx >= pauseItemKeys.length) pauseItemIdx = 0;
-	pauseItemsEl.innerHTML = '';
-	if (pauseItemKeys.length === 0) {
-		pauseItemsEl.innerHTML = '<div style="color:#4a6a8a;font-size:13px;">サブアイテムなし</div>';
-	} else {
-		for (let i = 0; i < pauseItemKeys.length; i++) {
-			const id = pauseItemKeys[i];
-			const meta = ITEM_META[id];
-			const cnt  = player.subItems[id].count;
-			const div  = document.createElement('div');
-			div.className = `pause-item-slot${i === pauseItemIdx ? ' selected' : ''}`;
-			// アイコン部分：スプライトがあればcanvas、なければ絵文字
-			const iconDiv = document.createElement('div');
-			iconDiv.className = 'pause-item-icon';
-			const sprName = meta?.sprite;
-			const palName = meta?.pal ?? sprName;
-			if (sprName && SPRITES[sprName]) {
-				// ポーズメニュー用：spriteクラスを付けずに直接描画
-				const frames = SPRITES[sprName];
-				const palette = PAL[palName] || PAL[sprName] || PAL.hero;
-				const cv = document.createElement('canvas');
-				// spriteクラスは付けない（position:absoluteが適用されないよう）
-				cv.style.cssText = 'width:24px;height:24px;image-rendering:pixelated;display:block;';
-				const grid = frames[0];
-				const rows = grid.length;
-				const cols = grid[0].length;
-				cv.width  = cols;
-				cv.height = rows;
-				const ctx = cv.getContext('2d');
-				for (let rr = 0; rr < rows; rr++) {
-					for (let cc = 0; cc < cols; cc++) {
-						const idx = grid[rr][cc];
-						if (idx === 0) continue;
-						ctx.fillStyle = palette[idx] ?? 'transparent';
-						ctx.fillRect(cc, rr, 1, 1);
-					}
-				}
-				iconDiv.appendChild(cv);
-			} else {
-				iconDiv.textContent = meta?.icon ?? id;
-			}
-			div.appendChild(iconDiv);
-			const nameDiv = document.createElement('div');
-			nameDiv.className = 'pause-item-name';
-			nameDiv.textContent = meta?.name ?? id;
-			div.appendChild(nameDiv);
-			const cntDiv = document.createElement('div');
-			cntDiv.className = 'pause-item-count';
-			cntDiv.textContent = cnt === Infinity ? '∞' : `×${cnt}`;
-			div.appendChild(cntDiv);
-			div.addEventListener('click', () => {
-				pauseItemIdx = i; player.activeSubItem = pauseItemKeys[i];
-				updateHud(); togglePause();
-			});
-			pauseItemsEl.appendChild(div);
-		}
-	}
-	// 装備名を含むステータス表示
-	const swordLabel = player.weapon ? `⚔${player._equip?.swordName ?? '剣'}(ATK${player.atk})` : '⚔なし';
-	const armorLabel = player.armor  ? `⚚${player._equip?.armorName ?? '防具'}(DEF${player.def})` : '⚚なし';
-	// ハートをスプライト canvas で描画（半ハート対応）
-	pauseStatsEl.innerHTML = '';
-	const heartRow = document.createElement('div');
-	heartRow.style.cssText = 'display:flex;align-items:center;gap:2px;margin-bottom:4px;';
-	for (let i = 0; i < player.maxHearts; i++) {
-		const hpForThis = player.hp - i * HP_PER_HEART;
-		let sprName, palName;
-		if (hpForThis >= HP_PER_HEART) {
-			sprName = 'heart'; palName = 'heart';
-		} else if (hpForThis === 1) {
-			sprName = 'heartHalf'; palName = 'heartHalf';
-		} else {
-			sprName = 'heartEmpty'; palName = 'heartEmpty';
-		}
-		const frames = SPRITES[sprName];
-		const palette = PAL[palName];
-		if (frames && palette) {
-			const grid = frames[0];
-			const cv = document.createElement('canvas');
-			cv.width  = grid[0].length;
-			cv.height = grid.length;
-			cv.style.cssText = 'width:16px;height:16px;image-rendering:pixelated;display:inline-block;flex-shrink:0;';
-			const ctx = cv.getContext('2d');
-			for (let rr = 0; rr < grid.length; rr++) {
-				for (let cc = 0; cc < grid[0].length; cc++) {
-					const idx = grid[rr][cc];
-					if (idx === 0) continue;
-					ctx.fillStyle = palette[idx] ?? 'transparent';
-					ctx.fillRect(cc, rr, 1, 1);
-				}
-			}
-			heartRow.appendChild(cv);
-		}
-	}
-	pauseStatsEl.appendChild(heartRow);
-	const statsLine = document.createElement('div');
-	statsLine.textContent = `💰${player.rupees}　${swordLabel}　${armorLabel}`;
-	pauseStatsEl.appendChild(statsLine);
-	// ダンジョン地図を描画（現在ダンジョン内かつ地図入手済みの場合のみ）
-	renderPauseDungeonMap();
-}
-
-// ── ポーズ画面：レイヤーマップ描画 ───────────────────────────
-// field/dungeon 問わず、地図を持っているレイヤーならマップを表示する
-function renderPauseDungeonMap() {
-	const lk = currentLayer;
-	const dm = player.dungeonItems?.[lk];
-	if (!dm?.hasMap) { pauseDungeonMapEl.classList.add('hidden'); return; }
-
-	pauseDungeonMapEl.classList.remove('hidden');
-
-	// コンパス：ボス部屋の場所を表示（コンパス入手済みの場合）
-	const ld = mapData.layers[lk];
-	const hasCompass = !!dm.hasCompass;
-	const bossStageKey = ld?.bossStage ?? null;
-
-	// ステージ一覧からグリッド範囲を算出
-	const stages = Object.keys(ld.stages ?? {});
-	if (stages.length === 0) { pauseDungeonMapEl.classList.add('hidden'); return; }
-
-	// ステージキーは "x,y" 形式（x=列方向=右、y=行方向=下）
-	const coords = stages.map(k => k.split(',').map(Number));
-	const minX = Math.min(...coords.map(c => c[0]));
-	const maxX = Math.max(...coords.map(c => c[0]));
-	const minY = Math.min(...coords.map(c => c[1]));
-	const maxY = Math.max(...coords.map(c => c[1]));
-	const gridW = maxX - minX + 1;
-	const gridH = maxY - minY + 1;
-
-	// canvas サイズ設定（1ステージ = 24px、最大10ステージ幅まで想定）
-	const CELL = 24;
-	const PAD  = 3;
-	const cw = gridW * (CELL + PAD) + PAD;
-	const ch = gridH * (CELL + PAD) + PAD;
-	pauseMapCanvasEl.width  = cw;
-	pauseMapCanvasEl.height = ch;
-	// display サイズ（2倍でピクセルくっきり）
-	pauseMapCanvasEl.style.width  = `${cw * 2}px`;
-	pauseMapCanvasEl.style.height = `${ch * 2}px`;
-
-	const ctx = pauseMapCanvasEl.getContext('2d');
-	ctx.clearRect(0, 0, cw, ch);
-
-	// 背景
-	ctx.fillStyle = '#0a0e12';
-	ctx.fillRect(0, 0, cw, ch);
-
-	// 現在ステージ（stageKey も "x,y" 形式）
-	const [curX, curY] = stageKey.split(',').map(Number);
-
-	// stageキー集合（隣接チェック用）
-	const stageSet = new Set(stages);
-
-	stages.forEach(sk => {
-		const [sx, sy] = sk.split(',').map(Number);
-		// x → 横（列）、y → 縦（行）
-		const x = PAD + (sx - minX) * (CELL + PAD);
-		const y = PAD + (sy - minY) * (CELL + PAD);
-
-		const isCurrent  = (sx === curX && sy === curY);
-		const isBoss     = (sk === bossStageKey && hasCompass);
-		const isVisited  = getSS(lk, sk).defeatedEnemies.size > 0 || isCurrent;
-
-		// ステージ背景色
-		if (isCurrent)   ctx.fillStyle = '#80c0f0';
-		else if (isBoss) ctx.fillStyle = '#c04040';
-		else             ctx.fillStyle = isVisited ? '#3a5060' : '#1a2a38';
-
-		ctx.fillRect(x, y, CELL, CELL);
-
-		// 隣接ステージとの通路を描画（上下左右）
-		const PASS_W = Math.floor(CELL * 0.4);  // 通路の幅
-		const PASS_H = PAD;                      // 通路の長さ（= PAD分）
-		const passColor = isCurrent ? '#80c0f0' : (isVisited ? '#3a5060' : '#1a2a38');
-		ctx.fillStyle = passColor;
-		// 右
-		if (stageSet.has(`${sx + 1},${sy}`)) {
-			ctx.fillRect(x + CELL, y + (CELL - PASS_W) / 2, PASS_H, PASS_W);
-		}
-		// 下
-		if (stageSet.has(`${sx},${sy + 1}`)) {
-			ctx.fillRect(x + (CELL - PASS_W) / 2, y + CELL, PASS_W, PASS_H);
-		}
-		// 左（左の部屋が通路を引く）
-		if (stageSet.has(`${sx - 1},${sy}`)) {
-			ctx.fillRect(x - PASS_H, y + (CELL - PASS_W) / 2, PASS_H, PASS_W);
-		}
-		// 上（上の部屋が通路を引く）
-		if (stageSet.has(`${sx},${sy - 1}`)) {
-			ctx.fillRect(x + (CELL - PASS_W) / 2, y - PASS_H, PASS_W, PASS_H);
-		}
-
-		// ボス部屋マーク
-		if (isBoss) {
-			ctx.fillStyle = '#ffffff';
-			ctx.font = `${CELL - 4}px sans-serif`;
-			ctx.textAlign = 'center';
-			ctx.textBaseline = 'middle';
-			ctx.fillText('!', x + CELL / 2, y + CELL / 2 + 1);
-		}
-		// 現在地マーク
-		if (isCurrent) {
-			ctx.fillStyle = '#0a1418';
-			const s = 4;
-			ctx.fillRect(x + CELL / 2 - s / 2, y + CELL / 2 - s / 2, s, s);
-		}
-	});
-
-	// ヒント（コンパス入手でボス部屋表示）
-	if (hasCompass && bossStageKey && ld.stages[bossStageKey]) {
-		pauseMapHintEl.classList.remove('hidden');
-	} else {
-		pauseMapHintEl.classList.add('hidden');
-	}
-}
-
-function pauseSelectPrev() {
-	if (!pauseItemKeys.length) return;
-	pauseItemIdx = (pauseItemIdx - 1 + pauseItemKeys.length) % pauseItemKeys.length;
-	player.activeSubItem = pauseItemKeys[pauseItemIdx];
-	playSound('switch');
-	updateHud(); renderPauseMenu();
-}
-function pauseSelectNext() {
-	if (!pauseItemKeys.length) return;
-	pauseItemIdx = (pauseItemIdx + 1) % pauseItemKeys.length;
-	player.activeSubItem = pauseItemKeys[pauseItemIdx];
-	playSound('switch');
-	updateHud(); renderPauseMenu();
-}
-
-// ── ショップ ──────────────────────────────────────────────────
-const shopOverlayEl = document.getElementById('shop-overlay');
-const shopItemsEl   = document.getElementById('shop-items');
-const shopRupeesEl  = document.getElementById('shop-rupees');
-let isShop       = false;
-let shopGoods    = [];   // { id, name, icon, count, price } の配列
-let shopIdx      = 0;
-
-function openShop(shopData) {
-	if (!shopData?.items?.length) return;
-	isShop   = true;
-	shopGoods = shopData.items;
-	shopIdx   = 0;
-	stopGameLoop();
-	renderShop();
-	shopOverlayEl.classList.remove('hidden');
-	playSound('talk');
-}
-
-function closeShop() {
-	isShop = false;
-	shopOverlayEl.classList.add('hidden');
-	startGameLoop();
-}
-
-function renderShop() {
-	shopRupeesEl.textContent = player.rupees;
-	shopItemsEl.innerHTML = '';
-	shopGoods.forEach((g, i) => {
-		const meta = ITEM_META[g.id];
-		const icon = meta?.icon ?? g.id;
-		const name = g.name ?? meta?.name ?? g.id;
-		const row  = document.createElement('div');
-		const canBuy = player.rupees >= g.price;
-		row.className = `shop-item-row${i === shopIdx ? ' selected' : ''}${canBuy ? '' : ' cannot-afford'}`;
-		row.innerHTML = `<span class="shop-item-icon">${icon}</span>
-			<span class="shop-item-name">${name}${g.count ? ` ×${g.count}` : ''}</span>
-			<span class="shop-item-price">💰${g.price}</span>`;
-		row.addEventListener('click', () => { shopIdx = i; renderShop(); shopBuy(); });
-		shopItemsEl.appendChild(row);
-	});
-}
-
-function shopSelectPrev() {
-	if (!shopGoods.length) return;
-	shopIdx = (shopIdx - 1 + shopGoods.length) % shopGoods.length;
-	renderShop();
-}
-function shopSelectNext() {
-	if (!shopGoods.length) return;
-	shopIdx = (shopIdx + 1) % shopGoods.length;
-	renderShop();
-}
-
-function shopBuy() {
-	const g = shopGoods[shopIdx];
-	if (!g) return;
-	if (player.rupees < g.price) { pulse('ルピーが足りない！', 1500); return; }
-	player.rupees -= g.price;
-	const meta = ITEM_META[g.id];
-	if (g.id === 'bomb') {
-		if (!player.subItems.bomb) player.subItems.bomb = { count: 0 };
-		player.subItems.bomb.count += g.count ?? 1;
-		if (!player.activeSubItem) player.activeSubItem = 'bomb';
-	} else if (g.id === 'healPotion' || g.id === 'bigHealPotion') {
-		giveSubItem(g.id);
-	} else if (g.id === 'boomerang') {
-		if (!player.subItems.boomerang) player.subItems.boomerang = { count: Infinity };
-		if (!player.activeSubItem) player.activeSubItem = 'boomerang';
-	} else {
-		giveSubItem(g.id);
-	}
-	playSound('item');
-	pulse(`${meta?.name ?? g.id} を購入した！`, 1500);
-	updateHud();
-	saveGame();
-	renderShop();
-}
-
-// ── ダンジョンアイテム（地図・コンパス）取得ユーティリティ ─────
-function pickDungeonItem(tile, posKey, ss) {
-	if (ss.pickedKeys.has(posKey)) return false;
-	ss.pickedKeys.add(posKey);
-	if (!player.dungeonItems) player.dungeonItems = {};
-	if (!player.dungeonItems[currentLayer]) {
-		player.dungeonItems[currentLayer] = { hasMap: false, hasCompass: false };
-	}
-	if (tile === TILE.ITEM_DUNGEON_MAP) {
-		player.dungeonItems[currentLayer].hasMap = true;
-		playSound('item'); pulse('🗺 ダンジョンの地図を手に入れた！');
-	} else if (tile === TILE.ITEM_COMPASS) {
-		player.dungeonItems[currentLayer].hasCompass = true;
-		playSound('item'); pulse('🧭 コンパスを手に入れた！');
-	}
-	updateDungeonHud(currentLayer);
-	renderBoard(); renderChars(); updateHud(); saveGame();
-	return true;
-}
-
-// ── ボス HPバー ───────────────────────────────────────────────
-function showBossHpBar(boss) {
-	bossHpbarEl.classList.remove('hidden');
-	bossNameEl.textContent = ENEMY_META[boss.type]?.name ?? 'ボス';
-	updateBossHpBar(boss);
-}
-
-function updateBossHpBar(boss) {
-	const pct = Math.max(0, boss.hp / boss.maxHp * 100);
-	bossHpFillEl.style.width = `${pct}%`;
-	// HP が低いほど赤くなる
-	if (pct < 25) bossHpFillEl.style.background = 'linear-gradient(90deg,#880000,#cc0000)';
-	else if (pct < 50) bossHpFillEl.style.background = 'linear-gradient(90deg,#aa2000,#ee4010)';
-	else bossHpFillEl.style.background = 'linear-gradient(90deg,#cc2020,#ff5050)';
-}
-
-function hideBossHpBar() {
-	bossHpbarEl.classList.add('hidden');
-}
-
-// ── ボス多段フェーズ ──────────────────────────────────────────
-function checkBossPhase(boss) {
-	const meta = ENEMY_META[boss.type];
-	if (!meta?.phases) return;
-	for (const phase of meta.phases) {
-		const ratio = boss.hp / boss.maxHp;
-		if (ratio <= phase.hpThreshold && !boss.phasesTriggered?.includes(phase.hpThreshold)) {
-			if (!boss.phasesTriggered) boss.phasesTriggered = [];
-			boss.phasesTriggered.push(phase.hpThreshold);
-			// 速度倍率適用
-			if (phase.speedMultiplier) boss.speed = (meta.speed) * phase.speedMultiplier;
-			// 攻撃クールダウン倍率適用
-			if (phase.attackCooldownMultiplier && boss.attack?.cooldown) {
-				boss.attack = { ...boss.attack, cooldown: Math.round(boss.attack.cooldown * phase.attackCooldownMultiplier) };
-			}
-			// フェーズ変化エフェクト
-			const bossEl = document.getElementById(`char-enemy-${boss.id}`);
-			if (bossEl) {
-				let cnt = 0;
-				const t = setInterval(() => {
-					bossEl.style.opacity = (cnt % 2 === 0) ? '0.2' : '1';
-					if (++cnt >= 8) { clearInterval(t); bossEl.style.opacity = '1'; }
-				}, 120);
-			}
-			pulse(`${meta.name} が 怒り狂った！`, 2500);
-		}
-	}
-}
-
-// ── ボス撃破演出（非同期） ────────────────────────────────────
-function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
-
-async function onBossDefeated(boss) {
-	// 二重実行防止：同じボスで既に撃破演出が始まっていたらスキップ
-	if (_bossDefeating) return;
-	_bossDefeating = true;
-	stopGameLoop();
-	// 1. ボスを点滅
-	const bossEl = document.getElementById(`char-enemy-${boss.id}`);
-	if (bossEl) {
-		for (let i = 0; i < 10; i++) {
-			bossEl.style.opacity = (i % 2 === 0) ? '0.15' : '1';
-			await sleep(140);
-		}
-		bossEl.remove();
-	}
-	// 2. 爆発エフェクト複数
-	const br = toTileRow(boss.y), bc = toTileCol(boss.x);
-	for (let i = 0; i < 4; i++) {
-		showExplosionEffect(br + (Math.random() - 0.5), bc + (Math.random() - 0.5));
-		await sleep(200);
-	}
-	// 3. BGM 停止・SE
-	stopBgm();
-	playSound('fanfare');
-	// 4. 敵リストから除去（renderChars より前に行う）
-	getSS(currentLayer, stageKey).defeatedEnemies.add(boss.id);
-	enemies = enemies.filter(x => x !== boss);
-	// 5. ボス HP バー非表示・ロック解除・ドアウェイ開放
-	hideBossHpBar();
-	bossRoomLocked = false;
-	// DOORWAY_BOSS タイルが存在する場合のみ開放メッセージを表示
-	const hasBossDoors = stageData?.tiles?.some(row => row.includes(TILE.DOORWAY_BOSS));
-	unlockBossDoors();
-	if (hasBossDoors) pulse('🔓 扉が開いた！', 2000);
-	// 6. 条件評価
-	evaluateConditions(); // ボス撃破後の showConditions（killAll など）を評価
-	// 6. トライフォース付与（DARK_LORD のみ：フィールドにカケラを出現させる）
-	if (boss.type === TILE.DARK_LORD) {
-		spawnTriforcePiece(boss);
-		await sleep(600);
-		pulse('◭ トライフォースのカケラが 現れた！', 3000);
-		// カケラの位置を「取得待ち」として登録
-		// ※ 少し待ってから有効化（ボス撃破直後の即時収集を防ぐ）
-		pendingTriforcePos = null; // 一旦無効
-		const tfx = boss.x, tfy = boss.y;
-		setTimeout(() => { pendingTriforcePos = { x: tfx, y: tfy }; }, 1500);
-		saveGame();
-	} else {
-		// BOSS（魔将）など：トライフォースなし、撃破メッセージのみ
-		await sleep(400);
-		pulse(`${ENEMY_META[boss.type]?.name ?? 'ボス'} を倒した！`, 2500);
-		saveGame();
-	}
-	// ループ再開
-	_bossDefeating = false; // 演出完了でフラグをリセット
-	startGameLoop();
-}
-
-// ボス撃破演出実行中フラグ（二重実行防止）
-let _bossDefeating = false;
-
-// トライフォースのカケラをボスの位置に表示（DOM要素への参照を返す）
-let _pendingTriforcePieceEl = null;
-
-function spawnTriforcePiece(boss) {
-	if (!charLayerEl) return;
-	const cellPx = getCellPx();
-	const el = document.createElement('div');
-	el.id = 'pending-triforce-piece';
-	el.style.cssText = `
-		position:absolute;
-		left:${boss.x * cellPx}px;
-		top:${boss.y * cellPx}px;
-		width:${cellPx}px; height:${cellPx}px;
-		display:flex; align-items:center; justify-content:center;
-		font-size:${Math.round(cellPx * 0.65)}px;
-		z-index:12; pointer-events:none;
-		animation:triforce-pulse 1.5s ease-in-out infinite;
-	`;
-	el.textContent = '◭';
-	charLayerEl.appendChild(el);
-	_pendingTriforcePieceEl = el;
-}
-
-// ── クリア済みフラグ保存キー ──────────────────────────────────
-const CLEARED_KEY = 'blade-of-lumia-cleared';
-
+// ── クリア済みフラグ（CLEARED_KEY は constants.js から import 済み）──────────
 function hasCleared() {
 	return !!localStorage.getItem(CLEARED_KEY);
 }
@@ -2566,1163 +1314,352 @@ function saveCleared() {
 	localStorage.setItem(CLEARED_KEY, '1');
 }
 
-// ── エンディング ──────────────────────────────────────────────
-async function startEnding() {
-	isGameover = true; // ゲーム操作を無効化
-	stopGameLoop(); stopBgm();
-
-	// クリア済みフラグを保存
-	saveCleared();
-	// ゲームのセーブデータは削除
-	localStorage.removeItem(SAVE_KEY);
-
-	// エンディングオーバーレイ表示
-	endingOverlayEl.classList.remove('hidden');
-
-	// エンディング BGM 再生
-	playBgm('ending');
-
-	// ── フェーズ1：スタッフロール ─────────────────────────
-	const phase1El = document.getElementById('ending-phase1');
-	const phase2El = document.getElementById('ending-phase2');
-	phase1El.style.display = '';
-	phase2El.classList.add('hidden');
-
-	// スタッフロールHTML生成
-	const scrollEl = document.getElementById('ending-scroll');
-	scrollEl.innerHTML = buildStaffRollHtml();
-
-	// スタッフロールのアニメーション（40秒）が終わるのを待たずに即フェーズ2へ
-	// CSSアニメーションの終了を検知して切り替える
-	const scrollEl2 = document.getElementById('ending-scroll');
-	await new Promise(r => {
-		scrollEl2.addEventListener('animationend', r, { once: true });
-	});
-
-	// ── フェーズ2：THE END シーン ─────────────────────────
-	phase1El.style.display = 'none';
-	phase2El.classList.remove('hidden');
-
-	// 姫・主人公・姫のスプライトをアニメーション付きで表示
-	// makeSprite(animated=true) を使うとゲーム内と同じアニメーションが動く
-	// spriteクラスのposition:absoluteが邪魔するので除去してインラインで設定
-	function placeBigSprite(canvasId, spriteName, palName) {
-		const container = document.getElementById(canvasId);
-		if (!container) return;
-		container.innerHTML = '';
-		const cv = makeSprite(spriteName, palName, true);
-		if (!cv) return;
-		// sprite クラスはそのまま残す（redrawAnimSprites が canvas.sprite[data-sprite] を検索するため）
-		// CSS の .ending-big-sprite canvas.sprite でレイアウトを上書き済み
-		container.appendChild(cv);
+// ── フロアドロップ管理（Phase 9-5c）──────────────────────────────
+// 重複座標を隣接マスにずらす（最大8方向探索）。
+const DROP_OFFSETS = [[0,0],[0,1],[1,0],[0,-1],[-1,0],[1,1],[-1,-1],[1,-1],[-1,1]];
+function spawnFloorDrop(r, c, type) {
+	// 占有されていない座標を探す
+	let dr = r, dc = c;
+	for (const [or, oc] of DROP_OFFSETS) {
+		const nr = r + or, nc = c + oc;
+		if (!activeFloorDrops.some(d => d.r === nr && d.c === nc)) {
+			dr = nr; dc = nc; break;
+		}
 	}
-
-	placeBigSprite('ending-princess1-canvas', 'princess', 'princess');
-	placeBigSprite('ending-hero-canvas',      'heroD',    'hero');
-	placeBigSprite('ending-princess2-canvas', 'princess', 'princess');
-
-	// エンディングメッセージ
-	const msgEl = document.getElementById('ending-msg');
-	if (msgEl) {
-		msgEl.innerHTML = '魔王を倒し、すべてのトライフォースのカケラを集めた！<br>ルミアの平和は守られた……';
-	}
-}
-
-/** スタッフロール HTML を生成して返す */
-function buildStaffRollHtml() {
-	const AUTHOR = 'Go Kojima';
-	const roles = [
-		'Game Director',
-		'Executive Producer',
-		'Game Designer',
-		'Level Designer',
-		'Programmer',
-		'Lead Programmer',
-		'Character Designer',
-		'Pixel Artist',
-		'Background Artist',
-		'UI/UX Designer',
-		'Sound Designer',
-		'Music Composer',
-		'Story Writer',
-		'World Builder',
-		'Dungeon Architect',
-		'Monster Designer',
-		'Lore Creator',
-		'QA Lead',
-		'Playtester',
-	];
-	let html = `<div class="scroll-game-title">⚔ Blade of Lumia</div>`;
-	html += `<div class="scroll-subtitle">～ ルミアの剣 ～</div>`;
-	for (const role of roles) {
-		html += `<div class="scroll-role">${role}</div>`;
-		html += `<div class="scroll-name">${AUTHOR}</div>`;
-		html += `<div class="scroll-divider"></div>`;
-	}
-	// Special Thanks to は別名で表示
-	html += `<div class="scroll-role">Special Thanks to</div>`;
-	html += `<div class="scroll-name">Kojima's family</div>`;
-	html += `<div class="scroll-divider"></div>`;
-	html += `<div class="scroll-thanks">Thank you for playing!</div>`;
-	html += `<div class="scroll-copyright">© 2026 ${AUTHOR}</div>`;
-	return html;
-}
-
-// ── ボス部屋ロック演出（扉が閉まるフラッシュ） ───────────────
-function showBossRoomLockEffect() {
-	if (!charLayerEl) return;
-	// 画面全体を赤く一瞬フラッシュ
-	const flash = document.createElement('div');
-	flash.style.cssText = `
-		position:fixed;
-		inset:0;
-		background:rgba(180,0,0,0.45);
+	const cellPx = getCellPx();
+	const el = document.createElement('div');
+	el.style.cssText = `
+		position:absolute;
+		left:${(dc + 0.5) * cellPx}px;
+		top:${(dr + 0.5) * cellPx}px;
+		transform:translate(-50%,-50%);
+		z-index:20;
 		pointer-events:none;
-		z-index:50;
-		animation:flash-anim 0.4s ease-out forwards;
 	`;
-	document.body.appendChild(flash);
-	setTimeout(() => flash.remove(), 420);
-}
-
-// ── ボス戦 ────────────────────────────────────────────────────
-function startBossBattle(lk, sk) {
-	// ボスが既に倒されている（defeatedEnemies に登録済み）なら演出なし
-	const ss = getSS(lk, sk);
-	const boss = enemies.find(e => ENEMY_META[e.type]?.isBoss);
-	if (!boss) {
-		// ボス撃破済み → ロック不要
-		bossRoomLocked = false;
-		return;
+	// ドロップの見た目は、マップに落ちているアイテムと同じスプライトに揃える
+	// （絵文字テキストだと落下ルピー ◆ と配置ルピー rupee スプライトで見た目が食い違う）。
+	const sprMap = FLOOR_DROP_SPRITES[type];
+	const cv = sprMap ? makeSprite(sprMap[0], sprMap[1], false) : null;
+	if (cv) {
+		cv.classList.add('item-sprite');
+		el.appendChild(cv);
+	} else {
+		// スプライト未定義の型は従来どおり絵文字でフォールバック
+		el.style.fontSize = `${Math.round(cellPx * 0.55)}px`;
+		el.style.color = FLOOR_DROP_COLORS[type] ?? '#fff';
+		el.textContent = FLOOR_DROP_ICONS[type] ?? '?';
 	}
-
-	// 入室から少し待って扉閉鎖演出 → ロック
-	setTimeout(() => {
-		lockBossDoors();              // DOORWAY_BOSS タイルを閉じる
-		showBossRoomLockEffect();
-		playSound('stageTransition'); // 扉が閉まる音（暫定）
-		bossRoomLocked = true;
-		pulse('⚠ 扉が閉じた！ボスを倒さないと出られない！', 3000);
-
-		// さらに少し待ってBGMとHPバー表示
-		setTimeout(() => {
-			const ld = mapData.layers[lk];
-			const bossBgm = ld?.bossBgm ?? 'boss';
-			playBgm(bossBgm);
-			showBossHpBar(boss);
-			pulse(`${ENEMY_META[boss.type].name} が 現れた！`, 2500);
-		}, 800);
-	}, 400);
+	if (charLayerEl) charLayerEl.appendChild(el);
+	const timerId = setTimeout(() => removeFloorDrop(drop), 5000);
+	const drop = { r: dr, c: dc, type, timerId, el };
+	activeFloorDrops.push(drop);
 }
+function removeFloorDrop(drop) {
+	clearTimeout(drop.timerId);
+	drop.el?.remove();
+	activeFloorDrops = activeFloorDrops.filter(d => d !== drop);
+}
+function clearAllFloorDrops() {
+	for (const d of activeFloorDrops) { clearTimeout(d.timerId); d.el?.remove(); }
+	activeFloorDrops = [];
+}
+// ドロップ種別の効果を player に適用する（踏んで拾う／ブーメランキャッチ共通）。
+function applyFloorDropEffect(type) {
+	const maxB = player.maxBombs ?? 8;
+	const maxA = player.maxArrows ?? 8;
+	if (type === 'bomb') {
+		if (!player.subItems.bomb) player.subItems.bomb = { count: 0 };
+		const prev = player.subItems.bomb.count;
+		player.subItems.bomb.count = Math.min(prev + 3, maxB);
+		if (player.subItems.bomb.count > prev) {
+			playSound('item'); pulse('💣 ×3'); updateHud(); saveGame();
+		}
+	} else if (type === 'arrow') {
+		if (!player.subItems.bow) player.subItems.bow = { count: 0 };
+		const prev = player.subItems.bow.count;
+		player.subItems.bow.count = Math.min(prev + 3, maxA);
+		if (player.subItems.bow.count > prev) {
+			playSound('item'); pulse('🏹 ×3'); updateHud(); saveGame();
+		}
+	} else if (type === 'heart') {
+		const prev = player.hp;
+		player.hp = Math.min(player.maxHp, player.hp + 1);
+		if (player.hp > prev) {
+			playSound('item'); pulse('❤ HP+1'); updateHud(); saveGame();
+		}
+	} else if (type === 'rupee') {
+		player.rupees = (player.rupees ?? 0) + 1;
+		playSound('item'); pulse('◆ ルピー ×1'); updateHud(); saveGame();
+	}
+}
+
+function pickupFloorDropAt(r, c) {
+	const drop = activeFloorDrops.find(d => d.r === r && d.c === c);
+	if (!drop) return;
+	removeFloorDrop(drop);
+	applyFloorDropEffect(drop.type);
+}
+
+// ブーメランが通過したセルの敵ドロップを "運搬" する（Phase 4-6）。
+// 拾った瞬間はドロップを画面から消す（加算保留）＝キャッチで apply、取り逃しで restore。
+function collectBoomerangDrop(r, c) {
+	const drop = activeFloorDrops.find(d => d.r === r && d.c === c);
+	if (!drop) return null;
+	removeFloorDrop(drop);
+	const type    = drop.type;
+	const sprMap  = FLOOR_DROP_SPRITES[type];
+	return {
+		spr: sprMap?.[0] ?? 'rupee', pal: sprMap?.[1] ?? 'rupee',
+		apply() { applyFloorDropEffect(type); },
+		// 取り逃し＝ドロップは失われる（no-op）。敵ドロップは元々ステージ遷移で
+		// clearAllFloorDrops により消える儚い存在で、ブーメラン未キャッチ消滅も遷移時のみ。
+		// 遷移後は別ステージなので撒き直すと誤ったステージに湧く＝何もしないのが正しい。
+		restore() {},
+	};
+}
+
+// ── ショップ状態（ui.js factory が getter/setter 経由で操作）────────────────
+let isShop = false;
 
 // ── リアルタイムループ ────────────────────────────────────────
+// driver（setInterval）は「実時間で step(1) を駆動」するだけ。
+// 世界を進めるロジックは step() に集約し、テストからは __game.step(n) を
+// 直接呼ぶことで実時間ゼロ・決定論的にフレームを進められる（Phase 0-1）。
 function startGameLoop() {
 	if (gameTimer) clearInterval(gameTimer);
-	gameTimer = setInterval(gameTick, TICK_MS);
+	gameTimer = setInterval(() => step(1), TICK_MS);
 }
 function stopGameLoop() {
 	if (gameTimer) { clearInterval(gameTimer); gameTimer = null; }
 }
 
+// gameTick: 1 フレーム分の「世界の更新」（純粋ロジック）。
+// 互換のため関数名は残すが、実体は step(1) と同じ。
 function gameTick() {
 	if (isPaused || isDialog || isGameover || isTransitioning) return;
 	processHeldKeys();   // 押しっぱなしキーで毎tick移動
+	tickCharge();        // チャージゲージ更新（剣ビーム・Phase 3-1）
 	enemyTick();
 	projectileTick();
 	bombTick();
 	checkEnemyContact();
-	checkPendingTriforce(); // 魔王撃破後のトライフォース収集チェック
+	checkPendingTriforce(); // 魔王撃破後の星の欠片収集チェック
+	tickAttackPose();    // 剣の構えポーズを論理時間で解除（Phase 5.5g3）
 	redrawAnimSprites();
 }
 
-// ── 魔王撃破後トライフォース収集チェック ─────────────────────
-// プレイヤーがカケラに近づいたら収集 → エンディングチェック
-let _collectingTriforce = false; // 二重収集防止フラグ
-
-function checkPendingTriforce() {
-	if (!pendingTriforcePos || _collectingTriforce) return;
-	const dist = Math.sqrt(
-		(player.x - pendingTriforcePos.x) ** 2 +
-		(player.y - pendingTriforcePos.y) ** 2,
-	);
-	if (dist > 1.0) return; // まだ遠い
-
-	// 二重収集を防ぐ
-	_collectingTriforce = true;
-	pendingTriforcePos = null;
-
-	// DOM 要素を消す
-	if (_pendingTriforcePieceEl) {
-		_pendingTriforcePieceEl.remove();
-		_pendingTriforcePieceEl = null;
+// Phase 5.5g3: 攻撃ポーズの期限切れ。論理時間で判定するので step() でも実ループでも同じ。
+function tickAttackPose() {
+	// Phase 5.5g6: チャージ（剣ビームの溜め）中は剣を出しっぱなしにする＝
+	// ポーズの窓（_atkUntil）を毎tick延長し続ける。窓は1つだけに保つのが要点で、
+	// これ1つで「ポーズの絵・構えた剣・盾の防御無効・足止め」が全部同期する。
+	// ∴ 溜め中は盾で防御できない（剣を突き出し盾は利き手側へ回っている絵と一致）。
+	if (getIsCharging()) {
+		const wasIdle = player._atkUntil == null;
+		player._atkUntil = gameNow() + ATTACK_POSE_MS;
+		if (wasIdle) updatePlayerCharEl();   // 剣を振らずに溜めだけ始めた場合の絵合わせ
+		ensureSwordHeld();
+		return;
 	}
-	document.getElementById('pending-triforce-piece')?.remove();
-
-	player.triforceCount++;
-	console.log(`[TRIFORCE] checkPendingTriforce: collected, triforceCount=${player.triforceCount}`, new Error().stack);
-	playSound('item');
-	pulse('◭ トライフォースのカケラを 手に入れた！', 4000);
-	updateHud();
-	saveGame();
-
-	// フラグを解除（次の pendingTriforce のために）
-	_collectingTriforce = false;
-
-	// 全カケラ収集チェック
-	checkTriforceClear();
+	if (player._atkUntil == null) return;
+	if (gameNow() < player._atkUntil) return;
+	player._atkUntil = null;
+	clearSwordHeld();
+	updatePlayerCharEl();
 }
 
-// ── トライフォース全収集チェック ──────────────────────────────
-// マップ全体の ITEM_TRIFORCE_PIECE 数 + DARK_LORD 数 = 全カケラ数
-// プレイヤーのtriforceCountが全カケラ数に達したらエンディング
-function calcTotalTriforces() {
-	if (!mapData) return 0;
-	let total = 0;
-	for (const ld of Object.values(mapData.layers ?? {})) {
-		for (const sd of Object.values(ld.stages ?? {})) {
-			for (const row of sd.tiles ?? []) {
-				for (const tile of row) {
-					if (tile === TILE.ITEM_TRIFORCE_PIECE) total++;
-					if (tile === TILE.DARK_LORD) total++; // 魔王撃破後に出現
-				}
-			}
-		}
-	}
-	return total;
-}
-
-function checkTriforceClear() {
-	const total = calcTotalTriforces();
-	if (total <= 0) return;
-	if (player.triforceCount >= total) {
-		stopGameLoop();
-		setTimeout(() => startEnding(), 2500);
+// step(frames): frames 分だけ世界を進める。
+// 1 フレームごとに論理時間 gameTime を TICK_MS 加算してから gameTick() を実行する。
+// 凍結状態（ポーズ・ダイアログ・ゲームオーバー・遷移中）では gameTick が早期 return し、
+// gameTime も進めない（＝世界が止まる）。
+function step(frames = 1) {
+	for (let i = 0; i < frames; i++) {
+		if (isPaused || isDialog || isGameover || isTransitioning) return;
+		gameTime += TICK_MS;
+		gameTick();
 	}
 }
 
-// ── 敵 AI ────────────────────────────────────────────────────
-function enemyTick() {
-	for (const e of enemies) {
-		const meta = ENEMY_META[e.type];
-		if (!meta) continue;
-		if (meta.hitAndAway) {
-			bossTickHitAndAway(e, meta);
-		} else {
-			enemyChase(e, meta.speed);
-		}
-		enemyAttack(e, meta);
+// ── 笛を奏でる（Phase 4-2／resetStones は 2026-08-04 PLAN 4.7）───────────
+// 効果は現在ステージの stageData.fluteEffect で決まる：
+//   { type:'reveal' } → ss.flutePlayed=true → evaluateConditions() で
+//                       flutePlayed トリガーの隠しタイル（入口/アイテム）が出現
+//   { type:'warp', destId } → exitRegistry[destId] のワープポイントへ移動
+//   { type:'resetStones' } → 石パズルが色ゲート等で画面外に出られない状態に嵌ったときの
+//                       救済＝enterStage の石リセットと同じ規則をその場で発動する
+//                       （全ボタンに石が乗って解決済みなら不発＝解けたパズルは壊さない）
+//   未設定           → 何も起きない（音だけ鳴る）
+function playFlute() {
+	if (isDialog || isPaused || isGameover || isTransitioning) return;
+	resumeAudio();
+	playSound('flute');  // 魔法の音色（笛の短いメロディ）
+	const fx = stageData?.fluteEffect;
+	if (!fx) {
+		pulse('🎵 不思議な音色が響いた…… 特に何も起きない', 1800);
+		return;
 	}
-}
-
-// ── ヒット＆アウェイ AI ───────────────────────────────────────
-function pickApproachMode(e) {
-	const meta = e.type ? ENEMY_META[e.type] : null;
-	// attacks[] に stone がある敵だけ strafe を選択肢に入れる
-	const hasStone = meta?.attacks?.some(a => a.type === 'stone');
-	// meta.initialModeWeights が定義されていればそれをデフォルト重みとして使う
-	const defaultWeights = meta?.initialModeWeights ?? (hasStone
-		? { flank: 0.8, direct: 0.6, wander: 1.0, strafe: 1.2 }
-		: { flank: 1.0, direct: 1.0, wander: 1.0, strafe: 0 });
-	const w = e._modeWeights ?? defaultWeights;
-	const total = (w.flank ?? 0) + (w.direct ?? 0) + (w.wander ?? 0) + (w.strafe ?? 0);
-	let r = Math.random() * total;
-	if ((r -= (w.flank  ?? 0)) <= 0) return 'flank';
-	if ((r -= (w.direct ?? 0)) <= 0) return 'direct';
-	if ((r -= (w.strafe ?? 0)) <= 0) return 'strafe';
-	return 'wander';
-}
-
-function bossTickHitAndAway(e, meta) {
-	const now = Date.now();
-	if (!e._haPhase) {
-		e._haPhase = 'approach';
-		e._haTimer = now + 2500 + Math.random() * 1500;
-		// モード重みを初期化（初回のみ）
-		// meta.initialModeWeights が定義されていればそれを初期値として使う
-		if (!e._modeWeights) {
-			const meta2 = e.type ? ENEMY_META[e.type] : null;
-			e._modeWeights = meta2?.initialModeWeights
-				? { ...meta2.initialModeWeights }
-				: { flank: 1.0, direct: 1.0, wander: 1.0 };
-		}
-		// approach 開始時に重みを使ってモードを決定
-		// flank=背後回り込み / direct=直接突進 / wander=ランダム大移動（ループ脱出）
-		e._approachMode = pickApproachMode(e);
-		if (e._approachMode === 'wander') {
-			// wander: マップ内のランダム位置を目標にセット
-			e._wanderX = 1 + Math.random() * ((stageData?.cols ?? 12) - 2);
-			e._wanderY = 1 + Math.random() * ((stageData?.rows ?? 10) - 2);
-		}
-		if (debugMode) console.log(`[AI] ${e.id} approach start mode=${e._approachMode}`);
+	if (fx.type === 'reveal') {
+		const ss = getSS(currentLayer, stageKey);
+		if (ss.flutePlayed) { pulse('🎵 もう何かが現れている', 1500); return; }
+		ss.flutePlayed = true;
+		evaluateConditions();
+		renderBoard(); renderChars();
+		pulse(fx.message ?? '🎵 音色に応えて 何かが現れた！', 2200);
+		saveGame();
+		return;
 	}
-	const dx = player.x - e.x;
-	const dy = player.y - e.y;
-
-	// 向きを常にプレイヤー方向に更新（条件なし・毎tick）
-	{
-		const newDir = Math.abs(dy) >= Math.abs(dx)
-			? (dy > 0 ? 'down' : 'up')
-			: (dx > 0 ? 'right' : 'left');
-		if (e.dir !== newDir) {
-			e.dir = newDir;
-			// 方向別スプライト名に切り替える
-			// escape → escapeD/escapeR/escapeU（左向きはescapeRをflipX）
-			// darklord → darklordD/darklordR/darklordU
-			const baseName = ENEMY_META[e.type]?.sprite ?? e.sprite;
-			// baseName の末尾にすでに方向文字がある場合は除去してbaseを取得
-			const base = baseName.replace(/[DRLU]$/, '');// 大文字方向文字のみ除去;
-			const dirSuffix = { down:'D', right:'R', left:'R', up:'U' }[newDir] ?? 'D';
-			e.sprite = `${base}${dirSuffix}`;
-			e.flipX  = (newDir === 'left');  // 左向きは右向きスプライトをflip
-			const el = document.getElementById(`char-enemy-${e.id}`);
-			if (el) {
-				const oldCv = el.querySelector('canvas.sprite');
-				if (oldCv) oldCv.remove();
-				const cv = makeSprite(e.sprite, e.pal, true, e.flipX);
-				if (cv) el.insertBefore(cv, el.firstChild);
-			}
-		}
-	}
-	if (e._haPhase === 'approach') {
-		if (now >= e._haTimer) {
-			e._haPhase = 'retreat';
-			e._haTimer = now + 800 + Math.random() * 600;
-			// retreat 終了後の次 approach でランダムにモード再選択
-			e._approachMode = null;
-		} else {
-			// _approachMode: 'direct' = 単純突進、'flank' = 背後回り込み
-			const mode = e._approachMode ?? 'direct';
-
-			let tdx, tdy;
-
-			if (mode === 'wander') {
-				// ── ワンダーモード：ランダム目標位置へ大きく移動（ループ脱出） ──
-				const wx = (e._wanderX ?? player.x) - e.x;
-				const wy = (e._wanderY ?? player.y) - e.y;
-				const wDist = Math.sqrt(wx*wx + wy*wy);
-				if (wDist < 1.0) {
-					// 目標到達 → direct に切り替え
-					e._approachMode = 'direct';
-					tdx = dx; tdy = dy;
-				} else {
-					tdx = wx; tdy = wy;
-				}
-				if (debugMode) {
-					e._dbgTick = (e._dbgTick ?? 0) + 1;
-					if (e._dbgTick % 10 === 0) console.log(`[AI] ${e.id} WANDER pos=(${e.x.toFixed(1)},${e.y.toFixed(1)}) → wander=(${(e._wanderX??0).toFixed(1)},${(e._wanderY??0).toFixed(1)}) dist=${wDist.toFixed(1)}`);
-				}
-			} else if (mode === 'strafe') {
-				// ── ストレイフモード：盾でブロックされない角度から移動しながら石投げ ──
-				// 目標：プレーヤーから見て斜め70°相当の方向（横成分大・縦成分小）
-				// 盾ブロック判定は純粋な上下左右のみ有効。
-				// 横に大きく外れた方向から来る石は確実にブロックされない。
-				// 目標到達後も止まらず同じ方向に移動し続けながら石を投げる。
-				if (e._strafeTargetX == null || !e._strafeBasePlayerX
-					|| Math.abs(player.x - e._strafeBasePlayerX) > 2.5
-					|| Math.abs(player.y - e._strafeBasePlayerY) > 2.5) {
-					const STRAFE_DIST = 4.0 + Math.random() * 2.0; // 4〜6 セル
-					const stageW = stageData?.cols ?? 12;
-					const stageH = stageData?.rows ?? 10;
-					// 約70°の角度：横(cos70°≈0.34)より縦(sin70°≈0.94)のほうが大きい
-					// → 横に大きくずれた位置 = 縦比が大きい方向
-					// heroDir が right/left → 敵は上か下に 0.94 ずれ、左右に 0.34 ずれ
-					// heroDir が up/down → 敵は左か右に 0.94 ずれ、上下に 0.34 ずれ
-					const heroFwd = { down:[0,1], up:[0,-1], left:[-1,0], right:[1,0] }[heroDir] ?? [0,1];
-					const sideA = [-heroFwd[1],  heroFwd[0]]; // 90° CCW（左側）
-					const sideB = [ heroFwd[1], -heroFwd[0]]; // 90° CW（右側）
-					const chosenSide = Math.random() < 0.5 ? sideA : sideB;
-					// 縦(側面方向)に大きく、横(前後)に少しずれた位置
-					const tx = player.x + chosenSide[0] * STRAFE_DIST * 0.94 + heroFwd[0] * STRAFE_DIST * 0.34 * (Math.random() < 0.5 ? 1 : -1);
-					const ty = player.y + chosenSide[1] * STRAFE_DIST * 0.94 + heroFwd[1] * STRAFE_DIST * 0.34 * (Math.random() < 0.5 ? 1 : -1);
-					e._strafeTargetX = Math.max(1, Math.min(stageW - 2, tx));
-					e._strafeTargetY = Math.max(1, Math.min(stageH - 2, ty));
-					// 移動方向ベクトルを保存（目標到達後も同方向に進み続ける）
-					const dirLen = Math.sqrt(chosenSide[0]**2 + chosenSide[1]**2) || 1;
-					e._strafeDirX = chosenSide[0] / dirLen;
-					e._strafeDirY = chosenSide[1] / dirLen;
-					e._strafeBasePlayerX = player.x;
-					e._strafeBasePlayerY = player.y;
-					if (debugMode) console.log(`[AI] ${e.id} STRAFE target=(${e._strafeTargetX.toFixed(1)},${e._strafeTargetY.toFixed(1)}) dist=${STRAFE_DIST.toFixed(1)}`);
-				}
-				const stx = e._strafeTargetX;
-				const sty = e._strafeTargetY;
-				const toStrafeDist = Math.sqrt((stx-e.x)**2 + (sty-e.y)**2);
-				if (toStrafeDist < 1.5) {
-					// 目標到達 → 同方向に移動し続けながら石を投げる（enemyAttack が石投げを処理）
-					// 同じサイド方向に進み続け、角度をさらに深める
-					tdx = e._strafeDirX ?? (stx - e.x);
-					tdy = e._strafeDirY ?? (sty - e.y);
-					if (debugMode) {
-						e._dbgTick = (e._dbgTick ?? 0) + 1;
-						if (e._dbgTick % 8 === 0) console.log(`[AI] ${e.id} STRAFE continuing dir=(${tdx.toFixed(2)},${tdy.toFixed(2)}) pos=(${e.x.toFixed(1)},${e.y.toFixed(1)})`);
-					}
-				} else {
-					tdx = stx - e.x; tdy = sty - e.y;
-					if (debugMode) {
-						e._dbgTick = (e._dbgTick ?? 0) + 1;
-						if (e._dbgTick % 10 === 0) console.log(`[AI] ${e.id} STRAFE moving pos=(${e.x.toFixed(1)},${e.y.toFixed(1)}) → target=(${stx.toFixed(1)},${sty.toFixed(1)}) dist=${toStrafeDist.toFixed(1)}`);
-					}
-				}
-			} else if (mode === 'direct') {
-				// ── 直接突進モード：単純にプレイヤーに向かう ──────
-				tdx = dx; tdy = dy;
-				if (debugMode) {
-					e._dbgTick = (e._dbgTick ?? 0) + 1;
-					if (e._dbgTick % 10 === 0) console.log(`[AI] ${e.id} DIRECT pos=(${e.x.toFixed(1)},${e.y.toFixed(1)}) → player=(${player.x.toFixed(1)},${player.y.toFixed(1)}) dist=${Math.sqrt(dx*dx+dy*dy).toFixed(1)}`);
-				}
-			} else {
-				// ── 背後回り込みモード（flank） ───────────────────
-				// 戦略：
-				//   1. プレイヤーの左右 or 上下のどちらかに「固定目標」を設定する
-				//   2. 固定目標に到達したら直接プレイヤーへ突進
-				//   3. 固定目標は approach 開始時に一度だけ計算 → 毎 tick 変わらないので振動しない
-				//   4. プレイヤーが大きく移動したら（2セル以上）目標を再計算する
-
-				const heroFwd = { down:[0,1], up:[0,-1], left:[-1,0], right:[1,0] }[heroDir] ?? [0,1];
-				// プレイヤー背後 1.5 セル先
-				const backX = player.x - heroFwd[0] * 1.5;
-				const backY = player.y - heroFwd[1] * 1.5;
-
-				// 固定目標を計算・保持（_flankTargetX/Y）
-				// 「プレイヤー基準の目標」と「プレイヤーの位置」を別々に保存しておき、
-				// プレイヤーが 2 セル以上動いたら再計算する
-				const playerMoved = !e._flankBasePlayerX
-					|| Math.abs(player.x - e._flankBasePlayerX) > 2.0
-					|| Math.abs(player.y - e._flankBasePlayerY) > 2.0;
-
-				if (e._flankTargetX == null || playerMoved) {
-					// 目標を再計算：背後・左側面・右側面の3候補から選択する
-					// heroFwd の垂直方向がサイド（90度回転）
-					const sideA = [-heroFwd[1],  heroFwd[0]]; // 90° CCW
-					const sideB = [ heroFwd[1], -heroFwd[0]]; // 90° CW
-					const BACK_DIST = 1.5;
-					const SIDE_DIST = 3.0 + Math.random() * 1.5; // 3〜4.5 セル
-					const stageW = stageData?.cols ?? 12;
-					const stageH = stageData?.rows ?? 10;
-					// 3候補：背後・左側面・右側面
-					const candidates3 = [
-						// 背後（プレーヤーが向いている反対側）
-						{ x: player.x - heroFwd[0] * BACK_DIST, y: player.y - heroFwd[1] * BACK_DIST },
-						// 左側面（heroFwd の 90° 回転）
-						{ x: player.x + sideA[0] * SIDE_DIST, y: player.y + sideA[1] * SIDE_DIST },
-						// 右側面（heroFwd の -90° 回転）
-						{ x: player.x + sideB[0] * SIDE_DIST, y: player.y + sideB[1] * SIDE_DIST },
-					];
-					// マップ内にクランプして通行可能な候補をフィルタ（マップ端よりは手前に制限）
-					const validCandidates = candidates3.map(p => ({
-						x: Math.max(1, Math.min(stageW - 2, p.x)),
-						y: Math.max(1, Math.min(stageH - 2, p.y)),
-					}));
-					// ランダムに選択（全候補が等確率）
-					const chosen = validCandidates[Math.floor(Math.random() * validCandidates.length)];
-					e._flankTargetX = chosen.x;
-					e._flankTargetY = chosen.y;
-					e._flankBasePlayerX = player.x;
-					e._flankBasePlayerY = player.y;
-					e._flankDodgeDist = null; // リセット
-					if (debugMode) {
-						const which = ['back','sideA','sideB'];
-						const idx = validCandidates.indexOf(chosen);
-						console.log(`[AI] ${e.id} FLANK target=(${e._flankTargetX.toFixed(1)},${e._flankTargetY.toFixed(1)}) type=${which[idx] ?? '?'} reason=${playerMoved?'playerMoved':'init'}`);
-					}
-				}
-
-				const ftx = e._flankTargetX;
-				const fty = e._flankTargetY;
-				const toTargetDist = Math.sqrt((ftx-e.x)**2 + (fty-e.y)**2);
-				const toBkDist = Math.sqrt((backX-e.x)**2 + (backY-e.y)**2);
-
-				const _prevFlankStep = e._flankStep ?? 'to_target';
-				if (toBkDist < 1.0) {
-					// 背後に到達 → 突進
-					tdx = dx; tdy = dy;
-					if (e._flankStep !== 'charge') {
-						if (debugMode) console.log(`[AI] ${e.id} FLANK→charge (back reached) pos=(${e.x.toFixed(1)},${e.y.toFixed(1)}) toBkDist=${toBkDist.toFixed(1)}`);
-						e._flankStep = 'charge';
-					}
-					e._flankTargetX = null; // 次回のためにリセット
-				} else if (toTargetDist < 0.8) {
-					// 固定目標に到達 → 背後へ向かう
-					tdx = backX - e.x; tdy = backY - e.y;
-					if (e._flankStep !== 'to_back') {
-						if (debugMode) console.log(`[AI] ${e.id} FLANK→to_back (target reached) pos=(${e.x.toFixed(1)},${e.y.toFixed(1)}) back=(${backX.toFixed(1)},${backY.toFixed(1)}) toBkDist=${toBkDist.toFixed(1)}`);
-						e._flankStep = 'to_back';
-					}
-				} else {
-					// 固定目標へ向かう
-					tdx = ftx - e.x; tdy = fty - e.y;
-					if (e._flankStep !== 'to_target') {
-						if (debugMode) console.log(`[AI] ${e.id} FLANK→to_target pos=(${e.x.toFixed(1)},${e.y.toFixed(1)}) target=(${ftx.toFixed(1)},${fty.toFixed(1)}) dist=${toTargetDist.toFixed(1)}`);
-						e._flankStep = 'to_target';
-					}
-				}
-
-				if (debugMode) {
-					e._dbgTick = (e._dbgTick ?? 0) + 1;
-					if (e._dbgTick % 10 === 0) console.log(`[AI] ${e.id} FLANK step=${e._flankStep} pos=(${e.x.toFixed(1)},${e.y.toFixed(1)}) target=(${ftx?.toFixed(1)},${fty?.toFixed(1)}) toBkDist=${toBkDist.toFixed(1)}`);
-				}
-			}
-
-			e.accum = (e.accum ?? 0) + meta.speed;
-			if (e.accum >= 1.0) {
-				e.accum -= 1.0;
-				const step = MOVE_STEP;
-				const candidates = [];
-				// 移動候補の優先順位：
-				//   1. 主軸方向（目標に向かう方向）
-				//   2. 副軸方向（垂直に横切る ±）
-				//   3. 逆方向（主軸の逆）← 最終手段。袋小路脱出用。振動を避けるため最後に置く
-				if (Math.abs(tdy) >= Math.abs(tdx)) {
-					if (tdy !== 0) candidates.push([Math.sign(tdy)*step, 0]);
-					if (tdx !== 0) { candidates.push([0, Math.sign(tdx)*step]); candidates.push([0, -Math.sign(tdx)*step]); }
-					else           { candidates.push([0, step]); candidates.push([0, -step]); }
-					if (tdy !== 0) candidates.push([-Math.sign(tdy)*step, 0]); // 逆方向（最終手段）
-				} else {
-					if (tdx !== 0) candidates.push([0, Math.sign(tdx)*step]);
-					if (tdy !== 0) { candidates.push([Math.sign(tdy)*step, 0]); candidates.push([-Math.sign(tdy)*step, 0]); }
-					else           { candidates.push([step, 0]); candidates.push([-step, 0]); }
-					if (tdx !== 0) candidates.push([0, -Math.sign(tdx)*step]); // 逆方向（最終手段）
-				}
-				const prevX = e.x, prevY = e.y;
-				for (const [my, mx] of candidates) {
-					if (isPassableForEnemy(e.y+my, e.x+mx, e)) {
-						e.y += my; e.x += mx; break;
-					}
-				}
-				// スタック検知：位置が変わらなかった tick をカウント
-				if (e.x === prevX && e.y === prevY) {
-					e._stuckTick = (e._stuckTick ?? 0) + 1;
-					if (e._stuckTick >= 3) {
-						// 3tick動けない → ランダム方向に脱出を試みる
-						e._stuckTick = 0;
-						const escapes = [[step,0],[-step,0],[0,step],[0,-step]];
-						for (const [my,mx] of escapes.sort(()=>Math.random()-0.5)) {
-							if (isPassableForEnemy(e.y+my, e.x+mx, e)) {
-								e.y += my; e.x += mx; break;
-							}
-						}
-					}
-					e._directChargeTick = (e._directChargeTick ?? 0) + 1;
-					// 8tick経っても届けない → 背後狙いをあきらめて直接突進モードへ
-					if (e._directChargeTick >= 8) {
-						e._directChargeTick = 0;
-						// タイマーを即終了させて retreat → 再 approach サイクルに移行
-						//（直接プレイヤーへ向かい、次 tick の enemyAttack で攻撃可能になる）
-						e._haPhase = 'retreat';
-						e._haTimer = now + 400 + Math.random() * 200;
-					}
-				} else {
-					e._stuckTick = 0;
-					e._directChargeTick = 0;
-				}
-				moveCharEl(`enemy-${e.id}`, e.x, e.y);
-			}
-		}
-	} else {
-		if (now >= e._haTimer) {
-			// ── approach 終了時の成功/失敗評価と重み更新 ───────────
-			{
-				if (!e._modeWeights) e._modeWeights = { flank: 1.0, direct: 1.0, wander: 1.0 };
-				const atk = ENEMY_META[e.type]?.attack;
-				const range = atk?.range ?? 1.5;
-				const distNow = Math.sqrt(dx*dx + dy*dy);
-				const succeeded = (e._approachMode === 'direct' || e._approachMode === 'flank')
-					&& distNow <= range + 1.0;
-
-				const mode = e._approachMode;
-				if (mode === 'flank' || mode === 'direct') {
-					if (succeeded) {
-						e._modeWeights[mode] = Math.min(2.0, e._modeWeights[mode] * 1.5);
-					} else {
-						e._modeWeights[mode] = Math.max(0.2, e._modeWeights[mode] * 0.5);
-					}
-				}
-				// wander が選ばれた後は重みをリセット（新鮮な挑戦）
-				if (mode === 'wander') {
-					e._modeWeights = { flank: 1.0, direct: 1.0, wander: 1.0 };
-				}
-			}
-
-			e._haPhase = 'approach';
-			e._haTimer = now + 2000 + Math.random() * 1000;
-			// retreat → approach 切り替え時に重みを使ってモード再選択（wander含む）
-			{
-				e._approachMode = pickApproachMode(e);
-				if (e._approachMode === 'wander') {
-					e._wanderX = 1 + Math.random() * ((stageData?.cols ?? 12) - 2);
-					e._wanderY = 1 + Math.random() * ((stageData?.rows ?? 10) - 2);
-				}
-				e._dbgTick = 0;
-				if (debugMode) {
-					const w = e._modeWeights;
-					const total = w.flank + w.direct + w.wander;
-					console.log(
-						`[AI] ${e.id} retreat→approach mode=${e._approachMode}` +
-						` weights=F${(w.flank/total*100).toFixed(0)}%` +
-						`/D${(w.direct/total*100).toFixed(0)}%` +
-						`/W${(w.wander/total*100).toFixed(0)}%` +
-						(e._approachMode === 'wander' ? ` wander=(${e._wanderX?.toFixed(1)},${e._wanderY?.toFixed(1)})` : '')
-					);
-				}
-			}
-		} else {
-			// retreat：プレイヤーから 3 セル以上離れたら早期終了（離れすぎ防止）
-			const retreatDist = Math.sqrt(dx*dx + dy*dy);
-			if (retreatDist >= 3.0) {
-				// 十分離れた → 即 approach へ
-				e._haPhase = 'approach';
-				e._haTimer = now + 500 + Math.random() * 500;
-				e._approachMode = pickApproachMode(e);
-				if (e._approachMode === 'wander') {
-					e._wanderX = 1 + Math.random() * ((stageData?.cols ?? 12) - 2);
-					e._wanderY = 1 + Math.random() * ((stageData?.rows ?? 10) - 2);
-				}
-				e._dbgTick = 0;
-				if (debugMode) {
-					const w = e._modeWeights ?? { flank:1, direct:1, wander:1 };
-					const total = w.flank + w.direct + w.wander;
-					console.log(
-						`[AI] ${e.id} retreat→approach (dist limit) mode=${e._approachMode}` +
-						` dist=${retreatDist.toFixed(1)}` +
-						` weights=F${(w.flank/total*100).toFixed(0)}%/D${(w.direct/total*100).toFixed(0)}%/W${(w.wander/total*100).toFixed(0)}%` +
-						(e._approachMode === 'wander' ? ` wander=(${e._wanderX?.toFixed(1)},${e._wanderY?.toFixed(1)})` : '')
-					);
-				}
-			} else {
-				const rdx = -Math.sign(dx), rdy = -Math.sign(dy);
-				const step = MOVE_STEP;
-				const cands = Math.abs(dy) >= Math.abs(dx)
-					? [[rdy*step,0],[0,rdx*step]] : [[0,rdx*step],[rdy*step,0]];
-				e.accum = (e.accum ?? 0) + meta.speed;
-				if (e.accum >= 1.0) {
-					e.accum -= 1.0;
-					for (const [my,mx] of cands) {
-						if (isPassableForEnemy(e.y+my, e.x+mx, e)) {
-							e.y += my; e.x += mx; break;
-						}
-					}
-					moveCharEl(`enemy-${e.id}`, e.x, e.y);
-				}
-			}
-		}
-	}
-}
-
-// 敵の攻撃処理（spear/stone/sword）
-// meta.attacks[] 配列があれば複数攻撃を個別cooldownで管理する
-function enemyAttack(e, meta) {
-	// attacks[] 配列対応：各攻撃を独立したクールダウンで処理
-	const attackList = meta.attacks ?? (meta.attack ? [meta.attack] : []);
-	if (attackList.length === 0) return;
-
-	const now = Date.now();
-	if (!e._attackTimes) e._attackTimes = {};
-
-	const dx = player.x - e.x;
-	const dy = player.y - e.y;
-	const dist = Math.sqrt(dx * dx + dy * dy);
-
-	for (let i = 0; i < attackList.length; i++) {
-		const atk = attackList[i];
-		if (!atk || atk.type === 'charge') continue;
-
-		// 個別クールダウンチェック
-		const lastTime = e._attackTimes[i] ?? 0;
-		const cooldown = atk.cooldown ?? 3000;
-		if (now - lastTime < cooldown) continue;
-
-		// 射程チェック
-		if (dist > (atk.range ?? 5)) continue;
-
-		if (atk.type === 'spear') {
-			// やり投げ：同列か同行のときのみ発射
-			const sameCol = Math.abs(dx) < 1.0;
-			const sameRow = Math.abs(dy) < 1.0;
-			if (!sameCol && !sameRow) continue;
-			const ndx = sameCol ? 0 : Math.sign(dx);
-			const ndy = sameRow ? 0 : Math.sign(dy);
-			fireEnemyProjectile(e, 'spear', ndx, ndy, atk.projectileSpeed ?? 1.5);
-			e._attackTimes[i] = now;
-		} else if (atk.type === 'stone') {
-			// 石つぶて：プレイヤーに向かって直線発射
-			const ndx = dx / dist;
-			const ndy = dy / dist;
-			fireEnemyProjectile(e, 'stone', ndx, ndy, atk.projectileSpeed ?? 1.0);
-			e._attackTimes[i] = now;
-		} else if (atk.type === 'sword') {
-			// 剣振り：射程内 + 横幅チェックでダメージ
-			const range = atk.range ?? 1.5;
-			if (dist <= range) {
-				const rawDx = player.x - e.x, rawDy = player.y - e.y;
-				const absDx = Math.abs(rawDx), absDy = Math.abs(rawDy);
-				let ux, uy;
-				if (absDy >= absDx) { ux = 0; uy = (rawDy > 0 ? 1 : -1); }
-				else                { ux = (rawDx > 0 ? 1 : -1); uy = 0; }
-				const projDist = Math.abs(rawDx * ux + rawDy * uy);
-				const perpDist = Math.abs(rawDx * (-uy) + rawDy * ux);
-				if (projDist <= range && perpDist <= 0.8) {
-					let sdx = rawDx, sdy = rawDy;
-					if (absDx < 0.01 && absDy < 0.01) {
-						const dv = { down:[0,1], up:[0,-1], left:[-1,0], right:[1,0] }[e.dir] ?? [0,1];
-						sdx = dv[0]; sdy = dv[1];
-					}
-					const blocked = player.shield && isShieldBlockingDir(sdx, sdy);
-					if (blocked) {
-						playSound('shieldBlock');
-						showShieldBlockEffect(e.x, e.y);
-						// 盾ブロック → 現在の approach モードの重みを下げる（学習）
-						if (meta.hitAndAway && e._modeWeights && e._approachMode) {
-							const m = e._approachMode;
-							if (m === 'direct' || m === 'flank') {
-								e._modeWeights[m] = Math.max(0.1, e._modeWeights[m] * 0.6);
-								if (debugMode) {
-									const w = e._modeWeights;
-									const total = w.flank + w.direct + w.wander;
-									console.log(`[AI] ${e.id} shield-blocked mode=${m} → weights=F${(w.flank/total*100).toFixed(0)}%/D${(w.direct/total*100).toFixed(0)}%/W${(w.wander/total*100).toFixed(0)}%`);
-								}
-							}
-						}
-					} else {
-						takeDamage(meta.atk);
-					}
-					showEnemySwordSlash(e);
-					e._attackTimes[i] = now;
-					// 攻撃後即 retreat（hitAndAway のボス系のみ）
-					if (meta.hitAndAway && e._haPhase === 'approach') {
-						e._haPhase = 'retreat';
-						e._haTimer = now + 600 + Math.random() * 400;
-						break; // 同 tick で複数攻撃しない
-					}
-				}
-			}
-		}
-	}
-}
-
-function fireEnemyProjectile(e, type, ndx, ndy, speed) {
-	const proj = {
-		id:     nextProjId++,
-		owner:  'enemy',
-		type,
-		x: e.x + ndx * 0.8, // 敵の少し前から発射
-		y: e.y + ndy * 0.8,
-		dx: ndx, dy: ndy,
-		speed,
-		atk: ENEMY_META[e.type]?.atk ?? 2,
-	};
-	projectiles.push(proj);
-	createProjEl(proj);
-}
-
-function enemyChase(e, speed) {
-	e.accum = (e.accum ?? 0) + speed;
-	if (e.accum < 1.0) return;
-	e.accum -= 1.0;
-
-	const dy = player.y - e.y;
-	const dx = player.x - e.x;
-	const dist = Math.sqrt(dy * dy + dx * dx);
-	if (dist < 0.01) return;
-
-	// 方向を正規化して MOVE_STEP 分だけ動く
-	const step = MOVE_STEP;
-	const candidates = [];
-	if (Math.abs(dy) >= Math.abs(dx)) {
-		candidates.push([Math.sign(dy) * step, 0]);
-		candidates.push([0, Math.sign(dx) * step]);
-	} else {
-		candidates.push([0, Math.sign(dx) * step]);
-		candidates.push([Math.sign(dy) * step, 0]);
-	}
-
-	for (const [my, mx] of candidates) {
-		const ny = e.y + my;
-		const nx = e.x + mx;
-		if (isPassableForEnemy(ny, nx, e)) {
-			e.y = ny; e.x = nx;
-			break;
-		}
-	}
-
-	// 方向更新
-	if (Math.abs(dy) >= Math.abs(dx)) e.dir = dy > 0 ? 'down' : 'up';
-	else e.dir = dx > 0 ? 'right' : 'left';
-
-	moveCharEl(`enemy-${e.id}`, e.x, e.y);
-}
-
-function checkEnemyContact() {
-	for (const e of enemies) {
-		// 体当たり攻撃：float距離で判定
-		// 敵はプレイヤーと同タイルに入れないため実距離は 0.4〜1.5 程度
-		// 0.9 セル以内ならダメージ（隣接タイルに敵がいる状態に相当）
-		if (Math.abs(e.x - player.x) < 0.9 && Math.abs(e.y - player.y) < 0.9) {
-			takeDamage(ENEMY_META[e.type]?.atk ?? 1);
-		}
-	}
-}
-
-// ── 投擲物（プロジェクタイル）管理 ───────────────────────────
-// { id, owner:'player'|'enemy', type:'boomerang'|'spear'|'stone',
-//   x, y, dx, dy, speed, atk, returning, maxRange, startX, startY, el }
-let projectiles = [];
-let nextProjId  = 1;
-
-function projectileTick() {
-	for (const proj of [...projectiles]) {
-		const step = proj.speed * MOVE_STEP;
-
-		if (proj.type === 'boomerang' && proj.owner === 'player') {
-			boomerangStep(proj, step);
-		} else {
-			// 直線飛翔（spear / stone など）
-			proj.x += proj.dx * step;
-			proj.y += proj.dy * step;
-			if (!isInBounds(proj.x, proj.y)) {
-				removeProjEl(proj);
-				projectiles = projectiles.filter(p => p !== proj);
-				continue;
-			}
-			// 壁衝突で消滅
-			if (!isTilePassableForProj(toTileRow(proj.y), toTileCol(proj.x))) {
-				removeProjEl(proj);
-				projectiles = projectiles.filter(p => p !== proj);
-				continue;
-			}
-			// プレイヤー or 敵への当たり判定
-			checkProjHit(proj);
-			// checkProjHit で消滅済みなら moveProjEl しない
-			if (!projectiles.includes(proj)) continue;
-		}
-		moveProjEl(proj);
-	}
-}
-
-function boomerangStep(proj, step) {
-	const dist = Math.sqrt(
-		(proj.x - proj.startX) ** 2 + (proj.y - proj.startY) ** 2,
-	);
-
-	if (!proj.returning) {
-		// 往路：前進
-		proj.x += proj.dx * step;
-		proj.y += proj.dy * step;
-
-		// 壁 or 最大射程で折り返し
-		const hitWall = !isInBounds(proj.x, proj.y) ||
-			!isTilePassableForProj(toTileRow(proj.y), toTileCol(proj.x));
-		if (hitWall || dist >= proj.maxRange) {
-			proj.returning = true;
-		}
-		// 敵への当たり判定（往路）
-		checkProjHit(proj);
-	} else {
-		// 復路：プレイヤーへ向かう
-		const tdx = player.x - proj.x;
-		const tdy = player.y - proj.y;
-		const d   = Math.sqrt(tdx * tdx + tdy * tdy);
-		if (d < step + 0.3) {
-			// キャッチ：ブーメランを手元に戻す
-			removeProjEl(proj);
-			projectiles = projectiles.filter(p => p !== proj);
-			// uses が Infinity なら再使用可（消費なし）
-			playSound('item'); pulse('🪃 ブーメランをキャッチした！');
+	// 2026-08-04（PLAN 4.7）：石パズルが色ゲート等で画面外に出られない状態に嵌ったときの
+	// 救済＝ステージ移動と同じリセット（enterStage の石リセットと同じ規則）をその場で発動する。
+	// ⚠️ 全ボタンに石が乗って解決済み（stonesLocked、または未ロックでも全ボタン充足）なら
+	// リセットしない＝解けたパズルを台無しにしない（enterStage と同じ防御）。
+	if (fx.type === 'resetStones') {
+		const ss = getSS(currentLayer, stageKey);
+		if (!ss.stonePositions || Object.keys(ss.stonePositions).length === 0) {
+			pulse('🎵 音色は響いたが 特に何も起きない', 1800);
 			return;
 		}
-		proj.x += (tdx / d) * step;
-		proj.y += (tdy / d) * step;
-	}
-}
-
-function checkProjHit(proj) {
-	if (proj.owner === 'player') {
-		// 敵に当たる
-		for (const e of [...enemies]) {
-			if (Math.abs(e.x - proj.x) < 0.6 && Math.abs(e.y - proj.y) < 0.6) {
-				dealDamageToEnemy(e, proj.atk);
-				if (proj.type !== 'boomerang') {
-					removeProjEl(proj);
-					projectiles = projectiles.filter(p => p !== proj);
-				} else {
-					proj.returning = true; // 当たったら折り返す
-				}
-				return;
+		if (ss.stonesLocked) {
+			pulse('🎵 音色は響いたが 石はもう動かない', 1800);
+			return;
+		}
+		const buttons = [];
+		for (let r = 0; r < (stageData?.rows ?? 0); r++) {
+			for (let c = 0; c < (stageData?.cols ?? 0); c++) {
+				if (stageData.tiles[r][c] === TILE.BUTTON) buttons.push(`${r},${c}`);
 			}
 		}
-	} else {
-		// プレイヤーに当たる
-		if (Math.abs(player.x - proj.x) < 0.5 && Math.abs(player.y - proj.y) < 0.5) {
-			// 盾でブロック判定
-			// 盾を持っていて、やりが来る向きに正面を向いていれば完全ブロック（Shiftキー不要）
-			const blocked = player.shield && isShieldBlocking(proj);
-			if (blocked) {
-				playSound('shieldBlock');
-				showShieldBlockEffect(proj.x, proj.y);  // 投擲物が消えた位置（盾に当たった場所）
-			} else {
-				takeDamage(proj.atk);
-			}
-			removeProjEl(proj);
-			projectiles = projectiles.filter(p => p !== proj);
+		const allSolved = buttons.length > 0 && buttons.every((pk) => {
+			const [br, bc] = pk.split(',').map(Number);
+			return Object.values(ss.stonePositions).some((st) => st.r === br && st.c === bc);
+		});
+		if (allSolved) {
+			pulse('🎵 音色は響いたが 石はもう動かない', 1800);
+			return;
 		}
+		ss.stonePositions = {};
+		ss.activeColor = null;
+		refreshGates();
+		evaluateConditions();
+		renderBoard(); renderChars();
+		pulse(fx.message ?? '🎵 音色に応えて 石が元の位置に戻った！', 2200);
+		saveGame();
+		return;
 	}
-}
-
-// 盾で投擲物をブロックできるか判定（ボタン操作不要・初代ゼルダ方式）
-// 飛翔方向の「逆向き」にプレイヤーが向いていれば正面でブロック
-// 座標系：y増加 = 下方向
-//   proj.dx > 0 → 右へ飛ぶ（＝左から来る）→ 左向きならブロック
-//   proj.dx < 0 → 左へ飛ぶ（＝右から来る）→ 右向きならブロック
-//   proj.dy > 0 → 下へ飛ぶ（＝上から来る）→ 上向きならブロック
-//   proj.dy < 0 → 上へ飛ぶ（＝下から来る）→ 下向きならブロック
-function isShieldBlocking(proj) {
-	return isShieldBlockingDir(proj.dx, proj.dy);
-}
-
-// dx/dy（攻撃の飛んでくる方向）に対して盾でブロックできるか判定
-// 例：敵が左にいてプレイヤーの方向に来る（dx>0）→ プレイヤーが左向きならブロック
-function isShieldBlockingDir(dx, dy) {
-	if (!player.shield) return false;
-	const absDx = Math.abs(dx);
-	const absDy = Math.abs(dy);
-
-	if (absDx >= absDy) {
-		if (dx > 0 && heroDir === 'left')  return true;
-		if (dx < 0 && heroDir === 'right') return true;
-	} else {
-		if (dy > 0 && heroDir === 'up')   return true;
-		if (dy < 0 && heroDir === 'down') return true;
+	if (fx.type === 'warp') {
+		// 直接座標指定 {layer, stage, row, col} を優先、なければ destId → exitRegistry
+		let dest;
+		if (fx.layer && fx.stage) {
+			dest = { layer: fx.layer, stage: fx.stage, row: fx.row ?? 5, col: fx.col ?? 5 };
+		} else if (fx.destId) {
+			dest = exitRegistry[fx.destId];
+		}
+		if (!dest) { pulse('🎵 音色は響いたが 行き先が見つからない', 1800); return; }
+		if (isTransitioning) return;
+		isTransitioning = true;
+		showFluteWarpEffect();
+		playSound('stageTransition');
+		saveGame();
+		pulse(fx.message ?? '🎵 竜巻が巻き起こり 運ばれていく！', 2000);
+		setTimeout(() => {
+			enterStage(dest.layer, dest.stage, dest.row, dest.col);
+			isTransitioning = false;
+			mapEnterCooldownUntil = gameNow() + 1500;
+		}, 400);
+		return;
 	}
-	return false;
+	pulse('🎵 不思議な音色が響いた……', 1800);
 }
 
-// 盾ブロックエフェクト：盾のある側（heroDir 方向）の端にフラッシュを表示
-function showShieldBlockEffect(_px, _py) {
+// 笛ワープの渦巻き演出（プレイヤーの上に一時 div を出す）
+function showFluteWarpEffect() {
 	if (!charLayerEl) return;
 	const cellPx = getCellPx();
-
-	// プレーヤー中心を起点に、向いている方向へ 0.6 セルずらす
-	const offset = 0.6;
-	const cx = player.x + 0.5;
-	const cy = player.y + 0.5;
-	let fx = cx, fy = cy;
-	if (heroDir === 'left')  fx = cx - offset;
-	else if (heroDir === 'right') fx = cx + offset;
-	else if (heroDir === 'up')    fy = cy - offset;
-	else if (heroDir === 'down')  fy = cy + offset;
-
 	const el = document.createElement('div');
-	el.style.cssText = `
-		position:absolute;
-		left:${fx * cellPx}px;
-		top:${fy * cellPx}px;
-		width:0; height:0;
-		transform:translate(-50%,-50%);
-		z-index:25;
-		pointer-events:none;
-		font-size:${Math.round(cellPx * 0.7)}px;
-		line-height:1;
-		animation:shield-block-anim 0.35s ease-out forwards;
-	`;
-	el.textContent = '✦';
+	el.className = 'flute-warp';
+	el.style.cssText = `position:absolute;left:${(player.x - 0.5) * cellPx}px;top:${(player.y - 0.5) * cellPx}px;width:${cellPx * 2}px;height:${cellPx * 2}px;z-index:30;pointer-events:none;`;
 	charLayerEl.appendChild(el);
-	setTimeout(() => el.remove(), 380);
+	setTimeout(() => el.remove(), 700);
 }
 
-function isInBounds(x, y) {
-	if (!stageData) return false;
-	return x >= 0 && x < stageData.cols && y >= 0 && y < stageData.rows;
-}
+// ── ロウソクを使う（Phase 4-3）─────────────────────────────────
+// 前方の茂み（BUSH）を燃やす（既存の cutBushes を再利用して通行可化）。
+// 燃やしたら ss.bushBurned=true → evaluateConditions() で showConditions の
+// 新トリガー bushBurned で gate された隠し通路/入口/アイテムが出現する。
+// 前方が茂みでなければ「炎が揺らめくだけ」のメッセージのみ。
+function playCandle() {
+	if (isDialog || isPaused || isGameover || isTransitioning) return;
+	resumeAudio();
+	const [dy, dx] = DIR_DELTA[heroDir];
+	const ndx = dx / MOVE_STEP;
+	const ndy = dy / MOVE_STEP;
+	const tr = toTileRow(player.y + ndy);
+	const tc = toTileCol(player.x + ndx);
+	const tile = stageData.tiles[tr]?.[tc];
+	const posKey = `${tr},${tc}`;
 
-function isTilePassableForProj(r, c) {
-	const tile = stageData?.tiles[r]?.[c];
-	if (!tile) return false;
-	if (tile === TILE.WALL) return false;
-	const posKey = `${r},${c}`;
+	playSound('fire');
+
+	// 前方の敵に炎ダメージ（茂みの有無に関わらず判定）
+	const hitEnemy = enemies.find(e => toTileRow(e.y) === tr && toTileCol(e.x) === tc);
+	if (hitEnemy) {
+		dealDamageToEnemy(hitEnemy, CANDLE_FIRE_DMG, 'fire', player.x, player.y);
+	}
+
+	// 前方が TORCH なら点灯
+	if (tile === TILE.TORCH) {
+		const ss = getSS(currentLayer, stageKey);
+		if (ss.litTorches.has(posKey)) {
+			showCandleFireEffect(player.x + ndx, player.y + ndy);
+			pulse('🕯 もう火がついている', 1400);
+		} else {
+			ss.litTorches.add(posKey);
+			evaluateConditions();
+			renderBoard(); renderChars();
+			showCandleFireEffect(player.x + ndx, player.y + ndy);
+			pulse('🔥 かがり火に火をつけた！', 1600);
+			saveGame();
+		}
+		return;
+	}
+
+	if (tile !== TILE.BUSH) {
+		showCandleFireEffect(player.x + ndx, player.y + ndy);
+		if (hitEnemy) {
+			pulse('🔥 炎が敵を焼いた！', 1400);
+		} else {
+			pulse('🕯 炎が揺らめいた…… 前に燃やせる茂みはない', 1600);
+		}
+		return;
+	}
+
 	const ss = getSS(currentLayer, stageKey);
-	if (tile === TILE.BREAKABLE_WALL && !ss.brokenWalls.has(posKey)) return false;
-	return true;
-}
-
-// 投擲物の DOM 要素を作成
-function createProjEl(proj) {
-	if (!charLayerEl) return;
-	const cellPx = getCellPx();
-	const div = document.createElement('div');
-	div.className = 'char-abs proj-el';
-	div.id = `proj-${proj.id}`;
-	div.style.left = `${proj.x * cellPx}px`;
-	div.style.top  = `${proj.y * cellPx}px`;
-	const cv = makeSprite(proj.type, proj.type, false);  // 静止表示（アニメなし）
-	if (cv) {
-		// !important で CSS を強制上書きしてサイズを小さくする
-		const sz = Math.round(cellPx * 0.35) + 'px';
-		cv.style.setProperty('width',  sz, 'important');
-		cv.style.setProperty('height', sz, 'important');
-		// 矢（arrow）は向きに応じてスプライトを回転する
-		// SPRITES.arrow は右向き（→）が基準
-		if (proj.type === 'arrow') {
-			const adx = proj.dx, ady = proj.dy;
-			let deg = 0;
-			if (adx > 0 && ady === 0)  deg = 0;    // 右
-			else if (adx < 0 && ady === 0) deg = 180; // 左
-			else if (ady < 0 && adx === 0) deg = 270; // 上
-			else if (ady > 0 && adx === 0) deg = 90;  // 下
-			else if (adx > 0 && ady > 0)   deg = 45;  // 右下
-			else if (adx < 0 && ady > 0)   deg = 135; // 左下
-			else if (adx < 0 && ady < 0)   deg = 225; // 左上
-			else if (adx > 0 && ady < 0)   deg = 315; // 右上
-			if (deg !== 0) cv.style.setProperty('transform', `translate(-50%,-50%) rotate(${deg}deg)`, 'important');
-		}
-		div.appendChild(cv);
-	}
-	charLayerEl.appendChild(div);
-	proj.el = div;
-}
-
-function moveProjEl(proj) {
-	const el = document.getElementById(`proj-${proj.id}`);
-	if (!el) return;
-	const cellPx = getCellPx();
-	el.style.left = `${proj.x * cellPx}px`;
-	el.style.top  = `${proj.y * cellPx}px`;
-}
-
-function removeProjEl(proj) {
-	document.getElementById(`proj-${proj.id}`)?.remove();
-}
-
-// 全投擲物を消去（ステージ遷移時など）
-function clearProjectiles() {
-	for (const p of projectiles) removeProjEl(p);
-	projectiles = [];
-}
-
-// ── 爆弾管理 ─────────────────────────────────────────────────
-// { id, r, c, fuseEnd, el }
-let placedBombs = [];
-
-// 全設置爆弾を消去（ステージ遷移時など）
-function clearBombs() {
-	for (const b of placedBombs) b.el?.remove();
-	placedBombs = [];
-}
-
-function placeBomb() {
-	const id  = player.activeSubItem;
-	const si  = player.subItems[id];
-	if (!si || si.count <= 0) { pulse('爆弾がない！'); return; }
-
-	const r = toTileRow(player.y);
-	const c = toTileCol(player.x);
-	si.count--;
-	if (si.count <= 0) {
-		delete player.subItems[id];
-		player.activeSubItem = Object.keys(player.subItems)[0] ?? null;
-	}
-	updateHud();
-
-	// DOM に爆弾アイコンを配置
-	const cellPx = getCellPx();
-	const el = document.createElement('div');
-	el.className = 'char-abs bomb-placed';
-	el.id = `bomb-${nextProjId}`;
-	el.style.left = `${c * cellPx}px`;
-	el.style.top  = `${r * cellPx}px`;
-	el.style.zIndex = '8';
-	el.textContent = '💣';
-	el.style.fontSize = `${cellPx * 0.55}px`;
-	el.style.lineHeight = `${cellPx}px`;
-	el.style.textAlign = 'center';
-	charLayerEl?.appendChild(el);
-
-	playSound('item');
-	const bomb = { id: nextProjId++, r, c, fuseEnd: Date.now() + 2000, el };
-	placedBombs.push(bomb);
-}
-
-function bombTick() {
-	const now = Date.now();
-	for (const bomb of [...placedBombs]) {
-		if (now < bomb.fuseEnd) continue;
-		explodeBomb(bomb);
-	}
-}
-
-function explodeBomb(bomb) {
-	// DOM 除去
-	bomb.el?.remove();
-	placedBombs = placedBombs.filter(b => b !== bomb);
-
-	// 爆発音
-	playSound('bombExplosion');
-
-	const AOE = ITEM_META.bomb?.aoeRadius ?? 2;
-	const ss  = getSS(currentLayer, stageKey);
-
-	// 壊せる壁・敵ダメージを先に処理（renderBoard前）
-	let needRenderBoard = false;
-	for (let dr = -AOE; dr <= AOE; dr++) {
-		for (let dc = -AOE; dc <= AOE; dc++) {
-			if (Math.sqrt(dr * dr + dc * dc) > AOE) continue;
-			const tr = bomb.r + dr;
-			const tc = bomb.c + dc;
-			if (tr < 0 || tr >= stageData.rows || tc < 0 || tc >= stageData.cols) continue;
-			const posKey = `${tr},${tc}`;
-			const tile   = stageData.tiles[tr][tc];
-
-			// 壊せる壁の破壊
-			if (tile === TILE.BREAKABLE_WALL && !ss.brokenWalls.has(posKey)) {
-				const bwDef = stageData.breakableWalls?.[posKey]?.breakDef ?? 1;
-				if ((ITEM_META.bomb?.breakPower ?? 3) >= bwDef) {
-					ss.brokenWalls.add(posKey);
-					evaluateConditions();
-					needRenderBoard = true;
-				}
-			}
-
-			// 敵ダメージ
-			for (const e of [...enemies]) {
-				if (toTileRow(e.y) === tr && toTileCol(e.x) === tc) {
-					dealDamageToEnemy(e, ITEM_META.bomb?.damage ?? 5);
-				}
-			}
-
-			// ※ 自爆ダメージなし（プレイヤーは爆弾に当たらない）
-		}
+	if (!ss.cutBushes) ss.cutBushes = new Set();
+	if (ss.cutBushes.has(posKey)) {
+		showCandleFireEffect(player.x + ndx, player.y + ndy);
+		pulse('🕯 もう燃え尽きている', 1400);
+		return;
 	}
 
-	// renderBoardが必要な場合は先に実行してcharLayerElをリセット
-	// その後に爆発エフェクトを追加することで、エフェクトが消えない
-	if (needRenderBoard) {
-		renderBoard();
-		renderChars();
-	}
-
-	// renderBoard後にエフェクトを追加（charLayerElが最新の状態）
-	showExplosionEffect(bomb.r, bomb.c);
-
+	ss.cutBushes.add(posKey);   // 茂みを燃やす（通行可化・既存パイプライン）
+	ss.bushBurned = true;       // ロウソク固有：bushBurned トリガーを立てる
+	evaluateConditions();       // 隠し通路/入口/アイテムを出現させる
+	renderBoard(); renderChars();
+	// 炎演出は renderBoard/renderChars が charLayerEl を作り直した後に出す
+	// （先に出すと再描画で消えてしまうため）。
+	showCandleFireEffect(player.x + ndx, player.y + ndy);
+	pulse('🔥 茂みが燃え上がった！', 1800);
 	saveGame();
 }
 
-function showExplosionEffect(r, c) {
+// ロウソクの炎演出（前方セルに一時 div を出す）
+function showCandleFireEffect(cx, cy) {
 	if (!charLayerEl) return;
 	const cellPx = getCellPx();
 	const el = document.createElement('div');
-	el.className = 'explosion-effect';
-	el.style.cssText = `
-		position:absolute;
-		left:${(c - 1) * cellPx}px;
-		top:${(r - 1) * cellPx}px;
-		width:${cellPx * 3}px;
-		height:${cellPx * 3}px;
-		z-index:20;
-		pointer-events:none;
-		border-radius:50%;
-		background:radial-gradient(circle, rgba(255,220,60,0.92) 0%, rgba(255,100,20,0.7) 40%, rgba(255,40,0,0.3) 70%, transparent 100%);
-		animation:explosion-anim 0.45s ease-out forwards;
-	`;
+	el.className = 'candle-fire';
+	el.style.cssText = `position:absolute;left:${cx * cellPx}px;top:${cy * cellPx}px;width:${cellPx}px;height:${cellPx}px;z-index:25;pointer-events:none;`;
 	charLayerEl.appendChild(el);
-	setTimeout(() => el.remove(), 500);
+	setTimeout(() => el.remove(), 600);
 }
 
 // ── サブアイテム使用 ─────────────────────────────────────────
@@ -3743,26 +1680,33 @@ function useSubItem() {
 	}
 	if (id === 'boomerang') {
 		// 飛翔中ならキャッチ待ち
-		if (projectiles.some(p => p.type === 'boomerang' && p.owner === 'player')) {
+		if (getProjectiles().some(p => p.type === 'boomerang' && p.owner === 'player')) {
 			pulse('ブーメランが戻ってくる！'); return;
 		}
 		const [dy, dx] = DIR_DELTA[heroDir];
 		const ndx = dx / MOVE_STEP;
 		const ndy = dy / MOVE_STEP;
 		resumeAudio(); playSound('slash');
-		const proj = {
-			id: nextProjId++, owner: 'player', type: 'boomerang',
+		// Phase 9-6: ティアで性能が決まる（BOOMERANG_TIERS が単一の真実）。
+		// 未定義セーブは 0（木）扱い＝既存挙動そのまま。
+		const bt = BOOMERANG_TIERS[player.boomerangTier ?? 0] ?? BOOMERANG_TIERS[0];
+		addProjectile({
+			owner: 'player', type: 'boomerang',
 			x: player.x + ndx * 0.5, y: player.y + ndy * 0.5,
 			startX: player.x, startY: player.y,
 			dx: ndx, dy: ndy,
-			speed: hasCleared() ? 4.0 : 2.0,  // 二周目は2倍速
-			atk: 3,  // ブーメランは固定ダメージ（剣ATK不使用）
+			speed: bt.speed * (hasCleared() ? 2 : 1),  // 二周目は2倍速
+			atk: bt.atk,  // ブーメランは固定ダメージ（剣ATK不使用）
 			returning: false,
-			maxRange: 3,
-		};
-		projectiles.push(proj);
-		createProjEl(proj);
+			maxRange: bt.maxRange,
+		});
 		return;
+	}
+	if (id === 'flute') {
+		playFlute(); return;
+	}
+	if (id === 'candle') {
+		playCandle(); return;
 	}
 	if (id === 'bomb') {
 		placeBomb(); return;
@@ -3776,147 +1720,18 @@ function useSubItem() {
 		const ndx = dx / MOVE_STEP;
 		const ndy = dy / MOVE_STEP;
 		resumeAudio(); playSound('slash');
-		const proj = {
-			id: nextProjId++, owner: 'player', type: 'arrow',
+		addProjectile({
+			owner: 'player', type: 'arrow',
 			x: player.x + ndx * 0.5, y: player.y + ndy * 0.5,
 			dx: ndx, dy: ndy,
 			speed: hasCleared() ? 9.0 : 4.5,  // 二周目は2倍速
 			atk: 5,  // 弓矢は固定ダメージ（剣ATK不使用）
 			piercing: true, // 貫通フラグ（checkProjHitで利用）
-		};
-		projectiles.push(proj);
-		createProjEl(proj);
+		});
 		updateHud(); saveGame(); return;
 	}
 	pulse(`${meta?.name ?? id} を使用！`);
 }
-
-// ── キーボード ────────────────────────────────────────────────
-// 現在押されているキーを管理（押しっぱなし移動用）
-const heldKeys = new Set();
-
-document.addEventListener('keydown', e => {
-	resumeAudio();
-	if (isDialog) {
-		if ([' ','Enter','z','Z'].includes(e.key)) { e.preventDefault(); advanceDialog(); }
-		return;
-	}
-	if (isShop) {
-		if (e.key === 'Escape') { e.preventDefault(); closeShop(); return; }
-		if (e.key === 'ArrowUp'   || e.key === 'w' || e.key === 'W') { e.preventDefault(); shopSelectPrev(); return; }
-		if (e.key === 'ArrowDown' || e.key === 's' || e.key === 'S') { e.preventDefault(); shopSelectNext(); return; }
-		if ([' ','Enter','z','Z'].includes(e.key)) { e.preventDefault(); shopBuy(); return; }
-		return;
-	}
-	if (isPaused) {
-		if (e.key === 'Escape' || e.key === 'Enter') { e.preventDefault(); togglePause(); return; }
-		if (e.key === 'ArrowLeft')  { e.preventDefault(); pauseSelectPrev(); return; }
-		if (e.key === 'ArrowRight') { e.preventDefault(); pauseSelectNext(); return; }
-		return;
-	}
-	// 方向キーは heldKeys で管理（gameTick で処理）
-	if (['ArrowUp','w','W','ArrowDown','s','S','ArrowLeft','a','A','ArrowRight','d','D'].includes(e.key)) {
-		e.preventDefault();
-		heldKeys.add(e.key);
-		return;
-	}
-	if ([' ','z','Z'].includes(e.key)) { e.preventDefault(); swordAttack(); return; }
-	if (e.key === 'b' || e.key === 'B') { e.preventDefault(); useSubItem(); return; }
-	// Mac: Commandキー / Windows: Altキー でもサブアイテム使用
-	if (e.key === 'Meta' || e.key === 'Alt') { e.preventDefault(); useSubItem(); return; }
-	if (e.key === 'Escape') { e.preventDefault(); togglePause(); return; }
-	if (e.key === 'g' || e.key === 'G') { e.preventDefault(); toggleDebugMode(); return; }
-});
-document.addEventListener('keyup', e => {
-	heldKeys.delete(e.key);
-});
-
-// 二周目移動速度ブースト用アキュムレータ
-let _moveSpeedAccum = 0;
-
-// 押しっぱなし移動処理（gameTick から呼ぶ）
-function processHeldKeys() {
-	let dir = null;
-	if (heldKeys.has('ArrowUp')    || heldKeys.has('w') || heldKeys.has('W')) dir = 'up';
-	else if (heldKeys.has('ArrowDown')  || heldKeys.has('s') || heldKeys.has('S')) dir = 'down';
-	else if (heldKeys.has('ArrowLeft')  || heldKeys.has('a') || heldKeys.has('A')) dir = 'left';
-	else if (heldKeys.has('ArrowRight') || heldKeys.has('d') || heldKeys.has('D')) dir = 'right';
-	if (!dir) { _moveSpeedAccum = 0; return; }
-
-	// 二周目（姫パレット）は移動速度1.2倍
-	// アキュムレータに 1.2 を加算し、整数部を消費して movePlayer を呼ぶ
-	const speed = hasCleared() ? 1.2 : 1.0;
-	_moveSpeedAccum += speed;
-	const times = Math.floor(_moveSpeedAccum);
-	_moveSpeedAccum -= times;
-	for (let i = 0; i < times; i++) movePlayer(dir);
-}
-
-function updateShieldHud() {
-	document.getElementById('btn-shield')?.classList.toggle('defending', isShielding);
-}
-
-// ── モバイル ──────────────────────────────────────────────────
-document.querySelectorAll('.dpad-btn[data-dir]').forEach(btn => {
-	const dir = btn.dataset.dir;
-	if (!dir) return;
-	btn.addEventListener('touchstart', e => { e.preventDefault(); resumeAudio(); movePlayer(dir); }, { passive: false });
-	btn.addEventListener('mousedown', () => { resumeAudio(); movePlayer(dir); });
-});
-document.getElementById('btn-sword').addEventListener('click', () => { resumeAudio(); swordAttack(); });
-document.getElementById('btn-sub').addEventListener('click',   () => { resumeAudio(); useSubItem(); });
-document.getElementById('btn-menu').addEventListener('click',  () => { resumeAudio(); togglePause(); });
-const shieldBtn = document.getElementById('btn-shield');
-shieldBtn.addEventListener('touchstart', e => { e.preventDefault(); isShielding = true;  updateShieldHud(); }, { passive: false });
-shieldBtn.addEventListener('touchend',   () => { isShielding = false; updateShieldHud(); });
-shieldBtn.addEventListener('mousedown',  () => { isShielding = true;  updateShieldHud(); });
-shieldBtn.addEventListener('mouseup',    () => { isShielding = false; updateShieldHud(); });
-gameoverRetryEl.addEventListener('click', () => { resumeAudio(); retryGame(); });
-// エンディング「はじめから」ボタン
-endingRestartEl.addEventListener('click', () => {
-	endingOverlayEl.classList.add('hidden');
-	isGameover = false;
-	startNewGame();
-});
-
-// スワイプ
-let touchStartX = 0, touchStartY = 0;
-document.addEventListener('touchstart', e => {
-	if (e.target.closest('#mobile-ctrl')) return;
-	touchStartX = e.touches[0].clientX; touchStartY = e.touches[0].clientY;
-}, { passive: true });
-document.addEventListener('touchend', e => {
-	if (e.target.closest('#mobile-ctrl')) return;
-	const dx = e.changedTouches[0].clientX - touchStartX;
-	const dy = e.changedTouches[0].clientY - touchStartY;
-	if (Math.abs(dx) < 30 && Math.abs(dy) < 30) return;
-	if (Math.abs(dx) > Math.abs(dy)) movePlayer(dx > 0 ? 'right' : 'left');
-	else movePlayer(dy > 0 ? 'down' : 'up');
-}, { passive: true });
-
-// ── Phase 8.2: ドロップエフェクト（茂み切り等でアイテムが飛び出す） ──
-function spawnDropEffect(r, c, icon, color) {
-	if (!charLayerEl) return;
-	const cellPx = getCellPx();
-	const el = document.createElement('div');
-	el.style.cssText = `
-		position:absolute;
-		left:${(c + 0.5) * cellPx}px;
-		top:${(r + 0.2) * cellPx}px;
-		transform:translateX(-50%);
-		font-size:${Math.round(cellPx * 0.55)}px;
-		color:${color};
-		z-index:25;
-		pointer-events:none;
-		animation:drop-popup 0.6s ease-out forwards;
-	`;
-	el.textContent = icon;
-	charLayerEl.appendChild(el);
-	setTimeout(() => el.remove(), 650);
-}
-
-// ── アニメーション ────────────────────────────────────────────
-startAnimLoop(() => { redrawAnimSprites(); });
 
 // ── 初期化 ────────────────────────────────────────────────────
 const titleOverlayEl  = document.getElementById('title-overlay');
@@ -3965,6 +1780,16 @@ function startNewGame() {
 		weapon: null, shield: null, armor: null,
 		subItems: {}, activeSubItem: null,
 		rupees: 0, triforceCount: 0,
+		maxArrows: 8, maxBombs: 8,
+		hasWingRobe: false,
+		flying: false,
+		hasLadder: false,
+		defeatedBosses: new Set(),
+		swordTier: -1,
+		armorTier: -1,
+		shieldTier: -1,
+		boomerangTier: -1,
+		gachaPulls: {},
 	};
 	heroDir = 'down';
 	enterStage(currentLayer, stageKey, player.y, player.x);
@@ -3997,6 +1822,11 @@ btnConfirmNoEl.addEventListener('click', () => {
 	titleOverlayEl.classList.remove('hidden');
 });
 
+// ゲームオーバー「リトライ」ボタン
+gameoverRetryEl?.addEventListener('click', () => { retryGame(); });
+// エンディング「もう一度」ボタン
+endingRestartEl?.addEventListener('click', () => { location.reload(); });
+
 async function init() {
 	// URL パラメータ解析
 	const params     = new URLSearchParams(location.search);
@@ -4009,6 +1839,9 @@ async function init() {
 	if (fromEditor) {
 		// エディタプレビューモード：実際のJSONを優先して読み込み（確実に最新データを使う）
 		// localStorage は古い可能性があるためフォールバックのみ
+		// ※ 以前あった ps_mapSrc（別 JSON を読ませるテスト用の口）は廃止した。
+		//   ギミック検証ステージはライブマップの test_mechanics レイヤーに入っている
+		//   （2026-07-25・エディタで開けないフィクスチャは作業しづらい）。
 		try {
 			await loadMapData(); // 実際のJSONファイルを読む
 		} catch {
@@ -4040,17 +1873,31 @@ async function init() {
 		const psArmor    = params.get('ps_armor');
 		const psBow      = params.get('ps_bow');
 		const psBoomerang= params.get('ps_boomerang');
+		const psSilverBoomerang = params.get('ps_silverboomerang');  // Phase 9-6: 銀ティア
+		const psBomb     = params.get('ps_bomb');
+		const psFlute    = params.get('ps_flute');
+		const psCandle   = params.get('ps_candle');
 		const psCleared  = params.get('ps_cleared');
+		const psWingRobe = params.get('ps_wingrobe');
+		const psLadder   = params.get('ps_ladder');
 
 		if (psAtk      !== null) player.atk    = parseInt(psAtk,  10) || 2;
 		if (psDef      !== null) player.def    = parseInt(psDef,  10) || 0;
 		if (psRupees   !== null) player.rupees = parseInt(psRupees, 10) || 0;
 		if (psTriforce !== null) player.triforceCount = parseInt(psTriforce, 10) || 0;
 		if (psWeapon   === '1') { player.weapon = 'sword'; if (!player._equip) player._equip = {}; player._equip.swordName = '剣'; }
-		if (psShield   === '1') player.shield = 'shield';
-		if (psArmor    === '1') { player.armor  = 'armor'; if (!player._equip) player._equip = {}; player._equip.armorName = '防具'; }
+		// Phase 7-2: ps_shield/ps_armor はティア番号でも指定可（編集チェックボックスの '1' は下位ティア=0 として扱う）。
+		if (psShield   !== null) equipShieldTier(psShield === '1' ? 0 : (parseInt(psShield, 10) || 0));
+		if (psArmor    !== null) equipArmorTier(psArmor  === '1' ? 0 : (parseInt(psArmor,  10) || 0));
+		if (psWingRobe === '1') player.hasWingRobe = true;
+		if (psLadder   === '1') player.hasLadder = true;
 		if (psBow      === '1') { player.subItems.bow       = { count: 10 };       if (!player.activeSubItem) player.activeSubItem = 'bow'; }
-		if (psBoomerang=== '1') { player.subItems.boomerang = { count: Infinity };  if (!player.activeSubItem) player.activeSubItem = 'boomerang'; }
+		if (psBoomerang=== '1') equipBoomerangTier(0);   // 木のブーメラン（所持＋ティア0）
+		// Phase 9-6: 銀のブーメラン。ps_boomerang が無くても単独で所持状態になる。
+		if (psSilverBoomerang === '1') equipBoomerangTier(1);
+		if (psBomb     === '1') { player.subItems.bomb      = { count: 10 };        if (!player.activeSubItem) player.activeSubItem = 'bomb'; }
+		if (psFlute    === '1') { player.subItems.flute     = { count: Infinity };  if (!player.activeSubItem) player.activeSubItem = 'flute'; }
+		if (psCandle   === '1') { player.subItems.candle    = { count: Infinity };  if (!player.activeSubItem) player.activeSubItem = 'candle'; }
 		// 姫状態（クリア済みフラグ）の設定
 		if (psCleared === '1') {
 			localStorage.setItem(CLEARED_KEY, '1');
@@ -4086,13 +1933,208 @@ async function init() {
 	}
 }
 
-init().catch(err => {
-	console.error('init failed:', err);
-	document.body.innerHTML = `<p style="color:red;padding:20px">読み込みエラー: ${err.message}</p>`;
-});
+// ── Phase 0-2 Step 6: main.js へのエントリポイント切り出し用 export ────────────
+// main.js が import して使う。game.js 自身は init() を自動実行しない。
+export {
+	init,
+	updateBoardScale,
+	step,
+	movePlayer,
+	swordAttack,
+	useSubItem,
+	getProjectiles,
+	startEnding,
+};
+// テスト用：実時間ループ（setInterval(step,120)）の停止/再開を公開。
+// window.__game.step(n) で手動 tick する検証は、実ループが裏で並走していると
+// wall-clock 依存で余分な tick が入り込み結果が揺れる（flaky の原因）。
+// 手動 step 前に stopGameLoop すれば実ループの割り込みを排除できる。
+export function callStopGameLoop() { return stopGameLoop(); }
+export function callStartGameLoop() { return startGameLoop(); }
+// テスト用：飛行トグルを公開（main.js の __game から呼ぶ）
+export function callToggleFlight() { return toggleFlight(); }
+// テスト用：チャージ攻撃（剣ビーム）を公開（Phase 3-1）
+export function callStartCharge() { return startCharge(); }
+export function callReleaseCharge() { return releaseCharge(); }
+export { startAnimLoop, redrawAnimSprites } from '../shared/sprites.js';
 
-// ウィンドウリサイズ時にボードのスケールを再計算
-window.addEventListener('resize', () => updateBoardScale());
+// テスト用フック（main.js 側の window.__game から呼ばれる）
+export function getGameState() {
+	return {
+		gameTime,
+		currentLayer,
+		stageKey,
+		player: {
+			x: player.x, y: player.y, hp: player.hp, maxHp: player.maxHp,
+			maxHearts: player.maxHearts ?? 3,
+			hasWingRobe: !!player.hasWingRobe, flying: !!player.flying,
+			hasLadder: !!player.hasLadder,
+			defeatedBosses: [...(player.defeatedBosses ?? [])],
+			hasFlute: !!player.subItems?.flute,
+			hasCandle: !!player.subItems?.candle,
+			hasBoomerang: !!player.subItems?.boomerang,
+			activeSubItem: player.activeSubItem,
+			keys: player.keys ?? 0,
+			rupees: player.rupees ?? 0,
+			def: player.def ?? 0,
+			swordTier: player.swordTier ?? -1,
+			armorTier: player.armorTier ?? -1,
+			shieldTier: player.shieldTier ?? -1,
+			// Phase 9-6: ブーメランティア（-1=未所持, 0=木, 1=銀）
+			boomerangTier: player.boomerangTier ?? -1,
+			// Phase 9-5a: 弾数上限（容量拡充確認用）
+			maxArrows: player.maxArrows ?? 8,
+			maxBombs: player.maxBombs ?? 8,
+		},
+		heroDir,
+		enemyCount: enemies.length,
+		isPaused, isDialog, isGameover, isTransitioning,
+		// Phase 9-6: ボス部屋ロック（true の間は全方向の退出を禁止＝checkStageTransition）
+		bossRoomLocked,
+	};
+}
 
-// ── デバッグ用：コンソールから呼び出せるようにグローバルに公開 ──
-window._debugEnding = () => startEnding();
+export function getInputModule() {
+	return _inputModule;
+}
+
+// テスト用：現在ステージのスイッチ/ゲート/かがり火の状態スナップショット（Phase 4-5）
+export function getStageStateSnapshot() {
+	const ss = getSS(currentLayer, stageKey);
+	return {
+		switchStates:  { ...ss.switchStates },
+		openGates:     [...ss.openGates],
+		openedDoors:   [...(ss.openedDoors ?? [])],
+		switchToggles: [...(ss.switchToggles ?? [])],
+		litTorches:    [...(ss.litTorches ?? [])],
+		conditionsMet: [...ss.conditionsMet],
+		activeColor:   ss.activeColor ?? null,
+		brokenWalls:   [...(ss.brokenWalls ?? [])],
+		stonePositions: { ...(ss.stonePositions ?? {}) },  // Phase 5-3: 敵が押した石の確認用
+		stonesLocked:  !!ss.stonesLocked,  // Phase 4.56
+		flutePlayed:   !!ss.flutePlayed,   // Phase 5.5h: killAllAndFlute の検証用
+	};
+}
+
+// 敵のスナップショットを返す（テスト用：hp などの状態確認）
+export function getEnemiesSnapshot() {
+	return enemies.map(e => ({
+		id: e.id, type: e.type,
+		x: e.x, y: e.y,
+		hp: e.hp, maxHp: e.maxHp,
+		move: e.move ?? null,   // Phase 9-6: 遊泳属性（spawn 経路で敵に乗ったか観測用）
+		stunUntil: e.stunUntil ?? null,
+		hidden: e.hidden ?? false,        // 隠れ中（潜行/地中/滞空＝無敵窓のリズム観測用）
+		dir: e.dir ?? null,
+		sprite: e.sprite ?? null,          // Phase 5.5k: directional 敵の向き別スプライト名観測用
+		atkUntil: e._atkUntil ?? null,     // Phase 5.5k: 攻撃ポーズ窓の観測用
+		guardUntil: e._guardUntil ?? null, // Phase 5.5k: 構えポーズ窓の観測用
+		guarding: e._guarding ?? false,    // Phase 5.5k: ガード状態（ダメージ無効化の実体）観測用
+		guardDir: e._guardDir ?? null,
+		// Phase 5.5k（2026-08-12）: 攻撃硬直と遠隔/近接の二相の観測用
+		// （このスナップショットは**ホワイトリスト**＝ここに足さない内部フィールドは
+		//  テストから見えない。`e._foo` を直接読むテストは常に undefined になる）。
+		freezeUntil: e._freezeUntil ?? null,  // 攻撃硬直の窓（この間は移動も攻撃もしない）
+		cmode: e._cmode ?? null,              // 'ranged' | 'melee'（combat を持つ敵のみ）
+		cmodeUntil: e._cmodeUntil ?? null,    // 現在のモードが切り替わる論理時刻
+		// Phase 5.5k k-3: 隠れ↔出現の無敵窓と跳躍の観測用
+		hideUntil: e._hideUntil ?? null,      // 今の隠れ/出現が切り替わる論理時刻
+		leapPhase: e._leapPhase ?? null,      // 'ground' | 'windup' | 'air' | 'recover'（leap を持つ敵のみ）
+		leapUntil: e._leapUntil ?? null,      // windup/recover が明ける論理時刻
+	}));
+}
+
+// テスト用：任意の座標に擬似敵を注入する
+// ゲーム中の敵データに直接追加するため、DOM 要素は作らない（hp 減少だけ確認）
+export function injectTestEnemy(x, y, hp = 5, w = 1, h = 1, type = 'E') {
+	const id = `test-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+	enemies.push({
+		id, type, // 既定 'E'（ENEMY_META にないため isBoss=false）。弱点テストは実タイプを渡す
+		x, y,
+		hp, maxHp: hp,
+		atk: 0, def: 0,
+		speed: 0,
+		w, h,            // Phase 3-2: 占有セル数（大型敵テスト用）
+		sprite: 'slime', pal: 'slime',
+		accum: 0, dir: 'down', el: null,
+	});
+	return id;
+}
+
+// テスト用：指定 id の敵に直接ダメージを与える（弱点属性 Phase 3-3 の検証用）。
+// atkType を渡すと弱点判定（倍率）が効く。
+export function dealDamageToEnemyById(id, dmg, atkType) {
+	const e = enemies.find(x => x.id === id);
+	if (e) dealDamageToEnemy(e, dmg, atkType);
+}
+
+// テスト用：敵の投擲物を注入する（盾跳ね返し Phase 7-2 の検証用）。
+// dx/dy は飛んでくる方向（プレイヤーへ向かう向き）。
+export function injectEnemyProjectileForTest(x, y, dx, dy, atk = 4, speed = 2) {
+	return addProjectile({ owner: 'enemy', type: 'arrow', x, y, dx, dy, atk, speed });
+}
+
+// テスト用：指定 id の敵をスタンさせる（ブーメランスタン Phase 3-4 の検証用）。
+export function stunEnemyById(id, durationMs) {
+	const e = enemies.find(x => x.id === id);
+	if (e) e.stunUntil = gameTime + durationMs;
+}
+
+// Phase 6-1b: テスト用 — 撃破ボスフラグを直接追加する
+export function addDefeatedBossForTest(bossType) {
+	if (!player.defeatedBosses) player.defeatedBosses = new Set();
+	player.defeatedBosses.add(bossType);
+}
+
+// テスト用：player オブジェクトへの参照を返す（Phase 7-1 剣ティアテスト用）
+export function getPlayerForTest() { return player; }
+
+// テスト用: heroDir を直接向ける。movePlayer は先頭で必ず heroDir を更新するが、
+// 「壁で弾かれる向き」が無い画面（例: かがり火列が通り抜けられる D5）では
+// 半歩踏んで半歩戻す方式が rewind で heroDir を反転させてしまう。位置を変えず
+// 向きだけ確定させたい検証（道具の発射方向）でこれを使う。
+export function callSetHeroDir(dir) { heroDir = dir; }
+
+// テスト用：equipSwordTier をゲームモジュール外から呼べるよう再公開する（Phase 7-1）
+export function callEquipSwordTier(tierIndex) { return equipSwordTier(tierIndex); }
+
+// テスト用：防具/盾ティア装備を外部から呼べるよう再公開する（Phase 7-2）
+export function callEquipArmorTier(tierIndex)  { return equipArmorTier(tierIndex); }
+export function callEquipShieldTier(tierIndex) { return equipShieldTier(tierIndex); }
+
+// テスト用：ブーメランティア装備を外部から呼べるよう再公開する（Phase 9-6）
+export function callEquipBoomerangTier(tierIndex) { return equipBoomerangTier(tierIndex); }
+
+// テスト用：updateHud を外部から呼べるよう再公開する（Phase 7-1）
+export function callUpdateHud() { return updateHud(); }
+
+// テスト用：gainHeartContainer を外部から呼べるよう再公開する（Phase 7-3）
+export function callGainHeartContainer() { return gainHeartContainer(); }
+
+// Phase 7-4: grantReward テスト用（player への付与を確認するため）
+export function callGrantReward(content) { return grantReward(content); }
+
+// Phase 9-5a: giveSubItem テスト用（容量拡充アイテムの passive 分岐を確認するため）
+export function callGiveSubItem(id) { return giveSubItem(id); }
+
+// Phase 9-5c: フロアドロップ一覧（テスト用）
+export function getFloorDropsSnapshot() {
+	return activeFloorDrops.map(d => ({ r: d.r, c: d.c, type: d.type }));
+}
+
+// Phase 9-5c: プレイヤーをフロアドロップ座標に移動させて拾わせる（テスト用）
+export function callPickupFloorDropAt(r, c) { return pickupFloorDropAt(r, c); }
+
+// Phase 4-6: 指定座標に敵ドロップを撒く（ブーメラン運搬テスト用）
+export function callSpawnFloorDrop(r, c, type) { return spawnFloorDrop(r, c, type); }
+
+// Phase 9-5b: リスポーンテスト用 — 現在の stageMoves を返す
+export function getStageMoves() { return player.stageMoves ?? 0; }
+
+// Phase 9-5b: リスポーンテスト用 — 指定ステージへ強制遷移する
+export function callEnterStage(lk, sk, r, c) { return enterStage(lk, sk, r, c); }
+
+// Phase 9-5b: リスポーンテスト用 — 指定ステージの defeatedEnemies スナップショット
+export function getDefeatedEnemiesSnapshot(lk, sk) {
+	return [...getSS(lk, sk).defeatedEnemies];
+}

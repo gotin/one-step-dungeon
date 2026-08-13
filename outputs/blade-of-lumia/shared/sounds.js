@@ -342,6 +342,13 @@ export function playSound(kind) {
 		tone(ctx, now,        660, 0.07, 'sine', 0.05);
 		tone(ctx, now + 0.07, 880, 0.09, 'sine', 0.06);
 	}
+	// ロウソクの炎「ボッ…ゴォォ」（Phase 4-3：茂みを燃やす）
+	if (kind === 'fire') {
+		tone(ctx, now,        180, 0.05, 'sawtooth', 0.06);
+		tone(ctx, now + 0.03, 120, 0.12, 'sawtooth', 0.05);
+		tone(ctx, now + 0.08, 90,  0.22, 'triangle', 0.045);
+		tone(ctx, now + 0.10, 220, 0.18, 'sawtooth', 0.03);
+	}
 	// 宝箱
 	if (kind === 'chest') {
 		tone(ctx, now,        660, 0.07, 'sine', 0.05);
@@ -429,6 +436,11 @@ export function playSound(kind) {
 		tone(ctx, now + 0.05, 660, 0.08, 'triangle', 0.06);
 		tone(ctx, now + 0.12, 880, 0.10, 'sine',     0.05);
 	}
+	// 色スイッチ不発「ブブッ」（閉じる側のゲートに石が乗っていて切替が通らない・低く短い2音）
+	if (kind === 'switchDenied') {
+		tone(ctx, now,        180, 0.08, 'square', 0.06);
+		tone(ctx, now + 0.09, 140, 0.10, 'square', 0.06);
+	}
 	// 盾ブロック「カーン」
 	if (kind === 'shieldBlock') {
 		tone(ctx, now,        1200, 0.01, 'square',   0.12);
@@ -437,6 +449,23 @@ export function playSound(kind) {
 		tone(ctx, now + 0.06, 700,  0.10, 'sine',     0.06);
 	}
 	// エンディング（Dungeon World 継承）
+	if (kind === 'flute') {
+			// 魔法の音色。原作の笛を彷彿とさせる、上昇して締めくくる短いフレーズ
+			// （木管風＝sine 基音＋薄いオクターブ上の倍音）。
+			// [周波数, 開始オフセット(s), 長さ(s)]
+			const phrase = [
+				[587.33,  0.00, 0.14],  // D5
+				[880.00,  0.13, 0.14],  // A5
+				[1174.66, 0.26, 0.14],  // D6
+				[987.77,  0.39, 0.14],  // B5
+				[1174.66, 0.52, 0.16],  // D6
+				[1318.51, 0.66, 0.45],  // E6
+			];
+			for (const [freq, off, dur] of phrase) {
+				tone(ctx, now + off, freq, dur, 'sine', 0.07);
+				tone(ctx, now + off, freq * 2, dur * 0.7, 'triangle', 0.018);
+			}
+		}
 	if (kind === 'ending') {
 		tone(ctx, now + 0.00, 523.25, 0.30, 'sine', 0.10);
 		tone(ctx, now + 0.30, 659.25, 0.30, 'sine', 0.10);

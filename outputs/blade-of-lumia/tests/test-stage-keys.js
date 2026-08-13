@@ -1,0 +1,118 @@
+// ── tests/test-stage-keys.js ── ギミック検証ステージの名前 → グリッド座標（単一の真実）
+//
+// ギミック検証ステージは 2026-07-25 に tests/fixtures/test-stages.json から
+// ライブマップ（work/blade-of-lumia.json）の `test_mechanics` レイヤーへ移設した。
+// 理由：fixture はエディタで開けず、テストステージを直すたびに生 JSON を手編集する
+// ことになって作業しづらかった（ユーザー指摘）。ライブマップに置けばレイヤータブ・
+// ワールドグリッド・キャンバス編集・プレビューがそのまま使える。
+//
+// ⚠️ ステージキーはグリッド座標でなければならない。editor/editor-world.js は
+// `k.split(',').map(Number)` でキーを座標として解釈する（getWorldSize / insertRow /
+// insertCol / renderWorldGrid）ので、`lurk_shark` のような名前キーは NaN になり、
+// ワールドグリッドにステージが出てこない＝移設の目的が達成できない。
+//
+// ∴ 実体は座標キー、テストコードからは名前で引く。その対応表がこのファイル。
+// スペックは `stageKey('lurk_shark')` と書く（座標を直書きしない：レイアウトを
+// 並べ替えたときに全スペックを直す羽目になる）。
+// scripts/migrate-test-layer-to-live.mjs もこの表を読んで移設する＝表が唯一の定義。
+//
+// レイアウトは y=0 の1行に横並び（x=宣言順）。ステージを足すときは次の x を使う。
+
+export const TEST_LAYER = 'test_mechanics';
+
+/** 名前 → ライブマップ上のステージキー（`x,y`）。 */
+export const TEST_STAGE_KEYS = {
+	color_switch:     '0,0',
+	torch_relay:      '1,0',
+	arrow_switch:     '2,0',
+	bomb_wall:        '3,0',
+	enemy_stone:      '4,0',
+	hidden_cave_test: '5,0',
+	ladder_isolated:  '6,0',
+	ladder_pit:       '7,0',
+	ladder_water2:    '8,0',
+	bow_gate:         '9,0',
+	double_door:      '10,0',
+	candle_gate:      '11,0',
+	melee_only_boss:  '12,0',
+	fish_swim:        '13,0',
+	fish_swim_bg:     '14,0',
+	lurk_shark:       '15,0',
+	archer_fish:      '16,0',
+	ladder_bg_bridge: '17,0',
+	tide_gate:        '18,0',
+	sea_lord:         '19,0',
+	// 石パズルのお試し4枚（Phase 4.6 方法論の実プレイ検証）。易/中/難は石3、激難は石4。
+	// 盤面は scripts/generate-sokoban-playable.mjs が生成・4軸測定し、
+	// scripts/migrate-test-sokoban-tiers.mjs が測定値を再現確認して書き込んだもの。
+	sokoban_easy:     '20,0',
+	sokoban_medium:   '21,0',
+	sokoban_hard:     '22,0',
+	sokoban_extreme:  '23,0',
+	// 合成パズル（石＋色スイッチ/色ゲート）＝激難（石4・L=89）を「質で」超える枠（PLAN 4.7）。
+	// 2026-08-05（第3セッション）＝ユーザーがeditorで直接配置して作った版。ソルバーで実測
+	// L=106・貪欲NG・deadlock=2,653,649・強制手率0.18・最短解320本・§2下限クリア。I4（両色
+	// 必須）も静的に確認済み（赤ゲート(5,2)/青ゲート(5,7)のどちらを壁化しても解なし）。
+	// 座標は26,0のまま採用＝「24,0に置く意味」自体がない（座標は単なる連番・24,0という
+	// 位置に意味を持たせる設計上の制約は無かった）とユーザー指摘。migrate-test-sokoban-tiers.mjs
+	// の BOARDS 管轄外（手動管理・ユーザーがeditorで直接編集する運用）。
+	sokoban_color:    '26,0',
+	// dark_tower[4,3]（全10鍵の最終・純倉庫番・石4・L=42）の本番盤面ミラー（キュー 5.5i）。
+	// 本番と1文字違わぬ同一盤面＝ここで試すと本番と同じ挙動（stonesPlaced→鍵 K(7,6) 出現・
+	// 笛 resetStones）になる。北入口 (0,5)(0,6) からスポーン。scripts/migrate-key-room-dark-tower-43.mjs
+	// が本番 dark_tower[4,3] と同時に書く（片方だけ直すと乖離＝両方 migrate で同時更新）。
+	// 検証ステージは fixture でなく test_mechanics に置く決まり（DECISIONS 2026-07-25／PLAN 4.6-(4)）。
+	sokoban_darktower: '24,0',
+	// 回帰フィクスチャ（旧 Phase 5-1「合成」の盤面をそのまま退避したもの）＝石3＋色スイッチ／
+	// 色ゲートの直列2枚。2026-08-02 に「閉じた門の中に立って石を押せない」バグ修正を入れた結果
+	// **解なし**になった＝パズルではなく、抜け道（閉じた門の中に立って石を先へ押す）の回帰用。
+	// ⚠️ 石を**開いた**門へ押し込むのは正当（廊下C3 = field 15,14 がその設計）。
+	// 24,0 から 25,0 へ退避した理由＝24,0 を可解なパズルに作り直すと「解けたら失敗」の
+	// assert が成立しなくなる。石 (4,4) が赤ゲート (4,5) の隣＝抜け道を実機で直接踏める
+	// ジオメトリはこの盤面しか無い∴捨てずに座標を移した。
+	sokoban_gate_push_regression: '25,0',
+	// Phase 5.5k #7 剣獣（swordBeam＝飛ぶ斬撃）の検証ステージ。
+	// 幾何の要点＝**水の水路で敵とプレイヤーを隔てる**。陸上敵は水に入れず
+	// （passable.js enemyTilePassable）投擲物は水を飛び越える（isTilePassableForProj）∴
+	// 「高速で詰めてくる敵に近接される前に遠隔攻撃だけを観測する」状態を作れる。
+	// ⚠️ 2026-08-12 更新：剣獣は速度 FAST*0.85 になり、さらに遠隔／近接の二相
+	// （`meta.combat`）を持った＝**遮蔽が無くても遠隔相なら keepMin 3.0 を保って撃つ**。
+	// ∴水路は「遠隔の検証にどうしても必要な仕掛け」ではなくなったが、
+	// 「陸上敵が渡れない／投擲物は飛び越える」の検証にはこの幾何が必要∴据え置く。
+	// 二相そのものと攻撃硬直を測るのは下の sword_beast_arena（遮蔽ゼロ）。
+	sword_beast:      '27,0',
+	// Phase 5.5k #7 剣獣の**二相（遠隔／近接）と攻撃硬直**の検証ステージ（2026-08-12 追加）。
+	// 27,0 は水路で東の廊下が5セルしかない＝「モードが切り替わって寄って来る／逃げると
+	// 距離が開く」を測る余地が無い ∴ 遮蔽ゼロの開けた 10×12 を別に用意する。
+	// 幾何＝外周だけ壁・内部は全面床・剣獣1体(4,9)。プレイヤーは save 注入で置く。
+	// scripts/migrate-test-sword-beast-arena.mjs が書き込む。
+	sword_beast_arena: '28,0',
+	// Phase 5.5k k-3（2026-08-13）＝「隠れ↔出現の無敵窓」を陸/空へ一般化したときの検証3枚。
+	// 1体ずつ別ステージに分ける＝どの機構が壊れたか混ざらない（sword_beast_arena と同じ作法）。
+	// 3枚とも scripts/migrate-test-hide-window-arenas.mjs が書き込む（幾何を自己検査する）。
+	//   burrow_worm … 地中蟲1体。外周だけ壁・内部は全面床（遮蔽ゼロ）。隠れ↔出現の周期と
+	//                 「隠れ中は無敵・接触なし・攻撃なし／出現中だけ殴れる」を測る。
+	burrow_worm:      '29,0',
+	//   leap_spider … 跳躍蜘蛛1体。遮蔽ゼロ。溜め→滞空（無敵）→着地硬直（反撃の窓）を測る。
+	//                 プレイヤーを離して置くと maxRange 内で跳躍が始まる。
+	leap_spider:      '30,0',
+	//   bat_swarm   … コウモリ群1体。**中央に水の縦帯**を置く＝`move:'air'` が水を飛び越える
+	//                 （陸上敵は渡れない）ことを確認するための幾何。ジグザグも同じ盤面で測る。
+	bat_swarm:        '31,0',
+};
+
+/**
+ * 検証ステージ名 → ステージキー。未知の名前は即エラー（typo で別ステージを
+ * 開いてテストが無言で通る／落ちるのを防ぐ）。
+ * @param {string} name
+ * @returns {string}
+ */
+export function stageKey(name) {
+	const key = TEST_STAGE_KEYS[name];
+	if (!key) {
+		throw new Error(
+			`未知のテストステージ名: ${name}（tests/test-stage-keys.js の表に追加すること）`,
+		);
+	}
+	return key;
+}
