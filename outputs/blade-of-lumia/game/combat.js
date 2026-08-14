@@ -279,12 +279,13 @@ export function createCombat(deps) {
 			return;
 		}
 		// 隠れ中（潜行＝水中／地中＝土の下／滞空＝跳躍の最中）は全ての攻撃が無効。
-		// 出た瞬間だけ殴れる＝リズム戦闘（meleeOnly と同じ「0ダメージポップアップ」）。
+		// 出た瞬間だけ殴れる＝リズム戦闘。
 		// Phase 9-6 の submerge（水棲専用）を 5.5k k-3 で陸/空へ一般化したもの。
-		if (e.hidden) {
-			showDmgPopupFloat(e.x, e.y, 0, true, false);
-			return;
-		}
+		// ⚠ ここは「最後の安全網」＝呼び出し側（剣の対象選定・投擲物の当たり判定・
+		// 爆風・かがり火の炎）が隠れ中の敵を対象から外すのが本線。**無音で返す**＝
+		// 「-0」ポップアップを出すと当たっていないのに当たったように見える
+		// （2026-08-14 ユーザー報告「地中にいる間にブーメランを投げると当たる」の一因）。
+		if (e.hidden) return;
 		// meleeOnly: only sword and fire damage goes through; everything else is nullified.
 		if (meta?.meleeOnly && atkType && atkType !== 'sword' && atkType !== 'fire') {
 			showDmgPopupFloat(e.x, e.y, 0, true, false);
@@ -436,6 +437,10 @@ export function createCombat(deps) {
 		let hitEnemy = null;
 		let hitDist  = Infinity;
 		for (const e of enemies) {
+			// Phase 5.5k k-3: 隠れ中（潜行/地中/滞空）は攻撃対象にしない＝剣は空を切る。
+			// ここで外さないと「無敵の敵が剣を吸う」＝背後の茂み切り（下の return 前）や
+			// 別の敵への攻撃まで潰れる（2026-08-14 ユーザー報告の同型）。
+			if (e.hidden) continue;
 			// 占有範囲（AABB）対応：大型敵は中心が遠く半身が広いので、
 			// body の半幅ぶんだけ「届く距離」と「横の許容幅」を広げる。
 			// 1×1 敵では halfFwd=halfSide=0 となり従来挙動と一致する。

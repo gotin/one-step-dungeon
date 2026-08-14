@@ -1599,8 +1599,9 @@ function playCandle() {
 
 	playSound('fire');
 
-	// 前方の敵に炎ダメージ（茂みの有無に関わらず判定）
-	const hitEnemy = enemies.find(e => toTileRow(e.y) === tr && toTileCol(e.x) === tc);
+	// 前方の敵に炎ダメージ（茂みの有無に関わらず判定）。
+	// 隠れ中（地中/滞空/潜行）の敵は対象外＝炎も届かない（Phase 5.5k k-3）。
+	const hitEnemy = enemies.find(e => !e.hidden && toTileRow(e.y) === tr && toTileCol(e.x) === tc);
 	if (hitEnemy) {
 		dealDamageToEnemy(hitEnemy, CANDLE_FIRE_DMG, 'fire', player.x, player.y);
 	}

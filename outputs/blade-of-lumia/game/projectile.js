@@ -276,6 +276,12 @@ export function createProjectile(deps) {
 		const enemies = getEnemies();
 		if (proj.owner === 'player') {
 			for (const e of [...enemies]) {
+				// Phase 5.5k k-3: 隠れ中（潜行/地中/滞空）の敵は「そこに居ない」＝
+				// 投擲物は一切触れずに素通りする。ダメージだけを無効化していた頃は
+				// ブーメランが地中の蟲・滞空の蜘蛛でUターンし、スタン⭐とガード解除まで
+				// 掛かっていた（2026-08-14 ユーザー報告）∴当たり判定の側で外す。
+				// 副作用として矢も消費されず _hitIds も汚れない（浮上後に当て直せる）。
+				if (e.hidden) continue;
 				// 占有範囲（AABB）ベース。1×1 敵では従来の 0.6 箱と一致する。
 				if (enemyPointHit(e, proj.x, proj.y, 0.6)) {
 					const eMeta = ENEMY_META[e.type];
@@ -666,8 +672,9 @@ export function createProjectile(deps) {
 					}
 				}
 
-				// 敵ダメージ
+				// 敵ダメージ（隠れ中の敵は爆風の対象外＝地中/滞空の敵に爆風は届かない）
 				for (const e of [...getEnemies()]) {
+					if (e.hidden) continue;
 					if (toTileRow(e.y) === tr && toTileCol(e.x) === tc) {
 						dealDamageToEnemy(e, ITEM_META.bomb?.damage ?? 5, 'bomb');
 					}

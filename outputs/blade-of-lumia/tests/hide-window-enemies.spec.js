@@ -47,11 +47,12 @@ const EDITOR = '/blade-of-lumia/editor/';
 const TICK_MS = 120;
 const MOVE_STEP = 0.5;
 
-function previewUrl(stage, row, col) {
+function previewUrl(stage, row, col, extra) {
   const p = new URLSearchParams({
     fromEditor: '1', layer: TEST_LAYER, stage: stageKey(stage),
     row: String(row), col: String(col),
     ps_weapon: '1',
+    ...(extra ?? {}),
   });
   return `${GAME}?${p.toString()}`;
 }
@@ -63,6 +64,10 @@ function previewUrl(stage, row, col) {
 const WORM_URL   = previewUrl('burrow_worm', 4, 10);
 const SPIDER_URL = previewUrl('leap_spider', 4, 5);
 const BAT_URL    = previewUrl('bat_swarm',   4, 2);
+// 投擲物の検証用＝弓/ブーメラン/爆弾を持った状態で同じアリーナに入る（⑭⑮）
+const ITEMS = { ps_bow: '1', ps_boomerang: '1', ps_bomb: '1' };
+const WORM_ITEMS_URL   = previewUrl('burrow_worm', 4, 10, ITEMS);
+const SPIDER_ITEMS_URL = previewUrl('leap_spider', 4, 5,  ITEMS);
 
 const MAP_PATH = fileURLToPath(new URL('../work/blade-of-lumia.json', import.meta.url));
 const MAP = JSON.parse(readFileSync(MAP_PATH, 'utf8'));
@@ -73,6 +78,91 @@ const K3 = [
   [TILE.BAT_SWARM,   'batSwarm',   'コウモリ群'],
 ];
 const threatOf = (m) => (m.hp * m.atk) / (m.def + 1);
+
+// ── 投擲物を撃って着弾までを追うヘルパー（⑭⑮）────────────────────────
+// off tick まで進めてから weapon を dir へ撃ち、flight tick ぶん進めて
+// 「hp が減った tick」と「その tick の隠れ状態」を返す。
+// ⚠ 計測は1回の evaluate 内で完結させる（await をまたぐと実ループぶんの tick が混ざる）。
+// ⚠ 爆風は投擲物ではなく設置爆弾なので `.explosion-effect` の出現 tick も返す
+//   （爆発しないまま終わっても「ダメージ0」で通ってしまう＝歯が無くなるため）。
+async function shootAndTrack(page, { type, dir, off, weapon, flight }) {
+  return page.evaluate((a) => {
+    const g = window.__game;
+    const get = () => g.getEnemies().find(e => e.type === a.type);
+    for (let i = 0; i < a.off; i++) g.step(1);
+    const e0 = get();
+    const fire = { hidden: e0.hidden, phase: e0.leapPhase ?? null, hp: e0.hp };
+    g.getPlayer().activeSubItem = a.weapon;
+    g.setHeroDir(a.dir);
+    g.useSubItem();
+    const hits = [];
+    let boomTick = null, boomHidden = null;
+    let prev = fire.hp;
+    for (let i = 1; i <= a.flight; i++) {
+      g.step(1);
+      const e = get();
+      const hp = e?.hp ?? 0;
+      if (boomTick === null && document.querySelectorAll('.explosion-effect').length > 0) {
+        boomTick = a.off + i;
+        boomHidden = e?.hidden ?? null;
+      }
+      if (hp !== prev) {
+        hits.push({ tick: a.off + i, hidden: e?.hidden ?? null, phase: e?.leapPhase ?? null, drop: prev - hp });
+      }
+      prev = hp;
+    }
+    return { fire, after: prev, hits, boomTick, boomHidden };
+  }, { type, dir, off, weapon, flight });
+}
+
+// ── 「当たり判定そのものが起きていない」を撮るヘルパー（⑯⑰）──────────────
+// ⑭⑮ は hp（ダメージ数値）で無敵を測る。だがユーザー報告（2026-08-14）の実体は
+// **hp は減らないのに接触の帰結だけが起きていた**＝ブーメランが地中の蟲・滞空の蜘蛛で
+// Uターンし、スタン⭐・ガード解除・「-0」ポップアップまで出ていた。
+// ∴ hp ではなく接触の痕跡を見る：Uターン位置／stunUntil／.stun-burst／.dmg-popup。
+// 併せて「無敵窓の時計がズレないこと」も返す＝スタンが入ると enemyTick の
+// early-continue（stunUntil）が tickHide/tickLeap より前にあるので窓が延びる。
+async function probeContact(page, { type, dir, off, weapon, span }) {
+  return page.evaluate((a) => {
+    const g = window.__game;
+    const get = () => g.getEnemies().find(e => e.type === a.type);
+    for (let i = 0; i < a.off; i++) g.step(1);
+    const e0 = get();
+    const fire = { hidden: e0.hidden, phase: e0.leapPhase ?? null, hp: e0.hp, x: e0.x };
+    g.setHeroDir(a.dir);
+    if (a.weapon === 'sword') {
+      g.swordAttack();
+    } else {
+      g.getPlayer().activeSubItem = a.weapon;
+      g.useSubItem();
+    }
+    const out = { fire, turnedAt: null, stunned: false, star: false, popup: false, hits: [], state: [] };
+    // ⚠ 接触の痕跡は「隠れている間に観測されたか」だけを立てる。隠れが解けた後の
+    //   正当なヒット（ブーメランの復路が着地硬直に当たる等）を拾うと歯が無くなる。
+    //   判定は着弾の瞬間で測る規則と同じ＝その tick の e.hidden で見る。
+    const scan = () => {
+      const e = get();
+      const p = g.getProjectiles()[0];
+      if (out.turnedAt === null && p?.returning) out.turnedAt = p.x;
+      if (!e?.hidden) return;
+      if (e.stunUntil) out.stunned = true;
+      if (document.querySelector('.stun-burst')) out.star = true;
+      if (document.querySelector('.dmg-popup')) out.popup = true;
+    };
+    scan();                       // 剣は即時判定∴step の前も見る
+    let prev = fire.hp;
+    for (let i = 1; i <= a.span; i++) {
+      g.step(1);
+      scan();
+      const e = get();
+      const hp = e?.hp ?? 0;
+      if (hp !== prev) out.hits.push({ tick: a.off + i, hidden: e?.hidden ?? null, phase: e?.leapPhase ?? null, drop: prev - hp });
+      prev = hp;
+      out.state.push(e ? (e.hidden ? 'hidden' : (e.leapPhase ?? 'shown')) : 'gone');
+    }
+    return out;
+  }, { type, dir, off, weapon, span });
+}
 
 test.describe('Phase 5.5k k-3 – 隠れ↔出現の無敵窓（地中蟲・跳躍蜘蛛・コウモリ群）', () => {
 
@@ -374,6 +464,19 @@ test.describe('Phase 5.5k k-3 – 隠れ↔出現の無敵窓（地中蟲・跳�
     expect(errors).toEqual([]);
   });
 
+  // コウモリは「1体＝1匹」で、群れはステージに複数置くことで表現する（5.5m の配置側の話）。
+  // 一方この節で測るのは機構（飛行・ジグザグ）＝1匹で測らないと成立しない：敵同士は重なれない
+  // ので、隣に同種がいると互いに進路を塞いで振れが潰れる（実測：5匹並べると符号変化 0 になる）。
+  // ∴測定前に主役 (4,9) 以外の 'ξ' を倒して退かす。アリーナへ何匹足しても機構の測定は濁らない。
+  const MECH_BAT = '4,9';                 // 敵の id は湧いた位置の "r,c"
+  const isolateBat = (page) => page.evaluate((keep) => {
+    const g = window.__game;
+    for (const e of g.getEnemies()) {
+      if (e.type === 'ξ' && e.id !== keep) g.dealDamage(e.id, 999, 'sword');
+    }
+    return g.getEnemies().filter(e => e.type === 'ξ').map(e => e.id);
+  }, MECH_BAT);
+
   test('⑪ コウモリ群は水の縦帯を飛び越える（陸上敵には渡れない幾何）', async ({ page }) => {
     const errors = [];
     page.on('pageerror', e => errors.push(e.message));
@@ -387,9 +490,10 @@ test.describe('Phase 5.5k k-3 – 隠れ↔出現の無敵窓（地中蟲・跳�
 
     await page.goto(BAT_URL);
     await waitForBoard(page);
+    expect(await isolateBat(page), `前提：主役の 'ξ' (${MECH_BAT}) が居ない`).toEqual([MECH_BAT]);
 
-    const res = await page.evaluate(() => {
-      const get = () => window.__game.getEnemies().find(e => e.type === 'ξ');
+    const res = await page.evaluate((keep) => {
+      const get = () => window.__game.getEnemies().find(e => e.id === keep);
       const start = get();
       let onWater = false, minX = start.x;
       for (let i = 1; i <= 40; i++) {
@@ -400,7 +504,7 @@ test.describe('Phase 5.5k k-3 – 隠れ↔出現の無敵窓（地中蟲・跳�
         minX = Math.min(minX, e.x);
       }
       return { startX: start.x, move: start.move, onWater, minX };
-    });
+    }, MECH_BAT);
 
     expect(res.move, "インスタンスに move:'air' が乗っていない").toBe('air');
     expect(res.startX, '前提：コウモリは水帯の東（col9）から始まる').toBe(9);
@@ -417,8 +521,9 @@ test.describe('Phase 5.5k k-3 – 隠れ↔出現の無敵窓（地中蟲・跳�
     const fly = async () => {
       await page.goto(BAT_URL);
       await waitForBoard(page);
-      return page.evaluate(() => {
-        const get = () => window.__game.getEnemies().find(e => e.type === 'ξ');
+      expect(await isolateBat(page), `前提：主役の 'ξ' (${MECH_BAT}) が居ない`).toEqual([MECH_BAT]);
+      return page.evaluate((keep) => {
+        const get = () => window.__game.getEnemies().find(e => e.id === keep);
         const out = [];
         for (let i = 1; i <= 40; i++) {
           window.__game.step(1);
@@ -427,7 +532,7 @@ test.describe('Phase 5.5k k-3 – 隠れ↔出現の無敵窓（地中蟲・跳�
           out.push([e.x, e.y - p.y]);      // 主軸=x（詰める）／副軸=y のずれ（振れる）
         }
         return out;
-      });
+      }, MECH_BAT);
     };
 
     const path = await fly();
@@ -468,5 +573,185 @@ test.describe('Phase 5.5k k-3 – 隠れ↔出現の無敵窓（地中蟲・跳�
       }
     }
     expect(placed, 'k-3a の時点では本編レイヤーに配置しない（5.5m で配置する）').toEqual([]);
+  });
+
+  // ── ⑭⑮ 投擲物の経路（ユーザー報告 2026-08-14 の裏取り）─────────────────────
+  // 報告＝「地中蟲と跳躍蜘蛛に、ダメージを与えられないはずの間に弓矢やブーメランで
+  // ダメージを与えられてしまう」。⑤⑨ は `dealDamage(id,dmg,'sword')` しか通していない＝
+  // projectile.js 経由の3経路（貫通＝弓/剣ビーム・ブーメラン・爆風）は無検証だった。
+  // 実測の結論＝**無敵窓は投擲物にも効いている**。ダメージが通るのは「着弾の瞬間に
+  // 隠れが解けている」場合だけ＝gameTick は enemyTick()（tickHide/tickLeap）→
+  // projectileTick() の順∴浮上/着地する tick に着弾すると同じ tick 内で「解除→命中」になる。
+  // 弓は 2.25 セル/tick・ブーメランは往復1秒級・爆弾は導火線 17 tick ∴
+  // 「撃った瞬間の状態」と「当たった瞬間の状態」がずれる＝これが報告の見え方の正体。
+  // ∴ここで固定する契約は2本：①着弾の瞬間が隠れ中ならどの経路でも0 ②解除の瞬間なら通る。
+
+  test('⑭ 地中蟲：弓・ブーメラン・爆風も潜伏中は通らない（判定は着弾の瞬間）', async ({ page }) => {
+    const errors = [];
+    page.on('pageerror', e => errors.push(e.message));
+
+    // tick の根拠（④で固定した周期＝潜伏 1〜14 / 浮上 15〜23 / 潜伏 24〜37）：
+    //   弓 speed4.5（=2.25 セル/tick）＋敵は西隣∴撃った次の tick に着弾
+    //   ブーメラン 往路の1体目で折り返す∴同じく次の tick（atk は 2）
+    //   爆弾 導火線 17 tick（設置 tick + 17 で爆発・.scratch/check-bomb-fuse.mjs で実測）
+    const shoot = async (opt) => {
+      await page.goto(WORM_ITEMS_URL);
+      await waitForBoard(page);
+      return shootAndTrack(page, { type: 'α', dir: 'left', ...opt });
+    };
+
+    // ① 潜伏中に着弾＝3経路すべて無効
+    const bowHidden = await shoot({ off: 3, weapon: 'bow', flight: 6 });
+    expect(bowHidden.fire.hidden, '前提：tick3 は潜伏中').toBe(true);
+    expect(bowHidden.hits, '潜伏中の地中蟲に弓矢が通った（貫通経路が無敵窓を無視している）')
+      .toEqual([]);
+
+    const boomHidden = await shoot({ off: 3, weapon: 'boomerang', flight: 12 });
+    expect(boomHidden.fire.hidden, '前提：tick3 は潜伏中').toBe(true);
+    expect(boomHidden.hits, '潜伏中の地中蟲にブーメランが通った').toEqual([]);
+
+    // 爆弾は tick8 設置 → tick25 爆発＝2周目の潜伏窓（24〜37）の中
+    const bombHidden = await shoot({ off: 8, weapon: 'bomb', flight: 20 });
+    expect(bombHidden.boomTick, '爆発が観測できない＝ダメージ0が「爆発しなかった」で通ってしまう')
+      .toBe(25);
+    expect(bombHidden.boomHidden, '前提：tick25 は潜伏中（2周目）').toBe(true);
+    expect(bombHidden.hits, '潜伏中の地中蟲に爆風が通った（srcX/srcY 無しの経路）').toEqual([]);
+
+    // ② 浮上中に着弾＝3経路すべて通る（無敵が強すぎて倒せない、の逆側を塞ぐ）
+    const bowShown = await shoot({ off: 18, weapon: 'bow', flight: 4 });
+    expect(bowShown.fire.hidden, '前提：tick18 は浮上中').toBe(false);
+    expect(bowShown.hits.map(h => h.tick), '浮上中に弓矢が当たらない').toEqual([19]);
+    expect(bowShown.hits[0].drop, '弓矢の固定ダメージ 5（def 差引後）が入らない').toBeGreaterThan(0);
+
+    const boomShown = await shoot({ off: 16, weapon: 'boomerang', flight: 6 });
+    expect(boomShown.fire.hidden, '前提：tick16 は浮上中').toBe(false);
+    expect(boomShown.hits.map(h => h.tick), '浮上中にブーメランが当たらない').toEqual([17]);
+    expect(boomShown.hits[0].hidden, '命中 tick で潜伏へ戻っていない前提').toBe(false);
+
+    // ③ 「潜伏中に投げた」爆弾でも、爆発の瞬間が浮上中ならダメージは通る
+    //    ＝判定は発射でなく着弾（報告の見え方そのもの・仕様として固定する）
+    //    ⚠ tick18 が浮上中である根拠は④の周期（浮上 15〜23）。爆風で敵が死んで
+    //      リストから消えるため boomHidden は観測できない（null になる）∴周期側に依存する。
+    const bombLate = await shoot({ off: 1, weapon: 'bomb', flight: 20 });
+    expect(bombLate.fire.hidden, '前提：tick1 は潜伏中（設置は潜伏中）').toBe(true);
+    expect(bombLate.boomTick, '爆発 tick（1+17）').toBe(18);
+    expect(bombLate.hits.map(h => h.tick), '爆発の瞬間が浮上中なのにダメージが通らない')
+      .toEqual([18]);
+
+    // ④ 境界＝浮上する tick（15）に着弾すると通る。gameTick が enemyTick→projectileTick の
+    //    順である証拠＝この順序が逆になると「浮上した瞬間に撃ち込めない」体感になる。
+    const bowEdge = await shoot({ off: 14, weapon: 'bow', flight: 3 });
+    expect(bowEdge.fire.hidden, '前提：tick14 はまだ潜伏中').toBe(true);
+    expect(bowEdge.hits.map(h => h.tick), '浮上 tick(15) の着弾が通らない（判定順が逆）')
+      .toEqual([15]);
+
+    expect(errors).toEqual([]);
+  });
+
+  test('⑮ 跳躍蜘蛛：滞空中は弓もブーメランも通らない・着地硬直では通る', async ({ page }) => {
+    const errors = [];
+    page.on('pageerror', e => errors.push(e.message));
+
+    // ⑧で固定した拍＝溜め tick1〜3 / 滞空 tick4〜6 / 着地硬直 tick7〜15。
+    // 敵は東（4,9）＝プレイヤー(4,5)から距離4∴dir は right。
+    const shoot = async (opt) => {
+      await page.goto(SPIDER_ITEMS_URL);
+      await waitForBoard(page);
+      return shootAndTrack(page, { type: 'β', dir: 'right', ...opt });
+    };
+
+    const bowAir = await shoot({ off: 4, weapon: 'bow', flight: 3 });
+    expect(bowAir.fire.phase, '前提：tick4 は滞空中').toBe('air');
+    expect(bowAir.fire.hidden, '前提：滞空中は隠れている').toBe(true);
+    expect(bowAir.hits, '滞空中の跳躍蜘蛛に弓矢が通った（当たり判定が消えていない）').toEqual([]);
+
+    const boomAir = await shoot({ off: 4, weapon: 'boomerang', flight: 14 });
+    expect(boomAir.fire.phase, '前提：tick4 は滞空中').toBe('air');
+    expect(boomAir.hits.filter(h => h.hidden), '滞空中の跳躍蜘蛛にブーメランが通った').toEqual([]);
+    // 2026-08-14 の修正で「素通り」になった＝滞空中に投げた1投は無駄にならず、
+    // 復路が着地硬直（＝反撃の窓）に当たる。⑰でスタン/⭐/ポップアップ側も固定している。
+    expect(boomAir.hits.map(h => h.phase), '滞空を素通りした復路が着地硬直に当たっていない')
+      .toEqual(['recover']);
+
+    // 着地硬直＝反撃の窓（⑨の sword と同じ結論を投擲物でも固定する）
+    const bowRecover = await shoot({ off: 8, weapon: 'bow', flight: 4 });
+    expect(bowRecover.fire.phase, '前提：tick8 は着地硬直中').toBe('recover');
+    expect(bowRecover.hits.map(h => h.tick), '着地硬直中に弓矢が当たらない＝反撃の窓が無い')
+      .toEqual([9]);
+
+    const boomRecover = await shoot({ off: 8, weapon: 'boomerang', flight: 8 });
+    expect(boomRecover.fire.phase, '前提：tick8 は着地硬直中').toBe('recover');
+    expect(boomRecover.hits.map(h => h.tick), '着地硬直中にブーメランが当たらない').toEqual([9]);
+    expect(boomRecover.hits[0].phase, '命中 tick でまだ硬直中である前提').toBe('recover');
+
+    expect(errors).toEqual([]);
+  });
+
+  // ⑯⑰ = 2026-08-14 ユーザー報告のバグの回帰。「ダメージが 0 なら無敵」では足りない：
+  // 報告は「地中にいる間にブーメランを投げると当たる」で、実際に当たっていた（判定が
+  // 起きてスタン・⭐・Uターン・-0 ポップアップまで出ていた）。∴ 無敵窓の契約を
+  // 「あらゆる攻撃判定を無視する＝そこに敵が居ないのと同じ」に強めて固定する。
+  test('⑯ 地中蟲：潜伏中は当たり判定そのものが起きない（剣も矢もブーメランも素通り）', async ({ page }) => {
+    const errors = [];
+    page.on('pageerror', e => errors.push(e.message));
+
+    const probe = async (opt) => {
+      await page.goto(WORM_ITEMS_URL);
+      await waitForBoard(page);
+      return probeContact(page, { type: 'α', dir: 'left', off: 3, span: 16, ...opt });
+    };
+
+    for (const weapon of ['sword', 'bow', 'boomerang']) {
+      const r = await probe({ weapon });
+      expect(r.fire.hidden, `前提：tick3 は潜伏中（${weapon}）`).toBe(true);
+      expect(r.hits, `潜伏中の地中蟲に ${weapon} でダメージが入った`).toEqual([]);
+      expect(r.stunned, `潜伏中の地中蟲に ${weapon} でスタンが入った（無敵なのに阻害が通る）`).toBe(false);
+      expect(r.star,    `潜伏中の地中蟲に ${weapon} でスタン⭐が出た（当たったように見える）`).toBe(false);
+      expect(r.popup,   `潜伏中の地中蟲に ${weapon} で「-0」ポップアップが出た（当たったように見える）`).toBe(false);
+      // ★ 最も強い歯：スタンは enemyTick の early-continue（tickHide より前）に入るので
+      //    潜伏中に当たると無敵窓が延びる。④の周期（潜伏1〜14／浮上15〜）が動かないこと。
+      expect(r.state[14 - 3 - 1], `${weapon}：tick14 はまだ潜伏中`).toBe('hidden');
+      expect(r.state[15 - 3 - 1], `${weapon}：tick15 に浮上していない＝無敵窓が延びた`).toBe('shown');
+    }
+
+    // ブーメランは敵を素通りする＝敵の位置（x=9）ではなく最大射程で折り返す。
+    // ∴ 潜伏中に投げた1投が無駄にならない（浮上後に復路で当て直せる）。
+    const boom = await probe({ weapon: 'boomerang' });
+    expect(boom.turnedAt, '前提：ブーメランは折り返している').not.toBeNull();
+    expect(boom.turnedAt, '潜伏中の地中蟲(x=9)でUターンした＝投擲物が敵に触れている')
+      .toBeLessThan(8);
+
+    expect(errors).toEqual([]);
+  });
+
+  test('⑰ 跳躍蜘蛛：滞空中も当たり判定が起きない（跳躍の相が固まらない）', async ({ page }) => {
+    const errors = [];
+    page.on('pageerror', e => errors.push(e.message));
+
+    const probe = async (opt) => {
+      await page.goto(SPIDER_ITEMS_URL);
+      await waitForBoard(page);
+      return probeContact(page, { type: 'β', dir: 'right', off: 4, span: 8, ...opt });
+    };
+
+    for (const weapon of ['bow', 'boomerang']) {
+      const r = await probe({ weapon });
+      expect(r.fire.phase, `前提：tick4 は滞空中（${weapon}）`).toBe('air');
+      expect(r.stunned, `滞空中の跳躍蜘蛛に ${weapon} でスタンが入った`).toBe(false);
+      expect(r.star,    `滞空中の跳躍蜘蛛に ${weapon} でスタン⭐が出た`).toBe(false);
+      expect(r.popup,   `滞空中の跳躍蜘蛛に ${weapon} で「-0」ポップアップが出た`).toBe(false);
+      // ★ 滞空中にスタンが入ると leap の FSM が空中で止まる＝⑧の3拍（滞空4〜6／
+      //   硬直7〜）が崩れ「無敵の敵が空中で停止」になる。相の遷移を固定する。
+      expect(r.state[6 - 4 - 1], `${weapon}：tick6 はまだ滞空中`).toBe('hidden');
+      expect(r.state[7 - 4 - 1], `${weapon}：tick7 に着地していない＝滞空（無敵）が延びた`).toBe('recover');
+    }
+
+    // 滞空中に投げたブーメランは素通り→最大射程で折り返し→復路が着地硬直に当たる。
+    // ＝「無敵中に投げても1投を無駄にしない」ことの実証（⑯の地中蟲と同じ結論）。
+    const boom = await probe({ weapon: 'boomerang', span: 12 });
+    expect(boom.hits.map(h => h.phase), '復路が着地硬直に当たっていない')
+      .toEqual(['recover']);
+
+    expect(errors).toEqual([]);
   });
 });
