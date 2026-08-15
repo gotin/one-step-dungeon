@@ -754,4 +754,40 @@ test.describe('Phase 5.5k k-3 – 隠れ↔出現の無敵窓（地中蟲・跳�
 
     expect(errors).toEqual([]);
   });
+
+  // ⑱ = Phase 5.5k k-3c。tickLeap の windup 相（溜め）は移動/攻撃を止めるだけで
+  // 見た目が素の歩行のままだった＝プレイヤーには「敵が止まった」ことしか伝わらない
+  // （GUIDE §6-1「絵は機構を読ませる」に反する）。syncLeapSprite が windup の間だけ
+  // e.sprite を 'leapSpiderWindup' へ差し替え、DOM の canvas も追従することを固定する。
+  test('⑱ 跳躍蜘蛛：溜め（windup）の間だけスプライトが差し替わる（e.sprite と DOM 両方）', async ({ page }) => {
+    const errors = [];
+    page.on('pageerror', e => errors.push(e.message));
+    await page.goto(SPIDER_URL);
+    await waitForBoard(page);
+
+    const rows = await page.evaluate(() => {
+      const out = [];
+      for (let i = 1; i <= 16; i++) {
+        window.__game.step(1);
+        const e = window.__game.getEnemies().find(x => x.type === 'β');
+        if (!e) break;
+        const el = document.getElementById(`char-enemy-${e.id}`);
+        const domSprite = el?.querySelector('canvas.sprite')?.dataset.sprite ?? null;
+        out.push({ tick: i, phase: e.leapPhase, sprite: e.sprite, domSprite });
+      }
+      return out;
+    });
+
+    // ⑧で固定した拍＝溜め tick1-3／滞空4-6／着地硬直7-15。
+    expect(rows.filter(r => r.phase === 'windup').map(r => r.tick), '溜めの拍が想定と違う')
+      .toEqual([1, 2, 3]);
+    for (const r of rows) {
+      const expected = r.phase === 'windup' ? 'leapSpiderWindup' : 'leapSpider';
+      expect(r.sprite, `tick${r.tick}（${r.phase}）の e.sprite が windup 専用に差し替わっていない`)
+        .toBe(expected);
+      expect(r.domSprite, `tick${r.tick}（${r.phase}）の DOM canvas が e.sprite と食い違う（差し替えが実際に起きていない）`)
+        .toBe(expected);
+    }
+    expect(errors).toEqual([]);
+  });
 });

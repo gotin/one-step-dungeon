@@ -932,6 +932,27 @@ export function createEnemyAi(deps) {
 		return true;
 	}
 
+	// ── Phase 5.5k k-3c: 跳躍蜘蛛の「溜め」を画面に出す ───────────────
+	// tickLeap の windup 相は移動/攻撃を止めるだけで見た目は素の歩行のままだった＝
+	// プレイヤーには「敵が止まった」ことしか伝わらず GUIDE §6-1（絵は機構を読ませる）に
+	// 反していた。resolveEnemySprite（directional な敵の攻撃/構え窓）と同型＝論理時間の
+	// 状態からスプライト名を導き、変わった tick だけ DOM の canvas を差し替える。
+	// leapSpider は directional ではない（向き別9枚は不要）ので syncDirectionalSprite は
+	// 通らない＝meta.leap を持つ敵専用の新経路。
+	function syncLeapSprite(e, meta) {
+		const base = meta?.sprite;
+		if (!base) return;
+		const spriteName = (e._leapPhase === 'windup') ? `${base}Windup` : base;
+		if (e.sprite === spriteName) return;
+		e.sprite = spriteName;
+		const el = document.getElementById(`char-enemy-${e.id}`);
+		if (!el) return;
+		const oldCv = el.querySelector('canvas.sprite');
+		if (oldCv) oldCv.remove();
+		const cv = makeSprite(e.sprite, e.pal, true, !!e.flipX);
+		if (cv) el.insertBefore(cv, el.firstChild);
+	}
+
 	// ── Phase 5.5k k-3: ジグザグ飛行（コウモリ群）───────────────
 	// meta.zigzag = { amplitude, periodMs } を持つ敵は、プレイヤーそのものではなく
 	// **プレイヤーの脇 amplitude セル** を目標に取り、periodMs ごとに左右を入れ替える。
@@ -1095,6 +1116,9 @@ export function createEnemyAi(deps) {
 			// 揃える＝enemyAttack が同tickで _atkUntil を立てた場合も即座に反映される
 			// （プレイヤーの tickAttackPose と同じ「論理時間窓→毎tick同期」の作法）。
 			if (meta.directional) syncDirectionalSprite(e, meta);
+			// Phase 5.5k k-3c: 跳躍を持つ敵は windup 相の間だけ見た目を差し替える
+			// （tickLeap 自体は上で呼んでいる＝ここは絵の同期だけ）。
+			if (meta.leap) syncLeapSprite(e, meta);
 		}
 	}
 
