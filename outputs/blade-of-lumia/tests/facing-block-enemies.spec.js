@@ -658,4 +658,39 @@ test.describe('Phase 5.5k k-4 – 方向依存の被ダメ（盾騎士・火吐�
     }
     expect(placed, 'k-4a の時点では本編レイヤーに配置しない（5.5m で配置する）').toEqual([]);
   });
+
+  // ⑮ ライブマップは手編集できる＝検証ステージの幾何は黙って変わる。実際に変わった
+  //    （2026-08-16 に発覚：外周の (4,0)(4,11)(5,0)(5,11) が床になっていて、⑦ の
+  //     「壁際で押し込まれない」と ⑫ の「炎が壁で止まる」が壁の無い盤面を測っていた＝
+  //     k-4b とは無関係に main で2件が赤。scripts/migrate-test-facing-block-arenas.mjs
+  //     を再実行して戻した）。移設先はライブマップ（tests/test-layer.spec.js の経緯）
+  //    ∴ドリフトは避けられない。ならば**前提を測る本**を置いて、次に崩れたときに
+  //    「機構が壊れた」ではなく「盤面が崩れた」と読める形で赤くする。
+  test('⑮ 検証ステージの幾何が前提どおり（外周は全部壁・内部は素の床・敵は (4,9) の left）', () => {
+    for (const [name, tile] of [['shield_knight', TILE.SHIELD_KNIGHT], ['fire_turtle', TILE.FIRE_TURTLE]]) {
+      const sd = MAP.layers[TEST_LAYER]?.stages?.[stageKey(name)];
+      expect(sd, `${name} のステージが無い`).toBeTruthy();
+      const grid = (sd.tiles ?? []).map(r => (Array.isArray(r) ? r : String(r).split('')));
+      expect(grid.length, `${name}: rows が 10 でない`).toBe(10);
+      const enemyCells = [];
+      for (let r = 0; r < grid.length; r++) {
+        expect(grid[r].length, `${name}: row ${r} の cols が 12 でない`).toBe(12);
+        for (let c = 0; c < grid[r].length; c++) {
+          const t = grid[r][c];
+          const onEdge = r === 0 || r === grid.length - 1 || c === 0 || c === grid[r].length - 1;
+          if (onEdge) {
+            // ⑦ のノックバック・⑫ の炎はこの壁を突き当たりとして測る（無いと歯が無くなる）
+            expect(t, `${name}: 外周 (${r},${c}) が壁でない＝盤面がドリフトしている`).toBe(TILE.WALL);
+          } else if (t === tile) {
+            enemyCells.push(`${r},${c}`);
+          } else {
+            expect(t, `${name}: 内部 (${r},${c}) が素の床でない＝遮蔽ゼロが崩れている`).toBe(TILE.FLOOR);
+          }
+        }
+      }
+      expect(enemyCells, `${name}: 敵は (4,9) に1体だけ`).toEqual(['4,9']);
+      expect(sd.enemyDirs, `${name}: 置かれた向きが left でない＝正面/側面/背後の対応が入れ替わる`)
+        .toEqual({ '4,9': 'left' });
+    }
+  });
 });
