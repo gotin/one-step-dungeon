@@ -3125,3 +3125,16 @@ ENEMY_SPRITES.fireTurtleClosed = [
 		[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
 	]
 ];
+
+// ── k-5 の2体（分裂スライム・ルピー喰い・Phase 5.5k #3/#11）── 参照エイリアス ──
+// k-5a はエンジン機構（被弾トリガー＝分裂・吸血）だけを通す段。実描画は k-5b で
+// SPRITE-PIPELINE.md §6 の手順で 32×32 を作って差し替える（k-4a と同じ順序＝
+// データとエンジンの検証を分離する。ENEMY-DIRECTIONAL-GUIDE.md §2 の方針）。
+// どちらも向き別（directional）を持たない∴必要なのは1枚だけ。
+// 分裂スライムは親と小型で別スプライト名を持つ（小型は k-5b で「小さく描く」＝
+// 外周に透明を残して小ささを出す。SPRITE-PIPELINE.md §3-1 の★）。
+ENEMY_PAL.splitSlime = ENEMY_PAL.burrowWorm;
+ENEMY_PAL.rupeeEater = ENEMY_PAL.leapSpider;
+ENEMY_SPRITES.splitSlime      = ENEMY_SPRITES.burrowWorm;
+ENEMY_SPRITES.splitSlimeSmall = ENEMY_SPRITES.burrowWorm;
+ENEMY_SPRITES.rupeeEater      = ENEMY_SPRITES.leapSpider;

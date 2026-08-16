@@ -509,6 +509,9 @@ let enemyChase          = () => {};
 let bossTickHitAndAway  = () => {};
 let enemyAttack         = () => {};
 let checkEnemyContact   = () => {};
+// Phase 5.5k k-5: combat.js の被弾フックから呼ぶ（張り付きを剥がす）。enemy-ai.js の
+// factory は別ブロックで生成される＝_ai をそのまま参照できないのでここへ引き出す。
+let detachLeech         = () => {};
 let fireEnemyProjectile = () => {};
 let projectileTick       = () => {};
 let clearProjectiles     = () => {};
@@ -799,6 +802,9 @@ const { checkStoneOnSwitch, evaluateConditions, refreshGates } = createCondition
 		evaluateConditions:    () => evaluateConditions(),
 		renderBoard:           () => renderBoard(),
 		renderChars:           () => renderChars(),
+		// Phase 5.5k k-5: ルピー喰いの吸血は所持ルピーを減らす＝HUD 更新とメッセージが要る
+		updateHud:             () => updateHud(),
+		pulse:                 (t, d) => pulse(t, d),
 	});
 
 	// factory が生成した関数で旧インライン実装を上書き
@@ -819,6 +825,7 @@ const { checkStoneOnSwitch, evaluateConditions, refreshGates } = createCondition
 	bossTickHitAndAway   = _ai.bossTickHitAndAway;
 	enemyAttack          = _ai.enemyAttack;
 	checkEnemyContact    = _ai.checkEnemyContact;
+	detachLeech          = _ai.detachLeech;
 }
 
 // ── チャージ攻撃・剣ビーム（Phase 3-1）──────────────────────────
@@ -932,6 +939,10 @@ const { checkStoneOnSwitch, evaluateConditions, refreshGates } = createCondition
 		// 通行可否と DOM 位置更新が要る（この2つは combat では新規の依存）。
 		isPassable:       (nx, ny) => isPassable(nx, ny),
 		moveCharEl:       (id, x, y) => moveCharEl(id, x, y),
+		// Phase 5.5k k-5: 被弾トリガー（分裂した小型の置き場所／張り付きを剥がす）。
+		// 張り付きの状態機械の持ち主は enemy-ai.js＝書き手を1か所に保つために委譲する。
+		tilePassable:     (r, c) => tilePassable(r, c),
+		detachLeech:      (e) => detachLeech(e),
 		spawnDropEffect:  (r, c, icon, color) => spawnDropEffect(r, c, icon, color),
 		spawnFloorDrop:   (r, c, type) => spawnFloorDrop(r, c, type),
 		getStageMoves:    () => player.stageMoves ?? 0,
@@ -2052,6 +2063,13 @@ export function getEnemiesSnapshot() {
 		shellPhase: e._shellPhase ?? null,    // 'closed' | 'open'（shell を持つ敵のみ）
 		shellUntil: e._shellUntil ?? null,    // 開閉が切り替わる論理時刻
 		shellClosed: e._shellClosed ?? false, // 籠もり中＝全ダメージ無効の実体
+		// Phase 5.5k k-5: 被弾トリガー（分裂・張り付き）の観測用
+		atk: e.atk ?? null,                   // 分裂した小型は親より弱い（childAtk）
+		splitFrom: e._splitFrom ?? null,      // 分裂で生まれた小型が引き継ぐ親の posKey
+		attached: e._attached ?? false,       // 張り付き中＝ルピーを吸っている実体
+		stolenRupees: e._stolenRupees ?? 0,   // 吸ったルピーの累計（倒すと一部戻る元）
+		leechNext: e._leechNext ?? null,       // 次に吸う論理時刻
+		leechCooldownUntil: e._leechCooldownUntil ?? null,  // 剥がされた後、再度張り付けるまで
 	}));
 }
 

@@ -9,7 +9,8 @@
 //                 陸上敵には渡れない幾何を飛行敵が越えることを確認するための盤面。
 //
 // 自己検査（書き込み前に assert）:
-//   1. 形（10×12）／外周は全部壁
+//   1. 形（10×12）／外周は壁。ただし**左右の通路（rows 7/8・tests/test-arena-doors.js）は床**
+//      ＝隣のアリーナへ歩いて移動できる（敵を試すときに要る・2026-08-16 ユーザー指摘）
 //   2. 内部は素の床のみ（bat_swarm は水の縦帯だけ例外）＝遮蔽ゼロ
 //   3. 敵はちょうど1体・期待したタイル・内部にいる
 //   4. その敵の ENEMY_META が検証したい機構を実際に持っている
@@ -30,6 +31,7 @@ import { fileURLToPath } from 'url';
 import { TILE } from '../shared/tiles.js';
 import { ENEMY_META } from '../shared/enemies.js';
 import { TEST_LAYER, stageKey } from '../tests/test-stage-keys.js';
+import { openArenaDoors, isArenaDoor, ARENA_DOOR_ROWS } from '../tests/test-arena-doors.js';
 
 const __dir = dirname(fileURLToPath(import.meta.url));
 const MAP_PATH = join(__dir, '..', 'work', 'blade-of-lumia.json');
@@ -77,7 +79,8 @@ const STAGES = [
 		waterSplit: false,
 		comment:
 			'[burrow_worm] Phase 5.5k k-3 地中蟲の「隠れ↔出現の無敵窓」の検証ステージ（2026-08-13）。'
-			+ '幾何＝外周だけ壁・内部は全面床＝**遮蔽ゼロ**（敵が止まった理由が地形と混ざらない）。'
+			+ '幾何＝外周は壁・**左右の rows 7/8 だけ隣のアリーナへの通路**（歩いて敵を見比べる'
+			+ 'ため・塞がない）・内部は全面床＝**遮蔽ゼロ**（敵が止まった理由が地形と混ざらない）。'
 			+ '地中蟲1体(4,9)。プレイヤーは save 注入で置く：(4,10)＝隣接＝噛みつき/剣が届く。'
 			+ '見るもの＝潜伏中（hidden）は無敵・接触ダメージなし・攻撃なしで寄ってくる／'
 			+ '浮上中（hidden=false）だけ殴れる・噛まれる。⚠️ 壁や水を内部に置くと「浮上を待つ」'
@@ -93,7 +96,8 @@ const STAGES = [
 		waterSplit: false,
 		comment:
 			'[leap_spider] Phase 5.5k k-3 跳躍蜘蛛の「跳躍＝滞空中は当たり判定消失」の検証ステージ'
-			+ '（2026-08-13）。幾何＝外周だけ壁・内部は全面床＝**遮蔽ゼロ**（跳躍が壁で止まらない）。'
+			+ '（2026-08-13）。幾何＝外周は壁・**左右の rows 7/8 だけ隣のアリーナへの通路**・内部は'
+			+ '全面床＝**遮蔽ゼロ**（跳躍が壁で止まらない）。'
 			+ '跳躍蜘蛛1体(4,9)。プレイヤーは save 注入で置く：(4,5)＝距離4＝leap.maxRange 6 の内側'
 			+ '∴溜め（windup）→滞空（無敵）→着地硬直（反撃の窓）の3拍がそのまま観測できる。'
 			+ '⚠️ 距離が minRange 1.8 より近いと跳ばない（密着では跳躍しない設計）。',
@@ -146,7 +150,10 @@ for (const st of STAGES) {
 	for (const [i, row] of board.entries()) {
 		if ([...row].length !== COLS) throw new Error(`${name}: cols が ${COLS} でない: row ${i} = ${[...row].length}`);
 	}
-	const grid = board.map(r => [...r]);
+	// 左右の通路（rows 7/8）を開ける＝隣のアリーナへ歩いて移動できる。
+	// ⚠️ bat_swarm は内部の水帯（col 6）で東西が分断されている＝徒歩の横断にははしごが要る
+	//    （水帯を崩すと飛行の検証が成立しない∴通路は外周だけ開ける）。
+	const grid = openArenaDoors(board.map(r => [...r]));
 	const enemyCells = [];
 	const waterCells = [];
 	for (let r = 0; r < ROWS; r++) {
@@ -154,7 +161,12 @@ for (const st of STAGES) {
 			const t = grid[r][c];
 			const onEdge = r === 0 || r === ROWS - 1 || c === 0 || c === COLS - 1;
 			if (onEdge) {
-				if (t !== TILE.WALL) throw new Error(`${name}: 外周(${r},${c}) が壁でない: '${t}'`);
+				if (isArenaDoor(r, c, COLS)) {
+					if (t !== TILE.FLOOR) throw new Error(`${name}: 通路(${r},${c}) が床でない: '${t}'`);
+					continue;
+				}
+				if (t !== TILE.WALL) throw new Error(`${name}: 外周(${r},${c}) が壁でない: '${t}'`
+					+ `（通路は rows ${ARENA_DOOR_ROWS.join('/')} だけ）`);
 				continue;
 			}
 			if (isEnemy(t)) { enemyCells.push(`${r},${c}`); continue; }

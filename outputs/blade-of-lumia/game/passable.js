@@ -186,6 +186,10 @@ export function createPassable(d) {
 		// 大型敵（w×h）は占有セルすべてをブロックする（Phase 3-2）。
 		const ptc = toTileCol(nx), ptr = toTileRow(ny);
 		for (const e of getEnemies()) {
+			// Phase 5.5k k-5: 張り付いている敵（ルピー喰い）はプレイヤーのセルに重なって
+			// 追従する＝重なり防止に掛けるとプレイヤーが1歩も動けなくなる（引き剥がすために
+			// 動く自由は残す。剥がす手段は殴ること＝combat.js の被弾フック）。
+			if (e._attached) continue;
 			const ew = e.w ?? 1, eh = e.h ?? 1;
 			const ec = toTileCol(e.x), er = toTileRow(e.y);
 			if (ptc >= ec && ptc < ec + ew && ptr >= er && ptr < er + eh) return false;

@@ -240,6 +240,71 @@ export const ENEMY_META = {
 		},
 		attack: { type: 'charge' },            // 飛び道具は持たない（炎は shell が撃つ）
 	},
+	// ── Phase 5.5k k-5: 「被弾したことが引き金になる」陸上敵 2種 ────────────
+	// 共通の考え方＝**殴った結果が「HP が減る」だけで終わらない**（k-4 の2体が「殴っても
+	// 減らない」だったのに対し、こちらは「殴ると状況が変わる」）。引き金は combat.js
+	// dealDamageToEnemy の**1か所のフック**（onEnemyDamaged）で受ける：
+	//   分裂スライム … `split`（倒した瞬間が引き金。倒れる代わりに小型2体へ分かれる）
+	//   ルピー喰い   … `leech`（被弾が引き金。張り付きが剥がれる＝吸われ続けない）
+	[TILE.SPLIT_SLIME]: {
+		// 分裂スライム（陸上通常敵・脅威 中）。PLAN 5.5k 名簿 #3。
+		// split = { count, childHp, ..., blockedBy } ＝**倒した瞬間に分裂する**敵。
+		//   ・剣（や矢）で HP を 0 にすると killEnemy を通らず、小型 count 体へ置き換わる
+		//     （combat.js trySplitEnemy）＝1発で片付いたつもりが増える
+		//   ・小型は `_splitFrom`（親の posKey）を持つ＝**もう分裂しない**（無限に増えない／
+		//     PLAN 名簿の但し書き）。同じ印が「撃破の記録は兄弟が0になったときだけ親の posKey へ」
+		//     の判定にも使われる（combat.js recordDefeated）＝1発＋部屋の出入りで消えない
+		//   ・**弱点 bomb だけは分裂させない**（blockedBy:'bomb'）＝爆弾なら一撃で終わる
+		//     ＝弱点が「倍率」ではなく「機構を飛ばす鍵」として効く（この敵の設計の核）
+		// hp 4 ＝木の剣（player.atk = BASE_ATK 2 + wood 2 = 4）の一撃で分裂まで届く
+		// ＝名簿の「剣で1回叩くと2体の小型へ分裂」をそのまま数字にしたもの。
+		name: '分裂スライム',
+		hp: 4, atk: 2, def: 0, exp: 8,        // 脅威度 hp*atk/(def+1) = 8.0（中・剣獣 10 未満）
+		speed: ENEMY_SPEED_SLOW,              // 鈍い＝増えても逃げられる（数で押す敵の前提）
+		sprite: 'splitSlime',
+		pal:    'splitSlime',
+		isBoss: false,
+		weakness: { type: 'bomb', multiplier: 2 },
+		split: {
+			count:       2,             // 分かれる小型の数
+			childHp:     2,             // 小型は木の剣1発で倒せる（増えた数を捌ける）
+			childAtk:    1,             // 接触ダメージも半分＝囲まれても即死しない
+			childDef:    0,
+			childExp:    3,
+			childSprite: 'splitSlimeSmall',
+			blockedBy:   'bomb',        // 弱点で潰したときは分裂しない（弱点＝機構の解除鍵）
+		},
+		attack: { type: 'charge' },     // 接触ダメージのみ（飛び道具は持たない）
+	},
+	[TILE.RUPEE_EATER]: {
+		// ルピー喰い（陸上通常敵・脅威 中）。PLAN 5.5k 名簿 #11。
+		// 「盾を奪う」は理不尽∴**ルピーを吸う**に変更（ユーザー確定 2026-08-10）。
+		// leech = { attachRange, drainMs, amount, refund, cooldownMs } ＝**張り付いて吸う**敵。
+		//   ・attachRange まで詰めると張り付く（enemy-ai.js tickLeech）＝以後プレイヤーに
+		//     重なって移動する＝逃げても振り解けない（passable.js が重なりを例外扱いする）
+		//   ・張り付いている間 drainMs ごとに amount ルピーを吸う＝放置するほど損が増える
+		//     ∴「倒す優先度を強制」（名簿）
+		//   ・**被弾で剥がれる**（combat.js の被弾フック → enemy-ai.js detachLeech）＝叩けば止まるが cooldownMs 後に
+		//     また張り付く＝離れるか倒すかを選ばせる
+		//   ・倒すと吸われたぶんの refund 割合が戻る（combat.js killEnemy）
+		// 弱点なし（名簿）＝属性で楽にならない敵。
+		name: 'ルピー喰い',
+		hp: 6, atk: 2, def: 1, exp: 10,       // 脅威度 hp*atk/(def+1) = 6.0（中）
+		speed: ENEMY_SPEED_NORMAL,            // 張り付きに来る＝寄れる速さは要る（ただし鈍足では無い）
+		sprite: 'rupeeEater',
+		pal:    'rupeeEater',
+		isBoss: false,
+		leech: {
+			attachRange: 1.1,   // 張り付く距離。**隣接（1.0）で成立する値**にする＝敵はプレイヤーの
+			                    // セルへ踏み込めない（passable.js isPassableForEnemy）∴自力で寄れる
+			                    // 限界は距離 1.0。ここを 1.0 未満にすると永久に張り付けない
+			drainMs:     600,   // 吸う間隔（5 tick＝TICK_MS 120 の整数倍＝観測 tick が揺れない）
+			amount:      2,     // 1回に吸うルピー
+			refund:      0.5,   // 倒したときに戻る割合（吸われた総額に対して）
+			cooldownMs:  1200,  // 剥がされてから再び張り付けるまで（10 tick）＝叩く手が意味を持つ
+		},
+		attack: { type: 'charge' },   // 接触ダメージのみ（張り付き中は吸うのが攻撃＝HPは減らない）
+	},
 	[TILE.MONSTER]: {
 		name: '魔物',
 		hp: 12, atk: 3, def: 1, exp: 18,

@@ -36,6 +36,11 @@ export const TILE_SPRITE_MAP = {
 	// エディタは状態を持たない∴代表は「開いている姿」＝素の名前。
 	[TILE.SHIELD_KNIGHT]:{ spr: 'shieldKnightD', pal: 'shieldKnight' },
 	[TILE.FIRE_TURTLE]:  { spr: 'fireTurtle',    pal: 'fireTurtle'   },
+	// Phase 5.5k k-5（被弾が引き金になる2体）。どちらも向き別を持たない＝1枚の絵。
+	// 分裂スライムの小型（splitSlimeSmall）はタイルとして配置しない（分裂でしか出ない）
+	// ∴エディタの代表は親のスプライトだけで足りる。
+	[TILE.SPLIT_SLIME]:  { spr: 'splitSlime',    pal: 'splitSlime'   },
+	[TILE.RUPEE_EATER]:  { spr: 'rupeeEater',    pal: 'rupeeEater'   },
 	[TILE.BOSS]:      { spr: 'escape',   pal: 'escape'   },
 	[TILE.MONSTER]:   { spr: 'monster',  pal: 'monster'  },
 	[TILE.DARK_LORD]: { spr: 'darklord', pal: 'darklord' },

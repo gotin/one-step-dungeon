@@ -9,7 +9,9 @@
 // 遮蔽が無いことが要点＝壁や水で止まったのか AI が止まったのかを混同しない。
 //
 // 自己検査（書き込み前に assert）:
-//   1. 形（10×12）／外周は全部壁／内部は全面床（剣獣のセルを除く）
+//   1. 形（10×12）／外周は壁・内部は全面床（剣獣のセルを除く）。ただし**左右の通路
+//      （rows 7/8・tests/test-arena-doors.js）は床**＝隣のアリーナへ歩いて移動できる
+//      （敵を試すときに要る・2026-08-16 ユーザー指摘）
 //   2. 剣獣はちょうど1体・内部にいる
 //   3. enemyDirs のキー集合が盤面の敵セルと一致
 //   4. ステージキーは tests/test-stage-keys.js の表から引く（座標を直書きしない）
@@ -25,6 +27,7 @@ import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
 import { ENEMY_META } from '../shared/enemies.js';
 import { TEST_LAYER, stageKey } from '../tests/test-stage-keys.js';
+import { openArenaDoors, isArenaDoor, ARENA_DOOR_ROWS } from '../tests/test-arena-doors.js';
 
 const __dir = dirname(fileURLToPath(import.meta.url));
 const MAP_PATH = join(__dir, '..', 'work', 'blade-of-lumia.json');
@@ -53,7 +56,8 @@ const ENEMY_DIRS = { '4,9': 'left' };
 const COMMENT =
   '[sword_beast_arena] Phase 5.5k #7 剣獣の「遠隔／近接の二相」と「攻撃硬直」の検証ステージ'
   + '（2026-08-12・ユーザー指摘で AI を直したときに追加）。'
-  + '幾何＝外周だけ壁・内部は全面床＝**遮蔽ゼロ**。'
+  + '幾何＝外周は壁・**左右の rows 7/8 だけ隣のアリーナへの通路**（歩いて敵を見比べるため'
+  + '・塞がない）・内部は全面床＝**遮蔽ゼロ**。'
   + '遮蔽を置かないのが要点＝敵が止まったのが壁のせいか AI のせい（間合い維持・硬直）かを'
   + '混同しないため。剣獣1体(4,9)。プレイヤーは save 注入で置く：(4,2)＝row 4 で揃う'
   + '／(4,10)＝近接距離から始める。⚠️ 壁・水・石を内部に置くと二相の観測が成立しなくなる。';
@@ -66,14 +70,20 @@ for (const [i, row] of BOARD.entries()) {
   if ([...row].length !== COLS) throw new Error(`cols が ${COLS} でない: row ${i} = ${[...row].length}`);
 }
 
-const grid = BOARD.map(r => [...r]);
+// 左右の通路（rows 7/8）を開ける＝隣のアリーナへ歩いて移動できる。
+const grid = openArenaDoors(BOARD.map(r => [...r]));
 const enemyCells = [];
 for (let r = 0; r < ROWS; r++) {
   for (let c = 0; c < COLS; c++) {
     const t = grid[r][c];
     const onEdge = r === 0 || r === ROWS - 1 || c === 0 || c === COLS - 1;
     if (onEdge) {
-      if (t !== '#') throw new Error(`外周(${r},${c}) が壁でない: '${t}'`);
+      if (isArenaDoor(r, c, COLS)) {
+        if (t !== '.') throw new Error(`通路(${r},${c}) が床でない: '${t}'`);
+        continue;
+      }
+      if (t !== '#') throw new Error(`外周(${r},${c}) が壁でない: '${t}'`
+        + `（通路は rows ${ARENA_DOOR_ROWS.join('/')} だけ）`);
       continue;
     }
     if (isEnemy(t)) { enemyCells.push(`${r},${c}`); continue; }

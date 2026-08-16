@@ -16,9 +16,14 @@
 // 弾かれる手応え（0ダメージ＋盾ブロックSE＋「-0」）が返る。無音で返す `e.hidden` とは
 // 意図的に別扱い（combat.js dealDamageToEnemy のコメント）。
 //
-// 検証ステージ＝test_mechanics[32,0] `shield_knight` / [33,0] `fire_turtle`
+// 検証ステージ＝test_mechanics[33,0] `shield_knight` / [34,0] `fire_turtle`
+// （⚠️ 2026-08-16、ユーザーが 32,0 に空きアリーナを挿入した＝キーが +1 ずれた。
+//   座標は直書きせず `stageKey()` で引く＝この手の挿入で全スペックを直さない）
 // （scripts/migrate-test-facing-block-arenas.mjs が自己検査付きで生成）。どちらも
-// 外周だけ壁の遮蔽ゼロ 10×12・敵は (4,9)・**置かれた向きは 'left'（西）**。
+// 遮蔽ゼロの 10×12・敵は (4,9)・**置かれた向きは 'left'（西）**。
+// 外周は壁だが**左右 rows 7/8 は隣のアリーナへの通路**（tests/test-arena-doors.js）＝
+// 敵を歩いて見比べるための道∴塞がない。⑦（ノックバックの壁止め）と⑫③（炎の壁止め）が
+// 突き当たりに使うのは **(4,11)**＝計測帯 rows 4/5 の外周∴通路とは干渉しない。
 // 敵の四方すべてが床＝正面/側面/背後の3方向から殴れる（GUIDE §3-2＝プレイヤーは
 // 敵と同じセルに入れない∴回り込みには周囲1マスの余裕が要る）。
 //
@@ -66,6 +71,7 @@ import { ENEMY_SPRITES, ENEMY_PAL } from '../shared/sprites-enemies.js';
 import { TILE_SPRITE_MAP } from '../shared/tile-sprites.js';
 import { waitForBoard } from './helpers.js';
 import { TEST_LAYER, stageKey } from './test-stage-keys.js';
+import { isArenaDoor, arenaDoorCells, ARENA_DOOR_ROWS } from './test-arena-doors.js';
 import { gameLayerEntries } from '../shared/layers.js';
 
 const GAME   = '/blade-of-lumia/game/';
@@ -659,14 +665,16 @@ test.describe('Phase 5.5k k-4 – 方向依存の被ダメ（盾騎士・火吐�
     expect(placed, 'k-4a の時点では本編レイヤーに配置しない（5.5m で配置する）').toEqual([]);
   });
 
-  // ⑮ ライブマップは手編集できる＝検証ステージの幾何は黙って変わる。実際に変わった
-  //    （2026-08-16 に発覚：外周の (4,0)(4,11)(5,0)(5,11) が床になっていて、⑦ の
-  //     「壁際で押し込まれない」と ⑫ の「炎が壁で止まる」が壁の無い盤面を測っていた＝
-  //     k-4b とは無関係に main で2件が赤。scripts/migrate-test-facing-block-arenas.mjs
-  //     を再実行して戻した）。移設先はライブマップ（tests/test-layer.spec.js の経緯）
-  //    ∴ドリフトは避けられない。ならば**前提を測る本**を置いて、次に崩れたときに
-  //    「機構が壊れた」ではなく「盤面が崩れた」と読める形で赤くする。
-  test('⑮ 検証ステージの幾何が前提どおり（外周は全部壁・内部は素の床・敵は (4,9) の left）', () => {
+  // ⑮ ライブマップは手編集できる＝検証ステージの幾何は黙って変わる∴**前提を測る本**を
+  //    置いて、崩れたときに「機構が壊れた」ではなく「盤面が崩れた」と読める形で赤くする。
+  //    ⚠️ ただし外周は「全部壁」ではない：2026-08-16 に (4,0)(4,11)(5,0)(5,11) が床に
+  //    なっているのを見て「手編集のドリフト」と決めつけ、**ユーザーが敵を歩いて見比べる
+  //    ために開けた通路を2回塞いだ**（k-4b・k-5a）。通路は仕様＝rows 7/8 に移して
+  //    tests/test-arena-doors.js に定義し、この本は
+  //      (a) 通路以外の外周は壁（⑦⑫が突き当たりに使う (4,11) を含む）
+  //      (b) **通路は開いている**（塞ぐと隣のアリーナへ歩いて行けない）
+  //    の両方を測る＝どちらの向きの事故も赤くなる。
+  test('⑮ 検証ステージの幾何が前提どおり（外周は壁＋左右の通路・内部は素の床・敵は (4,9) の left）', () => {
     for (const [name, tile] of [['shield_knight', TILE.SHIELD_KNIGHT], ['fire_turtle', TILE.FIRE_TURTLE]]) {
       const sd = MAP.layers[TEST_LAYER]?.stages?.[stageKey(name)];
       expect(sd, `${name} のステージが無い`).toBeTruthy();
@@ -679,8 +687,15 @@ test.describe('Phase 5.5k k-4 – 方向依存の被ダメ（盾騎士・火吐�
           const t = grid[r][c];
           const onEdge = r === 0 || r === grid.length - 1 || c === 0 || c === grid[r].length - 1;
           if (onEdge) {
-            // ⑦ のノックバック・⑫ の炎はこの壁を突き当たりとして測る（無いと歯が無くなる）
-            expect(t, `${name}: 外周 (${r},${c}) が壁でない＝盤面がドリフトしている`).toBe(TILE.WALL);
+            if (isArenaDoor(r, c, grid[r].length)) {
+              // 隣のアリーナへの通路。塞ぐと敵を歩いて見比べられない（ユーザー指摘）。
+              expect(t, `${name}: 通路 (${r},${c}) が塞がれている＝隣のアリーナへ歩いて行けない`)
+                .toBe(TILE.FLOOR);
+            } else {
+              // ⑦ のノックバック・⑫ の炎はこの壁を突き当たりとして測る（無いと歯が無くなる）
+              expect(t, `${name}: 外周 (${r},${c}) が壁でない（通路は rows ${ARENA_DOOR_ROWS.join('/')} だけ）`)
+                .toBe(TILE.WALL);
+            }
           } else if (t === tile) {
             enemyCells.push(`${r},${c}`);
           } else {
@@ -691,6 +706,15 @@ test.describe('Phase 5.5k k-4 – 方向依存の被ダメ（盾騎士・火吐�
       expect(enemyCells, `${name}: 敵は (4,9) に1体だけ`).toEqual(['4,9']);
       expect(sd.enemyDirs, `${name}: 置かれた向きが left でない＝正面/側面/背後の対応が入れ替わる`)
         .toEqual({ '4,9': 'left' });
+      // ⑦⑫③ が突き当たりに使うのは (4,11)＝計測帯の外周（通路の行と食い違っていないこと）
+      expect(grid[4][11], `${name}: (4,11) が壁でない＝⑦⑫の突き当たりが消える`).toBe(TILE.WALL);
+      // 通路は「歩いて抜けられる」ことが目的＝1つ内側が壁だと着地が拒否される
+      // （game.js arrivalIsWall）∴内側も床であること。
+      for (const [r, c] of arenaDoorCells(grid[0].length)) {
+        const inner = c === 0 ? 1 : grid[0].length - 2;
+        expect(grid[r][inner], `${name}: 通路 (${r},${c}) の内側 (${r},${inner}) が床でない＝通れない`)
+          .toBe(TILE.FLOOR);
+      }
     }
   });
 });

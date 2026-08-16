@@ -1,4 +1,5 @@
-// test_mechanics[32,0] `shield_knight` / [33,0] `fire_turtle` を作る／更新する
+// test_mechanics[33,0] `shield_knight` / [34,0] `fire_turtle` を作る／更新する
+// （キーは tests/test-stage-keys.js から引く＝2026-08-16 の 32,0 空きアリーナ挿入で +1 ずれた）
 // （2026-08-15 / Phase 5.5k k-4「方向依存の被ダメ」の検証ステージ）。
 //
 // 2体を1枚に混ぜない＝どの機構が壊れたのか混ざらない（k-3 の hide-window-arenas と同じ作法）。
@@ -11,7 +12,9 @@
 //                   （届く距離と届かない距離を同じ盤面で測るため +1 セル）。
 //
 // 自己検査（書き込み前に assert）:
-//   1. 形（10×12）／外周は全部壁
+//   1. 形（10×12）／外周は壁。ただし**左右の通路（rows 7/8・tests/test-arena-doors.js）は床**
+//      ＝隣のアリーナへ歩いて移動できる（敵を試すときに要る・2026-08-16 ユーザー指摘）。
+//      計測帯 rows 4/5 は壁のまま＝⑦（ノックバックの壁止め）⑫（炎の壁止め）の突き当たり
 //   2. 内部は素の床のみ＝遮蔽ゼロ（敵セルを除く）
 //   3. 敵はちょうど1体・期待したタイル・内部にいる
 //   4. その敵の ENEMY_META が検証したい機構を実際に持っている（blockFacing / shell）
@@ -33,6 +36,7 @@ import { fileURLToPath } from 'url';
 import { TILE } from '../shared/tiles.js';
 import { ENEMY_META } from '../shared/enemies.js';
 import { TEST_LAYER, stageKey } from '../tests/test-stage-keys.js';
+import { openArenaDoors, isArenaDoor, ARENA_DOOR_ROWS } from '../tests/test-arena-doors.js';
 
 const __dir = dirname(fileURLToPath(import.meta.url));
 const MAP_PATH = join(__dir, '..', 'work', 'blade-of-lumia.json');
@@ -69,7 +73,8 @@ const STAGES = [
 		requiresLabel: 'meta.blockFacing = { turnMs, knockback }',
 		comment:
 			'[shield_knight] Phase 5.5k k-4 盾騎士の「向き固定の常時ブロック」の検証ステージ（2026-08-15）。'
-			+ '幾何＝外周だけ壁・内部は全面床＝**遮蔽ゼロ**（回り込めない理由が地形と混ざらない）。'
+			+ '幾何＝外周は壁・**左右の rows 7/8 だけ隣のアリーナへの通路**（歩いて敵を見比べる'
+			+ 'ため・塞がない）・内部は全面床＝**遮蔽ゼロ**（回り込めない理由が地形と混ざらない）。'
 			+ '盾騎士1体(4,9)・向き left（西＝プレイヤー側を向いて立つ）。プレイヤーは save 注入で置く：'
 			+ '(4,8)＝正面＝弾かれる／(4,10)＝背後＝通る／(3,9)(5,9)＝側面＝通る。'
 			+ '見るもの＝正面からの剣は 0 ダメージ＋プレイヤーが1歩弾かれる／側面・背後は通る／'
@@ -87,7 +92,8 @@ const STAGES = [
 		requiresLabel: 'meta.shell = { closedMs, openMs, breathCells }',
 		comment:
 			'[fire_turtle] Phase 5.5k k-4 火吐き亀の「甲羅の開閉＋開いた瞬間の炎」の検証ステージ'
-			+ '（2026-08-15）。幾何＝外周だけ壁・内部は全面床＝**遮蔽ゼロ**（炎が壁で止まらない）。'
+			+ '（2026-08-15）。幾何＝外周は壁・**左右の rows 7/8 だけ隣のアリーナへの通路**・内部は'
+			+ '全面床＝**遮蔽ゼロ**（炎が正面の射線で壁に止められない＝rows 4/5 の外周は壁のまま）。'
 			+ '火吐き亀1体(4,9)・向き left。プレイヤーは save 注入で置く：(4,7)＝炎の射程内'
 			+ '（正面2セル）／(4,6)＝射程外／(4,8)＝隣接＝籠もり中の甲羅を叩ける。'
 			+ '見るもの＝籠もり中（shellClosed）は**方向を問わず**全ダメージ 0／開いている間だけ通る／'
@@ -106,14 +112,21 @@ for (const st of STAGES) {
 	for (const [i, row] of board.entries()) {
 		if ([...row].length !== COLS) throw new Error(`${name}: cols が ${COLS} でない: row ${i} = ${[...row].length}`);
 	}
-	const grid = board.map(r => [...r]);
+	// 左右の通路（rows 7/8）を開ける＝隣のアリーナへ歩いて移動できる（計測帯 rows 4/5 は
+	// 壁のまま＝⑦ のノックバック・⑫ の炎は (4,11) の壁を突き当たりとして測る）。
+	const grid = openArenaDoors(board.map(r => [...r]));
 	const enemyCells = [];
 	for (let r = 0; r < ROWS; r++) {
 		for (let c = 0; c < COLS; c++) {
 			const t = grid[r][c];
 			const onEdge = r === 0 || r === ROWS - 1 || c === 0 || c === COLS - 1;
 			if (onEdge) {
-				if (t !== TILE.WALL) throw new Error(`${name}: 外周(${r},${c}) が壁でない: '${t}'`);
+				if (isArenaDoor(r, c, COLS)) {
+					if (t !== TILE.FLOOR) throw new Error(`${name}: 通路(${r},${c}) が床でない: '${t}'`);
+					continue;
+				}
+				if (t !== TILE.WALL) throw new Error(`${name}: 外周(${r},${c}) が壁でない: '${t}'`
+					+ `（通路は rows ${ARENA_DOOR_ROWS.join('/')} だけ）`);
 				continue;
 			}
 			if (isEnemy(t)) { enemyCells.push(`${r},${c}`); continue; }

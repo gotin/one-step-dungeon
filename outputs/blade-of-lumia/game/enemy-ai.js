@@ -39,6 +39,9 @@ import { enemyPointHit } from './hitbox.js';
  *   checkStoneOnSwitch()         – 石→ボタン判定（既存・conditions.js）
  *   evaluateConditions()         – 条件再評価（既存）
  *   renderBoard() / renderChars()– 再描画
+ *   ── Phase 5.5k k-5: ルピー喰いの吸血 ──
+ *   updateHud()                  – HUD 更新（所持ルピーの表示）
+ *   pulse(text, dur)             – メッセージ表示
  */
 export function createEnemyAi(deps) {
 	const {
@@ -52,6 +55,8 @@ export function createEnemyAi(deps) {
 		// Phase 5-3: 敵が石を押すパズル
 		getCurrentLayer, getStageKey, getSS, tilePassable,
 		checkStoneOnSwitch, evaluateConditions, renderBoard, renderChars,
+		// Phase 5.5k k-5: ルピー喰いの吸血（所持ルピーが減る＝HUD とメッセージが要る）
+		updateHud, pulse,
 		// Phase 9-6: 両生敵（amphibious）の地形別速度に使う水判定
 		isWaterAt,
 	} = deps;
@@ -1006,6 +1011,78 @@ export function createEnemyAi(deps) {
 		return true;
 	}
 
+	// ── Phase 5.5k k-5: 張り付いてルピーを吸う（ルピー喰い）─────────────────
+	// meta.leech = { attachRange, drainMs, amount, refund, cooldownMs }。
+	// 「接触で張り付き所持ルピーを吸う／倒すと一部戻る＝倒す優先度を強制する」（PLAN 名簿 #11）。
+	//
+	// 設計上の急所（この2つを外すと機構が死ぬ）：
+	//   ① **張り付いたら速度では振り切れない。** 敵の速度は必ずプレイヤーより遅い
+	//      （GUIDE §7-2）∴「寄ってくるだけ」なら走って逃げれば無害＝吸われない。
+	//      ∴張り付いている間は移動処理を通さず**プレイヤーの座標へ毎tick貼り付ける**。
+	//      剥がす手段は殴ること（combat.js の被弾フック → detachLeech）だけ。
+	//   ② **張り付き中は接触ダメージを出さない**（checkEnemyContact が `_attached` を飛ばす）。
+	//      重なっている＝毎tick接触判定が成立する∴そのままだと即死級になる。
+	//      「ルピーを吸う」がこの敵の攻撃であって、体力を削るのは仕事ではない。
+	// プレイヤーのセルへ乗る（`e.x = player.x`）ので **passable.js の重なり防止から
+	// `_attached` を除外している**（除外しないとプレイヤーが1歩も動けなくなる）。
+	// 剣は距離0の敵にも当たる（combat.js の当たり判定は dot>=0 かつ射程内∴向きを問わない）。
+	// 戻り値：true ならこの tick は移動も攻撃もしない（吸うことが攻撃）。
+	function tickLeech(e, meta, now) {
+		const cfg = meta?.leech;
+		if (!cfg) return false;
+		const player = getPlayer();
+		if (!e._attached) {
+			// 剥がされた直後は再度張り付けない＝反撃した見返りに間合いを立て直す猶予を作る
+			if (now < (e._leechCooldownUntil ?? 0)) return false;
+			const dx = player.x - e.x, dy = player.y - e.y;
+			// ⚠️ attachRange は 1.0 以上にする。敵はプレイヤーのセルへ自力で踏み込めない
+			//    （isPassableForEnemy）∴自分で詰められる距離は 1.0 まで＝これより狭い値に
+			//    すると永遠に張り付けない（GUIDE §3-1 と同型の「届かない判定距離」の罠）。
+			if (Math.hypot(dx, dy) > (cfg.attachRange ?? 1.1)) return false;
+			e._attached = true;
+			e._leechNext = now + (cfg.drainMs ?? 600);
+			playSound('appear');
+			pulse?.('張り付かれた！', 900);
+		}
+		// プレイヤーへ貼り付く（速度では振り切れない＝①）
+		e.x = player.x; e.y = player.y;
+		moveCharEl(`enemy-${e.id}`, e.x, e.y);
+		if (now >= (e._leechNext ?? 0)) {
+			drainRupees(e, cfg, now);
+			e._leechNext = now + (cfg.drainMs ?? 600);
+		}
+		return true;
+	}
+
+	// ルピーを amount 吸う。吸うものが無くなったら自分から剥がれる
+	// （0ルピーのプレイヤーを永久に拘束しても何も起きない＝ただの無敵状態になる。
+	//   剥がれれば通常の接触ダメージの敵として振る舞う＝無害な敵にはならない）。
+	function drainRupees(e, cfg, now) {
+		const player = getPlayer();
+		const amount = Math.min(player.rupees ?? 0, cfg.amount ?? 2);
+		if (amount <= 0) {
+			detachLeech(e, now);
+			pulse?.('吸うルピーが無い！', 900);
+			return;
+		}
+		player.rupees -= amount;
+		e._stolenRupees = (e._stolenRupees ?? 0) + amount;
+		updateHud?.();
+		playSound('rupee');
+		pulse?.(`◆ ルピー ×${amount} を吸われた！`, 900);
+	}
+
+	// 張り付きを剥がす（被弾＝combat.js の被弾フックから／吸うものが無くなったとき）。
+	// `_stolenRupees` は消さない＝倒したときの払い戻し（combat.js refundLeech）の元になる
+	// ＝「剥がして放置」ではルピーは戻らない∴倒す動機が残る。
+	function detachLeech(e, now = gameNow()) {
+		const cfg = ENEMY_META[e.type]?.leech;
+		if (!cfg) return;
+		e._attached = false;
+		e._leechNext = null;
+		e._leechCooldownUntil = now + (cfg.cooldownMs ?? 1200);
+	}
+
 	// 正面（カーディナル1方向）へ breathCells セルぶん炎を吐く。
 	// 投擲物ではない＝**射程の短い一撃**（飛び道具の種別追加は PLAN 5.5k k-6 の担当）。
 	//   ・吐く直前にプレイヤーの方を向く＝炎の向きと絵の向きが一致する
@@ -1191,9 +1268,16 @@ export function createEnemyAi(deps) {
 		for (const e of enemies) {
 			// 隠れ中の敵（潜行・地中・滞空）は触れてもダメージを与えない（無敵と対の扱い）
 			if (e.hidden) continue;
+			// Phase 5.5k k-5: 張り付き中（ルピー喰い）は接触ダメージを出さない。
+			// プレイヤーのセルに重なっている＝毎tick接触が成立する∴そのままだと即死級になる。
+			// この敵の攻撃は「ルピーを吸うこと」＝体力を削るのは仕事ではない（tickLeech）。
+			if (e._attached) continue;
 			// 占有範囲（AABB）ベース。1×1 敵では従来の 0.9 箱と一致する。
 			if (enemyPointHit(e, player.x, player.y, 0.9)) {
-				takeDamage(ENEMY_META[e.type]?.atk ?? 1);
+				// Phase 5.5k k-5: e.atk を先に見る＝分裂で生まれた小型（childAtk）が
+				// 親より弱いことを接触ダメージに反映する。buildEnemies は e.atk = meta.atk を
+				// 入れる∴既存の敵は従来と同じ値になる（後方互換）。
+				takeDamage(e.atk ?? ENEMY_META[e.type]?.atk ?? 1);
 			}
 		}
 	}
@@ -1228,10 +1312,13 @@ export function createEnemyAi(deps) {
 			// （ガード/硬直/跳躍と同じ「この tick は他の行動をしない」枠）。開いた瞬間の炎は
 			// tickShell の中で出る＝籠もりから開く tick だけ攻撃が起きる。
 			const shelled = (!isGuarding && !frozen && !leaping) ? tickShell(e, meta, now) : false;
+			// Phase 5.5k k-5: 張り付き（ルピー喰い）＝張り付いている間はプレイヤーへ貼り付いて
+			// ルピーを吸うだけ（移動も攻撃もしない）。上と同じ「この tick を専有する」枠。
+			const leeching = (!isGuarding && !frozen && !leaping && !shelled) ? tickLeech(e, meta, now) : false;
 			// Phase 5.5k k-4: 向き固定（盾騎士）＝turnMs ごとにだけ向き直る。移動より先に
 			// 決める（移動側は向きを触らない＝dirLocked を渡す）。
 			const dirLocked = tickFaceLock(e, meta, now);
-			if (!isGuarding && !frozen && !leaping && !shelled) {
+			if (!isGuarding && !frozen && !leaping && !shelled && !leeching) {
 				if (meta.hitAndAway) {
 					bossTickHitAndAway(e, meta);
 				} else if (cmode === 'ranged') {
@@ -1269,6 +1356,8 @@ export function createEnemyAi(deps) {
 		enemyZigzagFly,        // Phase 5.5k k-3: ジグザグ飛行（テスト用）
 		tickFaceLock,          // Phase 5.5k k-4: 向き固定（盾騎士・テスト用）
 		tickShell,             // Phase 5.5k k-4: 甲羅の開閉（火吐き亀・テスト用）
+		tickLeech,             // Phase 5.5k k-5: 張り付き＋吸血（ルピー喰い・テスト用）
+		detachLeech,           // Phase 5.5k k-5: 張り付きを剥がす（combat.js の被弾フックが呼ぶ）
 		bossTickHitAndAway,
 		enemyAttack,
 		checkEnemyContact,

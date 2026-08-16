@@ -57,6 +57,8 @@ import { enemyW, enemyH, enemyCenter } from './hitbox.js';
  *   hasCleared()                 – クリア済み判定
  *   isShieldBlockingDir(dx, dy)  – 盾ブロック判定
  *   isPassable(nx, ny)           – 通行可否（Phase 5.5k k-4: 正面ブロックの弾きでプレイヤーを押す先の確認）
+ *   tilePassable(r, c)           – 地形の通行可否（Phase 5.5k k-5: 分裂した小型の置き場所の選択）
+ *   detachLeech(e)               – 張り付きを剥がす（同上・状態機械の持ち主は enemy-ai.js）
  *   moveCharEl(id, x, y)         – キャラ要素の位置更新（同上・弾いた後のプレイヤー再配置）
  *   showShieldBlockEffect(x, y)  – 盾ブロックエフェクト
  *   spawnDropEffect(r, c, icon, color) – ドロップエフェクト（視覚のみ）
@@ -208,6 +210,37 @@ export function createCombat(deps) {
 		setTimeout(() => el.remove(), 500);
 	}
 
+	// ── Phase 5.5k k-5: 撃破の記録（分裂で生まれた小型の扱い）──────────────
+	// 通常の敵の id はタイル座標（`"r,c"`）＝`ss.defeatedEnemies` に入れれば
+	// buildEnemies が次回その座標に敵を作らない（＝倒したまま）。分裂で生まれた小型は
+	// タイルに存在しない∴自分の id を記録しても意味がなく、親の posKey を
+	// `_splitFrom` として引き継いでいる。
+	// ∴小型は「兄弟が1体も残っていないときだけ親の posKey を記録する」。
+	// 片方に寄せると必ず壊れる：
+	//   ・分裂の瞬間に親の posKey を記録する → 1回殴って部屋を出て戻れば敵が消える
+	//   ・何も記録しない → 小型を全部倒した部屋へ戻ると親が丸ごと復活する
+	function recordDefeated(ss, e) {
+		if (e._splitFrom == null) { ss.defeatedEnemies.add(e.id); return; }
+		// ⚠️ ここは setEnemies より前に呼ばれる＝自分もまだ配列に居るので除外して数える
+		const siblings = getEnemies().filter(x => x !== e && x._splitFrom === e._splitFrom);
+		if (siblings.length === 0) ss.defeatedEnemies.add(e._splitFrom);
+	}
+
+	// ── Phase 5.5k k-5: 吸われたルピーの払い戻し（ルピー喰い）───────────────
+	// 「倒すと一部戻る」＝倒す動機（PLAN 名簿 #11「倒す優先度を強制する」）。
+	// ⚠️ 部屋を出ると敵は作り直される＝吸われたまま消える（＝逃げると取り戻せない）。
+	function refundLeech(e, meta) {
+		const stolen = e._stolenRupees ?? 0;
+		if (!meta?.leech || stolen <= 0) return;
+		const back = Math.floor(stolen * (meta.leech.refund ?? 0.5));
+		if (back <= 0) return;
+		const player = getPlayer();
+		player.rupees = (player.rupees ?? 0) + back;
+		updateHud();
+		playSound('rupee');
+		pulse(`◆ ルピー ×${back} を取り戻した！`, 1200);
+	}
+
 	// ── 敵を倒す ──────────────────────────────────────────
 	function killEnemy(e) {
 		const meta = ENEMY_META[e.type];
@@ -217,11 +250,12 @@ export function createCombat(deps) {
 		}
 		playSound('enemyDie');
 		const _ss = getSS(getCurrentLayer(), getStageKey());
-		_ss.defeatedEnemies.add(e.id);
+		recordDefeated(_ss, e);
 		// Phase 9-5b: 撃破時点の stageMoves を記録してリスポーンタイマーを開始する。
 		_ss.lastKillMove = getStageMoves?.() ?? 0;
 		removeCharEl(`enemy-${e.id}`);
 		setEnemies(getEnemies().filter(x => x !== e));
+		refundLeech(e, meta);
 		evaluateConditions();
 		// ── 雑魚ドロップ（矢/爆弾/ハート/ルピー）────────────────
 		if (Math.random() < 0.35) {
@@ -320,6 +354,82 @@ export function createCombat(deps) {
 		if (moved) deps.moveCharEl?.('player', player.x, player.y);
 	}
 
+	// ── Phase 5.5k k-5: 被弾トリガー（殴った結果が「HP が減る」だけで終わらない敵）──
+	// 分裂スライム（#3）とルピー喰い（#11）は、被弾そのものが機構の引き金になる。
+	// ダメージ計算の漏斗（dealDamageToEnemy）には**フック点を1つだけ**作る
+	// ＝新しい「被弾で起きること」を足す場所を1か所に固定する（PLAN 5.5k k-5）。
+	//   戻り値 true … この被弾は killEnemy へ流さない（分裂＝倒れる代わりに分かれた）
+	function onEnemyDamaged(e, meta, atkType) {
+		// ルピー喰い：殴られると張り付きが剥がれる＝吸われ続けない（反撃が効く）。
+		// 生きていても倒れていても剥がす（倒れた場合は払い戻しが killEnemy 側で走る）。
+		if (meta?.leech && e._attached) deps.detachLeech?.(e);
+		// 分裂スライム：HP が尽きた瞬間だけが引き金。
+		if (e.hp <= 0 && meta?.split) return trySplitEnemy(e, meta, atkType);
+		return false;
+	}
+
+	// 小型の置き場所を「親のセル → 上下左右 → 斜め」の順に count 個選ぶ。
+	// 除外＝地形が通れないセル／他の敵が占有しているセル／プレイヤーのセル
+	// （プレイヤーのセルへ湧かせると isPassable の重なり防止でプレイヤーが動けなくなる）。
+	function pickSplitCells(e, count) {
+		const player = getPlayer();
+		const pr = toTileRow(e.y), pc = toTileCol(e.x);
+		const plr = toTileRow(player.y), plc = toTileCol(player.x);
+		const others = getEnemies().filter(x => x !== e);
+		const OFF = [[0,0],[0,1],[0,-1],[1,0],[-1,0],[1,1],[1,-1],[-1,1],[-1,-1]];
+		const out = [];
+		for (const [dr, dc] of OFF) {
+			if (out.length >= count) break;
+			const r = pr + dr, c = pc + dc;
+			if (!deps.tilePassable?.(r, c)) continue;
+			if (r === plr && c === plc) continue;
+			const taken = others.some(x => {
+				const ec = toTileCol(x.x), er = toTileRow(x.y);
+				return c >= ec && c < ec + (x.w ?? 1) && r >= er && r < er + (x.h ?? 1);
+			});
+			if (taken) continue;
+			out.push({ r, c });
+		}
+		return out;
+	}
+
+	// 倒れる代わりに小型 count 体へ分かれる。分裂できたときだけ true。
+	function trySplitEnemy(e, meta, atkType) {
+		const cfg = meta.split;
+		// 弱点（爆弾）で潰したときは分裂しない＝弱点は「倍率」だけでなく**機構の解除鍵**
+		// （PLAN 名簿 #3「爆弾なら分裂させずに潰せる」）。
+		if (cfg.blockedBy && atkType === cfg.blockedBy) return false;
+		// 小型はもう分裂しない（無限増殖の防止・名簿「小型は分裂しない」）。
+		if (e._splitFrom != null) return false;
+		const cells = pickSplitCells(e, cfg.count ?? 2);
+		if (cells.length === 0) return false;   // 置き場所が無い＝素直に倒れる
+		const childHp = cfg.childHp ?? 2;
+		const rest = getEnemies().filter(x => x !== e);
+		const children = cells.map((cell, i) => ({
+			// 親のタイル座標を含む id（`"3,4#s1"`）＝posKey とは絶対に衝突しない。
+			// DOM の id は `char-enemy-<id>` で getElementById 参照のみ＝`#` を含んでも安全。
+			id:    `${e.id}#s${i + 1}`,
+			type:  e.type,
+			x:     cell.c, y: cell.r,
+			hp:    childHp, maxHp: childHp,
+			atk:   cfg.childAtk ?? e.atk, def: cfg.childDef ?? 0,
+			speed: e.speed, move: e.move, moveSpeed: e.moveSpeed,
+			hidden: false,
+			sprite: cfg.childSprite ?? e.sprite, pal: e.pal,
+			w: 1, h: 1,
+			accum: 0,
+			dir:   e.dir,
+			el:    null,
+			_splitFrom: e.id,
+		}));
+		setEnemies([...rest, ...children]);
+		// 動的に湧いた敵の DOM は renderChars（char-layer を作り直す）でしか生えない。
+		deps.renderChars();
+		playSound('appear');
+		pulse('分裂した！', 900);
+		return true;
+	}
+
 	function dealDamageToEnemy(e, dmg, atkType, srcX, srcY) {
 		if (e.hp <= 0) return;
 		const meta = ENEMY_META[e.type];
@@ -389,6 +499,9 @@ export function createCombat(deps) {
 			// 戦闘終了＝合格に分岐する。撃破（killEnemy → 爆発 → 欠片）には流さない。
 			if (shouldBossYield?.(e)) { onBossYielded?.(e); return; }
 		}
+		// Phase 5.5k k-5: 被弾トリガーのフック点（分裂・張り付きの剥がれ）。
+		// killEnemy の直前＝「HP を引いた後」に置く∴分裂は HP0 を見て判断できる。
+		if (onEnemyDamaged(e, meta, atkType)) return;
 		if (e.hp <= 0) killEnemy(e);
 	}
 
@@ -573,6 +686,9 @@ export function createCombat(deps) {
 		dealDamageToEnemy,
 		isBlockFacingDir,   // Phase 5.5k k-4: 向き固定の常時ブロック（テスト用）
 		isShellClosed,      // Phase 5.5k k-4: 甲羅の籠もり（テスト用）
+		onEnemyDamaged,     // Phase 5.5k k-5: 被弾トリガーのフック点（テスト用）
+		trySplitEnemy,      // Phase 5.5k k-5: 分裂（テスト用）
+		pickSplitCells,     // Phase 5.5k k-5: 小型の置き場所の選択（テスト用）
 		takeDamage,
 		gameOver,
 		showDmgPopupFloat,
