@@ -26,6 +26,8 @@ export const TILE = {
 	BURROW_WORM: 'α',  // 地中蟲（陸上通常敵・潜伏↔浮上のリズム。潜伏中は無敵で寄ってくる）
 	LEAP_SPIDER: 'β',  // 跳躍蜘蛛（陸上通常敵・跳躍で間合いを詰める。滞空中は当たり判定が消える）
 	BAT_SWARM:   'ξ',  // コウモリ群（飛行通常敵・ジグザグ高速飛行。水/溶岩/空も飛び越える）
+	SHIELD_KNIGHT:'ζ', // 盾騎士（陸上通常敵・向きを固定して構える。正面からの攻撃は弾く＝回り込み強制）
+	FIRE_TURTLE: 'φ',  // 火吐き亀（陸上通常敵・甲羅に籠もると全ダメージ無効。口を開けた瞬間に炎を吐く）
 	BOSS:      'V',  // 魔将（ボス）
 	MONSTER:   'W',  // 魔物（中ボス）
 	DARK_LORD: 'X',  // 魔王（ダンジョンボス・星の欠片を落とす）
@@ -141,6 +143,8 @@ export const TILE_META = {
 	[TILE.BURROW_WORM]:{ label: '地中蟲',    color: '#8a6b3a', passable: true,  icon: '蟲' },
 	[TILE.LEAP_SPIDER]:{ label: '跳躍蜘蛛',  color: '#5b3f7a', passable: true,  icon: '蜘' },
 	[TILE.BAT_SWARM]:{ label: 'コウモリ群',  color: '#4a4a66', passable: true,  icon: '蝠' },
+	[TILE.SHIELD_KNIGHT]:{ label: '盾騎士',  color: '#3a4a70', passable: true,  icon: '盾' },
+	[TILE.FIRE_TURTLE]:{ label: '火吐き亀',  color: '#3f5a34', passable: true,  icon: '亀' },
 	[TILE.BOSS]:    { label: '魔将',         color: '#184060', passable: true,  icon: 'Ｖ' },
 	[TILE.MONSTER]: { label: '魔物',         color: '#2a1060', passable: true,  icon: 'Ｗ' },
 	[TILE.DARK_LORD]:{ label: '魔王',        color: '#0a0a18', passable: true,  icon: 'Ｘ' },

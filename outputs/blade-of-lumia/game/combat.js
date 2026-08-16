@@ -56,6 +56,8 @@ import { enemyW, enemyH, enemyCenter } from './hitbox.js';
  *   startDialog(r, c, tile)      – ダイアログ
  *   hasCleared()                 – クリア済み判定
  *   isShieldBlockingDir(dx, dy)  – 盾ブロック判定
+ *   isPassable(nx, ny)           – 通行可否（Phase 5.5k k-4: 正面ブロックの弾きでプレイヤーを押す先の確認）
+ *   moveCharEl(id, x, y)         – キャラ要素の位置更新（同上・弾いた後のプレイヤー再配置）
  *   showShieldBlockEffect(x, y)  – 盾ブロックエフェクト
  *   spawnDropEffect(r, c, icon, color) – ドロップエフェクト（視覚のみ）
  *   spawnFloorDrop(r, c, type)        – フロアドロップ配置（踏んで拾う・Phase 9-5c）
@@ -255,17 +257,67 @@ export function createCombat(deps) {
 	// e._guarding の間、e._guardDir（プレイヤー方向へロック済み）と一致する方向からの
 	// 攻撃だけを無効化する（盾ブロックと同じ判定形＝dx/dyの主軸をカーディナル4方向に潰して比較）。
 	// 側面・背後・無方向（爆発等・srcX/srcY省略）は素通り＝回り込みが意味を持つ。
-	function isGuardBlockingDir(e, srcX, srcY) {
-		if (!e._guarding || !e._guardDir) return false;
-		if (srcX == null || srcY == null) return false;
+	// 攻撃者が敵から見てどちら側にいるか（カーディナル4方向）。tickGuard / tickFaceLock の
+	// 向き決定と同じ計算式＝「向き」と「入射方向」を同じ土俵で比べられる。
+	// 判定できない（発生源が無い＝爆風などの無方向 / 完全に重なっている）ときは null。
+	function attackerDirFrom(e, srcX, srcY) {
+		if (srcX == null || srcY == null) return null;
 		const dx = srcX - e.x, dy = srcY - e.y;
-		if (Math.abs(dx) < 0.01 && Math.abs(dy) < 0.01) return false;
-		// 攻撃者が敵から見てどちら側にいるか＝e._guardDir と同じ計算式（enemyChase の
-		// 向き決定と同型）。ロックした向きと一致＝攻撃者は敵が向いている側＝正面ヒット。
-		const attackerDir = Math.abs(dx) >= Math.abs(dy)
+		if (Math.abs(dx) < 0.01 && Math.abs(dy) < 0.01) return null;
+		return Math.abs(dx) >= Math.abs(dy)
 			? (dx > 0 ? 'right' : 'left')
 			: (dy > 0 ? 'down' : 'up');
-		return attackerDir === e._guardDir;
+	}
+
+	function isGuardBlockingDir(e, srcX, srcY) {
+		if (!e._guarding || !e._guardDir) return false;
+		// ロックした向きと一致＝攻撃者は敵が向いている側＝正面ヒット。
+		return attackerDirFrom(e, srcX, srcY) === e._guardDir;
+	}
+
+	// Phase 5.5k k-4: 向き固定の常時ブロック（盾騎士）。
+	// tickGuard の一時的なガード（攻撃クールダウン中だけ構える）と違い、**meta.blockFacing を
+	// 持つ敵は常に正面をブロックしている**＝崩す手段は側面/背後へ回り込むことだけ。
+	// 向きは enemy-ai.js tickFaceLock が turnMs ごとにだけ更新する（毎tick向き直らない）。
+	function isBlockFacingDir(e, meta, srcX, srcY) {
+		if (!meta?.blockFacing) return false;
+		const dir = e._blockDir ?? e.dir;
+		if (!dir) return false;
+		return attackerDirFrom(e, srcX, srcY) === dir;
+	}
+
+	// Phase 5.5k k-4: 甲羅に籠もっている間は全ダメージ無効（火吐き亀）。
+	// **方向も攻撃種別も問わない**＝開くのを待つしかない（時間で開閉する窓）。
+	// 隠れ（e.hidden）と違って姿は消えない＝攻撃対象にはなる＝0ダメージの弾きが返る
+	// ＝プレイヤーは手応えで「今は無駄」と分かる（無音で返す hidden とは意図的に別扱い）。
+	function isShellClosed(e, meta) {
+		return !!(meta?.shell && e._shellClosed);
+	}
+
+	// Phase 5.5k k-4: 正面ブロックの跳ね返し＝**プレイヤーを1歩下がらせる**。
+	// ダメージは 0 のまま（弾かれるだけ）だが、剣の間合いから押し出される＝もう一度
+	// 正面から殴っても同じことになる、と体で分かる。
+	//   ・押す向き＝敵→プレイヤーのカーディナル1方向（入射方向の裏返し）
+	//   ・通れないマス（壁/水/敵）へは押し込まない＝壁際で詰まっても安全
+	//   ・剣（近接）でブロックされたときだけ弾く＝遠くから撃った矢で自分が下がるのは変
+	function knockbackPlayerFrom(e, meta, atkType) {
+		const cells = meta?.blockFacing?.knockback ?? 0;
+		if (!cells || atkType !== 'sword') return;
+		const player = getPlayer();
+		const dx = player.x - e.x, dy = player.y - e.y;
+		if (Math.abs(dx) < 0.01 && Math.abs(dy) < 0.01) return;
+		const [ux, uy] = Math.abs(dx) >= Math.abs(dy)
+			? [Math.sign(dx), 0]
+			: [0, Math.sign(dy)];
+		const steps = Math.max(1, Math.round(cells / MOVE_STEP));
+		let moved = false;
+		for (let k = 0; k < steps; k++) {
+			const nx = player.x + ux * MOVE_STEP;
+			const ny = player.y + uy * MOVE_STEP;
+			if (!deps.isPassable?.(nx, ny)) break;
+			player.x = nx; player.y = ny; moved = true;
+		}
+		if (moved) deps.moveCharEl?.('player', player.x, player.y);
 	}
 
 	function dealDamageToEnemy(e, dmg, atkType, srcX, srcY) {
@@ -291,11 +343,27 @@ export function createCombat(deps) {
 			showDmgPopupFloat(e.x, e.y, 0, true, false);
 			return;
 		}
+		// Phase 5.5k k-4: 甲羅に籠もっている間は方向も種別も問わず全ダメージ無効（火吐き亀）。
+		// 向き依存の判定より先に見る＝籠もり中は「どこから殴っても」弾かれる。
+		if (isShellClosed(e, meta)) {
+			playSound('shieldBlock');
+			showShieldBlockEffect(e.x, e.y);
+			showDmgPopupFloat(e.x, e.y, 0, true, false);
+			return;
+		}
 		// Phase 5.5k: ガード方向からの攻撃は無効化＋盾で跳ね返す音（既存の盾ブロックSEを共有）。
 		if (isGuardBlockingDir(e, srcX, srcY)) {
 			playSound('shieldBlock');
 			showShieldBlockEffect(e.x, e.y);
 			showDmgPopupFloat(e.x, e.y, 0, true, false);
+			return;
+		}
+		// Phase 5.5k k-4: 向き固定の常時ブロック（盾騎士）＝正面からは 0 ダメージ＋弾き返す。
+		if (isBlockFacingDir(e, meta, srcX, srcY)) {
+			playSound('shieldBlock');
+			showShieldBlockEffect(e.x, e.y);
+			showDmgPopupFloat(e.x, e.y, 0, true, false);
+			knockbackPlayerFrom(e, meta, atkType);
 			return;
 		}
 		const weakness = meta?.weakness;
@@ -503,6 +571,8 @@ export function createCombat(deps) {
 		clearSwordHeld,
 		ensureSwordHeld,
 		dealDamageToEnemy,
+		isBlockFacingDir,   // Phase 5.5k k-4: 向き固定の常時ブロック（テスト用）
+		isShellClosed,      // Phase 5.5k k-4: 甲羅の籠もり（テスト用）
 		takeDamage,
 		gameOver,
 		showDmgPopupFloat,

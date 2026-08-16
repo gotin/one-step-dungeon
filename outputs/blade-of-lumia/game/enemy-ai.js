@@ -627,7 +627,10 @@ export function createEnemyAi(deps) {
 	}
 
 	// ── 通常追跡 AI ───────────────────────────────────────────
-	function enemyChase(e, speed) {
+	// dirLocked（Phase 5.5k k-4）＝向きが機構で固定されている敵（盾騎士）は移動しても
+	// 向き直らない。ここで毎tick e.dir を上書きすると blockFacing の「正面」が常に
+	// プレイヤー側になり、回り込みが原理的に成立しなくなる。
+	function enemyChase(e, speed, dirLocked = false) {
 		e.accum = (e.accum ?? 0) + speed;
 		if (e.accum < 1.0) return;
 		e.accum -= 1.0;
@@ -666,8 +669,10 @@ export function createEnemyAi(deps) {
 			}
 		}
 
-		if (Math.abs(dy) >= Math.abs(dx)) e.dir = dy > 0 ? 'down' : 'up';
-		else e.dir = dx > 0 ? 'right' : 'left';
+		if (!dirLocked) {
+			if (Math.abs(dy) >= Math.abs(dx)) e.dir = dy > 0 ? 'down' : 'up';
+			else e.dir = dx > 0 ? 'right' : 'left';
+		}
 
 		moveCharEl(`enemy-${e.id}`, e.x, e.y);
 	}
@@ -752,6 +757,13 @@ export function createEnemyAi(deps) {
 					const projDist = Math.abs(rawDx * ux + rawDy * uy);
 					const perpDist = Math.abs(rawDx * (-uy) + rawDy * ux);
 					if (projDist <= range && perpDist <= 0.8) {
+						// Phase 5.5k k-4: 向き固定の敵（盾騎士）は**正面にしか剣を振れない**。
+						// 向きロックの代償＝側面/背後に回り込んだプレイヤーには手が出ない
+						// ＝回り込みに報酬がある（向き直りは tickFaceLock の turnMs 待ち）。
+						if (meta.blockFacing) {
+							const swingDir = uy !== 0 ? (uy > 0 ? 'down' : 'up') : (ux > 0 ? 'right' : 'left');
+							if (swingDir !== e.dir) continue;
+						}
 						let sdx = rawDx, sdy = rawDy;
 						if (absDx < 0.01 && absDy < 0.01) {
 							const dv = { down:[0,1], up:[0,-1], left:[-1,0], right:[1,0] }[e.dir] ?? [0,1];
@@ -932,6 +944,105 @@ export function createEnemyAi(deps) {
 		return true;
 	}
 
+	// ── Phase 5.5k k-4: 向きを固定して構える（盾騎士）─────────────────
+	// meta.blockFacing = { turnMs, knockback } を持つ敵は「向きが常時ブロックの面」＝
+	// e.dir がそのままダメージ無効化の方向になる（combat.js isBlockFacingDir）。
+	// ∴ **向きは毎tick プレイヤーへ向き直ってはいけない**（それでは正面が常にプレイヤー側＝
+	// 回り込む余地が消えて機構が死ぬ）。turnMs ごとの離散的な判断にして、その間に
+	// プレイヤーが側面/背後へ回る猶予を作る。
+	//   ・初回（_faceUntil が無い）は**マップに置かれた向き（enemyDirs）を尊重する**＝
+	//     レベルデザインの「こちらを向いた騎士」がその向きで立つ（検証ステージも同じ）。
+	//   ・向き直りはカーディナル4方向（tickGuard の向き決定と同型）。
+	// 戻り値：true ならこの tick の向きはロック済み＝移動側（enemyChase）は向きを触らない。
+	function tickFaceLock(e, meta, now) {
+		const cfg = meta?.blockFacing;
+		if (!cfg) return false;
+		const turnMs = cfg.turnMs ?? 720;
+		if (e._faceUntil == null) {
+			// 置かれた向きをそのまま最初の turnMs ぶん維持する（向き直りの起点だけ決める）
+			e._faceUntil = now + turnMs;
+		} else if (now >= e._faceUntil) {
+			const player = getPlayer();
+			const dx = player.x - e.x, dy = player.y - e.y;
+			if (Math.abs(dx) >= 0.01 || Math.abs(dy) >= 0.01) {
+				e.dir = Math.abs(dx) >= Math.abs(dy) ? (dx > 0 ? 'right' : 'left') : (dy > 0 ? 'down' : 'up');
+			}
+			e._faceUntil = now + turnMs;
+		}
+		e._blockDir = e.dir;
+		return true;
+	}
+
+	// ── Phase 5.5k k-4: 甲羅の開閉（火吐き亀）───────────────────────
+	// meta.shell = { closedMs, openMs, breathCells, breathAtk, breathMs } を持つ敵は
+	// 「籠もる（closed＝全ダメージ無効・不動）」と「開く（open＝殴れる）」を交互に繰り返す。
+	// 隠れ（meta.hide）との違い＝**姿は消えない**＝いつでも攻撃対象にはなる（甲羅を叩いて
+	// 0ダメージの弾きが返る）∴プレイヤーには「今は無駄」が手応えで伝わる。
+	// **開いた瞬間に正面へ炎を吐く**＝「開くのを待って正面から殴る」を罰する（PLAN 名簿
+	// 「口を開けた瞬間に炎を吐く（そのスキに殴る）」）。
+	// 戻り値：true ならこの tick は移動も攻撃もしない（籠もっている間）。
+	function tickShell(e, meta, now) {
+		const cfg = meta?.shell;
+		if (!cfg) return false;
+		const closedMs = cfg.closedMs ?? 1400;
+		const openMs   = cfg.openMs   ?? 1000;
+		if (!e._shellPhase) {
+			e._shellPhase  = 'closed';
+			e._shellUntil  = now + closedMs;
+			e._shellClosed = true;
+			return true;
+		}
+		if (now < e._shellUntil) return e._shellPhase === 'closed';
+		if (e._shellPhase === 'closed') {
+			e._shellPhase  = 'open';
+			e._shellUntil  = now + openMs;
+			e._shellClosed = false;
+			breatheFire(e, meta, cfg);   // 口を開けた瞬間＝炎
+			return false;
+		}
+		e._shellPhase  = 'closed';
+		e._shellUntil  = now + closedMs;
+		e._shellClosed = true;
+		return true;
+	}
+
+	// 正面（カーディナル1方向）へ breathCells セルぶん炎を吐く。
+	// 投擲物ではない＝**射程の短い一撃**（飛び道具の種別追加は PLAN 5.5k k-6 の担当）。
+	//   ・吐く直前にプレイヤーの方を向く＝炎の向きと絵の向きが一致する
+	//   ・壁で止まる（tilePassable）＝壁越しには焼かれない
+	//   ・当たり判定はセル単位（プレイヤーの中心がそのセルに乗っているか）
+	function breatheFire(e, meta, cfg) {
+		const player = getPlayer();
+		const cells  = cfg.breathCells ?? 2;
+		const dmg    = cfg.breathAtk ?? meta.atk ?? 1;
+		const dx = player.x - e.x, dy = player.y - e.y;
+		if (Math.abs(dx) >= 0.01 || Math.abs(dy) >= 0.01) {
+			e.dir = Math.abs(dx) >= Math.abs(dy) ? (dx > 0 ? 'right' : 'left') : (dy > 0 ? 'down' : 'up');
+		}
+		const [ux, uy] = { down: [0, 1], up: [0, -1], right: [1, 0], left: [-1, 0] }[e.dir] ?? [0, 1];
+		for (let k = 1; k <= cells; k++) {
+			const fx = e.x + ux * k, fy = e.y + uy * k;
+			const r = toTileRow(fy), c = toTileCol(fx);
+			if (!tilePassable(r, c)) break;   // 壁で止まる
+			showFireBreathEffect(fx, fy, cfg.breathMs ?? 420);
+			if (Math.abs(player.x - fx) < 0.9 && Math.abs(player.y - fy) < 0.9) takeDamage(dmg);
+		}
+		playSound('slash');   // 専用SEは持たない（炎の「シュッ」の代用）
+	}
+
+	// 炎の見た目（かがり火の炎 `.candle-fire` と同型＝DOM 要素を1つ置いて実時間で消す）。
+	function showFireBreathEffect(fx, fy, durMs) {
+		const charLayerEl = getCharLayerEl();
+		if (!charLayerEl) return;
+		const cellPx = getCellPx();
+		const el = document.createElement('div');
+		el.className = 'enemy-fire-breath';
+		el.style.cssText = `position:absolute;left:${fx * cellPx}px;top:${fy * cellPx}px;`
+			+ `width:${cellPx}px;height:${cellPx}px;z-index:25;pointer-events:none;`;
+		charLayerEl.appendChild(el);
+		setTimeout(() => el.remove(), durMs);
+	}
+
 	// ── Phase 5.5k k-3c: 跳躍蜘蛛の「溜め」を画面に出す ───────────────
 	// tickLeap の windup 相は移動/攻撃を止めるだけで見た目は素の歩行のままだった＝
 	// プレイヤーには「敵が止まった」ことしか伝わらず GUIDE §6-1（絵は機構を読ませる）に
@@ -942,7 +1053,21 @@ export function createEnemyAi(deps) {
 	function syncLeapSprite(e, meta) {
 		const base = meta?.sprite;
 		if (!base) return;
-		const spriteName = (e._leapPhase === 'windup') ? `${base}Windup` : base;
+		swapEnemySprite(e, (e._leapPhase === 'windup') ? `${base}Windup` : base);
+	}
+
+	// ── Phase 5.5k k-4: 火吐き亀の甲羅の開閉を画面に出す ───────────────
+	// 籠もっている間（_shellClosed）は「無敵で不動」＝理由が絵で読めないと
+	// 「動かないバグ」に見える（GUIDE §6-1）。leap の windup と同じ作法で名前を切り替える。
+	function syncShellSprite(e, meta) {
+		const base = meta?.sprite;
+		if (!base) return;
+		swapEnemySprite(e, e._shellClosed ? `${base}Closed` : base);
+	}
+
+	// 状態から導いたスプライト名へ DOM の canvas を差し替える（変わった tick だけ触る）。
+	// directional 敵の syncDirectionalSprite と対になる「向きを持たない敵のポーズ差替」。
+	function swapEnemySprite(e, spriteName) {
 		if (e.sprite === spriteName) return;
 		e.sprite = spriteName;
 		const el = document.getElementById(`char-enemy-${e.id}`);
@@ -1099,7 +1224,14 @@ export function createEnemyAi(deps) {
 			// Phase 5.5k k-3: 跳躍（跳躍蜘蛛）は溜め〜滞空〜着地硬直の間 移動/攻撃を専有する。
 			// ガードや硬直と同じ「この tick は他の行動をしない」枠＝先に判定する。
 			const leaping = (!isGuarding && !frozen) ? tickLeap(e, meta, now) : false;
-			if (!isGuarding && !frozen && !leaping) {
+			// Phase 5.5k k-4: 甲羅の開閉（火吐き亀）＝籠もっている間は移動も攻撃もしない
+			// （ガード/硬直/跳躍と同じ「この tick は他の行動をしない」枠）。開いた瞬間の炎は
+			// tickShell の中で出る＝籠もりから開く tick だけ攻撃が起きる。
+			const shelled = (!isGuarding && !frozen && !leaping) ? tickShell(e, meta, now) : false;
+			// Phase 5.5k k-4: 向き固定（盾騎士）＝turnMs ごとにだけ向き直る。移動より先に
+			// 決める（移動側は向きを触らない＝dirLocked を渡す）。
+			const dirLocked = tickFaceLock(e, meta, now);
+			if (!isGuarding && !frozen && !leaping && !shelled) {
 				if (meta.hitAndAway) {
 					bossTickHitAndAway(e, meta);
 				} else if (cmode === 'ranged') {
@@ -1107,7 +1239,7 @@ export function createEnemyAi(deps) {
 				} else if (meta.zigzag) {
 					enemyZigzagFly(e, meta, resolveEnemySpeed(e, meta), meta.zigzag);
 				} else {
-					enemyChase(e, resolveEnemySpeed(e, meta));
+					enemyChase(e, resolveEnemySpeed(e, meta), dirLocked);
 				}
 				// 隠れ中は攻撃しない（隠れて寄るだけ）
 				if (!e.hidden) enemyAttack(e, meta);
@@ -1119,6 +1251,8 @@ export function createEnemyAi(deps) {
 			// Phase 5.5k k-3c: 跳躍を持つ敵は windup 相の間だけ見た目を差し替える
 			// （tickLeap 自体は上で呼んでいる＝ここは絵の同期だけ）。
 			if (meta.leap) syncLeapSprite(e, meta);
+			// Phase 5.5k k-4: 甲羅を持つ敵は開/閉で絵を切り替える（無敵の理由を見せる）。
+			if (meta.shell) syncShellSprite(e, meta);
 		}
 	}
 
@@ -1133,6 +1267,8 @@ export function createEnemyAi(deps) {
 		tickHide,              // Phase 5.5k k-3: 隠れ↔出現の無敵窓（テスト用）
 		tickLeap,              // Phase 5.5k k-3: 跳躍の状態機械（テスト用）
 		enemyZigzagFly,        // Phase 5.5k k-3: ジグザグ飛行（テスト用）
+		tickFaceLock,          // Phase 5.5k k-4: 向き固定（盾騎士・テスト用）
+		tickShell,             // Phase 5.5k k-4: 甲羅の開閉（火吐き亀・テスト用）
 		bossTickHitAndAway,
 		enemyAttack,
 		checkEnemyContact,

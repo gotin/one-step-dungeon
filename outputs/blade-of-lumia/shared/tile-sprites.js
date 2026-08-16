@@ -31,6 +31,11 @@ export const TILE_SPRITE_MAP = {
 	[TILE.BURROW_WORM]: { spr: 'burrowWorm', pal: 'burrowWorm' },
 	[TILE.LEAP_SPIDER]: { spr: 'leapSpider', pal: 'leapSpider' },
 	[TILE.BAT_SWARM]:   { spr: 'batSwarm',   pal: 'batSwarm'   },
+	// Phase 5.5k k-4（方向依存の被ダメ）。盾騎士は向き別＝正面（D）の絵を代表に出す。
+	// 火吐き亀は甲羅の開閉で絵が変わる（fireTurtle=開・fireTurtleClosed=閉）が、
+	// エディタは状態を持たない∴代表は「開いている姿」＝素の名前。
+	[TILE.SHIELD_KNIGHT]:{ spr: 'shieldKnightD', pal: 'shieldKnight' },
+	[TILE.FIRE_TURTLE]:  { spr: 'fireTurtle',    pal: 'fireTurtle'   },
 	[TILE.BOSS]:      { spr: 'escape',   pal: 'escape'   },
 	[TILE.MONSTER]:   { spr: 'monster',  pal: 'monster'  },
 	[TILE.DARK_LORD]: { spr: 'darklord', pal: 'darklord' },

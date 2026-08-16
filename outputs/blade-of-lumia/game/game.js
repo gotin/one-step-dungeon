@@ -928,6 +928,10 @@ const { checkStoneOnSwitch, evaluateConditions, refreshGates } = createCondition
 		hasCleared,
 		isShieldBlockingDir:   (dx, dy) => isShieldBlockingDir(dx, dy),
 		showShieldBlockEffect: (x, y) => showShieldBlockEffect(x, y),
+		// Phase 5.5k k-4: 盾騎士の正面ブロックはプレイヤーを1歩弾き返す＝押した先の
+		// 通行可否と DOM 位置更新が要る（この2つは combat では新規の依存）。
+		isPassable:       (nx, ny) => isPassable(nx, ny),
+		moveCharEl:       (id, x, y) => moveCharEl(id, x, y),
 		spawnDropEffect:  (r, c, icon, color) => spawnDropEffect(r, c, icon, color),
 		spawnFloorDrop:   (r, c, type) => spawnFloorDrop(r, c, type),
 		getStageMoves:    () => player.stageMoves ?? 0,
@@ -2042,6 +2046,12 @@ export function getEnemiesSnapshot() {
 		hideUntil: e._hideUntil ?? null,      // 今の隠れ/出現が切り替わる論理時刻
 		leapPhase: e._leapPhase ?? null,      // 'ground' | 'windup' | 'air' | 'recover'（leap を持つ敵のみ）
 		leapUntil: e._leapUntil ?? null,      // windup/recover が明ける論理時刻
+		// Phase 5.5k k-4: 方向依存の被ダメ（向き固定ブロック／甲羅の開閉）の観測用
+		blockDir:  e._blockDir ?? null,       // 常時ブロックしている面（blockFacing を持つ敵のみ）
+		faceUntil: e._faceUntil ?? null,      // 次に向き直る論理時刻（turnMs ごと）
+		shellPhase: e._shellPhase ?? null,    // 'closed' | 'open'（shell を持つ敵のみ）
+		shellUntil: e._shellUntil ?? null,    // 開閉が切り替わる論理時刻
+		shellClosed: e._shellClosed ?? false, // 籠もり中＝全ダメージ無効の実体
 	}));
 }
 
@@ -2064,9 +2074,11 @@ export function injectTestEnemy(x, y, hp = 5, w = 1, h = 1, type = 'E') {
 
 // テスト用：指定 id の敵に直接ダメージを与える（弱点属性 Phase 3-3 の検証用）。
 // atkType を渡すと弱点判定（倍率）が効く。
-export function dealDamageToEnemyById(id, dmg, atkType) {
+// srcX/srcY（Phase 5.5k k-4）＝攻撃の発生源座標。省略すると「無方向の攻撃」扱い＝
+// 向き依存のブロック（ガード・盾騎士）を素通りする∴**方向を測るテストでは必ず渡す**。
+export function dealDamageToEnemyById(id, dmg, atkType, srcX, srcY) {
 	const e = enemies.find(x => x.id === id);
-	if (e) dealDamageToEnemy(e, dmg, atkType);
+	if (e) dealDamageToEnemy(e, dmg, atkType, srcX, srcY);
 }
 
 // テスト用：敵の投擲物を注入する（盾跳ね返し Phase 7-2 の検証用）。

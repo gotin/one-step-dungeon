@@ -18,6 +18,10 @@ skeletonで完成済みなので、新しい敵は基本的にデータ追加だ
   - **向き差替の同期**＝`syncDirectionalSprite(e, meta)`。`enemyTick()` が directional な敵だけ毎tick呼ぶ（DOM の canvas を差し替える）。
   - **ガードの状態機械**＝`tickGuard(e, meta, now)`。後述。
 - `directional:true` を持たない既存敵（patrol/chaser/sentry や各ボス）は影響を受けない（後方互換・従来の `e.sprite` 固定＋flipX のまま）。
+- **`guards: false`（2026-08-11 #7 剣獣で新設）を立てると `tickGuard()` を通らない**＝ガードの状態機械に乗せない敵。**∴必要なスプライトは9枚ではなく6枚**（§2）。高機動の敵が立ち止まって構えるのは設計と矛盾する（#7）／ブロックが常設で「構え」の相が無い（#4 盾騎士）といった理由で使う。
+- **「方向依存の被ダメ」は `tickGuard` とは別系統の機構が2つある（2026-08-15 #4/#12 で新設）。** どちらも `game/combat.js` の漏斗（§3 と同じ場所）に入る：
+  - **`meta.blockFacing = { turnMs, knockback }`**＝**向き固定の常時ブロック**（#4 盾騎士）。正面からの攻撃は常に 0 ダメージ＋**プレイヤー**が `knockback` セル下がる（`isBlockFacingDir()`/`knockbackPlayerFrom()`）。向き直りは `turnMs` ごとの**離散**判断（`tickFaceLock()` が `e._blockDir` を更新）＝毎tick向き直る実装にすると回り込む猶予が消えて機構が死ぬ。**代償として敵の剣も正面にしか振れない**（`enemyAttack` の向きゲート）＝回り込みに報酬を作る。
+  - **`meta.shell = { closedMs, openMs, breathCells, breathAtk, breathMs }`**＝**時間で開閉する無敵窓**（#12 火吐き亀）。籠もり中は**向きを問わず**全ダメージ 0・移動も攻撃もしない／開いた瞬間に正面へ炎（`tickShell()`/`breatheFire()`・DOM の `.enemy-fire-breath`・壁で止まる）。**姿は消さない∴攻撃対象からは除外しない**（叩けば 0 ダメージの弾きが返る＝プレイヤーが状態を知る手段になる。`e.hidden` の無言の無効化と使い分ける）。
 
 ## 2. スプライト命名規則（実データが必要な組み合わせ）
 
@@ -29,7 +33,7 @@ skeletonで完成済みなので、新しい敵は基本的にデータ追加だ
 {base}DGuard {base}RGuard {base}UGuard … 構えポーズ
 ```
 
-`shared/sprites-enemies.js` にこれら9個を登録する（`ENEMY_SPRITES.xxx = ...`）。**それぞれの絵が満たすべき条件（構えは歩行と見分けられること・同じ物体は全方向で同じシルエット・向きで変わるのは正面の向きと重なりだけ）は §6。****まだ向き別の実描画が無い段階では、既存ボスと同じ「参照エイリアス」方式で先に機構だけ通す**（例：`ENEMY_SPRITES.skeletonR = ENEMY_SPRITES.skeleton`）。エイリアスは後で実データに差し替えれば済む＝データとエンジンの検証を分離できる（skeletonでもこの順で進めた）。
+`shared/sprites-enemies.js` にこれら9個を登録する（`ENEMY_SPRITES.xxx = ...`）。**⚠️ `guards: false` の敵（#7 剣獣・#4 盾騎士）は Guard の3枚が不要＝6枚で足りる**（§1・構えの相を持たないので `resolveEnemySprite` は `${base}${Dir}Guard` を返さない）。**それぞれの絵が満たすべき条件（構えは歩行と見分けられること・同じ物体は全方向で同じシルエット・向きで変わるのは正面の向きと重なりだけ）は §6。****まだ向き別の実描画が無い段階では、既存ボスと同じ「参照エイリアス」方式で先に機構だけ通す**（例：`ENEMY_SPRITES.skeletonR = ENEMY_SPRITES.skeleton`）。エイリアスは後で実データに差し替えれば済む＝データとエンジンの検証を分離できる（skeletonでもこの順で進めた）。
 
 ## 3. ガードの実効化（★最重要・最初の実装で見た目だけにしてダメ出しされた）
 
@@ -64,10 +68,25 @@ skeletonで完成済みなので、新しい敵は基本的にデータ追加だ
 - **`animFrame`（歩行アニメの2フレーム目切り替え）は実時間の `setInterval`（`shared/sprites.js startAnimLoop`・400ms）で進む。`__game.step(n)`（論理時間）では進まない。** 見た目のフレーム切り替えを確認したいときは `page.waitForTimeout(450)` のように実時間を待つ（`.scratch/shot-skel-walk2.mjs` が実例）。
 - 「歯の確認」をする前に、まず判定を有効にした状態で実機ログ（`.scratch/` の使い捨てスクリプト）を取り、対象の値（hp・座標・フラグ）が期待どおり変化する1本の筋を先に固める。それから無効化して赤くなることを確認する（§3-1 と同じ理由）。
 
+### 4-1. ★★ 「敵が攻撃してこないこと」を測るテストは、攻撃できる条件が全部揃った tick でやらないと何も証明しない（2026-08-15 k-4a）
+
+`game/enemy-ai.js enemyAttack()` は `const lastTime = e._attackTimes[i] ?? 0;` を起点にクールダウンを見る＝**敵の初撃は「配置してから cooldown が経過した時点」**（`_attackTimes` の初期値が 0 ＝ `gameTime` 0 に最後に撃ったものとして扱われる）。実測＝cooldown 1100 の盾騎士は**向き・距離に関係なく tick10（1200ms）が初撃**。
+
+∴「向きが合っていないから振らない」「射程外だから振らない」を早い tick で測ると、**沈黙の理由が cooldown なのか検証したい機構なのか区別できない＝機構を潰しても緑（歯が無い）**。書き方は**対照＋本番の2本立て**にする：
+
+1. **対照**＝条件を全部満たした配置で「初撃が何 tick に来るか」を測って固定する（＝cooldown の基準）。
+2. **本番**＝その tick より**前**に検証したい条件だけを崩し（例：初撃 tick の直前にプレイヤーを側面へ移す）、**cooldown も射程も満たしているのに沈黙する**ことを見る。
+
+### 4-2. ★★ 論理 tick を数えるスペックは、実時間ループを「差し込ませない」（2026-08-15 k-4a）
+
+`game/game.js startGameLoop()` は `setInterval(() => step(1), TICK_MS)`＝**`waitForBoard()` と測定用 `evaluate()` の間に1回発火し得る**∴`gameTime` が 120ms 進んだ状態から数え始めて拍が1つずれる。既存スペックはこれを「ずれたら再試行」で**許容していただけ**（`tests/enemy-sword-beast.spec.js`）＝低頻度でも**歯の確認の判定が信用できなくなる**（赤が機構のせいか flaky か分からない）。
+
+∴`page.goto()` の前に `addInitScript()` で `setInterval` をラップし、**`step(1)` を呼ぶ関数だけ登録を拒否**する。阻止回数をカウンタに残し、**0 なら「`startGameLoop` の形が変わった」として赤くする**（黙って素通りさせない）。実装例＝`tests/facing-block-enemies.spec.js` の `gotoFrozen()`。位相そのものが仕様の機構（甲羅の開閉周期など）は相対差では書けないので、この型が前提になる。
+
 ## 5. 新しい敵を追加するときの手順（まとめ）
 
 1. `shared/enemies.js` の `ENEMY_META` に `directional:true` を立てて追加（既存の脅威度・攻撃タイプ定義はそのまま）。
-2. `shared/sprites-enemies.js` に9個のスプライト名を登録（最初はエイリアスで良い＝§2）。
+2. `shared/sprites-enemies.js` にスプライト名を登録（`guards:false` なら6個・それ以外は9個＝§1/§2。最初はエイリアスで良い）。
 3. 攻撃タイプが `sword` 以外（分裂・突進・遠隔等の新機構）を持つ敵は、`tickGuard`/`resolveEnemySprite` がそれらの攻撃タイプにも対応しているか確認する（現状は `sword` 前提の実装＝新しい機構を足すときはこの前提を崩さないよう分岐を追加する）。
 4. `guardRange` を実際の攻撃到達距離と一致させる（§3-1）。
 5. ダメージを与える新しい攻撃経路を作るなら、`srcX, srcY` を `dealDamageToEnemy()` に渡す配線を忘れない（§3）。

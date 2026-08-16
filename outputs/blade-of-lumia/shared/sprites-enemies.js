@@ -2665,3 +2665,24 @@ ENEMY_SPRITES.batSwarm = [
 		[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
 	]
 ];
+
+// ── Phase 5.5k k-4: 盾騎士 / 火吐き亀の暫定エイリアス ──────────────────────
+// 「機構が先・絵は後」（ENEMY-DIRECTIONAL-GUIDE §2）＝向き別/開閉の実描画が無い段階では
+// 既存の絵を参照エイリアスで貼って機構とデータ配線だけを先に通す。**k-4b で実データに
+// 差し替える**（32×32 の生成＋共通パレット量子化＝SPRITE-PIPELINE §6）。
+//   盾騎士   … directional＋guards:false ∴必要なのは D/R/U と DAtk/RAtk/UAtk の6枚
+//              （left は R を flipX して代用＝dirSuffix マップどおり）。骸骨剣士の
+//              向き別6枚を借りる（人型＋剣＝シルエットが最も近い）。
+//   火吐き亀 … 甲羅の開/閉の2枚。地中蟲（土色の体）を借りる。
+//              ⚠️ 現状は開/閉が同じ絵＝**甲羅の状態は絵では読めない**（GUIDE §6-1 未達）。
+//              k-4b で「籠もった甲羅」と「口を開けた姿」を別の絵にするまでの暫定。
+ENEMY_PAL.shieldKnight = ENEMY_PAL.skeleton;
+ENEMY_PAL.fireTurtle   = ENEMY_PAL.burrowWorm;
+ENEMY_SPRITES.shieldKnightD    = ENEMY_SPRITES.skeletonD;
+ENEMY_SPRITES.shieldKnightR    = ENEMY_SPRITES.skeletonR;
+ENEMY_SPRITES.shieldKnightU    = ENEMY_SPRITES.skeletonU;
+ENEMY_SPRITES.shieldKnightDAtk = ENEMY_SPRITES.skeletonDAtk;
+ENEMY_SPRITES.shieldKnightRAtk = ENEMY_SPRITES.skeletonRAtk;
+ENEMY_SPRITES.shieldKnightUAtk = ENEMY_SPRITES.skeletonUAtk;
+ENEMY_SPRITES.fireTurtle       = ENEMY_SPRITES.burrowWorm;
+ENEMY_SPRITES.fireTurtleClosed = ENEMY_SPRITES.burrowWorm;

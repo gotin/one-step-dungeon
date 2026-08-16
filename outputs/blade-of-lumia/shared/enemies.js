@@ -182,6 +182,64 @@ export const ENEMY_META = {
 		zigzag: { amplitude: 1.0, periodMs: 1440 },
 		attack: { type: 'charge' },
 	},
+	// ── Phase 5.5k k-4: 「方向依存の被ダメ」を持つ陸上敵 2種 ──────────────
+	// 共通の考え方＝**ダメージが通る面／通る瞬間が限られている**（正面から殴り続けても
+	// 削れない）。既存の tickGuard（骸骨剣士のガード）は「攻撃クールダウン中だけ構える」
+	// ＝時間の窓が短い一時状態だったが、この2体は無効化が常設で、崩す鍵が敵ごとに違う：
+	//   盾騎士   … `blockFacing`（向きで決まる。常時ブロック＝側面/背後へ回り込むしかない）
+	//   火吐き亀 … `shell`（時間で決まる。籠もると全方向無効＝開く瞬間を待つしかない）
+	[TILE.SHIELD_KNIGHT]: {
+		// 盾騎士（陸上通常敵・脅威 中〜高）。PLAN 5.5k 名簿 #4。
+		// blockFacing = { turnMs, knockback } ＝**向きを固定して構える**敵。
+		//   ・正面（e.dir と一致する方向）からの攻撃は常に 0 ダメージ＋プレイヤーを弾く
+		//     （combat.js isBlockFacingDir / knockbackPlayerFrom）
+		//   ・向き直りは turnMs ごとの離散的な判断＝プレイヤーが横へ動いた直後は隙が空く
+		//     ∴回り込みが成立する（毎tick向き直る敵には回り込めない）
+		//   ・自分の剣も**正面にしか振れない**（enemy-ai.js enemyAttack の向きゲート）＝
+		//     側面に居るプレイヤーを殴れない＝回り込みに報酬がある
+		// 弱点なし＝位置取りで崩す敵（PLAN 名簿）。ガード状態機械には乗せない
+		// （guards:false）＝ブロックは常設で、盾は素の絵の一部（∴Guard フレーム不要
+		//  ＝向き3方向×(通常/攻撃)の6枚で足りる。GUIDE §2）。
+		name: '盾騎士',
+		hp: 8, atk: 3, def: 2, exp: 18,       // 脅威度 hp*atk/(def+1) = 8.0（中〜高・剣獣 10 未満）
+		speed: ENEMY_SPEED_SLOW,              // 重装＝鈍い（プレイヤーが回り込める前提条件）
+		sprite: 'shieldKnightD',
+		pal:    'shieldKnight',
+		isBoss: false,
+		directional: true,
+		guards: false,
+		blockFacing: {
+			turnMs:    720,   // 6 tick（TICK_MS 120）ごとにだけ向き直る＝回り込みの猶予
+			knockback: 0.5,   // 弾かれてプレイヤーが下がる距離（セル・MOVE_STEP 1歩ぶん）
+		},
+		attack: { type: 'sword', range: 1.5, cooldown: 1100 },
+	},
+	[TILE.FIRE_TURTLE]: {
+		// 火吐き亀（陸上通常敵・脅威 中〜高）。PLAN 5.5k 名簿 #12。
+		// shell = { closedMs, openMs, breathCells, breathAtk } ＝**甲羅の開閉**で
+		// 無敵窓が時間で開閉する敵。盾騎士と同じ「殴れない敵」だが崩し方が逆：
+		//   ・closed … 甲羅に籠もる＝**向きに関係なく全ダメージ無効**・移動も攻撃もしない
+		//   ・open   … 甲羅を開く＝殴れる。**開いた瞬間に正面へ炎を吐く**（breathCells セル）
+		//              ∴「開くのを待って殴る」だけでは炎を浴びる＝正面から待ってはいけない
+		// 地中蟲（hide）との違い＝隠れないので**常に殴りに行ける**（無敵なだけ）＝
+		// 甲羅を叩いた手応え（0ダメージの弾き）でプレイヤーに状態を伝える。
+		// 弱点なし（PLAN 名簿）。directional にしない＝甲羅の絵は開/閉の2枚で足りる
+		// （向き別9枚は不要）∴ガード状態機械にも乗らない。
+		name: '火吐き亀',
+		hp: 8, atk: 3, def: 2, exp: 16,       // 脅威度 8.0（中〜高）
+		speed: ENEMY_SPEED_SLOW,              // 鈍足＝逃げ切れる代わりに硬い
+		sprite: 'fireTurtle',
+		pal:    'fireTurtle',
+		isBoss: false,
+		shell: {
+			closedMs:    1400,  // 籠もる時間（無敵）＝殴れる時間より長い
+			openMs:      1000,  // 開いている時間＝殴れる窓
+			breathCells: 2,     // 炎の届くセル数（正面のカーディナル1方向）
+			breathAtk:   3,     // 炎のダメージ（接触ダメージ meta.atk と同値）
+			breathMs:    420,   // 炎の見た目が出ている実時間（CSS .enemy-fire-breath と対）
+		},
+		attack: { type: 'charge' },            // 飛び道具は持たない（炎は shell が撃つ）
+	},
 	[TILE.MONSTER]: {
 		name: '魔物',
 		hp: 12, atk: 3, def: 1, exp: 18,
