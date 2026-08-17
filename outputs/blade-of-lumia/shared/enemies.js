@@ -14,8 +14,16 @@ export const ENEMY_SPEED_FAST   = 1.0;  // 高速敵
 
 // ── 敵パラメータ ──────────────────────────────────────────────
 // attack.type: 'charge' | 'spear' | 'stone' | 'sword' | 'swordBeam' | 'waterShot' | 'waterBlade'
+//            | 'bombThrow' | 'boomerangThrow'
 //   swordBeam（Phase 5.5k #7 剣獣）… 縦横が揃ったときだけ撃つ「飛ぶ斬撃」。
 //   プレイヤーのビーム剣と同じ 'beam' 投擲物を owner:'enemy' で飛ばす。
+//   bombThrow（Phase 5.5k k-6 #6 爆弾鬼）… 投げた瞬間のプレイヤーのセルへ**放物線**で
+//   落ちる爆弾（`thrownBomb`・proj.lob）。飛翔中は壁も水も無視し、着弾で範囲爆発する
+//   （attack.blast = { radius, damage, breakPower }）＝盾では防げない・遮蔽が効かない。
+//   boomerangThrow（Phase 5.5k k-6 #10 ブーメラン鬼）… 縦横が揃ったときだけ投げる
+//   **往復する**ブーメラン（`boomerang`・proj.returnsToOwner）。プレイヤーの
+//   ブーメランと同じ boomerangStep を通る＝行きと帰りの2回当たり判定がある。
+//   attack.maxRange で折り返す距離を指定する。
 //
 // attack.range   … この距離以内なら出す（上限）
 // attack.minRange（任意・Phase 9-6）… この距離より近いと出さない（下限）。
@@ -304,6 +312,87 @@ export const ENEMY_META = {
 			cooldownMs:  1200,  // 剥がされてから再び張り付けるまで（10 tick）＝叩く手が意味を持つ
 		},
 		attack: { type: 'charge' },   // 接触ダメージのみ（張り付き中は吸うのが攻撃＝HPは減らない）
+	},
+	// ── Phase 5.5k k-6: 「投げるものが飛び方を持つ」陸上敵 2種 ─────────────
+	// 共通の考え方＝**飛び道具そのものに新しい飛び方を足す**（既存の stone/waterShot は
+	// 「まっすぐ飛んで当たったら消える」の1種類しか無かった）。2種の飛び方は
+	// projectile.js の1か所に集約する（lob＝放物線／returnsToOwner＝往復）：
+	//   爆弾鬼       … `bombThrow`（着弾点で範囲爆発。壁を越えて飛ぶ＝遮蔽が効かない）
+	//   ブーメラン鬼 … `boomerangThrow`（行きと帰りの2回判定＝避け方を2回読ませる）
+	[TILE.BOMB_OGRE]: {
+		// 爆弾鬼（陸上通常敵・脅威 中〜高）。PLAN 5.5k 名簿 #6。
+		// attack.type:'bombThrow' ＝**投げた瞬間のプレイヤーのセルへ放物線で落ちる**爆弾。
+		//   ・飛翔中は壁も水も無視して飛ぶ（放物線＝上を通る）∴**遮蔽の裏に隠れても届く**
+		//   ・着弾で範囲爆発（blast.radius）＝プレイヤーの盾では防げない（点で飛んで来る
+		//     投擲物ではない）∴**避ける＝その場を離れる**しか手が無い
+		//   ・爆風は `!`（壊せる壁）も壊す（blast.breakPower）＝プレイヤーの爆弾と同じ扱い
+		//   ・**他の敵は巻き込まない**（味方撃ちは実装しない＝DECISIONS 2026-08-16）
+		// 「距離を取ると危険＝間合いを詰める圧」（名簿）を数字で作る：minRange 2.0 より
+		// 近いと投げられない＝密着すれば爆弾は止まる（代わりに接触ダメージ atk 3 を食う）。
+		// 弱点なし（名簿）。
+		name: '爆弾鬼',
+		hp: 6, atk: 3, def: 1, exp: 16,       // 脅威度 hp*atk/(def+1) = 9.0（中〜高・剣獣 10 未満）
+		speed: ENEMY_SPEED_SLOW,              // 鈍足＝詰め寄れば投げさせずに済む（機構と対の速度）
+		sprite: 'bombOgreD',
+		pal:    'bombOgre',
+		isBoss: false,
+		directional: true,
+		guards: false,          // 投擲手は盾を構えない＝Guard の3枚は不要（GUIDE §1/§2）
+		attackFreezeMs: 480,    // 投げる間は動かない（4 tick）＝剣獣 360 より長い＝踏み込む窓
+		combat: {               // GUIDE §7-3: 遠隔を持つ敵は二相にする（でないと密着して撃たない）
+			keepMin:   2.5,     // minRange 2.0 の**外**に置く（§7-3 の罠）
+			keepMax:   6.0,     // range 7 の内側＝間合いに入ったら止まって投げる
+			rangedMs:  3600,    // 遠隔相（30 tick）＝投擲 cooldown 2160 の1.6倍＝相の中で必ず1回投げる
+			meleeMs:   1200,    // 近接相は短い（10 tick）＝鈍足なので長くしても詰められない
+			startMode: 'ranged',
+		},
+		attack: {
+			type:            'bombThrow',
+			range:           7,      // 投げられる最大距離
+			minRange:        2.0,    // これより近いと投げない（自爆しない距離＝密着で機構が止まる）
+			cooldown:        2160,   // 18 tick（TICK_MS 120 の整数倍＝観測 tick が揺れない）
+			projectileSpeed: 1.0,    // 飛翔速度（セル/tick）＝落ちるまでに逃げる猶予を作る
+			blast: {
+				radius:     1.5,     // 爆風半径（セル）＝着弾セルの十字1マスまで
+				damage:     4,       // 爆風ダメージ（def で軽減される＝takeDamage 経由）
+				breakPower: 3,       // `!` を壊す力（プレイヤーの爆弾 ITEM_META.bomb と同値）
+			},
+		},
+	},
+	[TILE.BOOMERANG_OGRE]: {
+		// ブーメラン鬼（ゴーリヤ型・陸上通常敵・脅威 中）。PLAN 5.5k 名簿 #10。
+		// attack.type:'boomerangThrow' ＝**プレイヤーのブーメランと同じエンジン**で往復する
+		// 投擲物（projectile.js boomerangStep）を owner:'enemy' で飛ばす。
+		//   ・**縦横が揃ったときだけ投げる**（swordBeam と同じ＝行/列を外して避けられる）
+		//   ・maxRange まで飛ぶ／壁に当たると折り返す → **投げた本人へ帰る**
+		//     ∴行きを避けても帰りが来る＝「二度読み」（名簿）
+		//   ・投げた本人が死んだら投擲位置へ帰って消える（returnsToOwner の実装）
+		//   ・敵のブーメランはアイテムを拾わない／ロウソクに火を点けない
+		//     （collectAlongBoomerang は owner==='player' 限定）
+		// 弱点なし（名簿）。
+		name: 'ブーメラン鬼',
+		hp: 6, atk: 2, def: 1, exp: 12,       // 脅威度 hp*atk/(def+1) = 6.0（中）
+		speed: ENEMY_SPEED_NORMAL,            // 間合いを取り直す速さは要る（爆弾鬼より速い）
+		sprite: 'boomerangOgreD',
+		pal:    'boomerangOgre',
+		isBoss: false,
+		directional: true,
+		guards: false,          // 投擲手は盾を構えない（爆弾鬼と同じ・6枚で足りる）
+		attackFreezeMs: 360,    // 投げる間は動かない（3 tick＝剣獣と同じ）
+		combat: {
+			keepMin:   2.5,     // minRange 2.0 の外（§7-3）
+			keepMax:   3.5,     // maxRange 4.5 の内側で構える＝帰りの軌道に自分が居る間合い
+			rangedMs:  3000,    // 遠隔相（25 tick）
+			meleeMs:   1500,    // 近接相（12.5 tick）
+		},
+		attack: {
+			type:            'boomerangThrow',
+			range:           4.0,    // 投げる上限距離
+			minRange:        2.0,    // これより近いと投げない（往復の意味が無くなる距離）
+			cooldown:        2400,   // 20 tick（整数倍）
+			projectileSpeed: 2.0,    // プレイヤーのブーメランと同じ速さ
+			maxRange:        4.5,    // 折り返す距離（range より少し外＝間合いの端でも帰る）
+		},
 	},
 	[TILE.MONSTER]: {
 		name: '魔物',
@@ -752,4 +841,5 @@ export const PROJECTILE_SPRITE = {
 	arrow:     'arrow',
 	waterShot: 'waterShot',  // Phase 9-6: 射水魚の水弾（ITEM_SPRITES/ITEM_PAL に同名で存在）
 	waterBlade: 'waterBlade', // Phase 9-6: 潜み鮫の水刃（尾で薙いだ三日月型の衝撃波）
+	thrownBomb: 'thrownBomb', // Phase 5.5k k-6: 爆弾鬼が投げる爆弾（放物線・着弾で範囲爆発）
 };

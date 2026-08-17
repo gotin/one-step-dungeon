@@ -240,7 +240,13 @@ export function createProjectile(deps) {
 		}
 		const cellPx = getCellPx();
 		el.style.left = `${proj.x * cellPx}px`;
-		el.style.top  = `${proj.y * cellPx}px`;
+		// Phase 5.5k k-6: 放物線の投擲物は「見た目だけ」上へ持ち上げる（4t(1-t) の山＝
+		// t=0/1 で 0・t=0.5 で最大）。**当たり判定は持ち上げない**＝爆発は着弾セルで起きる
+		// ∴プレイヤーは「弧を描いて自分の足元へ落ちてくる」ものとして読める。
+		const lift = proj.lob
+			? (proj.arcHeight ?? 1.2) * 4 * (proj._lobT ?? 0) * (1 - (proj._lobT ?? 0))
+			: 0;
+		el.style.top  = `${(proj.y - lift) * cellPx}px`;
 		// Phase 4-5 ②: 炎持ちブーメランにオーラを付ける
 		if (proj.type === 'boomerang') {
 			let aura = el.querySelector('.boomerang-flaming');
@@ -375,10 +381,26 @@ export function createProjectile(deps) {
 	// ⚠️ 「折り返す／キャッチする」の判定は **tick 境界のまま**にする。
 	// 分割ごとに判定すると木のブーメランの実到達・往復時間が変わる（既存挙動の
 	// 回帰）∴分割で細かくするのは「進む」「当たる」「拾う」だけ。
+	// Phase 5.5k k-6: 「帰る先」＝プレイヤーのブーメランは投げた本人（プレイヤー）、
+	// 敵のブーメラン（ブーメラン鬼）は投げた敵。**投げた敵が死んでいたら発射点へ帰る**
+	// （追う相手が消えた投擲物が永久に飛び続けるのを防ぐ＝発射点に着いた時点で消える）。
+	function boomerangHome(proj) {
+		if (proj.owner === 'player') {
+			const p = getPlayer();
+			return { x: p.x, y: p.y };
+		}
+		const owner = getEnemies().find(e => e.id === proj.ownerId);
+		if (owner) return { x: owner.x, y: owner.y };
+		return { x: proj.startX, y: proj.startY };
+	}
+
 	function boomerangStep(proj, step) {
 		const SUB_STEP = 0.4;                                   // = HIT_RADIUS(0.5) * 0.8
 		const numSubs = Math.max(1, Math.ceil(step / SUB_STEP));
-		const player = getPlayer();
+		// Phase 5.5k k-6: 通過セルの回収（アイテム・かがり火）は**プレイヤーのブーメランだけ**。
+		// 敵のブーメランが床のアイテムを持ち去ったりロウソクに点火したら、ギミックが
+		// 敵の手で解けてしまう（剣獣のビームでスイッチが入る抜け道を塞いだのと同じ理由）。
+		const collects = proj.owner === 'player';
 
 		if (!proj.returning) {
 			// 往路：tick 冒頭の距離で折り返しを決める（従来と同じ）
@@ -397,26 +419,31 @@ export function createProjectile(deps) {
 					!isTilePassableForProj(toTileRow(proj.y), toTileCol(proj.x));
 				checkProjHit(proj);
 				if (!_projectiles.includes(proj)) return;   // 命中で除去された
-				collectAlongBoomerang(proj);
+				if (collects) collectAlongBoomerang(proj);
 				if (hitWall) { proj.returning = true; return; }
 			}
 			if (dist >= proj.maxRange) proj.returning = true;
 			return;
 		}
 
-		// 復路：tick 冒頭でプレイヤーに届いていればキャッチ（従来と同じ）
-		const tdx0 = player.x - proj.x;
-		const tdy0 = player.y - proj.y;
+		// 復路：tick 冒頭で帰る先に届いていればキャッチ（従来と同じ）
+		const home = boomerangHome(proj);
+		const tdx0 = home.x - proj.x;
+		const tdy0 = home.y - proj.y;
 		const d0   = Math.sqrt(tdx0 * tdx0 + tdy0 * tdy0);
 		if (d0 < step + 0.3) {
 			// Phase 4-6: キャッチ成立＝運搬アイテムをここで確定加算する。
 			removeProjEl(proj);
 			_projectiles = _projectiles.filter(p => p !== proj);
-			playSound('item'); pulse('🪃 ブーメランをキャッチした！');
-			if (finalizeCarried) for (const c of (proj.carried || [])) finalizeCarried(c);
+			// Phase 5.5k k-6: 敵が受け取るときは音もメッセージも出さない
+			// （「キャッチした！」はプレイヤーの手応えの表示＝敵の手元では嘘になる）。
+			if (proj.owner === 'player') {
+				playSound('item'); pulse('🪃 ブーメランをキャッチした！');
+				if (finalizeCarried) for (const c of (proj.carried || [])) finalizeCarried(c);
+			}
 			return;
 		}
-		// 向きは tick 冒頭のプレイヤー位置で決める（プレイヤーは tick 内で動かない）。
+		// 向きは tick 冒頭の帰る先の位置で決める（プレイヤー・敵とも tick 内で動かない）。
 		// 往路と同じく座標は「tick 冒頭 + 進捗率」で出す＝累積の丸め誤差を作らない。
 		const ux = tdx0 / (d0 || 1), uy = tdy0 / (d0 || 1);
 		const rx0 = proj.x, ry0 = proj.y;
@@ -426,8 +453,37 @@ export function createProjectile(deps) {
 			proj.y = ry0 + uy * step * t;
 			checkProjHit(proj);  // Phase 4-6: 復路も敵に当たる
 			if (!_projectiles.includes(proj)) return;
-			collectAlongBoomerang(proj);
+			if (collects) collectAlongBoomerang(proj);
 		}
+	}
+
+	// ── 放物線で投げる投擲物のステップ処理（Phase 5.5k k-6 #6 爆弾鬼） ────────
+	// 「まっすぐ飛んで当たったら消える」既存の投擲物と違い、**投げた瞬間に決めた着弾点へ
+	// 必ず落ちる**＝飛翔中は壁も水も敵もプレイヤーも一切素通りする（上を通る）。
+	// ∴遮蔽の裏に隠れても爆弾は届く／盾では防げない（避けるにはその場を離れる）。
+	// ⚠️ 座標は「始点 ＋ 進捗率」で出す（proj.x += … の累積は禁止）＝速度を変えても
+	// 着弾セルが1ドットもずれない（[[blade-speed-up-needs-interpolation]] と同じ作法）。
+	function lobStep(proj, step) {
+		const total = Math.max(0.001, proj._lobTotal ?? Math.sqrt(
+			(proj.targetX - proj.startX) ** 2 + (proj.targetY - proj.startY) ** 2,
+		));
+		proj._lobTotal = total;
+		proj._lobT = Math.min(1, (proj._lobT ?? 0) + step / total);
+		proj.x = proj.startX + (proj.targetX - proj.startX) * proj._lobT;
+		proj.y = proj.startY + (proj.targetY - proj.startY) * proj._lobT;
+		if (proj._lobT < 1) return;
+		// 着弾＝投げた瞬間に記録したセルで爆発する（プレイヤーが動いていても着弾点は動かない）。
+		removeProjEl(proj);
+		_projectiles = _projectiles.filter(p => p !== proj);
+		const blast = proj.blast ?? {};
+		explodeAt(toTileRow(proj.targetY), toTileCol(proj.targetX), {
+			radius:       blast.radius     ?? 1.5,
+			breakPower:   blast.breakPower ?? 3,
+			// 敵の爆弾は**他の敵を巻き込まない**（味方撃ちは実装しない＝DECISIONS 2026-08-16）。
+			// 理由＝敵同士が潰し合うと「敵を集めた部屋」の脅威度が設計と無関係に崩れる。
+			enemyDamage:  proj.owner === 'enemy' ? 0 : (blast.damage ?? 4),
+			playerDamage: proj.owner === 'enemy' ? (blast.damage ?? 4) : 0,
+		});
 	}
 
 	// 通過セルのアイテム回収・かがり火の受け渡し（往路・復路とも1サブステップ毎）
@@ -464,10 +520,20 @@ export function createProjectile(deps) {
 	function projectileTick() {
 		for (const proj of [..._projectiles]) {
 			const step = proj.speed * MOVE_STEP;
-			if (proj.type === 'boomerang' && proj.owner === 'player') {
+			// Phase 5.5k k-6: 往復の経路に乗るのは「プレイヤーのブーメラン」と
+			// 「returnsToOwner を持つ投擲物（ブーメラン鬼）」だけ。
+			// ⚠️ owner だけで判定していた条件をそのまま `!== 'player'` へ広げてはいけない
+			// ＝敵に打ち返されたプレイヤーのブーメラン（reflectsProjectiles）は
+			// 従来どおり**まっすぐ飛ぶ**（往復させると打ち返しの意味が変わる＝回帰）。
+			// ∴明示のフラグで分ける。
+			if (proj.type === 'boomerang' && (proj.owner === 'player' || proj.returnsToOwner)) {
 				boomerangStep(proj, step);
 				// キャッチ/壁/命中で除去済みなら moveProjEl を呼ばない
 				// （呼ぶと moveProjEl の「要素が無ければ再生成」が残骸を復活させる）
+				if (!_projectiles.includes(proj)) continue;
+			} else if (proj.lob) {
+				// 放物線＝壁・水・キャラを素通りして着弾点まで飛ぶ（当たり判定を通さない）
+				lobStep(proj, step);
 				if (!_projectiles.includes(proj)) continue;
 			} else {
 				// ── 高速投擲物のトンネリング防止：区間補間チェック ──────
@@ -570,12 +636,22 @@ export function createProjectile(deps) {
 	//   剣獣の飛ぶ斬撃や今後の爆弾鬼・ブーメラン鬼が種別ごとの差を渡すための拡張点。
 	//   type ごとの分岐をここに増やさず、呼び出し側（ENEMY_META の attacks）で宣言する。
 	function fireEnemyProjectile(e, type, ndx, ndy, speed, extra = {}) {
+		// Phase 5.5k k-6: 発射点（startX/startY）と撃った本人（ownerId）は**種別を問わず**入れる。
+		//   startX/startY … 放物線（lob）の始点／往復（returnsToOwner）の飛距離の基点。
+		//                   プレイヤーのブーメラン（addProjectile）も同じ名前を入れている。
+		//   ownerId       … 帰る先（撃った敵）を引くための ID。既存の reflectsProjectiles も
+		//                   同じ名前で敵の ID を入れている＝新しい名前を増やさない。
+		// type ごとの分岐にしない理由＝「投げた場所」は全ての投擲物に意味がある値で、
+		// 後から種別を足すたびに書き足すと入れ忘れが起きる（extra の設計と同じ思想）。
+		const sx = e.x + ndx * 0.8;
+		const sy = e.y + ndy * 0.8;
 		const proj = {
 			id:    _nextProjId++,
 			owner: 'enemy',
+			ownerId: e.id,
 			type,
-			x: e.x + ndx * 0.8,
-			y: e.y + ndy * 0.8,
+			x: sx, y: sy,
+			startX: sx, startY: sy,
 			dx: ndx, dy: ndy,
 			speed,
 			atk: ENEMY_META[e.type]?.atk ?? 2,
@@ -646,18 +722,40 @@ export function createProjectile(deps) {
 	function explodeBomb(bomb) {
 		bomb.el?.remove();
 		_placedBombs = _placedBombs.filter(b => b !== bomb);
+		explodeAt(bomb.r, bomb.c);
+	}
+
+	// ── 爆発（プレイヤーの爆弾と敵の爆弾で共有・Phase 5.5k k-6 で抽出） ──────
+	// 「円形の爆風で `!` を壊し・範囲内のものを傷める・演出を出す」までを1か所に集める。
+	// 抽出した理由＝爆弾鬼（#6）の爆弾は**プレイヤーの爆弾と同じ爆風でなければ嘘になる**
+	// （壁を壊せる範囲が違えば、プレイヤーは自分の爆弾から範囲を学べない）。
+	// opts:
+	//   radius       … 爆風半径（セル）。既定＝プレイヤーの爆弾（ITEM_META.bomb.aoeRadius）
+	//   breakPower   … `!`（壊せる壁）を壊す力
+	//   enemyDamage  … 範囲内の敵に与えるダメージ。**0 なら敵を巻き込まない**
+	//   playerDamage … 範囲内のプレイヤーに与えるダメージ。**0 ならプレイヤーを巻き込まない**
+	// ⚠️ 既定は「敵だけを傷める」＝プレイヤーの爆弾の従来挙動と1ドットも変えない
+	//   （自爆しない＝Phase 1 からの仕様）。
+	function explodeAt(r, c, opts = {}) {
+		const {
+			radius       = ITEM_META.bomb?.aoeRadius  ?? 2,
+			breakPower   = ITEM_META.bomb?.breakPower ?? 3,
+			enemyDamage  = ITEM_META.bomb?.damage     ?? 5,
+			playerDamage = 0,
+		} = opts;
 		playSound('bombExplosion');
 
-		const sd  = getStageData();
-		const AOE = ITEM_META.bomb?.aoeRadius ?? 2;
-		const ss  = getSS(getCurrentLayer(), getStageKey());
+		const sd = getStageData();
+		if (!sd) return;
+		const ss = getSS(getCurrentLayer(), getStageKey());
 
 		let needRenderBoard = false;
+		const AOE = Math.ceil(radius);
 		for (let dr = -AOE; dr <= AOE; dr++) {
 			for (let dc = -AOE; dc <= AOE; dc++) {
-				if (Math.sqrt(dr * dr + dc * dc) > AOE) continue;
-				const tr = bomb.r + dr;
-				const tc = bomb.c + dc;
+				if (Math.sqrt(dr * dr + dc * dc) > radius) continue;
+				const tr = r + dr;
+				const tc = c + dc;
 				if (tr < 0 || tr >= sd.rows || tc < 0 || tc >= sd.cols) continue;
 				const posKey = `${tr},${tc}`;
 				const tile   = sd.tiles[tr][tc];
@@ -665,7 +763,7 @@ export function createProjectile(deps) {
 				// 壊せる壁の破壊
 				if (tile === TILE.BREAKABLE_WALL && !ss.brokenWalls.has(posKey)) {
 					const bwDef = sd.breakableWalls?.[posKey]?.breakDef ?? 1;
-					if ((ITEM_META.bomb?.breakPower ?? 3) >= bwDef) {
+					if (breakPower >= bwDef) {
 						ss.brokenWalls.add(posKey);
 						evaluateConditions();
 						needRenderBoard = true;
@@ -673,18 +771,28 @@ export function createProjectile(deps) {
 				}
 
 				// 敵ダメージ（隠れ中の敵は爆風の対象外＝地中/滞空の敵に爆風は届かない）
-				for (const e of [...getEnemies()]) {
-					if (e.hidden) continue;
-					if (toTileRow(e.y) === tr && toTileCol(e.x) === tc) {
-						dealDamageToEnemy(e, ITEM_META.bomb?.damage ?? 5, 'bomb');
+				if (enemyDamage > 0) {
+					for (const e of [...getEnemies()]) {
+						if (e.hidden) continue;
+						if (toTileRow(e.y) === tr && toTileCol(e.x) === tc) {
+							dealDamageToEnemy(e, enemyDamage, 'bomb');
+						}
 					}
 				}
 			}
 		}
 
+		// プレイヤーダメージは「セルの走査」ではなく中心からの距離で見る
+		// （プレイヤーは半セル位置に立てる＝タイル単位で数えると爆風の縁で1セルずれる）。
+		if (playerDamage > 0) {
+			const player = getPlayer();
+			const pd = Math.sqrt((player.x - c) ** 2 + (player.y - r) ** 2);
+			if (pd <= radius) takeDamage(playerDamage);
+		}
+
 		// renderBoard が必要な場合は先に実行してからエフェクト追加
 		if (needRenderBoard) { renderBoard(); renderChars(); }
-		showExplosionEffect(bomb.r, bomb.c);
+		showExplosionEffect(r, c);
 		saveGame();
 	}
 

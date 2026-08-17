@@ -118,6 +118,15 @@ window.__game = {
 		flaming: p.flaming ?? false,
 		// Phase 4-6: ブーメランが運搬中のアイテム数（テスト観測用）
 		carriedCount: (p.carried ?? []).length,
+		// Phase 5.5k k-6: 投擲物の「飛び方」の観測用。⚠️ これも敵スナップショットと同じ
+		// **ホワイトリスト**＝ここに足さないフィールドはテストから常に undefined になる。
+		ownerId: p.ownerId ?? null,                 // 撃った本人（ブーメランが帰る先）
+		returnsToOwner: p.returnsToOwner ?? false,  // 往復する（ブーメラン鬼）
+		lob: p.lob ?? false,                        // 放物線で飛ぶ（爆弾鬼）
+		targetX: p.targetX ?? null,                 // 着弾セル（投げた瞬間に固定＝追尾しない）
+		targetY: p.targetY ?? null,
+		startX: p.startX ?? null,                   // 発射点（折り返し距離・放物線の始点）
+		startY: p.startY ?? null,
 	})),
 	getState() {
 		return getGameState();

@@ -30,6 +30,8 @@ export const TILE = {
 	FIRE_TURTLE: 'φ',  // 火吐き亀（陸上通常敵・甲羅に籠もると全ダメージ無効。口を開けた瞬間に炎を吐く）
 	SPLIT_SLIME: 'δ',  // 分裂スライム（陸上通常敵・剣で倒すと2体の小型へ分裂。爆弾なら分裂させずに潰せる）
 	RUPEE_EATER: 'σ',  // ルピー喰い（陸上通常敵・接触で張り付き所持ルピーを吸う。倒すと一部戻る）
+	BOMB_OGRE:   'λ',  // 爆弾鬼（陸上通常敵・放物線で爆弾を投げる。着弾で範囲爆発＝壁越しに届き盾で防げない）
+	BOOMERANG_OGRE:'π',// ブーメラン鬼（陸上通常敵・往復するブーメランを投げる。避けても帰りに当たる二度読み）
 	BOSS:      'V',  // 魔将（ボス）
 	MONSTER:   'W',  // 魔物（中ボス）
 	DARK_LORD: 'X',  // 魔王（ダンジョンボス・星の欠片を落とす）
@@ -149,6 +151,8 @@ export const TILE_META = {
 	[TILE.FIRE_TURTLE]:{ label: '火吐き亀',  color: '#3f5a34', passable: true,  icon: '亀' },
 	[TILE.SPLIT_SLIME]:{ label: '分裂スライム', color: '#2f6a4a', passable: true, icon: '粘' },
 	[TILE.RUPEE_EATER]:{ label: 'ルピー喰い', color: '#5a3a6a', passable: true,  icon: '喰' },
+	[TILE.BOMB_OGRE]:  { label: '爆弾鬼',    color: '#6a4a2a', passable: true,  icon: '爆' },
+	[TILE.BOOMERANG_OGRE]:{ label: 'ブーメラン鬼', color: '#4a5a2a', passable: true, icon: '環' },
 	[TILE.BOSS]:    { label: '魔将',         color: '#184060', passable: true,  icon: 'Ｖ' },
 	[TILE.MONSTER]: { label: '魔物',         color: '#2a1060', passable: true,  icon: 'Ｗ' },
 	[TILE.DARK_LORD]:{ label: '魔王',        color: '#0a0a18', passable: true,  icon: 'Ｘ' },

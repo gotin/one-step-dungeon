@@ -804,3 +804,11 @@ ITEM_SPRITES.bombItem = [[
 	[0,0,1,1,2,2,2,2,2,1,1,0,0,0,0,0],
 	[0,0,0,0,1,1,1,1,1,0,0,0,0,0,0,0],
 ]];
+
+// 敵（爆弾鬼・Phase 5.5k k-6）が投げる爆弾＝**落ちアイテムの爆弾と同じ絵**を使う。
+// 別名が必要な理由＝`game/projectile.js createProjEl()` が `makeSprite(proj.type, proj.type)`
+// を呼ぶ＝スプライト名とパレット名の**両方**が投擲物の type と同名でないと絵が出ない
+// （このファイル冒頭の注意書きと同じ制約）。同じ物が飛んで来ると分かるのが正しい
+// ＝プレイヤーは自分の爆弾の見た目で「範囲爆発が来る」と読める。
+ITEM_PAL.thrownBomb = ITEM_PAL.bombItem;
+ITEM_SPRITES.thrownBomb = ITEM_SPRITES.bombItem;

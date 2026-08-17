@@ -751,6 +751,47 @@ export function createEnemyAi(deps) {
 				const ndy = dy / dist;
 				fireEnemyProjectile(e, 'waterBlade', ndx, ndy, atk.projectileSpeed ?? 1.4);
 				markAttack(e, meta, i, now);
+			} else if (atk.type === 'bombThrow') {
+				// Phase 5.5k k-6 #6 爆弾鬼: 放物線で投げる爆弾。
+				// **着弾点は「投げた瞬間のプレイヤーのセル」で固定する**（追尾しない）＝
+				// プレイヤーは「投げられた瞬間に走り出せば避けられる」＝反応の勝負になる。
+				// 飛翔中は壁も水も素通りする（projectile.js lobStep）∴遮蔽の裏でも当たる
+				// ＝この敵に対しては「隠れる」でなく「間合いを詰める」が答えになる（名簿の設計）。
+				const tr = toTileRow(player.y);
+				const tc = toTileCol(player.x);
+				const ndx = dx / dist;
+				const ndy = dy / dist;
+				// 投げる方向を向く（任意角なので絵は縦横のうち成分の大きい側へ寄せる）
+				e.dir = Math.abs(dx) >= Math.abs(dy)
+					? (dx > 0 ? 'right' : 'left')
+					: (dy > 0 ? 'down' : 'up');
+				fireEnemyProjectile(e, 'thrownBomb', ndx, ndy, atk.projectileSpeed ?? 1.0, {
+					lob:       true,
+					targetX:   tc,
+					targetY:   tr,
+					blast:     atk.blast ?? {},
+					arcHeight: 1.2,     // 見た目の弧の高さ（セル）＝当たり判定には効かない
+				});
+				markAttack(e, meta, i, now);
+			} else if (atk.type === 'boomerangThrow') {
+				// Phase 5.5k k-6 #10 ブーメラン鬼: 往復するブーメラン。
+				// swordBeam と同じ「縦横が揃ったときだけ投げる」型＝行/列を外せば避けられる。
+				// ⚠️ ただし**帰りの軌道は投げた敵へ向かう**∴行きを横に避けたプレイヤーが
+				// そのまま敵へ寄ると帰りに当たる（二度読み＝名簿の設計）。
+				const sameCol = Math.abs(dx) < 1.0;
+				const sameRow = Math.abs(dy) < 1.0;
+				if (!sameCol && !sameRow) continue;
+				const ndx = sameCol ? 0 : Math.sign(dx);
+				const ndy = sameRow ? 0 : Math.sign(dy);
+				e.dir = ndx !== 0 ? (ndx > 0 ? 'right' : 'left') : (ndy > 0 ? 'down' : 'up');
+				fireEnemyProjectile(e, 'boomerang', ndx, ndy, atk.projectileSpeed ?? 2.0, {
+					// returnsToOwner＝往復の経路（projectile.js boomerangStep）に乗せる明示のフラグ。
+					// owner で判定しない理由＝敵に打ち返されたプレイヤーのブーメランを
+					// まっすぐ飛ばし続けるため（打ち返しの挙動を変えない）。
+					returnsToOwner: true,
+					maxRange:       atk.maxRange ?? 4.5,
+				});
+				markAttack(e, meta, i, now);
 			} else if (atk.type === 'sword') {
 				const range = atk.range ?? 1.5;
 				if (dist <= range) {

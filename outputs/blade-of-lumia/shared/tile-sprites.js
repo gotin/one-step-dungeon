@@ -41,6 +41,9 @@ export const TILE_SPRITE_MAP = {
 	// ∴エディタの代表は親のスプライトだけで足りる。
 	[TILE.SPLIT_SLIME]:  { spr: 'splitSlime',    pal: 'splitSlime'   },
 	[TILE.RUPEE_EATER]:  { spr: 'rupeeEater',    pal: 'rupeeEater'   },
+	// Phase 5.5k k-6（投擲物の種別追加）。2体とも向き別＝正面（D）の絵を代表に出す。
+	[TILE.BOMB_OGRE]:      { spr: 'bombOgreD',      pal: 'bombOgre'      },
+	[TILE.BOOMERANG_OGRE]: { spr: 'boomerangOgreD', pal: 'boomerangOgre' },
 	[TILE.BOSS]:      { spr: 'escape',   pal: 'escape'   },
 	[TILE.MONSTER]:   { spr: 'monster',  pal: 'monster'  },
 	[TILE.DARK_LORD]: { spr: 'darklord', pal: 'darklord' },

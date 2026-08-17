@@ -65,6 +65,12 @@ export const ENEMY_PAL = {
 	// 縁 #3a2028＝38.1 へ寄せた（跳躍蜘蛛・コウモリ・火吐き亀と同型の欠陥）。
 	// 1=縁(暗紫紅) 2=体の暗部 3=胴 4=金(宝石・眼) 5=畝の明部 6=歯/照り(生成り)
 	rupeeEater:['transparent','#3a2028','#66470c','#8f4a5c','#c88a11','#bf8b6b','#f7e7c1'],
+	// 爆弾鬼（陸上通常敵・Phase 5.5k #6）／ブーメラン鬼（同 #10）＝**k-6a では仮のパレット**。
+	// スロットの意味は shieldKnight（同じ人型・向き別6枚）と揃えている＝仮スプライトが
+	// shieldKnight のグリッドのエイリアスだから（k-6b で実データに差し替える）。
+	// 1=輪郭(暗) 2=体の影 3=革/帯 4=体の中間 5=持ち物(爆弾＝黒/ブーメラン＝木) 6=明部
+	bombOgre:['transparent','#241a12','#5a3a22','#7a4a2a','#96693c','#20202a','#c9a077'],
+	boomerangOgre:['transparent','#16200f','#31491f','#6a4a22','#4f7030','#c08040','#a8c26a'],
 };
 
 export const ENEMY_SPRITES = {};
@@ -3367,3 +3373,15 @@ ENEMY_SPRITES.rupeeEater = [
 		[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
 	]
 ];
+
+// ── Phase 5.5k k-6a: 爆弾鬼（bombOgre）／ブーメラン鬼（boomerangOgre）の仮スプライト ──
+// GUIDE §2「機構が先・絵は後」＝まだ向き別の実描画が無い段階は既存絵の**参照エイリアス**で
+// 機構だけ通す（k-3a の地中蟲←lurkShark・k-5a の分裂スライム←burrowWorm と同じ運用）。
+// 借り先は shieldKnight＝2体とも `directional:true` かつ `guards:false`＝必要な組み合わせが
+// {D,R,U} ＋ {D,R,U}Atk の6枚で完全に一致する（Guard の3枚は不要）。
+// ⚠️ k-6b で 32×32 の実データ12枚に差し替える。差し替えるまでは3体が同じ形に見える。
+for (const base of ['bombOgre', 'boomerangOgre']) {
+	for (const suffix of ['D', 'R', 'U', 'DAtk', 'RAtk', 'UAtk']) {
+		ENEMY_SPRITES[`${base}${suffix}`] = ENEMY_SPRITES[`shieldKnight${suffix}`];
+	}
+}
