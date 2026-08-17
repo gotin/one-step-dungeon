@@ -61,6 +61,38 @@
     50%      { transform: translateY(-16%); }
 }
 
+/* Phase 5.5k k-7: プレイヤーの一時デバフ窓（剣封じ＝呪い火／毒＝毒沼ヒル）。
+   「剣が出ない」「HP が勝手に減る」を状態として見せる（GUIDE §6-1）＝
+   理由が画面に出ていないと、どちらもバグに見える。
+   `.sealed` ＝紫の縛り（剣を封じる呪いの色）。`.poisoned` ＝緑の脈動（毒）。
+   両方同時に掛かることがある∴filter は片方ずつでも重ねても読める強さにする。 */
+.char-abs.sealed canvas.sprite {
+    filter: drop-shadow(0 0 3px rgba(190,110,240,0.95)) saturate(0.7);
+}
+.char-abs.sealed::before {
+    content: '';
+    position: absolute;
+    left: 6%;
+    top: 6%;
+    width: 88%;
+    height: 88%;
+    border: 2px dashed rgba(190,110,240,0.75);
+    border-radius: 50%;
+    animation: seal-spin 1.6s linear infinite;
+    pointer-events: none;
+}
+@keyframes seal-spin {
+    from { transform: rotate(0deg); }
+    to   { transform: rotate(360deg); }
+}
+.char-abs.poisoned canvas.sprite {
+    animation: poison-pulse 0.9s ease-in-out infinite;
+}
+@keyframes poison-pulse {
+    0%, 100% { filter: hue-rotate(0deg) brightness(1); }
+    50%      { filter: hue-rotate(75deg) brightness(0.85) saturate(1.5); }
+}
+
 /* 隠れ中の敵（Phase 9-6 潜み鮫の潜行 → Phase 5.5k k-3 で陸/空へ一般化）。
    隠れている＝無敵・攻撃なし・接触なしの状態を「薄く沈んで痕跡だけ見える」で表す。
    出現するとクラスが外れて実体化する＝「出た瞬間だけ殴れる」が目で分かる。

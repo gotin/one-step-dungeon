@@ -42,6 +42,8 @@ import { enemyPointHit } from './hitbox.js';
  *   ── Phase 5.5k k-5: ルピー喰いの吸血 ──
  *   updateHud()                  – HUD 更新（所持ルピーの表示）
  *   pulse(text, dur)             – メッセージ表示
+ *   ── Phase 5.5k k-7: プレイヤー側の一時デバフ ──
+ *   inflictDebuff(meta)          – 接触した敵の meta.inflict を player 側の窓に立てる
  */
 export function createEnemyAi(deps) {
 	const {
@@ -59,6 +61,8 @@ export function createEnemyAi(deps) {
 		updateHud, pulse,
 		// Phase 9-6: 両生敵（amphibious）の地形別速度に使う水判定
 		isWaterAt,
+		// Phase 5.5k k-7: 接触で立てるプレイヤー側の一時デバフ（game/debuff.js）
+		inflictDebuff,
 	} = deps;
 
 	// ── 速度の解決（Phase 9-6）─────────────────────────────────
@@ -1315,10 +1319,16 @@ export function createEnemyAi(deps) {
 			if (e._attached) continue;
 			// 占有範囲（AABB）ベース。1×1 敵では従来の 0.9 箱と一致する。
 			if (enemyPointHit(e, player.x, player.y, 0.9)) {
+				const meta = ENEMY_META[e.type];
 				// Phase 5.5k k-5: e.atk を先に見る＝分裂で生まれた小型（childAtk）が
 				// 親より弱いことを接触ダメージに反映する。buildEnemies は e.atk = meta.atk を
 				// 入れる∴既存の敵は従来と同じ値になる（後方互換）。
-				takeDamage(e.atk ?? ENEMY_META[e.type]?.atk ?? 1);
+				takeDamage(e.atk ?? meta?.atk ?? 1);
+				// Phase 5.5k k-7: 一時デバフ（#13 剣封じ・#15 毒）を立てる唯一の場所。
+				// **takeDamage の後・その戻り値に関係なく呼ぶ**＝無敵窓でダメージが
+				// 無効化された接触でもデバフは入る（無敵は HP を守る窓であって
+				// 「触れた事実」を消す窓ではない＝game/debuff.js 冒頭 1.）。
+				if (meta?.inflict) inflictDebuff?.(meta);
 			}
 		}
 	}

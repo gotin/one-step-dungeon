@@ -44,6 +44,11 @@ export const TILE_SPRITE_MAP = {
 	// Phase 5.5k k-6（投擲物の種別追加）。2体とも向き別＝正面（D）の絵を代表に出す。
 	[TILE.BOMB_OGRE]:      { spr: 'bombOgreD',      pal: 'bombOgre'      },
 	[TILE.BOOMERANG_OGRE]: { spr: 'boomerangOgreD', pal: 'boomerangOgre' },
+	// Phase 5.5k k-7（プレイヤー側の一時デバフ窓）。2体とも向き別を持たない＝1枚の絵。
+	// ⚠️ **仮置き**＝既存絵のエイリアス（GUIDE §2「機構が先・絵は後」）。専用の 32×32 は
+	// k-7b で描く（呪い火は「炎」に・毒沼ヒルは「ヒル」に見えないと機構が読めない）。
+	[TILE.CURSE_FIRE]:   { spr: 'batSwarm',   pal: 'batSwarm'   },
+	[TILE.POISON_LEECH]: { spr: 'burrowWorm', pal: 'burrowWorm' },
 	[TILE.BOSS]:      { spr: 'escape',   pal: 'escape'   },
 	[TILE.MONSTER]:   { spr: 'monster',  pal: 'monster'  },
 	[TILE.DARK_LORD]: { spr: 'darklord', pal: 'darklord' },

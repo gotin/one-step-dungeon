@@ -242,6 +242,13 @@ export function createRenderChars(deps) {
 		const el = document.getElementById('char-player');
 		if (!el) return;
 		el.classList.toggle('flying', !!getPlayer().flying);
+		// Phase 5.5k k-7: 一時デバフ（剣封じ・毒）を画面に出す（GUIDE §6-1＝
+		// 絵は機構を読ませるためにある。「剣が出ない」だけではバグに見える）。
+		// 窓は論理時間∴gameNow と比べる（addShieldOverlay の _atkUntil と同じ作法）。
+		const _p = getPlayer();
+		const _now = getGameNow?.() ?? 0;
+		el.classList.toggle('sealed',   _p._sealUntil   != null && _now < _p._sealUntil);
+		el.classList.toggle('poisoned', _p._poisonUntil != null && _now < _p._poisonUntil);
 		el.innerHTML = '';
 
 		if (heroDir === 'up') addShieldOverlay(el);

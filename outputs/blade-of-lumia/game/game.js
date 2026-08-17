@@ -44,6 +44,7 @@ import { createCombat } from './combat.js';
 import { createBoss } from './boss.js';
 // ── チャージ攻撃・剣ビーム（Phase 3-1: charge.js へ切り出し）──────────────────
 import { createCharge } from './charge.js';
+import { createDebuff } from './debuff.js';
 
 
 // ── DOM ───────────────────────────────────────────────────────
@@ -512,6 +513,14 @@ let checkEnemyContact   = () => {};
 // Phase 5.5k k-5: combat.js の被弾フックから呼ぶ（張り付きを剥がす）。enemy-ai.js の
 // factory は別ブロックで生成される＝_ai をそのまま参照できないのでここへ引き出す。
 let detachLeech         = () => {};
+// Phase 5.5k k-7: プレイヤー側の一時デバフ窓（剣封じ・毒）＝game/debuff.js が持ち主。
+// combat.js（剣の門）・charge.js（溜めの門）・enemy-ai.js（接触で立てる）の3経路が
+// 参照するので、factory の生成より先に let を置いて wrapper 経由で読ませる。
+let inflictDebuff       = () => false;
+let isSwordSealed       = () => false;
+let isPoisoned          = () => false;
+let tickPlayerDebuffs   = () => {};
+let clearPlayerDebuffs  = () => {};
 let fireEnemyProjectile = () => {};
 let projectileTick       = () => {};
 let clearProjectiles     = () => {};
@@ -736,6 +745,25 @@ const { checkStoneOnSwitch, evaluateConditions, refreshGates } = createCondition
 	_inputModule = _in;  // window.__game の queueInput/releaseInput から参照するため保持
 }
 
+// ── プレイヤー側の一時デバフ窓（Phase 5.5k k-7: debuff.js へ切り出し）─────────
+// 敵AI（接触で立てる）・combat.js（剣の門）・charge.js（溜めの門）より先に生成する。
+// takeDamage は後方の combat ブロックで代入される let なので wrapper 経由で読む
+// （呼ばれるのは tick の中＝その時点では代入済み＝既存の factory 群と同じ作法）。
+{
+	const _debuff = createDebuff({
+		getPlayer:  () => player,
+		gameNow,
+		takeDamage: (amt, opts) => takeDamage(amt, opts),
+		pulse:      (t, d) => pulse(t, d),
+		updatePlayerCharEl: () => updatePlayerCharEl(),
+	});
+	inflictDebuff      = _debuff.inflictDebuff;
+	isSwordSealed      = _debuff.isSwordSealed;
+	isPoisoned         = _debuff.isPoisoned;
+	tickPlayerDebuffs  = _debuff.tickPlayerDebuffs;
+	clearPlayerDebuffs = _debuff.clearDebuffs;
+}
+
 // ── 投擲物・爆弾 / 敵AI（Phase 0-2 Step 5: projectile.js / enemy-ai.js へ切り出し）──
 // createProjectile / createEnemyAi の factory を生成し、旧インライン実装を上書きする。
 // deps は getters 経由で常に最新の game.js 状態を読む。
@@ -805,6 +833,8 @@ const { checkStoneOnSwitch, evaluateConditions, refreshGates } = createCondition
 		// Phase 5.5k k-5: ルピー喰いの吸血は所持ルピーを減らす＝HUD 更新とメッセージが要る
 		updateHud:             () => updateHud(),
 		pulse:                 (t, d) => pulse(t, d),
+		// Phase 5.5k k-7: 接触した敵の meta.inflict をプレイヤー側の窓に立てる
+		inflictDebuff:         (meta) => inflictDebuff(meta),
 	});
 
 	// factory が生成した関数で旧インライン実装を上書き
@@ -841,6 +871,8 @@ const { checkStoneOnSwitch, evaluateConditions, refreshGates } = createCondition
 		getIsTransitioning:  () => isTransitioning,
 		addProjectile:       (config) => addProjectile(config),
 		hasCleared,
+		// Phase 5.5k k-7: 剣封じ中は溜めも始まらない／溜め中に封じられたら中断される
+		isSwordSealed:       () => isSwordSealed(),
 	});
 	startCharge        = _charge.startCharge;
 	releaseCharge      = _charge.releaseCharge;
@@ -949,6 +981,8 @@ const { checkStoneOnSwitch, evaluateConditions, refreshGates } = createCondition
 		toggleSwitch:     (r, c) => toggleSwitch(r, c),
 		setActiveColor:   (r, c) => setActiveColor(r, c),
 		gameoverOverlayEl,
+		// Phase 5.5k k-7: 剣封じ（#13 呪い火）＝剣だけが振れない（会話/看板は通る）
+		isSwordSealed:    () => isSwordSealed(),
 		openSignDialog: (sd) => openDialog(sd.name ?? '看板', sd.lines ?? ['（何も書かれていない）']),
 		renderBoard:  () => renderBoard(),
 		renderChars:  () => renderChars(),
@@ -1315,6 +1349,10 @@ function retryGame() {
 	invincibleUntil = 0;
 	gameoverOverlayEl.classList.add('hidden');
 	player.hp = player.maxHp;
+	// Phase 5.5k k-7: 一時デバフはリトライに持ち越さない（倒された原因の毒/封印を
+	// 抱えたまま再開すると立て直せない）。⚠️ 部屋移動では消さない＝毒/封印は
+	// 部屋を跨いで後を引く（gameTime は連続している）。
+	clearPlayerDebuffs();
 	updateHud();
 	enterStage(currentLayer, stageKey, player.y, player.x);
 	startGameLoop();
@@ -1458,6 +1496,8 @@ function gameTick() {
 	projectileTick();
 	bombTick();
 	checkEnemyContact();
+	tickPlayerDebuffs(); // 剣封じ・毒の窓を論理時間で進める（Phase 5.5k k-7）
+	                     // ＝checkEnemyContact の直後に置く（触れた結果を同tickで処理する）
 	checkPendingTriforce(); // 魔王撃破後の星の欠片収集チェック
 	tickAttackPose();    // 剣の構えポーズを論理時間で解除（Phase 5.5g3）
 	redrawAnimSprites();
@@ -2001,6 +2041,14 @@ export function getGameState() {
 			// Phase 9-5a: 弾数上限（容量拡充確認用）
 			maxArrows: player.maxArrows ?? 8,
 			maxBombs: player.maxBombs ?? 8,
+			// Phase 5.5k k-7: 一時デバフ窓（論理時刻。null＝掛かっていない）。
+			// 窓そのものを出す＝テストが「いつ切れるか」を境界 tick で測れる。
+			sealUntil:   player._sealUntil ?? null,
+			swordSealed: isSwordSealed(),
+			poisonUntil: player._poisonUntil ?? null,
+			poisonNextAt: player._poisonNextAt ?? null,
+			poisonDmg:   player._poisonDmg ?? null,
+			poisoned:    isPoisoned(),
 		},
 		heroDir,
 		enemyCount: enemies.length,

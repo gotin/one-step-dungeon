@@ -114,5 +114,18 @@ export function sanitizeLoadedPlayer(player, itemMeta) {
 	if (player.boomerangTier == null) {
 		player.boomerangTier = player.subItems?.boomerang ? 0 : -1;
 	}
+	// Phase 5.5k k-7: 一時デバフ窓（剣封じ・毒）はセーブに持ち越さない。
+	// game.js saveGame() は player を丸ごと直列化する（`{ ...player }`）ので
+	// `_sealUntil` のような論理時刻もそのまま保存されるが、**ロード後の gameTime は
+	// 0 から始まる**∴保存された論理時刻はすべて「未来」に見え、剣が封じられたまま
+	// ／毒が延々と刻むセーブデータになる。∴ロードの純粋関数1か所で必ず消す。
+	// ⚠️ アンダースコアの付いたフィールドを一律で消してはいけない（`_equip`・
+	//    `_ladderAxis`・`_shownSubItemHint` は残すべき状態）＝消すのは窓だけ。
+	player._sealUntil    = null;
+	player._poisonUntil  = null;
+	player._poisonNextAt = null;
+	player._poisonDmg    = null;
+	player._poisonTickMs = null;
+	player._poisonDecay  = null;
 	return player;
 }

@@ -37,22 +37,30 @@ import {
  *   getIsTransitioning()   – isTransitioning
  *   addProjectile(config)  – 投擲物追加（projectile.js）
  *   hasCleared()           – 二周目か（剣ATK2倍）
+ *   isSwordSealed()        – 剣封じの窓が立っているか（Phase 5.5k k-7・game/debuff.js）
  */
 export function createCharge(deps) {
 	const {
 		gameNow, getPlayer, getHeroDir,
 		getIsDialog, getIsPaused, getIsGameover, getIsTransitioning,
 		addProjectile, hasCleared,
+		isSwordSealed,
 	} = deps;
 
 	// 押下した論理時刻（ms）。null のときは非チャージ。
 	let _chargeStart = null;
 
+	// Phase 5.5k k-7: 剣封じ（#13 呪い火）もここで見る。canAct は startCharge の門と
+	// tickCharge の継続条件を兼ねている∴1行足すだけで
+	//   ・封じられている間は新しくチャージを始められない
+	//   ・溜めている最中に封じられたら即キャンセルされる（tickCharge → cancelCharge）
+	// の両方が成立する（剣ビームは剣の攻撃＝封印の対象・サブアイテムは対象外）。
 	function canAct() {
 		const player = getPlayer();
 		return !!player && !!player.weapon
 			&& !getIsDialog() && !getIsPaused()
-			&& !getIsGameover() && !getIsTransitioning();
+			&& !getIsGameover() && !getIsTransitioning()
+			&& !isSwordSealed?.();
 	}
 
 	// 攻撃ボタン押下時に呼ぶ（剣の発火は呼び出し側で別途行う）。

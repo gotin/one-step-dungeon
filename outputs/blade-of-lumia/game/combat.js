@@ -65,6 +65,7 @@ import { enemyW, enemyH, enemyCenter } from './hitbox.js';
  *   spawnFloorDrop(r, c, type)        – フロアドロップ配置（踏んで拾う・Phase 9-5c）
  *   getStageMoves()              – player.stageMoves を返す（Phase 9-5b: lastKillMove 記録用）
  *   gameoverOverlayEl            – ゲームオーバーオーバーレイ DOM
+ *   isSwordSealed()              – 剣封じの窓が立っているか（Phase 5.5k k-7・game/debuff.js）
  */
 export function createCombat(deps) {
 	const {
@@ -91,6 +92,8 @@ export function createCombat(deps) {
 		spawnDropEffect,
 		getStageMoves,
 		gameoverOverlayEl,
+		// Phase 5.5k k-7: 剣封じ（#13 呪い火）＝窓の持ち主は game/debuff.js
+		isSwordSealed,
 	} = deps;
 
 	// ── 剣エフェクト（Phase 5.5g3）────────────────────────────
@@ -529,14 +532,21 @@ export function createCombat(deps) {
 	}
 
 	// ── プレイヤーダメージ ────────────────────────────────
-	function takeDamage(amount) {
+	// **プレイヤーが HP を失う唯一の入口**（接触・投擲物・炎・毒はすべてここを通る）。
+	// Phase 5.5k k-7: 毒（DoT）のために無敵窓の扱いを呼び出し側から変えられるようにした。
+	//   opts.ignoreInvincible … 無敵窓中でも通す（毒は無敵で止まらない）
+	//   opts.noInvincible     … このダメージでは無敵窓を張らない（毒を盾にできない）
+	// 既定（opts なし）は従来どおり＝無敵中は無効・当たれば INVINCIBLE_MS の無敵を張る
+	// ∴既存の呼び出しは1行も変わらない。理由の詳細は game/debuff.js の冒頭。
+	function takeDamage(amount, opts = {}) {
 		if (getDebugMode()) return;
-		if (gameNow() < getInvincibleUntil() || getIsGameover()) return;
+		if (getIsGameover()) return;
+		if (!opts.ignoreInvincible && gameNow() < getInvincibleUntil()) return;
 		const player = getPlayer();
 		const effectiveDef = hasCleared() ? player.def * 2 : player.def;
 		const actual = Math.max(1, amount - effectiveDef);
 		player.hp = Math.max(0, player.hp - actual);
-		setInvincibleUntil(gameNow() + INVINCIBLE_MS);
+		if (!opts.noInvincible) setInvincibleUntil(gameNow() + INVINCIBLE_MS);
 		playSound('playerHit');
 		showPlayerBlink();
 		updateHud();
@@ -576,6 +586,13 @@ export function createCombat(deps) {
 
 		// 以降は剣が必要な操作
 		if (!player.weapon) { pulse('剣を持っていない！'); return; }
+
+		// Phase 5.5k k-7: 剣封じ（#13 呪い火）。**この位置に置くのが要点**＝上の
+		// NPC/店/看板の分岐より後・剣を振る処理より前。封じられている間も人と話し
+		// 看板は読める（会話が止まると詰みかねない）が、剣だけが振れない。
+		// サブアイテム（弓/爆弾/ブーメラン）は input.js の別経路∴封じの対象外
+		// ＝PLAN 5.5k 名簿 #13「妨害特化＝弓/爆弾で処理」。
+		if (isSwordSealed?.()) { pulse('剣が封じられている！'); return; }
 
 		// クールダウンチェック
 		const now = gameNow();
