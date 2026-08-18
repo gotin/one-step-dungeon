@@ -509,12 +509,11 @@ let enemyTick           = () => {};
 let enemyChase          = () => {};
 let bossTickHitAndAway  = () => {};
 let enemyAttack         = () => {};
-let checkEnemyContact   = () => {};
 // Phase 5.5k k-5: combat.js の被弾フックから呼ぶ（張り付きを剥がす）。enemy-ai.js の
 // factory は別ブロックで生成される＝_ai をそのまま参照できないのでここへ引き出す。
 let detachLeech         = () => {};
 // Phase 5.5k k-7: プレイヤー側の一時デバフ窓（剣封じ・毒）＝game/debuff.js が持ち主。
-// combat.js（剣の門）・charge.js（溜めの門）・enemy-ai.js（接触で立てる）の3経路が
+// combat.js（剣の門）・charge.js（溜めの門）・enemy-ai.js（体当たりの解決で立てる）の3経路が
 // 参照するので、factory の生成より先に let を置いて wrapper 経由で読ませる。
 let inflictDebuff       = () => false;
 let isSwordSealed       = () => false;
@@ -746,7 +745,7 @@ const { checkStoneOnSwitch, evaluateConditions, refreshGates } = createCondition
 }
 
 // ── プレイヤー側の一時デバフ窓（Phase 5.5k k-7: debuff.js へ切り出し）─────────
-// 敵AI（接触で立てる）・combat.js（剣の門）・charge.js（溜めの門）より先に生成する。
+// 敵AI（攻撃で立てる）・combat.js（剣の門）・charge.js（溜めの門）より先に生成する。
 // takeDamage は後方の combat ブロックで代入される let なので wrapper 経由で読む
 // （呼ばれるのは tick の中＝その時点では代入済み＝既存の factory 群と同じ作法）。
 {
@@ -833,7 +832,7 @@ const { checkStoneOnSwitch, evaluateConditions, refreshGates } = createCondition
 		// Phase 5.5k k-5: ルピー喰いの吸血は所持ルピーを減らす＝HUD 更新とメッセージが要る
 		updateHud:             () => updateHud(),
 		pulse:                 (t, d) => pulse(t, d),
-		// Phase 5.5k k-7: 接触した敵の meta.inflict をプレイヤー側の窓に立てる
+		// Phase 5.5k k-7: 攻撃を当てた敵の meta.inflict をプレイヤー側の窓に立てる
 		inflictDebuff:         (meta) => inflictDebuff(meta),
 	});
 
@@ -854,7 +853,6 @@ const { checkStoneOnSwitch, evaluateConditions, refreshGates } = createCondition
 	enemyChase           = _ai.enemyChase;
 	bossTickHitAndAway   = _ai.bossTickHitAndAway;
 	enemyAttack          = _ai.enemyAttack;
-	checkEnemyContact    = _ai.checkEnemyContact;
 	detachLeech          = _ai.detachLeech;
 }
 
@@ -1495,9 +1493,12 @@ function gameTick() {
 	enemyTick();
 	projectileTick();
 	bombTick();
-	checkEnemyContact();
+	// Phase 5.5k k-7.5: **接触ダメージは廃止した**（2026-08-17 ユーザー決定②
+	// 「接触だけでは攻撃を受けることはないようにする」）。ここには checkEnemyContact() が
+	// あった＝「触れたら痛い」の唯一の入口。今は敵の攻撃はすべてモーションを持つ
+	// （体当たり＝enemy-ai.js の slam・剣・投擲）∴触れただけでは何も起きない。
 	tickPlayerDebuffs(); // 剣封じ・毒の窓を論理時間で進める（Phase 5.5k k-7）
-	                     // ＝checkEnemyContact の直後に置く（触れた結果を同tickで処理する）
+	                     // ＝enemyTick（slam の解決でデバフが立つ）の後に置く
 	checkPendingTriforce(); // 魔王撃破後の星の欠片収集チェック
 	tickAttackPose();    // 剣の構えポーズを論理時間で解除（Phase 5.5g3）
 	redrawAnimSprites();
@@ -2118,6 +2119,11 @@ export function getEnemiesSnapshot() {
 		stolenRupees: e._stolenRupees ?? 0,   // 吸ったルピーの累計（倒すと一部戻る元）
 		leechNext: e._leechNext ?? null,       // 次に吸う論理時刻
 		leechCooldownUntil: e._leechCooldownUntil ?? null,  // 剥がされた後、再度張り付けるまで
+		// Phase 5.5k k-7.5: 体当たり（slam）の観測用。
+		// slamAt ＝予告が解決する論理時刻（null＝予告していない）＝「隣接しても即ダメージでは
+		// なく予告を挟む」ことをテストが数値で確認するための唯一の窓。
+		slamAt: e._slamAt ?? null,
+		slamWindupMs: e._slamWindupMs ?? null,
 	}));
 }
 

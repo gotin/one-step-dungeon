@@ -93,6 +93,26 @@ export function statefulTileClosed(tile, posKey, ss) {
 }
 
 /**
+ * Phase 5.5k k-7.5: プレイヤーと敵の「重なり」を測る単一の関数。
+ *
+ * 2026-08-17 のユーザー決定①「重なりはどの位置であろうと絶対に発生しないようにする」の実装点。
+ * ⚠️ 旧実装は**丸めたタイルセル1つ**で比べていた（`toTileCol(x)=floor(x+0.5)`）＝
+ *    半セル位置では「跨いでいるもう1つのセル」が空いていることになり、
+ *    敵は西/北から 0.5 まで詰めてスプライトが半分重なった（骸骨剣士のスクショ・実測）。
+ *    しかも東/南は 1.5 で止まる＝同じ機構が向きで不平等になっていた。
+ *    ∴敵同士の重なり判定（AABB・連続座標）と同じ規則をプレイヤーにも使う。
+ *
+ * 重なり「面積」を返すのは**詰み防止のため**＝すでに重なっている状態（敵が湧いた・
+ * ルピー喰いが剥がれた直後など）では「重なりが減る動き」だけを許す必要がある。
+ * 0 なら重なっていない。
+ */
+export function overlapArea(ax, ay, aw, ah, bx, by, bw, bh) {
+	const ox = Math.min(ax + aw, bx + bw) - Math.max(ax, bx);
+	const oy = Math.min(ay + ah, by + bh) - Math.max(ay, by);
+	return (ox > 0 && oy > 0) ? ox * oy : 0;
+}
+
+/**
  * 通行可否判定関数群を生成する。
  * @param {object} d 依存（状態 getter と関数）
  * @param {() => object} d.getStageData   現在のステージデータ
@@ -181,18 +201,24 @@ export function createPassable(d) {
 		// デバッグモード中は敵すり抜け可能
 		if (debugMode) return true;
 
-		// 敵と同じタイルセルには移動できない（重なり防止）
-		// ※ 「0.6未満」判定だと半セル移動時に動けなくなるため、タイル単位で比較する
-		// 大型敵（w×h）は占有セルすべてをブロックする（Phase 3-2）。
-		const ptc = toTileCol(nx), ptr = toTileRow(ny);
+		// 敵と重なる位置には移動できない（Phase 5.5k k-7.5＝ユーザー決定①）。
+		// ⚠️ 旧実装は「丸めたタイルセルが一致するか」だった＝**プレイヤー側からは
+		//    半セルぶん敵にめり込めた**（整数位置の敵へ 0.5 の位置まで踏み込める）。
+		//    敵側（isPassableForEnemy）と同じ連続座標の AABB に揃えた＝どちらから
+		//    近づいても最接近は 1.0（＝隣接）で、絵が重なることは無い。
+		// すでに重なっている場合は「重なりが減る動き」だけ許す＝敵が湧いた位置に
+		// 立っていても詰まない（プレイヤーが1歩も動けなくなるのを防ぐ）。
 		for (const e of getEnemies()) {
 			// Phase 5.5k k-5: 張り付いている敵（ルピー喰い）はプレイヤーのセルに重なって
 			// 追従する＝重なり防止に掛けるとプレイヤーが1歩も動けなくなる（引き剥がすために
 			// 動く自由は残す。剥がす手段は殴ること＝combat.js の被弾フック）。
+			// これが決定⑤「例外はルピー喰いだけ」の実装。
 			if (e._attached) continue;
 			const ew = e.w ?? 1, eh = e.h ?? 1;
-			const ec = toTileCol(e.x), er = toTileRow(e.y);
-			if (ptc >= ec && ptc < ec + ew && ptr >= er && ptr < er + eh) return false;
+			const next = overlapArea(nx, ny, 1, 1, e.x, e.y, ew, eh);
+			if (next <= 0) continue;
+			const cur = player ? overlapArea(player.x, player.y, 1, 1, e.x, e.y, ew, eh) : 0;
+			if (next >= cur) return false;
 		}
 
 		return true;
@@ -357,11 +383,25 @@ export function createPassable(d) {
 			const ow = e.w ?? 1, oh = e.h ?? 1;
 			if (nx < e.x + ow && nx + ew > e.x && ny < e.y + oh && ny + eh > e.y) return false;
 		}
-		// プレイヤーと占有セルが重なるなら移動できない（重なり防止）
-		// 隣接セルへの移動は許可するので体当たり攻撃は成立する
+		// プレイヤーと重なるなら移動できない（Phase 5.5k k-7.5＝ユーザー決定①）。
+		// ⚠️ 旧実装は**プレイヤーの丸めたセル1つ**（`toTileCol=floor(x+0.5)`）だけを塞いでいた
+		//    ＝プレイヤーが半セル位置のとき「跨いでいるもう1つのセル」は空きと判定され、
+		//    西/北から来た敵は 0.5 まで詰めてスプライトが半分重なった（骸骨剣士のスクショ）。
+		//    さらに東/南は 1.5 で止まる∴同じ敵が向きによって届く/届かないが変わっていた。
+		//    ∴上の敵同士（AABB・連続座標）と同じ規則に統一した＝どの向きでも最接近は 1.0。
+		//    これで体当たりの間合いは全方向 1.0〜1.5 に収まる（SLAM_RANGE=1.5 がこの上限）。
+		// ⚠️ 丸め関数 `toTileCol` 自体は直さない（他の判定への波及が広い＝実行キュー 4.55 の教訓）。
+		//    ここで連続座標で測れば、丸めの非対称は重なり判定には効かない。
+		// すでに重なっている場合は「重なりが減る動き」だけ許す＝張り付きが剥がれた直後や
+		// プレイヤーが上に乗った状態から抜け出せる（敵が永久に固まるのを防ぐ）。
 		const player = getPlayer();
-		const ptc = toTileCol(player.x), ptr = toTileRow(player.y);
-		if (ptc >= c0 && ptc <= c1 && ptr >= r0 && ptr <= r1) return false;
+		if (player) {
+			const next = overlapArea(nx, ny, ew, eh, player.x, player.y, 1, 1);
+			if (next > 0) {
+				const cur = overlapArea(self?.x ?? nx, self?.y ?? ny, ew, eh, player.x, player.y, 1, 1);
+				if (next >= cur) return false;
+			}
+		}
 		return true;
 	}
 

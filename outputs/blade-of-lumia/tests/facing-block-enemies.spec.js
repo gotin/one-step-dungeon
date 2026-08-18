@@ -213,10 +213,10 @@ test.describe('Phase 5.5k k-4 – 方向依存の被ダメ（盾騎士・火吐�
     //   ここが SWORD_REACH 以下だと「正面で待って開いた瞬間に殴る」が最適解になり機構が死ぬ。
     expect(t.shell.breathCells, '炎が剣の間合い以下＝正面で待つのが最適解になる')
       .toBeGreaterThan(SWORD_REACH);
-    expect(t.shell.breathAtk, '炎のダメージが接触より弱い＝浴びても痛くない')
+    expect(t.shell.breathAtk, '炎のダメージが体当たりより弱い＝浴びても痛くない')
       .toBeGreaterThanOrEqual(t.atk);
     expect(t.shell.breathMs, '炎の表示時間（CSS .enemy-fire-breath と対）').toBeGreaterThan(0);
-    expect(t.attack?.type, '接触ダメージのみ（飛び道具は持たない＝炎は shell 側の一撃）').toBe('charge');
+    expect(t.attack?.type, '体当たり（charge）のみ（飛び道具は持たない＝炎は shell 側の一撃）').toBe('charge');
     expect(t.directional, '甲羅は開/閉の2枚で足りる＝向き別9枚は要らない').toBeFalsy();
     // 籠もりと開きの機構は別物＝取り違えを防ぐ（盾騎士に shell／亀に blockFacing は無い）
     expect(k.shell, '盾騎士に shell は無い（崩し方は向き）').toBeUndefined();

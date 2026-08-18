@@ -158,6 +158,23 @@
     transform-origin: 50% 100%;
     animation: golem-lumber 1.1s ease-in-out infinite;
 }
+/* Phase 5.5k k-7.5: 体当たり攻撃（slam）の予告モーション。
+   接触専門の敵は「隣接したら即ダメージ」ではなく、この拡大縮小を高速に2往復してから
+   命中判定をする（enemy-ai.js tickSlam）＝プレイヤーは予告を見て間合いを外せば避けられる。
+   ∴このアニメーションは演出ではなく**機構の告知**（GUIDE §6-1「絵は機構を読ませる」）。
+   ・1往復の長さは `--slam-pulse-ms`（予告の半分）を enemy-ai.js が要素へ書き込む
+   ・iteration-count 2 ＝2往復でちょうど予告が終わる
+   ・大型敵の揺れ（.large-enemy）より後に置く＝同じ specificity では後勝ち＝予告が上に出る */
+.char-abs.slam-windup canvas.sprite {
+    transform-origin: 50% 100%;
+    animation: enemy-slam var(--slam-pulse-ms, 140ms) ease-in-out 2;
+}
+@keyframes enemy-slam {
+    0%   { transform: scale(1)             translateY(0);   }
+    50%  { transform: scale(1.22, 0.86)    translateY(4%);  }
+    100% { transform: scale(1)             translateY(0);   }
+}
+
 @keyframes golem-lumber {
     0%   { transform: translateY(0)      rotate(-1.5deg) scaleY(1);    }
     25%  { transform: translateY(-3%)    rotate(0deg)    scaleY(1.02); }

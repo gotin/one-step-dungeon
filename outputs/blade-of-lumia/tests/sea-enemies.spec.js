@@ -4,7 +4,7 @@
 // ①魚群（'&'）は tests/aquatic-enemy.spec.js で固定済み。ここは②③を固定する。
 //
 // ②接近型 = 潜み鮫 LURK_SHARK ('<')：潜行↔浮上のリズム戦闘（ユーザー確定 2026-07-25）。
-//   潜行中（e.hidden）… 追跡は続くが「無敵・攻撃なし・接触ダメージなし」
+//   潜行中（e.hidden）… 追跡は続くが「無敵・攻撃なし」（接触ダメージは k-7.5 で廃止）
 //   ⚠ 2026-08-13（5.5k k-3）に機構名を一般化した＝`meta.submerge`→`meta.hide`（style:'water'）／
 //     `e.submerged`→`e.hidden`。同じ規則を陸（地中蟲）・空（跳躍蜘蛛の滞空）でも使うため。
 //   浮上中               … 噛みつき（sword range1.6）で殴ってくる／こちらの攻撃も通る
@@ -24,7 +24,11 @@
 //   ② タイル定義／スプライト／パレット／スプライトマップ／waterShot の名前解決
 //   ③ 潜行FSM の周期が論理時間どおり（潜行2.0s → 浮上1.2s → 潜行）
 //   ④ 潜行中は全ダメージ無効・浮上中は通る（リズム戦闘の核心）
-//   ⑤ 潜行中は接触ダメージを与えない（無敵と対の扱い）
+//   ⑤ （廃止）潜行中は接触ダメージを与えない — Phase 5.5k k-7.5（2026-08-17）で接触ダメージ
+//      そのものが無くなった（ユーザー決定②「接触だけでは攻撃を受けることはないようにする」）
+//      ∴この本は削除した。同型の主張＝「予告の解決の時刻に隠れていたら空振り」は
+//      tests/slam-attack.spec.js が持つ（`tickSlam` は `e.hidden` ならダメージを出さない）。
+//      潜行中に攻撃されないこと自体は下の⑥（浮上中だけ噛みつく）が番人。
 //   ⑥ 潜行中は攻撃しない・浮上中だけ噛みつく
 //   ⑦ 射水魚が水弾を発射し、任意角（斜め）に飛ぶ
 //   ⑧ クールダウン前は撃たない（⑦が vacuous pass でない証明）
@@ -48,7 +52,6 @@ import { ENEMY_SPRITES, ENEMY_PAL } from '../shared/sprites-enemies.js';
 import { ITEM_SPRITES, ITEM_PAL } from '../shared/sprites-items.js';
 import { SPRITES, PAL } from '../shared/sprites.js';
 import { TILE_SPRITE_MAP } from '../shared/tile-sprites.js';
-import { createEnemyAi } from '../game/enemy-ai.js';
 import { waitForBoard } from './helpers.js';
 import { TEST_LAYER, stageKey } from './test-stage-keys.js';
 import { gameLayerEntries } from '../shared/layers.js';
@@ -142,23 +145,6 @@ test.describe('Phase 9-6 深洋O – 海棲雑魚②接近型・③遠隔型', (
     expect(SPRITES.waterBlade, 'マージ後の SPRITES に waterBlade が無い').toBeTruthy();
     expect(PAL.waterBlade, 'マージ後の PAL に waterBlade が無い').toBeTruthy();
     expect(PROJECTILE_SPRITE.waterBlade, 'PROJECTILE_SPRITE に waterBlade が無い').toBe('waterBlade');
-  });
-
-  test('⑤ 潜行中の敵は接触ダメージを与えない（浮上中は与える）', () => {
-    // checkEnemyContact 単体（DOM 不要）。プレイヤーと敵を同一セルに重ねる。
-    const calls = [];
-    const enemy = { id: 'e1', type: TILE.LURK_SHARK, x: 5, y: 5, hidden: true };
-    const ai = createEnemyAi({
-      getPlayer:  () => ({ x: 5, y: 5 }),
-      getEnemies: () => [enemy],
-      takeDamage: (amt) => calls.push(amt),
-    });
-    ai.checkEnemyContact();
-    expect(calls, '潜行中は重なってもダメージなし').toEqual([]);
-    enemy.hidden = false;
-    ai.checkEnemyContact();
-    expect(calls.length, '浮上中は接触ダメージが入る').toBe(1);
-    expect(calls[0], '潜み鮫の atk が入る').toBe(ENEMY_META[TILE.LURK_SHARK].atk);
   });
 
   test('③ 潜行↔浮上の周期が論理時間どおり（潜行2.0s→浮上1.2s→潜行）', async ({ page }) => {

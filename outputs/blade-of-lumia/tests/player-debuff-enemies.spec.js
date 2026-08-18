@@ -5,17 +5,17 @@
 // 窓は敵側の攻撃ポーズ窓（`e._atkUntil`）とまったく同型の論理時間（gameNow 基準）：
 //
 //   ① 呪い火 CURSE_FIRE ('ψ') … `inflict:{ type:'sealSword', ms }`
-//        触れると数秒**剣が振れない**（＋チャージも始まらない・溜め中なら中断される）。
-//        ・接触ダメージは最小（atk 1）＝この敵の攻撃は「痛み」ではなく「手を1つ奪うこと」
+//        体当たりを受けると数秒**剣が振れない**（＋チャージも始まらない・溜め中なら中断される）。
+//        ・体当たりのダメージは最小（atk 1）＝この敵の攻撃は「痛み」ではなく「手を1つ奪うこと」
 //        ・**サブアイテム（弓/爆弾/ブーメラン）は封じない**＝名簿 #13「妨害特化＝弓/爆弾で処理」
 //        ・**会話・看板も封じない**＝封じたら詰みかねない（ゲートを置く位置がその契約）
 //        ・`move:'air'`＝水/溶岩を越えて追ってくる＝地形では撒けない（走って距離を取る）
 //   ② 毒沼ヒル POISON_LEECH ('Γ') … `inflict:{ type:'poison', ms, tickMs, damage, decay }`
-//        触れると継続ダメージ。tickMs ごとに刻み、1刻みごとに decay だけ弱まる（下限1）。
-//        ・**毒は無敵窓を貫通する**（接触無敵の間も刻む）＝無敵は「HP を守る窓」であって
-//          「触れた事実」を消す窓ではない
+//        体当たりを受けると継続ダメージ。tickMs ごとに刻み、1刻みごとに decay だけ弱まる（下限1）。
+//        ・**毒は無敵窓を貫通する**（被弾無敵の間も刻む）＝無敵は「HP を守る窓」であって
+//          「当てられた事実」を消す窓ではない
 //        ・**毒は無敵窓を与えない**＝毒を盾に使えない（受けている方が安全にならない）
-//        ・鈍足（SLOW）＝出会った瞬間は無害に見えるが接触1回の実効は 接触1＋毒3＝4
+//        ・鈍足（SLOW）＝出会った瞬間は無害に見えるが体当たり1回の実効は 打撃1＋毒3＝4
 //
 // 検証ステージ＝test_mechanics[39,0] `curse_fire` / [40,0] `poison_leech`
 // （scripts/migrate-test-player-debuff-arenas.mjs が自己検査付きで生成。座標は `stageKey()`）。
@@ -25,41 +25,49 @@
 // 外周は壁だが**左右 rows 7/8 は隣のアリーナへの通路**（tests/test-arena-doors.js）∴塞がない。
 //
 // tick 換算（TICK_MS=120・step() が論理時間を 120ms 進める・tick i の now = 120×i）：
-//   呪い火の封印   … ms 3000 ＝ 25 tick（接触した tick の now + 3000 が窓の終わり）
+//   呪い火の封印   … ms 3000 ＝ 25 tick（当てられた tick の now + 3000 が窓の終わり）
 //   毒の窓         … ms 2400 ＝ 20 tick／刻み tickMs 1200 ＝ 10 tick ごと（窓の中で2回）
-//   接触無敵       … INVINCIBLE_MS 1500 ＝ 12.5 tick ∴**毒の1刻み目（+10 tick）は
+//   被弾無敵       … INVINCIBLE_MS 1500 ＝ 12.5 tick ∴**毒の1刻み目（+10 tick）は
 //                    無敵窓の内側に来る**＝「毒は無敵窓を貫通する」の歯が数値の側で立つ
 //                    （migrate スクリプトが tickMs < INVINCIBLE_MS を検査している）
+//   体当たり       … 予告 SLAM_WINDUP_MS 280（3 tick 後に解決）／クールダウン
+//                    SLAM_COOLDOWN_MS 900（8 tick）／到達 SLAM_RANGE 1.5
+//                    ∴当たり→次の当たりは 11 tick 間隔（実測 1320ms→2640ms）
 //
+// ⚠ **k-7.5（2026-08-17）でデバフの入口が変わった。** 接触ダメージは廃止された
+//   （ユーザー決定②「接触だけでは攻撃を受けることはないようにする」）∴デバフが立つのは
+//   **体当たり（slam）の予告が解決した tick だけ**（enemy-ai.js `tickSlam`）：
+//     ① 敵が到達距離（1.5）に入った tick に予告が立つ（`getEnemies()[0].slamAt` が非 null）
+//     ② 予告中（280ms＝3 tick）は敵は動かず攻撃もしない＝**この間はまだ無傷**
+//     ③ 解決の tick に到達判定をやり直し、当たっていればダメージ＋`meta.inflict` のデバフ
+//   ∴測り方は「敵に重ねて 1 tick」から**「隣に立って予告の解決を待つ」**に変わった。
+//   実測（置いて待つだけ＝実プレイの形）：呪い火 t14 予告→t17 被弾（now 2040）／
+//   毒沼ヒル t12 予告→t15 被弾（now 1800）。毎tick 敵の西隣（dist 1.0）へ置き直す場合は
+//   どちらも t8 予告→t11 被弾（クールダウンの初期値 0 ＝ now 900 まで最初の予告が出ない）。
+// ⚠ **もう「敵に重ねる」ことはできない**＝passable.js が連続座標の AABB で重なりを禁じた
+//   （決定①）∴敵も自力で dist 1.0 より詰められない。重ねてもダメージは起きない
+//   （旧 spec の `p.x = e.x; p.y = e.y` に戻すと全部の本が赤くなる）。
 // ⚠ 計測は1回の evaluate 内で完結させ、冒頭で pause() → gameTime===0 を assert する。
 //   実時間ループは `gotoFrozen()` でそもそも起動させない（k-4/k-5/k-6 spec と同じ理由）。
 // ⚠ プレビュー（fromEditor=1）は debugMode:true ＝ takeDamage が早期 return する∴
 //   **プレイヤーの HP を測る本だけ** 'g' で debug を切る。デバフ窓そのものは
-//   takeDamage の結果に関係なく立つ（enemy-ai.js の contact は takeDamage の後に
-//   inflictDebuff を呼ぶ）∴HP を見ない本は debug を切らない＝HP のノイズが混ざらない。
-// ⚠ **接触は「触れている間ずっと毎 tick」起きる**＝窓は毎 tick 引き直される。
-//   窓の終わりを測る本は、接触した後に**毎 tick プレイヤーを遠くへ置き直して**
-//   再接触を切る（放っておくと永久に封じられたまま＝境界を測れない）。
-// ⚠ **敵は自力では接触箱（0.9）に入れない。** passable.js isPassableForEnemy が
-//   「プレイヤーの占有セルへは移動できない」＝敵が詰められる限界は dist 1.0
-//   （k-5 のルピー喰いで attachRange 1.1 が必要だったのと同じ理由・GUIDE §3-2）。
-//   ∴ステージに置いて待つだけでは**永久に接触しない**（実測：呪い火は 16 tick で
-//   x=5 まで来てそこで止まる）。接触は**プレイヤー側から作る**：`p.x = e.x; p.y = e.y`
-//   と重ねて 1 tick 進める（k-4/k-5 spec と同じ手法）。実プレイでは半セル移動の
-//   プレイヤーが自分から踏み込んで dist 0.5 になる＝接触はプレイヤーの前進で起きる。
-//   「寄って来るが自力では触れない」ことは ⑤⑪ が対照として測る（＝この制約の番人）。
-// ⚠ gameTick の順番は tickCharge() → checkEnemyContact() → tickPlayerDebuffs()。
-//   ∴接触した tick では**チャージはまだ生きている**（同じ tick の tickCharge は
+//   takeDamage の結果に関係なく立つ（tickSlam は takeDamage の後に inflictDebuff を
+//   呼ぶ）∴HP を見ない本は debug を切らない＝HP のノイズが混ざらない。
+// ⚠ **体当たりは 11 tick ごとに再発火する**（張り付かれている限り窓は伸び続ける）。
+//   窓の終わりを測る本は、当たった後に**毎tick「敵から最も遠い隅」へ置き直す**：
+//   隅を固定するだけでは足りない＝敵は追って来てまた体当たりする（窓が伸びて境界が測れない）。
+// ⚠ gameTick の順番は tickCharge() → enemyTick()（この中で tickSlam）→ tickPlayerDebuffs()。
+//   ∴当てられた tick では**チャージはまだ生きている**（同じ tick の tickCharge は
 //   封印より前に走り終えている）＝溜めの中断は次の tick で起きる（⑧ が 1 tick 余分に
-//   進める理由）。デバフの窓そのものは接触した tick の gameTime を基点に立つ。
+//   進める理由）。デバフの窓そのものは当てられた tick の gameTime を基点に立つ。
 // ⚠ k-7a 時点のスプライトは既存絵のエイリアス（GUIDE §2「機構が先・絵は後」）∴絵の中身は
 //   主張せず、名前解決と「デバフ状態が DOM のクラスとして出ること」だけを固定する。
 //   実描き（32×32・1枚＋左右反転）は k-7b の担当。
 //
-// ── 歯の実測（2026-08-17・機構を1つずつ壊して赤くなる本を数えた）─────────────
+// ── 歯の実測（2026-08-17・機構を1つずつ壊して赤くなる本を数えた。k-7.5 で更新）──────
 //   debuff.js inflictDebuff の sealSword 分岐を削る ………………………… ⑤⑥⑦⑧⑨⑩
 //   debuff.js inflictDebuff の poison 分岐を削る …………………………… ⑪⑫⑬⑭⑮
-//   debuff.js 毒の再接触で `_poisonNextAt` を毎回引き直す（修正前の形）… ⑮
+//   debuff.js 毒の再発火で `_poisonNextAt` を毎回引き直す（修正前の形）… ⑮
 //   debuff.js tickPlayerDebuffs の毒の while を削る ……………………… ⑫⑬⑭⑮
 //   debuff.js の takeDamage から `ignoreInvincible` を外す ……………… ⑫⑬⑭
 //   debuff.js の takeDamage から `noInvincible` を外す …………………… ⑭
@@ -67,11 +75,14 @@
 //   combat.js swordAttack の封印ゲートを削る ………………………………… ⑥⑦
 //   combat.js の封印ゲートを NPC/看板の分岐より**前**へ動かす ………… ⑩
 //   charge.js canAct() の `!isSwordSealed?.()` を削る ……………………… ⑧
-//   enemy-ai.js checkEnemyContact の `inflictDebuff` 呼び出しを削る … ⑤〜⑮（11本）
+//   enemy-ai.js tickSlam の `inflictDebuff` 呼び出しを削る ……………… ⑤〜⑮（11本）
+//   enemy-ai.js の予告（startSlam）を飛ばして即ダメージにする ………… ⑤⑪（対照が死ぬ）
 //   render-chars.js の `sealed` の class 切り替えを削る …………………… ⑤
 //   render-chars.js の `poisoned` の class 切り替えを削る ………………… ⑪
 //   save.js sanitizeLoadedPlayer の窓クリアを削る …………………………… ⑰
 // ※ ①②③④⑯ はデータ／配置の番人（実行時の機構ではない）∴上の破壊では動かない。
+// ※ 体当たりそのものの機構（予告の長さ・盾で防げない・重なり禁止）は
+//    tests/slam-attack.spec.js が番人（この本はデバフの窓だけを見る）。
 
 import { test, expect } from '@playwright/test';
 import { readFileSync } from 'fs';
@@ -81,7 +92,7 @@ import { ENEMY_META, ENEMY_SPEED_FAST } from '../shared/enemies.js';
 import { ENEMY_SPRITES, ENEMY_PAL } from '../shared/sprites-enemies.js';
 import { TILE_SPRITE_MAP } from '../shared/tile-sprites.js';
 import { ITEM_META } from '../shared/items.js';
-import { TICK_MS, INVINCIBLE_MS } from '../game/constants.js';
+import { TICK_MS, INVINCIBLE_MS, SLAM_RANGE, SLAM_WINDUP_MS } from '../game/constants.js';
 import { sanitizeLoadedPlayer } from '../game/save.js';
 import { waitForBoard } from './helpers.js';
 import { TEST_LAYER, stageKey } from './test-stage-keys.js';
@@ -105,15 +116,23 @@ function previewUrl(stage, row, col, extra) {
 // 寄って来る速さ＝1 tick あたり MOVE_STEP(0.5)×speed セル（enemyChase は accum が 1.0 に
 // 達した tick だけ半セル動く）∴隣（dist 1.0）まで詰めるのに要る tick は
 // (dist - 1.0) / (0.5 × speed)：
-//   呪い火    … (4,4)＝同じ行・dist 5.0・速度 0.5  ∴ 16 tick で隣（実測一致）＋真南に看板(5,4)
-//   毒沼ヒル  … (4,6)＝同じ行・dist 3.0・速度 0.25 ∴ 16 tick で隣
-// ⚠ そこから先は入って来ない（上の「敵は自力では接触箱に入れない」）∴接触は重ねて作る。
+//   呪い火    … (4,4)＝同じ行・dist 5.0・速度 0.5  ∴ 14 tick で到達距離 1.5・17 tick で被弾
+//   毒沼ヒル  … (4,6)＝同じ行・dist 3.0・速度 0.25 ∴ 12 tick で到達距離 1.5・15 tick で被弾
+// ⚠ 敵は dist 1.0 より詰められない（重なり禁止＝決定①）が、到達距離 1.5 から体当たりできる
+//   ∴**置いて待つだけで当てられる**（k-7a の「重ねて接触を作る」は不要になった）。
 const CURSE  = (extra) => previewUrl('curse_fire',   4, 4, extra);
 const POISON = (extra) => previewUrl('poison_leech', 4, 6, extra);
 
-// 接触を1回作る型（evaluate は別コンテキストなので関数を渡せない＝各テストで同じ形を書く）：
-//   const e = g.getEnemies()[0]; p.x = e.x; p.y = e.y; g.step(1);   // ← この tick で接触
-// 接触した論理時刻＝step 後の gameTime（step は TICK_MS 足してから gameTick を回す）。
+// 体当たりを1回受ける型（evaluate は別コンテキストなので関数を渡せない＝各テストで同じ形を書く）：
+//   for (let i = 1; i <= 20; i++) {                       // 予告の解決を待つ
+//     const e = g.getEnemies()[0]; p.x = e.x - 1; p.y = e.y;   // 毎tick 西隣（dist 1.0）へ置き直す
+//     g.step(1);
+//     if (g.getState().player.<デバフ>) { /* この tick で当てられた */ break; }
+//   }
+// 当てられた論理時刻＝step 後の gameTime（step は TICK_MS 足してから gameTick を回す）。
+// 逃げる型（窓の終わりを測る本）＝毎tick「敵から最も遠い隅」へ置き直す：
+//   const e = g.getEnemies()[0]; p.x = e.x >= 5.5 ? 1 : 10; p.y = e.y >= 4.5 ? 1 : 8;
+// これで最接近 4.5 以上を保てる（到達距離 1.5 の外＝再発火しない）。
 
 // 実時間ループ（game.js startGameLoop = setInterval(() => step(1), TICK_MS)）を
 // ページ評価の**前に**無効化する（k-4/k-5/k-6 spec と同じ仕掛け）。
@@ -155,8 +174,8 @@ const threatOf = (m) => (m.hp * m.atk) / (m.def + 1);
 const CURSE_M  = () => ENEMY_META[TILE.CURSE_FIRE];
 const POISON_M = () => ENEMY_META[TILE.POISON_LEECH];
 // game.js の初期プレイヤー（hp 6 / maxHearts 3＝2hp が 1 ハート）。
-// 「接触1回で何ハート持って行かれるか」の校正に使う（③ の名簿の脅威度は接触ダメージ
-// しか値踏みしない＝デバフの重さはこの数字で見る）。
+// 「体当たり1回で何ハート持って行かれるか」の校正に使う（③ の名簿の脅威度は打撃の
+// ダメージしか値踏みしない＝デバフの重さはこの数字で見る）。
 const START_HP = 6;
 
 test.describe('Phase 5.5k k-7 – プレイヤー側の一時デバフ窓（呪い火・毒沼ヒル）', () => {
@@ -175,26 +194,27 @@ test.describe('Phase 5.5k k-7 – プレイヤー側の一時デバフ窓（呪�
         .toBeLessThan(threatOf(ENEMY_META[TILE.SWORD_BEAST]));
       // GUIDE §7-2＝敵はプレイヤー（速度換算 1.0）より必ず遅い
       expect(m.speed, `${name} がプレイヤーと同速以上＝振り切れない`).toBeLessThan(ENEMY_SPEED_FAST);
-      // 接触が機構の入口＝遠隔攻撃を持たない（持つと「接触せずに掛かった」ように見える）
-      expect(m.attack?.type, `${name} は接触専門（charge）でない`).toBe('charge');
+      // 体当たり（charge）が機構の入口＝遠隔攻撃を持たない
+      // （持つと「近づかずに掛かった」＝予告を見て間合いを外す答えが無い敵になる）
+      expect(m.attack?.type, `${name} は体当たり専門（charge）でない`).toBe('charge');
       expect(m.inflict?.type, `${name} の inflict の型`).toBe(inflictType);
       // 窓の長さは tick の整数倍＝観測 tick が揺れない
       expect(m.inflict.ms % TICK_MS, `${name} の inflict.ms が tick の整数倍でない`).toBe(0);
       expect(m.inflict.ms, `${name} の窓が 0 以下＝掛かった瞬間に切れる`).toBeGreaterThan(0);
-      // k-7b で描く絵は 1 枚＋左右反転＝向き別スプライトは持たない（PLAN k-7b）
+      // k-7b で描いた絵は 1 種＋左右反転＝向き別スプライトは持たない（PLAN k-7b）
       expect(m.directional, `${name} は向き別スプライトを持たない（1枚＋左右反転）`).toBeFalsy();
       expect(m.guards, `${name} はガードしない（k-4 の機構は持たせない）`).toBeFalsy();
     }
 
-    // ① 呪い火＝「痛み」ではなく「手を奪う」敵。接触ダメージが大きいと
+    // ① 呪い火＝「痛み」ではなく「手を奪う」敵。体当たりのダメージが大きいと
     //    「剣を封じられたこと」より「削られたこと」が主題になってしまう。
     const c = CURSE_M();
-    expect(c.atk, '呪い火の接触ダメージが大きい＝妨害ではなく痛みが主題になっている')
+    expect(c.atk, '呪い火の体当たりのダメージが大きい＝妨害ではなく痛みが主題になっている')
       .toBeLessThanOrEqual(1);
     expect(c.move, '呪い火が飛行でない＝水/溶岩の向こうへ逃げれば無力化できてしまう').toBe('air');
     expect(c.inflict.ms, '封印が短すぎる＝封じられたことに気づかない').toBeGreaterThanOrEqual(TICK_MS * 10);
 
-    // ② 毒沼ヒル＝毒の総量の校正。**接触1回で即死級にしない**こと。
+    // ② 毒沼ヒル＝毒の総量の校正。**体当たり1回で即死級にしない**こと。
     //    刻む回数は窓 ÷ 間隔（割り切れることは migrate スクリプトが検査）。
     const p = POISON_M().inflict;
     expect(p.tickMs, '毒の刻み間隔が無い＝刻まない').toBeGreaterThan(0);
@@ -205,11 +225,11 @@ test.describe('Phase 5.5k k-7 – プレイヤー側の一時デバフ窓（呪�
     expect(p.decay, '減衰が1刻み目以上＝2刻み目でいきなり下限になる').toBeLessThan(p.damage);
     let dmg = p.damage, total = 0;
     for (let i = 0; i < p.ms / p.tickMs; i++) { total += dmg; dmg = Math.max(1, dmg - p.decay); }
-    expect(total + POISON_M().atk, `接触1回の実効ダメージ（接触+毒=${total + POISON_M().atk}）が`
-      + `初期プレイヤーの HP（${START_HP}）以上＝1回触れたら即死する`)
+    expect(total + POISON_M().atk, `体当たり1回の実効ダメージ（打撃+毒=${total + POISON_M().atk}）が`
+      + `初期プレイヤーの HP（${START_HP}）以上＝1回当てられたら即死する`)
       .toBeLessThan(START_HP);
-    // ★ 毒の1刻み目が接触無敵の内側に来る＝「無敵窓を貫通する」が観測できる配置
-    expect(p.tickMs, '毒の刻み間隔が接触無敵以上＝1刻み目が無敵の外に来る'
+    // ★ 毒の1刻み目が被弾無敵の内側に来る＝「無敵窓を貫通する」が観測できる配置
+    expect(p.tickMs, '毒の刻み間隔が被弾無敵以上＝1刻み目が無敵の外に来る'
       + '∴「毒は無敵窓を貫通する」を壊しても赤くならない').toBeLessThan(INVINCIBLE_MS);
 
     // 機構の取り違え防止（呪い火に毒の数値／毒沼ヒルに封印は無い）
@@ -217,7 +237,7 @@ test.describe('Phase 5.5k k-7 – プレイヤー側の一時デバフ窓（呪�
     expect(POISON_M().inflict.type, '毒沼ヒルが剣を封じている＝型が混ざっている').not.toBe('sealSword');
   });
 
-  test('② タイル定義・スプライト・パレットの名前解決（k-7a は既存絵のエイリアス）', () => {
+  test('② タイル定義・専用スプライト・パレットの名前解決（k-7b で描いた 32×32・2フレーム）', () => {
     for (const [tile, name, pal] of K7) {
       const meta = ENEMY_META[tile];
       expect(TILE_META[tile], `TILE_META['${tile}'] が無い＝エディタに出ない`).toBeTruthy();
@@ -322,7 +342,7 @@ test.describe('Phase 5.5k k-7 – プレイヤー側の一時デバフ窓（呪�
         expect(grid[r][inner], `${name}: 通路 (${r},${c}) の内側 (${r},${inner}) が床でない＝通れない`)
           .toBe(TILE.FLOOR);
       }
-      // 敵の4近傍は床（立ち位置を変えて何度も接触させる余裕を残す）
+      // 敵の4近傍は床（立ち位置を変えて何度も体当たりを受ける余裕を残す）
       for (const [dr, dc, label] of [[1, 0, '南'], [-1, 0, '北'], [0, 1, '東'], [0, -1, '西']]) {
         expect(grid[4 + dr][9 + dc], `${name}: 敵の${label}隣が床でない`).toBe(TILE.FLOOR);
       }
@@ -338,7 +358,10 @@ test.describe('Phase 5.5k k-7 – プレイヤー側の一時デバフ窓（呪�
   });
 
   // ── 呪い火（剣封じ）─────────────────────────────────────────────────────
-  test('⑤ 接触で剣封じの窓が立つ（対照＝接触前は窓が無い）＋状態が絵に出る', async ({ page }) => {
+  // ⑤ は k-7.5 の芯を測る本＝「隣接しただけでは何も起きない／体当たりの**予告が解決した
+  //    tick に**封じられる」（ユーザー決定②③）。プレイヤーは**一度も動かさない**＝
+  //    実プレイの形（置いて待つだけで敵が寄って来て体当たりする）のまま測る。
+  test('⑤ 体当たりの解決で剣封じの窓が立つ（対照＝到達距離に入っただけ・予告中は無傷）＋状態が絵に出る', async ({ page }) => {
     const errors = [];
     page.on('pageerror', e => errors.push(e.message));
     await gotoFrozen(page, CURSE());
@@ -353,29 +376,23 @@ test.describe('Phase 5.5k k-7 – プレイヤー側の一時デバフ窓（呪�
         px: s0.player.x, py: s0.player.y,
         before: { sealUntil: s0.player.sealUntil, sealed: s0.player.swordSealed,
                   cls: document.getElementById('char-player')?.classList.contains('sealed') },
-        pre: [],
+        trace: [],
       };
-      // ── 対照(a)：**敵が寄って来るだけでは封じられない**。20 tick 追わせると隣（dist 1.0）
-      //    まで詰めるが、そこから先は入って来ない（passable.js の重なり防止）。
-      let distMin = Infinity;
-      for (let i = 1; i <= 20; i++) {
+      // プレイヤーは動かさない（実プレイの形）。敵が寄って来て予告→解決するまでを記録する。
+      for (let i = 1; i <= 24; i++) {
         g.step(1);
         const s = g.getState();
         const e = g.getEnemies()[0];
-        distMin = Math.min(distMin, Math.hypot(e.x - s.player.x, e.y - s.player.y));
-        out.pre.push({ i, sealUntil: s.player.sealUntil });
+        out.trace.push({
+          i, t: s.gameTime,
+          dist: Math.hypot(e.x - s.player.x, e.y - s.player.y),
+          slamAt: e.slamAt ?? null, windupMs: e.slamWindupMs ?? null,
+          sealUntil: s.player.sealUntil,
+        });
       }
-      out.distMin = distMin;
-      // ── 本番：プレイヤーから踏み込む（重ねて 1 tick）＝接触が1回起きる
-      const p = g.getPlayer();
-      const e = g.getEnemies()[0];
-      p.x = e.x; p.y = e.y;
-      g.step(1);
       const s = g.getState();
-      out.gameTime  = s.gameTime;
-      out.sealed    = s.player.swordSealed;
-      out.sealUntil = s.player.sealUntil;
       out.cls = document.getElementById('char-player')?.classList.contains('sealed');
+      out.sealed = s.player.swordSealed;
       out.poisoned = s.player.poisoned;   // 呪い火は毒を持たない（型の取り違え防止）
       return out;
     });
@@ -384,22 +401,46 @@ test.describe('Phase 5.5k k-7 – プレイヤー側の一時デバフ窓（呪�
     expect(res.enemy.length, '前提：呪い火が1体だけ居る').toBe(1);
     expect(res.enemy[0].type, '前提：置かれた敵が呪い火').toBe(TILE.CURSE_FIRE);
     expect([res.py, res.px], '前提：プレイヤーは (4,4)').toEqual([4, 4]);
-    // 対照＝接触するまでは窓が無い（置いただけで封じられる実装ではない）
     expect(res.before, '対照：開始時点で既に封じられている').toEqual({ sealUntil: null, sealed: false, cls: false });
-    expect(res.pre.every(r => r.sealUntil === null),
-      '接触していない tick で窓が立っている（近づかれただけで封じられている）').toBe(true);
-    // ★ 対照(a) の要：敵はちゃんと寄って来る（＝機構が「敵が来ない」で空振りしていない）が、
-    //   **自力では接触箱（0.9）に入れない**（重なり防止）。この2つが同時に成り立つことが
-    //   「接触はプレイヤーの踏み込みで起きる」の根拠＝ここが崩れたら測り方を作り直す。
-    expect(res.distMin, '敵が寄って来ていない（速度・追跡・幾何が変わった？）').toBeLessThanOrEqual(1.05);
-    expect(res.distMin, '敵が自力で接触箱（0.9）に入った＝重なり防止が外れている'
-      + '（この spec の接触の作り方＝重ねる手法を見直すこと）').toBeGreaterThanOrEqual(0.9);
-    // ★ 窓は「接触した論理時刻 + ms」＝論理時間で立つ（実時間の setTimeout ではない）
-    expect(res.sealed, '踏み込んで重なっても封印が立たない').toBe(true);
-    expect(res.sealUntil, '封印の窓が inflict.ms と合わない').toBe(res.gameTime + m.inflict.ms);
+
+    const tr = res.trace;
+    // ★ 決定①：どの tick でも重ならない（最接近は 1.0＝隣のセル）
+    const distMin = Math.min(...tr.map(r => r.dist));
+    expect(distMin, '敵が寄って来ていない（速度・追跡・幾何が変わった？）').toBeLessThanOrEqual(1.05);
+    expect(distMin, '敵がプレイヤーに重なった＝重なり禁止（決定①）が外れている')
+      .toBeGreaterThanOrEqual(1.0);
+    // ★ 予告は「到達距離に入った tick」に立つ（それより遠い間は立たない）
+    const firstSlam = tr.find(r => r.slamAt != null);
+    expect(firstSlam, '敵が体当たりの予告を出さない＝寄って来るだけの無害な敵になっている').toBeTruthy();
+    expect(firstSlam.dist, `予告が到達距離（${SLAM_RANGE}）の外で立っている`)
+      .toBeLessThanOrEqual(SLAM_RANGE + 0.001);
+    expect(tr.filter(r => r.i < firstSlam.i).every(r => r.dist > SLAM_RANGE),
+      '到達距離の外の tick で予告が立っている（間合いを外しても攻撃される）').toBe(true);
+    expect(firstSlam.windupMs, `予告の長さが SLAM_WINDUP_MS（${SLAM_WINDUP_MS}）でない`).toBe(SLAM_WINDUP_MS);
+    expect(firstSlam.slamAt, '予告の解決時刻が「予告を立てた時刻＋windup」でない')
+      .toBe(firstSlam.t + SLAM_WINDUP_MS);
+    // ★★ 決定②③の芯＝**隣接しただけ・予告中はまだ封じられていない**
+    //    （ここが赤くなる実装＝到達距離に入った瞬間にダメージ＝予告を見て避けられない）
+    const windupTicks = tr.filter(r => r.slamAt != null);
+    expect(windupTicks.length, '予告中の tick が記録されていない＝予告が一瞬で解決している'
+      + `（windup ${SLAM_WINDUP_MS}ms は ${Math.ceil(SLAM_WINDUP_MS / TICK_MS)} tick 分ある）`)
+      .toBeGreaterThanOrEqual(2);
+    expect(windupTicks.every(r => r.sealUntil === null),
+      '予告中に封じられている＝「隣接したら即攻撃」に戻っている（予告を見て下がる余地が無い）').toBe(true);
+    // ★ 封じられるのは**予告が解決した tick**＝予告の次の tick 群のうち slamAt が消えた最初
+    const hitIdx = tr.findIndex((r, i) => i > 0 && tr[i - 1].slamAt != null && r.slamAt == null);
+    const hit = tr[hitIdx];
+    expect(hit, '予告が解決していない（予告が立ったまま宙に浮いている）').toBeTruthy();
+    const firstSealed = tr.find(r => r.sealUntil != null);
+    expect(firstSealed?.i, '封印が立つ tick が「予告が解決した tick」と違う').toBe(hit.i);
+    expect(hit.dist, '前提：解決の tick に敵が到達距離の中に居ない（空振りを測っている）')
+      .toBeLessThanOrEqual(SLAM_RANGE + 0.001);
+    // ★ 窓は「当てられた論理時刻 + ms」＝論理時間で立つ（実時間の setTimeout ではない）
+    expect(hit.sealUntil, '封印の窓が inflict.ms と合わない').toBe(hit.t + m.inflict.ms);
+    expect(res.sealed, '封印が立たない').toBe(true);
     // ★ 絵に出る（GUIDE §6-1＝「剣が出ない」だけではバグに見える）
     expect(res.cls, 'プレイヤーに .sealed が付いていない＝封じられた理由が画面に出ていない').toBe(true);
-    expect(res.poisoned, '呪い火に触れて毒になっている＝デバフの型が混ざっている').toBe(false);
+    expect(res.poisoned, '呪い火の体当たりで毒になっている＝デバフの型が混ざっている').toBe(false);
     expect(errors).toEqual([]);
   });
 
@@ -431,10 +472,14 @@ test.describe('Phase 5.5k k-7 – プレイヤー側の一時デバフ窓（呪�
       g.swordAttack();
       out.hpAfterControl = g.getEnemies()[0].hp;
 
-      // ── 本番：踏み込んで（重ねて）封じられた状態を作り、**同じ間合いから同じ振り方**で殴る
-      const e1 = g.getEnemies()[0];
-      p.x = e1.x; p.y = e1.y;
-      g.step(1);
+      // ── 本番：体当たりを受けて封じられた状態を作り、**同じ間合いから同じ振り方**で殴る。
+      //   毎tick 敵の西隣（dist 1.0）に置き直して予告の解決を待つ（実測 t11 で当たる）。
+      for (let i = 1; i <= 20; i++) {
+        const e = g.getEnemies()[0];
+        p.x = e.x - 1; p.y = e.y;
+        g.step(1);
+        if (g.getState().player.swordSealed) break;
+      }
       out.sealed = g.getState().player.swordSealed;
       out.hpSealed0 = g.getEnemies()[0]?.hp;
       for (let i = 1; i <= 5; i++) {
@@ -452,11 +497,11 @@ test.describe('Phase 5.5k k-7 – プレイヤー側の一時デバフ窓（呪�
     });
 
     // 対照が効いていること＝この間合い・この向きなら剣は届く（本番の主張が空にならない）
-    expect(res.sealedAtControl, '対照：もう封じられている（接触より先に封印が立っている？）').toBe(false);
+    expect(res.sealedAtControl, '対照：もう封じられている（体当たりより先に封印が立っている？）').toBe(false);
     expect(res.hpBefore - res.hpAfterControl, '対照：封じられていないのに剣が当たっていない'
       + '（間合い・向き・SWORD_REACH が変わった？）').toBe(res.atk);
     // 本番＝封じられている間は1回も削れない
-    expect(res.sealed, '踏み込んで重なっても封印が立たない').toBe(true);
+    expect(res.sealed, '体当たりを受けても封印が立たない').toBe(true);
     expect(res.sealedSwings.length, '封印中の試行が行われていない').toBe(5);
     expect(res.sealedSwings.every(r => r.sealed), '振っている途中で封印が切れた＝この本は封印中を測れていない')
       .toBe(true);
@@ -476,10 +521,13 @@ test.describe('Phase 5.5k k-7 – プレイヤー側の一時デバフ窓（呪�
       if (g.getState().gameTime !== 0) throw new Error('実ループの tick が漏れている');
       const p = g.getPlayer();
       const out = { activeSubItem: g.getState().player.activeSubItem };
-      // 踏み込んで（重ねて）封じられる
-      const e0 = g.getEnemies()[0];
-      p.x = e0.x; p.y = e0.y;
-      g.step(1);
+      // 体当たりを受けて封じられる（毎tick 西隣に置き直して予告の解決を待つ）
+      for (let i = 1; i <= 20; i++) {
+        const e = g.getEnemies()[0];
+        p.x = e.x - 1; p.y = e.y;
+        g.step(1);
+        if (g.getState().player.swordSealed) break;
+      }
       out.sealed = g.getState().player.swordSealed;
       const e = g.getEnemies()[0];
       p.x = e.x - 1; p.y = e.y;
@@ -500,7 +548,7 @@ test.describe('Phase 5.5k k-7 – プレイヤー側の一時デバフ窓（呪�
     });
 
     expect(res.activeSubItem, '前提：弓が選ばれている').toBe('bow');
-    expect(res.sealed, '踏み込んで重なっても封印が立たない').toBe(true);
+    expect(res.sealed, '体当たりを受けても封印が立たない').toBe(true);
     expect(res.sealedNow, '弓を使う時点で封印が切れている＝この本は封印中を測れていない').toBe(true);
     expect(res.hpAfterSword, '対照：封じられているのに剣が当たっている').toBe(res.hp0);
     expect(res.projAfterSword, '剣がビーム等を出している（封印中に何か飛んだ）').toBe(0);
@@ -525,8 +573,8 @@ test.describe('Phase 5.5k k-7 – プレイヤー側の一時デバフ窓（呪�
       const out = { tier: g.getState().player.swordTier };
 
       // ── 対照：封じられていなければ溜めてビームが出る。
-      //    ⚠ 溜めている 8 tick の間に接触されると封印が立って対照が崩れる∴
-      //      毎tick プレイヤーを敵から遠い隅へ置き直して接触を切る。
+      //    ⚠ 溜めている 8 tick の間に体当たりを当てられると封印が立って対照が崩れる∴
+      //      毎tick プレイヤーを敵から遠い隅（1,1）へ置き直して到達距離の外に居続ける。
       g.startCharge();
       for (let i = 0; i < 8; i++) { p.x = 1; p.y = 1; g.step(1); }
       out.auraWhileCharging = !!document.querySelector('.charge-aura');
@@ -546,12 +594,15 @@ test.describe('Phase 5.5k k-7 – プレイヤー側の一時デバフ窓（呪�
       g.startCharge();
       for (let i = 0; i < 2; i++) { p.x = 1; p.y = 1; g.step(1); }
       out.auraBeforeContact = !!document.querySelector('.charge-aura');
-      // 溜めたまま踏み込む（重ねる）＝封印が立つ
-      const e = g.getEnemies()[0];
-      p.x = e.x; p.y = e.y;
-      g.step(1);
+      // 溜めたまま敵の西隣に立ち続ける＝体当たりを受けて封印が立つ（溜めは中断されるまで続く）
+      for (let i = 1; i <= 20; i++) {
+        const e = g.getEnemies()[0];
+        p.x = e.x - 1; p.y = e.y;
+        g.step(1);
+        if (g.getState().player.swordSealed) break;
+      }
       out.sealed = g.getState().player.swordSealed;
-      // ⚠ gameTick は tickCharge() → checkEnemyContact() の順∴**封じられた tick の
+      // ⚠ gameTick は tickCharge() → enemyTick()（tickSlam）の順∴**封じられた tick の
       //   オーラはまだ残っている**（同じ tick の tickCharge は封印より前に走り終えている）。
       //   中断は次の tick の tickCharge が canAct() を見て起きる∴1 tick 余分に進める。
       out.auraSameTick = !!document.querySelector('.charge-aura');
@@ -578,8 +629,8 @@ test.describe('Phase 5.5k k-7 – プレイヤー側の一時デバフ窓（呪�
     expect(res.beamControl, '対照：封じられていないのにビームが出ない').toBe(1);
     expect(res.projBeforeSeal, '前提：対照のビームが消化できていない').toBe(0);
     // 本番(a)＝溜め中に封じられたら中断（charge.js tickCharge → cancelCharge）
-    expect(res.auraBeforeContact, '前提：接触前に溜め始められている').toBe(true);
-    expect(res.sealed, '踏み込んで重なっても封印が立たない').toBe(true);
+    expect(res.auraBeforeContact, '前提：体当たりを受ける前に溜め始められている').toBe(true);
+    expect(res.sealed, '体当たりを受けても封印が立たない').toBe(true);
     expect(res.auraAfterSeal, '封じられてもチャージのオーラが残っている＝中断されていない').toBe(false);
     expect(res.beamAfterCancel, '封じられた後に離してビームが出た＝溜めが中断されていない').toBe(0);
     // 本番(b)＝封じ中は溜め始められない
@@ -600,16 +651,27 @@ test.describe('Phase 5.5k k-7 – プレイヤー側の一時デバフ窓（呪�
       if (g.getState().gameTime !== 0) throw new Error('実ループの tick が漏れている');
       const p = g.getPlayer();
       const out = {};
-      const e0 = g.getEnemies()[0];
-      p.x = e0.x; p.y = e0.y;
-      g.step(1);
+      // 体当たりを1回受ける（毎tick 西隣に置き直して予告の解決を待つ）
+      for (let i = 1; i <= 20; i++) {
+        const e = g.getEnemies()[0];
+        p.x = e.x - 1; p.y = e.y;
+        g.step(1);
+        if (g.getState().player.swordSealed) break;
+      }
       out.sealed    = g.getState().player.swordSealed;
       out.sealUntil = g.getState().player.sealUntil;
       out.sealedAt  = g.getState().gameTime;
-      // ⚠ 触れ続けると窓は毎tick引き直される∴**毎tick 隅へ置き直して再接触を切る**。
+      // ⚠ 体当たりは 11 tick ごとに再発火する（当たるたび窓が引き直される）∴境界を測る
+      //   間は**毎tick「敵から最も遠い隅」へ置き直して**到達距離（1.5）の外に居続ける。
+      //   隅を固定するだけでは足りない＝敵は追って来てまた当ててくる（k-7.5 の変化点）。
+      let distMin = Infinity;
       for (let i = 1; i <= 40; i++) {
-        p.x = 1; p.y = 1;
+        const e = g.getEnemies()[0];
+        p.x = e.x >= 5.5 ? 1 : 10;
+        p.y = e.y >= 4.5 ? 1 : 8;
         g.step(1);
+        distMin = Math.min(distMin, Math.hypot(g.getEnemies()[0].x - p.x, g.getEnemies()[0].y - p.y));
+        out.distMin = distMin;
         const s = g.getState();
         if (!s.player.swordSealed) {
           out.freeTick = i;
@@ -632,10 +694,13 @@ test.describe('Phase 5.5k k-7 – プレイヤー側の一時デバフ窓（呪�
     });
 
     const m = CURSE_M();
-    expect(res.sealed, '踏み込んで重なっても封印が立たない').toBe(true);
+    expect(res.sealed, '体当たりを受けても封印が立たない').toBe(true);
     expect(res.sealUntil, '封印の窓が inflict.ms と合わない').toBe(res.sealedAt + m.inflict.ms);
-    // 置き直している間に窓が伸びていない＝再接触を本当に切れている
-    expect(res.lastSealUntil, '隅へ逃げているのに窓が伸びている＝再接触が続いている')
+    // 前提＝逃げ続けている間は到達距離（1.5）の外に居た＝再発火の余地が無かった
+    expect(res.distMin, '逃げているのに到達距離の中に入った＝境界を測る前提が崩れている'
+      + '（隅の選び方が敵の動きに追いついていない）').toBeGreaterThan(SLAM_RANGE);
+    // 置き直している間に窓が伸びていない＝体当たりの再発火を本当に切れている
+    expect(res.lastSealUntil, '隅へ逃げているのに窓が伸びている＝また当てられている')
       .toBe(res.sealUntil);
     expect(res.freeTick, `封印が切れない（${m.inflict.ms / 120} tick 待っても解けない）`).toBeTruthy();
     // ★ 境界＝「gameNow が sealUntil に達した最初の tick」で切れる（早くも遅くもない）
@@ -657,10 +722,13 @@ test.describe('Phase 5.5k k-7 – プレイヤー側の一時デバフ窓（呪�
       if (g.getState().gameTime !== 0) throw new Error('実ループの tick が漏れている');
       const out = {};
       const p = g.getPlayer();
-      // 踏み込んで（重ねて）封じられ、看板の真北 (4,4) へ戻る
-      const e = g.getEnemies()[0];
-      p.x = e.x; p.y = e.y;
-      g.step(1);
+      // 体当たりを受けて封じられ、看板の真北 (4,4) へ戻る
+      for (let i = 1; i <= 20; i++) {
+        const e = g.getEnemies()[0];
+        p.x = e.x - 1; p.y = e.y;
+        g.step(1);
+        if (g.getState().player.swordSealed) break;
+      }
       out.sealed0 = g.getState().player.swordSealed;
       p.x = 4; p.y = 4;
       const s = g.getState();
@@ -677,7 +745,7 @@ test.describe('Phase 5.5k k-7 – プレイヤー側の一時デバフ窓（呪�
     });
 
     const sign = MAP.layers[TEST_LAYER].stages[stageKey('curse_fire')].signData['5,4'];
-    expect(res.sealed0, '踏み込んで重なっても封印が立たない').toBe(true);
+    expect(res.sealed0, '体当たりを受けても封印が立たない').toBe(true);
     expect(res.pos, '前提：プレイヤーが看板の真北 (4,4) に居る').toEqual([4, 4]);
     expect(res.sealed, '前提：封じられている').toBe(true);
     expect(res.dialogBefore, '前提：まだダイアログが出ていない').toBe(false);
@@ -691,7 +759,9 @@ test.describe('Phase 5.5k k-7 – プレイヤー側の一時デバフ窓（呪�
   });
 
   // ── 毒沼ヒル（毒 DoT）───────────────────────────────────────────────────
-  test('⑪ 接触で毒の窓が立つ（対照＝接触前は窓が無い）＋状態が絵に出る', async ({ page }) => {
+  // ⑪ は ⑤ の毒版＝「隣接しただけ・予告中は毒にならない／体当たりの解決で毒が立つ」。
+  //    こちらもプレイヤーは動かさない（実測：t12 で予告・t15 で被弾）。
+  test('⑪ 体当たりの解決で毒の窓が立つ（対照＝到達距離に入っただけ・予告中は無傷）＋状態が絵に出る', async ({ page }) => {
     const errors = [];
     page.on('pageerror', e => errors.push(e.message));
     await gotoFrozen(page, POISON());
@@ -707,29 +777,22 @@ test.describe('Phase 5.5k k-7 – プレイヤー側の一時デバフ窓（呪�
         before: { until: s0.player.poisonUntil, nextAt: s0.player.poisonNextAt,
                   poisoned: s0.player.poisoned,
                   cls: document.getElementById('char-player')?.classList.contains('poisoned') },
-        pre: [],
+        trace: [],
       };
-      // ── 対照：寄って来るだけでは毒にならない（敵は自力で接触箱に入れない）
-      let distMin = Infinity;
-      for (let i = 1; i <= 20; i++) {
+      // プレイヤーは動かさない。敵が寄って来て予告→解決するまでを記録する。
+      for (let i = 1; i <= 22; i++) {
         g.step(1);
         const s = g.getState();
         const e = g.getEnemies()[0];
-        distMin = Math.min(distMin, Math.hypot(e.x - s.player.x, e.y - s.player.y));
-        out.pre.push({ i, until: s.player.poisonUntil });
+        out.trace.push({
+          i, t: s.gameTime,
+          dist: Math.hypot(e.x - s.player.x, e.y - s.player.y),
+          slamAt: e.slamAt ?? null, windupMs: e.slamWindupMs ?? null,
+          until: s.player.poisonUntil, nextAt: s.player.poisonNextAt, dmg: s.player.poisonDmg,
+        });
       }
-      out.distMin = distMin;
-      // ── 本番：踏み込む（重ねて 1 tick）
-      const p = g.getPlayer();
-      const e = g.getEnemies()[0];
-      p.x = e.x; p.y = e.y;
-      g.step(1);
       const s = g.getState();
-      out.gameTime = s.gameTime;
       out.poisoned = s.player.poisoned;
-      out.until    = s.player.poisonUntil;
-      out.nextAt   = s.player.poisonNextAt;
-      out.dmg      = s.player.poisonDmg;
       out.sealed   = s.player.swordSealed;     // ヒルは剣を封じない（型の取り違え防止）
       out.cls = document.getElementById('char-player')?.classList.contains('poisoned');
       return out;
@@ -741,18 +804,37 @@ test.describe('Phase 5.5k k-7 – プレイヤー側の一時デバフ窓（呪�
     expect([res.py, res.px], '前提：プレイヤーは (4,6)').toEqual([4, 6]);
     expect(res.before, '対照：開始時点で既に毒を受けている')
       .toEqual({ until: null, nextAt: null, poisoned: false, cls: false });
-    expect(res.pre.every(r => r.until === null),
-      '接触していない tick で毒の窓が立っている（近づかれただけで毒になっている）').toBe(true);
-    // 対照の要（⑤ と同じ）：寄って来るが自力では接触箱（0.9）に入れない
-    expect(res.distMin, '敵が寄って来ていない（速度・追跡・幾何が変わった？）').toBeLessThanOrEqual(1.05);
-    expect(res.distMin, '敵が自力で接触箱（0.9）に入った＝重なり防止が外れている')
-      .toBeGreaterThanOrEqual(0.9);
-    expect(res.poisoned, '踏み込んで重なっても毒が立たない').toBe(true);
-    expect(res.until, '毒の窓が inflict.ms と合わない').toBe(res.gameTime + inf.ms);
-    expect(res.nextAt, '毒の1刻み目の予定が inflict.tickMs と合わない').toBe(res.gameTime + inf.tickMs);
-    expect(res.dmg, '毒の1刻み目のダメージが inflict.damage と合わない').toBe(inf.damage);
+
+    const tr = res.trace;
+    // ★ 決定①：どの tick でも重ならない（最接近は 1.0）
+    const distMin = Math.min(...tr.map(r => r.dist));
+    expect(distMin, '敵が寄って来ていない（速度・追跡・幾何が変わった？）').toBeLessThanOrEqual(1.05);
+    expect(distMin, '敵がプレイヤーに重なった＝重なり禁止（決定①）が外れている')
+      .toBeGreaterThanOrEqual(1.0);
+    // ★ 予告→解決の順序（⑤ と同じ形＝この2体で機構を共有していることの確認でもある）
+    const firstSlam = tr.find(r => r.slamAt != null);
+    expect(firstSlam, '敵が体当たりの予告を出さない＝寄って来るだけの無害な敵になっている').toBeTruthy();
+    expect(firstSlam.dist, `予告が到達距離（${SLAM_RANGE}）の外で立っている`)
+      .toBeLessThanOrEqual(SLAM_RANGE + 0.001);
+    expect(firstSlam.windupMs, `予告の長さが SLAM_WINDUP_MS（${SLAM_WINDUP_MS}）でない`).toBe(SLAM_WINDUP_MS);
+    // ★★ 決定②③の芯＝隣接しただけ・予告中はまだ毒になっていない
+    const windupTicks = tr.filter(r => r.slamAt != null);
+    expect(windupTicks.length, '予告中の tick が記録されていない＝予告が一瞬で解決している')
+      .toBeGreaterThanOrEqual(2);
+    expect(windupTicks.every(r => r.until === null),
+      '予告中に毒になっている＝「隣接したら即攻撃」に戻っている（予告を見て下がる余地が無い）').toBe(true);
+    // ★ 毒が立つのは予告が解決した tick
+    const hitIdx = tr.findIndex((r, i) => i > 0 && tr[i - 1].slamAt != null && r.slamAt == null);
+    const hit = tr[hitIdx];
+    expect(hit, '予告が解決していない（予告が立ったまま宙に浮いている）').toBeTruthy();
+    const firstPoison = tr.find(r => r.until != null);
+    expect(firstPoison?.i, '毒が立つ tick が「予告が解決した tick」と違う').toBe(hit.i);
+    expect(hit.until, '毒の窓が inflict.ms と合わない').toBe(hit.t + inf.ms);
+    expect(hit.nextAt, '毒の1刻み目の予定が inflict.tickMs と合わない').toBe(hit.t + inf.tickMs);
+    expect(hit.dmg, '毒の1刻み目のダメージが inflict.damage と合わない').toBe(inf.damage);
+    expect(res.poisoned, '毒が立たない').toBe(true);
     expect(res.cls, 'プレイヤーに .poisoned が付いていない＝毒の理由が画面に出ていない').toBe(true);
-    expect(res.sealed, '毒沼ヒルに触れて剣が封じられている＝デバフの型が混ざっている').toBe(false);
+    expect(res.sealed, '毒沼ヒルの体当たりで剣が封じられている＝デバフの型が混ざっている').toBe(false);
     expect(errors).toEqual([]);
   });
 
@@ -769,19 +851,29 @@ test.describe('Phase 5.5k k-7 – プレイヤー側の一時デバフ窓（呪�
       if (g.getState().gameTime !== 0) throw new Error('実ループの tick が漏れている');
       const p = g.getPlayer();
       const out = { hpStart: g.getState().player.hp, def: g.getState().player.def, drops: [] };
-      const e0 = g.getEnemies()[0];
-      p.x = e0.x; p.y = e0.y;
-      g.step(1);                       // ← この tick で接触（毒＋接触ダメージ）
+      // 体当たりを1回受ける（毎tick 西隣に置き直して予告の解決を待つ）
+      for (let i = 1; i <= 20; i++) {
+        const e = g.getEnemies()[0];
+        p.x = e.x - 1; p.y = e.y;
+        g.step(1);
+        if (g.getState().player.poisoned) break;
+      }
       let s = g.getState();
       out.poisoned = s.player.poisoned;
-      out.contactTime = s.gameTime;
-      out.hpAfterContact = s.player.hp;
+      out.hitTime = s.gameTime;
+      out.hpAfterHit = s.player.hp;
       out.until = s.player.poisonUntil;
-      // ⚠ 触れ続けると窓が伸びる∴**毎tick 隅へ置き直して再接触を切る**（後を引く毒だけを測る）。
+      // ⚠ 隣に居続けると 11 tick ごとに当てられて窓が伸びる∴**毎tick「敵から最も遠い隅」へ
+      //   置き直して**到達距離の外に居続ける（後を引く毒だけを測る）。
       let hp = s.player.hp;
+      let distMin = Infinity;
       for (let i = 1; i <= 40; i++) {
-        p.x = 1; p.y = 1;
+        const e = g.getEnemies()[0];
+        p.x = e.x >= 5.5 ? 1 : 10;
+        p.y = e.y >= 4.5 ? 1 : 8;
         g.step(1);
+        distMin = Math.min(distMin, Math.hypot(g.getEnemies()[0].x - p.x, g.getEnemies()[0].y - p.y));
+        out.distMin = distMin;
         s = g.getState();
         if (s.player.hp < hp) {
           out.drops.push({ at: s.gameTime, dmg: hp - s.player.hp, nextAt: s.player.poisonNextAt });
@@ -801,14 +893,17 @@ test.describe('Phase 5.5k k-7 – プレイヤー側の一時デバフ窓（呪�
 
     const inf = POISON_M().inflict;
     expect(res.def, '前提：防具なし（毒のダメージがそのまま入る）').toBe(0);
-    expect(res.poisoned, '踏み込んで重なっても毒が立たない').toBe(true);
-    // 接触そのもののダメージ（毒とは別勘定）
-    expect(res.hpStart - res.hpAfterContact, '前提：接触ダメージが敵の atk と違う').toBe(POISON_M().atk);
+    expect(res.poisoned, '体当たりを受けても毒が立たない').toBe(true);
+    // 体当たりそのものの打撃ダメージ（毒とは別勘定）
+    expect(res.hpStart - res.hpAfterHit, '前提：体当たりのダメージが敵の atk と違う').toBe(POISON_M().atk);
+    // 前提＝逃げている間は到達距離の外に居た（また当てられていたら窓が伸びて境界が測れない）
+    expect(res.distMin, '逃げているのに到達距離の中に入った＝境界を測る前提が崩れている')
+      .toBeGreaterThan(SLAM_RANGE);
     // ★ 刻む回数＝窓 ÷ 間隔（2回）。1刻み目 damage、2刻み目 damage-decay（下限1）。
     const expected = [];
     let dmg = inf.damage;
     for (let i = 1; i <= inf.ms / inf.tickMs; i++) {
-      expected.push({ at: res.contactTime + inf.tickMs * i, dmg });
+      expected.push({ at: res.hitTime + inf.tickMs * i, dmg });
       dmg = Math.max(1, dmg - inf.decay);
     }
     expect(res.drops.map(d => ({ at: d.at, dmg: d.dmg })),
@@ -820,7 +915,7 @@ test.describe('Phase 5.5k k-7 – プレイヤー側の一時デバフ窓（呪�
     expect(res.dmgAfter, '毒が抜けたのに威力が残っている').toBeNull();
     expect(res.cls, '毒が抜けてもプレイヤーに .poisoned が残っている＝絵が状態と食い違う').toBe(false);
     // 抜けた後は削られない（「後を引く」は窓の中だけ）
-    expect(res.hpEnd, '窓が切れた後も削られている').toBe(res.hpAfterContact - expected.reduce((a, e) => a + e.dmg, 0));
+    expect(res.hpEnd, '窓が切れた後も削られている').toBe(res.hpAfterHit - expected.reduce((a, e) => a + e.dmg, 0));
     expect(errors).toEqual([]);
   });
 
@@ -836,17 +931,23 @@ test.describe('Phase 5.5k k-7 – プレイヤー側の一時デバフ窓（呪�
       if (g.getState().gameTime !== 0) throw new Error('実ループの tick が漏れている');
       const p = g.getPlayer();
       const out = {};
-      const e0 = g.getEnemies()[0];
-      p.x = e0.x; p.y = e0.y;
-      g.step(1);                       // ← 接触（毒＋接触ダメージ＋接触無敵が張る）
+      // 体当たりを1回受ける（毒＋打撃ダメージ＋被弾無敵が張る）
+      for (let i = 1; i <= 20; i++) {
+        const e = g.getEnemies()[0];
+        p.x = e.x - 1; p.y = e.y;
+        g.step(1);
+        if (g.getState().player.poisoned) break;
+      }
       let s = g.getState();
       out.poisoned = s.player.poisoned;
-      out.contactTime = s.gameTime;
-      out.hpAfterContact = s.player.hp;
+      out.hitTime = s.gameTime;
+      out.hpAfterHit = s.player.hp;
       out.nextAt = s.player.poisonNextAt;
-      // 隅へ退いて再接触を切る（毒だけが残る）
+      // 隅（1,1）へ退いて到達距離の外に出る＝再発火を切る（毒だけが残る）。
+      // ⚠ 毒沼ヒルは鈍足（0.125 セル/tick）∴この本の 25 tick 程度では追いつかれない
+      //   （固定の隅で足りる。呪い火や 40 tick 級の本は「最も遠い隅」へ毎tick 置き直す）。
       p.x = 1; p.y = 1;
-      // ── 対照：接触無敵の内側で「普通の被弾」（敵の矢）を受ける＝防がれる
+      // ── 対照：被弾無敵の内側で「普通の被弾」（敵の矢）を受ける＝防がれる
       g.injectEnemyProjectile(p.x + 1, p.y, -1, 0, 2, 2);
       for (let i = 0; i < 4; i++) { p.x = 1; p.y = 1; g.step(1); }
       s = g.getState();
@@ -864,20 +965,20 @@ test.describe('Phase 5.5k k-7 – プレイヤー側の一時デバフ窓（呪�
     });
 
     const inf = POISON_M().inflict;
-    expect(res.poisoned, '踏み込んで重なっても毒が立たない').toBe(true);
+    expect(res.poisoned, '体当たりを受けても毒が立たない').toBe(true);
     // 対照が効いていること＝この時刻には確かに無敵窓が張っている（本番の主張が空にならない）
-    expect(res.afterArrowTime - res.contactTime, '前提：対照の被弾が接触無敵の内側で起きていない')
-      .toBeLessThan(1500);
+    expect(res.afterArrowTime - res.hitTime, '前提：対照の被弾が被弾無敵の内側で起きていない')
+      .toBeLessThan(INVINCIBLE_MS);
     expect(res.projLeft, '対照：矢が当たっていない（素通りした？）＝無敵を測れていない').toBe(0);
     expect(res.hpAfterArrow, '対照：無敵窓の中の被弾で HP が減った＝無敵が働いていない'
-      + '（本番の「毒は貫通する」が主張にならない）').toBe(res.hpAfterContact);
+      + '（本番の「毒は貫通する」が主張にならない）').toBe(res.hpAfterHit);
     // 本番＝毒の1刻み目は無敵窓の内側に来て、それでも刻む
     expect(res.tickTime, '毒が刻まない').toBeTruthy();
     expect(res.tickTime, '毒の刻みが予定（tickMs）と違う時刻に来た').toBe(res.nextAt);
-    expect(res.tickTime - res.contactTime, '前提：毒の1刻み目が無敵窓の外に来ている'
-      + '＝この本は貫通を測れていない（inflict.tickMs が INVINCIBLE_MS 以上？）').toBeLessThan(1500);
-    expect(res.hpAfterContact - res.hpAfterTick, '無敵窓の中で毒が刻んでいない'
-      + '＝1回触れて張り付けば毒が無効化される（機構が死ぬ）').toBe(inf.damage);
+    expect(res.tickTime - res.hitTime, '前提：毒の1刻み目が無敵窓の外に来ている'
+      + '＝この本は貫通を測れていない（inflict.tickMs が INVINCIBLE_MS 以上？）').toBeLessThan(INVINCIBLE_MS);
+    expect(res.hpAfterHit - res.hpAfterTick, '無敵窓の中で毒が刻んでいない'
+      + '＝1回当てられて無敵の間に離れれば毒が無効化される（機構が死ぬ）').toBe(inf.damage);
     expect(errors).toEqual([]);
   });
 
@@ -893,28 +994,48 @@ test.describe('Phase 5.5k k-7 – プレイヤー側の一時デバフ窓（呪�
       if (g.getState().gameTime !== 0) throw new Error('実ループの tick が漏れている');
       const p = g.getPlayer();
       const out = { ticks: [] };
-      const e0 = g.getEnemies()[0];
-      p.x = e0.x; p.y = e0.y;
-      g.step(1);                       // ← 接触（毒＋接触ダメージ＋接触無敵が張る）
+      // ① 体当たりを1回受ける（敵の西隣に立ち続ける＝予告 → 解決で毒＋打撃1）
+      for (let i = 1; i <= 20; i++) {
+        const e = g.getEnemies()[0];
+        p.x = e.x - 1; p.y = e.y;
+        g.step(1);
+        if (g.getState().player.poisoned) break;
+      }
       let s = g.getState();
       out.poisoned = s.player.poisoned;
-      out.contactTime = s.gameTime;
+      out.hitTime = s.gameTime;
       let hp = s.player.hp;
-      // ⚠ 測るのは**2刻み目**。1刻み目は接触無敵の内側にあり「防がれたのは接触無敵の
-      //   せいか毒が与えた無敵のせいか」が区別できない（2刻み目は接触無敵の外）。
-      for (let i = 0; i < 30; i++) {
-        p.x = 1; p.y = 1;
+      // ② 逃げて「毒だけ」を測る。⚠ 測るのは**2刻み目**＝1刻み目は被弾無敵の内側にあり
+      //   「防がれたのは被弾無敵のせいか毒が与えた無敵のせいか」が区別できない。
+      //   ⚠ 逃げ先は毎tick「敵から最も遠い隅」＝固定の隅だと追いつかれて体当たりが混ざり、
+      //     HP の減りが毒か打撃か分からなくなる（distMin で前提を検査する）。
+      out.distMin = 99;
+      for (let i = 0; i < 40; i++) {
+        const e = g.getEnemies()[0];
+        p.x = e.x >= 5.5 ? 1 : 10; p.y = e.y >= 4.5 ? 1 : 8;
         g.step(1);
         s = g.getState();
+        const e2 = g.getEnemies()[0];
+        out.distMin = Math.min(out.distMin, +Math.hypot(e2.x - p.x, e2.y - p.y).toFixed(3));
         if (s.player.hp < hp) { out.ticks.push({ at: s.gameTime, dmg: hp - s.player.hp }); hp = s.player.hp; }
         if (out.ticks.length === 2) break;
       }
       out.lastTickTime = out.ticks.at(-1)?.at;
-      out.pastContactInvincible = (out.lastTickTime - out.contactTime) >= invincibleMs;
+      out.pastHitInvincible = (out.lastTickTime - out.hitTime) >= invincibleMs;
       out.hpBeforeArrow = hp;
-      // 毒が刻んだ直後に普通の被弾＝通る（毒が無敵を与えていたら防がれる）
-      g.injectEnemyProjectile(p.x + 1, p.y, -1, 0, 1, 2);
-      for (let i = 0; i < 4; i++) { p.x = 1; p.y = 1; g.step(1); }
+      // ③ 毒が刻んだ直後に普通の被弾＝通る（毒が無敵を与えていたら防がれる）
+      //    ⚠ 矢が飛ぶ間は動かない（逃げ続けると矢の線から外れる）∴敵から遠い隅に固定し、
+      //      矢は「盤の内側から」飛ばす（外周は壁∴隅の外側に置くと即消える）。
+      const eA = g.getEnemies()[0];
+      const fx = eA.x >= 5.5 ? 1 : 10, fy = eA.y >= 4.5 ? 1 : 8;
+      p.x = fx; p.y = fy;
+      g.injectEnemyProjectile(fx === 1 ? fx + 1 : fx - 1, fy, fx === 1 ? -1 : 1, 0, 1, 2);
+      for (let i = 0; i < 4; i++) {
+        p.x = fx; p.y = fy;
+        g.step(1);
+        const e2 = g.getEnemies()[0];
+        out.distMin = Math.min(out.distMin, +Math.hypot(e2.x - fx, e2.y - fy).toFixed(3));
+      }
       s = g.getState();
       out.hpAfterArrow = s.player.hp;
       out.projLeft = g.getProjectiles().length;
@@ -922,11 +1043,13 @@ test.describe('Phase 5.5k k-7 – プレイヤー側の一時デバフ窓（呪�
       return out;
     }, INVINCIBLE_MS);
 
-    expect(res.poisoned, '踏み込んで重なっても毒が立たない').toBe(true);
+    expect(res.poisoned, '体当たりを受けても毒が立たない').toBe(true);
+    expect(res.distMin, `前提：逃げ切れていない（敵が到達距離 ${SLAM_RANGE} まで詰めている`
+      + '＝HP の減りが毒か体当たりか区別できない）').toBeGreaterThan(SLAM_RANGE);
     expect(res.ticks.length, '毒が2回刻んでいない（窓と間隔が変わった？）').toBe(2);
-    // 前提＝この時刻には接触無敵が切れている（区別できる位置で測っている）
-    expect(res.pastContactInvincible, `前提：2刻み目が接触無敵（${INVINCIBLE_MS}ms）の内側にある`
-      + '＝「防がれたのは接触無敵のせい」と区別できない').toBe(true);
+    // 前提＝この時刻には被弾無敵が切れている（区別できる位置で測っている）
+    expect(res.pastHitInvincible, `前提：2刻み目が被弾無敵（${INVINCIBLE_MS}ms）の内側にある`
+      + '＝「防がれたのは被弾無敵のせい」と区別できない').toBe(true);
     expect(res.projLeft, '矢が当たっていない（素通りした？）').toBe(0);
     // ★ 毒が刻んだ直後でも被弾する＝毒は無敵窓を与えない（毒を受けている方が安全にならない）
     expect(res.hpBeforeArrow - res.hpAfterArrow, '毒が刻んだ直後の被弾が防がれた'
@@ -935,11 +1058,14 @@ test.describe('Phase 5.5k k-7 – プレイヤー側の一時デバフ窓（呪�
     expect(errors).toEqual([]);
   });
 
-  test('⑮ 張り付かれている間も毒は刻む（再接触で刻みの予定が先送りされない）', async ({ page }) => {
-    // 回帰の番人：接触は「触れている間ずっと毎tick」起きる∴再接触で `_poisonNextAt` を
-    // 引き直す実装だと**次の刻みが永久に先送りされ、張り付かれている間は1度も刻まない**
-    // ＝DoT が消える。窓の終わりだけ延ばし、刻みの予定と減衰は引き継ぐことをここで固定する。
-    // ⚠ HP は見ない（debugMode のまま）＝接触ダメージのノイズも死亡も混ざらない。
+  test('⑮ 体当たりを繰り返し受けている間も毒は刻む（再発火で刻みの予定が先送りされない）', async ({ page }) => {
+    // 回帰の番人：体当たりはクールダウン（SLAM_COOLDOWN_MS）ごとに再発火する＝隣に居続けると
+    // 11 tick おきに当てられる∴**窓が切れる前に次が来る**。再発火で `_poisonNextAt` を
+    // 引き直す実装だと次の刻みが先送りされ続け、当てられている間は1度も刻まない＝DoT が消える。
+    // 窓の終わりだけ延ばし、刻みの予定と減衰は引き継ぐことをここで固定する。
+    // ⚠ HP は見ない（debugMode のまま）＝体当たりのダメージのノイズも死亡も混ざらない。
+    // ⚠ 「当てられた tick」は `slamAt` の消滅（予告→解決）から取る＝毒の窓そのものから
+    //   導くと「刻みが止まっているのに検出もできない」歯のない本になる。
     const errors = [];
     page.on('pageerror', e => errors.push(e.message));
     await gotoFrozen(page, POISON());
@@ -949,46 +1075,65 @@ test.describe('Phase 5.5k k-7 – プレイヤー側の一時デバフ窓（呪�
       g.pause();
       if (g.getState().gameTime !== 0) throw new Error('実ループの tick が漏れている');
       const p = g.getPlayer();
-      const out = {};
-      const e0 = g.getEnemies()[0];
-      p.x = e0.x; p.y = e0.y;
-      g.step(1);                       // ← 1回目の接触（ここから張り付きを続ける）
-      let s = g.getState();
-      out.poisoned0 = s.player.poisoned;
-      out.contactTime = s.gameTime;
-      out.nextAt0 = s.player.poisonNextAt;
-      out.until0  = s.player.poisonUntil;
-      out.dmg0    = s.player.poisonDmg;
-      // 毎tick 敵に重ねる＝「張り付かれている（毎tick 再接触）」状態を維持する
-      out.contacts = 0;
-      for (let i = 1; i <= 25; i++) {
-        const e = g.getEnemies()[0];
-        p.x = e.x; p.y = e.y;
+      const tr = [];
+      let prevSlamAt = null;
+      // 敵の西隣に立ち続ける（重なりは禁止＝これが取れる最短距離）＝当て続けられる状態
+      for (let i = 1; i <= 34; i++) {
+        const e0 = g.getEnemies()[0];
+        p.x = e0.x - 1; p.y = e0.y;
         g.step(1);
-        if (g.getState().player.poisonUntil > out.until0) out.contacts++;
+        const s = g.getState(), e = g.getEnemies()[0];
+        const slamAt = e.slamAt ?? null;
+        tr.push({
+          i, t: s.gameTime,
+          dist: +Math.hypot(e.x - s.player.x, e.y - s.player.y).toFixed(3),
+          hit: prevSlamAt != null && slamAt == null,     // 予告が解決した tick＝当たった tick
+          until:  s.player.poisonUntil  ?? null,
+          nextAt: s.player.poisonNextAt ?? null,
+          dmg:    s.player.poisonDmg    ?? null,
+        });
+        prevSlamAt = slamAt;
       }
-      s = g.getState();
-      out.nextAt1 = s.player.poisonNextAt;
-      out.until1  = s.player.poisonUntil;
-      out.dmg1    = s.player.poisonDmg;
-      out.poisoned = s.player.poisoned;
-      return out;
+      return { tr };
     });
 
     const inf = POISON_M().inflict;
-    expect(res.poisoned0, '踏み込んで重なっても毒が立たない').toBe(true);
-    expect(res.contacts, '前提：張り付き（毎tickの再接触）を維持できていない').toBeGreaterThan(20);
-    // ★ 窓の終わりは延びる（触り続ければ抜けない）
-    expect(res.until1, '再接触しても窓が延びていない＝触り続けても抜けてしまう')
-      .toBeGreaterThan(res.until0);
-    expect(res.poisoned, '張り付かれているのに毒が抜けている').toBe(true);
-    // ★ 刻みの予定は引き継ぐ＝25tick（3000ms）の間に 2 回刻んでいる
-    expect(res.nextAt1, '張り付かれている間に毒が刻んでいない（刻みの予定が毎tick引き直されている）')
-      .toBe(res.nextAt0 + inf.tickMs * 2);
-    // ★ 減衰も引き継ぐ＝威力が 1 刻み目に戻らない（触り続けて痛いままにならない）
-    expect(res.dmg0, '前提：1刻み目の威力が inflict.damage でない').toBe(inf.damage);
-    expect(res.dmg1, '再接触で毒の威力が戻っている＝減衰が効かない（触り続けると常に最大）')
-      .toBe(Math.max(1, inf.damage - inf.decay));
+    const hits = res.tr.filter(r => r.hit);
+    expect(hits.length, '前提：体当たりを2回以上受けていない（再発火していない＝窓の重なりを試せていない）')
+      .toBeGreaterThanOrEqual(2);
+    expect(Math.min(...res.tr.map(r => r.dist)), '前提：重なっている（決定①に反する＝別の本が赤くなるべき）')
+      .toBeGreaterThanOrEqual(1);
+
+    // ★ 窓・刻みの予定・減衰の全履歴を、debuff.js とは独立に組んだ期待値と突き合わせる。
+    //   規則：当たった tick は窓の終わりを `t + ms` まで延ばす（縮めない）。**すでに毒なら
+    //   刻みの予定と威力は引き継ぐ**。窓の中では tickMs ごとに刻み、1刻みごとに decay 弱まる。
+    let until = null, next = null, dmg = null;
+    const mismatches = [], tickTimes = [];
+    for (const r of res.tr) {
+      if (r.hit) {
+        const wasPoisoned = until != null && r.t < until;
+        until = Math.max(until ?? 0, r.t + inf.ms);
+        if (!wasPoisoned || next == null) { next = r.t + inf.tickMs; dmg = inf.damage; }
+      }
+      while (next != null && r.t >= next && next <= until) {
+        tickTimes.push(next);
+        dmg = Math.max(1, dmg - inf.decay);
+        next += inf.tickMs;
+      }
+      if (until != null && r.t >= until) { until = null; next = null; dmg = null; }
+      if (r.until !== until || r.nextAt !== next || r.dmg !== dmg) {
+        mismatches.push(`t${r.i}(${r.t}ms) 実 until=${r.until} next=${r.nextAt} dmg=${r.dmg}`
+          + ` / 期待 until=${until} next=${next} dmg=${dmg}`);
+      }
+    }
+    expect(mismatches, '毒の窓・刻みの予定・減衰が期待と食い違う'
+      + '（再発火で予定を引き直している／窓を縮めている／減衰が戻っている）').toEqual([]);
+    // ★ 当てられ続けている間に実際に刻んでいる（先送りで DoT が消えていない）
+    expect(tickTimes.length, '体当たりを受け続けている間に毒が2回刻んでいない'
+      + '＝刻みの予定が再発火のたびに先送りされている（DoT が消える）').toBeGreaterThanOrEqual(2);
+    // ★ 窓の終わりは延びる（当てられ続ければ抜けない）
+    expect(res.tr.at(-1).until, '当てられ続けているのに窓が延びていない（最後の当たりで引き直されていない）')
+      .toBeGreaterThanOrEqual(hits.at(-1).t + inf.ms);
     expect(errors).toEqual([]);
   });
 

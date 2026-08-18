@@ -1,14 +1,16 @@
 // game/enemy-ai.js ── 敵AI（Phase 0-2 Step 5）
 // createEnemyAi(deps) factory で生成する。
-// enemyTick / enemyChase / bossTickHitAndAway / enemyAttack / checkEnemyContact を提供。
+// enemyTick / enemyChase / bossTickHitAndAway / enemyAttack を提供。
+// （checkEnemyContact＝接触ダメージは Phase 5.5k k-7.5 で廃止＝下の「接触ダメージ」の項）
 
 import { ENEMY_META } from '../shared/enemies.js';
 import { TILE } from '../shared/tiles.js';
 import { makeSprite } from '../shared/sprites.js';
 import { playSound } from '../shared/sounds.js';
-import { MOVE_STEP, ATTACK_POSE_MS, TICK_MS } from './constants.js';
+import { MOVE_STEP, ATTACK_POSE_MS, TICK_MS, SLAM_RANGE, SLAM_WINDUP_MS, SLAM_COOLDOWN_MS } from './constants.js';
 import { statefulTileClosed } from './passable.js';
-import { enemyPointHit } from './hitbox.js';
+// Phase 5.5k k-7.5: hitbox.js enemyPointHit の import は接触ダメージ（checkEnemyContact）
+// 廃止で不要になった。体当たりの到達判定は slamReachHit（軸ごとの間合い）が持つ。
 
 /**
  * createEnemyAi(deps) – factory
@@ -43,7 +45,7 @@ import { enemyPointHit } from './hitbox.js';
  *   updateHud()                  – HUD 更新（所持ルピーの表示）
  *   pulse(text, dur)             – メッセージ表示
  *   ── Phase 5.5k k-7: プレイヤー側の一時デバフ ──
- *   inflictDebuff(meta)          – 接触した敵の meta.inflict を player 側の窓に立てる
+ *   inflictDebuff(meta)          – 攻撃を当てた敵の meta.inflict を player 側の窓に立てる
  */
 export function createEnemyAi(deps) {
 	const {
@@ -61,7 +63,7 @@ export function createEnemyAi(deps) {
 		updateHud, pulse,
 		// Phase 9-6: 両生敵（amphibious）の地形別速度に使う水判定
 		isWaterAt,
-		// Phase 5.5k k-7: 接触で立てるプレイヤー側の一時デバフ（game/debuff.js）
+		// Phase 5.5k k-7: 敵の攻撃で立てるプレイヤー側の一時デバフ（game/debuff.js）
 		inflictDebuff,
 	} = deps;
 
@@ -103,6 +105,82 @@ export function createEnemyAi(deps) {
 		if (meta?.directional) e._atkUntil = now + ATTACK_POSE_MS;
 		const freeze = resolveAttackFreezeMs(meta);
 		if (freeze > 0) e._freezeUntil = now + freeze;
+	}
+
+	// ── Phase 5.5k k-7.5: 体当たり攻撃（slam）─────────────────────
+	// 体当たり専門の敵（`attack:{type:'charge'}` の10種）の攻撃。**「隣接＝即ダメージ」ではない**
+	// （2026-08-17 ユーザー決定）：
+	//   ① 到達距離に入った tick に **予告** を始める（`e._slamAt` ＝解決の論理時刻）
+	//   ② 予告中は移動も他の攻撃もしない（enemyTick がこの tick を専有する）＋
+	//      拡大縮小2往復のモーションを出す（board.css `.slam-windup`）
+	//   ③ 解決の tick に **もう一度** 到達判定をする＝離れていれば空振り
+	//   ④ 当たれば `takeDamage`（＋`meta.inflict` のデバフ）→ クールダウン
+	// ∴プレイヤーは予告を見て間合いを外せば避けられる＝反応で回避できる攻撃になる。
+	// ⚠️ **盾では防げない**（`isShieldBlockingDir` を通さない）＝ユーザー決定④。
+	// 盾が効くのは剣攻撃と投擲攻撃だけ＝体当たりは「下がる」以外に答えが無い攻撃。
+	const SLAM_PERP = 0.8;   // 主軸に直交する方向の許容ずれ（剣 sword の perpDist と同じ数字）
+
+	// 体当たりの到達判定。剣と同じ「主軸の距離 ≤ range・直交方向のずれ ≤ 0.8」の形
+	// （斜めから 1.5 セル離れて殴られないようにする＝箱ではなく十字の間合い）。
+	// 大型敵（w×h）は占有範囲の分だけ箱を広げる（hitbox.js enemyPointHit と同じ中心の取り方）。
+	function slamReachHit(e, player, range) {
+		const w = e.w ?? 1, h = e.h ?? 1;
+		const halfW = (w - 1) / 2, halfH = (h - 1) / 2;
+		const dx = player.x - (e.x + halfW);
+		const dy = player.y - (e.y + halfH);
+		const adx = Math.abs(dx), ady = Math.abs(dy);
+		if (adx >= ady) return adx <= range + halfW && ady <= SLAM_PERP + halfH;
+		return ady <= range + halfH && adx <= SLAM_PERP + halfW;
+	}
+
+	// 予告の開始（enemyAttack の charge 分岐から呼ぶ）。
+	function startSlam(e, atk, i, now) {
+		const player = getPlayer();
+		// 突っ込む方向を向く＝向き別スプライトを持つ敵でもモーションの向きが合う
+		const dx = player.x - e.x, dy = player.y - e.y;
+		if (Math.abs(dx) >= 0.01 || Math.abs(dy) >= 0.01) {
+			e.dir = Math.abs(dx) >= Math.abs(dy) ? (dx > 0 ? 'right' : 'left') : (dy > 0 ? 'down' : 'up');
+		}
+		e._slamWindupMs = atk.windupMs ?? SLAM_WINDUP_MS;
+		e._slamAt  = now + e._slamWindupMs;
+		e._slamIdx = i;
+	}
+
+	// 予告の解決。戻り値 true ＝この tick は slam が専有した（移動も他の攻撃もしない）。
+	function tickSlam(e, meta, now) {
+		if (e._slamAt == null) return false;
+		if (now < e._slamAt) return true;                 // まだ予告中
+		const list = meta.attacks ?? (meta.attack ? [meta.attack] : []);
+		const i    = e._slamIdx ?? 0;
+		const atk  = list[i] ?? {};
+		e._slamAt = null; e._slamIdx = null;
+		// 隠れ中（潜行・地中・滞空）に解決の時刻が来たら空振りにする＝隠れている間は
+		// 攻撃もされない（`e.hidden` は無敵と対＝combat.js の扱いと揃える）。
+		if (e.hidden) { markAttack(e, meta, i, now); return true; }
+		const player = getPlayer();
+		if (slamReachHit(e, player, atk.range ?? SLAM_RANGE)) {
+			// e.atk を先に見る＝分裂で生まれた小型（childAtk）は親より弱い（k-5a と同じ作法）
+			takeDamage(e.atk ?? meta?.atk ?? 1);
+			// 一時デバフ（#13 剣封じ・#15 毒）はここで立てる＝触れた事実ではなく攻撃の結果になった
+			// （k-7a は checkEnemyContact で立てていた＝k-7.5 で接触ダメージを廃止したため移設）。
+			if (meta?.inflict) inflictDebuff?.(meta);
+		}
+		// クールダウン・硬直は**解決した時刻から**数える（予告の開始からではない）
+		markAttack(e, meta, i, now);
+		return true;
+	}
+
+	// 予告モーションの見た目を今の状態に合わせる（毎tick・syncDirectionalSprite と同じ作法＝
+	// renderChars が要素を作り直しても次の tick で復帰する）。
+	function syncSlamMotion(e) {
+		const el = document.getElementById(`char-enemy-${e.id}`);
+		if (!el) return;
+		const on = e._slamAt != null;
+		if (on) {
+			// 拡大縮小2往復＝1往復あたり windup の半分（board.css の iteration-count が 2）
+			el.style.setProperty('--slam-pulse-ms', `${Math.round((e._slamWindupMs ?? SLAM_WINDUP_MS) / 2)}ms`);
+		}
+		el.classList.toggle('slam-windup', on);
 	}
 
 	// ── Phase 5.5k: 遠隔／近接の二相（2026-08-12 ユーザー指摘）────────────────
@@ -702,7 +780,18 @@ export function createEnemyAi(deps) {
 
 		for (let i = 0; i < attackList.length; i++) {
 			const atk = attackList[i];
-			if (!atk || atk.type === 'charge') continue;
+			if (!atk) continue;
+
+			// Phase 5.5k k-7.5: 体当たり（charge）＝予告を出すだけ。命中判定は tickSlam が
+			// 予告の解決時に行う（ここでダメージを出すと「隣接＝即ダメージ」になってしまう）。
+			if (atk.type === 'charge') {
+				if (e._slamAt != null) continue;                                  // 予告中は二重に始めない
+				const lastSlam = e._attackTimes[i] ?? 0;
+				if (now - lastSlam < (atk.cooldown ?? SLAM_COOLDOWN_MS)) continue;
+				if (!slamReachHit(e, player, atk.range ?? SLAM_RANGE)) continue;
+				startSlam(e, atk, i, now);
+				continue;
+			}
 
 			const lastTime = e._attackTimes[i] ?? 0;
 			const cooldown = atk.cooldown ?? 3000;
@@ -879,8 +968,8 @@ export function createEnemyAi(deps) {
 	// ── 隠れ↔出現の無敵窓（Phase 9-6 潜み鮫の潜行 → 5.5k k-3 で陸/空へ一般化）──────
 	// meta.hide = { hiddenMs, shownMs, style } を持つ敵は、隠れている時間と
 	// 出ている時間を交互に繰り返す。隠れ中（e.hidden=true）は
-	//   ・攻撃しない（enemyTick が enemyAttack を飛ばす）
-	//   ・接触ダメージを与えない（checkEnemyContact が飛ばす）
+	//   ・攻撃しない（enemyTick が enemyAttack を飛ばす。体当たりの予告も tickSlam が
+	//     解決時に `e.hidden` を見て空振りにする＝隠れる直前に立った予告が刺さらない）
 	//   ・こちらの攻撃も通らない（combat.js dealDamageToEnemy が無効化）
 	// 追跡（enemyChase）だけは隠れ中も続く＝「潜って迷い寄る」（§19-8-A）。
 	// ∴ 出ている数秒だけが殴れる窓＝リズム戦闘。
@@ -933,7 +1022,7 @@ export function createEnemyAi(deps) {
 	// 地上では鈍足な敵に「跳んで間合いを詰める」手段を与える4拍の状態機械：
 	//   ground  … 通常の（鈍い）接近。間合いが minRange〜maxRange に入ると溜めへ
 	//   windup  … 溜め＝動かない・攻撃しない予告の窓（**まだ隠れていない＝殴れる**）
-	//   air     … 滞空＝当たり判定が消える（隠れ＝無敵・接触ダメージなし）。跳ぶ方向は
+	//   air     … 滞空＝当たり判定が消える（隠れ＝無敵・攻撃なし＝体当たりも空振り）。跳ぶ方向は
 	//             溜めで確定したカーディナル1方向∴プレイヤーは軸から外れて避けられる
 	//   recover … 着地硬直＝動かない・攻撃しない（**隠れが解ける＝プレイヤーの反撃の窓**）
 	// 戻り値：true ならこの tick の通常移動/攻撃を呼び出し側がスキップする。
@@ -1065,11 +1154,13 @@ export function createEnemyAi(deps) {
 	//      （GUIDE §7-2）∴「寄ってくるだけ」なら走って逃げれば無害＝吸われない。
 	//      ∴張り付いている間は移動処理を通さず**プレイヤーの座標へ毎tick貼り付ける**。
 	//      剥がす手段は殴ること（combat.js の被弾フック → detachLeech）だけ。
-	//   ② **張り付き中は接触ダメージを出さない**（checkEnemyContact が `_attached` を飛ばす）。
-	//      重なっている＝毎tick接触判定が成立する∴そのままだと即死級になる。
-	//      「ルピーを吸う」がこの敵の攻撃であって、体力を削るのは仕事ではない。
-	// プレイヤーのセルへ乗る（`e.x = player.x`）ので **passable.js の重なり防止から
-	// `_attached` を除外している**（除外しないとプレイヤーが1歩も動けなくなる）。
+	//   ② **張り付いても体力は削らない。** 「ルピーを吸う」がこの敵の攻撃であって、
+	//      体力を削るのは仕事ではない（k-7a までは重なりで接触ダメージが毎tick成立する
+	//      ＝即死級になるため `checkEnemyContact` で `_attached` を飛ばしていた。
+	//      k-7.5 で接触ダメージ自体を廃止した∴除外は不要になった）。
+	// プレイヤーのセルへ乗る（`e.x = player.x`）ので **重なり禁止（k-7.5 決定①）の
+	// 唯一の例外**＝`meta.leech` を持つ敵（張り付き中＝`e._attached`）だけは敵側（passable.js）もプレイヤー側
+	// （player.js）も重なりを許す（許さないとプレイヤーが1歩も動けず詰む）。
 	// 剣は距離0の敵にも当たる（combat.js の当たり判定は dot>=0 かつ射程内∴向きを問わない）。
 	// 戻り値：true ならこの tick は移動も攻撃もしない（吸うことが攻撃）。
 	function tickLeech(e, meta, now) {
@@ -1101,7 +1192,7 @@ export function createEnemyAi(deps) {
 
 	// ルピーを amount 吸う。吸うものが無くなったら自分から剥がれる
 	// （0ルピーのプレイヤーを永久に拘束しても何も起きない＝ただの無敵状態になる。
-	//   剥がれれば通常の接触ダメージの敵として振る舞う＝無害な敵にはならない）。
+	//   剥がれれば通常の体当たり攻撃をする敵として振る舞う＝無害な敵にはならない）。
 	function drainRupees(e, cfg, now) {
 		const player = getPlayer();
 		const amount = Math.min(player.rupees ?? 0, cfg.amount ?? 2);
@@ -1306,32 +1397,16 @@ export function createEnemyAi(deps) {
 		return true;
 	}
 
-	// ── 敵との接触ダメージ ────────────────────────────────────
-	function checkEnemyContact() {
-		const player  = getPlayer();
-		const enemies = getEnemies();
-		for (const e of enemies) {
-			// 隠れ中の敵（潜行・地中・滞空）は触れてもダメージを与えない（無敵と対の扱い）
-			if (e.hidden) continue;
-			// Phase 5.5k k-5: 張り付き中（ルピー喰い）は接触ダメージを出さない。
-			// プレイヤーのセルに重なっている＝毎tick接触が成立する∴そのままだと即死級になる。
-			// この敵の攻撃は「ルピーを吸うこと」＝体力を削るのは仕事ではない（tickLeech）。
-			if (e._attached) continue;
-			// 占有範囲（AABB）ベース。1×1 敵では従来の 0.9 箱と一致する。
-			if (enemyPointHit(e, player.x, player.y, 0.9)) {
-				const meta = ENEMY_META[e.type];
-				// Phase 5.5k k-5: e.atk を先に見る＝分裂で生まれた小型（childAtk）が
-				// 親より弱いことを接触ダメージに反映する。buildEnemies は e.atk = meta.atk を
-				// 入れる∴既存の敵は従来と同じ値になる（後方互換）。
-				takeDamage(e.atk ?? meta?.atk ?? 1);
-				// Phase 5.5k k-7: 一時デバフ（#13 剣封じ・#15 毒）を立てる唯一の場所。
-				// **takeDamage の後・その戻り値に関係なく呼ぶ**＝無敵窓でダメージが
-				// 無効化された接触でもデバフは入る（無敵は HP を守る窓であって
-				// 「触れた事実」を消す窓ではない＝game/debuff.js 冒頭 1.）。
-				if (meta?.inflict) inflictDebuff?.(meta);
-			}
-		}
-	}
+	// ── 接触ダメージ（Phase 5.5k k-7.5 で廃止） ────────────────
+	// ここには `checkEnemyContact()` があった＝プレイヤーの占有点が敵の 0.9 箱に入ったら
+	// 毎 tick ダメージ＋デバフ、という「触れたら痛い」の唯一の入口。
+	// 2026-08-17 のユーザー決定②「接触だけでは攻撃を受けることはないようにする」で廃止した。
+	// 理由（DECISIONS 2026-08-17）＝
+	//   ・重なり禁止（決定①）を入れると「接触」は 0.9 箱に入る位置そのものが消える∴定義できない
+	//   ・丸め `toTileCol = floor(x+0.5)` の非対称で、接触は西/北の敵だけが成立していた
+	//     （プレイヤーが半セル位置のとき西/北は 0.5 まで詰め、東/南は 1.5 で止まる）＝理不尽
+	// 今の代わり＝**すべての攻撃はモーションを持つ**。体当たり専門（attack:{type:'charge'}）は
+	// `enemyAttack` → `startSlam` → `tickSlam` の予告→解決で当てる（デバフの発火も tickSlam）。
 
 	// ── 敵ループ（毎 tick 呼ぶ） ──────────────────────────────
 	function enemyTick() {
@@ -1342,7 +1417,16 @@ export function createEnemyAi(deps) {
 			if (!meta) continue;
 			// Phase 5.5k: スタン中はガードも解除する（ブーメランで動きを止めてガード不能にする、
 			// というユーザー設計の実体＝スタンとガードは同時に成立しない）。
-			if (e.stunUntil && now < e.stunUntil) { e._guarding = false; continue; }
+			if (e.stunUntil && now < e.stunUntil) {
+				e._guarding = false;
+				// Phase 5.5k k-7.5: スタンは体当たりの予告も中断する（ガードと同じ扱い＝
+				// スタン中に攻撃が成立してはいけない）。ブーメランで止めれば体当たりも消える。
+				if (e._slamAt != null) { e._slamAt = null; e._slamIdx = null; syncSlamMotion(e); }
+				continue;
+			}
+			// Phase 5.5k k-7.5: 立っている予告は**他の専有状態より先に必ず解決する**
+			// （ガード/硬直/跳躍の判定より前＝予告が宙に浮いて後から不意に当たることがない）。
+			const slamming = tickSlam(e, meta, now);
 			// 隠れ↔出現の周期を更新（meta.hide を持つ敵のみ＝潜み鮫・地中蟲）
 			tickHide(e, meta, now);
 			// Phase 9-6: 横向き敵の向きをプレイヤーに合わせる（毎 tick・移動しなくても向き直る）
@@ -1369,7 +1453,7 @@ export function createEnemyAi(deps) {
 			// Phase 5.5k k-4: 向き固定（盾騎士）＝turnMs ごとにだけ向き直る。移動より先に
 			// 決める（移動側は向きを触らない＝dirLocked を渡す）。
 			const dirLocked = tickFaceLock(e, meta, now);
-			if (!isGuarding && !frozen && !leaping && !shelled && !leeching) {
+			if (!isGuarding && !frozen && !leaping && !shelled && !leeching && !slamming) {
 				if (meta.hitAndAway) {
 					bossTickHitAndAway(e, meta);
 				} else if (cmode === 'ranged') {
@@ -1391,6 +1475,8 @@ export function createEnemyAi(deps) {
 			if (meta.leap) syncLeapSprite(e, meta);
 			// Phase 5.5k k-4: 甲羅を持つ敵は開/閉で絵を切り替える（無敵の理由を見せる）。
 			if (meta.shell) syncShellSprite(e, meta);
+			// Phase 5.5k k-7.5: 体当たりの予告モーション（拡大縮小2往復）を状態に合わせる。
+			syncSlamMotion(e);
 		}
 	}
 
@@ -1408,9 +1494,10 @@ export function createEnemyAi(deps) {
 		tickFaceLock,          // Phase 5.5k k-4: 向き固定（盾騎士・テスト用）
 		tickShell,             // Phase 5.5k k-4: 甲羅の開閉（火吐き亀・テスト用）
 		tickLeech,             // Phase 5.5k k-5: 張り付き＋吸血（ルピー喰い・テスト用）
+		tickSlam,              // Phase 5.5k k-7.5: 体当たりの予告→解決（テスト用）
+		slamReachHit,          // Phase 5.5k k-7.5: 体当たりの到達判定（テスト用）
 		detachLeech,           // Phase 5.5k k-5: 張り付きを剥がす（combat.js の被弾フックが呼ぶ）
 		bossTickHitAndAway,
 		enemyAttack,
-		checkEnemyContact,
 	};
 }

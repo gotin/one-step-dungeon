@@ -14,7 +14,9 @@
 //        ・敵は必ずプレイヤーより遅い（GUIDE §7-2）∴「寄ってくるだけ」では逃げられて無害
 //          ＝貼り付き（速度では振り切れない）が機構の芯
 //        ・**被弾で剥がれる**（フック点 → enemy-ai.js detachLeech）＝叩く手が意味を持つ
-//        ・張り付き中は接触ダメージを出さない（吸うことが攻撃）＝重なりで即死しない
+//        ・張り付き中はダメージを出さない（吸うことが攻撃）＝重なっていても HP は減らない。
+//          機構：`tickLeech` が true を返す tick は移動も攻撃もしない∴体当たり（slam）も出ない。
+//          剥がれた後（再張り付きの猶予の間）は普通に体当たりしてくる＝無害な敵にはならない
 //        ・倒すと吸われた分の refund 割が戻る＝倒す動機（PLAN 名簿 #11「倒す優先度を強制」）
 //
 // 検証ステージ＝test_mechanics[35,0] `split_slime` / [36,0] `rupee_eater`
@@ -28,12 +30,21 @@
 //   剣    … SWORD_COOLDOWN_MS 100 ∴ tick1 以降なら振れる（gameTime 0 では振れない）
 //   吸血  … tick1 で張り付き _leechNext=120+600=720 → tick6 で1回目 → 以後 5 tick ごと（11・16…）
 //   剥がし… tick3 で殴ると _leechCooldownUntil=360+1200=1560 → tick13 で再び張り付く
+//   体当たり… 予告 SLAM_WINDUP_MS 280（3 tick 後に解決＝当たる）／クールダウン
+//             SLAM_COOLDOWN_MS 900（8 tick）／到達 SLAM_RANGE 1.5
+//
+// ⚠ **k-7.5（2026-08-17）で接触ダメージは廃止された**（ユーザー決定②「接触だけでは攻撃を
+//   受けることはないようにする」）∴「敵に重ねて1 tick 進める」では HP は減らない。
+//   δ/σ はどちらも `attack:{type:'charge'}`＝体当たり（隣に居ると予告が出て、解決の tick に
+//   隣に居ればダメージ）。**もう「敵に重ねる」ことはできない**（重なり禁止＝決定①。
+//   例外は張り付き中の σ だけ＝決定⑤）∴当てられ方は「敵の西隣（`e.x-1`）に立ち続ける」。
+//   体当たりそのものの機構は tests/slam-attack.spec.js が番人。
 //
 // ⚠ 計測は1回の evaluate 内で完結させ、冒頭で pause() → gameTime===0 を assert する
 //   （実ループの tick が漏れていたらそこで落ちる）。さらに実時間ループは `gotoFrozen()` で
 //   そもそも起動させない（k-4 spec と同じ理由＝1 tick の漏れが tick 番号を丸ごとズラす）。
 // ⚠ プレビュー（fromEditor=1）は debugMode:true ＝ takeDamage も isPassable も素通りする。
-//   ∴「張り付かれても動ける」「張り付き中は接触ダメージが出ない」を測る本は 'g' で debug を
+//   ∴「張り付かれても動ける」「張り付き中はダメージが出ない」を測る本は 'g' で debug を
 //   切る（切らないと重なり例外も無敵も検査されず歯が抜ける）。逆に debug のままで良い本
 //   （張り付きの周期・払い戻し）は切らない＝プレイヤーが削られて gameover になるのを避ける。
 // ⚠ 木の剣の攻撃力は ps_weapon=1 では入らない（weapon フラグだけ立つ）∴`equipSwordTier(0)`
@@ -50,8 +61,8 @@
 //   combat.js  撃破記録を素朴に（兄弟を見ずに child id を記録）… ⑥
 //   combat.js  置き場所の選択で他の敵の占有を無視 …………………… ⑨
 //   combat.js  refundLeech を外す ……………………………………………… ⑭
-//   enemy-ai.js 接触ダメージで e.atk を見ない（親の atk 固定）… ⑦
-//   enemy-ai.js 張り付き中の接触ダメージ免除を外す ………………… ⑫
+//   enemy-ai.js 体当たりの解決で e.atk を見ない（親の atk 固定）… ⑦
+//   enemy-ai.js tickLeech の戻り値 true を捨てる（張り付き中も攻撃を通す）… ⑫
 //   enemy-ai.js プレイヤーへの貼り付き（座標追従）を外す ………… ⑩⑪⑫
 //   enemy-ai.js 再張り付きの猶予を 0 に ……………………………………… ⑫⑬⑮
 //   enemy-ai.js 0ルピーで自分から剥がれるのを外す ………………… ⑮
@@ -65,6 +76,7 @@ import { fileURLToPath } from 'url';
 import { TILE, TILE_META } from '../shared/tiles.js';
 import { ENEMY_META, ENEMY_SPEED_FAST } from '../shared/enemies.js';
 import { ENEMY_SPRITES, ENEMY_PAL } from '../shared/sprites-enemies.js';
+import { SLAM_WINDUP_MS } from '../game/constants.js';
 import { TILE_SPRITE_MAP } from '../shared/tile-sprites.js';
 import { waitForBoard } from './helpers.js';
 import { TEST_LAYER, stageKey } from './test-stage-keys.js';
@@ -145,7 +157,7 @@ test.describe('Phase 5.5k k-5 – 被弾トリガー（分裂スライム・ル�
       // ★ ルピー喰いはここが機構の前提でもある：遅いからこそ「寄ってくるだけ」では
       //   逃げられて無害＝**張り付き**が要る（tickLeech が座標を貼り付ける理由）。
       expect(m.speed, `${name} がプレイヤーと同速以上＝振り切れない`).toBeLessThan(ENEMY_SPEED_FAST);
-      expect(m.attack?.type, `${name} は接触ダメージのみ（飛び道具は k-6 の担当）`).toBe('charge');
+      expect(m.attack?.type, `${name} は体当たり（charge）のみ（飛び道具は k-6 の担当）`).toBe('charge');
     }
 
     // ① 分裂スライム＝倒した瞬間が引き金。「1発で片付いたつもりが増える」を数字で固定する。
@@ -159,7 +171,7 @@ test.describe('Phase 5.5k k-5 – 被弾トリガー（分裂スライム・ル�
     expect(s.split.childHp, '小型が木の剣1発で倒せない＝増えた数を捌けない')
       .toBeLessThanOrEqual(WOOD_SWORD_ATK - (s.split.childDef ?? 0));
     expect(s.split.childHp, '小型が親と同じ硬さ＝ただ敵が増えるだけ').toBeLessThan(s.hp);
-    expect(s.split.childAtk, '小型の接触ダメージが親と同じ＝分裂が理不尽な増強になる')
+    expect(s.split.childAtk, '小型の体当たりのダメージが親と同じ＝分裂が理不尽な増強になる')
       .toBeLessThan(s.atk);
     expect(s.split.childSprite, '小型の絵の名前が無い（親と同じ絵では増えたことが読めない）').toBeTruthy();
     // ★ 弱点＝機構の解除鍵。blockedBy と weakness.type が食い違うと「爆弾で潰せる」の
@@ -339,7 +351,7 @@ test.describe('Phase 5.5k k-5 – 被弾トリガー（分裂スライム・ル�
       expect(c.type, '小型が親と別タイプになっている').toBe(TILE.SPLIT_SLIME);
       expect(c.hp, '小型の hp が childHp でない').toBe(cfg.childHp);
       expect(c.maxHp, '小型の maxHp が childHp でない（HP バーの見た目が親のまま）').toBe(cfg.childHp);
-      expect(c.atk, '小型の atk が childAtk でない＝接触ダメージが親のまま').toBe(cfg.childAtk);
+      expect(c.atk, '小型の atk が childAtk でない＝体当たりのダメージが親のまま').toBe(cfg.childAtk);
       expect(c.sprite, '小型の絵が childSprite でない').toBe(cfg.childSprite);
       expect(c.splitFrom, '小型が親の posKey を引き継いでいない＝撃破記録が迷子になる').toBe('4,9');
     }
@@ -393,12 +405,12 @@ test.describe('Phase 5.5k k-5 – 被弾トリガー（分裂スライム・ル�
     expect(errors).toEqual([]);
   });
 
-  test('⑦ 分裂した小型の接触ダメージは childAtk（親より弱い）', async ({ page }) => {
+  test('⑦ 分裂した小型の体当たりのダメージは childAtk（親より弱い）', async ({ page }) => {
     const errors = [];
     page.on('pageerror', e => errors.push(e.message));
     await gotoFrozen(page, SLIME);
     // ⚠ プレビューは debugMode:true ＝ takeDamage が早期 return する∴'g' で切る
-    //   （切らないと「接触しても減らない」＝歯の無いテストになる）。
+    //   （切らないと「当てられても減らない」＝歯の無いテストになる）。
     await page.keyboard.press('g');
 
     const res = await page.evaluate(() => {
@@ -409,18 +421,32 @@ test.describe('Phase 5.5k k-5 – 被弾トリガー（分裂スライム・ル�
       g.step(1);
       g.setHeroDir('right');
       g.swordAttack();                                  // 親 → 小型（(4,9) と (4,10)）
+      const kids = g.getEnemies();
       const hp0 = g.getState().player.hp;
       const p = g.getPlayer();
-      p.x = 9; p.y = 4;                                 // (4,9) の小型に重なる（k-4 spec と同じ手法）
-      g.step(1);                                        // checkEnemyContact が走る
-      return { hp0, hp1: g.getState().player.hp, kids: g.getEnemies() };
+      // k-7.5: 重ねてもダメージは出ない∴小型の西隣に立ち続けて**体当たりを1回受ける**。
+      const out = { hp0, kids, hp1: hp0, distMin: 99 };
+      for (let i = 1; i <= 20; i++) {
+        const e = g.getEnemies()[0];
+        p.x = e.x - 1; p.y = e.y;
+        g.step(1);
+        const e2 = g.getEnemies()[0];
+        out.distMin = Math.min(out.distMin, +Math.hypot(e2.x - p.x, e2.y - p.y).toFixed(3));
+        const hp = g.getState().player.hp;
+        if (hp < hp0) { out.hp1 = hp; out.hitTick = i; break; }
+      }
+      return out;
     });
 
     const cfg = ENEMY_META[TILE.SPLIT_SLIME].split;
     expect(res.kids.length, '前提：小型が2体居る').toBe(2);
+    expect(res.hitTick, '20 tick 隣に立ち続けても小型が体当たりして来ない（無害な敵になっている）')
+      .toBeGreaterThan(0);
+    expect(res.distMin, '前提：小型がプレイヤーに重なっている（重なり禁止＝決定①に反する）')
+      .toBeGreaterThanOrEqual(1);
     // ★ 親の atk（2）で計算していたら 2 減る＝小型が親と同じ強さになる。
-    //   checkEnemyContact が e.atk を先に読むこと（＝分裂の弱体化が接触にも効くこと）の番人。
-    expect(res.hp0 - res.hp1, '小型の接触ダメージが childAtk になっていない（親の atk を使っている）')
+    //   tickSlam が e.atk を先に読むこと（＝分裂の弱体化が体当たりにも効くこと）の番人。
+    expect(res.hp0 - res.hp1, '小型の体当たりのダメージが childAtk になっていない（親の atk を使っている）')
       .toBe(cfg.childAtk);
     expect(errors).toEqual([]);
   });
@@ -561,7 +587,7 @@ test.describe('Phase 5.5k k-5 – 被弾トリガー（分裂スライム・ル�
     expect(errors).toEqual([]);
   });
 
-  test('⑫ 張り付き中は接触ダメージが出ない／剥がれた後は出る', async ({ page }) => {
+  test('⑫ 張り付き中はダメージが出ない／剥がれた後は体当たりが当たる', async ({ page }) => {
     const errors = [];
     page.on('pageerror', e => errors.push(e.message));
     await gotoFrozen(page, EATER(10));
@@ -578,33 +604,48 @@ test.describe('Phase 5.5k k-5 – 被弾トリガー（分裂スライム・ル�
       const overlapped = Math.abs(e.x - g.getPlayer().x) < 0.01 && Math.abs(e.y - g.getPlayer().y) < 0.01;
       g.dealDamage(e.id, 2, 'sword', 8, 4);       // 剥がす（def 1 ∴ 1 ダメージ＝生き残る）
       const after = g.getEnemies()[0];
-      const drops = [];
-      for (let i = 17; i <= 22; i++) {
+      // 剥がれた後＝再張り付きの猶予（cooldownMs）の間は普通の敵＝体当たりして来る。
+      // ⚠ プレイヤーは動かさない（動くと「逃げれば当たらない」ぶんが混ざる）。
+      //   予告（slamAt）が立った tick も記録する＝「予告なしで削られた」と区別する。
+      const drops = [], windups = [];
+      for (let i = 17; i <= 34; i++) {
         const before = g.getState().player.hp;
         g.step(1);
+        const en = g.getEnemies()[0];
+        if (en?.slamAt != null) windups.push(i);
         const hp = g.getState().player.hp;
         if (hp !== before) drops.push({ tick: i, loss: before - hp });
       }
-      return { hp0, attachedHp, overlapped, attachedAfter: after?.attached, hpEnemy: after?.hp, drops };
+      return {
+        hp0, attachedHp, overlapped, attachedAfter: after?.attached, hpEnemy: after?.hp,
+        detachTick: 16, drops, windups,
+      };
     });
 
     expect(res.overlapped, '前提：張り付き中は敵がプレイヤーに重なっている').toBe(true);
-    // ★ 重なり＝毎tick接触判定が成立する∴例外を入れないと即死級になる（吸うのが攻撃）
-    expect(res.attachedHp, '張り付き中に接触ダメージを受けた（重なりで毎tick削られる＝即死級）')
+    // ★ 張り付いている間は tickLeech が true を返す＝その tick は移動も攻撃もしない（吸うのが攻撃）。
+    //   戻り値を捨てると重なったまま体当たりが通る＝距離0で必ず当たる即死級になる。
+    expect(res.attachedHp, '張り付き中にダメージを受けた（重なったまま体当たりが通っている＝即死級）')
       .toBe(res.hp0);
-    // 対照＝剥がれた直後は同じ重なりでも接触が成立する（例外が張り付き限定であることの番人）
+    // 対照＝剥がれた後は普通に攻撃してくる（免除が張り付き限定であることの番人）
     expect(res.attachedAfter, '殴っても剥がれていない').toBe(false);
     expect(res.hpEnemy, '剥がすつもりの一撃で倒してしまった（この本は生存前提）').toBeGreaterThan(0);
-    expect(res.drops[0], '剥がれた後も接触ダメージが出ない＝ただの無害な敵になっている')
-      .toEqual({ tick: 17, loss: ENEMY_META[TILE.RUPEE_EATER].atk });
+    expect(res.windups.length, '剥がれた後に体当たりの予告が出ない（張り付き中の免除が剥がれた後も続いている）')
+      .toBeGreaterThan(0);
+    // 剥がれた次の tick に予告が立ち、SLAM_WINDUP_MS（3 tick）後に解決して当たる
+    expect(res.drops[0], '剥がれた後も体当たりが当たらない＝ただの無害な敵になっている')
+      .toEqual({
+        tick: res.detachTick + 1 + Math.ceil(SLAM_WINDUP_MS / TICK_MS),
+        loss: ENEMY_META[TILE.RUPEE_EATER].atk,
+      });
     expect(errors).toEqual([]);
   });
 
   test('⑬ 剣で殴ると剥がれ、cooldownMs の間は張り付き直せない', async ({ page }) => {
     const errors = [];
     page.on('pageerror', e => errors.push(e.message));
-    // debug は切らない＝プレイヤーが接触で削られて gameover になるのを避ける
-    // （測るのは張り付きの時計だけ。接触ダメージ側は ⑫ が受け持つ）。
+    // debug は切らない＝プレイヤーが体当たりで削られて gameover になるのを避ける
+    // （測るのは張り付きの時計だけ。ダメージが出ない側は ⑫ が受け持つ）。
     await gotoFrozen(page, EATER(10));
 
     const res = await page.evaluate(() => {
@@ -701,7 +742,7 @@ test.describe('Phase 5.5k k-5 – 被弾トリガー（分裂スライム・ル�
     const drainTick = cfg.drainMs / TICK_MS + 1;                 // tick6＝1回目の吸血
     const retryTick = drainTick + cfg.cooldownMs / TICK_MS;       // tick16＝猶予明け
     // ★ 吸うものが無いまま張り付き続けると「ダメージも出さない無敵の置物」になる
-    //   ∴自分から剥がれて通常の接触ダメージの敵に戻る（⑫の対照と同じ振る舞い）。
+    //   ∴自分から剥がれて通常の体当たり攻撃をする敵に戻る（⑫の対照と同じ振る舞い）。
     expect(res.flips, '0ルピーのときの張り付き↔剥がれの周期が想定と違う').toEqual([
       { tick: 1, attached: true },
       { tick: drainTick, attached: false },

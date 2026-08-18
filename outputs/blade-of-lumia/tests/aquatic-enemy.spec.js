@@ -73,7 +73,7 @@ test.describe('Phase 9-6 深洋O – aquatic enemy movement + 魚群', () => {
     expect(meta.isBoss, '魚群は雑魚（ボスではない）').toBeFalsy();
     expect(meta.hp, '魚群は低HP（1体は脆い）').toBeLessThanOrEqual(2);
     expect(meta.move, '魚群は水棲（water）').toBe('water');
-    expect(meta.attack?.type, '魚群は接触攻撃（charge）').toBe('charge');
+    expect(meta.attack?.type, '魚群は体当たり攻撃（charge）').toBe('charge');
   });
 
   test('② タイル定義・スプライト・パレット・スプライトマップが揃っている', () => {

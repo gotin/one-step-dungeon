@@ -5,7 +5,11 @@
 // 陸と空へ広げた。この1つの規則に3体を乗せる（PLAN 5.5k 名簿 #1 #2 #9）：
 //
 //   ① 地中蟲 BURROW_WORM ('α')  … `hide`（タイマー駆動）＝潜伏1.6s↔浮上1.0s の周期。
-//        潜伏中は無敵・攻撃なし・接触ダメージなしのまま寄ってくる＝「待って合わせる敵」。
+//        潜伏中は無敵・攻撃なしのまま寄ってくる＝「待って合わせる敵」。
+//        ⚠ 2026-08-17（k-7.5）に接触ダメージが廃止された（ユーザー決定②）∴「潜伏中は接触
+//        ダメージを与えない」を測っていた⑥は削除した（機構ごと無くなった）。潜伏中に攻撃
+//        されないことは⑦（浮上中だけ噛みつく）が番人／「予告の解決の時刻に隠れていたら
+//        空振り」は tests/slam-attack.spec.js が持つ。
 //   ② 跳躍蜘蛛 LEAP_SPIDER ('β') … `leap`（行動駆動）＝溜め→滞空（この間だけ隠れ）→
 //        着地硬直。滞空中は当たり判定が消え、**着地硬直が反撃の窓**になる（因果が逆＝
 //        時間で開く窓ではなく、敵の行動が窓を開ける）。
@@ -37,7 +41,6 @@ import { TILE, TILE_META } from '../shared/tiles.js';
 import { ENEMY_META, ENEMY_SPEED_FAST } from '../shared/enemies.js';
 import { ENEMY_SPRITES, ENEMY_PAL } from '../shared/sprites-enemies.js';
 import { TILE_SPRITE_MAP } from '../shared/tile-sprites.js';
-import { createEnemyAi } from '../game/enemy-ai.js';
 import { waitForBoard } from './helpers.js';
 import { TEST_LAYER, stageKey } from './test-stage-keys.js';
 import { gameLayerEntries } from '../shared/layers.js';
@@ -206,7 +209,7 @@ test.describe('Phase 5.5k k-3 – 隠れ↔出現の無敵窓（地中蟲・跳�
     // 跳んで届く範囲を跳躍距離が覆っている（跳んでも絶対に届かない設定を弾く）
     expect(spider.leap.cells, '跳躍距離が minRange より短い＝跳んでも間合いが詰まらない')
       .toBeGreaterThan(spider.leap.minRange - 1);
-    expect(spider.attack?.type, '接触ダメージのみ（飛び道具なし）').toBe('charge');
+    expect(spider.attack?.type, '体当たり（charge）のみ（飛び道具なし）').toBe('charge');
     expect(spider.speed, '地上が速い＝跳躍が「間合いを詰める唯一の手段」にならない')
       .toBeLessThan(ENEMY_META[TILE.BURROW_WORM].speed);
 
@@ -225,7 +228,7 @@ test.describe('Phase 5.5k k-3 – 隠れ↔出現の無敵窓（地中蟲・跳�
       'periodMs が短すぎて振り切る前に折り返す＝直線に見える')
       .toBeGreaterThanOrEqual((bat.zigzag.amplitude * 2) / lateralPerTick);
     expect(bat.sideView, '横向きシルエット＝左右反転で向きを出す').toBe(true);
-    expect(bat.attack?.type, '接触ダメージのみ').toBe('charge');
+    expect(bat.attack?.type, '体当たり（charge）のみ').toBe('charge');
   });
 
   test('② タイル定義・スプライト・パレット・スプライトマップの名前解決', () => {
@@ -326,23 +329,6 @@ test.describe('Phase 5.5k k-3 – 隠れ↔出現の無敵窓（地中蟲・跳�
     expect(res[1].hidden, '前提：tick20 は浮上中').toBe(false);
     expect(res[1].loss, '浮上中にダメージが通らない＝倒せない').toBeGreaterThan(0);
     expect(errors).toEqual([]);
-  });
-
-  test('⑥ 潜伏中の地中蟲は接触ダメージを与えない（浮上中は与える）', () => {
-    // checkEnemyContact 単体（DOM 不要）。プレイヤーと敵を同一セルに重ねる。
-    const calls = [];
-    const enemy = { id: 'e1', type: TILE.BURROW_WORM, x: 5, y: 5, hidden: true };
-    const ai = createEnemyAi({
-      getPlayer:  () => ({ x: 5, y: 5 }),
-      getEnemies: () => [enemy],
-      takeDamage: (amt) => calls.push(amt),
-    });
-    ai.checkEnemyContact();
-    expect(calls, '潜伏中は重なってもダメージなし').toEqual([]);
-    enemy.hidden = false;
-    ai.checkEnemyContact();
-    expect(calls.length, '浮上中は接触ダメージが入る').toBe(1);
-    expect(calls[0], '地中蟲の atk が入る').toBe(ENEMY_META[TILE.BURROW_WORM].atk);
   });
 
   test('⑦ 潜伏中は攻撃しない・浮上中だけ噛みつく', async ({ page }) => {

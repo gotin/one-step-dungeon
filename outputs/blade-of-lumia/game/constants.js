@@ -50,6 +50,19 @@ export const STONE_PUSH_COOLDOWN_MS = 600;
 // クールダウン（100ms）より長い＝連打中はポーズが途切れずに継続する。
 export const ATTACK_POSE_MS = 180;
 
+// ── Phase 5.5k k-7.5: 体当たり攻撃（slam）────────────────────────
+// 接触専門の敵（attack:{type:'charge'} の10種）が持つ近接攻撃。
+// 「隣接＝即ダメージ」ではなく **予告モーション → 解決時にまだ隣接していたら被弾**
+// （2026-08-17 ユーザー決定）。∴プレイヤーは予告を見て間合いを外せば避けられる。
+//   SLAM_RANGE     … 到達距離。剣（sword の range 1.5）と同じ数字を採る＝プレイヤーの
+//                    立ち位置が半セルのとき東/南から寄る敵が 1.5 で止まる問題を吸収する
+//                    （`toTileCol = floor(x+0.5)` の丸めには手を入れない）。
+//   SLAM_WINDUP_MS … 予告の長さ。CSS の拡大縮小2往復（board.css enemy-slam）と同じ長さ。
+//   SLAM_COOLDOWN_MS … 解決してから次の予告までの間隔（毎tick被弾を防ぐ）。
+export const SLAM_RANGE       = 1.5;
+export const SLAM_WINDUP_MS   = 280;
+export const SLAM_COOLDOWN_MS = 900;
+
 // ── Phase 3-1: チャージ攻撃（剣ビーム）─────────────────────────
 // 攻撃ボタンを押した瞬間に通常の剣が出る。押しっぱなしでチャージが溜まり、
 // 離した時のチャージ量で発射するビームが変わる（論理時間 gameNow 基準）。
