@@ -825,10 +825,14 @@ export function createEnemyAi(deps) {
 				fireEnemyProjectile(e, 'beam', ndx, ndy, atk.projectileSpeed ?? 2.0);
 				// クールダウン記録・剣を振った絵（_atkUntil）・攻撃硬直（_freezeUntil）は markAttack が一括で立てる
 				markAttack(e, meta, i, now);
-			} else if (atk.type === 'stone') {
+			} else if (atk.type === 'stone' || atk.type === 'magicBolt') {
+				// magicBolt（k-8c 術士の魔弾）は stone と**同じ分岐で撃つ**＝任意角・盾で
+				// 防げる・壁で消えるという挙動を1行も分けない。違いは投擲物の絵だけ∴
+				// type をそのまま渡す（projectile.js の createProjEl が
+				// makeSprite(proj.type, proj.type) を呼ぶ＝type 名がスプライト名を兼ねる）。
 				const ndx = dx / dist;
 				const ndy = dy / dist;
-				fireEnemyProjectile(e, 'stone', ndx, ndy, atk.projectileSpeed ?? 1.0);
+				fireEnemyProjectile(e, atk.type, ndx, ndy, atk.projectileSpeed ?? 1.0);
 				markAttack(e, meta, i, now);
 			} else if (atk.type === 'waterShot') {
 				// Phase 9-6 深洋O: 射水魚の水弾。stone と同じ「任意角へ飛ばす」型
@@ -1021,7 +1025,8 @@ export function createEnemyAi(deps) {
 	// ── Phase 5.5k k-8: 瞬間移動（術士）───────────────────────────
 	// meta.blink = { shownMs, goneMs, castDelayMs, range, style }
 	// 「歩かない敵」（speed 0）に移動手段として瞬間移動だけを与える3拍の状態機械：
-	//   shown … 姿がある＝殴れる窓。この間だけ魔弾（attack.type='stone'）を撃つ
+	//   shown … 姿がある＝殴れる窓。この間だけ魔弾（attack.type='magicBolt'＝挙動は
+	//           stone と同じ任意角の投擲物・絵だけ藍＋金）を撃つ
 	//   gone  … 消える＝無敵（e.hidden＝combat.js dealDamageToEnemy が無効化）・攻撃もしない。
 	//           tickHide と同じ `setEnemyHidden` を通る＝無敵窓の出入口は1か所
 	//   出現  … プレイヤーから range セル離れたカーディナルのセルへ跳ぶ → 向き直る →

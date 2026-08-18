@@ -14,7 +14,11 @@ export const ENEMY_SPEED_FAST   = 1.0;  // 高速敵
 
 // ── 敵パラメータ ──────────────────────────────────────────────
 // attack.type: 'charge' | 'spear' | 'stone' | 'sword' | 'swordBeam' | 'waterShot' | 'waterBlade'
-//            | 'bombThrow' | 'boomerangThrow'
+//            | 'bombThrow' | 'boomerangThrow' | 'magicBolt'
+//   magicBolt（Phase 5.5k k-8c #5 術士）… **挙動は 'stone' と完全に同じ**（任意角へ飛ぶ・
+//   盾で防げる・壁で消える）＝enemy-ai.js の分岐も stone と同居している。違うのは
+//   投擲物の絵とパレットだけ（ITEM_SPRITES/ITEM_PAL.magicBolt＝藍＋金）。
+//   ⚠️ stone の絵を塗り替えて代用してはいけない（stone は岩投げ系の敵と共有）。
 //   swordBeam（Phase 5.5k #7 剣獣）… 縦横が揃ったときだけ撃つ「飛ぶ斬撃」。
 //   プレイヤーのビーム剣と同じ 'beam' 投擲物を owner:'enemy' で飛ばす。
 //   bombThrow（Phase 5.5k k-6 #6 爆弾鬼）… 投げた瞬間のプレイヤーのセルへ**放物線**で
@@ -476,7 +480,8 @@ export const ENEMY_META = {
 		// 「瞬間移動して撃つ＝一定間隔で消え別セルに再出現→魔弾」を数字にする：
 		//   ・speed 0＝**歩かない**。移動手段は瞬間移動（meta.blink）だけ＝壁や水で
 		//     経路を切っても寄って来る／逆に追いかけても間合いは詰まらない
-		//   ・魔弾は `stone` 型（任意角の投擲物）を流用＝盾で防げる遠隔攻撃
+		//   ・魔弾は `magicBolt` 型＝挙動は `stone`（任意角の投擲物）と同じ＝盾で防げる
+		//     遠隔攻撃。絵とパレットだけ藍＋金（k-8c。灰色の石が飛ぶのをやめた）
 		//   ・出現→詠唱（castDelayMs の硬直）→1発。1回の出現で撃つのは1発だけ
 		//     （castDelayMs + cooldown > shownMs＝拍が読める）
 		//   ・弱点 arrow（×2）＝消える前に弓で落とす＝「詠唱を潰す」遊び
@@ -499,7 +504,7 @@ export const ENEMY_META = {
 			style:    'warp',   // 見た目の種別（CSS `.char-abs.hiding.hide-warp`＝魔法陣が残る）
 		},
 		attack: {
-			type:            'stone',   // 魔弾（任意角の投擲物・盾で防げる）
+			type:            'magicBolt', // 魔弾（任意角の投擲物・盾で防げる＝stone と同じ挙動）
 			range:           6.5,       // 射程（瞬間移動の距離 3 より十分長い＝出現直後は必ず届く）
 			minRange:        2.0,       // 近すぎると撃たない（密着したら殴れる＝近接の答えが残る）
 			cooldown:        1200,      // 10 tick（castDelayMs 込みで shownMs を超える＝1出現1発）
@@ -954,4 +959,5 @@ export const PROJECTILE_SPRITE = {
 	waterShot: 'waterShot',  // Phase 9-6: 射水魚の水弾（ITEM_SPRITES/ITEM_PAL に同名で存在）
 	waterBlade: 'waterBlade', // Phase 9-6: 潜み鮫の水刃（尾で薙いだ三日月型の衝撃波）
 	thrownBomb: 'thrownBomb', // Phase 5.5k k-6: 爆弾鬼が投げる爆弾（放物線・着弾で範囲爆発）
+	magicBolt: 'magicBolt',   // Phase 5.5k k-8c: 術士の魔弾（stone と同じ挙動・絵だけ藍＋金）
 };

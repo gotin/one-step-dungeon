@@ -7,7 +7,7 @@
 // 「振り切る」ではなく「出た瞬間を叩く」遊びになる。
 //
 //   術士 SORCERER ('η') … `blink:{ shownMs, goneMs, castDelayMs, range, style }`
-//     shown（1440ms＝12 tick）… 姿がある＝**殴れる窓**／魔弾（attack.type='stone'）を撃つ窓
+//     shown（1440ms＝12 tick）… 姿がある＝**殴れる窓**／魔弾（attack.type='magicBolt'）を撃つ窓
 //     gone （720ms＝6 tick） … 消える＝**無敵**（`e.hidden`＝combat.js dealDamageToEnemy が無効化）・
 //                              攻撃もしない。消えた場所に回る魔法陣が残る（`.hiding.hide-warp`）
 //     出現              … プレイヤーから range(3) セル離れたカーディナルのセルへ跳ぶ →
@@ -46,9 +46,10 @@
 // ⚠ プレビュー（fromEditor=1）は debugMode:true ＝ takeDamage が早期 return する。
 //   この spec は**敵の hp** と**投擲物の本数**しか見ない（プレイヤーの HP は見ない）∴
 //   'g' で debug を切る必要が無い＝魔弾がプレイヤーに当たってもノイズにならない。
-// ⚠ 魔弾は `stone` 型＝**既存の投擲物経路**（盾で防げる・壁で消える）に乗っている。
-//   経路そのものの番人は tests/*projectile*.spec.js 側∴ここでは「型が stone であること」と
-//   「出る／出ない tick」だけを固定する。
+// ⚠ 魔弾は `magicBolt` 型＝**挙動は `stone` と同じ**（任意角・盾で防げる・壁で消える。
+//   enemy-ai.js の分岐も stone と同居＝1行も分けていない）で、**絵とパレットだけ**藍＋金
+//   （k-8c。それまでは stone 流用＝金の宝珠から灰色の石が出ていた）。経路そのものの番人は
+//   tests/*projectile*.spec.js 側∴ここでは「型と絵」（⑭⑮）と「出る／出ない tick」だけを固定する。
 // ⚠ k-8a 時点のスプライトは既存絵（センチネル）のエイリアス＋術士パレット
 //   （GUIDE §2「機構が先・絵は後」）∴絵の中身は主張せず、名前解決と
 //   「床に沈まない色であること」だけを押さえる。実描き（32×32）は k-8b の担当。
@@ -68,6 +69,16 @@
 //   HIDE_STYLES から 'warp' を外す …………………………………………………… ⑪
 //   ENEMY_PAL.sorcerer を暗い藍だけにする（床に沈む色）………………………… ②
 //   editor-palette.js から TILE.SORCERER を外す ………………………………… ③
+// ── 歯の実測（2026-08-18・k-8c 魔弾の絵の分）──────────────────────────────
+//   ENEMY_META の attack.type を 'magicBolt' → 'stone' に戻す ……………… ①⑭⑮
+//   ITEM_SPRITES.magicBolt を消す（絵の登録漏れ＝透明な弾）………………… ⑭⑮
+//   enemy-ai.js で type を捨てて 'stone' をハードコードして撃つ ………… ⑮
+//   ITEM_PAL.magicBolt を stone と同じ灰にする ………………………………… ⑭
+//     ⚠️ ⑮は赤にならない＝⑮は「描かれたドットの色」を ITEM_PAL.magicBolt から引く∴
+//        パレットごと差し替えると自己一貫して緑になる（色の**中身**の番人は⑭側＝
+//        パレット＝ENEMY_PAL.sorcerer・金＝魔法陣の色）。
+//   ITEM_PAL.stone を藍＋金に塗り替えて代用する ………………………………… ⑭
+//   enemy-ai.js の分岐から `|| atk.type === 'magicBolt'` を外す ………… ⑦⑨⑩⑮
 // ── 壊しても**赤くならなかった**もの（＝保険の行。歯があるふりをしない）──────────
 //   tickBlink の gone の戻り値を true→false（行動ゲートの専有をやめる）… 赤 0
 //   enemyTick の `&& !blinking` を外す ………………………………………………… 赤 0
@@ -84,8 +95,9 @@ import { test, expect } from '@playwright/test';
 import { readFileSync } from 'fs';
 import { fileURLToPath } from 'url';
 import { TILE, TILE_META } from '../shared/tiles.js';
-import { ENEMY_META, ENEMY_SPEED_FAST } from '../shared/enemies.js';
+import { ENEMY_META, ENEMY_SPEED_FAST, PROJECTILE_SPRITE } from '../shared/enemies.js';
 import { ENEMY_SPRITES, ENEMY_PAL } from '../shared/sprites-enemies.js';
+import { ITEM_SPRITES, ITEM_PAL } from '../shared/sprites-items.js';
 import { TILE_SPRITE_MAP } from '../shared/tile-sprites.js';
 import { TICK_MS } from '../game/constants.js';
 import { waitForBoard } from './helpers.js';
@@ -205,7 +217,8 @@ test.describe('Phase 5.5k k-8 – 瞬間移動（術士）', () => {
 
     // 魔弾＝stone 型（任意角の投擲物・盾で防げる）。出現距離が射程の内側にあること。
     const a = m.attack;
-    expect(a.type, '魔弾が stone 型でない＝盾で防げる遠隔攻撃の経路から外れている').toBe('stone');
+    // 型は magicBolt（挙動は stone と同じ＝enemy-ai.js の分岐を共有）。絵の中身は⑭が見る。
+    expect(a.type, '魔弾が magicBolt 型でない＝盾で防げる遠隔攻撃の経路から外れている').toBe('magicBolt');
     expect(a.cooldown % TICK_MS, 'attack.cooldown が tick の整数倍でない').toBe(0);
     expect(b.range, '出現距離が魔弾の最短射程より近い＝出現しても撃たない回が出る')
       .toBeGreaterThanOrEqual(a.minRange);
@@ -642,5 +655,123 @@ test.describe('Phase 5.5k k-8 – 瞬間移動（術士）', () => {
       expect(at(i).sprite, `t${i}（消えている間）の絵が詠唱ポーズ＝消えている敵が詠唱している`)
         .toBe('sorcerer');
     }
+  });
+
+  test('⑭ 魔弾の絵は magicBolt（藍＋金・術士と同じパレット・stone は灰のまま）＝k-8c', () => {
+    const m = M();
+    // 型＝magicBolt。挙動は stone と同じ（enemy-ai.js の分岐を共有）が**絵が別**。
+    expect(m.attack.type, '魔弾の型が magicBolt でない＝灰色の石が飛ぶ（金の宝珠から石が出る）')
+      .toBe('magicBolt');
+    // 投擲物のスプライト対応表（宣言表）に載っている＝型名＝スプライト名＝パレット名。
+    expect(PROJECTILE_SPRITE[m.attack.type], 'PROJECTILE_SPRITE に magicBolt が無い')
+      .toBe('magicBolt');
+    // ★ projectile.js createProjEl は makeSprite(proj.type, proj.type) を呼ぶ＝
+    //   型名と同名のスプライト／パレットが**両方**無いと弾が透明になる。
+    const frames = ITEM_SPRITES.magicBolt;
+    const pal    = ITEM_PAL.magicBolt;
+    expect(frames, 'ITEM_SPRITES.magicBolt が無い＝弾が見えない（透明な遠隔攻撃）').toBeTruthy();
+    expect(pal, 'ITEM_PAL.magicBolt が無い＝弾が見えない').toBeTruthy();
+    expect(pal[0], 'index0 は透明').toBe('transparent');
+    expect(frames.length, '魔弾が2フレームでない（フレーム1は将来アニメ用の差分）').toBe(2);
+    expect(dots(frames[0], frames[1]), 'フレーム1がフレーム0と同一＝差分として持つ意味が無い')
+      .toBeGreaterThan(0);
+    for (const [fi, f] of frames.entries()) {
+      expect(f.length, `フレーム${fi} の行数が 8 でない`).toBe(8);
+      for (const row of f) {
+        expect(row.length, `フレーム${fi} の列数が 8 でない`).toBe(8);
+        for (const v of row) {
+          expect(v, `フレーム${fi} がパレットの範囲外の色番号 ${v} を指している`).toBeLessThan(pal.length);
+        }
+      }
+    }
+    // ★ 放射対称＝projectile.js は magicBolt を回転させない（arrow の8方向・waterBlade の
+    //   atan2 のような向き分岐を持たない）のに**任意角**へ飛ぶ∴左右・上下・転置のどれで
+    //   写しても同じ形でないと、飛ぶ方向によって形が破綻して見える。
+    const f0 = frames[0];
+    for (let y = 0; y < 8; y++) for (let x = 0; x < 8; x++) {
+      expect(f0[y][x], `魔弾が左右対称でない (${y},${x})＝左右で違う弾に見える`).toBe(f0[y][7 - x]);
+      expect(f0[y][x], `魔弾が上下対称でない (${y},${x})＝上下で違う弾に見える`).toBe(f0[7 - y][x]);
+      expect(f0[y][x], `魔弾が転置対称でない (${y},${x})＝斜めに飛ぶと形が崩れる`).toBe(f0[x][y]);
+    }
+    // ★ 弾の色＝術士本体と同じパレット（誰が撃った弾か読める）。∴金は②が固定した
+    //   `.hide-warp` の魔法陣と同じ色になる＝「転移するあの敵の弾」として一貫する。
+    expect(pal, '魔弾のパレットが術士本体（ENEMY_PAL.sorcerer）と違う＝誰の弾か読めない')
+      .toEqual(ENEMY_PAL[m.pal]);
+    expect(pal.includes(WARP_GOLD), `魔弾に魔法陣の金（${WARP_GOLD}）が無い`).toBe(true);
+    // ⚠ 実機の表示は 48px セル × 0.35 ≒ 17px（1ドット ≒ 2px）＝石床（明部 57.6）より
+    //   暗い色だけで描くと弾が床に沈む。**使っている色**が全部床より明るいことを見る
+    //   （パレットに未使用の暗色があっても構わない＝影用の予備）。
+    const used = [...new Set(frames.flat(2))].filter(v => v !== 0);
+    expect(used.length, '魔弾が1色しか使っていない＝層（縁/帯/芯）が無い').toBeGreaterThanOrEqual(3);
+    for (const v of used) {
+      expect(lumOf(pal[v]), `魔弾の色 ${pal[v]}（index ${v}）が石床（${FLOOR_LUM}）より暗い＝床に沈む`)
+        .toBeGreaterThan(FLOOR_LUM);
+    }
+    // ★★ stone は塗り替えていない＝岩投げ系の敵（魔物・魔将ほか）が魔法の弾を投げない。
+    //   石つぶては「ほぼ無彩色（各色の RGB 幅 ≤ 16）」かつ金を含まない。
+    expect(ITEM_PAL.stone.includes(WARP_GOLD), 'stone のパレットに魔法陣の金がある＝石を魔弾に塗り替えた')
+      .toBe(false);
+    for (const c of ITEM_PAL.stone.slice(1)) {
+      const n = parseInt(c.slice(1), 16);
+      const ch = [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+      expect(Math.max(...ch) - Math.min(...ch),
+        `stone の色 ${c} が無彩色でない＝石つぶてを色付き（魔弾）に塗り替えている`).toBeLessThanOrEqual(16);
+    }
+    expect(ITEM_SPRITES.stone.length, 'stone のフレーム数が変わった＝石つぶてを触っている').toBe(2);
+    expect(ITEM_SPRITES.stone[0].length, 'stone の寸法（6×6）が変わった＝石つぶてを触っている').toBe(6);
+  });
+
+  test('⑮ 撃った魔弾が magicBolt の絵で飛ぶ（型名＝スプライト名の解決が実機で通る）', async ({ page }) => {
+    await gotoFrozen(page, SORC());
+    const res = await page.evaluate((a) => {
+      const g = window.__game;
+      g.pause();
+      const out = { rows: [], gone: null };
+      for (let i = 1; i <= a.span; i++) {
+        g.step(1);
+        for (const p of g.getProjectiles()) {
+          if (p.owner !== 'enemy') continue;
+          // DOM の canvas の**中身のドット**まで見る。⚠️ 静止描画の canvas には
+          // data-sprite が付かない（makeSprite は animated のときだけ dataset を書く）∴
+          // 名前ではなく「描かれた寸法と色」で同一性を測る＝絵を差し替えると赤。
+          const el = document.getElementById(`proj-${p.id}`);
+          const cv = el ? el.querySelector('canvas.sprite') : null;
+          const row = { i, id: p.id, type: p.type, x: p.x, y: p.y, hasCanvas: !!cv, w: null, h: null, px: null };
+          if (cv) {
+            row.w = cv.width; row.h = cv.height;   // backing store＝スプライトのドット数
+            const d = cv.getContext('2d').getImageData(0, 0, cv.width, cv.height).data;
+            const at = (x, y) => {
+              const o = (y * cv.width + x) * 4;
+              return d[o + 3] === 0 ? null
+                : '#' + [d[o], d[o + 1], d[o + 2]].map(v => v.toString(16).padStart(2, '0')).join('');
+            };
+            row.px = { corner: at(0, 0), rim: at(2, 0), band: at(2, 2), core: at(3, 3) };
+          }
+          out.rows.push(row);
+        }
+        if (out.rows.length && !g.getProjectiles().length) { out.gone = i; break; }
+      }
+      return out;
+    }, { span: T_FIRST_SHOT + 8 });
+    expect(res.rows.length, '敵の投擲物が1つも観測できない＝魔弾が飛んでいない').toBeGreaterThan(0);
+    const PAL = ITEM_PAL.magicBolt;
+    for (const r of res.rows) {
+      expect(r.type, `t${r.i} の魔弾の型が ${r.type}＝灰色の石が飛んでいる`).toBe('magicBolt');
+      // canvas が無い＝makeSprite が null を返した（型名と同名のスプライトが未登録）＝透明な弾
+      expect(r.hasCanvas, `t${r.i} の魔弾に canvas が無い＝絵が解決できていない（透明な遠隔攻撃）`).toBe(true);
+      expect([r.w, r.h], `t${r.i} の魔弾のドット数が 8×8 でない（${r.w}×${r.h}）＝別の絵が飛んでいる`)
+        .toEqual([8, 8]);
+      // 描かれたドットの色＝魔弾のパレット（灰色の石なら縁が金にならない）
+      expect(r.px.corner, `t${r.i} の魔弾の角が透明でない＝丸くない`).toBeNull();
+      expect(r.px.rim,  `t${r.i} の魔弾の縁が金（${PAL[5]}）でない＝${r.px.rim} が飛んでいる`).toBe(PAL[5]);
+      expect(r.px.band, `t${r.i} の魔弾の帯が藍（${PAL[2]}）でない`).toBe(PAL[2]);
+      expect(r.px.core, `t${r.i} の魔弾の芯が淡紫（${PAL[4]}）でない`).toBe(PAL[4]);
+    }
+    // 挙動は stone と同じ経路＝西のプレイヤーへ向かって進み、到達して消える
+    //（盾での防御・壁での消滅そのものの番人は tests/*projectile*.spec.js 側）。
+    const first = res.rows[0], last = res.rows[res.rows.length - 1];
+    expect(last.x, '魔弾が西（プレイヤー側）へ進んでいない＝飛翔経路に乗っていない')
+      .toBeLessThan(first.x);
+    expect(res.gone, '魔弾が盤面から消えない＝命中/壁の経路に乗っていない').not.toBeNull();
   });
 });
