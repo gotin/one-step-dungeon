@@ -141,9 +141,16 @@ const MAP_PATH = fileURLToPath(new URL('../work/blade-of-lumia.json', import.met
 const MAP = JSON.parse(readFileSync(MAP_PATH, 'utf8'));
 
 const K7 = [
-  [TILE.CURSE_FIRE,   '呪い火',   'batSwarm',   'sealSword'],
-  [TILE.POISON_LEECH, '毒沼ヒル', 'burrowWorm', 'poison'],
+  [TILE.CURSE_FIRE,   '呪い火',   'curseFire',   'sealSword'],
+  [TILE.POISON_LEECH, '毒沼ヒル', 'poisonLeech', 'poison'],
 ];
+// 石床の相対輝度（shared/sprites-tiles.js stoneFloor＝暗部 #2a2838=41.6・明部 #3a3848=57.6）。
+// 敵の色がこれ以下だと床に沈んで輪郭が見えない（k-4/k-5/k-6 で実際に起きた欠陥）。
+const FLOOR_LUM = 57.6;
+const lumOf = (hex) => {
+  const n = parseInt(hex.slice(1), 16);
+  return 0.2126 * ((n >> 16) & 255) + 0.7152 * ((n >> 8) & 255) + 0.0722 * (n & 255);
+};
 const threatOf = (m) => (m.hp * m.atk) / (m.def + 1);
 const CURSE_M  = () => ENEMY_META[TILE.CURSE_FIRE];
 const POISON_M = () => ENEMY_META[TILE.POISON_LEECH];
@@ -217,16 +224,33 @@ test.describe('Phase 5.5k k-7 – プレイヤー側の一時デバフ窓（呪�
       expect(TILE_META[tile].label, `${name} のラベル`).toBe(name);
       expect(TILE_META[tile].passable, '敵タイルは通行可（下は床）').toBe(true);
       expect(meta.pal, `${name} の pal 名`).toBe(pal);
+      // k-7b＝**専用の絵**（k-7a の「既存絵のエイリアス」から差し替えた）。他の敵の名前に
+      // 戻っていないことを名前で押さえる＝呪い火がコウモリの姿だと機構が読めない（GUIDE §6-1）。
+      expect(meta.sprite, `${name} のスプライトが専用のものでない（他の敵の絵を借りている）`).toBe(pal);
       expect(ENEMY_PAL[pal], `${pal} パレットが無い`).toBeTruthy();
       expect(ENEMY_PAL[pal][0], 'index0 は透明').toBe('transparent');
-      // ⚠️ k-7a では既存絵のエイリアス（GUIDE §2「機構が先・絵は後」）＝絵の中身は主張しない。
-      //    k-7b で専用の 32×32 に差し替える（そのとき pal も専用のものになる）。
-      expect(ENEMY_SPRITES[meta.sprite], `${meta.sprite} が無い＝盤面で絵が消える`).toBeTruthy();
-      expect(ENEMY_SPRITES[meta.sprite].length, `${meta.sprite} のフレームが無い`).toBeGreaterThan(0);
-      for (const frame of ENEMY_SPRITES[meta.sprite]) {
-        const w = frame[0].length;
-        for (const row of frame) expect(row.length, `${meta.sprite} の行の長さが揃っていない`).toBe(w);
+      // ⚠️ 色は石床より明るいこと＝床に沈むと「居ることに気づけない」（k-4〜k-6 で実際に起きた）
+      for (const c of ENEMY_PAL[pal].slice(1)) {
+        expect(lumOf(c), `${pal} の色 ${c} が石床の明部（${FLOOR_LUM}）より暗い＝床に沈む`)
+          .toBeGreaterThan(FLOOR_LUM);
       }
+      expect(ENEMY_SPRITES[meta.sprite], `${meta.sprite} が無い＝盤面で絵が消える`).toBeTruthy();
+      // 2フレーム＝この2体は「動き」（炎の揺らぎ・体の伸縮）が本質（SPRITE-PIPELINE.md §3-1 ★★）
+      expect(ENEMY_SPRITES[meta.sprite].length, `${meta.sprite} が2フレームでない＝動かない`).toBe(2);
+      for (const frame of ENEMY_SPRITES[meta.sprite]) {
+        expect(frame.length, `${meta.sprite} が 32 行でない`).toBe(32);
+        for (const row of frame) expect(row.length, `${meta.sprite} の行が 32 列でない`).toBe(32);
+      }
+      // フレーム差＝17ドット以上（§6 の歩行2の下限。これ未満だと 400ms 交替でも動いて見えない）
+      const [f1, f2] = ENEMY_SPRITES[meta.sprite];
+      let diff = 0;
+      for (let y = 0; y < 32; y++) for (let x = 0; x < 32; x++) if (f1[y][x] !== f2[y][x]) diff++;
+      expect(diff, `${meta.sprite} の2フレームの差が ${diff} ドット＝動いて見えない`)
+        .toBeGreaterThanOrEqual(17);
+      // パレットを使い切っているか＝面/陰/縁/警告色が揃っていないと「単色の塊」になる
+      const used = new Set(f1.flat().filter((v) => v));
+      expect(used.size, `${meta.sprite} が ${used.size} 色しか使っていない＝陰影や警告色が無い`)
+        .toBeGreaterThanOrEqual(5);
       // タイル→スプライトは shared/tile-sprites.js が単一の真実（エディタとゲームで分けない）
       expect(TILE_SPRITE_MAP[tile], 'スプライトマップが無い（描画で消える）').toBeTruthy();
       expect(TILE_SPRITE_MAP[tile].spr, 'スプライトマップの spr がメタと食い違う').toBe(meta.sprite);

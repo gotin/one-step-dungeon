@@ -424,8 +424,8 @@ export const ENEMY_META = {
 		name: '呪い火',
 		hp: 3, atk: 1, def: 0, exp: 8,        // 脅威度 hp*atk/(def+1) = 3.0（式の上では低）
 		speed: ENEMY_SPEED_NORMAL,            // 追ってくる（GUIDE §7-2＝プレイヤーより遅い）
-		sprite: 'batSwarm',                   // 仮置き（k-7b で専用スプライトへ差し替える）
-		pal:    'batSwarm',
+		sprite: 'curseFire',                  // 剣を飲み込んだ紫の炎（k-7b・.scratch/draw-k7.mjs）
+		pal:    'curseFire',
 		isBoss: false,
 		move:   'air',                        // 飛行＝壁だけが障害（水/溶岩/空は越える）
 		inflict: {
@@ -449,8 +449,8 @@ export const ENEMY_META = {
 		name: '毒沼ヒル',
 		hp: 6, atk: 1, def: 1, exp: 10,       // 脅威度 hp*atk/(def+1) = 3.0（実効は毒込みで 4 相当）
 		speed: ENEMY_SPEED_SLOW,              // 鈍足＝機構（後を引く毒）と対の速度
-		sprite: 'burrowWorm',                 // 仮置き（k-7b で専用スプライトへ差し替える）
-		pal:    'burrowWorm',
+		sprite: 'poisonLeech',                // 背に毒の縞を持つヒル（k-7b・.scratch/draw-k7.mjs）
+		pal:    'poisonLeech',
 		isBoss: false,
 		inflict: {
 			type:   'poison',
