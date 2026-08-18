@@ -143,6 +143,23 @@ const lumOf = (hex) => {
 const threatOf = (m) => (m.hp * m.atk) / (m.def + 1);
 const M = () => ENEMY_META[TILE.SORCERER];
 
+// 2フレーム間で色番号が違うセルの数（SPRITE-PIPELINE.md §6 の「差分ドット」の数え方）。
+const dots = (a, b) => {
+  let n = 0;
+  for (let y = 0; y < a.length; y++) for (let x = 0; x < a[y].length; x++) if (a[y][x] !== b[y][x]) n++;
+  return n;
+};
+
+// 消える演出（`.hide-warp` の魔法陣）の輪の色＝CSS が単一の真実。
+// ②が「絵の金＝この色」を固定する＝どちらか片方だけ変えると赤（k-8b 合格条件2）。
+const WARP_GOLD = (() => {
+  const css = readFileSync(fileURLToPath(new URL('../game/css/board.css', import.meta.url)), 'utf8');
+  const block = css.match(/\.char-abs\.hiding\.hide-warp::after\s*\{[^}]*\}/)?.[0] ?? '';
+  const m = block.match(/border:[^;]*rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)/);
+  if (!m) throw new Error('board.css の .hide-warp::after から魔法陣の輪の色を読めない');
+  return '#' + [1, 2, 3].map(i => Number(m[i]).toString(16).padStart(2, '0')).join('');
+})();
+
 // 実測した拍（上のヘッダの表と同じ値。テスト本文で使う tick）。
 const T_FIRST_SHOT = 10;   // 置いた場所からの1発目
 const T_GONE_1     = 13;   // 最初に消える tick
@@ -211,32 +228,43 @@ test.describe('Phase 5.5k k-8 – 瞬間移動（術士）', () => {
     expect(m.leap, '術士に meta.leap がある＝跳躍と機構が混ざっている').toBeUndefined();
   });
 
-  test('② タイル定義・スプライト／パレットの名前解決（k-8a は暫定絵・実絵は k-8b）', () => {
+  test('② タイル定義・実スプライト（32×32・詠唱ポーズ付き）とパレット（床に沈まない・転移と同じ金）', () => {
     const m = M();
     expect(TILE_META[TILE.SORCERER], "TILE_META['η'] が無い＝エディタに出ない").toBeTruthy();
     expect(TILE_META[TILE.SORCERER].label, '術士のラベル').toBe('術士');
     expect(TILE_META[TILE.SORCERER].passable, '敵タイルは通行可（下は床）').toBe(true);
-    // 名前は k-8a（エイリアス）でも k-8b（実絵）でも変わらない＝差し替えでこの本は動かない
     expect(m.sprite, '術士のスプライト名').toBe('sorcerer');
     expect(m.pal, '術士のパレット名').toBe('sorcerer');
     expect(ENEMY_SPRITES[m.sprite], 'sorcerer スプライトが無い＝盤面で絵が消える').toBeTruthy();
-    // ⚠ 寸法そのものは主張しない。k-8a の暫定絵は既存のセンチネル（16×12）のエイリアスで、
-    //   k-8b では 32×32 の実絵に差し替わる∴どちらでも通る条件だけを押さえる
-    //   （実絵が 32×32 であることは SPRITE-PIPELINE.md の量子化側の担当）。
-    //   ここで測るのは「矩形が崩れていない」と「パレットの範囲外を指していない」＝
-    //   どちらも崩れると盤面で絵が欠ける／透明になる。
+    // ★ k-8b で実絵に差し替えた（k-8a はセンチネル 16×12 のエイリアス）∴寸法を主張する。
+    //   32×32＝他の陸上敵と同じ土台（SPRITE-PIPELINE.md §6）。ここが崩れると盤面で
+    //   拡大率が変わり「1体だけ小さい敵」になる。
     const palLen = ENEMY_PAL[m.pal]?.length ?? 0;
-    for (const frame of ENEMY_SPRITES[m.sprite]) {
-      expect(frame.length, 'sorcerer のフレームが空').toBeGreaterThan(0);
-      for (const row of frame) {
-        expect(row.length, `sorcerer の行の長さが揃っていない（先頭 ${frame[0].length} 列）`)
-          .toBe(frame[0].length);
-        for (const ch of row) {
-          expect(parseInt(ch, 16), `sorcerer がパレットの範囲外の色番号 '${ch}' を指している`)
-            .toBeLessThan(palLen);
+    const idle = ENEMY_SPRITES[m.sprite];
+    const cast = ENEMY_SPRITES[`${m.sprite}Cast`];
+    expect(idle.length, '待機が2フレームでない＝宝珠の脈動が消える').toBe(2);
+    // ★ 詠唱ポーズ＝enemy-ai.js syncCastSprite が差し替える名前（leapSpiderWindup と同じ作法）。
+    //   これが無いと詠唱の3 tick が絵に出ない＝「殴れる窓」が読めない（GUIDE §6-1）。
+    expect(cast, `${m.sprite}Cast が無い＝詠唱の窓が絵に出ない`).toBeTruthy();
+    expect(cast.length, '詠唱は単一フレーム（アニメーションしない姿）').toBe(1);
+    for (const [label, frames] of [['sorcerer', idle], ['sorcererCast', cast]]) {
+      for (const frame of frames) {
+        expect(frame.length, `${label} の行数が 32 でない`).toBe(32);
+        for (const row of frame) {
+          expect(row.length, `${label} の列数が 32 でない`).toBe(32);
+          for (const ch of row) {
+            expect(parseInt(ch, 16), `${label} がパレットの範囲外の色番号 '${ch}' を指している`)
+              .toBeLessThan(palLen);
+          }
         }
       }
     }
+    // ★ フレーム差＝§6 の下限（歩行/脈動 17ドット・ポーズ 48ドット）。下回ると
+    //   1セル≒1.5画面px で潰れて「動いていない絵」になる（k-7b で実測した閾値）。
+    expect(dots(idle[0], idle[1]), '待機2枚の差が 17ドット未満＝宝珠の脈動が実機で見えない')
+      .toBeGreaterThanOrEqual(17);
+    expect(dots(idle[0], cast[0]), '詠唱と待機の差が 48ドット未満＝ポーズの違いが読めない')
+      .toBeGreaterThanOrEqual(48);
     expect(ENEMY_PAL[m.pal], 'sorcerer パレットが無い').toBeTruthy();
     expect(ENEMY_PAL[m.pal][0], 'index0 は透明').toBe('transparent');
     // ⚠ 縁色以外は石床（明部 57.6）より明るいこと＝暗い床に沈むと「居ることに気づけない」
@@ -244,6 +272,15 @@ test.describe('Phase 5.5k k-8 – 瞬間移動（術士）', () => {
     const dark = ENEMY_PAL[m.pal].slice(1).filter(c => lumOf(c) <= FLOOR_LUM);
     expect(dark.length, `sorcerer パレットの暗い色が多すぎる（${dark.join(' ')}）＝床に沈む`)
       .toBeLessThanOrEqual(1);
+    // ★ k-8b 合格条件2＝「消える演出と同じ色系統」。金は CSS `.hide-warp` の輪と**同じ色**で、
+    //   絵の中で面として見える量（1セル≒1.5画面px ∴数セルでは実機で消える）だけ使う。
+    const goldIdx = ENEMY_PAL[m.pal].indexOf(WARP_GOLD);
+    expect(goldIdx, `sorcerer パレットに魔法陣の金（${WARP_GOLD}）が無い`
+      + '＝消える演出と絵の色系統が揃っていない（転移する敵だと読めない）').toBeGreaterThan(0);
+    for (const [label, frame] of [['待機1', idle[0]], ['待機2', idle[1]], ['詠唱', cast[0]]]) {
+      const n = frame.flat().filter(v => Number(v) === goldIdx).length;
+      expect(n, `${label} の金が ${n} セル＝実機（1セル≒1.5px）で消える量`).toBeGreaterThanOrEqual(20);
+    }
     // タイル→スプライトは shared/tile-sprites.js が単一の真実（エディタとゲームで分けない）
     expect(TILE_SPRITE_MAP[TILE.SORCERER], 'スプライトマップが無い（描画で消える）').toBeTruthy();
     expect(TILE_SPRITE_MAP[TILE.SORCERER].spr, 'スプライトマップの spr がメタと食い違う').toBe(m.sprite);
@@ -559,5 +596,51 @@ test.describe('Phase 5.5k k-8 – 瞬間移動（術士）', () => {
     expect(walked, `出現以外の tick で座標が動いた（${JSON.stringify(walked)}）＝歩いている`).toEqual([]);
     expect(res.moves.length, '出現しても座標が変わらない＝瞬間移動していない')
       .toBe(res.appears.length);
+  });
+
+  test('⑬ 詠唱の3 tick だけ絵が sorcererCast になる（殴れる窓が画面から読める・k-8b）', async ({ page }) => {
+    await gotoFrozen(page, SORC());
+    const res = await page.evaluate((a) => {
+      const g = window.__game;
+      g.pause();
+      const out = { rows: [] };
+      for (let i = 1; i <= a.span; i++) {
+        g.step(1);
+        const e = g.getEnemies()[0];
+        // DOM の canvas まで見る＝e.sprite だけ書き換えて描き直さない実装では赤になる。
+        // ⚠ 敵の id は `4,9` のような座標文字列＝CSS セレクタに埋められない（querySelector が
+        //   SyntaxError）∴⑪と同じく getElementById で引いてから中を探す。
+        const el = document.getElementById(`char-enemy-${e.id}`);
+        const cv = el ? el.querySelector('canvas.sprite') : null;
+        out.rows.push({
+          i, sprite: e.sprite, drawn: cv ? cv.dataset.sprite : null,
+          phase: e.blinkPhase, hidden: e.hidden, castUntil: e.castUntil ?? null,
+          now: g.getState().gameTime,
+        });
+      }
+      return out;
+    }, { span: T_SHOT_1 + 2 });
+    const at = (i) => res.rows[i - 1];
+    // 置いた直後は待機の絵（詠唱は出現に紐づく＝置いた場所では詠唱していない）
+    expect(at(1).sprite, 't1 の絵が待機でない＝置いた瞬間から詠唱ポーズ').toBe('sorcerer');
+    expect(at(1).drawn, 't1 に描かれている canvas が待機でない').toBe('sorcerer');
+    // 出現の tick に詠唱の窓が立ち、絵が同じ tick で切り替わる
+    expect(at(T_APPEAR_1).castUntil, '出現時に詠唱の窓（_castUntil）が立っていない')
+      .toBe(TICK_MS * T_APPEAR_1 + M().blink.castDelayMs);
+    for (let i = T_APPEAR_1; i < T_SHOT_1; i++) {
+      expect(at(i).sprite, `t${i}（詠唱中）の絵が詠唱ポーズでない＝止まっている理由が読めない`)
+        .toBe('sorcererCast');
+      expect(at(i).drawn, `t${i} の canvas が描き替わっていない＝名前だけ変えて絵が古い`)
+        .toBe('sorcererCast');
+    }
+    // 詠唱明け（魔弾が出る tick）には待機へ戻る＝ポーズが「予告」として機能する
+    expect(at(T_SHOT_1).sprite, `t${T_SHOT_1}（詠唱明け）に詠唱ポーズが残っている＝ずっと詠唱中に見える`)
+      .toBe('sorcerer');
+    expect(at(T_SHOT_1).drawn, `t${T_SHOT_1} の canvas が待機に戻っていない`).toBe('sorcerer');
+    // 消えている間は詠唱ポーズにしない（消えた敵の絵を触らない＝出現の瞬間まで待機のまま）
+    for (let i = T_GONE_1; i < T_APPEAR_1; i++) {
+      expect(at(i).sprite, `t${i}（消えている間）の絵が詠唱ポーズ＝消えている敵が詠唱している`)
+        .toBe('sorcerer');
+    }
   });
 });

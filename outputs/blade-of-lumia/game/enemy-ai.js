@@ -1111,6 +1111,9 @@ export function createEnemyAi(deps) {
 		//    cooldown を伸ばすと「出現しても一度も撃たない回」が出るのを防ぐ。
 		e._attackTimes = {};
 		e._freezeUntil = now + castDelayMs;        // 詠唱の間は動かない・撃たない＝反応の猶予
+		// Phase 5.5k k-8b: 詠唱の窓を絵に出すための印（_freezeUntil とは別に持つ＝硬直は
+		// 被弾やガードでも立つ汎用の窓∴それに絵を結ぶと「殴られて固まった」でも詠唱に見える）。
+		e._castUntil = now + castDelayMs;
 		playSound('appear');
 		return true;
 	}
@@ -1376,17 +1379,32 @@ export function createEnemyAi(deps) {
 		swapEnemySprite(e, e._shellClosed ? `${base}Closed` : base);
 	}
 
+	// ── Phase 5.5k k-8b: 術士の詠唱を画面に出す ─────────────────────
+	// 出現から castDelayMs の間は動かない・撃たない＝**殴れる窓**なのに、絵は待機のままで
+	// 「止まっている」ことしか伝わらなかった（GUIDE §6-1）。leap の windup・甲羅の開閉と
+	// 同じ作法で、詠唱の窓だけ `${base}Cast`（腕を挙げて宝珠が燃える姿）へ差し替える。
+	function syncCastSprite(e, meta) {
+		const base = meta?.sprite;
+		if (!base) return;
+		const casting = (e._castUntil ?? 0) > gameNow();
+		swapEnemySprite(e, casting ? `${base}Cast` : base);
+	}
+
 	// 状態から導いたスプライト名へ DOM の canvas を差し替える（変わった tick だけ触る）。
 	// directional 敵の syncDirectionalSprite と対になる「向きを持たない敵のポーズ差替」。
 	function swapEnemySprite(e, spriteName) {
 		if (e.sprite === spriteName) return;
-		e.sprite = spriteName;
 		const el = document.getElementById(`char-enemy-${e.id}`);
-		if (!el) return;
+		if (!el) { e.sprite = spriteName; return; }
+		// ⚠️ 未登録の名前では makeSprite が null を返す∴**先に古い canvas を消すと敵が消える**
+		//    （ポーズ絵を持たない敵に Cast/Windup/Closed を要求したときの事故）。
+		//    先に作って、作れたときだけ差し替える（k-8b で塞いだ）。
+		const cv = makeSprite(spriteName, e.pal, true, !!e.flipX);
+		if (!cv) return;
+		e.sprite = spriteName;
 		const oldCv = el.querySelector('canvas.sprite');
 		if (oldCv) oldCv.remove();
-		const cv = makeSprite(e.sprite, e.pal, true, !!e.flipX);
-		if (cv) el.insertBefore(cv, el.firstChild);
+		el.insertBefore(cv, el.firstChild);
 	}
 
 	// ── Phase 5.5k k-3: ジグザグ飛行（コウモリ群）───────────────
@@ -1580,6 +1598,9 @@ export function createEnemyAi(deps) {
 			if (meta.leap) syncLeapSprite(e, meta);
 			// Phase 5.5k k-4: 甲羅を持つ敵は開/閉で絵を切り替える（無敵の理由を見せる）。
 			if (meta.shell) syncShellSprite(e, meta);
+			// Phase 5.5k k-8b: 瞬間移動を持つ敵は出現直後の詠唱の窓だけ絵を差し替える
+			// （殴れる窓を見せる）。隠れている間は canvas を触らない＝差替は姿がある時だけ。
+			if (meta.blink && !e.hidden) syncCastSprite(e, meta);
 			// Phase 5.5k k-7.5: 体当たりの予告モーション（拡大縮小2往復）を状態に合わせる。
 			syncSlamMotion(e);
 		}
@@ -1600,7 +1621,7 @@ export function createEnemyAi(deps) {
 		tickShell,             // Phase 5.5k k-4: 甲羅の開閉（火吐き亀・テスト用）
 		tickLeech,             // Phase 5.5k k-5: 張り付き＋吸血（ルピー喰い・テスト用）
 		tickBlink,             // Phase 5.5k k-8: 瞬間移動の状態機械（術士・テスト用）
-		pickBlinkCell,         // Phase 5.5k k-8: 出現先の決定（乱数なし・テスト用）
+		pickBlinkCell,         // Phase 5.5k k-8: 出現先の決定（直前の方角を除く乱択・テスト用）
 		tickSlam,              // Phase 5.5k k-7.5: 体当たりの予告→解決（テスト用）
 		slamReachHit,          // Phase 5.5k k-7.5: 体当たりの到達判定（テスト用）
 		detachLeech,           // Phase 5.5k k-5: 張り付きを剥がす（combat.js の被弾フックが呼ぶ）

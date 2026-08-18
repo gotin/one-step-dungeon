@@ -2126,11 +2126,13 @@ export function getEnemiesSnapshot() {
 		slamWindupMs: e._slamWindupMs ?? null,
 		// Phase 5.5k k-8: 瞬間移動（術士）の観測用。
 		// blinkPhase ＝'shown'（姿がある＝殴れる／撃つ窓）| 'gone'（消えている＝無敵）。
-		// blinkCount ＝出現した回数＝出現先の巡回（北→東→南→西）の何番目かの根拠
-		// （乱数を使わない＝テストが出現セルを予測できる唯一の窓）。
+		// blinkCount ＝出現した回数。出現先は**直前の方角を除いた乱択**（pickBlinkCell）∴
+		// テストはセルを予測しない＝「何回出現したか」と「毎回どこかへ動いたか」を数える窓。
 		blinkPhase: e._blinkPhase ?? null,
 		blinkUntil: e._blinkUntil ?? null,    // 今の相が切り替わる論理時刻
 		blinkCount: e._blinkCount ?? null,
+		// castUntil ＝詠唱が終わる論理時刻（k-8b: この窓だけ絵が sorcererCast に替わる）。
+		castUntil: e._castUntil ?? null,
 	}));
 }
 

@@ -486,7 +486,8 @@ export const ENEMY_META = {
 		name: '術士',
 		hp: 5, atk: 3, def: 1, exp: 14,       // 脅威度 hp*atk/(def+1) = 7.5（中・剣獣 10.0 未満）
 		speed: 0,                             // 歩かない（移動は blink だけ＝enemyChase は accum が伸びない）
-		sprite: 'sorcerer',                   // k-8a は暫定（センチネルのエイリアス＋術士パレット）→ 実絵は k-8b
+		sprite: 'sorcerer',                   // k-8b で実絵（32×32・待機2枚）。詠唱の 3 tick だけ
+		                                      // `sorcererCast` へ差し替わる（enemy-ai.js syncCastSprite）
 		pal:    'sorcerer',
 		isBoss: false,
 		weakness: { type: 'arrow', multiplier: 2 },  // 弓で詠唱を潰す＝サブ武器の使い所
