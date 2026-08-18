@@ -1,5 +1,5 @@
 import { readFileSync } from 'fs';
-const src = readFileSync('/Users/go/Documents/Codex/2026-05-30/ios/outputs/sword-duel/game.js', 'utf8');
+const src = readFileSync(new URL('./outputs/sword-duel/game.js', import.meta.url), 'utf8');
 
 // フレーム1の行データを抽出
 const frameMatch = src.match(/const SPRITE_HERO_R = \[\n\t\[\n([\s\S]*?)\n\t\],/);
