@@ -32,9 +32,11 @@ export const TILE = {
 	RUPEE_EATER: 'σ',  // ルピー喰い（陸上通常敵・接触で張り付き所持ルピーを吸う。倒すと一部戻る）
 	BOMB_OGRE:   'λ',  // 爆弾鬼（陸上通常敵・放物線で爆弾を投げる。着弾で範囲爆発＝壁越しに届き盾で防げない）
 	BOOMERANG_OGRE:'π',// ブーメラン鬼（陸上通常敵・往復するブーメランを投げる。避けても帰りに当たる二度読み）
-	// ⚠️ 安全なギリシャ小文字（α β δ ζ η θ λ μ ξ π σ φ ψ ω＝14個）は ψ で13個目。
-	//    残るのは ω 1個だけ∴#15 以降は大文字（Γ Δ Θ Λ Ξ Π Σ Φ Ψ Ω＝ラテン大文字と
-	//    紛れない字形）を使う。Γ は「ラテン文字に無い字形」で目視の取り違えが無い。
+	SORCERER:    'η',  // 術士（陸上通常敵・歩かない。一定間隔で消えプレイヤーの近くへ瞬間移動して魔弾を撃つ）
+	// ⚠️ 安全なギリシャ小文字（α β δ ζ η θ λ μ ξ π σ φ ψ ω＝14個）は η（術士・5.5k k-8）で
+	//    13個目。残るのは ω（#14 突進猪に予約済み）1個だけ∴以降は大文字
+	//    （Δ Θ Λ Ξ Π Σ Φ Ψ Ω＝ラテン大文字と紛れない字形）を使う。
+	//    Γ は「ラテン文字に無い字形」で目視の取り違えが無い。
 	CURSE_FIRE:  'ψ',  // 呪い火（陸上通常敵・触れると数秒剣が封じられる。ダメージは小＝妨害特化）
 	POISON_LEECH:'Γ',  // 毒沼ヒル（陸上通常敵・鈍足。触れると継続ダメージの毒を付与＝後を引く）
 	BOSS:      'V',  // 魔将（ボス）
@@ -158,6 +160,7 @@ export const TILE_META = {
 	[TILE.RUPEE_EATER]:{ label: 'ルピー喰い', color: '#5a3a6a', passable: true,  icon: '喰' },
 	[TILE.BOMB_OGRE]:  { label: '爆弾鬼',    color: '#6a4a2a', passable: true,  icon: '爆' },
 	[TILE.BOOMERANG_OGRE]:{ label: 'ブーメラン鬼', color: '#4a5a2a', passable: true, icon: '環' },
+	[TILE.SORCERER]:    { label: '術士',     color: '#3a2a6a', passable: true,  icon: '術' },
 	[TILE.CURSE_FIRE]:  { label: '呪い火',   color: '#5a2a6a', passable: true,  icon: '呪' },
 	[TILE.POISON_LEECH]:{ label: '毒沼ヒル', color: '#3a5a2a', passable: true,  icon: '毒' },
 	[TILE.BOSS]:    { label: '魔将',         color: '#184060', passable: true,  icon: 'Ｖ' },

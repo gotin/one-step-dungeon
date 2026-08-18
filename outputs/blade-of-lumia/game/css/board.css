@@ -96,8 +96,8 @@
 /* 隠れ中の敵（Phase 9-6 潜み鮫の潜行 → Phase 5.5k k-3 で陸/空へ一般化）。
    隠れている＝無敵・攻撃なし・接触なしの状態を「薄く沈んで痕跡だけ見える」で表す。
    出現するとクラスが外れて実体化する＝「出た瞬間だけ殴れる」が目で分かる。
-   `.hiding` が共通の薄さ、`.hide-water|hide-burrow|hide-air` が痕跡の描き分け
-   （水＝波紋リング／地中＝土の盛り上がり／滞空＝真下の影）。 */
+   `.hiding` が共通の薄さ、`.hide-water|hide-burrow|hide-air|hide-warp` が痕跡の描き分け
+   （水＝波紋リング／地中＝土の盛り上がり／滞空＝真下の影／転移＝残る魔法陣）。 */
 .char-abs.hiding canvas.sprite {
     opacity: 0.32;
     filter: blur(0.4px) brightness(0.75) saturate(0.7);
@@ -138,6 +138,19 @@
     box-shadow: 0 0 3px rgba(0, 0, 0, 0.5);
     animation: hide-air-shadow 0.4s ease-in-out infinite;
 }
+/* 瞬間移動＝消えた場所に魔法陣（回る二重リング）だけが残る（Phase 5.5k k-8 術士）。
+   ⚠️ 波紋（hide-water）と同じ形にしない＝「潜った」ではなく「転移した」と読ませたいので
+   色（藍＋金）と回転で区別する。消えている間は無敵∴この痕跡が「今は殴れない」の告知。 */
+.char-abs.hiding.hide-warp::after {
+    left: 18%;
+    top: 30%;
+    width: 64%;
+    height: 48%;
+    border: 2px dashed rgba(255, 224, 112, 0.7);
+    background: radial-gradient(circle at 50% 50%, rgba(74, 58, 176, 0.45), rgba(11, 10, 28, 0.05));
+    box-shadow: 0 0 6px rgba(138, 122, 232, 0.6);
+    animation: hide-warp-rune 1.2s linear infinite;
+}
 @keyframes hide-ripple {
     0%   { transform: scale(0.45); opacity: 0.75; }
     100% { transform: scale(1.15); opacity: 0;    }
@@ -149,6 +162,11 @@
 @keyframes hide-air-shadow {
     0%, 100% { transform: scale(0.8); opacity: 0.5; }
     50%      { transform: scale(1.0); opacity: 0.3; }
+}
+@keyframes hide-warp-rune {
+    0%   { transform: rotate(0deg)   scale(0.85); opacity: 0.9; }
+    50%  { transform: rotate(180deg) scale(1.05); opacity: 0.5; }
+    100% { transform: rotate(360deg) scale(0.85); opacity: 0.9; }
 }
 
 /* Phase 3-2: 大型敵（岩のゴーレム等）の重々しい揺れ。

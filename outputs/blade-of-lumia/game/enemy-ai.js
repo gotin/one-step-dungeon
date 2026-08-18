@@ -977,7 +977,8 @@ export function createEnemyAi(deps) {
 	// `.char-abs.hiding.hide-<style>` で水面の波紋・土煙・影に描き分ける。
 	// 時間は gameNow()（論理時間）基準なのでテストから step() で決定論的に再現できる。
 	// 初期状態は「隠れ」＝タイル名（潜み鮫・地中蟲）どおり見えない所から現れる。
-	const HIDE_STYLES = ['water', 'burrow', 'air'];
+	// style は見た目の種別（'water' 潜行／'burrow' 地中／'air' 滞空／'warp' 瞬間移動＝k-8）。
+	const HIDE_STYLES = ['water', 'burrow', 'air', 'warp'];
 
 	function tickHide(e, meta, now) {
 		const cfg = meta.hide;
@@ -1015,6 +1016,103 @@ export function createEnemyAi(deps) {
 		if (!!e.hidden === !!hidden) return;
 		e.hidden = !!hidden;
 		applyHideClass(e, style);
+	}
+
+	// ── Phase 5.5k k-8: 瞬間移動（術士）───────────────────────────
+	// meta.blink = { shownMs, goneMs, castDelayMs, range, style }
+	// 「歩かない敵」（speed 0）に移動手段として瞬間移動だけを与える3拍の状態機械：
+	//   shown … 姿がある＝殴れる窓。この間だけ魔弾（attack.type='stone'）を撃つ
+	//   gone  … 消える＝無敵（e.hidden＝combat.js dealDamageToEnemy が無効化）・攻撃もしない。
+	//           tickHide と同じ `setEnemyHidden` を通る＝無敵窓の出入口は1か所
+	//   出現  … プレイヤーから range セル離れたカーディナルのセルへ跳ぶ → 向き直る →
+	//           castDelayMs だけ硬直（＝詠唱の予告）→ shown へ戻る
+	// 戻り値：true ならこの tick の通常移動/攻撃を呼び出し側がスキップする（gone の間）。
+	//
+	// ⚠️ 出現先は**4方向からランダムに選ぶ**（2026-08-18 ユーザー指摘＝当初は出現回数で
+	//    「北→東→南→西」と巡回させていたが、次の出現位置が完全に読めて簡単すぎた）。
+	//    ただし**直前と同じ方向は候補から外す**＝毎回3択。同じセルに2回続けて出ると
+	//    「跳んでいない＝バグ」に見え、読めない位置に出るという狙いも半減する。
+	// ⚠️ 出現時に `e._attackTimes` を空にする＝「出現したら必ず1発撃つ」を保証する
+	//    （前の出現で撃った時刻がクールダウンに残っていると、出現しても撃たない回が出る）。
+	//    代わりに castDelayMs の硬直を置く＝出た瞬間に弾が飛ぶ理不尽を作らない
+	//    （k-7.5「すべての攻撃はモーションを持つ」と同じ趣旨＝予告のある遠隔攻撃）。
+	// ⚠️ 4方向すべて塞がっていたら**その場で出現する**（跳ばない）＝閉所で消え続けて
+	//    永久に無敵、という状態を作らない。
+	const BLINK_DIRS = [[-1, 0], [0, 1], [1, 0], [0, -1]];   // 北・東・南・西（この順に意味はない）
+
+	// 出現先＝プレイヤーから range セル離れたカーディナルのセル。
+	// 直前と違う方向をランダム順に試し、全部塞がっていたら最後に直前の方向も試す
+	// （＝「塞がれていると跳ばない」より「同じ方向に連続で跳ぶ」方が閉所での無敵を作らない）。
+	function pickBlinkCell(e, cfg) {
+		const player = getPlayer();
+		if (!player) return null;
+		const d  = cfg.range ?? 3;
+		const pr = toTileRow(player.y), pc = toTileCol(player.x);
+		const prev  = e._blinkDir ?? -1;
+		const order = BLINK_DIRS.map((_, i) => i).filter(i => i !== prev);
+		for (let i = order.length - 1; i > 0; i--) {          // Fisher-Yates
+			const j = Math.floor(Math.random() * (i + 1));
+			[order[i], order[j]] = [order[j], order[i]];
+		}
+		if (prev >= 0) order.push(prev);
+		for (const i of order) {
+			const [dr, dc] = BLINK_DIRS[i];
+			const ny = pr + dr * d, nx = pc + dc * d;
+			if (isPassableForEnemy(ny, nx, e)) { e._blinkDir = i; return [ny, nx]; }
+		}
+		return null;
+	}
+
+	function tickBlink(e, meta, now) {
+		const cfg = meta?.blink;
+		if (!cfg) return false;
+		const shownMs     = cfg.shownMs     ?? 1440;
+		const goneMs      = cfg.goneMs      ?? 720;
+		const castDelayMs = cfg.castDelayMs ?? 360;
+		const style       = cfg.style       ?? 'warp';
+		if (!e._blinkPhase) {
+			// 初期は「姿がある」＝置いた場所に立っている（消えて始まる tickHide とは逆＝
+			// プレイヤーが最初に見るのは術士そのもの。消えるのは1周期目の終わり）。
+			e._blinkPhase = 'shown';
+			e._blinkUntil = now + shownMs;
+			e._blinkCount = 0;
+			return false;
+		}
+		if (e._blinkPhase === 'shown') {
+			if (now < e._blinkUntil) return false;    // 姿がある間は通常の攻撃処理に任せる
+			e._blinkPhase = 'gone';
+			e._blinkUntil = now + goneMs;
+			setEnemyHidden(e, true, style);
+			return true;
+		}
+		// gone
+		if (now < e._blinkUntil) return true;
+		const dest = pickBlinkCell(e, cfg);
+		if (dest) {
+			e.y = dest[0]; e.x = dest[1];
+			moveCharEl(`enemy-${e.id}`, e.x, e.y);
+		}
+		e._blinkPhase = 'shown';
+		e._blinkUntil = now + shownMs;
+		e._blinkCount = (e._blinkCount ?? 0) + 1;
+		setEnemyHidden(e, false, style);
+		// 出現したらプレイヤーを向く（speed 0 ∴ enemyChase は向きを更新しない＝
+		// 向きの持ち主は blink 側になる）。
+		const player = getPlayer();
+		if (player) {
+			const dx = player.x - e.x, dy = player.y - e.y;
+			if (Math.abs(dx) >= 0.01 || Math.abs(dy) >= 0.01) {
+				e.dir = Math.abs(dx) >= Math.abs(dy) ? (dx > 0 ? 'right' : 'left') : (dy > 0 ? 'down' : 'up');
+			}
+		}
+		// 出現＝詠唱の始まり（クールダウンを畳んで必ず1発撃つ）。
+		// ⚠️ 2026-08-18 実測：今の数値（cooldown 1200・周期 18 tick）ではこの行を消しても
+		//    観測差が出ない（自然なクールダウンが同じ tick に落ちる）＝**保険の行**。
+		//    cooldown を伸ばすと「出現しても一度も撃たない回」が出るのを防ぐ。
+		e._attackTimes = {};
+		e._freezeUntil = now + castDelayMs;        // 詠唱の間は動かない・撃たない＝反応の猶予
+		playSound('appear');
+		return true;
 	}
 
 	// ── Phase 5.5k k-3: 跳躍（跳躍蜘蛛）─────────────────────────
@@ -1429,6 +1527,13 @@ export function createEnemyAi(deps) {
 			const slamming = tickSlam(e, meta, now);
 			// 隠れ↔出現の周期を更新（meta.hide を持つ敵のみ＝潜み鮫・地中蟲）
 			tickHide(e, meta, now);
+			// Phase 5.5k k-8: 瞬間移動（術士）＝消えている間と出現した tick を専有する。
+			// tickHide と同じ「タイマー駆動」の枠で呼ぶ＝硬直中も時計は進める
+			//（詠唱の硬直で周期が狂わない＝tickCombatMode と同じ理由）。
+			// ⚠️ 2026-08-18 実測：下の行動ゲートの `&& !blinking` は今の術士では観測差が出ない
+			//    （消えている間の攻撃は `if (!e.hidden) enemyAttack(...)` が独立に止めており
+			//     speed 0 で歩けもしない）＝**二重の守り**。blink を歩く敵に付けたときに効く。
+			const blinking = tickBlink(e, meta, now);
 			// Phase 9-6: 横向き敵の向きをプレイヤーに合わせる（毎 tick・移動しなくても向き直る）
 			applySideFacing(e, meta);
 			// Phase 5.5k: directional な敵はガード判定を移動/攻撃より先に行う＝ガード中は
@@ -1453,7 +1558,7 @@ export function createEnemyAi(deps) {
 			// Phase 5.5k k-4: 向き固定（盾騎士）＝turnMs ごとにだけ向き直る。移動より先に
 			// 決める（移動側は向きを触らない＝dirLocked を渡す）。
 			const dirLocked = tickFaceLock(e, meta, now);
-			if (!isGuarding && !frozen && !leaping && !shelled && !leeching && !slamming) {
+			if (!isGuarding && !frozen && !leaping && !shelled && !leeching && !slamming && !blinking) {
 				if (meta.hitAndAway) {
 					bossTickHitAndAway(e, meta);
 				} else if (cmode === 'ranged') {
@@ -1494,6 +1599,8 @@ export function createEnemyAi(deps) {
 		tickFaceLock,          // Phase 5.5k k-4: 向き固定（盾騎士・テスト用）
 		tickShell,             // Phase 5.5k k-4: 甲羅の開閉（火吐き亀・テスト用）
 		tickLeech,             // Phase 5.5k k-5: 張り付き＋吸血（ルピー喰い・テスト用）
+		tickBlink,             // Phase 5.5k k-8: 瞬間移動の状態機械（術士・テスト用）
+		pickBlinkCell,         // Phase 5.5k k-8: 出現先の決定（乱数なし・テスト用）
 		tickSlam,              // Phase 5.5k k-7.5: 体当たりの予告→解決（テスト用）
 		slamReachHit,          // Phase 5.5k k-7.5: 体当たりの到達判定（テスト用）
 		detachLeech,           // Phase 5.5k k-5: 張り付きを剥がす（combat.js の被弾フックが呼ぶ）

@@ -47,6 +47,7 @@ export const TILE_SPRITE_MAP = {
 	// Phase 5.5k k-7（プレイヤー側の一時デバフ窓）。2体とも向き別を持たない＝1枚の絵
 	// （k-7b で専用の 32×32 を手描きした＝呪い火は「剣を飲み込んだ炎」・毒沼ヒルは「毒の縞を
 	// 持つヒル」に見えないと機構が読めない＝GUIDE §6-1）。
+	[TILE.SORCERER]:     { spr: 'sorcerer',    pal: 'sorcerer'    },
 	[TILE.CURSE_FIRE]:   { spr: 'curseFire',   pal: 'curseFire'   },
 	[TILE.POISON_LEECH]: { spr: 'poisonLeech', pal: 'poisonLeech' },
 	[TILE.BOSS]:      { spr: 'escape',   pal: 'escape'   },

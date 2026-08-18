@@ -38,6 +38,11 @@ export const ENEMY_SPEED_FAST   = 1.0;  // 高速敵
 //      隣接していた場合だけ立つ）。
 //   ⚠️ デバフは無敵窓では防げない（無敵は HP を守る窓）。理由は debuff.js の冒頭。
 //
+// blink（Phase 5.5k k-8・任意）: { shownMs, goneMs, castDelayMs, range, style }
+//   ＝**瞬間移動**（#5 術士）。姿がある(shown)→消える(gone・無敵)→プレイヤーから
+//   range セル離れたカーディナルのセルへ跳んで再出現→castDelayMs の詠唱→また shown。
+//   実装は enemy-ai.js tickBlink。歩かない敵（speed 0）の唯一の移動手段として使う。
+//
 // weakness（Phase 3-3・任意）: { type, multiplier }
 //   type … 弱点となる攻撃種別 'sword' | 'beam' | 'arrow' | 'boomerang' | 'bomb'
 //   multiplier … その攻撃でのダメージ倍率（def 適用前の素ダメージに掛ける）
@@ -465,6 +470,40 @@ export const ENEMY_META = {
 			decay:  1,      // 1刻みごとに弱まる量（下限 1）＝2 → 1 で計 3
 		},
 		attack: { type: 'charge' },            // 体当たり（charge）のみ（毒が本体）
+	},
+	[TILE.SORCERER]: {
+		// 術士（陸上通常敵・脅威 中）。PLAN 5.5k 名簿 #5。
+		// 「瞬間移動して撃つ＝一定間隔で消え別セルに再出現→魔弾」を数字にする：
+		//   ・speed 0＝**歩かない**。移動手段は瞬間移動（meta.blink）だけ＝壁や水で
+		//     経路を切っても寄って来る／逆に追いかけても間合いは詰まらない
+		//   ・魔弾は `stone` 型（任意角の投擲物）を流用＝盾で防げる遠隔攻撃
+		//   ・出現→詠唱（castDelayMs の硬直）→1発。1回の出現で撃つのは1発だけ
+		//     （castDelayMs + cooldown > shownMs＝拍が読める）
+		//   ・弱点 arrow（×2）＝消える前に弓で落とす＝「詠唱を潰す」遊び
+		// ⚠️ GUIDE §7-2「敵はプレイヤーより遅い」の例外ではない＝瞬間移動は移動速度では
+		//    なく**距離のリセット**∴逃げても間合いは戻る。代わりに shownMs の間は
+		//    完全に無防備（歩かない＝殴りに行ける）でバランスを取る。
+		name: '術士',
+		hp: 5, atk: 3, def: 1, exp: 14,       // 脅威度 hp*atk/(def+1) = 7.5（中・剣獣 10.0 未満）
+		speed: 0,                             // 歩かない（移動は blink だけ＝enemyChase は accum が伸びない）
+		sprite: 'sorcerer',                   // k-8a は暫定（センチネルのエイリアス＋術士パレット）→ 実絵は k-8b
+		pal:    'sorcerer',
+		isBoss: false,
+		weakness: { type: 'arrow', multiplier: 2 },  // 弓で詠唱を潰す＝サブ武器の使い所
+		blink: {
+			shownMs:     1440,  // 姿がある時間（12 tick）＝殴れる窓／魔弾を撃つ窓
+			goneMs:       720,  // 消えている時間（6 tick）＝無敵・攻撃なし
+			castDelayMs:  360,  // 出現直後の詠唱＝反応の猶予（3 tick・体当たりの予告 280ms と同型）
+			range:          3,  // 再出現するプレイヤーからの距離（剣の間合い 1.5 の外・魔弾の射程内）
+			style:    'warp',   // 見た目の種別（CSS `.char-abs.hiding.hide-warp`＝魔法陣が残る）
+		},
+		attack: {
+			type:            'stone',   // 魔弾（任意角の投擲物・盾で防げる）
+			range:           6.5,       // 射程（瞬間移動の距離 3 より十分長い＝出現直後は必ず届く）
+			minRange:        2.0,       // 近すぎると撃たない（密着したら殴れる＝近接の答えが残る）
+			cooldown:        1200,      // 10 tick（castDelayMs 込みで shownMs を超える＝1出現1発）
+			projectileSpeed: 1.4,       // 飛翔速度（セル/tick）
+		},
 	},
 	[TILE.MONSTER]: {
 		name: '魔物',

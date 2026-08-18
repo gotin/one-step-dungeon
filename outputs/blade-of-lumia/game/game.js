@@ -2124,6 +2124,13 @@ export function getEnemiesSnapshot() {
 		// なく予告を挟む」ことをテストが数値で確認するための唯一の窓。
 		slamAt: e._slamAt ?? null,
 		slamWindupMs: e._slamWindupMs ?? null,
+		// Phase 5.5k k-8: 瞬間移動（術士）の観測用。
+		// blinkPhase ＝'shown'（姿がある＝殴れる／撃つ窓）| 'gone'（消えている＝無敵）。
+		// blinkCount ＝出現した回数＝出現先の巡回（北→東→南→西）の何番目かの根拠
+		// （乱数を使わない＝テストが出現セルを予測できる唯一の窓）。
+		blinkPhase: e._blinkPhase ?? null,
+		blinkUntil: e._blinkUntil ?? null,    // 今の相が切り替わる論理時刻
+		blinkCount: e._blinkCount ?? null,
 	}));
 }
 
