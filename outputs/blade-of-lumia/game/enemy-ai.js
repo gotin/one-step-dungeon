@@ -8,7 +8,10 @@ import { TILE } from '../shared/tiles.js';
 import { makeSprite } from '../shared/sprites.js';
 import { playSound } from '../shared/sounds.js';
 import { MOVE_STEP, ATTACK_POSE_MS, TICK_MS, SLAM_RANGE, SLAM_WINDUP_MS, SLAM_COOLDOWN_MS } from './constants.js';
-import { statefulTileClosed } from './passable.js';
+import { statefulTileClosed, overlapArea } from './passable.js';
+// Phase 5.5k k-9: 突進が壁に激突した印（⭐）の位置＝敵の中心。中心の取り方は hitbox.js が
+// 単一の真実（projectile.js showStunEffect も同じ関数を使う＝印の位置がずれない）。
+import { enemyCenter } from './hitbox.js';
 // Phase 5.5k k-7.5: hitbox.js enemyPointHit の import は接触ダメージ（checkEnemyContact）
 // 廃止で不要になった。体当たりの到達判定は slamReachHit（軸ごとの間合い）が持つ。
 
@@ -119,6 +122,8 @@ export function createEnemyAi(deps) {
 	// ⚠️ **盾では防げない**（`isShieldBlockingDir` を通さない）＝ユーザー決定④。
 	// 盾が効くのは剣攻撃と投擲攻撃だけ＝体当たりは「下がる」以外に答えが無い攻撃。
 	const SLAM_PERP = 0.8;   // 主軸に直交する方向の許容ずれ（剣 sword の perpDist と同じ数字）
+	// Phase 5.5k k-9: 壁に激突した印（⭐）が消えるまで＝effects.css の stun-burst-anim と同じ長さ。
+	const STUN_BURST_MS = 1500;
 
 	// 体当たりの到達判定。剣と同じ「主軸の距離 ≤ range・直交方向のずれ ≤ 0.8」の形
 	// （斜めから 1.5 セル離れて殴られないようにする＝箱ではなく十字の間合い）。
@@ -1189,6 +1194,180 @@ export function createEnemyAi(deps) {
 		return true;
 	}
 
+	// ── Phase 5.5k k-9: 直線突進＋壁で気絶（突進猪）──────────────────
+	// meta.dash = { windupMs, speed, maxCells, alignTol, hitRange, minRange, maxRange,
+	//               stunMs, cooldownMs }
+	// 体当たり（slam）の強化版＝**間合いの外から一直線に走って来る**3拍の状態機械：
+	//   idle    … 通常の（鈍い）接近。プレイヤーが自分の行/列（直交ずれ alignTol 以内）の
+	//              minRange〜maxRange に入ると溜めへ
+	//   windup  … 溜め＝動かない・攻撃しない予告の窓（**隠れない＝殴れる**）。突進する方向は
+	//              ここで確定するカーディナル1方向∴プレイヤーは軸から外れて避けられる
+	//   run     … 突進＝speed セル/tick で直進。終わり方は3通り：
+	//              ① プレイヤーに接触 … 体当たりのダメージ（＋meta.inflict）→ 硬直。**気絶しない**
+	//              ② 地形に激突     … stunMs の気絶（e.stunUntil＝enemyTick が全行動を止める）
+	//                                 ＝**プレイヤーの反撃の窓**（PLAN 名簿「そこが好機」）
+	//              ③ maxCells 走り切る … 空振り → 硬直
+	//   recover … 硬直（気絶の後もここを通る）＝cooldownMs の間は次の突進を始めない
+	// 戻り値：true ならこの tick の通常移動/攻撃を呼び出し側がスキップする。
+	//
+	// ⚠️ **1 tick を細かい歩幅（MOVE_STEP）に割って進める**＝速度を上げても当たり判定と
+	//    壁判定を飛び越さない（[[blade-speed-up-needs-interpolation]]・k-6 の投擲物と同じ話）。
+	// ⚠️ **接触の判定を壁判定より先に置く**。重なり禁止（k-7.5 決定①）でプレイヤーは
+	//    「通れないもの」になっている∴壁判定を先にすると**立っているプレイヤーが壁の代わりに
+	//    なって敵が気絶する**＝避けなかった側がご褒美をもらう逆の設計になる。
+	//    進めない理由がプレイヤーだったときも（判定の取りこぼし対策に）接触として扱う。
+
+	// （tickDash が使う当たり判定。本体はこの下）
+	// 突進の当たり判定。**体当たり（slamReachHit）を流用してはいけない**（2026-08-18 実測）：
+	// slam の間合いは向きを持たない十字＝「主軸 ≤ range・直交 ≤ 0.8」を**両軸それぞれで**見る∴
+	// 軸から1セル外れたプレイヤーの横（前方 0.5・横 1.0）を走り抜けるとき、縦軸の腕で当たってしまう
+	// ＝**避けたのに轢かれる**（k-9 のプレイヤーの答えそのものが消える）。
+	// ∴突進は「走っている軸の前方だけ」に当たる：進行方向の距離が 0〜hitRange、
+	// その軸からの直交ずれが alignTol 以内（＝突進が始まる車線＝当たる車線）。
+	// 大型敵（w×h）は占有範囲の分だけ広げる（slamReachHit と同じ中心の取り方）。
+	function dashReachHit(e, player, vec, hitRange, alignTol) {
+		const w = e.w ?? 1, h = e.h ?? 1;
+		const halfW = (w - 1) / 2, halfH = (h - 1) / 2;
+		const dx = player.x - (e.x + halfW);
+		const dy = player.y - (e.y + halfH);
+		const [sy, sx] = vec ?? [0, 0];
+		const horizontal = sx !== 0;
+		const along     = horizontal ? dx * sx : dy * sy;      // 進行方向の距離（後ろは負）
+		const off       = Math.abs(horizontal ? dy : dx);      // 走行軸からの直交ずれ
+		const halfAlong = horizontal ? halfW : halfH;
+		const halfOff   = horizontal ? halfH : halfW;
+		if (along < -halfAlong) return false;                  // すでに通り過ぎた＝当たらない
+		return along <= hitRange + halfAlong && off <= alignTol + halfOff;
+	}
+
+	function tickDash(e, meta, now) {
+		const cfg = meta?.dash;
+		if (!cfg) return false;
+		const windupMs   = cfg.windupMs   ?? 360;
+		const speed      = cfg.speed      ?? 1.5;
+		const maxCells   = cfg.maxCells   ?? 10;
+		const alignTol   = cfg.alignTol   ?? SLAM_PERP;
+		const hitRange   = cfg.hitRange   ?? 1.0;
+		const minRange   = cfg.minRange   ?? 2.0;
+		const maxRange   = cfg.maxRange   ?? 9.0;
+		const stunMs     = cfg.stunMs     ?? 1440;
+		const cooldownMs = cfg.cooldownMs ?? 1200;
+		if (!e._dashPhase) e._dashPhase = 'idle';
+
+		if (e._dashPhase === 'run') {
+			const [sy, sx] = e._dashVec ?? [0, 0];
+			const steps  = Math.max(1, Math.round(speed / MOVE_STEP));
+			const player = getPlayer();
+			const ew = e.w ?? 1, eh = e.h ?? 1;
+			let moved = 0, outcome = null;
+			for (let k = 0; k < steps && e._dashLeft > 0; k++) {
+				// ① 接触（体当たり）が先＝プレイヤーは壁ではない。判定は**走っている軸の前方だけ**
+				//    （dashReachHit＝十字の slam を流用すると軸から外れた避けが無効になる）
+				if (player && dashReachHit(e, player, [sy, sx], hitRange, alignTol)) { outcome = 'hit'; break; }
+				const ny = e.y + sy * MOVE_STEP, nx = e.x + sx * MOVE_STEP;
+				if (!isPassableForEnemy(ny, nx, e)) {
+					// ② 進めない理由がプレイヤーなら接触・地形なら激突
+					const onPlayer = player && overlapArea(nx, ny, ew, eh, player.x, player.y, 1, 1) > 0;
+					outcome = onPlayer ? 'hit' : 'wall';
+					break;
+				}
+				e.y = ny; e.x = nx; e._dashLeft -= MOVE_STEP; moved++;
+			}
+			if (moved) moveCharEl(`enemy-${e.id}`, e.x, e.y);
+			if (outcome === 'hit') {
+				// 体当たりと同じダメージ（e.atk を先に見る＝分裂の小型は親より弱い・k-5a の作法）。
+				// 盾では防げない（k-7.5 決定④＝体当たり系の答えは「下がる」だけ）。
+				takeDamage(e.atk ?? meta?.atk ?? 1);
+				if (meta?.inflict) inflictDebuff?.(meta);
+				markAttack(e, meta, 0, now);   // クールダウン記録は攻撃の共通後処理に通す
+				endDash(e, now, cooldownMs);
+				return true;
+			}
+			if (outcome === 'wall') {
+				// 気絶＝ブーメランのスタンと同じ窓（enemyTick が先頭で全行動を止める）。
+				e.stunUntil = now + stunMs;
+				showDashStun(e);
+				playSound('doorLock');
+				endDash(e, now, stunMs + cooldownMs);   // 気絶が明けてから硬直ぶん待つ
+				return true;
+			}
+			if (e._dashLeft <= 0) endDash(e, now, cooldownMs);   // ③ 走り切った＝空振り
+			return true;
+		}
+		if (e._dashPhase === 'recover') {
+			if (now < e._dashUntil) return true;
+			e._dashPhase = 'idle';
+			return false;
+		}
+		if (e._dashPhase === 'windup') {
+			if (now < e._dashUntil) return true;
+			e._dashPhase = 'run';
+			e._dashLeft  = maxCells;
+			return true;
+		}
+		// idle ＝突進を始めるかどうかの判断
+		if (e._slamAt != null) return false;      // 体当たりの予告中は突進を始めない（予告は1つ）
+		const player = getPlayer();
+		if (!player) return false;
+		const dx = player.x - e.x, dy = player.y - e.y;
+		const adx = Math.abs(dx), ady = Math.abs(dy);
+		const vertical = ady >= adx;
+		const along = vertical ? ady : adx;       // 突進する軸方向の距離
+		const off   = vertical ? adx : ady;       // その軸からの直交ずれ
+		// 行/列に入っていない＝突進しない（プレイヤーの避け方＝軸から1セル外れる）
+		if (off > alignTol) return false;
+		if (along < minRange || along > maxRange) return false;
+		e._dashVec = vertical ? [Math.sign(dy) || 1, 0] : [0, Math.sign(dx) || 1];
+		e.dir = vertical ? (dy > 0 ? 'down' : 'up') : (dx > 0 ? 'right' : 'left');
+		e._dashPhase = 'windup';
+		e._dashUntil = now + windupMs;
+		return true;
+	}
+
+	// 突進を終える（当たり／激突／走り切り の共通後処理）。
+	function endDash(e, now, waitMs) {
+		e._dashPhase = 'recover';
+		e._dashUntil = now + waitMs;
+		e._dashLeft  = 0;
+	}
+
+	// 突進の中断（スタン＝ブーメラン等で止められたとき）。溜めも走行も無かったことにする
+	// ＝「止めたのに突進が続く」を作らない（体当たりの予告をスタンで消すのと同じ扱い）。
+	// ⚠️ 硬直（recover）は消さない＝壁に激突した気絶はこの硬直と**同時に**立っている
+	//    （endDash(stunMs + cooldownMs)）∴ここで畳むと「気絶が明けた次の tick に即・再突進」
+	//    になり、反撃の窓の直後にもう一度轢かれる。
+	function cancelDash(e) {
+		if (e._dashPhase == null || e._dashPhase === 'idle' || e._dashPhase === 'recover') return;
+		e._dashPhase = 'idle';
+		e._dashUntil = 0;
+		e._dashLeft  = 0;
+	}
+
+	// 溜めの見た目（board.css `.dash-windup`＝前後に細かく揺れる＝走り出す前の足踏み）。
+	// slam の拡大縮小（`.slam-windup`）とは別の形にする＝**どちらの予告なのかが絵で分かる**
+	// （同じ敵が近距離では体当たり・遠距離では突進を出す∴避け方が違う）。
+	function syncDashMotion(e) {
+		const el = document.getElementById(`char-enemy-${e.id}`);
+		if (!el) return;
+		el.classList.toggle('dash-windup', e._dashPhase === 'windup');
+	}
+
+	// 壁に激突した印（⭐）＝ブーメランのスタンと同じ `.stun-burst`（projectile.js showStunEffect
+	// と同じ形）。気絶は「殴り放題の窓」＝プレイヤーが気づかないと機構が死ぬ（GUIDE §6-1）。
+	function showDashStun(e) {
+		const layer = getCharLayerEl();
+		if (!layer) return;
+		const cellPx = getCellPx();
+		const { cx, cy } = enemyCenter(e);
+		const el = layer.ownerDocument.createElement('div');
+		el.className = 'stun-burst';
+		el.textContent = '⭐';
+		el.style.left = `${cx * cellPx}px`;
+		el.style.top  = `${cy * cellPx}px`;
+		layer.appendChild(el);
+		setTimeout(() => el.remove(), STUN_BURST_MS);   // effects.css の stun-burst-anim と同じ長さ
+	}
+
 	// ── Phase 5.5k k-4: 向きを固定して構える（盾騎士）─────────────────
 	// meta.blockFacing = { turnMs, knockback } を持つ敵は「向きが常時ブロックの面」＝
 	// e.dir がそのままダメージ無効化の方向になる（combat.js isBlockFacingDir）。
@@ -1543,6 +1722,10 @@ export function createEnemyAi(deps) {
 				// Phase 5.5k k-7.5: スタンは体当たりの予告も中断する（ガードと同じ扱い＝
 				// スタン中に攻撃が成立してはいけない）。ブーメランで止めれば体当たりも消える。
 				if (e._slamAt != null) { e._slamAt = null; e._slamIdx = null; syncSlamMotion(e); }
+				// Phase 5.5k k-9: 突進もスタンで中断する（溜め中に殴られたら走り出さない・
+				// 走行中に止められたらそこで終わる）。壁への激突で立てた気絶もここを通る＝
+				// 気絶が明けた tick に走行が再開しないための後始末でもある。
+				if (meta.dash) { cancelDash(e); syncDashMotion(e); }
 				continue;
 			}
 			// Phase 5.5k k-7.5: 立っている予告は**他の専有状態より先に必ず解決する**
@@ -1578,10 +1761,14 @@ export function createEnemyAi(deps) {
 			// Phase 5.5k k-5: 張り付き（ルピー喰い）＝張り付いている間はプレイヤーへ貼り付いて
 			// ルピーを吸うだけ（移動も攻撃もしない）。上と同じ「この tick を専有する」枠。
 			const leeching = (!isGuarding && !frozen && !leaping && !shelled) ? tickLeech(e, meta, now) : false;
+			// Phase 5.5k k-9: 直線突進（突進猪）＝溜め〜突進〜硬直の間 移動/攻撃を専有する
+			// （跳躍と同じ枠）。硬直中も idle へ戻る判断はここで行う＝周期が硬直で狂わない。
+			const dashing = (!isGuarding && !frozen && !leaping && !shelled && !leeching)
+				? tickDash(e, meta, now) : false;
 			// Phase 5.5k k-4: 向き固定（盾騎士）＝turnMs ごとにだけ向き直る。移動より先に
 			// 決める（移動側は向きを触らない＝dirLocked を渡す）。
 			const dirLocked = tickFaceLock(e, meta, now);
-			if (!isGuarding && !frozen && !leaping && !shelled && !leeching && !slamming && !blinking) {
+			if (!isGuarding && !frozen && !leaping && !shelled && !leeching && !slamming && !blinking && !dashing) {
 				if (meta.hitAndAway) {
 					bossTickHitAndAway(e, meta);
 				} else if (cmode === 'ranged') {
@@ -1608,6 +1795,8 @@ export function createEnemyAi(deps) {
 			if (meta.blink && !e.hidden) syncCastSprite(e, meta);
 			// Phase 5.5k k-7.5: 体当たりの予告モーション（拡大縮小2往復）を状態に合わせる。
 			syncSlamMotion(e);
+			// Phase 5.5k k-9: 突進の溜めモーション（前後に細かく揺れる）を状態に合わせる。
+			if (meta.dash) syncDashMotion(e);
 		}
 	}
 
@@ -1627,6 +1816,8 @@ export function createEnemyAi(deps) {
 		tickLeech,             // Phase 5.5k k-5: 張り付き＋吸血（ルピー喰い・テスト用）
 		tickBlink,             // Phase 5.5k k-8: 瞬間移動の状態機械（術士・テスト用）
 		pickBlinkCell,         // Phase 5.5k k-8: 出現先の決定（直前の方角を除く乱択・テスト用）
+		tickDash,              // Phase 5.5k k-9: 直線突進の状態機械（突進猪・テスト用）
+		dashReachHit,          // Phase 5.5k k-9: 突進の当たり判定（走行軸の前方だけ・テスト用）
 		tickSlam,              // Phase 5.5k k-7.5: 体当たりの予告→解決（テスト用）
 		slamReachHit,          // Phase 5.5k k-7.5: 体当たりの到達判定（テスト用）
 		detachLeech,           // Phase 5.5k k-5: 張り付きを剥がす（combat.js の被弾フックが呼ぶ）

@@ -47,6 +47,15 @@ export const ENEMY_SPEED_FAST   = 1.0;  // 高速敵
 //   range セル離れたカーディナルのセルへ跳んで再出現→castDelayMs の詠唱→また shown。
 //   実装は enemy-ai.js tickBlink。歩かない敵（speed 0）の唯一の移動手段として使う。
 //
+// dash（Phase 5.5k k-9・任意）: { windupMs, speed, maxCells, alignTol, hitRange,
+//                                minRange, maxRange, stunMs, cooldownMs }
+//   ＝**直線突進＋壁ヒット気絶**（#14 突進猪）。プレイヤーが自分の行/列（直交ずれ
+//   alignTol 以内）に入ると溜め(windup)→高速直線突進(run)の2拍で走る。
+//   走り終わりは3通り＝①プレイヤーに接触（体当たりのダメージ＝気絶しない）
+//   ②地形に激突（stunMs の気絶＝**プレイヤーの反撃の窓**）③maxCells 走り切る（空振り）。
+//   実装は enemy-ai.js tickDash。体当たり（attack:{type:'charge'}）の強化版＝
+//   密着では従来どおり slam が出る（dash.minRange > slam の到達距離で棲み分ける）。
+//
 // weakness（Phase 3-3・任意）: { type, multiplier }
 //   type … 弱点となる攻撃種別 'sword' | 'beam' | 'arrow' | 'boomerang' | 'bomb'
 //   multiplier … その攻撃でのダメージ倍率（def 適用前の素ダメージに掛ける）
@@ -510,6 +519,41 @@ export const ENEMY_META = {
 			cooldown:        1200,      // 10 tick（castDelayMs 込みで shownMs を超える＝1出現1発）
 			projectileSpeed: 1.4,       // 飛翔速度（セル/tick）
 		},
+	},
+	[TILE.CHARGE_BOAR]: {
+		// 突進猪（陸上通常敵・脅威 中〜高）。PLAN 5.5k 名簿 #14。
+		// 「直線突進＋壁ヒット気絶＝プレイヤーの行/列に入ると高速直線突進、壁に当たると気絶
+		//  （そこが好機）」を数字にする：
+		//   ・歩きは鈍足（SLOW）＝**間合いを詰める手段は突進だけ**（GUIDE §7-2「敵はプレイヤー
+		//     より遅い」を守る＝速いのは突進の窓の中だけ・その窓は予告付き）
+		//   ・行/列に入る（直交ずれ alignTol 0.8 以内）と溜め 3 tick → 突進（1.5セル/tick）
+		//   ・当たれば体当たりのダメージ（気絶しない）／外して壁に激突すると 12 tick 気絶
+		//     ＝**殴り放題の窓**。∴プレイヤーの答えは「軸から1セル外れて壁へ誘導する」
+		//   ・弱点なし（気絶させたときだけが弱点＝PLAN 名簿の「弱点なし（気絶時のみ）」）
+		// ⚠️ 密着（dash.minRange 2.0 未満）では突進しない＝そこは体当たり（charge＝slam）の
+		//    間合い。dash.minRange > SLAM_RANGE(1.5) で棲み分ける（両方が同じ距離で出ると
+		//    「予告が2種類同時に立つ」＝どちらを避けたのか読めない）。
+		name: '突進猪',
+		hp: 6, atk: 3, def: 1, exp: 18,       // 脅威度 hp*atk/(def+1) = 9.0（中〜高・剣獣 10.0 未満）
+		speed: ENEMY_SPEED_SLOW,              // 歩きは鈍足（突進だけが速い）
+		sprite: 'chargeBoar',                 // k-9a は仮置き（既存絵のエイリアス）→ k-9b で実絵
+		pal:    'chargeBoar',
+		sideView: true,                       // 横向きシルエット（猪は横からしか読めない）
+		isBoss: false,
+		dash: {
+			windupMs:   360,   // 溜め＝3 tick（TICK_MS 120）＝見て軸から外れられる予告
+			speed:      1.5,   // 突進中の速度（セル/tick）＝1 tick に MOVE_STEP×3
+			maxCells:    10,   // 走る上限（1画面の内寸 10 より大きい＝開けた部屋では必ず壁に届く）
+			alignTol:   0.8,   // 行/列に入ったと見なす直交ずれ（slam の SLAM_PERP と同じ数字
+			                   // ＝**突進が始まる幅＝当たる幅**。ここを広げると「始まるのに
+			                   // 当たらない」＝歯の無い予告になる＝GUIDE §3-1 guardRange の罠）
+			hitRange:   1.0,   // 突進が当たる距離＝重なり禁止（k-7.5 決定①）での最接近そのもの
+			minRange:   2.0,   // 密着では突進しない（SLAM_RANGE 1.5 の外＝slam と棲み分ける）
+			maxRange:   9.0,   // 遠すぎでは突進しない（1画面の対角より短い）
+			stunMs:    1440,   // 壁に激突したときの気絶＝12 tick の反撃の窓（溜めの4倍）
+			cooldownMs: 1200,  // 突進のあとの硬直＝10 tick（連続突進で詰め切られない）
+		},
+		attack: { type: 'charge' },            // 密着したら従来どおり体当たり（予告→解決）
 	},
 	[TILE.MONSTER]: {
 		name: '魔物',

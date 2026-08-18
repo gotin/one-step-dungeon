@@ -17,8 +17,10 @@
 //   5. enemyDirs のキー集合が盤面の敵セルと一致
 //   6. 敵の4近傍がすべて床（出現先が敵の初期セル周りで潰れない）
 //   7. ★ **probe から距離 blink.range の4方位セルがすべて内部の床**
-//      ＝出現先の巡回（北→東→南→西）が地形で潰れない。これが崩れると
-//      「順番どおり出た」のか「壁で1つ飛ばされた」のか区別できない＝巡回のテストの歯が抜ける
+//      ＝出現先の抽選が地形で潰れない。これが崩れると「4方位のどこかに出た」のか
+//      「壁だから出られなかった」のか区別できない＝出現先のテストの歯が抜ける
+//      （❌失効：当初は「北→東→南→西の固定巡回」と書いていた。k-8c／2026-08-18 の
+//        ユーザー指摘で **直前と同じ方角を除いた乱択**（enemy-ai.js pickBlinkCell）に変えた）
 //   8. probe（プレイヤーを save 注入する立ち位置）は床・**敵と同じ行**（一直線＝魔弾が届く）
 //      かつ敵との距離が attack.minRange〜attack.range の内側
 //      ＝**出現する前（置いた場所）からも1発撃つ**ことが同じ盤面で測れる
@@ -70,7 +72,8 @@ const OPEN_BOARD = (enemyTile) => [
 ];
 
 const DIR_DELTA = { down: [1, 0], up: [-1, 0], right: [0, 1], left: [0, -1] };
-// 出現先の巡回順（enemy-ai.js BLINK_DIRS と同じ＝北→東→南→西）。
+// 出現先の候補（enemy-ai.js BLINK_DIRS と同じ4方位。**順番に意味はない**＝実装は
+// 直前と同じ方角を除いた乱択＝pickBlinkCell。ここでは「4方位すべてが床か」を見るだけ）。
 const BLINK_DIRS = [[-1, 0, '北'], [0, 1, '東'], [1, 0, '南'], [0, -1, '西']];
 
 const STAGES = [
@@ -81,13 +84,16 @@ const STAGES = [
 		enemyDirs: { '4,9': 'left' },
 		holes: {},
 		// 計測に使う立ち位置。四方すべてに「距離 3（blink.range）の内部の床」がある
-		// ＝出現先の巡回が地形で潰れない（検査 7）。
+		// ＝出現先の抽選が地形で潰れない（検査 7）。
 		probe: [4, 5],
 		requires: (m) => m.blink?.shownMs > 0 && m.blink.goneMs > 0
 			&& m.blink.castDelayMs > 0 && m.blink.range > 0
-			&& m.attack?.type === 'stone' && m.attack.cooldown > 0
+			// ❌失効：k-8c（2026-08-18）で術士の攻撃は 'stone' から専用の 'magicBolt' になった
+			// （enemy-ai.js は stone と同じ分岐で撃つ・絵と色だけ違う）。'stone' のまま
+			// 要求していると**このスクリプトが二度と走らない**（実際に起きた）。
+			&& m.attack?.type === 'magicBolt' && m.attack.cooldown > 0
 			&& m.attack.range > 0 && m.attack.minRange > 0,
-		requiresLabel: "blink = { shownMs, goneMs, castDelayMs, range } ＋ attack = { type:'stone', range, minRange, cooldown }",
+		requiresLabel: "blink = { shownMs, goneMs, castDelayMs, range } ＋ attack = { type:'magicBolt', range, minRange, cooldown }",
 		comment:
 			'[sorcerer] Phase 5.5k k-8 術士の「瞬間移動して撃つ」の検証ステージ（2026-08-18）。'
 			+ '幾何＝外周は壁・**左右の rows 7/8 だけ隣のアリーナへの通路**（歩いて敵を見比べる'
@@ -95,8 +101,9 @@ const STAGES = [
 			+ 'プレイヤーは save 注入で置く：(4,5)＝同じ行・dist 4.0（魔弾の射程 6.5 の内側・'
 			+ '最短射程 2.0 の外側）∴**置いた場所からも1発撃つ**。'
 			+ '⚠️ probe(4,5) は**四方すべてに「距離 3（blink.range）の内部の床」がある**立ち位置'
-			+ '＝出現先の巡回（北(1,5)→東(4,8)→南(7,5)→西(4,2)）が地形で潰れない。'
-			+ 'probe を動かすと「順番どおり出た」のか「壁で飛ばされた」のか区別できなくなる。'
+			+ '＝出現先の候補（北(1,5)/東(4,8)/南(7,5)/西(4,2)）が地形で潰れない。'
+			+ '出現先は**直前と同じ方角を除いた乱択**（固定巡回ではない）∴'
+			+ 'probe を動かすと「4方位のどこかに出た」のか「壁で出られなかった」のか区別できなくなる。'
 			+ '⚠️ この敵は**歩かない**（speed 0）＝寄って来ない・追いかけても間合いは詰まらない'
 			+ '（移動手段は瞬間移動だけ）。'
 			+ '見るもの＝1.44秒 姿を見せ（この間だけ殴れる／魔弾を撃つ）→0.72秒 消えて'
@@ -179,7 +186,7 @@ for (const st of STAGES) {
 	const blink = meta.blink;
 	const atk   = meta.attack;
 
-	// 7. ★ probe から距離 blink.range の4方位セルがすべて内部の床（巡回の歯）
+	// 7. ★ probe から距離 blink.range の4方位セルがすべて内部の床（出現先の抽選の歯）
 	const dests = [];
 	for (const [dr, dc, label] of BLINK_DIRS) {
 		const ny = pr + dr * blink.range, nx = pc + dc * blink.range;
@@ -187,8 +194,8 @@ for (const st of STAGES) {
 		const inside = ny > 0 && ny < ROWS - 1 && nx > 0 && nx < COLS - 1;
 		if (!inside || t !== TILE.FLOOR) {
 			throw new Error(`${name}: probe(${pr},${pc}) の${label}側 距離 ${blink.range} のセル(${ny},${nx}) が`
-				+ `内部の床でない: '${t}'＝出現先の巡回が地形で潰れる`
-				+ '（「順番どおり出た」のか「壁で飛ばされた」のか区別できない）');
+				+ `内部の床でない: '${t}'＝出現先の抽選が地形で潰れる`
+				+ '（「4方位のどこかに出た」のか「壁で出られなかった」のか区別できない）');
 		}
 		dests.push(`${label}(${ny},${nx})`);
 	}
@@ -273,7 +280,7 @@ for (const p of prepared) {
 		+ ` / probe (${p.probe.join(',')}) dist ${p.dist}（魔弾の射程 ${meta.attack.minRange}〜${meta.attack.range} の内側）`
 		+ ` / speed ${meta.speed}（歩かない）`
 		+ ` / blink ${JSON.stringify(meta.blink)}`
-		+ ` / 出現先の巡回 ${p.dests.join(' → ')}`
+		+ ` / 出現先の候補（乱択） ${p.dests.join(' / ')}`
 		+ (Object.keys(p.holes ?? {}).length ? ` / 宣言した例外セル ${Object.keys(p.holes).join(' ')}` : ' / 遮蔽ゼロ'));
 }
 

@@ -2133,6 +2133,13 @@ export function getEnemiesSnapshot() {
 		blinkCount: e._blinkCount ?? null,
 		// castUntil ＝詠唱が終わる論理時刻（k-8b: この窓だけ絵が sorcererCast に替わる）。
 		castUntil: e._castUntil ?? null,
+		// Phase 5.5k k-9: 直線突進（突進猪）の観測用。
+		// dashPhase ＝'idle'（判断）| 'windup'（溜め＝殴れる）| 'run'（突進中）| 'recover'（硬直）。
+		// 壁への激突は `stunUntil` に出る（＝ブーメランのスタンと同じ窓）∴「突進が壁で終わった」の
+		// 判定は dashPhase の遷移と stunUntil の組で読む（run → recover かつ stunUntil が立った）。
+		dashPhase: e._dashPhase ?? null,
+		dashUntil: e._dashUntil ?? null,      // 溜め/硬直が明ける論理時刻
+		dashLeft:  e._dashLeft  ?? null,      // 残りの突進距離（セル）＝走り切ったかの観測用
 	}));
 }
 

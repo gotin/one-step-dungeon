@@ -33,8 +33,9 @@ export const TILE = {
 	BOMB_OGRE:   'λ',  // 爆弾鬼（陸上通常敵・放物線で爆弾を投げる。着弾で範囲爆発＝壁越しに届き盾で防げない）
 	BOOMERANG_OGRE:'π',// ブーメラン鬼（陸上通常敵・往復するブーメランを投げる。避けても帰りに当たる二度読み）
 	SORCERER:    'η',  // 術士（陸上通常敵・歩かない。一定間隔で消えプレイヤーの近くへ瞬間移動して魔弾を撃つ）
-	// ⚠️ 安全なギリシャ小文字（α β δ ζ η θ λ μ ξ π σ φ ψ ω＝14個）は η（術士・5.5k k-8）で
-	//    13個目。残るのは ω（#14 突進猪に予約済み）1個だけ∴以降は大文字
+	CHARGE_BOAR: 'ω',  // 突進猪（陸上通常敵・鈍足。プレイヤーの行/列に入ると直線突進。壁に当たると気絶）
+	// ⚠️ 安全なギリシャ小文字（α β δ ζ η θ λ μ ξ π σ φ ψ ω＝14個）は ω（突進猪・5.5k k-9）で
+	//    **使い切った**（14個目）∴以降は大文字
 	//    （Δ Θ Λ Ξ Π Σ Φ Ψ Ω＝ラテン大文字と紛れない字形）を使う。
 	//    Γ は「ラテン文字に無い字形」で目視の取り違えが無い。
 	CURSE_FIRE:  'ψ',  // 呪い火（陸上通常敵・触れると数秒剣が封じられる。ダメージは小＝妨害特化）
@@ -161,6 +162,7 @@ export const TILE_META = {
 	[TILE.BOMB_OGRE]:  { label: '爆弾鬼',    color: '#6a4a2a', passable: true,  icon: '爆' },
 	[TILE.BOOMERANG_OGRE]:{ label: 'ブーメラン鬼', color: '#4a5a2a', passable: true, icon: '環' },
 	[TILE.SORCERER]:    { label: '術士',     color: '#3a2a6a', passable: true,  icon: '術' },
+	[TILE.CHARGE_BOAR]: { label: '突進猪',   color: '#6a4526', passable: true,  icon: '猪' },
 	[TILE.CURSE_FIRE]:  { label: '呪い火',   color: '#5a2a6a', passable: true,  icon: '呪' },
 	[TILE.POISON_LEECH]:{ label: '毒沼ヒル', color: '#3a5a2a', passable: true,  icon: '毒' },
 	[TILE.BOSS]:    { label: '魔将',         color: '#184060', passable: true,  icon: 'Ｖ' },

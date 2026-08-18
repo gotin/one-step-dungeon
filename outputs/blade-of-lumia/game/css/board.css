@@ -193,6 +193,24 @@
     100% { transform: scale(1)             translateY(0);   }
 }
 
+/* Phase 5.5k k-9: 直線突進（dash）の溜めモーション＝走り出す前の足踏み。
+   体当たり（`.slam-windup` の拡大縮小）とは**別の形**にする＝同じ敵が近距離では体当たり・
+   行/列に入られたときは突進を出す∴避け方が違う（下がる／軸から1セル外れる）ものを
+   同じ絵で告知してはいけない（GUIDE §6-1）。
+   ・前後に細かく揺れる＝「これから走る向きの軸で助走している」ことを見せる
+   ・溜めの長さ（meta.dash.windupMs＝3 tick）が終わるまで繰り返す（infinite。
+     終わりの管理は enemy-ai.js の状態機械が持つ＝CSS 側に長さを持たせない） */
+.char-abs.dash-windup canvas.sprite {
+    transform-origin: 50% 100%;
+    animation: enemy-dash-windup 120ms linear infinite;
+}
+@keyframes enemy-dash-windup {
+    0%   { transform: translateX(0)    scaleY(1);    }
+    25%  { transform: translateX(-8%)  scaleY(0.96); }
+    75%  { transform: translateX(8%)   scaleY(1.04); }
+    100% { transform: translateX(0)    scaleY(1);    }
+}
+
 @keyframes golem-lumber {
     0%   { transform: translateY(0)      rotate(-1.5deg) scaleY(1);    }
     25%  { transform: translateY(-3%)    rotate(0deg)    scaleY(1.02); }

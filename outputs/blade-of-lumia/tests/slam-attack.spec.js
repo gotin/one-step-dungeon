@@ -129,11 +129,15 @@ test.describe('Phase 5.5k k-7.5 – 体当たり攻撃（slam）と重なり禁�
       .map(([tile]) => tile);
     expect(noAttack, '攻撃手段を持たない敵がいる＝接触廃止で無害な置物になっている').toEqual([]);
 
-    // 旧「接触専門」＝体当たり（charge）に移した10種。この一覧が縮むのは
+    // 旧「接触専門」＝体当たり（charge）に移した10種＋突進猪（k-9 で追加）。この一覧が縮むのは
     // 「誰かの攻撃が別の型に変わった」＝設計変更のときだけ（黙って減らさない）。
     const CHARGE = [
       TILE.PATROL, TILE.CHASER, TILE.LEAP_SPIDER, TILE.BAT_SWARM, TILE.FIRE_TURTLE,
       TILE.SPLIT_SLIME, TILE.RUPEE_EATER, TILE.CURSE_FIRE, TILE.POISON_LEECH, TILE.FISH_SCHOOL,
+      // 突進猪（k-9・2026-08-18）＝密着では体当たり／間合いの外からは突進（meta.dash）。
+      // ∴この敵だけ「charge を持つ」と「dash を持つ」の両方に載る（棲み分けは
+      // dash.minRange 2.0 > SLAM_RANGE 1.5＝tests/charge-dash.spec.js ①が番人）。
+      TILE.CHARGE_BOAR,
     ];
     for (const tile of CHARGE) {
       const m = ENEMY_META[tile];
