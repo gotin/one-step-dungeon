@@ -35,6 +35,7 @@
 import { readFileSync } from 'fs';
 import { bfsLayer, SOLVABLE_GATES, findEntryRoom, firstWalkable } from './lib/connectivity.mjs';
 import { isEnemyTile } from '../shared/enemies.js';
+import { UNLOCKED_AT } from './lib/progression.mjs';
 
 // BLADE_MAP_PATH で読むマップを差し替えられる（既定は実マップ）。
 // 用途＝「わざと壊したコピー」を食わせて検査そのものが本当に落ちるかを確かめる
@@ -53,21 +54,8 @@ const ALL_BOSS_TILES      = new Set(['W', 'V', 'X', 'Z', 'A', 'L', 'N', 'J', 'O'
 
 // Item unlock order: dungeonLayer → items available when the player enters
 // (i.e. items won from the PREVIOUS dungeon and earlier)
-const UNLOCKED_AT = {
-  dungeon_1: new Set([]),
-  dungeon_2: new Set(['boomerang']),
-  dungeon_3: new Set(['boomerang', 'bow']),
-  dungeon_4: new Set(['boomerang', 'bow', 'candle']),
-  dungeon_5: new Set(['boomerang', 'bow', 'candle', 'bomb', 'ladder']),
-  dungeon_6: new Set(['boomerang', 'bow', 'candle', 'bomb']),
-  dungeon_8: new Set(['boomerang', 'bow', 'candle', 'bomb', 'ladder']),
-  cave_1:    new Set(['boomerang', 'bow', 'candle', 'ladder', 'bomb']),
-  dungeon_7: new Set(['boomerang', 'bow', 'candle', 'ladder', 'bomb', 'flute']),
-  // 最終ダンジョン。ここに来る時点で全アイテム所持（PLAN 9-1 の進行順）。
-  // ⚠️ このエントリが無いと unlocked が空集合になり「はしご必須の水で出口封鎖」を
-  //    誤検出する。そもそも dark_tower は 2026-08-05 まで検査対象から漏れていた。
-  dark_tower: new Set(['boomerang', 'bow', 'candle', 'ladder', 'bomb', 'flute']),
-};
+// ⚠️ 2026-08-19（5.5m）に `scripts/lib/progression.mjs` へ移した＝敵配置の「弱点道具が
+//    入手済みか」の判定と同じ表を使うため（二重管理をやめた）。ここは import するだけ。
 
 // レイヤーの種別。トライフォース8ダンジョン以外は「ボスがトライフォースを落とす」
 // 「ハートの器がある」「地図とコンパスがある」を要求してはいけない。

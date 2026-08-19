@@ -97,7 +97,7 @@ import { sanitizeLoadedPlayer } from '../game/save.js';
 import { waitForBoard } from './helpers.js';
 import { TEST_LAYER, stageKey } from './test-stage-keys.js';
 import { isArenaDoor, arenaDoorCells, ARENA_DOOR_ROWS } from './test-arena-doors.js';
-import { gameLayerEntries } from '../shared/layers.js';
+import { placedCells, stageIdOf, PLACEMENT_STAGES } from './enemy-placed.js';
 
 const GAME   = '/blade-of-lumia/game/';
 const EDITOR = '/blade-of-lumia/editor/';
@@ -1137,22 +1137,19 @@ test.describe('Phase 5.5k k-7 – プレイヤー側の一時デバフ窓（呪�
     expect(errors).toEqual([]);
   });
 
-  test('⑯ 2種はまだ本編レイヤーに配置していない（k-7a は部品のみ）', () => {
-    // k-7a はエンジン＋テストまで。ライブ配置は 5.5m（絵が出来てから）。
-    // ⚠ ここが赤くなったら「配置した側」が正しい：この test を配置の検証に書き換える。
-    const placed = [];
-    for (const [layerName, layer] of gameLayerEntries(MAP)) {
-      for (const [sk, stage] of Object.entries(layer.stages ?? {})) {
-        const tiles = stage.tiles ?? [];
-        for (let r = 0; r < tiles.length; r++) {
-          const row = Array.isArray(tiles[r]) ? tiles[r] : String(tiles[r]).split('');
-          for (let c = 0; c < row.length; c++) {
-            if (K7.some(([t]) => t === row[c])) placed.push(`${layerName}/${sk} (${r},${c}) '${row[c]}'`);
-          }
-        }
+  test('⑯ 2種は本編レイヤーに配置済み・かつ配置表の部屋にだけ居る', () => {
+    // 2026-08-19（5.5m）に配置した∴「未配置」ではなく「居る・想定外の部屋に湧いていない」
+    // を守る（k-3 ⑬・k-4 ⑭・k-5 ⑯・k-6 ⑱ と同じ形）。呪い火は剣を封じる＝サブ武器が
+    // 揃った D4 以降にしか置かない、という配置の意図は tests/enemy-placement.spec.js が持つ。
+    const placed = placedCells(MAP, K7.map(([t]) => t));
+    for (const [tile] of K7) {
+      const name = ENEMY_META[tile].name;
+      expect(placed[tile].length, `${name}（'${tile}'）が本編レイヤーに1体も居ない`).toBeGreaterThan(0);
+      for (const loc of placed[tile]) {
+        expect(PLACEMENT_STAGES.has(stageIdOf(loc)),
+          `${name} が配置表に無い ${loc} に居る（表＝scripts/lib/enemy-placement.mjs）`).toBe(true);
       }
     }
-    expect(placed, 'k-7a の時点では本編レイヤーに配置しない（5.5m で配置する）').toEqual([]);
   });
 
   test('⑰ セーブから戻したプレイヤーはデバフ窓を持ち越さない（save.js の純粋関数）', () => {
