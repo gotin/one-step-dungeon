@@ -125,8 +125,9 @@ test.describe('Phase 9-6 深洋O – 海棲雑魚②接近型・③遠隔型', (
       expect(TILE_META[tile], `TILE_META['${tile}'] が無い`).toBeTruthy();
       expect(ENEMY_SPRITES[spr], `${spr} スプライトが無い`).toBeTruthy();
       expect(ENEMY_SPRITES[spr].length, `${spr} は 2 フレーム`).toBe(2);
-      expect(ENEMY_SPRITES[spr][0].length, `${spr} は 16 行`).toBe(16);
-      expect(ENEMY_SPRITES[spr][0][0].length, `${spr} は 12 列`).toBe(12);
+      // 2026-08-19（k-10）＝12×16 から 32×32 へ描き直した（表示サイズは CSS 固定∴不変）
+      expect(ENEMY_SPRITES[spr][0].length, `${spr} は 32 行`).toBe(32);
+      expect(ENEMY_SPRITES[spr][0][0].length, `${spr} は 32 列`).toBe(32);
       expect(ENEMY_PAL[pal], `${pal} パレットが無い`).toBeTruthy();
       expect(ENEMY_PAL[pal][0], 'index0 は透明').toBe('transparent');
       expect(TILE_SPRITE_MAP[tile], 'スプライトマップが無い（描画で消える）').toBeTruthy();

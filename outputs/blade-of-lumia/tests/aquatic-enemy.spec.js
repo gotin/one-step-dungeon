@@ -80,8 +80,10 @@ test.describe('Phase 9-6 深洋O – aquatic enemy movement + 魚群', () => {
     expect(TILE_META[TILE.FISH_SCHOOL], `TILE_META['&'] が存在しない`).toBeTruthy();
     expect(ENEMY_SPRITES.fishSchool, 'スプライトが無い').toBeTruthy();
     expect(ENEMY_SPRITES.fishSchool.length, '2 フレーム').toBe(2);
-    expect(ENEMY_SPRITES.fishSchool[0].length, '16 行').toBe(16);
-    expect(ENEMY_SPRITES.fishSchool[0][0].length, '12 列').toBe(12);
+    // 2026-08-19（k-10）＝12×16 から 32×32 へ描き直した。表示サイズは CSS 固定（--cell）∴
+    // 配列を大きくしても盤面での大きさは変わらない＝**中身の細かさだけが上がる**。
+    expect(ENEMY_SPRITES.fishSchool[0].length, '32 行').toBe(32);
+    expect(ENEMY_SPRITES.fishSchool[0][0].length, '32 列').toBe(32);
     expect(ENEMY_PAL.fishSchool, 'パレットが無い').toBeTruthy();
     expect(ENEMY_PAL.fishSchool[0], 'index0 は透明').toBe('transparent');
     expect(TILE_SPRITE_MAP[TILE.FISH_SCHOOL], 'スプライトマップが無い（描画で消える）').toBeTruthy();
