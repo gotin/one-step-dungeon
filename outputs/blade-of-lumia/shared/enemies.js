@@ -536,7 +536,7 @@ export const ENEMY_META = {
 		name: '突進猪',
 		hp: 6, atk: 3, def: 1, exp: 18,       // 脅威度 hp*atk/(def+1) = 9.0（中〜高・剣獣 10.0 未満）
 		speed: ENEMY_SPEED_SLOW,              // 歩きは鈍足（突進だけが速い）
-		sprite: 'chargeBoar',                 // k-9a は仮置き（既存絵のエイリアス）→ k-9b で実絵
+		sprite: 'chargeBoar',                 // k-9b の実絵（待機2枚＋Windup＋Stun・横向き）
 		pal:    'chargeBoar',
 		sideView: true,                       // 横向きシルエット（猪は横からしか読めない）
 		isBoss: false,

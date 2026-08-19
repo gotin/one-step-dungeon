@@ -1321,6 +1321,9 @@ export function createEnemyAi(deps) {
 		e.dir = vertical ? (dy > 0 ? 'down' : 'up') : (dx > 0 ? 'right' : 'left');
 		e._dashPhase = 'windup';
 		e._dashUntil = now + windupMs;
+		// 予告は絵（.dash-windup ＋ Windup ポーズ）と音の2経路で出す＝画面の端で溜められても
+		// 「来る」と分かる。激突音（doorLock）とは別の音（sounds.js dashWindup のコメント）。
+		playSound('dashWindup');
 		return true;
 	}
 
@@ -1574,6 +1577,22 @@ export function createEnemyAi(deps) {
 		swapEnemySprite(e, casting ? `${base}Cast` : base);
 	}
 
+	// ── Phase 5.5k k-9b: 突進猪の溜め／気絶を画面に出す ─────────────────
+	// 溜め（windup）は 3 tick の予告＝**軸から外れろ**という指示／気絶（stun）は 12 tick の
+	// 「殴り放題の窓」。どちらも CSS の揺れ（.dash-windup）と ⭐ だけでは足りない＝
+	// 絵そのものが状態を名指す（GUIDE §6-1）。leap の windup・甲羅の開閉と同じ作法。
+	// ★ 気絶を溜めより先に見る＝壁への激突は「気絶＋硬直」が同時に立つ（endDash(stunMs+…)）。
+	//   ⚠️ 2026-08-19 実測：この順序は今の実装では観測差が出ない（スタンに入った tick の
+	//      cancelDash が windup を畳む∴「気絶かつ溜め」が同時に立つ状態が作れない）＝
+	//      **二重の守り**。cancelDash の畳み方を変えたときに効く。
+	function syncDashSprite(e, meta) {
+		const base = meta?.sprite;
+		if (!base) return;
+		if ((e.stunUntil ?? 0) > gameNow()) swapEnemySprite(e, `${base}Stun`);
+		else if (e._dashPhase === 'windup') swapEnemySprite(e, `${base}Windup`);
+		else swapEnemySprite(e, base);
+	}
+
 	// 状態から導いたスプライト名へ DOM の canvas を差し替える（変わった tick だけ触る）。
 	// directional 敵の syncDirectionalSprite と対になる「向きを持たない敵のポーズ差替」。
 	function swapEnemySprite(e, spriteName) {
@@ -1583,12 +1602,22 @@ export function createEnemyAi(deps) {
 		// ⚠️ 未登録の名前では makeSprite が null を返す∴**先に古い canvas を消すと敵が消える**
 		//    （ポーズ絵を持たない敵に Cast/Windup/Closed を要求したときの事故）。
 		//    先に作って、作れたときだけ差し替える（k-8b で塞いだ）。
-		const cv = makeSprite(spriteName, e.pal, true, !!e.flipX);
+		// ⚠️ 反転は**今の canvas から受け継ぐ**（k-9b）。e.flipX は directional 敵しか持たない
+		//    ∴sideView の敵（猪・鮫）で `!!e.flipX` を使うと、左を向いていた敵の溜め／気絶が
+		//    右向きに戻る＝「左へ走りながら右を向いて溜める」絵になる。
+		const oldCv = el.querySelector('canvas.sprite');
+		const cv = makeSprite(spriteName, e.pal, true, currentFlipX(e, oldCv));
 		if (!cv) return;
 		e.sprite = spriteName;
-		const oldCv = el.querySelector('canvas.sprite');
 		if (oldCv) oldCv.remove();
 		el.insertBefore(cv, el.firstChild);
+	}
+
+	// 今 画面に出ている canvas の反転（sideView の敵はここだけが真実）。canvas がまだ無い
+	// ときは directional 敵の e.flipX を使う。
+	function currentFlipX(e, cv) {
+		if (cv) return cv.dataset.flipX === '1';
+		return !!e.flipX;
 	}
 
 	// ── Phase 5.5k k-3: ジグザグ飛行（コウモリ群）───────────────
@@ -1647,6 +1676,12 @@ export function createEnemyAi(deps) {
 	//   ・アニメループ（redrawAnimSprites）が dataset.flipX を読んで再描画するので、
 	//     ここで dataset を書き換えるだけで次フレームから反転が反映される
 	//   ・renderChars（char-layer 作り直し）側でも同じ判定を持つ＝再描画で戻らない
+	// ⚠️ Phase 5.5k k-9b: dataset を書くだけで足りるのは**複数フレームの絵だけ**。
+	//    redrawAnimSprites は `frames.length > 1` しか描き直さない（shared/sprites.js）∴
+	//    単一フレームのポーズ絵（猪の溜め `chargeBoarWindup`／気絶 `chargeBoarStun`）では
+	//    反転が画面に出ず「左へ突進しながら右を向いて溜める」絵になる。猪は sideView と
+	//    ポーズ差替を**同時に持つ最初の敵**＝ここで canvas を作り直して即座に反映する
+	//    （アニメループを待たない＝フレーム数に依らず1経路・400ms の遅れも消える）。
 	function applySideFacing(e, meta) {
 		if (!meta?.sideView) return;
 		const layer = getCharLayerEl();
@@ -1654,7 +1689,12 @@ export function createEnemyAi(deps) {
 		const cv = el?.querySelector?.('canvas.sprite');
 		if (!cv) return;
 		const flip = getPlayer().x < e.x ? '1' : '';
-		if (cv.dataset.flipX !== flip) cv.dataset.flipX = flip;
+		if (cv.dataset.flipX === flip) return;
+		cv.dataset.flipX = flip;
+		const next = makeSprite(cv.dataset.sprite || e.sprite, cv.dataset.pal || e.pal, true, flip === '1');
+		if (!next) return;                 // 作れないときは dataset だけ残す（敵を消さない）
+		cv.remove();
+		el.insertBefore(next, el.firstChild);
 	}
 
 	// ── Phase 5.5k: 陸上敵のガード（実効化・ユーザー指示 2026-08-10）───────────
@@ -1725,7 +1765,7 @@ export function createEnemyAi(deps) {
 				// Phase 5.5k k-9: 突進もスタンで中断する（溜め中に殴られたら走り出さない・
 				// 走行中に止められたらそこで終わる）。壁への激突で立てた気絶もここを通る＝
 				// 気絶が明けた tick に走行が再開しないための後始末でもある。
-				if (meta.dash) { cancelDash(e); syncDashMotion(e); }
+				if (meta.dash) { cancelDash(e); syncDashMotion(e); syncDashSprite(e, meta); }
 				continue;
 			}
 			// Phase 5.5k k-7.5: 立っている予告は**他の専有状態より先に必ず解決する**
@@ -1796,7 +1836,8 @@ export function createEnemyAi(deps) {
 			// Phase 5.5k k-7.5: 体当たりの予告モーション（拡大縮小2往復）を状態に合わせる。
 			syncSlamMotion(e);
 			// Phase 5.5k k-9: 突進の溜めモーション（前後に細かく揺れる）を状態に合わせる。
-			if (meta.dash) syncDashMotion(e);
+			// k-9b: 絵そのものも溜め／気絶へ差し替える（揺れと ⭐ だけでは状態が読めない）。
+			if (meta.dash) { syncDashMotion(e); syncDashSprite(e, meta); }
 		}
 	}
 
@@ -1817,6 +1858,7 @@ export function createEnemyAi(deps) {
 		tickBlink,             // Phase 5.5k k-8: 瞬間移動の状態機械（術士・テスト用）
 		pickBlinkCell,         // Phase 5.5k k-8: 出現先の決定（直前の方角を除く乱択・テスト用）
 		tickDash,              // Phase 5.5k k-9: 直線突進の状態機械（突進猪・テスト用）
+		syncDashSprite,        // Phase 5.5k k-9b: 溜め／気絶のポーズ差替（テスト用）
 		dashReachHit,          // Phase 5.5k k-9: 突進の当たり判定（走行軸の前方だけ・テスト用）
 		tickSlam,              // Phase 5.5k k-7.5: 体当たりの予告→解決（テスト用）
 		slamReachHit,          // Phase 5.5k k-7.5: 体当たりの到達判定（テスト用）

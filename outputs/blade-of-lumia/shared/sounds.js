@@ -400,6 +400,18 @@ export function playSound(kind) {
 		tone(ctx, now,        880, 0.04, 'sine', 0.04);
 		tone(ctx, now + 0.03, 660, 0.04, 'sine', 0.03);
 	}
+	// 突進の溜め「グルルル…ガッ」（#14 突進猪・windup 360ms のあいだの予告）
+	// ⚠️ 激突音（doorLock の流用）とは別の音にする＝プレイヤーが聞き分けるのは
+	//    「これから来る（避けろ）」と「止まった（殴れる）」の2つ∴同じ音では機構が読めない。
+	// ★ 低音を段で上げる＝溜まっていくことを音程で伝える（3 tick = 360ms に収める）。
+	//   合間の短い高音2発＝蹄で地面を掻く音。
+	if (kind === 'dashWindup') {
+		tone(ctx, now,        70,  0.13, 'sawtooth', 0.050);
+		tone(ctx, now + 0.11, 88,  0.13, 'sawtooth', 0.055);
+		tone(ctx, now + 0.22, 110, 0.16, 'sawtooth', 0.060);
+		tone(ctx, now + 0.05, 320, 0.03, 'square',   0.030);
+		tone(ctx, now + 0.24, 300, 0.03, 'square',   0.030);
+	}
 	// 扉ロック（ボス部屋）
 	if (kind === 'doorLock') {
 		tone(ctx, now,        180, 0.08, 'sawtooth', 0.08);

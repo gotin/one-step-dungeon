@@ -45,20 +45,27 @@
 //   `gotoFrozen()` でそもそも起動させない（k-3〜k-8 spec と同じ理由）。
 // ⚠ プレビュー（fromEditor=1）は debugMode:true ＝ takeDamage が早期 return する∴
 //   **HP を測る本は 'g' で debug を切る**（切らないと①の轢かれが観測できない）。
-// ⚠ k-9a 時点のスプライトは既存絵（火吐き亀）のエイリアス＋突進猪パレット
-//   （GUIDE §2「機構が先・絵は後」）∴絵の中身は主張せず、名前解決と
-//   「床に沈まない色であること」だけを押さえる。実描き（32×32＝待機／溜め／気絶）は k-9b の担当。
+// 絵（k-9b・2026-08-19）＝手で組んだ 32×32（.scratch/draw-k9.mjs）。
+//   chargeBoar        … 待機2枚（脚が交互に出る＝鈍足で歩く）
+//   chargeBoarWindup  … 溜め（立ったまま頭を下げ背の剛毛が鋸歯に立つ＝上端が待機より高い）
+//   chargeBoarStun    … 気絶（胴が床に落ち脚が消え鬣が寝て眼が閉じる＝背が縮む）
+// 差し替えは enemy-ai.js `syncDashSprite`（leap の windup・甲羅の開閉と同じ作法）。
+// ★ 溜めと気絶は**体の高さ**で見分ける（どちらも頭が下がる）∴②は高さの関係も押さえる。
+// ★ 突進猪は **sideView（横向き反転）と単一フレームのポーズ絵を同時に持つ最初の敵**＝
+//   `applySideFacing` が dataset を書くだけでは反転が画面に出ない（redrawAnimSprites は
+//   `frames.length > 1` しか描き直さない）∴⑭が canvas の中身（牙の左右）で押さえる。
 //
-// ── 歯の実測（2026-08-18・機構を1つずつ壊して**実際に**赤くなった本を書いた。
-//    計測は .scratch/probe-dash-teeth.mjs＝置換→spec 実行→復元を1機構ずつ）──────────
-//   壊したもの → 赤くなった本（18 通り全部で赤が出た＝歯なしはゼロ）
-//     溜めを 0 にする（予告なしで突進）                        → ⑥⑨
-//     当たり判定を slam の十字（slamReachHit）に戻す           → ⑦⑩   ← k-9a で実際に踏んだバグ
+// ── 歯の実測（2026-08-18・k-9b 分を 2026-08-19 に追記。機構を1つずつ壊して**実際に**
+//    赤くなった本を書いた。計測は .scratch/probe-dash-teeth.mjs＝置換／末尾追記→spec 実行→
+//    復元を1機構ずつ。`ONLY=部分文字列` で1項だけ測り直せる）──────────
+//   壊したもの → 赤くなった本（27 通りで赤が出た／歯なし 1＝下の★）
+//     溜めを 0 にする（予告なしで突進）                        → ⑥⑨⑭
+//     当たり判定を slam の十字（slamReachHit）に戻す           → ⑦⑩⑭  ← k-9a で実際に踏んだバグ
 //     軸判定（off > alignTol）を消す＝どこに居ても突進する      → ④
 //     間合い判定（minRange/maxRange）を消す                    → ④
 //     接触判定（dashReachHit）を消す                           → ⑥
 //     進めない理由がプレイヤーでも「激突」にする                → ⑦
-//     壁に激突しても気絶しない（stunUntil を立てない）          → ⑦⑩
+//     壁に激突しても気絶しない（stunUntil を立てない）          → ⑦⑩⑭
 //     硬直に気絶ぶんを足さない（endDash が cooldownMs だけ）    → ⑦⑩
 //     cancelDash が硬直（recover）も畳む                       → ⑩
 //     スタンで突進を中断しない（enemyTick の cancelDash を外す）→ ⑪
@@ -67,10 +74,21 @@
 //     歩幅の細分（MOVE_STEP 補間）をやめて speed ぶん飛ばす      → ⑥⑧⑨
 //     突進中も通常の攻撃を呼ぶ（`!dashing` ゲートを外す）        → ⑩
 //     board.css の `.dash-windup` 規則を無効化                  → ③
-//     dash.alignTol を 1.5 にする（1セル外れても突進が始まる）  → ①⑤⑦⑩
+//     dash.alignTol を 1.5 にする（1セル外れても突進が始まる）  → ①⑤⑦⑩⑭
 //     dash.minRange を 1.0 にする（slam の間合いと重なる）      → ①
 //     歩きを速くする（speed 2.0＝突進の意味が消える）           → ①
-//   （k-9b の実絵と一緒に更新する予定＝この表は k-9a 時点の実測）
+//   ── k-9b（絵）の分 ────────────────────────────────
+//     待機を既存絵（火吐き亀）のエイリアスに戻す                → ②⑭
+//     溜めの絵を待機と同じにする（ポーズ差が無い）              → ②
+//     気絶の絵を登録しない（差替が黙って空振りする）            → ②⑩⑭
+//     溜めを気絶と同じ高さにする（高さで見分けられない）        → ②
+//     末尾の syncDashSprite を呼ばない                          → ⑨⑩⑭
+//     スタン枝の syncDashSprite を呼ばない                      → ⑪
+//     applySideFacing の描き直しを消す（dataset だけに戻す）    → ⑭   ← k-9b で実際に踏んだ欠陥
+//     ポーズ差替の反転を e.flipX から取る（旧実装）             → ⑭
+//   ★ 歯なし1件：syncDashSprite の「気絶を溜めより先に見る」順序（逆にしても全部緑）＝
+//     スタンに入った tick の cancelDash が windup を畳む∴「気絶かつ溜め」が作れない
+//     ＝二重の守り（cancelDash の畳み方を変えたときに効く）。
 //
 import { test, expect } from '@playwright/test';
 import { readFileSync } from 'fs';
@@ -139,19 +157,30 @@ const D = () => M().dash;
 // ── 純関数（tickDash）用の作業台 ───────────────────────────────
 // enemy-ai.js は factory ＝DOM もゲーム状態も要らない（k-7.5 ⑪・k-8 と同じ作法）。
 //   wallAt … これ以下の x は通れない（＝西の壁。null で壁なし）
-// 壁に激突する枝は playSound('doorLock') を鳴らす∴Node に AudioContext の張り子を置く
-// （鳴らさない実装に変えると音が消えたことに気づけない＝ここでは黙らせずに通す）。
+// 溜めは playSound('dashWindup')・壁の激突は playSound('doorLock') を鳴らす∴Node に
+// AudioContext の張り子を置く（鳴らさない実装に変えると音が消えたことに気づけない＝黙らせない）。
+// ★ 張り子は**鳴った音の周波数と開始時刻を記録する**＝⑮がそれを読んで「溜めに音が付いている・
+//   激突とは別の音・溜めの窓に収まる」を測る（`playSound` は import 済みの関数∴DI で差し替え
+//   られない＝音の観測点は AudioContext しかない）。ctx.currentTime は 0 固定∴t はそのまま
+//   「playSound を呼んでから何秒後に鳴り始めるか」になる。
+const TONES = [];                     // { f: 周波数, t: 開始秒 }（張り子が push する）
+const tonesSince = (n) => TONES.slice(n);
+const freqsOf = (list) => list.map(o => o.f);
 function stubAudio() {
   if (globalThis.window?.AudioContext) return;
-  const node = () => ({
-    type: '', frequency: { setValueAtTime() {} },
+  const gainNode = () => ({
     gain: { setValueAtTime() {}, exponentialRampToValueAtTime() {} },
+    connect() {},
+  });
+  const oscNode = () => ({
+    type: '',
+    frequency: { setValueAtTime(f, t) { TONES.push({ f, t }); } },
     connect() {}, start() {}, stop() {},
   });
   globalThis.window = {
     ...(globalThis.window ?? {}),
     AudioContext: function () {
-      return { currentTime: 0, destination: {}, createOscillator: node, createGain: node };
+      return { currentTime: 0, destination: {}, createOscillator: oscNode, createGain: gainNode };
     },
   };
 }
@@ -237,7 +266,7 @@ test.describe('Phase 5.5k k-9 – 直線突進＋壁で気絶（突進猪）', (
     expect(m.blink, '突進猪に meta.blink がある＝瞬間移動と機構が混ざっている').toBeUndefined();
   });
 
-  test('② タイル定義・スプライト名の解決・パレット（床に沈まない色）', () => {
+  test('② タイル定義・実絵（32×32・待機2枚＋溜め＋気絶）・パレット（床に沈まない色）', () => {
     const m = M();
     expect(TILE_META[TILE.CHARGE_BOAR], "TILE_META['ω'] が無い＝エディタに出ない").toBeTruthy();
     expect(TILE_META[TILE.CHARGE_BOAR].label, '突進猪のラベル').toBe('突進猪');
@@ -250,19 +279,67 @@ test.describe('Phase 5.5k k-9 – 直線突進＋壁で気絶（突進猪）', (
     // タイル→スプライトは shared/tile-sprites.js が単一の真実（エディタとゲームで分けない）
     expect(TILE_SPRITE_MAP[TILE.CHARGE_BOAR], 'TILE_SPRITE_MAP に突進猪が無い＝エディタで絵が出ない')
       .toEqual({ spr: 'chargeBoar', pal: 'chargeBoar' });
+    // ★ k-9b: ポーズ絵が登録されていること＝enemy-ai.js syncDashSprite の差替先。
+    //   未登録だと swapEnemySprite が黙って何もしない（敵は消えないが**状態が絵に出ない**）
+    //   ∴「絵が無い」ことがテストで赤くならない＝ここで名前と中身を押さえる。
+    const WINDUP = `${m.sprite}Windup`, STUN = `${m.sprite}Stun`;
+    for (const name of [WINDUP, STUN]) {
+      expect(ENEMY_SPRITES[name], `${name} が無い＝溜め／気絶の絵が出ない（差替が黙って空振りする）`)
+        .toBeTruthy();
+    }
+    // ★ 実絵の寸法＝32×32（他の陸上敵と同じ土台。drawSprite は grid の大きさをそのまま
+    //   canvas の大きさにする∴行数が違うと表示倍率がずれて他の敵と並ばない）。
+    for (const name of [m.sprite, WINDUP, STUN]) {
+      for (const [k, g] of ENEMY_SPRITES[name].entries()) {
+        expect(g.length, `${name}[${k}] の行数が 32 でない＝他の敵と大きさが揃わない`).toBe(32);
+        for (const row of g) expect(row.length, `${name}[${k}] の列数が 32 でない`).toBe(32);
+      }
+    }
+    expect(ENEMY_SPRITES[WINDUP].length, '溜めは単一フレーム（揺れは CSS が持つ）').toBe(1);
+    expect(ENEMY_SPRITES[STUN].length, '気絶は単一フレーム（動かないのが気絶）').toBe(1);
+    // ★ フレーム差＝歩行が動いて見える下限（SPRITE-PIPELINE §6 の数え方＝17ドット）。
+    //   エイリアス（同じ絵の使い回し）や「脚を1ドットずらした」絵はここで赤くなる。
+    const dots = (a, b) => {
+      let n = 0;
+      for (let y = 0; y < 32; y++) for (let x = 0; x < 32; x++) if (a[y][x] !== b[y][x]) n++;
+      return n;
+    };
+    const [idle1, idle2] = ENEMY_SPRITES[m.sprite];
+    const windup = ENEMY_SPRITES[WINDUP][0], stun = ENEMY_SPRITES[STUN][0];
+    expect(dots(idle1, idle2), '待機2枚の差が 17ドット未満＝止まって見える').toBeGreaterThanOrEqual(17);
+    // ★ ポーズ差の下限は 48ドット＝**一瞬でも別の姿だと分かる**（待機の歩行差より大きい）
+    expect(dots(idle1, windup), '待機と溜めの差が 48ドット未満＝予告が絵で読めない')
+      .toBeGreaterThanOrEqual(48);
+    expect(dots(idle1, stun), '待機と気絶の差が 48ドット未満＝殴り放題の窓が絵で読めない')
+      .toBeGreaterThanOrEqual(48);
+    expect(dots(windup, stun), '溜めと気絶の差が 48ドット未満＝予告と反撃の窓を取り違える')
+      .toBeGreaterThanOrEqual(48);
+    // ★ 溜めと気絶は**体の高さ**で見分ける（どちらも頭が下がる∴頭の位置では区別できない）。
+    //   溜め＝立ったまま剛毛が立つ（上端が待機より高い）／気絶＝床に潰れて脚が消える
+    //   （上端が待機より低い＝背が縮む）。ここが逆になると避け方を取り違える（GUIDE §6-1）。
+    const topOf = (g) => g.findIndex(r => r.some(v => v));
+    const heightOf = (g) => g.filter(r => r.some(v => v)).length;
+    expect(topOf(windup), '溜めの上端が待機より低い＝剛毛が立っていない（予告が背で読めない）')
+      .toBeLessThan(topOf(idle1));
+    expect(topOf(stun), '気絶の上端が待機より高い＝潰れていない（気絶が背で読めない）')
+      .toBeGreaterThan(topOf(idle1));
+    expect(heightOf(stun), '気絶の背が溜めと同じか高い＝2つのポーズが高さで見分けられない')
+      .toBeLessThan(heightOf(windup));
+
     // パレットの色番号がスプライトの最大値をカバーしていること（欠けると描画で落ちる）
     const pal = ENEMY_PAL[m.pal];
     expect(pal, 'ENEMY_PAL.chargeBoar が無い').toBeTruthy();
-    const maxIdx = Math.max(...ENEMY_SPRITES[m.sprite].flat(2));
+    const maxIdx = Math.max(...[m.sprite, WINDUP, STUN].flatMap(n => ENEMY_SPRITES[n].flat(2)));
     expect(pal.length, `パレットの色数が足りない（最大の色番号 ${maxIdx}）`).toBeGreaterThan(maxIdx);
+    // 逆向きの門＝**使っていない色を残さない**（パレットだけ増やして絵が古いのを防ぐ）
+    expect(maxIdx, 'パレットに絵で使われていない色がある＝絵とパレットが食い違っている')
+      .toBe(pal.length - 1);
     // 床に沈まない色（輪郭＝index 1 だけは床より暗くて良い＝輪郭は暗いから見える）
     expect(lumOf(pal[1]), '輪郭が床より明るい＝輪郭線として効かない').toBeLessThan(FLOOR_LUM);
     for (const hex of pal.slice(2)) {
       expect(lumOf(hex), `パレットの色 ${hex} が石床（輝度 ${FLOOR_LUM}）より暗い＝床に沈む`)
         .toBeGreaterThan(FLOOR_LUM);
     }
-    // ⚠️ k-9a のスプライトは既存絵のエイリアス（GUIDE §2「機構が先・絵は後」）∴
-    //    ここでは寸法や差分ドットを主張しない。実絵（32×32・溜め／気絶ポーズ）は k-9b。
   });
 
   test('③ 溜めのモーションが CSS にあり、体当たりの予告とは別の形（避け方が違う）', () => {
@@ -464,6 +541,7 @@ test.describe('Phase 5.5k k-9 – 直線突進＋壁で気絶（突進猪）', (
           phase: e.dashPhase ?? null, left: e.dashLeft ?? null,
           stun: e.stunUntil ?? null, hp: s.player.hp,
           cls: !!el?.classList.contains('dash-windup'),
+          spr: e.sprite ?? null,
         });
         if (s.player.hp < start.hp) break;
       }
@@ -485,10 +563,14 @@ test.describe('Phase 5.5k k-9 – 直線突進＋壁で気絶（突進猪）', (
       expect(res.tr[i].hp, `tick${res.tr[i].i}：溜め中にダメージを受けた`).toBe(res.start.hp);
       // ★ 溜めモーションは**溜めている間だけ**出る（機構の告知＝GUIDE §6-1）
       expect(res.tr[i].cls, `tick${res.tr[i].i}：.dash-windup が付いていない＝溜めが見えない`).toBe(true);
+      // ★ k-9b: 絵そのものも溜めの姿（頭を下げ剛毛が立つ）へ替わる＝揺れだけでは
+      //   「体当たりの予告」と見分けられない（避け方が違う＝GUIDE §6-1）
+      expect(res.tr[i].spr, `tick${res.tr[i].i}：溜めの絵に替わっていない`).toBe('chargeBoarWindup');
     }
     // 走行中はモーションを外す（走っている絵が足踏みのままだと嘘になる）
     for (const r of res.tr.filter(r => r.phase === 'run')) {
       expect(r.cls, `tick${r.i}：走行中も .dash-windup が付いている`).toBe(false);
+      expect(r.spr, `tick${r.i}：走行中も溜めの絵のまま＝走り出したことが読めない`).toBe('chargeBoar');
     }
     // 実アリーナでも 1.5 セル/tick で走る（歩き 0.25 の6倍）
     const run = res.tr.filter(r => r.phase === 'run' && r.x < 9);
@@ -525,6 +607,7 @@ test.describe('Phase 5.5k k-9 – 直線突進＋壁で気絶（突進猪）', (
             phase: e.dashPhase ?? null, until: e.dashUntil ?? null,
             stun: e.stunUntil ?? null, hp: s.player.hp,
             burst: document.querySelectorAll('.stun-burst').length,
+            spr: e.sprite ?? null,
           });
         }
         return { startHp, tr };
@@ -537,12 +620,16 @@ test.describe('Phase 5.5k k-9 – 直線突進＋壁で気絶（突進猪）', (
       expect(crash.x, '壁を越えて走り抜けた（当たり判定を飛び越している）').toBeGreaterThan(0);
       // ★ ⭐ が出る＝「今は殴り放題」の告知（気絶に気づかないと機構が死ぬ＝GUIDE §6-1）
       expect(crash.burst, '激突しても ⭐ が出ない＝反撃の窓が見えない').toBeGreaterThan(0);
+      // ★ k-9b: ⭐ は 720ms で消える∴**絵そのものが気絶を持続的に名指す**（潰れて脚が消える）
+      expect(crash.spr, '激突した tick に気絶の絵へ替わっていない').toBe('chargeBoarStun');
       // 気絶中は動かない（殴りに近寄れる窓）
       const stunned = res.tr.filter(r => r.t > crash.t && r.t < crash.stun);
       expect(stunned.length, '気絶の窓が観測できていない').toBeGreaterThan(0);
       for (const r of stunned) {
         expect(r.x, `tick${r.i}：気絶中に動いた`).toBe(crash.x);
         expect(r.phase, `tick${r.i}：気絶中に溜め/走行へ入った`).toBe('recover');
+        expect(r.spr, `tick${r.i}：気絶の窓なのに絵が待機へ戻っている＝殴り放題が読めない`)
+          .toBe('chargeBoarStun');
       }
       // ★ 気絶が明けても硬直が残る＝反撃の窓の直後にもう一度轢かれない
       //   （enemy-ai.js cancelDash が recover を畳まないことの番人）
@@ -551,6 +638,10 @@ test.describe('Phase 5.5k k-9 – 直線突進＋壁で気絶（突進猪）', (
       for (const r of afterStun) {
         expect(r.phase, `tick${r.i}：気絶が明けた直後に突進を始めた（硬直が畳まれている）`)
           .toBe('recover');
+        // ★ 気絶が明けたら絵も起き上がる＝「まだ殴り放題」と誤読させない（硬直は無敵ではない
+        //   が反撃は返って来る∴潰れたままの絵は嘘になる）
+        expect(r.spr, `tick${r.i}：気絶が明けても潰れた絵のまま＝窓が続いているように見える`)
+          .toBe('chargeBoar');
       }
       // 避け切ったのだから、この間ずっと無傷
       for (const r of res.tr.filter(r => r.t < crash.t + d.stunMs + d.cooldownMs)) {
@@ -588,6 +679,7 @@ test.describe('Phase 5.5k k-9 – 直線突進＋壁で気絶（突進猪）', (
         tr.push({
           i, x: e.x, phase: e.dashPhase ?? null, hp: s.player.hp,
           cls: !!el?.classList.contains('dash-windup'),
+          spr: e.sprite ?? null,
         });
       }
       return { armed, startHp, tr };
@@ -599,6 +691,10 @@ test.describe('Phase 5.5k k-9 – 直線突進＋壁で気絶（突進猪）', (
         .toBe('idle');
       expect(r.x, `tick${r.i}：スタン中に走った`).toBe(res.armed.x);
       expect(r.cls, `tick${r.i}：スタンしたのに溜めモーションが残っている`).toBe(false);
+      // ★ k-9b: 絵も溜めから気絶へ落ちる（止めた手応え）。ここが無いと
+      //   「溜めの姿で固まった猪」＝止めたのにまだ来るように見える（GUIDE §6-1）。
+      expect(r.spr, `tick${r.i}：スタンしても溜めの絵のまま＝止めた手応えが絵に出ない`)
+        .toBe('chargeBoarStun');
       expect(r.hp, `tick${r.i}：スタン中の敵にダメージを受けた`).toBe(res.startHp);
     }
     expect(errors).toEqual([]);
@@ -614,6 +710,149 @@ test.describe('Phase 5.5k k-9 – 直線突進＋壁で気絶（突進猪）', (
     await expect(btn, "突進猪（'ω'）がパレットに無い＝エディタで配置できない").toHaveCount(1);
     await expect(btn.locator('canvas'), '突進猪がスプライトで描かれていない').toHaveCount(1);
     expect(errors, 'エディタで pageerror').toEqual([]);
+  });
+
+  test('⑭ 溜め／気絶のポーズも左右反転が実際に描かれる（sideView × 単一フレーム）',
+    async ({ page }) => {
+      // ⚠️ 2026-08-19 に見つけた欠陥の番人。突進猪は **sideView（横向き＝プレイヤーの側へ
+      //    canvas を反転）とポーズ差替（溜め/気絶）を同時に持つ最初の敵**。
+      //    applySideFacing は `cv.dataset.flipX` を書くだけで、実際の描き直しは
+      //    redrawAnimSprites（アニメループ）に任せていた＝あれは `frames.length > 1` しか
+      //    描き直さない∴**単一フレームの溜め/気絶は反転が画面に出ず**「左へ突進しながら
+      //    右を向いて溜める」絵になっていた。dataset だけを見るテストではこれが通ってしまう
+      //    ∴canvas の中身（牙＝白 #f0e6d0 がどちら側にあるか）で押さえる。
+      const errors = [];
+      page.on('pageerror', e => errors.push(e.message));
+      await gotoFrozen(page, BOAR_URL());
+
+      const res = await page.evaluate(({ windupTicks }) => {
+        const g = window.__game;
+        g.pause();
+        const p = g.getPlayer();
+        // 牙（白＝パレット index 5 #f0e6d0）が canvas の左半分／右半分のどちらに在るか。
+        // 素の絵は右向き（牙は右）∴プレイヤーが西にいる＝反転していれば牙は左に出る。
+        const probe = () => {
+          const e = g.getEnemies()[0];
+          // id は posKey（'4,9'）＝セレクタに埋められない∴getElementById で引く
+          const cv = document.getElementById(`char-enemy-${e.id}`)?.querySelector('canvas.sprite');
+          if (!cv) return { spr: e.sprite ?? null, cv: null };
+          const px = cv.getContext('2d').getImageData(0, 0, cv.width, cv.height).data;
+          let left = 0, right = 0;
+          for (let y = 0; y < cv.height; y++) for (let x = 0; x < cv.width; x++) {
+            const i = (y * cv.width + x) * 4;
+            if (px[i + 3] > 0 && px[i] >= 240 && px[i + 1] >= 224 && px[i + 2] >= 200) {
+              if (x < cv.width / 2) left++; else right++;
+            }
+          }
+          return { spr: e.sprite ?? null, w: cv.width, h: cv.height, flip: cv.dataset.flipX ?? '', left, right };
+        };
+        const out = { idle: null, windup: null, windupEast: null, stun: null, stunEast: null };
+        // ① 待機（プレイヤーは西＝反転している）
+        out.idle = probe();
+        // ② 溜め（軸に入っている＝置いた次の tick から windup・最後の1 tick は③に残す）
+        for (let i = 1; i < windupTicks; i++) g.step(1);
+        out.windup = probe();
+        // ③ 溜めの最後の tick でプレイヤーが東へ回り込む＝**溜めの絵のまま向きだけ変わる**
+        //   （走る方向は溜めの開始で確定済み∴向き直っても西へ走る）。
+        p.x = 11;
+        g.step(1);
+        out.windupEast = probe();
+        // ④ 気絶（プレイヤーは西へ戻って軸から1セル外れる＝西壁に激突させる）
+        p.x = 1; p.y = 5;
+        for (let i = 1; i <= 12 && !(g.getEnemies()[0].stunUntil > 0); i++) g.step(1);
+        out.stun = probe();
+        // ⑤ 気絶中にプレイヤーが東へ回り込む＝**向きは変わらない**（気絶は反応しない）
+        p.x = 11; p.y = 4;
+        g.step(1);
+        out.stunEast = probe();
+        return out;
+      }, { windupTicks: D().windupMs / TICK_MS });
+
+      expect(res.idle.spr, '前提：待機の絵で始まっていない').toBe('chargeBoar');
+      expect(res.windup.spr, '前提：溜めの絵に替わっていない').toBe('chargeBoarWindup');
+      expect(res.stun.spr, '前提：気絶の絵に替わっていない').toBe('chargeBoarStun');
+      for (const [name, r] of [['待機', res.idle], ['溜め', res.windup], ['気絶', res.stun]]) {
+        expect(r.w, `${name}：canvas の幅が 32 でない`).toBe(32);
+        expect(r.flip, `${name}：プレイヤーが西なのに dataset.flipX が立っていない`).toBe('1');
+        expect(r.left + r.right, `${name}：牙（白）が1ドットも描かれていない`).toBeGreaterThan(0);
+        expect(r.right, `${name}：反転しているのに牙が右にある＝canvas が描き直されていない`).toBe(0);
+        expect(r.left, `${name}：牙が左に出ていない＝反転が画面に出ていない`).toBeGreaterThan(0);
+      }
+      // ★ ここが本命の歯：**溜めの絵（単一フレーム）のまま**プレイヤー側へ向き直る。
+      //   dataset だけ書いて描き直しをアニメループに任せていた実装では、flip は '' になるのに
+      //   牙は左に描かれたまま＝「東を向いた」と読めない絵になる（この2本が同時に赤くなる）。
+      expect(res.windupEast.spr, '溜めの途中で絵が解けた（向き直りで待機へ戻った）')
+        .toBe('chargeBoarWindup');
+      expect(res.windupEast.flip, 'プレイヤーが東なのに反転が残っている').toBe('');
+      expect(res.windupEast.left, '東へ回り込んでも牙が左のまま＝溜めの canvas が描き直されていない')
+        .toBe(0);
+      expect(res.windupEast.right, '東へ回り込んだのに牙が右に出ない').toBeGreaterThan(0);
+      // ★ 気絶中は向き直らない＝**気絶は反応しない**（enemyTick はスタン枝で全行動を止める）。
+      //   ここが変わると「潰れているのに顔だけ追って来る」＝殴り放題の窓が読めなくなる。
+      expect(res.stunEast.spr, '気絶中に絵が解けた').toBe('chargeBoarStun');
+      expect(res.stunEast.flip, '気絶中にプレイヤーを追って向き直った＝気絶が反応している')
+        .toBe(res.stun.flip);
+      expect(res.stunEast.left, '気絶中に牙の側が変わった＝向きが動いている').toBe(res.stun.left);
+      expect(errors).toEqual([]);
+    });
+
+  test('⑮ 溜めに音が付く＝低い唸りが上がっていく・激突音とは別・窓に収まる（純関数）', () => {
+    // 予告は絵（`.dash-windup` ＋ Windup ポーズ）だけでは足りない＝**画面の端で溜められると
+    // プレイヤーは気づけない**（ユーザー指摘 2026-08-19）。∴溜めにも音を出す。
+    // ⚠️ 激突音（doorLock）と同じ音にしてはいけない＝聞き分けるのは「これから来る（避けろ）」と
+    //    「止まった（殴れる）」の2つ∴同じ音では機構が音から読めない。
+    const d = D();
+    const player = { x: 1, y: 9 };                   // まず軸から外れて立つ
+    const b = bench({ player, wallAt: 0.5 });
+    const windupTicks = d.windupMs / TICK_MS;
+
+    // ① 突進が始まらない tick は無音（毎 tick 無条件に鳴らす実装を弾く）
+    const silentMark = TONES.length;
+    for (let i = 1; i <= 3; i++) b.step(i);
+    expect(b.e._dashPhase, '前提：軸から外れているのに溜めへ入った').toBe('idle');
+    expect(tonesSince(silentMark), '突進を始めていない tick に音が鳴った').toEqual([]);
+
+    // ② 軸に入った tick＝溜めの音が鳴る
+    player.y = 4;
+    const windupMark = TONES.length;
+    b.step(4);
+    expect(b.e._dashPhase, '前提：軸に入ったのに溜めへ入らない').toBe('windup');
+    const windup = tonesSince(windupMark);
+    expect(windup.length, '溜めに音が付いていない（予告が絵だけ＝画面の端では気づけない）')
+      .toBeGreaterThan(0);
+    // 唸り＝低音（獣が溜めていると分かる高さ）／段で上がる＝溜まっていくことを音程で伝える。
+    // ⚠️ 「2音以上」だと3段のうち1段を高音に変えても緑になった（歯の実測 2026-08-19）∴
+    //    段の数（3）と底の低さ（100Hz 未満）の両方で押さえる。
+    const growl = freqsOf(windup).filter(f => f < 200);
+    expect(growl.length, '溜めの低い唸り（200Hz 未満）が3段に足りない＝唸りに聞こえない')
+      .toBeGreaterThanOrEqual(3);
+    expect(Math.min(...growl), '唸りの底が 100Hz 以上＝獣が溜めている低さでない')
+      .toBeLessThan(100);
+    for (let k = 1; k < growl.length; k++) {
+      expect(growl[k], `唸りの ${k + 1} 音目が前より低い＝溜まっていくことが音程で伝わらない`)
+        .toBeGreaterThan(growl[k - 1]);
+    }
+    // ★ 音は溜めの窓（windupMs）の中で鳴り終わる＝走り出した後に唸りが遅れて始まらない
+    expect(Math.max(...windup.map(o => o.t)) * 1000,
+      `溜めの音が windupMs（${d.windupMs}）を過ぎてから鳴り始める＝もう走っている`)
+      .toBeLessThan(d.windupMs);
+
+    // ③ 溜めが続く間は鳴り直さない（毎 tick 鳴らすと1回の突進で唸りが連発する）
+    const holdMark = TONES.length;
+    for (let i = 5; i < 4 + windupTicks; i++) b.step(i);
+    expect(b.e._dashPhase, '前提：溜めが windupMs 続いていない').toBe('windup');
+    expect(tonesSince(holdMark), '溜めの間に音が鳴り直した＝唸りが連発する').toEqual([]);
+
+    // ④ 激突音は溜めと**別の音**＝「来る」と「止まった」を聞き分けられる
+    player.y = 5;                                    // 軸から外れる＝西壁へ激突する
+    const crashMark = TONES.length;
+    for (let i = 4 + windupTicks; i <= 40; i++) { b.step(i); if (b.e.stunUntil) break; }
+    expect(b.e.stunUntil, '前提：壁に激突していない').toBeTruthy();
+    const crash = tonesSince(crashMark);
+    expect(crash.length, '激突に音が鳴っていない（壁にぶつかった音は残す）').toBeGreaterThan(0);
+    expect(freqsOf(crash).join(','),
+      '溜めと激突が同じ音＝「これから来る」と「止まった」を音で聞き分けられない')
+      .not.toBe(freqsOf(windup).join(','));
   });
 
   // ライブマップは手編集できる＝検証ステージの幾何は黙って変わる（GUIDE §4-3）。
