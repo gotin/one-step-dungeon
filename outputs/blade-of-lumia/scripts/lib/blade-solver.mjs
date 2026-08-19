@@ -49,7 +49,22 @@ export const O = 'o';   // bgTiles 石畳 = 沈んだ都の舗装（歩ける）
 
 export const isRing = (r, c) => r === 0 || r === ROWS - 1 || c === 0 || c === COLS - 1;
 
-export function makeSolver(tiles, bg, linkSpec, breakDefs, litInit, { hasLadder = true, noTools = false } = {}) {
+/**
+ * @param {object} [opt]
+ * @param {boolean} [opt.hasLadder=true]  はしごを持っているか（幅1水の渡り）
+ * @param {boolean} [opt.noTools=false]   道具封じ（「飾りでない」を判定する対照実験用）
+ * @param {boolean} [opt.hasCandle=false] ロウソクを持っているか（隣接1セルの 'H' を点ける）。
+ *   **既定 off** ＝既存の呼び出し側（廊下/上半の migrate・measure-puzzle.mjs）の測定値を
+ *   動かさないため。ロウソクは燃料無制限（game.js playCandle）＝点けるだけの単調増加。
+ * @param {boolean} [opt.noPush=false]   石押しを封じる（「石を押さないと届かない」の対照実験用）。
+ *   **既定 off**。石を壁として固定するだけ＝押さずに届くなら secret が飾りだと分かる。
+ * @param {boolean} [opt.bushCuttable=false] 茂み 'u' を剣で刈って通れるか。
+ *   **既定 off**（connectivity.mjs の HARD_BLOCKED は 'u' を壁扱い＝field 指標のベースラインに
+ *   合わせた保守側）。刈るのは不可逆なので状態を持たず「常に通れる」で上界として安全。
+ *   ⚠️ 石は刈った跡（草地）へ押せるが、ここでは保守側に振って石には通さない。
+ */
+export function makeSolver(tiles, bg, linkSpec, breakDefs, litInit,
+  { hasLadder = true, noTools = false, hasCandle = false, bushCuttable = false, noPush = false } = {}) {
   const linksBySwitch = new Map();
   for (const [sw, gates] of linkSpec ?? []) linksBySwitch.set(sw, gates);
   const toggleCells = [];   // Y の位置
@@ -167,6 +182,8 @@ export function makeSolver(tiles, bg, linkSpec, breakDefs, litInit, { hasLadder 
       if (idx >= 0 && stones[idx] !== `${r},${c}`) return true;
       return false;
     }
+    // 茂みは剣で刈れる（不可逆）＝bushCuttable なら床と同じ。石は通さない（保守側）。
+    if (ch === TILE.BUSH) return bushCuttable && !forStone;
     if (isHardBlocked(ch)) return false;
     if (forStone && ch === 'B') return false;
     return true;
@@ -177,6 +194,7 @@ export function makeSolver(tiles, bg, linkSpec, breakDefs, litInit, { hasLadder 
     if (r < 0 || r >= ROWS || c < 0 || c >= COLS) return false;
     if (bg[r][c] === W) return false;
     const ch = tiles[r][c];
+    if (ch === TILE.BUSH) return bushCuttable;   // 刈れば立てる＝橋脚になる（isHardBlocked より先に見る）
     if (isHardBlocked(ch)) return false;
     // ゲート（T/=/色）は橋脚にならない（保守側）
     if (ch === TILE.GATE || ch === TILE.TIDE_GATE
@@ -284,12 +302,22 @@ export function makeSolver(tiles, bg, linkSpec, breakDefs, litInit, { hasLadder 
       }
     }
 
+    // ロウソク: 隣接1セルの 'H' を直接点ける（game.js playCandle＝前方1セル・燃料無制限）。
+    // 火元を要さない＝initLitTorches が空の「献灯の儀」がこれで成立する（聖域 field 11,19）。
+    if (!noTools && hasCandle) {
+      for (const [dr, dc] of DIRS) {
+        const ti = torchCells.indexOf(`${pr + dr},${pc + dc}`);
+        if (ti >= 0 && (lit & (1 << ti)) === 0) out.push(enc(pr, pc, stones, mask, broken, lit | (1 << ti)));
+      }
+    }
+
     // 移動・石押し・はしご渡り。
     for (const [dr, dc, axis] of DIRS) {
       const nr = pr + dr, nc = pc + dc;
       if (nr < 0 || nr >= ROWS || nc < 0 || nc >= COLS) continue;
       const si = stones.indexOf(`${nr},${nc}`);
       if (si >= 0) {
+        if (noPush) continue;   // 対照実験＝石は壁のまま
         if (locked) continue;   // ロック後は石を押せない（石は壁と同じ通行不可のまま）
         const sr = nr + dr, sc = nc + dc;
         if (!passableFor(sr, sc, stones, open, broken, { forStone: true }, color)) continue;

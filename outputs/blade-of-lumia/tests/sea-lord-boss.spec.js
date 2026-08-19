@@ -6,8 +6,11 @@
 //   ① `dropsTriforce` / `isFinalBoss` を持たない  … 欠片8を狂わせない・エンディング誤発火なし
 //   ② `yieldAt: 0.25`（新設）                     … HP が 25% 以下になった時点で戦闘終了＝合格。
 //      撃破（killEnemy → 爆発 → 消滅）ではなく **戦闘終了 → 報酬授与 → 深みへ退場**。
-//   ③ 報酬はデータ駆動 `stageData.bossReward`（新設）… grantReward 形の配列を stage JSON に置く。
-//      ∴ boss.js は「何を配るか」を知らない（銀ブーメラン専用コードを持たない）。
+//   ③ 報酬はデータ駆動… ∴ boss.js は「何を配るか」を知らない（銀ブーメラン専用コードを持たない）。
+//      経路は2つ：(a) `stageData.bossReward` ＝その場で授与／(b) `showConditions` の
+//      `trigger:'bossYielded'` ＝封印を解いて **宝箱** を出し、プレイヤーが歩いて開ける。
+//      🔴 2026-08-19 ユーザー報告「銀のブーメランがいつの間にか手に入ってた／普通に宝箱が
+//      出ればいい」で (b) を新設し、銀のブーメランは (b) に移した（本編 12,19 も同じ）。
 //   ④ `move:'amphibious'` + `moveSpeed:{water:1.0, land:0.5}` … クジラなので水では速く陸では鈍い。
 //      これまで moveSpeed は定義だけの dead data だった（19-11-A の申し送り）＝ここで実装する。
 //
@@ -22,10 +25,17 @@
 //   ⑤ 地形別速度の実装（水では land の倍のペースで進む）
 //   ⑥ フェーズ加速（phases.speedMultiplier）が地形倍率と併存する
 //   ⑦ yieldAt 到達で戦闘終了＝敵が退場し HP バーが消え、ボス扉のロックが解ける
-//   ⑧ yieldAt 到達で `stageData.bossReward` が全部授与される（銀ブーメラン＋ハートの器）
+//   ⑧ yieldAt 到達で `stageData.bossReward`（器）はその場で授与され、銀ブーメランは宝箱に移る
+//   ⑧b 合格するまで宝箱は開かない（bossYielded 封印が効いている＝先に報酬を取れない）
+//   ⑧c 合格後に宝箱を開けると銀のブーメランが手に入る（プレイヤーが自分で受け取る）
 //   ⑨ yieldAt の授与は一度だけ（連打しても器が増えない）
 //   ⑩ 通常ボス（bossReward の無い部屋）は撃破フローのまま＝yieldAt が無い敵に影響しない
-//   ⑪ ライブマップの本編レイヤーには未配置（部品のみ・25画面配置は次タスク）
+//   ⑬ 終幕のメッセージが読める長さ出る＋報酬があっても見送りの台詞が出る
+//   ⑬b 終幕中は入力を飲む（連打の失敗メッセージで台詞が消えない）
+//   ⑪ ライブマップの本編レイヤーには **field `12,19` に1体だけ**（2026-08-19 に配置。
+//      それまでは「部品のみ・未配置」を固定していたが、デルタ下半9画面の作り込みで
+//      闘技場が実在した∴「未配置」から「唯一の1体＋ボス部屋設定」へ書き換えた）。
+//      報酬の渡し方も本編は宝箱1本＝bossReward を持たない（持つと二重取得）
 //   ⑫ check-dungeon-integrity の ALL_BOSS_TILES に `{` が入っている（ボスとして数えられる）
 
 import { test, expect } from '@playwright/test';
@@ -229,6 +239,39 @@ test.describe('Phase 9-6 – 海の主（部品としての定義）', () => {
   });
 });
 
+// 検証ステージ 19,0 の報酬の宝箱（scripts/migrate-sea-lord-reward-chest.mjs が置く）。
+// 開始位置 (4,2) から 上2タイル → 右1タイル で乗れる。
+const CHEST_CELL = '2,3';
+
+/** n タイル歩く（実エンジンの移動は半セル単位＝1タイル = movePlayer 2回）。 */
+async function walkTiles(page, dir, tiles = 1) {
+  await page.evaluate(({ d, n }) => {
+    for (let i = 0; i < n * 2; i++) { window.__game.movePlayer(d); window.__game.step(1); }
+  }, { d: dir, n: tiles });
+}
+
+/** プレイヤー位置・報酬・宝箱・メッセージのスナップショット。 */
+const snapshot = (page) => page.evaluate(() => {
+  const p = window.__game.getState().player;
+  const st = window.__game.getStageState();
+  const bar = document.getElementById('msg-bar');
+  return {
+    pos: { r: Math.floor(p.y + 0.5), c: Math.floor(p.x + 0.5) },
+    tier: p.boomerangTier, hearts: p.maxHearts, hasBoomerang: p.hasBoomerang,
+    openedChests: st.openedChests, conditionsMet: st.conditionsMet,
+    msg: bar?.classList.contains('hidden') ? '' : (bar?.textContent ?? ''),
+  };
+});
+
+/** 宝箱の封印が解けて演出が終わるまで待つ（終幕は async でメッセージを順に見せる）。 */
+async function waitForYieldFinale(page) {
+  await page.waitForFunction(
+    (cell) => window.__game.getStageState().conditionsMet.includes(cell),
+    CHEST_CELL, { timeout: 20000 });
+  await page.waitForFunction(
+    () => !window.__game.getState().bossDefeating, { timeout: 20000 });
+}
+
 // 海の主を「合格ライン」まで削る。
 // 実ダメージは dmg - def（def4）なので、閾値ちょうどの値を渡すと届かない。
 // 余裕を持って 90% を渡す（実ダメージ 39 → 残 HP 9/48 = 18.75% ≤ yieldAt 0.25、かつ HP は 0 超）。
@@ -275,7 +318,7 @@ test.describe('Phase 9-6 – 海の主（yieldAt の戦闘終了と報酬）', (
     expect(errors).toEqual([]);
   });
 
-  test('⑧ stageData.bossReward が全部授与される（銀ブーメラン＋ハートの器）', async ({ page }) => {
+  test('⑧ bossReward(器)はその場で授与・銀ブーメランは宝箱で渡される', async ({ page }) => {
     const errors = [];
     page.on('pageerror', e => errors.push(e.message));
     await page.goto(previewUrl());
@@ -288,19 +331,58 @@ test.describe('Phase 9-6 – 海の主（yieldAt の戦闘終了と報酬）', (
     expect(before.tier, '前提：銀ブーメラン未所持').toBeLessThan(1);
 
     await damageToYield(page);
-    // 授与は1件ずつ演出を挟むので、最後の器まで待つ
+    // (a) その場で授与する経路＝ハートの器
     await page.waitForFunction(
-      (h) => {
-        const p = window.__game.getState().player;
-        return p.boomerangTier >= 1 && p.maxHearts > h;
-      }, before.hearts, { timeout: 10000 });
-    const after = await page.evaluate(() => {
-      const p = window.__game.getState().player;
-      return { tier: p.boomerangTier, hearts: p.maxHearts, sub: p.hasBoomerang };
-    });
-    expect(after.tier, '銀のブーメランが授与されない').toBe(1);
-    expect(after.sub, 'サブアイテム枠にブーメランが入っていない').toBe(true);
+      (h) => window.__game.getState().player.maxHearts > h, before.hearts, { timeout: 15000 });
+    // (b) 宝箱で渡す経路＝封印が解けて宝箱が現れる（ここでは まだ 手に入らない）
+    await waitForYieldFinale(page);
+
+    const after = await snapshot(page);
     expect(after.hearts, 'ハートの器が授与されない').toBe(before.hearts + 1);
+    expect(after.conditionsMet, `合格したのに宝箱 ${CHEST_CELL} の封印が解けない`).toContain(CHEST_CELL);
+    // ⚠️ ここが 2026-08-19 の修正点：合格しただけでは渡らない（歩いて宝箱を開けて受け取る）。
+    expect(after.tier, '宝箱を開けていないのに銀のブーメランを持っている').toBeLessThan(1);
+    expect(after.openedChests, '誰も開けていないのに宝箱が開封済み').toEqual([]);
+    expect(errors).toEqual([]);
+  });
+
+  test('⑧b 合格するまで宝箱は開かない（bossYielded 封印が効いている）', async ({ page }) => {
+    const errors = [];
+    page.on('pageerror', e => errors.push(e.message));
+    await page.goto(previewUrl());
+    await waitForBoard(page);
+
+    // 戦う前に宝箱のセルへ歩いて乗る（封印中でも通行はできる＝乗れるが開かない）。
+    await walkTiles(page, 'up', 2);
+    await walkTiles(page, 'right', 1);
+
+    const st = await snapshot(page);
+    expect(st.pos, `宝箱 ${CHEST_CELL} のセルへ歩けない（手順が違う）`).toMatchObject({ r: 2, c: 3 });
+    expect(st.openedChests, '合格前なのに宝箱が開いた＝先に銀のブーメランを持って主と戦える').toEqual([]);
+    expect(st.tier, '合格前に銀のブーメランが手に入った').toBeLessThan(1);
+    expect(st.msg, '封印されている案内が出ない（踏んでも無反応＝飾りの宝箱に見える）').toContain('封印');
+    expect(errors).toEqual([]);
+  });
+
+  test('⑧c 合格後に宝箱を開けると銀のブーメランが手に入る', async ({ page }) => {
+    const errors = [];
+    page.on('pageerror', e => errors.push(e.message));
+    await page.goto(previewUrl());
+    await waitForBoard(page);
+
+    await damageToYield(page);
+    await waitForYieldFinale(page);
+
+    // 主が退場した後、自分で歩いて開ける。
+    await walkTiles(page, 'up', 2);
+    await walkTiles(page, 'right', 1);
+
+    const st = await snapshot(page);
+    expect(st.pos, `宝箱 ${CHEST_CELL} へ届かない`).toMatchObject({ r: 2, c: 3 });
+    expect(st.openedChests, '宝箱を踏んでも開かない').toContain(CHEST_CELL);
+    expect(st.tier, '宝箱から銀のブーメランが出ない').toBe(1);
+    expect(st.hasBoomerang, 'サブアイテム枠にブーメランが入っていない').toBe(true);
+    expect(st.msg, '受け取ったメッセージが出ない').toContain('銀のブーメラン');
     expect(errors).toEqual([]);
   });
 
@@ -318,10 +400,11 @@ test.describe('Phase 9-6 – 海の主（yieldAt の戦闘終了と報酬）', (
       window.__game.dealDamage(boss.id, dmg, 'sword');
     });
     await page.waitForFunction(
-      () => window.__game.getState().player.boomerangTier >= 1, { timeout: 10000 });
-    // 退場完了まで待ってから数える（遅れて2個目が来ないこと）
+      (h) => window.__game.getState().player.maxHearts > h, beforeHearts, { timeout: 15000 });
+    // 終幕が終わるまで待ってから数える（遅れて2個目が来ないこと）
     await page.waitForFunction(
-      () => !window.__game.getEnemies().some(e => e.type === '{'), { timeout: 10000 });
+      () => !window.__game.getEnemies().some(e => e.type === '{'), { timeout: 15000 });
+    await waitForYieldFinale(page);
     const hearts = await page.evaluate(() => window.__game.getState().player.maxHearts);
     expect(hearts, 'ハートの器が二重授与された').toBe(beforeHearts + 1);
   });
@@ -352,15 +435,16 @@ test.describe('Phase 9-6 – 海の主（yieldAt の戦闘終了と報酬）', (
     });
     expect(log.minHp, `合格ラインを割った（HP 推移: ${log.hps.join(',')}）`).toBeGreaterThan(0);
 
-    // 撃破フロー（爆発）に落ちていないこと・報酬はきちんと配られること
+    // 撃破フロー（爆発）に落ちていないこと・報酬の道はきちんと開くこと
     await page.waitForFunction(
-      () => !window.__game.getEnemies().some(e => e.type === '{'), { timeout: 10000 });
+      () => !window.__game.getEnemies().some(e => e.type === '{'), { timeout: 15000 });
+    await waitForYieldFinale(page);
     const st = await page.evaluate(() => ({
       explosions: document.querySelectorAll('.explosion').length,
-      tier: window.__game.getState().player.boomerangTier,
+      conditionsMet: window.__game.getStageState().conditionsMet,
     }));
     expect(st.explosions, '爆発演出が出た＝撃破扱いになっている').toBe(0);
-    expect(st.tier, '報酬が配られていない').toBe(1);
+    expect(st.conditionsMet, '報酬の宝箱の封印が解けていない').toContain(CHEST_CELL);
     expect(errors).toEqual([]);
   });
 
@@ -400,20 +484,149 @@ test.describe('Phase 9-6 – 海の主（yieldAt の戦闘終了と報酬）', (
     expect(alive.present, 'yieldAt の無いボスが 20% で退場した').toBe(true);
     expect(alive.hp).toBeGreaterThan(0);
   });
+
+  test('⑬ 終幕のメッセージが読める長さ出る（見送りの台詞も出る）', async ({ page }) => {
+    // 🔴 2026-08-19 ユーザー報告「いつの間にか手に入ってた」の本体はここ。
+    //   ・pulse は共有バー1本＝次の pulse が前を即上書きする（ui.js msgBarEl）。
+    //     旧実装は sleep(700)/sleep(900) で繋いでいた∴3000/2600ms 指定でも 1 秒未満しか出ない。
+    //   ・見送りの台詞は「bossReward が空のときだけ」出していた∴報酬を持つ闘技場では
+    //     一度も見られなかった（本編 field 12,19 がまさにそれ）。
+    // ∴メッセージバーを 150ms 間隔でサンプリングし、各台詞が連続して何回見えるかで測る。
+    const errors = [];
+    page.on('pageerror', e => errors.push(e.message));
+    await page.goto(previewUrl());
+    await waitForBoard(page);
+
+    // 入場演出（startBossBattle の「⚠ 扉が閉じた！」→「海の主 が 現れた！」）は setTimeout
+    // 400ms/1200ms で出る＝即ダメージを入れると終幕の1行目を入場演出が上書きしてしまう
+    // （テスト固有の事情。実プレイでは入場から戦闘終了まで数十秒ある）∴出し切るまで待つ。
+    await page.waitForFunction(
+      () => (document.getElementById('msg-bar')?.textContent ?? '').includes('現れた'),
+      null, { timeout: 5000 });
+    await page.waitForFunction(
+      () => document.getElementById('msg-bar')?.classList.contains('hidden'),
+      null, { timeout: 6000 });
+
+    const timeline = await page.evaluate(async () => {
+      const bar = document.getElementById('msg-bar');
+      const boss = window.__game.getEnemies().find(e => e.type === '{');
+      window.__game.dealDamage(boss.id, Math.ceil(boss.maxHp * 0.9), 'sword');
+      const runs = [];
+      for (let i = 0; i < 95; i++) {
+        const text = bar.classList.contains('hidden') ? '' : bar.textContent;
+        if (runs.length && runs[runs.length - 1].text === text) runs[runs.length - 1].samples++;
+        else runs.push({ text, samples: 1 });
+        await new Promise(r => setTimeout(r, 150));
+      }
+      return runs;
+    });
+
+    // 1サンプル = 150ms ∴ 10 サンプル ≒ 1.5 秒。旧実装は 700/900ms = 4〜6 サンプルで消えていた。
+    const held = (needle) => timeline
+      .filter(run => run.text.includes(needle))
+      .reduce((max, run) => Math.max(max, run.samples), 0);
+    const shown = timeline.map(r => `${r.samples}×${r.text || '(空)'}`).join(' / ');
+
+    for (const [needle, label] of [
+      ['よくやった、若き剣よ', '合格の台詞'],
+      ['深みへ帰っていった',   '見送りの台詞（報酬があっても出る）'],
+      ['ハートの器',           '器の授与'],
+      ['宝箱が 現れた',        '宝箱の出現'],
+    ]) {
+      expect(held(needle), `${label}「${needle}」が 1.5 秒読めない（表示: ${shown}）`)
+        .toBeGreaterThanOrEqual(10);
+    }
+    expect(errors).toEqual([]);
+  });
+
+  test('⑬b 終幕中はキー連打を飲む（自分の操作で台詞が消えない）', async ({ page }) => {
+    // 🔴 2026-08-20 ユーザー報告「よくやった、若き剣よ が表示されなかった」の実因。
+    //   終幕は stopGameLoop でループを止めるが **入力ハンドラは生きていた** ∴最後の一撃の
+    //   直後に攻撃/道具キーを連打すると swordAttack / useSubItem が走り、その失敗メッセージ
+    //   （「サブアイテムがない！」「剣を持っていない！」「ブーメランが戻ってくる！」…）が
+    //   共有バー1本の #msg-bar へ割り込んで台詞を上書きしていた（実ブラウザで再現・
+    //   `.scratch/probe-yield-msgbar.mjs` で textContent の setter を乗っ取って実測）。
+    // ∴ここでは「殴った直後も押し続ける人間の手」を合成キーイベントで再現する。
+    const errors = [];
+    page.on('pageerror', e => errors.push(e.message));
+    await page.goto(previewUrl());
+    await waitForBoard(page);
+    await page.waitForFunction(
+      () => (document.getElementById('msg-bar')?.textContent ?? '').includes('現れた'),
+      null, { timeout: 5000 });
+    await page.waitForFunction(
+      () => document.getElementById('msg-bar')?.classList.contains('hidden'),
+      null, { timeout: 6000 });
+
+    const timeline = await page.evaluate(async () => {
+      const bar = document.getElementById('msg-bar');
+      const boss = window.__game.getEnemies().find(e => e.type === '{');
+      window.__game.dealDamage(boss.id, Math.ceil(boss.maxHp * 0.9), 'sword');
+      const runs = [];
+      const mash = (key) => {
+        document.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true }));
+        document.dispatchEvent(new KeyboardEvent('keyup',   { key, bubbles: true }));
+      };
+      for (let i = 0; i < 40; i++) {
+        const text = bar.classList.contains('hidden') ? '' : bar.textContent;
+        if (runs.length && runs[runs.length - 1].text === text) runs[runs.length - 1].samples++;
+        else runs.push({ text, samples: 1 });
+        mash('b');    // サブアイテム（このプレビューは所持していない＝失敗メッセージが出る）
+        mash(' ');    // 攻撃キー
+        await new Promise(r => setTimeout(r, 150));
+      }
+      return runs;
+    });
+
+    const held = (needle) => timeline
+      .filter(run => run.text.includes(needle))
+      .reduce((max, run) => Math.max(max, run.samples), 0);
+    const shown = timeline.map(r => `${r.samples}×${r.text || '(空)'}`).join(' / ');
+    expect(held('よくやった、若き剣よ'),
+      `連打で合格の台詞が消される（表示: ${shown}）`).toBeGreaterThanOrEqual(10);
+    // 連打の失敗メッセージが1つでも割り込んでいたら入力を飲めていない
+    expect(timeline.map(r => r.text).join('|'),
+      `終幕中に入力由来のメッセージが割り込んだ（表示: ${shown}）`)
+      .not.toMatch(/サブアイテムがない|剣を持っていない|ブーメランが戻ってくる/);
+    expect(errors).toEqual([]);
+  });
 });
 
 test.describe('Phase 9-6 – 海の主（配置と外部ツール）', () => {
 
-  test('⑪ 本編レイヤーには未配置（部品のみ・25画面配置は次タスク）', () => {
+  test('⑪ 本編レイヤーの `{` は field 12,19 の1体だけ（報酬は宝箱で渡す）', () => {
+    const found = [];
     for (const [layerName, layer] of gameLayerEntries(MAP)) {
       for (const [sk, stage] of Object.entries(layer.stages ?? {})) {
         const flat = (stage.tiles ?? [])
           .map(row => (Array.isArray(row) ? row.join('') : String(row)))
           .join('');
-        expect(flat.includes(TILE.SEA_LORD),
-          `${layerName}/${sk} に未配置のはずの '{' がある`).toBe(false);
+        const n = [...flat].filter(ch => ch === TILE.SEA_LORD).length;
+        if (n) found.push(`${layerName}/${sk}×${n}`);
       }
     }
+    // 聖域の門番は世界に1体（増やすと「認められる」儀式が使い回しになる）。
+    expect(found, '海の主が field 12,19 の1体だけになっていない').toEqual(['field/12,19×1']);
+
+    const arena = MAP.layers.field.stages['12,19'];
+    expect(arena.isBossRoom, '12,19 が isBossRoom でない＝入場しても戦闘が始まらない').toBe(true);
+
+    // 2026-08-19 ユーザー確定：報酬は**その場で授与しない**。淵の北の回廊に宝箱が現れ、
+    // プレイヤーが歩いて開けて受け取る（「いつの間にか手に入ってた」への対処）。
+    // ∴本編の闘技場に bossReward は無い（あると宝箱と二重取得になる）。
+    expect(arena.bossReward, '12,19 に bossReward が残っている＝宝箱と二重取得になる').toBeUndefined();
+
+    const CELL = '2,5';
+    const [r, c] = CELL.split(',').map(Number);
+    const row = arena.tiles[r];
+    expect(Array.isArray(row) ? row[c] : row[c], `${CELL} が宝箱タイルでない`).toBe(TILE.CHEST);
+    expect(arena.chestContents?.[CELL], `${CELL} の宝箱の中身が銀のブーメランでない`)
+      .toEqual({ type: 'boomerang', boomerangTier: 1, name: '銀のブーメラン' });
+    // 封印が無いと戦う前に取れる＝門番の儀式が意味を失う。
+    expect(arena.showConditions?.[CELL]?.trigger, `${CELL} の宝箱に bossYielded 封印が無い`)
+      .toBe('bossYielded');
+    expect(arena.showConditions[CELL].message, '宝箱の出現メッセージが無い（無言で現れる）')
+      .toBeTruthy();
   });
 
   test('⑫ check-dungeon-integrity の ALL_BOSS_TILES に `{` が入っている', () => {

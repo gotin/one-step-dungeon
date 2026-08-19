@@ -11,6 +11,7 @@
 //   getIsDialog()      → isDialog
 //   getIsShop()        → isShop
 //   getIsPaused()      → isPaused
+//   getIsCutscene()    → ボス終幕の演出中（true の間は入力を一切受けない）
 //   getIsGameover()    → isGameover（retryGame 用）
 //   getIsShielding()   → isShielding
 //   setIsShielding(v)  → isShielding = v
@@ -44,6 +45,7 @@ export function initInput(deps) {
 		getIsDialog,
 		getIsShop,
 		getIsPaused,
+		getIsCutscene,
 		getIsShielding,
 		setIsShielding,
 		movePlayer,
@@ -68,8 +70,17 @@ export function initInput(deps) {
 	// 現在押されているキーを管理（押しっぱなし移動用）
 	const heldKeys = new Set();
 
+	// ボス終幕（boss.js の onBossDefeated / onBossYielded）の間は演出だけを見せる。
+	// ⚠️ ゲームループを止めても入力ハンドラは生きている＝連打すると swordAttack /
+	// useSubItem が走り、その失敗メッセージ（「剣を持っていない！」「アイテムがない！」
+	// 「ブーメランが戻ってくる！」…）が **共有バー1本の #msg-bar** へ割り込んで
+	// 終幕の台詞を消してしまう（2026-08-20 実測で再現＝ユーザー報告の実因）。
+	// ∴ここで飲む。押しっぱなしも捨てる（演出明けに勝手に歩き出さない）。
+	const inCutscene = () => !!getIsCutscene?.();
+
 	document.addEventListener('keydown', e => {
 		resumeAudio();
+		if (inCutscene()) { e.preventDefault(); heldKeys.clear(); return; }
 		if (getIsDialog()) {
 			if ([' ','Enter','z','Z'].includes(e.key)) { e.preventDefault(); advanceDialog(); }
 			return;
@@ -110,16 +121,19 @@ export function initInput(deps) {
 
 	document.addEventListener('keyup', e => {
 		heldKeys.delete(e.key);
+		// 終幕中は離しても溜めを解放しない（演出の途中でビームが飛ぶのを防ぐ）
+		if (inCutscene()) return;
 		// 攻撃キーを離したらチャージ解放（剣ビーム発射判定）（Phase 3-1）
 		if ([' ','z','Z'].includes(e.key)) releaseCharge?.();
 	});
 
 	// ── モバイル ──────────────────────────────────────────────
+	// ⚠️ 終幕の入力封じはキーボードだけでは足りない（同じ操作が別の経路で来る）。
 	document.querySelectorAll('.dpad-btn[data-dir]').forEach(btn => {
 		const dir = btn.dataset.dir;
 		if (!dir) return;
-		btn.addEventListener('touchstart', e => { e.preventDefault(); resumeAudio(); movePlayer(dir); }, { passive: false });
-		btn.addEventListener('mousedown', () => { resumeAudio(); movePlayer(dir); });
+		btn.addEventListener('touchstart', e => { e.preventDefault(); resumeAudio(); if (!inCutscene()) movePlayer(dir); }, { passive: false });
+		btn.addEventListener('mousedown', () => { resumeAudio(); if (!inCutscene()) movePlayer(dir); });
 	});
 
 	// 剣ボタン：押した瞬間に剣＋チャージ開始、離してビーム発射（Phase 3-1）。
@@ -128,11 +142,12 @@ export function initInput(deps) {
 	if (swordBtn) {
 		let _swordHeld = false;
 		const pressSword = () => {
-			if (_swordHeld) return; _swordHeld = true;
+			if (_swordHeld || inCutscene()) return; _swordHeld = true;
 			resumeAudio(); swordAttack(); startCharge?.();
 		};
 		const releaseSword = () => {
 			if (!_swordHeld) return; _swordHeld = false;
+			if (inCutscene()) return;
 			releaseCharge?.();
 		};
 		swordBtn.addEventListener('touchstart', e => { e.preventDefault(); pressSword(); }, { passive: false });
@@ -142,9 +157,9 @@ export function initInput(deps) {
 		swordBtn.addEventListener('mouseup',    () => releaseSword());
 		swordBtn.addEventListener('mouseleave', () => releaseSword());
 	}
-	document.getElementById('btn-sub')?.addEventListener('click',   () => { resumeAudio(); useSubItem(); });
-	document.getElementById('btn-fly')?.addEventListener('click',   () => { resumeAudio(); toggleFlight?.(); });
-	document.getElementById('btn-menu')?.addEventListener('click',  () => { resumeAudio(); togglePause(); });
+	document.getElementById('btn-sub')?.addEventListener('click',   () => { resumeAudio(); if (!inCutscene()) useSubItem(); });
+	document.getElementById('btn-fly')?.addEventListener('click',   () => { resumeAudio(); if (!inCutscene()) toggleFlight?.(); });
+	document.getElementById('btn-menu')?.addEventListener('click',  () => { resumeAudio(); if (!inCutscene()) togglePause(); });
 
 	const shieldBtn = document.getElementById('btn-shield');
 	if (shieldBtn) {
@@ -163,6 +178,7 @@ export function initInput(deps) {
 	}, { passive: true });
 	document.addEventListener('touchend', e => {
 		if (e.target.closest('#mobile-ctrl')) return;
+		if (inCutscene()) return;
 		const dx = e.changedTouches[0].clientX - touchStartX;
 		const dy = e.changedTouches[0].clientY - touchStartY;
 		if (Math.abs(dx) < 30 && Math.abs(dy) < 30) return;

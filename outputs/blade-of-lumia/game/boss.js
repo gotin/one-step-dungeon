@@ -76,6 +76,13 @@ export function createBoss(deps) {
 	// ── ユーティリティ ─────────────────────────────────────
 	function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 
+	// メッセージを「出して、表示時間ぶん待って、次へ」の直列で見せる。
+	// pulse は共有メッセージバー1本（ui.js msgBarEl）＝次の pulse が前を即上書きする∴
+	// 待たずに続けて呼ぶと、pulse に渡した表示時間は意味を持たない。
+	// 🔴 2026-08-19 ユーザー報告「銀のブーメランがいつの間にか手に入ってた」の原因はこれ
+	//    （終幕が sleep(700)/sleep(900) で 3000/2600ms 指定のメッセージを1秒未満で上書きしていた）。
+	async function say(text, dur) { pulse(text, dur); await sleep(dur); }
+
 	// ── ボス HP バー ───────────────────────────────────────
 	function showBossHpBar(boss) {
 		bossHpbarEl.classList.remove('hidden');
@@ -233,8 +240,11 @@ export function createBoss(deps) {
 	// ENEMY_META に yieldAt を持つボス専用の終幕。撃破（onBossDefeated）と違い：
 	//   ・爆発・撃破 SE を出さない（倒したのではなく認められた）
 	//   ・星の欠片を生成しない・defeatedBosses に入れない（＝撃破フラグを立てない）
-	//   ・報酬は stageData.bossReward（grantReward 形の配列）を順に授与する
-	//     ∴ ここは「何を配るか」を知らない＝ステージ側のデータで決まる
+	//   ・報酬は2通り（どちらもステージ側のデータで決まる＝ここは中身を知らない）
+	//       a) stageData.bossReward … その場で授与（grantReward 形の配列）
+	//       b) showConditions の trigger:'bossYielded' … 封印を解いて宝箱を出す
+	//          ＝プレイヤーが歩いて開けて受け取る（2026-08-19 ユーザー確定。「いつの間にか
+	//          手に入ってた」＝渡された実感が無い、が a) 単独の問題だった）
 	// 呼び出しは combat.js の dealDamageToEnemy（HP が閾値以下になった瞬間）。
 	async function onBossYielded(boss) {
 		if (getBossDefeating()) return;
@@ -243,33 +253,18 @@ export function createBoss(deps) {
 
 		const meta = ENEMY_META[boss.type];
 		const stageData = getStageData();
+		const ss = getSS(getCurrentLayer(), getStageKey());
 		// 1. 「合格」の合図（撃破ではないが節目なのでファンファーレは共通）
 		playSound('fanfare');
-		pulse('よくやった、若き剣よ', 3000);
-		await sleep(700);
+		await say('よくやった、若き剣よ', 2600);
 
-		// 2. 報酬授与（データ駆動）。grantReward がメッセージを返すので順に見せる。
-		//    ⚠️ 退場フェードより先に配る：主が消えるのを待たせると、プレイヤーは
-		//    「何を貰ったか」を数秒後まで知れない。授与→見送りの順が自然。
-		for (const content of stageData?.bossReward ?? []) {
-			const msg = grantReward ? grantReward(content) : '';
-			playSound('item');
-			if (msg) pulse(`✨ ${msg}`, 2600);
-			updateHud();
-			await sleep(900);
-		}
-
-		// 3. HP バーを消し、ボス部屋のロックを解く
+		// 2. HP バーを消し、ボス部屋のロックを解く
 		hideBossHpBar();
 		setBossRoomLocked(false);
-		const hasBossDoors = stageData?.tiles?.some(row => row.includes(TILE.DOORWAY_BOSS));
-		unlockBossDoors();
-		if (hasBossDoors) pulse('🔓 扉が開いた！', 2000);
-		evaluateConditions();
 
-		// 4. 深みへ退場（フェードアウト。爆発は出さない）
+		// 3. 深みへ退場（フェードアウト。爆発は出さない）
 		//    敵リストから外すのはフェードの前（renderChars が要素を作り直さないように）。
-		getSS(getCurrentLayer(), getStageKey()).defeatedEnemies.add(boss.id);
+		ss.defeatedEnemies.add(boss.id);
 		setEnemies(getEnemies().filter(x => x !== boss));
 		const bossEl = document.getElementById(`char-enemy-${boss.id}`);
 		if (bossEl) {
@@ -279,9 +274,37 @@ export function createBoss(deps) {
 			bossEl.remove();
 		}
 		renderBoard(); renderChars(); updateHud();
-		if (!(stageData?.bossReward ?? []).length) {
-			pulse(`${meta?.name ?? 'ボス'} は 深みへ帰っていった`, 2500);
+
+		// 4. 見送り。⚠️ 旧実装は「bossReward が空のときだけ」出していた＝報酬を持つ本物の
+		//    闘技場（field 12,19）では**一度も見られない**台詞だった。報酬の有無と見送りは無関係。
+		await say(`${meta?.name ?? 'ボス'} は 深みへ帰っていった`, 2400);
+
+		// 5. その場で授与する報酬（bossReward）。宝箱で渡す報酬はここには入れない（次の 6）。
+		for (const content of stageData?.bossReward ?? []) {
+			const msg = grantReward ? grantReward(content) : '';
+			playSound('item');
+			updateHud();
+			if (msg) await say(`✨ ${msg}`, 2600);
 		}
+
+		// 6. 「主に認められた」条件を立てて封印を解く（showConditions の bossYielded）。
+		//    ⚠️ 敵リストから外した**後**に評価する＝旧実装は退場より前に呼んでいたので
+		//    killAll 系の封印もここでは成立しなかった。
+		//    出現メッセージは showConditions[pk].message から取る＝boss.js は「何が現れたか」を
+		//    知らないまま案内できる（従来 message は装飾コメント扱いの dead data だった）。
+		ss.bossYielded = true;
+		evaluateConditions();
+		for (const [pk, cond] of Object.entries(stageData?.showConditions ?? {})) {
+			if (cond?.trigger !== 'bossYielded' || !cond.message) continue;
+			if (!ss.conditionsMet.has(pk)) continue;
+			await say(cond.message, 2600);
+		}
+
+		// 7. 扉を開ける。最後のメッセージは待たない＝ここでループを返してプレイヤーを解放する。
+		const hasBossDoors = stageData?.tiles?.some(row => row.includes(TILE.DOORWAY_BOSS));
+		unlockBossDoors();
+		if (hasBossDoors) pulse('🔓 扉が開いた！', 2000);
+
 		saveGame();
 		setBossDefeating(false);
 		startGameLoop();

@@ -717,6 +717,12 @@ const { checkStoneOnSwitch, evaluateConditions, refreshGates } = createCondition
 		getIsDialog:     () => getIsDialog(),
 		getIsShop:       () => getIsShop(),
 		getIsPaused:     () => getIsPaused(),
+		// ボス終幕（onBossDefeated / onBossYielded）の間は入力を全部飲む。
+		// ループは stopGameLoop で止まっているが**入力ハンドラは生きていた**∴連打すると
+		// 「剣を持っていない！」「◯◯ を使用！」等が共有バー（#msg-bar）へ割り込んで
+		// 終幕の台詞を上書きしていた（2026-08-20 ユーザー報告「よくやった、若き剣よ が
+		// 表示されなかった」の実因＝実測で再現した）。
+		getIsCutscene:   () => _bossDefeating,
 		getIsShielding:  () => getIsShielding(),
 		setIsShielding,
 		movePlayer:  (dir) => movePlayer(dir),
@@ -2056,6 +2062,9 @@ export function getGameState() {
 		isPaused, isDialog, isGameover, isTransitioning,
 		// Phase 9-6: ボス部屋ロック（true の間は全方向の退出を禁止＝checkStageTransition）
 		bossRoomLocked,
+		// Phase 9-6: ボス終幕の演出中（onBossDefeated / onBossYielded が走っている間）。
+		// 終幕は async でメッセージを順に見せる＝「演出が終わったか」をテストが待てるように出す。
+		bossDefeating: _bossDefeating,
 	};
 }
 
@@ -2073,6 +2082,7 @@ export function getStageStateSnapshot() {
 		switchToggles: [...(ss.switchToggles ?? [])],
 		litTorches:    [...(ss.litTorches ?? [])],
 		conditionsMet: [...ss.conditionsMet],
+		openedChests:  [...(ss.openedChests ?? [])],   // Phase 9-6: 封印付き宝箱の開封確認用
 		activeColor:   ss.activeColor ?? null,
 		brokenWalls:   [...(ss.brokenWalls ?? [])],
 		stonePositions: { ...(ss.stonePositions ?? {}) },  // Phase 5-3: 敵が押した石の確認用

@@ -144,6 +144,12 @@ export function createConditions(d) {
 			// 通常の AND 条件。既得道具の総合試験＝道具を使ったかも見る、という体験の狙い）。
 			else if (cond.trigger === 'killAllAndFlute') met = enemies.length === 0 && ss.flutePlayed === true;
 			else if (cond.trigger === 'bushBurned') met = ss.bushBurned === true;  // Phase 4-3: ロウソクで茂みを燃やした
+			// Phase 9-6: yieldAt ボス（海の主）に認められた＝合格して退場した（boss.js onBossYielded が立てる）。
+			// killAll では表さない：主は倒していない（defeatedBosses に入らない）し、将来この
+			// 闘技場に雑魚を足したら「雑魚を倒しただけ」で報酬の宝箱が出てしまう。
+			// ⚠️ 永続化は ss.bossYielded ではなく ss.conditionsMet が担う（save.js が保存するのは後者）
+			//    ＝合格した瞬間に条件が成立して conditionsMet に載る∴リロードしても宝箱は残る。
+			else if (cond.trigger === 'bossYielded') met = ss.bossYielded === true;
 			// ⚠️ スイッチの ON は2系統ある：ボタン 'S' は switchStates（踏む/石を乗せる）、
 			//    スイッチ 'Y' は switchToggles（武器・矢で叩く）。上の refreshGates と
 			//    同じ論理で**両方**を見る。片方だけだと 'Y' を指した関門が永久に開かない。
