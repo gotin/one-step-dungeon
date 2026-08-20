@@ -1,14 +1,19 @@
 // Phase 4-3: ロウソク（キャンドル）のスモークテスト
 //
 // デモ配置（work/blade-of-lumia.json）：
-//   field 2,0 …… (2,6) にロウソクの宝箱。(4,7) に茂み 'u'。
-//                  (4,8) に bushBurned で gate された隠し入口 '>'
-//                  （destId='secret_grotto'）。
+//   field 6,13 … (6,10) に茂み 'u'。(6,11) に bushBurned で gate された
+//                隠し入口 '>'（destId='hidden_cave'）。
+//   ❌ 失効（2026-08-20・9,9 declutter）＝旧デモ配置は field 9,9 の (4,7)茂み
+//   → (4,8)隠し入口（destId='secret_grotto'）だったが、ユーザー指摘「洞窟の
+//   入口をここに集結させすぎ」でテスト用に作った茂み焼き系入口ごと削除した
+//   （`scripts/migrate-field-9-9-declutter.mjs`）。9,9 に残る笛reveal系入口
+//   (5,3) はロア「空中の遺跡」の本編要素∴bushBurned の検証には使わない。
+//   今どうすべきか＝同じ機構の別の実データ（field 6,13）に向け直した。
 //
 // 検証：
 //  1) ps_candle=1 でロウソクを所持してプレビューを開始できる
 //  2) 隠し入口は茂みを燃やすまで遷移しない（踏んでも別ステージへ行かない）
-//  3) ロウソクで前方の茂みを燃やすと隠し入口が出現し、踏むと secret_grotto へ遷移する
+//  3) ロウソクで前方の茂みを燃やすと隠し入口が出現し、踏むと hidden_cave へ遷移する
 //  4) 前方に茂みがなければ何も出現しない（bushBurned が立たない）
 //  5) 前方に敵がいるとき炎ダメージが入る（Phase 4-3b）
 //  6) 炎が弱点の敵（氷のリヴァイアサン L）は倍率ダメージを受ける（Phase 4-3b）
@@ -37,7 +42,7 @@ test.describe('Blade of Lumia – ロウソク', () => {
 	test('ps_candle=1 でロウソクを所持しアクティブになる', async ({ page }) => {
 		const errors = [];
 		page.on('pageerror', e => errors.push(e.message));
-		await page.goto(previewUrl({ row: 4, col: 6, candle: true }));
+		await page.goto(previewUrl({ stage: '6,13', row: 6, col: 9, candle: true }));
 		await waitForBoard(page);
 
 		const st = await page.evaluate(() => window.__game.getState());
@@ -47,62 +52,62 @@ test.describe('Blade of Lumia – ロウソク', () => {
 	});
 
 	test('隠し入口は茂みを燃やすまで遷移しない', async ({ page }) => {
-		// (4,6) スポーン → 右へ歩く。隠し入口 (4,8) はまだ出ていない（茂み (4,7) が塞ぐ）
+		// (6,9) スポーン → 右へ歩く。隠し入口 (6,11) はまだ出ていない（茂み (6,10) が塞ぐ）
 		// ので別ステージへ行かない。
-		await page.goto(previewUrl({ row: 4, col: 6, candle: true }));
+		await page.goto(previewUrl({ stage: '6,13', row: 6, col: 9, candle: true }));
 		await waitForBoard(page);
 
 		await walk(page, 'right', 6);
 		await page.waitForTimeout(300);
 		const st = await page.evaluate(() => window.__game.getState());
 		expect(st.currentLayer).toBe('field');
-		expect(st.stageKey).toBe('9,9');
+		expect(st.stageKey).toBe('6,13');
 	});
 
-	test('ロウソクで茂みを燃やすと隠し入口が出現し secret_grotto へ入れる', async ({ page }) => {
+	test('ロウソクで茂みを燃やすと隠し入口が出現し hidden_cave へ入れる', async ({ page }) => {
 		const errors = [];
 		page.on('pageerror', e => errors.push(e.message));
-		await page.goto(previewUrl({ row: 4, col: 6, candle: true }));
+		await page.goto(previewUrl({ stage: '6,13', row: 6, col: 9, candle: true }));
 		await waitForBoard(page);
 
 		// 右を向く（壁/茂みで動けなくても heroDir は右になる）
 		await page.evaluate(() => window.__game.movePlayer('right'));
 		await page.evaluate(() => window.__game.step(1));
-		// 前方 (4,7) の茂みを燃やす → bushBurned → (4,8) の隠し入口が出現
+		// 前方 (6,10) の茂みを燃やす → bushBurned → (6,11) の隠し入口が出現
 		await page.evaluate(() => window.__game.useSubItem());
 		await page.evaluate(() => window.__game.step(1));
 
-		// 燃えた茂み (4,7) を通り、隠し入口 (4,8) に乗る
+		// 燃えた茂み (6,10) を通り、隠し入口 (6,11) に乗る
 		await walk(page, 'right', 4);
 		await page.waitForFunction(() => {
 			const s = window.__game.getState();
-			return s.currentLayer === 'secret_grotto';
+			return s.currentLayer === 'hidden_cave';
 		}, { timeout: 3000 });
 
 		const st = await page.evaluate(() => window.__game.getState());
-		expect(st.currentLayer).toBe('secret_grotto');
+		expect(st.currentLayer).toBe('hidden_cave');
 		expect(errors).toEqual([]);
 	});
 
 	test('前方に茂みがなければ隠し入口は出現しない', async ({ page }) => {
-		// (4,6) で下を向いて使う（前方 (5,6) は床）→ bushBurned は立たない。
-		await page.goto(previewUrl({ row: 4, col: 6, candle: true }));
+		// (6,9) で下を向いて使う（前方 (7,9) は床）→ bushBurned は立たない。
+		await page.goto(previewUrl({ stage: '6,13', row: 6, col: 9, candle: true }));
 		await waitForBoard(page);
 
 		await page.evaluate(() => window.__game.movePlayer('down'));
 		await page.evaluate(() => window.__game.step(1));
-		// 元の位置 (4,6) に戻る（隠し入口の判定を素直にするため上に戻す）
+		// 元の位置 (6,9) に戻る（隠し入口の判定を素直にするため上に戻す）
 		await page.evaluate(() => window.__game.movePlayer('up'));
 		await page.evaluate(() => window.__game.step(1));
 		await page.evaluate(() => window.__game.useSubItem());
 		await page.evaluate(() => window.__game.step(1));
 
-		// 隠し入口 (4,8) は出ていないので、右へ歩いても遷移しない
+		// 隠し入口 (6,11) は出ていないので、右へ歩いても遷移しない
 		await walk(page, 'right', 6);
 		await page.waitForTimeout(300);
 		const st = await page.evaluate(() => window.__game.getState());
 		expect(st.currentLayer).toBe('field');
-		expect(st.stageKey).toBe('9,9');
+		expect(st.stageKey).toBe('6,13');
 	});
 
 	test('前方に敵がいるとき炎ダメージが入る', async ({ page }) => {
