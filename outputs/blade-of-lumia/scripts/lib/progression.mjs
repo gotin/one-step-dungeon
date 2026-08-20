@@ -24,6 +24,10 @@ export const UNLOCKED_AT = {
   // このエントリが無いと `?? new Set()` で空集合になり、tests/enemy-placement.spec.js ④
   // が「弱点（矢）持ちの術士 η が弓の無い地点に居る」と誤検出する。
   secret_grotto: new Set(['boomerang', 'bow', 'candle', 'ladder', 'bomb', 'flute']),
+  // 樹海の岩室（寄道）。入口は field 0,0 の爆弾で割る岩 '!'＝**爆弾（D6 の報酬）以降**にしか
+  // 入れない。進行順（D1→D2→D3→D4→D6→D5…）ではしごは D5 の報酬∴ここでは持っていない前提で
+  // 設計してある（はしご・笛を要る形にしない）。ロウソクは D4 の報酬＝所持済み。
+  forest_cave: new Set(['boomerang', 'bow', 'candle', 'bomb']),
   // 最終ダンジョン。ここに来る時点で全アイテム所持（PLAN 9-1 の進行順）。
   // ⚠️ このエントリが無いと unlocked が空集合になり「はしご必須の水で出口封鎖」を
   //    誤検出する。そもそも dark_tower は 2026-08-05 まで検査対象から漏れていた。

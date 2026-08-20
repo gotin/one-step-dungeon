@@ -132,7 +132,7 @@ const BASELINE = {
                     // 43→35 after ⑥-9 volcano; 35→0 after ⑥-trap (all §11-1 corners closed).
   w1: 0,            // all-blocked screens → 0 achieved (rule 2: all playable)
   w2: 0,            // orphan screens → 0 achieved (rule 2: all reachable)
-  underTwoAxis: 76, // <2-axis screens the player can stand in (gates OPEN — see
+  underTwoAxis: 68, // <2-axis screens the player can stand in (gates OPEN — see
                     // reachedWithGates) → goal 0. 114→110 after ⑥-8;
                     // 110→108 after ⑥-9 (all 7 L screens → ≥2 axes; only 2 were flagged
                     // before, the rest passed the heuristic as filler but were 塗り絵).
@@ -146,9 +146,11 @@ const BASELINE = {
                     // 83→76 after 9-6-BASE 湖W東拡張 (2026-08-20 — 7 screens each earn
                     // ≥2 axes: route+obstacle from the bridge-hop spine, plus a P2/P3
                     // feature on 2 of them).
-                    // Remaining: 外周解体 の残り（森+8/雪+14/砂漠+10/空島+9/山地M・沼P
+                    // 76→68 after 9-6-BASE 森F北西+8 (2026-08-20 — the 8 rebuilt 塗り絵
+                    // screens each earn ≥2 axes; 0,0 also carries the銅の剣 cave entrance).
+                    // Remaining: 外周解体 の残り（雪+14/砂漠+10/空島+9/山地M・沼P
                     // 新設分）+ the hub.
-  dupScreens: 39,   // screens caught in SOME identical-layout group → goal small.
+  dupScreens: 36,   // screens caught in SOME identical-layout group → goal small.
                     // Ratcheted on screen COUNT, not group count (group count splits
                     // when a wall is added to an untouched 塗り絵 → false regression).
                     // 64→59 after ⑤ (the 4 corridor screens + 15,16 left their groups).
@@ -157,7 +159,15 @@ const BASELINE = {
                     // closed here alongside underTwoAxis).
                     // 46→39 after 9-6-BASE 湖W東拡張 (2026-08-20 — the 7 new screens'
                     // bridge-hop layouts are each distinct; none share a dup group).
+                    // 39→36 after 9-6-BASE 森F北西+8 (2026-08-20 — 3 of the 8 were in the
+                    // 森F 塗り絵 dup groups; each new layout is hand-authored and unique).
                     // Deep-ocean minimal walkways still share geometry (外周解体 clears them).
+                    // ⚠️ NOTE (2026-08-20): the *similarity* warning count (125) in
+                    // FIELD-BASELINE-METRICS.md is NOT a usable signal inside 森F. Its
+                    // cosine vector is dominated by the floor/wall histogram buckets, and a
+                    // dense forest screen is 118/120 cells of just those two → any two
+                    // forest screens read ≥0.995 no matter how different their gimmicks are.
+                    // Not ratcheted for that reason; see DECISIONS.md 2026-08-20.
   traps: 0,         // rule 1: reached screen → arrival-wall soft-lock → GOAL MET (0).
                     // 43→35 after ⑥-9 volcano; 35→0 after ⑥-trap (mirror-AND fixed point
                     // closes every §11-1 corner residual across region boundaries).
