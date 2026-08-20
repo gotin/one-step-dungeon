@@ -168,6 +168,27 @@ export const SIGNATURE_LADDER = [
 // UNLOCKED_AT と同じ語彙）。ここに載る敵は道具が入手済みのレイヤー以降にしか置けない。
 export const WEAKNESS_ITEM = { bomb: 'bomb', arrow: 'bow', fire: 'candle', boomerang: 'boomerang' };
 
+// 5.5m の配置表の**外**で、後から一点物として設計した敵部屋。
+//
+// 5.5k の各機構 spec（facing-block ⑭ ほか）は「その敵が配置表に載っている部屋にだけ居る」を
+// 不変条件にしている＝手編集のドリフト検出。だが 5.5m 以降に新しく設計した部屋に同じ敵を
+// 置くのは正当な制作行為∴「表に無い＝ドリフト」と「表の外だが意図した部屋」を区別できる
+// ようにここへ明示する（テストを緩めるのではなく、意図を1か所に書いて緩めない）。
+//
+// ⚠️ ここは **配置の意図の宣言だけ**＝`migrate-place-new-enemies.mjs` は読まない
+//    （盤面はそれぞれの一点物 migrate が作る）。載せる条件は
+//      ・その部屋を作った migrate スクリプトが自己検証込みで存在する
+//      ・弱点持ちの敵なら、その部屋に来る時点で弱点道具を持っている（progression.mjs）
+export const EXTRA_ENEMY_ROOMS = [
+	{
+		layer: 'secret_grotto', stage: '2,0',
+		by: 'scripts/migrate-secret-grotto-silver-sword.mjs',
+		why: '【銀の玉座】笛でしか入れない寄道の報酬部屋（銀の剣 swordTier 2）。'
+			+ '全滅で封印が解ける宝箱の守り手として盾騎士 ζ×2・術士 η・剣獣 μ（脅威度 33.5）を置いた。'
+			+ '入る時点で全道具を持っている＝弱点（ζ の側背・η の矢）はすべて解ける。',
+	},
+];
+
 // 触ってはいけない部屋（`tests/dungeon-key-gate.spec.js` ⑨ が脅威度を固定している関門）。
 export const PINNED_STAGES = new Set([
 	'dungeon_1/1,0', 'dungeon_7/1,0', 'dark_tower/1,2',

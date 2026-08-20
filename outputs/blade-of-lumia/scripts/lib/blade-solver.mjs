@@ -58,13 +58,20 @@ export const isRing = (r, c) => r === 0 || r === ROWS - 1 || c === 0 || c === CO
  *   動かさないため。ロウソクは燃料無制限（game.js playCandle）＝点けるだけの単調増加。
  * @param {boolean} [opt.noPush=false]   石押しを封じる（「石を押さないと届かない」の対照実験用）。
  *   **既定 off**。石を壁として固定するだけ＝押さずに届くなら secret が飾りだと分かる。
+ * @param {boolean} [opt.pitCrossable=false] 穴 'x'（tiles 層）を、はしごで幅1だけ渡れるか。
+ *   実エンジンの `LADDER_OVER = {WATER, PIT}`（game/passable.js:30）どおりの規則。
+ *   **既定 off** ＝このソルバーは元々 bgTiles 水（沈んだ都）専用に書かれており、既存の
+ *   呼び出し側（廊下/上半の migrate・measure-puzzle.mjs）の測定値を動かさないため。
+ *   ⚠️ off のままだと「tiles 層の穴をはしごで渡る」実ゲームの手が見えず、穴で仕切った
+ *   盤面を「解なし」と誤判定する（＝実機では解けるのにテストが赤／逆に飾りの検出も嘘になる）。
  * @param {boolean} [opt.bushCuttable=false] 茂み 'u' を剣で刈って通れるか。
  *   **既定 off**（connectivity.mjs の HARD_BLOCKED は 'u' を壁扱い＝field 指標のベースラインに
  *   合わせた保守側）。刈るのは不可逆なので状態を持たず「常に通れる」で上界として安全。
  *   ⚠️ 石は刈った跡（草地）へ押せるが、ここでは保守側に振って石には通さない。
  */
 export function makeSolver(tiles, bg, linkSpec, breakDefs, litInit,
-  { hasLadder = true, noTools = false, hasCandle = false, bushCuttable = false, noPush = false } = {}) {
+  { hasLadder = true, noTools = false, hasCandle = false, bushCuttable = false, noPush = false,
+    pitCrossable = false } = {}) {
   const linksBySwitch = new Map();
   for (const [sw, gates] of linkSpec ?? []) linksBySwitch.set(sw, gates);
   const toggleCells = [];   // Y の位置
@@ -206,9 +213,12 @@ export function makeSolver(tiles, bg, linkSpec, breakDefs, litInit,
     if (ch === TILE.STONE && stones.includes(`${r},${c}`)) return false;
     return true;
   };
+  // はしごで渡れる「隙間」＝bgTiles 水（沈んだ都）と、pitCrossable なら tiles 層の穴 'x'。
+  // 実エンジン LADDER_OVER = {WATER, PIT}（game/passable.js:30）と同じ集合を指す。
+  const isGap = (r, c) => bg[r]?.[c] === W || (pitCrossable && tiles[r]?.[c] === TILE.PIT);
   const canLadderCross = (r, c, axis, stones, broken) => {
     if (!hasLadder) return false;
-    if (bg[r][c] !== W) return false;
+    if (!isGap(r, c)) return false;
     if (axis === 'v') return isBank(r - 1, c, stones, broken) && isBank(r + 1, c, stones, broken);
     return isBank(r, c - 1, stones, broken) && isBank(r, c + 1, stones, broken);
   };
@@ -333,7 +343,7 @@ export function makeSolver(tiles, bg, linkSpec, breakDefs, litInit,
         out.push(enc(nr, nc, ns, mask, broken, lit));
         continue;
       }
-      if (bg[nr][nc] === W) {
+      if (isGap(nr, nc)) {
         if (canLadderCross(nr, nc, axis, stones, broken))
           out.push(enc(nr, nc, stones, mask, broken, lit));
         continue;

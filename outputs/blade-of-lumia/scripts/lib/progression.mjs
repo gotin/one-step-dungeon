@@ -19,6 +19,11 @@ export const UNLOCKED_AT = {
   dungeon_8: new Set(['boomerang', 'bow', 'candle', 'bomb', 'ladder']),
   cave_1:    new Set(['boomerang', 'bow', 'candle', 'ladder', 'bomb']),
   dungeon_7: new Set(['boomerang', 'bow', 'candle', 'ladder', 'bomb', 'flute']),
+  // 空中の遺跡（寄道）。入口は field 9,9 の笛 reveal（showConditions flutePlayed）＝
+  // **笛を持っていなければ入口そのものが現れない**∴ここに立てる時点で全道具を持っている。
+  // このエントリが無いと `?? new Set()` で空集合になり、tests/enemy-placement.spec.js ④
+  // が「弱点（矢）持ちの術士 η が弓の無い地点に居る」と誤検出する。
+  secret_grotto: new Set(['boomerang', 'bow', 'candle', 'ladder', 'bomb', 'flute']),
   // 最終ダンジョン。ここに来る時点で全アイテム所持（PLAN 9-1 の進行順）。
   // ⚠️ このエントリが無いと unlocked が空集合になり「はしご必須の水で出口封鎖」を
   //    誤検出する。そもそも dark_tower は 2026-08-05 まで検査対象から漏れていた。

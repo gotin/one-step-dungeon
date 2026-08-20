@@ -8,11 +8,16 @@
 // `tests/enemy-placement.spec.js` が持つ。ここは各機構の spec が自分の敵について
 // 「世界に居る」「知らない部屋に湧いていない」だけを見るための最小の道具。
 
-import { NEW_ENEMY_PLACEMENT } from '../scripts/lib/enemy-placement.mjs';
+import { NEW_ENEMY_PLACEMENT, EXTRA_ENEMY_ROOMS } from '../scripts/lib/enemy-placement.mjs';
 import { gameLayerEntries } from '../shared/layers.js';
 
-// 5.5m の配置表に載っている部屋（`layer/stage`）
-export const PLACEMENT_STAGES = new Set(NEW_ENEMY_PLACEMENT.map(e => `${e.layer}/${e.stage}`));
+// 敵を置いてよい部屋（`layer/stage`）＝5.5m の配置表 ∪ 後から一点物で設計した敵部屋。
+// 後者を混ぜるのは「表に無い部屋に湧いた＝ドリフト」の検出力を保ったまま、5.5m 以降の
+// 新しい部屋（例: secret_grotto 2,0 の銀の玉座）を正当な配置として通すため。
+export const PLACEMENT_STAGES = new Set([
+  ...NEW_ENEMY_PLACEMENT.map(e => `${e.layer}/${e.stage}`),
+  ...EXTRA_ENEMY_ROOMS.map(e => `${e.layer}/${e.stage}`),
+]);
 
 /**
  * 指定タイルが本編レイヤー（test_mechanics 等を除く）のどこに居るかを集める。
