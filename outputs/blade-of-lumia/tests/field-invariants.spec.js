@@ -132,7 +132,7 @@ const BASELINE = {
                     // 43→35 after ⑥-9 volcano; 35→0 after ⑥-trap (all §11-1 corners closed).
   w1: 0,            // all-blocked screens → 0 achieved (rule 2: all playable)
   w2: 0,            // orphan screens → 0 achieved (rule 2: all reachable)
-  underTwoAxis: 59, // <2-axis screens the player can stand in (gates OPEN — see
+  underTwoAxis: 52, // <2-axis screens the player can stand in (gates OPEN — see
                     // reachedWithGates) → goal 0. 114→110 after ⑥-8;
                     // 110→108 after ⑥-9 (all 7 L screens → ≥2 axes; only 2 were flagged
                     // before, the rest passed the heuristic as filler but were 塗り絵).
@@ -152,6 +152,9 @@ const BASELINE = {
                     // each earn ≥2 axes; this completes 火山 L at 17/17 worked screens.
                     // Chosen as the smallest remaining region block, per the confirmed
                     // order「小さい編入分から着手」).
+                    // 59→52 after 9-6-BASE 北の外周帯7枚 (2026-08-21 — 4,0/4,1/5,0/6,0/
+                    // 7,0/9,0/10,1 each earn ≥2 axes. The band is the smallest remaining
+                    // block; 8,0 stays in TWO_AXIS_ALLOWLIST＝9-2T の領分).
                     // Remaining: 外周解体 の残り（雪+14/砂漠+10/空島+9/山地M・沼P
                     // 新設分）+ the hub.
   dupScreens: 32,   // screens caught in SOME identical-layout group → goal small.
@@ -167,6 +170,9 @@ const BASELINE = {
                     // 森F 塗り絵 dup groups; each new layout is hand-authored and unique).
                     // 36→32 after 9-6-BASE 火山L外輪+9 (2026-08-20 — 4 of the 9 rim screens
                     // were in 塗り絵 dup groups, incl. the 15,1/15,2 pair).
+                    // 32 unchanged after 9-6-BASE 北の外周帯7枚 (2026-08-21 — none of the 7
+                    // shared a hash with another screen even before the rebuild; the
+                    // remaining 32 sit in the untouched 雪/砂漠/森F 塗り絵 groups).
                     // Deep-ocean minimal walkways still share geometry (外周解体 clears them).
                     // ⚠️ NOTE (2026-08-20): the *similarity* warning count (125) in
                     // FIELD-BASELINE-METRICS.md is NOT a usable signal inside 森F. Its

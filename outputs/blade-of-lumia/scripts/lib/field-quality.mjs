@@ -114,7 +114,7 @@ function _buildDraftZone() {
   // is the connective road (IDEA:163), so nearest-theme labels give each slice a
   // narrative/skin identity. See FIELD-BASELINE-BRAINSTORM.md「草原Gのサブ地域分割」.
   // 8 sub-regions: G0 村ハブ / G1 北森辺 / G2 南森辺 / G3 砂漠回廊 / G4 湖回廊 /
-  //                G5 北の登り(黒城・空島) / G6 北東の登り(雪・火山) / G7 南(沼・山地)
+  //                G5 北の登り(空島K・暗黒の塔T) / G6 北東の登り(雪・火山) / G7 南(沼・山地)
   const _THEME_TO_GSUB = { V:'G0', F:null, D:'G3', W:'G4', K:'G5', T:'G5', S:'G6', L:'G6', P:'G7', M:'G7', O:'G4' };
   const gCells = [];
   for (let y=0;y<_GH;y++) for (let x=0;x<_GW;x++) if (draft[y][x]==='G') gCells.push([x,y]);

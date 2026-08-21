@@ -46,17 +46,25 @@ const REGION_NAME = {
   G0:'草原 G0 村ハブ', G1:'草原 G1 北の森辺', G2:'草原 G2 南の森辺', G3:'草原 G3 砂漠回廊',
   G4:'草原 G4 湖回廊', G5:'草原 G5 北の登り', G6:'草原 G6 北東の登り', G7:'草原 G7 南',
   F:'森 F', D:'砂漠 D', W:'湖 W', L:'火山 L', S:'雪 S',
-  M:'山地 M', P:'沼 P', O:'深洋 O', T:'空島 T', K:'黒の城 K', V:'村 V', '?':'不明',
+  // ⚠️ T/K の名前は PLAN.md:1793 の地域図の凡例が真実
+  //    （`K`空島＝D7 笛ワープ発射元の隣 ／ `T`暗黒の塔＝飛行のみの玄関画面 field/6,0）。
+  //    2026-08-21 まで T='空島'・K='黒の城' と取り違えていた（「黒の城」はどこにも存在しない）。
+  M:'山地 M', P:'沼 P', O:'深洋 O', T:'暗黒の塔 T', K:'空島 K', V:'村 V', '?':'不明',
 };
 
 // Density thresholds by region size (from FIELD-BASELINE-BRAINSTORM.md v1)
 // small(<22): puzzle≥2,combat≥1,unique≥1,anchor≥1
 // mid(22-30): puzzle≥3,combat≥1,unique≥1,anchor≥1
 // large(>30): puzzle≥5,combat≥2,unique≥1,anchor≥2
+// ⚠️ どの目安も**画面数で頭を打つ**（2026-08-21）。1画面地域（暗黒の塔 T）に
+//    「パズル画面2枚」は物理的に置けない∴上限を超えた目標は永久に ⚠️ のままになり、
+//    「まだ作り込む余地がある」と「地域が小さすぎて満たせない」が区別できなくなる。
+//    ∴各クラスの目標を画面数でクリップする（＝1画面地域はパズル1・戦闘1・一回性1・アンカー1）。
 function densityTarget(screens) {
-  if (screens <= 21) return { puzzle:2, combat:1, unique:1, anchor:1 };
-  if (screens <= 30) return { puzzle:3, combat:1, unique:1, anchor:1 };
-  return { puzzle:5, combat:2, unique:1, anchor:2 };
+  const raw = screens <= 21 ? { puzzle:2, combat:1, unique:1, anchor:1 }
+    : screens <= 30 ? { puzzle:3, combat:1, unique:1, anchor:1 }
+    : { puzzle:5, combat:2, unique:1, anchor:2 };
+  return Object.fromEntries(Object.entries(raw).map(([k, v]) => [k, Math.min(v, screens)]));
 }
 function check(val, target) { return val >= target ? '✅' : '⚠️'; }
 
@@ -103,6 +111,7 @@ for (const r of REGION_ORDER) {
 }
 lines.push('');
 lines.push('*目安: 小(≤21)=パズル2/戦闘1/一回性1/アンカー1、中(22-30)=3/1/1/1、大(>30)=5/2/1/2*');
+lines.push('*※どの目安も画面数で頭を打つ（1画面地域の目標は 1/1/1/1）＝満たせない目標で永久に警告しない*');
 lines.push('');
 
 // ── 3. Battle score per region ────────────────────────────────────────────────
