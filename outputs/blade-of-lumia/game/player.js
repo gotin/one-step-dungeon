@@ -889,12 +889,12 @@ export function createPlayer(deps) {
 			const tierIndex = stageData.floorItems?.[posKey]?.boomerangTier ?? 0;
 			const tier = BOOMERANG_TIERS[tierIndex];
 			if (equipBoomerangTier(tierIndex)) {
-				playSound('item'); pulse(`🪃 ${tier.name}を手に入れた！`);
+				playSound('item'); maybeShowSubItemHint(); pulse(`🪃 ${tier.name}を手に入れた！`);
 			} else {
-				playSound('item'); pulse(`🪃 ${tier?.name ?? 'ブーメラン'}を拾った（今のブーメランの方が強い）`);
+				playSound('item'); maybeShowSubItemHint(); pulse(`🪃 ${tier?.name ?? 'ブーメラン'}を拾った（今のブーメランの方が強い）`);
 			}
 			renderBoard(); renderChars(); updateHud(); saveGame();
-			maybeShowSubItemHint(); return;
+			return;
 		}
 		if (tile === TILE.ITEM_BOMB && !ss.pickedKeys.has(posKey)) {
 			ss.pickedKeys.add(posKey);
@@ -907,9 +907,9 @@ export function createPlayer(deps) {
 				pulse('💣 もう持てない！'); renderBoard(); renderChars(); updateHud(); saveGame(); return;
 			}
 			if (!player.activeSubItem) player.activeSubItem = 'bomb';
-			playSound('item'); pulse(`💣 爆弾 ×${bombCount} を手に入れた！`);
+			playSound('item'); maybeShowSubItemHint(); pulse(`💣 爆弾 ×${bombCount} を手に入れた！`);
 			renderBoard(); renderChars(); updateHud(); saveGame();
-			maybeShowSubItemHint(); return;
+			return;
 		}
 		if (tile === TILE.ITEM_BOW && !ss.pickedKeys.has(posKey)) {
 			ss.pickedKeys.add(posKey);
@@ -922,9 +922,9 @@ export function createPlayer(deps) {
 				pulse('🏹 もう持てない！'); renderBoard(); renderChars(); updateHud(); saveGame(); return;
 			}
 			if (!player.activeSubItem) player.activeSubItem = 'bow';
-			playSound('item'); pulse(`🏹 弓矢 ×${arrowCount} を手に入れた！`);
+			playSound('item'); maybeShowSubItemHint(); pulse(`🏹 弓矢 ×${arrowCount} を手に入れた！`);
 			renderBoard(); renderChars(); updateHud(); saveGame();
-			maybeShowSubItemHint(); return;
+			return;
 		}
 		if (tile === TILE.ITEM_HEAL_POTION && !ss.pickedKeys.has(posKey)) {
 			ss.pickedKeys.add(posKey);

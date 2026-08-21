@@ -69,6 +69,7 @@ export function createUi(deps) {
 	let shopGoods     = [];
 	let shopIdx       = 0;
 	let msgTimer      = null;
+	let pendingPulse  = null; // オーバーレイ表示中に来た pulse() は閉じるまで保留
 
 	// ── DOM 参照 ──────────────────────────────────────────────
 	const heartsEl         = document.getElementById('hud-hearts');
@@ -156,10 +157,24 @@ export function createUi(deps) {
 	}
 
 	function pulse(text, duration = 2000) {
+		// オーバーレイ（ダイアログ／ショップ／ポーズ）が開いている間は、消灯タイマーが
+		// 実時間で進んでしまい閉じた頃には消えている（2026-08-21 ユーザー報告）＝
+		// 保留して閉じた瞬間に出し直す（消灯タイマーもそこから数える）。
+		if (getIsDialog() || getIsShop() || getIsPaused()) {
+			pendingPulse = { text, duration };
+			return;
+		}
 		if (msgTimer) clearTimeout(msgTimer);
 		msgBarEl.textContent = text;
 		msgBarEl.classList.remove('hidden');
 		msgTimer = setTimeout(() => msgBarEl.classList.add('hidden'), duration);
+	}
+
+	function flushPendingPulse() {
+		if (!pendingPulse) return;
+		const { text, duration } = pendingPulse;
+		pendingPulse = null;
+		pulse(text, duration);
 	}
 
 	function updateDungeonHud(lk) {
@@ -223,6 +238,7 @@ export function createUi(deps) {
 		dialogLineIdx++;
 		if (dialogLineIdx >= dialogLines.length) {
 			setIsDialog(false); dialogOverlayEl.classList.add('hidden'); startGameLoop();
+			flushPendingPulse();
 		} else { showDialogLine(); playSound('talk'); }
 	}
 
@@ -246,6 +262,7 @@ export function createUi(deps) {
 			stopGameLoop(); pauseOverlayEl.classList.remove('hidden'); renderPauseMenu();
 		} else {
 			pauseOverlayEl.classList.add('hidden'); startGameLoop();
+			flushPendingPulse();
 		}
 	}
 
@@ -476,6 +493,7 @@ export function createUi(deps) {
 		shopResultEl.className = 'hidden';
 		shopOverlayEl.classList.add('hidden');
 		startGameLoop();
+		flushPendingPulse();
 	}
 
 	function renderShop() {
