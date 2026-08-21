@@ -31,15 +31,19 @@ import { BOOMERANG_TIERS } from '../shared/items.js';
 import { sanitizeLoadedPlayer } from '../game/save.js';
 import { ITEM_META } from '../shared/items.js';
 import { GAME_URL, SAVE_KEY, waitForBoard } from './helpers.js';
+import { TEST_LAYER, stageKey } from './test-stage-keys.js';
 
 const GAME = '/blade-of-lumia/game/';
 
-// 障害物の無い草原（field 2,15 は 5,5 の MAP_ENTER 以外すべて床）に立たせる。
-// ブーメランの飛翔距離を測るので、往復の経路に木・水・壁が無い画面を選ぶ。
+// 障害物の無い床に立たせる（飛翔距離を測る＝往復の経路に木・水・壁があってはならない）。
+// ⚠️ 2026-08-21: 以前は本編の field 2,15（「MAP_ENTER 以外すべて床」だった画面）を
+// 参照していたが、9-6-BASE ⑥ で 2,15 を神殿の前庭として作り込んだ（列3/8 に '#' の
+// 参道柱）ため ⑤⑤b⑤c が柱で落ちた。ギミックの計測は本編ステージに依存させない
+// ＝検証ステージ `spare_arena`（rows 7/8 が全面床の空きアリーナ）へ移した。
 function previewUrl(opts = {}) {
   const p = new URLSearchParams({
-    fromEditor: '1', layer: 'field', stage: '2,15',
-    row: String(opts.row ?? 2), col: String(opts.col ?? 2),
+    fromEditor: '1', layer: TEST_LAYER, stage: stageKey('spare_arena'),
+    row: String(opts.row ?? 7), col: String(opts.col ?? 2),
     ps_weapon: '1', ps_boomerang: '1',
   });
   if (opts.silver) p.set('ps_silverboomerang', '1');

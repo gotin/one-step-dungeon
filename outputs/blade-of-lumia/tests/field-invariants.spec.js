@@ -132,7 +132,7 @@ const BASELINE = {
                     // 43→35 after ⑥-9 volcano; 35→0 after ⑥-trap (all §11-1 corners closed).
   w1: 0,            // all-blocked screens → 0 achieved (rule 2: all playable)
   w2: 0,            // orphan screens → 0 achieved (rule 2: all reachable)
-  underTwoAxis: 52, // <2-axis screens the player can stand in (gates OPEN — see
+  underTwoAxis: 41, // <2-axis screens the player can stand in (gates OPEN — see
                     // reachedWithGates) → goal 0. 114→110 after ⑥-8;
                     // 110→108 after ⑥-9 (all 7 L screens → ≥2 axes; only 2 were flagged
                     // before, the rest passed the heuristic as filler but were 塗り絵).
@@ -155,9 +155,11 @@ const BASELINE = {
                     // 59→52 after 9-6-BASE 北の外周帯7枚 (2026-08-21 — 4,0/4,1/5,0/6,0/
                     // 7,0/9,0/10,1 each earn ≥2 axes. The band is the smallest remaining
                     // block; 8,0 stays in TWO_AXIS_ALLOWLIST＝9-2T の領分).
-                    // Remaining: 外周解体 の残り（雪+14/砂漠+10/空島+9/山地M・沼P
-                    // 新設分）+ the hub.
-  dupScreens: 32,   // screens caught in SOME identical-layout group → goal small.
+                    // 52→41 after 9-6-BASE 砂漠D南岸+渚11枚 (2026-08-21 — 0,17/0,18/0,19/
+                    // 1,18/1,19/2,15/2,18/2,19/3,18/3,19 と 渚 4,19 が各々 ≥2 軸。
+                    // 砂漠D と 草原G3 の 素通り はこれで 0 になった)。
+                    // Remaining: 山地M 13 / 沼P 14 / 雪S 14（この順で着手）+ the hub.
+  dupScreens: 29,   // screens caught in SOME identical-layout group → goal small.
                     // Ratcheted on screen COUNT, not group count (group count splits
                     // when a wall is added to an untouched 塗り絵 → false regression).
                     // 64→59 after ⑤ (the 4 corridor screens + 15,16 left their groups).
@@ -173,6 +175,8 @@ const BASELINE = {
                     // 32 unchanged after 9-6-BASE 北の外周帯7枚 (2026-08-21 — none of the 7
                     // shared a hash with another screen even before the rebuild; the
                     // remaining 32 sit in the untouched 雪/砂漠/森F 塗り絵 groups).
+                    // 32→29 after 9-6-BASE 砂漠D南岸+渚11枚 (2026-08-21 — 3 of the 11 were in
+                    // 砂漠D の 塗り絵 dup groups; 残り 29 は 雪/山地/沼 側).
                     // Deep-ocean minimal walkways still share geometry (外周解体 clears them).
                     // ⚠️ NOTE (2026-08-20): the *similarity* warning count (125) in
                     // FIELD-BASELINE-METRICS.md is NOT a usable signal inside 森F. Its
