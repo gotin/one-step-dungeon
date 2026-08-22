@@ -132,7 +132,7 @@ const BASELINE = {
                     // 43→35 after ⑥-9 volcano; 35→0 after ⑥-trap (all §11-1 corners closed).
   w1: 0,            // all-blocked screens → 0 achieved (rule 2: all playable)
   w2: 0,            // orphan screens → 0 achieved (rule 2: all reachable)
-  underTwoAxis: 14, // <2-axis screens the player can stand in (gates OPEN — see
+  underTwoAxis: 0,  // <2-axis screens the player can stand in (gates OPEN — see
                     // reachedWithGates) → goal 0. 114→110 after ⑥-8;
                     // 110→108 after ⑥-9 (all 7 L screens → ≥2 axes; only 2 were flagged
                     // before, the rest passed the heuristic as filler but were 塗り絵).
@@ -164,9 +164,13 @@ const BASELINE = {
                     // 28→14 after 9-6-BASE 沼P南岸14枚 (2026-08-22 — 12,14/12,15/11,16/
                     // 11,17/11,18/10,17/10,18/10,19/9,17/9,18/9,19/8,18/8,19/7,19 が
                     // 各々 ≥2 軸。沼P の 素通り はこれで 0 になった)。
-                    // Remaining: 雪S 14（14,3/15,3/15,4/15,5/14,6/15,6/13,7/14,7/15,7/
-                    // 12,8/13,8/14,8/12,9/13,9）＝最後の地域ブロック。
-  dupScreens: 7,    // screens caught in SOME identical-layout group → goal small.
+                    // 14→0 after 9-6-BASE 雪原S東の縁14枚 (2026-08-22 — 14,3/15,3/15,4/
+                    // 15,5/14,6/15,6/13,7/14,7/15,7/12,8/13,8/14,8/12,9/13,9 が各々 ≥2 軸。
+                    // ⑨＝外周解体の最後の地域ブロック∴**この指標は 0 に到達した**。
+                    // ⚠️ 生の underTwoAxisScreens(map) は今も 3 を返す（7,14 / 8,0 / 8,1）が、
+                    // その3枚は TWO_AXIS_ALLOWLIST＝9-2T（村・塔の領分）で別タスクの管轄。
+                    // allowlist を通した母数では 0＝ここを hard 0 として固定する。
+  dupScreens: 0,    // screens caught in SOME identical-layout group → GOAL MET (0).
                     // Ratcheted on screen COUNT, not group count (group count splits
                     // when a wall is added to an untouched 塗り絵 → false regression).
                     // 64→59 after ⑤ (the 4 corridor screens + 15,16 left their groups).
@@ -190,7 +194,10 @@ const BASELINE = {
                     // 15→7 after 9-6-BASE 沼P南岸14枚 (2026-08-22 — 沼P の 8枚が 塗り絵 の
                     // dup group に居た＝1枚ずつ手で書いた盤面に置き換えて全員が group を出た。
                     // 残り 7 は 雪S の 2群＝{15,6 15,7} と {13,7 13,8 13,9 14,7 14,8}).
-                    // Deep-ocean minimal walkways still share geometry (外周解体 clears them).
+                    // 7→0 after 9-6-BASE 雪原S東の縁14枚 (2026-08-22 — その2群の7枚すべてを
+                    // 1枚ずつ手で書いた盤面に置き換えた＝**同一レイアウトの群は地図から消えた**。
+                    // 外周解体の完走でこの指標も 0 に到達∴以後は「新規の量産をしない」ための
+                    // hard 0 の見張りになる).
                     // ⚠️ NOTE (2026-08-20): the *similarity* warning count (125) in
                     // FIELD-BASELINE-METRICS.md is NOT a usable signal inside 森F. Its
                     // cosine vector is dominated by the floor/wall histogram buckets, and a
