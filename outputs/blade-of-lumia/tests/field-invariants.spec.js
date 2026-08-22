@@ -132,7 +132,7 @@ const BASELINE = {
                     // 43→35 after ⑥-9 volcano; 35→0 after ⑥-trap (all §11-1 corners closed).
   w1: 0,            // all-blocked screens → 0 achieved (rule 2: all playable)
   w2: 0,            // orphan screens → 0 achieved (rule 2: all reachable)
-  underTwoAxis: 28, // <2-axis screens the player can stand in (gates OPEN — see
+  underTwoAxis: 14, // <2-axis screens the player can stand in (gates OPEN — see
                     // reachedWithGates) → goal 0. 114→110 after ⑥-8;
                     // 110→108 after ⑥-9 (all 7 L screens → ≥2 axes; only 2 were flagged
                     // before, the rest passed the heuristic as filler but were 塗り絵).
@@ -161,8 +161,12 @@ const BASELINE = {
                     // 41→28 after 9-6-BASE 山地M東の水落ち13枚 (2026-08-22 — 12,12/13,12/
                     // 14,12/12,13/13,13/14,13/13,14/14,14/13,15/14,15/12,16/13,16/12,17 が
                     // 各々 ≥2 軸。山地M の 素通り はこれで 0 になった)。
-                    // Remaining: 沼P 14 / 雪S 14（この順で着手）+ the hub.
-  dupScreens: 15,   // screens caught in SOME identical-layout group → goal small.
+                    // 28→14 after 9-6-BASE 沼P南岸14枚 (2026-08-22 — 12,14/12,15/11,16/
+                    // 11,17/11,18/10,17/10,18/10,19/9,17/9,18/9,19/8,18/8,19/7,19 が
+                    // 各々 ≥2 軸。沼P の 素通り はこれで 0 になった)。
+                    // Remaining: 雪S 14（14,3/15,3/15,4/15,5/14,6/15,6/13,7/14,7/15,7/
+                    // 12,8/13,8/14,8/12,9/13,9）＝最後の地域ブロック。
+  dupScreens: 7,    // screens caught in SOME identical-layout group → goal small.
                     // Ratcheted on screen COUNT, not group count (group count splits
                     // when a wall is added to an untouched 塗り絵 → false regression).
                     // 64→59 after ⑤ (the 4 corridor screens + 15,16 left their groups).
@@ -183,6 +187,9 @@ const BASELINE = {
                     // 29→15 after 9-6-BASE 山地M東の水落ち13枚 (2026-08-22 — 山地M の 13枚は
                     // すべて 塗り絵 の巨大 dup group に居た＝1枚ずつ手で書いた盤面に置き換えて
                     // 全員が group を出た。残り 15 は 雪S/沼P 側だけ).
+                    // 15→7 after 9-6-BASE 沼P南岸14枚 (2026-08-22 — 沼P の 8枚が 塗り絵 の
+                    // dup group に居た＝1枚ずつ手で書いた盤面に置き換えて全員が group を出た。
+                    // 残り 7 は 雪S の 2群＝{15,6 15,7} と {13,7 13,8 13,9 14,7 14,8}).
                     // Deep-ocean minimal walkways still share geometry (外周解体 clears them).
                     // ⚠️ NOTE (2026-08-20): the *similarity* warning count (125) in
                     // FIELD-BASELINE-METRICS.md is NOT a usable signal inside 森F. Its
@@ -348,6 +355,29 @@ test.describe('Blade of Lumia – 9-6 フィールド不変条件（ratchet）',
       live.map(fmt),
       '笛/テレポートの着地セルが徒歩不可の壁＝spawn 即詰み（enterStage は壁でも' +
       'クランプしない）。着地点を歩けるセルに直すこと:\n' + live.map(fmt).join('\n'),
+    ).toEqual([]);
+  });
+
+  // 2026-08-22（9-6-BASE ⑧）: 笛の封印は showConditions だけでは開かない。
+  // `game/game.js` playFlute は **現在ステージの `stageData.fluteEffect`** を読み、それが
+  // 無いと「特に何も起きない」で return する＝`ss.flutePlayed` が立たず封印が永久に開かない。
+  // ⑧ で `8,19` を作るときに踏み、既存の `field/11,14` `field/13,15` も同じ欠落だった
+  // （`scripts/fix-flute-reveal-missing.mjs` で解消）。新規違反 0 で始まる∴ratchet ではなく 0 断定。
+  test('笛で開く封印は fluteEffect{reveal} とセット（開かない宝箱を作らない）', () => {
+    const map = loadMap();
+    const bad = [];
+    for (const [ln, layer] of Object.entries(map.layers ?? {})) {
+      for (const [sk, st] of Object.entries(layer.stages ?? {})) {
+        const sealed = Object.entries(st.showConditions ?? {})
+          .filter(([, sc]) => sc.trigger === 'flutePlayed' || sc.trigger === 'killAllAndFlute')
+          .map(([k]) => k);
+        if (sealed.length && st.fluteEffect?.type !== 'reveal')
+          bad.push(`${ln}/${sk} 封印 ${sealed.join(' ')} に fluteEffect{reveal} が無い`);
+      }
+    }
+    expect(
+      bad,
+      '笛を吹いても flutePlayed が立たない画面に笛の封印がある＝取れない宝箱:\n' + bad.join('\n'),
     ).toEqual([]);
   });
 
