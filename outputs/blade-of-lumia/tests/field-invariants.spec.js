@@ -3,8 +3,10 @@ import { readFileSync } from 'fs';
 import { fileURLToPath } from 'url';
 import {
   fieldHonestMetrics, underTwoAxisScreens, duplicateLayoutGroups,
-  duplicateLayoutScreenCount, warpEnterLandings,
+  duplicateLayoutScreenCount, warpEnterLandings, gatedScreenReport,
 } from '../scripts/lib/field-quality.mjs';
+import { firstWalkable } from '../scripts/lib/connectivity.mjs';
+import { waitForBoard } from './helpers.js';
 
 // ── Phase 9-6 設計④: フィールド不変条件テスト ─────────────────────────────────
 // The field 全320画面作り替え (B方針) is a long, incremental job. These tests are
@@ -386,6 +388,138 @@ test.describe('Blade of Lumia – 9-6 フィールド不変条件（ratchet）',
       bad,
       '笛を吹いても flutePlayed が立たない画面に笛の封印がある＝取れない宝箱:\n' + bad.join('\n'),
     ).toEqual([]);
+  });
+
+  // ── ⑥-完了検査 (2026-08-22) ─────────────────────────────────────────────────
+  // The three deliverables of PLAN.md 9-6 ⑥-完了検査. The 7 ratchet metrics above all
+  // read 0 now, but "0" only proves what the metric MEASURES — these three tests pin
+  // down what the 0 actually means, so nobody can read more (or less) into it later.
+
+  // (a) `under-2-axis = 0` は「allowlist を除いた 0」。素の underTwoAxisScreens(map) は
+  //     今も 3 を返す（7,14 = 開始村 / 8,0 = 塔の足元 / 8,1 = 飛行ワープ着地 ＝ 9-2T の
+  //     領分）。この差を書き残すだけでは allowlist が黙って育つのを止められない∴
+  //     「素の結果 == allowlist と完全一致」を固定する。allowlist に4枚目を足した瞬間、
+  //     または allowlist の画面が 2軸を得た瞬間にここが赤くなる＝どちらも人間の判断が
+  //     必要な変更で、黙って通ってはいけないもの。
+  test('素通り 0 の意味＝allowlist 除外後の 0（allowlist が黙って増えない）', () => {
+    const map = loadMap();
+    expect(underTwoAxisScreens(map, { allowlist: TWO_AXIS_ALLOWLIST })).toEqual([]);
+    const raw = underTwoAxisScreens(map).map((u) => u.key).sort();
+    expect(
+      raw,
+      '素の <2軸 画面が TWO_AXIS_ALLOWLIST と一致しない。\n' +
+      '・allowlist の画面が2軸を得た → allowlist から外す（9-2T 側の完成）\n' +
+      '・新しい <2軸 画面が増えた → その画面を作り込む（allowlist に足して隠さない）',
+    ).toEqual([...TWO_AXIS_ALLOWLIST].sort());
+  });
+
+  // (c) reached(strict) 302 と gates-open 320 の差 18枚の内訳。測ってみた結論は
+  //     「18枚すべてが正当な閉じ」ではなく **17 + 1**：
+  //       - 17枚 = 深洋O デルタ（廊下C1〜C4 の潮の戸 '=' の奥）＝ ゲートを開ければ徒歩で
+  //         到達する＝鍵/道具で開く正当な閉じ。
+  //       - 1枚  = 8,1（塔/空島の飛行ワープ着地）は **正当な閉じではない**。唯一の飛び元
+  //         field/8,0@3,2 のセルは 'M'（'>' が M1-M4 の再キーで失われた）＝プレイヤーは
+  //         そのセルに立てない∴徒歩でもワープでも入れない。これは 9-2T bug①（下の
+  //         KNOWN_BAD_LANDINGS と同じ1件）で、9-6 の作り込みでは閉じない。
+  //     この 17/1 の切り分けを machine-checkable にしたのが gatedScreenReport()。決め手は
+  //     frontier.other == []：strict と gates-open を隔てるセルが 潮の戸/ゲート/鍵の扉/
+  //     壊せる壁 か はしごで渡れる1マス幅の水/穴 だけ＝17枚へのどの経路も「開ける行為」を
+  //     必ず1回は経由する。壁で塞がれた画面が混ざっていれば other に現れる。
+  const GATED_EXPECTED = {
+    // 深洋O デルタ＝廊下C1〜C4 の潮の戸の奥（gates-open の徒歩で到達＝正当な閉じ）
+    walk: [
+      '11,19', '12,18', '12,19', '13,17', '13,18', '13,19', '14,16', '14,17',
+      '14,18', '14,19', '15,13', '15,14', '15,15', '15,16', '15,17', '15,18', '15,19',
+    ],
+    // 徒歩で入れずワープ元も壁＝9-2T 側の未修理（standable:false が「実は入れない」印）
+    warpOnly: [{
+      key: '8,1',
+      sources: [{ from: '8,0', at: '3,2', tile: 'M', standable: false }],
+    }],
+  };
+
+  test('strict 302 と gates-open 320 の差 18枚の内訳＝17枚は鍵/道具の閉じ・1枚は 9-2T', () => {
+    const map = loadMap();
+    const m = fieldHonestMetrics(map);
+    const r = gatedScreenReport(map);
+    expect(m.reachedWithGates.size).toBe(Object.keys(map.layers.field.stages).length);
+    expect(r.gated.length).toBe(m.reachedWithGates.size - m.reached.size);
+    expect(
+      r.gated,
+      `strict と gates-open の差の顔ぶれが変わった:\n${r.gated.join('  ')}`,
+    ).toEqual([...GATED_EXPECTED.walk, ...GATED_EXPECTED.warpOnly.map((w) => w.key)].sort());
+    expect(
+      r.walkGated,
+      'ゲートを開ければ徒歩で到達できるはずの画面が減った＝壁で塞がった疑い',
+    ).toEqual(GATED_EXPECTED.walk);
+    expect(
+      r.warpOnly,
+      'ワープでしか入れない画面の顔ぶれ／飛び元が変わった。standable:false は' +
+      '「飛び元のセルが壁＝実際には入れない」＝正当な閉じではなく直すべき欠陥',
+    ).toEqual(GATED_EXPECTED.warpOnly);
+    expect(
+      r.frontier.other,
+      'strict と gates-open を隔てるセルにゲートでもはしご水でもないものがある＝' +
+      '「鍵/道具で開く閉じ」の証明が崩れている:\n' + r.frontier.other.join('  '),
+    ).toEqual([]);
+    expect(r.frontier.gate.length).toBeGreaterThan(0);
+  });
+
+  // (b) 全320画面を実ブラウザで起動する。地域ごとの `.scratch/shot-*.mjs` は帯単位＝
+  //     全画面を一度も一括では踏んでいない（＝「作った帯は見た」だけ）。ここは
+  //     __game.enterStage() で1ページのまま320画面を順に入り直し、pageerror 0・盤面が
+  //     描かれること・プレイヤーが居ることを見る。enterStage は buildEnemies →
+  //     checkStoneOnSwitch → renderBoard → renderChars → updateHud → startBossBattle
+  //     まで通る＝敵生成とスプライト解決を含む「起動」そのもの。
+  //     ⚠️ 実ループは止めて step(2) で手動 tick する（enemy AI を1度は回すため。
+  //     実ループのまま320回入り直すと tick の混ざり方で flaky になる）。
+  test('全320画面が実ブラウザで起動する（pageerror 0）', async ({ page }) => {
+    const map = loadMap();
+    const stages = map.layers.field.stages;
+    const keys = Object.keys(stages).sort();
+    expect(keys.length).toBe(320);
+
+    let current = '(boot)';
+    const errors = [];
+    page.on('pageerror', (e) => errors.push(`${current}: ${e.message}`));
+
+    // 道具は全部持った状態で入る（道具が無いと出ない描画分岐＝はしご/飛行ローブ等を
+    // 通すため）。fromEditor=1 は debugMode:true を含む。
+    const p = new URLSearchParams({
+      fromEditor: '1', layer: 'field', stage: '7,14', row: '2', col: '2',
+      ps_weapon: '1', ps_shield: '1', ps_armor: '1', ps_bow: '1', ps_boomerang: '1',
+      ps_bomb: '1', ps_ladder: '1', ps_wingrobe: '1', ps_flute: '1', ps_candle: '1',
+    });
+    await page.goto(`/blade-of-lumia/game/?${p.toString()}`);
+    await waitForBoard(page);
+    await page.evaluate(() => window.__game.pause());
+
+    const bad = [];
+    for (const k of keys) {
+      current = k;
+      const { rows, cols } = stages[k];
+      const { row, col } = firstWalkable(stages[k]);
+      const snap = await page.evaluate(({ sk, r, c }) => {
+        window.__game.enterStage('field', sk, r, c);
+        window.__game.step(2);
+        const board = document.getElementById('board');
+        return {
+          // renderBoard は rows*cols 個の .cell ＋ char-layer を作り直す
+          cells: board ? board.querySelectorAll(':scope > .cell').length : 0,
+          hasCharLayer: !!document.getElementById('char-layer'),
+          hasPlayer: !!document.getElementById('char-player'),
+          // ⚠️ stageKey は enterStage 冒頭で代入されるので「入れた」証拠にならない
+          //   （stageData が無くても入る）。renderBoard が描いた HUD ラベルを見る。
+          label: document.getElementById('hud-stage-label')?.textContent ?? '',
+        };
+      }, { sk: k, r: row, c: col });
+      if (snap.cells !== rows * cols) bad.push(`${k}: セル数 ${snap.cells} ≠ ${rows * cols}（renderBoard が描いていない）`);
+      if (!snap.hasCharLayer) bad.push(`${k}: char-layer が無い`);
+      if (!snap.hasPlayer) bad.push(`${k}: #char-player が居ない（renderChars 未実行）`);
+      if (snap.label !== `[field] ${k}`) bad.push(`${k}: HUD ラベルが "${snap.label}"＝この画面が描かれていない`);
+    }
+    expect(bad, `画面の起動に失敗:\n${bad.join('\n')}`).toEqual([]);
+    expect(errors, `全320画面の起動中に pageerror:\n${errors.join('\n')}`).toEqual([]);
   });
 
   // Progress marker: prints the live gap to goal on every run so the ratchet is

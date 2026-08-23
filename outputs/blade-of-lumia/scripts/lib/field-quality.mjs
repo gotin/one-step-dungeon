@@ -16,7 +16,7 @@
 // field-invariants spec both import from here.
 import {
   bfsLayer, findOrphanRooms, findEntrances, isHardBlocked, cellTile,
-  footprintBlockedEdges,
+  footprintBlockedEdges, SOLVABLE_GATES, LADDER_OVER, isLadderBridgeCell,
 } from './connectivity.mjs';
 import { gameLayerEntries } from '../../shared/layers.js';
 import { ENEMY_META, ENEMY_TILES as ENEMY_TILE_CHARS } from '../../shared/enemies.js';
@@ -437,6 +437,112 @@ export function fieldHonestMetrics(mapData) {
     footprintBlocked: [...footprintBlocked].sort(),
     rawDeadEdges: deadEdges.length,
   };
+}
+
+// ── 鍵/道具で開く正当な閉じ（strict と gates-open の差の内訳・⑥-完了検査） ─────
+/**
+ * Explain the gap between the two reachability populations: `reached` (strict walk —
+ * every solvable gate SHUT, no ladder) and `reachedWithGates` (the quality-metric
+ * population — gates open, 1マス幅の水/穴 は はしごで渡れる).
+ *
+ * The gap is NOT a defect: it is the set of screens the player reaches only after
+ * opening something (潮の戸 '=' / ゲート 'T' / 鍵の扉 'D' / 壊せる壁 '!' / ボス扉 ':')
+ * or after getting a tool (はしご). ⑥-完了検査 has to prove exactly that — "the 18
+ * screens are behind a legitimate closure, not behind a wall" — so this function
+ * returns the machine-checkable evidence instead of a prose claim:
+ *
+ *   - `gated`     : gates-open ∖ strict (the gap itself)
+ *   - `walkGated` : of those, the ones the gates-open WALK reaches ⇒ they are behind
+ *                   a gate/ladder on a real walking route
+ *   - `warpOnly`  : the ones no walk reaches — only a MAP_ENTER teleport lands there.
+ *                   `sources` lists every mapEnter pointing at them, WITH the tile the
+ *                   warp cell actually holds and whether the player can stand on it
+ *                   (`standable` = that cell is in the strict walk). A warp whose source
+ *                   cell is a wall is NOT a legitimate closure — it is a defect, and
+ *                   `standable:false` is what keeps "warp-only" from being read as
+ *                   "reachable". (This is exactly field/8,1: its only sources are the
+ *                   8,0 mapEnter whose cell lost its '>' in the M1-M4 re-key ＝
+ *                   9-2T bug①, tracked in the spec's KNOWN_BAD_LANDINGS.)
+ *   - `frontier`  : every cell that separates the two walks (in the gates-open walk,
+ *                   not in the strict one, 4-adjacent — within a screen or across a
+ *                   screen edge — to a strict-reached cell), classified. `other` MUST
+ *                   be empty: a non-gate, non-ladder frontier cell would mean the
+ *                   strict walk stopped for some OTHER reason ⇒ the proof would not
+ *                   hold. Because every route into a gated screen has to cross a
+ *                   frontier cell, `other: []` is what turns "reachable when gates are
+ *                   open" into "closed only by a key/tool".
+ *
+ * @param {object} mapData
+ * @returns {{gated:string[], walkGated:string[],
+ *   warpOnly:Array<{key:string, sources:Array<{from:string, at:string, tile:string,
+ *     standable:boolean}>}>,
+ *   frontier:{gate:string[], ladder:string[], other:string[]}}}
+ */
+export function gatedScreenReport(mapData) {
+  const field = (mapData.layers && mapData.layers.field) || mapData.field;
+  const stages = field.stages;
+  const { reached, reachedWithGates } = fieldHonestMetrics(mapData);
+  const gated = [...reachedWithGates].filter((k) => !reached.has(k)).sort();
+
+  const start = {
+    stage: (mapData.startPos && mapData.startPos.stage) || '1,0',
+    row: mapData.startPos?.row ?? 2,
+    col: mapData.startPos?.col ?? 2,
+  };
+  const strictCells = bfsLayer(stages, start).reachedCells;
+  const open = bfsLayer(stages, start, { withLadder: true, openTiles: SOLVABLE_GATES });
+  const walkGated = gated.filter((k) => open.reachedRooms.has(k));
+
+  // Warp-only screens: no walk reaches them, but a MAP_ENTER somewhere points at one
+  // of their own mapEnter ids (mirrors findOrphanRooms' idRoom edge and game.js
+  // buildExitRegistry). Only field-side sources are listed — a source in another layer
+  // (dungeon/tower) is reachable through that layer, not through this walk.
+  const warpOnly = [];
+  for (const k of gated) {
+    if (open.reachedRooms.has(k)) continue;
+    const myIds = new Set(
+      Object.values(stages[k].mapEnters || {}).map((e) => e.id).filter(Boolean),
+    );
+    const sources = [];
+    for (const [src, s] of Object.entries(stages)) {
+      for (const [pk, e] of Object.entries(s.mapEnters || {})) {
+        if (!e.destId || !myIds.has(e.destId)) continue;
+        const [r, c] = pk.split(',').map(Number);
+        sources.push({
+          from: src, at: pk, tile: cellTile(s, r, c),
+          standable: strictCells.has(`${src}:${r},${c}`),
+        });
+      }
+    }
+    sources.sort((a, b) => `${a.from}@${a.at}`.localeCompare(`${b.from}@${b.at}`));
+    warpOnly.push({ key: k, sources });
+  }
+
+  // Frontier cells (gates-open ∖ strict, touching strict).
+  const frontier = { gate: [], ladder: [], other: [] };
+  const parseKey = (k) => k.split(',').map(Number);
+  for (const ck of open.reachedCells) {
+    if (strictCells.has(ck)) continue;
+    const [k, rc] = ck.split(':');
+    const [r, c] = rc.split(',').map(Number);
+    const s = stages[k];
+    const [sx, sy] = parseKey(k);
+    const nbrs = [[k, r - 1, c], [k, r + 1, c], [k, r, c - 1], [k, r, c + 1]];
+    if (r === 0) nbrs.push([`${sx},${sy - 1}`, (stages[`${sx},${sy - 1}`]?.rows ?? 0) - 1, c]);
+    if (r === s.rows - 1) nbrs.push([`${sx},${sy + 1}`, 0, c]);
+    if (c === 0) nbrs.push([`${sx - 1},${sy}`, r, (stages[`${sx - 1},${sy}`]?.cols ?? 0) - 1]);
+    if (c === s.cols - 1) nbrs.push([`${sx + 1},${sy}`, r, 0]);
+    if (!nbrs.some(([nk, nr, nc]) => strictCells.has(`${nk}:${nr},${nc}`))) continue;
+    const ch = cellTile(s, r, c);
+    const label = `${k}@${r},${c}='${ch}'`;
+    if (SOLVABLE_GATES.has(ch)) frontier.gate.push(label);
+    else if (isHardBlocked(ch) && LADDER_OVER.has(ch)
+             && isLadderBridgeCell(s.tiles, s.rows, s.cols, r, c, s.bgTiles)) {
+      frontier.ladder.push(label);
+    } else frontier.other.push(label);
+  }
+  for (const arr of Object.values(frontier)) arr.sort();
+  return { gated, walkGated, warpOnly, frontier };
 }
 
 /**

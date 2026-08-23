@@ -15,6 +15,7 @@ import {
   underTwoAxisScreens,
   duplicateLayoutGroups,
   duplicateLayoutScreenCount,
+  gatedScreenReport,
 } from './lib/field-quality.mjs';
 
 // Keep these two definitions IN SYNC with tests/field-invariants.spec.js — the
@@ -38,6 +39,8 @@ const dupScreens = duplicateLayoutScreenCount(mapData);
 const density  = regionDensityMetrics(mapData);
 const battle   = regionBattleScores(mapData);
 const simWarn  = structuralSimilarityWarnings(mapData, { threshold: 0.995 });
+// ⑥-完了検査: strict と gates-open の差を「鍵/道具の閉じ」と「本当に入れない欠陥」に分ける。
+const gapReport = gatedScreenReport(mapData);
 
 // Region display order — grassland G is split into sub-regions G0..G7 by corridor
 // destination (see field-quality.mjs / FIELD-BASELINE-BRAINSTORM.md「草原Gのサブ地域分割」).
@@ -88,6 +91,20 @@ lines.push(`- traps (到達後詰み): **${traps.length}**`);
 lines.push(`- orphans: **${orphans.length}**`);
 lines.push(`- under-2-axis (素通り・gates-open母集団・allowlist除外後): **${under2.length}**`);
 lines.push(`- dup screens (同一配置に巻き込まれた画面数 ＝ ratchet 定義): **${dupScreens}** （${dupGroups.length}群）`);
+lines.push('');
+// strict と gates-open の差の内訳（⑥-完了検査）。数字だけ見て「N枚が到達不能」と
+// 読み違えないための注記＝どれがゲートの奥で、どれが本当に入れない欠陥かを書き出す。
+lines.push(`### strict ${reached.size} と gates-open ${reachedWithGates.size} の差 ${gapReport.gated.length} 枚の内訳`);
+lines.push('');
+lines.push(`- ゲート/道具を開けば徒歩で到達（＝正当な閉じ）: **${gapReport.walkGated.length}** 枚`);
+lines.push(`  - ${gapReport.walkGated.join(' ') || '(なし)'}`);
+for (const w of gapReport.warpOnly) {
+  const s = w.sources
+    .map((x) => `${x.from}@${x.at}='${x.tile}'${x.standable ? '' : ' ⚠️踏めない'}`)
+    .join(' / ');
+  lines.push(`- 徒歩では入れずワープのみ: **${w.key}** ← ${s || '飛び元なし＝到達不能'}`);
+}
+lines.push(`- strict と gates-open を隔てるセル: ゲート ${gapReport.frontier.gate.length} / はしご水 ${gapReport.frontier.ladder.length} / それ以外 **${gapReport.frontier.other.length}**（0 でなければ壁で塞がっている）`);
 lines.push('');
 
 // ── 2. Density metrics per region ─────────────────────────────────────────────
