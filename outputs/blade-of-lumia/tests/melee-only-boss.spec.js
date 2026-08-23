@@ -10,6 +10,12 @@
 import { test, expect } from '@playwright/test';
 import { GAME_URL, SAVE_KEY } from './helpers.js';
 import { TEST_LAYER, stageKey } from './test-stage-keys.js';
+import { ENEMY_META } from '../shared/enemies.js';
+import { TILE } from '../shared/tiles.js';
+
+// ⚠️ 満タン HP は `ENEMY_META` から導出する（手書きの 40 は 8-4 のリバランスで
+//    96 に上がった時点で腐った＝数値表を触るたびに spec が赤くなるのは歯ではなく事故）。
+const BOSS_MAX_HP = ENEMY_META[TILE.ICE_LEVIATHAN].hp;
 
 const GAME = '/blade-of-lumia/game/';
 
@@ -129,7 +135,7 @@ test.describe('Blade of Lumia – 近接限定ボス（Phase 9-2f）', () => {
     const enemies = await page.evaluate(() => window.__game.getEnemies());
     const boss = enemies.find(e => e.type === 'L');
     if (boss) {
-      expect(boss.hp).toBe(40); // ダメージなし
+      expect(boss.hp).toBe(BOSS_MAX_HP); // ダメージなし
     }
 
     expect(errors).toEqual([]);

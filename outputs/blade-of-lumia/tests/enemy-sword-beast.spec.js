@@ -13,6 +13,12 @@
 import { test, expect } from '@playwright/test';
 import { GAME_URL, SAVE_KEY } from './helpers.js';
 import { stageKey } from './test-stage-keys.js';
+import { ENEMY_META } from '../shared/enemies.js';
+import { TILE } from '../shared/tiles.js';
+
+// ⚠️ 期待値は `ENEMY_META` から導出する（手書きの 3 は 8-4 のリバランスで atk 5 に
+//    上がった時点で腐った＝数値表を触るたびに spec が赤くなるのは歯ではなく事故）。
+const BEAST = ENEMY_META[TILE.SWORD_BEAST];
 
 const LAYER = 'test_mechanics';
 const KEY   = stageKey('sword_beast'); // '27,0'
@@ -97,7 +103,7 @@ test.describe('Phase 5.5k #7 – 剣獣（SWORD_BEAST）', () => {
 		// 西（プレイヤー側）へ真横に飛ぶ＝斜め成分を持たない。
 		expect(beams[0].dx, 'プレイヤーの居る西向き（dx=-1）').toBe(-1);
 		expect(beams[0].dy, '縦成分は持たない').toBe(0);
-		expect(beams[0].atk, '威力は ENEMY_META.atk（剣獣=3）').toBe(3);
+		expect(beams[0].atk, '威力は ENEMY_META.atk（剣獣）').toBe(BEAST.atk);
 	});
 
 	test('飛ぶ斬撃は水路を飛び越えてプレイヤーに当たる（陸上敵が渡れない距離でも削られる）', async ({ page }) => {

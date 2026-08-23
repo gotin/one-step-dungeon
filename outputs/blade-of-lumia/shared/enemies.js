@@ -61,10 +61,36 @@ export const ENEMY_SPEED_FAST   = 1.0;  // 高速敵
 //   multiplier … その攻撃でのダメージ倍率（def 適用前の素ダメージに掛ける）
 //   弱点ヒット時は combat.js の dealDamageToEnemy が倍率＋専用エフェクト/SE を出す。
 //   未定義なら弱点なし＝全攻撃が等倍（後方互換）。
+//
+// stunnable（Phase 8-4 (2)・2026-08-23・任意 boolean）: **ブーメランで硬直するか**の明示。
+//   省略時は `!isBoss` から導出＝ザコは硬直する／ボスは硬直しない（ダメージだけ通る）。
+//   ・ボスを硬直させない理由＝ブーメランの往復（木 6マス≒0.7秒／銀 12マス≒0.6秒）が
+//     スタン時間 1500ms（game/constants.js BOOMERANG_STUN_MS）より短い∴投げ続けるだけで
+//     永久に固められ、ブーメラン＋剣の連打で全ボスに勝ててしまう（実プレイで確認）。
+//   ・ザコは硬直したままにする＝「ブーメランでガードを崩して斬る」がザコ戦の設計の核。
+//   ・例外を書くための穴＝`stunnable: true` を立てたボスは硬直する／`false` を立てた
+//     ザコは硬直しない。**一覧を手書きしない**（導出が既定・明示は例外だけ）。
+//   実装は game/projectile.js の boomerang 分岐（1か所）。
+// ── Phase 8-4（2026-08-23）リバランスの前提 ────────────────────────
+// hp/atk/def はここで**一斉に**引き直した。根拠は `scripts/audit-balance.mjs`
+// （実マップ由来の「初めて会う地点 × その時点の最弱プレイヤー」で測る監査）。
+//   ① 判定は **min プロファイル**＝本編だけを進んだプレイヤー（木の剣 ATK 4・防具なし）。
+//      銅/銀/聖剣はすべて寄道（forest_cave / secret_grotto / void_shrine）にしか無い
+//      ＝取らずにクリアできる∴下限は最後まで ATK 4。寄道の剣で溶けるのは**報酬**（設計どおり）。
+//   ② 剣のクールダウンを 100ms → 300ms にした（game/constants.js）＝敵に被弾無敵が無いため
+//      1秒あたりの手数が3分の1になった∴同じ体感にするには hp が要る。ボスの hp を
+//      2〜3倍にしたのはこの分（30〜60振り＝9〜18秒＝機構が数巡する長さ）。
+//   ③ 敵の def は **2 以下**に抑える。被ダメは `max(1, dmg - def)` の減算∴def 3-4 は
+//      木の剣（4）を 1 まで削る＝「殴っても減らない」になる（ザーネル def 4 が実例）。
+//   ④ 雑魚は 2〜6振り。1振りで消えて良いのは意図した最弱枠だけ
+//      （E / ξ / & / δ / ψ ＝ audit-balance.mjs の ONE_SWING_OK に理由付きで列挙）。
+// ⚠️ 脅威度 `hp*atk/(def+1)`（scripts/lib/enemy-placement.mjs）は配置の重さの指標＝
+//    ここの数値を触ると `tests/enemy-placement.spec.js` ③ の梯子と
+//    `tests/dungeon-key-gate.spec.js` ⑨ の関門の期待値が動く（必ず同じ回で直す）。
 export const ENEMY_META = {
 	[TILE.PATROL]: {
 		name: 'パトロール',
-		hp: 3, atk: 1, def: 0, exp: 3,
+		hp: 4, atk: 1, def: 0, exp: 3,        // 脅威度 4.0（最弱枠＝木の剣1振りで倒せることを教える）
 		speed: ENEMY_SPEED_SLOW,
 		sprite: 'patrol',
 		pal:    'patrol',
@@ -73,7 +99,7 @@ export const ENEMY_META = {
 	},
 	[TILE.CHASER]: {
 		name: 'チェイサー',
-		hp: 5, atk: 2, def: 0, exp: 5,
+		hp: 12, atk: 2, def: 0, exp: 5,       // 脅威度 24.0（木の剣3振り）
 		speed: ENEMY_SPEED_NORMAL,
 		sprite: 'chaser',
 		pal:    'chaser',
@@ -82,7 +108,7 @@ export const ENEMY_META = {
 	},
 	[TILE.SENTRY]: {
 		name: 'センチネル',
-		hp: 6, atk: 2, def: 1, exp: 8,
+		hp: 12, atk: 3, def: 1, exp: 8,       // 脅威度 18.0（木の剣4振り）
 		speed: ENEMY_SPEED_NORMAL,
 		sprite: 'sentry',
 		pal:    'sentry',
@@ -99,7 +125,7 @@ export const ENEMY_META = {
 		// 最初の適用対象＝directional:true で resolveEnemySprite() 経由の向き差替・攻撃/ガードポーズに乗る。
 		// スプライトは当面 skeletonD/R/L/U（正面絵のエイリアス）＝機構が先・向き別描画は次段。
 		name: '骸骨剣士',
-		hp: 5, atk: 2, def: 1, exp: 6,
+		hp: 12, atk: 3, def: 1, exp: 6,       // 脅威度 18.0（木の剣4振り）
 		speed: ENEMY_SPEED_NORMAL,
 		sprite: 'skeletonD',
 		pal:    'skeleton',
@@ -116,7 +142,9 @@ export const ENEMY_META = {
 		// ガード状態機械には乗せない（ガード役は #4 盾騎士の担当）。∴向き別スプライトは
 		// 3方向×(通常/攻撃)の6枚だけで足りる（Guard フレーム不要）。
 		name: '剣獣',
-		hp: 10, atk: 3, def: 2, exp: 20,
+		hp: 18, atk: 5, def: 1, exp: 20,      // 脅威度 45.0 ＝**通常敵の最強格**（木の剣6振り）
+		                                      // ⚠️ tests/dungeon-key-gate.spec.js ⑨ が
+		                                      // 「雑魚の脅威度の最大＝剣獣」を固定している∴他の雑魚より必ず高くする。
 		// 2026-08-12（ユーザー指摘で修正）：ENEMY_SPEED_FAST(1.0) はプレイヤーと**完全同速**
 		// （プレイヤーは 1 tick に MOVE_STEP=0.5 進む＝速度換算 1.0）∴ 密着されたら
 		// 原理的に振り切れない＝「逃げ切れない」。0.85 にして「速いが引き離せる」にする。
@@ -157,7 +185,7 @@ export const ENEMY_META = {
 		// 弱点なし（PLAN 5.5k 名簿）。directional にしない＝土から出る蟲に「向き別の
 		// 構え」は無い（絵は1方向＋左右反転で足りる）∴ガード状態機械にも乗らない。
 		name: '地中蟲',
-		hp: 4, atk: 2, def: 1, exp: 6,        // 脅威度 hp*atk/(def+1) = 4.0（低）
+		hp: 9, atk: 2, def: 1, exp: 6,        // 脅威度 hp*atk/(def+1) = 9.0（低・木の剣3振り）
 		speed: ENEMY_SPEED_NORMAL,
 		sprite: 'burrowWorm',
 		pal:    'burrowWorm',
@@ -176,7 +204,7 @@ export const ENEMY_META = {
 		//   minRange/maxRange … 跳躍を始める間合い（近すぎ/遠すぎでは跳ばない）
 		// 体当たり（charge）のみ（飛び道具なし）＝跳んで体を当てるのが攻撃。
 		name: '跳躍蜘蛛',
-		hp: 4, atk: 2, def: 0, exp: 8,        // 脅威度 8.0（低〜中）
+		hp: 8, atk: 2, def: 0, exp: 8,        // 脅威度 16.0（低〜中・木の剣2振り）
 		speed: ENEMY_SPEED_SLOW,              // 地上は鈍足＝距離を詰める手段が跳躍しかない
 		sprite: 'leapSpider',
 		pal:    'leapSpider',
@@ -235,7 +263,9 @@ export const ENEMY_META = {
 		// （guards:false）＝ブロックは常設で、盾は素の絵の一部（∴Guard フレーム不要
 		//  ＝向き3方向×(通常/攻撃)の6枚で足りる。GUIDE §2）。
 		name: '盾騎士',
-		hp: 8, atk: 3, def: 2, exp: 18,       // 脅威度 hp*atk/(def+1) = 8.0（中〜高・剣獣 10 未満）
+		// 8-4: def は 2 → 1。硬さは blockFacing（正面無効）で表す敵∴減算防御まで高いと
+		// 「回り込んでも減らない」＝機構の報酬が消える。
+		hp: 18, atk: 4, def: 1, exp: 18,      // 脅威度 hp*atk/(def+1) = 36.0（中〜高・剣獣 45 未満）
 		speed: ENEMY_SPEED_SLOW,              // 重装＝鈍い（プレイヤーが回り込める前提条件）
 		sprite: 'shieldKnightD',
 		pal:    'shieldKnight',
@@ -260,7 +290,8 @@ export const ENEMY_META = {
 		// 弱点なし（PLAN 名簿）。directional にしない＝甲羅の絵は開/閉の2枚で足りる
 		// （向き別9枚は不要）∴ガード状態機械にも乗らない。
 		name: '火吐き亀',
-		hp: 8, atk: 3, def: 2, exp: 16,       // 脅威度 8.0（中〜高）
+		// 8-4: def は 2 → 1（硬さは shell の無敵窓で表す＝減算防御では表さない）。
+		hp: 15, atk: 4, def: 1, exp: 16,      // 脅威度 30.0（中〜高・木の剣5振り）
 		speed: ENEMY_SPEED_SLOW,              // 鈍足＝逃げ切れる代わりに硬い
 		sprite: 'fireTurtle',
 		pal:    'fireTurtle',
@@ -269,7 +300,7 @@ export const ENEMY_META = {
 			closedMs:    1400,  // 籠もる時間（無敵）＝殴れる時間より長い
 			openMs:      1000,  // 開いている時間＝殴れる窓
 			breathCells: 2,     // 炎の届くセル数（正面のカーディナル1方向）
-			breathAtk:   3,     // 炎のダメージ（体当たりの meta.atk と同値）
+			breathAtk:   4,     // 炎のダメージ（体当たりの meta.atk と同値＝8-4 で 3→4）
 			breathMs:    420,   // 炎の見た目が出ている実時間（CSS .enemy-fire-breath と対）
 		},
 		attack: { type: 'charge' },            // 飛び道具は持たない（炎は shell が撃つ）
@@ -293,7 +324,9 @@ export const ENEMY_META = {
 		// hp 4 ＝木の剣（player.atk = BASE_ATK 2 + wood 2 = 4）の一撃で分裂まで届く
 		// ＝名簿の「剣で1回叩くと2体の小型へ分裂」をそのまま数字にしたもの。
 		name: '分裂スライム',
-		hp: 4, atk: 2, def: 0, exp: 8,        // 脅威度 hp*atk/(def+1) = 8.0（中・剣獣 10 未満）
+		// 8-4: hp 4 は**動かさない**（木の剣1振りで分裂に届くのが機構そのもの）∴
+		// 重さは atk（2→3）で付ける＝「増える敵に囲まれると痛い」方向に寄せた。
+		hp: 4, atk: 3, def: 0, exp: 8,        // 脅威度 hp*atk/(def+1) = 12.0（中・剣獣 45 未満）
 		speed: ENEMY_SPEED_SLOW,              // 鈍い＝増えても逃げられる（数で押す敵の前提）
 		sprite: 'splitSlime',
 		pal:    'splitSlime',
@@ -302,7 +335,7 @@ export const ENEMY_META = {
 		split: {
 			count:       2,             // 分かれる小型の数
 			childHp:     2,             // 小型は木の剣1発で倒せる（増えた数を捌ける）
-			childAtk:    1,             // 体当たりのダメージも半分＝囲まれても即死しない
+			childAtk:    2,             // 体当たりのダメージは親の 2/3＝囲まれても即死しない（8-4 で 1→2）
 			childDef:    0,
 			childExp:    3,
 			childSprite: 'splitSlimeSmall',
@@ -323,7 +356,7 @@ export const ENEMY_META = {
 		//   ・倒すと吸われたぶんの refund 割合が戻る（combat.js killEnemy）
 		// 弱点なし（名簿）＝属性で楽にならない敵。
 		name: 'ルピー喰い',
-		hp: 6, atk: 2, def: 1, exp: 10,       // 脅威度 hp*atk/(def+1) = 6.0（中）
+		hp: 15, atk: 3, def: 1, exp: 10,      // 脅威度 hp*atk/(def+1) = 22.5（中・木の剣5振り）
 		speed: ENEMY_SPEED_NORMAL,            // 張り付きに来る＝寄れる速さは要る（ただし鈍足では無い）
 		sprite: 'rupeeEater',
 		pal:    'rupeeEater',
@@ -357,7 +390,7 @@ export const ENEMY_META = {
 		// 近いと投げられない＝密着すれば爆弾は止まる（代わりに体当たりの atk 3 を食う）。
 		// 弱点なし（名簿）。
 		name: '爆弾鬼',
-		hp: 6, atk: 3, def: 1, exp: 16,       // 脅威度 hp*atk/(def+1) = 9.0（中〜高・剣獣 10 未満）
+		hp: 18, atk: 4, def: 1, exp: 16,      // 脅威度 hp*atk/(def+1) = 36.0（中〜高・剣獣 45 未満）
 		speed: ENEMY_SPEED_SLOW,              // 鈍足＝詰め寄れば投げさせずに済む（機構と対の速度）
 		sprite: 'bombOgreD',
 		pal:    'bombOgre',
@@ -380,7 +413,8 @@ export const ENEMY_META = {
 			projectileSpeed: 1.0,    // 飛翔速度（セル/tick）＝落ちるまでに逃げる猶予を作る
 			blast: {
 				radius:     1.5,     // 爆風半径（セル）＝着弾セルの十字1マスまで
-				damage:     4,       // 爆風ダメージ（def で軽減される＝takeDamage 経由）
+				damage:     6,       // 爆風ダメージ（def で軽減される＝takeDamage 経由）。8-4 で 4→6
+				                     // ＝体当たり atk 4 より重い＝「爆風が本体」を数字でも示す。
 				breakPower: 3,       // `!` を壊す力（プレイヤーの爆弾 ITEM_META.bomb と同値）
 			},
 		},
@@ -397,7 +431,7 @@ export const ENEMY_META = {
 		//     （collectAlongBoomerang は owner==='player' 限定）
 		// 弱点なし（名簿）。
 		name: 'ブーメラン鬼',
-		hp: 6, atk: 2, def: 1, exp: 12,       // 脅威度 hp*atk/(def+1) = 6.0（中）
+		hp: 15, atk: 3, def: 1, exp: 12,      // 脅威度 hp*atk/(def+1) = 22.5（中・木の剣5振り）
 		speed: ENEMY_SPEED_NORMAL,            // 間合いを取り直す速さは要る（爆弾鬼より速い）
 		sprite: 'boomerangOgreD',
 		pal:    'boomerangOgre',
@@ -470,7 +504,7 @@ export const ENEMY_META = {
 		//    体当たりの atk を 1 に落としている（毒と体当たりの両方を 2 にすると
 		//    1回もらうだけで即死級になる）。
 		name: '毒沼ヒル',
-		hp: 6, atk: 1, def: 1, exp: 10,       // 脅威度 hp*atk/(def+1) = 3.0（実効は毒込みで 4 相当）
+		hp: 9, atk: 1, def: 1, exp: 10,       // 脅威度 hp*atk/(def+1) = 4.5（実効は毒込みで atk 4 相当）
 		speed: ENEMY_SPEED_SLOW,              // 鈍足＝機構（後を引く毒）と対の速度
 		sprite: 'poisonLeech',                // 背に毒の縞を持つヒル（k-7b・.scratch/draw-k7.mjs）
 		pal:    'poisonLeech',
@@ -498,7 +532,7 @@ export const ENEMY_META = {
 		//    なく**距離のリセット**∴逃げても間合いは戻る。代わりに shownMs の間は
 		//    完全に無防備（歩かない＝殴りに行ける）でバランスを取る。
 		name: '術士',
-		hp: 5, atk: 3, def: 1, exp: 14,       // 脅威度 hp*atk/(def+1) = 7.5（中・剣獣 10.0 未満）
+		hp: 12, atk: 3, def: 1, exp: 14,      // 脅威度 hp*atk/(def+1) = 18.0（中・剣獣 45.0 未満）
 		speed: 0,                             // 歩かない（移動は blink だけ＝enemyChase は accum が伸びない）
 		sprite: 'sorcerer',                   // k-8b で実絵（32×32・待機2枚）。詠唱の 3 tick だけ
 		                                      // `sorcererCast` へ差し替わる（enemy-ai.js syncCastSprite）
@@ -534,7 +568,7 @@ export const ENEMY_META = {
 		//    間合い。dash.minRange > SLAM_RANGE(1.5) で棲み分ける（両方が同じ距離で出ると
 		//    「予告が2種類同時に立つ」＝どちらを避けたのか読めない）。
 		name: '突進猪',
-		hp: 6, atk: 3, def: 1, exp: 18,       // 脅威度 hp*atk/(def+1) = 9.0（中〜高・剣獣 10.0 未満）
+		hp: 18, atk: 4, def: 1, exp: 18,      // 脅威度 hp*atk/(def+1) = 36.0（中〜高・剣獣 45.0 未満）
 		speed: ENEMY_SPEED_SLOW,              // 歩きは鈍足（突進だけが速い）
 		sprite: 'chargeBoar',                 // k-9b の実絵（待機2枚＋Windup＋Stun・横向き）
 		pal:    'chargeBoar',
@@ -557,7 +591,9 @@ export const ENEMY_META = {
 	},
 	[TILE.MONSTER]: {
 		name: '魔物',
-		hp: 12, atk: 3, def: 1, exp: 18,
+		// 8-4: ボスの hp は「木の剣（ATK 4）で 30〜60 振り＝9〜18 秒」で引いた。
+		// 魔物は中ボス格＝下限の 24 振り（7秒）。
+		hp: 72, atk: 3, def: 1, exp: 18,
 		speed: ENEMY_SPEED_FAST * 0.45,  // 魔将より大幅に遅い (0.45)
 		sprite: 'monster',
 		pal:    'monster',
@@ -585,7 +621,7 @@ export const ENEMY_META = {
 	},
 	[TILE.BOSS]: {
 		name: '魔将',
-		hp: 20, atk: 4, def: 2, exp: 30,
+		hp: 96, atk: 4, def: 2, exp: 30,      // 8-4: 木の剣で 48 振り（14秒）
 		speed: ENEMY_SPEED_FAST,
 		sprite: 'escape',
 		pal:    'escape',
@@ -613,7 +649,10 @@ export const ENEMY_META = {
 	},
 	[TILE.DARK_LORD]: {
 		name: '魔王',
-		hp: 50, atk: 6, def: 3, exp: 100,
+		// 8-4: def 3 → 2（木の剣 4 が 1 まで削られる＝「殴っても減らない」を避ける）。
+		// ⚠️ この敵は**世界のどこにも配置されていない**（scripts/audit-balance.mjs の
+		//    unplacedEnemies が検出）。ザーネル（Z）と同格の数値にして配置待ちの状態にしてある。
+		hp: 120, atk: 8, def: 2, exp: 100,    // 木の剣で 60 振り（18秒）
 		speed: ENEMY_SPEED_SLOW,  // デバッグ用に低速化
 		sprite: 'darklord',
 		pal:    'darklord',
@@ -646,7 +685,10 @@ export const ENEMY_META = {
 	// Phase 0-4 / スプライトエディタの管轄。最優先5点の1つ）。
 	[TILE.ZARNEL]: {
 		name: 'ザーネル',
-		hp: 80, atk: 8, def: 4, exp: 0,  // 撃破でクリアなので exp は不要
+		// 8-4: def 4 → 2。木の剣（ATK 4）の一撃が max(1, 4-4) = 1 に落ちていた＝
+		// 寄道の剣を取らずに塔へ入ると 80 発（24秒）殴るだけの作業になっていた。
+		// hp 120 / def 2 ＝木の剣 60 振り（18秒）＝目標帯（30〜60振り）の上端＝ラスボスの位置。
+		hp: 120, atk: 8, def: 2, exp: 0,  // 撃破でクリアなので exp は不要
 		speed: ENEMY_SPEED_NORMAL,
 		sprite: 'darklord',
 		pal:    'darklord',
@@ -679,7 +721,7 @@ export const ENEMY_META = {
 	// dropsTriforce:true で撃破時に星の欠片を落とす。
 	[TILE.FIRE_SALAMANDER]: {
 		name: '炎のサラマンドラ',
-		hp: 35, atk: 5, def: 2, exp: 50,
+		hp: 96, atk: 5, def: 1, exp: 50,      // 8-4: 木の剣で 32 振り（10秒）。矢（弱点×2）なら 12 本
 		speed: ENEMY_SPEED_SLOW * 1.2,   // ゴーレムより少し速い
 		sprite: 'fireSalamander',
 		pal:    'fireSalamander',
@@ -704,7 +746,7 @@ export const ENEMY_META = {
 	// dropsTriforce:true で撃破時に星の欠片を落とす。
 	[TILE.ICE_LEVIATHAN]: {
 		name: '氷のリヴァイアサン',
-		hp: 40, atk: 4, def: 3, exp: 55,
+		hp: 96, atk: 4, def: 2, exp: 55,      // 8-4: def 3→2（木の剣が 1 に落ちるのを避ける）＝48 振り（14秒）
 		speed: ENEMY_SPEED_SLOW,          // 重厚で鈍足
 		sprite: 'iceLeviathan',
 		pal:    'iceLeviathan',
@@ -730,7 +772,7 @@ export const ENEMY_META = {
 	// 打撃と毒針投げで戦い、HP半減で猛スピードで突進してくる。
 	[TILE.SAND_SCORPION]: {
 		name: '砂嵐の蠍王',
-		hp: 32, atk: 5, def: 1, exp: 45,
+		hp: 90, atk: 5, def: 1, exp: 45,      // 8-4: 木の剣で 30 振り（9秒）＝ボスの下限帯
 		speed: ENEMY_SPEED_SLOW * 1.1,
 		sprite: 'sandScorpion',
 		pal:    'sandScorpion',
@@ -754,7 +796,7 @@ export const ENEMY_META = {
 	// 咬みつきと水球投げで圧倒する。鱗の防御力が高い。
 	[TILE.SEA_SERPENT]: {
 		name: '深海の海蛇',
-		hp: 38, atk: 4, def: 3, exp: 52,
+		hp: 84, atk: 4, def: 2, exp: 52,      // 8-4: def 3→2＝木の剣で 42 振り（13秒）
 		speed: ENEMY_SPEED_SLOW * 0.95,
 		sprite: 'seaSerpent',
 		pal:    'seaSerpent',
@@ -778,7 +820,7 @@ export const ENEMY_META = {
 	// 木の実や胞子弾を飛ばして広範囲を制圧する。
 	[TILE.FOREST_GIANT]: {
 		name: '古森の巨人',
-		hp: 42, atk: 5, def: 2, exp: 58,
+		hp: 96, atk: 5, def: 2, exp: 58,      // 8-4: 木の剣で 48 振り（14秒）
 		speed: ENEMY_SPEED_SLOW * 0.9,
 		sprite: 'forestGiant',
 		pal:    'forestGiant',
@@ -802,7 +844,7 @@ export const ENEMY_META = {
 	// 素早く動き回り、HP半減後は雷撃の頻度が大幅に増加する。
 	[TILE.STORM_EAGLE]: {
 		name: '嵐の鷲王',
-		hp: 36, atk: 6, def: 1, exp: 55,
+		hp: 108, atk: 6, def: 1, exp: 55,     // 8-4: 木の剣で 36 振り（11秒）
 		speed: ENEMY_SPEED_SLOW * 1.3,   // 鷲なので速め
 		sprite: 'stormEagle',
 		pal:    'stormEagle',
@@ -829,7 +871,7 @@ export const ENEMY_META = {
 	// スプライトは 2×2 セル相当の 24×24（向きエイリアス rockGolemR/L/D/U）。
 	[TILE.ROCK_GOLEM]: {
 		name: '岩のゴーレム',
-		hp: 30, atk: 4, def: 2, exp: 40,
+		hp: 90, atk: 4, def: 2, exp: 40,      // 8-4: 木の剣で 45 振り（13秒）。爆弾（弱点×3）なら 2 個
 		speed: ENEMY_SPEED_SLOW,   // 大型なので鈍重
 		sprite: 'rockGolem',
 		pal:    'rockGolem',
@@ -856,7 +898,7 @@ export const ENEMY_META = {
 	// 弱点は炎（ロウソク＝cave_1 入場前に入手済み）。剣でも倒せる。
 	[TILE.SWAMP_TOAD]: {
 		name: '沼地の大蝦蟇',
-		hp: 40, atk: 5, def: 2, exp: 56,
+		hp: 96, atk: 5, def: 2, exp: 56,      // 8-4: 木の剣で 48 振り（14秒）
 		speed: ENEMY_SPEED_SLOW,          // 鈍重
 		sprite: 'swampToad',
 		pal:    'swampToad',
@@ -910,7 +952,7 @@ export const ENEMY_META = {
 	//   破りスタックする（ユーザー指摘）。∴座標は水から出さず、届く手段を増やす。
 	[TILE.LURK_SHARK]: {
 		name: '潜み鮫',
-		hp: 6, atk: 3, def: 1, exp: 12,    // 浮上の一瞬に殴る＝手数が限られるぶん硬め
+		hp: 15, atk: 3, def: 1, exp: 12,   // 浮上の一瞬に殴る＝手数が限られるぶん硬め（脅威度 22.5）
 		speed: ENEMY_SPEED_NORMAL,
 		sprite: 'lurkShark',
 		pal:    'lurkShark',
@@ -934,7 +976,7 @@ export const ENEMY_META = {
 	// createProjEl が makeSprite(proj.type, proj.type) を呼ぶ＝type 名がスプライト名も兼ねる）。
 	[TILE.ARCHER_FISH]: {
 		name: '射水魚',
-		hp: 3, atk: 2, def: 0, exp: 8,     // 脆いが遠くから削る＝近づけば早く潰せる
+		hp: 8, atk: 2, def: 0, exp: 8,     // 脆いが遠くから削る＝近づけば早く潰せる（脅威度 16.0・木の剣2振り）
 		speed: ENEMY_SPEED_SLOW,           // 撃つのが仕事＝あまり動かない
 		sprite: 'archerFish',
 		pal:    'archerFish',
@@ -958,7 +1000,9 @@ export const ENEMY_META = {
 	// 弱点は持たない＝「腕試し」なので特定装備の有無で難度が激変しないようにする。
 	[TILE.SEA_LORD]: {
 		name: '海の主',
-		hp: 48, atk: 5, def: 4, exp: 0,    // exp0＝撃破しない相手（経験値の概念で報われない）
+		// 8-4: def 4 → 2（木の剣が 1 まで削られていた＝腕試しが作業になっていた）。
+		// hp 100・yieldAt 0.25 ＝実際に削るのは 75 ＝木の剣で 38 振り（11秒）。
+		hp: 100, atk: 5, def: 2, exp: 0,   // exp0＝撃破しない相手（経験値の概念で報われない）
 		speed: ENEMY_SPEED_SLOW,
 		sprite: 'seaLord',
 		pal:    'seaLord',

@@ -10,7 +10,7 @@
 //   ① 配置表と盤面が一致する（手編集のドリフト検出。表以外の雑魚が混ざっていないことも見る）
 //   ② 非ボスの敵は全種が本編レイヤーに1体以上居る（カタログにあるが世界に居ない敵を作らない）
 //   ③ 看板部屋の脅威度が進行順（D1→D2→D3→D4→D6→D5→D8→D7→dark_tower）で単調増加し、
-//      鍵の関門部屋（24.0 / 36.0 / 50.0）を追い越さない
+//      鍵の関門部屋（116.0 / 162.0 / 225.0＝Phase 8-4 リバランス後）を追い越さない
 //   ④ 弱点持ちの敵は、その弱点道具が入手済みの地点以降にしか居ない
 //      （δ 分裂スライム＝爆弾／η 術士＝弓。表は `scripts/lib/progression.mjs` と共有）
 //   ⑤ 置いた敵は素の床の上に立ち・外周にも出入口の着地セルにも居ない
@@ -110,15 +110,18 @@ test.describe('Phase 5.5m – 新規敵15種の本編配置', () => {
         .toBeGreaterThan(ladder[i - 1].threat);
     }
     // 関門部屋（dungeon-key-gate ⑨ が固定）は 5.5m で触っていない＝値が変わっていない。
-    // ⚠️ あちらの式は**ボスも足す**（D1 の 24.0 = 魔物 18.0 + パトロール2体）∴同じ式で測る
+    // ⚠️ あちらの式は**ボスも足す**（D1 の 116.0 = 魔物 108.0 + パトロール2体）∴同じ式で測る
     //    （看板部屋にはボスが居ない∴雑魚だけの stageThreat と一致する）。
+    // ⚠️ 数値は Phase 8-4（2026-08-23）のリバランス後の実測値（24.0/36.0/50.0 → 116.0/162.0/225.0）。
+    //    敵の hp/atk/def を一斉に引き直しただけ＝盤面の敵は1体も動かしていない。
     const withBosses = (stage) => tilesOf(stage).flat()
       .reduce((t, ch) => t + (ENEMY_META[ch] ? THREAT_OF(ENEMY_META[ch]) : 0), 0);
-    expect(withBosses(stageOf('dungeon_1', '1,0')), 'D1 の関門').toBe(24);
-    expect(withBosses(stageOf('dungeon_7', '1,0')), 'D7 の関門').toBe(36);
-    expect(withBosses(stageOf('dark_tower', '1,2')), 'dark_tower の関門').toBe(50);
-    // 看板部屋の最高（dark_tower[0,1]）が最終関門（50.0）を超えない＝最終試験が最難のまま
-    expect(ladder[ladder.length - 1].threat, '看板部屋が最終関門より重い').toBeLessThan(50);
+    expect(withBosses(stageOf('dungeon_1', '1,0')), 'D1 の関門').toBe(116);
+    expect(withBosses(stageOf('dungeon_7', '1,0')), 'D7 の関門').toBe(162);
+    expect(withBosses(stageOf('dark_tower', '1,2')), 'dark_tower の関門').toBe(225);
+    // 看板部屋の最高（dark_tower[0,1]）が最終関門（225.0）を超えない＝最終試験が最難のまま
+    expect(ladder[ladder.length - 1].threat, '看板部屋が最終関門より重い')
+      .toBeLessThan(withBosses(stageOf('dark_tower', '1,2')));
   });
 
   test('④ 弱点持ちの敵は、その弱点道具が入手済みの地点以降にしか居ない', () => {

@@ -184,7 +184,11 @@ let _bossDefeating = false;          // ボス撃破演出 実行中フラグ（
 let _pendingTriforcePieceEl = null;  // 出現中の星の欠片 DOM 要素
 let _collectingTriforce = false;     // 二重収集防止フラグ
 // 剣・石押しのクールダウン論理時刻（combat.js / player.js factory が参照）
-let lastSwordTime = 0;
+// ⚠️ 初期値は `-SWORD_COOLDOWN_MS`＝**起動直後の1振り目を待たせない**。0 にすると
+//    `now - last < SWORD_COOLDOWN_MS` が gameTime 0 で成立してしまい、ロード直後の
+//    クールダウン1本分（8-4 で 100→300ms）だけ剣が死ぬ（step() で手動に tick を進める
+//    テストでは「2フレーム進めてから振る」等の回避策が要っていた＝実害の裏返し）。
+let lastSwordTime = -SWORD_COOLDOWN_MS;
 let lastStonePushTime = 0;
 
 // ── ユーティリティ ────────────────────────────────────────────

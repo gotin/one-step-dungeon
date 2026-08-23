@@ -11,8 +11,11 @@
 
 import { test, expect } from '@playwright/test';
 import { GAME_URL, SAVE_KEY } from './helpers.js';
+import { ARMOR_TIERS, BASE_DEF } from '../shared/items.js';
 
-const ARMOR_DEF = [2, 4, 7];
+// ⚠️ 期待値は `ARMOR_TIERS` から導出する（手書きの [2,4,7] は 8-4 のリバランスで
+//    1/2/3 に下がった時点で腐った＝数値を触るたびに spec が赤くなるのは歯ではなく事故）。
+const ARMOR_DEF = ARMOR_TIERS.map(t => t.def);
 
 // 任意の装備状態でセーブをロードしてゲーム開始
 async function seed(page, { armorTier = -1, shieldTier = -1, swordTier = -1 } = {}) {
@@ -56,7 +59,7 @@ async function seed(page, { armorTier = -1, shieldTier = -1, swordTier = -1 } = 
 test.describe('Blade of Lumia – 防具・盾ティアシステム', () => {
 
   test('①: 伝説の鎧保持中に布の服を拾っても DEF は下がらない', async ({ page }) => {
-    await seed(page, { armorTier: 2 });  // 伝説の鎧（def=7）
+    await seed(page, { armorTier: 2 });  // 伝説の鎧（ARMOR_TIERS[2]）
     const before = await page.evaluate(() => window.__game.getPlayer().def);
     const result = await page.evaluate(() => window.__game.equipArmorTier(0));  // 布の服
     const after  = await page.evaluate(() => window.__game.getPlayer().def);
@@ -64,12 +67,12 @@ test.describe('Blade of Lumia – 防具・盾ティアシステム', () => {
     expect(after).toBe(before);
   });
 
-  test('①b: 無防具から布の服(0)を装備すると def=2 になる', async ({ page }) => {
+  test('①b: 無防具から布の服(0)を装備すると def=BASE_DEF+cloth.def になる', async ({ page }) => {
     await seed(page);
     const result = await page.evaluate(() => window.__game.equipArmorTier(0));
     expect(result).toBe(true);
     const player = await page.evaluate(() => window.__game.getPlayer());
-    expect(player.def).toBe(2);      // BASE_DEF(0) + cloth.def(2)
+    expect(player.def).toBe(BASE_DEF + ARMOR_TIERS[0].def);
     expect(player.armorTier).toBe(0);
   });
 
@@ -130,7 +133,7 @@ test.describe('Blade of Lumia – 防具・盾ティアシステム', () => {
     await page.evaluate(() => window.__game.equipArmorTier(1));  // 鎖かたびら
     await page.evaluate(() => window.__game.updateHud());
     const player = await page.evaluate(() => window.__game.getPlayer());
-    expect(player.def).toBe(4);      // BASE_DEF(0) + chain.def(4)
+    expect(player.def).toBe(BASE_DEF + ARMOR_TIERS[1].def);
     expect(player.armorTier).toBe(1);
     expect(player._equip.armorName).toBe('鎖かたびら');
   });

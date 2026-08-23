@@ -1550,7 +1550,9 @@ test.describe('Blade of Lumia – ダンジョンの鍵（進行の背骨）', (
   // 脅威度（ENEMY_META から HP*ATK/(DEF+1) の合計）が進行順で単調増加すること。
   // D1（§7-2⑥＝据え置き確定）を基準に、D7・dark_tower[1,2] を強化した。
   // ENEMY_META から導出（hp * atk / (def + 1)）＝敵を足しても表を書き直さなくてよい。
-  // 既存の実測値（E:3 C:10 F:6 W:18・D1 合計 24）はこの式と一致する。
+  // ⚠️ Phase 8-4（2026-08-23）のリバランスで敵の hp/atk/def を一斉に引き直した∴この式の値も
+  //    一斉に上がった（E:4 C:24 F:18 W:108・D1 合計 116）。**盤面の敵は1体も動かしていない**
+  //    ＝部屋の相対的な重さの順序（D1 < D7 < dark_tower）は 8-4 前と同じ。
   const THREAT = Object.fromEntries(ENEMY_TILES.map(t => {
     const m = ENEMY_META[t];
     return [t, (m.hp * m.atk) / ((m.def ?? 0) + 1)];
@@ -1566,18 +1568,19 @@ test.describe('Blade of Lumia – ダンジョンの鍵（進行の背骨）', (
     const d1 = threatOfStage(map.layers.dungeon_1.stages['1,0']);
     const d7 = threatOfStage(map.layers.dungeon_7.stages['1,0']);
     const dt = threatOfStage(map.layers.dark_tower.stages['1,2']);
-    expect(d1, 'D1 の脅威度（既存の基準）').toBe(24);
+    expect(d1, 'D1 の脅威度（既存の基準・8-4 後）').toBe(116);
     expect(d7, 'D7 の脅威度は D1 を上回る').toBeGreaterThan(d1);
     expect(dt, 'dark_tower[1,2] の脅威度は D7 を上回る').toBeGreaterThan(d7);
     // 5.5k-2 で剣獣（μ）×5 に組み直した＝旧構成（魔物1+チェイサー3＝48.0）より弱くしない。
+    // ⚠️ 8-4 後は μ×5＝225.0∴この下限は「構成を弱い方へ組み替えたら赤くする」歯として残す。
     expect(dt, 'dark_tower[1,2] は 5.5h の旧構成（48.0）より弱くしない').toBeGreaterThanOrEqual(48);
   });
 
   // ── ⑨ dark_tower[1,2]＝剣獣の巣（5.5k-2）─────────────────────────────
   // 「通常敵の最強格を塔の鍵部屋に集める」（PLAN 5.5k の5番）を構成で縛る。
   // 「最強格」は ENEMY_META から導出する（手書きで「剣獣が最強」と書くと敵を足したとき静かに嘘になる）。
-  // 剣獣の脅威度 10.0 はチェイサーと同値（並ぶ）＝この式では最大タイ。実際の強さの差は
-  // HP（10 vs 5）・速度（1 vs 0.5）・剣ビーム（range 9）で、この式は捉えない ∴縛るのは
+  // 剣獣の脅威度は 8-4 後 45.0＝通常敵で単独最大（次点は ζ/λ/ω の 36.0。8-4 前はチェイサー
+  // と同値の最大タイだった）。速度（1 vs 0.5）・剣ビーム（range 9）の差はこの式が捉えない ∴縛るのは
   // 「これを上回る通常敵が現れていないこと」＝現れたらこの部屋を見直せ、という警報にする。
   test('⑨ dark_tower[1,2]：敵は通常敵の最強格（剣獣）だけを集めている', () => {
     const stage = map.layers.dark_tower.stages['1,2'];

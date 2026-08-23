@@ -23,13 +23,17 @@ export const BASE_ATK = 2;  // 剣なし時の基礎ATK
 // player.armorTier (-1=防具なし, 0..2=ティア) で管理する。
 // player.def = BASE_DEF + ARMOR_TIERS[tier].def で再計算する（加算廃止）。
 // 剣（SWORD_TIERS）と同型：ティア番号で持ち替え判定する（下位は無視）。
+// ⚠️ Phase 8-4（2026-08-23）で def 2/4/7 → 1/2/3 に下げた。理由＝被弾は
+//    `max(1, atk - def)` の**減算**∴def 4 は敵の atk 3-4 を丸ごと食い切って
+//    「どの敵に触っても 1 ダメージ」になっていた（雑魚も鎧も差が消える）。
+//    敵の atk 帯（1-8）に対して 1/2/3 なら軽減が効きつつ床（1）に張り付かない。
 export const ARMOR_TIERS = [
 	// index 0: 布の服
-	{ key: 'cloth',  name: '布の服',     def: 2, sprite: 'armorCloth',  pal: 'armorCloth'  },
+	{ key: 'cloth',  name: '布の服',     def: 1, sprite: 'armorCloth',  pal: 'armorCloth'  },
 	// index 1: 鎖かたびら
-	{ key: 'chain',  name: '鎖かたびら', def: 4, sprite: 'armorChain',  pal: 'armorChain'  },
+	{ key: 'chain',  name: '鎖かたびら', def: 2, sprite: 'armorChain',  pal: 'armorChain'  },
 	// index 2: 伝説の鎧
-	{ key: 'legend', name: '伝説の鎧',   def: 7, sprite: 'armorLegend', pal: 'armorLegend' },
+	{ key: 'legend', name: '伝説の鎧',   def: 3, sprite: 'armorLegend', pal: 'armorLegend' },
 ];
 export const BASE_DEF = 0;  // 防具なし時の基礎DEF
 

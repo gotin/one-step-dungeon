@@ -22,6 +22,7 @@ import fs from 'node:fs';
 import { test, expect } from '@playwright/test';
 import { ROWS, COLS, makeSolver } from '../scripts/lib/blade-solver.mjs';
 import { TILE } from '../shared/tiles.js';
+import { SWORD_COOLDOWN_MS } from '../game/constants.js';
 import { GAME_URL, SAVE_KEY, waitForBoard } from './helpers.js';
 import { TEST_LAYER, stageKey } from './test-stage-keys.js';
 
@@ -208,7 +209,7 @@ async function replayMixed(page, steps) {
 			const want = wantColor(s.color);
 			for (let guard = 0; guard < 4 && await color() !== want; guard++) {
 				await page.evaluate(() => window.__game.swordAttack());
-				await page.waitForTimeout(150);
+				await page.waitForTimeout(SWORD_COOLDOWN_MS + 50);   // 剣のクールダウン（定数から取る）
 			}
 			expect(await color(), `手順${i + 1}（色スイッチ${s.dir}）で ${want} になる`).toBe(want);
 			continue;
@@ -703,7 +704,7 @@ test.describe('バグ回帰 – 色ゲートは石も通さない・不発は音
 			for (let guard = 0; guard < 4; guard++) {
 				if (want !== undefined && await color() === want) break;
 				await page.evaluate(() => window.__game.swordAttack());
-				await page.waitForTimeout(150);   // SWORD_COOLDOWN_MS=100
+				await page.waitForTimeout(SWORD_COOLDOWN_MS + 50);   // 剣のクールダウン（8-4 で 100→300ms）
 			}
 		};
 		const tryPush = async (dir) => {
@@ -792,7 +793,7 @@ test.describe('バグ回帰 – 色ゲートは石も通さない・不発は音
 			for (let guard = 0; guard < 4; guard++) {
 				if (want !== undefined && await color() === want) break;
 				await page.evaluate(() => window.__game.swordAttack());
-				await page.waitForTimeout(150);
+				await page.waitForTimeout(SWORD_COOLDOWN_MS + 50);   // 剣のクールダウン（定数から取る）
 			}
 		};
 
