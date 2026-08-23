@@ -2,6 +2,8 @@
 //
 // 敵を試すとき、アリーナからアリーナへ**歩いて移動できる**必要がある（2026-08-16 ユーザー指摘）。
 // ∴ 28,0〜38,0 の各アリーナは左右の外周に通路（door）を持つ＝隣のステージへ抜けられる。
+// 2026-08-23 に y=1 の34枚（Phase 8-4 のリバランス実プレイ検証行・BALANCE_ARENAS）も
+// 同じ通路仕様で並べた＝通路の定義（行・開け方）はこのファイル1箇所だけ。
 //
 // ⚠️ 2026-08-16 の事故：この通路はユーザーが後から開けたものだったが、生成スクリプトが
 //    「外周は全部壁」と宣言していたため**盤面のドリフト（手編集の事故）と誤認して2回塞いだ**
@@ -51,6 +53,62 @@ export const DOOR_ARENAS = [
 	'bomb_ogre',           // 37,0 ⚠️ 内部に壁(4,7)が1枚ある（爆弾が壁を越える検証用）＝徒歩の横断は rows 7/8 で通る
 	'boomerang_ogre',      // 38,0
 ];
+
+/**
+ * Phase 8-4 (2)「実プレイでリバランスを確かめる行」＝ y=1 の横並び34枚（2026-08-23）。
+ * ユーザー依頼「試して欲しいボス敵・ザコ敵を test_mechanics の二行目（x,1 の行）に
+ * 並べて、ステージの間に壁なしで移動できるように」。
+ *
+ * 1体/1ステージ（アリーナ作法と同じ＝どの敵の手応えを見ているのか混ざらない）。
+ * 並び順（＝x 座標）は scripts/migrate-test-balance-row.mjs が ENEMY_META から導出する：
+ *   陸/空ザコ → 水棲ザコ → 陸ボス → 水棲ボス → ラスボス（Z は最後）。
+ * ⚠️ この配列は「宣言」側＝migrate が導出結果と突き合わせて食い違えば止まる
+ *    （敵を1種足したら migrate が「表に無い」と言う＝黙って並びがずれない）。
+ * ⚠️ 順序はステージキーの並び順と一致していなければならない（歩いて渡る検査が
+ *    隣接キーを前提にする）。DOOR_ARENAS と同じ制約。
+ */
+export const BALANCE_ARENAS = [
+	'bal_patrol',           // 0,1
+	'bal_chaser',           // 1,1
+	'bal_sentry',           // 2,1
+	'bal_skeleton',         // 3,1
+	'bal_sword_beast',      // 4,1
+	'bal_burrow_worm',      // 5,1
+	'bal_leap_spider',      // 6,1
+	'bal_bat_swarm',        // 7,1
+	'bal_shield_knight',    // 8,1
+	'bal_fire_turtle',      // 9,1
+	'bal_split_slime',      // 10,1
+	'bal_rupee_eater',      // 11,1
+	'bal_bomb_ogre',        // 12,1
+	'bal_boomerang_ogre',   // 13,1
+	'bal_curse_fire',       // 14,1
+	'bal_poison_leech',     // 15,1
+	'bal_sorcerer',         // 16,1
+	'bal_charge_boar',      // 17,1
+	'bal_fish_school',      // 18,1 ← ここから水棲（bgTiles の水帯 rows 4/5）
+	'bal_lurk_shark',       // 19,1
+	'bal_archer_fish',      // 20,1
+	'bal_monster',          // 21,1 ← ここからボス
+	'bal_boss',             // 22,1
+	'bal_dark_lord',        // 23,1
+	'bal_fire_salamander',  // 24,1
+	'bal_ice_leviathan',    // 25,1
+	'bal_sand_scorpion',    // 26,1
+	'bal_sea_serpent',      // 27,1
+	'bal_forest_giant',     // 28,1
+	'bal_storm_eagle',      // 29,1
+	'bal_rock_golem',       // 30,1
+	'bal_swamp_toad',       // 31,1
+	'bal_sea_lord',         // 32,1 水棲ボス
+	'bal_zarnel',           // 33,1 ⚠️ ラスボス＝撃破でエンディング∴**行の最後**に置く
+];
+
+/**
+ * 通路で繋がった「鎖」の一覧。鎖の中では隣り合うステージへ歩いて抜けられる
+ * （鎖をまたぐ移動は無い＝行が違う／間に水路のステージが挟まる）。
+ */
+export const DOOR_CHAINS = [DOOR_ARENAS, BALANCE_ARENAS];
 
 /**
  * そのアリーナの通路セル（[row, col] の配列）。左右の外周それぞれ ARENA_DOOR_ROWS の2セル。

@@ -1,5 +1,7 @@
-// tests/test-arena-doors.spec.js — 敵アリーナ（test_mechanics 28,0〜36,0）の「通路」が
-// **実際に歩いて抜けられる**ことを測る。
+// tests/test-arena-doors.spec.js — 敵アリーナの「通路」が **実際に歩いて抜けられる** ことを測る。
+// 対象は2本の鎖（tests/test-arena-doors.js DOOR_CHAINS）：
+//   ・row 0 … ギミック検証アリーナ 28,0〜38,0（②）
+//   ・row 1 … Phase 8-4 (2) のリバランス検証行 0,1〜33,1（③・2026-08-23 追加）
 //
 // 通路の仕様は tests/test-arena-doors.js（単一の真実）＝左右の外周の rows 7/8。
 // 目的は「敵を並べて試すとき、save 注入で飛ばずに歩いて見比べられること」（ユーザーが
@@ -31,7 +33,9 @@ import { fileURLToPath } from 'url';
 import { TILE } from '../shared/tiles.js';
 import { waitForBoard } from './helpers.js';
 import { TEST_LAYER, stageKey } from './test-stage-keys.js';
-import { ARENA_DOOR_ROWS, DOOR_ARENAS, arenaDoorCells, isArenaDoor } from './test-arena-doors.js';
+import {
+  ARENA_DOOR_ROWS, DOOR_ARENAS, BALANCE_ARENAS, DOOR_CHAINS, arenaDoorCells, isArenaDoor,
+} from './test-arena-doors.js';
 
 const GAME = '/blade-of-lumia/game/';
 const MAP_PATH = fileURLToPath(new URL('../work/blade-of-lumia.json', import.meta.url));
@@ -48,10 +52,43 @@ function previewUrl(name, row, col) {
   return `${GAME}?${p.toString()}`;
 }
 
+/**
+ * 実機で `name` のアリーナに入り、`dir` の端まで歩いて隣のステージへ渡る。
+ * 立ち位置は**いちばん厳しい半セル（y = ARENA_DOOR_ROWS[0] + 0.5）**＝着地 footprint が
+ * 通路の2行に跨る条件（1行だけ開いた通路なら弾かれる）。
+ * @returns {Promise<string>} 渡った後の stageKey（渡れていなければ元のキー）
+ */
+async function walkAcross(page, name, dir) {
+  const from = stageKey(name);
+  const startCol = dir === 'right' ? 10 : 1;
+  await page.goto(previewUrl(name, ARENA_DOOR_ROWS[0], startCol));
+  await waitForBoard(page);
+  await page.waitForFunction(() => !!window.__game);
+  await page.evaluate(() => window.__game.pause());   // 実ループの tick を混ぜない
+  // 半セル位置へ（例 y=7 → 7.5）＝着地 footprint が rows 7/8 の2行に跨る条件
+  await page.evaluate(() => window.__game.movePlayer('down'));
+  expect(await page.evaluate(() => window.__game.getState().player.y),
+    `${from}: 半セル位置（${ARENA_DOOR_ROWS[0] + 0.5}）に立てない＝通路の内側が塞がっている`)
+    .toBe(ARENA_DOOR_ROWS[0] + 0.5);
+
+  // 端まで歩く。遷移は setTimeout(…,100) 越しに確定する∴1手ごとに待つ。
+  for (let k = 0; k < 8; k++) {
+    await page.evaluate(d => window.__game.movePlayer(d), dir);
+    try {
+      await page.waitForFunction(s => window.__game.getState().stageKey !== s, from, { timeout: 400 });
+      break;
+    } catch { /* まだ端に着いていない＝次の一歩 */ }
+  }
+  return page.evaluate(() => window.__game.getState().stageKey);
+}
+
 test.describe('敵アリーナ間の通路（rows 7/8）', () => {
-  // ① 9枚すべてを横断で見る（各スペックの④/⑮は自分の2枚しか見ていない＝抜けが出る）
-  test('① 28,0〜36,0 の9枚すべてで通路が開いていて、その内側も床', () => {
-    for (const name of DOOR_ARENAS) {
+  // ① 通路を持つステージすべてを横断で見る（各スペックの④/⑮は自分の2枚しか見ていない＝抜けが出る）
+  //    ＝row 0 のアリーナ（DOOR_ARENAS）＋ row 1 のリバランス検証行（BALANCE_ARENAS）。
+  test('① 通路を持つ全ステージで通路が開いていて、その内側も床', () => {
+    expect(DOOR_CHAINS.flat().length, '鎖の合計枚数')
+      .toBe(DOOR_ARENAS.length + BALANCE_ARENAS.length);
+    for (const name of DOOR_CHAINS.flat()) {
       const grid = gridOf(name);
       const cols = grid[0].length;
       for (const [r, c] of arenaDoorCells(cols)) {
@@ -86,26 +123,8 @@ test.describe('敵アリーナ間の通路（rows 7/8）', () => {
       for (const dir of ['left', 'right']) {
         const to = `${dir === 'right' ? fc + 1 : fc - 1},${fr}`;
         if (!keys.includes(to)) continue;   // 鎖の外（27,0 は東半分が壁＝通路にならない）
-        const startCol = dir === 'right' ? 10 : 1;
-        await page.goto(previewUrl(DOOR_ARENAS[i], ARENA_DOOR_ROWS[0], startCol));
-        await waitForBoard(page);
-        await page.waitForFunction(() => !!window.__game);
-        await page.evaluate(() => window.__game.pause());   // 実ループの tick を混ぜない
-        // 半セル位置へ（y=7 → 7.5）＝着地 footprint が rows 7/8 の2行に跨る条件
-        await page.evaluate(() => window.__game.movePlayer('down'));
-        expect(await page.evaluate(() => window.__game.getState().player.y),
-          `${from}: 半セル位置（7.5）に立てない＝通路の内側が塞がっている`).toBe(ARENA_DOOR_ROWS[0] + 0.5);
-
-        // 端まで歩く。遷移は setTimeout(…,100) 越しに確定する∴1手ごとに待つ。
-        for (let k = 0; k < 8; k++) {
-          await page.evaluate(d => window.__game.movePlayer(d), dir);
-          try {
-            await page.waitForFunction(s => window.__game.getState().stageKey !== s, from, { timeout: 400 });
-            break;
-          } catch { /* まだ端に着いていない＝次の一歩 */ }
-        }
-        const after = await page.evaluate(() => window.__game.getState());
-        expect(after.stageKey, `${from} から ${dir} へ歩いて ${to} に入れない（通路が使えていない）`).toBe(to);
+        const after = await walkAcross(page, DOOR_ARENAS[i], dir);
+        expect(after, `${from} から ${dir} へ歩いて ${to} に入れない（通路が使えていない）`).toBe(to);
         crossed.push(`${from}→${to}`);
       }
     }
@@ -114,4 +133,31 @@ test.describe('敵アリーナ間の通路（rows 7/8）', () => {
     expect(crossed.length, `渡れたのは ${crossed.join(' ')} だけ`).toBe((DOOR_ARENAS.length - 1) * 2);
     expect(errors, 'ゲームで pageerror').toEqual([]);
   });
+
+  // ③ リバランス検証行（y=1・34枚）も**歩いて**抜けられる（2026-08-23・Phase 8-4 (2)）。
+  //   ユーザー依頼の核が「ステージの間に壁なしで移動できる」∴①（幾何）だけでは足りない
+  //   （②のコメントのとおり「開いているのに入れない通路」が成立しうる）。
+  //   ⚠️ 1ペア＝1テストにする理由：34枚を1テストに入れると横断 66 回＝Playwright の既定
+  //      タイムアウト（30 秒）を超える。ペア単位なら並列に流れ、塞がったペアが名前で分かる。
+  //   ⚠️ ボスの部屋でも渡れること自体が歯＝`isBossRoom` を立てると入室で扉が閉じて
+  //      隣へ歩けなくなる（この行は立てない、という決まりの番人）。
+  for (const [i, name] of BALANCE_ARENAS.entries()) {
+    if (i === BALANCE_ARENAS.length - 1) continue;      // 最後の枚は東の相手が居ない
+    const next = BALANCE_ARENAS[i + 1];
+    test(`③ ${stageKey(name)} ⇔ ${stageKey(next)} を歩いて往復できる（${name} ⇔ ${next}）`, async ({ page }) => {
+      const errors = [];
+      page.on('pageerror', e => errors.push(e.message));
+      const [ax, ay] = stageKey(name).split(',').map(Number);
+      const [bx, by] = stageKey(next).split(',').map(Number);
+      expect([bx - ax, by - ay], `${name} と ${next} が東西に隣り合っていない`
+        + '（BALANCE_ARENAS の順序はステージキーの並び順と一致していなければならない）')
+        .toEqual([1, 0]);
+
+      expect(await walkAcross(page, name, 'right'),
+        `${stageKey(name)} から east へ歩いて ${stageKey(next)} に入れない`).toBe(stageKey(next));
+      expect(await walkAcross(page, next, 'left'),
+        `${stageKey(next)} から west へ歩いて ${stageKey(name)} に入れない`).toBe(stageKey(name));
+      expect(errors, 'ゲームで pageerror').toEqual([]);
+    });
+  }
 });

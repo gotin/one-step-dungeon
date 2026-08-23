@@ -16,7 +16,10 @@
 // 並べ替えたときに全スペックを直す羽目になる）。
 // scripts/migrate-test-layer-to-live.mjs もこの表を読んで移設する＝表が唯一の定義。
 //
-// レイアウトは y=0 の1行に横並び（x=宣言順）。ステージを足すときは次の x を使う。
+// レイアウトは2行。
+//   y=0 … ギミック検証ステージ（0,0〜42,0・x=宣言順）。ステージを足すときは次の x を使う。
+//   y=1 … Phase 8-4 のリバランス実プレイ検証行（0,1〜33,1・敵1種/1ステージ・全34種）。
+//         2026-08-23 に追加。並びは ENEMY_META から導出（下の該当ブロックを見よ）。
 
 export const TEST_LAYER = 'test_mechanics';
 
@@ -180,6 +183,60 @@ export const TEST_STAGE_KEYS = {
 	//                 ⚠️ probe を敵に近づけると dash.minRange 2.0 の内側＝突進が始まらず
 	//                 体当たり（slam）の検証になってしまう（＝機構が入れ替わって歯が抜ける）。
 	charge_boar:      '42,0',
+
+	// ── Phase 8-4 (2) リバランスの実プレイ検証行（y=1 の34枚）─────────────────────
+	// 2026-08-23 ユーザー依頼＝「試して欲しいボス敵・ザコ敵を test_mechanics の二行目
+	// （x,1 の行）に並べて、ステージの間に壁なしで移動できるようにして」。
+	// ∴ ENEMY_META の**全34種**を1体/1ステージで横一列に並べ、左右の外周は
+	// tests/test-arena-doors.js の通路（rows 7/8）だけ開ける＝歩いて隣の部屋へ抜けられる。
+	// 並び（x）は scripts/migrate-test-balance-row.mjs が ENEMY_META から導出する
+	// （陸/空ザコ → 水棲ザコ → 陸ボス → 水棲ボス → ラスボス）＝この表と食い違えば migrate が
+	// 止まる（敵を1種足したら「表に無い」と言う∴黙って並びがずれない）。
+	// ⚠️ ラスボス Z は**行の最後**（33,1）＝撃破でエンディングが始まる（途中に置くと
+	//    そこで行の残りを試せなくなる）。
+	// ⚠️ ボス部屋にしない（isBossRoom を立てない）＝立てると入室で扉が閉じて
+	//    「壁なしで隣へ歩ける」という依頼そのものが死ぬ。
+	// ⚠️ プレビューは常にデバッグ ON（無敵・すり抜け）＝**G キーで切ってから**試す。
+	//    入口 0,1 の看板にもこの注意を書いてある。
+	bal_patrol:          '0,1',
+	bal_chaser:          '1,1',
+	bal_sentry:          '2,1',
+	bal_skeleton:        '3,1',
+	bal_sword_beast:     '4,1',
+	bal_burrow_worm:     '5,1',
+	bal_leap_spider:     '6,1',
+	bal_bat_swarm:       '7,1',
+	bal_shield_knight:   '8,1',
+	bal_fire_turtle:     '9,1',
+	bal_split_slime:     '10,1',
+	bal_rupee_eater:     '11,1',
+	bal_bomb_ogre:       '12,1',
+	bal_boomerang_ogre:  '13,1',
+	bal_curse_fire:      '14,1',
+	bal_poison_leech:    '15,1',
+	bal_sorcerer:        '16,1',
+	bal_charge_boar:     '17,1',
+	// 水棲3種＝bgTiles の水帯（rows 4/5・cols 1〜10）に置く。row 6 は乾いた陸＝
+	// そこに立って row 5 の敵を剣で殴れる（水棲敵は陸に上がれない）。
+	bal_fish_school:     '18,1',
+	bal_lurk_shark:      '19,1',
+	bal_archer_fish:     '20,1',
+	// ボス11種（陸）。2×2 の大型は (4,7) 起点＝rows 4-5 / cols 7-8 を占有する。
+	bal_monster:         '21,1',
+	bal_boss:            '22,1',
+	bal_dark_lord:       '23,1',
+	bal_fire_salamander: '24,1',
+	bal_ice_leviathan:   '25,1',
+	bal_sand_scorpion:   '26,1',
+	bal_sea_serpent:     '27,1',
+	bal_forest_giant:    '28,1',
+	bal_storm_eagle:     '29,1',
+	bal_rock_golem:      '30,1',
+	bal_swamp_toad:      '31,1',
+	// 水棲ボス（両生2×2）＝水帯に半身を置く。
+	bal_sea_lord:        '32,1',
+	// ラスボス＝この行の終点（倒すとエンディング）。
+	bal_zarnel:          '33,1',
 };
 
 /**
