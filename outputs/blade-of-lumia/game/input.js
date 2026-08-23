@@ -93,7 +93,7 @@ export function initInput(deps) {
 			return;
 		}
 		if (getIsPaused()) {
-			if (e.key === 'Escape' || e.key === 'Enter') { e.preventDefault(); togglePause(); return; }
+			if (e.key === 'Escape' || e.key === 'Enter') { e.preventDefault(); if (!e.repeat) togglePause(); return; }
 			if (e.key === 'ArrowLeft')  { e.preventDefault(); pauseSelectPrev(); return; }
 			if (e.key === 'ArrowRight') { e.preventDefault(); pauseSelectNext(); return; }
 			return;
@@ -112,11 +112,15 @@ export function initInput(deps) {
 			return;
 		}
 		if (e.key === 'b' || e.key === 'B') { e.preventDefault(); useSubItem(); return; }
-		if (e.key === 'f' || e.key === 'F') { e.preventDefault(); toggleFlight?.(); return; }
+		// ⚠️ トグル系（飛行・ポーズ・デバッグ）は必ず `!e.repeat` で守る。
+		// OS のキーリピートは押しっぱなしで keydown を秒間 30 回前後投げてくる∴
+		// ガードが無いと状態が反転し続ける（2026-08-23 ユーザー報告＝F を押し続けると
+		// 離陸と着陸を繰り返す。副作用として playSound / saveGame も毎リピート走っていた）。
+		if (e.key === 'f' || e.key === 'F') { e.preventDefault(); if (!e.repeat) toggleFlight?.(); return; }
 		// Mac: Commandキー / Windows: Altキー でもサブアイテム使用
 		if (e.key === 'Meta' || e.key === 'Alt') { e.preventDefault(); useSubItem(); return; }
-		if (e.key === 'Escape') { e.preventDefault(); togglePause(); return; }
-		if (e.key === 'g' || e.key === 'G') { e.preventDefault(); toggleDebugMode(); return; }
+		if (e.key === 'Escape') { e.preventDefault(); if (!e.repeat) togglePause(); return; }
+		if (e.key === 'g' || e.key === 'G') { e.preventDefault(); if (!e.repeat) toggleDebugMode(); return; }
 	});
 
 	document.addEventListener('keyup', e => {
