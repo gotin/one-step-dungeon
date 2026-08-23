@@ -340,15 +340,14 @@ test.describe('Blade of Lumia – 9-6 フィールド不変条件（ratchet）',
   // (fixed by moving it to 8,6), and it guards every future warp/MAP_ENTER too.
   //
   // KNOWN out-of-⑥-scope residuals (must NOT regress, tracked as an allow-list):
-  //   field/8,1 mapEnter fieldToTower → field 8,0(3,2)=M  — the sky-island was
-  //     dropped in the M1-M4 re-key; restoring it (+ this landing) is 9-2T bug①
-  //     (PLAN 9-2T「空島復元」). Until then the tower is unreachable anyway.
   //   dungeon_7/1,3 exit destId=field_dungeon7 → unresolved — the field-side
   //     receiver for D7's return exit is not wired (9-2i/9-2T scope; D7 is entered
   //     by flute-warp so this only affects the return trip).
   // Drop a key from KNOWN_BAD_LANDINGS the moment its owning task fixes it.
+  // 2026-08-23（8.5 虚空の祠）: `mapEnter field/8,1@3,2`（fieldToTower → 8,0(3,2)='M'）は
+  //   ここで解消した＝塔の扉のタイルを 'M' から '>' に直した（mapEnter だけあってタイルが
+  //   山＝踏めない＝暗黒の塔に永久に入れない＝クリア不能だった）∴allowlist から外した。
   const KNOWN_BAD_LANDINGS = new Set([
-    'mapEnter field/8,1@3,2',      // fieldToTower → 8,0(3,2)=M (9-2T sky-island)
     'mapEnter dungeon_7/1,3@7,2',  // field_dungeon7 unresolved (9-2i D7 return)
   ]);
 
@@ -413,32 +412,34 @@ test.describe('Blade of Lumia – 9-6 フィールド不変条件（ratchet）',
     ).toEqual([...TWO_AXIS_ALLOWLIST].sort());
   });
 
-  // (c) reached(strict) 302 と gates-open 320 の差 18枚の内訳。測ってみた結論は
-  //     「18枚すべてが正当な閉じ」ではなく **17 + 1**：
+  // (c) reached(strict) 302 と gates-open 320 の差 18枚の内訳＝**17 + 1**：
   //       - 17枚 = 深洋O デルタ（廊下C1〜C4 の潮の戸 '=' の奥）＝ ゲートを開ければ徒歩で
   //         到達する＝鍵/道具で開く正当な閉じ。
-  //       - 1枚  = 8,1（塔/空島の飛行ワープ着地）は **正当な閉じではない**。唯一の飛び元
-  //         field/8,0@3,2 のセルは 'M'（'>' が M1-M4 の再キーで失われた）＝プレイヤーは
-  //         そのセルに立てない∴徒歩でもワープでも入れない。これは 9-2T bug①（下の
-  //         KNOWN_BAD_LANDINGS と同じ1件）で、9-6 の作り込みでは閉じない。
+  //       - 1枚  = 8,1（塔/空島）＝徒歩の辺では入れず、飛び元 field/8,0@3,2 の '>' に乗る
+  //         ワープでだけ入る画面。2026-08-23（8.5）でそのセルを 'M' → '>' に直したので
+  //         **standable:true＝正当な閉じ**になった（mapEnter は翼の羽衣が無いと通れない
+  //         ＝道具の関門）。それ以前は 'M'＝立てない＝徒歩でもワープでも入れない欠陥で、
+  //         9-2T bug① として KNOWN_BAD_LANDINGS に置いてあった。
   //     この 17/1 の切り分けを machine-checkable にしたのが gatedScreenReport()。決め手は
   //     frontier.other == []：strict と gates-open を隔てるセルが 潮の戸/ゲート/鍵の扉/
   //     壊せる壁 か はしごで渡れる1マス幅の水/穴 だけ＝17枚へのどの経路も「開ける行為」を
   //     必ず1回は経由する。壁で塞がれた画面が混ざっていれば other に現れる。
+  //     ⚠️ warpOnly の standable が false に戻ったら「飛び元に立てない＝入れない画面」の
+  //        再発∴ここは true を固定する（欠陥の許容ではなく正当性の証明として読む）。
   const GATED_EXPECTED = {
     // 深洋O デルタ＝廊下C1〜C4 の潮の戸の奥（gates-open の徒歩で到達＝正当な閉じ）
     walk: [
       '11,19', '12,18', '12,19', '13,17', '13,18', '13,19', '14,16', '14,17',
       '14,18', '14,19', '15,13', '15,14', '15,15', '15,16', '15,17', '15,18', '15,19',
     ],
-    // 徒歩で入れずワープ元も壁＝9-2T 側の未修理（standable:false が「実は入れない」印）
+    // 徒歩では入れず、踏める飛び元（塔の扉）からのワープでだけ入る＝道具の関門
     warpOnly: [{
       key: '8,1',
-      sources: [{ from: '8,0', at: '3,2', tile: 'M', standable: false }],
+      sources: [{ from: '8,0', at: '3,2', tile: '>', standable: true }],
     }],
   };
 
-  test('strict 302 と gates-open 320 の差 18枚の内訳＝17枚は鍵/道具の閉じ・1枚は 9-2T', () => {
+  test('strict 302 と gates-open 320 の差 18枚の内訳＝17枚は潮の戸・1枚は塔の扉のワープ', () => {
     const map = loadMap();
     const m = fieldHonestMetrics(map);
     const r = gatedScreenReport(map);

@@ -28,6 +28,9 @@ export const UNLOCKED_AT = {
   // 入れない。進行順（D1→D2→D3→D4→D6→D5…）ではしごは D5 の報酬∴ここでは持っていない前提で
   // 設計してある（はしご・笛を要る形にしない）。ロウソクは D4 の報酬＝所持済み。
   forest_cave: new Set(['boomerang', 'bow', 'candle', 'bomb']),
+  // 虚空の祠（寄道・聖剣 swordTier 3）。入口は field 8,1 東台地の '>'＝**翼の羽衣で飛ばないと
+  // 立てない**∴祭壇（星の欠片を全部捧げる）より後＝全道具所持済み。dark_tower と同格の地点。
+  void_shrine: new Set(['boomerang', 'bow', 'candle', 'ladder', 'bomb', 'flute']),
   // 最終ダンジョン。ここに来る時点で全アイテム所持（PLAN 9-1 の進行順）。
   // ⚠️ このエントリが無いと unlocked が空集合になり「はしご必須の水で出口封鎖」を
   //    誤検出する。そもそも dark_tower は 2026-08-05 まで検査対象から漏れていた。
