@@ -8,7 +8,7 @@ import { ENEMY_META } from '../shared/enemies.js';
 import { ITEM_META } from '../shared/items.js';
 import { makeSprite } from '../shared/sprites.js';
 import { playSound } from '../shared/sounds.js';
-import { MOVE_STEP, BOOMERANG_STUN_MS, SWORD_COOLDOWN_MS } from './constants.js';
+import { MOVE_STEP, BOOMERANG_STUN_MS, ATTACK_POSE_MS } from './constants.js';
 import { SHIELD_TIERS } from '../shared/items.js';
 import { enemyPointHit, enemyCenter } from './hitbox.js';
 
@@ -74,17 +74,20 @@ export function createProjectile(deps) {
 	// 剣を振っている最中・チャージ中は盾オフ＝正面でも食らう。
 	// Phase 5.5g3: 無効になる窓は **見た目と同じ 1 つの窓**＝`player._atkUntil`
 	// （攻撃ポーズ中は盾が右手側へ回っていて正面を守っていない＝render-chars.js
-	//  SHIELD_ATK_GEO）。以前は `SWORD_COOLDOWN_MS`(100ms) で判定していたが、
+	//  SHIELD_ATK_GEO）。以前は `SWORD_COOLDOWN_MS`(当時 100ms) で判定していたが、
 	// ポーズは `ATTACK_POSE_MS`(180ms) 続く∴差の 80ms は「盾が横を向いて見えているのに
 	// 正面から防げる」食い違いになっていた。`_atkUntil` は論理時間∴step() でも一致する。
 	// `getLastSwordTime` によるフォールバックは残す（_atkUntil を持たない古いセーブや、
 	// swordAttack を経ずに lastSwordTime だけ動く経路のため）。
+	// ⚠️ フォールバックの窓も `ATTACK_POSE_MS` で測る（8-4 で SWORD_COOLDOWN_MS が
+	//    300ms＝ポーズより長くなった∴クールダウンで測るとポーズが切れた後の 120ms も
+	//    盾が効かないままになり、上で直した食い違いが逆向きに復活する）。
 	function isShieldActive() {
 		const player = getPlayer();
 		if (!player.shield) return false;
 		if (getIsCharging && getIsCharging()) return false;
 		if (player._atkUntil != null && gameNow() < player._atkUntil) return false;
-		if (getLastSwordTime && (gameNow() - getLastSwordTime() < SWORD_COOLDOWN_MS)) return false;
+		if (getLastSwordTime && (gameNow() - getLastSwordTime() < ATTACK_POSE_MS)) return false;
 		return true;
 	}
 
@@ -322,12 +325,21 @@ export function createProjectile(deps) {
 						proj._hitIds.add(e.id);
 						dealDamageToEnemy(e, proj.atk, proj.type, proj.x, proj.y);
 						// Phase 5.5k: ブーメランの命中は「動きを止める」＝スタン＋ガード解除を
-						// 常に与える（ダメージが正面ブロックされても阻害効果は貫通する）。
+						// ザコには与える（ダメージが正面ブロックされても阻害効果は貫通する）。
 						// ユーザー設計＝ブーメランは削りの道具でなくガードを崩すための道具＝
 						// 「ブーメランで動きを止めてガード不能にしてから攻撃する」の実体。
-						e.stunUntil = gameNow() + BOOMERANG_STUN_MS;
-						e._guarding = false;
-						showStunEffect(e);
+						//
+						// Phase 8-4 (2)（2026-08-23・実プレイ検証の結果）：**ボスは硬直しない**。
+						// ブーメランの往復は木 6マス≒0.7秒／銀 12マス≒0.6秒＜スタン 1500ms
+						// ∴投げ続けるだけでボスを永久に固められ、ブーメラン＋剣の連打だけで
+						// 全ボスに勝ててしまっていた（ユーザー報告）。ダメージは残し硬直だけ外す。
+						// 判定は ENEMY_META から導出＝`stunnable` が明示されていればそれに従い、
+						// 無ければ「ボスでない敵だけ硬直する」（個別の例外を書けるようにしてある）。
+						if (eMeta?.stunnable ?? !eMeta?.isBoss) {
+							e.stunUntil = gameNow() + BOOMERANG_STUN_MS;
+							e._guarding = false;
+							showStunEffect(e);
+						}
 						if (!proj.returning) {
 							proj.returning = true;  // 往路：1体目で折り返す（従来挙動）
 							return;
