@@ -2154,6 +2154,21 @@ export function getEnemiesSnapshot() {
 		dashPhase: e._dashPhase ?? null,
 		dashUntil: e._dashUntil ?? null,      // 溜め/硬直が明ける論理時刻
 		dashLeft:  e._dashLeft  ?? null,      // 残りの突進距離（セル）＝走り切ったかの観測用
+		// Phase 8-4 (4) 層1: ボスのフェーズが差し替える「行動の元データ」の観測用。
+		// boss.js checkBossPhase は**エンティティ側にだけ書く**∴フェーズが効いたかは
+		// ここに出る値で読む（null＝差し替えなし＝ENEMY_META のまま）。
+		speed: e.speed ?? null,               // speedMultiplier の結果（meta.speed × 倍率）
+		phasesTriggered: [...(e.phasesTriggered ?? [])],  // 発火済みの hpThreshold
+		attacks: e._attacks ?? null,          // 差し替えられた攻撃表（phases[].attacks）
+		atkCdMul: e._atkCdMul ?? null,        // 攻撃間隔の倍率（attackCooldownMultiplier）
+		// 攻撃ごとの最終発火時刻。**攻撃間隔が実際に縮んだか**は tick 毎にこれを読んで
+		// 変化した時刻を並べるのが唯一の観測手段（クールダウン待ちの内部状態はここだけ）。
+		attackTimes: { ...(e._attackTimes ?? {}) },
+		modeWeights: e._modeWeights ? { ...e._modeWeights } : null,  // 接近の癖（学習で動く）
+		approachMode: e._approachMode ?? null,  // 今の接近モード（flank|direct|strafe|wander）
+		haPhase: e._haPhase ?? null,            // 'approach' | 'retreat'
+		hitAndAway: e._hitAndAway ?? null,      // フェーズで差し替えた移動 AI（null＝META のまま）
+		combat: e._combat ?? null,
 	}));
 }
 

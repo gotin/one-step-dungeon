@@ -4,6 +4,7 @@
 // ゲームロジックは game.js に集約されており、必要な関数を import して使う。
 
 import { applyBgSpriteToCell } from '../shared/sprites.js';
+import { ENEMY_META } from '../shared/enemies.js';
 import {
 	init,
 	updateBoardScale,
@@ -170,5 +171,12 @@ window.__game = {
 	// Phase 9-5b: リスポーンテスト用
 	getStageMoves: () => getStageMoves(),
 	enterStage: (lk, sk, r, c) => callEnterStage(lk, sk, r ?? 1, c ?? 1),
+	// Phase 8-4 (4) 層1: テスト用 — ENEMY_META[type] にフィールドを差し込む。
+	// `phases[].attacks` / `modeWeights` のように**まだデータに書いていない**フィールドを
+	// 実機で測るための口（層1は機構だけ入れて ENEMY_META の中身を変えない＝機構の検証は
+	// テスト側で一時的に足して行う）。
+	// ⚠️ 差し込む先は共有モジュールの実体∴**そのページ読み込みの間ずっと**効く
+	//    （ステージを移っても戻らない）＝使う本は1つずつ page.goto でページを作り直す。
+	setEnemyMetaForTest: (type, patch) => { Object.assign(ENEMY_META[type], patch); },
 	getDefeatedEnemies: (lk, sk) => getDefeatedEnemiesSnapshot(lk, sk),
 };

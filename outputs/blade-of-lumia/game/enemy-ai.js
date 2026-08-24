@@ -88,6 +88,53 @@ export function createEnemyAi(deps) {
 		return base * factor;
 	}
 
+	// ── Phase 8-4 (4) 層1: 「今この敵が使う表」の解決 ─────────────────
+	// ボスのフェーズ（boss.js checkBossPhase）は**エンティティ側にだけ**書く（`e._attacks`
+	// など）＝ここが読み手の単一の入口になる。∴新しい行動表を足すときも
+	// checkBossPhase と enemy-ai.js の読み出しが二重管理にならない。
+	// ⚠️ ボス専用の機構ではない＝`e._attacks` を立てればザコにも同じように効く
+	//   （将来「怒ったザコ」を作るときに機構を作り直さない）。
+	//
+	// resolveAttackList … 攻撃表。優先順は
+	//   ① e._attacks（フェーズで差し替えられた表）
+	//   ② meta.attacks（複数攻撃）
+	//   ③ meta.attack（単体攻撃の後方互換）
+	// さらに e._atkCdMul（phases[].attackCooldownMultiplier）があればクールダウンを掛ける。
+	// ⚠️ **cooldown を明示していない攻撃は掛けない**＝攻撃種別ごとの既定値
+	//   （charge は SLAM_COOLDOWN_MS・他は 3000）を 3000 に固定してしまわないため。
+	//   倍率は常に「表の値」から計算する＝フェーズを跨いでも複利で縮まない。
+	function resolveAttackList(e, meta) {
+		const base = e?._attacks ?? meta?.attacks ?? (meta?.attack ? [meta.attack] : []);
+		const mul = e?._atkCdMul;
+		if (!mul || mul === 1) return base;
+		return base.map(a => (a && a.cooldown != null)
+			? { ...a, cooldown: Math.max(1, Math.round(a.cooldown * mul)) }
+			: a);
+	}
+
+	// resolveModeWeights … ヒット＆アウェイのアプローチ選択の重み。
+	// `e._modeWeights` は**学習で書き換わる生きた状態**（成功で上げ・盾で防がれたら下げ）
+	// ∴既定値の計算はここに集約し、bossTickHitAndAway の初期化もこれを写して始める。
+	// ⚠️ 既定値は `{flank:1, direct:1, wander:1}`（strafe なし）＝**従来の初期化と同じ**。
+	//   旧 pickApproachMode には「石投げを持つ敵は strafe 1.2」という別の既定表もあったが、
+	//   `bossTickHitAndAway` の初期化が pickApproachMode より必ず先に `_modeWeights` を
+	//   立てる∴**一度も読まれない死んだ分岐**だった（2026-08-23 に確認）。ここへ集約する
+	//   ときに落とした＝挙動は変わらない（strafe を既定にしたい敵は
+	//   `initialModeWeights` に書く＝13 ボスのうち 10 体は既に書いてある）。
+	function resolveModeWeights(e, meta) {
+		return e?._modeWeights ?? meta?.initialModeWeights ?? { flank: 1.0, direct: 1.0, wander: 1.0 };
+	}
+
+	// resolveHitAndAway / resolveCombat … 移動 AI の選択そのものをフェーズで差し替える口。
+	// ⚠️ `??` ではなく `!== undefined` で見る＝フェーズが `false`/`null` を書いて
+	//   **機構を切る**（ヒット＆アウェイをやめて素の追跡になる等）ことができる。
+	function resolveHitAndAway(e, meta) {
+		return e?._hitAndAway !== undefined ? e._hitAndAway : meta?.hitAndAway;
+	}
+	function resolveCombat(e, meta) {
+		return e?._combat !== undefined ? e._combat : meta?.combat;
+	}
+
 	// ── Phase 5.5k: 攻撃硬直（2026-08-12 ユーザー指摘「攻撃動作中は動かないようにすべき」）──
 	// プレイヤーは剣を振っている間（_atkUntil の窓）足が止まる（player.js movePlayer）。
 	// 敵側に同じ規則が無かった＝振りながら詰めてくる非対称だった ∴ 攻撃が成立した瞬間に
@@ -155,7 +202,7 @@ export function createEnemyAi(deps) {
 	function tickSlam(e, meta, now) {
 		if (e._slamAt == null) return false;
 		if (now < e._slamAt) return true;                 // まだ予告中
-		const list = meta.attacks ?? (meta.attack ? [meta.attack] : []);
+		const list = resolveAttackList(e, meta);
 		const i    = e._slamIdx ?? 0;
 		const atk  = list[i] ?? {};
 		e._slamAt = null; e._slamIdx = null;
@@ -206,7 +253,7 @@ export function createEnemyAi(deps) {
 	}
 
 	function tickCombatMode(e, meta, now) {
-		const cfg = meta?.combat;
+		const cfg = resolveCombat(e, meta);
 		if (!cfg) return null;
 		const rangedMs = cfg.rangedMs ?? 3000;
 		const meleeMs  = cfg.meleeMs  ?? 1800;
@@ -377,11 +424,7 @@ export function createEnemyAi(deps) {
 	// ── ヒット＆アウェイ AI（アプローチモード選択） ────────────
 	function pickApproachMode(e) {
 		const meta = e.type ? ENEMY_META[e.type] : null;
-		const hasStone = meta?.attacks?.some(a => a.type === 'stone');
-		const defaultWeights = meta?.initialModeWeights ?? (hasStone
-			? { flank: 0.8, direct: 0.6, wander: 1.0, strafe: 1.2 }
-			: { flank: 1.0, direct: 1.0, wander: 1.0, strafe: 0 });
-		const w = e._modeWeights ?? defaultWeights;
+		const w = resolveModeWeights(e, meta);
 		const total = (w.flank ?? 0) + (w.direct ?? 0) + (w.wander ?? 0) + (w.strafe ?? 0);
 		let r = Math.random() * total;
 		if ((r -= (w.flank  ?? 0)) <= 0) return 'flank';
@@ -399,12 +442,9 @@ export function createEnemyAi(deps) {
 		if (!e._haPhase) {
 			e._haPhase = 'approach';
 			e._haTimer = now + 2500 + Math.random() * 1500;
-			if (!e._modeWeights) {
-				const meta2 = e.type ? ENEMY_META[e.type] : null;
-				e._modeWeights = meta2?.initialModeWeights
-					? { ...meta2.initialModeWeights }
-					: { flank: 1.0, direct: 1.0, wander: 1.0 };
-			}
+			// 生きた重み（学習で書き換わる）を、既定値を写して立てる。
+			// ⚠️ フェーズが `_modeWeights` を差し替えた後にここへ来ても上書きしない。
+			if (!e._modeWeights) e._modeWeights = { ...resolveModeWeights(e, meta) };
 			e._approachMode = pickApproachMode(e);
 			if (e._approachMode === 'wander') {
 				e._wanderX = 1 + Math.random() * ((stageData?.cols ?? 12) - 2);
@@ -639,6 +679,10 @@ export function createEnemyAi(deps) {
 			if (now >= e._haTimer) {
 				{
 					if (!e._modeWeights) e._modeWeights = { flank: 1.0, direct: 1.0, wander: 1.0 };
+					// ⚠️ ここだけは**後方互換の単体 attack の range**を見る（フェーズで差し替わる
+					// `attacks` ではない）＝「接近が成功したか」の物差しを 8-4 (4) で変えると
+					// 既存13ボスの学習の効き方が変わる（例：ザーネルは attack.range 7 ＝
+					// ほぼ常に成功扱い）∴層1の配線では触らない。物差しの見直しは別タスク。
 					const atk = ENEMY_META[e.type]?.attack;
 					const range = atk?.range ?? 1.5;
 					const distNow = Math.sqrt(dx*dx + dy*dy);
@@ -771,7 +815,7 @@ export function createEnemyAi(deps) {
 
 	// ── 敵の攻撃処理 ──────────────────────────────────────────
 	function enemyAttack(e, meta) {
-		const attackList = meta.attacks ?? (meta.attack ? [meta.attack] : []);
+		const attackList = resolveAttackList(e, meta);
 		if (attackList.length === 0) return;
 
 		const player  = getPlayer();
@@ -922,7 +966,7 @@ export function createEnemyAi(deps) {
 							playSound('shieldBlock');
 							showShieldBlockEffect(e.x, e.y);
 							// 盾ブロック → 現在の approach モードの重みを下げる（学習）
-							if (meta.hitAndAway && e._modeWeights && e._approachMode) {
+							if (resolveHitAndAway(e, meta) && e._modeWeights && e._approachMode) {
 								const m = e._approachMode;
 								if (m === 'direct' || m === 'flank') {
 									e._modeWeights[m] = Math.max(0.1, e._modeWeights[m] * 0.6);
@@ -941,7 +985,7 @@ export function createEnemyAi(deps) {
 						// 攻撃硬直（_freezeUntil）を markAttack で一括して立てる
 						// （プレイヤーの player._atkUntil と同型・DECISIONS 2026-08-10 / 2026-08-12）。
 						markAttack(e, meta, i, now);
-						if (meta.hitAndAway && e._haPhase === 'approach') {
+						if (resolveHitAndAway(e, meta) && e._haPhase === 'approach') {
 							e._haPhase = 'retreat';
 							e._haTimer = now + 600 + Math.random() * 400;
 							break;
@@ -1710,7 +1754,7 @@ export function createEnemyAi(deps) {
 		// 立ち止まって構えない）。directional な敵でもここで降りる＝${base}${Dir}Guard の
 		// スプライトを用意しなくてよくなる（resolveEnemySprite は _guarding を見る）。
 		if (meta.guards === false) { e._guarding = false; e._guardDir = null; return false; }
-		const attackList = meta.attacks ?? (meta.attack ? [meta.attack] : []);
+		const attackList = resolveAttackList(e, meta);
 		const idx = attackList.findIndex(a => a?.type === 'sword');
 		if (idx === -1) { e._guarding = false; e._guardDir = null; return false; }
 		const sword = attackList[idx];
@@ -1809,10 +1853,10 @@ export function createEnemyAi(deps) {
 			// 決める（移動側は向きを触らない＝dirLocked を渡す）。
 			const dirLocked = tickFaceLock(e, meta, now);
 			if (!isGuarding && !frozen && !leaping && !shelled && !leeching && !slamming && !blinking && !dashing) {
-				if (meta.hitAndAway) {
+				if (resolveHitAndAway(e, meta)) {
 					bossTickHitAndAway(e, meta);
 				} else if (cmode === 'ranged') {
-					enemyKeepDistance(e, meta, resolveEnemySpeed(e, meta), meta.combat);
+					enemyKeepDistance(e, meta, resolveEnemySpeed(e, meta), resolveCombat(e, meta));
 				} else if (meta.zigzag) {
 					enemyZigzagFly(e, meta, resolveEnemySpeed(e, meta), meta.zigzag);
 				} else {
@@ -1845,6 +1889,11 @@ export function createEnemyAi(deps) {
 		enemyTick,
 		enemyChase,
 		resolveEnemySpeed,     // Phase 9-6: 地形別速度（両生敵）のテスト用
+		// Phase 8-4 (4) 層1: フェーズで差し替わる表の解決（テスト用・boss.js は書くだけ）
+		resolveAttackList,
+		resolveModeWeights,
+		resolveHitAndAway,
+		resolveCombat,
 		resolveEnemySprite,    // Phase 5.5k: 向き別スプライト名解決のテスト用
 		resolveAttackFreezeMs, // Phase 5.5k: 攻撃硬直の長さ（テスト用）
 		tickCombatMode,        // Phase 5.5k: 遠隔／近接の二相（テスト用）

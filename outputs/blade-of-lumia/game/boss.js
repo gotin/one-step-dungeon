@@ -103,6 +103,27 @@ export function createBoss(deps) {
 	}
 
 	// ── ボス多段フェーズ ───────────────────────────────────
+	// HP が閾値を下回った瞬間に「ボスの行動の元データ」を差し替える（combat.js の
+	// dealDamageToEnemy が毎ダメージで呼ぶ）。
+	//
+	// ★ Phase 8-4 (4) 層1（2026-08-23）＝**ここは書くだけ・読む場所は enemy-ai.js の
+	//   resolve*() 1か所**。フェーズは `boss`（エンティティ）側のフィールドに書き、AI は
+	//   毎 tick そこを見る＝「フェーズごとに AI の分岐を足す」形にしない。
+	//   書けるもの（すべて任意・書かなければ従来どおり）：
+	//     speedMultiplier          … 移動速度（meta.speed に対する倍率）
+	//     attackCooldownMultiplier … 攻撃間隔（表の cooldown に対する倍率）
+	//     attacks                  … 攻撃表そのものの差し替え（技を入れ替える）
+	//     modeWeights              … ヒット＆アウェイの接近の癖
+	//     hitAndAway / combat      … 移動 AI の型そのもの（false で機構を切れる）
+	//   倍率はどれも**META の値から計算する**＝フェーズを跨いでも複利で増減しない
+	//   （0.66 で 1.3 倍・0.33 で 1.6 倍 ＝ 2.08 倍ではなく 1.6 倍）。
+	//
+	// 🔴 旧実装のバグ（2026-08-23 に判明・8-4 (4) の動機の1つ）＝
+	//   `attackCooldownMultiplier` は `boss.attack.cooldown` を書き換えていたが、
+	//   ① `buildEnemies()` はエンティティに `attack` を持たせない∴条件が常に偽
+	//   ② そもそも AI は `meta.attacks` を読む∴書けても読まれない
+	//   の**二重に死んでいた**（13ボスのうち10体がこの倍率を持つ＝10体分の「後半で
+	//   攻撃が激しくなる」が1度も起きていなかった）。
 	function checkBossPhase(boss) {
 		const meta = ENEMY_META[boss.type];
 		if (!meta?.phases) return;
@@ -111,10 +132,7 @@ export function createBoss(deps) {
 			if (ratio <= phase.hpThreshold && !boss.phasesTriggered?.includes(phase.hpThreshold)) {
 				if (!boss.phasesTriggered) boss.phasesTriggered = [];
 				boss.phasesTriggered.push(phase.hpThreshold);
-				if (phase.speedMultiplier) boss.speed = (meta.speed) * phase.speedMultiplier;
-				if (phase.attackCooldownMultiplier && boss.attack?.cooldown) {
-					boss.attack = { ...boss.attack, cooldown: Math.round(boss.attack.cooldown * phase.attackCooldownMultiplier) };
-				}
+				applyBossPhase(boss, meta, phase);
 				const bossEl = document.getElementById(`char-enemy-${boss.id}`);
 				if (bossEl) {
 					let cnt = 0;
@@ -125,6 +143,28 @@ export function createBoss(deps) {
 				}
 				pulse(`${meta.name} が 怒り狂った！`, 2500);
 			}
+		}
+	}
+
+	// フェーズ1つ分をエンティティへ適用する（enemy-ai.js の resolve*() が読む側）。
+	function applyBossPhase(boss, meta, phase) {
+		if (phase.speedMultiplier) boss.speed = meta.speed * phase.speedMultiplier;
+		if (phase.attackCooldownMultiplier) boss._atkCdMul = phase.attackCooldownMultiplier;
+		if (phase.attacks) {
+			boss._attacks = phase.attacks;
+			// 立っている体当たりの予告は捨てる＝表を差し替えた後に**旧 index が新しい表の
+			// 別の技として解決する**のを防ぐ（予告→解決の間に相が変わり得る）。
+			if (boss._slamAt != null) { boss._slamAt = null; boss._slamIdx = null; }
+			// ⚠️ `_attackTimes` は消さない＝差し替えた瞬間に全技が一斉発火しない
+			//   （クールダウンの起点が 0 に戻ると「相が変わった瞬間に全弾」になる）。
+		}
+		if (phase.modeWeights) boss._modeWeights = { ...phase.modeWeights };
+		if (phase.hitAndAway !== undefined) boss._hitAndAway = phase.hitAndAway;
+		if (phase.combat !== undefined) {
+			boss._combat = phase.combat;
+			// 遠隔/近接の二相は作り直す（新しい周期で数え直す）。位相は id から決まる∴
+			// 作り直しても乱数は入らない（enemy-ai.js phaseOffsetMs）。
+			boss._cmode = null; boss._cmodeUntil = null;
 		}
 	}
 
