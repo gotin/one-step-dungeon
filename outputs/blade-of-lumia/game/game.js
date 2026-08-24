@@ -1937,6 +1937,7 @@ async function init() {
 		const psTriforce = params.get('ps_triforce');
 		const psHearts   = params.get('ps_hearts');   // 2026-08-24: ハートの器の数（耐久の実測用）
 		const psWeapon   = params.get('ps_weapon');
+		const psSword    = params.get('ps_sword');    // 2026-08-24: 剣ティア（0..3・ATK/ビーム/貫通の実測用）
 		const psShield   = params.get('ps_shield');
 		const psArmor    = params.get('ps_armor');
 		const psBow      = params.get('ps_bow');
@@ -1964,6 +1965,13 @@ async function init() {
 			player.hp        = player.maxHp;
 		}
 		if (psWeapon   === '1') { player.weapon = 'sword'; if (!player._equip) player._equip = {}; player._equip.swordName = '剣'; }
+		// 剣ティア（Phase 8-4・2026-08-24）＝`ps_shield`/`ps_armor` と同型に `equipSwordTier()` を通す。
+		// **`ps_weapon` だけでは `swordTier` が -1 のまま**＝ためビーム（ティア1以上）も貫通（ティア2以上）も
+		// 出ない∴「その地点の装備で戦う」検証には剣ティアが要る（ボスの強さの判定に効く）。
+		// ⚠️ `equipSwordTier()` は atk を `BASE_ATK + ティアの atk` で**再計算する**∴上の `ps_atk` を上書きする。
+		//    これは意図＝装備を指定したなら ATK は装備から導出されるのが正しい（ATK を直接いじりたい場合は
+		//    `ps_sword` を渡さない＝エディタの「指定なし」）。
+		if (psSword    !== null) equipSwordTier(parseInt(psSword, 10));
 		// Phase 7-2: ps_shield/ps_armor はティア番号でも指定可（編集チェックボックスの '1' は下位ティア=0 として扱う）。
 		if (psShield   !== null) equipShieldTier(psShield === '1' ? 0 : (parseInt(psShield, 10) || 0));
 		if (psArmor    !== null) equipArmorTier(psArmor  === '1' ? 0 : (parseInt(psArmor,  10) || 0));

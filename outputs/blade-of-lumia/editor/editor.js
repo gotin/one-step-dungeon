@@ -140,6 +140,8 @@ document.addEventListener('editor:previewClickAt', e => {
 			triforce:  parseInt(document.getElementById('ps-triforce').value, 10) || 0,
 			// 2026-08-24: ハートの器の数。editor-io.js の getPreviewSettings にも同じ行がある。
 			hearts:    parseInt(document.getElementById('ps-hearts').value, 10) || 3,
+			// 2026-08-24: 剣ティア（-1＝指定なし）。editor-io.js の getPreviewSettings にも同じ行がある。
+			sword:     parseInt(document.getElementById('ps-sword').value, 10),
 			weapon:    document.getElementById('ps-weapon').checked,
 			shield:    document.getElementById('ps-shield').checked,
 			armor:     document.getElementById('ps-armor').checked,

@@ -6,9 +6,23 @@
 //   ③: 銅の剣（tier=1, pierce:false）は満タンチャージでも貫通しない
 //   ④: 聖剣（tier=3, pierce:true）は満タンチャージで貫通する
 //   ⑤: HUD 上の剣名・ATK 値がティアどおりに更新される
+//   ⑥: プレビュー設定 `ps_sword` で剣ティアごと再現できる（2026-08-24）
+//   ⑦: `ps_sword` は editor.js / editor-io.js / index.html の**3箇所**に揃っている
+//
+// ⑥⑦の背景（2026-08-24）＝ボスの数値を調整するには「その地点の想定装備」で戦って測る必要がある
+// （ユーザーの言葉＝「そのためには、その時点のプレーヤーのハート数とか、もってる武器とかも
+// きっちり合わせてテストする必要がありそう」）。**`ps_weapon=1` だけでは `swordTier` が -1 のまま**
+// ＝ためビーム（ティア1以上）も貫通（ティア2以上）も出ない∴火力の大半が再現できていなかった。
+// ⚠️ `ps_sword` を渡すと ATK は `BASE_ATK + ティアの atk` で導出される＝`ps_atk` を上書きする（意図）。
 
 import { test, expect } from '@playwright/test';
-import { GAME_URL, SAVE_KEY } from './helpers.js';
+import { readFileSync } from 'fs';
+import { fileURLToPath } from 'url';
+import { GAME_URL, SAVE_KEY, waitForBoard } from './helpers.js';
+
+const BASE_ATK    = 2;                 // shared/items.js（テストからは import せず結果を独立に書く）
+const TIER_ATK    = [2, 4, 7, 12];     // SWORD_TIERS[].atk
+const TIER_NAME   = ['木の剣', '銅の剣', '銀の剣', '聖剣'];
 
 // 剣あり状態でセーブをロードし、ゲームボードが描画されるまで待つ
 async function seedWithSword(page, swordTier) {
@@ -161,6 +175,41 @@ test.describe('Blade of Lumia – 剣ティアシステム', () => {
     expect(player.swordTier).toBe(2);
     expect(player._equip.swordName).toBe('銀の剣');
     expect(player._equip.swordBonus).toBe(7);
+  });
+
+  // ── プレビュー設定の剣ティア（2026-08-24）─────────────────────
+  test('⑥: ps_sword で剣ティア・ATK・ビーム/貫通の可否が再現される', async ({ page }) => {
+    for (const tier of [0, 1, 2, 3]) {
+      const p = new URLSearchParams({
+        fromEditor: '1', layer: 'test_mechanics', stage: '32,0',
+        row: '4', col: '2',
+        ps_atk: '2',              // ← 剣ティアが ATK を導出で上書きすること自体も見る
+        ps_sword: String(tier),
+      });
+      await page.goto(`${GAME_URL}?${p.toString()}`);
+      await waitForBoard(page);
+      const pl = await page.evaluate(() => window.__game.getPlayer());
+      expect(pl.swordTier, `ps_sword=${tier} が読まれていない`).toBe(tier);
+      expect(pl.weapon).toBe('sword');
+      expect(pl.atk, `ATK が ps_atk=2 のままになっている（装備から導出されていない）`)
+        .toBe(BASE_ATK + TIER_ATK[tier]);
+      expect(pl._equip.swordName).toBe(TIER_NAME[tier]);
+    }
+  });
+
+  test('⑦: プレビュー設定の sword は editor.js / editor-io.js / index.html の3箇所に揃っている', () => {
+    const read = (rel) => readFileSync(fileURLToPath(new URL(rel, import.meta.url)), 'utf8');
+    const editorJs = read('../editor/editor.js');
+    const editorIo = read('../editor/editor-io.js');
+    const html     = read('../editor/index.html');
+
+    expect(html, 'index.html に ps-sword の選択欄が無い').toContain('id="ps-sword"');
+    // 読み取りは2経路（クリック位置プレビュー／ステージ全体プレビュー）＝両方に要る
+    expect(editorJs, 'editor.js の ps 定義に sword が無い（クリック位置からのプレビューで効かない）')
+      .toContain("getElementById('ps-sword')");
+    expect(editorIo, 'editor-io.js の getPreviewSettings に sword が無い')
+      .toContain("getElementById('ps-sword')");
+    expect(editorIo, 'openPreview の URL に ps_sword が無い').toContain('ps_sword=');
   });
 
 });

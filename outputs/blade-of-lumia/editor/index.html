@@ -509,6 +509,16 @@
         <label>ATK<input id="ps-atk"  type="number" value="10" min="1" max="99" style="width:54px"></label>
         <label>DEF<input id="ps-def"  type="number" value="10" min="0" max="99" style="width:54px"></label>
         <label>❤ハート<input id="ps-hearts" type="number" value="3" min="1" max="30" style="width:54px"></label>
+        <!-- 2026-08-24: 剣ティア。選ぶと ATK は BASE_ATK + ティアの atk で導出され、
+             ためビーム（ティア1以上）・貫通（ティア2以上）まで再現される
+             ＝上の ATK 欄の値は無視される（「指定なし」なら従来どおり ATK 欄が効く）。 -->
+        <label>⚔ティア<select id="ps-sword" style="width:104px">
+          <option value="-1">指定なし</option>
+          <option value="0">0 木の剣</option>
+          <option value="1">1 銅の剣</option>
+          <option value="2">2 銀の剣</option>
+          <option value="3">3 聖剣</option>
+        </select></label>
         <label>💰ルピー<input id="ps-rupees" type="number" value="10" min="0" max="9999" style="width:70px"></label>
         <label>◭カケラ<input id="ps-triforce" type="number" value="0" min="0" max="99" style="width:54px"></label>
         <label class="ps-check"><input id="ps-weapon" type="checkbox" checked> ⚔ 剣</label>
