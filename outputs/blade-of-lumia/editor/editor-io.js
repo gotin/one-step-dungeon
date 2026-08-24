@@ -126,6 +126,8 @@ function getPreviewSettings() {
 		def:       parseInt(document.getElementById('ps-def').value, 10) || 0,
 		rupees:    parseInt(document.getElementById('ps-rupees').value, 10) || 0,
 		triforce:  parseInt(document.getElementById('ps-triforce').value, 10) || 0,
+		// 2026-08-24: ハートの器の数。editor.js の ps 定義にも同じ行がある（両方に足す）。
+		hearts:    parseInt(document.getElementById('ps-hearts').value, 10) || 3,
 		weapon:    document.getElementById('ps-weapon').checked,
 		shield:    document.getElementById('ps-shield').checked,
 		armor:     document.getElementById('ps-armor').checked,
@@ -151,6 +153,7 @@ export function openPreview(stX, stY, row, col, ps, TILE) {
 	let url = `../game/index.html?layer=${encodeURIComponent(state.currentLayer)}&stage=${stX},${stY}&row=${row}&col=${col}&fromEditor=1&t=${Date.now()}`;
 	if (ps) {
 		url += `&ps_atk=${ps.atk}&ps_def=${ps.def}&ps_rupees=${ps.rupees}&ps_triforce=${ps.triforce}`;
+		url += `&ps_hearts=${ps.hearts ?? 3}`;
 		url += `&ps_weapon=${ps.weapon?1:0}&ps_shield=${ps.shield?1:0}&ps_armor=${ps.armor?1:0}`;
 		url += `&ps_bow=${ps.bow?1:0}&ps_boomerang=${ps.boomerang?1:0}&ps_bomb=${ps.bomb?1:0}&ps_cleared=${ps.cleared?1:0}`;
 		url += `&ps_ladder=${ps.ladder?1:0}&ps_wingrobe=${ps.wingrobe?1:0}&ps_flute=${ps.flute?1:0}`;

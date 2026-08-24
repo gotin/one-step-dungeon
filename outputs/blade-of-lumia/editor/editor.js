@@ -138,6 +138,8 @@ document.addEventListener('editor:previewClickAt', e => {
 			def:       parseInt(document.getElementById('ps-def').value, 10) || 0,
 			rupees:    parseInt(document.getElementById('ps-rupees').value, 10) || 0,
 			triforce:  parseInt(document.getElementById('ps-triforce').value, 10) || 0,
+			// 2026-08-24: ハートの器の数。editor-io.js の getPreviewSettings にも同じ行がある。
+			hearts:    parseInt(document.getElementById('ps-hearts').value, 10) || 3,
 			weapon:    document.getElementById('ps-weapon').checked,
 			shield:    document.getElementById('ps-shield').checked,
 			armor:     document.getElementById('ps-armor').checked,

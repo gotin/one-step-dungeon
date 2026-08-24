@@ -1935,6 +1935,7 @@ async function init() {
 		const psDef      = params.get('ps_def');
 		const psRupees   = params.get('ps_rupees');
 		const psTriforce = params.get('ps_triforce');
+		const psHearts   = params.get('ps_hearts');   // 2026-08-24: ハートの器の数（耐久の実測用）
 		const psWeapon   = params.get('ps_weapon');
 		const psShield   = params.get('ps_shield');
 		const psArmor    = params.get('ps_armor');
@@ -1952,6 +1953,16 @@ async function init() {
 		if (psDef      !== null) player.def    = parseInt(psDef,  10) || 0;
 		if (psRupees   !== null) player.rupees = parseInt(psRupees, 10) || 0;
 		if (psTriforce !== null) player.triforceCount = parseInt(psTriforce, 10) || 0;
+		// ハートの器の数。**3つの値は HP_PER_HEART で結ばれている**（`maxHearts` は HUD が
+		// 描くハートの数・`maxHp` が実際の耐久）∴片方だけ書くと HUD と実 HP がずれる
+		// （gainHeartContainer と同じ3点セットを守る）。hp は満タンから始める。
+		// ボスの強さを判定するときは「ハート3個で無理／10個なら勝てる」を分けて測れる必要がある。
+		if (psHearts !== null) {
+			const hearts = Math.max(1, parseInt(psHearts, 10) || 3);
+			player.maxHearts = hearts;
+			player.maxHp     = hearts * HP_PER_HEART;
+			player.hp        = player.maxHp;
+		}
 		if (psWeapon   === '1') { player.weapon = 'sword'; if (!player._equip) player._equip = {}; player._equip.swordName = '剣'; }
 		// Phase 7-2: ps_shield/ps_armor はティア番号でも指定可（編集チェックボックスの '1' は下位ティア=0 として扱う）。
 		if (psShield   !== null) equipShieldTier(psShield === '1' ? 0 : (parseInt(psShield, 10) || 0));
@@ -1974,6 +1985,7 @@ async function init() {
 
 		console.log('[Game] player after ps apply:', JSON.stringify({
 			atk: player.atk, def: player.def, rupees: player.rupees,
+			hp: player.hp, maxHp: player.maxHp, maxHearts: player.maxHearts,
 			weapon: player.weapon, shield: player.shield, armor: player.armor,
 			subItems: player.subItems, activeSubItem: player.activeSubItem,
 			triforceCount: player.triforceCount,
