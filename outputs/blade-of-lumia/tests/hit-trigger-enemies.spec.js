@@ -29,9 +29,13 @@
 // tick 換算（TICK_MS=120・step() が論理時間を 120ms 進める・tick i の now = 120×i）：
 //   剣    … SWORD_COOLDOWN_MS 100 ∴ tick1 以降なら振れる（gameTime 0 では振れない）
 //   吸血  … tick1 で張り付き _leechNext=120+600=720 → tick6 で1回目 → 以後 5 tick ごと（11・16…）
-//   剥がし… tick3 で殴ると _leechCooldownUntil=360+1200=1560 → tick13 で再び張り付く
-//   体当たり… 予告 SLAM_WINDUP_MS 280（3 tick 後に解決＝当たる）／クールダウン
+//   剥がし… tick3 で殴ると _leechCooldownUntil=360+1200=1560 → tick13 で猶予明け
+//             （0d-2.7 以降、実際に張り付き直すのは攻撃硬直が明ける tick15＝⑬の注記）
+//   体当たり… 予告 SLAM_WINDUP_MS（0d-2.7 で 280 → MELEE_WINDUP_MS 480＝4 tick 後に解決）
+//             ／攻撃硬直 MELEE_FREEZE_MS 360（3 tick）／クールダウン
 //             SLAM_COOLDOWN_MS 900（8 tick）／到達 SLAM_RANGE 1.5
+//             ⚠️ tick 数は定数から導出する（`Math.ceil(SLAM_WINDUP_MS / TICK_MS)`）＝
+//             280→480 のような調整で期待値を手で直さない
 //
 // ⚠ **k-7.5（2026-08-17）で接触ダメージは廃止された**（ユーザー決定②「接触だけでは攻撃を
 //   受けることはないようにする」）∴「敵に重ねて1 tick 進める」では HP は減らない。
@@ -76,7 +80,7 @@ import { fileURLToPath } from 'url';
 import { TILE, TILE_META } from '../shared/tiles.js';
 import { ENEMY_META, ENEMY_SPEED_FAST } from '../shared/enemies.js';
 import { ENEMY_SPRITES, ENEMY_PAL } from '../shared/sprites-enemies.js';
-import { SLAM_WINDUP_MS } from '../game/constants.js';
+import { SLAM_WINDUP_MS, MELEE_FREEZE_MS } from '../game/constants.js';
 import { TILE_SPRITE_MAP } from '../shared/tile-sprites.js';
 import { waitForBoard } from './helpers.js';
 import { TEST_LAYER, stageKey } from './test-stage-keys.js';
@@ -659,7 +663,7 @@ test.describe('Phase 5.5k k-5 – 被弾トリガー（分裂スライム・ル�
       g.swordAttack();                            // ★ 実経路で殴る（距離0の敵にも剣は届く）
       const hit = g.getEnemies()[0];
       const rows = [];
-      for (let i = 4; i <= 15; i++) {
+      for (let i = 4; i <= 30; i++) {
         g.step(1);
         const e = g.getEnemies()[0];
         rows.push({ tick: i, attached: e.attached, cooldownUntil: e.leechCooldownUntil });
@@ -680,8 +684,17 @@ test.describe('Phase 5.5k k-5 – 被弾トリガー（分裂スライム・ル�
     for (const r of res.rows.filter(r => r.tick < reattach)) {
       expect(r.attached, `tick${r.tick}：猶予中なのに張り付き直した（殴る手が無意味になる）`).toBe(false);
     }
-    expect(res.rows.find(r => r.tick === reattach)?.attached,
-      `tick${reattach}（猶予明け）で張り付き直さない＝一度殴れば永久に無害になる`).toBe(true);
+    // ❌ 失効（2026-08-25・0d-2.7）：以前は「猶予明けの tick13 に**ぴったり**張り付き直す」。
+    //    近接（体当たり）の攻撃硬直（MELEE_FREEZE_MS）が全敵の既定になった今、剥がれた直後に
+    //    出す体当たりの解決（tick12）から 3 tick は硬直で何もしない＝張り付き直しもその間は
+    //    起きない（実測 tick15）。∴「猶予明け以降・硬直ぶんの遅れの内に張り付き直す」を固定する。
+    //    ＝猶予（cooldownMs）の歯は上のループが持ち、ここは「永久に無害にならない」ことの番人。
+    const again = res.rows.filter(r => r.attached).map(r => r.tick);
+    const freezeTicks = Math.ceil(MELEE_FREEZE_MS / TICK_MS);
+    expect(again[0], `猶予明け（tick${reattach} 以降）で張り付き直さない＝一度殴れば永久に無害になる`)
+      .toBeGreaterThanOrEqual(reattach);
+    expect(again[0], `猶予明け＋硬直（tick${reattach + freezeTicks}）までに張り付き直さない＝猶予が伸びている`)
+      .toBeLessThanOrEqual(reattach + freezeTicks);
     expect(errors).toEqual([]);
   });
 

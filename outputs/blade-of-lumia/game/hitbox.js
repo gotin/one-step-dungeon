@@ -26,9 +26,42 @@ export function enemyPointHit(e, px, py, margin) {
 
 /**
  * 敵 e の幾何中心 (x, y)。1×1 のとき (e.x+0.5, e.y+0.5)。
+ * ＝**タイルの角**を原点に見た中心（px 変換・エフェクトの置き場所に使う）。
  */
 export function enemyCenter(e) {
 	return { cx: e.x + enemyW(e) / 2, cy: e.y + enemyH(e) / 2 };
+}
+
+// ── Phase 8-4 (4) 0d-2.5: 大型敵の「間合い」を測るための中心と半サイズ ────────────
+// 敵の座標 `e.x/e.y` は占有範囲の **左上**。∴`player.x - e.x` は距離ではなく
+// 「プレイヤーと左上角の差」＝2×2 では西/北から測ると体の幅ぶん（1セル）遠く出る。
+// 機構の発動条件をこれで書くと「向きによって間合いが 1 セル変わる」（0d-2 で実測した罠）。
+// ∴間合いを測る側は必ず下の3つを通す。1×1 では halfW=halfH=0 ＝従来の値と一致する。
+
+/**
+ * セル添字基準の body 中心。`player.x/y`（セル添字の float）と**直接**比較できる中心。
+ * ⚠️ enemyCenter（上）とは 0.5 セルずれる。あちらは「タイルの角」原点＝描画用、
+ *    こちらは「セル添字」原点＝プレイヤー座標との比較用。用途の違う2つの中心を混ぜない。
+ */
+export function enemyCellCenter(e) {
+	return { cx: e.x + (enemyW(e) - 1) / 2, cy: e.y + (enemyH(e) - 1) / 2 };
+}
+
+/** セル添字基準の body 半サイズ（1×1 で {0,0}）。判定の箱をこの分だけ広げる。 */
+export function enemyHalf(e) {
+	return { halfW: (enemyW(e) - 1) / 2, halfH: (enemyH(e) - 1) / 2 };
+}
+
+/**
+ * 点 (px, py) から body の**端**までの距離（body の内側なら 0）。
+ * ＝「間合い」の単一の定義。1×1 では中心からの距離と一致する∴既存の敵に差が出ない。
+ */
+export function enemyEdgeDist(e, px, py) {
+	const { cx, cy } = enemyCellCenter(e);
+	const { halfW, halfH } = enemyHalf(e);
+	const gx = Math.max(0, Math.abs(px - cx) - halfW);
+	const gy = Math.max(0, Math.abs(py - cy) - halfH);
+	return Math.hypot(gx, gy);
 }
 
 /**

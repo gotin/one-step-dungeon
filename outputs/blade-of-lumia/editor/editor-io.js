@@ -1,6 +1,7 @@
 // ── editor-io.js ── 保存・読み込み・プレビュー ─────────────────
 import { state, cellInfoEl, getCurrentStages, getCurrentStage } from './editor-state.js';
 import { canvas } from './editor-canvas.js';
+import { ORDER, SUB_ITEM_KEYS, presetsFrom } from '../shared/progression.js';
 
 // ── 保存データ構築 ────────────────────────────────────────────
 export function buildSaveData() {
@@ -59,6 +60,9 @@ export function loadMapData(data, renderLayerTabs, renderDungeonMeta, renderWorl
 	document.getElementById('world-cols').value = 3;
 	document.getElementById('world-rows').value = 3;
 	renderWorldGrid();
+	// 進行地点プリセットの選択肢を組み立て直す＝「ボス直前」はマップの isBossRoom を見て
+	// 出す／出さないが決まる∴読み込み前に作った選択肢では足りない（0d-2.8）。
+	buildPreviewPresetOptions();
 	// showView は editor.js 側で注入する
 	document.dispatchEvent(new CustomEvent('editor:showWorld'));
 }
@@ -99,6 +103,81 @@ export function setPreviewPending(v) {
 	}
 }
 
+// ── 進行地点プリセット（実行キュー 0f・2026-08-25）─────────────────
+// 「その進行地点の想定装備」でプレビューできるようにする道具。ボスの数値を判定するには
+// ハート数・剣/盾/防具ティア・持っている道具を実際の進行どおりに揃えて戦う必要がある
+// （手で URL に値を書くと取り違える＝実際に部屋番号と水没で2回外した）。
+//
+// ⚠️ 値は手書きしない＝`shared/progression.js` が実マップ（宝箱・床置き・欠片タイル）から導出する。
+// ⚠️ 埋めるのは**ダイアログの入力欄そのもの**∴読み手（getPreviewSettings と editor.js の
+//    クリック位置プレビュー）は改修不要＝ここ1箇所で両経路に効く（ps_* を足すときの
+//    「2箇所に書く」ルールの例外はこれが理由）。
+//
+// 0d-2.8（2026-08-25）で3つめの variant「ボス直前」を足した。min は「そのダンジョンへ入った
+// 瞬間」＝ダンジョン内の拾い物を含まない∴ボス戦の想定装備としては下限を外していた
+// （D1 の G＝革の鎧 def1・木の盾・ハートの器がボス部屋の前に置いてある）。
+// ⚠️「ボス直前」は **isBossRoom の部屋を持つレイヤーの地点だけ**に出す＝寄道4つと開始直後には
+//    出さない（死んだ選択肢を作らない）。∴選択肢の組み立てはマップ読み込み後にやり直す。
+const PROGRESS_VARIANTS = [
+	{ key: 'min',  label: 'min 本編のみ' },
+	{ key: 'boss', label: 'ボス直前' },
+	{ key: 'max',  label: 'max 全回収' },
+];
+
+export function initPreviewPresetSelect() {
+	const sel = document.getElementById('ps-progress');
+	if (!sel) return;
+	buildPreviewPresetOptions();
+	sel.addEventListener('change', () => applyProgressPreset(sel.value));
+}
+
+// 選択肢を組み立て直す（先頭の「指定なし」は index.html 側の静的 option＝残す）。
+// マップがまだ無い初回は「ボス直前」を出せない（ボス部屋が分からない）∴min/max だけになる。
+export function buildPreviewPresetOptions() {
+	const sel = document.getElementById('ps-progress');
+	if (!sel) return;
+	const keep = sel.value;
+	for (const opt of [...sel.querySelectorAll('option[data-generated]')]) opt.remove();
+	const presets = presetsFrom(state.mapData);
+	for (const cp of ORDER) {
+		const preset = presets.find((p) => p.id === cp.id);
+		for (const v of PROGRESS_VARIANTS) {
+			if (!preset?.[v.key]) continue;    // boss が null の地点＝選択肢を作らない
+			const opt = document.createElement('option');
+			opt.value = `${cp.id}:${v.key}`;
+			opt.textContent = `${cp.label}（${v.label}）`;
+			opt.dataset.generated = '1';
+			sel.appendChild(opt);
+		}
+	}
+	// 作り直しで消えた選択肢を選んでいた場合は「指定なし」へ戻る。
+	sel.value = [...sel.options].some((o) => o.value === keep) ? keep : '';
+}
+
+function applyProgressPreset(value) {
+	if (!value) return;                       // 「指定なし」＝下の値をそのまま使う
+	const [cpId, variant] = value.split(':');
+	const preset = presetsFrom(state.mapData).find((p) => p.id === cpId);
+	if (!preset) return;
+	const p = preset[variant];
+	if (!p) return;
+
+	const setVal   = (id, v) => { const el = document.getElementById(id); if (el) el.value = String(v); };
+	const setCheck = (id, v) => { const el = document.getElementById(id); if (el) el.checked = !!v; };
+
+	setVal('ps-hearts',   p.hearts);
+	setVal('ps-triforce', p.triforce);
+	// ティア番号をそのまま入れる（ATK/DEF はゲーム側が装備から導出する∴ここでは触らない）。
+	setVal('ps-sword',  p.sword);
+	setVal('ps-shield', p.shield);
+	setVal('ps-armor',  p.armor);
+	setCheck('ps-weapon', p.sword >= 0);
+	for (const k of SUB_ITEM_KEYS) setCheck(`ps-${k}`, p.items.includes(k));
+	// 銀のブーメランはティア（別軸）／翼の羽衣は宝箱に無く祭壇で授かる＝欠片の数から導出済み。
+	setCheck('ps-silverboomerang', p.boomerang >= 1);
+	setCheck('ps-wingrobe', p.wingrobe);
+}
+
 // ── プレビュー設定ダイアログ ──────────────────────────────────
 function showPreviewSettingsDialog(onStart) {
 	const overlay = document.getElementById('preview-settings-overlay');
@@ -131,8 +210,10 @@ function getPreviewSettings() {
 		// 2026-08-24: 剣ティア（-1＝指定なし）。editor.js の ps 定義にも同じ行がある。
 		sword:     parseInt(document.getElementById('ps-sword').value, 10),
 		weapon:    document.getElementById('ps-weapon').checked,
-		shield:    document.getElementById('ps-shield').checked,
-		armor:     document.getElementById('ps-armor').checked,
+		// 2026-08-25: 盾/防具は**ティア番号**（-1＝なし）。旧チェックボックスではティア1が
+		// 指定できず、OFF でもティア0 を装備していた。editor.js の ps 定義にも同じ行がある。
+		shield:    parseInt(document.getElementById('ps-shield').value, 10),
+		armor:     parseInt(document.getElementById('ps-armor').value, 10),
 		bow:       document.getElementById('ps-bow').checked,
 		boomerang: document.getElementById('ps-boomerang').checked,
 		// Phase 9-6: 銀のブーメラン（ティア1）。editor.js の ps 定義にも必ず追加する。
@@ -158,7 +239,10 @@ export function openPreview(stX, stY, row, col, ps, TILE) {
 		url += `&ps_hearts=${ps.hearts ?? 3}`;
 		// 剣ティアは「指定なし（-1）」のときは付けない＝ゲーム側は従来の ps_atk を使う。
 		if (Number.isInteger(ps.sword) && ps.sword >= 0) url += `&ps_sword=${ps.sword}`;
-		url += `&ps_weapon=${ps.weapon?1:0}&ps_shield=${ps.shield?1:0}&ps_armor=${ps.armor?1:0}`;
+		// 盾/防具も同じ＝ティア番号をそのまま載せ、「なし（-1）」なら付けない（＝装備しない）。
+		if (Number.isInteger(ps.shield) && ps.shield >= 0) url += `&ps_shield=${ps.shield}`;
+		if (Number.isInteger(ps.armor)  && ps.armor  >= 0) url += `&ps_armor=${ps.armor}`;
+		url += `&ps_weapon=${ps.weapon?1:0}`;
 		url += `&ps_bow=${ps.bow?1:0}&ps_boomerang=${ps.boomerang?1:0}&ps_bomb=${ps.bomb?1:0}&ps_cleared=${ps.cleared?1:0}`;
 		url += `&ps_ladder=${ps.ladder?1:0}&ps_wingrobe=${ps.wingrobe?1:0}&ps_flute=${ps.flute?1:0}`;
 		url += `&ps_candle=${ps.candle?1:0}`;
@@ -173,6 +257,9 @@ export function openPreview(stX, stY, row, col, ps, TILE) {
 
 // ── イベント登録 ──────────────────────────────────────────────
 export function initIOEvents(renderLayerTabs, renderDungeonMeta, renderWorldGrid, showView, TILE) {
+	// 進行地点プリセット（ダイアログの入力欄を埋める＝2つのプレビュー経路の両方に効く）
+	initPreviewPresetSelect();
+
 	// 保存
 	document.getElementById('btn-save').addEventListener('click', async () => {
 		const json = JSON.stringify(buildSaveDataSync(TILE), null, 2);

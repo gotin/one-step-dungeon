@@ -371,7 +371,8 @@ console.log('#   幾何（1枚目のダンプ）:');
 for (const [i, row] of prepared[0].grid.entries()) console.log(`     ${String(i).padStart(2)} ${row.join('')}`);
 console.log(`#   通路＝左右の rows ${ARENA_DOOR_ROWS.join('/')}（歩いて隣の部屋へ抜けられる）`);
 console.log('#   入口 URL: /blade-of-lumia/game/?fromEditor=1&layer=test_mechanics&stage=0,1'
-	+ `&row=${ARENA_DOOR_ROWS[0]}&col=1&ps_weapon=1&ps_armor=1&ps_shield=1&ps_bow=1&ps_bomb=1&ps_candle=1&ps_boomerang=1`);
+	// ⚠️ ps_armor / ps_shield は**ティア番号**（2026-08-25 に曖昧さを解消）＝0 が下位ティア。
+	+ `&row=${ARENA_DOOR_ROWS[0]}&col=1&ps_weapon=1&ps_armor=0&ps_shield=0&ps_bow=1&ps_bomb=1&ps_candle=1&ps_boomerang=1`);
 console.log('#   ⚠ プレビューはデバッグ ON（無敵・すり抜け）＝入ったら G キーで切る');
 
 if (DRY) {

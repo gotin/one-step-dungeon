@@ -34,6 +34,35 @@ export const ENEMY_SPEED_FAST   = 1.0;  // 高速敵
 //   近接と遠隔を1体に持たせるとき「隣接では遠隔を撃たず噛みつきに切り替わる」を
 //   宣言的に書くためのフィールド。省略時は下限なし＝従来挙動（後方互換）。
 //
+// ⚠️ range / minRange は **body の端からプレイヤーまでの距離**（Phase 8-4 (4) 0d-2.5 で
+//   統一）。1×1 の敵では「自分のセルからの距離」と同値∴従来の数値の意味は変わらない。
+//   2×2 の大型ボスは**それまで左上角から測っていた**＝西/北から測ると体の幅ぶん（1セル）
+//   遠く出る＝プレイヤーには見えない「安全な面」ができていた。端から測る形に直したとき、
+//   9体の近接 range をすべて **-1.0** した（例：G 2.2 → 1.2）＝直す前の実効リーチ
+//   （東/南から測った値）と同じにするため。∴プレイヤーの剣（SWORD_REACH 1.2・
+//   combat.js も端から測る）と直接比べられる数字になっている。
+//
+// attack.windupMs（任意・Phase 8-4 (4) 0d-2.6）… 近接（sword）の**前動作（予告）**の長さ。
+//   到達距離に入った tick に剣を振り上げ（`.swing-windup`＋SE）、windupMs 後の tick に
+//   もう一度到達判定をして当てる＝**離れれば空振りになる**（プレイヤーは反応で避けられる）。
+//   ⚠️ **省略時は MELEE_WINDUP_MS（480ms＝4 tick）＝予告は全敵の既定**（0d-2.7 で変更）。
+//     旧仕様の「省略した攻撃は届いた tick に即ダメージ」は 2026-08-25 に失効した＝予告の
+//     無い近接はプレイヤーには接触ダメージと区別できず「どの敵も接触でダメージ」と報告された。
+//     `windupMs: 0` を明示すれば即ダメージに戻せる（今この指定を使っている敵は無い）。
+//   ⚠️ ボスは 600ms（5 tick）以上にする。**360ms（3 tick）は実プレイで「全然よけられない」
+//     と判定された**（2026-08-25 ユーザー・0d-2.6 の2回目の調整）＝間合いを外す操作に要する
+//     2 tick（TICK_MS 120・MOVE_STEP 0.5）だけでは足りず、「振り上げを見る → どちらへ
+//     逃げるか決める」ぶんの人の反応（およそ 300ms）を予告の中に含める必要がある。
+//   ⚠️ 予告は `attackFreezeMs`（攻撃後の硬直）と**対で効く**。予告だけでは「避けられるが
+//     殴り返せない」＝剣の間合いが互角（G 1.2 ＝ SWORD_REACH 1.2）だと、当てにいくと必ず
+//     刺し違える。硬直＝振り下ろした後の隙が、避けた側の反撃の窓になる。
+//
+// attackFreezeMs（任意）… 攻撃が解決してから動けない時間（＝プレイヤーが殴り返す窓）。
+//   **近接（sword / charge）の省略時は MELEE_FREEZE_MS（360ms＝3 tick）**（0d-2.7 で既定化）。
+//   遠隔の省略時は従来どおり（directional なら ATTACK_POSE_MS・それ以外 0）＝撃つたびに
+//   固まると「間合いを保って撃つ」挙動が壊れるため近接だけに掛ける。ここに数字を書いた敵は
+//   近接／遠隔の区別なくその値になる（＝投擲の硬直を長くしている 423・464 の意図を保つ）。
+//
 // inflict（Phase 5.5k k-7・任意）: { type, ... } ＝**攻撃を当てたプレイヤーに立てる一時デバフ窓**
 //   type 'sealSword' … { ms } … その間 剣が振れない・チャージもできない（サブ武器は使える）
 //   type 'poison'    … { ms, tickMs, damage, decay } … 論理時間で刻む継続ダメージ
@@ -592,8 +621,10 @@ export const ENEMY_META = {
 	[TILE.MONSTER]: {
 		name: '魔物',
 		// 8-4: ボスの hp は「木の剣（ATK 4）で 30〜60 振り＝9〜18 秒」で引いた。
-		// 魔物は中ボス格＝下限の 24 振り（7秒）。
-		hp: 72, atk: 3, def: 1, exp: 18,
+		// 8-4 0d-2.8: 魔物は中ボス格＝ボス帯を意図的に下回る 16 振り（5秒）。
+		// D1 の道中に2体居る（ボス部屋の G より前）∴ボス帯のままだと G に着く前に
+		// 消耗しきる。atk も 3 → 2＝素の HP6 で「2 発死」から「3 発死」になる。
+		hp: 48, atk: 2, def: 1, exp: 18,
 		speed: ENEMY_SPEED_FAST * 0.45,  // 魔将より大幅に遅い (0.45)
 		sprite: 'monster',
 		pal:    'monster',
@@ -731,10 +762,10 @@ export const ENEMY_META = {
 		weakness: { type: 'arrow', multiplier: 2 },  // 矢で炎を射抜く
 		hitAndAway: true,
 		attacks: [
-			{ type: 'sword', range: 2.2, cooldown: 800 },   // 尻尾なぎ払い
+			{ type: 'sword', range: 1.2, cooldown: 800 },   // 尻尾なぎ払い
 			{ type: 'stone', range: 7, cooldown: 2200, projectileSpeed: 1.2 }, // 炎の石
 		],
-		attack: { type: 'sword', range: 2.2, cooldown: 800 },
+		attack: { type: 'sword', range: 1.2, cooldown: 800 },
 		initialModeWeights: { flank: 0.3, direct: 1.3, wander: 0.3, strafe: 0.1 },
 		phases: [
 			{ hpThreshold: 0.5, speedMultiplier: 1.5, attackCooldownMultiplier: 0.8 },
@@ -758,10 +789,10 @@ export const ENEMY_META = {
 		reflectsProjectiles: true, // 投擲物はそのままプレイヤーへ打ち返す
 		hitAndAway: true,
 		attacks: [
-			{ type: 'sword', range: 2.5, cooldown: 1100 },  // 咬みつき（リーチが長い）
+			{ type: 'sword', range: 1.5, cooldown: 1100 },  // 咬みつき（リーチが長い）
 			{ type: 'stone', range: 8, cooldown: 2800, projectileSpeed: 0.9 }, // 氷の礫
 		],
-		attack: { type: 'sword', range: 2.5, cooldown: 1100 },
+		attack: { type: 'sword', range: 1.5, cooldown: 1100 },
 		initialModeWeights: { flank: 0.2, direct: 1.6, wander: 0.2, strafe: 0 },
 		phases: [
 			{ hpThreshold: 0.5, speedMultiplier: 1.3, attackCooldownMultiplier: 0.75 },
@@ -782,10 +813,10 @@ export const ENEMY_META = {
 		weakness: { type: 'boomerang', multiplier: 3 },  // 旋回刃で鉗肢を断つ
 		hitAndAway: true,
 		attacks: [
-			{ type: 'sword', range: 2.3, cooldown: 750 },   // 鉗肢なぎ払い
+			{ type: 'sword', range: 1.3, cooldown: 750 },   // 鉗肢なぎ払い
 			{ type: 'stone', range: 7, cooldown: 2400, projectileSpeed: 1.3 }, // 毒針投げ
 		],
-		attack: { type: 'sword', range: 2.3, cooldown: 750 },
+		attack: { type: 'sword', range: 1.3, cooldown: 750 },
 		initialModeWeights: { flank: 0.4, direct: 1.2, wander: 0.2, strafe: 0.2 },
 		phases: [
 			{ hpThreshold: 0.5, speedMultiplier: 1.6, attackCooldownMultiplier: 0.75 },
@@ -806,10 +837,10 @@ export const ENEMY_META = {
 		weakness: { type: 'beam', multiplier: 2 },   // 光の刃で鱗を貫く
 		hitAndAway: true,
 		attacks: [
-			{ type: 'sword', range: 2.6, cooldown: 1000 },  // 咬みつき（リーチ長）
+			{ type: 'sword', range: 1.6, cooldown: 1000 },  // 咬みつき（リーチ長）
 			{ type: 'stone', range: 8, cooldown: 2600, projectileSpeed: 1.0 }, // 水球
 		],
-		attack: { type: 'sword', range: 2.6, cooldown: 1000 },
+		attack: { type: 'sword', range: 1.6, cooldown: 1000 },
 		initialModeWeights: { flank: 0.2, direct: 1.5, wander: 0.3, strafe: 0 },
 		phases: [
 			{ hpThreshold: 0.5, speedMultiplier: 1.4, attackCooldownMultiplier: 0.7 },
@@ -830,10 +861,10 @@ export const ENEMY_META = {
 		weakness: { type: 'fire', multiplier: 2 },   // 炎で樹皮を焼き払う
 		hitAndAway: true,
 		attacks: [
-			{ type: 'sword', range: 2.4, cooldown: 950 },   // 枝腕なぎ払い
+			{ type: 'sword', range: 1.4, cooldown: 950 },   // 枝腕なぎ払い
 			{ type: 'stone', range: 6, cooldown: 2200, projectileSpeed: 0.9 }, // 木の実投げ
 		],
-		attack: { type: 'sword', range: 2.4, cooldown: 950 },
+		attack: { type: 'sword', range: 1.4, cooldown: 950 },
 		initialModeWeights: { flank: 0.15, direct: 1.7, wander: 0.15, strafe: 0 },
 		phases: [
 			{ hpThreshold: 0.5, speedMultiplier: 1.3, attackCooldownMultiplier: 0.8 },
@@ -854,10 +885,10 @@ export const ENEMY_META = {
 		weakness: { type: 'arrow', multiplier: 2 },  // 矢で翼を射落とす
 		hitAndAway: true,
 		attacks: [
-			{ type: 'sword', range: 2.1, cooldown: 700 },   // 鉤爪（速い）
+			{ type: 'sword', range: 1.1, cooldown: 700 },   // 鉤爪（速い）
 			{ type: 'stone', range: 7, cooldown: 2000, projectileSpeed: 1.4 }, // 雷撃弾
 		],
-		attack: { type: 'sword', range: 2.1, cooldown: 700 },
+		attack: { type: 'sword', range: 1.1, cooldown: 700 },
 		initialModeWeights: { flank: 0.5, direct: 1.0, wander: 0.3, strafe: 0.2 },
 		phases: [
 			{ hpThreshold: 0.5, speedMultiplier: 1.7, attackCooldownMultiplier: 0.65 },
@@ -871,7 +902,12 @@ export const ENEMY_META = {
 	// スプライトは 2×2 セル相当の 24×24（向きエイリアス rockGolemR/L/D/U）。
 	[TILE.ROCK_GOLEM]: {
 		name: '岩のゴーレム',
-		hp: 90, atk: 4, def: 2, exp: 40,      // 8-4: 木の剣で 45 振り（13秒）。爆弾（弱点×3）なら 2 個
+		// 8-4 0d-2.8: hp 90 → 60。木の剣で 30 振り（9秒）＝ボス帯（30〜60 振り）の下限。
+		// atk 4 は据え置き＝D1 は世界に盾が無い地点（盾は D2 の報酬）だが、D1 内で拾える
+		// 革の鎧（def 1）とハートの器を持って来れば 4→3 ダメージ／HP8 で 3 発耐えられる。
+		// ∴耐久側は装備の回収で解き、ここでは殴り合いの長さだけを削る。
+		// 爆弾（弱点×3）なら 2 個（1個で 58 ダメージ＝残り 2）。
+		hp: 60, atk: 4, def: 2, exp: 40,
 		speed: ENEMY_SPEED_SLOW,   // 大型なので鈍重
 		sprite: 'rockGolem',
 		pal:    'rockGolem',
@@ -880,11 +916,27 @@ export const ENEMY_META = {
 		dropsTriforce: true,       // 撃破で星の欠片を落とす（boss.js が参照）
 		weakness: { type: 'bomb', multiplier: 3 },  // 爆弾で岩体を砕く
 		hitAndAway: true,          // 接近→攻撃→後退（向きも切り替わる）
+		// 攻撃硬直（Phase 8-4 (4) 0d-2.6・2026-08-25 の2回目の調整）＝振り下ろした後の隙。
+		// ユーザー実プレイ判定：「攻撃がおわったあともちょっと動けない時間をつくるとかしないと、
+		// 剣を当てること自体がほぼ不可能。攻撃をあてようとすると自分が絶対ダメージをくらう状況」。
+		// ∴予告（windupMs）で避けられるようにしただけでは足りない＝G の剣の間合い 1.2 は
+		// プレイヤーの SWORD_REACH 1.2 と互角∴「殴れる位置」＝「殴られる位置」で、避けた後に
+		// 詰める余裕が無いと必ず刺し違える。480ms（4 tick）＝プレイヤーが1歩踏み込んで
+		// 剣を振り（攻撃ポーズ 180ms は足が止まる）1歩下がるのにちょうど足りる長さ。
+		// ⚠️ 硬直は攻撃の**成立時**から数える（enemy-ai.js markAttack）＝空振りでも入る
+		//    ＝「予告を見て避ける → 硬直に殴り返す」がこのボスの戦い方になる。
+		attackFreezeMs: 480,
 		attacks: [
-			{ type: 'sword', range: 2.2, cooldown: 900 },   // 大型なのでリーチ長め
-			{ type: 'stone', range: 6, cooldown: 2600, projectileSpeed: 1.0 }, // 岩투げ
+			// windupMs: 600 ＝剣を振り上げてから当たる（Phase 8-4 (4) 0d-2.6）。
+			// 最初のダンジョンのボス＝プレイヤーはまだ盾を持っていない（盾は D1 の報酬）∴
+			// 即ダメージだと「ダメージを受けずに殴る」がほぼ不可能だった。
+			// ⚠️ 初版の 360ms（3 tick）は実プレイで「振り上げから攻撃までが短すぎる・全然
+			//    よけられない」と判定された（2026-08-25）∴5 tick へ延ばした。人が振り上げを
+			//    見てから逃げる向きを決める時間を予告に含める（詳細は attack.windupMs の項）。
+			{ type: 'sword', range: 1.2, cooldown: 900, windupMs: 600 },
+			{ type: 'stone', range: 6, cooldown: 2600, projectileSpeed: 1.0 }, // 岩投げ
 		],
-		attack: { type: 'sword', range: 2.2, cooldown: 900 },
+		attack: { type: 'sword', range: 1.2, cooldown: 900, windupMs: 600 },
 		// 直進寄り（大型は回り込みより正面から押す）
 		initialModeWeights: { flank: 0.2, direct: 1.4, wander: 0.4, strafe: 0 },
 		phases: [
@@ -908,10 +960,10 @@ export const ENEMY_META = {
 		weakness: { type: 'fire', multiplier: 2 },   // 炎で焼かれると弱い両生類
 		hitAndAway: true,
 		attacks: [
-			{ type: 'sword', range: 2.4, cooldown: 900 },   // 舌の打撃（リーチ長）
+			{ type: 'sword', range: 1.4, cooldown: 900 },   // 舌の打撃（リーチ長）
 			{ type: 'stone', range: 7, cooldown: 2400, projectileSpeed: 1.1 }, // 毒沫
 		],
-		attack: { type: 'sword', range: 2.4, cooldown: 900 },
+		attack: { type: 'sword', range: 1.4, cooldown: 900 },
 		initialModeWeights: { flank: 0.25, direct: 1.4, wander: 0.35, strafe: 0 },
 		phases: [
 			{ hpThreshold: 0.5, speedMultiplier: 1.5, attackCooldownMultiplier: 0.8 },
@@ -1014,11 +1066,11 @@ export const ENEMY_META = {
 		moveSpeed: { water: 1.0, land: 0.5 },   // 水では定速・陸では半速
 		hitAndAway: true,
 		attacks: [
-			{ type: 'sword', range: 2.8, cooldown: 1100 },   // 巨体の体当たり
+			{ type: 'sword', range: 1.8, cooldown: 1100 },   // 巨体の体当たり
 			// 潮吹き＝水弾（射水魚と同じ waterShot 型。任意角へ飛ぶ）
 			{ type: 'waterShot', range: 8, cooldown: 2400, projectileSpeed: 1.3 },
 		],
-		attack: { type: 'sword', range: 2.8, cooldown: 1100 },
+		attack: { type: 'sword', range: 1.8, cooldown: 1100 },
 		initialModeWeights: { flank: 0.3, direct: 1.4, wander: 0.3, strafe: 0 },
 		phases: [
 			// 半分削ると本気になる（＝合格ラインの 25% までが一番の山場）

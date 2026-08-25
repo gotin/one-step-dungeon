@@ -406,7 +406,9 @@ test.describe('Phase 5.5k k-7.5 – 体当たり攻撃（slam）と重なり禁�
     const errors = [];
     page.on('pageerror', e => errors.push(e.message));
     // 決定④＝盾が効くのは剣攻撃と投擲攻撃だけ。体当たりの答えは「下がる」しかない。
-    await gotoFrozen(page, CURSE(4, 4, { ps_shield: '1' }));
+    // ps_shield は**ティア番号**（2026-08-25 に曖昧さを解消）＝跳ね返しの無い木の盾を明示する
+    // （ティア1 以上だと矢が跳ね返って残り、対照の `projLeft === 0` が崩れる）。
+    await gotoFrozen(page, CURSE(4, 4, { ps_shield: '0' }));
     await page.keyboard.press('g');   // HP を測るので debug OFF
 
     const res = await page.evaluate(() => {
@@ -435,7 +437,7 @@ test.describe('Phase 5.5k k-7.5 – 体当たり攻撃（slam）と重なり禁�
       return out;
     });
 
-    expect(res.shield, '前提：ps_shield=1 で盾を持っている').toBe(true);
+    expect(res.shield, '前提：ps_shield=0（木の盾）で盾を持っている').toBe(true);
     expect(res.arrowLoss, '対照が成立しない＝投擲物を盾で防げていない（盾の向き判定が壊れている）').toBe(0);
     expect(res.projLeft, '対照が成立しない＝ブロックした投擲物が消えていない').toBe(0);
     expect(res.slamLoss, '盾を向けている側からの体当たりを防いでしまった（決定④に反する）')

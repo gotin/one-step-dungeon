@@ -15,6 +15,7 @@ import { GAME_URL, SAVE_KEY } from './helpers.js';
 import { stageKey } from './test-stage-keys.js';
 import { ENEMY_META } from '../shared/enemies.js';
 import { TILE } from '../shared/tiles.js';
+import { SWORD_REACH } from '../game/constants.js';
 
 // ⚠️ 期待値は `ENEMY_META` から導出する（手書きの 3 は 8-4 のリバランスで atk 5 に
 //    上がった時点で腐った＝数値表を触るたびに spec が赤くなるのは歯ではなく事故）。
@@ -148,17 +149,33 @@ test.describe('Phase 5.5k #7 – 剣獣（SWORD_BEAST）', () => {
 	test('構えないので正面から剣で殴れば必ずダメージが通る（ガードで無効化されない）', async ({ page }) => {
 		// 近接モードの窓を待つ間に飛ぶ斬撃で死なないよう hp を上げる（下の startAt の注記）。
 		await startAt(page, { x: 10, y: 4, dir: 'left', hp: 90, maxHp: 90 });
-		// 剣獣が SWORD_REACH(1.2) 圏へ寄るまで進める。
+		// 剣獣が自分の攻撃到達距離（sword の range 1.5）まで寄るのを待つ。
 		// ⚠️ 2026-08-12 以降は**近接モードの窓が来るまで寄って来ない**（遠隔モード中は
 		// keepMin 3.0 を保つ）。遠隔 3000ms ＋ 位相ずれ（最大 rangedMs+meleeMs=4800ms）
 		// ∴最初の近接モードは最悪 40 tick 目に始まる ∴ 60 tick 待つ。
+		//
+		// ❌ 失効（2026-08-25・0d-2.7）：以前はここで「剣獣が SWORD_REACH(1.2) 圏まで寄る」
+		//    ことを待っていた。予告が全敵の既定（MELEE_WINDUP_MS）になった今、剣獣は
+		//    range 1.5 に入った tick から予告→解決→硬直で立ち止まり続ける∴1.2 まで詰めて来ない。
+		//    敵の到達距離（1.5）＞プレイヤーの剣（1.2）は設計どおり（DECISIONS 2026-08-25（5））で、
+		//    **反撃はプレイヤーが硬直の窓に1歩踏み込んで行う**。∴ここもそう書き直す。
 		let b = null;
 		for (let i = 0; i < 60; i++) {
 			await page.evaluate(() => window.__game.step(1));
 			b = await getBeast(page);
-			if (Math.abs(b.x - 10) <= 1.2 && Math.abs(b.y - 4) < 0.5) break;
+			if (Math.abs(b.x - 10) <= BEAST.attack.range && Math.abs(b.y - 4) < 0.5) break;
 		}
-		expect(Math.abs(b.x - 10), '剣獣が剣の届く距離まで寄るはず').toBeLessThanOrEqual(1.2);
+		expect(Math.abs(b.x - 10), '剣獣が自分の攻撃圏（range）まで寄るはず')
+			.toBeLessThanOrEqual(BEAST.attack.range);
+		// プレイヤーが1歩踏み込んで剣の間合い（SWORD_REACH）に入れる（0.5 セル/歩）。
+		let px = 10;
+		for (let i = 0; i < 3 && Math.hypot(px - b.x, 4 - b.y) > SWORD_REACH; i++) {
+			await page.evaluate(() => window.__game.movePlayer('left'));
+			px = await page.evaluate(() => window.__game.getState().player.x);
+			b = await getBeast(page);
+		}
+		expect(Math.hypot(px - b.x, 4 - b.y), '1〜3歩踏み込めば剣が届く距離になる')
+			.toBeLessThanOrEqual(SWORD_REACH);
 		const hpBefore = b.hp;
 		await page.evaluate(() => window.__game.setHeroDir('left'));
 		await page.evaluate(() => window.__game.swordAttack());

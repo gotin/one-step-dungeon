@@ -412,6 +412,17 @@ export function playSound(kind) {
 		tone(ctx, now + 0.05, 320, 0.03, 'square',   0.030);
 		tone(ctx, now + 0.24, 300, 0.03, 'square',   0.030);
 	}
+	// 剣の振り上げ「シャリィィ…」（Phase 8-4 (4) 0d-2.6・ボスの近接攻撃の予告 360ms のあいだ）
+	// ⚠️ 突進の溜め（dashWindup の低い段）とは別の音にする＝避け方が違う
+	//    （剣＝間合いを外す／突進＝軸から外れる）∴音でも聞き分けられるようにする。
+	// ★ 金属を擦り上げる高音のグリッサンド＝「刃が上がっていく」を音程の上昇で伝える
+	//   （3 tick = 360ms に収める）。最後の一撃は無音＝振り下ろしは剣エフェクトが見せる。
+	if (kind === 'swordWindup') {
+		tone(ctx, now,        520,  0.09, 'triangle', 0.035);
+		tone(ctx, now + 0.09, 660,  0.09, 'triangle', 0.040);
+		tone(ctx, now + 0.18, 840,  0.10, 'triangle', 0.045);
+		tone(ctx, now + 0.28, 1050, 0.06, 'sine',     0.030);
+	}
 	// 扉ロック（ボス部屋）
 	if (kind === 'doorLock') {
 		tone(ctx, now,        180, 0.08, 'sawtooth', 0.08);

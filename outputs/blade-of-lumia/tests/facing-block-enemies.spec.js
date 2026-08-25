@@ -73,12 +73,18 @@ import { waitForBoard } from './helpers.js';
 import { TEST_LAYER, stageKey } from './test-stage-keys.js';
 import { isArenaDoor, arenaDoorCells, ARENA_DOOR_ROWS } from './test-arena-doors.js';
 import { placedCells, stageIdOf, PLACEMENT_STAGES } from './enemy-placed.js';
+import { MELEE_WINDUP_MS, ATTACK_POSE_MS } from '../game/constants.js';
 
 const GAME   = '/blade-of-lumia/game/';
 const EDITOR = '/blade-of-lumia/editor/';
 const TICK_MS = 120;
 const MOVE_STEP = 0.5;
 const SWORD_REACH = 1.2;
+// Phase 8-4 (4) 0d-2.7（2026-08-25）: 近接（剣）の予告が**全敵の既定**になった。
+// ∴クールダウンが開いた tick に剣が出るのではなく、そこで予告（振り上げ）が立ち
+// WINDUP_TICKS 後に解決する（予告中は剣エフェクトもダメージも無い）。
+// ⑧⑨の拍は「クールダウン明け ＋ WINDUP_TICKS」で数える＝480 を変えれば期待値も動く。
+const WINDUP_TICKS = Math.ceil(MELEE_WINDUP_MS / TICK_MS);
 
 function previewUrl(stage, row, col, extra) {
   const p = new URLSearchParams({
@@ -409,7 +415,7 @@ test.describe('Phase 5.5k k-4 – 方向依存の被ダメ（盾騎士・火吐�
       g.pause();
       if (g.getState().gameTime !== 0) throw new Error('実ループの tick が漏れている');
       const swings = [];
-      for (let i = 1; i <= 16; i++) {
+      for (let i = 1; i <= 22; i++) {
         if (mv && i === mv.tick) { const p = g.getPlayer(); p.y = mv.y; p.x = mv.x; }
         const before = document.querySelectorAll('.sword-thrust').length;
         g.step(1);
@@ -421,10 +427,13 @@ test.describe('Phase 5.5k k-4 – 方向依存の被ダメ（盾騎士・火吐�
     }, moveAt);
 
     // (A) 対照＝プレイヤーが正面（東）に居続ける。tick7 で東へ向き直り、クールダウンが
-    //     開く tick10 に振る＝「tick10 が初撃」の基準線を実測で押さえる。
+    //     開く tick10 に**予告が立ち**、WINDUP_TICKS 後に剣が出る＝初撃の基準線。
+    //     ❌ 失効（2026-08-25・0d-2.7）：以前は「初撃＝tick10（クールダウン明けの tick）」。
+    //        予告が全敵の既定になった今、剣が出るのは tick10+WINDUP_TICKS（=14）。
     await gotoFrozen(page, KNIGHT_BACK);
     const control = await swingsOf(page, null);
-    expect(control[0], '正面に居るのに初撃が tick10（クールダウン明け）に来ない').toEqual({ tick: 10, dir: 'right' });
+    expect(control[0], `正面に居るのに初撃が tick${10 + WINDUP_TICKS}（クールダウン明け＋予告）に来ない`)
+      .toEqual({ tick: 10 + WINDUP_TICKS, dir: 'right' });
 
     // (B) 本番＝クールダウンが開く直前（tick9 の頭）にプレイヤーが北へ回り込む。
     //     向きは turnMs の窓（ticks 7-12）で 'right' に据え置かれる∴tick10-12 は
@@ -433,13 +442,18 @@ test.describe('Phase 5.5k k-4 – 方向依存の被ダメ（盾騎士・火吐�
     await gotoFrozen(page, KNIGHT_BACK);
     const res = await swingsOf(page, { tick: 9, y: 3, x: 9 });
 
-    expect(res.filter(s => s.tick <= 12),
-      'クールダウン明け（tick10-12）に側面のプレイヤーを殴った＝剣が正面限定になっていない'
+    // 予告つきになった今も歯は残る＝向きゲート（enemy-ai.js は**振り上げ側**と
+    // resolveSwordHit の**解決側**の2か所）のどちらを外しても予告が tick10 に立ち
+    // tick10+WINDUP_TICKS(=14) に剣が出る∴「tick13 の向き直りより前に始まった振り」は
+    // 必ずこの窓（tick < 13+WINDUP_TICKS）に現れる。
+    expect(res.filter(s => s.tick < 13 + WINDUP_TICKS),
+      'クールダウン明け（tick10-12）に側面のプレイヤーへ振り始めた＝剣が正面限定になっていない'
       + '（向きロックの代償が払われず、回り込みがノーリスクの狩り場でなくなる）')
       .toEqual([]);
     expect(res.length, '向き直った後も一度も攻撃してこない＝無害な置物になっている')
       .toBeGreaterThan(0);
-    expect(res[0], '次の向き直り（tick13・北）で振り直していない').toEqual({ tick: 13, dir: 'up' });
+    expect(res[0], `次の向き直り（tick13・北）で振り直していない（剣は予告ぶん遅れて tick${13 + WINDUP_TICKS}）`)
+      .toEqual({ tick: 13 + WINDUP_TICKS, dir: 'up' });
     expect(errors).toEqual([]);
   });
 
@@ -453,7 +467,7 @@ test.describe('Phase 5.5k k-4 – 方向依存の被ダメ（盾騎士・火吐�
       g.pause();
       if (g.getState().gameTime !== 0) throw new Error('実ループの tick が漏れている');
       const out = [];
-      for (let i = 1; i <= 13; i++) {
+      for (let i = 1; i <= 18; i++) {
         g.step(1);
         const e = g.getEnemies().find(x => x.type === 'ζ');
         const el = document.getElementById(`char-enemy-${e.id}`);
@@ -466,12 +480,18 @@ test.describe('Phase 5.5k k-4 – 方向依存の被ダメ（盾騎士・火吐�
     });
 
     // ④⑧で固定した拍＝ticks 1-6 は西向き（左右は同じ絵＝接尾辞 R）／tick7 で北へ向き直り
-    // ／初撃はクールダウンが開く tick10（⑧の対照で実測）＝_atkUntil = 1200+180=1380
-    // ∴tick10-11 が攻撃ポーズ・tick12 で通常へ戻る。
-    const expected = { 1:'shieldKnightR', 2:'shieldKnightR', 3:'shieldKnightR', 4:'shieldKnightR',
-      5:'shieldKnightR', 6:'shieldKnightR', 7:'shieldKnightU', 8:'shieldKnightU',
-      9:'shieldKnightU', 10:'shieldKnightUAtk', 11:'shieldKnightUAtk',
-      12:'shieldKnightU', 13:'shieldKnightU' };
+    // ／クールダウンが開く tick10 に予告が立ち、剣が出るのは tick10+WINDUP_TICKS（⑧の対照で実測）。
+    // ❌ 失効（2026-08-25・0d-2.7）：以前は「初撃 tick10 ∴Atk は tick10-11」だった。
+    //    予告が既定になった今、Atk ポーズは**解決した tick から** ATTACK_POSE_MS ぶん
+    //    ＝解決 tick と その次の tick（_atkUntil = 解決 now + 180 ＞ 次 tick の now）。
+    //    予告中（tick10-13）は通常の絵（予告は CSS のモーションで見せる＝スプライト名は変えない）。
+    const HIT = 10 + WINDUP_TICKS;                                 // 剣が出る tick（=14）
+    const POSE_TICKS = Math.ceil(ATTACK_POSE_MS / TICK_MS);         // ポーズが載る tick 数（=2）
+    const expected = {};
+    for (let i = 1; i <= 18; i++) {
+      const base = i <= 6 ? 'shieldKnightR' : 'shieldKnightU';
+      expected[i] = (i >= HIT && i < HIT + POSE_TICKS) ? `${base}Atk` : base;
+    }
     for (const r of rows) {
       expect(r.sprite, `tick${r.tick}（${r.dir}）の e.sprite が想定と違う`).toBe(expected[r.tick]);
       expect(r.domSprite, `tick${r.tick} の DOM canvas が e.sprite と食い違う（差し替えが起きていない）`)

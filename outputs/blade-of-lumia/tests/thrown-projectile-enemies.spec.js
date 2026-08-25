@@ -472,7 +472,9 @@ test.describe('Phase 5.5k k-6 – 投擲物の種別追加（爆弾鬼・ブー�
   test('⑨ 盾を正面に構えても爆発は防げない（対照＝同じ向きの矢は防げる）', async ({ page }) => {
     const errors = [];
     page.on('pageerror', e => errors.push(e.message));
-    await gotoFrozen(page, BOMB({ ps_shield: '1' }));
+    // ps_shield は**ティア番号**（2026-08-25 に曖昧さを解消）。ここは跳ね返しの無い木の盾
+    // ＝ティア0 を明示する（ティア1 以上だと矢が跳ね返って残り、対照の `projsAfterArrow` が崩れる）。
+    await gotoFrozen(page, BOMB({ ps_shield: '0' }));
     await page.keyboard.press('g');
 
     const res = await page.evaluate(() => {

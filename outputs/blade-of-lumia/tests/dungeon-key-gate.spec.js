@@ -1553,6 +1553,10 @@ test.describe('Blade of Lumia – ダンジョンの鍵（進行の背骨）', (
   // ⚠️ Phase 8-4（2026-08-23）のリバランスで敵の hp/atk/def を一斉に引き直した∴この式の値も
   //    一斉に上がった（E:4 C:24 F:18 W:108・D1 合計 116）。**盤面の敵は1体も動かしていない**
   //    ＝部屋の相対的な重さの順序（D1 < D7 < dark_tower）は 8-4 前と同じ。
+  // ⚠️ 8-4 (4) 0d-2.8（2026-08-25）で W 魔物を hp 72→48・atk 3→2 に下げた（D1 の道中に2体居る
+  //    中ボス格＝ボス帯の数値だと D1 のボスに着く前に消耗しきる、という実プレイ報告）∴
+  //    W の脅威度は 108 → 48 で、W が居る2部屋の合計も下がった（D1 116→56・D7 162→102）。
+  //    ここでも盤面の敵は1体も動かしていない＝順序（D1 < D7 < dark_tower）は不変。
   const THREAT = Object.fromEntries(ENEMY_TILES.map(t => {
     const m = ENEMY_META[t];
     return [t, (m.hp * m.atk) / ((m.def ?? 0) + 1)];
@@ -1568,7 +1572,8 @@ test.describe('Blade of Lumia – ダンジョンの鍵（進行の背骨）', (
     const d1 = threatOfStage(map.layers.dungeon_1.stages['1,0']);
     const d7 = threatOfStage(map.layers.dungeon_7.stages['1,0']);
     const dt = threatOfStage(map.layers.dark_tower.stages['1,2']);
-    expect(d1, 'D1 の脅威度（既存の基準・8-4 後）').toBe(116);
+    // 56.0 ＝ W 魔物 48.0（0d-2.8 で 108.0 から下げた）＋ パトロール E 4.0 × 2
+    expect(d1, 'D1 の脅威度（既存の基準・8-4 (4) 0d-2.8 後）').toBe(56);
     expect(d7, 'D7 の脅威度は D1 を上回る').toBeGreaterThan(d1);
     expect(dt, 'dark_tower[1,2] の脅威度は D7 を上回る').toBeGreaterThan(d7);
     // 5.5k-2 で剣獣（μ）×5 に組み直した＝旧構成（魔物1+チェイサー3＝48.0）より弱くしない。

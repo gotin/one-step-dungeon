@@ -439,14 +439,20 @@ test.describe('Phase 5.5k k-3 – 隠れ↔出現の無敵窓（地中蟲・跳�
       const p = window.__game.getPlayer();
       p.x = get().x - 4; p.y = get().y;
       const phasesFar = [];
-      for (let i = 0; i < 8; i++) { window.__game.step(1); phasesFar.push(get().leapPhase); }
+      for (let i = 0; i < 16; i++) { window.__game.step(1); phasesFar.push(get().leapPhase); }
       return { near, phasesNear: [...phasesNear], phasesFar };
     });
 
     expect(res.near.dist, '前提：着地後は密着している').toBeLessThan(ENEMY_META[TILE.LEAP_SPIDER].leap.minRange);
     expect(res.phasesNear, '密着なのに跳んだ（minRange が効いていない）').toEqual(['ground']);
-    expect(res.phasesFar, '2回目の跳躍が始まらない＝1回で打ち止め')
-      .toEqual(['windup', 'windup', 'windup', 'air', 'air', 'air', 'recover', 'recover']);
+    // ❌ 失効（2026-08-25・0d-2.7）：以前は「間合いへ戻した**次の tick**から windup ×3 →
+    //    air ×3 → recover」と1 tick 単位で固定していた。跳躍蜘蛛は attack:'charge' も持ち、
+    //    近接の予告（MELEE_WINDUP_MS＝4 tick）と攻撃硬直（MELEE_FREEZE_MS＝3 tick）が
+    //    全敵の既定になった今、密着中に立った体当たりが解決しきるまで**跳び始められない**
+    //    （enemy-ai.js：始まった跳躍は硬直で止めないが、新しく跳び始めるのは止める）。
+    //    ∴頭の 'ground' が何 tick 続くかは体当たりの位相で決まる＝拍の**並び**だけを固定する。
+    expect(res.phasesFar.join('|'), '2回目の跳躍の3拍（溜め3・滞空3・着地硬直）が並ばない＝1回で打ち止め')
+      .toMatch(/ground\|windup\|windup\|windup\|air\|air\|air\|recover/);
     expect(errors).toEqual([]);
   });
 

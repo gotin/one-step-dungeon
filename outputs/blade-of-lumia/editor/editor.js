@@ -143,8 +143,10 @@ document.addEventListener('editor:previewClickAt', e => {
 			// 2026-08-24: 剣ティア（-1＝指定なし）。editor-io.js の getPreviewSettings にも同じ行がある。
 			sword:     parseInt(document.getElementById('ps-sword').value, 10),
 			weapon:    document.getElementById('ps-weapon').checked,
-			shield:    document.getElementById('ps-shield').checked,
-			armor:     document.getElementById('ps-armor').checked,
+			// 2026-08-25: 盾/防具は**ティア番号**（-1＝なし）。editor-io.js の
+			// getPreviewSettings にも同じ行がある（両方に足す）。
+			shield:    parseInt(document.getElementById('ps-shield').value, 10),
+			armor:     parseInt(document.getElementById('ps-armor').value, 10),
 			bow:       document.getElementById('ps-bow').checked,
 			boomerang: document.getElementById('ps-boomerang').checked,
 			// Phase 9-6: 銀のブーメラン（ティア1）。editor-io.js の getPreviewSettings にも同じ定義がある。

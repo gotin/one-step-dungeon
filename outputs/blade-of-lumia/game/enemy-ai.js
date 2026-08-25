@@ -7,11 +7,14 @@ import { ENEMY_META } from '../shared/enemies.js';
 import { TILE } from '../shared/tiles.js';
 import { makeSprite } from '../shared/sprites.js';
 import { playSound } from '../shared/sounds.js';
-import { MOVE_STEP, ATTACK_POSE_MS, TICK_MS, SLAM_RANGE, SLAM_WINDUP_MS, SLAM_COOLDOWN_MS } from './constants.js';
+import { MOVE_STEP, ATTACK_POSE_MS, TICK_MS, SLAM_RANGE, SLAM_WINDUP_MS, SLAM_COOLDOWN_MS,
+	MELEE_WINDUP_MS, MELEE_FREEZE_MS } from './constants.js';
 import { statefulTileClosed, overlapArea } from './passable.js';
 // Phase 5.5k k-9: 突進が壁に激突した印（⭐）の位置＝敵の中心。中心の取り方は hitbox.js が
 // 単一の真実（projectile.js showStunEffect も同じ関数を使う＝印の位置がずれない）。
-import { enemyCenter } from './hitbox.js';
+// Phase 8-4 (4) 0d-2.5: 大型敵の間合いは **左上ではなく中心/端** から測る
+// （enemyCellCenter / enemyHalf / enemyEdgeDist ＝hitbox.js が単一の真実）。
+import { enemyCenter, enemyCellCenter, enemyHalf, enemyEdgeDist } from './hitbox.js';
 // Phase 5.5k k-7.5: hitbox.js enemyPointHit の import は接触ダメージ（checkEnemyContact）
 // 廃止で不要になった。体当たりの到達判定は slamReachHit（軸ごとの間合い）が持つ。
 
@@ -139,21 +142,29 @@ export function createEnemyAi(deps) {
 	// プレイヤーは剣を振っている間（_atkUntil の窓）足が止まる（player.js movePlayer）。
 	// 敵側に同じ規則が無かった＝振りながら詰めてくる非対称だった ∴ 攻撃が成立した瞬間に
 	// e._freezeUntil を立て、enemyTick がその窓の間は移動も攻撃も止める。
-	//   ・既定＝ATTACK_POSE_MS（＝攻撃ポーズの絵が出ている間だけ止まる＝絵と挙動が一致）
 	//   ・meta.attackFreezeMs で敵ごとに延ばせる（高機動の敵は硬直を長くして隙を作る）
-	//   ・directional でない既存敵は硬直 0＝従来どおり（後方互換）
-	function resolveAttackFreezeMs(meta) {
+	//   ・**近接（sword / charge）の既定＝MELEE_FREEZE_MS**（Phase 8-4 (4) 0d-2.7）＝
+	//     殴り返す窓。間合いが互角なら予告だけでは刺し違えが残るため時間で窓を作る。
+	//   ・遠隔の既定は従来どおり＝directional なら ATTACK_POSE_MS・それ以外は 0
+	//     （撃つたびに MELEE_FREEZE_MS 固まると「間合いを保って撃つ」挙動が壊れる）。
+	// ⚠️ 第2引数を省くと従来の（近接でない側の）既定を返す＝既存の呼び出しと互換。
+	const MELEE_ATTACK_TYPES = new Set(['sword', 'charge']);
+	function resolveAttackFreezeMs(meta, atk) {
 		if (meta?.attackFreezeMs != null) return meta.attackFreezeMs;
+		if (atk && MELEE_ATTACK_TYPES.has(atk.type)) return MELEE_FREEZE_MS;
 		return meta?.directional ? ATTACK_POSE_MS : 0;
 	}
 
 	// 攻撃が成立したときの共通後処理＝クールダウン記録・攻撃ポーズ窓・攻撃硬直。
 	// 攻撃種別ごとに散っていた3行を1か所に集める（＝硬直を入れ忘れた攻撃種が出ない）。
+	// 攻撃の種別（近接か遠隔か）は**呼び出し側に持たせず** i から引き直す＝呼び出し箇所が
+	// 10 か所以上あるため、渡し忘れた1か所だけ硬直が入らない事故を作らない。
 	function markAttack(e, meta, i, now) {
 		if (!e._attackTimes) e._attackTimes = {};
 		e._attackTimes[i] = now;
 		if (meta?.directional) e._atkUntil = now + ATTACK_POSE_MS;
-		const freeze = resolveAttackFreezeMs(meta);
+		const atk = resolveAttackList(e, meta)?.[i];
+		const freeze = resolveAttackFreezeMs(meta, atk);
 		if (freeze > 0) e._freezeUntil = now + freeze;
 	}
 
@@ -176,10 +187,10 @@ export function createEnemyAi(deps) {
 	// （斜めから 1.5 セル離れて殴られないようにする＝箱ではなく十字の間合い）。
 	// 大型敵（w×h）は占有範囲の分だけ箱を広げる（hitbox.js enemyPointHit と同じ中心の取り方）。
 	function slamReachHit(e, player, range) {
-		const w = e.w ?? 1, h = e.h ?? 1;
-		const halfW = (w - 1) / 2, halfH = (h - 1) / 2;
-		const dx = player.x - (e.x + halfW);
-		const dy = player.y - (e.y + halfH);
+		const { cx, cy } = enemyCellCenter(e);
+		const { halfW, halfH } = enemyHalf(e);
+		const dx = player.x - cx;
+		const dy = player.y - cy;
 		const adx = Math.abs(dx), ady = Math.abs(dy);
 		if (adx >= ady) return adx <= range + halfW && ady <= SLAM_PERP + halfH;
 		return ady <= range + halfH && adx <= SLAM_PERP + halfW;
@@ -189,7 +200,9 @@ export function createEnemyAi(deps) {
 	function startSlam(e, atk, i, now) {
 		const player = getPlayer();
 		// 突っ込む方向を向く＝向き別スプライトを持つ敵でもモーションの向きが合う
-		const dx = player.x - e.x, dy = player.y - e.y;
+		// （0d-2.5: 向きも**中心から**決める＝2×2 で「西に居るのに下を向く」が出ない）
+		const { cx, cy } = enemyCellCenter(e);
+		const dx = player.x - cx, dy = player.y - cy;
 		if (Math.abs(dx) >= 0.01 || Math.abs(dy) >= 0.01) {
 			e.dir = Math.abs(dx) >= Math.abs(dy) ? (dx > 0 ? 'right' : 'left') : (dy > 0 ? 'down' : 'up');
 		}
@@ -823,9 +836,16 @@ export function createEnemyAi(deps) {
 		const now = gameNow();
 		if (!e._attackTimes) e._attackTimes = {};
 
-		const dx = player.x - e.x;
-		const dy = player.y - e.y;
+		// 0d-2.5 (5): **方向は中心から・間合いは端から**の2つを使い分ける。
+		//   dx/dy/dist … 投擲物を飛ばす向き・絵の向きの決定（中心から見た向き）
+		//   reach       … range / minRange の判定（body の端からプレイヤーまで）
+		// 左上基準のままだと 2×2 は「西/北から 1 セル遠い」＝同じ密着でも向きで間合いが
+		// 変わる（＝プレイヤーには見えない安全な面ができる）。1×1 では両方とも従来と同値。
+		const { cx, cy } = enemyCellCenter(e);
+		const dx = player.x - cx;
+		const dy = player.y - cy;
 		const dist = Math.sqrt(dx * dx + dy * dy);
+		const reach = enemyEdgeDist(e, player.x, player.y);
 
 		for (let i = 0; i < attackList.length; i++) {
 			const atk = attackList[i];
@@ -846,10 +866,10 @@ export function createEnemyAi(deps) {
 			const cooldown = atk.cooldown ?? 3000;
 			if (now - lastTime < cooldown) continue;
 
-			if (dist > (atk.range ?? 5)) continue;
+			if (reach > (atk.range ?? 5)) continue;
 			// Phase 9-6: minRange＝近すぎる時はこの攻撃を出さない（下限）。
 			// 近接＋遠隔を持つ敵（潜み鮫）で「隣接したら遠隔でなく噛みつき」を宣言的に表す。
-			if (atk.minRange !== undefined && dist < atk.minRange) continue;
+			if (atk.minRange !== undefined && reach < atk.minRange) continue;
 
 			if (atk.type === 'spear') {
 				const sameCol = Math.abs(dx) < 1.0;
@@ -939,61 +959,193 @@ export function createEnemyAi(deps) {
 				});
 				markAttack(e, meta, i, now);
 			} else if (atk.type === 'sword') {
-				const range = atk.range ?? 1.5;
-				if (dist <= range) {
-					const rawDx = player.x - e.x, rawDy = player.y - e.y;
-					const absDx = Math.abs(rawDx), absDy = Math.abs(rawDy);
-					let ux, uy;
-					if (absDy >= absDx) { ux = 0; uy = (rawDy > 0 ? 1 : -1); }
-					else                { ux = (rawDx > 0 ? 1 : -1); uy = 0; }
-					const projDist = Math.abs(rawDx * ux + rawDy * uy);
-					const perpDist = Math.abs(rawDx * (-uy) + rawDy * ux);
-					if (projDist <= range && perpDist <= 0.8) {
-						// Phase 5.5k k-4: 向き固定の敵（盾騎士）は**正面にしか剣を振れない**。
-						// 向きロックの代償＝側面/背後に回り込んだプレイヤーには手が出ない
-						// ＝回り込みに報酬がある（向き直りは tickFaceLock の turnMs 待ち）。
-						if (meta.blockFacing) {
-							const swingDir = uy !== 0 ? (uy > 0 ? 'down' : 'up') : (ux > 0 ? 'right' : 'left');
-							if (swingDir !== e.dir) continue;
-						}
-						let sdx = rawDx, sdy = rawDy;
-						if (absDx < 0.01 && absDy < 0.01) {
-							const dv = { down:[0,1], up:[0,-1], left:[-1,0], right:[1,0] }[e.dir] ?? [0,1];
-							sdx = dv[0]; sdy = dv[1];
-						}
-						const blocked = player.shield && isShieldBlockingDir(sdx, sdy);
-						if (blocked) {
-							playSound('shieldBlock');
-							showShieldBlockEffect(e.x, e.y);
-							// 盾ブロック → 現在の approach モードの重みを下げる（学習）
-							if (resolveHitAndAway(e, meta) && e._modeWeights && e._approachMode) {
-								const m = e._approachMode;
-								if (m === 'direct' || m === 'flank') {
-									e._modeWeights[m] = Math.max(0.1, e._modeWeights[m] * 0.6);
-									if (getDebugMode()) {
-										const w = e._modeWeights;
-										const total = w.flank + w.direct + w.wander;
-										console.log(`[AI] ${e.id} shield-blocked mode=${m} → weights=F${(w.flank/total*100).toFixed(0)}%/D${(w.direct/total*100).toFixed(0)}%/W${(w.wander/total*100).toFixed(0)}%`);
-									}
-								}
-							}
-						} else {
-							takeDamage(meta.atk);
-						}
-						showEnemySwordSlash(e);
-						// Phase 5.5k: クールダウン記録・剣を振った絵（${base}${Dir}Atk の窓 _atkUntil）・
-						// 攻撃硬直（_freezeUntil）を markAttack で一括して立てる
-						// （プレイヤーの player._atkUntil と同型・DECISIONS 2026-08-10 / 2026-08-12）。
-						markAttack(e, meta, i, now);
-						if (resolveHitAndAway(e, meta) && e._haPhase === 'approach') {
-							e._haPhase = 'retreat';
-							e._haTimer = now + 600 + Math.random() * 400;
-							break;
-						}
+				// Phase 8-4 (4) 0d-2.6: 剣は **予告（前動作）を経てから当たる**。
+				// 0d-2.7（2026-08-25）で予告を**全敵の既定**にした（旧＝`windupMs` を書いた
+				// 敵だけの opt-in ＝岩ゴーレム1体のみ）。予告の無い剣は「到達距離に入った tick に
+				// 即ダメージ」＝プレイヤーには接触ダメージと区別できなかった（ユーザー実プレイ報告）。
+				// `windupMs: 0` を明示した攻撃だけ従来の即ダメージに戻せる（逃げ道は残す）。
+				const windupMs = atk.windupMs ?? MELEE_WINDUP_MS;
+				if (windupMs > 0) {
+					if (e._swingAt != null || e._slamAt != null) continue;   // 予告は同時に1つだけ
+					const reach = swordReach(e, atk);
+					if (!reach) continue;
+					// Phase 5.5k k-4 の向き固定（盾騎士）は**振り上げも正面限定**にする。
+					// 予告だけ側面へ出すと、予告中に turnMs の向き直りが来た敵が
+					// 「振り上げた時は側面だったのに解決時は正面」で当ててしまう
+					// ＝回り込みの報酬（tests/facing-block-enemies.spec.js ⑧）が消える。
+					if (meta.blockFacing && reach.dir !== e.dir) continue;
+					startSwing(e, meta, atk, i, now, reach);
+					continue;
+				}
+				if (!resolveSwordHit(e, meta, atk)) continue;
+				showEnemySwordSlash(e);
+				// Phase 5.5k: クールダウン記録・剣を振った絵（${base}${Dir}Atk の窓 _atkUntil）・
+				// 攻撃硬直（_freezeUntil）を markAttack で一括して立てる
+				// （プレイヤーの player._atkUntil と同型・DECISIONS 2026-08-10 / 2026-08-12）。
+				markAttack(e, meta, i, now);
+				if (retreatAfterMelee(e, meta, now)) break;
+			}
+		}
+	}
+
+	// ── Phase 8-4 (4) 0d-2.6: 剣（近接）の予告つき攻撃 ─────────────────────
+	// 2026-08-25 ユーザー実プレイ報告：「盾を持っていない状態では、G の攻撃を受けずに剣を
+	// 当てるのは至難の業。攻撃を瞬時に発生させるのではなく、前動作があってから攻撃が
+	// 発生するようにして、避けようと思えばがんばれば避けられる作りにすべき」。
+	// ∴体当たり（slam）と同じ3拍を剣にも入れる：
+	//   ① 到達距離に入った tick に **予告**（`e._swingAt` ＝解決の論理時刻）＝剣を振り上げる
+	//   ② 予告中は移動も他の攻撃もしない（enemyTick がこの tick を専有する）
+	//   ③ 解決の tick に **もう一度** 到達判定＝離れていれば空振り
+	// ⚠️ ❌ 失効（2026-08-25・0d-2.7）：「予告は `windupMs` を書いた攻撃だけの opt-in ＝
+	//    ザコの剣は従来どおり即ダメージ（名簿の脅威度をボス以外で動かさない）」。
+	//    ユーザー実プレイ報告＝「どの敵もそうなんだけど、接触しただけでもダメージくらう」＝
+	//    予告の無い剣は接触ダメージと区別できない∴**予告は全敵の既定**（MELEE_WINDUP_MS）。
+	//    脅威度が下がる代償は承知の上（ユーザー選択・DECISIONS 2026-08-25（5））。
+	// ⚠️ 盾ブロック・向き固定・ヒット＆アウェイの学習は **予告あり/なしで同じ1つの経路**
+	//    （resolveSwordHit）を通す＝機構が片方にだけ掛かる二重化を作らない。
+	const SWORD_PERP = 0.8;   // 主軸に直交する方向の許容ずれ（体当たり SLAM_PERP と同じ数字）
+
+	// 剣の到達判定。届いていれば {ux,uy,dir,sdx,sdy}、届いていなければ null。
+	// 形は体当たり（slamReachHit）と同じ「主軸 ≤ range・直交 ≤ 0.8」の十字で、
+	// 大型敵は占有範囲の分だけ広げる（0d-2.5: プレイヤー側 combat.js の剣と同じ作法∴
+	// 「こちらの剣は届くのに相手の剣は届かない」向きが出ない）。
+	// ∴`range` の意味は **body の端からの距離**＝プレイヤーの SWORD_REACH と直接比べられる。
+	function swordReach(e, atk) {
+		const player = getPlayer();
+		const { cx, cy } = enemyCellCenter(e);
+		const { halfW, halfH } = enemyHalf(e);
+		const range = atk.range ?? 1.5;
+		const dx = player.x - cx, dy = player.y - cy;
+		const adx = Math.abs(dx), ady = Math.abs(dy);
+		let ux, uy;
+		if (ady >= adx) { ux = 0; uy = (dy > 0 ? 1 : -1); }
+		else            { ux = (dx > 0 ? 1 : -1); uy = 0; }
+		const projDist = Math.abs(dx * ux + dy * uy);
+		const perpDist = Math.abs(dx * (-uy) + dy * ux);
+		const halfFwd  = Math.abs(ux) * halfW + Math.abs(uy) * halfH;
+		const halfSide = Math.abs(uy) * halfW + Math.abs(ux) * halfH;
+		if (projDist - halfFwd > range) return null;
+		if (perpDist > SWORD_PERP + halfSide) return null;
+		const dir = uy !== 0 ? (uy > 0 ? 'down' : 'up') : (ux > 0 ? 'right' : 'left');
+		// 盾ブロックへ渡す向き＝敵から見たプレイヤーの方向。真上に重なっている異常時は e.dir。
+		let sdx = dx, sdy = dy;
+		if (adx < 0.01 && ady < 0.01) {
+			const dv = { down:[0,1], up:[0,-1], left:[-1,0], right:[1,0] }[e.dir] ?? [0,1];
+			sdx = dv[0]; sdy = dv[1];
+		}
+		return { ux, uy, dir, sdx, sdy };
+	}
+
+	// 剣の当たり／盾ブロックの解決。戻り値＝攻撃が成立したか（当てた or 防がれた）。
+	// false＝空振り（呼び出し側は予告なしならクールダウンを数えない＝従来どおり）。
+	function resolveSwordHit(e, meta, atk) {
+		const hit = swordReach(e, atk);
+		if (!hit) return false;
+		// Phase 5.5k k-4: 向き固定の敵（盾騎士）は**正面にしか剣を振れない**。
+		// 向きロックの代償＝側面/背後に回り込んだプレイヤーには手が出ない
+		// ＝回り込みに報酬がある（向き直りは tickFaceLock の turnMs 待ち）。
+		if (meta.blockFacing && hit.dir !== e.dir) return false;
+		const player = getPlayer();
+		const blocked = player.shield && isShieldBlockingDir(hit.sdx, hit.sdy);
+		if (blocked) {
+			playSound('shieldBlock');
+			showShieldBlockEffect(e.x, e.y);
+			// 盾ブロック → 現在の approach モードの重みを下げる（学習）
+			if (resolveHitAndAway(e, meta) && e._modeWeights && e._approachMode) {
+				const m = e._approachMode;
+				if (m === 'direct' || m === 'flank') {
+					e._modeWeights[m] = Math.max(0.1, e._modeWeights[m] * 0.6);
+					if (getDebugMode()) {
+						const w = e._modeWeights;
+						const total = w.flank + w.direct + w.wander;
+						console.log(`[AI] ${e.id} shield-blocked mode=${m} → weights=F${(w.flank/total*100).toFixed(0)}%/D${(w.direct/total*100).toFixed(0)}%/W${(w.wander/total*100).toFixed(0)}%`);
 					}
 				}
 			}
+		} else {
+			takeDamage(meta.atk);
 		}
+		return true;
+	}
+
+	// 当てた（防がれた）後の後退＝ヒット＆アウェイ。戻り値 true ＝後退へ移った
+	// （呼び出し側は攻撃ループを抜ける＝1 tick に2発目を出さない従来の挙動）。
+	function retreatAfterMelee(e, meta, now) {
+		if (!resolveHitAndAway(e, meta) || e._haPhase !== 'approach') return false;
+		e._haPhase = 'retreat';
+		e._haTimer = now + 600 + Math.random() * 400;
+		return true;
+	}
+
+	// 予告の開始（enemyAttack の sword 分岐から呼ぶ）。
+	function startSwing(e, meta, atk, i, now, reach = null) {
+		const hit = reach ?? swordReach(e, atk);
+		// 振る方向を向く（向き固定の敵は向き直らない＝正面にしか振れないという制約を壊さない）
+		if (hit && !meta.blockFacing) e.dir = hit.dir;
+		// 長さは enemyAttack と同じ式で引き直す（既定＝MELEE_WINDUP_MS・0d-2.7）
+		e._swingWindupMs = atk.windupMs ?? MELEE_WINDUP_MS;
+		e._swingAt  = now + e._swingWindupMs;
+		e._swingIdx = i;
+		// 予告は絵（.swing-windup ＝剣を振り上げる）と音の2経路で出す＝画面の端でも読める。
+		// 突進の溜め（dashWindup の低い段）とは別の音＝避け方が違うものを同じ音で告知しない。
+		playSound('swordWindup');
+	}
+
+	// 予告の解決。戻り値 true ＝この tick は剣が専有した（移動も他の攻撃もしない）。
+	function tickSwing(e, meta, now) {
+		if (e._swingAt == null) return false;
+		if (now < e._swingAt) return true;                 // まだ振り上げ中
+		const list = resolveAttackList(e, meta);
+		const i    = e._swingIdx ?? 0;
+		const atk  = list[i] ?? {};
+		e._swingAt = null; e._swingIdx = null;
+		// 隠れ中（潜行・地中・滞空）に解決の時刻が来たら空振り（tickSlam と同じ扱い）
+		if (e.hidden) { markAttack(e, meta, i, now); return true; }
+		const connected = resolveSwordHit(e, meta, atk);
+		// 振り下ろしの絵は当たっても空振りでも出す＝「避けた」ことが画面に出る
+		showEnemySwordSlash(e);
+		// クールダウン・硬直は**解決した時刻から**数える（予告の開始からではない）。
+		// 空振りでも数える＝逃げられた直後に予告なしで振り直す連打にならない。
+		markAttack(e, meta, i, now);
+		if (connected) retreatAfterMelee(e, meta, now);
+		return true;
+	}
+
+	// 予告モーションの見た目（board.css `.swing-windup`＝剣を頭上へ振り上げる）。
+	// 体当たり（`.slam-windup` の拡大縮小）とも突進（`.dash-windup` の足踏み）とも**別の形**
+	// ＝どの攻撃の予告なのかが絵で分かる（GUIDE §6-1）。2026-08-25 ユーザー指定＝
+	// 「剣の攻撃の予告動作がキャラの拡大縮小だと変」∴剣そのものが上がる形にする。
+	function syncSwingMotion(e) {
+		const el = document.getElementById(`char-enemy-${e.id}`);
+		if (!el) return;
+		const on = e._swingAt != null;
+		if (on) {
+			// 振り上げの長さは状態機械が持つ（CSS 側に長さを書かない＝dash-windup と同じ作法）
+			el.style.setProperty('--swing-windup-ms', `${Math.round(e._swingWindupMs ?? 0)}ms`);
+			// 剣を持つ側＝振る向き。左/上へ振るときは左右反転する（絵が向きと逆にならない）
+			el.style.setProperty('--swing-flip', (e.dir === 'left' || e.dir === 'up') ? '-1' : '1');
+		}
+		el.classList.toggle('swing-windup', on);
+	}
+
+	// 攻撃硬直（`_freezeUntil`）の見た目（board.css `.attack-recover`＝前かがみに沈んで止まる）。
+	// 2026-08-25 ユーザー実プレイ判定「攻撃がおわったあともちょっと動けない時間をつくらないと
+	// 剣を当てること自体がほぼ不可能」で硬直を反撃の窓として使い始めた∴**窓が見えないと
+	// 反撃できない**（GUIDE §6-1「絵は機構を読ませる」）。予告（振り上げ・体当たりの拡大縮小・
+	// 突進の足踏み）はどれも動き続ける絵だが、硬直は**動かずに止まる**形＝混ざらない。
+	function syncRecoverMotion(e, now) {
+		const el = document.getElementById(`char-enemy-${e.id}`);
+		if (!el) return;
+		const on = e._freezeUntil != null && now < e._freezeUntil
+			// 予告中（振り上げ）は硬直の絵を出さない＝どちらの窓なのかが絵で一意に読める
+			&& e._swingAt == null && e._slamAt == null;
+		// ⚠️ 長さは**窓に入った最初の tick だけ**書く（毎 tick 残り時間を書き直すと
+		//    animation-duration が縮み続けて沈む姿勢が跳ねる）。硬直は攻撃が成立した tick に
+		//    立つ∴最初の tick の残り＝硬直の全長。
+		if (on && !el.classList.contains('attack-recover')) {
+			el.style.setProperty('--recover-ms', `${Math.max(0, Math.round(e._freezeUntil - now))}ms`);
+		}
+		el.classList.toggle('attack-recover', on);
 	}
 
 	// 敵の剣エフェクト
@@ -1001,11 +1153,14 @@ export function createEnemyAi(deps) {
 		const charLayerEl = getCharLayerEl();
 		if (!charLayerEl) return;
 		const player = getPlayer();
-		const dx = player.x - e.x, dy = player.y - e.y;
+		// 0d-2.5: 斬撃の出る位置は **body の中心から**プレイヤーへ 1 セル（左上からだと
+		// 2×2 では体の左上角から斬撃が出る＝当たった面と絵が食い違う）。
+		const { cx, cy } = enemyCellCenter(e);
+		const dx = player.x - cx, dy = player.y - cy;
 		const dist = Math.sqrt(dx * dx + dy * dy);
 		if (dist < 0.01) return;
-		const fx = e.x + dx / dist;
-		const fy = e.y + dy / dist;
+		const fx = cx + dx / dist;
+		const fy = cy + dy / dist;
 		const dir = Math.abs(dy) >= Math.abs(dx) ? (dy > 0 ? 'down' : 'up') : (dx > 0 ? 'right' : 'left');
 		const cellPx = getCellPx();
 		const el = document.createElement('div');
@@ -1109,9 +1264,15 @@ export function createEnemyAi(deps) {
 			[order[i], order[j]] = [order[j], order[i]];
 		}
 		if (prev >= 0) order.push(prev);
+		// 0d-2.5 (3): 出現先は「プレイヤーから d セル空けて **body を置く**」＝北/西へ出るときは
+		// 体の幅ぶん（w-1 / h-1）だけ余分に下げる。左上をそのまま pr±d に置くと 2×2 では
+		// 北/西の出現だけプレイヤーに 1 セル近い（＝出る方向で間合いが変わる）。
+		// ⚠️ セルは整数∴「中心を合わせる」ではなく「**手前の端**を d セル離す」で対称にする。
+		const backW = (e.w ?? 1) - 1, backH = (e.h ?? 1) - 1;
 		for (const i of order) {
 			const [dr, dc] = BLINK_DIRS[i];
-			const ny = pr + dr * d, nx = pc + dc * d;
+			const ny = pr + dr * d + (dr < 0 ? -backH : 0);
+			const nx = pc + dc * d + (dc < 0 ? -backW : 0);
 			if (isPassableForEnemy(ny, nx, e)) { e._blinkDir = i; return [ny, nx]; }
 		}
 		return null;
@@ -1225,8 +1386,12 @@ export function createEnemyAi(deps) {
 			return true;
 		}
 		const player = getPlayer();
-		const dx = player.x - e.x, dy = player.y - e.y;
-		const dist = Math.hypot(dx, dy);
+		// 0d-2.5 (1): 発動距離は **body の端から**測る（左上からだと 2×2 は西/北から密着した
+		// ときだけ minRange を超える＝「密着なのに 0 セル跳んで無敵窓だけ得る」が出る）。
+		// 向きの決定は中心から（左上だと 2×2 で軸の選び方が 0.5 セル偏る）。
+		const { cx, cy } = enemyCellCenter(e);
+		const dx = player.x - cx, dy = player.y - cy;
+		const dist = enemyEdgeDist(e, player.x, player.y);
 		// 密着（minRange 未満）では跳ばない＝すり抜けるだけになる。遠すぎ（maxRange 超）
 		// でも跳ばない＝届かない跳躍で隙だけ晒すのは敵として不自然。
 		if (dist < minRange || dist > maxRange) return false;
@@ -1270,10 +1435,10 @@ export function createEnemyAi(deps) {
 	// その軸からの直交ずれが alignTol 以内（＝突進が始まる車線＝当たる車線）。
 	// 大型敵（w×h）は占有範囲の分だけ広げる（slamReachHit と同じ中心の取り方）。
 	function dashReachHit(e, player, vec, hitRange, alignTol) {
-		const w = e.w ?? 1, h = e.h ?? 1;
-		const halfW = (w - 1) / 2, halfH = (h - 1) / 2;
-		const dx = player.x - (e.x + halfW);
-		const dy = player.y - (e.y + halfH);
+		const { cx, cy } = enemyCellCenter(e);
+		const { halfW, halfH } = enemyHalf(e);
+		const dx = player.x - cx;
+		const dy = player.y - cy;
 		const [sy, sx] = vec ?? [0, 0];
 		const horizontal = sx !== 0;
 		const along     = horizontal ? dx * sx : dy * sy;      // 進行方向の距離（後ろは負）
@@ -1351,16 +1516,25 @@ export function createEnemyAi(deps) {
 		}
 		// idle ＝突進を始めるかどうかの判断
 		if (e._slamAt != null) return false;      // 体当たりの予告中は突進を始めない（予告は1つ）
+		if (e._swingAt != null) return false;     // 剣の予告中も始めない（0d-2.6・上と同じ理由）
 		const player = getPlayer();
 		if (!player) return false;
-		const dx = player.x - e.x, dy = player.y - e.y;
+		// 0d-2.5 (2): 車線も距離も **中心から** 測り、当たり判定（dashReachHit）と同じだけ
+		// body の半サイズで広げる。左上基準のままだと「轢ける車線」より「突進する車線」が
+		// 狭い＝**自分の下半分の前に立つプレイヤーには突進して来ない**（0d-2 で実測）。
+		const { cx, cy } = enemyCellCenter(e);
+		const { halfW, halfH } = enemyHalf(e);
+		const dx = player.x - cx, dy = player.y - cy;
 		const adx = Math.abs(dx), ady = Math.abs(dy);
 		const vertical = ady >= adx;
 		const along = vertical ? ady : adx;       // 突進する軸方向の距離
 		const off   = vertical ? adx : ady;       // その軸からの直交ずれ
+		const halfAlong = vertical ? halfH : halfW;
+		const halfOff   = vertical ? halfW : halfH;
 		// 行/列に入っていない＝突進しない（プレイヤーの避け方＝軸から1セル外れる）
-		if (off > alignTol) return false;
-		if (along < minRange || along > maxRange) return false;
+		if (off > alignTol + halfOff) return false;
+		// 距離の上下限は body の端から（＝密着では走らない・届かない距離では走らない）
+		if (along - halfAlong < minRange || along - halfAlong > maxRange) return false;
 		e._dashVec = vertical ? [Math.sign(dy) || 1, 0] : [0, Math.sign(dx) || 1];
 		e.dir = vertical ? (dy > 0 ? 'down' : 'up') : (dx > 0 ? 'right' : 'left');
 		e._dashPhase = 'windup';
@@ -1502,18 +1676,22 @@ export function createEnemyAi(deps) {
 		if (!e._attached) {
 			// 剥がされた直後は再度張り付けない＝反撃した見返りに間合いを立て直す猶予を作る
 			if (now < (e._leechCooldownUntil ?? 0)) return false;
-			const dx = player.x - e.x, dy = player.y - e.y;
 			// ⚠️ attachRange は 1.0 以上にする。敵はプレイヤーのセルへ自力で踏み込めない
 			//    （isPassableForEnemy）∴自分で詰められる距離は 1.0 まで＝これより狭い値に
 			//    すると永遠に張り付けない（GUIDE §3-1 と同型の「届かない判定距離」の罠）。
-			if (Math.hypot(dx, dy) > (cfg.attachRange ?? 1.1)) return false;
+			// 0d-2.5 (4): 距離は **body の端から**測る（左上基準だと 2×2 は西/北から詰めても
+			// 2.0 ＝どんな attachRange でも張り付けない＝同じ「届かない判定距離」の罠）。
+			if (enemyEdgeDist(e, player.x, player.y) > (cfg.attachRange ?? 1.1)) return false;
 			e._attached = true;
 			e._leechNext = now + (cfg.drainMs ?? 600);
 			playSound('appear');
 			pulse?.('張り付かれた！', 900);
 		}
-		// プレイヤーへ貼り付く（速度では振り切れない＝①）
-		e.x = player.x; e.y = player.y;
+		// プレイヤーへ貼り付く（速度では振り切れない＝①）。
+		// 0d-2.5 (4): 大型敵は **body の中心**をプレイヤーへ合わせる（左上を合わせると
+		// 2×2 の体が右下へ半セルずれて「掴んでいる絵」に見えない）。1×1 では従来と同値。
+		const { halfW, halfH } = enemyHalf(e);
+		e.x = player.x - halfW; e.y = player.y - halfH;
 		moveCharEl(`enemy-${e.id}`, e.x, e.y);
 		if (now >= (e._leechNext ?? 0)) {
 			drainRupees(e, cfg, now);
@@ -1806,6 +1984,9 @@ export function createEnemyAi(deps) {
 				// Phase 5.5k k-7.5: スタンは体当たりの予告も中断する（ガードと同じ扱い＝
 				// スタン中に攻撃が成立してはいけない）。ブーメランで止めれば体当たりも消える。
 				if (e._slamAt != null) { e._slamAt = null; e._slamIdx = null; syncSlamMotion(e); }
+				// Phase 8-4 (4) 0d-2.6: 剣の予告（振り上げ）もスタンで中断する＝上と同じ理由
+				// （止めたのに振り下ろされる、を作らない）。
+				if (e._swingAt != null) { e._swingAt = null; e._swingIdx = null; syncSwingMotion(e); }
 				// Phase 5.5k k-9: 突進もスタンで中断する（溜め中に殴られたら走り出さない・
 				// 走行中に止められたらそこで終わる）。壁への激突で立てた気絶もここを通る＝
 				// 気絶が明けた tick に走行が再開しないための後始末でもある。
@@ -1815,6 +1996,8 @@ export function createEnemyAi(deps) {
 			// Phase 5.5k k-7.5: 立っている予告は**他の専有状態より先に必ず解決する**
 			// （ガード/硬直/跳躍の判定より前＝予告が宙に浮いて後から不意に当たることがない）。
 			const slamming = tickSlam(e, meta, now);
+			// Phase 8-4 (4) 0d-2.6: 剣の予告（振り上げ）も同じ枠＝立っている予告は先に解決する。
+			const swinging = tickSwing(e, meta, now);
 			// 隠れ↔出現の周期を更新（meta.hide を持つ敵のみ＝潜み鮫・地中蟲）
 			tickHide(e, meta, now);
 			// Phase 5.5k k-8: 瞬間移動（術士）＝消えている間と出現した tick を専有する。
@@ -1837,7 +2020,15 @@ export function createEnemyAi(deps) {
 			const cmode = tickCombatMode(e, meta, now);
 			// Phase 5.5k k-3: 跳躍（跳躍蜘蛛）は溜め〜滞空〜着地硬直の間 移動/攻撃を専有する。
 			// ガードや硬直と同じ「この tick は他の行動をしない」枠＝先に判定する。
-			const leaping = (!isGuarding && !frozen) ? tickLeap(e, meta, now) : false;
+			// Phase 8-4 (4) 0d-2.7: **始まった跳躍は硬直では止めない**（tickHide/tickBlink と同じ
+			// 「時計は進める」枠）。跳躍蜘蛛は attack:'charge' も持つ＝体当たりの予告が立った
+			// tick に跳び始めると、予告の解決で立つ攻撃硬直（MELEE_FREEZE_MS）が
+			// **滞空前の溜めを宙吊りにする**（実測：溜めが 3 tick → 6 tick に伸びた）。
+			// ∴硬直で止めるのは「新しく跳び始めること」だけにする（下の shell/leech/dash と
+			// 違い、跳躍は始まると自分の時計だけで完結する状態機械∴宙吊りが観測に出る）。
+			const leapBusy = e._leapPhase != null && e._leapPhase !== 'ground';
+			const leaping = (!isGuarding && (leapBusy || (!frozen && !slamming && !swinging)))
+				? tickLeap(e, meta, now) : false;
 			// Phase 5.5k k-4: 甲羅の開閉（火吐き亀）＝籠もっている間は移動も攻撃もしない
 			// （ガード/硬直/跳躍と同じ「この tick は他の行動をしない」枠）。開いた瞬間の炎は
 			// tickShell の中で出る＝籠もりから開く tick だけ攻撃が起きる。
@@ -1852,7 +2043,7 @@ export function createEnemyAi(deps) {
 			// Phase 5.5k k-4: 向き固定（盾騎士）＝turnMs ごとにだけ向き直る。移動より先に
 			// 決める（移動側は向きを触らない＝dirLocked を渡す）。
 			const dirLocked = tickFaceLock(e, meta, now);
-			if (!isGuarding && !frozen && !leaping && !shelled && !leeching && !slamming && !blinking && !dashing) {
+			if (!isGuarding && !frozen && !leaping && !shelled && !leeching && !slamming && !swinging && !blinking && !dashing) {
 				if (resolveHitAndAway(e, meta)) {
 					bossTickHitAndAway(e, meta);
 				} else if (cmode === 'ranged') {
@@ -1879,6 +2070,10 @@ export function createEnemyAi(deps) {
 			if (meta.blink && !e.hidden) syncCastSprite(e, meta);
 			// Phase 5.5k k-7.5: 体当たりの予告モーション（拡大縮小2往復）を状態に合わせる。
 			syncSlamMotion(e);
+			// Phase 8-4 (4) 0d-2.6: 剣の予告モーション（剣を振り上げる）を状態に合わせる。
+			syncSwingMotion(e);
+			// Phase 8-4 (4) 0d-2.6（2回目の調整）: 攻撃硬直の絵（前かがみで止まる＝殴り返す窓）。
+			syncRecoverMotion(e, now);
 			// Phase 5.5k k-9: 突進の溜めモーション（前後に細かく揺れる）を状態に合わせる。
 			// k-9b: 絵そのものも溜め／気絶へ差し替える（揺れと ⭐ だけでは状態が読めない）。
 			if (meta.dash) { syncDashMotion(e); syncDashSprite(e, meta); }
@@ -1911,6 +2106,8 @@ export function createEnemyAi(deps) {
 		dashReachHit,          // Phase 5.5k k-9: 突進の当たり判定（走行軸の前方だけ・テスト用）
 		tickSlam,              // Phase 5.5k k-7.5: 体当たりの予告→解決（テスト用）
 		slamReachHit,          // Phase 5.5k k-7.5: 体当たりの到達判定（テスト用）
+		tickSwing,             // Phase 8-4 (4) 0d-2.6: 剣の予告→解決（テスト用）
+		swordReach,            // Phase 8-4 (4) 0d-2.6: 剣の到達判定（十字・端から測る・テスト用）
 		detachLeech,           // Phase 5.5k k-5: 張り付きを剥がす（combat.js の被弾フックが呼ぶ）
 		bossTickHitAndAway,
 		enemyAttack,

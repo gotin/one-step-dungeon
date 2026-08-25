@@ -488,7 +488,8 @@ test.describe('Blade of Lumia – 9-6 フィールド不変条件（ratchet）',
     // 通すため）。fromEditor=1 は debugMode:true を含む。
     const p = new URLSearchParams({
       fromEditor: '1', layer: 'field', stage: '7,14', row: '2', col: '2',
-      ps_weapon: '1', ps_shield: '1', ps_armor: '1', ps_bow: '1', ps_boomerang: '1',
+      // ps_shield / ps_armor は**ティア番号**（2026-08-25 に曖昧さを解消）＝0 が下位ティア。
+      ps_weapon: '1', ps_shield: '0', ps_armor: '0', ps_bow: '1', ps_boomerang: '1',
       ps_bomb: '1', ps_ladder: '1', ps_wingrobe: '1', ps_flute: '1', ps_candle: '1',
     });
     await page.goto(`/blade-of-lumia/game/?${p.toString()}`);

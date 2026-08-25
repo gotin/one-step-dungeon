@@ -43,92 +43,18 @@ import {
 	SLAM_RANGE, SLAM_WINDUP_MS, SLAM_COOLDOWN_MS,
 } from '../game/constants.js';
 import { THREAT_OF } from './lib/enemy-placement.mjs';
+// 進行順（ORDER）と「その地点で何を持っているか」の導出は **`shared/progression.js` が単一の真実**。
+// 元はこのファイルの内部定数・内部関数だったが、実行キュー 0f でエディタ（プレビュー設定の
+// 「🚩進行地点」プリセット）からも同じ値が必要になった∴共有へ出した（コピーを作らない）。
+// ⚠️ `profilesAt()` が返すのは**ティア番号とハート数だけ**＝ATK/DEF はこのファイルの
+//    `statsOf()` が `shared/items.js` から導出する（プリセットは数値を計算しない）。
+import { ORDER, collectRewards, fieldRewardsOf, profilesAt as rawProfilesAt } from '../shared/progression.js';
 
 const __dir = dirname(fileURLToPath(import.meta.url));
 const MAP_PATH = join(__dir, '../work/blade-of-lumia.json');
 
-// ── 進行順（PLAN 9-1）＝報酬が手に入る順序の単一の真実 ────────────────
-// 本編：D1→D2→D3→D4→D6→D5→D8→D7→（祭壇）→dark_tower
-// 寄道は「入るのに必要な道具」で本編のどこに挟まるかが決まる（scripts/lib/progression.mjs）：
-//   cave_1        … 爆弾+はしご（D5 の後）
-//   forest_cave   … 爆弾（D6 の後）＝銅の剣 tier1
-//   secret_grotto … 笛（D8 の後）＝銀の剣 tier2
-//   void_shrine   … 翼の羽衣（祭壇の後）＝聖剣 tier3
-const ORDER = [
-	{ id: 'start',         label: '開始直後',            layer: null },
-	{ id: 'dungeon_1',     label: 'D1 森の遺跡',         layer: 'dungeon_1' },
-	{ id: 'dungeon_2',     label: 'D2 岩窟',             layer: 'dungeon_2' },
-	{ id: 'dungeon_3',     label: 'D3 湖の神殿',         layer: 'dungeon_3' },
-	{ id: 'dungeon_4',     label: 'D4 砂の遺跡',         layer: 'dungeon_4' },
-	{ id: 'dungeon_6',     label: 'D6 火山',             layer: 'dungeon_6' },
-	{ id: 'forest_cave',   label: '寄道 樹海の岩室',     layer: 'forest_cave', optional: true },
-	{ id: 'dungeon_5',     label: 'D5 氷の遺跡',         layer: 'dungeon_5' },
-	{ id: 'cave_1',        label: '寄道 洞窟',           layer: 'cave_1', optional: true },
-	{ id: 'dungeon_8',     label: 'D8 沼地',             layer: 'dungeon_8' },
-	{ id: 'secret_grotto', label: '寄道 空中の遺跡',     layer: 'secret_grotto', optional: true },
-	{ id: 'dungeon_7',     label: 'D7 空の神殿',         layer: 'dungeon_7' },
-	{ id: 'void_shrine',   label: '寄道 虚空の祠',       layer: 'void_shrine', optional: true },
-	{ id: 'dark_tower',    label: 'DT 暗黒の塔',         layer: 'dark_tower' },
-];
-
-// ── 実マップから報酬を集める（レイヤー単位）────────────────────────
-// 「どのレイヤーに置いてあるか」だけを見る＝部屋の位置や関門は見ない。
-// 関門（killAll/パズル）は「取れるかどうか」を左右するが「順序」は変えない。
-function collectRewards(map) {
-	const perLayer = new Map();   // layer → { sword:[], armor:[], shield:[], hearts:n }
-	const bump = (layer) => {
-		if (!perLayer.has(layer)) perLayer.set(layer, { sword: [], armor: [], shield: [], hearts: 0 });
-		return perLayer.get(layer);
-	};
-	for (const [layerName, layer] of Object.entries(map.layers)) {
-		for (const [, st] of Object.entries(layer.stages ?? {})) {
-			for (const src of ['chestContents', 'floorItems']) {
-				for (const v of Object.values(st[src] ?? {})) {
-					if (!v || typeof v !== 'object') continue;
-					const bucket = bump(layerName);
-					if (v.swordTier  != null) bucket.sword.push(v.swordTier);
-					if (v.armorTier  != null) bucket.armor.push(v.armorTier);
-					if (v.shieldTier != null) bucket.shield.push(v.shieldTier);
-					if (v.type === 'heartContainer' || v.item === 'heartContainer') bucket.hearts += 1;
-				}
-			}
-		}
-	}
-	return perLayer;
-}
-
-// 進行地点ごとのプレイヤー諸元＝実プレイが必ず入る帯（min ≦ 実プレイ ≦ max）。
-//   min … その地点までの**必須レイヤー**の報酬だけ＋木の剣。
-//         寄道（forest_cave / secret_grotto / void_shrine / cave_1 ＝ ORDER の optional）は
-//         **入らなくてもクリアできる**∴下限には数えない。ここを数えると
-//         「DT に来た人は必ず聖剣（ATK 14）を持っている」という嘘の下限になる
-//         （実際は木の剣 ATK 4 で塔に入れる＝3.5 倍の差）。
-//   max … 寄道もフィールドの宝も全部拾った（＝一番強い想定）。
-// ∴調整の当たり判定は min で見る（min で溶ける／効かないなら誰でもそうなる）。
-// max で速いのは「寄道の剣＝報酬」＝設計どおり∴参考値として併記するだけ。
 function profilesAt(index, perLayer, fieldRewards) {
-	const need = { sword: -1, armor: -1, shield: -1, hearts: 3 };   // 必須レイヤーだけ
-	const all  = { sword: -1, armor: -1, shield: -1, hearts: 3 };   // 寄道も含む
-	for (let i = 0; i < index; i++) {
-		const layer = ORDER[i].layer;
-		if (!layer) continue;
-		const r = perLayer.get(layer);
-		if (!r) continue;
-		for (const acc of ORDER[i].optional ? [all] : [need, all]) {
-			for (const t of r.sword)  acc.sword  = Math.max(acc.sword, t);
-			for (const t of r.armor)  acc.armor  = Math.max(acc.armor, t);
-			for (const t of r.shield) acc.shield = Math.max(acc.shield, t);
-			acc.hearts += r.hearts;
-		}
-	}
-	// 木の剣（swordTier 0）は必携＝min にも入れる（無いと剣が振れない）。
-	const min = { ...need, sword: Math.max(need.sword, 0) };
-	const max = {
-		sword:  Math.max(all.sword,  fieldRewards.swordMax),
-		armor:  Math.max(all.armor,  fieldRewards.armorMax),
-		shield: Math.max(all.shield, fieldRewards.shieldMax),
-		hearts: all.hearts + fieldRewards.hearts,
-	};
+	const { min, max } = rawProfilesAt(index, perLayer, fieldRewards);
 	return { min: statsOf(min), max: statsOf(max) };
 }
 
@@ -305,13 +231,7 @@ function main() {
 	const map = JSON.parse(readFileSync(MAP_PATH, 'utf8'));
 	const perLayer = collectRewards(map);
 
-	const fr = perLayer.get('field') ?? { sword: [], armor: [], shield: [], hearts: 0 };
-	const fieldRewards = {
-		swordMax:  Math.max(-1, ...fr.sword),
-		armorMax:  Math.max(-1, ...fr.armor),
-		shieldMax: Math.max(-1, ...fr.shield),
-		hearts:    fr.hearts,
-	};
+	const fieldRewards = fieldRewardsOf(perLayer);
 
 	const report = {
 		constants: {

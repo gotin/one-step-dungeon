@@ -211,6 +211,67 @@
     100% { transform: translateX(0)    scaleY(1);    }
 }
 
+/* Phase 8-4 (4) 0d-2.6: 剣（近接攻撃）の予告モーション＝**剣を振り上げる**。
+   2026-08-25 ユーザー指定：「体当たりの予告はキャラ自体の拡大縮小だが、剣の攻撃の予告が
+   それだと変」∴キャラを縮小拡大せず、**剣そのものが頭上へ上がる**形にする
+   （体当たり `.slam-windup` ／ 突進 `.dash-windup` と3つとも別の形＝GUIDE §6-1）。
+   ・刃は ::after で描く（絵を持たない 2×2 ボスでも予告が出る＝層2の絵待ちにならない）
+   ・振り上げの長さは `--swing-windup-ms`（enemy-ai.js syncSwingMotion が書く）＝
+     CSS 側に長さを持たせない（状態機械が長さの単一の真実）
+   ・`forwards` で振り上げた姿勢を保持＝解決の瞬間までヒュッと上がって止まって見える
+   ・`--swing-flip` は剣を持つ側（左/上へ振るときは左右反転）
+   ⚠️ ::after は隠れの痕跡（`.hiding::after`）と同じ擬似要素。両方付いたときは
+      クラス数の多い `.hiding.hide-*` が勝つ（隠れ中の解決は空振り∴予告が見えなくてよい）。
+   ⚠️ 大型敵の wrapper は 2 セル四方（render-chars.js applyEnemySize）∴% 指定の刃は
+      体の大きさに比例して大きくなる（1 セル固定の刃だと巨体の予告が読めない）。 */
+.char-abs.swing-windup::after {
+    content: '';
+    position: absolute;
+    /* 剣を持つ側（右/下向き＝体の右・左/上向き＝体の左）。`--swing-flip` は ±1 の無単位値 */
+    left: calc(50% + var(--swing-flip, 1) * 12%);
+    top: 8%;
+    width: 9%;
+    height: 62%;
+    /* 刃（銀）＋鍔と柄（金）。細長い1枚で「剣」と読める最小の形 */
+    background: linear-gradient(to bottom,
+        rgba(245, 250, 255, 0.98) 0%,
+        rgba(200, 215, 235, 0.95) 62%,
+        rgba(255, 214, 110, 0.98) 70%,
+        rgba(150, 105, 45, 0.98) 100%);
+    border-radius: 40% 40% 10% 10%;
+    box-shadow: 0 0 5px rgba(255, 255, 235, 0.9);
+    transform-origin: 50% 100%;   /* 柄（＝手）を軸に振り上げる */
+    animation: enemy-swing-windup var(--swing-windup-ms, 360ms) ease-out 1 forwards;
+    pointer-events: none;
+    z-index: 8;
+}
+@keyframes enemy-swing-windup {
+    0%   { transform: scaleX(var(--swing-flip, 1)) translateY(34%) rotate(18deg);  opacity: 0.55; }
+    45%  { transform: scaleX(var(--swing-flip, 1)) translateY(-4%) rotate(-58deg); opacity: 1;    }
+    100% { transform: scaleX(var(--swing-flip, 1)) translateY(-9%) rotate(-72deg); opacity: 1;    }
+}
+
+/* Phase 8-4 (4) 0d-2.6（2回目の調整・2026-08-25）: 攻撃硬直＝振り下ろした後の隙。
+   ユーザー実プレイ判定「攻撃がおわったあともちょっと動けない時間をつくるとかしないと、
+   剣を当てること自体がほぼ不可能」∴硬直（enemy-ai.js `_freezeUntil`）を**反撃の窓**として
+   使う。窓が絵に出ていなければ反撃できない（GUIDE §6-1）∴この絵は機構の告知。
+   ・予告3種（体当たり＝拡大縮小／突進＝足踏み／剣＝振り上げ）はどれも**動き続ける**絵。
+     硬直は逆に**沈んで止まる**＝「今は動けない」が形で読める（4つとも別の形）。
+   ・長さは `--recover-ms`（enemy-ai.js syncRecoverMotion が毎 tick 書く）＝CSS 側に
+     長さを持たせない。`forwards` で沈んだ姿勢を硬直が明けるまで保つ。
+   ・大型敵の揺れ（`.large-enemy` の golem-lumber・同 specificity）より**後**に置く＝
+     後勝ちで揺れが止まる＝「巨体が固まっている」ことが読める。 */
+.char-abs.attack-recover canvas.sprite {
+    transform-origin: 50% 100%;
+    animation: enemy-attack-recover var(--recover-ms, 480ms) ease-out 1 forwards;
+    filter: brightness(0.88) saturate(0.85);
+}
+@keyframes enemy-attack-recover {
+    0%   { transform: translateY(0)  scale(1);          }
+    35%  { transform: translateY(6%) scale(1.04, 0.9);  }
+    100% { transform: translateY(5%) scale(1.03, 0.92); }
+}
+
 @keyframes golem-lumber {
     0%   { transform: translateY(0)      rotate(-1.5deg) scaleY(1);    }
     25%  { transform: translateY(-3%)    rotate(0deg)    scaleY(1.02); }

@@ -139,7 +139,7 @@ window.__game = {
 	// テスト用に任意の座標へ擬似敵を注入する（hp 減少で命中確認）
 	// w/h を渡せば大型敵（占有セル）を注入できる（Phase 3-2）
 	// type を渡せば実タイプの敵を注入できる（弱点属性 Phase 3-3）
-	injectEnemy: (x, y, hp, w, h, type) => injectTestEnemy(x, y, hp, w, h, type),
+	injectEnemy: (x, y, hp, w, h, type, speed) => injectTestEnemy(x, y, hp, w, h, type, speed),
 	// 指定 id の敵に直接ダメージ（弱点属性 Phase 3-3 の検証用）
 	// srcX/srcY＝攻撃発生源（Phase 5.5k k-4 の向き依存ブロックを測るときは必須）
 	dealDamage: (id, dmg, atkType, srcX, srcY) => dealDamageToEnemyById(id, dmg, atkType, srcX, srcY),

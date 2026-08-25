@@ -1972,9 +1972,16 @@ async function init() {
 		//    これは意図＝装備を指定したなら ATK は装備から導出されるのが正しい（ATK を直接いじりたい場合は
 		//    `ps_sword` を渡さない＝エディタの「指定なし」）。
 		if (psSword    !== null) equipSwordTier(parseInt(psSword, 10));
-		// Phase 7-2: ps_shield/ps_armor はティア番号でも指定可（編集チェックボックスの '1' は下位ティア=0 として扱う）。
-		if (psShield   !== null) equipShieldTier(psShield === '1' ? 0 : (parseInt(psShield, 10) || 0));
-		if (psArmor    !== null) equipArmorTier(psArmor  === '1' ? 0 : (parseInt(psArmor,  10) || 0));
+		// 盾／防具ティア（Phase 7-2 → 2026-08-25 に曖昧さを解消）＝**値は常にティア番号**。
+		// 負値（`-1`）または欠落＝装備なし。⚠️ 旧実装は `'1'` を「チェックボックス ON＝ティア0」と
+		// 読んでいたため **(a) ティア1（鉄の盾 reflect 0.5 ／鎖かたびら DEF 2）が指定できず**
+		// （DT max の DEF 2 を `ps_def=2` で代用する羽目になった）**(b) `ps_armor=0`＝チェック OFF
+		// でもティア0 を装備していた**＝「外す」が表現できなかった。進行地点プリセットはティア番号で
+		// 埋める設計∴ここを直すまで DT max が再現できない。
+		// ⚠️ `equipArmorTier()` は def を `BASE_DEF + ティアの def` で再計算する∴上の `ps_def` を
+		//    上書きする（`ps_sword` が `ps_atk` を上書きするのと同じ＝装備を指定したなら数値は装備の帰結）。
+		if (psShield   !== null) { const t = parseInt(psShield, 10); if (t >= 0) equipShieldTier(t); }
+		if (psArmor    !== null) { const t = parseInt(psArmor,  10); if (t >= 0) equipArmorTier(t); }
 		if (psWingRobe === '1') player.hasWingRobe = true;
 		if (psLadder   === '1') player.hasLadder = true;
 		if (psBow      === '1') { player.subItems.bow       = { count: 10 };       if (!player.activeSubItem) player.activeSubItem = 'bow'; }
@@ -2120,6 +2127,9 @@ export function getEnemiesSnapshot() {
 	return enemies.map(e => ({
 		id: e.id, type: e.type,
 		x: e.x, y: e.y,
+		// Phase 8-4 (4) 0d-2: 占有セル数（大型ボスの機構を測る本が「1×1 を測って
+		// そのまま使えると誤結論する」のを防ぐ番人＝tests/boss-2x2-mechanisms.spec.js）
+		w: e.w ?? 1, h: e.h ?? 1,
 		hp: e.hp, maxHp: e.maxHp,
 		move: e.move ?? null,   // Phase 9-6: 遊泳属性（spawn 経路で敵に乗ったか観測用）
 		stunUntil: e.stunUntil ?? null,
@@ -2158,6 +2168,10 @@ export function getEnemiesSnapshot() {
 		// なく予告を挟む」ことをテストが数値で確認するための唯一の窓。
 		slamAt: e._slamAt ?? null,
 		slamWindupMs: e._slamWindupMs ?? null,
+		// Phase 8-4 (4) 0d-2.6: 剣（近接）の予告の観測用。swingAt ＝振り下ろす論理時刻
+		// （null＝振り上げていない）＝「届いた tick に即ダメージではない」ことを測る唯一の窓。
+		swingAt: e._swingAt ?? null,
+		swingWindupMs: e._swingWindupMs ?? null,
 		// Phase 5.5k k-8: 瞬間移動（術士）の観測用。
 		// blinkPhase ＝'shown'（姿がある＝殴れる／撃つ窓）| 'gone'（消えている＝無敵）。
 		// blinkCount ＝出現した回数。出現先は**直前の方角を除いた乱択**（pickBlinkCell）∴
@@ -2194,14 +2208,17 @@ export function getEnemiesSnapshot() {
 
 // テスト用：任意の座標に擬似敵を注入する
 // ゲーム中の敵データに直接追加するため、DOM 要素は作らない（hp 減少だけ確認）
-export function injectTestEnemy(x, y, hp = 5, w = 1, h = 1, type = 'E') {
+// speed（Phase 8-4 (4) 0d-2.6）＝既定 0（＝歩かない＝距離が動かない状態で拍だけ測れる）。
+// ⚠️ resolveEnemySpeed は `e.speed ?? meta.speed` を読む∴**meta を patch しても歩かない**。
+//    「硬直中は動かない／明けたら動く」のように歩く駆動が必要な本はここで速度を渡す。
+export function injectTestEnemy(x, y, hp = 5, w = 1, h = 1, type = 'E', speed = 0) {
 	const id = `test-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 	enemies.push({
 		id, type, // 既定 'E'（ENEMY_META にないため isBoss=false）。弱点テストは実タイプを渡す
 		x, y,
 		hp, maxHp: hp,
 		atk: 0, def: 0,
-		speed: 0,
+		speed,
 		w, h,            // Phase 3-2: 占有セル数（大型敵テスト用）
 		sprite: 'slime', pal: 'slime',
 		accum: 0, dir: 'down', el: null,

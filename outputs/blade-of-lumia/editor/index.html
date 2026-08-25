@@ -506,6 +506,18 @@
     <div class="preview-settings-box">
       <div class="preview-settings-title">▶ プレビュー設定</div>
       <div class="preview-settings-grid">
+        <!-- 2026-08-25: 進行地点プリセット。選ぶと下の欄（ハート・剣/盾/防具ティア・道具・欠片）が
+             一括で埋まる＝「その地点の想定装備」でボスに挑んで数値を測るための道具。
+             値は手書きせず実マップから導出する（shared/progression.js が単一の真実）。
+             min＝本編のみ（寄道に入らない下限＝そのダンジョンへ**入った瞬間**）／
+             ボス直前＝min ＋ そのダンジョンでボス部屋の外に置いてある報酬（撃破報酬は含まない）／
+             max＝寄道もフィールドも全回収。
+             ⚠️ 選択肢は JS が組み立てる（editor-io.js buildPreviewPresetOptions）。
+                「ボス直前」は isBossRoom の部屋を持つレイヤーの地点だけに出る∴マップ読み込み後に
+                組み立て直される（この静的 option は「指定なし」の1つだけ）。 -->
+        <label style="grid-column:1/-1">🚩進行地点<select id="ps-progress" style="width:280px">
+          <option value="">指定なし（下の値をそのまま使う）</option>
+        </select></label>
         <label>ATK<input id="ps-atk"  type="number" value="10" min="1" max="99" style="width:54px"></label>
         <label>DEF<input id="ps-def"  type="number" value="10" min="0" max="99" style="width:54px"></label>
         <label>❤ハート<input id="ps-hearts" type="number" value="3" min="1" max="30" style="width:54px"></label>
@@ -521,9 +533,23 @@
         </select></label>
         <label>💰ルピー<input id="ps-rupees" type="number" value="10" min="0" max="9999" style="width:70px"></label>
         <label>◭カケラ<input id="ps-triforce" type="number" value="0" min="0" max="99" style="width:54px"></label>
+        <!-- 2026-08-25: 盾/防具はチェックボックスからティアのセレクトに変えた。理由＝チェックの
+             ON(`1`) が「ティア0」と解釈されていて **ティア1（鉄の盾・鎖かたびら）が指定できず**、
+             さらに OFF(`0`) でもティア0 を装備してしまい「外す」が表現できなかった。
+             値はそのままティア番号として URL に載る（「なし」なら ps_ を付けない）。 -->
+        <label>🛡盾ティア<select id="ps-shield" style="width:150px">
+          <option value="-1">なし</option>
+          <option value="0" selected>0 木の盾</option>
+          <option value="1">1 鉄の盾</option>
+          <option value="2">2 ミラーシールド</option>
+        </select></label>
+        <label>⚚防具ティア<select id="ps-armor" style="width:150px">
+          <option value="-1">なし</option>
+          <option value="0" selected>0 布の服</option>
+          <option value="1">1 鎖かたびら</option>
+          <option value="2">2 伝説の鎧</option>
+        </select></label>
         <label class="ps-check"><input id="ps-weapon" type="checkbox" checked> ⚔ 剣</label>
-        <label class="ps-check"><input id="ps-shield" type="checkbox" checked> 🛡 盾</label>
-        <label class="ps-check"><input id="ps-armor"  type="checkbox" checked> ⚚ 防具</label>
         <label class="ps-check"><input id="ps-bow"    type="checkbox" checked> 🏹 弓矢</label>
         <label class="ps-check"><input id="ps-boomerang" type="checkbox" checked> 🪃 ブーメラン</label>
         <label class="ps-check"><input id="ps-silverboomerang" type="checkbox"> 🪃 銀のブーメラン</label>
