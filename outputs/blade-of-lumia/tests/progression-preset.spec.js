@@ -62,8 +62,10 @@ test.describe('進行地点プリセット', () => {
     expect(audit, 'collectRewards のローカル定義が残っている')
       .not.toMatch(/^function collectRewards\(/m);
     // profilesAt は statsOf を被せる薄いラッパだけが残る（ORDER を歩く本体は共有側）
+    // ⚠️ 引数の閉じ括弧まで含めない＝0d-2.9 で第4引数（preBossHere）が増えた。
+    //    「共有を呼んでいる」ことだけを固定する（引数の数はここで縛る話ではない）。
     expect(audit, 'profilesAt が共有の rawProfilesAt を呼んでいない')
-      .toContain('rawProfilesAt(index, perLayer, fieldRewards)');
+      .toContain('rawProfilesAt(index, perLayer, fieldRewards');
   });
 
   test('②: profilesAt の返り値が audit-balance --json の checkpoints と一致する', () => {

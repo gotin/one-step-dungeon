@@ -48,14 +48,18 @@ import { THREAT_OF } from './lib/enemy-placement.mjs';
 // 「🚩進行地点」プリセット）からも同じ値が必要になった∴共有へ出した（コピーを作らない）。
 // ⚠️ `profilesAt()` が返すのは**ティア番号とハート数だけ**＝ATK/DEF はこのファイルの
 //    `statsOf()` が `shared/items.js` から導出する（プリセットは数値を計算しない）。
-import { ORDER, collectRewards, fieldRewardsOf, profilesAt as rawProfilesAt } from '../shared/progression.js';
+import {
+	ORDER, collectRewards, fieldRewardsOf, bossRoomLayersOf, profilesAt as rawProfilesAt,
+} from '../shared/progression.js';
 
 const __dir = dirname(fileURLToPath(import.meta.url));
 const MAP_PATH = join(__dir, '../work/blade-of-lumia.json');
 
-function profilesAt(index, perLayer, fieldRewards) {
-	const { min, max } = rawProfilesAt(index, perLayer, fieldRewards);
-	return { min: statsOf(min), max: statsOf(max) };
+// 第4引数 `preBossHere`＝その地点のレイヤーの「ボス部屋の外」の報酬（`null` で「ボス直前」なし）。
+// 0d-2.9（2026-08-25）＝ボスの行は `min`（入場時）ではなく `boss`（ボス直前）で測る。
+function profilesAt(index, perLayer, fieldRewards, preBossHere = null) {
+	const { min, max, boss } = rawProfilesAt(index, perLayer, fieldRewards, preBossHere);
+	return { min: statsOf(min), max: statsOf(max), boss: boss ? statsOf(boss) : null };
 }
 
 function statsOf(p) {
@@ -82,6 +86,7 @@ const EXCLUDE_LAYERS = new Set(['test_mechanics']);
 
 function encountersOf(map) {
 	const layersByTile = new Map();   // tile → Set(layer)
+	const inBossRoom = new Set();     // ボス部屋（st.isBossRoom）に1つでも置かれているタイル
 	for (const [layerName, layer] of Object.entries(map.layers)) {
 		if (EXCLUDE_LAYERS.has(layerName)) continue;
 		for (const st of Object.values(layer.stages ?? {})) {
@@ -91,17 +96,34 @@ function encountersOf(map) {
 					if (!ENEMY_META[ch]) continue;
 					if (!layersByTile.has(ch)) layersByTile.set(ch, new Set());
 					layersByTile.get(ch).add(layerName);
+					if (st.isBossRoom) inBossRoom.add(ch);
 				}
 			}
 		}
 	}
 	const indexOfLayer = (name) => (name === 'field' ? 0 : ORDER.findIndex((o) => o.layer === name));
-	const out = new Map();            // tile → { layers, firstIndex|null }
+	const out = new Map();            // tile → { layers, firstIndex|null, inBossRoom }
 	for (const [tile, set] of layersByTile) {
 		const idxs = [...set].map(indexOfLayer).filter((i) => i >= 0);
-		out.set(tile, { layers: [...set].sort(), firstIndex: idxs.length ? Math.min(...idxs) : null });
+		out.set(tile, {
+			layers: [...set].sort(),
+			firstIndex: idxs.length ? Math.min(...idxs) : null,
+			inBossRoom: inBossRoom.has(tile),
+		});
 	}
 	return out;
+}
+
+// ── 敵の「格」＝帯と判定プロファイルを決める唯一の分類（0d-2.9・2026-08-25）────────
+// `isBoss` だけでは足りない＝**ボス部屋に居ないボス**（道中の中ボス）をボス帯 30〜60振りで
+// 測ると「溶けている」と誤検出する（実例＝W 魔物を 0d-2.8 で hp 48 に下げたら BOSS_MELT）。
+// ⚠️ 中ボスの一覧は**手書きしない**＝実マップの `isBossRoom` から導出する
+//    （敵タイル一覧を手書きして13タイル漏らした前例と同じ轍を踏まない）。
+//    2026-08-25 の実データ＝ボス部屋に居る11種（G N J A L O U I Z ＋ field の { 海の主）に対し、
+//    W 魔物（D1/D2/D7/cave_1 の道中）と V 魔将（dark_tower 2,3・3,3）は**ボス部屋に居ない**＝中ボス。
+function kindOf(tile, meta, enc) {
+	if (meta.isBoss) return enc?.inBossRoom ? 'boss' : 'midBoss';
+	return ONE_SWING_OK[tile] ? 'weak' : 'zako';
 }
 
 // ── ① 攻撃側 ───────────────────────────────────────────────────
@@ -178,11 +200,17 @@ function defense(stats, meta) {
 // ── ④ 欠陥の検出 ─────────────────────────────────────────────
 // 「主観で重い/軽いと言う」のを避けるための機械的な条件。閾値の根拠はコメントに書く。
 //
-// 判定はすべて **その敵に初めて会う地点の min プロファイル**（本編の報酬だけ・寄道の剣なし）で行う。
-//   ・min で「溶ける/効かない」なら、どのプレイヤーでもそうなる＝確定の欠陥。
+// 判定は **その敵に初めて会う地点**で行う。使うプロファイルは格で変える（0d-2.9・2026-08-25）：
+//   ・雑魚・中ボス … `min`（そのレイヤーへ**入った瞬間**の装備）＝道中はこの装備で当たる。
+//   ・ボス        … `boss`（ボス直前）＝min ＋ そのレイヤーの**ボス部屋の外**の報酬。
+//       min でボスを測るのは「D1 の革の鎧も木の盾もハートの器も捨ててボス部屋へ直行する」
+//       という実プレイでは起こらない下限だった（2026-08-25・D1 の G が min では勝てないという
+//       実プレイ報告の真因＝PLAN 0d-2.8）。**判定プロファイルが嘘だと13体ぶん測り直しになる。**
+//       ボス部屋が ORDER のレイヤーの外にある場合（field の { 海の主）は `boss` が作れない∴
+//       `min` に落ちる＝表の「判定」列に出す（黙って落とさない）。
 //   ・max（寄道も全回収）で重い場合は参考値に留める＝最強装備で重いのは調整の対象になり得るが
-//     「min で軽い」ほど確実な話ではない。
-// ∴表には min→max の両方を出し、欠陥件数は min で数える。
+//     「判定プロファイルで軽い」ほど確実な話ではない。
+// ∴表には 判定→max の両方を出し、欠陥件数は判定プロファイルで数える。
 
 // 1振りで消えて良い敵＝「弱いことが設計」の種（意図をここに明示して例外にする）。
 // これを書かないと ONE_SWING が「最弱の敵が最弱である」ことまで欠陥として数える。
@@ -196,13 +224,17 @@ const ONE_SWING_OK = {
 
 const DEFECTS = {
 	// 雑魚が剣1振りで消える＝戦闘が「歩きながら振る」作業になる（意図的な最弱は除く）
-	ONE_SWING: ({ o, meta, tile }) => !meta.isBoss && o.swings <= 1 && !ONE_SWING_OK[tile],
+	ONE_SWING: ({ o, kind }) => kind === 'zako' && o.swings <= 1,
 	// 雑魚1体に4秒以上（＝連打で殴り続ける作業。雑魚は「数体まとめて」相手にする）
-	ZAKO_SLOG: ({ o, meta }) => !meta.isBoss && o.ttkMs >= 4000,
+	ZAKO_SLOG: ({ o, kind }) => (kind === 'zako' || kind === 'weak') && o.ttkMs >= 4000,
 	// ボスが6秒未満で溶ける＝機構（開閉・反射・投擲）が一巡する前に終わる
-	BOSS_MELT: ({ o, meta }) => !!meta.isBoss && o.ttkMs < 6000,
-	// ボスに40秒以上＝機構を理解しても殴る時間だけが伸びる（＝HP水増し）
-	BOSS_SLOG: ({ o, meta }) => !!meta.isBoss && o.ttkMs > 40000,
+	BOSS_MELT: ({ o, kind }) => kind === 'boss' && o.ttkMs < 6000,
+	// 中ボスが 2.4 秒（8振り）未満＝雑魚の上限（6振り）と区別がつかない＝道中の壁にならない。
+	// ⚠️ ボスの床（6秒）は当てない＝中ボスは「ボス部屋の一戦」ではなく道中に複数回出る
+	//    （W 魔物は D1 に2体・D2/D7/cave_1 にも居る）∴ボス並みの長さだとボス前に消耗しきる。
+	MIDBOSS_MELT: ({ o, kind }) => kind === 'midBoss' && o.ttkMs < 2400,
+	// ボス・中ボスに40秒以上＝機構を理解しても殴る時間だけが伸びる（＝HP水増し）
+	BOSS_SLOG: ({ o, kind }) => (kind === 'boss' || kind === 'midBoss') && o.ttkMs > 40000,
 	// 防具が敵の一番重い口を食い切って「1ダメージ固定」＝どの敵に触っても同じ＝緊張が消える。
 	// 設計上 atk 1-2 の敵（妨害役）は対象外にする∴raw 3 以上の攻撃が 1 になった時だけ数える。
 	DEF_WALL: ({ d }) => d.floored && d.raw >= 3,
@@ -214,12 +246,25 @@ const DEFECTS = {
 //   ・雑魚 2〜6振り … SWORD_COOLDOWN_MS で秒に換算した戦闘時間で決める（1振りは作業・
 //     7振り以上は連打の作業）。最弱枠は 1〜2 振り（数で圧をかける役）。
 //   ・ボス 30〜60振り … 機構（開閉・反射・投擲・突進）が数巡する長さ。
+//   ・中ボス 10〜60振り … **下限だけをボスより緩めた帯**（0d-2.9）。中ボスは道中に複数回出る
+//     ∴ボスの下限（30振り＝9秒）を課すとボス部屋に着く前に消耗しきる。上限はボスと同じ
+//     （＝60振りを超えたら殴る時間だけが伸びている）。実データ＝W 16振り／V 48振り＝どちらも帯内
+//     （V は 2026-08-24 のユーザー実プレイ判定で【現状維持】が確定済み＝下げる根拠がない）。
 //   ・プレイヤーが死ぬまで 雑魚12発・ボス8発 … ハート換算で 雑魚6ハート・ボス4ハート分。
 const TARGET = {
 	zakoSwings: [2, 6],
 	weakSwings: [1, 2],
+	midBossSwings: [10, 60],
 	bossSwings: [30, 60],
 	hits: { zako: 12, boss: 8 },
+};
+
+// 格ごとの目標帯（推奨値の逆算に使う）。手書きの分岐をここ1箇所に閉じる。
+const BAND_OF = {
+	weak: TARGET.weakSwings,
+	zako: TARGET.zakoSwings,
+	midBoss: TARGET.midBossSwings,
+	boss: TARGET.bossSwings,
 };
 
 function flagsOf(ctx) {
@@ -232,6 +277,16 @@ function main() {
 	const perLayer = collectRewards(map);
 
 	const fieldRewards = fieldRewardsOf(perLayer);
+
+	// 「ボス直前」＝min ＋ そのレイヤーのボス部屋の外の報酬。ボス部屋を持たないレイヤー
+	// （寄道4つ）と `start` では作らない＝`shared/progression.js presetsFrom()` と同じ規則。
+	const preBoss    = collectRewards(map, { excludeBossRooms: true });
+	const bossLayers = bossRoomLayersOf(map);
+	const EMPTY_REWARDS = { sword: [], armor: [], shield: [], boomerang: [], items: [], hearts: 0, triforce: 0 };
+	const preBossAt = (i) => {
+		const layer = ORDER[i]?.layer;
+		return layer && bossLayers.has(layer) ? (preBoss.get(layer) ?? EMPTY_REWARDS) : null;
+	};
 
 	const report = {
 		constants: {
@@ -260,8 +315,8 @@ function main() {
 	SHIELD_TIERS.forEach((t, i) => { if (!placed.shield.has(i)) report.unplacedTiers.push(`盾 tier${i} ${t.name}`); });
 
 	ORDER.forEach((cp, i) => {
-		const { min, max } = profilesAt(i, perLayer, fieldRewards);
-		report.checkpoints.push({ id: cp.id, label: cp.label, min, max });
+		const { min, max, boss } = profilesAt(i, perLayer, fieldRewards, preBossAt(i));
+		report.checkpoints.push({ id: cp.id, label: cp.label, min, max, boss });
 	});
 
 	// 実際に起こる遭遇だけを測る＝敵タイル1行。
@@ -276,25 +331,32 @@ function main() {
 			continue;
 		}
 		const cp = ORDER[enc.firstIndex];
-		const { min, max } = profilesAt(enc.firstIndex, perLayer, fieldRewards);
+		const kind = kindOf(tile, meta, enc);
+		const { min, max, boss } = profilesAt(enc.firstIndex, perLayer, fieldRewards, preBossAt(enc.firstIndex));
+		// 判定プロファイル＝ボスだけ「ボス直前」（作れないレイヤーでは min に落ちる＝表に出す）。
+		const judgeStats   = kind === 'boss' ? (boss ?? min) : min;
+		const judgeVariant = kind === 'boss' ? (boss ? 'boss' : 'min') : 'min';
 		const measure = (stats) => {
 			const o = offense(stats, meta), d = defense(stats, meta);
-			return { ...o, ...d, flags: flagsOf({ o, d, meta, tile }) };
+			return { ...o, ...d, flags: flagsOf({ o, d, meta, tile, kind }) };
 		};
-		const mn = measure(min), mx = measure(max);
+		const jd = measure(judgeStats), mx = measure(max);
 		rows.push({
-			tile, name: meta.name, isBoss: !!meta.isBoss,
+			tile, name: meta.name, isBoss: !!meta.isBoss, kind,
 			threat: +THREAT_OF(meta).toFixed(1),
 			at: cp.id, atLabel: cp.label, layers: enc.layers,
-			atk: { min: min.atk, max: max.atk },
-			def: { min: min.def, max: max.def },
-			maxHp: { min: min.maxHp, max: max.maxHp },
-			min: mn, max: mx,
-			flags: mn.flags,                                  // 欠陥件数は min で数える
-			maxOnlyFlags: mx.flags.filter((f) => !mn.flags.includes(f)),
+			inBossRoom: enc.inBossRoom,
+			judgeVariant,
+			atk: { judge: judgeStats.atk, max: max.atk },
+			def: { judge: judgeStats.def, max: max.def },
+			maxHp: { judge: judgeStats.maxHp, max: max.maxHp },
+			judge: jd, max: mx,
+			flags: jd.flags,                                  // 欠陥件数は判定プロファイルで数える
+			maxOnlyFlags: mx.flags.filter((f) => !jd.flags.includes(f)),
 		});
 	}
-	rows.sort((a, b) => (a.isBoss - b.isBoss)
+	const KIND_ORDER = { weak: 0, zako: 0, midBoss: 1, boss: 2 };
+	rows.sort((a, b) => (KIND_ORDER[a.kind] - KIND_ORDER[b.kind])
 		|| (ORDER.findIndex((o) => o.id === a.at) - ORDER.findIndex((o) => o.id === b.at))
 		|| (a.threat - b.threat));
 	report.encounters = rows;
@@ -321,12 +383,13 @@ function main() {
 		report.unplacedTiers.forEach((t) => console.log(`     - ${t}`));
 	}
 
-	console.log('\n## 進行地点ごとのプレイヤー諸元（min＝本編のみ / max＝フィールドも全回収）');
-	console.log('  地点                 | ATK(min→max) | DEF | 最大HP | 剣ティア');
+	console.log('\n## 進行地点ごとのプレイヤー諸元（min＝入場時 / ボス直前＝min＋ボス部屋の外 / max＝フィールドも全回収）');
+	console.log('  地点                 | ATK(min→max) | DEF | 最大HP | 剣ティア | ボス直前(DEF/最大HP)');
 	for (const cp of report.checkpoints) {
+		const pre = cp.boss ? `${cp.boss.def}/${cp.boss.maxHp}` : '—';
 		console.log(`  ${cp.label.padEnd(20)} | ${String(cp.min.atk).padStart(4)}→${String(cp.max.atk).padEnd(4)}   |`
 			+ ` ${String(cp.min.def)}→${String(cp.max.def)} | ${String(cp.min.maxHp).padStart(3)}→${String(cp.max.maxHp).padEnd(3)}  |`
-			+ ` ${cp.min.sword}→${cp.max.sword}`);
+			+ ` ${cp.min.sword}→${cp.max.sword}      | ${pre}`);
 	}
 
 	if (report.unplacedEnemies.length) {
@@ -335,10 +398,14 @@ function main() {
 	}
 
 	// ── 遭遇表（1敵1行・測る地点はその敵に初めて会う地点）─────────────
+	// 「判定」列＝どのプロファイルで測ったか（min／ボス直前）。ボス部屋が ORDER の外にある
+	// ボス（field の { 海の主）はボス直前が作れず min に落ちる∴列に出して黙って落とさない。
+	const VARIANT_LABEL = { min: 'min', boss: 'ボス直前' };
 	const line = (r) => {
-		const o = r.min, x = r.max;
+		const o = r.judge, x = r.max;
 		return `  ${(r.tile + ' ' + r.name).padEnd(20)}`
 			+ ` ${r.atLabel.padEnd(14)}`
+			+ ` ${VARIANT_LABEL[r.judgeVariant].padEnd(8)}`
 			+ ` HP${String(ENEMY_META[r.tile].hp).padStart(3)} 脅威${String(r.threat).padStart(5)} |`
 			+ ` 振${String(o.swings).padStart(3)}→${String(x.swings).padEnd(3)}`
 			+ ` TTK ${ms(o.ttkMs).padStart(6)}→${ms(x.ttkMs).padEnd(6)} |`
@@ -346,12 +413,13 @@ function main() {
 			+ ` TTD ${ms(o.ttdMs).padStart(6)}→${ms(x.ttdMs).padEnd(6)} |`
 			+ ` ${r.flags.join(',')}${r.maxOnlyFlags.length ? ` (max のみ: ${r.maxOnlyFlags.join(',')})` : ''}`;
 	};
-	for (const [title, want] of [['雑魚', false], ['ボス', true]]) {
-		console.log(`\n## 遭遇表：${title}（初遭遇地点の min→max プロファイル・欠陥は min で判定）`);
-		rows.filter((r) => r.isBoss === want).forEach((r) => console.log(line(r)));
+	// 中ボス＝`isBoss` だがボス部屋に居ない敵（実マップから導出）＝ボス帯で測らない∴表も分ける。
+	for (const [title, kinds] of [['雑魚', ['zako', 'weak']], ['中ボス', ['midBoss']], ['ボス', ['boss']]]) {
+		console.log(`\n## 遭遇表：${title}（初遭遇地点の 判定→max プロファイル・欠陥は判定側で数える）`);
+		rows.filter((r) => kinds.includes(r.kind)).forEach((r) => console.log(line(r)));
 	}
 
-	console.log('\n## 欠陥の集計（min プロファイル・実際に起こる遭遇のみ）');
+	console.log('\n## 欠陥の集計（判定プロファイル・実際に起こる遭遇のみ）');
 	const byFlag = {};
 	for (const r of report.defects) for (const f of r.flags) (byFlag[f] ??= []).push(r.tile);
 	for (const [f, list] of Object.entries(byFlag)) {
@@ -361,25 +429,26 @@ function main() {
 		+ `（測れなかった敵 ${report.unplacedEnemies.length} 種は除く）`);
 
 	// ── ⑤ 目標帯から逆算した推奨値 ───────────────────────────────
-	// 「いくつにするか」を勘で決めないための逆算。min プロファイル（＝寄道を飛ばした
-	// 一番弱いプレイヤー）で目標の振り数・被弾回数に収まる hp / atk を出す。
+	// 「いくつにするか」を勘で決めないための逆算。判定プロファイル（雑魚・中ボスは min＝
+	// 寄道を飛ばした一番弱いプレイヤー／ボスは「ボス直前」）で目標の振り数・被弾回数に
+	// 収まる hp / atk を出す。
 	// ⚠️ ここは**提案**＝実際の値は shared/enemies.js に手で書く（種ごとの機構の意図が
 	//    数式より優先する。例：δ は1振りで分裂に届くことが機構そのもの）。
-	console.log('\n## 推奨値（min プロファイルで目標帯に収まる hp / atk の逆算）');
+	console.log('\n## 推奨値（判定プロファイルで目標帯に収まる hp / atk の逆算）');
 	console.log(`  目標: 雑魚 ${TARGET.zakoSwings.join('〜')}振り（最弱枠 ${TARGET.weakSwings.join('〜')}）`
-		+ ` / ボス ${TARGET.bossSwings.join('〜')}振り`
+		+ ` / 中ボス ${TARGET.midBossSwings.join('〜')}振り / ボス ${TARGET.bossSwings.join('〜')}振り`
 		+ ` / プレイヤーが死ぬまで 雑魚 ${TARGET.hits.zako}発・ボス ${TARGET.hits.boss}発`);
-	console.log('  敵                   地点             hp 現→推奨       atk 現→推奨   1振りdmg');
+	console.log('  敵                   地点           判定     hp 現→推奨       atk 現→推奨   1振りdmg');
 	for (const r of rows) {
 		const meta = ENEMY_META[r.tile];
-		const band = meta.isBoss ? TARGET.bossSwings
-			: (ONE_SWING_OK[r.tile] ? TARGET.weakSwings : TARGET.zakoSwings);
-		const dmg = r.min.swordDmg;
+		const band = BAND_OF[r.kind];
+		const dmg = r.judge.swordDmg;
 		const hpBand = `${dmg * band[0]}〜${dmg * band[1]}`;
-		const hits = meta.isBoss ? TARGET.hits.boss : TARGET.hits.zako;
+		const hits = (r.kind === 'boss' || r.kind === 'midBoss') ? TARGET.hits.boss : TARGET.hits.zako;
 		// 被弾1回の目標＝最大HP ÷ 目標被弾回数。減算防御を戻して atk にする。
-		const atkWant = Math.max(1, Math.round(r.maxHp.min / hits) + r.def.min);
+		const atkWant = Math.max(1, Math.round(r.maxHp.judge / hits) + r.def.judge);
 		console.log(`  ${(r.tile + ' ' + r.name).padEnd(20)} ${r.atLabel.padEnd(14)}`
+			+ ` ${VARIANT_LABEL[r.judgeVariant].padEnd(8)}`
 			+ ` ${String(meta.hp).padStart(3)} → ${hpBand.padEnd(10)}`
 			+ ` ${String(meta.atk).padStart(3)} → ${String(atkWant).padStart(2)}`
 			+ `        ${dmg}`);
