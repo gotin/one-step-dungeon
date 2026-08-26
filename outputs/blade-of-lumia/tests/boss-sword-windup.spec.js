@@ -55,8 +55,17 @@
 //   ・⚠️ プレビュー（fromEditor=1）は debugMode:true ＝ takeDamage が早期 return する∴
 //     **HP を測る本は 'g' で debug を切る**（予告の遷移そのものは debug に依らない）。
 //
-// ⚠️ 注入敵は DOM を持たない∴予告の**絵**は⑨で実配置のボス（`bal_rock_golem` =
-//    test_mechanics[30,1] の G）で測る。
+// ⚠️ 注入敵は DOM を持たない∴予告の**絵**は⑨で実配置の敵（`bal_skeleton` =
+//    test_mechanics[3,1] の θ 骸骨剣士）で測る。
+//
+// 2026-08-26（4回目の実プレイ報告）＝**絵は「剣を持っているか」で分ける**ことになった：
+//   「地中蟲とかも剣で攻撃するようになっちゃったの？ こいつらは体当たり攻撃で、その予備動作は
+//     いままでどおりサイズの収縮でよかったんじゃない？ 変じゃん。剣もってたら。
+//     魔王系と剣を持ってる敵だけでいいんじゃないの？」
+// ∴刃が上がる絵・金属音・斬撃の光線は `wieldsSword` を宣言した7体だけになった。
+//   ここ（0d-2.6/0d-2.7 の本）が守るのは**機構**（予告→解決の拍・硬直・盾ブロック）で、
+//   絵と音の振り分けは tests/enemy-melee-windup-by-weapon.spec.js が持つ。
+//   ⚠️ この本は G（剣を持たない）で機構を測り続ける＝機構は宣言に関係なく1つの経路。
 
 import { test, expect } from '@playwright/test';
 import { readFileSync } from 'fs';
@@ -614,21 +623,26 @@ test.describe('Phase 8-4 (4) 0d-2.6/0d-2.7 – 近接（剣）の予告つき攻
     expect(kf, '@keyframes enemy-swing-windup が無い').toContain('@keyframes enemy-swing-windup');
     expect(kf, '刃が回って上がっていない（rotate が無い）＝振り上げに見えない').toMatch(/rotate\(/);
 
-    // ② 実配置のボス（注入敵は DOM を持たない）でクラスと長さの受け渡しを測る。
-    //    毎 tick ボスの西隣へ立ち直る＝歩かれても間合いが外れない。
-    await gotoFrozen(page, previewUrl('bal_rock_golem', 4, 2));
+    // ② 実配置の敵（注入敵は DOM を持たない）でクラスと長さの受け渡しを測る。
+    //    毎 tick 敵の西隣へ立ち直る＝歩かれても間合いが外れない。
+    // ⚠️ 2026-08-26：測る相手を G 岩のゴーレム → **θ 骸骨剣士**へ替えた。刃が上がる絵は
+    //    `wieldsSword` を宣言した敵だけのものになった（ユーザー指摘「変じゃん。剣もってたら」）
+    //    ∴剣を持たない G は `.slam-windup`（体の収縮）で予告する＝この本の題（振り上げ）の
+    //    測り相手にならない。G 側の絵は tests/enemy-melee-windup-by-weapon.spec.js が持つ。
+    expect(ENEMY_META[TILE.SKELETON].wieldsSword, '骸骨剣士が剣を持つ宣言を失った（前提が崩れた）').toBe(true);
+    await gotoFrozen(page, previewUrl('bal_skeleton', 4, 2));
     const r = await page.evaluate(() => {
       const g = window.__game, p = g.getPlayer();
       g.pause();
-      const boss = g.getEnemies().find(e => e.type === 'G');
-      if (!boss) return { error: 'G が居ない' };
+      const foe = g.getEnemies().find(e => e.type === 'θ');
+      if (!foe) return { error: 'θ が居ない' };
       const tr = [];
       for (let i = 1; i <= 20; i++) {
-        const e0 = g.getEnemies().find(e => e.id === boss.id);
+        const e0 = g.getEnemies().find(e => e.id === foe.id);
         if (!e0) break;
-        p.x = e0.x - 1; p.y = e0.y;          // 西隣（2×2 の左端から 1 セル）
+        p.x = e0.x - 1; p.y = e0.y;          // 西隣
         g.step(1);
-        const e = g.getEnemies().find(x => x.id === boss.id);
+        const e = g.getEnemies().find(x => x.id === foe.id);
         const el = document.getElementById(`char-enemy-${e.id}`);
         tr.push({
           i, swingAt: e.swingAt ?? null, dir: e.dir,
@@ -641,16 +655,17 @@ test.describe('Phase 8-4 (4) 0d-2.6/0d-2.7 – 近接（剣）の予告つき攻
     });
     expect(r.error).toBeUndefined();
     const armed = r.tr.find(s => s.swingAt != null);
-    expect(armed, '実配置のボスが 20 tick で一度も予告しない').toBeTruthy();
+    expect(armed, '実配置の剣持ちが 20 tick で一度も予告しない').toBeTruthy();
     // 予告中だけクラスが付く（解決後まで残ると機構の告知にならない）
     for (const s of r.tr) {
       expect(s.cls, `tick${s.i} の .swing-windup が予告状態（swingAt=${s.swingAt}）と食い違う`)
         .toBe(s.swingAt != null);
     }
     // 長さは状態機械が持つ（CSS 側に長さを書かない）＝要素へ ms が渡っている
-    expect(armed.ms, '振り上げの長さが要素へ渡っていない（CSS 既定値に落ちる）').toBe(`${WINDUP_MS()}ms`);
+    // （骸骨剣士は windupMs を書いていない＝既定 MELEE_WINDUP_MS が渡る）
+    expect(armed.ms, '振り上げの長さが要素へ渡っていない（CSS 既定値に落ちる）').toBe(`${MELEE_WINDUP_MS}ms`);
     // 剣を持つ側＝振る向き（西/北へ振るときは左右反転）
-    expect(armed.dir, '西隣に立ったのにボスが西を向いていない（前提が崩れた）').toBe('left');
+    expect(armed.dir, '西隣に立ったのに敵が西を向いていない（前提が崩れた）').toBe('left');
     expect(armed.flip, '振る向きに応じた反転（--swing-flip）が渡っていない').toBe('-1');
     expect(errors).toEqual([]);
   });

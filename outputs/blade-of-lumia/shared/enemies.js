@@ -57,6 +57,22 @@ export const ENEMY_SPEED_FAST   = 1.0;  // 高速敵
 //     殴り返せない」＝剣の間合いが互角（G 1.2 ＝ SWORD_REACH 1.2）だと、当てにいくと必ず
 //     刺し違える。硬直＝振り下ろした後の隙が、避けた側の反撃の窓になる。
 //
+// wieldsSword（2026-08-26・任意 boolean）… **その敵の絵が剣を持っているか**の宣言。
+//   `attack.type: 'sword'` は engine の**近接の総称**（咬みつき・なぎ払い・鉗肢・舌・鉤爪・
+//   巨体の体当たりも 'sword' で書いてある）∴型からは「剣を持っているか」は分からない。
+//   予告と解決の**見た目と音だけ**をこの宣言で振り分ける（当たり判定・盾ブロック・硬直は
+//   宣言に関係なく1つの経路＝resolveSwordHit のまま＝機構を二重化しない）：
+//     true  … 剣を頭上へ振り上げる（`.swing-windup`）＋金属の擦り上げ音（swordWindup）＋
+//             斬撃の光線（`.sword-thrust`）
+//     省略  … 体を縮めて溜める（`.slam-windup`＝体当たりと同じ拡大縮小）＋低く沈む唸り
+//             （maulWindup）＋牙/爪の一撃（`.sword-thrust.maul-strike`）
+//   ⚠️ 2026-08-26 ユーザー実プレイ報告「地中蟲とかも剣で攻撃するようになっちゃったの？
+//     こいつらは体当たり攻撃で、その予備動作はいままでどおりサイズの収縮でよかった。
+//     変じゃん。剣もってたら。魔王系と剣を持ってる敵だけでいいんじゃないの？」
+//     0d-2.6 が予告の絵を**実際の刃**にし、0d-2.7 がそれを全敵の既定にした結果、
+//     剣を持たない 10 体（α 地中蟲・G・N・J・O・U・I・L・<・{）が持っていない剣を
+//     振り上げていた。∴宣言があるのは剣の絵を持つ7体だけ（θ・μ・ζ と魔王系 V・W・X・Z）。
+//
 // attackFreezeMs（任意）… 攻撃が解決してから動けない時間（＝プレイヤーが殴り返す窓）。
 //   **近接（sword / charge）の省略時は MELEE_FREEZE_MS（360ms＝3 tick）**（0d-2.7 で既定化）。
 //   遠隔の省略時は従来どおり（directional なら ATTACK_POSE_MS・それ以外 0）＝撃つたびに
@@ -160,6 +176,7 @@ export const ENEMY_META = {
 		pal:    'skeleton',
 		isBoss: false,
 		directional: true,
+		wieldsSword: true,      // 絵に剣がある（skeletonDAtk＝振り下ろしのポーズも持つ）
 		attack: { type: 'sword', range: 1.5, cooldown: 900 },
 	},
 	[TILE.SWORD_BEAST]: {
@@ -181,6 +198,7 @@ export const ENEMY_META = {
 		sprite: 'swordBeastD',
 		pal:    'swordBeast',
 		isBoss: false,
+		wieldsSword: true,      // 絵に剣がある（飛ぶ斬撃 swordBeam を撃つ敵）
 		directional: true,
 		guards: false,
 		// 攻撃硬直（2026-08-12）＝斬った/撃った直後は動けない。プレイヤーの
@@ -300,6 +318,7 @@ export const ENEMY_META = {
 		pal:    'shieldKnight',
 		isBoss: false,
 		directional: true,
+		wieldsSword: true,      // 絵に剣がある（盾＋剣の重装＝shieldKnightDAtk も持つ）
 		guards: false,
 		blockFacing: {
 			turnMs:    720,   // 6 tick（TICK_MS 120）ごとにだけ向き直る＝回り込みの猶予
@@ -629,6 +648,7 @@ export const ENEMY_META = {
 		sprite: 'monsterD',
 		pal:    'monster',
 		isBoss: true,
+		wieldsSword: true,      // 勇者の絵の派生＝剣を持っている（魔王系）
 		// ── 向き（2026-08-26 ユーザー報告「常に右を向いてしまっている」の修正）─────
 		// 絵は勇者の流用＝monsterD/R/U は**本当に別の絵**（`monster` は heroR＝右向き）。
 		// にもかかわらず向きの機構を宣言していなかった∴移動 AI が e.dir を毎 tick 更新して
@@ -708,6 +728,7 @@ export const ENEMY_META = {
 		sprite: 'escapeD',
 		pal:    'escape',
 		isBoss: true,
+		wieldsSword: true,      // 勇者の絵の派生＝剣を持っている（魔王系）
 		// 向き（2026-08-26）＝魔物 W と同じ理由でここでも宣言する。escapeD/R/U は本当に別の絵
 		// ∴宣言が無いと bossTickHitAndAway の独自差替に頼った状態＝移動 AI を替えた瞬間に
 		// 向きが死ぬ（W で実際に起きた）。guards: false ＝escape*Guard を持たない。
@@ -744,6 +765,7 @@ export const ENEMY_META = {
 		sprite: 'darklordD',
 		pal:    'darklord',
 		isBoss: true,
+		wieldsSword: true,      // 勇者の絵の派生＝剣を持っている（魔王系）
 		directional: true,   // 向き（2026-08-26）＝魔物 W と同じ理由。guards: false は下
 		guards:      false,  // darklord*Guard を持たない
 		aura:   true,   // 魔王オーラエフェクト
@@ -782,6 +804,7 @@ export const ENEMY_META = {
 		sprite: 'darklordD',
 		pal:    'darklord',
 		isBoss: true,
+		wieldsSword: true,      // 勇者の絵の派生＝剣を持っている（魔王系）
 		isFinalBoss: true,  // ← ラスボス。撃破でエンディング
 		directional: true,   // 向き（2026-08-26）＝魔物 W と同じ理由。guards: false は下
 		guards:      false,  // darklord*Guard を持たない
@@ -807,9 +830,24 @@ export const ENEMY_META = {
 		],
 	},
 	// ── 炎のサラマンドラ（Phase 3-2）：2×2 大型ボス・dungeon_4（炎の神殿）─────
-	// 炎をまとった巨大トカゲ型の守護者。体全体が溶岩のように輝き、
-	// 尻尾の一撃と炎の石投げで戦う。hitAndAway でジグザグに接近する。
+	// 炎をまとった巨大トカゲ型の守護者。体全体が溶岩のように輝き、炎のブレスと石投げで戦う。
 	// dropsTriforce:true で撃破時に星の欠片を落とす。
+	//
+	// Phase 8-4 (4) 0d-3（2体目・2026-08-26）＝**移動アルゴリズムを車線取り（laneStalk）へ替えた**。
+	// 旧＝`hitAndAway: true` ＋ 尻尾（sword 1.2）＋石＝**G 岩のゴーレムと同じ「寄って殴る」型**
+	// （`initialModeWeights` も `direct` 主体）∴ユーザー要件「同じパターンだとつまらなすぎる」に
+	// 反していた。新しい性格＝**行/列を取りに横歩きし、揃うと立ち止まって炎を吐く**：
+	//   ・`laneStalk` … プレイヤーの行 or 列（ずれの小さい軸）へ**直交方向だけ**歩いて乗る。
+	//     車線に乗ったら `holdMin`〜`holdMax` の間合いへ調整し、揃っていれば**動かない**。
+	//     ∴プレイヤーから見た答えは「射線から外れる（横へ歩く）」＝G の「間合いを外す」と違う。
+	//   ・`breath` … 予告（`windupMs`）を経てから正面へ**円錐**の炎（`cells`×`spread`）。
+	//     盾では防げない（体当たり/突進と同じ＝答えは避けることだけ）。予告の時点で向きが
+	//     固定される＝**予告を見てから射線を外せば空振りする**。
+	//   ・近接（尻尾）は**持たせない**＝「寄って殴る」型に戻さないための data 側の宣言。
+	//     密着されても円錐の1セル目が隣接セルを覆う∴死角にはならない。
+	// ⚠️ `holdMax` は breath の `range` 以下にする（GUIDE §3-1 と同型の「届かない判定距離」）。
+	// ⚠️ `hitAndAway: false` は**明示**が必要＝`enemyTick` の移動分岐は `hitAndAway` を
+	//    最優先で見る∴書かないと `laneStalk` が一度も使われない（W で踏んだ罠と同じ）。
 	[TILE.FIRE_SALAMANDER]: {
 		name: '炎のサラマンドラ',
 		hp: 96, atk: 5, def: 1, exp: 50,      // 8-4: 木の剣で 32 振り（10秒）。矢（弱点×2）なら 12 本
@@ -820,15 +858,27 @@ export const ENEMY_META = {
 		isBoss: true,
 		dropsTriforce: true,
 		weakness: { type: 'arrow', multiplier: 2 },  // 矢で炎を射抜く
-		hitAndAway: true,
+		hitAndAway: false,
+		// 車線取り＝lockTol より車線のずれが小さくなったら「乗った」と見る。
+		// holdMin（1.6）は**プレイヤーの剣の射程 SWORD_REACH 1.2 の外**＝吐く構えのまま
+		// 殴られ続けない／holdMax（3.0）は breath の range と同値＝構えた位置から必ず届く。
+		laneStalk: { lockTol: 0.6, holdMin: 1.6, holdMax: 3.0 },
 		attacks: [
-			{ type: 'sword', range: 1.2, cooldown: 800 },   // 尻尾なぎ払い
+			// 炎のブレス（円錐）。cells＝軸方向の長さ・spread＝軸から外へ広がるレーン数の上限
+			// （体の幅 2 レーン → 2セル目以降は 4 レーン）。breathAtk は書かない＝本体の atk。
+			{ type: 'breath', range: 3.0, cooldown: 2600, windupMs: 720, cells: 3, spread: 1,
+			  breathMs: 420, freezeMs: 480 },
 			{ type: 'stone', range: 7, cooldown: 2200, projectileSpeed: 1.2 }, // 炎の石
 		],
-		attack: { type: 'sword', range: 1.2, cooldown: 800 },
-		initialModeWeights: { flank: 0.3, direct: 1.3, wander: 0.3, strafe: 0.1 },
+		attack: { type: 'breath', range: 3.0, cooldown: 2600, windupMs: 720, cells: 3, spread: 1,
+		          breathMs: 420, freezeMs: 480 },
+		// 後半（HP50%）＝**同じ車線取りが突進に化ける**（`phases[].dash` で機構を差し替える）。
+		// 車線に乗る動きは変えず「揃ったら吐く」が「揃ったら走る」に変わる＝プレイヤーが
+		// 覚えた読み（射線を外す）がそのまま効くが、外す猶予が短くなる。
 		phases: [
-			{ hpThreshold: 0.5, speedMultiplier: 1.5, attackCooldownMultiplier: 0.8 },
+			{ hpThreshold: 0.5, speedMultiplier: 1.5, attackCooldownMultiplier: 0.8,
+			  dash: { windupMs: 480, speed: 1.5, maxCells: 8, alignTol: 0.8, hitRange: 1.0,
+			          minRange: 2.0, maxRange: 8.0, stunMs: 1200, cooldownMs: 1600 } },
 		],
 	},
 	// ── 氷のリヴァイアサン（Phase 3-2）：2×2 大型ボス・dungeon_5（氷の廃墟）──

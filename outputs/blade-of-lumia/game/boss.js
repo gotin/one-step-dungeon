@@ -155,6 +155,8 @@ export function createBoss(deps) {
 			// 立っている体当たりの予告は捨てる＝表を差し替えた後に**旧 index が新しい表の
 			// 別の技として解決する**のを防ぐ（予告→解決の間に相が変わり得る）。
 			if (boss._slamAt != null) { boss._slamAt = null; boss._slamIdx = null; }
+			// 0d-3: ブレスの予告も同じ理由で捨てる（`_breathIdx` が旧 index を指している）。
+			if (boss._breathAt != null) { boss._breathAt = null; boss._breathIdx = null; }
 			// ⚠️ `_attackTimes` は消さない＝差し替えた瞬間に全技が一斉発火しない
 			//   （クールダウンの起点が 0 に戻ると「相が変わった瞬間に全弾」になる）。
 		}
@@ -165,6 +167,18 @@ export function createBoss(deps) {
 			// 遠隔/近接の二相は作り直す（新しい周期で数え直す）。位相は id から決まる∴
 			// 作り直しても乱数は入らない（enemy-ai.js phaseOffsetMs）。
 			boss._cmode = null; boss._cmodeUntil = null;
+		}
+		// Phase 8-4 (4) 0d-3（2体目 A 炎のサラマンドラ）: **後半で機構そのものが生える**口。
+		// 表（`attacks`）の差し替えだけでは「同じ動きで攻撃が増える」しか作れない∴
+		// 移動アルゴリズムを変える機構（突進）を相で足せるようにした。
+		// ⚠️ 状態機械の変数も**同時に初期化する**＝前半に `_dashPhase` が付いていた敵
+		//    （突進を持つボスが表を差し替える形）で相が変わったとき、走行中の残りセル
+		//    （`_dashLeft`）を引き継いだまま新しい設定で走り出すのを防ぐ。
+		if (phase.dash !== undefined) {
+			boss._dash = phase.dash;
+			boss._dashPhase = 'idle';
+			boss._dashUntil = 0;
+			boss._dashLeft  = 0;
 		}
 	}
 

@@ -251,6 +251,43 @@
     100% { transform: scaleX(var(--swing-flip, 1)) translateY(-9%) rotate(-72deg); opacity: 1;    }
 }
 
+/* Phase 8-4 (4) 0d-3: 炎のブレス（breath）の予告＝**口元で炎の玉が膨らむ**。
+   体当たり（拡大縮小）・突進（足踏み）・剣（振り上げ）と4つとも別の形（GUIDE §6-1）＝
+   避け方が違う（下がる／軸から外れる／間合いを切る／**射線から出る**）ものは別の絵で告知する。
+   ・玉は ::after で描く＝A は向き別の絵を持たない 2×2 ボス（層2の絵待ちにならない）
+   ・**玉の位置が吐く向きを伝える**＝`--breath-ox/oy`（enemy-ai.js syncBreathMotion が
+     前面の中央を % で書く）。ここが唯一の「どこへ吐くか」の告知∴位置だけは必ず動かす。
+   ・長さは `--breath-windup-ms`（状態機械が単一の真実）＝CSS 側に長さを持たせない。
+     `forwards` で膨らみ切った姿を保つ＝解決の瞬間まで「もう出る」と読める。
+   ⚠️ 剣（`.swing-windup::after`）と同じ擬似要素∴同時には付かない（予告は常に1つ＝
+      enemy-ai.js が `_swingAt`/`_slamAt`/`_breathAt` を相互排他にしている）。 */
+.char-abs.breath-windup::after {
+    content: '';
+    position: absolute;
+    left: var(--breath-ox, 50%);
+    top:  var(--breath-oy, 100%);
+    width: 46%;
+    height: 46%;
+    margin-left: -23%;
+    margin-top: -23%;
+    /* 芯が白い炎の玉（中心＝高温）。`.enemy-fire-breath` の炎と同じ色域＝
+       予告と結果が「同じ炎」だと分かる（形と大きさだけが違う） */
+    background: radial-gradient(circle at 50% 50%,
+        rgba(255, 255, 235, 0.98) 0%,
+        rgba(255, 214, 90,  0.92) 34%,
+        rgba(255, 128, 30,  0.78) 62%,
+        rgba(200, 40,  10,  0.00) 100%);
+    border-radius: 50%;
+    animation: enemy-breath-windup var(--breath-windup-ms, 720ms) ease-in 1 forwards;
+    pointer-events: none;
+    z-index: 8;
+}
+@keyframes enemy-breath-windup {
+    0%   { transform: scale(0.18); opacity: 0.45; }
+    70%  { transform: scale(0.85); opacity: 0.95; }
+    100% { transform: scale(1.08); opacity: 1;    }
+}
+
 /* Phase 8-4 (4) 0d-2.6（2回目の調整・2026-08-25）: 攻撃硬直＝振り下ろした後の隙。
    ユーザー実プレイ判定「攻撃がおわったあともちょっと動けない時間をつくるとかしないと、
    剣を当てること自体がほぼ不可能」∴硬直（enemy-ai.js `_freezeUntil`）を**反撃の窓**として

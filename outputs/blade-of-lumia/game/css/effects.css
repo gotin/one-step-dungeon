@@ -195,6 +195,30 @@
     box-shadow: 0 0 12px 3px rgba(255, 230, 80, 1.0);
 }
 
+/* ── 剣を持たない敵の近接の一撃（牙・爪・鉗肢・舌・巨体の体当たり）──────────
+   2026-08-26 ユーザー指摘「変じゃん。剣もってたら」＝光る刃の絵は
+   `wieldsSword` を宣言した敵（θ・μ・ζ と魔王系 V/W/X/Z）だけのもの。
+   こちらは伸びる光線ではなく **短く太い衝撃**＝武器の形を持たない一撃に見せる。
+   長さ・太さ・色の3つを変える（色だけ変えると同じ形の光線に見える＝
+   どの攻撃が来たのか絵で読めない・GUIDE §6-1）。 */
+.sword-thrust.maul-strike::before {
+    background: linear-gradient(var(--thrust-angle), transparent 0%, rgba(196, 116, 88, 0.65) 35%, #f0e0d0 75%, #ffffff 100%);
+    box-shadow: 0 0 5px rgba(240, 200, 180, 0.85);
+    border-radius: 5px;
+}
+
+.sword-thrust.maul-strike.dir-right::before,
+.sword-thrust.maul-strike.dir-left::before {
+    height: 10px;
+    width: 58%;
+}
+
+.sword-thrust.maul-strike.dir-up::before,
+.sword-thrust.maul-strike.dir-down::before {
+    width: 10px;
+    height: 58%;
+}
+
 /* ── ダメージエフェクト ───────────────────────────────────── */
 .damage-flash {
     position: absolute;

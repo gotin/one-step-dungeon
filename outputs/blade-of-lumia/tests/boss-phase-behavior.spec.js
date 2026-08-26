@@ -312,7 +312,10 @@ test('④ speedMultiplier は meta.speed から計算し複利にならない／
 // 種類のバグ∴データ側を型で縛る。層1 で足したキーもここが唯一の宣言。
 test('⑤ ENEMY_META の phases[] は既知のキーだけを持ち、閾値は降順', () => {
   const PHASE_KEYS = ['hpThreshold', 'speedMultiplier', 'attackCooldownMultiplier',
-                      'attacks', 'modeWeights', 'hitAndAway', 'combat'];
+                      'attacks', 'modeWeights', 'hitAndAway', 'combat',
+                      // 0d-3（2体目 A）: 後半で**機構そのものを生やす**口（boss.js が `_dash` へ書き、
+                      // enemy-ai.js の `resolveDash` が読む）。表の差し替えだけでは移動が変わらない。
+                      'dash'];
   const MODE_KEYS = ['flank', 'direct', 'wander', 'strafe'];
   const withPhases = Object.entries(ENEMY_META).filter(([, m]) => m.phases);
   expect(withPhases.length, 'phases を持つ敵が居ない（データが消えた？）').toBeGreaterThanOrEqual(13);

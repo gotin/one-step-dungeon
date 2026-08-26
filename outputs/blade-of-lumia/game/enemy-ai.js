@@ -137,6 +137,14 @@ export function createEnemyAi(deps) {
 	function resolveCombat(e, meta) {
 		return e?._combat !== undefined ? e._combat : meta?.combat;
 	}
+	// resolveDash … 突進の設定そのものをフェーズで差し替える口（Phase 8-4 (4) 0d-3・2体目）。
+	// 「後半になったら機構が1つ増える」を層1 の語彙で表すための最小の追加＝A 炎のサラマンドラは
+	// 前半 `dash` を持たず、HP50% の相で `phases[].dash` が入って初めて突進を始める。
+	// ⚠️ **読む側を1か所に集約する**（`tickDash` と `enemyTick` の2つのガード）＝どれか1つが
+	//   `meta.dash` を直接読むと「相で足した突進の絵が出ない/スタンで止まらない」が起きる。
+	function resolveDash(e, meta) {
+		return e?._dash !== undefined ? e._dash : meta?.dash;
+	}
 
 	// ── Phase 5.5k: 攻撃硬直（2026-08-12 ユーザー指摘「攻撃動作中は動かないようにすべき」）──
 	// プレイヤーは剣を振っている間（_atkUntil の窓）足が止まる（player.js movePlayer）。
@@ -244,13 +252,23 @@ export function createEnemyAi(deps) {
 
 	// 予告モーションの見た目を今の状態に合わせる（毎tick・syncDirectionalSprite と同じ作法＝
 	// renderChars が要素を作り直しても次の tick で復帰する）。
-	function syncSlamMotion(e) {
+	// 2026-08-26: この拡大縮小は体当たり（charge）だけのものではなくなった＝**剣を持たない敵の
+	// 近接（sword）の予告もここに乗る**（ユーザー指摘「こいつらは体当たり攻撃で、その予備動作は
+	// いままでどおりサイズの収縮でよかった」）。∴ここが「体で来る攻撃の予告」の唯一の絵になり、
+	// `.swing-windup`（剣を振り上げる）は meta.wieldsSword の敵だけが使う。
+	// ⚠️ 2つの予告が同じクラスを取り合わないよう、on/off の判断は**両方の状態を見て**決める
+	//    （片方の sync が他方の立てたクラスを消さない＝呼ぶ順に依存しない）。
+	function syncSlamMotion(e, meta) {
 		const el = document.getElementById(`char-enemy-${e.id}`);
 		if (!el) return;
-		const on = e._slamAt != null;
+		const swingIsBody = e._swingAt != null && !meta?.wieldsSword;
+		const on = e._slamAt != null || swingIsBody;
 		if (on) {
 			// 拡大縮小2往復＝1往復あたり windup の半分（board.css の iteration-count が 2）
-			el.style.setProperty('--slam-pulse-ms', `${Math.round((e._slamWindupMs ?? SLAM_WINDUP_MS) / 2)}ms`);
+			const windupMs = e._slamAt != null
+				? (e._slamWindupMs ?? SLAM_WINDUP_MS)
+				: (e._swingWindupMs ?? MELEE_WINDUP_MS);
+			el.style.setProperty('--slam-pulse-ms', `${Math.round(windupMs / 2)}ms`);
 		}
 		el.classList.toggle('slam-windup', on);
 	}
@@ -336,6 +354,59 @@ export function createEnemyAi(deps) {
 			}
 		}
 
+		for (const [my, mx] of candidates) {
+			if (isPassableForEnemy(e.y + my, e.x + mx, e)) { e.y += my; e.x += mx; break; }
+		}
+		moveCharEl(`enemy-${e.id}`, e.x, e.y);
+	}
+
+	// ── Phase 8-4 (4) 0d-3（2体目 A 炎のサラマンドラ）: 車線取りの移動 ────────────
+	// meta.laneStalk = { lockTol, holdMin, holdMax }。**まっすぐ寄らない**移動アルゴリズム＝
+	//   ① プレイヤーの行 or 列（＝ずれの小さい軸）を選び、**直交方向だけ**歩いて乗る（横歩き）
+	//   ② 乗ったら車線上で間合いを holdMin〜holdMax に整える（遠ければ詰め・近ければ下がる）
+	//   ③ 両方満たしたら**動かない**＝吐く構えで待つ（プレイヤーが車線から出る時間ができる）
+	// ∴プレイヤー側の答えは「射線（行/列）から外れる」＝G の「まっすぐ来て振り下ろす」（間合いを
+	// 外す）とも W の「間合いを保って石を投げる」（列を外す＋詰める）とも別の読みになる。
+	// ⚠️ 間合いは **body の端から**測る（`enemyEdgeDist`）＝2×2 の西/北だけ1セル遠くならない
+	//    （0d-2.5 の罠）。車線のずれは **body の中心から**測る＝円錐の芯と一致する。
+	// ⚠️ 向きは歩幅の溜め（`e.accum`）より**前**に書く（GUIDE §1-2）＝鈍足でも即座に向き直る。
+	//    A は「揃ったら1歩も動かない」相を持つ∴溜めの後に書くと向きが完全に凍る。
+	function enemyLaneStalk(e, meta, speed, cfg) {
+		const player = getPlayer();
+		const lockTol = cfg.lockTol ?? 0.6;
+		const holdMin = cfg.holdMin ?? 1.6;
+		const holdMax = cfg.holdMax ?? 3.0;
+		const { cx, cy } = enemyCellCenter(e);
+		const dx = player.x - cx, dy = player.y - cy;
+		// 車線＝ずれの小さい軸を選ぶ。行を揃える（alignRow）＝左右へ吐く／列＝上下へ吐く。
+		const alignRow = Math.abs(dy) <= Math.abs(dx);
+		const off = alignRow ? dy : dx;                  // 車線からの直交ずれ（符号つき）
+		e.dir = alignRow ? (dx > 0 ? 'right' : 'left') : (dy > 0 ? 'down' : 'up');
+
+		e.accum = (e.accum ?? 0) + speed;
+		if (e.accum < 1.0) return;
+		e.accum -= 1.0;
+
+		const step  = MOVE_STEP;
+		const reach = enemyEdgeDist(e, player.x, player.y);
+		const sOff   = Math.sign(off) || 1;
+		const sAlong = alignRow ? (Math.sign(dx) || 1) : (Math.sign(dy) || 1);
+		const candidates = [];
+		if (Math.abs(off) > lockTol) {
+			// ① 車線を取る＝直交方向だけへ歩く。塞がれていたら車線方向へ回り込む
+			//    （壁際で永久に横歩きし続けて何もしない案山子にならない）
+			if (alignRow) candidates.push([sOff * step, 0], [0, sAlong * step]);
+			else          candidates.push([0, sOff * step], [sAlong * step, 0]);
+		} else if (reach > holdMax) {
+			// ② 車線に乗った・遠い＝間合いまで詰める（届かない位置で吐き続けない）
+			if (alignRow) candidates.push([0, sAlong * step], [sOff * step, 0]);
+			else          candidates.push([sAlong * step, 0], [0, sOff * step]);
+		} else if (reach < holdMin) {
+			// ③ 近すぎる＝車線を保ったまま下がる（＝プレイヤーの剣の射程で棒立ちしない）
+			if (alignRow) candidates.push([0, -sAlong * step], [sOff * step, 0]);
+			else          candidates.push([-sAlong * step, 0], [0, sOff * step]);
+		}
+		// ④ 揃って間合いも合った＝候補ゼロ＝その場で構える
 		for (const [my, mx] of candidates) {
 			if (isPassableForEnemy(e.y + my, e.x + mx, e)) { e.y += my; e.x += mx; break; }
 		}
@@ -980,6 +1051,18 @@ export function createEnemyAi(deps) {
 					maxRange:       atk.maxRange ?? 4.5,
 				});
 				markAttack(e, meta, i, now);
+			} else if (atk.type === 'breath') {
+				// Phase 8-4 (4) 0d-3（2体目 A 炎のサラマンドラ）: 炎のブレス（円錐）。
+				// 剣（sword）と同じ**予告→解決の2拍**で出す（`tickBreath` が解決する）：
+				//   ① 車線（行/列）に乗っているときだけ予告を始める＝斜めには吐けない
+				//   ② 予告の瞬間に**向きを固定**する（`_breathDir`）＝解決時に追尾しない
+				//      ∴予告を見てから射線を外せば空振りする＝この攻撃の答えになる
+				//   ③ 解決は `tickBreath` → `breatheCone`（壁で止まる・盾では防げない）
+				if (e._breathAt != null || e._swingAt != null || e._slamAt != null) continue;
+				const bdir = breathLaneDir(e, atk, dx, dy);
+				if (!bdir) continue;
+				startBreath(e, meta, atk, i, now, bdir);
+				continue;
 			} else if (atk.type === 'sword') {
 				// Phase 8-4 (4) 0d-2.6: 剣は **予告（前動作）を経てから当たる**。
 				// 0d-2.7（2026-08-25）で予告を**全敵の既定**にした（旧＝`windupMs` を書いた
@@ -1000,7 +1083,7 @@ export function createEnemyAi(deps) {
 					continue;
 				}
 				if (!resolveSwordHit(e, meta, atk)) continue;
-				showEnemySwordSlash(e);
+				showEnemyMeleeStrike(e, meta);
 				// Phase 5.5k: クールダウン記録・剣を振った絵（${base}${Dir}Atk の窓 _atkUntil）・
 				// 攻撃硬直（_freezeUntil）を markAttack で一括して立てる
 				// （プレイヤーの player._atkUntil と同型・DECISIONS 2026-08-10 / 2026-08-12）。
@@ -1108,9 +1191,11 @@ export function createEnemyAi(deps) {
 		e._swingWindupMs = atk.windupMs ?? MELEE_WINDUP_MS;
 		e._swingAt  = now + e._swingWindupMs;
 		e._swingIdx = i;
-		// 予告は絵（.swing-windup ＝剣を振り上げる）と音の2経路で出す＝画面の端でも読める。
-		// 突進の溜め（dashWindup の低い段）とは別の音＝避け方が違うものを同じ音で告知しない。
-		playSound('swordWindup');
+		// 予告は絵と音の2経路で出す＝画面の端でも読める。突進の溜め（dashWindup の低い段）とは
+		// 別の音＝避け方が違うものを同じ音で告知しない。
+		// 2026-08-26: 音も絵も **剣を持っているか**（meta.wieldsSword）で振り分ける＝
+		// 剣を持たない敵（地中蟲の咬みつき・巨体の体当たり）は低く沈む唸り（maulWindup）。
+		playSound(meta.wieldsSword ? 'swordWindup' : 'maulWindup');
 	}
 
 	// 予告の解決。戻り値 true ＝この tick は剣が専有した（移動も他の攻撃もしない）。
@@ -1125,7 +1210,7 @@ export function createEnemyAi(deps) {
 		if (e.hidden) { markAttack(e, meta, i, now); return true; }
 		const connected = resolveSwordHit(e, meta, atk);
 		// 振り下ろしの絵は当たっても空振りでも出す＝「避けた」ことが画面に出る
-		showEnemySwordSlash(e);
+		showEnemyMeleeStrike(e, meta);
 		// クールダウン・硬直は**解決した時刻から**数える（予告の開始からではない）。
 		// 空振りでも数える＝逃げられた直後に予告なしで振り直す連打にならない。
 		markAttack(e, meta, i, now);
@@ -1137,10 +1222,14 @@ export function createEnemyAi(deps) {
 	// 体当たり（`.slam-windup` の拡大縮小）とも突進（`.dash-windup` の足踏み）とも**別の形**
 	// ＝どの攻撃の予告なのかが絵で分かる（GUIDE §6-1）。2026-08-25 ユーザー指定＝
 	// 「剣の攻撃の予告動作がキャラの拡大縮小だと変」∴剣そのものが上がる形にする。
-	function syncSwingMotion(e) {
+	// ⚠️ 2026-08-26: この絵は **meta.wieldsSword を宣言した敵だけ**（θ 骸骨剣士・μ 剣獣・
+	//    ζ 盾騎士・魔王系 V/W/X/Z）。剣を持たない敵の近接は `.slam-windup`（体の収縮）で出す
+	//    ＝ユーザー実プレイ報告「地中蟲とかも剣で攻撃するようになっちゃったの？変じゃん。
+	//    剣もってたら」。攻撃そのもの（判定・盾ブロック・硬直）は宣言に関係なく同じ経路。
+	function syncSwingMotion(e, meta) {
 		const el = document.getElementById(`char-enemy-${e.id}`);
 		if (!el) return;
-		const on = e._swingAt != null;
+		const on = e._swingAt != null && !!meta?.wieldsSword;
 		if (on) {
 			// 振り上げの長さは状態機械が持つ（CSS 側に長さを書かない＝dash-windup と同じ作法）
 			el.style.setProperty('--swing-windup-ms', `${Math.round(e._swingWindupMs ?? 0)}ms`);
@@ -1159,8 +1248,8 @@ export function createEnemyAi(deps) {
 		const el = document.getElementById(`char-enemy-${e.id}`);
 		if (!el) return;
 		const on = e._freezeUntil != null && now < e._freezeUntil
-			// 予告中（振り上げ）は硬直の絵を出さない＝どちらの窓なのかが絵で一意に読める
-			&& e._swingAt == null && e._slamAt == null;
+			// 予告中（振り上げ・膨らむ炎）は硬直の絵を出さない＝どちらの窓なのかが絵で一意に読める
+			&& e._swingAt == null && e._slamAt == null && e._breathAt == null;
 		// ⚠️ 長さは**窓に入った最初の tick だけ**書く（毎 tick 残り時間を書き直すと
 		//    animation-duration が縮み続けて沈む姿勢が跳ねる）。硬直は攻撃が成立した tick に
 		//    立つ∴最初の tick の残り＝硬直の全長。
@@ -1170,8 +1259,12 @@ export function createEnemyAi(deps) {
 		el.classList.toggle('attack-recover', on);
 	}
 
-	// 敵の剣エフェクト
-	function showEnemySwordSlash(e) {
+	// 敵の近接の解決の絵（当たっても空振りでも出す＝「避けた」ことが画面に出る）。
+	// 2026-08-26: 剣を持つ敵（meta.wieldsSword）は斬撃の光線（`.sword-thrust`）、持たない敵は
+	// 牙/爪の一撃（`.sword-thrust.maul-strike`＝短く太い衝撃）にする。要素のクラス名 `sword-thrust`
+	// は剣から始まった歴史的な名前で、今は「近接の解決の絵」の意味（複数のテストがこの名前で
+	// 解決の tick を数えている∴名前は変えない・見た目だけを変種で分ける）。
+	function showEnemyMeleeStrike(e, meta) {
 		const charLayerEl = getCharLayerEl();
 		if (!charLayerEl) return;
 		const player = getPlayer();
@@ -1186,7 +1279,7 @@ export function createEnemyAi(deps) {
 		const dir = Math.abs(dy) >= Math.abs(dx) ? (dy > 0 ? 'down' : 'up') : (dx > 0 ? 'right' : 'left');
 		const cellPx = getCellPx();
 		const el = document.createElement('div');
-		el.className = `sword-thrust dir-${dir}`;
+		el.className = `sword-thrust dir-${dir}${meta?.wieldsSword ? '' : ' maul-strike'}`;
 		el.style.left   = `${fx * cellPx}px`;
 		el.style.top    = `${fy * cellPx}px`;
 		el.style.width  = `${cellPx}px`;
@@ -1472,7 +1565,9 @@ export function createEnemyAi(deps) {
 	}
 
 	function tickDash(e, meta, now) {
-		const cfg = meta?.dash;
+		// 0d-3（2体目 A）: 突進の設定は**フェーズで後から生える**ことがある∴ここは `meta.dash` を
+		// 直接読まず `resolveDash`（e._dash 優先）を通す。enemyTick 側の2つのゲートも同じ。
+		const cfg = resolveDash(e, meta);
 		if (!cfg) return false;
 		const windupMs   = cfg.windupMs   ?? 360;
 		const speed      = cfg.speed      ?? 1.5;
@@ -1539,6 +1634,7 @@ export function createEnemyAi(deps) {
 		// idle ＝突進を始めるかどうかの判断
 		if (e._slamAt != null) return false;      // 体当たりの予告中は突進を始めない（予告は1つ）
 		if (e._swingAt != null) return false;     // 剣の予告中も始めない（0d-2.6・上と同じ理由）
+		if (e._breathAt != null) return false;    // ブレスの予告中も始めない（0d-3・予告は常に1つ）
 		const player = getPlayer();
 		if (!player) return false;
 		// 0d-2.5 (2): 車線も距離も **中心から** 測り、当たり判定（dashReachHit）と同じだけ
@@ -1788,6 +1884,117 @@ export function createEnemyAi(deps) {
 		setTimeout(() => el.remove(), durMs);
 	}
 
+	// ── Phase 8-4 (4) 0d-3（2体目 A 炎のサラマンドラ）: 炎のブレス（円錐）─────────
+	// 甲羅（`shell`）の炎（`breatheFire`）から派生した攻撃だが、**別の機構**として書く：
+	//   ・`shell` の炎は「開いた瞬間に必ず出る」（周期の副産物・予告は開閉の絵）＝避け方は時間。
+	//   ・こちらは `attacks[]` の1エントリ＝**予告→解決**の2拍を持ち、避け方は**射線を外す**。
+	//   ・直線1本ではなく**円錐**（軸方向 `cells` × 外へ `spread` レーン）＝1セル横へ避けても
+	//     まだ焼かれる∴プレイヤーは「早めに車線から出る」ことを要求される。
+	// 共有するのは見た目（`.enemy-fire-breath`）だけ＝`showFireBreathEffect` を再利用する。
+	const BREATH_DIR_VEC = { down: [0, 1], up: [0, -1], right: [1, 0], left: [-1, 0] };
+
+	// 吐ける車線に居るか＝居れば吐く向き（カーディナル1方向）、居なければ null。
+	// ⚠️ 許容ずれは**円錐が実際に覆う幅から導く**（＝`spread` ＋ body の半幅）。
+	//    独立した数値にすると「揃ったと判定したのに円錐の外」＝GUIDE §3-1 と同型の
+	//    「届かない判定距離」の罠になる（機構が死んでいてもテストは緑になる）。
+	function breathLaneDir(e, atk, dx, dy) {
+		const { halfW, halfH } = enemyHalf(e);
+		const vertical = Math.abs(dy) > Math.abs(dx);
+		const off     = vertical ? Math.abs(dx) : Math.abs(dy);
+		const halfOff = vertical ? halfW : halfH;
+		if (off > (atk.spread ?? 1) + halfOff) return null;
+		return vertical ? (dy > 0 ? 'down' : 'up') : (dx > 0 ? 'right' : 'left');
+	}
+
+	// 予告の開始（enemyAttack の breath 分岐から呼ぶ）。剣（startSwing）と同じ形。
+	function startBreath(e, meta, atk, i, now, dir) {
+		// 吐く向きは**この瞬間に固定する**＝解決時に追尾しない（射線を外す答えを守る）
+		e._breathDir = dir;
+		e.dir = dir;
+		e._breathWindupMs = atk.windupMs ?? MELEE_WINDUP_MS;
+		e._breathAt  = now + e._breathWindupMs;
+		e._breathIdx = i;
+		// 予告は絵（`.breath-windup` ＝口元で炎の玉が膨らむ）と音の2経路で出す（GUIDE §7-6）。
+		// 吸い込む音（breathWindup）と吐く音（fire）は**別の音**＝「来る」と「出た」を聞き分ける。
+		playSound('breathWindup');
+	}
+
+	// 予告の解決。戻り値 true ＝この tick はブレスが専有した（移動も他の攻撃もしない）。
+	function tickBreath(e, meta, now) {
+		if (e._breathAt == null) return false;
+		if (now < e._breathAt) return true;                // まだ溜め中
+		const list = resolveAttackList(e, meta);
+		const i    = e._breathIdx ?? 0;
+		const atk  = list[i] ?? {};
+		const dir  = e._breathDir ?? e.dir;
+		e._breathAt = null; e._breathIdx = null;
+		// 隠れ中に解決の時刻が来たら空振り（tickSwing / tickSlam と同じ扱い）
+		if (e.hidden) { markAttack(e, meta, i, now); return true; }
+		breatheCone(e, meta, atk, dir);
+		// クールダウン・硬直は**解決した時刻から**数える（空振りでも数える＝連打にならない）
+		markAttack(e, meta, i, now);
+		return true;
+	}
+
+	// 円錐の炎を出す。軸方向は body の**前面**から `cells` セル、横方向は body の幅
+	// （`core` レーン）を距離に応じて `spread` レーンぶん外へ広げる（1セル目＝体の幅のまま）。
+	// ・**盾では防げない**（`isShieldBlockingDir` を通さない）＝体当たり/突進と同じ扱い＝
+	//   答えは「射線から外れる」だけ（k-7.5 決定④の系）。
+	// ・壁で止まる。**軸（芯）のレーンが全部塞がれた距離で円錐そのものを打ち切る**＝
+	//   正面に壁を挟めば焼かれない（＝遮蔽が意味を持つ）。外側のレーンは各々独立に止まる。
+	// ・ダメージは**1回だけ**（何セル重なっても1発）。
+	function breatheCone(e, meta, atk, dir) {
+		const player = getPlayer();
+		const cells  = atk.cells  ?? 3;
+		const spread = atk.spread ?? 1;
+		const dmg    = atk.breathAtk ?? e.atk ?? meta.atk ?? 1;
+		const durMs  = atk.breathMs ?? 420;
+		const [ux, uy] = BREATH_DIR_VEC[dir] ?? BREATH_DIR_VEC.down;
+		const horizontal = ux !== 0;
+		const { cx, cy } = enemyCellCenter(e);
+		const { halfW, halfH } = enemyHalf(e);
+		const halfFwd = horizontal ? halfW : halfH;          // 中心から前面まで
+		const halfOff = horizontal ? halfH : halfW;          // 芯レーンの外端（±halfOff）
+		const blocked = new Set();
+		let hit = false;
+		for (let k = 1; k <= cells; k++) {
+			const extra = Math.min(spread, k - 1);           // 1セル目は体の幅のまま＝口元
+			let coreOpen = false;
+			for (let j = -halfOff - extra; j <= halfOff + extra; j++) {
+				if (blocked.has(j)) continue;
+				const fx = horizontal ? cx + ux * (halfFwd + k) : cx + j;
+				const fy = horizontal ? cy + j : cy + uy * (halfFwd + k);
+				if (!tilePassable(toTileRow(fy), toTileCol(fx))) { blocked.add(j); continue; }
+				if (Math.abs(j) <= halfOff) coreOpen = true;
+				showFireBreathEffect(fx, fy, durMs);
+				if (Math.abs(player.x - fx) < 0.9 && Math.abs(player.y - fy) < 0.9) hit = true;
+			}
+			if (!coreOpen) break;                            // 芯が塞がれた＝ここで炎が止まる
+		}
+		if (hit) takeDamage(dmg);
+		playSound('fire');   // 吐いた音（予告の breathWindup とは別＝結果が耳で分かる）
+	}
+
+	// 予告モーションの見た目（board.css `.breath-windup`＝口元で炎の玉が膨らむ）。
+	// 体当たり（拡大縮小）・突進（足踏み）・剣（振り上げ）・硬直（沈む）と**別の形**
+	// ＝どの攻撃の予告なのかが絵で分かる（GUIDE §6-1）。A は向き別の絵を持たない
+	// （`directional` ではない）∴**玉の位置だけが吐く向きを伝える**＝`--breath-o[xy]` に出す。
+	function syncBreathMotion(e) {
+		const el = document.getElementById(`char-enemy-${e.id}`);
+		if (!el) return;
+		const on = e._breathAt != null;
+		if (on) {
+			// 長さは状態機械が持つ（CSS 側に書かない＝swing/dash と同じ作法）
+			el.style.setProperty('--breath-windup-ms', `${Math.round(e._breathWindupMs ?? 0)}ms`);
+			const dir = e._breathDir ?? e.dir ?? 'down';
+			const [ux, uy] = BREATH_DIR_VEC[dir] ?? BREATH_DIR_VEC.down;
+			// wrapper は占有セル全体（2×2 なら2セル四方）∴% で口元＝前面の中央を指す
+			el.style.setProperty('--breath-ox', `${50 + ux * 50}%`);
+			el.style.setProperty('--breath-oy', `${50 + uy * 50}%`);
+		}
+		el.classList.toggle('breath-windup', on);
+	}
+
 	// ── Phase 5.5k k-3c: 跳躍蜘蛛の「溜め」を画面に出す ───────────────
 	// tickLeap の windup 相は移動/攻撃を止めるだけで見た目は素の歩行のままだった＝
 	// プレイヤーには「敵が止まった」ことしか伝わらず GUIDE §6-1（絵は機構を読ませる）に
@@ -2005,14 +2212,16 @@ export function createEnemyAi(deps) {
 				e._guarding = false;
 				// Phase 5.5k k-7.5: スタンは体当たりの予告も中断する（ガードと同じ扱い＝
 				// スタン中に攻撃が成立してはいけない）。ブーメランで止めれば体当たりも消える。
-				if (e._slamAt != null) { e._slamAt = null; e._slamIdx = null; syncSlamMotion(e); }
+				if (e._slamAt != null) { e._slamAt = null; e._slamIdx = null; syncSlamMotion(e, meta); }
 				// Phase 8-4 (4) 0d-2.6: 剣の予告（振り上げ）もスタンで中断する＝上と同じ理由
 				// （止めたのに振り下ろされる、を作らない）。
-				if (e._swingAt != null) { e._swingAt = null; e._swingIdx = null; syncSwingMotion(e); }
+				if (e._swingAt != null) { e._swingAt = null; e._swingIdx = null; syncSwingMotion(e, meta); syncSlamMotion(e, meta); }
+				// Phase 8-4 (4) 0d-3: ブレスの予告（膨らむ炎）もスタンで中断する＝上と同じ理由。
+				if (e._breathAt != null) { e._breathAt = null; e._breathIdx = null; syncBreathMotion(e); }
 				// Phase 5.5k k-9: 突進もスタンで中断する（溜め中に殴られたら走り出さない・
 				// 走行中に止められたらそこで終わる）。壁への激突で立てた気絶もここを通る＝
 				// 気絶が明けた tick に走行が再開しないための後始末でもある。
-				if (meta.dash) { cancelDash(e); syncDashMotion(e); syncDashSprite(e, meta); }
+				if (resolveDash(e, meta)) { cancelDash(e); syncDashMotion(e); syncDashSprite(e, meta); }
 				continue;
 			}
 			// Phase 5.5k k-7.5: 立っている予告は**他の専有状態より先に必ず解決する**
@@ -2020,6 +2229,8 @@ export function createEnemyAi(deps) {
 			const slamming = tickSlam(e, meta, now);
 			// Phase 8-4 (4) 0d-2.6: 剣の予告（振り上げ）も同じ枠＝立っている予告は先に解決する。
 			const swinging = tickSwing(e, meta, now);
+			// Phase 8-4 (4) 0d-3: 炎のブレスの予告も同じ枠（立っている予告は先に解決する）。
+			const breathing = tickBreath(e, meta, now);
 			// 隠れ↔出現の周期を更新（meta.hide を持つ敵のみ＝潜み鮫・地中蟲）
 			tickHide(e, meta, now);
 			// Phase 5.5k k-8: 瞬間移動（術士）＝消えている間と出現した tick を専有する。
@@ -2049,7 +2260,7 @@ export function createEnemyAi(deps) {
 			// ∴硬直で止めるのは「新しく跳び始めること」だけにする（下の shell/leech/dash と
 			// 違い、跳躍は始まると自分の時計だけで完結する状態機械∴宙吊りが観測に出る）。
 			const leapBusy = e._leapPhase != null && e._leapPhase !== 'ground';
-			const leaping = (!isGuarding && (leapBusy || (!frozen && !slamming && !swinging)))
+			const leaping = (!isGuarding && (leapBusy || (!frozen && !slamming && !swinging && !breathing)))
 				? tickLeap(e, meta, now) : false;
 			// Phase 5.5k k-4: 甲羅の開閉（火吐き亀）＝籠もっている間は移動も攻撃もしない
 			// （ガード/硬直/跳躍と同じ「この tick は他の行動をしない」枠）。開いた瞬間の炎は
@@ -2065,11 +2276,16 @@ export function createEnemyAi(deps) {
 			// Phase 5.5k k-4: 向き固定（盾騎士）＝turnMs ごとにだけ向き直る。移動より先に
 			// 決める（移動側は向きを触らない＝dirLocked を渡す）。
 			const dirLocked = tickFaceLock(e, meta, now);
-			if (!isGuarding && !frozen && !leaping && !shelled && !leeching && !slamming && !swinging && !blinking && !dashing) {
+			if (!isGuarding && !frozen && !leaping && !shelled && !leeching && !slamming && !swinging && !breathing && !blinking && !dashing) {
 				if (resolveHitAndAway(e, meta)) {
 					bossTickHitAndAway(e, meta);
 				} else if (cmode === 'ranged') {
 					enemyKeepDistance(e, meta, resolveEnemySpeed(e, meta), resolveCombat(e, meta));
+				} else if (meta.laneStalk) {
+					// Phase 8-4 (4) 0d-3（2体目 A）: 車線取り＝真っすぐ寄らない移動アルゴリズム。
+					// `combat`（間合いの二相・W）より前に置く必要は無い（laneStalk の敵は
+					// `combat` を持たない）が、`zigzag`/`chase` より前＝より特殊な機構が勝つ。
+					enemyLaneStalk(e, meta, resolveEnemySpeed(e, meta), meta.laneStalk);
 				} else if (meta.zigzag) {
 					enemyZigzagFly(e, meta, resolveEnemySpeed(e, meta), meta.zigzag);
 				} else {
@@ -2091,14 +2307,16 @@ export function createEnemyAi(deps) {
 			// （殴れる窓を見せる）。隠れている間は canvas を触らない＝差替は姿がある時だけ。
 			if (meta.blink && !e.hidden) syncCastSprite(e, meta);
 			// Phase 5.5k k-7.5: 体当たりの予告モーション（拡大縮小2往復）を状態に合わせる。
-			syncSlamMotion(e);
+			syncSlamMotion(e, meta);
 			// Phase 8-4 (4) 0d-2.6: 剣の予告モーション（剣を振り上げる）を状態に合わせる。
-			syncSwingMotion(e);
+			syncSwingMotion(e, meta);
+			// Phase 8-4 (4) 0d-3: 炎のブレスの予告モーション（口元で炎の玉が膨らむ）。
+			syncBreathMotion(e);
 			// Phase 8-4 (4) 0d-2.6（2回目の調整）: 攻撃硬直の絵（前かがみで止まる＝殴り返す窓）。
 			syncRecoverMotion(e, now);
 			// Phase 5.5k k-9: 突進の溜めモーション（前後に細かく揺れる）を状態に合わせる。
 			// k-9b: 絵そのものも溜め／気絶へ差し替える（揺れと ⭐ だけでは状態が読めない）。
-			if (meta.dash) { syncDashMotion(e); syncDashSprite(e, meta); }
+			if (resolveDash(e, meta)) { syncDashMotion(e); syncDashSprite(e, meta); }
 		}
 	}
 
@@ -2111,6 +2329,7 @@ export function createEnemyAi(deps) {
 		resolveModeWeights,
 		resolveHitAndAway,
 		resolveCombat,
+		resolveDash,           // Phase 8-4 (4) 0d-3: 突進の設定（フェーズ差替を含む・テスト用）
 		resolveEnemySprite,    // Phase 5.5k: 向き別スプライト名解決のテスト用
 		resolveAttackFreezeMs, // Phase 5.5k: 攻撃硬直の長さ（テスト用）
 		tickCombatMode,        // Phase 5.5k: 遠隔／近接の二相（テスト用）
@@ -2130,6 +2349,10 @@ export function createEnemyAi(deps) {
 		slamReachHit,          // Phase 5.5k k-7.5: 体当たりの到達判定（テスト用）
 		tickSwing,             // Phase 8-4 (4) 0d-2.6: 剣の予告→解決（テスト用）
 		swordReach,            // Phase 8-4 (4) 0d-2.6: 剣の到達判定（十字・端から測る・テスト用）
+		enemyLaneStalk,        // Phase 8-4 (4) 0d-3: 車線取りの移動（A 炎のサラマンドラ・テスト用）
+		tickBreath,            // Phase 8-4 (4) 0d-3: ブレスの予告→解決（テスト用）
+		breathLaneDir,         // Phase 8-4 (4) 0d-3: 吐ける車線の判定（円錐の幅から導出・テスト用）
+		breatheCone,           // Phase 8-4 (4) 0d-3: 円錐の炎（壁で止まる・テスト用）
 		detachLeech,           // Phase 5.5k k-5: 張り付きを剥がす（combat.js の被弾フックが呼ぶ）
 		bossTickHitAndAway,
 		enemyAttack,

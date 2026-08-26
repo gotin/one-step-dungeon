@@ -2177,6 +2177,12 @@ export function getEnemiesSnapshot() {
 		// （null＝振り上げていない）＝「届いた tick に即ダメージではない」ことを測る唯一の窓。
 		swingAt: e._swingAt ?? null,
 		swingWindupMs: e._swingWindupMs ?? null,
+		// Phase 8-4 (4) 0d-3: 炎のブレス（円錐）の予告の観測用。breathAt ＝吐き出す論理時刻。
+		// breathDir ＝**予告の瞬間に固定した**向き（解決で追尾しない＝射線から出れば避けられる）
+		// ∴テストは「溜めの途中で横へ動いた」ことをこの向きの据え置きで測る。
+		breathAt: e._breathAt ?? null,
+		breathWindupMs: e._breathWindupMs ?? null,
+		breathDir: e._breathDir ?? null,
 		// Phase 5.5k k-8: 瞬間移動（術士）の観測用。
 		// blinkPhase ＝'shown'（姿がある＝殴れる／撃つ窓）| 'gone'（消えている＝無敵）。
 		// blinkCount ＝出現した回数。出現先は**直前の方角を除いた乱択**（pickBlinkCell）∴
@@ -2193,6 +2199,9 @@ export function getEnemiesSnapshot() {
 		dashPhase: e._dashPhase ?? null,
 		dashUntil: e._dashUntil ?? null,      // 溜め/硬直が明ける論理時刻
 		dashLeft:  e._dashLeft  ?? null,      // 残りの突進距離（セル）＝走り切ったかの観測用
+		// 0d-3: 突進の設定そのもの（フェーズで後から生えることがある＝`resolveDash` が読む側）。
+		// null＝この敵は突進を持たない。**meta.dash とは別物**＝「後半で突進が生えた」の観測窓。
+		dash: e._dash ?? null,
 		// Phase 8-4 (4) 層1: ボスのフェーズが差し替える「行動の元データ」の観測用。
 		// boss.js checkBossPhase は**エンティティ側にだけ書く**∴フェーズが効いたかは
 		// ここに出る値で読む（null＝差し替えなし＝ENEMY_META のまま）。
