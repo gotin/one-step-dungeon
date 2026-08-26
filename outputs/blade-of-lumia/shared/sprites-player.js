@@ -315,12 +315,24 @@ PLAYER_SPRITES.heroUAtk = pose(PLAYER_SPRITES.heroU[0], [
 	[31, 17, 0], [31, 18, 0], [31, 19, 1], [31, 20, 1], [31, 21, 1],
 ]);
 
+// ── 勇者の絵を流用するボス3系統（魔将 / 魔物 / 魔王・ザーネル）───────────
+// ⚠️ この3系統は `directional: true`（shared/enemies.js）＝enemy-ai.js の
+//    resolveEnemySprite が `${base}${D|R|U}` と `${base}${D|R|U}Atk` を引く。
+//    **Atk が未登録だと syncDirectionalSprite が canvas を消したまま作り直せず、
+//    攻撃ポーズの窓（_atkUntil ＝180ms）のあいだ敵が画面から消える**
+//    （ENEMY-DIRECTIONAL-GUIDE §1-2）∴向き別3枚とセットで Atk 3枚も必ず置く。
+//    Guard 絵は用意していない∴enemies.js 側で `guards: false` を宣言してある。
+
 // ── ESCAPE（魔将）── 32×32、hero と同じ形、escape パレット ─────
 PLAYER_SPRITES.escapeD = PLAYER_SPRITES.heroD;
 PLAYER_SPRITES.escapeR = PLAYER_SPRITES.heroR;
 PLAYER_SPRITES.escapeL = PLAYER_SPRITES.heroR; // flipX で反転
 PLAYER_SPRITES.escapeU = PLAYER_SPRITES.heroU;
 PLAYER_SPRITES.escape  = PLAYER_SPRITES.heroR; // 後方互換
+PLAYER_SPRITES.escapeDAtk = PLAYER_SPRITES.heroDAtk;
+PLAYER_SPRITES.escapeRAtk = PLAYER_SPRITES.heroRAtk;
+PLAYER_SPRITES.escapeLAtk = PLAYER_SPRITES.heroRAtk; // flipX で反転
+PLAYER_SPRITES.escapeUAtk = PLAYER_SPRITES.heroUAtk;
 
 // ── MONSTER（魔物）── 32×32、hero と同じ形、monster パレット ──
 PLAYER_SPRITES.monsterD = PLAYER_SPRITES.heroD;
@@ -328,6 +340,10 @@ PLAYER_SPRITES.monsterR = PLAYER_SPRITES.heroR;
 PLAYER_SPRITES.monsterL = PLAYER_SPRITES.heroR; // flipX で反転
 PLAYER_SPRITES.monsterU = PLAYER_SPRITES.heroU;
 PLAYER_SPRITES.monster  = PLAYER_SPRITES.heroR; // 後方互換
+PLAYER_SPRITES.monsterDAtk = PLAYER_SPRITES.heroDAtk;
+PLAYER_SPRITES.monsterRAtk = PLAYER_SPRITES.heroRAtk;
+PLAYER_SPRITES.monsterLAtk = PLAYER_SPRITES.heroRAtk; // flipX で反転
+PLAYER_SPRITES.monsterUAtk = PLAYER_SPRITES.heroUAtk;
 
 // ── DARK LORD（魔王）── 4方向、darklord パレット ───────────────
 PLAYER_SPRITES.darklordD = PLAYER_SPRITES.heroD;
@@ -335,6 +351,10 @@ PLAYER_SPRITES.darklordR = PLAYER_SPRITES.heroR;
 PLAYER_SPRITES.darklordL = PLAYER_SPRITES.heroR; // flipX で反転
 PLAYER_SPRITES.darklordU = PLAYER_SPRITES.heroU;
 PLAYER_SPRITES.darklord  = PLAYER_SPRITES.heroR; // 後方互換
+PLAYER_SPRITES.darklordDAtk = PLAYER_SPRITES.heroDAtk;
+PLAYER_SPRITES.darklordRAtk = PLAYER_SPRITES.heroRAtk;
+PLAYER_SPRITES.darklordLAtk = PLAYER_SPRITES.heroRAtk; // flipX で反転
+PLAYER_SPRITES.darklordUAtk = PLAYER_SPRITES.heroUAtk;
 
 // ── PRINCESS（姫）── hero と同じ形、princess パレット ───────────
 PLAYER_SPRITES.princess = PLAYER_SPRITES.heroD;

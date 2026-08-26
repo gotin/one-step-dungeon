@@ -626,10 +626,40 @@ export const ENEMY_META = {
 		// 消耗しきる。atk も 3 → 2＝素の HP6 で「2 発死」から「3 発死」になる。
 		hp: 48, atk: 2, def: 1, exp: 18,
 		speed: ENEMY_SPEED_FAST * 0.45,  // 魔将より大幅に遅い (0.45)
-		sprite: 'monster',
+		sprite: 'monsterD',
 		pal:    'monster',
 		isBoss: true,
-		hitAndAway: true,   // ヒット＆アウェイ行動
+		// ── 向き（2026-08-26 ユーザー報告「常に右を向いてしまっている」の修正）─────
+		// 絵は勇者の流用＝monsterD/R/U は**本当に別の絵**（`monster` は heroR＝右向き）。
+		// にもかかわらず向きの機構を宣言していなかった∴移動 AI が e.dir を毎 tick 更新して
+		// いても絵が右向きのまま固定されていた。
+		// ⚠️ 旧データ（hitAndAway: true）では bossTickHitAndAway の中の**独自の差替ブロック**が
+		//    たまたま絵を切り替えていた＝0d-3 で `hitAndAway: false`（combat の二相）へ替えた
+		//    瞬間にその経路を通らなくなり、向きが死んだ。∴移動 AI の分岐に依らない唯一の窓口
+		//    ＝`directional: true`（enemyTick 末尾の syncDirectionalSprite）に載せる。
+		// ⚠️ `guards: false`＝ガード絵（monster*Guard）を持たない（剣獣と同じ理由付け）。
+		//    外すと tickGuard が立ち上がり①未登録の絵で敵が消える②0d-3 で測った
+		//    「間合いを保つ二相」が「立ち止まって構える」に化ける。
+		directional: true,
+		guards:      false,
+		// ── Phase 8-4 (4) 0d-3 層2（2026-08-25）＝W の「見せ場」＝**間合いを保つ二相**。
+		// ⚠️ `hitAndAway: false`＝**前半は張り付かない**（旧データは 13 体と同じ
+		//    「ヒット＆アウェイ＋剣＋石」のテンプレートだった＝ユーザーの「全部同じ動き」）。
+		//    G 岩のゴーレム（D1 のボス）が「まっすぐ来て振り下ろす」型∴W はその逆＝
+		//    **離れて石を投げ、周期的にだけ踏み込む**型にして、道中で先に出る中ボスの側に
+		//    「近づき方が違う敵が居る」を教える役を持たせる。
+		// ⚠️ 移動 AI の選択は `hitAndAway` が `combat` より優先される（enemy-ai.js の
+		//    enemyTick の分岐）∴二相を効かせるには `hitAndAway` を**明示的に false** にする。
+		hitAndAway: false,
+		// 遠隔相＝keepMin〜keepMax を保ち、行/列を揃えて石を投げる／近接相＝詰めて斬る。
+		//   keepMin 2.5 … 自分の剣（range 1.5）とプレイヤーの剣（SWORD_REACH 1.2）の
+		//                 どちらも届かない外側＝**遠隔相は殴り合いにならない**
+		//   keepMax 3.6 … 石の range 4 の内側＝**遠隔相は必ず撃てる位置に居る**
+		//                 （GUIDE §7-3 の罠＝「遠隔モードなのに撃てない位置に居る」の回避）
+		//   rangedMs 3000 … 石の cooldown 2800 より長い＝1相に必ず1発は飛ぶ
+		//   meleeMs 1800 … 速度 0.45 で 3.6 → 1.5 まで詰めて1回振れる長さ（実測で調整）
+		// 周期は固定（乱数なし）＝プレイヤーが「今は引く番／今は殴り返す番」を読める。
+		combat: { keepMin: 2.5, keepMax: 3.6, rangedMs: 3000, meleeMs: 1800, startMode: 'ranged' },
 		attacks: [
 			{
 				type:     'sword',
@@ -641,22 +671,48 @@ export const ENEMY_META = {
 				range:           4,
 				cooldown:        2800,  // 石投げ（魔将より頻度低）
 				projectileSpeed: 1.0,
+				// 投げた直後は固まらない（2026-08-26）。`directional: true` を絵のために立てると
+				// 遠隔の硬直の既定が 0 → ATTACK_POSE_MS(180ms) に化け、遠隔相の入り口で
+				// 「引く番」が 1〜2 tick 遅れる（実測：剣の間合いに居る時間が 19%→23%）。
+				// 間合いの設計（0d-3 で測った二相）は絵のフラグに左右させない∴明示 0。
+				freezeMs: 0,
 			},
 		],
 		attack: { type: 'sword', range: 1.5, cooldown: 600 },
-		// 背後・横回り込みの初期重み（魔将より低頻度）
-		initialModeWeights: { flank: 0.2, direct: 1.5, wander: 0.3, strafe: 0.2 },
+		// ⚠️ `initialModeWeights` は置かない＝前半は `hitAndAway: false`＝寄り方の抽選を
+		//    一度も通らない（`resolveModeWeights` を読むのは `bossTickHitAndAway` だけ）∴
+		//    ここに書くと「効いていないのに効いているように見える」死んだ数値になる。
+		//    後半の寄り方は下の `phases[].modeWeights` に置く＝**使う場所に書く**。
 		phases: [
-			{ hpThreshold: 0.5, speedMultiplier: 1.3 }, // HP50%以下でやや加速
+			// HP50%以下＝**移動アルゴリズムそのものを差し替える**（層1 の口を使う）。
+			// 二相をやめて張り付き型へ＝「間合いを取る敵」から「回り込んで来る敵」に変わる。
+			{
+				hpThreshold:     0.5,
+				speedMultiplier: 1.3,
+				hitAndAway:      true,
+				combat:          false,
+				// 寄り方＝**背後回り込み（flank）主体**。
+				// ⚠️ strafe を主にしたら破綻した（2026-08-25 の実測）＝strafe の目標地点は
+				//    プレイヤーから 4.0〜6.0 の側方（`bossTickHitAndAway`）∴石の射程 4 の外で
+				//    7秒間ただ周回する案山子になった。strafe/wander は「崩し」の少数派に留める。
+				// ⚠️ direct を主にすると G 岩のゴーレム（まっすぐ来て振り下ろす）と同じ型に
+				//    なる∴旧値（direct 1.5・flank 0.2）へは戻さない。
+				modeWeights: { flank: 1.6, direct: 0.7, strafe: 0.25, wander: 0.15 },
+			},
 		],
 	},
 	[TILE.BOSS]: {
 		name: '魔将',
 		hp: 96, atk: 4, def: 2, exp: 30,      // 8-4: 木の剣で 48 振り（14秒）
 		speed: ENEMY_SPEED_FAST,
-		sprite: 'escape',
+		sprite: 'escapeD',
 		pal:    'escape',
 		isBoss: true,
+		// 向き（2026-08-26）＝魔物 W と同じ理由でここでも宣言する。escapeD/R/U は本当に別の絵
+		// ∴宣言が無いと bossTickHitAndAway の独自差替に頼った状態＝移動 AI を替えた瞬間に
+		// 向きが死ぬ（W で実際に起きた）。guards: false ＝escape*Guard を持たない。
+		directional: true,
+		guards:      false,
 		hitAndAway: true,   // ヒット＆アウェイ行動
 		// attacks: 配列で複数攻撃パターン。cooldown は各攻撃個別に管理
 		attacks: [
@@ -685,9 +741,11 @@ export const ENEMY_META = {
 		//    unplacedEnemies が検出）。ザーネル（Z）と同格の数値にして配置待ちの状態にしてある。
 		hp: 120, atk: 8, def: 2, exp: 100,    // 木の剣で 60 振り（18秒）
 		speed: ENEMY_SPEED_SLOW,  // デバッグ用に低速化
-		sprite: 'darklord',
+		sprite: 'darklordD',
 		pal:    'darklord',
 		isBoss: true,
+		directional: true,   // 向き（2026-08-26）＝魔物 W と同じ理由。guards: false は下
+		guards:      false,  // darklord*Guard を持たない
 		aura:   true,   // 魔王オーラエフェクト
 		hitAndAway: true,   // ヒット＆アウェイ行動
 		attacks: [
@@ -721,10 +779,12 @@ export const ENEMY_META = {
 		// hp 120 / def 2 ＝木の剣 60 振り（18秒）＝目標帯（30〜60振り）の上端＝ラスボスの位置。
 		hp: 120, atk: 8, def: 2, exp: 0,  // 撃破でクリアなので exp は不要
 		speed: ENEMY_SPEED_NORMAL,
-		sprite: 'darklord',
+		sprite: 'darklordD',
 		pal:    'darklord',
 		isBoss: true,
 		isFinalBoss: true,  // ← ラスボス。撃破でエンディング
+		directional: true,   // 向き（2026-08-26）＝魔物 W と同じ理由。guards: false は下
+		guards:      false,  // darklord*Guard を持たない
 		aura:   true,
 		hitAndAway: true,
 		attacks: [

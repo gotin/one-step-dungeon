@@ -424,7 +424,14 @@ export function createRenderChars(deps) {
 			// Phase 9-6: 横向きシルエットの敵（sideView）はプレイヤーの左右に合わせて反転する。
 			// 素の絵は右向きなので「プレイヤーが左にいる」時だけ flipX。上下移動では向きを
 			// 変えない（e.dir を使うと上下移動中に左右が固まる）＝プレイヤーの x 差で判定。
-			const sideFlip = !!ENEMY_META[e.type]?.sideView && (player.x < e.x);
+			// ⚠️ 2026-08-26: directional な敵は左右反転を **e.flipX**（syncDirectionalSprite が
+			//    書いた今の向き）から引く。プレイヤー位置から引き直すと `${base}R` の絵に
+			//    上下向き（D/U）の判定を混ぜてしまい、逆に e.flipX を無視すると
+			//    「左を向いているのに再描画で右向きに戻る」（char-layer は作り直される
+			//     ＝blade-renderboard-pairs-renderchars と同じ罠）。
+			const sideFlip = ENEMY_META[e.type]?.directional
+				? !!e.flipX
+				: (!!ENEMY_META[e.type]?.sideView && (player.x < e.x));
 			const wrapper = addCharEl(e.x, e.y, `enemy-${e.id}`, () => {
 				return makeSprite(e.sprite, e.pal, true, sideFlip);
 			});

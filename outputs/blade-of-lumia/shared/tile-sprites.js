@@ -52,9 +52,13 @@ export const TILE_SPRITE_MAP = {
 	[TILE.CHARGE_BOAR]:  { spr: 'chargeBoar',  pal: 'chargeBoar'  },
 	[TILE.CURSE_FIRE]:   { spr: 'curseFire',   pal: 'curseFire'   },
 	[TILE.POISON_LEECH]: { spr: 'poisonLeech', pal: 'poisonLeech' },
-	[TILE.BOSS]:      { spr: 'escape',   pal: 'escape'   },
-	[TILE.MONSTER]:   { spr: 'monster',  pal: 'monster'  },
-	[TILE.DARK_LORD]: { spr: 'darklord', pal: 'darklord' },
+	// 勇者の絵を流用する3系統。2026-08-26 に directional:true へ載せた＝ENEMY_META と同じ
+	// `…D`（正面）を指す（骸骨剣士 skeletonD・剣獣 swordBeastD と同じ作法）。
+	// 素の `escape`/`monster`/`darklord` は heroR＝**右向き**∴ここに置くと
+	// エディタのプレビューだけ横を向く食い違いになる。
+	[TILE.BOSS]:      { spr: 'escapeD',   pal: 'escape'   },
+	[TILE.MONSTER]:   { spr: 'monsterD',  pal: 'monster'  },
+	[TILE.DARK_LORD]: { spr: 'darklordD', pal: 'darklord' },
 	[TILE.FISH_SCHOOL]:{ spr: 'fishSchool', pal: 'fishSchool' },
 	[TILE.LURK_SHARK]: { spr: 'lurkShark',  pal: 'lurkShark'  },
 	[TILE.ARCHER_FISH]:{ spr: 'archerFish', pal: 'archerFish' },

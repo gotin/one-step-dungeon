@@ -2136,6 +2136,11 @@ export function getEnemiesSnapshot() {
 		hidden: e.hidden ?? false,        // 隠れ中（潜行/地中/滞空＝無敵窓のリズム観測用）
 		dir: e.dir ?? null,
 		sprite: e.sprite ?? null,          // Phase 5.5k: directional 敵の向き別スプライト名観測用
+		// 2026-08-26: 左右反転。左向きは `${base}R` の絵＋flipX で作る（L 専用の絵は無い）∴
+		// 「左を向いているか」は sprite 名だけでは読めない＝この窓が必要。
+		// ⚠️ 画面に出ている反転の実体は canvas の `dataset.flipX`（絵に焼き込まれる＝
+		//    CSS transform では出ない・GUIDE §6-4）∴描画の裏取りは DOM 側で行う。
+		flipX: e.flipX ?? false,
 		atkUntil: e._atkUntil ?? null,     // Phase 5.5k: 攻撃ポーズ窓の観測用
 		guardUntil: e._guardUntil ?? null, // Phase 5.5k: 構えポーズ窓の観測用
 		guarding: e._guarding ?? false,    // Phase 5.5k: ガード状態（ダメージ無効化の実体）観測用

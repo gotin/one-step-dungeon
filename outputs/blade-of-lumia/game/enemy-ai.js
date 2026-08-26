@@ -142,6 +142,12 @@ export function createEnemyAi(deps) {
 	// プレイヤーは剣を振っている間（_atkUntil の窓）足が止まる（player.js movePlayer）。
 	// 敵側に同じ規則が無かった＝振りながら詰めてくる非対称だった ∴ 攻撃が成立した瞬間に
 	// e._freezeUntil を立て、enemyTick がその窓の間は移動も攻撃も止める。
+	//   ・**攻撃ごとの `freezeMs`** が最優先（2026-08-26）＝同じ敵の中で近接と遠隔に別の硬直を
+	//     与える唯一の口。`meta.attackFreezeMs` は敵単位＝全攻撃に同じ値しか置けないため、
+	//     「剣は硬直あり／石は硬直なし」を宣言できなかった。
+	//     ⚠️ 追加した理由＝`directional` を**絵のため**（向き別スプライト）に立てると、下の
+	//        既定経路で**遠隔の硬直が 0 → ATTACK_POSE_MS に化ける**＝絵のフラグが移動の設計を
+	//        書き換える（2026-08-26 に魔物 W で実測：遠隔相で剣の間合いに居る時間が 19%→23%）。
 	//   ・meta.attackFreezeMs で敵ごとに延ばせる（高機動の敵は硬直を長くして隙を作る）
 	//   ・**近接（sword / charge）の既定＝MELEE_FREEZE_MS**（Phase 8-4 (4) 0d-2.7）＝
 	//     殴り返す窓。間合いが互角なら予告だけでは刺し違えが残るため時間で窓を作る。
@@ -150,6 +156,7 @@ export function createEnemyAi(deps) {
 	// ⚠️ 第2引数を省くと従来の（近接でない側の）既定を返す＝既存の呼び出しと互換。
 	const MELEE_ATTACK_TYPES = new Set(['sword', 'charge']);
 	function resolveAttackFreezeMs(meta, atk) {
+		if (atk?.freezeMs != null) return atk.freezeMs;
 		if (meta?.attackFreezeMs != null) return meta.attackFreezeMs;
 		if (atk && MELEE_ATTACK_TYPES.has(atk.type)) return MELEE_FREEZE_MS;
 		return meta?.directional ? ATTACK_POSE_MS : 0;
@@ -287,19 +294,24 @@ export function createEnemyAi(deps) {
 	//   その間          … 直交方向（ずれている軸）を詰めて行/列を揃える。揃っていたら動かない
 	//                     ＝「撃つ構えで待つ」＝プレイヤーが列から外れる時間ができる
 	function enemyKeepDistance(e, meta, speed, cfg) {
+		const player = getPlayer();
+		const dx = player.x - e.x, dy = player.y - e.y;
+
+		// 向きは常にプレイヤーを見る（撃つ方向と絵を一致させる）。
+		// ⚠️ 2026-08-26: この行は**歩幅の溜め（e.accum）より前**に置く。後ろに置くと
+		//    鈍足の敵（魔物 W は speed 0.45＝2〜3 tick に1歩）は向き直りも 2〜3 tick 待ちになり、
+		//    さらに「間合いが合っていて1歩も動かない相」では向きが完全に凍る
+		//    （＝プレイヤーが回り込んでも見続けない）。向きは移動の副産物ではない。
+		e.dir = Math.abs(dy) >= Math.abs(dx) ? (dy > 0 ? 'down' : 'up') : (dx > 0 ? 'right' : 'left');
+
 		e.accum = (e.accum ?? 0) + speed;
 		if (e.accum < 1.0) return;
 		e.accum -= 1.0;
 
-		const player = getPlayer();
-		const dx = player.x - e.x, dy = player.y - e.y;
 		const dist = Math.hypot(dx, dy);
 		const step = MOVE_STEP;
 		const keepMin = cfg.keepMin ?? 3.0;
 		const keepMax = cfg.keepMax ?? 6.5;
-
-		// 向きは常にプレイヤーを見る（撃つ方向と絵を一致させる）
-		e.dir = Math.abs(dy) >= Math.abs(dx) ? (dy > 0 ? 'down' : 'up') : (dx > 0 ? 'right' : 'left');
 
 		const candidates = [];
 		const sy = Math.sign(dy) || 1, sx = Math.sign(dx) || 1;
@@ -474,7 +486,17 @@ export function createEnemyAi(deps) {
 			const newDir = Math.abs(dy) >= Math.abs(dx)
 				? (dy > 0 ? 'down' : 'up')
 				: (dx > 0 ? 'right' : 'left');
-			if (e.dir !== newDir) {
+			// ⚠️ 2026-08-26: 絵の差替は **directional でない敵だけ**が通る。directional な敵は
+			//    enemyTick 末尾の syncDirectionalSprite が唯一の窓口＝ここで差し替えると
+			//    攻撃ポーズ（`${base}${Dir}Atk`）を素の向き絵で上書きする／同じ tick に
+			//    canvas を2回作り直す。
+			//    ※この差替ブロックそのものが「向きが移動 AI の分岐ごとに書かれていた」名残＝
+			//      魔物 W を combat の二相（hitAndAway: false）へ替えた瞬間に向きが死んだ原因
+			//      （hitAndAway 以外の分岐には同じ処理が無い）。新しい敵は必ず
+			//      `directional: true` を宣言する（ENEMY-DIRECTIONAL-GUIDE §1）。
+			if (e.dir !== newDir && meta?.directional) {
+				e.dir = newDir;
+			} else if (e.dir !== newDir) {
 				e.dir = newDir;
 				const baseName = ENEMY_META[e.type]?.sprite ?? e.sprite;
 				const base = baseName.replace(/[DRLU]$/, '');

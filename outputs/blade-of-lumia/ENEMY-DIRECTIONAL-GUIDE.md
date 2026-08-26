@@ -17,11 +17,23 @@ skeletonで完成済みなので、新しい敵は基本的にデータ追加だ
   - **向き別スプライト解決**＝`resolveEnemySprite(e, meta, now)`。`${base}${Dir}`（通常）／`${base}${Dir}Atk`（攻撃中）／`${base}${Dir}Guard`（ガード中）を返す。`base` は `meta.sprite` から `D/R/L/U/Atk/Guard` サフィックスを剥いた名前。
   - **向き差替の同期**＝`syncDirectionalSprite(e, meta)`。`enemyTick()` が directional な敵だけ毎tick呼ぶ（DOM の canvas を差し替える）。
   - **ガードの状態機械**＝`tickGuard(e, meta, now)`。後述。
-- `directional:true` を持たない既存敵（patrol/chaser/sentry や各ボス）は影響を受けない（後方互換・従来の `e.sprite` 固定＋flipX のまま）。
+- `directional:true` を持たない既存敵（patrol/chaser/sentry や大型ボスの多く）は影響を受けない（後方互換・従来の `e.sprite` 固定＋flipX のまま）。**❗ 更新 2026-08-26＝ボスのうち4体（V 魔将 `escapeD`／W 魔物 `monsterD`／X 魔王・Z ザーネル `darklordD`）は `directional: true` に載せた**（勇者の絵を流用＝向き別の実データを持っていた）＝§1-2。
 - **`guards: false`（2026-08-11 #7 剣獣で新設）を立てると `tickGuard()` を通らない**＝ガードの状態機械に乗せない敵。**∴必要なスプライトは9枚ではなく6枚**（§2）。高機動の敵が立ち止まって構えるのは設計と矛盾する（#7）／ブロックが常設で「構え」の相が無い（#4 盾騎士）といった理由で使う。
 - **「方向依存の被ダメ」は `tickGuard` とは別系統の機構が2つある（2026-08-15 #4/#12 で新設）。** どちらも `game/combat.js` の漏斗（§3 と同じ場所）に入る：
   - **`meta.blockFacing = { turnMs, knockback }`**＝**向き固定の常時ブロック**（#4 盾騎士）。正面からの攻撃は常に 0 ダメージ＋**プレイヤー**が `knockback` セル下がる（`isBlockFacingDir()`/`knockbackPlayerFrom()`）。向き直りは `turnMs` ごとの**離散**判断（`tickFaceLock()` が `e._blockDir` を更新）＝毎tick向き直る実装にすると回り込む猶予が消えて機構が死ぬ。**代償として敵の剣も正面にしか振れない**（`enemyAttack` の向きゲート）＝回り込みに報酬を作る。
   - **`meta.shell = { closedMs, openMs, breathCells, breathAtk, breathMs }`**＝**時間で開閉する無敵窓**（#12 火吐き亀）。籠もり中は**向きを問わず**全ダメージ 0・移動も攻撃もしない／開いた瞬間に正面へ炎（`tickShell()`/`breatheFire()`・DOM の `.enemy-fire-breath`・壁で止まる）。**姿は消さない∴攻撃対象からは除外しない**（叩けば 0 ダメージの弾きが返る＝プレイヤーが状態を知る手段になる。`e.hidden` の無言の無効化と使い分ける）。
+
+### 1-2. ★★ 向き別の絵を持つ敵は必ず `directional` を宣言する／`…Atk` の欠落は「攻撃中に敵が消える」（2026-08-26 ユーザーのバグ報告で確定）
+
+報告＝「常に右を向いてしまっている。プレーヤーが左側にいるなら左を向かせるべき」（W 魔物）。踏んだ罠と、以後守る規則：
+
+- **向きの機構を通す窓は `syncDirectionalSprite`（`enemyTick` 末尾）1つだけ。** かつて向いた絵への差替が **`bossTickHitAndAway`（移動 AI の1分岐）の中にも重複して**書かれていた∴`hitAndAway: true` の敵は**偶然**向き、`enemyChase` / `enemyKeepDistance` / `enemyZigzagFly` の敵は向かなかった。**移動アルゴリズムを差し替えた瞬間に向きが死ぬ**（W を `hitAndAway: false` ＋ `combat` へ替えて実際に起きた）。→ 差替ブロックは非 directional の敵だけが通る形に直した。**向きの処理を移動分岐に書かない。**
+- **`meta.sprite` は必ず向きの接尾辞付き（`…D`）を指す。** 素の名前（`monster`・`escape`・`darklord`）は `heroR` のエイリアス＝**右向き**∴`directional` を宣言しないと右を向いたまま固まる。`shared/tile-sprites.js`（エディタのプレビュー）も同じ `…D` を指す（片方だけ直すとエディタだけ横を向く）。
+- **`${base}${Dir}Atk` の3枚は必須。** `syncDirectionalSprite` は**古い canvas を先に消してから** `makeSprite` する∴未登録だと null が返り**攻撃ポーズの窓（`ATTACK_POSE_MS` = 180ms）のあいだ敵が画面から消える**。Guard は `guards: false` で降りられるが **Atk に逃げ道は無い**（絵を持たないなら向き別3枚のエイリアスを置く）。
+- **向きの更新は歩幅の溜め（`e.accum`）より前に書く。** `enemyKeepDistance` は溜めの後で `e.dir` を書いていた∴鈍足の敵（W は `speed 0.45`＝2〜3 tick に1歩）は向き直りが 2〜3 tick 遅れ、さらに**「間合いが合って1歩も動かない相」では向きが完全に凍る**（回り込まれても見続けない）。**向きは移動の副産物ではない。**
+- **初期描画（`render-chars.js renderChars`）は directional な敵の左右反転を `e.flipX` から引く。** char-layer は作り直される∴`e.flipX` を無視すると「左を向いているのに再描画で右向きに戻る」。プレイヤー位置から引き直すのも誤り（`${base}R` の絵に上下向きの判定が混ざる）。
+- **⚠️ 絵のためにフラグを立てると挙動の既定が動くことがある。** `resolveAttackFreezeMs` は遠隔攻撃の硬直の既定を `meta.directional ? ATTACK_POSE_MS : 0` にしている∴**絵のために `directional` を立てた途端、遠隔の硬直が 0 → 180ms に化ける**（W の遠隔相で剣の間合いに居る時間が 19% → 23% に増えて発覚）。逃げ道＝**攻撃エントリごとの `freezeMs`**（最優先・2026-08-26 新設）＝「剣は硬直あり／石は硬直なし」を同じ敵の中で宣言できる（`meta.attackFreezeMs` は敵単位）。
+- **番人＝`tests/boss-facing.spec.js` ①**＝`ENEMY_META` × `SPRITES` からの**導出**で「`…D` と `…R` が別オブジェクトとして登録されている敵は `directional` か `sideView` を宣言していること」を固定する（**手書きの敵一覧を作らない**）∴以後この漏れは自動で赤くなる。②が `…{D,R,U}` / `…{D,R,U}Atk` / Guard / `TILE_SPRITE_MAP` の一致を見る。
 
 ## 2. スプライト命名規則（実データが必要な組み合わせ）
 

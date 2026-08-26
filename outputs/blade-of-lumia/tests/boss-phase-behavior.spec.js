@@ -234,13 +234,20 @@ test('② attackCooldownMultiplier で攻撃間隔が縮む（出荷データ・
 //    ∴重みは学習で書き換わらない＝差し替えた値がそのまま残ることも見られる。
 // ⚠️ wander は目標セルが乱択∴到達判定（wDist<1.0）で direct へ落ちうる
 //    ∴主張は「相の後**最初の**選び直しが wander であること」に限る。
+// ⚠️ `hitAndAway: true` を patch で**明示的に足す**（2026-08-25・0d-3 層2）。
+//    W 魔物の出荷データは `hitAndAway: false`＋`combat` の二相に変わった∴meta 任せだと
+//    接近モードが1度も立たない。ここが測るのは層1 の口（modeWeights の差し替え）であって
+//    W の性格ではない∴機構だけを patch で用意する＝W の設計が変わっても腐らない。
 test('③ phases[].modeWeights で接近モードの重みが差し替わる', async ({ page }) => {
   const PRE  = { flank: 0, direct: 1, wander: 0, strafe: 0 };
   const POST = { flank: 0, direct: 0, wander: 1, strafe: 0 };
   const DROP_AT = 40;
   const r = await measureBoss(page, {
     type: 'W', atDx: 6, hp: 72, ticks: 70, drops: [[DROP_AT, 40]],
-    patch: { initialModeWeights: PRE, phases: [{ hpThreshold: 0.5, modeWeights: POST }] },
+    patch: {
+      hitAndAway: true, combat: null,   // null で二相を切る（undefined は evaluate の引数で落ちる）
+      initialModeWeights: PRE, phases: [{ hpThreshold: 0.5, modeWeights: POST }],
+    },
   });
   expect(r.gameTime0).toBe(0);
 
