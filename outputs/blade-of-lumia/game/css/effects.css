@@ -260,12 +260,32 @@
     color: #ff4444;
 }
 
-/* 弱点ヒット（Phase 3-3）：大きく目立つオレンジ文字 */
+/* 弱点ヒット（Phase 3-3 → 0d-2.11 で文字を消して数字の跳ねに置き換え）
+   ⚠️ 表示するのは通常と同じ `-8` の数字だけ（「WEAK!」の英字は 0d-2.11 で削除）。
+   ∴弱点だと分かる差は**色・大きさ・跳ね方**しかない＝通常の popup-anim より大きく跳ねる。 */
 .weak-dmg {
     color: #ff8c1a;
-    font-size: 18px;
-    text-shadow: 0 0 6px #ffd24a, 0 0 2px #fff;
+    font-size: 22px;
+    text-shadow: 0 0 8px #ffd24a, 0 0 3px #fff;
     letter-spacing: 0.5px;
+    animation: weak-popup-anim 0.7s ease-out forwards;
+}
+
+@keyframes weak-popup-anim {
+    0% {
+        opacity: 1;
+        transform: translateX(-50%) translateY(0) scale(0.6);
+    }
+
+    25% {
+        opacity: 1;
+        transform: translateX(-50%) translateY(-8px) scale(1.45);
+    }
+
+    100% {
+        opacity: 0;
+        transform: translateX(-50%) translateY(-26px) scale(1);
+    }
 }
 
 @keyframes popup-anim {
@@ -280,17 +300,56 @@
     }
 }
 
-/* 弱点ヒットの閃光（Phase 3-3）：敵中心に走る放射状フラッシュ */
+/* 弱点ヒットの閃光（Phase 3-3 → 0d-2.11 でクリティカル表現に作り直し）
+   親は**大きさを持たない位置合わせの箱**＝ここを拡大すると子の拡大率に掛かって
+   3枚が同じ動きに潰れる（子ごとに別の keyframes を当てるための空箱）。 */
 .weak-burst {
     position: absolute;
-    width: 48px;
-    height: 48px;
-    transform: translate(-50%, -50%);
-    border-radius: 50%;
+    width: 0;
+    height: 0;
     pointer-events: none;
     z-index: 28;
-    background: radial-gradient(circle, rgba(255,210,74,0.9) 0%, rgba(255,140,26,0.6) 40%, rgba(255,140,26,0) 70%);
+}
+
+.weak-burst > div {
+    position: absolute;
+    left: 0;
+    top: 0;
+}
+
+/* ① 8方向へ伸びる放射刃＝クリティカルの記号（文字を出さない代わりの「形」）
+   寸法は `--weak-size`（敵の見た目の大きさ＝combat.js が JS で入れる）に比例させる。
+   フォールバックの 48px は敵の外で鳴らしたとき用。 */
+.weak-burst-star {
+    width: calc(var(--weak-size, 48px) * 0.95);
+    height: calc(var(--weak-size, 48px) * 0.95);
+    background: radial-gradient(circle, #fffbe6 0%, #ffd24a 45%, #ff8c1a 100%);
+    clip-path: polygon(50% 0%, 60% 34%, 79% 21%, 70% 42%, 100% 50%, 70% 58%, 79% 79%,
+                       60% 66%, 50% 100%, 40% 66%, 21% 79%, 30% 58%, 0% 50%, 30% 42%,
+                       21% 21%, 40% 34%);
+    animation: weak-star-anim 0.42s ease-out forwards;
+}
+
+/* ② 黄橙の閃光（旧 .weak-burst の見た目を引き継ぐ層） */
+.weak-burst-flash {
+    width: calc(var(--weak-size, 48px) * 0.7);
+    height: calc(var(--weak-size, 48px) * 0.7);
+    border-radius: 50%;
+    background: radial-gradient(circle, rgba(255,255,255,0.95) 0%, rgba(255,210,74,0.85) 35%, rgba(255,140,26,0.5) 60%, rgba(255,140,26,0) 75%);
     animation: weak-burst-anim 0.5s ease-out forwards;
+}
+
+/* ③ 白い衝撃波リング＝一瞬で外へ抜ける（「余分に効いた」ことの残像） */
+/* ⚠️ 白のリングは**放射刃の内側に居ると黄橙に溶けて見えない**（0d-2.11 の目視で
+   1フレームも視認できず＝死んだ層だった）∴①刃より外へ抜ける寸法にし、②白の外側に
+   暗い縁を1本置く（明るい刃の上でも背景の暗い床の上でも輪郭が立つ）。 */
+.weak-burst-ring {
+    width: calc(var(--weak-size, 48px) * 0.9);
+    height: calc(var(--weak-size, 48px) * 0.9);
+    border: 4px solid rgba(255, 255, 255, 0.95);
+    border-radius: 50%;
+    box-shadow: 0 0 0 2px rgba(30, 16, 0, 0.55), 0 0 8px rgba(255, 255, 255, 0.6);
+    animation: weak-ring-anim 0.42s ease-out forwards;
 }
 
 @keyframes weak-burst-anim {
@@ -302,6 +361,40 @@
     100% {
         opacity: 0;
         transform: translate(-50%, -50%) scale(1.6);
+    }
+}
+
+@keyframes weak-star-anim {
+    0% {
+        opacity: 0.95;
+        transform: translate(-50%, -50%) scale(0.2) rotate(0deg);
+    }
+
+    45% {
+        opacity: 0.9;
+        transform: translate(-50%, -50%) scale(1.15) rotate(14deg);
+    }
+
+    100% {
+        opacity: 0;
+        transform: translate(-50%, -50%) scale(1.75) rotate(24deg);
+    }
+}
+
+@keyframes weak-ring-anim {
+    0% {
+        opacity: 1;
+        transform: translate(-50%, -50%) scale(0.3);
+    }
+
+    55% {
+        opacity: 0.9;
+        transform: translate(-50%, -50%) scale(1.5);
+    }
+
+    100% {
+        opacity: 0;
+        transform: translate(-50%, -50%) scale(2.3);
     }
 }
 

@@ -180,6 +180,12 @@ export function createBoss(deps) {
 			boss._dashUntil = 0;
 			boss._dashLeft  = 0;
 		}
+		// Phase 8-4 (4) 0d-3（3体目 N 砂嵐の蠍王）: 隠れ↔出現の周期を相で差し替える口
+		// （`resolveHide` が読む）。N は後半で潜行が短くなる＝待ち伏せの回数が増える。
+		// ⚠️ `_hideUntil` は**触らない**＝走っている窓はそのまま終わらせ、新しい周期は
+		//    次の切り替えから効かせる。ここで初期化すると `tickHide` の「未初期化＝隠れで
+		//    始まる」経路に落ちて**相が変わった瞬間に無敵になる**（＝殴っていた窓が消える）。
+		if (phase.hide !== undefined) boss._hide = phase.hide;
 	}
 
 	// ── 星の欠片を生成 ──────────────────────

@@ -2202,6 +2202,13 @@ export function getEnemiesSnapshot() {
 		// 0d-3: 突進の設定そのもの（フェーズで後から生えることがある＝`resolveDash` が読む側）。
 		// null＝この敵は突進を持たない。**meta.dash とは別物**＝「後半で突進が生えた」の観測窓。
 		dash: e._dash ?? null,
+		// Phase 8-4 (4) 0d-3（3体目 N）: 潜行待ち伏せ（burrowAmbush）の観測用。
+		// ambushTo ＝潜った時に1回だけ決めた待ち伏せ地点 [row, col]（null＝地上＝歩かない相）
+		// ∴「歩いたのは潜行中だけか」「浮上したのは向こう側か」はこの値と hidden の組で読む。
+		ambushTo: e._ambushTo ? [...e._ambushTo] : null,
+		// hide ＝隠れの周期そのもの（フェーズで差し替わる＝`resolveHide` が読む側）。
+		// **meta.hide とは別物**＝「後半で潜行が短くなった」の観測窓（dash と同じ趣旨）。
+		hide: e._hide ?? null,
 		// Phase 8-4 (4) 層1: ボスのフェーズが差し替える「行動の元データ」の観測用。
 		// boss.js checkBossPhase は**エンティティ側にだけ書く**∴フェーズが効いたかは
 		// ここに出る値で読む（null＝差し替えなし＝ENEMY_META のまま）。

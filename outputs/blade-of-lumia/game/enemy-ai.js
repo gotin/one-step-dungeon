@@ -145,6 +145,12 @@ export function createEnemyAi(deps) {
 	function resolveDash(e, meta) {
 		return e?._dash !== undefined ? e._dash : meta?.dash;
 	}
+	// resolveHide … 隠れ↔出現の周期そのものをフェーズで差し替える口（Phase 8-4 (4) 0d-3・3体目）。
+	// N 砂嵐の蠍王は HP50% の相で `phases[].hide` が入り潜行が短くなる＝待ち伏せの回数が増える。
+	// ⚠️ `resolveDash` と同じ理由で**読む側を1か所に集約する**（`tickHide` だけが読む）。
+	function resolveHide(e, meta) {
+		return e?._hide !== undefined ? e._hide : meta?.hide;
+	}
 
 	// ── Phase 5.5k: 攻撃硬直（2026-08-12 ユーザー指摘「攻撃動作中は動かないようにすべき」）──
 	// プレイヤーは剣を振っている間（_atkUntil の窓）足が止まる（player.js movePlayer）。
@@ -409,6 +415,144 @@ export function createEnemyAi(deps) {
 		// ④ 揃って間合いも合った＝候補ゼロ＝その場で構える
 		for (const [my, mx] of candidates) {
 			if (isPassableForEnemy(e.y + my, e.x + mx, e)) { e.y += my; e.x += mx; break; }
+		}
+		moveCharEl(`enemy-${e.id}`, e.x, e.y);
+	}
+
+	// ── Phase 8-4 (4) 0d-3（3体目 N 砂嵐の蠍王）: 潜行待ち伏せの移動 ──────────────
+	// meta.burrowAmbush = { ambushDist } ＋ meta.hide = { …, style:'burrow' } の組。
+	//   潜行中（e.hidden=true）… **歩くのはここだけ**。潜った瞬間に待ち伏せ地点
+	//     （`pickAmbushCell`＝プレイヤーの**向こう側**）を1回決め、砂の下を貪欲に向かう。
+	//     着いたら `_hideUntil` を今にして**すぐ浮上させる**（hiddenMs を待たない）。
+	//   出現中（e.hidden=false）… **1歩も動かない**。向きだけプレイヤーへ合わせて
+	//     鉗肢（sword）と毒針（stone）で戦う＝攻撃は enemyAttack に任せる。
+	// ∴移動と交戦が時間で完全に分離する＝G（常に歩いて殴る）・W（間合いを往復）・
+	//   A（車線を取って止まる）と別の近づき方。プレイヤー側の答えは「浮上を殴る／砂煙を見て
+	//   出現地点から離れる」＝間合いの読みではなく**位置の読み**になる。
+	// ⚠️ 待ち伏せ地点は潜った時に1回だけ決めて**追尾しない**＝プレイヤーが動き続ければ
+	//    空振りする（それが対処法）。追尾すると「無敵のまま張り付く」になる。
+	// ⚠️ 塞がれて着けないまま hiddenMs が切れたら tickHide が途中で浮上させる＝
+	//    無敵の窓は必ず hiddenMs で終わる（回り込めなくても無敵は伸びない）。
+	//    出現先が1つも作れないときは**その tick で浮上させる**＝「行き先が無いから
+	//    潜ったまま」＝無償の無敵を作らない（角に追い詰めたプレイヤーが損をしない）。
+	// ⚠️ 速度（meta.speed）は**潜行中だけの速度**として読む（地上では歩かない）＝
+	//    hiddenMs のあいだに回り込める値が必要。プレイヤー（1.0）より遅くする（GUIDE §7-2）。
+	function pickAmbushCell(e, cfg) {
+		const player = getPlayer();
+		if (!player) return null;
+		const d = Math.max(1, Math.round(cfg.ambushDist ?? 1));
+		const pr = toTileRow(player.y), pc = toTileCol(player.x);
+		const { cx, cy } = enemyCellCenter(e);
+		const dx = player.x - cx, dy = player.y - cy;
+		// 主軸＝ずれの大きい軸。その**先**（プレイヤーを通り越した側）が本命の待ち伏せ地点。
+		const alongRow = Math.abs(dx) >= Math.abs(dy);
+		const sMain = alongRow ? (Math.sign(dx) || 1) : (Math.sign(dy) || 1);
+		const sPerp = alongRow ? (Math.sign(dy) || 1) : (Math.sign(dx) || 1);
+		// ①向こう側 → ②③直交の両脇 → ④手前（＝来た側）。④まで落ちても必ずどこかに出る
+		//   ＝閉所で「出られないから無敵のまま」を作らない（tickBlink と同じ趣旨）。
+		const dirs = alongRow
+			? [[0, sMain], [sPerp, 0], [-sPerp, 0], [0, -sMain]]
+			: [[sMain, 0], [0, sPerp], [0, -sPerp], [-sMain, 0]];
+		// 0d-2.5 (3) と同じ左上補正＝北/西に出るときは体の幅ぶん下げる（2×2 で
+		// 出る方向によって間合いが 1 セル変わらないようにする）。
+		const backW = (e.w ?? 1) - 1, backH = (e.h ?? 1) - 1;
+		// 距離は d → d+1 の順に試す＝隣接の輪が全滅しても1つ外の輪で必ず**位置が変わる**。
+		// ⚠️ 外の輪が要る実例（実測 2026-08-26）：プレイヤーを角 (7,1) に追い詰めると
+		//    ①向こう側＝盤外・②直交＝看板タイル・③直交＝下壁・④手前＝**今立っている場所**
+		//    で d=1 が全滅した。1つ外の輪なら手前へ1マス退いて出られる。
+		for (const dist of [d, d + 1]) {
+			for (const [dr, dc] of dirs) {
+				const ny = pr + dr * dist + (dr < 0 ? -backH : 0);
+				const nx = pc + dc * dist + (dc < 0 ? -backW : 0);
+				// **今立っている場所は選ばない**＝潜るたびに必ず位置が変わる（実測 2026-08-26：
+				// プレイヤーが動かないと同じセルが選ばれ、着いている＝即浮上で「1 tick だけ
+				// 潜る」ちらつきになった）。行き先が本当に無ければ null＝呼び出し側が即浮上させる。
+				if (Math.abs(ny - e.y) < 0.01 && Math.abs(nx - e.x) < 0.01) continue;
+				if (isPassableForEnemy(ny, nx, e)) return [ny, nx];
+			}
+		}
+		return null;
+	}
+
+	// 待ち伏せ地点までの経路を4近傍の BFS で引く（セル単位・戻り値は経過セルの配列）。
+	// ⚠️ **貪欲な1歩選択では届かない**（実測 2026-08-26）＝待ち伏せ地点は「プレイヤーの
+	//    向こう側」∴直線の途中にプレイヤー自身が立っており、`isPassableForEnemy` は
+	//    重なりを拒む（ユーザー確定「重なりはどの位置であろうと絶対に発生させない」）。
+	//    2×2 の体はプレイヤーの行を跨げない＝迂回に2セル必要∴1歩先だけ見る貪欲では
+	//    「0.5 進んで戻る」の振動になり、潜行の窓を丸ごと使って**回り込めなかった**。
+	// ⚠️ プレイヤーは動く∴経路は「引いた瞬間の障害物」しか知らない。塞がれた tick に
+	//    引き直す（`_ambushPath = null`）＝追尾はしないが道は直す。
+	const BURROW_DIRS = [[-1, 0], [0, 1], [1, 0], [0, -1]];
+	function planBurrowPath(e, dest) {
+		const start = [Math.round(e.y), Math.round(e.x)];
+		if (start[0] === dest[0] && start[1] === dest[1]) return [];
+		const key = (r, c) => `${r},${c}`;
+		const prev = new Map([[key(start[0], start[1]), null]]);
+		const queue = [start];
+		for (let head = 0; head < queue.length; head++) {
+			const [r, c] = queue[head];
+			for (const [dr, dc] of BURROW_DIRS) {
+				const nr = r + dr, nc = c + dc, k = key(nr, nc);
+				if (prev.has(k)) continue;
+				if (!isPassableForEnemy(nr, nc, e)) continue;
+				prev.set(k, [r, c]);
+				if (nr === dest[0] && nc === dest[1]) {
+					const path = [];
+					for (let cur = [nr, nc]; cur; cur = prev.get(key(cur[0], cur[1]))) path.push(cur);
+					path.pop();                       // 先頭（現在地）は経路に含めない
+					return path.reverse();
+				}
+				queue.push([nr, nc]);
+			}
+		}
+		return null;                                  // 到達不能
+	}
+
+	function enemyBurrowAmbush(e, meta, speed, cfg) {
+		const player = getPlayer();
+		// ── 地上＝動かない（向きだけ合わせる）────────────────────────
+		if (!e.hidden) {
+			e._ambushTo = null;
+			e._ambushPath = null;
+			e.accum = 0;                 // 次の潜行が「溜まった状態」で始まらないようにする
+			if (player) {
+				const { cx, cy } = enemyCellCenter(e);
+				const dx = player.x - cx, dy = player.y - cy;
+				e.dir = Math.abs(dx) >= Math.abs(dy)
+					? (dx > 0 ? 'right' : 'left')
+					: (dy > 0 ? 'down' : 'up');
+			}
+			return;
+		}
+		// ── 潜行中＝待ち伏せ地点へ回り込む ──────────────────────────
+		if (!e._ambushTo) {
+			e._ambushTo = pickAmbushCell(e, cfg);
+			e._ambushPath = null;
+		}
+		const dest = e._ambushTo;
+		// 到着判定（と行き先なしの判定）は**歩幅の溜めより前**に置く＝着いた tick に必ず
+		// 浮上へ入る（溜めの後だと「着いているのに溜まるまで浮上しない」遅れが出る）。
+		const arrived = dest && Math.abs(dest[0] - e.y) < 0.01 && Math.abs(dest[1] - e.x) < 0.01;
+		if (!dest || arrived) {
+			e._hideUntil = gameNow();    // 次の tick で tickHide が浮上させる
+			return;                      // 浮上の持ち主は tickHide のまま＝無敵窓の出入口は1か所
+		}
+		e.accum = (e.accum ?? 0) + speed;
+		if (e.accum < 1.0) return;
+		e.accum -= 1.0;
+		const step = MOVE_STEP;
+		// 経路の先頭のセルへ MOVE_STEP ずつ寄る。塞がれていたら**同じ tick で1回だけ**
+		// 引き直して試す（プレイヤーが道に入った直後に1歩ぶん止まらない）。
+		for (let attempt = 0; attempt < 2; attempt++) {
+			if (!e._ambushPath?.length) e._ambushPath = planBurrowPath(e, dest);
+			if (!e._ambushPath?.length) return;       // 到達不能＝その場で待つ（hiddenMs で浮上）
+			const [wr, wc] = e._ambushPath[0];
+			const my = Math.sign(wr - e.y) * Math.min(step, Math.abs(wr - e.y));
+			const mx = Math.sign(wc - e.x) * Math.min(step, Math.abs(wc - e.x));
+			if (!isPassableForEnemy(e.y + my, e.x + mx, e)) { e._ambushPath = null; continue; }
+			e.y += my; e.x += mx;
+			if (Math.abs(wr - e.y) < 0.01 && Math.abs(wc - e.x) < 0.01) e._ambushPath.shift();
+			break;
 		}
 		moveCharEl(`enemy-${e.id}`, e.x, e.y);
 	}
@@ -1304,7 +1448,7 @@ export function createEnemyAi(deps) {
 	const HIDE_STYLES = ['water', 'burrow', 'air', 'warp'];
 
 	function tickHide(e, meta, now) {
-		const cfg = meta.hide;
+		const cfg = resolveHide(e, meta);
 		if (!cfg) return;
 		const hiddenMs = cfg.hiddenMs ?? 2000;
 		const shownMs  = cfg.shownMs  ?? 1200;
@@ -1319,6 +1463,10 @@ export function createEnemyAi(deps) {
 		e.hidden = !e.hidden;
 		e._hideUntil = now + (e.hidden ? hiddenMs : shownMs);
 		applyHideClass(e, style);
+		// 浮上した瞬間だけ SE を鳴らす（cfg.emergeSound・省略時は無音＝既存の敵は変わらない）。
+		// ⚠️ 潜る側では鳴らさない＝プレイヤーが耳で知りたいのは「出た（殴れる／殴られる）」の方。
+		//   `burrowAmbush` は**画面外の背後にも出る**∴音が唯一の予告になる。
+		if (!e.hidden && cfg.emergeSound) playSound(cfg.emergeSound);
 	}
 
 	// 隠れ状態を見た目に反映（半透明＋波紋/土煙は CSS の .char-abs.hiding が担当）。
@@ -2231,7 +2379,7 @@ export function createEnemyAi(deps) {
 			const swinging = tickSwing(e, meta, now);
 			// Phase 8-4 (4) 0d-3: 炎のブレスの予告も同じ枠（立っている予告は先に解決する）。
 			const breathing = tickBreath(e, meta, now);
-			// 隠れ↔出現の周期を更新（meta.hide を持つ敵のみ＝潜み鮫・地中蟲）
+			// 隠れ↔出現の周期を更新（hide を持つ敵のみ＝潜み鮫・地中蟲・N 砂嵐の蠍王）
 			tickHide(e, meta, now);
 			// Phase 5.5k k-8: 瞬間移動（術士）＝消えている間と出現した tick を専有する。
 			// tickHide と同じ「タイマー駆動」の枠で呼ぶ＝硬直中も時計は進める
@@ -2286,6 +2434,10 @@ export function createEnemyAi(deps) {
 					// `combat`（間合いの二相・W）より前に置く必要は無い（laneStalk の敵は
 					// `combat` を持たない）が、`zigzag`/`chase` より前＝より特殊な機構が勝つ。
 					enemyLaneStalk(e, meta, resolveEnemySpeed(e, meta), meta.laneStalk);
+				} else if (meta.burrowAmbush) {
+					// Phase 8-4 (4) 0d-3（3体目 N）: 潜行待ち伏せ＝潜っている間だけ歩き、
+					// 地上では動かない。`hide` と組で意味を持つ（隠れの周期は tickHide が持ち主）。
+					enemyBurrowAmbush(e, meta, resolveEnemySpeed(e, meta), meta.burrowAmbush);
 				} else if (meta.zigzag) {
 					enemyZigzagFly(e, meta, resolveEnemySpeed(e, meta), meta.zigzag);
 				} else {
@@ -2330,6 +2482,7 @@ export function createEnemyAi(deps) {
 		resolveHitAndAway,
 		resolveCombat,
 		resolveDash,           // Phase 8-4 (4) 0d-3: 突進の設定（フェーズ差替を含む・テスト用）
+		resolveHide,           // Phase 8-4 (4) 0d-3: 隠れの周期（フェーズ差替を含む・テスト用）
 		resolveEnemySprite,    // Phase 5.5k: 向き別スプライト名解決のテスト用
 		resolveAttackFreezeMs, // Phase 5.5k: 攻撃硬直の長さ（テスト用）
 		tickCombatMode,        // Phase 5.5k: 遠隔／近接の二相（テスト用）

@@ -69,15 +69,33 @@ function previewUrl() {
  *     ∴受け取った配列を splice しても実体の敵は消えない（`_guarding` も `guarding` で出る）。
  *   ・入り直すとプレイヤー位置も戻る＝右へ歩き続けて隣のアリーナへ渡る事故も防げる。
  *   ・敵は hp 999 ＝撃破させない（ラスボス Z を倒すとスタッフロールが始まる）。
+ *   ・`surfaceFirst`＝潜行（`hide`）を持つ敵は**浮上するまで待ってから**投げる。
+ *     潜行中の敵は当たり判定から外れる（`game/combat.js` の `if (e.hidden) continue;`）∴
+ *     待たずに投げると damage 0 になる（0d-3 で N に潜行を付けた 2026-08-26 に踏んだ）。
+ *     浮上の窓（`hide.shownMs`）は観測窓 20 tick より長い前提＝投げてから測り終わるまで
+ *     姿は消えない（N は shownMs 2600ms ＝ 21 tick）。
  */
-async function throwAt(page, type, meta) {
-  return page.evaluate(({ type, w, h, layer, stage }) => {
+async function throwAt(page, type, meta, opt = {}) {
+  return page.evaluate(({ type, w, h, layer, stage, surfaceFirst }) => {
     window.__game.enterStage(layer, stage, 7, 2);
     window.__game.movePlayer('right');            // 右を向く（半セル進む）
     window.__game.step(1);
     const pl = window.__game.getPlayer();
     const id = window.__game.injectEnemy(pl.x + 2, pl.y, 999, w, h, type);
     const find = () => window.__game.getEnemies().find(e => e.id === id);
+    if (surfaceFirst) {
+      // 潜行の周期は tickHide が回す＝論理 tick を進めれば必ず浮上する（注入敵は速度0
+      // ∴待っているあいだに動いて間合いが変わることはない）。
+      // ⚠️ **必ず1 tick 進めてから判定する**＝注入直後の敵は `hidden` が未初期化（false）で、
+      //    最初の tick で潜る∴「投げる前に見ると浮上、投げた後は潜行」で当たらない
+      //    （0d-3 の実測 2026-08-26＝待ち 0 tick で抜けて damage 0 になった）。
+      let shown = false;
+      for (let i = 0; i < 60 && !shown; i++) {
+        window.__game.step(1);
+        shown = find() ? !find().hidden : true;
+      }
+      if (!shown) return { error: '浮上しないまま観測窓が尽きた' };
+    }
     const stars0 = document.querySelectorAll('.stun-burst').length;
     const before = find()?.hp;
     window.__game.useSubItem();
@@ -102,6 +120,7 @@ async function throwAt(page, type, meta) {
   }, {
     type, w: meta.size?.w ?? 1, h: meta.size?.h ?? 1,
     layer: TEST_LAYER, stage: stageKey('spare_arena'),
+    surfaceFirst: !!(opt.surfaceFirst ?? meta.hide),
   });
 }
 
@@ -167,7 +186,12 @@ test.describe('Phase 8-4 (2) – ブーメランの硬直はザコだけ（ボ�
     const meta = ENEMY_META['N'];
     expect(meta.weakness, 'N のブーメラン弱点が消えている').toMatchObject({ type: 'boomerang' });
     await enterArena(page);
+    // ⚠️ N は 0d-3（2026-08-26）で潜行（`hide`）を持った＝**浮上している窓でだけ当たる**。
+    //    弱点×3 の答えは「浮上した窓にブーメランを投げる」∴観測もその窓で行う。
+    expect(meta.hide, 'N の潜行が消えている（浮上待ちが要らなくなったら surfaceFirst も外す）')
+      .toBeTruthy();
     const r = await throwAt(page, 'N', meta);
+    expect(r.error, 'N が浮上しなかった').toBeUndefined();
     expect(r.damage, 'N のブーメラン弱点倍率が効いていない')
       .toBe(WOOD.atk * meta.weakness.multiplier);
     expect(r.damage, '弱点でないボスと同じダメージ＝倍率が失われている')

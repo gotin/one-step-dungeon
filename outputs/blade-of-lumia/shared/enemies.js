@@ -910,26 +910,49 @@ export const ENEMY_META = {
 	},
 	// ── 砂嵐の蠍王（Phase 3-2）：2×2 大型ボス・dungeon_2（砂漠の神殿）──
 	// 砂漠の守護者。8本の鉗肢と曲がった毒針を持つ巨大蠍。
-	// 打撃と毒針投げで戦い、HP半減で猛スピードで突進してくる。
+	//
+	// 【移動アルゴリズム】Phase 8-4 (4) 0d-3・3体目（2026-08-26）
+	// 潜行待ち伏せ（`burrowAmbush`）＝**潜っているあいだだけ歩き、地上では1歩も動かない**。
+	//   潜行中（e.hidden=true）… 無敵・攻撃なしのまま、プレイヤーの**向こう側**の
+	//     待ち伏せ地点（`pickAmbushCell`）へ砂の下を回り込む。着いた瞬間に浮上する。
+	//   地上中（e.hidden=false）… **移動を完全に止め**、鉗肢（sword）と毒針（stone）で戦う。
+	// ∴移動と交戦が**時間で完全に分離する**型＝G 岩のゴーレム（常に歩いて殴る）・
+	//   W 巨大蜘蛛（間合いを往復する）・A 炎のサラマンドラ（車線を取って止まる）の
+	//   どれとも別の近づき方になる（歩いているあいだは殴れない／殴れるあいだは歩かない）。
+	// 弱点ブーメラン×3 と噛み合う＝浮上している窓がそのまま「ブーメランを当てる窓」。
 	[TILE.SAND_SCORPION]: {
 		name: '砂嵐の蠍王',
 		hp: 90, atk: 5, def: 1, exp: 45,      // 8-4: 木の剣で 30 振り（9秒）＝ボスの下限帯
-		speed: ENEMY_SPEED_SLOW * 1.1,
+		// ⚠️ この speed は**潜行中の速度**（地上では 1 歩も動かない）。
+		//   回り込みは hiddenMs 2400ms ＝ 20 tick に収める必要がある∴鈍足では
+		//   到達できない（旧 0.275 では潜行1回で 2〜3 マスしか進めず回り込めなかった）。
+		//   実測（2026-08-26）：0.8 で 20 tick ＝ 16 歩 × MOVE_STEP 0.5 ＝**8 マス**進む
+		//   ＝10×12 の部屋を端から回り込める上限。プレイヤーの向こう側へ回るには
+		//   体（2×2）が2マス直交へ迂回する∴経路長は直線距離より 4 マス前後長くなる。
+		//   プレイヤー（1.0）より必ず遅くする（ENEMY-DIRECTIONAL-GUIDE §7-2）。
+		speed: ENEMY_SPEED_FAST * 0.8,
 		sprite: 'sandScorpion',
 		pal:    'sandScorpion',
 		size:   { w: 2, h: 2 },
 		isBoss: true,
 		dropsTriforce: true,
 		weakness: { type: 'boomerang', multiplier: 3 },  // 旋回刃で鉗肢を断つ
-		hitAndAway: true,
+		hitAndAway: false,       // 間合いの往復は W 巨大蜘蛛の型∴明示的に切る
+		hide:   { hiddenMs: 2400, shownMs: 2600, style: 'burrow', emergeSound: 'sandBurst' },
+		burrowAmbush: { ambushDist: 1 },  // プレイヤーの向こう側・隣接まで回り込む
 		attacks: [
 			{ type: 'sword', range: 1.3, cooldown: 750 },   // 鉗肢なぎ払い
 			{ type: 'stone', range: 7, cooldown: 2400, projectileSpeed: 1.3 }, // 毒針投げ
 		],
 		attack: { type: 'sword', range: 1.3, cooldown: 750 },
-		initialModeWeights: { flank: 0.4, direct: 1.2, wander: 0.2, strafe: 0.2 },
 		phases: [
-			{ hpThreshold: 0.5, speedMultiplier: 1.6, attackCooldownMultiplier: 0.75 },
+			// 第2形態＝潜行を短くする＝待ち伏せの回数が増える。同時に**無敵の窓も短くなる**
+			// ＝プレイヤーにとっては「殴れる時間の割合」が増える方向の強化（一方的に硬くしない）。
+			// speedMultiplier は 0.8×1.15=0.92＝プレイヤー（1.0）を超えない範囲に留める。
+			// hiddenMs 1400ms ＝ 約12 tick ＝速度 0.92 で約 4.5 マス＝**近い相手にしか
+			// 回り込めない**（遠い時は途中で浮上する）＝後半は「距離を詰めてから潜る」形になる。
+			{ hpThreshold: 0.5, speedMultiplier: 1.15, attackCooldownMultiplier: 0.75,
+			  hide: { hiddenMs: 1400, shownMs: 2600, style: 'burrow', emergeSound: 'sandBurst' } },
 		],
 	},
 	// ── 深海の海蛇（Phase 3-2）：2×2 大型ボス・dungeon_3（水の迷宮）──
@@ -1099,12 +1122,20 @@ export const ENEMY_META = {
 		attack: { type: 'charge' },        // 体当たり（charge）のみ（飛び道具なし）
 	},
 	// ── ②接近型：潜み鮫（潜行↔浮上のリズム戦闘）────────────────
-	// hide: { hiddenMs, shownMs, style } … 隠れ↔出現を繰り返す敵の周期（enemy-ai.js が管理）。
+	// hide: { hiddenMs, shownMs, style, emergeSound } … 隠れ↔出現を繰り返す敵の周期（enemy-ai.js が管理）。
 	//   2026-08-13（5.5k k-3）に水棲専用の `submerge` から陸/空も含む汎用機構へ一般化した
 	//   （style: 'water' 潜行／'burrow' 地中／'air' 滞空。CSS クラス `hide-<style>` になる）。
 	//   隠れ中（e.hidden=true）＝隠れて寄ってくるが「無敵・攻撃なし＝体当たりも空振りする」。
 	//   出現中（e.hidden=false）＝噛みつき（sword）で攻撃し、こちらの攻撃も通る。
 	// ∴「浮上した瞬間だけ殴れる」＝海のリズム戦闘（ユーザー確定 2026-07-25）。
+	//   emergeSound … 浮上した瞬間に1回だけ鳴らす SE 名（省略時は無音）。
+	// ⚠️ `hide` 単体は**可視と無敵の切替だけ**で、移動分岐（enemyChase 等）はそのまま走る
+	//   ＝隠れていても「まっすぐ寄ってくる」（2026-08-26 に一次資料で確認）。
+	//   潜行を**回り込み**にしたいなら移動側の機構も足す＝下記 `burrowAmbush`。
+	// burrowAmbush: { ambushDist } … `hide` と組にする移動機構（enemy-ai.js の enemyBurrowAmbush）。
+	//   隠れているあいだだけ歩いてプレイヤーの向こう側（ambushDist マス隣接）へ回り込み、
+	//   着いたら即浮上する。出現中は 1 歩も動かない＝移動と交戦が時間で分離する。
+	//   N 砂嵐の蠍王が使用（Phase 8-4 (4) 0d-3）。
 	//
 	// 攻撃は二段構え＝**離れていれば遠隔（水刃）・隣接すれば噛みつき**（ユーザー確定 2026-07-25）。
 	//   理由＝鮫は move:'water' で陸に上がれない∴近接だけだと「岸から2マス離れて立つ」

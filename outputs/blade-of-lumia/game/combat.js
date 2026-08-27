@@ -187,7 +187,10 @@ export function createCombat(deps) {
 		const cellPx = getCellPx();
 		const el = document.createElement('div');
 		el.className = `dmg-popup ${isEnemy ? 'enemy-dmg' : 'player-dmg'}${isWeak ? ' weak-dmg' : ''}`;
-		el.textContent = isWeak ? `WEAK! -${dmg}` : `-${dmg}`;
+		// ⚠️ 弱点でも**文字は増やさない**（2026-08-26 ユーザー確定「文字は出さない」）。
+		//    旧実装は `WEAK! -8` と英語で言っていた＝ゲーム中に他の英字表示は無く浮いていた。
+		//    弱点の手応えは数字の大きさ・色・跳ね（.weak-dmg）と閃光・音で出す。
+		el.textContent = `-${dmg}`;
 		el.style.cssText = `
 			position:absolute;
 			left:${(ex + 0.5) * cellPx}px;
@@ -199,7 +202,14 @@ export function createCombat(deps) {
 		setTimeout(() => el.remove(), 700);
 	}
 
-	// ── 弱点ヒットの閃光エフェクト ────────────────────────
+	// ── 弱点ヒットの閃光エフェクト（0d-2.11 で「クリティカル」らしく作り直し）──────
+	// 文字を出さない代わりに**3枚重ね**で当たりの特別さを出す：
+	//   ・weak-burst-star  ＝8方向へ伸びる放射刃（クリティカルの記号）
+	//   ・weak-burst-flash ＝黄橙の閃光（旧 .weak-burst の見た目を引き継ぐ）
+	//   ・weak-burst-ring  ＝白い衝撃波リング（一瞬で外へ抜ける）
+	// ⚠️ 親（.weak-burst）は**大きさを持たない位置合わせだけの箱**にする＝親を拡大すると
+	//    子の拡大率まで掛け算になり、3枚が同じ動きに潰れる。子ごとに別の keyframes を当てる。
+	// ⚠️ 消すのは親1つだけ（子ごとに setTimeout を張ると消し漏れが出る）。
 	function showWeaknessBurst(e) {
 		const charLayerEl = getCharLayerEl();
 		if (!charLayerEl) return;
@@ -209,6 +219,16 @@ export function createCombat(deps) {
 		el.className = 'weak-burst';
 		el.style.left = `${cx * cellPx}px`;
 		el.style.top  = `${cy * cellPx}px`;
+		// ⚠️ 大きさは**敵の見た目に合わせて決める**（固定 px にすると 2×2 のボスの上では
+		//    胴体の中に埋まって「小さな火花」に見える＝0d-2.11 の目視で確認）。
+		el.style.setProperty('--weak-size',
+			`${cellPx * Math.max(e.w ?? 1, e.h ?? 1) * 0.9}px`);
+		// DOM の順＝重なりの順（後が上）。刃 → 閃光 → リング。
+		for (const cls of ['weak-burst-star', 'weak-burst-flash', 'weak-burst-ring']) {
+			const part = document.createElement('div');
+			part.className = cls;
+			el.appendChild(part);
+		}
 		charLayerEl.appendChild(el);
 		setTimeout(() => el.remove(), 500);
 	}
@@ -489,7 +509,7 @@ export function createCombat(deps) {
 		const yieldFloor = meta?.yieldAt ? Math.max(1, Math.ceil(e.maxHp * meta.yieldAt)) : null;
 		e.hp = yieldFloor != null ? Math.max(yieldFloor, e.hp - actual) : e.hp - actual;
 		if (isWeak) {
-			playSound('key');          // 弱点ヒットは高めの「キンッ」で区別（専用SE代用）
+			playSound('weakHit');      // 弱点専用SE（0d-2.11。以前は鍵の音 'key' の流用だった）
 			showWeaknessBurst(e);
 		} else {
 			playSound('hit');

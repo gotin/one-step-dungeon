@@ -315,7 +315,10 @@ test('⑤ ENEMY_META の phases[] は既知のキーだけを持ち、閾値は�
                       'attacks', 'modeWeights', 'hitAndAway', 'combat',
                       // 0d-3（2体目 A）: 後半で**機構そのものを生やす**口（boss.js が `_dash` へ書き、
                       // enemy-ai.js の `resolveDash` が読む）。表の差し替えだけでは移動が変わらない。
-                      'dash'];
+                      'dash',
+                      // 0d-3（3体目 N）: 隠れ↔出現の周期を相で差し替える口（boss.js が `_hide` へ
+                      // 書き、enemy-ai.js の `resolveHide` が読む）＝潜行を短くして待ち伏せを増やす。
+                      'hide'];
   const MODE_KEYS = ['flank', 'direct', 'wander', 'strafe'];
   const withPhases = Object.entries(ENEMY_META).filter(([, m]) => m.phases);
   expect(withPhases.length, 'phases を持つ敵が居ない（データが消えた？）').toBeGreaterThanOrEqual(13);
@@ -345,6 +348,18 @@ test('⑤ ENEMY_META の phases[] は既知のキーだけを持ち、閾値は�
           `${t} の phases[].modeWeights に未知のモード`).toEqual([]);
       }
       if (p.hitAndAway !== undefined) expect(typeof p.hitAndAway).toBe('boolean');
+      if (p.hide !== undefined) {
+        // 相の hide は meta.hide を**丸ごと差し替える**（`resolveHide`）∴部分指定は
+        // 既定値（hiddenMs 2000 / shownMs 1200 / style 'water'）に落ちる＝地中の敵が
+        // 水の波紋で出る事故になる。キーの綴りと必須項目をここで縛る。
+        const HIDE_KEYS = ['hiddenMs', 'shownMs', 'style', 'emergeSound'];
+        expect(Object.keys(p.hide).filter(k => !HIDE_KEYS.includes(k)),
+          `${t} の phases[].hide に未知のキー`).toEqual([]);
+        for (const k of ['hiddenMs', 'shownMs']) {
+          expect(p.hide[k], `${t} の phases[].hide.${k} が正の数でない`).toBeGreaterThan(0);
+        }
+        expect(p.hide.style, `${t} の phases[].hide.style が meta.hide と違う`).toBe(m.hide?.style);
+      }
     }
   }
 });
