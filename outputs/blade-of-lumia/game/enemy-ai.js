@@ -15,6 +15,10 @@ import { statefulTileClosed, overlapArea } from './passable.js';
 // Phase 8-4 (4) 0d-2.5: 大型敵の間合いは **左上ではなく中心/端** から測る
 // （enemyCellCenter / enemyHalf / enemyEdgeDist ＝hitbox.js が単一の真実）。
 import { enemyCenter, enemyCellCenter, enemyHalf, enemyEdgeDist } from './hitbox.js';
+// Phase 8-4 (4) 0d-2.11 (A): 攻撃硬直の窓（＝反撃の窓）の判定は enemy-state.js が単一の真実。
+// この絵（`.attack-recover`）と combat.js の弱点判定（`weakness.window: 'recover'`）が
+// 同じ窓を指すため＝どちらか片方だけ書き換えると理不尽な戦闘になる。
+import { isInRecoverWindow } from './enemy-state.js';
 // Phase 5.5k k-7.5: hitbox.js enemyPointHit の import は接触ダメージ（checkEnemyContact）
 // 廃止で不要になった。体当たりの到達判定は slamReachHit（軸ごとの間合い）が持つ。
 
@@ -1391,9 +1395,9 @@ export function createEnemyAi(deps) {
 	function syncRecoverMotion(e, now) {
 		const el = document.getElementById(`char-enemy-${e.id}`);
 		if (!el) return;
-		const on = e._freezeUntil != null && now < e._freezeUntil
-			// 予告中（振り上げ・膨らむ炎）は硬直の絵を出さない＝どちらの窓なのかが絵で一意に読める
-			&& e._swingAt == null && e._slamAt == null && e._breathAt == null;
+		// 窓の判定は `game/enemy-state.js` の1か所だけが持つ＝弱点（`weakness.window: 'recover'`）と
+		// この絵が同じ窓を指すことを保証する（0d-2.11 (A)・予告中は硬直の絵を出さない条件も含む）
+		const on = isInRecoverWindow(e, now);
 		// ⚠️ 長さは**窓に入った最初の tick だけ**書く（毎 tick 残り時間を書き直すと
 		//    animation-duration が縮み続けて沈む姿勢が跳ねる）。硬直は攻撃が成立した tick に
 		//    立つ∴最初の tick の残り＝硬直の全長。

@@ -101,11 +101,18 @@ export const ENEMY_SPEED_FAST   = 1.0;  // 高速敵
 //   実装は enemy-ai.js tickDash。体当たり（attack:{type:'charge'}）の強化版＝
 //   密着では従来どおり slam が出る（dash.minRange > slam の到達距離で棲み分ける）。
 //
-// weakness（Phase 3-3・任意）: { type, multiplier }
-//   type … 弱点となる攻撃種別 'sword' | 'beam' | 'arrow' | 'boomerang' | 'bomb'
+// weakness（Phase 3-3・任意）: { type, multiplier, window? }
+//   type … 弱点となる攻撃種別 'sword' | 'beam' | 'arrow' | 'boomerang' | 'bomb' | 'fire'
 //   multiplier … その攻撃でのダメージ倍率（def 適用前の素ダメージに掛ける）
+//   window（Phase 8-4 (4) 0d-2.11・任意）… 倍率が乗る**時間の窓**。
+//     'recover' … 攻撃硬直中（`attackFreezeMs`）だけ弱点になる＝道具ではなく「間」が鍵。
+//     判定は `game/enemy-state.js` isInRecoverWindow（絵 `.attack-recover` と同じ関数）。
+//     省略時は窓なし＝いつでも type が一致すれば弱点（従来どおり）。
 //   弱点ヒット時は combat.js の dealDamageToEnemy が倍率＋専用エフェクト/SE を出す。
 //   未定義なら弱点なし＝全攻撃が等倍（後方互換）。
+//   ⚠️ 弱点は**その敵と戦う地点で撃てる**種別にする（進行順は shared/progression.js）。
+//      持って来られない道具を弱点にすると「死んだ弱点」になる＝tests/weakness-hints.spec.js
+//      がボスについてこれを固定している（0d-2.11 (A) で G/J の死んだ弱点を差し替えた）。
 //
 // stunnable（Phase 8-4 (2)・2026-08-23・任意 boolean）: **ブーメランで硬直するか**の明示。
 //   省略時は `!isBoss` から導出＝ザコは硬直する／ボスは硬直しない（ダメージだけ通る）。
@@ -967,7 +974,10 @@ export const ENEMY_META = {
 		size:   { w: 2, h: 2 },
 		isBoss: true,
 		dropsTriforce: true,
-		weakness: { type: 'beam', multiplier: 2 },   // 光の刃で鱗を貫く
+		// 8-4 0d-2.11 (A): beam → arrow。理由＝光の刃は剣のティア1（`forest_cave` の
+		// 銀の剣）が要る＝D6 クリア後の任意ダンジョン∴D3 の時点では**永久に撃てない**
+		// （＝弱点が死んでいた）。弓は D2 の報酬＝D3 に入る前に必ず持っている。
+		weakness: { type: 'arrow', multiplier: 2 },   // 矢で鱗の隙間を貫く
 		hitAndAway: true,
 		attacks: [
 			{ type: 'sword', range: 1.6, cooldown: 1000 },  // 咬みつき（リーチ長）
@@ -1039,7 +1049,7 @@ export const ENEMY_META = {
 		// atk 4 は据え置き＝D1 は世界に盾が無い地点（盾は D2 の報酬）だが、D1 内で拾える
 		// 革の鎧（def 1）とハートの器を持って来れば 4→3 ダメージ／HP8 で 3 発耐えられる。
 		// ∴耐久側は装備の回収で解き、ここでは殴り合いの長さだけを削る。
-		// 爆弾（弱点×3）なら 2 個（1個で 58 ダメージ＝残り 2）。
+		// 硬直に斬れば（弱点×3）1発 10 ダメージ＝6 振り。通常の 30 振りと 5 倍の差。
 		hp: 60, atk: 4, def: 2, exp: 40,
 		speed: ENEMY_SPEED_SLOW,   // 大型なので鈍重
 		sprite: 'rockGolem',
@@ -1047,7 +1057,15 @@ export const ENEMY_META = {
 		size:   { w: 2, h: 2 },    // ← 2×2 セルを占有
 		isBoss: true,
 		dropsTriforce: true,       // 撃破で星の欠片を落とす（boss.js が参照）
-		weakness: { type: 'bomb', multiplier: 3 },  // 爆弾で岩体を砕く
+		// 8-4 0d-2.11 (A): 爆弾 → 「攻撃硬直の窓に剣で斬る」。理由＝爆弾は D6 の報酬＝
+		// D1 のボスには**永久に持って来られない**（D1 は再訪しても倒す相手が居ない）∴
+		// 弱点が死んでいた。D1 の時点で撃てるのは剣だけ∴道具の代わりに**間（タイミング）**を
+		// 弱点にした。`window: 'recover'` ＝硬直中（`attackFreezeMs` 480ms・絵は
+		// `.attack-recover` で前かがみに沈む）だけ倍率が乗る。判定は
+		// `game/enemy-state.js` isInRecoverWindow ＝絵と同じ関数を共有する。
+		// ∴この敵の meta が既に書いている「予告を見て避ける → 硬直に殴り返す」が
+		//   そのまま弱点になり、最初のダンジョンで「弱点とは何か」を教えられる。
+		weakness: { type: 'sword', window: 'recover', multiplier: 3 },
 		hitAndAway: true,          // 接近→攻撃→後退（向きも切り替わる）
 		// 攻撃硬直（Phase 8-4 (4) 0d-2.6・2026-08-25 の2回目の調整）＝振り下ろした後の隙。
 		// ユーザー実プレイ判定：「攻撃がおわったあともちょっと動けない時間をつくるとかしないと、

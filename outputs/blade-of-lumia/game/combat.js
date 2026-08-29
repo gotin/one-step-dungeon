@@ -13,6 +13,9 @@ import {
 	ATTACK_POSE_MS,
 } from './constants.js';
 import { enemyW, enemyH, enemyCenter } from './hitbox.js';
+// Phase 8-4 (4) 0d-2.11 (A): 攻撃硬直の窓（＝反撃の窓）の判定＝enemy-ai.js の `.attack-recover`
+// と共有する（enemy-state.js が単一の真実）。`weakness.window: 'recover'` の弱点で使う。
+import { isInRecoverWindow } from './enemy-state.js';
 
 /**
  * createCombat(deps) – factory
@@ -500,7 +503,13 @@ export function createCombat(deps) {
 			return;
 		}
 		const weakness = meta?.weakness;
-		const isWeak = !!(atkType && weakness && weakness.type === atkType);
+		// Phase 8-4 (4) 0d-2.11 (A): 弱点に「窓」を持たせられる（`weakness.window`）。
+		// `'recover'`＝攻撃硬直の間だけ弱点が乗る＝道具ではなく**タイミング**が答えになる弱点。
+		// これで D1（サブアイテムが1つも無い地点）のボスにも成立する弱点が置ける
+		// （G 岩のゴーレムの旧・爆弾弱点は爆弾が D6 の報酬＝D1 では永久に使えなかった）。
+		// 窓の判定は enemy-state.js が単一の真実＝`.attack-recover`（沈む絵）と必ず一致する。
+		const windowOpen = weakness?.window !== 'recover' || isInRecoverWindow(e, gameNow());
+		const isWeak = !!(atkType && weakness && weakness.type === atkType && windowOpen);
 		const effective = isWeak ? Math.round(dmg * (weakness.multiplier ?? 2)) : dmg;
 		const actual = Math.max(1, effective - e.def);
 		// Phase 9-6: yieldAt ボスの HP は合格ラインより下へは落とさない。

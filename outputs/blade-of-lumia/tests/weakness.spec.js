@@ -3,9 +3,14 @@
 // ENEMY_META[type].weakness = { type, multiplier } により、
 // 弱点の攻撃種別なら multiplier 倍ダメージが入ることを検証する。
 //   - 炎のサラマンドラ(A) は arrow が弱点（×2）
-//   - 岩のゴーレム(G) は bomb が弱点（×3）
+//   - 深海の海蛇(J) は arrow が弱点（×2・0d-2.11 (A) で beam から差し替え）
 //   - 弱点でない攻撃種別は等倍（従来挙動）
 //   - 弱点未定義の敵（ダミー 'E'）は atkType を渡しても等倍
+//
+// ⚠️ 岩のゴーレム(G) はここでは測らない＝0d-2.11 (A) で弱点が
+//    `{ type:'sword', window:'recover' }` ＝**時間の窓つき**になった∴倍率は
+//    「攻撃硬直中に斬ったか」で変わる。窓つきの弱点は tests/weakness-recover-window.spec.js
+//    が番人（この本のように「注入して1発」では窓が開いていない＝等倍が正しい）。
 
 import { test, expect } from '@playwright/test';
 import { GAME_URL, SAVE_KEY } from './helpers.js';
@@ -61,13 +66,24 @@ test.describe('Blade of Lumia – ボスの弱点属性（Phase 3-3）', () => {
     expect(arrowLoss).toBeGreaterThan(swordLoss);
   });
 
-  test('岩のゴーレム(G) は bomb で大ダメージ（×3）を受ける', async ({ page }) => {
+  test('深海の海蛇(J) は arrow で剣の2倍ダメージを受ける', async ({ page }) => {
     await seedAndStart(page);
-    // 注入敵は def=0。dmg=10 → sword: 10 / bomb(×3): 30
+    // 0d-2.11 (A): 旧弱点 beam（光の刃＝剣ティア1）は D3 の時点では永久に撃てなかった∴
+    // 弓（D2 の報酬）へ差し替えた。注入敵は def=0。dmg=10 → sword: 10 / arrow(×2): 20
+    const swordLoss = await hpLossFor(page, 'J', 10, 'sword');
+    const arrowLoss = await hpLossFor(page, 'J', 10, 'arrow');
+    expect(swordLoss).toBe(10);
+    expect(arrowLoss).toBe(20);
+  });
+
+  test('窓つきの弱点は窓の外では乗らない（岩のゴーレム(G) の剣）', async ({ page }) => {
+    await seedAndStart(page);
+    // 注入直後＝攻撃硬直が立っていない∴`window:'recover'` の弱点は乗らない＝等倍。
+    // 窓の中で×3になることは tests/weakness-recover-window.spec.js が測る。
     const swordLoss = await hpLossFor(page, 'G', 10, 'sword');
     const bombLoss  = await hpLossFor(page, 'G', 10, 'bomb');
     expect(swordLoss).toBe(10);
-    expect(bombLoss).toBe(30);
+    expect(bombLoss).toBe(10);
   });
 
   test('弱点でない攻撃種別は等倍（炎ボスに bomb は弱点ではない）', async ({ page }) => {
