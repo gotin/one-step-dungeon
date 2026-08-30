@@ -18,7 +18,7 @@ import { enemyCenter, enemyCellCenter, enemyHalf, enemyEdgeDist } from './hitbox
 // Phase 8-4 (4) 0d-2.11 (A): 攻撃硬直の窓（＝反撃の窓）の判定は enemy-state.js が単一の真実。
 // この絵（`.attack-recover`）と combat.js の弱点判定（`weakness.window: 'recover'`）が
 // 同じ窓を指すため＝どちらか片方だけ書き換えると理不尽な戦闘になる。
-import { isInRecoverWindow } from './enemy-state.js';
+import { isInRecoverWindow, isSoaring } from './enemy-state.js';
 // Phase 5.5k k-7.5: hitbox.js enemyPointHit の import は接触ダメージ（checkEnemyContact）
 // 廃止で不要になった。体当たりの到達判定は slamReachHit（軸ごとの間合い）が持つ。
 
@@ -168,6 +168,13 @@ export function createEnemyAi(deps) {
 	//   （`tickGaze` / `enemyGazeStride` / `syncGazeMark` の3つが必ずここを通る）。
 	function resolveGaze(e, meta) {
 		return e?._gaze !== undefined ? e._gaze : meta?.gaze;
+	}
+	// resolveSoar … 滞空／急降下の設定をフェーズで差し替える口（Phase 8-4 (4) 0d-3・6体目）。
+	// U 嵐の鷲王は HP50% の相で `phases[].soar` が入り「地上に居る時間が短く・旋回と急降下が
+	// 速い」形に変わる。⚠️ 上4つと同じ理由で**読む側を1か所に集約する**
+	//   （`tickSoar` / `enemySoarStride` / `syncSoarMotion` / `crashSoar` の4つが必ずここを通る）。
+	function resolveSoar(e, meta) {
+		return e?._soar !== undefined ? e._soar : meta?.soar;
 	}
 
 	// ── Phase 5.5k: 攻撃硬直（2026-08-12 ユーザー指摘「攻撃動作中は動かないようにすべき」）──
@@ -1058,6 +1065,251 @@ export function createEnemyAi(deps) {
 		gazeMarkTimers.set(id, setTimeout(() => el.remove(), 400));
 	}
 
+	// ── Phase 8-4 (4) 0d-3（6体目 U 嵐の鷲王）: 滞空と急降下（soar）───────────────
+	// meta.soar = { groundMs, riseMs, airMs, orbitRange, orbitSpeed, alignTol, aimMs,
+	//               diveSpeed, diveCells, diveHitRange, diveAtk, landFreezeMs, crashStunMs }
+	// 6拍の状態機械。他の12体と違うのは「近づき方」ではなく **どこに居るか**：
+	//   ground … 地上（`groundMs`）＝歩いて寄り鉤爪を振る＝**プレイヤーが剣を入れられる窓**
+	//   rise   … 舞い上がる溜め（`riseMs`・動かない・攻撃しない・**まだ地上＝殴れる**）
+	//   air    … 滞空（`airMs` が上限）＝`orbitRange` を保って旋回し軸（行/列）を合わせる。
+	//             **剣/ブーメラン/爆風/炎は届かない＝矢だけが届く**（combat.js isSoarOutOfReach）。
+	//             軸のずれが `alignTol` 以内に入った tick に `aim` へ移る（上限超過なら強制）
+	//   aim    … 急降下の予告（`aimMs`）＝落ちる軸をここで確定する∴**軸から外れれば避けられる**
+	//   dive   … 急降下（`diveSpeed`）＝接触で `diveAtk`／地形に着けばそこで止まる
+	//   land   … 着地硬直（`landFreezeMs`）＝**殴り返す窓**（`.attack-recover` の絵が出る）
+	// 戻り値：true ならこの tick の通常移動/攻撃を呼び出し側がスキップする
+	//         （＝`rise`/`aim`/`dive`/`land` が専有する。`ground` と `air` は**ゲートを開ける**＝
+	//           歩き（`enemySoarStride`）と攻撃（`enemyAttack`）が動く）。
+	//
+	// ⚠️ 矢が当たると滞空が**墜落**に化ける（`crashSoar`＝combat.js の被弾フックが呼ぶ）＝
+	//    弱点（矢 ×2）が倍率だけでなく**機構の解除鍵**になっている（δ 分裂スライムの
+	//    `blockedBy` と同型）。D7 の看板「射抜けば」がそのまま戦い方の説明になる。
+	// ⚠️ 急降下は tickDash と同じく **1 tick を MOVE_STEP に割って**進める＝速くしても当たりと
+	//    壁を飛び越さない（[[blade-speed-up-needs-interpolation]]）。当たり判定も `dashReachHit`
+	//    を共有する＝「落ちてくる軸の前方だけ」に当たる（十字の slam を流用すると軸から外れた
+	//    避けが無効になる＝0d-2 で実測した罠）。
+	// ⚠️ 相の長さは**入った瞬間に固定する**（`_soarSpan`）＝走っている1周の途中で HP が 50% を
+	//    割っても、見えている予告と実際の解決がずれない（gaze の `_gazeSpan` と同じ作法）。
+	// ⚠️ 間合い（`orbitRange` / `diveHitRange`）は **body の端から**・向きは**中心から**測る
+	//    （0d-2.5 の左上の罠＝2×2 は左上基準だと西/北から 1 セル遠くなる）。
+
+	// 相へ入る（長さを固定して終わりの論理時刻を立てる＝この2つが唯一の時計）。
+	function enterSoarPhase(e, phase, at, span) {
+		e._soarPhase = phase;
+		e._soarSpan  = span;
+		e._soarAt    = at + span;
+	}
+
+	const soarVecDir = ([sy, sx]) => (sx !== 0 ? (sx > 0 ? 'right' : 'left') : (sy > 0 ? 'down' : 'up'));
+
+	// 落ちる軸。プレイヤーが行/列（直交ずれ `alignTol` 以内）に乗っているときだけ
+	// カーディナル1方向を返す＝**軸から外れて立っていれば急降下は始まらない**。
+	function soarDiveVec(e, player, cfg) {
+		if (!player) return null;
+		const { cx, cy } = enemyCellCenter(e);
+		const { halfW, halfH } = enemyHalf(e);
+		const dx = player.x - cx, dy = player.y - cy;
+		const vertical = Math.abs(dy) >= Math.abs(dx);
+		const off     = vertical ? Math.abs(dx) : Math.abs(dy);
+		const halfOff = vertical ? halfW : halfH;
+		if (off > (cfg.alignTol ?? 0.6) + halfOff) return null;
+		return vertical ? [Math.sign(dy) || 1, 0] : [0, Math.sign(dx) || 1];
+	}
+
+	// 滞空の上限を過ぎたときの落ち先＝**成分の大きい軸**（＝軸が揃わなくても必ず落ちる＝
+	// 「ずっと空を回っているだけ」で戦いが止まらない）。
+	function soarAnyVec(e, player) {
+		const { cx, cy } = enemyCellCenter(e);
+		const dx = (player?.x ?? cx) - cx, dy = (player?.y ?? cy) - cy;
+		return Math.abs(dy) >= Math.abs(dx) ? [Math.sign(dy) || 1, 0] : [0, Math.sign(dx) || 1];
+	}
+
+	// 着地＝硬直（反撃の窓）へ。硬直はここで直接立てる（`markAttack` は通さない＝急降下は
+	// `attacks[]` の1エントリではなく**滞空の周期そのものの帰結**＝coil の締め上げ・gaze の
+	// 岩投げと同じ作法）。
+	function landSoar(e, cfg, now) {
+		const freezeMs = cfg.landFreezeMs ?? MELEE_FREEZE_MS;
+		enterSoarPhase(e, 'land', now, freezeMs);
+		e._freezeUntil = now + freezeMs;
+		e._soarVec  = null;
+		e._soarLeft = 0;
+		e._soarDives = (e._soarDives ?? 0) + 1;
+		// 空振りでも鳴らす＝「落ちた＝今なら殴れる」が画面を見ていなくても分かる。
+		// 予告（soarDive）とは別の音（GUIDE §7-6）。当たった場合はダメージ音が重なる。
+		playSound('soarLand');
+	}
+
+	// 矢で射落とす＝滞空が墜落に化ける（combat.js の被弾フックが呼ぶ）。
+	// 気絶（`e.stunUntil`）＝enemyTick が先頭で全行動を止める窓＝突進猪が壁に激突したときと
+	// 同じ語彙（⭐の印も共有する＝「気絶」の意味を1つにする）。
+	function crashSoar(e, meta, now = gameNow()) {
+		const cfg = resolveSoar(e, meta);
+		if (!cfg || !isSoaring(e, meta)) return false;
+		const stunMs = cfg.crashStunMs ?? 1800;
+		e.stunUntil = now + stunMs;
+		e._soarVec  = null;
+		e._soarLeft = 0;
+		// 落ちた先は地上。⚠️ `ground` の時計は**気絶が明けてから**数える＝立ち上がった瞬間に
+		//    また舞い上がる（＝反撃の窓が気絶ぶんしか無い）ことを防ぐ。
+		enterSoarPhase(e, 'ground', e.stunUntil, cfg.groundMs ?? 1560);
+		e._soarCrashes = (e._soarCrashes ?? 0) + 1;
+		syncSoarMotion(e, meta);
+		showDashStun(e, stunMs);   // 印の長さ＝墜落の気絶の長さ（1800ms ＞ 既定 1500ms）
+		playSound('soarCrash');
+		return true;
+	}
+
+	function tickSoar(e, meta, now) {
+		const cfg = resolveSoar(e, meta);
+		if (!cfg) return false;
+		const player = getPlayer();
+		if (e._soarPhase == null) {
+			enterSoarPhase(e, 'ground', now, cfg.groundMs ?? 1560);
+			return false;
+		}
+		if (e._soarPhase === 'dive') {
+			const [sy, sx] = e._soarVec ?? [0, 0];
+			const steps = Math.max(1, Math.round((cfg.diveSpeed ?? 1.5) / MOVE_STEP));
+			const ew = e.w ?? 1, eh = e.h ?? 1;
+			let moved = 0, outcome = null;
+			for (let k = 0; k < steps && e._soarLeft > 0; k++) {
+				// ① 接触が先＝プレイヤーは壁ではない（0d-2 / k-9 と同じ順序の罠）
+				if (player && dashReachHit(e, player, [sy, sx], cfg.diveHitRange ?? 1.0,
+					cfg.alignTol ?? 0.6)) { outcome = 'hit'; break; }
+				const ny = e.y + sy * MOVE_STEP, nx = e.x + sx * MOVE_STEP;
+				if (!isPassableForEnemy(ny, nx, e)) {
+					const onPlayer = player && overlapArea(nx, ny, ew, eh, player.x, player.y, 1, 1) > 0;
+					outcome = onPlayer ? 'hit' : 'terrain';
+					break;
+				}
+				e.y = ny; e.x = nx; e._soarLeft -= MOVE_STEP; moved++;
+			}
+			if (moved) moveCharEl(`enemy-${e.id}`, e.x, e.y);
+			if (outcome === 'hit') {
+				// 盾では防げない（体当たり系の答えは「軸から外れる」だけ＝k-7.5 決定④）
+				takeDamage(cfg.diveAtk ?? e.atk ?? meta?.atk ?? 1);
+				if (meta?.inflict) inflictDebuff?.(meta);
+			}
+			if (outcome || e._soarLeft <= 0) landSoar(e, cfg, now);
+			return true;
+		}
+		if (e._soarPhase === 'aim') {
+			if (now < e._soarAt) return true;
+			e._soarPhase = 'dive';
+			e._soarSpan  = null;
+			e._soarAt    = null;
+			e._soarLeft  = cfg.diveCells ?? 9;
+			return true;
+		}
+		if (e._soarPhase === 'air') {
+			const vec = soarDiveVec(e, player, cfg);
+			if (vec || now >= e._soarAt) {
+				e._soarVec = vec ?? soarAnyVec(e, player);
+				e.dir = soarVecDir(e._soarVec);
+				enterSoarPhase(e, 'aim', now, cfg.aimMs ?? 600);
+				playSound('soarDive');
+				return true;
+			}
+			return false;                // 旋回は `enemySoarStride`（＝ゲートの中）が持つ
+		}
+		if (e._soarPhase === 'rise') {
+			if (now < e._soarAt) return true;
+			enterSoarPhase(e, 'air', now, cfg.airMs ?? 2880);
+			return true;                 // 舞い上がった tick は専有（旋回は次の tick から）
+		}
+		// land ＝着地硬直（＝反撃の窓）。明けたら**必ず ground へ戻す**。
+		// ⚠️ この分岐を書かないと land は下の ground の分岐へ落ちる＝着地の直後に
+		//    いきなり `rise`（＝2周目以降、地上の窓＝殴れる窓が消える）。テスト㊴が
+		//    「land の次が rise」で検出した実バグ（2026-08-30）。
+		if (e._soarPhase === 'land') {
+			if (now < e._soarAt) return true;   // 硬直中はこの tick を専有（動かない）
+			enterSoarPhase(e, 'ground', now, cfg.groundMs ?? 1560);
+			return false;                       // 立ち上がった tick から歩き・鉤爪が動く
+		}
+		// ground ＝地上に居る（ゲートは開ける＝歩き・鉤爪・雷撃弾が動く）
+		if (now < e._soarAt) return false;
+		enterSoarPhase(e, 'rise', now, cfg.riseMs ?? 480);
+		e._soarFlights = (e._soarFlights ?? 0) + 1;
+		playSound('soarRise');
+		return true;
+	}
+
+	// 移動（＝ゲートの中）。相によって**寄り方そのものが変わる**：
+	//   ground … 普通に寄る（`enemyChase`）＝地上では他の敵と同じ「追う」
+	//   air    … 旋回＝`orbitRange` を保ちながら**軸へ回り込む**（自分から剣の間合いに入らない）
+	function enemySoarStride(e, meta, speed, cfg) {
+		if (!cfg) return;
+		if (e._soarPhase == null || e._soarPhase === 'ground') { enemyChase(e, speed); return; }
+		if (e._soarPhase !== 'air') return;
+		const player = getPlayer();
+		if (!player) return;
+		const { cx, cy } = enemyCellCenter(e);
+		const dx = player.x - cx, dy = player.y - cy;
+		// 向きはプレイヤーへ（＝「狙われている」が読める）。
+		// ⚠️ 歩幅の溜め（`e.accum`）より**前**に書く（GUIDE §1-2）＝向き直りが1歩ぶん遅れない。
+		if (Math.abs(dx) > 0.01 || Math.abs(dy) > 0.01) {
+			e.dir = Math.abs(dx) >= Math.abs(dy) ? (dx > 0 ? 'right' : 'left') : (dy > 0 ? 'down' : 'up');
+		}
+		// 旋回の速さは `soar` が持つ（＝地上の `speed` とは別の数）。
+		// ⚠️ プレイヤー（1.0）より必ず遅い数にする（GUIDE §7-2）＝データ側のテストで固定する。
+		e.accum = (e.accum ?? 0) + (cfg.orbitSpeed ?? 0.75);
+		if (e.accum < 1.0) return;
+		e.accum -= 1.0;
+		const reach = enemyEdgeDist(e, player.x, player.y);
+		const orbitRange = cfg.orbitRange ?? 3.5;
+		const vertical = Math.abs(dy) >= Math.abs(dx);      // 主軸＝落ちるときの軸
+		const off = vertical ? dx : dy;                     // 直交のずれ＝軸合わせで詰める量
+		// 1歩の候補を優先順に並べる（先に通れたものを採る＝壁際で固まらない）：
+		const cands = [];
+		//   ① 近すぎる＝主軸に沿って**離れる**（自分から剣の間合いに入らない＝滞空の意味）
+		if (reach < orbitRange - 0.5) {
+			cands.push(vertical ? [-(Math.sign(dy) || 1), 0] : [0, -(Math.sign(dx) || 1)]);
+		}
+		//   ② 軸合わせ＝直交のずれを詰める（＝急降下できる車線へ回り込む＝これが「旋回」）
+		if (Math.abs(off) > (cfg.alignTol ?? 0.6)) {
+			cands.push(vertical ? [0, Math.sign(off)] : [Math.sign(off), 0]);
+		}
+		//   ③ 遠すぎる＝主軸に沿って寄る（射程の端で棒立ちにならない）
+		if (reach > orbitRange + 0.5) {
+			cands.push(vertical ? [Math.sign(dy) || 1, 0] : [0, Math.sign(dx) || 1]);
+		}
+		for (const [sy, sx] of cands) {
+			const ny = e.y + sy * MOVE_STEP, nx = e.x + sx * MOVE_STEP;
+			if (!isPassableForEnemy(ny, nx, e)) continue;
+			e.y = ny; e.x = nx;
+			moveCharEl(`enemy-${e.id}`, e.x, e.y);
+			return;
+		}
+	}
+
+	// ── 滞空の告知（機構の唯一の可視化）───────────────────────────────
+	// ⚠️ 2×2 ボスは向き別の絵も溜めの絵も1枚も持たない（0d-2 で実測）∴予告は **CSS ＋ SE** で
+	//    作る（層2の実装が絵の生成待ちにならない＝A/J/O と同じ方針）。
+	// ⚠️ `.soaring`（浮いた体＋真下の影）は「**今は剣が届かない**」の告知∴ダメージ判定と
+	//    同じ関数（enemy-state.js `isSoaring`）から出す＝絵と判定が絶対にズレない
+	//    （`.attack-recover` と `weakness.window:'recover'` の関係と同じ作法）。
+	// ⚠️ 予告の形は体当たり（拡大縮小）・突進（足踏み）・剣（振り上げ）・ブレス（膨らむ玉）と
+	//    別にする（GUIDE §6-1）＝避け方が違う（下がる／軸から外れる／間合いを切る／射線から
+	//    出る／**落ちて来る軸から外れる**）ものを同じ絵で告知してはいけない。
+	function syncSoarMotion(e, meta) {
+		const cfg = resolveSoar(e, meta);
+		if (!cfg) return;
+		const el = document.getElementById(`char-enemy-${e.id}`);
+		if (!el) return;
+		el.classList.toggle('soaring',   isSoaring(e, meta));
+		el.classList.toggle('soar-rise', e._soarPhase === 'rise');
+		el.classList.toggle('soar-aim',  e._soarPhase === 'aim');
+		el.classList.toggle('soar-dive', e._soarPhase === 'dive');
+		// 長さは状態機械が単一の真実（CSS 側に持たせない＝swing/breath/coil/gaze と同じ作法）
+		if (e._soarPhase === 'rise') el.style.setProperty('--soar-rise-ms', `${Math.round(cfg.riseMs ?? 480)}ms`);
+		if (e._soarPhase === 'aim')  el.style.setProperty('--soar-aim-ms',  `${Math.round(cfg.aimMs ?? 600)}ms`);
+		// 落ちる軸（±1/0 の無単位値）＝予告の震えと落下の伸びが**その軸に沿う**
+		// ＝「どこへ落ちて来るか」の告知（breath の `--breath-ox/oy` と同じ趣旨）。
+		const [sy, sx] = e._soarVec ?? [0, 0];
+		el.style.setProperty('--soar-vx', String(sx));
+		el.style.setProperty('--soar-vy', String(sy));
+	}
+
 	// ── Phase 5.5k: 陸上敵の向き別スプライト名解決（DECISIONS 2026-08-10）─────
 	// プレイヤーの getHeroSpriteName()（game.js）が雛形＝攻撃中/構え中/通常の3段を
 	// 1関数に集約する。directional:true の敵だけがこの関数を通る（フラグ無しの既存敵は
@@ -1588,6 +1840,13 @@ export function createEnemyAi(deps) {
 		for (let i = 0; i < attackList.length; i++) {
 			const atk = attackList[i];
 			if (!atk) continue;
+
+			// Phase 8-4 (4) 0d-3（6体目 U）: 滞空中は**近接を出さない**（鉤爪は地上だけ）。
+			// 空に居るあいだ届くのは遠隔（雷撃弾）だけ＝「こちらの剣が届かない代わりに
+			// 向こうの鉤爪も届かない」＝機構が一方的な有利にならない（GUIDE §7-2 の対称）。
+			// ⚠️ プレイヤー側の「剣が届かない」判定は combat.js `isSoarOutOfReach` が持つ＝
+			//    どちらも enemy-state.js `isSoaring` を読む＝窓が絵と1つにまとまる。
+			if (isSoaring(e, meta) && MELEE_ATTACK_TYPES.has(atk.type)) continue;
 
 			// Phase 5.5k k-7.5: 体当たり（charge）＝予告を出すだけ。命中判定は tickSlam が
 			// 予告の解決時に行う（ここでダメージを出すと「隣接＝即ダメージ」になってしまう）。
@@ -2261,7 +2520,7 @@ export function createEnemyAi(deps) {
 			if (outcome === 'wall') {
 				// 気絶＝ブーメランのスタンと同じ窓（enemyTick が先頭で全行動を止める）。
 				e.stunUntil = now + stunMs;
-				showDashStun(e);
+				showDashStun(e, stunMs);   // 印の長さ＝気絶の長さ
 				playSound('doorLock');
 				endDash(e, now, stunMs + cooldownMs);   // 気絶が明けてから硬直ぶん待つ
 				return true;
@@ -2342,7 +2601,10 @@ export function createEnemyAi(deps) {
 
 	// 壁に激突した印（⭐）＝ブーメランのスタンと同じ `.stun-burst`（projectile.js showStunEffect
 	// と同じ形）。気絶は「殴り放題の窓」＝プレイヤーが気づかないと機構が死ぬ（GUIDE §6-1）。
-	function showDashStun(e) {
+	// ⚠️ `stunMs` ＝**その気絶そのものの長さ**を渡す＝印が出ている間＝気絶している間になる
+	//    （0d-3 の U で実画面で見つけた欠陥＝墜落の気絶 1800ms に対し印が固定 1.5s で先に
+	//    消え、まだ無抵抗なのに終わったように見えた）。CSS 側は `--stun-burst-ms` を読むだけ。
+	function showDashStun(e, stunMs = STUN_BURST_MS) {
 		const layer = getCharLayerEl();
 		if (!layer) return;
 		const cellPx = getCellPx();
@@ -2352,8 +2614,9 @@ export function createEnemyAi(deps) {
 		el.textContent = '⭐';
 		el.style.left = `${cx * cellPx}px`;
 		el.style.top  = `${cy * cellPx}px`;
+		el.style.setProperty('--stun-burst-ms', `${stunMs}ms`);
 		layer.appendChild(el);
-		setTimeout(() => el.remove(), STUN_BURST_MS);   // effects.css の stun-burst-anim と同じ長さ
+		setTimeout(() => el.remove(), stunMs);   // 消える瞬間＝気絶が明ける瞬間
 	}
 
 	// ── Phase 5.5k k-4: 向きを固定して構える（盾騎士）─────────────────
@@ -2886,6 +3149,18 @@ export function createEnemyAi(deps) {
 					e._gazeAt = null; e._gazeHeat = 0; e._gazePath = null;
 					syncGazeMark(e, meta);
 				}
+				// Phase 8-4 (4) 0d-3（6体目 U）: 気絶したら**空には居られない**＝滞空と急降下の予告は
+				// 落として地上へ戻す（`ground` の時計は**気絶が明けてから**数える＝立ち上がった
+				// 瞬間にまた舞い上がらない＝反撃の窓が気絶ぶんで終わらない）。
+				// ⚠️ ここで `crashSoar` を呼んではいけない＝あれは `e.stunUntil` を立て直す∴この
+				//    分岐（気絶中）から呼ぶと毎 tick 気絶が延びて永久に明けない。
+				// ⚠️ ボスはブーメランでスタンしない（`stunnable ?? !isBoss`）∴今の U で気絶の入口は
+				//    矢で射落とす `crashSoar` だけ＝ここは**二重の守り**（coil/gaze と同じ立場）。
+				if (isSoaring(e, meta)) {
+					e._soarVec = null; e._soarLeft = 0;
+					enterSoarPhase(e, 'ground', e.stunUntil, resolveSoar(e, meta)?.groundMs ?? 1560);
+					syncSoarMotion(e, meta);
+				}
 				// Phase 5.5k k-9: 突進もスタンで中断する（溜め中に殴られたら走り出さない・
 				// 走行中に止められたらそこで終わる）。壁への激突で立てた気絶もここを通る＝
 				// 気絶が明けた tick に走行が再開しないための後始末でもある。
@@ -2942,6 +3217,16 @@ export function createEnemyAi(deps) {
 			const leapBusy = e._leapPhase != null && e._leapPhase !== 'ground';
 			const leaping = (!isGuarding && (leapBusy || (!frozen && !slamming && !swinging && !breathing)))
 				? tickLeap(e, meta, now) : false;
+			// Phase 8-4 (4) 0d-3（6体目 U）: 滞空〜急降下も跳躍と同じ枠＝**始まったら硬直では
+			// 止めない**（`soarBusy`＝地上以外の相）。理由も同じ＝着地硬直（`landFreezeMs`）を
+			// 自分で立てる状態機械∴硬直で止めると2周目以降が宙吊りになる（0d-2.7 の罠）。
+			// 空から雷撃弾を投げた硬直の最中も滞空の時計は進む必要がある（`airMs` の上限と
+			// 軸合わせの判定が止まると「ずっと空に居る」に化ける）。
+			// ⚠️ 硬直で止めるのは**新しく舞い上がること**だけ（`ground` 相は soarBusy に入れない）
+			//    ＝鉤爪を振った直後にいきなり飛ばない＝殴り返す窓が予告なく消えない。
+			const soarBusy = e._soarPhase != null && e._soarPhase !== 'ground';
+			const soaring = (!isGuarding && !leaping && (soarBusy || (!frozen && !slamming && !swinging && !breathing)))
+				? tickSoar(e, meta, now) : false;
 			// Phase 5.5k k-4: 甲羅の開閉（火吐き亀）＝籠もっている間は移動も攻撃もしない
 			// （ガード/硬直/跳躍と同じ「この tick は他の行動をしない」枠）。開いた瞬間の炎は
 			// tickShell の中で出る＝籠もりから開く tick だけ攻撃が起きる。
@@ -2956,7 +3241,9 @@ export function createEnemyAi(deps) {
 			// Phase 5.5k k-4: 向き固定（盾騎士）＝turnMs ごとにだけ向き直る。移動より先に
 			// 決める（移動側は向きを触らない＝dirLocked を渡す）。
 			const dirLocked = tickFaceLock(e, meta, now);
-			if (!isGuarding && !frozen && !leaping && !shelled && !leeching && !slamming && !swinging && !breathing && !crushing && !blinking && !dashing) {
+			// ⚠️ `!soaring` ＝`rise`/`aim`/`dive`/`land` の4相はこの tick を専有する。`ground` と
+			//    `air` は tickSoar が false を返す＝ここが開く（地上は歩き＋鉤爪、空は旋回＋雷撃弾）。
+			if (!isGuarding && !frozen && !leaping && !soaring && !shelled && !leeching && !slamming && !swinging && !breathing && !crushing && !blinking && !dashing) {
 				if (resolveHitAndAway(e, meta)) {
 					bossTickHitAndAway(e, meta);
 				} else if (cmode === 'ranged') {
@@ -2978,6 +3265,10 @@ export function createEnemyAi(deps) {
 					// Phase 8-4 (4) 0d-3（5体目 O）: 見据え＝**印**へ寄る（プレイヤーへは寄らない）。
 					// 周期そのものは上の `tickGaze`（行動ゲートの外）が持ち主＝ここは歩くだけ。
 					enemyGazeStride(e, meta, resolveEnemySpeed(e, meta), resolveGaze(e, meta));
+				} else if (meta.soar) {
+					// Phase 8-4 (4) 0d-3（6体目 U）: 滞空＝相で寄り方が変わる（地上は追う・
+					// 空は `orbitRange` を保って軸へ回り込む）。周期そのものは上の tickSoar が持ち主。
+					enemySoarStride(e, meta, resolveEnemySpeed(e, meta), resolveSoar(e, meta));
 				} else if (meta.zigzag) {
 					enemyZigzagFly(e, meta, resolveEnemySpeed(e, meta), meta.zigzag);
 				} else {
@@ -3008,6 +3299,8 @@ export function createEnemyAi(deps) {
 			if (meta.coil) syncCoilRing(e, meta);
 			// Phase 8-4 (4) 0d-3（5体目 O）: 見据えの印を床に描く（どこに岩が落ちるかの唯一の告知）。
 			if (meta.gaze) syncGazeMark(e, meta);
+			// Phase 8-4 (4) 0d-3（6体目 U）: 滞空の告知（体が浮いて真下に影＝**今は剣が届かない**）。
+			if (meta.soar) syncSoarMotion(e, meta);
 			// Phase 8-4 (4) 0d-2.6（2回目の調整）: 攻撃硬直の絵（前かがみで止まる＝殴り返す窓）。
 			syncRecoverMotion(e, now);
 			// Phase 5.5k k-9: 突進の溜めモーション（前後に細かく揺れる）を状態に合わせる。
@@ -3029,6 +3322,7 @@ export function createEnemyAi(deps) {
 		resolveHide,           // Phase 8-4 (4) 0d-3: 隠れの周期（フェーズ差替を含む・テスト用）
 		resolveCoil,           // Phase 8-4 (4) 0d-3: 巻きつきの設定（フェーズ差替を含む・テスト用）
 		resolveGaze,           // Phase 8-4 (4) 0d-3: 見据えの設定（フェーズ差替を含む・テスト用）
+		resolveSoar,           // Phase 8-4 (4) 0d-3: 滞空の設定（フェーズ差替を含む・テスト用）
 		resolveEnemySprite,    // Phase 5.5k: 向き別スプライト名解決のテスト用
 		resolveAttackFreezeMs, // Phase 5.5k: 攻撃硬直の長さ（テスト用）
 		tickCombatMode,        // Phase 5.5k: 遠隔／近接の二相（テスト用）
@@ -3060,7 +3354,11 @@ export function createEnemyAi(deps) {
 		claimGaze,             // Phase 8-4 (4) 0d-3: 印を押し直す（＝機構の起点・テスト用）
 		enemyGazeStride,       // Phase 8-4 (4) 0d-3: 印へ寄る移動（O 古森の巨人・テスト用）
 		gazeHeat,              // Phase 8-4 (4) 0d-3: 印の濃さ 0〜1（絵と音とテストが読む数）
+		tickSoar,              // Phase 8-4 (4) 0d-3: 滞空の状態機械（6拍の1周・テスト用）
+		enemySoarStride,       // Phase 8-4 (4) 0d-3: 地上は追う／空は旋回（U 嵐の鷲王・テスト用）
+		soarDiveVec,           // Phase 8-4 (4) 0d-3: 落ちる軸の判定（軸から外れれば落ちて来ない・テスト用）
 		detachLeech,           // Phase 5.5k k-5: 張り付きを剥がす（combat.js の被弾フックが呼ぶ）
+		crashSoar,             // Phase 8-4 (4) 0d-3: 矢で射落とす（combat.js の被弾フックが呼ぶ）
 		bossTickHitAndAway,
 		enemyAttack,
 	};

@@ -148,6 +148,8 @@ export function createProjectile(deps) {
 		el.textContent = '⭐';
 		el.style.left = `${cx * cellPx}px`;
 		el.style.top  = `${cy * cellPx}px`;
+		// 印の長さ＝気絶の長さ（effects.css の既定 1500ms と同値＝見た目は不変）。
+		el.style.setProperty('--stun-burst-ms', `${BOOMERANG_STUN_MS}ms`);
 		charLayerEl.appendChild(el);
 		setTimeout(() => el.remove(), BOOMERANG_STUN_MS);
 	}

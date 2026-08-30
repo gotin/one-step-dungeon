@@ -519,6 +519,9 @@ let enemyAttack         = () => {};
 // Phase 5.5k k-5: combat.js の被弾フックから呼ぶ（張り付きを剥がす）。enemy-ai.js の
 // factory は別ブロックで生成される＝_ai をそのまま参照できないのでここへ引き出す。
 let detachLeech         = () => {};
+// Phase 8-4 (4) 0d-3（6体目 U）: 同じ理由でここへ引き出す（矢が滞空に刺さったとき＝
+// combat.js の被弾フックが呼ぶ「射落とす」。状態機械の持ち主は enemy-ai.js）。
+let crashSoar           = () => false;
 // Phase 5.5k k-7: プレイヤー側の一時デバフ窓（剣封じ・毒）＝game/debuff.js が持ち主。
 // combat.js（剣の門）・charge.js（溜めの門）・enemy-ai.js（体当たりの解決で立てる）の3経路が
 // 参照するので、factory の生成より先に let を置いて wrapper 経由で読ませる。
@@ -867,6 +870,7 @@ const { checkStoneOnSwitch, evaluateConditions, refreshGates } = createCondition
 	bossTickHitAndAway   = _ai.bossTickHitAndAway;
 	enemyAttack          = _ai.enemyAttack;
 	detachLeech          = _ai.detachLeech;
+	crashSoar            = _ai.crashSoar;
 }
 
 // ── チャージ攻撃・剣ビーム（Phase 3-1）──────────────────────────
@@ -986,6 +990,8 @@ const { checkStoneOnSwitch, evaluateConditions, refreshGates } = createCondition
 		// 張り付きの状態機械の持ち主は enemy-ai.js＝書き手を1か所に保つために委譲する。
 		tilePassable:     (r, c) => tilePassable(r, c),
 		detachLeech:      (e) => detachLeech(e),
+		// Phase 8-4 (4) 0d-3（6体目 U）: 矢が刺さったら滞空を墜落へ落とす（＝弱点が機構の解除鍵）。
+		crashSoar:        (e, meta) => crashSoar(e, meta),
 		spawnDropEffect:  (r, c, icon, color) => spawnDropEffect(r, c, icon, color),
 		spawnFloorDrop:   (r, c, type) => spawnFloorDrop(r, c, type),
 		getStageMoves:    () => player.stageMoves ?? 0,
@@ -2266,6 +2272,28 @@ export function getEnemiesSnapshot() {
 		// gaze ＝見据えの設定そのもの（フェーズで差し替わる＝`resolveGaze` が読む側）。
 		// **meta.gaze とは別物**＝「後半で印が速くなり潰す範囲が広がった」の観測窓。
 		gaze: e._gaze ?? null,
+		// Phase 8-4 (4) 0d-3（6体目 U）: 滞空（soar）の観測用。
+		// soarPhase ＝'ground'（地上に居る＝殴れる）| 'rise'（舞い上がる溜め＝まだ殴れる）|
+		//   'air'（滞空＝**矢しか届かない**）| 'aim'（急降下の予告）| 'dive'（落ちてくる）|
+		//   'land'（着地硬直＝反撃の窓）。**この1つの値で「今どこに居るか」が全部読める**
+		//   ＝絵（`.soaring`）とダメージ判定（`isSoarOutOfReach`）が同じ相を見ていることを測れる。
+		// soarAt ＝今の相が終わる論理時刻／soarSpan ＝今の相の長さ（**入った瞬間に固定**＝
+		//   走っている周の途中でフェーズが変わっても予告と解決がずれないことの観測窓）。
+		// soarVec ＝落ちる軸（[dy,dx]・`aim` で確定＝予告してから変えない）／
+		// soarLeft ＝急降下の残りセル／soarFlights ＝舞い上がった回数／
+		// soarDives ＝着地した回数（＝「1回の滞空 ⇔ 1回の急降下」を測る窓）／
+		// soarCrashes ＝矢で射落とした回数（＝弱点が機構の解除鍵として働いた回数）。
+		soarPhase: e._soarPhase ?? null,
+		soarAt: e._soarAt ?? null,
+		soarSpan: e._soarSpan ?? null,
+		soarVec: e._soarVec ? [...e._soarVec] : null,
+		soarLeft: e._soarLeft ?? null,
+		soarFlights: e._soarFlights ?? null,
+		soarDives: e._soarDives ?? null,
+		soarCrashes: e._soarCrashes ?? null,
+		// soar ＝滞空の設定そのもの（フェーズで差し替わる＝`resolveSoar` が読む側）。
+		// **meta.soar とは別物**＝「後半で地上の時間が短く・急降下が速くなった」の観測窓。
+		soar: e._soar ?? null,
 		// Phase 8-4 (4) 層1: ボスのフェーズが差し替える「行動の元データ」の観測用。
 		// boss.js checkBossPhase は**エンティティ側にだけ書く**∴フェーズが効いたかは
 		// ここに出る値で読む（null＝差し替えなし＝ENEMY_META のまま）。

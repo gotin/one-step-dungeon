@@ -309,6 +309,87 @@
     100% { transform: translateY(5%) scale(1.03, 0.92); }
 }
 
+/* ── Phase 8-4 (4) 0d-3（6体目 U 嵐の鷲王）: 滞空（soar）の6拍を絵にする ────────────
+   体当たり（拡大縮小）・突進（足踏み）・剣（振り上げ）・ブレス（膨らむ玉）・攻撃硬直
+   （沈んで止まる）と**どれとも別の形**にする（GUIDE §6-1）＝避け方が違う（下がる／軸から
+   外れる／間合いを切る／射線から出る／**落ちて来る軸から外れる**）ものを同じ絵で告知しない。
+   4つのクラスで6拍を描く（enemy-ai.js syncSoarMotion が付け外しする）：
+     `.soar-rise` … 沈み込んでから伸び上がる1回きりの動き（＝「空へ逃げる」の予告。まだ殴れる）
+     `.soaring`   … 体が浮いて**真下に影**（＝air/aim＝**矢しか届かない**窓。判定は
+                    enemy-state.js `isSoaring` と同じ関数から出す＝絵と判定が絶対にズレない）
+     `.soar-aim`  … 落ちる軸へ細かく震える＋光る（＝急降下の予告。軸から外れれば避けられる）
+     `.soar-dive` … 軸の向きへ伸びる（`.soaring` は**外れる**＝影が消える＝もう殴れる）
+   ⚠️ 位置はここで**必ず動かす**（`--soar-vx/vy` ＝±1/0 の無単位値・状態機械が書く）＝
+      「どこへ落ちて来るか」の唯一の告知（breath の `--breath-ox/oy` と同じ趣旨）。
+   ⚠️ 長さは JS が単一の真実（`--soar-rise-ms` / `--soar-aim-ms`）＝CSS 側に持たせない。
+   ⚠️ **この段は攻撃硬直（`.attack-recover`）と大型敵の揺れ（`.large-enemy`）より後に置く**＝
+      同 specificity では後勝ち。空から雷撃弾を投げると硬直の窓（`_freezeUntil`）が立つ∴
+      両方のクラスが同時に付く＝**「浮いている」方を勝たせる**（今どこに居るかが最優先の情報）。
+   ⚠️ 影は `::before`（`.hiding` / `.swing-windup` / `.breath-windup` が使う `::after` と
+      衝突させない）。`.sealed::before` はプレイヤー側のデバフ＝敵には付かない。 */
+.char-abs.soar-rise canvas.sprite {
+    transform-origin: 50% 100%;
+    animation: enemy-soar-rise var(--soar-rise-ms, 480ms) ease-in 1 forwards;
+}
+@keyframes enemy-soar-rise {
+    0%   { transform: translateY(0)    scale(1);           }
+    35%  { transform: translateY(5%)   scale(1.10, 0.90);  }   /* 沈み込む（＝溜め） */
+    70%  { transform: translateY(-10%) scale(0.94, 1.12);  }   /* 伸び上がる */
+    100% { transform: translateY(-20%) scale(1.04);        }
+}
+.char-abs.soaring canvas.sprite {
+    animation: enemy-soar-hover 900ms ease-in-out infinite;
+    filter: brightness(1.08) drop-shadow(0 0 6px rgba(180, 220, 255, 0.6));
+}
+@keyframes enemy-soar-hover {
+    0%   { transform: translateY(-22%) scale(1.06); }
+    50%  { transform: translateY(-31%) scale(1.09); }
+    100% { transform: translateY(-22%) scale(1.06); }
+}
+/* 真下の影＝**浮いている高さ**の手がかり（体だけ上げても「大きくなった」に見える）。
+   影が有る＝空に居る＝矢しか届かない、影が無い＝地上＝殴れる、が一目で分かる。 */
+.char-abs.soaring::before {
+    content: '';
+    position: absolute;
+    left: 50%;
+    top: 86%;
+    width: 52%;
+    height: 15%;
+    margin-left: -26%;
+    background: radial-gradient(ellipse at 50% 50%,
+        rgba(0, 0, 0, 0.46) 0%,
+        rgba(0, 0, 0, 0.22) 58%,
+        rgba(0, 0, 0, 0.00) 100%);
+    border-radius: 50%;
+    animation: enemy-soar-shadow 900ms ease-in-out infinite;
+    pointer-events: none;
+    z-index: 1;
+}
+@keyframes enemy-soar-shadow {
+    0%   { transform: scale(0.92); opacity: 0.95; }
+    50%  { transform: scale(0.80); opacity: 0.72; }   /* 高いほど小さく薄い */
+    100% { transform: scale(0.92); opacity: 0.95; }
+}
+.char-abs.soar-aim canvas.sprite {
+    animation: enemy-soar-aim 140ms linear infinite;
+    filter: brightness(1.18) drop-shadow(0 0 7px rgba(255, 240, 150, 0.85));
+}
+@keyframes enemy-soar-aim {
+    0%   { transform: translate(0, -26%); }
+    50%  { transform: translate(calc(var(--soar-vx, 0) * 7%),
+                                calc(-26% + var(--soar-vy, 0) * 7%)); }
+    100% { transform: translate(0, -26%); }
+}
+.char-abs.soar-dive canvas.sprite {
+    animation: enemy-soar-dive 180ms linear infinite;
+    filter: brightness(1.22) drop-shadow(0 0 8px rgba(200, 235, 255, 0.9));
+}
+@keyframes enemy-soar-dive {
+    0%   { transform: translate(0, 0) scale(1); }
+    100% { transform: translate(calc(var(--soar-vx, 0) * 6%),
+                                calc(var(--soar-vy, 0) * 6%)) scale(1.04); }
+}
+
 @keyframes golem-lumber {
     0%   { transform: translateY(0)      rotate(-1.5deg) scaleY(1);    }
     25%  { transform: translateY(-3%)    rotate(0deg)    scaleY(1.02); }

@@ -297,6 +297,7 @@ const MECHANISM_FIELDS = [
   'burrowAmbush',   // 0d-3（3体目 N）: 潜行中だけ歩く待ち伏せの移動
   'coil',           // 0d-3（4体目 J）: 中心を決めて周回し輪を縮める移動（寄って来ない）
   'gaze',           // 0d-3（5体目 O）: 印（1拍前の足跡）へ寄る移動（プレイヤーを追わない）
+  'soar',           // 0d-3（6体目 U）: 空へ退いて旋回し軸へ落ちる移動（届く手段が矢だけになる）
 ];
 const mechanismsOf = (meta) => new Set(MECHANISM_FIELDS.filter(k => meta[k]));
 const attackTypesOf = (meta) => new Set(
@@ -2209,4 +2210,676 @@ test('㊲ bal_forest_giant は 10×12・外周は通路以外すべて壁・O �
   for (let c = O_PL_COL; c < O_COL; c++) {
     expect(at(O_PL_ROW, c), `(${O_PL_ROW},${c}) が床でない＝巨人が印へ歩けない`).toBe(TILE.FLOOR);
   }
+});
+
+// ════════ 6体目＝U 嵐の鷲王（2×2・D7 空の神殿のボス）＝滞空と急降下（soar）═════════
+// G・W・A・N・J・O のどれとも違う点＝**こちらの届く手段が相によって変わる**。U は周期的に
+// 空へ退き（`air`/`aim`）、そのあいだ **矢しか届かない**（`meta.soar.reachedBy`＝弱点と同じ
+// 'arrow'）。空では剣の間合いへ自分から入らず `orbitRange` を保って**軸へ回り込み**、軸が
+// 揃ったら急降下（`dive`）で落ちてくる。
+//   ・6拍＝`tickSoar`：ground（地上＝殴れる・歩く・鉤爪）→ rise（舞い上がる溜め＝まだ殴れる）
+//     → air（旋回＝矢だけ届く）→ aim（落ちる軸の予告＝矢だけ届く）→ dive（落下）
+//     → land（着地硬直＝反撃の窓）→ ground。**1回の滞空 ⇔ 1回の急降下**（`soarFlights`/`soarDives`）。
+//   ・移動＝`enemySoarStride`（ground は普通に追う／air だけ旋回＝寄り方そのものが相で変わる）。
+//   ・答えは2つ＝①軸から外れる（`alignTol`・予告 `aimMs` のあいだに直交へ出る）
+//     ②**矢で射抜く**（`crashSoar`＝墜落＝`crashStunMs` の気絶＝着地硬直より大きい隙）。
+//     ∴弱点（矢 ×2）が倍率だけでなく**機構の解除鍵**（δ の `split.blockedBy` と同じ作法）。
+//   ・後半（HP 50% 以下）＝`phases[].soar` で地上の時間が短く（1560→960ms）予告が短く
+//     （600→480ms）急降下が速くなる（1.5→1.9）。打点（diveAtk）は据え置き。
+//
+// ⚠️ 測る湧きは **(4,4)**＝鷲王 (4,7) と**同じ行**（＝最初から軸に乗っている＝急降下が必ず出る）。
+//    旋回そのものを測る回だけ軸を外した湧き（`U_OFF_SPAWN`）を使う。
+// ⚠️ ダメージを測る回は `page.keyboard.press('g')` で debug を切る（プレビューは debugMode）。
+// ⚠️ 鉤爪と雷撃弾は `DIVE_ONLY` で止める＝止めないと急降下の当たりが INVINCIBLE_MS の
+//    無敵窓に飲まれて測れない（O の ROCK_ONLY・J の CRUSH_ONLY と同型の罠）。
+const U_ROW = 4, U_COL = 7;          // 2×2 ∴ rows 4-5 / cols 7-8 を占める
+const U_PL_ROW = 4, U_PL_COL = 4;    // 測る湧き（同じ行＝軸に乗っている）
+const U_OFF_SPAWN = { row: 1, col: 3 };   // 軸を外した湧き（＝旋回で軸へ回り込む様子を測る）
+// D7 のボス直前の想定装備（audit-balance の「D7 空の神殿 / ボス直前 DEF 1・最大HP 28」＝
+// ハート14・木の剣ティア0・盾なし・布の服ティア0）＋`UNLOCKED_AT.dungeon_7`＝
+// ブーメラン・弓・ロウソク・梯子・爆弾・笛持ち（弱点 arrow ×2 の答え＝弓を持っている状態）。
+const D7_PRE = {
+  ps_hearts: '14', ps_sword: '0', ps_shield: '0', ps_armor: '0',
+  ps_weapon: '1', ps_boomerang: '1', ps_bow: '1', ps_candle: '1', ps_bomb: '1',
+  ps_ladder: '1', ps_flute: '1',
+};
+// 急降下の当たりだけを測るための一時パッチ＝鉤爪も雷撃弾も出させない（上の⚠️）。
+const DIVE_ONLY = {
+  attacks: [{ type: 'sword', range: 1.1, cooldown: 999000 }],
+  attack: { type: 'sword', range: 1.1, cooldown: 999000 },
+};
+// 「空からも遠隔は届く」を測るための一時パッチ＝雷撃弾の間合いを部屋より広く・周期を短く取る
+// （＝観測窓の中で滞空中に必ず1発飛ぶ）。鉤爪（sword）は**実データのまま**＝
+// 「空では鉤爪の間合いに入らない」を本物の数（range 1.1）で測る。
+const BOLT_FAST = {
+  attacks: [{ type: 'sword', range: 1.1, cooldown: 700 },
+            { type: 'stone', range: 9, cooldown: 480, projectileSpeed: 1.4 }],
+  attack: { type: 'sword', range: 1.1, cooldown: 700 },
+};
+
+/**
+ * `bal_storm_eagle` の U を n tick 追う。毎 tick の滞空の相・落ちる軸・絵のクラスと
+ * プレイヤーの被弾を返す。
+ * @param {object} o
+ * @param {number} o.ticks       進める論理 tick 数
+ * @param {object} [o.spawn]     プレイヤーの湧き（既定＝(4,4)）
+ * @param {boolean} [o.debugOff] true＝'g' で debug を切る（ダメージが通る）
+ * @param {object} [o.patch]     ENEMY_META['U'] へ一時的に差し込むフィールド（DIVE_ONLY 等）
+ * @param {number} [o.dropAt]    この tick の step より前に U へ与えるダメージの tick
+ * @param {number} [o.dmg]       その量（`dealDamage` は def を引く∴+def して渡す）
+ * @param {string} [o.dmgType]   その種別（既定 undefined＝弱点も滞空の判定も通らない）
+ * @param {object[]} [o.hits]    { phase, dmg, atkType } を**その相の tick に1つずつ**当てる
+ *                               （⚠️ 相の tick 番号を固定で指定すると滞空の周期とずれる＝
+ *                                O の trackScorpion で踏んだ罠と同型∴相で待つ）
+ * @param {object} [o.moveWhen]  { phase, dir, steps }＝その相のあいだその向きへ steps 回歩く
+ */
+async function trackEagle(page, o) {
+  await installToneRec(page);
+  const sp = o.spawn ?? { row: U_PL_ROW, col: U_PL_COL };
+  await gotoFrozen(page, previewUrl('bal_storm_eagle', sp.row, sp.col, D7_PRE));
+  if (o.debugOff) await page.keyboard.press('g');
+  return page.evaluate((a) => {
+    const g = window.__game;
+    if (a.patch) g.setEnemyMetaForTest('U', a.patch);
+    const u0 = g.getEnemies().find(e => e.type === 'U');
+    if (!u0) return { error: 'U が盤面に居ない' };
+    const id = u0.id;
+    const find = () => g.getEnemies().find(e => e.id === id);
+    const edgeDist = (e, px, py) => {
+      const cx = e.x + ((e.w ?? 1) - 1) / 2, cy = e.y + ((e.h ?? 1) - 1) / 2;
+      const gx = Math.max(0, Math.abs(px - cx) - ((e.w ?? 1) - 1) / 2);
+      const gy = Math.max(0, Math.abs(py - cy) - ((e.h ?? 1) - 1) / 2);
+      return Math.hypot(gx, gy);
+    };
+
+    const samples = [];
+    const hits = [...(a.hits ?? [])];
+    const hitAt = [];
+    let stepsLeft = a.moveWhen?.steps ?? 0;
+    const movedAt = [];
+    let stunSeen = 0;
+    for (let t = 1; t <= a.ticks; t++) {
+      // ⚠️ SE の増分はこの tick で**注入した攻撃も含める**∴step の直前ではなく
+      //    ループの先頭で取る（空振りの SE は `dealDamage` の中で鳴る）。
+      const tone0 = window.__tones.length;
+      if (a.dropAt === t) g.dealDamage(id, a.dmg, a.dmgType);
+      // 相を見て**その相の tick に**当てる／歩く（tick 番号で固定しない＝上の⚠️）
+      const phaseNow = find()?.soarPhase ?? null;
+      if (hits.length > 0 && phaseNow === hits[0].phase) {
+        const h = hits.shift();
+        const before = find().hp;
+        // ⚠️ 当てた瞬間の論理時刻＝**この tick の step より前**（＝サンプルの now より
+        //    TICK_MS 古い）。気絶の窓（`stunUntil`）はこの時刻から立つ∴ここで記録する。
+        const nowAtHit = g.getState().gameTime;
+        g.dealDamage(id, h.dmg, h.atkType);
+        hitAt.push({ t, atkType: h.atkType, before, after: find().hp, now: nowAtHit });
+      }
+      if (stepsLeft > 0 && phaseNow === a.moveWhen.phase) {
+        g.movePlayer(a.moveWhen.dir); stepsLeft--; movedAt.push(t);
+      }
+      g.step(1);
+      const e = find();
+      if (!e) break;
+      const p = g.getPlayer(), st = g.getState();
+      const el = document.getElementById(`char-enemy-${id}`);
+      // 気絶の⭐（`showDashStun` が char-layer へ生やす）＝実時間のタイマで消える∴増分で読む
+      const stuns = [...document.querySelectorAll('.stun-burst')];
+      const newStuns = stuns.length - stunSeen;
+      stunSeen = stuns.length;
+      samples.push({
+        t, now: st.gameTime, hp: e.hp, x: e.x, y: e.y, dir: e.dir, speed: e.speed ?? null,
+        soar: e.soar ?? null,
+        soarPhase: e.soarPhase ?? null, soarAt: e.soarAt ?? null, soarSpan: e.soarSpan ?? null,
+        soarVec: e.soarVec ?? null, soarLeft: e.soarLeft ?? null,
+        soarFlights: e.soarFlights ?? 0, soarDives: e.soarDives ?? 0,
+        soarCrashes: e.soarCrashes ?? 0,
+        stunUntil: e.stunUntil ?? null, freezeUntil: e.freezeUntil ?? null,
+        swingAt: e.swingAt ?? null, hidden: !!e.hidden,
+        // 絵（機構の唯一の告知）＝浮いているか・真下の影・予告・落下・硬直
+        soaring: !!el?.classList.contains('soaring'),
+        rise: !!el?.classList.contains('soar-rise'),
+        aim: !!el?.classList.contains('soar-aim'),
+        dive: !!el?.classList.contains('soar-dive'),
+        recover: !!el?.classList.contains('attack-recover'),
+        // `.soaring::before`＝真下の影（＝「浮いている高さ」の手がかり）が出ているか
+        shadow: el ? getComputedStyle(el, '::before').content !== 'none' : false,
+        vx: el ? el.style.getPropertyValue('--soar-vx').trim() : '',
+        vy: el ? el.style.getPropertyValue('--soar-vy').trim() : '',
+        riseMsVar: el ? el.style.getPropertyValue('--soar-rise-ms').trim() : '',
+        aimMsVar: el ? el.style.getPropertyValue('--soar-aim-ms').trim() : '',
+        px: p.x, py: p.y, php: p.hp, pdef: st.player.def, inv: st.player.invincibleUntil,
+        reach: edgeDist(e, p.x, p.y),
+        // 雷撃弾（＝空からも届く遠隔）が飛んでいるか
+        bolts: g.getProjectiles().filter(pr => pr.owner === 'enemy').map(pr => pr.type),
+        newStuns, newTones: window.__tones.slice(tone0),
+        // ⭐の**長さ**＝気絶の長さと一致していること（印が先に消えると「まだ無抵抗なのに
+        // 終わったように見える」）。inline の変数と**計算後の animation-duration** の両方を
+        // 見る＝変数を書いただけで CSS が読んでいない場合を弾く。
+        stunMarkMs: stuns.length
+          ? stuns[stuns.length - 1].style.getPropertyValue('--stun-burst-ms').trim() : '',
+        stunMarkAnimMs: stuns.length
+          ? getComputedStyle(stuns[stuns.length - 1]).animationDuration : '',
+      });
+    }
+    const e = find();
+    return {
+      id, samples, movedAt, hitAt,
+      end: e && { hp: e.hp, maxHp: e.maxHp, speed: e.speed, soar: e.soar ?? null },
+    };
+  }, o);
+}
+
+/** `soarPhase` の連続区間へ切り分ける（最後の区間は打ち切られている＝complete false）。 */
+function soarRuns(samples) {
+  const runs = [];
+  for (const s of samples) {
+    const last = runs[runs.length - 1];
+    if (last && last.phase === s.soarPhase) last.samples.push(s);
+    else runs.push({ phase: s.soarPhase, samples: [s] });
+  }
+  return runs.map((r, i) => ({ ...r, complete: i < runs.length - 1 }));
+}
+
+// ── ㊳ データ＝U の層2（滞空の綴りと「軸から外れられる／矢が答えになる」算術）──────────
+test('㊳ U 嵐の鷲王のデータ＝滞空は矢だけが届き、予告のあいだに軸から外れられる', () => {
+  const m = ENEMY_META['U'];
+  const c = m.soar;
+  const halfOff = ((m.size?.w ?? 1) - 1) / 2;   // 2×2 ∴直交の許容は alignTol + 0.5
+
+  expect(c, 'soar が無い＝U に固有の移動機構が無い').toBeTruthy();
+  // 綴りの番人（`resolveSoar` を読む4つの関数が読むキー＝1文字違うと既定値に落ちて黙って動く）
+  expect(Object.keys(c).sort()).toEqual([
+    'aimMs', 'airMs', 'alignTol', 'crashStunMs', 'diveAtk', 'diveCells', 'diveHitRange',
+    'diveSpeed', 'groundMs', 'landFreezeMs', 'orbitRange', 'orbitSpeed', 'reachedBy', 'riseMs',
+  ]);
+
+  // 他の5体の移動機構を**持っていない**＝型を借りていない
+  expect(m.hitAndAway, '間合いの往復（W/G の型）が生きている＝soar の分岐に来ない').toBe(false);
+  for (const k of ['combat', 'laneStalk', 'burrowAmbush', 'hide', 'dash', 'coil', 'gaze', 'leap']) {
+    expect(m[k], `${k} を持っている＝W/A/N/G/J/O の型を借りている`).toBeUndefined();
+  }
+  for (const p of m.phases ?? []) {
+    for (const k of ['dash', 'coil', 'hide', 'gaze']) {
+      expect(p[k], `後半に ${k} が生えている＝他のボスの後半と同じ型`).toBeUndefined();
+    }
+  }
+
+  // ── 機構の鍵＝弱点そのもの（δ の `split.blockedBy` と同じ作法）────────────────
+  expect(m.weakness).toEqual({ type: 'arrow', multiplier: 2 });
+  expect(c.reachedBy, '滞空中に届く手段が弱点と違う＝弓が答えにならない（矢を持たない者が詰む）')
+    .toBe(m.weakness.type);
+  // 弓は D3 の報酬＝D7 では必ず持っている（進行の裏取り＝この機構の前提）
+  expect(attackTypesOf(m), 'U の攻撃が鉤爪（近接）＋雷撃弾（遠隔）でない')
+    .toEqual(new Set(['sword', 'stone']));
+  // 鉤爪は**地上専用の間合い**＝密着でしか届かない（空では `isSoaring` が出さない）
+  const claw = m.attacks.find(a => a.type === 'sword');
+  expect(claw.range, '鉤爪の間合いが旋回半径より広い＝空から殴られる（滞空の対称が崩れる）')
+    .toBeLessThan(c.orbitRange);
+
+  // ── 前半・後半の**両方**で「答えが必ず間に合う」ことを数として確かめる ──────────
+  const ph = (m.phases ?? []).find(p => p.soar);
+  expect(ph, '後半に soar の差し替えが無い＝相が変わっても滞空が同じ').toBeTruthy();
+  // ⚠️ `reachedBy` は**相で変わらない**（＝combat.js `isSoarOutOfReach` が読むのは基底の
+  //    `meta.soar` だけ）∴相のキーは基底から `reachedBy` を除いた集合と完全一致させる。
+  expect(Object.keys(ph.soar).sort(), '後半の soar のキーが基底と食い違う＝部分指定で既定値に落ちる')
+    .toEqual(Object.keys(c).filter(k => k !== 'reachedBy').sort());
+  for (const [label, cfg] of [['前半', c], ['後半', ph.soar]]) {
+    // ① 予告（`aim`）のあいだに直交へ歩ける距離 > 落ちる軸の幅＝軸から外れれば必ず助かる
+    const aimTicks = Math.floor(cfg.aimMs / TICK_MS);
+    expect(aimTicks * MOVE_STEP, `${label}は予告のあいだに落ちる軸の外へ出られない＝理不尽`)
+      .toBeGreaterThan(cfg.alignTol + halfOff);
+    // ② 予告は「初見でも気づける長さ」立っている（＝落ちる直前に出て終わらない）
+    expect(aimTicks, `${label}の予告が数 tick で終わる＝告知に気づけない`).toBeGreaterThanOrEqual(4);
+    for (const k of ['groundMs', 'riseMs', 'airMs', 'aimMs', 'diveSpeed', 'diveCells',
+                     'landFreezeMs', 'crashStunMs', 'orbitRange', 'orbitSpeed', 'alignTol']) {
+      expect(cfg[k], `${label}の ${k} が正の数でない`).toBeGreaterThan(0);
+    }
+    // ③ 急降下は新しい最大打点を作らない（鉤爪と同じ＝J の crushAtk・O の stampAtk と同じ作法）
+    expect(cfg.diveAtk, `${label}の急降下が鉤爪より痛い＝新しい最大打点を作っている`).toBe(m.atk);
+    // ④ 地上（＝殴れる窓）が周期の中に必ずある＝「ずっと空に居る案山子」にならない
+    const sky = cfg.riseMs + cfg.airMs + cfg.aimMs;
+    const ground = cfg.groundMs + cfg.landFreezeMs;
+    expect(Math.floor(cfg.groundMs / TICK_MS), `${label}の地上の窓が短すぎる＝剣が1度も届かない`)
+      .toBeGreaterThanOrEqual(8);
+    expect(sky / ground, `${label}は空に居る時間が地上の3倍を超える＝弓が無いと戦いにならない`)
+      .toBeLessThanOrEqual(3);
+    // ⑤ 射抜いた（墜落）ほうが着地硬直より**大きい隙**＝矢を選ぶ理由が数で立っている
+    expect(cfg.crashStunMs, `${label}の墜落の気絶が着地硬直以下＝射抜く旨みが無い`)
+      .toBeGreaterThan(cfg.landFreezeMs);
+    expect(Math.floor(cfg.crashStunMs / TICK_MS), `${label}の気絶が短すぎる＝射抜いても殴れない`)
+      .toBeGreaterThanOrEqual(10);
+    // ⑥ 旋回は**プレイヤー（1.0）より遅い**＝逃げる側が必ず速い（GUIDE §7-2）
+    expect(cfg.orbitSpeed, `${label}の旋回がプレイヤー以上に速い＝軸から逃げ続けられない`)
+      .toBeLessThan(1.0);
+    // ⑦ 急降下は**旋回半径ぶん落ちられる**（＝軸に乗った相手には必ず届く）
+    expect(cfg.diveCells * MOVE_STEP, `${label}の急降下が旋回半径に届かない＝落ちても当たらない`)
+      .toBeGreaterThan(cfg.orbitRange);
+  }
+  // 地上の速さもプレイヤー未満（GUIDE §7-2）
+  expect(m.speed, 'U がプレイヤーより速い＝地上でも間合いを切れない').toBeLessThan(1.0);
+
+  // ── 後半＝地上の時間が短く・予告が短く・落下が速い（打点は据え置き）──────────────
+  expect(ph.soar.groundMs, '後半の地上の時間が前半以上＝殴れる窓が減っていない')
+    .toBeLessThan(c.groundMs);
+  expect(ph.soar.airMs, '後半の滞空が前半以上＝周期が締まっていない').toBeLessThan(c.airMs);
+  expect(ph.soar.aimMs, '後半の予告が前半以上＝軸を外す猶予が減っていない').toBeLessThan(c.aimMs);
+  expect(ph.soar.diveSpeed, '後半の落下が前半以下＝圧が上がっていない').toBeGreaterThan(c.diveSpeed);
+  expect(ph.soar.orbitSpeed, '後半の旋回が前半以下＝軸へ回り込むのが速くなっていない')
+    .toBeGreaterThan(c.orbitSpeed);
+  expect(ph.soar.diveAtk, '後半で急降下の打点が上がった＝速さと窓だけで圧を上げていない')
+    .toBe(c.diveAtk);
+});
+
+// ── ㊴ 6拍＝ground→rise→air→aim→dive→land の順に回り、絵と長さが soar の数と一致する ────
+test('㊴ U は6拍を順に回り、各相の長さ・絵のクラス・SE が soar の数と1対1で対応する', async ({ page }) => {
+  const c = ENEMY_META['U'].soar;
+  const diveStep = Math.round(c.diveSpeed / MOVE_STEP) * MOVE_STEP;
+  // 予告のあいだに**軸に沿って**逃げる（＝急降下が空を切らずに走る＝1 tick ぶんの落下量を測れる）
+  const out = await trackEagle(page, {
+    ticks: 40, patch: DIVE_ONLY, moveWhen: { phase: 'aim', dir: 'left', steps: 5 },
+  });
+  expect(out.error).toBeUndefined();
+  const s = out.samples;
+  const runs = soarRuns(s);
+
+  // ① 相は必ずこの順に回る（＝どの相からも飛び越しが無い）
+  const NEXT = { ground: 'rise', rise: 'air', air: 'aim', aim: 'dive', dive: 'land', land: 'ground' };
+  for (let i = 1; i < runs.length; i++) {
+    expect(runs[i].phase, `${runs[i - 1].phase} の次が ${runs[i].phase}＝6拍の順序が壊れている`)
+      .toBe(NEXT[runs[i - 1].phase]);
+  }
+  expect(runs.map(r => r.phase), '観測窓で1周（ground→…→land→ground）が回っていない')
+    .toContain('land');
+
+  // ② 長さは soar の数そのもの（＝CSS も音も測定もこの1つの時計を読む）
+  for (const [phase, ms] of [['ground', c.groundMs], ['rise', c.riseMs],
+                             ['aim', c.aimMs], ['land', c.landFreezeMs]]) {
+    const run = runs.find(r => r.phase === phase && r.complete);
+    expect(run, `完結した ${phase} の窓が観測できていない`).toBeTruthy();
+    expect(run.samples.length, `${phase} の tick 数が ${ms}ms と合わない`)
+      .toBe(Math.round(ms / TICK_MS));
+  }
+  // 舞い上がる／落ちる回数は1対1（＝空へ逃げて終わり、が無い）
+  const last = s[s.length - 1];
+  expect(last.soarFlights, '観測窓で1度も舞い上がっていない').toBeGreaterThanOrEqual(1);
+  expect(last.soarDives, '舞い上がった回数と着地した回数が合わない')
+    .toBe(runs.filter(r => r.phase === 'land').length);
+
+  // ③ 絵＝相と1対1。**`.soaring`（＋真下の影）が出ている窓＝矢しか届かない窓**
+  for (const x of s) {
+    const sky = x.soarPhase === 'air' || x.soarPhase === 'aim';
+    expect(x.soaring, `t${x.t}（${x.soarPhase}）の浮遊の絵が相と合わない＝判定と絵がズレる`).toBe(sky);
+    expect(x.shadow, `t${x.t}（${x.soarPhase}）の真下の影が浮遊と一致しない＝高さが読めない`).toBe(sky);
+    expect(x.rise, `t${x.t}（${x.soarPhase}）の舞い上がりの絵が相と合わない`).toBe(x.soarPhase === 'rise');
+    expect(x.aim, `t${x.t}（${x.soarPhase}）の予告の絵が相と合わない`).toBe(x.soarPhase === 'aim');
+    expect(x.dive, `t${x.t}（${x.soarPhase}）の落下の絵が相と合わない`).toBe(x.soarPhase === 'dive');
+  }
+  // 長さは JS が単一の真実（CSS 側に持たせない）＝要素に書き込まれている
+  expect(s.find(x => x.soarPhase === 'rise').riseMsVar, '舞い上がりの長さが要素に書かれていない')
+    .toBe(`${c.riseMs}ms`);
+  expect(s.find(x => x.soarPhase === 'aim').aimMsVar, '予告の長さが要素に書かれていない')
+    .toBe(`${c.aimMs}ms`);
+
+  // ④ 予告は**止まって**出る（＝軸を読む時間）＋落ちる軸が絵に出ている（`--soar-vx/vy`）
+  const aimRun = runs.find(r => r.phase === 'aim' && r.complete);
+  const vec = aimRun.samples[0].soarVec;
+  expect(vec, '予告の時点で落ちる軸が決まっていない＝どこへ落ちるか読めない').toBeTruthy();
+  for (const x of aimRun.samples) {
+    expect([x.y, x.x], `予告中の t${x.t} に鷲王が動いた＝軸を読む時間が無い`)
+      .toEqual([aimRun.samples[0].y, aimRun.samples[0].x]);
+    expect(x.soarVec, `予告中の t${x.t} に落ちる軸が変わった＝告知が嘘になる`).toEqual(vec);
+    expect([x.vy, x.vx], `t${x.t} の落ちる軸が絵に出ていない`).toEqual([String(vec[0]), String(vec[1])]);
+    // 向きも落ちる軸（＝「こちらへ来る」が絵で読める）
+    const want = vec[1] !== 0 ? (vec[1] > 0 ? 'right' : 'left') : (vec[0] > 0 ? 'down' : 'up');
+    expect(x.dir, `t${x.t} の向きが落ちる軸と違う`).toBe(want);
+  }
+
+  // ⑤ 落下は**予告した軸だけ**を、1 tick に diveSpeed ぶん進む（曲がって追って来ない）。
+  //    ⚠️ 予告→落下へ移った tick は**まだ動かない**（相を切り替えて終わる）∴前の tick も
+  //       落下だったサンプルだけを測る（＝丸ごと1 tick 落ちた回）。
+  const dives = s.filter((x, i) => x.soarPhase === 'dive' && s[i - 1]?.soarPhase === 'dive');
+  expect(dives.length, '丸ごと落下した tick が観測できていない（予告のあいだに軸へ逃げ切れた？）')
+    .toBeGreaterThan(0);
+  for (const x of dives) {
+    const prev = s[s.indexOf(x) - 1];
+    expect(x.soarVec, `落下中の t${x.t} に軸が変わった`).toEqual(vec);
+    // 直交方向には1ドットも動かない
+    if (vec[1] !== 0) expect(x.y, `落下中の t${x.t} に軸を外れて縦へ動いた`).toBe(prev.y);
+    else expect(x.x, `落下中の t${x.t} に軸を外れて横へ動いた`).toBe(prev.x);
+    // 相が `dive` のまま終わった tick＝接触も壁も無かった＝1 tick ぶん丸ごと進んでいる
+    const moved = Math.abs(vec[1] !== 0 ? x.x - prev.x : x.y - prev.y);
+    expect(moved, `t${x.t} の落下量が diveSpeed（${c.diveSpeed}）と合わない`).toBeCloseTo(diveStep, 6);
+  }
+
+  // ⑥ 3つの拍は**別の音**で鳴る（画面を見ていなくても「上がった／来る／落ちた」が分かる）
+  const riseRun = runs.find(r => r.phase === 'rise');
+  const landRun = runs.find(r => r.phase === 'land');
+  for (const [label, run] of [['舞い上がり', riseRun], ['予告', aimRun], ['着地', landRun]]) {
+    expect(run.samples[0].newTones.length, `${label}の SE が鳴っていない＝拍が音で出ない`)
+      .toBeGreaterThan(0);
+  }
+  const riseTones = JSON.stringify(riseRun.samples[0].newTones);
+  const aimTones = JSON.stringify(aimRun.samples[0].newTones);
+  expect(aimTones, '舞い上がりと予告の音が同じ＝「上がった」と「落ちて来る」が区別できない')
+    .not.toBe(riseTones);
+  expect(JSON.stringify(landRun.samples[0].newTones), '予告と着地の音が同じ＝告知と結果が区別できない')
+    .not.toBe(aimTones);
+});
+
+// ── ㊵ 答え①＝予告のあいだに軸から外れれば急降下は当たらない ───────────────────
+test('㊵ 予告のあいだに落ちる軸の外へ出れば急降下は空を切り、HP は減らない', async ({ page }) => {
+  const c = ENEMY_META['U'].soar;
+  // 予告（5 tick）のあいだに直交へ3歩（1.5セル）＝軸の幅（alignTol 0.6 + 半身 0.5）の外。
+  // ⚠️ 鉤爪と雷撃弾は止める（DIVE_ONLY）＝止めないと「無傷だった」が**無敵窓のおかげ**でも成立する。
+  const out = await trackEagle(page, {
+    ticks: 40, debugOff: true, patch: DIVE_ONLY,
+    moveWhen: { phase: 'aim', dir: 'up', steps: 3 },
+  });
+  const s = out.samples;
+  expect(out.movedAt.length, '予告のあいだに軸の外へ歩き切れていない（窓が足りない）').toBe(3);
+
+  const aimRun = soarRuns(s).find(r => r.phase === 'aim');
+  const vec = aimRun.samples[0].soarVec;
+  // ① 予告した軸は歩いても**変わらない**（追尾しない）＝外れた側が安全になる根拠
+  const dives = s.filter(x => x.soarPhase === 'dive');
+  expect(dives.length, '落下が起きていない＝空振りの成否を測れない').toBeGreaterThan(0);
+  for (const x of dives) expect(x.soarVec, `落下中の t${x.t} に軸がこちらへ曲がった`).toEqual(vec);
+
+  // ② 前提＝落下の直前に無敵窓が無い（＝減らなかったら本当に当たっていない）
+  const first = dives[0], before = s[s.indexOf(first) - 1];
+  expect(before.inv, '落下の直前に無敵窓が生きている＝空振りの成否を測れない')
+    .toBeLessThanOrEqual(before.now);
+  // ③ プレイヤーは軸の外に居る（＝この回は本当に「外れた」）
+  const halfOff = 0.5;   // 2×2 ∴直交の許容は alignTol + 0.5
+  const off = vec[1] !== 0 ? Math.abs(before.py - (before.y + 0.5))
+                           : Math.abs(before.px - (before.x + 0.5));
+  expect(off, 'この回はプレイヤーが軸の外に出られていない').toBeGreaterThan(c.alignTol + halfOff);
+
+  // ④ 着地までに HP は1点も減らない（＝答えが機能している）
+  const landIdx = s.findIndex(x => x.t > first.t && x.soarPhase === 'land');
+  expect(landIdx, '落下が着地で終わっていない').toBeGreaterThan(0);
+  for (const x of s.slice(0, landIdx + 1)) {
+    expect(x.php, `t${x.t} で HP が減った＝軸から外れたのに当たっている`).toBe(s[0].php);
+  }
+  // ⑤ 空振りでも着地の音は鳴り、着地硬直（＝反撃の窓）は立つ＝「落ちた＝今なら殴れる」
+  expect(s[landIdx].newTones.length, '空振りの着地に SE が無い＝反撃の合図が出ない').toBeGreaterThan(0);
+  expect(s[landIdx].freezeUntil, '空振りの着地に硬直が立っていない＝空振りが得にならない')
+    .toBe(s[landIdx].now + c.landFreezeMs);
+  expect(s[landIdx].soaring, '着地しても浮遊の絵が出たまま＝殴れるのに殴れないように見える').toBe(false);
+});
+
+// ── ㊶ 軸に残ると急降下が当たる／着地硬直が反撃の窓（絵も出る）──────────────────
+test('㊶ 落ちる軸に立ち止まると急降下に潰され、着地硬直が反撃の窓になる', async ({ page }) => {
+  const m = ENEMY_META['U'];
+  const c = m.soar;
+  // 一歩も動かない＝軸に乗ったまま。鉤爪も雷撃弾も止める＝HP が減ったら急降下以外にありえない。
+  const out = await trackEagle(page, { ticks: 40, debugOff: true, patch: DIVE_ONLY });
+  const s = out.samples;
+
+  // 当たった tick＝落下の途中で HP が減った tick
+  const hitIdx = s.findIndex((x, i) => i > 0 && x.php < s[i - 1].php);
+  expect(hitIdx, '急降下が当たっていない（HP が減っていない）').toBeGreaterThan(0);
+  const hit = s[hitIdx], before = s[hitIdx - 1];
+  expect(before.soarPhase, '当たった tick の直前が落下／予告でない＝急降下以外のダメージ')
+    .toMatch(/dive|aim/);
+  // 前提＝直前に無敵窓が無い／それまで HP は減っていない
+  expect(before.inv, '当たる直前に無敵窓が生きている＝ダメージの有無が測れない')
+    .toBeLessThanOrEqual(before.now);
+  expect(s.slice(0, hitIdx).every(x => x.php === s[0].php),
+    '当たる前に HP が減っている＝急降下以外のダメージが混ざっている').toBe(true);
+
+  // ① 打点＝diveAtk − 防御（盾では防げない＝答えは「軸から外れる」だけ）
+  expect(hit.php, '急降下の打点が diveAtk と合わない').toBe(before.php - (c.diveAtk - hit.pdef));
+  expect(hit.inv, '被弾後の無敵窓が立っていない＝ダメージ経路が takeDamage を通っていない')
+    .toBeGreaterThan(hit.now);
+  // ② 当たった tick でそのまま着地する（＝落下は当たったらそこで終わる）
+  expect(hit.soarPhase, '当たっても落下が続いている＝1回の急降下で2度当たりうる').toBe('land');
+  expect(hit.soarDives, '着地の回数が増えていない').toBe(before.soarDives + 1);
+
+  // ③ 着地硬直＝**動かない・浮遊が解ける・硬直の絵が出る**（殴り返す窓）
+  const landRun = soarRuns(s).find(r => r.phase === 'land');
+  expect(landRun.samples.length, '着地硬直の窓が観測できていない').toBeGreaterThan(1);
+  for (const f of landRun.samples) {
+    expect([f.y, f.x], `硬直中の t${f.t} に鷲王が動いた＝反撃の窓が無い`)
+      .toEqual([landRun.samples[0].y, landRun.samples[0].x]);
+    expect(f.recover, `硬直中の t${f.t} に硬直の絵が出ていない＝窓が画面に出ない`).toBe(true);
+    expect(f.soaring, `硬直中の t${f.t} に浮遊の絵が残っている＝殴れる窓が読めない`).toBe(false);
+  }
+  // ④ 着地の直後は**地上**＝次に舞い上がるまで groundMs ある（着地して即また飛ばない）。
+  //    ⚠️ ここを書かないと着地から直接 `rise` へ飛ぶ実装でもテストが通る（2026-08-30 の実バグ）。
+  const after = s.find(x => x.t > landRun.samples[landRun.samples.length - 1].t);
+  expect(after.soarPhase, '着地硬直の次が地上でない＝殴れる窓が消えている').toBe('ground');
+  expect(after.soarAt, '地上の窓が groundMs で立っていない').toBe(after.now + c.groundMs);
+  // 地上へ戻った tick で硬直は明けている＝**この窓は本当に殴れる**（絵も硬直から戻る）
+  expect(after.freezeUntil ?? 0, '地上へ戻っても硬直が残っている＝反撃の窓が数より短い')
+    .toBeLessThanOrEqual(after.now);
+  expect(after.recover, '地上へ戻っても硬直の絵が出たまま＝窓の終わりが読めない').toBe(false);
+  // 次に舞い上がるのは地上の窓を使い切ってから（＝着地して即また飛ばない）
+  const nextRise = s.find(x => x.t > after.t && x.soarPhase === 'rise');
+  if (nextRise) {
+    expect(nextRise.now, '地上の窓を使い切る前に舞い上がった＝殴れる窓が予告なく消える')
+      .toBeGreaterThanOrEqual(after.soarAt);
+  }
+});
+
+// ── ㊷ 答え②＝滞空中は剣が届かず矢だけが刺さる／刺さると墜落して大きな隙になる ──────────
+test('㊷ 滞空中の鷲王には剣が届かず、矢だけが刺さって墜落し気絶する', async ({ page }) => {
+  const m = ENEMY_META['U'];
+  const c = m.soar;
+  // 予告（`aim`＝滞空の窓・5 tick）のあいだに剣→矢の順で当てる（相で待つ＝tick 固定にしない）。
+  const out = await trackEagle(page, {
+    ticks: 70, debugOff: true, patch: DIVE_ONLY,
+    hits: [{ phase: 'aim', dmg: 4, atkType: 'sword' }, { phase: 'aim', dmg: 4, atkType: 'arrow' }],
+  });
+  const s = out.samples;
+  expect(out.hitAt.length, '滞空中に剣と矢の2発を当てられていない').toBe(2);
+  const [sword, arrow] = out.hitAt;
+
+  // ① 剣は**1点も通らない**（滞空中は届かない）＝空振りの SE が鳴る
+  expect(sword.after, '滞空中の鷲王に剣が通った＝機構が効いていない').toBe(sword.before);
+  const swordTick = s.find(x => x.t === sword.t);
+  expect(swordTick.newTones.length, '剣が届かなかった合図（SE）が鳴っていない＝ただの無反応に見える')
+    .toBeGreaterThan(0);
+  expect(swordTick.soaring, '剣を当てた tick に浮遊していない＝滞空中の判定を測れていない').toBe(true);
+
+  // ② 矢は刺さる＝弱点の倍率が乗る（矢 ×2 − 防御）
+  expect(arrow.before - arrow.after, '滞空中の矢に弱点の倍率が乗っていない')
+    .toBe(4 * m.weakness.multiplier - m.def);
+  const arrowTick = s.find(x => x.t === arrow.t);
+  expect(JSON.stringify(arrowTick.newTones), '剣が届かない音と矢が刺さる音が同じ＝耳で区別できない')
+    .not.toBe(JSON.stringify(swordTick.newTones));
+
+  // ③ 刺さると**墜落**＝気絶（`crashStunMs`）が立ち、浮遊の絵が解け、⭐が出る
+  expect(arrowTick.soarCrashes, '矢が刺さっても墜落していない').toBe(1);
+  expect(arrowTick.soarPhase, '墜落したのに空の相のまま＝宙吊り').toBe('ground');
+  expect(arrowTick.soaring, '墜落したのに浮遊の絵が出たまま＝殴れるのに殴れないように見える').toBe(false);
+  expect(arrowTick.stunUntil, '墜落の気絶が crashStunMs で立っていない')
+    .toBe(arrow.now + c.crashStunMs);
+  expect(arrowTick.newStuns, '墜落の⭐（気絶の印）が出ていない＝止まっている理由が読めない')
+    .toBeGreaterThan(0);
+  // ③-b 印は**気絶が明けるまで**出ている（実画面で見つけた欠陥＝固定 1.5s の印が
+  //      1800ms の気絶より 300ms 早く消え、まだ無抵抗なのに終わったように見えた）
+  expect(arrowTick.stunMarkMs, '⭐の長さが気絶の長さで書かれていない')
+    .toBe(`${c.crashStunMs}ms`);
+  expect(arrowTick.stunMarkAnimMs, '⭐のアニメの長さが気絶の長さになっていない＝印が先に消える')
+    .toBe(`${c.crashStunMs / 1000}s`);
+  // ④ 射抜いた急降下は**来ない**（＝予告を矢で消せる＝弓が答えである理由）
+  expect(arrowTick.soarDives, '射抜いたのに急降下が成立した').toBe(0);
+  const stunned = s.filter(x => x.t > arrow.t && x.now < arrowTick.stunUntil);
+  expect(stunned.length, '気絶の窓が観測できていない').toBeGreaterThan(5);
+  for (const x of stunned) {
+    expect([x.y, x.x], `気絶中の t${x.t} に鷲王が動いた＝大きな隙になっていない`)
+      .toEqual([arrowTick.y, arrowTick.x]);
+    expect(x.soarPhase, `気絶中の t${x.t} に空へ戻った`).toBe('ground');
+    expect(x.php, `気絶中の t${x.t} にプレイヤーの HP が減った＝隙になっていない`).toBe(arrowTick.php);
+  }
+  // ⑤ 地上の時計は**気絶が明けてから**数える＝立ち上がった瞬間にまた舞い上がらない
+  expect(arrowTick.soarAt, '地上の窓が気絶明けから数えられていない＝反撃の窓が気絶ぶんで終わる')
+    .toBe(arrowTick.stunUntil + c.groundMs);
+  const nextRise = s.find(x => x.t > arrow.t && x.soarPhase === 'rise');
+  expect(nextRise, '墜落のあと1度も舞い上がらない＝周期が止まった').toBeTruthy();
+  expect(nextRise.now, '墜落から次の滞空までが「気絶＋地上」より短い')
+    .toBeGreaterThanOrEqual(arrowTick.stunUntil + c.groundMs);
+});
+
+// ── ㊸ 空では鉤爪の間合いに入らず旋回で軸へ回り込む／雷撃弾だけが空から届く ───────────
+// ⚠️ 「滞空中は近接を出さない」ゲート（enemy-ai.js `isSoaring(e,meta) && MELEE_ATTACK_TYPES`）
+//    そのものは**実プレイでは踏めない**（旋回の許容ずれ 1.1 < 鉤爪の直交許容 SWORD_PERP+0.5
+//    ＝1.3 で、位置は 0.5 刻み∴間の帯に立てない）＝二重の安全網。∴ここで測るのは
+//    **本物の保証**＝「空に居るあいだ鉤爪の間合い（range 1.1）に自分から入らない」。
+test('㊸ 滞空中は鉤爪を出さず、旋回は寄って来ないまま軸へ回り込み、雷撃弾だけが空から届く', async ({ page }) => {
+  const c = ENEMY_META['U'].soar;
+  // 軸を外した湧き（1,3）＝旋回（`air`）の窓が数 tick 続く＝空からの遠隔を捕まえられる。
+  const out = await trackEagle(page, {
+    ticks: 60, spawn: U_OFF_SPAWN, patch: BOLT_FAST,
+  });
+  const s = out.samples;
+  const sky = s.filter(x => x.soaring);
+  const ground = s.filter(x => x.soarPhase === 'ground');
+  expect(sky.length, '滞空の窓が観測できていない').toBeGreaterThan(2);
+  expect(ground.length, '地上の窓が観測できていない').toBeGreaterThan(2);
+
+  // ① 滞空中は**1 tick も**鉤爪の予告が立たない＝空から殴られない（＝一方的な有利にならない）
+  for (const x of sky) {
+    expect(x.swingAt, `滞空中の t${x.t} に鉤爪の予告が立った＝空から殴られる`).toBeNull();
+  }
+  // ② 旋回（air）は**寄って来ない**＝近すぎる（`orbitRange - 0.5` の内側）ときは離れる。
+  //    ⚠️ 「滞空中は常に鉤爪の間合いの外」とは書けない＝地上で密着してから舞い上がる回が
+  //       ある（＝上がった瞬間は近い）。保証は「**空に居るあいだ自分から詰めない**」の側。
+  const airTicks = s.filter((x, i) => x.soarPhase === 'air' && s[i - 1]?.soarPhase === 'air');
+  expect(airTicks.length, '旋回の tick が観測できていない').toBeGreaterThan(0);
+  for (const x of airTicks) {
+    const prev = s[s.indexOf(x) - 1];
+    if (prev.reach >= c.orbitRange - 0.5) continue;      // 遠い側は軸合わせで詰めてよい
+    expect(x.reach, `旋回中の t${x.t} に鉤爪の間合いへ自分から詰めた＝旋回が「追う」に化けている`)
+      .toBeGreaterThanOrEqual(prev.reach);
+  }
+  // ③ 旋回＝**動きながら軸へ回り込む**。時間切れ（airMs）ではなく軸が揃って終わる。
+  const air = soarRuns(s).find(r => r.phase === 'air' && r.complete && r.samples.length >= 2);
+  expect(air, '旋回の窓が観測できていない（軸を外した湧きが効いていない？）').toBeTruthy();
+  expect(air.samples.length, '旋回が airMs いっぱい続いた＝軸へ回り込めていない')
+    .toBeLessThan(Math.round(c.airMs / TICK_MS));
+  const first = air.samples[0], last = air.samples[air.samples.length - 1];
+  expect(air.samples.some(x => x.x !== first.x || x.y !== first.y),
+    '旋回中に1歩も動かない＝空で止まっている').toBe(true);
+  // 直交のずれ（＝落ちる軸に対するずれ）が縮んで、最後は許容の内側に入る
+  const offOf = (x) => {
+    const cx = x.x + 0.5, cy = x.y + 0.5;                 // 2×2 ∴中心は左上＋0.5
+    return Math.abs(x.py - cy) >= Math.abs(x.px - cx) ? Math.abs(x.px - cx) : Math.abs(x.py - cy);
+  };
+  expect(offOf(last), '旋回が終わっても軸のずれが許容の外＝揃わずに落ち始めた')
+    .toBeLessThanOrEqual(c.alignTol + 0.5);
+  expect(offOf(last), '旋回でずれが縮んでいない＝軸へ回り込んでいない').toBeLessThan(offOf(first));
+  // ④ 雷撃弾（遠隔）は空からも飛ぶ＝「空に居るあいだ何も起きない」にならない
+  expect(sky.some(x => x.bolts.includes('stone')),
+    '滞空中に雷撃弾が1発も飛ばない＝空に居るあいだ無害な案山子').toBe(true);
+});
+
+// ── ㊹ HP 半分で「地上の時間が短く・落下が速く」変わる（層1 の `phases[].soar` が出荷データで効く）──
+test('㊹ HP 半分で地上の窓と予告が短くなり、急降下が速くなる', async ({ page }) => {
+  const m = ENEMY_META['U'];
+  const c = m.soar;
+  const ph = m.phases.find(p => p.soar);
+  // dealDamage は防御を引く∴+def して渡す（HP をちょうど 50% に落とす）。
+  // ⚠️ 種別は 'sword'＝**地上に居る t2** に当てる（滞空中は矢しか通らない∴相を選ぶ）。
+  const out = await trackEagle(page, {
+    ticks: 60, patch: DIVE_ONLY, dropAt: 2, dmg: Math.ceil(m.hp / 2) + m.def, dmgType: 'sword',
+    moveWhen: { phase: 'aim', dir: 'left', steps: 4 },
+  });
+  const s = out.samples;
+  expect(s[1].soarPhase, '相を落とす tick に地上に居ない＝剣が通らない').toBe('ground');
+  expect(s[1].hp / m.hp, 'HP が 50% 以下に落ちていない＝相の条件を満たしていない')
+    .toBeLessThanOrEqual(0.5);
+
+  // 差し替えが実体（`_soar`）に載っている＝`resolveSoar` が読む側が変わった
+  expect(out.end.soar, '後半の soar が実体に載っていない').toEqual(ph.soar);
+  expect(out.end.speed, '後半の速さ倍率が載っていない').toBeCloseTo(m.speed * ph.speedMultiplier, 6);
+
+  const runs = soarRuns(s);
+  // ① 走っている相の長さは**入った瞬間に固定**＝相が変わっても今の窓は伸び縮みしない
+  const firstGround = runs[0];
+  expect(firstGround.phase, '最初の相が地上でない').toBe('ground');
+  expect(firstGround.samples.length, '相が変わった瞬間に走っていた地上の窓が縮んだ＝latch が効いていない')
+    .toBe(Math.round(c.groundMs / TICK_MS));
+  // ② 次の周からは後半の数で立つ（地上・予告・着地硬直がすべて短い）
+  for (const [phase, ms] of [['ground', ph.soar.groundMs], ['rise', ph.soar.riseMs],
+                             ['aim', ph.soar.aimMs], ['land', ph.soar.landFreezeMs]]) {
+    const run = runs.slice(1).find(r => r.phase === phase && r.complete);
+    expect(run, `後半に入ってから完結した ${phase} の窓が観測できていない`).toBeTruthy();
+    expect(run.samples.length, `後半の ${phase} の tick 数が ${ms}ms と合わない`)
+      .toBe(Math.round(ms / TICK_MS));
+    expect(run.samples.length, `後半の ${phase} が前半より長い／同じ＝周期が締まっていない`)
+      .toBeLessThan(Math.round((phase === 'land' ? c.landFreezeMs : c[`${phase}Ms`]) / TICK_MS));
+  }
+  // ③ 落下は前半より速い（1 tick に進むセル数が増える＝`diveSpeed` が実体に効いている）
+  const diveStep2 = Math.round(ph.soar.diveSpeed / MOVE_STEP) * MOVE_STEP;
+  expect(diveStep2, '後半の落下量が前半と同じ＝データ上は速くても実測は同じ')
+    .toBeGreaterThan(Math.round(c.diveSpeed / MOVE_STEP) * MOVE_STEP);
+  // ⚠️ 予告→落下へ移った tick は動かない（㊴ ⑤ と同じ）∴丸ごと落ちた tick だけ測る
+  const dives = s.filter((x, i) => x.soarPhase === 'dive' && s[i - 1]?.soarPhase === 'dive');
+  expect(dives.length, '後半で丸ごと落下した tick が観測できていない').toBeGreaterThan(0);
+  for (const x of dives) {
+    const prev = s[s.indexOf(x) - 1];
+    const vec = x.soarVec;
+    const moved = Math.abs(vec[1] !== 0 ? x.x - prev.x : x.y - prev.y);
+    expect(moved, `後半の t${x.t} の落下量が後半の diveSpeed と合わない`).toBeCloseTo(diveStep2, 6);
+  }
+  // ④ 気絶（射抜いたときの隙）は後半で短くなるが、**着地硬直より大きい**関係は崩れない
+  expect(ph.soar.crashStunMs, '後半の墜落の気絶が着地硬直以下＝射抜く旨みが消える')
+    .toBeGreaterThan(ph.soar.landFreezeMs);
+});
+
+// ── ㊺ 導出＝U の機構は G・W・A・N・J・O のどれとも重ならない（手書きの表で数えない）─────
+test('㊺ U の移動機構は G・W・A・N・J・O のどれとも重ならない', () => {
+  const u = mechanismsOf(ENEMY_META['U']);
+  const others = ['G', 'W', 'A', 'N', 'J', 'O'].map(k => mechanismsOf(ENEMY_META[k]));
+  expect(u.has('soar'), 'U が移動機構（soar）を持っていない').toBe(true);
+  expect([...u].filter(k => others.every(x => !x.has(k))).length,
+    'U に G・W・A・N・J・O が持たない機構が1つも無い＝7体目の型になっていない').toBeGreaterThan(0);
+  expect(others.some(x => x.has('soar')),
+    'G・W・A・N・J・O のどれかが滞空を持っている＝U の固有機構ではない').toBe(false);
+  const users = Object.entries(ENEMY_META).filter(([, m]) => m.soar).map(([k]) => k);
+  expect(users, '滞空を持つ敵が U 以外にも居る（設計が重複した）').toEqual(['U']);
+  // 跳躍（leap）との**別物**の番人＝跳躍は滞空中「全ての攻撃が無効（hidden）」＝U とは違う。
+  // ここが同じになった瞬間に U の弱点（矢）は機構ごと死ぬ（設計の分かれ道＝DECISIONS）。
+  expect(ENEMY_META['U'].hide, 'U に hide が生えた＝滞空が「無敵の窓」に化けている').toBeUndefined();
+});
+
+// ── ㊻ 検証ステージの幾何（GUIDE §4-3）───────────────────────────────
+test('㊻ bal_storm_eagle は 10×12・外周は通路以外すべて壁・U が (4,7) に1体だけ・水なし', () => {
+  const MAP_PATH = fileURLToPath(new URL('../work/blade-of-lumia.json', import.meta.url));
+  const MAP = JSON.parse(readFileSync(MAP_PATH, 'utf8'));
+  const sd = MAP.layers[TEST_LAYER].stages[stageKey('bal_storm_eagle')];
+  expect(sd.rows).toBe(10);
+  expect(sd.cols).toBe(12);
+  // 遮蔽ゼロ＝急降下は直線∴地形で止まると機構の測定が地形の話になる
+  expect(Object.keys(sd.bgTiles ?? {}), '別地形が入った＝滞空の測定が地形のせいになる').toEqual([]);
+
+  const at = (r, c) => sd.tiles[r][c];
+  const eagles = [];
+  for (let r = 0; r < sd.rows; r++) {
+    for (let c = 0; c < sd.cols; c++) {
+      const ch = at(r, c);
+      if (ch === TILE.STORM_EAGLE) { eagles.push([r, c]); continue; }
+      if (r === 6 && c === 1) continue;              // 看板 i（南の通路の脇）
+      const edge = r === 0 || c === 0 || r === sd.rows - 1 || c === sd.cols - 1;
+      const want = edge && !isArenaDoor(r, c, sd.cols) ? TILE.WALL : TILE.FLOOR;
+      expect(at(r, c), `(${r},${c}) が想定と違う`).toBe(want);
+    }
+  }
+  expect(eagles, 'U が1体だけ (4,7) に居る前提が崩れた').toEqual([[U_ROW, U_COL]]);
+
+  // 測る湧き (4,4) から**軸に沿って西へ落ちられる道**が空いている＝㊴（落下量）の前提。
+  // 急降下は diveCells ぶん走る∴少なくとも旋回半径ぶんは床が続いていること。
+  const needCells = Math.ceil(ENEMY_META['U'].soar.orbitRange);
+  for (let c = Math.max(1, U_PL_COL - needCells); c < U_COL; c++) {
+    expect(at(U_PL_ROW, c), `(${U_PL_ROW},${c}) が床でない＝落ちる軸が塞がっている`).toBe(TILE.FLOOR);
+  }
+  // 予告のあいだに**直交へ抜ける道**（北へ3歩＝1.5セル）も空いている＝㊵（軸から外れる）の前提
+  for (let r = U_PL_ROW - 3; r <= U_PL_ROW; r++) {
+    expect(at(r, U_PL_COL), `(${r},${U_PL_COL}) が床でない＝軸から外れる道が塞がっている`)
+      .toBe(TILE.FLOOR);
+  }
+  // 軸を外した湧き (1,3)＝㊸（空からの遠隔）の前提
+  expect(at(U_OFF_SPAWN.row, U_OFF_SPAWN.col), '軸を外した湧きが床でない').toBe(TILE.FLOOR);
 });

@@ -324,7 +324,10 @@ test('⑤ ENEMY_META の phases[] は既知のキーだけを持ち、閾値は�
                       'coil',
                       // 0d-3（5体目 O）: 見据えの設定を相で差し替える口（boss.js が `_gaze` へ
                       // 書き、enemy-ai.js の `resolveGaze` が読む）＝印を速く押し直し広く潰す。
-                      'gaze'];
+                      'gaze',
+                      // 0d-3（6体目 U）: 滞空の設定を相で差し替える口（boss.js が `_soar` へ
+                      // 書き、enemy-ai.js の `resolveSoar` が読む）＝地上の窓を削り落下を速める。
+                      'soar'];
   const MODE_KEYS = ['flank', 'direct', 'wander', 'strafe'];
   const withPhases = Object.entries(ENEMY_META).filter(([, m]) => m.phases);
   expect(withPhases.length, 'phases を持つ敵が居ない（データが消えた？）').toBeGreaterThanOrEqual(13);
@@ -405,6 +408,41 @@ test('⑤ ENEMY_META の phases[] は既知のキーだけを持ち、閾値は�
           expect(p.gaze.stampAtk, `${t} の phases[].gaze.stampAtk が atk より大きい`)
             .toBeLessThanOrEqual(m.atk);
         }
+      }
+      if (p.soar !== undefined) {
+        // 相の soar も meta.soar を**丸ごと差し替える**（`resolveSoar`）∴部分指定は既定値へ
+        // 落ちる＝落下速度だけ書いたつもりで予告（aimMs）が既定 600 に戻る等の事故になる。
+        // ⚠️ `reachedBy`（滞空中に届く手段）は**相のキーに入れない**＝combat.js
+        //    `isSoarOutOfReach` が読むのは常に基底の `meta.soar` ∴相に書いても効かない
+        //    （書けてしまうと「後半だけ剣が届く」と読める死んだ指定になる）。
+        const SOAR_KEYS = ['groundMs', 'riseMs', 'airMs', 'orbitRange', 'orbitSpeed', 'alignTol',
+                           'aimMs', 'diveSpeed', 'diveCells', 'diveHitRange', 'diveAtk',
+                           'landFreezeMs', 'crashStunMs'];
+        expect(Object.keys(p.soar).filter(k => !SOAR_KEYS.includes(k)),
+          `${t} の phases[].soar に未知のキー（reachedBy は相では効かない）`).toEqual([]);
+        for (const k of SOAR_KEYS) {
+          expect(p.soar[k], `${t} の phases[].soar.${k} が正の数でない（＝部分指定）`)
+            .toBeGreaterThan(0);
+        }
+        // 相の予告も**必ず軸から外れられる**（予告の tick 数 × 1歩 > 落ちる軸の半幅）＝
+        // 短くしすぎると「予告を見てから外れられない」＝告知が飾りになる（gaze と同じ作法）。
+        const halfOff = ((m.size?.w ?? 1) - 1) / 2;
+        expect(Math.floor(p.soar.aimMs / 120) * 0.5,
+          `${t} の phases[].soar は予告の tick 内に落ちる軸の外へ出られない`)
+          .toBeGreaterThan(p.soar.alignTol + halfOff);
+        // 打点は据え置き（相で最大打点を作らない＝gaze/coil と同じ作法）
+        expect(p.soar.diveAtk, `${t} の phases[].soar.diveAtk が atk より大きい`)
+          .toBeLessThanOrEqual(m.atk);
+        // 旋回はプレイヤー（1.0）より遅い＝軸から逃げ続けられる（GUIDE §7-2）
+        expect(p.soar.orbitSpeed, `${t} の phases[].soar.orbitSpeed がプレイヤー以上に速い`)
+          .toBeLessThan(1.0);
+        // 射抜いた（墜落）ほうが着地硬直より大きい隙＝矢を選ぶ理由が相でも崩れない
+        expect(p.soar.crashStunMs, `${t} の phases[].soar は射抜く旨みが無い（気絶 <= 着地硬直）`)
+          .toBeGreaterThan(p.soar.landFreezeMs);
+        // 空に居る時間が地上の窓（地上＋着地硬直）の3倍を超えない＝弓が無いと戦えない形にしない
+        const sky = p.soar.riseMs + p.soar.airMs + p.soar.aimMs;
+        expect(sky / (p.soar.groundMs + p.soar.landFreezeMs),
+          `${t} の phases[].soar は空に居る時間が地上の3倍超`).toBeLessThanOrEqual(3);
       }
     }
   }

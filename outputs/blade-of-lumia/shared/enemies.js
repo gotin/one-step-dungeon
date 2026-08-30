@@ -1112,28 +1112,74 @@ export const ENEMY_META = {
 			  } },
 		],
 	},
-	// ── 嵐の鷲王（Phase 3-2）：2×2 大型ボス・dungeon_7（空中の遺跡）──
-	// 嵐を纏う翼王。翼から放つ雷撃と突進で戦場を制圧する。
-	// 素早く動き回り、HP半減後は雷撃の頻度が大幅に増加する。
+	// ── 嵐の鷲王（Phase 3-2）：2×2 大型ボス・dungeon_7（空の神殿）──
+	// 嵐を纏う翼王。**地上に長く留まらない**＝舞い上がって旋回し、軸を合わせて急降下する。
+	// Phase 8-4 (4) 0d-3（6体目）で層2の固有機構 `soar`（滞空と急降下）を入れた。
+	// ⚠️ 旧構成（`hitAndAway: true` ＋ 鉤爪＋雷撃弾＋速度倍率だけ）は G 岩のゴーレムと
+	//    同じ「まっすぐ来て振り下ろす」型＝13体で1つの雛形を使い回していた（0d の出発点）。
 	[TILE.STORM_EAGLE]: {
 		name: '嵐の鷲王',
 		hp: 108, atk: 6, def: 1, exp: 55,     // 8-4: 木の剣で 36 振り（11秒）
-		speed: ENEMY_SPEED_SLOW * 1.3,   // 鷲なので速め
+		speed: ENEMY_SPEED_SLOW * 1.3,   // 鷲なので速め（地上を歩くときの速さ）
 		sprite: 'stormEagle',
 		pal:    'stormEagle',
 		size:   { w: 2, h: 2 },
 		isBoss: true,
 		dropsTriforce: true,
-		weakness: { type: 'arrow', multiplier: 2 },  // 矢で翼を射落とす
-		hitAndAway: true,
+		// 弱点＝矢。0d-3（6体目）で**機構の解除鍵**にした＝滞空中は剣が届かず、矢を当てると
+		// 墜落して長い気絶（`crashStunMs`）になる（δ 分裂スライムの `blockedBy` と同じ作法＝
+		// 弱点は倍率だけでなく「機構を解く鍵」でもある）。D7 のヒント看板
+		// 「嵐の鷲王を射抜けば、最後の欠片が得られよう」がそのまま戦い方の説明になる。
+		weakness: { type: 'arrow', multiplier: 2 },
+		hitAndAway: false,   // 明示（W/A/N/J/O と同じ罠＝書かないと `soar` の分岐に来ない）
+		// 滞空と急降下（層2の固有機構）。**空に居るあいだは地上の攻撃が届かない**（矢だけ届く）
+		// ＝「近づき方」そのものが他の12体と別になる（寄って来るのは地上に居る短い間だけ）。
+		//   ground … 地上＝歩いて寄り鉤爪を振る（＝剣を入れられる窓）
+		//   rise   … 舞い上がる溜め（動かない・攻撃しない・**まだ地上＝殴れる**）
+		//   air    … 滞空＝旋回して軸（行/列）を合わせる。剣/ブーメラン/爆風/炎は届かない
+		//   aim    … 急降下の予告（軸が確定する＝**軸から外れれば避けられる**）
+		//   dive   … 急降下＝一直線に落ちてくる（接触でダメージ・ここは殴れる）
+		//   land   … 着地硬直＝動かない・攻撃しない（＝反撃の窓）
+		soar: {
+			groundMs:    1560,  // 13 tick 地上に居る＝剣を入れる窓（プレイヤーが寄る時間も含む）
+			riseMs:       480,  // 4 tick 舞い上がる溜め（＝「空へ逃げる」の予告。まだ殴れる）
+			airMs:       2880,  // 24 tick 滞空の上限（軸が揃えば早く `aim` へ移る）
+			orbitRange:   3.5,  // 旋回で保つ距離（body の端から）＝剣の間合い外・弓の間合い内
+			orbitSpeed:   0.75, // 旋回の速さ（セル/tick 換算の歩幅倍率）
+			                    // ⚠️ プレイヤー（1.0）より必ず遅くする（GUIDE §7-2）
+			alignTol:     0.6,  // 「軸が揃った」と見なす直交ずれ＝急降下を始める条件
+			aimMs:        600,  // 5 tick 急降下の予告＝プレイヤーは 2.5 セル走れる ≫ 0.6 ∴避けられる
+			diveSpeed:    1.5,  // 急降下の速さ（MOVE_STEP 刻みで補間＝当たりを飛び越さない）
+			diveCells:      9,  // 落ち切る距離（部屋を突き抜けない長さ）
+			diveHitRange: 1.0,  // 落下軸の前方どこまでが当たるか（body の端から）
+			diveAtk:        6,  // 急降下の打点＝`atk` と同値（新しい最大打点を作らない）
+			landFreezeMs: 600,  // 5 tick 着地硬直＝**殴り返す窓**（`.attack-recover` の絵が出る）
+			crashStunMs: 1800,  // 15 tick 矢で射落としたときの墜落＝気絶（大きな反撃の窓）
+			reachedBy: 'arrow', // 滞空中に**唯一届く攻撃**（＝`weakness.type` と同じ＝弓が答え）。
+			                    // combat.js `isSoarOutOfReach` が読む。δ の `split.blockedBy` と
+			                    // 同じ作法＝「機構を解く手段」をデータ側に1か所だけ書く。
+		},
 		attacks: [
-			{ type: 'sword', range: 1.1, cooldown: 700 },   // 鉤爪（速い）
-			{ type: 'stone', range: 7, cooldown: 2000, projectileSpeed: 1.4 }, // 雷撃弾
+			// 鉤爪＝**地上に居るあいだだけ**振れる（滞空中は近接を出さない＝enemyAttack のゲート）。
+			// 予告は全敵の既定（MELEE_WINDUP_MS 480ms・0d-2.7）∴書かない。
+			{ type: 'sword', range: 1.1, cooldown: 700 },
+			// 雷撃弾＝空からも届く唯一の攻撃＝「待っていれば安全」を消す（弓で落とす動機になる）。
+			{ type: 'stone', range: 7, cooldown: 2000, projectileSpeed: 1.4 },
 		],
 		attack: { type: 'sword', range: 1.1, cooldown: 700 },
-		initialModeWeights: { flank: 0.5, direct: 1.0, wander: 0.3, strafe: 0.2 },
+		// ⚠️ `initialModeWeights` は外した＝`hitAndAway: false` は寄り方の抽選
+		//    （`resolveModeWeights`）を一度も通らない∴書いても効かない死んだ数値になる
+		//    （W/O で確認済みの作法）。
 		phases: [
-			{ hpThreshold: 0.5, speedMultiplier: 1.7, attackCooldownMultiplier: 0.65 },
+			// 第2形態＝**地上に居る時間が短く、旋回が速く、急降下が速い**。
+			// ⚠️ 打点（diveAtk）は前半と同値＝速さと滞空の長さだけで圧を上げる。
+			// ⚠️ `aimMs` 480ms でもプレイヤーは 4 tick ＝ 2.0 セル走れる > `alignTol` 0.6 ＝間に合う。
+			{ hpThreshold: 0.5, speedMultiplier: 1.3, attackCooldownMultiplier: 0.8,
+			  soar: {
+				groundMs: 960, riseMs: 360, airMs: 2160, orbitRange: 3.5, orbitSpeed: 0.95,
+				alignTol: 0.6, aimMs: 480, diveSpeed: 1.9, diveCells: 9, diveHitRange: 1.0,
+				diveAtk: 6, landFreezeMs: 480, crashStunMs: 1320,
+			  } },
 		],
 	},
 	// ── 岩のゴーレム（Phase 3-2）：2×2 大型ボス ──────────────────

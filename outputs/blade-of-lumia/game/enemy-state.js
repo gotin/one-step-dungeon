@@ -26,3 +26,20 @@ export function isInRecoverWindow(e, now) {
 	if (!e || e._freezeUntil == null || !(now < e._freezeUntil)) return false;
 	return e._swingAt == null && e._slamAt == null && e._breathAt == null;
 }
+
+/**
+ * 空に居る（＝地上の攻撃が届かない）窓の中か。（Phase 8-4 (4) 0d-3・6体目 U 嵐の鷲王）
+ *
+ * `meta.soar` の状態機械のうち **`air`（旋回）と `aim`（急降下の予告）** だけが「空」＝
+ * 剣・ブーメラン・爆風・炎が届かず、**矢だけが届く**（combat.js isSoarOutOfReach）。
+ * 急降下中（`dive`）と着地硬直（`land`）は空に数えない＝もう落ちて来ている∴殴れる。
+ *
+ * 読み手（`isInRecoverWindow` と同じ理由でここに置く＝判定と絵を絶対にズラさない）：
+ *   ・`game/enemy-ai.js` syncSoarMotion  … `.soaring`（体が浮いて真下に影）の on/off
+ *   ・`game/enemy-ai.js` enemyAttack     … 滞空中は近接（鉤爪）を出さない
+ *   ・`game/combat.js`   dealDamageToEnemy … 矢以外を弾く（＋矢が当たれば墜落）
+ */
+export function isSoaring(e, meta) {
+	if (!e || !meta?.soar) return false;
+	return e._soarPhase === 'air' || e._soarPhase === 'aim';
+}

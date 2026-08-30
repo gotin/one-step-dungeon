@@ -15,7 +15,8 @@ import {
 import { enemyW, enemyH, enemyCenter } from './hitbox.js';
 // Phase 8-4 (4) 0d-2.11 (A): 攻撃硬直の窓（＝反撃の窓）の判定＝enemy-ai.js の `.attack-recover`
 // と共有する（enemy-state.js が単一の真実）。`weakness.window: 'recover'` の弱点で使う。
-import { isInRecoverWindow } from './enemy-state.js';
+// isSoaring も同じ理由でそこから読む（0d-3 6体目 U＝浮いている絵と「矢しか届かない」を一致させる）。
+import { isInRecoverWindow, isSoaring } from './enemy-state.js';
 
 /**
  * createCombat(deps) – factory
@@ -354,6 +355,18 @@ export function createCombat(deps) {
 		return !!(meta?.shell && e._shellClosed);
 	}
 
+	// Phase 8-4 (4) 0d-3（6体目 U 嵐の鷲王）: 空に居るあいだは**届く攻撃が1つだけ**になる。
+	// 甲羅（時間で開くのを待つ）と違い、こちらは**手段が答え**＝弓で射抜く（`soar.reachedBy`）。
+	//   ・窓の判定は enemy-state.js `isSoaring` が単一の真実＝浮いている絵（`.soaring`）と一致
+	//   ・届く種別はデータが持つ（δ 分裂スライムの `split.blockedBy` と同じ作法）＝
+	//     「弱点＝矢」と「空へ届くのは矢」が meta の同じブロックで読める
+	//   ・隠れ（`e.hidden`）とは別扱い＝姿は見えている∴無音で返さず 0 ダメージを返す
+	//     （空振りの音＝「今は無駄・弓を出せ」がプレイヤーへ伝わる。甲羅と同じ考え）
+	function isSoarOutOfReach(e, meta, atkType) {
+		if (!isSoaring(e, meta)) return false;
+		return atkType !== (meta.soar.reachedBy ?? 'arrow');
+	}
+
 	// Phase 5.5k k-4: 正面ブロックの跳ね返し＝**プレイヤーを1歩下がらせる**。
 	// ダメージは 0 のまま（弾かれるだけ）だが、剣の間合いから押し出される＝もう一度
 	// 正面から殴っても同じことになる、と体で分かる。
@@ -389,6 +402,11 @@ export function createCombat(deps) {
 		// ルピー喰い：殴られると張り付きが剥がれる＝吸われ続けない（反撃が効く）。
 		// 生きていても倒れていても剥がす（倒れた場合は払い戻しが killEnemy 側で走る）。
 		if (meta?.leech && e._attached) deps.detachLeech?.(e);
+		// U 嵐の鷲王：滞空中に矢が刺さると**墜落する**（＝弱点が倍率だけでなく機構の解除鍵）。
+		// ここに置く理由＝弱点の倍率を引いた**後**（∴矢の弱点判定と二重にならない）で、かつ
+		// 倒れていないときだけ（`hp > 0`）＝倒した敵を墜落させて気絶を残さない。
+		// 届いた矢だけがここに来る（上の `isSoarOutOfReach` が矢以外を先に弾いている）。
+		if (meta?.soar && e.hp > 0) deps.crashSoar?.(e, meta);
 		// 分裂スライム：HP が尽きた瞬間だけが引き金。
 		if (e.hp <= 0 && meta?.split) return trySplitEnemy(e, meta, atkType);
 		return false;
@@ -484,6 +502,13 @@ export function createCombat(deps) {
 		if (isShellClosed(e, meta)) {
 			playSound('shieldBlock');
 			showShieldBlockEffect(e.x, e.y);
+			showDmgPopupFloat(e.x, e.y, 0, true, false);
+			return;
+		}
+		// Phase 8-4 (4) 0d-3（6体目 U）: 滞空中は矢以外が届かない（甲羅の次＝向き依存の判定より
+		// 前に見る＝「どこから殴っても」届かない。答えは回り込みではなく**弓**）。
+		if (isSoarOutOfReach(e, meta, atkType)) {
+			playSound('soarWhiff');
 			showDmgPopupFloat(e.x, e.y, 0, true, false);
 			return;
 		}
@@ -732,6 +757,7 @@ export function createCombat(deps) {
 		dealDamageToEnemy,
 		isBlockFacingDir,   // Phase 5.5k k-4: 向き固定の常時ブロック（テスト用）
 		isShellClosed,      // Phase 5.5k k-4: 甲羅の籠もり（テスト用）
+		isSoarOutOfReach,   // Phase 8-4 (4) 0d-3: 滞空中は矢以外が届かない（テスト用）
 		onEnemyDamaged,     // Phase 5.5k k-5: 被弾トリガーのフック点（テスト用）
 		trySplitEnemy,      // Phase 5.5k k-5: 分裂（テスト用）
 		pickSplitCells,     // Phase 5.5k k-5: 小型の置き場所の選択（テスト用）

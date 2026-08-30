@@ -413,7 +413,13 @@
     animation: blink-anim 0.3s infinite;
 }
 
-/* ブーメランスタン（Phase 3-4）：スタン中に ⭐ が点滅して浮き上がる */
+/* ブーメランスタン（Phase 3-4）：スタン中に ⭐ が点滅して浮き上がる。
+   ⚠️ 長さは JS が単一の真実（`--stun-burst-ms` ＝気絶そのものの長さを書き込む）＝
+   CSS 側に持たせない（`--recover-ms` / `--soar-rise-ms` と同じ作法）。既定値 1500ms は
+   ブーメランのスタン（`BOOMERANG_STUN_MS`）と同値＝変数を書かない経路の見た目は不変。
+   理由＝**印が出ている間＝気絶している間**でなければ「殴り放題の窓」が読めない
+   （Phase 8-4 (4) 0d-3 の U 嵐の鷲王は墜落の気絶が 1800ms ＝固定 1.5s では印が
+   先に消えて、まだ無抵抗なのに終わったように見えた＝実画面で確認した欠陥）。 */
 .stun-burst {
     position: absolute;
     transform: translate(-50%, -100%);
@@ -421,7 +427,7 @@
     z-index: 29;
     font-size: 18px;
     line-height: 1;
-    animation: stun-burst-anim 1.5s ease-out forwards;
+    animation: stun-burst-anim var(--stun-burst-ms, 1500ms) ease-out forwards;
 }
 
 @keyframes stun-burst-anim {
