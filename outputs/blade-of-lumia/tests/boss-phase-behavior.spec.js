@@ -318,7 +318,10 @@ test('⑤ ENEMY_META の phases[] は既知のキーだけを持ち、閾値は�
                       'dash',
                       // 0d-3（3体目 N）: 隠れ↔出現の周期を相で差し替える口（boss.js が `_hide` へ
                       // 書き、enemy-ai.js の `resolveHide` が読む）＝潜行を短くして待ち伏せを増やす。
-                      'hide'];
+                      'hide',
+                      // 0d-3（4体目 J）: 巻きつきの設定を相で差し替える口（boss.js が `_coil` へ
+                      // 書き、enemy-ai.js の `resolveCoil` が読む）＝半径を詰めて締め上げを早める。
+                      'coil'];
   const MODE_KEYS = ['flank', 'direct', 'wander', 'strafe'];
   const withPhases = Object.entries(ENEMY_META).filter(([, m]) => m.phases);
   expect(withPhases.length, 'phases を持つ敵が居ない（データが消えた？）').toBeGreaterThanOrEqual(13);
@@ -359,6 +362,23 @@ test('⑤ ENEMY_META の phases[] は既知のキーだけを持ち、閾値は�
           expect(p.hide[k], `${t} の phases[].hide.${k} が正の数でない`).toBeGreaterThan(0);
         }
         expect(p.hide.style, `${t} の phases[].hide.style が meta.hide と違う`).toBe(m.hide?.style);
+      }
+      if (p.coil !== undefined) {
+        // 相の coil も meta.coil を**丸ごと差し替える**（`resolveCoil`）∴部分指定は既定値へ
+        // 落ちる＝半径だけ書いたつもりで締め上げの予告（crushWindupMs）が既定に戻り、
+        // 「予告なしで潰される」に近い事故になる。キーの綴りと不変条件をここで縛る。
+        const COIL_KEYS = ['radius', 'radiusMin', 'shrinkPerSec', 'tightenCues', 'escapeMargin',
+                           'crushWindupMs', 'crushMs', 'crushPad', 'crushAtk', 'crushFreezeMs',
+                           'stallLimit'];
+        expect(Object.keys(p.coil).filter(k => !COIL_KEYS.includes(k)),
+          `${t} の phases[].coil に未知のキー`).toEqual([]);
+        for (const k of ['radius', 'radiusMin', 'shrinkPerSec', 'crushWindupMs']) {
+          expect(p.coil[k], `${t} の phases[].coil.${k} が正の数でない`).toBeGreaterThan(0);
+        }
+        // 相の輪も**必ず縮む**（radius > radiusMin）＝縮まないと締め上げが来ない＝
+        // 「回っているだけの案山子」になる（W の strafe の失敗と同型）。
+        expect(p.coil.radius, `${t} の phases[].coil は縮まない（radius <= radiusMin）`)
+          .toBeGreaterThan(p.coil.radiusMin);
       }
     }
   }

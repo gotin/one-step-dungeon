@@ -155,6 +155,13 @@ export function createEnemyAi(deps) {
 	function resolveHide(e, meta) {
 		return e?._hide !== undefined ? e._hide : meta?.hide;
 	}
+	// resolveCoil … 巻きつきの設定そのものをフェーズで差し替える口（Phase 8-4 (4) 0d-3・4体目）。
+	// J 深海の海蛇は HP50% の相で `phases[].coil` が入り「半周で締め上げる」形に変わる。
+	// ⚠️ `resolveDash`/`resolveHide` と同じ理由で**読む側を1か所に集約する**
+	//   （`enemyCoil` / `tickCoilCrush` / `syncCoilRing` の3つが必ずここを通る）。
+	function resolveCoil(e, meta) {
+		return e?._coil !== undefined ? e._coil : meta?.coil;
+	}
 
 	// ── Phase 5.5k: 攻撃硬直（2026-08-12 ユーザー指摘「攻撃動作中は動かないようにすべき」）──
 	// プレイヤーは剣を振っている間（_atkUntil の窓）足が止まる（player.js movePlayer）。
@@ -559,6 +566,281 @@ export function createEnemyAi(deps) {
 			break;
 		}
 		moveCharEl(`enemy-${e.id}`, e.x, e.y);
+	}
+
+	// ── Phase 8-4 (4) 0d-3（4体目 J 深海の海蛇）: 巻きつき（coil）の移動 ─────────────
+	// meta.coil = { radius, radiusMin, shrinkPerSec, escapeMargin, tightenCues,
+	//               crushWindupMs, crushMs, crushPad, crushAtk, crushFreezeMs, stallLimit }。
+	//   ① **プレイヤーへ寄らない**＝見つけた地点（`_coilCx/_coilCy`＝タイル中心）を輪の中心に
+	//      決め、その周りを**接線方向**に泳ぐ（角度 `_coilAng` を1歩ぶんずつ進める）。
+	//   ② 半径は**時間に比例して連続に縮む**（`shrinkPerSec` ＝1秒で縮むセル数・縮めるのは
+	//      `tickCoilShrink`）。`radiusMin` に届いたら**締め上げ**（`startCoilCrush`）へ移る。
+	//   ③ プレイヤーが輪の外（半径＋`escapeMargin`）へ出たら中心を捨てて**巻き直す**
+	//      ＝これがプレイヤー側の答え（＝「間合い」ではなく「輪の内か外か」の読み）。
+	// ∴速度が速くても理不尽にならない（接線方向にしか動かない＝走れば必ず外に出られる）。
+	//
+	// ⚠️ 縮み方は**段（半周ごとに1.0 セル）ではなく連続**（2026-08-29 ユーザー判定で変更＝
+	//    「輪は段階的に小さくするんじゃなくて、ゆっくりでも常に小さくなっていく感じにしないと
+	//    …初見のときに何が起こるのかがわからなさすぎる」）。段だと**縮んだ瞬間しか情報が出ない**
+	//    ＝残りの時間が読めない∴毎 tick わずかに縮めて「詰まってきている」を絵で連続的に出す。
+	// ⚠️ 縮みは**泳いだ弧ではなく時計**で進める（`tickCoilShrink` を硬直より前で毎 tick 呼ぶ）。
+	//    弧に比例させた最初の実装では、攻撃硬直（水弾・噛みつき）の 8 tick ≈ 1秒と歩幅の溜め
+	//    （速度 0.7 ＝3 tick に1歩は止まる）のあいだ輪が**止まって見えた**＝「常に小さくなって
+	//    いく」にならない（2026-08-29 実測）。∴止めるのは**壁で回れないときだけ**にした。
+	// ⚠️ 縮み具合は `_coilHeat`（0〜1＝`radius`→`radiusMin`）に正規化して持つ＝輪の色（青→赤）と
+	//    締まりの合図の音（`tightenCues`）が**同じ1つの数**を読む＝絵と音と判定がずれない。
+	//
+	// ⚠️ 角度は**歩けた tick だけ**進める（`_coilArc` も同じ）＝壁で止まっているあいだに
+	//    泳いだ扱いにしない（`_coilStall` が立つ＝縮みも止まる）。
+	// ⚠️ 歩けなかったら**回る向きを反転する**（巻き直しではない）＝壁際・角に居るプレイヤーを
+	//    囲めない側は往復で掃く∴「回れないから何もしない案山子」にならない（W の strafe が
+	//    射程外を7秒周回して案山子になった失敗の対処と同じ理由）。それでも `stallLimit` 回
+	//    続けて動けなければ中心を捨てる（最後の保険）。
+	// ⚠️ 中心はタイル中心へ丸める（`toTileRow/Col`）＝輪の絵と潰す範囲をセル格子に載せる。
+	//    プレイヤーの座標は MOVE_STEP 0.5 刻み∴丸めないと輪が半セルずれて読めない。
+	// ⚠️ 半径は**体の中心から**測る（`enemyCellCenter`）＝2×2 の端は 1 セル内側にある
+	//    （0d-2.5 の罠）∴「剣が届く半径」は radius − 1 で読む。
+	// 「もう来る」に切り替わる締まり具合（＝輪が赤く点滅し始める）。予告（720ms）だけでは
+	// 初見で身構えられない∴予告より前に**赤い1段**を挟む（GUIDE §6-1＝機構は伝わってこそ）。
+	const COIL_HOT_AT = 0.62;
+
+	// 縮み具合を 0〜1 に正規化する（0＝巻き始めの半径・1＝これ以上縮まない＝締め上げ直前）。
+	// **輪の色（`--coil-heat`）・締まりの音（tightenCues）・テストがすべてこの1つの数を読む。**
+	function coilHeat(e, cfg) {
+		const r0 = cfg?.radius ?? 2.6, rMin = cfg?.radiusMin ?? 1.6;
+		if (e._coilR == null || !(r0 > rMin)) return 0;
+		return Math.max(0, Math.min(1, (r0 - e._coilR) / (r0 - rMin)));
+	}
+
+	function claimCoil(e, cfg) {
+		const player = getPlayer();
+		if (!player) return;
+		e._coilCx = toTileCol(player.x);
+		e._coilCy = toTileRow(player.y);
+		e._coilR  = cfg.radius ?? 2.6;
+		e._coilArc = 0;
+		e._coilStall = 0;
+		e._coilHeat = 0;
+		e._coilCue = 0;      // 締まりの合図を何段まで鳴らしたか（巻き直すと 0 に戻る）
+		// 回る向きは **id から決定的に**（GUIDE §7-3＝乱数を入れない・テストが安定する）
+		if (e._coilSpin == null) e._coilSpin = (e.id % 2 === 0) ? 1 : -1;
+		const { cx, cy } = enemyCellCenter(e);
+		const dx = cx - e._coilCx, dy = cy - e._coilCy;
+		// 今居る方角から巻き始める＝中心を決めた瞬間に体が輪の反対側へ跳ばない
+		e._coilAng = (Math.abs(dx) < 0.01 && Math.abs(dy) < 0.01) ? 0 : Math.atan2(dy, dx);
+	}
+
+	// 輪を**毎 tick** 縮める（硬直より前に呼ぶ＝攻撃で輪が止まって見えない）。
+	// ここが持つのは「時計」だけ＝泳ぎ（角度）は `enemyCoil` の担当。
+	// ⚠️ 壁で回れないあいだ（`_coilStall > 0`）は縮めない＝泳げていないのに締め上げが来る、
+	//    という理不尽を作らない（弧に比例していた旧実装から引き継ぐ唯一の条件）。
+	// ⚠️ 予告が立ったら触らない（`_crushR` は予告の瞬間に固定＝プレイヤーが範囲を読める）。
+	function tickCoilShrink(e, meta, now) {
+		const cfg = resolveCoil(e, meta);
+		if (!cfg || e._coilCx == null || e._crushAt != null) return;
+		const player = getPlayer();
+		if (!player) return;
+		// ③ 輪の外へ出られた＝巻き直す（半径も初期値に戻る＝逃げた分だけ猶予が戻る）。
+		// 硬直中も判定する＝「輪から出る」という答えがいつでも通る。
+		if (Math.hypot(player.x - e._coilCx, player.y - e._coilCy) > e._coilR + (cfg.escapeMargin ?? 1.0)) {
+			claimCoil(e, cfg);
+			return;
+		}
+		if ((e._coilStall ?? 0) > 0) return;
+		const rMin = cfg.radiusMin ?? 1.6;
+		const next = e._coilR - (cfg.shrinkPerSec ?? 0.3) * (TICK_MS / 1000);
+		if (next <= rMin) {
+			e._coilR = rMin;                      // 縮み切った位置で止めてから予告に入る
+			e._coilHeat = 1;
+			startCoilCrush(e, cfg, now);
+			return;
+		}
+		e._coilR = next;
+		// ── 締まってきたことを音でも段階的に出す（絵の赤さと同じ `heat` を読む）─────
+		// ⚠️ 予告（coilWindup）の前に鳴る**別の音**＝「まだ縮んでいる（出る準備をしろ）」。
+		//    予告 720ms だけでは初見で「何が起きるのか」が読めない（2026-08-29 ユーザー判定）
+		//    ∴輪が赤くなるのと同じ拍で軋みを鳴らす＝画面を見ていなくても近づきが分かる。
+		const heat = coilHeat(e, cfg);
+		e._coilHeat = heat;
+		const cues = cfg.tightenCues ?? [];
+		while ((e._coilCue ?? 0) < cues.length && heat >= cues[e._coilCue ?? 0]) {
+			e._coilCue = (e._coilCue ?? 0) + 1;
+			playSound('coilTighten');
+		}
+	}
+
+	function enemyCoil(e, meta, speed, cfg) {
+		const player = getPlayer();
+		if (!player) return;
+		// 中心が無い＝巻き始め（縮みと逃げの判定は `tickCoilShrink` が持つ＝ここでは巻くだけ）
+		if (e._coilCx == null) claimCoil(e, cfg);
+
+		const { cx, cy } = enemyCellCenter(e);
+		// 向きはプレイヤーへ向ける（絵の向きは移動方向ではない＝「見ながら回る」）。
+		// ⚠️ 歩幅の溜め（`e.accum`）より**前**に書く（GUIDE §1-2）＝1歩に2 tick かかる速度でも
+		//    向き直りが遅れない。J は今は向き別の実データを持たない（エイリアス）が、
+		//    実装したときにこの1行がそのまま効く。
+		const pdx = player.x - cx, pdy = player.y - cy;
+		e.dir = Math.abs(pdx) >= Math.abs(pdy) ? (pdx > 0 ? 'right' : 'left') : (pdy > 0 ? 'down' : 'up');
+
+		e.accum = (e.accum ?? 0) + speed;
+		if (e.accum < 1.0) return;
+		e.accum -= 1.0;
+
+		const step = MOVE_STEP;
+		const R = e._coilR;
+		// 1歩（MOVE_STEP）で進む角度＝弧長 / 半径。速度は `e.accum` が既に効かせている∴
+		// ここに掛けない（掛けると速い敵ほど輪から離れた点を追って半径が崩れる）。
+		const omega = step / Math.max(0.5, R);
+		const nextAng = e._coilAng + e._coilSpin * omega;
+		const tx = e._coilCx + Math.cos(nextAng) * R;
+		const ty = e._coilCy + Math.sin(nextAng) * R;
+		const ddx = tx - cx, ddy = ty - cy;
+		const sx = Math.sign(ddx), sy = Math.sign(ddy);
+		const candidates = [];
+		if (Math.abs(ddx) >= Math.abs(ddy)) {
+			if (sx) candidates.push([0, sx * step]);
+			if (sy) candidates.push([sy * step, 0]);
+		} else {
+			if (sy) candidates.push([sy * step, 0]);
+			if (sx) candidates.push([0, sx * step]);
+		}
+		let moved = candidates.length === 0;   // 目標に乗っている＝停滞ではない
+		for (const [my, mx] of candidates) {
+			if (isPassableForEnemy(e.y + my, e.x + mx, e)) { e.y += my; e.x += mx; moved = true; break; }
+		}
+		moveCharEl(`enemy-${e.id}`, e.x, e.y);
+
+		if (!moved) {
+			// 回れない側（壁・盤外）＝向きを反転して掃き直す。続いたら中心を捨てる。
+			e._coilSpin = -e._coilSpin;
+			e._coilStall = (e._coilStall ?? 0) + 1;
+			if (e._coilStall >= (cfg.stallLimit ?? 4)) claimCoil(e, cfg);
+			return;
+		}
+		e._coilStall = 0;
+		e._coilAng = nextAng;
+		e._coilArc += omega;
+	}
+
+	// 締め上げの予告開始。剣（startSwing）・ブレス（startBreath）と同じ「予告→解決」の2拍。
+	// 閉じる半径は**予告の瞬間に固定する**（`_crushR`）＝解決までに縮まない＝
+	// プレイヤーは輪の絵を見て「どこまでが危ないか」を予告中に判断できる。
+	function startCoilCrush(e, cfg, now) {
+		e._crushWindupMs = cfg.crushWindupMs ?? 720;
+		e._crushAt = now + e._crushWindupMs;
+		e._crushR  = e._coilR;
+		// 予告は絵（輪が縮む `.coil-ring-closing`）と音の2経路で出す（GUIDE §7-6）。
+		// 締め上げの音（coilCrush）とは別の音＝「来る（輪から出ろ）」と「潰れた（殴れる）」。
+		playSound('coilWindup');
+	}
+
+	// 締め上げの解決。戻り値 true ＝この tick は締め上げが専有した（移動も攻撃もしない）。
+	function tickCoilCrush(e, meta, now) {
+		if (e._crushAt == null) return false;
+		if (now < e._crushAt) return true;              // まだ溜め中
+		const cfg = resolveCoil(e, meta) ?? {};
+		e._crushAt = null;
+		crushCoil(e, meta, cfg);
+		// ⚠️ `markAttack` を通さない＝締め上げは `attacks[]` の1エントリではなく
+		//    **巻きつきの周期そのものの帰結**（`shell` の炎と同じ扱い）∴クールダウンの
+		//    起点を持たない（次の締め上げは次の周が閉じたときにだけ来る）。
+		//    硬直（＝反撃の窓）はここで直接立てる（術士の詠唱 `_freezeUntil` と同型）。
+		e._freezeUntil = now + (cfg.crushFreezeMs ?? MELEE_FREEZE_MS);
+		// 巻き直す（次の周は新しい中心から）。⚠️ **両方 null にする**＝片方だけ消すと
+		// スナップショットに `{coilCx: null, coilCy: 4}` の半端な形が出て「輪が無い」の
+		// 判定（`coilCx == null`）とテストの読み方が食い違う（実測 2026-08-29）。
+		e._coilCx = null; e._coilCy = null;
+		return true;
+	}
+
+	// 輪の内側を潰す。**盾では防げない**（体当たり・ブレスと同じ扱い＝k-7.5 決定④の系）
+	// ＝答えは「輪の外に出る」だけ。ダメージは何セル重なっても1回。
+	function crushCoil(e, meta, cfg) {
+		const player = getPlayer();
+		const r = (e._crushR ?? cfg.radiusMin ?? 1.6) + (cfg.crushPad ?? 0.4);
+		const dmg = cfg.crushAtk ?? e.atk ?? meta.atk ?? 1;
+		const ccx = e._coilCx, ccy = e._coilCy;
+		if (ccx == null) return;
+		const span = Math.ceil(r) + 1;
+		for (let dy = -span; dy <= span; dy++) {
+			for (let dx = -span; dx <= span; dx++) {
+				// ⚠️ 塗るのは「セルの**一番近い点**が円の中」＝当たり判定（下の連続距離）の
+				//    **上位集合**にする。セル中心で判定すると隠れダメージが出る＝実測の反例
+				//    （2026-08-29）：中心から (dx,dy)=(1.5,1.0) に立つと距離 1.80 ≤ 2.0 で
+				//    潰されるのに、丸めたセル (2,1) は中心距離 2.24 > 2.0 で**塗られない**
+				//    ＝「何も描かれていない床で殴られた」になる。半セルぶん過剰に警告する方
+				//    （塗られたのに無傷）を選ぶ＝GUIDE §6-1「機構はプレイヤーに伝わってこそ」。
+				const near = Math.hypot(Math.max(0, Math.abs(dx) - 0.5), Math.max(0, Math.abs(dy) - 0.5));
+				if (near > r) continue;
+				const fx = ccx + dx, fy = ccy + dy;
+				if (!tilePassable(toTileRow(fy), toTileCol(fx))) continue;   // 壁の中は描かない
+				showCoilCrushEffect(fx, fy, cfg.crushMs ?? 420);
+			}
+		}
+		// 当たり判定は**中心からの距離**（セル単位の重なりではない）＝輪の絵と同じ形で測る
+		if (Math.hypot(player.x - ccx, player.y - ccy) <= r) takeDamage(dmg);
+		playSound('coilCrush');
+	}
+
+	// 潰れた水の見た目（`.enemy-fire-breath` と同型＝セル1枚の DOM を置いて実時間で消す）。
+	function showCoilCrushEffect(fx, fy, durMs) {
+		const charLayerEl = getCharLayerEl();
+		if (!charLayerEl) return;
+		const cellPx = getCellPx();
+		const el = document.createElement('div');
+		el.className = 'enemy-coil-crush';
+		el.style.cssText = `position:absolute;left:${fx * cellPx}px;top:${fy * cellPx}px;`
+			+ `width:${cellPx}px;height:${cellPx}px;z-index:24;pointer-events:none;`;
+		charLayerEl.appendChild(el);
+		setTimeout(() => el.remove(), durMs);
+	}
+
+	// ── 輪そのものを床に描く（巻きつきの唯一の告知）─────────────────────────
+	// ⚠️ **中心はプレイヤーの居た地点＝敵の体の上には出ない**∴予告を敵の絵に載せる
+	//    （`.slam-windup` などの型）だけでは「どこが輪の内側か」が読めない＝機構が
+	//    プレイヤーに伝わらない（GUIDE §6-1）。∴輪を床に描くのが本体の告知。
+	// ⚠️ 後始末＝`char-enemy-<id>` とは別の DOM ∴J が倒れても残る。実時間の消去タイマを
+	//    毎 tick 貼り直す（＝tick が来なくなれば自然に消える）＝炎の見た目と同じ作法で
+	//    「巻きつきが終わった／敵が消えた」を待たずに片付く。
+	const coilRingTimers = new Map();
+	function syncCoilRing(e, meta) {
+		const cfg = resolveCoil(e, meta);
+		const id = `coil-ring-${e.id}`;
+		let el = document.getElementById(id);
+		if (!cfg || e._coilCx == null) { if (el) el.remove(); return; }
+		const charLayerEl = getCharLayerEl();
+		if (!charLayerEl) return;
+		const cellPx = getCellPx();
+		if (!el) {
+			el = document.createElement('div');
+			el.id = id;
+			charLayerEl.appendChild(el);
+		}
+		const closing = e._crushAt != null;
+		const r = closing ? (e._crushR ?? e._coilR) : e._coilR;
+		const d = (r * 2 + 1) * cellPx;                       // 直径＝半径2つ＋自セル1枚
+		const left = (e._coilCx + 0.5) * cellPx - d / 2;
+		const top  = (e._coilCy + 0.5) * cellPx - d / 2;
+		// ⚠️ 締まり具合（0〜1）を CSS へ渡して**色を青→赤へ連続に振る**（2026-08-29 ユーザー判定
+		//    ＝「小さくなるにつれて輪の色が赤くなるとか、攻撃がきそうな感じにしないとなんだか
+		//    わからない」）。数（heat）はエンジンが持ち、色の作り方は CSS が持つ＝閾値を2箇所に
+		//    書かない（`coil-ring-hot` の付与だけがこちら側の判断＝「もう来る」の1段）。
+		const heat = closing ? 1 : coilHeat(e, cfg);
+		el.className = 'enemy-coil-ring'
+			+ (heat >= COIL_HOT_AT ? ' coil-ring-hot' : '')
+			+ (closing ? ' coil-ring-closing' : '');
+		el.style.cssText = `position:absolute;left:${left}px;top:${top}px;`
+			+ `width:${d}px;height:${d}px;z-index:2;pointer-events:none;`
+			// 長さは状態機械が持つ（CSS 側に持たせない＝swing/breath と同じ作法）
+			+ `--coil-windup-ms:${Math.round(e._crushWindupMs ?? 0)}ms;`
+			+ `--coil-heat:${heat.toFixed(3)};`
+			// 色相を振るのはこちら＝heat を「もう来る」の閾値で 1 に正規化した数。
+			// ⚠️ 閾値（COIL_HOT_AT）を CSS 側へ書かないためにここで割る＝赤の到達と
+			//    赤い点滅の開始が**必ず同じ tick**になる（別々に調整できてしまう余地を残さない）。
+			+ `--coil-warn:${Math.min(1, heat / COIL_HOT_AT).toFixed(3)};`;
+		clearTimeout(coilRingTimers.get(id));
+		coilRingTimers.set(id, setTimeout(() => el.remove(), 400));
 	}
 
 	// ── Phase 5.5k: 陸上敵の向き別スプライト名解決（DECISIONS 2026-08-10）─────
@@ -2370,6 +2652,15 @@ export function createEnemyAi(deps) {
 				if (e._swingAt != null) { e._swingAt = null; e._swingIdx = null; syncSwingMotion(e, meta); syncSlamMotion(e, meta); }
 				// Phase 8-4 (4) 0d-3: ブレスの予告（膨らむ炎）もスタンで中断する＝上と同じ理由。
 				if (e._breathAt != null) { e._breathAt = null; e._breathIdx = null; syncBreathMotion(e); }
+				// Phase 8-4 (4) 0d-3: 締め上げの予告（縮む水の輪）もスタンで中断する＝上と同じ理由。
+				// 中心も捨てる＝止めたら**輪が解ける**（次の tick から巻き直し）。
+				// ⚠️ ボスはブーメランでスタンしない（`stunnable ?? !isBoss`）∴今の J では観測差が
+				//    出ない**二重の守り**＝`coil` を雑魚に付けたときに効く（tickBlink と同じ立場）。
+				//    中心は `tickCoilCrush` と同じく**両方 null**にする（片方だけ消すと半端な形が
+				//    スナップショットに出る＝2026-08-29 に実測で踏んだ罠）。
+				if (e._crushAt != null) {
+					e._crushAt = null; e._coilCx = null; e._coilCy = null; syncCoilRing(e, meta);
+				}
 				// Phase 5.5k k-9: 突進もスタンで中断する（溜め中に殴られたら走り出さない・
 				// 走行中に止められたらそこで終わる）。壁への激突で立てた気絶もここを通る＝
 				// 気絶が明けた tick に走行が再開しないための後始末でもある。
@@ -2383,6 +2674,14 @@ export function createEnemyAi(deps) {
 			const swinging = tickSwing(e, meta, now);
 			// Phase 8-4 (4) 0d-3: 炎のブレスの予告も同じ枠（立っている予告は先に解決する）。
 			const breathing = tickBreath(e, meta, now);
+			// Phase 8-4 (4) 0d-3（4体目 J）: 締め上げの予告も同じ枠（立っている予告は先に解決する）。
+			// ⚠️ 硬直（`frozen`）より**前**に呼ぶ＝解決が締め上げ自身の硬直を立てる∴後ろに置くと
+			//    2回目以降の締め上げが宙吊りになる（跳躍の 0d-2.7 の罠と同型）。
+			const crushing = tickCoilCrush(e, meta, now);
+			// Phase 8-4 (4) 0d-3（4体目 J）: 輪の縮みは**硬直中も進める時計**（tickHide/tickBlink と
+			// 同じ枠）。ここを行動ゲートの中（＝泳ぎと同じ場所）に置くと、攻撃硬直と歩幅の溜めの
+			// あいだ輪が止まって見える＝「ゆっくりでも常に小さくなっていく」が崩れる（実測済み）。
+			if (meta.coil) tickCoilShrink(e, meta, now);
 			// 隠れ↔出現の周期を更新（hide を持つ敵のみ＝潜み鮫・地中蟲・N 砂嵐の蠍王）
 			tickHide(e, meta, now);
 			// Phase 5.5k k-8: 瞬間移動（術士）＝消えている間と出現した tick を専有する。
@@ -2428,7 +2727,7 @@ export function createEnemyAi(deps) {
 			// Phase 5.5k k-4: 向き固定（盾騎士）＝turnMs ごとにだけ向き直る。移動より先に
 			// 決める（移動側は向きを触らない＝dirLocked を渡す）。
 			const dirLocked = tickFaceLock(e, meta, now);
-			if (!isGuarding && !frozen && !leaping && !shelled && !leeching && !slamming && !swinging && !breathing && !blinking && !dashing) {
+			if (!isGuarding && !frozen && !leaping && !shelled && !leeching && !slamming && !swinging && !breathing && !crushing && !blinking && !dashing) {
 				if (resolveHitAndAway(e, meta)) {
 					bossTickHitAndAway(e, meta);
 				} else if (cmode === 'ranged') {
@@ -2442,6 +2741,10 @@ export function createEnemyAi(deps) {
 					// Phase 8-4 (4) 0d-3（3体目 N）: 潜行待ち伏せ＝潜っている間だけ歩き、
 					// 地上では動かない。`hide` と組で意味を持つ（隠れの周期は tickHide が持ち主）。
 					enemyBurrowAmbush(e, meta, resolveEnemySpeed(e, meta), meta.burrowAmbush);
+				} else if (meta.coil) {
+					// Phase 8-4 (4) 0d-3（4体目 J）: 巻きつき＝プレイヤーへ寄らず輪の周を泳ぐ。
+					// 設定はフェーズで差し替わる（`resolveCoil`）＝HP50% で「半周で締め上げる」形へ。
+					enemyCoil(e, meta, resolveEnemySpeed(e, meta), resolveCoil(e, meta));
 				} else if (meta.zigzag) {
 					enemyZigzagFly(e, meta, resolveEnemySpeed(e, meta), meta.zigzag);
 				} else {
@@ -2468,6 +2771,8 @@ export function createEnemyAi(deps) {
 			syncSwingMotion(e, meta);
 			// Phase 8-4 (4) 0d-3: 炎のブレスの予告モーション（口元で炎の玉が膨らむ）。
 			syncBreathMotion(e);
+			// Phase 8-4 (4) 0d-3: 巻きつきの輪を床に描く（機構の唯一の告知＝どこが輪の内側か）。
+			if (meta.coil) syncCoilRing(e, meta);
 			// Phase 8-4 (4) 0d-2.6（2回目の調整）: 攻撃硬直の絵（前かがみで止まる＝殴り返す窓）。
 			syncRecoverMotion(e, now);
 			// Phase 5.5k k-9: 突進の溜めモーション（前後に細かく揺れる）を状態に合わせる。
@@ -2487,6 +2792,7 @@ export function createEnemyAi(deps) {
 		resolveCombat,
 		resolveDash,           // Phase 8-4 (4) 0d-3: 突進の設定（フェーズ差替を含む・テスト用）
 		resolveHide,           // Phase 8-4 (4) 0d-3: 隠れの周期（フェーズ差替を含む・テスト用）
+		resolveCoil,           // Phase 8-4 (4) 0d-3: 巻きつきの設定（フェーズ差替を含む・テスト用）
 		resolveEnemySprite,    // Phase 5.5k: 向き別スプライト名解決のテスト用
 		resolveAttackFreezeMs, // Phase 5.5k: 攻撃硬直の長さ（テスト用）
 		tickCombatMode,        // Phase 5.5k: 遠隔／近接の二相（テスト用）
@@ -2510,6 +2816,10 @@ export function createEnemyAi(deps) {
 		tickBreath,            // Phase 8-4 (4) 0d-3: ブレスの予告→解決（テスト用）
 		breathLaneDir,         // Phase 8-4 (4) 0d-3: 吐ける車線の判定（円錐の幅から導出・テスト用）
 		breatheCone,           // Phase 8-4 (4) 0d-3: 円錐の炎（壁で止まる・テスト用）
+		enemyCoil,             // Phase 8-4 (4) 0d-3: 巻きつきの移動（J 深海の海蛇・テスト用）
+		claimCoil,             // Phase 8-4 (4) 0d-3: 輪の中心を決め直す（巻き直し・テスト用）
+		tickCoilCrush,         // Phase 8-4 (4) 0d-3: 締め上げの予告→解決（テスト用）
+		crushCoil,             // Phase 8-4 (4) 0d-3: 輪の内側を潰す（中心から測る・テスト用）
 		detachLeech,           // Phase 5.5k k-5: 張り付きを剥がす（combat.js の被弾フックが呼ぶ）
 		bossTickHitAndAway,
 		enemyAttack,

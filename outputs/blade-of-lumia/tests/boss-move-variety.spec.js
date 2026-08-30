@@ -10,6 +10,8 @@
 //            後半は同じ車線取りが突進に化ける
 //   ⑭〜㉑ ＝ **N 砂嵐の蠍王**（2×2・D2 砂漠の神殿のボス）＝潜行待ち伏せ＝
 //            **潜っているあいだだけ歩き、地上では1歩も動かない**（移動と交戦が時間で分離）
+//   ㉒〜㉙ ＝ **J 深海の海蛇**（2×2・D3 水の迷宮のボス）＝巻きつき＝
+//            **そもそも寄って来ない**（見つけた地点を中心に周回し、輪を縮めて締め上げる）
 //
 // 1本目＝**W 魔物**（1×1・道中の中ボス。`dungeon_1 1,0` / `dungeon_1 3,0` /
 // `cave_1 1,0` / `dungeon_2 1,0` / `dungeon_7 1,0` の5部屋に各1体）。
@@ -291,6 +293,7 @@ const MECHANISM_FIELDS = [
   'leech', 'split', 'zigzag', 'reflectsProjectiles', 'meleeOnly', 'aura',
   'laneStalk',      // 0d-3（2体目 A）: 車線取りの移動
   'burrowAmbush',   // 0d-3（3体目 N）: 潜行中だけ歩く待ち伏せの移動
+  'coil',           // 0d-3（4体目 J）: 中心を決めて周回し輪を縮める移動（寄って来ない）
 ];
 const mechanismsOf = (meta) => new Set(MECHANISM_FIELDS.filter(k => meta[k]));
 const attackTypesOf = (meta) => new Set(
@@ -708,24 +711,12 @@ const D2_PRE = {
 // 潜行の窓（tick）＝tickHide は now が `_hideUntil` を越えた tick に切り替える∴切り上げ。
 const nHiddenTicks = (cfg) => Math.ceil(cfg.hiddenMs / TICK_MS);
 
-/**
- * `bal_sand_scorpion` の N を n tick 追う。毎 tick の潜行状態・位置・待ち伏せ地点を返す。
- * @param {object} o
- * @param {number} o.ticks     進める論理 tick 数
- * @param {object} [o.spawn]   プレイヤーの湧き（既定＝看板の南 (7,1)）を変える
- * @param {number} [o.dropAt]  この tick 以降で**浮上している最初の** tick にダメージを与える
- * @param {number} [o.dmg]     そのダメージ量
- *
- * ⚠️ ダメージは「潜行中は無効」（`game/combat.js:453` の `if (e.hidden) return;`）∴
- *    tick 番号を固定で指定すると潜行に当たって**HP が減らない**（実測 2026-08-26＝
- *    t50 固定で HP 満タンのまま相が発火しなかった）。浮上を待って落とす。
- */
+// SE を観測するため AudioContext を張り子に差し替える（N の浮上音・J の締め上げ音で共用）。
+// ⚠️ ページ側に置く＝spec ファイル間で張り子を取り合わない（Node 側に置くと同じ
+//    worker で走る他の spec の張り子と衝突して、どちらかが黙って記録しなくなる）。
+//    記録するのは周波数と tick ∴「潜った tick には鳴っていない」も言える。
 const toneRec = new WeakSet();
-async function trackScorpion(page, o) {
-  // 浮上の SE（`sandBurst`）を観測するため AudioContext を張り子に差し替える。
-  // ⚠️ ページ側に置く＝spec ファイル間で張り子を取り合わない（Node 側に置くと同じ
-  //    worker で走る他の spec の張り子と衝突して、どちらかが黙って記録しなくなる）。
-  //    記録するのは周波数と tick ∴「潜った tick には鳴っていない」も言える。
+async function installToneRec(page) {
   if (!toneRec.has(page)) {
     await page.addInitScript(() => {
       window.__tones = [];
@@ -746,6 +737,22 @@ async function trackScorpion(page, o) {
     });
     toneRec.add(page);
   }
+}
+
+/**
+ * `bal_sand_scorpion` の N を n tick 追う。毎 tick の潜行状態・位置・待ち伏せ地点を返す。
+ * @param {object} o
+ * @param {number} o.ticks     進める論理 tick 数
+ * @param {object} [o.spawn]   プレイヤーの湧き（既定＝看板の南 (7,1)）を変える
+ * @param {number} [o.dropAt]  この tick 以降で**浮上している最初の** tick にダメージを与える
+ * @param {number} [o.dmg]     そのダメージ量
+ *
+ * ⚠️ ダメージは「潜行中は無効」（`game/combat.js:453` の `if (e.hidden) return;`）∴
+ *    tick 番号を固定で指定すると潜行に当たって**HP が減らない**（実測 2026-08-26＝
+ *    t50 固定で HP 満タンのまま相が発火しなかった）。浮上を待って落とす。
+ */
+async function trackScorpion(page, o) {
+  await installToneRec(page);
   const sp = o.spawn ?? { row: N_PL_ROW, col: N_PL_COL };
   await gotoFrozen(page, previewUrl('bal_sand_scorpion', sp.row, sp.col, D2_PRE));
   return page.evaluate((a) => {
@@ -1087,5 +1094,595 @@ test('㉑ bal_sand_scorpion は 10×12・外周は通路以外すべて壁・N �
   for (let c = 1; c <= 3; c++) {
     expect(at(N_FLANK_SPAWN.row, c), `(${N_FLANK_SPAWN.row},${c}) が床でない＝向こう側に出られない`)
       .toBe(TILE.FLOOR);
+  }
+});
+
+// ════════ 4体目＝J 深海の海蛇（2×2・D3 水の迷宮のボス）＝巻きつき（coil）════════════
+// G・W・A・N のどれとも違う点＝**そもそも寄って来ない**。J は「見つけた地点」を輪の中心に
+// 決め、そこへ近づくのではなく**接線方向に周回**し、半径を**毎 tick 少しずつ**縮めて最後に
+// 輪の内側を潰す（締め上げ）。∴プレイヤーが読むのは「間合い（何セル離れているか）」ではなく
+// **「自分が輪の内側に居るか外側に居るか」**＝閉じる前に外へ出るのが答え。
+//   ・移動＝`coil`（`enemy-ai.js enemyCoil`）。中心 `_coilCx/_coilCy` はタイル中心へ丸める。
+//   ・縮み＝`tickCoilShrink`（**硬直より前で毎 tick 呼ぶ時計**＝`shrinkPerSec` セル/秒）。
+//     ⚠️ 2026-08-29 のユーザー判定で「段（半周ごとに 1.0 セル）」から作り直した：
+//        「輪は段階的に小さくするんじゃなくて、ゆっくりでも常に小さくなっていく感じにしないと
+//         …小さくなりきったときに攻撃がくるってことがわかりにくい」。
+//        ∴主張は2つ増えた＝**①どの tick も止まらずに縮む**（攻撃硬直中も・㉔①）
+//        **②縮むほど輪が赤くなり、予告の前に赤い点滅の段がある**（㉔③）。
+//   ・締め上げ＝`startCoilCrush` → `tickCoilCrush`（予告 `crushWindupMs` → 解決）。
+//     予告のあいだ J は動かない＝プレイヤーが動く番。解決後は `crushFreezeMs` の硬直。
+//   ・後半（HP 50% 以下）＝`phases[].coil` で **速く締めて（0.3→0.5 セル/秒）広く潰す**
+//     （締め上げに入る半径 1.6→2.0）。巻き始めの半径は前半と同じ 2.6＝相の境で輪が跳ばない。
+//
+// ⚠️ 測る湧きは **(4,4)＝部屋の中央寄り**（看板の南 (7,1) ではない）。理由＝実測
+//    （2026-08-29）：(7,1) を中心にすると輪が角の壁に噛んで `coilSpin` の反転が続き、
+//    `stallLimit` に達して巻き直す＝**半径が一度も縮まない**（40 tick で `coilR` 2.6 のまま）
+//    ＝機構が測れない。㉙ で「(4,4) の周り radius+1 が全部床」を地形として裏取りする。
+// ⚠️ ダメージを測る回（㉕㉖）は `page.keyboard.press('g')` で debug を切る
+//    （プレビューは `debugMode: true`＝`takeDamage()` が早期 return する）。
+const J_ROW = 4, J_COL = 7;          // 2×2 ∴ rows 4-5 / cols 7-8 を占める
+const J_PL_ROW = 4, J_PL_COL = 4;    // 輪が壁に噛まない中央寄り（上の⚠️）
+// D3 のボス直前の想定装備（audit-balance の「D3 水の迷宮 / ボス直前 DEF 1・最大HP 14」＝
+// ハート7・木の剣ティア0・盾なし・防具なし）＋`UNLOCKED_AT.dungeon_3`＝弓とブーメラン持ち
+// （弱点 arrow ×2 の答えを持っている状態）。
+const D3_PRE = {
+  ps_hearts: '7', ps_sword: '0', ps_shield: '0', ps_armor: '0',
+  ps_weapon: '1', ps_bow: '1', ps_boomerang: '1',
+};
+// 連続座標 → タイル（`enemy-ai.js` の toTileRow/toTileCol と同じ丸め）
+const toTile = (v) => Math.floor(v + 0.5);
+
+/**
+ * `bal_sea_serpent` の J を n tick 追う。毎 tick の輪（中心・半径・回った角度）と
+ * 締め上げ（予告・解決・潰したセル）とプレイヤーの被弾を返す。
+ * @param {object} o
+ * @param {number} o.ticks      進める論理 tick 数
+ * @param {object} [o.spawn]    プレイヤーの湧き（既定＝(4,4)）
+ * @param {number} [o.dropAt]   この tick の step より前に J へ与えるダメージの tick
+ * @param {number} [o.dmg]      そのダメージ量（`dealDamage` は def を引く∴+def して渡す）
+ * @param {boolean} [o.debugOff] true＝'g' で debug を切る（ダメージが通る）
+ * @param {object} [o.moveAt]   { dir, steps }＝**締め上げの予告中に**その向きへ steps 回歩く
+ *                              （`movePlayer` 1回＝MOVE_STEP 0.5＝キー押しっぱなしより正確）
+ * @param {object} [o.patch]    ENEMY_META['J'] へ一時的に差し込むフィールド（下の CRUSH_ONLY）
+ */
+async function trackSerpent(page, o) {
+  await installToneRec(page);
+  const sp = o.spawn ?? { row: J_PL_ROW, col: J_PL_COL };
+  await gotoFrozen(page, previewUrl('bal_sea_serpent', sp.row, sp.col, D3_PRE));
+  if (o.debugOff) await page.keyboard.press('g');
+  return page.evaluate((a) => {
+    const g = window.__game;
+    if (a.patch) g.setEnemyMetaForTest('J', a.patch);
+    const j0 = g.getEnemies().find(e => e.type === 'J');
+    if (!j0) return { error: 'J が盤面に居ない' };
+    const id = j0.id;
+    const find = () => g.getEnemies().find(e => e.id === id);
+
+    const samples = [];
+    let stepsLeft = a.moveAt?.steps ?? 0;
+    let movedAt = [];
+    for (let t = 1; t <= a.ticks; t++) {
+      if (a.dropAt === t) g.dealDamage(id, a.dmg);
+      // 予告が出ている tick だけ歩く＝「輪が閉じる前に動く」というプレイヤー側の操作
+      if (stepsLeft > 0 && find()?.crushAt != null) {
+        g.movePlayer(a.moveAt.dir); stepsLeft--; movedAt.push(t);
+      }
+      const tone0 = window.__tones.length;
+      g.step(1);
+      const e = find();
+      if (!e) break;
+      const p = g.getPlayer(), st = g.getState();
+      const cx = e.x + ((e.w ?? 1) - 1) / 2, cy = e.y + ((e.h ?? 1) - 1) / 2;
+      // 潰した水の見た目＝1セル1枚の DOM（left/top はセル座標×cellPx）
+      const cells = [...document.querySelectorAll('.enemy-coil-crush')].map((el) => {
+        const px = el.offsetWidth || 1;
+        return [parseFloat(el.style.top) / px, parseFloat(el.style.left) / px];
+      });
+      samples.push({
+        t, now: st.gameTime, hp: e.hp, x: e.x, y: e.y, dir: e.dir, speed: e.speed ?? null,
+        coil: e.coil ?? null,
+        coilCx: e.coilCx, coilCy: e.coilCy, coilR: e.coilR, coilHeat: e.coilHeat,
+        coilArc: e.coilArc, coilSpin: e.coilSpin, coilStall: e.coilStall,
+        crushAt: e.crushAt, crushWindupMs: e.crushWindupMs, crushR: e.crushR,
+        freezeUntil: e.freezeUntil ?? null, swingAt: e.swingAt ?? null,
+        px: p.x, py: p.y, php: p.hp, pdef: st.player.def, inv: st.player.invincibleUntil,
+        // 輪の中心からの距離／方角（＝周回しているかを1つの数で読む）
+        dCenter: e.coilCx == null ? null : Math.hypot(cx - e.coilCx, cy - e.coilCy),
+        bearing: e.coilCx == null ? null
+          : Math.atan2(cy - e.coilCy, cx - e.coilCx) * 180 / Math.PI,
+        // プレイヤーから見た「輪の中心までの距離」と「J の体の端までの距離」
+        pdCenter: e.coilCx == null ? null : Math.hypot(p.x - e.coilCx, p.y - e.coilCy),
+        pdEdge: Math.hypot(Math.max(0, Math.abs(p.x - cx) - 0.5),
+                           Math.max(0, Math.abs(p.y - cy) - 0.5)),
+        ring: !!document.getElementById(`coil-ring-${id}`),
+        ringClosing: !!document.querySelector('.coil-ring-closing'),
+        // 予告の前段（＝「もう来る」）を絵で読む：赤い点滅の class と実際の枠線の色。
+        // 色は CSS が `--coil-heat` から計算する∴**計算後の値**を採る（変数だけ見ても
+        // 見た目が赤いことにはならない＝2026-08-29 のユーザー判定に応える主張）。
+        ringHot: !!document.getElementById(`coil-ring-${id}`)?.classList.contains('coil-ring-hot'),
+        ringBorder: (() => {
+          const el = document.getElementById(`coil-ring-${id}`);
+          if (!el) return null;
+          const m = getComputedStyle(el).borderTopColor.match(/[\d.]+/g);
+          return m ? m.slice(0, 3).map(Number) : null;
+        })(),
+        cells,
+        newTones: window.__tones.slice(tone0),
+      });
+    }
+    const e = find();
+    return { id, samples, movedAt, end: e && { hp: e.hp, maxHp: e.maxHp, speed: e.speed, coil: e.coil ?? null } };
+  }, o);
+}
+
+// 締め上げの当たりだけを測るための一時パッチ＝J に**攻撃を撃たせない**（cooldown を伸ばす）。
+// ⚠️ これが必要な理由（2026-08-29 実測）＝輪が縮み切る手前は**噛みつきの間合いの中**
+//    （半径 1.7 ＝体の端が中心から 0.7・噛みつき range 1.6）＝設計どおり殴り合いになる∴
+//    締め上げの 1〜2 tick 前に噛まれると INVINCIBLE_MS 1500ms の無敵窓が締め上げを飲み込み、
+//    「HP が減ったか」では**当たり判定の正しさを測れない**（縮みを連続化して周期が
+//    5秒→4.5秒に縮んだぶん、噛みつきと締め上げの間隔が無敵窓より短くなった）。
+//    ∴ここでは攻撃を止めて「HP が動いた＝締め上げが当たった」だけが成立する状態を作る。
+const CRUSH_ONLY = {
+  attacks: [{ type: 'sword', range: 1.6, cooldown: 999000 }],
+  attack: { type: 'sword', range: 1.6, cooldown: 999000 },
+};
+
+/** 方角の総回転量（度・折り返しを畳んで足す）＝「1周まわった」を1つの数で読む */
+function sweepDeg(samples) {
+  let total = 0;
+  for (let i = 1; i < samples.length; i++) {
+    let d = samples[i].bearing - samples[i - 1].bearing;
+    while (d > 180) d -= 360;
+    while (d < -180) d += 360;
+    total += d;
+  }
+  return Math.abs(total);
+}
+
+// ── ㉒ データ＝J の層2（寄らずに輪を縮める・締め上げには必ず逃げ道がある）─────────
+test('㉒ J 深海の海蛇のデータ＝巻きつきの輪が縮み、締め上げには輪の外へ出る余裕がある', () => {
+  const m = ENEMY_META['J'];
+  const c = m.coil;
+  const sword = m.attacks.find(a => a.type === 'sword');
+
+  expect(c, 'coil が無い＝J に固有の移動機構が無い').toBeTruthy();
+  // 綴りの番人（`resolveCoil` が読むキー＝1文字違うと既定値に落ちて黙って動く）
+  expect(Object.keys(c).sort()).toEqual([
+    'crushAtk', 'crushFreezeMs', 'crushMs', 'crushPad', 'crushWindupMs',
+    'escapeMargin', 'radius', 'radiusMin', 'shrinkPerSec', 'stallLimit', 'tightenCues',
+  ]);
+  expect(c.radius, '巻き始めの半径が最小半径より大きくない＝一度も縮まない')
+    .toBeGreaterThan(c.radiusMin);
+  for (const k of ['shrinkPerSec', 'crushWindupMs', 'crushMs', 'crushFreezeMs']) {
+    expect(c[k], `${k} が正の数でない`).toBeGreaterThan(0);
+  }
+
+  // 他の3体の移動機構を**持っていない**＝型を借りていない
+  expect(m.hitAndAway, '間合いの往復（W の型）が生きている＝coil に来ない').toBe(false);
+  for (const k of ['combat', 'laneStalk', 'burrowAmbush', 'hide', 'dash']) {
+    expect(m[k], `${k} を持っている＝W/A/N/G の型を借りている`).toBeUndefined();
+  }
+  for (const p of m.phases ?? []) {
+    expect(p.dash, '後半に突進が生えている＝A の後半（車線を走る）と同じ型').toBeUndefined();
+  }
+
+  // ── 締め上げの「逃げ道」と「読みやすさ」を**前半・後半の両方**で数として確かめる ────
+  const ph = (m.phases ?? []).find(p => p.coil);
+  expect(ph, '後半に coil の差し替えが無い＝相が変わっても輪が同じ').toBeTruthy();
+  for (const [label, cfg] of [['前半', c], ['後半', ph.coil]]) {
+    // ① 巻き直しの閾（radius+escapeMargin）は潰す範囲（半径+crushPad）より外側
+    //    ＝「潰されない位置まで出た」なら必ず「巻き直しの外」にも出ている
+    expect(cfg.escapeMargin, `${label}の逃げ幅が潰す余白以下＝輪の外に出ても潰される（答えが無い）`)
+      .toBeGreaterThan(cfg.crushPad);
+    // ② 予告のあいだに走れる距離 > 中心から潰す範囲の外まで＝間に合う
+    const windupTicks = Math.floor(cfg.crushWindupMs / TICK_MS);
+    const needSteps = Math.ceil((cfg.radiusMin + cfg.crushPad) / MOVE_STEP);
+    expect(needSteps, `${label}は予告の tick 数では潰す範囲の外へ出られない＝理不尽`)
+      .toBeLessThanOrEqual(windupTicks);
+    // ③ 縮みは**連続に見える**＝締め切るまでに 8 tick 以上かける（2026-08-29 ユーザー判定＝
+    //    「ゆっくりでも常に小さくなっていく」）。数 tick で終わるなら段と区別が付かない。
+    const shrinkTicks = (cfg.radius - cfg.radiusMin) / (cfg.shrinkPerSec * TICK_MS / 1000);
+    expect(shrinkTicks, `${label}の縮みが数 tick で終わる＝段と区別できない（連続に見えない）`)
+      .toBeGreaterThanOrEqual(8);
+    // ④ 縮み切る前に「もう来る」の合図が鳴る＝合図の閾は 0〜1 の**内側**で昇順
+    expect(cfg.tightenCues.length, `${label}に締まりの合図が無い＝音の予兆が出ない`).toBeGreaterThan(0);
+    expect(cfg.tightenCues, `${label}の tightenCues が昇順でない＝鳴る順が設計と違う`)
+      .toEqual([...cfg.tightenCues].sort((a, b) => a - b));
+    for (const q of cfg.tightenCues) {
+      expect(q, `${label}の合図の閾が 0 以下＝巻いた瞬間に鳴る`).toBeGreaterThan(0);
+      expect(q, `${label}の合図の閾が 1 以上＝締め上げと同時＝予兆にならない`).toBeLessThan(1);
+    }
+    // ⑤ 縮み切った輪では剣が届く＝反撃の窓がどちらの相にもある（2×2 ∴端は中心から 1 セル内側）
+    expect(cfg.radiusMin - 1, `${label}の縮み切った輪でも剣が届かない＝反撃の窓が無い`)
+      .toBeLessThanOrEqual(SWORD_REACH);
+  }
+  // ⑥ 速さはプレイヤー（1.0）未満＝走って逃げる側が必ず速い（GUIDE §7-2）
+  expect(m.speed, 'J がプレイヤーより速い＝輪から出られない').toBeLessThan(1.0);
+
+  // ── 半径と武器の噛み合い（2×2 ∴体の端は中心から 1 セル内側）──────────────
+  expect(c.radius - 1, '巻き始めの輪でも剣が届く＝縮む意味が無い').toBeGreaterThan(SWORD_REACH);
+  expect(sword.range, '噛みつきが縮み切った輪の内側に届かない＝密着が安全になる')
+    .toBeGreaterThan(c.radiusMin - 1);
+  // 締め上げは新しい最大打点を作らない（噛みつきと同じ）
+  expect(c.crushAtk, '締め上げが噛みつきより痛い＝新しい最大打点を作っている').toBe(m.atk);
+  // 弱点＝矢×2（弓は立ち止まって撃つ＝輪の中に留まる＝この機構と噛み合う）
+  expect(m.weakness).toEqual({ type: 'arrow', multiplier: 2 });
+
+  // ── 後半＝速く締めて広く潰す（巻き始めの半径は同じ＝相の境で輪の絵が跳ばない）──────
+  const closeSec = (cfg) => (cfg.radius - cfg.radiusMin) / cfg.shrinkPerSec;
+  // 前半は「縮んでいる」と初見で気づける長さを持つ（＝ユーザー判定の要求そのもの）
+  expect(closeSec(c), '前半の縮みが速すぎる＝初見で気づく前に締め上げが来る')
+    .toBeGreaterThanOrEqual(2.0);
+  expect(ph.coil.radius, '後半の巻き始めが前半と違う＝相が切り替わった瞬間に輪の絵が跳ぶ')
+    .toBe(c.radius);
+  expect(ph.coil.shrinkPerSec, '後半の縮みが前半以下＝締め上げが速くなっていない')
+    .toBeGreaterThan(c.shrinkPerSec);
+  expect(closeSec(ph.coil), '後半も締め上げまでの時間が前半並み＝周期が短くなっていない')
+    .toBeLessThan(closeSec(c));
+  // 潰す範囲は後半のほうが広い＝踏み込んで殴った位置が危なくなる
+  expect(ph.coil.radiusMin + ph.coil.crushPad, '後半の潰す範囲が前半以下＝踏み込みの危険が増えない')
+    .toBeGreaterThan(c.radiusMin + c.crushPad);
+  // 合図の意味（赤くなったら来る）は相で変えない＝前半で覚えた読みが後半でも通る
+  expect(ph.coil.tightenCues, '後半で合図の閾が変わる＝色と音の学習が壊れる').toEqual(c.tightenCues);
+});
+
+// ── ㉓ 移動＝寄って来ない（プレイヤーのタイルを中心に周回する）─────────────────
+test('㉓ J はプレイヤーへ寄らず、見つけた地点を中心にぐるりと回る', async ({ page }) => {
+  const c = ENEMY_META['J'].coil;
+  const out = await trackSerpent(page, { ticks: 70 });
+  expect(out.error).toBeUndefined();
+  // 輪が立っている窓＝「周回しているだけ」の窓（予告・締め上げ後の硬直は除く）。
+  // ⚠️ 周回は**1周期をまたいで測る**＝縮みが 3.33 秒になった（2026-08-29 の連続化）ぶん
+  //    1周期で回れるのは半周弱∴1周期だけ見ると「回っている」を数にできない。
+  //    プレイヤーは動かない∴巻き直しても中心は同じ＝方角の連続性は保たれる。
+  const pre = out.samples.filter(s => s.crushAt == null && s.coilCx != null);
+  expect(pre.length, '輪が立っている窓が短すぎて周回を測れない').toBeGreaterThan(30);
+
+  // ① 輪の中心＝プレイヤーの居るタイル（＝敵の位置ではない）。動かない限り変わらない
+  for (const s of pre) {
+    expect([s.coilCy, s.coilCx], `t${s.t} の輪の中心がプレイヤーのタイルでない`)
+      .toEqual([J_PL_ROW, J_PL_COL]);
+    expect(s.ring, `t${s.t} に輪の絵が無い＝機構がプレイヤーに伝わらない`).toBe(true);
+  }
+
+  // ② ぐるりと回った（＝往復や直進ではない）
+  expect(sweepDeg(pre), '観測窓で 200°も回っていない＝周回になっていない')
+    .toBeGreaterThan(200);
+  const quadrants = new Set(pre.map(s => Math.floor(((s.bearing + 360) % 360) / 90)));
+  expect(quadrants.size, '中心の同じ側にしか居ない＝囲んでいない').toBeGreaterThanOrEqual(3);
+
+  // ③ 輪の上に乗り続ける＝距離が単調に減らない（G のまっすぐ来る型との違い）
+  //    ⚠️ 湧きは輪の外（実測 d 3.54）∴最初の数 tick は「輪へ寄る」区間＝除く。
+  //    許容 1.25 の根拠＝体は 0.5 刻みの軸移動で弧を近似する（弦を切る）＝実測の最大 1.1。
+  const onRing = pre.filter(s => s.t >= 12);
+  for (const s of onRing) {
+    expect(Math.abs(s.dCenter - s.coilR), `t${s.t} が輪から離れすぎ（d ${s.dCenter} / R ${s.coilR}）`)
+      .toBeLessThanOrEqual(1.25);
+  }
+  // ④ 中心（＝立っているプレイヤー）に重なりに来ない＝「寄って来ない」の実体
+  expect(Math.min(...onRing.map(s => s.dCenter)),
+    '中心に密着した＝寄って来ている（coil ではなく追跡になっている）')
+    .toBeGreaterThanOrEqual(1.0);
+  expect(Math.max(...pre.map(s => s.coilStall)),
+    '回れずに停滞した回数が保険の閾に達した＝この湧きでは機構が測れていない')
+    .toBeLessThan(c.stallLimit);
+});
+
+// ── ㉔ 輪が**止まらずに**縮む → 赤くなる → 予告 → 締め上げ → 硬直 → 巻き直す（1周期）──
+// ★2026-08-29 のユーザー判定に応える本＝「段階的に縮む」を捨てた根拠と、
+//   「小さくなりきったときに攻撃が来る」が**絵と音で読める**ことをここで固定する。
+test('㉔ 輪は毎 tick 縮んで赤くなり、縮み切った所で予告つきの締め上げになる', async ({ page }) => {
+  const c = ENEMY_META['J'].coil;
+  const out = await trackSerpent(page, { ticks: 78 });
+  const s = out.samples;
+  const firstWindup = s.find(x => x.crushAt != null);
+  expect(firstWindup, '78 tick 追っても締め上げの予告が来ない').toBeTruthy();
+
+  // ── ① 縮みは連続＝**どの tick も止まらない**（段だと縮んだ瞬間しか情報が出ない）────
+  const pre = s.slice(0, firstWindup.t);            // 巻き始め〜予告が立った tick
+  const perTick = c.shrinkPerSec * TICK_MS / 1000;
+  expect(pre.length, '縮みが数 tick で終わった＝連続に見えない').toBeGreaterThanOrEqual(8);
+  const radii = pre.map(x => x.coilR);
+  expect(new Set(radii).size, '同じ半径が続いた＝輪が止まって見える tick がある')
+    .toBe(radii.length);
+  for (let i = 1; i < pre.length; i++) {
+    const drop = radii[i - 1] - radii[i];
+    expect(drop, `t${pre[i].t} で輪が縮んでいない（止まった／広がった）`).toBeGreaterThan(0);
+    // 最後の tick だけ `radiusMin` で丸める∴刻みが小さくなりうる。それ以外は一定の刻み。
+    if (pre[i].coilR > c.radiusMin) {
+      expect(drop, `t${pre[i].t} の縮み量が shrinkPerSec と違う＝段が残っている`)
+        .toBeCloseTo(perTick, 6);
+    }
+  }
+  // ★時計で縮む（泳いだ弧ではない）＝**攻撃硬直で1歩も動かない tick でも縮む**。
+  //   弧に比例させた最初の実装はここが止まり、輪が1秒近く固まって見えた（実測 2026-08-29）。
+  const held = [];
+  for (let i = 1; i < pre.length; i++) {
+    if (pre[i].x === pre[i - 1].x && pre[i].y === pre[i - 1].y) held.push(pre[i]);
+  }
+  expect(held.length, '1歩も動かない tick が観測窓に無い＝硬直中の縮みを測れていない')
+    .toBeGreaterThan(0);
+  for (const h of held) {
+    expect(h.coilR, `動かなかった t${h.t} で輪が縮んでいない＝泳ぎに縛られている`)
+      .toBeLessThan(s[h.t - 2].coilR);
+  }
+  // 縮み具合（`_coilHeat`）は 0 から 1 へ単調＝色・音・テストが読む唯一の数
+  expect(pre[0].coilHeat, '巻き始めの締まり具合が 0 でない').toBeCloseTo(0, 6);
+  expect(firstWindup.coilHeat, '縮み切った tick の締まり具合が 1 でない').toBe(1);
+  for (let i = 1; i < pre.length; i++) {
+    expect(pre[i].coilHeat, `t${pre[i].t} で締まり具合が戻った`).toBeGreaterThan(pre[i - 1].coilHeat);
+  }
+
+  // ── ② 締め上げは「縮み切ったから」来る（回った角度ではない）──────────────
+  expect(firstWindup.coilR, '締め上げに入った半径が radiusMin でない').toBe(c.radiusMin);
+  expect(s[firstWindup.t - 2].coilR, '縮み切る前に締め上げが来た')
+    .toBeGreaterThan(c.radiusMin);
+
+  // ── ③ 予告の**前に**「もう来る」が絵と音で出る（初見でも身構えられる）──────────
+  // 輪は縮むほど赤くなる＝枠線の赤が単調に増え、青が減る（CSS が `--coil-heat` から計算）
+  const ramp = pre.filter(x => x.ringBorder && !x.ringClosing);
+  expect(ramp.length, '縮んでいるあいだの輪の色を採れていない').toBeGreaterThan(8);
+  for (let i = 1; i < ramp.length; i++) {
+    expect(ramp[i].ringBorder[0], `t${ramp[i].t} で輪の赤が減った＝赤くなっていく告知が壊れた`)
+      .toBeGreaterThanOrEqual(ramp[i - 1].ringBorder[0]);
+  }
+  const first = ramp[0].ringBorder, last = ramp[ramp.length - 1].ringBorder;
+  expect(last[0] - first[0], '縮み切る手前でも赤くなっていない＝攻撃が来る感じが出ない')
+    .toBeGreaterThan(100);
+  expect(last[2], '縮み切る手前でも青いまま＝巻き始めと色で区別できない').toBeLessThan(first[2]);
+  // 赤い点滅（`coil-ring-hot`）は**予告より前**に始まる（予告 720ms だけでは足りない）
+  const hotIdx = pre.findIndex(x => x.ringHot);
+  expect(hotIdx, '赤い点滅の段が無い＝「もう来る」が予告まで告知されない').toBeGreaterThan(0);
+  expect(pre[hotIdx].t, '赤い点滅が予告と同時に始まった＝前段になっていない')
+    .toBeLessThan(firstWindup.t);
+  expect(pre[hotIdx].coilHeat, '点滅が始まる締まり具合が 1 ＝縮み切ってから点滅している')
+    .toBeLessThan(1);
+  for (const x of pre.slice(0, hotIdx)) {
+    expect(x.ringHot, `t${x.t} で既に点滅している＝巻き始めから警告が出っぱなし`).toBe(false);
+  }
+  // 点滅が始まる tick で輪は**もう赤**（＝色相は heat ではなく閾値で正規化した `--coil-warn`
+  // から作る）。ここを heat 直結に戻すと点滅開始時点がまだマゼンタで（実測 rgb(255,82,249)）
+  // 赤に届くのが締め上げと同時＝「赤くなったら来る」が間に合わない（2026-08-29 実測）。
+  const hotRgb = pre[hotIdx].ringBorder;
+  expect(hotRgb, '点滅が始まった tick の輪の色を採れていない').toBeTruthy();
+  expect(hotRgb[0], '点滅開始時点で赤が振り切っていない').toBeGreaterThan(250);
+  expect(Math.abs(hotRgb[1] - hotRgb[2]), '点滅開始時点がまだ紫／マゼンタ寄り＝赤に見えない')
+    .toBeLessThan(24);
+  // 締まりの合図（coilTighten）は閾を越えた tick に鳴り、予告の音とは違う音
+  for (const q of c.tightenCues) {
+    const cue = pre.find(x => x.coilHeat >= q);
+    expect(cue, `締まり具合 ${q} を越える tick が観測窓に無い`).toBeTruthy();
+    expect(cue.newTones.length, `締まり具合 ${q} を越えた t${cue.t} に音が鳴っていない`)
+      .toBeGreaterThan(0);
+    expect(JSON.stringify(cue.newTones),
+      `締まりの合図が予告と同じ音＝「まだ縮んでいる」と「来る」が区別できない`)
+      .not.toBe(JSON.stringify(firstWindup.newTones));
+  }
+
+  // ── ④ 予告＝固定した半径・輪の絵が閉じる・専用の SE・J は動かない ──────────
+  expect(firstWindup.crushAt - firstWindup.now, '予告の長さが crushWindupMs と違う')
+    .toBe(c.crushWindupMs);
+  expect(firstWindup.crushR, '締め上げの半径が縮み切った半径で固定されていない').toBe(c.radiusMin);
+  expect(firstWindup.ringClosing, '輪の絵が「閉じる」表示になっていない＝予告が読めない').toBe(true);
+  expect(firstWindup.newTones.length, '予告の SE が鳴っていない').toBeGreaterThan(0);
+
+  const resolveIdx = s.findIndex(x => x.cells.length > 0);
+  const resolve = s[resolveIdx];
+  expect(resolve, '締め上げが解決していない').toBeTruthy();
+  const windup = s.slice(firstWindup.t - 1, resolveIdx);
+  expect(windup.length, '予告の tick 数が想定と違う').toBe(Math.round(c.crushWindupMs / TICK_MS));
+  for (const w of windup) {
+    expect([w.y, w.x], `予告中の t${w.t} に J が動いた＝溜めていない`)
+      .toEqual([firstWindup.y, firstWindup.x]);
+  }
+
+  // ⑤ 解決＝内側を潰し、中心を捨て（両方 null）、硬直を立てる
+  expect(resolve.cells.length, '潰したセルが1枚も無い').toBeGreaterThan(0);
+  expect([resolve.coilCx, resolve.coilCy], '中心が片方だけ残った＝半端な輪が観測される')
+    .toEqual([null, null]);
+  expect(resolve.ring, '解決後も輪の絵が残っている').toBe(false);
+  expect(resolve.freezeUntil, '締め上げ後の硬直（反撃の窓）が立っていない')
+    .toBe(resolve.now + c.crushFreezeMs);
+  expect(resolve.newTones.length, '締め上げの SE が鳴っていない').toBeGreaterThan(0);
+  expect(JSON.stringify(resolve.newTones),
+    '予告と締め上げが同じ音＝「来る」と「潰れた」が区別できない')
+    .not.toBe(JSON.stringify(firstWindup.newTones));
+
+  // ⑥ 硬直のあいだ動かず、明けたら新しい中心で半径が初期値に戻る（巻き直し）
+  const frozenTicks = s.filter(x => x.t > resolve.t && x.now < resolve.freezeUntil);
+  expect(frozenTicks.length, '硬直の窓が観測できていない').toBeGreaterThan(0);
+  for (const f of frozenTicks) {
+    expect([f.y, f.x], `硬直中の t${f.t} に J が動いた＝反撃の窓が無い`).toEqual([resolve.y, resolve.x]);
+  }
+  const reclaim = s.find(x => x.t > resolve.t && x.coilCx != null);
+  expect(reclaim, '締め上げのあと巻き直さない＝1周期で終わってしまう').toBeTruthy();
+  expect(reclaim.coilR, '巻き直しで半径が初期値に戻っていない').toBe(c.radius);
+  expect([reclaim.coilCy, reclaim.coilCx], '巻き直しの中心がプレイヤーのタイルでない')
+    .toEqual([toTile(reclaim.py), toTile(reclaim.px)]);
+});
+
+// ── ㉕ 輪の中に居たまま予告をやり過ごすと潰される（絵は当たり判定の上位集合）─────────
+test('㉕ 輪の中に居ると締め上げが当たり、潰した絵はダメージ範囲を必ず覆う', async ({ page }) => {
+  const c = ENEMY_META['J'].coil;
+  // 予告中に3歩（1.5セル）だけ動く＝**輪の中に留まったまま**位置を変える
+  // ＋ J の攻撃を止める（CRUSH_ONLY）＝HP が減ったら「潰された」以外にありえない
+  const out = await trackSerpent(page, {
+    ticks: 78, debugOff: true, moveAt: { dir: 'left', steps: 3 }, patch: CRUSH_ONLY,
+  });
+  const s = out.samples;
+  const resolveIdx = s.findIndex(x => x.cells.length > 0);
+  expect(resolveIdx, '締め上げが解決していない').toBeGreaterThan(0);
+  const resolve = s[resolveIdx], before = s[resolveIdx - 1];
+
+  // 前提①＝この tick の直前に無敵窓が無い（＝減らなかったら本当に当たっていない）。
+  //   J の攻撃は止めてある（CRUSH_ONLY）∴ここが生きていたら測定そのものが崩れている。
+  expect(before.inv, '解決の直前に無敵窓が生きている＝ダメージの有無が測れない')
+    .toBeLessThanOrEqual(before.now);
+  // 前提②＝プレイヤーは潰す範囲の内側に居る（＝潰される条件を作れている）
+  expect(before.pdCenter, '輪の外に出てしまった（この回は潰される条件を作れていない）')
+    .toBeLessThanOrEqual(before.crushR + c.crushPad);
+  // 前提③＝この回に減る HP は締め上げの分だけ（噛みつきも水球も撃たれていない）
+  expect(s.slice(0, resolveIdx).every(x => x.php === s[0].php),
+    '解決の前に HP が減っている＝締め上げ以外のダメージが混ざっている').toBe(true);
+
+  // 潰しのダメージ＝crushAtk − 防御（盾では防げない＝答えは「輪の外に出る」だけ）
+  expect(resolve.php, '締め上げが当たっていない（HP が減っていない）')
+    .toBe(before.php - (c.crushAtk - resolve.pdef));
+  expect(resolve.inv, '被弾後の無敵窓が立っていない＝ダメージ経路が takeDamage を通っていない')
+    .toBeGreaterThan(resolve.now);
+
+  // 絵はダメージ範囲の**上位集合**＝「何も描かれていない床で殴られた」が起きない
+  const r = before.crushR + c.crushPad;
+  const painted = new Set(resolve.cells.map(([row, col]) => `${row},${col}`));
+  const cx = before.coilCx, cy = before.coilCy;
+  // 立ち位置は MOVE_STEP 刻み∴整数 k で回す（0.5 を足し込むと丸めが1セルずれる）
+  const n = Math.ceil(r / MOVE_STEP);
+  for (let ky = -n; ky <= n; ky++) {
+    for (let kx = -n; kx <= n; kx++) {
+      const ox = kx * MOVE_STEP, oy = ky * MOVE_STEP;
+      if (Math.hypot(ox, oy) > r) continue;      // ダメージを受ける立ち位置だけ見る
+      const key = `${toTile(cy + oy)},${toTile(cx + ox)}`;
+      expect(painted.has(key),
+        `中心から (${ox.toFixed(1)},${oy.toFixed(1)}) は潰されるのにセル ${key} が塗られていない`)
+        .toBe(true);
+    }
+  }
+});
+
+// ── ㉖ 答え＝閉じる前に輪の外へ出る（潰されず、J は巻き直す）──────────────────
+test('㉖ 予告のあいだに輪の外へ出ると潰されず、J は中心を捨てて巻き直す', async ({ page }) => {
+  const c = ENEMY_META['J'].coil;
+  // 5歩（2.5セル）＝中心から潰す範囲（1.6+0.4）の外。予告は6 tick ∴間に合う。
+  // ⚠️ J の攻撃は止める（CRUSH_ONLY）＝止めないと「無傷だった」が**無敵窓のおかげ**でも
+  //    成立してしまう（噛みつきの無敵が締め上げを飲む＝㉕ で実測した罠の裏返し）。
+  const out = await trackSerpent(page, {
+    ticks: 84, debugOff: true, moveAt: { dir: 'left', steps: 5 }, patch: CRUSH_ONLY,
+  });
+  const s = out.samples;
+  const firstWindup = s.find(x => x.crushAt != null);
+  const resolveIdx = s.findIndex(x => x.cells.length > 0);
+  const resolve = s[resolveIdx], before = s[resolveIdx - 1];
+  expect(resolve, '締め上げが解決していない').toBeTruthy();
+
+  // 逃げ切りは「予告の窓の中」で完了している＝押しっぱなしでなく数歩で足りる
+  expect(out.movedAt.length, '予告中に歩き切れていない（窓が足りない）').toBe(5);
+  expect(out.movedAt[out.movedAt.length - 1] - firstWindup.t + 1,
+    '逃げるのに予告の tick を超えて掛かった＝間に合わない設計')
+    .toBeLessThanOrEqual(Math.round(c.crushWindupMs / TICK_MS));
+
+  // 潰す範囲の外に居る → HP は減らない（が、締め上げ自体は起きている）
+  expect(before.pdCenter, '輪の外に出られていない（この回は逃げ切れていない）')
+    .toBeGreaterThan(before.crushR + c.crushPad);
+  // 無敵窓は閉じている＝「減らなかった」は逃げ切りのおかげ（無敵に飲まれたのではない）
+  expect(before.inv, '解決の直前に無敵窓が生きている＝逃げ切りの成否を測れない')
+    .toBeLessThanOrEqual(before.now);
+  expect(resolve.php, '輪の外へ出たのに潰された＝答えが機能していない').toBe(before.php);
+  expect(resolve.cells.length, '締め上げ自体が起きていない＝逃げの成否を測っていない')
+    .toBeGreaterThan(0);
+  expect(resolve.newTones.length, '締め上げの SE が鳴っていない').toBeGreaterThan(0);
+
+  // J は新しい立ち位置を中心に巻き直す＝逃げた分だけ猶予が戻る
+  const reclaim = s.find(x => x.t > resolve.t && x.coilCx != null);
+  expect(reclaim, '逃げたあと巻き直さない＝逃げ続ければ何も起きなくなる').toBeTruthy();
+  expect([reclaim.coilCy, reclaim.coilCx], '巻き直しの中心が逃げた先のタイルでない')
+    .toEqual([toTile(reclaim.py), toTile(reclaim.px)]);
+  expect(reclaim.coilR, '巻き直しで半径が初期値に戻っていない').toBe(c.radius);
+});
+
+// ── ㉗ HP 半分で「速く締めて広く潰す」に変わる（層1 の `phases[].coil` が出荷データで効く）──
+test('㉗ HP 半分で輪の縮みが速くなり、締め上げが広い半径で来る', async ({ page }) => {
+  const m = ENEMY_META['J'];
+  const ph = m.phases.find(p => p.coil);
+  // dealDamage は防御を引く∴+def して渡す（HP をちょうど 50% に落とす）
+  const out = await trackSerpent(page, { ticks: 70, dropAt: 10, dmg: Math.ceil(m.hp / 2) + m.def });
+  const s = out.samples;
+  const after = s.filter(x => x.t > 10);
+  expect(s[9].hp / m.hp, 'HP が 50% 以下に落ちていない＝相の条件を満たしていない')
+    .toBeLessThanOrEqual(0.5);
+
+  // 相の差し替えが実体（`_coil`）に載っている＝`resolveCoil` が読む側が変わった
+  expect(after[after.length - 1].coil, '後半の coil が実体に載っていない').toEqual(ph.coil);
+
+  // ① 縮みの刻みが後半の値に変わる（前半 0.3→後半 0.5 セル/秒）＝縮みは連続のまま速くなる
+  const perTick = ph.coil.shrinkPerSec * TICK_MS / 1000;
+  const preTick = m.coil.shrinkPerSec * TICK_MS / 1000;
+  expect(perTick, '後半の刻みが前半と同じ＝速くなっていない').toBeGreaterThan(preTick);
+  const drops = [];
+  for (let i = 1; i < after.length; i++) {
+    const a = after[i - 1], b = after[i];
+    // 同じ巻き（中心が生きていて広がっていない）かつ丸めの入る最終 tick を除く
+    if (a.coilCx == null || b.coilCx == null) continue;
+    if (b.coilR >= a.coilR || b.coilR <= ph.coil.radiusMin || b.crushAt != null) continue;
+    drops.push(b.coilR - 0 - a.coilR);
+  }
+  expect(drops.length, '後半に縮んでいる tick が観測できていない').toBeGreaterThan(5);
+  for (const d of drops) expect(-d, '後半の縮み量が後半の shrinkPerSec と違う').toBeCloseTo(perTick, 6);
+
+  // ② 締め上げは後半の `radiusMin`（2.0）で来る＝前半（1.6）まで縮む前に閉じる
+  const windup = after.find(x => x.crushAt != null);
+  expect(windup, '後半に締め上げが来ない').toBeTruthy();
+  expect(windup.crushR, '締め上げの半径が後半の radiusMin でない＝相の差し替えが効いていない')
+    .toBe(ph.coil.radiusMin);
+  expect(Math.min(...after.filter(x => x.coilR != null).map(x => x.coilR)),
+    '前半の最小半径まで縮んだ＝後半の輪が前半と同じところまで詰めている')
+    .toBeGreaterThanOrEqual(ph.coil.radiusMin);
+
+  const resolve = after.find(x => x.cells.length > 0);
+  expect(resolve, '後半の締め上げが解決していない').toBeTruthy();
+  // 潰す範囲は前半（半径 1.6+0.4＝実測 21 枚）より広い＝踏み込んだ位置が危なくなる
+  expect(resolve.cells.length, '後半の潰す範囲が前半（21 枚）より広くない').toBeGreaterThan(21);
+});
+
+// ── ㉘ 導出＝J の機構は G・W・A・N のどれとも重ならない（手書きの表で数えない）───────
+test('㉘ J の移動機構は G・W・A・N のどれとも重ならない', () => {
+  const j = mechanismsOf(ENEMY_META['J']);
+  const others = ['G', 'W', 'A', 'N'].map(k => mechanismsOf(ENEMY_META[k]));
+  expect(j.has('coil'), 'J が移動機構（coil）を持っていない').toBe(true);
+  expect([...j].filter(k => others.every(o => !o.has(k))).length,
+    'J に G・W・A・N が持たない機構が1つも無い＝5体目の型になっていない').toBeGreaterThan(0);
+  expect(others.some(o => o.has('coil')),
+    'G・W・A・N のどれかが巻きつきを持っている＝J の固有機構ではない').toBe(false);
+  const users = Object.entries(ENEMY_META).filter(([, m]) => m.coil).map(([k]) => k);
+  expect(users, '巻きつきを持つ敵が J 以外にも居る（設計が重複した）').toEqual(['J']);
+});
+
+// ── ㉙ 検証ステージの幾何（GUIDE §4-3）───────────────────────────────
+test('㉙ bal_sea_serpent は 10×12・外周は通路以外すべて壁・J が (4,7) に1体だけ・水なし', () => {
+  const MAP_PATH = fileURLToPath(new URL('../work/blade-of-lumia.json', import.meta.url));
+  const MAP = JSON.parse(readFileSync(MAP_PATH, 'utf8'));
+  const sd = MAP.layers[TEST_LAYER].stages[stageKey('bal_sea_serpent')];
+  expect(sd.rows).toBe(10);
+  expect(sd.cols).toBe(12);
+  // ⚠️ J は水の迷宮のボスだが、ここは**水を置かない**＝周回が地形で止まると機構が測れない
+  expect(Object.keys(sd.bgTiles ?? {}), '水や別地形が入った＝周回の測定が地形のせいになる').toEqual([]);
+
+  const at = (r, c) => sd.tiles[r][c];
+  const serpents = [];
+  for (let r = 0; r < sd.rows; r++) {
+    for (let c = 0; c < sd.cols; c++) {
+      const ch = at(r, c);
+      if (ch === TILE.SEA_SERPENT) { serpents.push([r, c]); continue; }
+      if (r === 6 && c === 1) continue;              // 看板 i（南の通路の脇）
+      const edge = r === 0 || c === 0 || r === sd.rows - 1 || c === sd.cols - 1;
+      const want = edge && !isArenaDoor(r, c, sd.cols) ? TILE.WALL : TILE.FLOOR;
+      expect(at(r, c), `(${r},${c}) が想定と違う`).toBe(want);
+    }
+  }
+  expect(serpents, 'J が1体だけ (4,7) に居る前提が崩れた').toEqual([[J_ROW, J_COL]]);
+
+  // 測る湧き (4,4) の周り（巻き始めの半径＋体半分）が全部床＝輪が壁に噛まない。
+  // ⚠️ これが崩れると `coilSpin` の反転が続いて半径が一度も縮まない（看板の南 (7,1) で
+  //    実測した壊れ方＝2026-08-29）。この地形の裏取りが㉓㉔の前提。
+  // 半径＝巻き始めの半径＋体半分×2（2×2 の端まで）＝この円の中に壁が無いこと
+  const rad = ENEMY_META['J'].coil.radius + 1;
+  const span = Math.ceil(rad);
+  for (let r = J_PL_ROW - span; r <= J_PL_ROW + span; r++) {
+    for (let c = J_PL_COL - span; c <= J_PL_COL + span; c++) {
+      if (Math.hypot(r - J_PL_ROW, c - J_PL_COL) > rad) continue;
+      if (r < 0 || c < 0 || r >= sd.rows || c >= sd.cols) continue;
+      if (at(r, c) === TILE.SEA_SERPENT) continue;
+      if (r === 6 && c === 1) continue;              // 看板 i（輪の縁に掛かるが通れなくて良い）
+      expect(at(r, c), `(${r},${c}) が床でない＝(4,4) を中心にした輪が壁に噛む`).toBe(TILE.FLOOR);
+    }
   }
 });

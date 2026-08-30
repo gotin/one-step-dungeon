@@ -186,6 +186,19 @@ export function createBoss(deps) {
 		//    次の切り替えから効かせる。ここで初期化すると `tickHide` の「未初期化＝隠れで
 		//    始まる」経路に落ちて**相が変わった瞬間に無敵になる**（＝殴っていた窓が消える）。
 		if (phase.hide !== undefined) boss._hide = phase.hide;
+		// Phase 8-4 (4) 0d-3（4体目 J 深海の海蛇）: 巻きつきの設定を相で差し替える口
+		// （`resolveCoil` が読む）。J は後半で「半周で締め上げる」形になる。
+		// ⚠️ 輪は**巻き直させる**（`_coilCx = null`）＝走っている周をそのまま続けると、
+		//    新しい半径（2.2）より外にいる体が旧半径（2.6）の弧を辿り続けて輪が二重に見える。
+		//    `_dash` と同じ「状態機械も同時に初期化する」側の扱い（`_hide` とは逆）。
+		// ⚠️ 立っている締め上げの予告も捨てる＝予告した半径（`_crushR`）と新しい設定が
+		//    食い違ったまま解決すると「輪の外に出たのに潰される」になる。
+		if (phase.coil !== undefined) {
+			boss._coil = phase.coil;
+			boss._coilCx = null; boss._coilCy = null;
+			boss._coilArc = 0; boss._coilStall = 0;
+			boss._crushAt = null; boss._crushR = null;
+		}
 	}
 
 	// ── 星の欠片を生成 ──────────────────────

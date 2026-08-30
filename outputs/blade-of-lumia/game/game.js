@@ -2087,6 +2087,11 @@ export function getGameState() {
 			poisonNextAt: player._poisonNextAt ?? null,
 			poisonDmg:   player._poisonDmg ?? null,
 			poisoned:    isPoisoned(),
+			// Phase 8-4 (4) 0d-3（4体目 J）: 被弾直後の無敵窓（論理時刻。0＝掛かっていない）。
+			// これが無いと「攻撃が当たったのに HP が減らない」を測るテストが
+			// **無敵で吸われた**のか**当たり判定が壊れた**のか区別できない
+			// （締め上げは噛みつきと同じ間合いで起きる＝直前の噛みつきの無敵窓と重なりうる）。
+			invincibleUntil,
 		},
 		heroDir,
 		enemyCount: enemies.length,
@@ -2209,6 +2214,30 @@ export function getEnemiesSnapshot() {
 		// hide ＝隠れの周期そのもの（フェーズで差し替わる＝`resolveHide` が読む側）。
 		// **meta.hide とは別物**＝「後半で潜行が短くなった」の観測窓（dash と同じ趣旨）。
 		hide: e._hide ?? null,
+		// Phase 8-4 (4) 0d-3（4体目 J）: 巻きつき（coil）の観測用。
+		// coilCx/coilCy ＝輪の中心（＝巻き始めた瞬間のプレイヤーのタイル）。**敵の座標ではない**
+		// ∴「プレイヤーへ寄っていない（中心が動かないまま周を泳ぐ）」はこの値と x/y の組で読む。
+		// coilR ＝今の半径（**泳いだ弧に比例して連続に縮む**）／coilArc ＝回った総角度（rad）／
+		// coilSpin ＝回る向き（+1|-1・壁で反転する）／coilStall ＝回れなかった連続回数。
+		// coilHeat ＝縮み具合 0〜1（0＝巻き始め・1＝締め上げ直前）＝**輪の色（`--coil-heat`）と
+		// 軋みの音（tightenCues）が読む数そのもの**∴「絵の赤さ」と「残り時間」が一致することを
+		// この1つの値で測れる（2026-08-29 ユーザー判定で連続化したときに開けた口）。
+		coilCx: e._coilCx ?? null,
+		coilCy: e._coilCy ?? null,
+		coilR: e._coilR ?? null,
+		coilHeat: e._coilHeat ?? null,
+		coilArc: e._coilArc ?? null,
+		coilSpin: e._coilSpin ?? null,
+		coilStall: e._coilStall ?? null,
+		// crushAt ＝締め上げが解決する論理時刻（null＝予告していない）＝「輪が閉じる前に
+		// 予告を挟む」ことを測る唯一の窓。crushR ＝**予告の瞬間に固定した**半径（解決までに
+		// 縮まない＝絵で見た輪の内側がそのまま危険範囲）。
+		crushAt: e._crushAt ?? null,
+		crushWindupMs: e._crushWindupMs ?? null,
+		crushR: e._crushR ?? null,
+		// coil ＝巻きつきの設定そのもの（フェーズで差し替わる＝`resolveCoil` が読む側）。
+		// **meta.coil とは別物**＝「後半で半周で締め上げるようになった」の観測窓。
+		coil: e._coil ?? null,
 		// Phase 8-4 (4) 層1: ボスのフェーズが差し替える「行動の元データ」の観測用。
 		// boss.js checkBossPhase は**エンティティ側にだけ書く**∴フェーズが効いたかは
 		// ここに出る値で読む（null＝差し替えなし＝ENEMY_META のまま）。
