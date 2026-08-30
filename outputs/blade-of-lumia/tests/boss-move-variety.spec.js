@@ -12,6 +12,8 @@
 //            **潜っているあいだだけ歩き、地上では1歩も動かない**（移動と交戦が時間で分離）
 //   ㉒〜㉙ ＝ **J 深海の海蛇**（2×2・D3 水の迷宮のボス）＝巻きつき＝
 //            **そもそも寄って来ない**（見つけた地点を中心に周回し、輪を縮めて締め上げる）
+//   ㉚〜㊲ ＝ **O 古森の巨人**（2×2・D6 森の聖域のボス）＝見据え＝
+//            **寄る先がプレイヤーではない**（1拍前に立っていた地点＝印を追い、そこへ岩を落とす）
 //
 // 1本目＝**W 魔物**（1×1・道中の中ボス。`dungeon_1 1,0` / `dungeon_1 3,0` /
 // `cave_1 1,0` / `dungeon_2 1,0` / `dungeon_7 1,0` の5部屋に各1体）。
@@ -294,6 +296,7 @@ const MECHANISM_FIELDS = [
   'laneStalk',      // 0d-3（2体目 A）: 車線取りの移動
   'burrowAmbush',   // 0d-3（3体目 N）: 潜行中だけ歩く待ち伏せの移動
   'coil',           // 0d-3（4体目 J）: 中心を決めて周回し輪を縮める移動（寄って来ない）
+  'gaze',           // 0d-3（5体目 O）: 印（1拍前の足跡）へ寄る移動（プレイヤーを追わない）
 ];
 const mechanismsOf = (meta) => new Set(MECHANISM_FIELDS.filter(k => meta[k]));
 const attackTypesOf = (meta) => new Set(
@@ -1684,5 +1687,526 @@ test('㉙ bal_sea_serpent は 10×12・外周は通路以外すべて壁・J が
       if (r === 6 && c === 1) continue;              // 看板 i（輪の縁に掛かるが通れなくて良い）
       expect(at(r, c), `(${r},${c}) が床でない＝(4,4) を中心にした輪が壁に噛む`).toBe(TILE.FLOOR);
     }
+  }
+});
+
+// ════════ 5体目＝O 古森の巨人（2×2・D6 森の聖域のボス）＝見据え（gaze）═══════════
+// G・W・A・N・J のどれとも違う点＝**寄る先がプレイヤーではない**。O は「見据えた瞬間に
+// プレイヤーが立っていたタイル」へ印（`_gazeCx/_gazeCy`）を1つ押し、以後は**その印**へ
+// 歩き、印の上へ放物線で岩を落とす。印は押した後1ドットも動かない（追尾しない）。
+// ∴プレイヤーが読むのは間合い（G/W）でも射線（A）でも浮上位置（N）でも輪の内外（J）でも
+// なく **「自分がいま印の内側に居るか」**＝立ち止まると足元に印が立ち、動けば印は置き去りになる。
+//   ・周期＝`tickGaze`（**行動ゲートの外**の時計）＝'mark'（stampMs）→'flight'（岩の飛翔）
+//     →'rest'（restMs）→次の印。**1つの印 ⇔ 1つの岩**（`_gazeCount`）。
+//   ・移動＝`enemyGazeStride`（印へ BFS で寄る＝N の待ち伏せと同じ経路探索を使う）。
+//   ・岩＝`lob`（遮蔽も盾も効かない）＋`blast`（半径＝印の絵と同じ `_gazeR`・`breakPower: 0`）。
+//   ・投げた直後は `throwFreezeMs` の硬直＝**殴り返す窓**（`.attack-recover` の絵が出る）。
+//   ・後半（HP 50% 以下）＝`phases[].gaze` で **印を速く押し直し（1080→720ms）広く潰す**
+//     （半径 1.2→1.6）。打点（stampAtk）は据え置き＝速さと広さだけで圧を上げる。
+//
+// ⚠️ 測る湧きは **(4,4)**＝巨人 (4,7) と同じ行の西側3セル（看板の南 (7,1) ではない）。
+//    理由＝印は「プレイヤーの立っていたタイル」＝湧きが部屋の隅だと巨人が印へ寄る経路が
+//    壁沿いに限られ、「印へ踏み込む」が測りにくい。㊲ で (4,4) 周りの床を地形として裏取りする。
+// ⚠️ ダメージを測る回（㉜㉝）は `page.keyboard.press('g')` で debug を切る
+//    （プレビューは `debugMode: true`＝`takeDamage()` が早期 return する）。
+const O_ROW = 4, O_COL = 7;          // 2×2 ∴ rows 4-5 / cols 7-8 を占める
+const O_PL_ROW = 4, O_PL_COL = 4;    // 測る湧き（上の⚠️）
+// D6 のボス直前の想定装備（audit-balance の「D6 火山 / ボス直前 DEF 1・最大HP 20」＝
+// ハート10・木の剣ティア0・盾なし・布の服ティア0）＋`UNLOCKED_AT.dungeon_6`＝
+// ブーメラン・弓・ロウソク・爆弾持ち（弱点 fire ×2 の答え＝ロウソクを持っている状態）。
+const D6_PRE = {
+  ps_hearts: '10', ps_sword: '0', ps_shield: '0', ps_armor: '0',
+  ps_weapon: '1', ps_boomerang: '1', ps_bow: '1', ps_candle: '1', ps_bomb: '1',
+};
+
+/**
+ * `bal_forest_giant` の O を n tick 追う。毎 tick の印（座標・濃さ・相）と岩（着弾点）と
+ * 土煙（絵の中心と半径）とプレイヤーの被弾を返す。
+ * @param {object} o
+ * @param {number} o.ticks      進める論理 tick 数
+ * @param {object} [o.spawn]    プレイヤーの湧き（既定＝(4,4)）
+ * @param {number} [o.dropAt]   この tick の step より前に O へ与えるダメージの tick
+ * @param {number} [o.dmg]      そのダメージ量（`dealDamage` は def を引く∴+def して渡す）
+ * @param {boolean} [o.debugOff] true＝'g' で debug を切る（ダメージが通る）
+ * @param {object} [o.moveAt]   { dir, steps }＝**印が立っているあいだに**その向きへ steps 回歩く
+ *                              （`movePlayer` 1回＝MOVE_STEP 0.5＝キー押しっぱなしより正確）
+ * @param {object} [o.patch]    ENEMY_META['O'] へ一時的に差し込むフィールド（下の ROCK_ONLY）
+ */
+async function trackGiant(page, o) {
+  await installToneRec(page);
+  const sp = o.spawn ?? { row: O_PL_ROW, col: O_PL_COL };
+  await gotoFrozen(page, previewUrl('bal_forest_giant', sp.row, sp.col, D6_PRE));
+  if (o.debugOff) await page.keyboard.press('g');
+  return page.evaluate((a) => {
+    const g = window.__game;
+    if (a.patch) g.setEnemyMetaForTest('O', a.patch);
+    const o0 = g.getEnemies().find(e => e.type === 'O');
+    if (!o0) return { error: 'O が盤面に居ない' };
+    const id = o0.id;
+    const find = () => g.getEnemies().find(e => e.id === id);
+    const cellPx = parseFloat(
+      getComputedStyle(document.documentElement).getPropertyValue('--cell')) || 48;
+
+    const samples = [];
+    let stepsLeft = a.moveAt?.steps ?? 0;
+    const movedAt = [];
+    let dustSeen = 0;
+    for (let t = 1; t <= a.ticks; t++) {
+      if (a.dropAt === t) g.dealDamage(id, a.dmg);
+      // 印が立っている tick だけ歩く＝「岩が落ちる前に印から離れる」プレイヤー側の操作
+      if (stepsLeft > 0 && find()?.gazePhase === 'mark') {
+        g.movePlayer(a.moveAt.dir); stepsLeft--; movedAt.push(t);
+      }
+      const tone0 = window.__tones.length;
+      g.step(1);
+      const e = find();
+      if (!e) break;
+      const p = g.getPlayer(), st = g.getState();
+      const cx = e.x + ((e.w ?? 1) - 1) / 2, cy = e.y + ((e.h ?? 1) - 1) / 2;
+      const el = document.getElementById(`gaze-mark-${id}`);
+      // 敵の投擲物（＝岩）の着弾点＝「印を狙っている」かをここで読む
+      const rocks = g.getProjectiles().filter(pr => pr.owner === 'enemy').map(pr => ({
+        type: pr.type, lob: !!pr.lob, x: pr.x, y: pr.y,
+        targetX: pr.targetX, targetY: pr.targetY,
+      }));
+      // 岩が砕けた土煙（1発ぶん1枚）。⚠️ 実時間の消去タイマ（500ms）は同期ループの
+      //    あいだ走らない∴消えずに溜まる＝**増分**で「この tick に落ちた」を読む。
+      const dust = [...document.querySelectorAll('.explosion-effect.explosion-rock')];
+      const newDust = dust.slice(dustSeen).map((d) => ({
+        // 円の中心（セル座標）と半径（セル）＝ダメージ範囲を覆っているかを数で読む
+        cx: (parseFloat(d.style.left) + parseFloat(d.style.width) / 2) / cellPx - 0.5,
+        cy: (parseFloat(d.style.top) + parseFloat(d.style.height) / 2) / cellPx - 0.5,
+        r: parseFloat(d.style.width) / cellPx / 2,
+      }));
+      dustSeen = dust.length;
+      samples.push({
+        t, now: st.gameTime, hp: e.hp, x: e.x, y: e.y, dir: e.dir, speed: e.speed ?? null,
+        gaze: e.gaze ?? null,
+        gazeCx: e.gazeCx ?? null, gazeCy: e.gazeCy ?? null, gazePhase: e.gazePhase ?? null,
+        gazeAt: e.gazeAt ?? null, gazeSpan: e.gazeSpan ?? null, gazeR: e.gazeR ?? null,
+        gazeHeat: e.gazeHeat ?? null, gazeCount: e.gazeCount ?? 0,
+        freezeUntil: e.freezeUntil ?? null, swingAt: e.swingAt ?? null,
+        px: p.x, py: p.y, php: p.hp, pdef: st.player.def, inv: st.player.invincibleUntil,
+        // 巨人の中心から印まで／プレイヤーから印まで（＝「寄る先」と「危ない場所」を1つの数で）
+        dMark: e.gazeCx == null ? null : Math.hypot(cx - e.gazeCx, cy - e.gazeCy),
+        // 体の**端**から印まで（hitbox.js と同じ取り方）＝2×2 の中心距離では「隣に来た」が
+        // 測れない（中心は必ず 0.5 ずれる∴隣接でも 1.58 になる）
+        eMark: e.gazeCx == null ? null
+          : Math.hypot(Math.max(0, Math.abs(e.gazeCx - cx) - ((e.w ?? 1) - 1) / 2 - 0.5),
+                       Math.max(0, Math.abs(e.gazeCy - cy) - ((e.h ?? 1) - 1) / 2 - 0.5)),
+        pdMark: e.gazeCx == null ? null : Math.hypot(p.x - e.gazeCx, p.y - e.gazeCy),
+        // 印の絵（唯一の告知）＝出ているか・赤い段か・落下中か・大きさ・枠線の色
+        mark: !!el,
+        markHot: !!el?.classList.contains('gaze-mark-hot'),
+        markFalling: !!el?.classList.contains('gaze-mark-falling'),
+        markSpan: el ? parseFloat(el.style.width) / cellPx : null,
+        markBorder: (() => {
+          if (!el) return null;
+          const m = getComputedStyle(el).borderTopColor.match(/[\d.]+/g);
+          return m ? m.slice(0, 3).map(Number) : null;
+        })(),
+        // 硬直の絵（＝殴り返せる窓が画面に出ているか）
+        recover: !!document.getElementById(`char-enemy-${id}`)?.classList.contains('attack-recover'),
+        rocks, newDust,
+        newTones: window.__tones.slice(tone0),
+      });
+    }
+    const e = find();
+    return { id, samples, movedAt, end: e && { hp: e.hp, maxHp: e.maxHp, speed: e.speed, gaze: e.gaze ?? null } };
+  }, o);
+}
+
+// 岩の当たりだけを測るための一時パッチ＝O に**枝腕を振らせない**（cooldown を伸ばす）。
+// ⚠️ 必要な理由＝O は印へ**歩いて来る**∴印に立ったまま待つと（㉝）岩が落ちる前に枝腕の
+//    間合い（1.4）に入られる＝INVINCIBLE_MS 1500ms の無敵窓が岩を飲み込み「HP が減ったか」
+//    では当たり判定を測れない（J の CRUSH_ONLY で踏んだ罠と同型）。
+const ROCK_ONLY = {
+  attacks: [{ type: 'sword', range: 1.4, cooldown: 999000 }],
+  attack: { type: 'sword', range: 1.4, cooldown: 999000 },
+};
+
+/** `gazePhase` の連続区間へ切り分ける（最後の区間は打ち切られている＝complete false）。 */
+function gazeRuns(samples) {
+  const runs = [];
+  for (const s of samples) {
+    const last = runs[runs.length - 1];
+    if (last && last.phase === s.gazePhase) last.samples.push(s);
+    else runs.push({ phase: s.gazePhase, samples: [s] });
+  }
+  return runs.map((r, i) => ({ ...r, complete: i < runs.length - 1 }));
+}
+
+// ── ㉚ データ＝O の層2（見据えの綴りと「印から離れれば必ず助かる」算術）─────────────
+test('㉚ O 古森の巨人のデータ＝見据えは印1つ＝岩1つで、印から離れる猶予が必ずある', () => {
+  const m = ENEMY_META['O'];
+  const c = m.gaze;
+
+  expect(c, 'gaze が無い＝O に固有の移動機構が無い').toBeTruthy();
+  // 綴りの番人（`resolveGaze` を読む3つの関数が読むキー＝1文字違うと既定値に落ちて黙って動く）
+  expect(Object.keys(c).sort()).toEqual([
+    'arcHeight', 'restMs', 'rockSpeed', 'stampAtk', 'stampMs', 'stampRadius', 'throwFreezeMs',
+  ]);
+
+  // 他の4体の移動機構を**持っていない**＝型を借りていない
+  expect(m.hitAndAway, '間合いの往復（W/G の型）が生きている＝gaze の分岐に来ない').toBe(false);
+  for (const k of ['combat', 'laneStalk', 'burrowAmbush', 'hide', 'dash', 'coil']) {
+    expect(m[k], `${k} を持っている＝W/A/N/G/J の型を借りている`).toBeUndefined();
+  }
+  for (const p of m.phases ?? []) {
+    for (const k of ['dash', 'coil', 'hide']) {
+      expect(p[k], `後半に ${k} が生えている＝他のボスの後半と同じ型`).toBeUndefined();
+    }
+  }
+  // 遠隔の攻撃を**持たない**＝投擲は見据えの周期だけが持つ（時計を2つにしない）
+  expect([...attackTypesOf(m)], 'O の攻撃が枝腕（近接）だけでない＝岩以外の投擲が混ざる')
+    .toEqual(['sword']);
+
+  // ── 「印から離れる」が必ず間に合うことを**前半・後半の両方**で数として確かめる ────
+  const ph = (m.phases ?? []).find(p => p.gaze);
+  expect(ph, '後半に gaze の差し替えが無い＝相が変わっても見据えが同じ').toBeTruthy();
+  expect(Object.keys(ph.gaze).sort(), '後半の gaze のキーが前半と違う＝部分指定で既定値に落ちる')
+    .toEqual(Object.keys(c).sort());
+  for (const [label, cfg] of [['前半', c], ['後半', ph.gaze]]) {
+    // ① 予告（印が濃くなる窓）のあいだに歩ける距離 > 潰す半径＝立ち止まっていなければ助かる
+    const windupTicks = Math.floor(cfg.stampMs / TICK_MS);
+    expect(windupTicks * MOVE_STEP, `${label}は印が立ってから外へ出るまで走り切れない＝理不尽`)
+      .toBeGreaterThan(cfg.stampRadius);
+    expect(Math.ceil(cfg.stampRadius / MOVE_STEP), `${label}の予告 tick 数が逃げる歩数に足りない`)
+      .toBeLessThanOrEqual(windupTicks);
+    // ② 印は「初見でも気づける長さ」立っている（＝押した瞬間に落ちない）
+    expect(windupTicks, `${label}の印が数 tick で消える＝告知に気づけない`).toBeGreaterThanOrEqual(6);
+    for (const k of ['stampMs', 'restMs', 'throwFreezeMs', 'rockSpeed', 'stampRadius']) {
+      expect(cfg[k], `${label}の ${k} が正の数でない`).toBeGreaterThan(0);
+    }
+    // ③ 岩は新しい最大打点を作らない（枝腕と同じ＝J の crushAtk と同じ作法）
+    expect(cfg.stampAtk, `${label}の岩が枝腕より痛い＝新しい最大打点を作っている`).toBe(m.atk);
+    // ④ 投げた直後の硬直で剣が届く＝反撃の窓が両方の相にある（2×2 ∴端は中心から1セル内側）
+    expect(cfg.throwFreezeMs, `${label}の硬直が短すぎる＝殴り返せない`)
+      .toBeGreaterThanOrEqual(2 * TICK_MS);
+    // ⑤ **1周期のあいだに印まで歩き着ける**＝「さっき居た場所へ踏み込んで来る」が画面に出る
+    //    （速さ 0.5＝1 tick に MOVE_STEP の半分＝0.25 セル）
+    const cycleTicks = (cfg.stampMs + cfg.restMs) / TICK_MS;
+    const speed = m.speed * (label === '後半' ? (ph.speedMultiplier ?? 1) : 1);
+    expect(cycleTicks * speed * MOVE_STEP, `${label}は1周期で印の半径ぶんも歩けない＝踏み込みが見えない`)
+      .toBeGreaterThan(cfg.stampRadius);
+  }
+  // ⑥ 速さはプレイヤー（1.0）未満＝走って離れる側が必ず速い（GUIDE §7-2）
+  expect(m.speed, 'O がプレイヤーより速い＝印から離れ続けられない').toBeLessThan(1.0);
+  // 枝腕は「印に立ち止まった相手」にだけ届く長さ（＝密着していなければ岩だけが脅威）
+  const sword = m.attacks.find(a => a.type === 'sword');
+  expect(sword.range, '枝腕の間合いが印の半径より広い＝離れても殴られる（印を読む意味が薄れる）')
+    .toBeLessThanOrEqual(c.stampRadius + 0.5);
+  // 弱点＝炎（ロウソク＝密着して焼く）＝この機構と噛み合う（寄って留まると足元に印が立つ）
+  expect(m.weakness).toEqual({ type: 'fire', multiplier: 2 });
+
+  // ── 後半＝速く押し直して広く潰す（打点は据え置き）──────────────────────
+  expect(ph.gaze.stampMs, '後半の印が前半以上に長い＝押し直しが速くなっていない')
+    .toBeLessThan(c.stampMs);
+  expect(ph.gaze.restMs, '後半の余韻が前半以上＝周期が短くなっていない').toBeLessThan(c.restMs);
+  expect(ph.gaze.stampRadius, '後半の潰す範囲が前半以下＝踏み込みの危険が増えない')
+    .toBeGreaterThan(c.stampRadius);
+  expect(ph.gaze.rockSpeed, '後半の岩が前半以下の速さ＝落ちるまでの猶予が増えている')
+    .toBeGreaterThan(c.rockSpeed);
+});
+
+// ── ㉛ 移動＝プレイヤーを追わない（押した印へ寄る・向きも印を向く）───────────────
+test('㉛ O は印（1拍前の足跡）へ寄り、印はプレイヤーのタイルに押されたまま動かない', async ({ page }) => {
+  const out = await trackGiant(page, { ticks: 46 });
+  expect(out.error).toBeUndefined();
+  const s = out.samples;
+
+  // ① 印はプレイヤーの立っていたタイル（＝敵の位置ではない）。動かない限り同じタイル
+  const marked = s.filter(x => x.gazeCx != null);
+  expect(marked.length, '印が立っている tick が観測できていない').toBeGreaterThan(20);
+  for (const x of marked) {
+    expect([x.gazeCy, x.gazeCx], `t${x.t} の印がプレイヤーのタイルでない`)
+      .toEqual([O_PL_ROW, O_PL_COL]);
+  }
+  // ② 印の絵は 'mark'（押してから投げるまで）と 'flight'（岩が飛んでいる間）だけ出る
+  //    ＝「どこに落ちるか」が出ている窓と、岩が空に居る窓が絵で一致する
+  for (const x of s) {
+    const want = x.gazePhase === 'mark' || x.gazePhase === 'flight';
+    expect(x.mark, `t${x.t}（${x.gazePhase}）の印の絵の有無が相と合わない`).toBe(want);
+    if (x.gazePhase === 'flight') {
+      expect(x.markFalling, `t${x.t} に落下中の影が出ていない＝いつ落ちるかが読めない`).toBe(true);
+    }
+  }
+  // ③ **印へ寄る**＝巨人の中心から印までの距離が観測窓で確かに詰まり、体が印の隣まで来る
+  //    （印のタイルにはプレイヤーが立っている＝`isPassableForEnemy` で重なれない∴隣で止まる）
+  expect(s[s.length - 1].dMark, '巨人が印へ寄っていない＝寄る先が印になっていない')
+    .toBeLessThan(s[0].dMark);
+  // 印のタイルは体の**真隣**まで詰める（0.5＝隣のタイルの中心＝体の縁から半セル）。
+  // ⚠️ 中心距離（dMark）で測ると 2×2 は隣接でも 1.58 になる＝「寄っていない」と誤読する。
+  expect(Math.min(...marked.map(x => x.eMark)), '巨人が印の隣まで来ない＝踏み込みが起きていない')
+    .toBeLessThanOrEqual(0.5);
+  // ④ 向きは**印**を向く（プレイヤーではなく印を見据えている＝機構の名前どおり）
+  for (const x of marked) {
+    const dx = x.gazeCx - (x.x + 0.5), dy = x.gazeCy - (x.y + 0.5);
+    if (Math.abs(dx) < 0.01 && Math.abs(dy) < 0.01) continue;
+    const want = Math.abs(dx) >= Math.abs(dy) ? (dx > 0 ? 'right' : 'left') : (dy > 0 ? 'down' : 'up');
+    expect(x.dir, `t${x.t} の向きが印の方向でない（印 ${x.gazeCy},${x.gazeCx}）`).toBe(want);
+  }
+  // ⑤ 押した瞬間に SE が鳴る（＝床の絵を見ていなくても「見据えられた」が分かる）
+  const claims = gazeRuns(s).filter(r => r.phase === 'mark');
+  expect(claims.length, '観測窓で印が1回も押されていない').toBeGreaterThan(0);
+  for (const r of claims) {
+    expect(r.samples[0].newTones.length, `t${r.samples[0].t} の印に SE が無い＝予告が音で出ない`)
+      .toBeGreaterThan(0);
+  }
+});
+
+// ── ㉜ 答え＝印から離れる（岩は置き去りの印に落ち、次の印は新しい足元に立つ）───────────
+test('㉜ 印から離れれば岩は当たらず、次の印は逃げた先に立つ', async ({ page }) => {
+  const c = ENEMY_META['O'].gaze;
+  // 印が立っているあいだに西へ5歩（2.5セル）＝潰す半径 1.2 の外。予告は9 tick ∴間に合う。
+  // ⚠️ 枝腕は止める（ROCK_ONLY）＝止めないと「無傷だった」が**無敵窓のおかげ**でも成立する。
+  const out = await trackGiant(page, {
+    ticks: 40, debugOff: true, moveAt: { dir: 'left', steps: 5 }, patch: ROCK_ONLY,
+  });
+  const s = out.samples;
+  expect(out.movedAt.length, '印が立っているあいだに歩き切れていない（窓が足りない）').toBe(5);
+
+  // ① 岩が離れる tick＝着弾点は**印そのもの**（プレイヤーの今の位置ではない）
+  const throwT = s.findIndex(x => x.gazePhase === 'flight');
+  expect(throwT, '観測窓で岩が投げられていない').toBeGreaterThan(0);
+  const thrown = s[throwT];
+  const rock = thrown.rocks.find(r => r.lob);
+  expect(rock, '放物線の岩が飛んでいない').toBeTruthy();
+  expect([rock.targetY, rock.targetX], '岩の着弾点が印と違う＝印が告知になっていない')
+    .toEqual([O_PL_ROW, O_PL_COL]);
+  // ② 印は逃げても**動かない**（追尾しない）＝逃げた側が安全になる根拠
+  expect([thrown.gazeCy, thrown.gazeCx], '印がプレイヤーを追って動いた')
+    .toEqual([O_PL_ROW, O_PL_COL]);
+  expect(thrown.pdMark, 'この回はプレイヤーが印の外に出られていない＝逃げの成否を測れない')
+    .toBeGreaterThan(thrown.gazeR);
+
+  // ③ 着弾＝土煙は印の上に出るが、HP は減らない
+  const hitIdx = s.findIndex(x => x.newDust.length > 0);
+  expect(hitIdx, '岩が着弾していない').toBeGreaterThan(0);
+  const hit = s[hitIdx], before = s[hitIdx - 1];
+  expect([hit.newDust[0].cy, hit.newDust[0].cx], '土煙が印の上に出ていない')
+    .toEqual([O_PL_ROW, O_PL_COL]);
+  expect(before.inv, '着弾の直前に無敵窓が生きている＝逃げ切りの成否を測れない')
+    .toBeLessThanOrEqual(before.now);
+  expect(hit.php, '印の外へ出たのに潰された＝答えが機能していない').toBe(before.php);
+  expect(hit.newTones.length, '着弾の SE が鳴っていない＝「落ちた」が音で出ない').toBeGreaterThan(0);
+  // 着弾したら印の絵は消える（＝空振りでも「終わった」が読める）
+  expect(hit.mark, '着弾後も印の絵が残っている').toBe(false);
+
+  // ④ 次の印は**逃げた先の足元**に立つ＝逃げ続ければ何も起きなくなることはない
+  const reclaim = s.find(x => x.t > hit.t && x.gazePhase === 'mark');
+  expect(reclaim, '着弾のあと印を押し直さない＝1周期で終わってしまう').toBeTruthy();
+  expect([reclaim.gazeCy, reclaim.gazeCx], '押し直した印が逃げた先のタイルでない')
+    .toEqual([toTile(reclaim.py), toTile(reclaim.px)]);
+  expect(reclaim.gazeCx, '押し直した印が元の場所と同じ＝逃げが反映されていない')
+    .not.toBe(O_PL_COL);
+  // 押し直しは着弾から `restMs` 空く（＝殴り返す余韻）
+  expect((reclaim.now - hit.now), '着弾から次の印までの余韻が restMs と違う').toBe(c.restMs);
+});
+
+// ── ㉝ 印に残ると潰される（絵はダメージ範囲を覆う）＋投げた直後は殴り返せる ──────────
+test('㉝ 印に立ち止まると岩に潰され、投げた直後の硬直が反撃の窓になる', async ({ page }) => {
+  const m = ENEMY_META['O'];
+  const c = m.gaze;
+  // 一歩も動かない＝印は足元に立つ。枝腕は止める（ROCK_ONLY）＝HP が減ったら岩以外にありえない。
+  const out = await trackGiant(page, { ticks: 40, debugOff: true, patch: ROCK_ONLY });
+  const s = out.samples;
+
+  const hitIdx = s.findIndex(x => x.newDust.length > 0);
+  expect(hitIdx, '岩が着弾していない').toBeGreaterThan(0);
+  const hit = s[hitIdx], before = s[hitIdx - 1];
+
+  // 前提①＝直前に無敵窓が無い（＝減らなかったら本当に当たっていない）
+  expect(before.inv, '着弾の直前に無敵窓が生きている＝ダメージの有無が測れない')
+    .toBeLessThanOrEqual(before.now);
+  // 前提②＝プレイヤーは潰す範囲の内側に居る／前提③＝ここまで HP は減っていない
+  expect(before.pdMark, '印の外に出てしまった（この回は潰される条件を作れていない）')
+    .toBeLessThanOrEqual(before.gazeR ?? c.stampRadius);
+  expect(s.slice(0, hitIdx).every(x => x.php === s[0].php),
+    '着弾の前に HP が減っている＝岩以外のダメージが混ざっている').toBe(true);
+
+  // ① 潰しのダメージ＝stampAtk − 防御（盾では防げない＝答えは「印から離れる」だけ）
+  expect(hit.php, '岩が当たっていない（HP が減っていない）')
+    .toBe(before.php - (c.stampAtk - hit.pdef));
+  expect(hit.inv, '被弾後の無敵窓が立っていない＝ダメージ経路が takeDamage を通っていない')
+    .toBeGreaterThan(hit.now);
+  // ② 絵はダメージ範囲の**上位集合**＝「何も描かれていない床で潰された」が起きない
+  const dust = hit.newDust[0];
+  expect([dust.cy, dust.cx], '土煙の中心が印と違う').toEqual([before.gazeCy, before.gazeCx]);
+  expect(dust.r, '土煙の円がダメージ半径を覆っていない＝描かれていない床で潰される')
+    .toBeGreaterThanOrEqual(before.gazeR);
+  // 床の印そのものもダメージ範囲を覆う（絵の直径＝半径2つ＋自セル1枚）
+  expect(before.markSpan, '床の印の直径がダメージ範囲より小さい')
+    .toBeGreaterThanOrEqual(before.gazeR * 2);
+
+  // ③ 投げた直後は硬直＝**動かない・絵も出る**（殴り返す窓）
+  const throwT = s.findIndex(x => x.gazePhase === 'flight');
+  const thrown = s[throwT];
+  expect(thrown.freezeUntil, '岩を投げた直後の硬直が throwFreezeMs で立っていない')
+    .toBe(thrown.now + c.throwFreezeMs);
+  const frozenTicks = s.filter(x => x.t >= thrown.t && x.now < thrown.freezeUntil);
+  expect(frozenTicks.length, '硬直の窓が観測できていない').toBeGreaterThan(1);
+  for (const f of frozenTicks) {
+    expect([f.y, f.x], `硬直中の t${f.t} に巨人が動いた＝反撃の窓が無い`).toEqual([thrown.y, thrown.x]);
+    expect(f.recover, `硬直中の t${f.t} に硬直の絵が出ていない＝窓が画面に出ない`).toBe(true);
+  }
+});
+
+// ── ㉞ 1つの印 ⇔ 1つの岩／印の濃さは**歩かない tick でも**上がる（時計は行動ゲートの外）──
+test('㉞ 印1つに岩1つが対応し、印の濃さは巨人が動かない tick でも上がり続ける', async ({ page }) => {
+  const c = ENEMY_META['O'].gaze;
+  const out = await trackGiant(page, { ticks: 60 });
+  const s = out.samples;
+
+  // ① 印が押された回数＝岩が離れた回数＝`_gazeCount`（告知と結果が1対1）
+  const claims = gazeRuns(s).filter(r => r.phase === 'mark');
+  const flights = gazeRuns(s).filter(r => r.phase === 'flight');
+  expect(claims.length, '観測窓で印が押されていない').toBeGreaterThanOrEqual(2);
+  expect(s[s.length - 1].gazeCount, '押した印の数と投げた岩の数が合わない')
+    .toBe(flights.length);
+  // 同時に空を飛んでいる岩は1つまで（＝印が2つ出て岩が1つ、の逆も起きない）
+  for (const x of s) {
+    expect(x.rocks.filter(r => r.lob).length, `t${x.t} に岩が2つ以上飛んでいる`).toBeLessThanOrEqual(1);
+  }
+
+  // ② 濃さ（`_gazeHeat`）は 0→1 に単調＝色・音・テストが読む唯一の数
+  const run = claims.find(r => r.complete && r.samples.length >= 6);
+  expect(run, '完結した印の窓が観測できていない').toBeTruthy();
+  expect(run.samples[0].gazeHeat, '押した瞬間の濃さが 0 でない').toBeCloseTo(0, 6);
+  for (let i = 1; i < run.samples.length; i++) {
+    expect(run.samples[i].gazeHeat, `t${run.samples[i].t} で濃さが戻った`)
+      .toBeGreaterThan(run.samples[i - 1].gazeHeat);
+  }
+  expect(run.samples.length, '印の窓の tick 数が stampMs と合わない')
+    .toBe(Math.round(c.stampMs / TICK_MS));
+  // ★時計は**行動ゲートの外**＝1歩も動かない tick（歩幅の溜め）でも濃さは上がる。
+  //   ここをゲートの中に置くと印が止まって見える（J の輪で実測した罠と同型）。
+  const held = [];
+  for (let i = 1; i < run.samples.length; i++) {
+    const a = run.samples[i - 1], b = run.samples[i];
+    if (a.x === b.x && a.y === b.y) held.push([a, b]);
+  }
+  expect(held.length, '1歩も動かない tick が観測窓に無い＝溜め中の濃さを測れていない')
+    .toBeGreaterThan(0);
+  for (const [a, b] of held) {
+    expect(b.gazeHeat, `動かなかった t${b.t} で濃さが上がっていない＝歩幅に縛られている`)
+      .toBeGreaterThan(a.gazeHeat);
+  }
+  // 飛翔中は 1 のまま（下がらない）＝「もう落ちる」が引っ込まない
+  for (const f of flights) for (const x of f.samples) {
+    expect(x.gazeHeat, `t${x.t}（飛翔中）の濃さが 1 でない`).toBe(1);
+  }
+
+  // ③ 「もう落ちる」の1段（赤い脈打ち）は**岩が離れる前**に始まり、そこで印は既に赤い
+  const hotIdx = run.samples.findIndex(x => x.markHot);
+  expect(hotIdx, '赤い脈打ちの段が無い＝「もう落ちる」が投げるまで告知されない').toBeGreaterThan(0);
+  expect(run.samples[hotIdx].gazeHeat, '脈打ちが始まる濃さが 1 ＝濃くなり切ってから脈打っている')
+    .toBeLessThan(1);
+  for (const x of run.samples.slice(0, hotIdx)) {
+    expect(x.markHot, `t${x.t} で既に脈打っている＝押した瞬間から警告が出っぱなし`).toBe(false);
+  }
+  // 印は濃くなるほど赤へ寄る（CSS が `--gaze-warn` から色相を作る＝土色 45° → 赤 0°）
+  const ramp = run.samples.filter(x => x.markBorder);
+  expect(ramp.length, '印の枠線の色を採れていない').toBeGreaterThan(4);
+  for (let i = 1; i < ramp.length; i++) {
+    expect(ramp[i].markBorder[1], `t${ramp[i].t} で印の緑が増えた＝赤へ寄る告知が壊れた`)
+      .toBeLessThanOrEqual(ramp[i - 1].markBorder[1]);
+  }
+  const hotRgb = run.samples[hotIdx].markBorder;
+  expect(hotRgb[0], '脈打ち開始時点で赤が振り切っていない').toBeGreaterThan(200);
+  expect(hotRgb[1], '脈打ち開始時点でまだ黄／土色寄り＝赤に見えない').toBeLessThan(hotRgb[0] / 2);
+
+  // ④ 「見据えた」音と「落ちた」音は別（＝離れろ／殴り返せ、が耳で区別できる）
+  const claimTones = JSON.stringify(run.samples[0].newTones);
+  const land = s.find(x => x.newDust.length > 0);
+  expect(land, '観測窓で岩が着弾していない').toBeTruthy();
+  expect(land.newTones.length, '着弾の SE が鳴っていない').toBeGreaterThan(0);
+  expect(JSON.stringify(land.newTones), '印の音と着弾の音が同じ＝告知と結果が区別できない')
+    .not.toBe(claimTones);
+});
+
+// ── ㉟ HP 半分で「速く押し直して広く潰す」へ変わる（層1 の `phases[].gaze` が出荷データで効く）──
+test('㉟ HP 半分で印を押し直す間隔が短くなり、潰す範囲が広くなる', async ({ page }) => {
+  const m = ENEMY_META['O'];
+  const ph = m.phases.find(p => p.gaze);
+  // dealDamage は防御を引く∴+def して渡す（HP をちょうど 50% に落とす）
+  const out = await trackGiant(page, { ticks: 60, dropAt: 8, dmg: Math.ceil(m.hp / 2) + m.def });
+  const s = out.samples;
+  expect(s[7].hp / m.hp, 'HP が 50% 以下に落ちていない＝相の条件を満たしていない')
+    .toBeLessThanOrEqual(0.5);
+
+  // 相の差し替えが実体（`_gaze`）に載っている＝`resolveGaze` が読む側が変わった
+  expect(out.end.gaze, '後半の gaze が実体に載っていない').toEqual(ph.gaze);
+  expect(out.end.speed, '後半の速さ倍率が載っていない').toBeCloseTo(m.speed * ph.speedMultiplier, 6);
+
+  // ① 相が変わった**後に押した印**は後半の値で立つ（押した瞬間に固定する＝latch の作法）
+  const after = gazeRuns(s.filter(x => x.t > 8)).filter(r => r.phase === 'mark');
+  const fresh = after.find(r => r.samples[0].gazeSpan === ph.gaze.stampMs);
+  expect(fresh, '後半に入っても印が前半の長さで立ち続ける＝差し替えが効いていない').toBeTruthy();
+  expect(fresh.samples[0].gazeR, '後半の印の潰す半径が差し替わっていない').toBe(ph.gaze.stampRadius);
+  expect(fresh.samples.length, '後半の印の tick 数が後半の stampMs と合わない')
+    .toBe(Math.round(ph.gaze.stampMs / TICK_MS));
+  expect(fresh.samples.length, '後半の印が前半より長い／同じ＝押し直しが速くなっていない')
+    .toBeLessThan(Math.round(m.gaze.stampMs / TICK_MS));
+  // ② 印の絵も広くなる（絵と当たりが同じ1つの数から出ている＝`_gazeR`）
+  expect(fresh.samples[0].markSpan, '後半の印の絵が前半と同じ大きさ＝広さが画面に出ない')
+    .toBeGreaterThan(m.gaze.stampRadius * 2 + 1);
+  // ③ 走っている1周の途中で相が変わっても、絵で見た印と落ちる岩の範囲はずれない
+  //    （＝押した瞬間に固定した `_gazeR` を岩の爆風がそのまま使う）
+  for (const x of s) {
+    if (x.gazeR == null || x.newDust.length === 0) continue;
+    expect(x.newDust[0].r, `t${x.t} の土煙がその印の半径を覆っていない`)
+      .toBeGreaterThanOrEqual(x.gazeR);
+  }
+});
+
+// ── ㊱ 導出＝O の機構は G・W・A・N・J のどれとも重ならない（手書きの表で数えない）─────
+test('㊱ O の移動機構は G・W・A・N・J のどれとも重ならない', () => {
+  const o = mechanismsOf(ENEMY_META['O']);
+  const others = ['G', 'W', 'A', 'N', 'J'].map(k => mechanismsOf(ENEMY_META[k]));
+  expect(o.has('gaze'), 'O が移動機構（gaze）を持っていない').toBe(true);
+  expect([...o].filter(k => others.every(x => !x.has(k))).length,
+    'O に G・W・A・N・J が持たない機構が1つも無い＝6体目の型になっていない').toBeGreaterThan(0);
+  expect(others.some(x => x.has('gaze')),
+    'G・W・A・N・J のどれかが見据えを持っている＝O の固有機構ではない').toBe(false);
+  const users = Object.entries(ENEMY_META).filter(([, m]) => m.gaze).map(([k]) => k);
+  expect(users, '見据えを持つ敵が O 以外にも居る（設計が重複した）').toEqual(['O']);
+});
+
+// ── ㊲ 検証ステージの幾何（GUIDE §4-3）───────────────────────────────
+test('㊲ bal_forest_giant は 10×12・外周は通路以外すべて壁・O が (4,7) に1体だけ・水なし', () => {
+  const MAP_PATH = fileURLToPath(new URL('../work/blade-of-lumia.json', import.meta.url));
+  const MAP = JSON.parse(readFileSync(MAP_PATH, 'utf8'));
+  const sd = MAP.layers[TEST_LAYER].stages[stageKey('bal_forest_giant')];
+  expect(sd.rows).toBe(10);
+  expect(sd.cols).toBe(12);
+  // 遮蔽ゼロ＝岩は `lob`（遮蔽が効かない）∴地形で避けられると機構の測定が地形の話になる
+  expect(Object.keys(sd.bgTiles ?? {}), '別地形が入った＝見据えの測定が地形のせいになる').toEqual([]);
+
+  const at = (r, c) => sd.tiles[r][c];
+  const giants = [];
+  for (let r = 0; r < sd.rows; r++) {
+    for (let c = 0; c < sd.cols; c++) {
+      const ch = at(r, c);
+      if (ch === TILE.FOREST_GIANT) { giants.push([r, c]); continue; }
+      if (r === 6 && c === 1) continue;              // 看板 i（南の通路の脇）
+      const edge = r === 0 || c === 0 || r === sd.rows - 1 || c === sd.cols - 1;
+      const want = edge && !isArenaDoor(r, c, sd.cols) ? TILE.WALL : TILE.FLOOR;
+      expect(at(r, c), `(${r},${c}) が想定と違う`).toBe(want);
+    }
+  }
+  expect(giants, 'O が1体だけ (4,7) に居る前提が崩れた').toEqual([[O_ROW, O_COL]]);
+
+  // 測る湧き (4,4) から**西へ逃げる道**が空いている＝㉜（印から離れる）の前提。
+  // 後半の半径 1.6 の外（3歩＝1.5セル）より遠くまで走れることを地形で裏取りする。
+  const ph = ENEMY_META['O'].phases.find(p => p.gaze);
+  const needCells = Math.ceil(ph.gaze.stampRadius) + 1;
+  for (let c = O_PL_COL - needCells; c <= O_PL_COL; c++) {
+    expect(at(O_PL_ROW, c), `(${O_PL_ROW},${c}) が床でない＝印から離れる道が塞がっている`)
+      .toBe(TILE.FLOOR);
+  }
+  // 巨人が印（4,4）へ寄る経路（同じ行の東側）も空いている＝㉛（踏み込み）の前提
+  for (let c = O_PL_COL; c < O_COL; c++) {
+    expect(at(O_PL_ROW, c), `(${O_PL_ROW},${c}) が床でない＝巨人が印へ歩けない`).toBe(TILE.FLOOR);
   }
 });

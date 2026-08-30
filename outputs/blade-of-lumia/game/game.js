@@ -26,6 +26,8 @@ import {
 // ── 通行可否判定・条件評価（Phase 0-2 Step 2: passable.js / conditions.js へ切り出し）──
 import { createPassable, STATEFUL_TILES, statefulTileClosed } from './passable.js';
 import { createConditions } from './conditions.js';
+// 占有範囲（AABB）の当たり判定＝大型敵（2×2）を取りこぼさないための単一の真実。
+import { toTileIndex, enemyOccupiesTile } from './hitbox.js';
 // ── 描画系（Phase 0-2 Step 3: render-board.js / render-chars.js へ切り出し）──────
 import { createRenderBoard } from './render-board.js';
 import { createRenderChars } from './render-chars.js';
@@ -192,9 +194,10 @@ let lastSwordTime = -SWORD_COOLDOWN_MS;
 let lastStonePushTime = 0;
 
 // ── ユーティリティ ────────────────────────────────────────────
-// float 座標 → タイル整数座標
-function toTileRow(y) { return Math.floor(y + 0.5); }
-function toTileCol(x) { return Math.floor(x + 0.5); }
+// float 座標 → タイル整数座標（丸めの規則は hitbox.js の toTileIndex が単一の真実＝
+// 占有セルを出す enemyOccupiesTile と必ず同じ規則になる）
+function toTileRow(y) { return toTileIndex(y); }
+function toTileCol(x) { return toTileIndex(x); }
 
 // CSS セルサイズを取得（--cell 変数）
 function getCellPx() {
@@ -1667,7 +1670,12 @@ function playCandle() {
 
 	// 前方の敵に炎ダメージ（茂みの有無に関わらず判定）。
 	// 隠れ中（地中/滞空/潜行）の敵は対象外＝炎も届かない（Phase 5.5k k-3）。
-	const hitEnemy = enemies.find(e => !e.hidden && toTileRow(e.y) === tr && toTileCol(e.x) === tc);
+	// ⚠️ 2026-08-30 修正：ここは `toTileRow(e.y) === tr && toTileCol(e.x) === tc`＝敵の座標
+	//    （占有範囲の**左上**）とタイルの完全一致で見ていた∴2×2 の敵は**左上タイルを向いた
+	//    ときだけ**炎が通り、他の向きでは無音・無表示の 0 ダメージになっていた。炎が弱点の敵は
+	//    O 古森の巨人・L 氷のリヴァイアサン・I 沼地の大蝦蟇＝**3体とも 2×2**＝弱点が向き次第で
+	//    死んでいた（剣は hitbox.js 経由で4方向とも当たる＝弱点だけが不利という逆転）。
+	const hitEnemy = enemies.find(e => !e.hidden && enemyOccupiesTile(e, tr, tc));
 	if (hitEnemy) {
 		dealDamageToEnemy(hitEnemy, CANDLE_FIRE_DMG, 'fire', player.x, player.y);
 	}
@@ -2238,6 +2246,26 @@ export function getEnemiesSnapshot() {
 		// coil ＝巻きつきの設定そのもの（フェーズで差し替わる＝`resolveCoil` が読む側）。
 		// **meta.coil とは別物**＝「後半で半周で締め上げるようになった」の観測窓。
 		coil: e._coil ?? null,
+		// Phase 8-4 (4) 0d-3（5体目 O）: 見据え（gaze）の観測用。
+		// gazeCx/gazeCy ＝印のタイル（＝印を押した瞬間にプレイヤーが立っていた場所）。
+		// **敵の座標でもプレイヤーの今の座標でもない**∴「今のプレイヤーを狙っていない
+		// （印が追尾しない）」はこの値をプレイヤーの x/y と並べて読む。
+		// gazePhase ＝'mark'（押した印が濃くなる）| 'flight'（岩が飛んでいる）| 'rest'（次の印まで）。
+		// gazeAt ＝今の相が終わる論理時刻／gazeSpan ＝今の相の長さ（**押した瞬間に固定**）／
+		// gazeR ＝潰す半径（同じく押した瞬間に固定＝床の印の絵と同じ数）／
+		// gazeHeat ＝印の濃さ 0〜1（0＝押した瞬間・1＝岩が離れる）＝床の色（`--gaze-heat`）が
+		// 読む数そのもの／gazeCount ＝投げた岩の総数（＝「1つの印 ⇔ 1つの岩」を測る窓）。
+		gazeCx: e._gazeCx ?? null,
+		gazeCy: e._gazeCy ?? null,
+		gazePhase: e._gazePhase ?? null,
+		gazeAt: e._gazeAt ?? null,
+		gazeSpan: e._gazeSpan ?? null,
+		gazeR: e._gazeR ?? null,
+		gazeHeat: e._gazeHeat ?? null,
+		gazeCount: e._gazeCount ?? null,
+		// gaze ＝見据えの設定そのもの（フェーズで差し替わる＝`resolveGaze` が読む側）。
+		// **meta.gaze とは別物**＝「後半で印が速くなり潰す範囲が広がった」の観測窓。
+		gaze: e._gaze ?? null,
 		// Phase 8-4 (4) 層1: ボスのフェーズが差し替える「行動の元データ」の観測用。
 		// boss.js checkBossPhase は**エンティティ側にだけ書く**∴フェーズが効いたかは
 		// ここに出る値で読む（null＝差し替えなし＝ENEMY_META のまま）。

@@ -491,6 +491,12 @@ export function createProjectile(deps) {
 		explodeAt(toTileRow(proj.targetY), toTileCol(proj.targetX), {
 			radius:       blast.radius     ?? 1.5,
 			breakPower:   blast.breakPower ?? 3,
+			// Phase 8-4 (4) 0d-3（5体目 O 古森の巨人）: 音と見た目を投げた側から差し替えられる
+			// ようにする（既定は爆弾のまま＝爆弾鬼の挙動は1ドットも変わらない）。
+			// ⚠️ これが無いと**岩が落ちたのに炎の爆発が出て `bombExplosion` が鳴る**。
+			//    O の弱点は fire ∴炎の演出は「弱点が効いた」と取り違えられる＝機構の嘘になる。
+			sound:        blast.sound,
+			effect:       blast.effect,
 			// 敵の爆弾は**他の敵を巻き込まない**（味方撃ちは実装しない＝DECISIONS 2026-08-16）。
 			// 理由＝敵同士が潰し合うと「敵を集めた部屋」の脅威度が設計と無関係に崩れる。
 			enemyDamage:  proj.owner === 'enemy' ? 0 : (blast.damage ?? 4),
@@ -746,6 +752,8 @@ export function createProjectile(deps) {
 	//   breakPower   … `!`（壊せる壁）を壊す力
 	//   enemyDamage  … 範囲内の敵に与えるダメージ。**0 なら敵を巻き込まない**
 	//   playerDamage … 範囲内のプレイヤーに与えるダメージ。**0 ならプレイヤーを巻き込まない**
+	//   sound        … 鳴らす効果音の名前（既定＝爆弾の `bombExplosion`）
+	//   effect       … 見た目の種別（既定＝炎の `blast`／`'rock'` は灰色の土煙）
 	// ⚠️ 既定は「敵だけを傷める」＝プレイヤーの爆弾の従来挙動と1ドットも変えない
 	//   （自爆しない＝Phase 1 からの仕様）。
 	function explodeAt(r, c, opts = {}) {
@@ -754,8 +762,12 @@ export function createProjectile(deps) {
 			breakPower   = ITEM_META.bomb?.breakPower ?? 3,
 			enemyDamage  = ITEM_META.bomb?.damage     ?? 5,
 			playerDamage = 0,
+			sound        = 'bombExplosion',
+			effect       = 'blast',
 		} = opts;
-		playSound('bombExplosion');
+		// ⚠️ `sound: undefined` を渡されても既定に落ちる（`= 'bombExplosion'` の分割代入）
+		//    ＝呼び出し側は「差し替えたいときだけ」書けばよい。
+		playSound(sound);
 
 		const sd = getStageData();
 		if (!sd) return;
@@ -804,22 +816,38 @@ export function createProjectile(deps) {
 
 		// renderBoard が必要な場合は先に実行してからエフェクト追加
 		if (needRenderBoard) { renderBoard(); renderChars(); }
-		showExplosionEffect(r, c);
+		// 絵はダメージ範囲の**上位集合**にする（GUIDE §7-6）＝「何も描かれていない床で殴られた」を
+		// 作らない。既定の 3 セル（＝半径 1.5 まで）で足りるのは爆弾と爆弾鬼だけ∴**プレイヤーが
+		// 傷む爆風のときだけ**半径から直径を出す（O 古森の巨人の後半の岩は半径 1.6 ＝縁の被弾が
+		// 3 セルの円の外に出る）。爆弾の見た目は 1 ドットも変わらない（playerDamage 0）。
+		showExplosionEffect(r, c, effect, playerDamage > 0 ? Math.max(3, radius * 2 + 1) : 3);
 		saveGame();
 	}
 
-	function showExplosionEffect(r, c) {
+	// 爆発の見た目。kind で色を差し替える（形・アニメは共通＝
+	// 「爆風の範囲は爆弾から学べる」を崩さない）。
+	//   'blast'（既定）… 炎（黄→橙→赤）
+	//   'rock'          … 岩が砕けた土煙（灰→茶）＝O 古森の巨人の岩投げ
+	// spanCells＝円の直径（セル）。既定 3（＝爆弾の見た目そのまま）。呼び出し側が
+	// ダメージ半径から広げる（＝絵がダメージ範囲を覆う・上の explodeAt の⚠️）。
+	const EXPLOSION_FILLS = {
+		blast: 'radial-gradient(circle, rgba(255,220,60,0.92) 0%, rgba(255,100,20,0.7) 40%, rgba(255,40,0,0.3) 70%, transparent 100%)',
+		rock:  'radial-gradient(circle, rgba(235,228,214,0.92) 0%, rgba(150,132,108,0.72) 40%, rgba(96,82,64,0.34) 70%, transparent 100%)',
+	};
+	function showExplosionEffect(r, c, kind = 'blast', spanCells = 3) {
 		const charLayerEl = getCharLayerEl();
 		if (!charLayerEl) return;
 		const cellPx = getCellPx();
+		const span = (spanCells > 0 ? spanCells : 3) * cellPx;
 		const el = document.createElement('div');
-		el.className = 'explosion-effect';
+		el.className = `explosion-effect${kind !== 'blast' ? ` explosion-${kind}` : ''}`;
 		el.style.cssText = [
 			`position:absolute;`,
-			`left:${(c - 1) * cellPx}px;top:${(r - 1) * cellPx}px;`,
-			`width:${cellPx * 3}px;height:${cellPx * 3}px;`,
+			// セル (r,c) の中心を円の中心にする（spanCells 3 なら従来と同じ左上）
+			`left:${(c + 0.5) * cellPx - span / 2}px;top:${(r + 0.5) * cellPx - span / 2}px;`,
+			`width:${span}px;height:${span}px;`,
 			`z-index:20;pointer-events:none;border-radius:50%;`,
-			`background:radial-gradient(circle, rgba(255,220,60,0.92) 0%, rgba(255,100,20,0.7) 40%, rgba(255,40,0,0.3) 70%, transparent 100%);`,
+			`background:${EXPLOSION_FILLS[kind] ?? EXPLOSION_FILLS.blast};`,
 			`animation:explosion-anim 0.45s ease-out forwards;`,
 		].join('');
 		charLayerEl.appendChild(el);

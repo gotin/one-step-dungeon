@@ -321,7 +321,10 @@ test('⑤ ENEMY_META の phases[] は既知のキーだけを持ち、閾値は�
                       'hide',
                       // 0d-3（4体目 J）: 巻きつきの設定を相で差し替える口（boss.js が `_coil` へ
                       // 書き、enemy-ai.js の `resolveCoil` が読む）＝半径を詰めて締め上げを早める。
-                      'coil'];
+                      'coil',
+                      // 0d-3（5体目 O）: 見据えの設定を相で差し替える口（boss.js が `_gaze` へ
+                      // 書き、enemy-ai.js の `resolveGaze` が読む）＝印を速く押し直し広く潰す。
+                      'gaze'];
   const MODE_KEYS = ['flank', 'direct', 'wander', 'strafe'];
   const withPhases = Object.entries(ENEMY_META).filter(([, m]) => m.phases);
   expect(withPhases.length, 'phases を持つ敵が居ない（データが消えた？）').toBeGreaterThanOrEqual(13);
@@ -379,6 +382,29 @@ test('⑤ ENEMY_META の phases[] は既知のキーだけを持ち、閾値は�
         // 「回っているだけの案山子」になる（W の strafe の失敗と同型）。
         expect(p.coil.radius, `${t} の phases[].coil は縮まない（radius <= radiusMin）`)
           .toBeGreaterThan(p.coil.radiusMin);
+      }
+      if (p.gaze !== undefined) {
+        // 相の gaze も meta.gaze を**丸ごと差し替える**（`resolveGaze`）∴部分指定は既定値へ
+        // 落ちる＝予告の長さ（stampMs）だけ書いたつもりで潰す半径が既定 1.2 に戻る＝
+        // 「床の印より広い／狭い範囲で潰される」＝告知が嘘になる。綴りと不変条件を縛る。
+        const GAZE_KEYS = ['stampMs', 'restMs', 'throwFreezeMs', 'rockSpeed',
+                           'stampRadius', 'stampAtk', 'arcHeight'];
+        expect(Object.keys(p.gaze).filter(k => !GAZE_KEYS.includes(k)),
+          `${t} の phases[].gaze に未知のキー`).toEqual([]);
+        for (const k of ['stampMs', 'restMs', 'throwFreezeMs', 'rockSpeed', 'stampRadius']) {
+          expect(p.gaze[k], `${t} の phases[].gaze.${k} が正の数でない`).toBeGreaterThan(0);
+        }
+        // 相の印も**必ず逃げ切れる**（予告の tick 数 ≧ 半径の外へ出るのに要る歩数）＝
+        // 速くしすぎると「押された瞬間に詰み」になる（プレイヤーは 1 tick に MOVE_STEP 進む）。
+        const windupTicks = Math.floor(p.gaze.stampMs / 120);
+        const needSteps = Math.ceil(p.gaze.stampRadius / 0.5);
+        expect(needSteps, `${t} の phases[].gaze は予告の tick 内に印の外へ出られない`)
+          .toBeLessThanOrEqual(windupTicks);
+        // 打点は据え置き（相で最大打点を作らない＝coil の crushAtk と同じ作法）
+        if (p.gaze.stampAtk !== undefined) {
+          expect(p.gaze.stampAtk, `${t} の phases[].gaze.stampAtk が atk より大きい`)
+            .toBeLessThanOrEqual(m.atk);
+        }
       }
     }
   }

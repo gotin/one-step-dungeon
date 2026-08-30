@@ -199,6 +199,14 @@ export function createBoss(deps) {
 			boss._coilArc = 0; boss._coilStall = 0;
 			boss._crushAt = null; boss._crushR = null;
 		}
+		// Phase 8-4 (4) 0d-3（5体目 O 古森の巨人）: 見据えの設定を相で差し替える口
+		// （`resolveGaze` が読む）。O は後半で「印が速く・潰す範囲が広い」形になる。
+		// ⚠️ 状態機械は**触らない**（`_hide` と同じ側の扱い）＝走っている1周（印→岩→休み）は
+		//    そのまま終わらせる。理由＝予告の長さ（`_gazeSpan`）と潰す半径（`_gazeR`）は
+		//    **印を押した瞬間に固定してある**∴新しい設定が混ざっても「床に描いてある印」と
+		//    「落ちる岩の範囲」がずれない。逆にここで消すと、空中の岩を残したまま印だけが
+		//    消える＝**予告なしで岩が落ちてくる**（coil の輪とは事情が違う）。
+		if (phase.gaze !== undefined) boss._gaze = phase.gaze;
 	}
 
 	// ── 星の欠片を生成 ──────────────────────

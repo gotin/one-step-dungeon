@@ -1051,27 +1051,65 @@ export const ENEMY_META = {
 		],
 	},
 	// ── 古森の巨人（Phase 3-2）：2×2 大型ボス・dungeon_6（森の聖域）──
-	// 大樹の精霊が宿った樹人の守護者。巨木の腕で叩きつけ、
-	// 木の実や胞子弾を飛ばして広範囲を制圧する。
+	// 大樹の精霊が宿った樹人の守護者。巨木の腕で叩きつけ、岩を放物線で放り落とす。
+	// Phase 8-4 (4) 0d-3（5体目）で移動アルゴリズムを層2の固有機構 `gaze`（見据え）へ差し替えた。
+	//   ＝**プレイヤーを追わない。見据えた1点（`_gazeCx/_gazeCy`）だけを追う。**
+	//   ①`stampMs` の予告のあいだ床に印が濃くなっていく（＋SE gazeMark）
+	//   ②予告が切れた瞬間、その印へ**放物線で岩を放る**（`lob`＝遮蔽が効かない・立ち位置で避ける）
+	//   ③岩が着弾して `restMs` 経ってから**次の印を立てる**（＝周期は「印1つ＝岩1つ」で必ず対応する）
+	//   ④移動は①〜③のあいだ常に**印へ向かって歩く**（BFS）＝プレイヤーが動き続ければ
+	//     巨人は「さっき居た場所」へ踏み込み続ける／立ち止まれば印が足元に来て岩が落ちる
+	// ∴プレイヤー側の答えは「印から離れる」＝間合い（G/W）でも射線（A）でも浮上位置（N）でも
+	//   輪の内外（J）でもない**「印の内か外か」**の読みになる。弱点 fire（ロウソク＝密着）と噛み合う
+	//   ＝焼くには寄る必要があるが、寄って留まると印が自分の足元に立つ（＝岩が落ちる）。
 	[TILE.FOREST_GIANT]: {
 		name: '古森の巨人',
 		hp: 96, atk: 5, def: 2, exp: 58,      // 8-4: 木の剣で 48 振り（14秒）
-		speed: ENEMY_SPEED_SLOW * 0.9,
+		// ⚠️ 0d-3（5体目）で `ENEMY_SPEED_SLOW * 0.9`（0.225）→ `ENEMY_SPEED_NORMAL`（0.5）。
+		//   理由＝`gaze` は「見据えた地点へ**踏み込む**」移動∴印へ歩き着けないと機構が画面に出ない。
+		//   0.225 では 1 周期（予告 1080 + 飛翔 + 余韻 480 ≈ 2.2 秒）に 1.9 セルしか進めず、
+		//   プレイヤー（1.0 ＝ 1 tick に MOVE_STEP 0.5 ＝ 4.2 セル/秒）が離れると印に着く前に
+		//   次の印が立つ＝**巨人が「さっき」を踏み潰しに来る**が読めない。
+		//   0.5 ＝ 2.08 セル/秒 ＝ 1 周期で約 4.5 セル＝印まで歩き着く。プレイヤーより遅い（GUIDE §7-2）。
+		speed: ENEMY_SPEED_NORMAL,
 		sprite: 'forestGiant',
 		pal:    'forestGiant',
 		size:   { w: 2, h: 2 },
 		isBoss: true,
 		dropsTriforce: true,
 		weakness: { type: 'fire', multiplier: 2 },   // 炎で樹皮を焼き払う
-		hitAndAway: true,
+		hitAndAway: false,   // 明示（W/A/N/J と同じ罠＝書かないと `gaze` の分岐に来ない）
+		// 見据え（層2の固有機構）。**「印1つ＝岩1つ」の1つの時計**で回す（GUIDE §7-7）。
+		gaze: {
+			stampMs:     1080,  // 印を立ててから岩を放るまで（9 tick）＝プレイヤーが離れる猶予。
+			                    // プレイヤーは 9 tick で 4.5 セル走れる ≫ 印の半径 1.2 ＝必ず出られる。
+			restMs:       480,  // 着弾から次の印までの余韻（4 tick）＝**殴り返す窓**（硬直と同じ長さ）
+			throwFreezeMs: 480, // 岩を放った直後の硬直（＝反撃の窓・`.attack-recover` の絵が出る）
+			rockSpeed:    1.2,  // 岩の飛翔速度（`speed × MOVE_STEP` ＝0.6 セル/tick）
+			                    // ＝遠くから投げた岩は落ちるまで長くかかる（＝遠距離は安全だが手も出ない）／
+			                    //   密着した相手の足元へは 2〜3 tick で落ちる＝**居座りだけが即座に罰される**
+			stampRadius:  1.2,  // 着弾で潰れる半径（セル）＝印の絵と同じ数（絵と当たりを1つの数で持つ）
+			stampAtk:       5,  // 岩のダメージ＝`atk` と同値（新しい最大打点を作らない＝J の crushAtk と同じ作法）
+			arcHeight:    1.6,  // 見た目の弧の高さ（セル）＝当たり判定には効かない
+		},
+		// ⚠️ 遠隔の `stone`（木の実投げ）は**外した**＝岩投げは `gaze` の周期そのものが持つ∴
+		//    別の投擲が混ざると「印＝これから落ちる場所」の読みが壊れる（1つの時計にしない）。
+		// ⚠️ `initialModeWeights` も外した（旧値は `direct 1.7` 主体＝G の「まっすぐ来て振り下ろす」型）。
+		//    `hitAndAway: false` ＝寄り方の抽選（`resolveModeWeights`）を一度も通らない∴
+		//    書いても効かない死んだ数値になる（W で確認済みの作法）。
 		attacks: [
-			{ type: 'sword', range: 1.4, cooldown: 950 },   // 枝腕なぎ払い
-			{ type: 'stone', range: 6, cooldown: 2200, projectileSpeed: 0.9 }, // 木の実投げ
+			{ type: 'sword', range: 1.4, cooldown: 950 },   // 枝腕なぎ払い（密着した相手だけ）
 		],
 		attack: { type: 'sword', range: 1.4, cooldown: 950 },
-		initialModeWeights: { flank: 0.15, direct: 1.7, wander: 0.15, strafe: 0 },
 		phases: [
-			{ hpThreshold: 0.5, speedMultiplier: 1.3, attackCooldownMultiplier: 0.8 },
+			// 第2形態＝**見据え直しが速く、潰す範囲が広い**（＝印から離れる判断を急がされる）。
+			// ⚠️ `stampAtk` は前半と同値＝新しい最大打点を作らない（速さと広さだけで圧を上げる）。
+			// ⚠️ 予告 720ms でもプレイヤーは 6 tick ＝ 3.0 セル走れる > 半径 1.6 ＝**間に合う**。
+			{ hpThreshold: 0.5, speedMultiplier: 1.3, attackCooldownMultiplier: 0.8,
+			  gaze: {
+				stampMs: 720, restMs: 360, throwFreezeMs: 360, rockSpeed: 1.4,
+				stampRadius: 1.6, stampAtk: 5, arcHeight: 1.6,
+			  } },
 		],
 	},
 	// ── 嵐の鷲王（Phase 3-2）：2×2 大型ボス・dungeon_7（空中の遺跡）──

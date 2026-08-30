@@ -162,6 +162,13 @@ export function createEnemyAi(deps) {
 	function resolveCoil(e, meta) {
 		return e?._coil !== undefined ? e._coil : meta?.coil;
 	}
+	// resolveGaze … 見据えの設定そのものをフェーズで差し替える口（Phase 8-4 (4) 0d-3・5体目）。
+	// O 古森の巨人は HP50% の相で `phases[].gaze` が入り「見据え直しが速く・潰す範囲が広い」形になる。
+	// ⚠️ 上3つと同じ理由で**読む側を1か所に集約する**
+	//   （`tickGaze` / `enemyGazeStride` / `syncGazeMark` の3つが必ずここを通る）。
+	function resolveGaze(e, meta) {
+		return e?._gaze !== undefined ? e._gaze : meta?.gaze;
+	}
 
 	// ── Phase 5.5k: 攻撃硬直（2026-08-12 ユーザー指摘「攻撃動作中は動かないようにすべき」）──
 	// プレイヤーは剣を振っている間（_atkUntil の窓）足が止まる（player.js movePlayer）。
@@ -841,6 +848,214 @@ export function createEnemyAi(deps) {
 			+ `--coil-warn:${Math.min(1, heat / COIL_HOT_AT).toFixed(3)};`;
 		clearTimeout(coilRingTimers.get(id));
 		coilRingTimers.set(id, setTimeout(() => el.remove(), 400));
+	}
+
+	// ── Phase 8-4 (4) 0d-3（5体目 O 古森の巨人）: 見据え（gaze）─────────────────
+	// meta.gaze = { stampMs, restMs, throwFreezeMs, rockSpeed, stampRadius, stampAtk, arcHeight }。
+	//   ① **今のプレイヤーを狙わない**＝印（`_gazeCx/_gazeCy`）を「見据えた瞬間に立っていた
+	//      タイル」へ1つだけ押す（`claimGaze`）。押した印は**追尾しない**（動かない）。
+	//   ② `stampMs` 経ったら印へ向けて岩を**放物線で**投げる（`lob`＝遮蔽も盾も効かない）。
+	//      落ちるのは印の上だけ＝`stampRadius` の内側にいた者だけが潰される。
+	//   ③ 投げた直後は硬直（`throwFreezeMs`）＝**殴り返す窓**。着弾から `restMs` 空けて次の印。
+	//   ④ そのあいだ巨人は**印へ向かって歩く**（プレイヤーではなく印を追う＝BFS）。
+	// ∴プレイヤー側の答えは「間合い」でも「輪の内外」でもなく **「印から離れる」**。
+	//
+	// 他のボスの機構と重ならないことの根拠（0d-3 の要件＝1体ずつ近づき方を変える）：
+	//   G＝真っすぐ寄る／W＝間合いを取り直す／A＝車線に入って寄る／N＝潜っている間だけ歩く／
+	//   J＝寄らずに周を泳ぐ／**O＝寄る先がプレイヤーではない（1拍前の足跡）**。
+	// ⚠️ 印は必ず「1つの印 ⇔ 1つの岩」（`_gazePhase` の 'mark'→'flight'→'rest' の1周）。
+	//    印と岩を別々の時計で回すと「印が2つ出て岩が1つ落ちる」が起き得る＝告知が嘘になる。
+	// ⚠️ 予告の長さは**押した瞬間に固定する**（`_gazeSpan`）／潰す半径も**押した瞬間に固定**
+	//    （`_gazeR`）。∴走っている1周の途中でフェーズが変わっても「絵で見た印」と「落ちる岩の
+	//    範囲」がずれない（＝boss.js 側は `_gaze` を書くだけでよい＝coil の `_crushR` と同じ作法）。
+	// ⚠️ 時計（`tickGaze`）は**行動ゲートの外**で回す（`tickCoilShrink` と同じ枠）＝投げた直後の
+	//    硬直と歩幅の溜めのあいだ印が止まって見えない（GUIDE §7-7）。
+	// ⚠️ 印の濃さは `_gazeHeat`（0〜1）に正規化して持つ＝床の絵と音とテストが**同じ1つの数**を読む。
+
+	// 「もう落ちる」に切り替わる濃さ（＝印が赤く点滅し始める）。coil の COIL_HOT_AT と同じ趣旨＝
+	// 予告の終わり際に**別の1段**を挟まないと初見で身構えられない（GUIDE §6-1）。
+	const GAZE_HOT_AT = 0.66;
+
+	// 印の進み具合を 0〜1 に正規化する（0＝押した瞬間・1＝岩が離れる瞬間）。
+	// 飛翔中（'flight'）と着弾待ち（'rest'）は 1 のまま＝「もう落ちる」を下げない。
+	function gazeHeat(e, now) {
+		if (e._gazePhase == null) return 0;
+		if (e._gazePhase !== 'mark') return 1;
+		const span = e._gazeSpan ?? 0;
+		if (!(span > 0)) return 1;
+		return Math.max(0, Math.min(1, 1 - (e._gazeAt - now) / span));
+	}
+
+	// 印を押す（＝この機構の唯一の起点）。押す先は**プレイヤーの今のタイル**。
+	// ⚠️ タイル中心へ丸める（`toTileRow/Col`）＝プレイヤーは 0.5 刻みに立てる∴丸めないと
+	//    印の絵と潰す範囲が半セルずれて読めない（coil の中心と同じ理由）。
+	function claimGaze(e, cfg, now) {
+		const player = getPlayer();
+		if (!player) return;
+		e._gazeCx = toTileCol(player.x);
+		e._gazeCy = toTileRow(player.y);
+		e._gazePhase = 'mark';
+		e._gazeSpan = cfg.stampMs ?? 1080;
+		e._gazeAt = now + e._gazeSpan;
+		e._gazeR = cfg.stampRadius ?? 1.2;
+		e._gazeHeat = 0;
+		e._gazePath = null;
+		// 予告は絵（床の印）と音の2経路で出す（GUIDE §7-6）。岩が砕ける音（rockSmash）とは
+		// 別の音＝「見据えられた（そこから離れろ）」と「落ちた（殴り返せる）」。
+		playSound('gazeMark');
+	}
+
+	// 岩を放る。着弾点は**印**＝プレイヤーが動いても追わない（`lob` の性質そのもの）。
+	function throwGazeRock(e, meta, cfg, now) {
+		const { cx, cy } = enemyCellCenter(e);
+		const tx = e._gazeCx, ty = e._gazeCy;
+		const d = Math.hypot(tx - cx, ty - cy) || 1;
+		const ndx = (tx - cx) / d, ndy = (ty - cy) / d;
+		const speed = cfg.rockSpeed ?? 1.2;
+		fireEnemyProjectile(e, 'stone', ndx, ndy, speed, {
+			lob: true,
+			targetX: tx, targetY: ty,
+			arcHeight: cfg.arcHeight ?? 1.6,
+			blast: {
+				// 潰す範囲は**押した瞬間に固定した半径**（＝床に描いてある印そのもの）。
+				radius: e._gazeR ?? cfg.stampRadius ?? 1.2,
+				damage: cfg.stampAtk ?? e.atk ?? meta.atk ?? 1,
+				// ⚠️ `!`（壊せる壁）は壊さない＝岩投げでボス部屋の地形が変わると、
+				//    プレイヤーが学んだ「爆弾で壊せる壁」の意味が濁る（爆弾鬼との差はここ）。
+				breakPower: 0,
+				sound: 'rockSmash', effect: 'rock',
+			},
+		});
+		// 着弾までの時間は**投擲物の進み方から逆算する**（`projectileTick` は毎 tick
+		// `speed × MOVE_STEP` だけ進む）＝印の絵を消す拍と岩が落ちる拍が一致する。
+		// ⚠️ `(dist / speed) * TICK_MS` ではない（MOVE_STEP を落とすと倍の見積りになる）。
+		const sx = e.x + ndx * 0.8, sy = e.y + ndy * 0.8;   // fireEnemyProjectile と同じ発射点
+		const total = Math.max(0.001, Math.hypot(tx - sx, ty - sy));
+		const ticks = Math.max(1, Math.ceil(total / (speed * MOVE_STEP)));
+		// ⚠️ 岩は**投げた tick のうちに1回進む**（`game.js gameTick` は enemyTick → projectileTick の
+		//    順）∴印の絵を消す拍は「残りの tick 数」＝`ceil(…) − 1`。ここを `ceil(…)` のままに
+		//    すると岩が砕けた後も印が 1 tick（120ms）残る＝「落ちたのにまだ狙われている」に見える
+		//    （＝余韻 `restMs`＝殴り返す窓の始まりも1拍ずれる）。
+		e._gazePhase = 'flight';
+		e._gazeSpan = Math.max(0, ticks - 1) * TICK_MS;
+		e._gazeAt = now + e._gazeSpan;
+		e._gazeHeat = 1;
+		e._gazeCount = (e._gazeCount ?? 0) + 1;
+		// 硬直（＝反撃の窓）はここで直接立てる（締め上げ・詠唱と同型＝`markAttack` は通さない。
+		// 岩投げは `attacks[]` の1エントリではなく**見据えの周期そのものの帰結**）。
+		e._freezeUntil = now + (cfg.throwFreezeMs ?? MELEE_FREEZE_MS);
+	}
+
+	// 見据えの時計（**行動ゲートの外**で毎 tick 呼ぶ）。ここが持つのは周期だけ＝
+	// 歩き（`enemyGazeStride`）と絵（`syncGazeMark`）は別の持ち主。
+	function tickGaze(e, meta, now) {
+		const cfg = resolveGaze(e, meta);
+		if (!cfg) return;
+		if (e._gazePhase == null) { claimGaze(e, cfg, now); return; }
+		e._gazeHeat = gazeHeat(e, now);
+		if (now < e._gazeAt) return;
+		if (e._gazePhase === 'mark') {
+			throwGazeRock(e, meta, cfg, now);
+		} else if (e._gazePhase === 'flight') {
+			// 着弾＝印は消える（ダメージは投擲物側の爆風が出す＝判定の持ち主は1か所）。
+			// 座標は残す＝巨人は「最後に見据えた場所」へ歩き続ける（次の印までの間も止まらない）。
+			e._gazePhase = 'rest';
+			e._gazeSpan = cfg.restMs ?? 480;
+			e._gazeAt = now + e._gazeSpan;
+		} else {
+			claimGaze(e, cfg, now);
+		}
+	}
+
+	// 印の候補（体をどう重ねても「印を踏む」になる置き方＋その外周）。
+	// ⚠️ 2×2 の座標は**左上**∴印のタイルに左上を置くと体は印の右下側へ 1 セルはみ出す。
+	//    4通りの重ね方を先に試す＝どちら側から来ても最短で印に乗れる（0d-2.5 の左上補正と同趣旨）。
+	function planGazePath(e, gy, gx) {
+		const cands = [
+			[gy, gx], [gy - 1, gx], [gy, gx - 1], [gy - 1, gx - 1],
+			[gy + 1, gx], [gy, gx + 1], [gy - 2, gx], [gy, gx - 2],
+		];
+		for (const [r, c] of cands) {
+			if (!isPassableForEnemy(r, c, e)) continue;
+			const path = planBurrowPath(e, [r, c]);
+			if (path) return path;
+		}
+		return null;                                  // 印に寄れない＝その場で待つ（時計は進む）
+	}
+
+	// 印へ向かって歩く（＝**プレイヤーへは寄らない**移動アルゴリズム）。
+	// 経路は待ち伏せ（N）と同じ BFS を使う＝2×2 の体で壁とプレイヤーを避けて回り込める
+	// （貪欲な1歩選択では往復して届かない＝2026-08-26 の実測）。
+	function enemyGazeStride(e, meta, speed, cfg) {
+		if (e._gazeCx == null) return;
+		const { cx, cy } = enemyCellCenter(e);
+		// 向きは**印**へ向ける（「見据えている先」＝機構の名前どおり）。
+		// ⚠️ 歩幅の溜め（`e.accum`）より**前**に書く（GUIDE §1-2）＝1歩に2 tick かかる速度でも
+		//    向き直りが遅れない。
+		const dx = e._gazeCx - cx, dy = e._gazeCy - cy;
+		if (Math.abs(dx) > 0.01 || Math.abs(dy) > 0.01) {
+			e.dir = Math.abs(dx) >= Math.abs(dy) ? (dx > 0 ? 'right' : 'left') : (dy > 0 ? 'down' : 'up');
+		}
+		e.accum = (e.accum ?? 0) + speed;
+		if (e.accum < 1.0) return;
+		e.accum -= 1.0;
+		const step = MOVE_STEP;
+		// 塞がれていたら**同じ tick で1回だけ**引き直して試す（N と同じ作法＝プレイヤーが
+		// 道に入った直後に1歩ぶん止まらない）。
+		for (let attempt = 0; attempt < 2; attempt++) {
+			if (!e._gazePath?.length) e._gazePath = planGazePath(e, e._gazeCy, e._gazeCx);
+			if (!e._gazePath?.length) return;
+			const [wr, wc] = e._gazePath[0];
+			const my = Math.sign(wr - e.y) * Math.min(step, Math.abs(wr - e.y));
+			const mx = Math.sign(wc - e.x) * Math.min(step, Math.abs(wc - e.x));
+			if (!isPassableForEnemy(e.y + my, e.x + mx, e)) { e._gazePath = null; continue; }
+			e.y += my; e.x += mx;
+			if (Math.abs(wr - e.y) < 0.01 && Math.abs(wc - e.x) < 0.01) e._gazePath.shift();
+			break;
+		}
+		moveCharEl(`enemy-${e.id}`, e.x, e.y);
+	}
+
+	// ── 印そのものを床に描く（見据えの唯一の告知）─────────────────────────
+	// ⚠️ 印は**プレイヤーが立っていた場所＝敵の体の上には出ない**∴予告を敵の絵に載せる型
+	//    （`.slam-windup` など）では「どこに落ちるか」が読めない（coil の輪と同じ理由）。
+	// ⚠️ 後始末＝`char-enemy-<id>` とは別の DOM ∴O が倒れても残る。実時間の消去タイマを毎 tick
+	//    貼り直す（＝tick が来なくなれば自然に消える）＝輪・炎と同じ作法。
+	const gazeMarkTimers = new Map();
+	function syncGazeMark(e, meta) {
+		const cfg = resolveGaze(e, meta);
+		const id = `gaze-mark-${e.id}`;
+		let el = document.getElementById(id);
+		// 印を描くのは 'mark'（押してから投げるまで）と 'flight'（岩が飛んでいる間）だけ。
+		const showing = cfg && e._gazeCx != null && (e._gazePhase === 'mark' || e._gazePhase === 'flight');
+		if (!showing) { if (el) el.remove(); return; }
+		const charLayerEl = getCharLayerEl();
+		if (!charLayerEl) return;
+		const cellPx = getCellPx();
+		if (!el) {
+			el = document.createElement('div');
+			el.id = id;
+			charLayerEl.appendChild(el);
+		}
+		const r = e._gazeR ?? cfg.stampRadius ?? 1.2;
+		const d = (r * 2 + 1) * cellPx;                       // 直径＝半径2つ＋自セル1枚
+		const left = (e._gazeCx + 0.5) * cellPx - d / 2;
+		const top  = (e._gazeCy + 0.5) * cellPx - d / 2;
+		const heat = e._gazeHeat ?? 0;
+		el.className = 'enemy-gaze-mark'
+			+ (heat >= GAZE_HOT_AT ? ' gaze-mark-hot' : '')
+			+ (e._gazePhase === 'flight' ? ' gaze-mark-falling' : '');
+		el.style.cssText = `position:absolute;left:${left}px;top:${top}px;`
+			+ `width:${d}px;height:${d}px;z-index:2;pointer-events:none;`
+			// 濃さ（0〜1）を CSS へ渡す＝色の作り方は CSS 側が持つ（閾値を2箇所に書かない）。
+			+ `--gaze-heat:${heat.toFixed(3)};`
+			// 今の相の長さ（＝落下中は飛翔時間そのもの）＝影が膨らむアニメの長さ。
+			// 長さは状態機械が持つ（CSS 側に持たせない＝swing/breath/coil と同じ作法）。
+			+ `--gaze-span-ms:${Math.round(e._gazeSpan ?? 0)}ms;`
+			// 「もう落ちる」の閾値で 1 に正規化した数＝赤の到達と赤い点滅の開始が必ず同じ tick。
+			+ `--gaze-warn:${Math.min(1, heat / GAZE_HOT_AT).toFixed(3)};`;
+		clearTimeout(gazeMarkTimers.get(id));
+		gazeMarkTimers.set(id, setTimeout(() => el.remove(), 400));
 	}
 
 	// ── Phase 5.5k: 陸上敵の向き別スプライト名解決（DECISIONS 2026-08-10）─────
@@ -2661,6 +2876,16 @@ export function createEnemyAi(deps) {
 				if (e._crushAt != null) {
 					e._crushAt = null; e._coilCx = null; e._coilCy = null; syncCoilRing(e, meta);
 				}
+				// Phase 8-4 (4) 0d-3（5体目 O）: 見据えの予告（濃くなる床の印）もスタンで中断する
+				// ＝止めたのに岩が落ちてくる、を作らない。**まだ投げていない印だけ**を消す
+				// （'flight' の岩は投擲物側が持ち主＝空中の岩は取り消せない∴印も残す＝嘘にならない）。
+				// ⚠️ ボスはブーメランでスタンしない（`stunnable ?? !isBoss`）∴今の O では観測差が
+				//    出ない**二重の守り**＝`gaze` を雑魚に付けたときに効く（coil と同じ立場）。
+				if (e._gazePhase === 'mark') {
+					e._gazePhase = null; e._gazeCx = null; e._gazeCy = null;
+					e._gazeAt = null; e._gazeHeat = 0; e._gazePath = null;
+					syncGazeMark(e, meta);
+				}
 				// Phase 5.5k k-9: 突進もスタンで中断する（溜め中に殴られたら走り出さない・
 				// 走行中に止められたらそこで終わる）。壁への激突で立てた気絶もここを通る＝
 				// 気絶が明けた tick に走行が再開しないための後始末でもある。
@@ -2682,6 +2907,10 @@ export function createEnemyAi(deps) {
 			// 同じ枠）。ここを行動ゲートの中（＝泳ぎと同じ場所）に置くと、攻撃硬直と歩幅の溜めの
 			// あいだ輪が止まって見える＝「ゆっくりでも常に小さくなっていく」が崩れる（実測済み）。
 			if (meta.coil) tickCoilShrink(e, meta, now);
+			// Phase 8-4 (4) 0d-3（5体目 O）: 見据えの周期も**硬直中も進める時計**（上と同じ枠）。
+			// ここを行動ゲートの中に置くと、岩を投げた直後の硬直（throwFreezeMs）と歩幅の溜めの
+			// あいだ印が止まる＝「印が濃くなっていく」告知が途切れる（J で実測済みの罠）。
+			if (meta.gaze) tickGaze(e, meta, now);
 			// 隠れ↔出現の周期を更新（hide を持つ敵のみ＝潜み鮫・地中蟲・N 砂嵐の蠍王）
 			tickHide(e, meta, now);
 			// Phase 5.5k k-8: 瞬間移動（術士）＝消えている間と出現した tick を専有する。
@@ -2745,6 +2974,10 @@ export function createEnemyAi(deps) {
 					// Phase 8-4 (4) 0d-3（4体目 J）: 巻きつき＝プレイヤーへ寄らず輪の周を泳ぐ。
 					// 設定はフェーズで差し替わる（`resolveCoil`）＝HP50% で「半周で締め上げる」形へ。
 					enemyCoil(e, meta, resolveEnemySpeed(e, meta), resolveCoil(e, meta));
+				} else if (meta.gaze) {
+					// Phase 8-4 (4) 0d-3（5体目 O）: 見据え＝**印**へ寄る（プレイヤーへは寄らない）。
+					// 周期そのものは上の `tickGaze`（行動ゲートの外）が持ち主＝ここは歩くだけ。
+					enemyGazeStride(e, meta, resolveEnemySpeed(e, meta), resolveGaze(e, meta));
 				} else if (meta.zigzag) {
 					enemyZigzagFly(e, meta, resolveEnemySpeed(e, meta), meta.zigzag);
 				} else {
@@ -2773,6 +3006,8 @@ export function createEnemyAi(deps) {
 			syncBreathMotion(e);
 			// Phase 8-4 (4) 0d-3: 巻きつきの輪を床に描く（機構の唯一の告知＝どこが輪の内側か）。
 			if (meta.coil) syncCoilRing(e, meta);
+			// Phase 8-4 (4) 0d-3（5体目 O）: 見据えの印を床に描く（どこに岩が落ちるかの唯一の告知）。
+			if (meta.gaze) syncGazeMark(e, meta);
 			// Phase 8-4 (4) 0d-2.6（2回目の調整）: 攻撃硬直の絵（前かがみで止まる＝殴り返す窓）。
 			syncRecoverMotion(e, now);
 			// Phase 5.5k k-9: 突進の溜めモーション（前後に細かく揺れる）を状態に合わせる。
@@ -2793,6 +3028,7 @@ export function createEnemyAi(deps) {
 		resolveDash,           // Phase 8-4 (4) 0d-3: 突進の設定（フェーズ差替を含む・テスト用）
 		resolveHide,           // Phase 8-4 (4) 0d-3: 隠れの周期（フェーズ差替を含む・テスト用）
 		resolveCoil,           // Phase 8-4 (4) 0d-3: 巻きつきの設定（フェーズ差替を含む・テスト用）
+		resolveGaze,           // Phase 8-4 (4) 0d-3: 見据えの設定（フェーズ差替を含む・テスト用）
 		resolveEnemySprite,    // Phase 5.5k: 向き別スプライト名解決のテスト用
 		resolveAttackFreezeMs, // Phase 5.5k: 攻撃硬直の長さ（テスト用）
 		tickCombatMode,        // Phase 5.5k: 遠隔／近接の二相（テスト用）
@@ -2820,6 +3056,10 @@ export function createEnemyAi(deps) {
 		claimCoil,             // Phase 8-4 (4) 0d-3: 輪の中心を決め直す（巻き直し・テスト用）
 		tickCoilCrush,         // Phase 8-4 (4) 0d-3: 締め上げの予告→解決（テスト用）
 		crushCoil,             // Phase 8-4 (4) 0d-3: 輪の内側を潰す（中心から測る・テスト用）
+		tickGaze,              // Phase 8-4 (4) 0d-3: 見据えの時計（印→岩→休みの1周・テスト用）
+		claimGaze,             // Phase 8-4 (4) 0d-3: 印を押し直す（＝機構の起点・テスト用）
+		enemyGazeStride,       // Phase 8-4 (4) 0d-3: 印へ寄る移動（O 古森の巨人・テスト用）
+		gazeHeat,              // Phase 8-4 (4) 0d-3: 印の濃さ 0〜1（絵と音とテストが読む数）
 		detachLeech,           // Phase 5.5k k-5: 張り付きを剥がす（combat.js の被弾フックが呼ぶ）
 		bossTickHitAndAway,
 		enemyAttack,

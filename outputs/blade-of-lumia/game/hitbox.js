@@ -10,6 +10,28 @@
 export function enemyW(e) { return e?.w ?? 1; }
 export function enemyH(e) { return e?.h ?? 1; }
 
+// ── タイル添字（float 座標 → 最も近いセル）────────────────────────────────
+// `game/game.js` の toTileRow/toTileCol はこれを呼ぶ＝**丸めの規則はここが単一の真実**。
+// 下の enemyOccupiesTile が同じ規則で占有セルを出せることが要（規則が2か所にあると
+// 「タイル判定だけ 1 セルずれる」種類のバグが生える）。
+export function toTileIndex(v) { return Math.floor(v + 0.5); }
+
+/**
+ * 敵 e の占有範囲がタイル (tr, tc) を含むか。**タイル単位で当たりを見る攻撃**（ロウソクの
+ * 炎など「前の1マス」を対象にするもの）はこれを通す。
+ *
+ * 1×1 の敵では `toTileRow(e.y) === tr && toTileCol(e.x) === tc` と完全に一致する。
+ *
+ * ⚠️ 敵の座標 `e.x/e.y` は占有範囲の**左上**∴左上タイルだけを見る書き方は 2×2 の残り3タイルを
+ *    取りこぼす。2026-08-30 にロウソクの炎で実害を出した＝炎の弱点（O 古森の巨人・L 氷の
+ *    リヴァイアサン・I 沼地の大蝦蟇＝**3体とも 2×2**）が、左上タイルを向いたときしか通らず
+ *    他の向きでは無音・無表示の 0 ダメージ＝「弱点が無い」ように見えていた。
+ */
+export function enemyOccupiesTile(e, tr, tc) {
+	const r0 = toTileIndex(e.y), c0 = toTileIndex(e.x);
+	return tr >= r0 && tr < r0 + enemyH(e) && tc >= c0 && tc < c0 + enemyW(e);
+}
+
 /**
  * 点 (px, py) が敵 e の当たり箱（top-left 基準・margin 付き）に入るか。
  * 1×1 のとき: |px - e.x| < margin && |py - e.y| < margin（＝従来挙動と一致）。

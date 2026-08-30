@@ -878,3 +878,68 @@
     25%  { transform: scale(0.85); opacity: 1; }
     100% { transform: scale(0.5);  opacity: 0; }
 }
+
+/* ── Phase 8-4 (4) 0d-3: 見据えの印（O 古森の巨人）─────────────────────────
+   ⚠️ 印は**プレイヤーが立っていた場所**に押される（敵の絵の上には出ない）∴予告を敵に
+   載せる `.slam-windup` 等の作法では「どこに岩が落ちるか」が読めない（GUIDE §6-1）＝
+   床に描くのがこの機構の唯一の告知（巻きつきの輪 `.enemy-coil-ring` と同じ立場）。
+   ⚠️ 輪（J）と**形で区別する**＝あちらは細い線が回る円／こちらは**塗られた円**
+   （＝「この面積が潰れる」を面で伝える）。色も分ける＝水色→赤ではなく**土色→赤**。
+   ⚠️ 色相は `--gaze-warn`（＝濃さを「もう落ちる」の閾値 GAZE_HOT_AT で正規化した数・JS が
+   入れる）で振る＝赤の到達と赤い点滅の開始が必ず同じ拍になる（閾値を CSS 側に持たない）。
+   45deg（土）→ 0deg（赤）へ**下げる**＝途中で緑（安全に見える色）を通らない。
+   寸法・位置は JS（syncGazeMark）が px で入れる＝半径は論理値（セル）から導出する。 */
+.enemy-gaze-mark {
+    --gaze-heat: 0;
+    --gaze-warn: 0;
+    --gaze-hue: calc(45 - 45 * var(--gaze-warn));
+    box-sizing: border-box;
+    border: calc(2px + 3px * var(--gaze-heat)) dashed
+        hsl(var(--gaze-hue) 85% 58% / calc(0.45 + 0.45 * var(--gaze-heat)));
+    border-radius: 50%;
+    /* 中心が濃い＝「落ちてくる先」が一点に読める（輪＝縁が濃い、とは逆の塗り方）。 */
+    background: radial-gradient(circle,
+        hsl(var(--gaze-hue) 80% 46% / calc(0.22 + 0.34 * var(--gaze-heat))) 0%,
+        hsl(var(--gaze-hue) 75% 40% / calc(0.14 + 0.26 * var(--gaze-heat))) 62%,
+        hsl(var(--gaze-hue) 70% 34% / 0.05) 100%);
+    box-shadow: inset 0 0 calc(8px + 12px * var(--gaze-heat)) calc(1px + 3px * var(--gaze-heat))
+        hsl(var(--gaze-hue) 80% 40% / calc(0.25 + 0.3 * var(--gaze-heat)));
+    animation: gaze-mark-throb 0.9s ease-in-out infinite alternate;
+}
+
+/* 「もう落ちる」の1段（GAZE_HOT_AT 以上）＝印が脈打つ＝岩が離れる前に身構えられる。
+   ⚠️ throb の長さは変えない（変えるとアニメが再スタートして印が一瞬跳ねる）＝
+   脈打ちは filter だけを動かす別のアニメを重ねる（coil-ring-hot と同じ作法）。 */
+.enemy-gaze-mark.gaze-mark-hot {
+    animation: gaze-mark-throb 0.9s ease-in-out infinite alternate,
+               gaze-mark-alarm 0.3s ease-in-out infinite alternate;
+}
+
+/* 岩が飛んでいる間＝**影が膨らむ**（近づいてくる＝落下の唯一の見た目の合図）。
+   長さは `--gaze-span-ms`（＝飛翔時間そのもの・JS が入れる）∴遠くから投げた岩は
+   ゆっくり、足元へ落ちる岩は一瞬で膨らむ＝「いつ落ちるか」が影の大きさで読める。 */
+.enemy-gaze-mark.gaze-mark-falling::after {
+    content: '';
+    position: absolute;
+    left: 50%; top: 50%;
+    width: 48%; height: 48%;
+    border-radius: 50%;
+    background: radial-gradient(circle, rgba(24, 18, 12, 0.72) 0%, rgba(24, 18, 12, 0.28) 70%, rgba(24, 18, 12, 0) 100%);
+    transform: translate(-50%, -50%) scale(0.22);
+    animation: gaze-shadow-grow var(--gaze-span-ms, 600ms) ease-in forwards;
+}
+
+@keyframes gaze-mark-throb {
+    from { transform: scale(0.97); }
+    to   { transform: scale(1.02); }
+}
+
+@keyframes gaze-mark-alarm {
+    from { filter: brightness(1)   saturate(1); }
+    to   { filter: brightness(1.6) saturate(1.4); }
+}
+
+@keyframes gaze-shadow-grow {
+    from { transform: translate(-50%, -50%) scale(0.22); opacity: 0.35; }
+    to   { transform: translate(-50%, -50%) scale(1);    opacity: 0.85; }
+}

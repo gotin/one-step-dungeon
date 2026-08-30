@@ -17,8 +17,21 @@
 //  4) 前方に茂みがなければ何も出現しない（bushBurned が立たない）
 //  5) 前方に敵がいるとき炎ダメージが入る（Phase 4-3b）
 //  6) 炎が弱点の敵（氷のリヴァイアサン L）は倍率ダメージを受ける（Phase 4-3b）
+//  7) 2×2 の敵は占有する4タイルの**どれを向いても**炎が通る（2026-08-30 の修正・下記）
+//  8) 占有していないタイルを向いたら当たらない（当たり箱を広げすぎていないことの裏取り）
+//
+// ── 2026-08-30 の修正（ユーザーの実プレイ報告「きつい・どう倒すのこれ」から出た）─────────
+// `game/game.js playCandle` の敵判定は `toTileRow(e.y) === tr && toTileCol(e.x) === tc`＝
+// 敵の座標（占有範囲の**左上**）とタイルの完全一致だった∴**2×2 の敵は左上タイルを向いた
+// ときだけ**炎が通り、他の3タイルを向くと無音・無表示の 0 ダメージだった。
+// 炎が弱点の敵は O 古森の巨人・L 氷のリヴァイアサン・I 沼地の大蝦蟇＝**3体とも 2×2**＝
+// 弱点が向き次第で死んでいた（剣は hitbox.js 経由で4方向とも当たる＝弱点だけが不利）。
+// 判定を `enemyOccupiesTile()`（hitbox.js）に寄せた＝占有範囲で見る。
 import { test, expect } from '@playwright/test';
 import { waitForBoard, SAVE_KEY } from './helpers.js';
+import { ENEMY_META } from '../shared/enemies.js';
+import { CANDLE_FIRE_DMG } from '../game/constants.js';
+import { TEST_LAYER, stageKey } from './test-stage-keys.js';
 
 const GAME = '/blade-of-lumia/game/';
 
@@ -181,5 +194,97 @@ test.describe('Blade of Lumia – ロウソク', () => {
 		});
 		// 氷のリヴァイアサンは fire が弱点(×3)。sword(×1) の3倍ダメージ
 		expect(losses.fireLoss).toBe(losses.swordLoss * 3);
+	});
+
+	// ── 2×2 の敵に炎が当たる向き（2026-08-30 の修正）────────────────────────────
+	// 実配置で測る＝`bal_forest_giant`（`test_mechanics 28,1`）に居る O 古森の巨人。
+	// 注入敵ではなく出荷データの敵を使う（size/def/weakness をテスト側で作らない）。
+	const GIANT = 'O';
+	const gm = ENEMY_META[GIANT];
+	// 弱点が乗ったときの1回の減り＝`dealDamageToEnemy` と同じ式（丸め→防御を引く→最低1）。
+	const FIRE_LOSS = Math.max(1, Math.round(CANDLE_FIRE_DMG * (gm.weakness?.multiplier ?? 1)) - gm.def);
+
+	// 実時間ループを起動させない（ボスが動くと「どのタイルを向いたか」が測れない）。
+	const frozen = new WeakSet();
+	async function gotoFrozen(page, url) {
+		if (!frozen.has(page)) {
+			await page.addInitScript(() => {
+				const native = window.setInterval;
+				window.__loopBlocked = 0;
+				window.setInterval = function (fn, ms, ...rest) {
+					if (/step\s*\(\s*1\s*\)/.test(String(fn))) { window.__loopBlocked++; return 0; }
+					return native.call(window, fn, ms, ...rest);
+				};
+			});
+			frozen.add(page);
+		}
+		await page.goto(url);
+		await waitForBoard(page);
+		expect(await page.evaluate(() => window.__loopBlocked),
+			'実時間ループの差し込み阻止が効いていない（game.js startGameLoop の形が変わった？）')
+			.toBeGreaterThan(0);
+	}
+
+	function giantUrl(row, col) {
+		const p = new URLSearchParams({
+			fromEditor: '1', layer: TEST_LAYER, stage: stageKey('bal_forest_giant'),
+			row: String(row), col: String(col), ps_candle: '1', ps_weapon: '1', ps_sword: '0',
+		});
+		return `${GAME}?${p.toString()}`;
+	}
+
+	// 巨人の左上タイルを読む（湧きは盤面データが決める∴座標を書かない）。
+	async function giantTopLeft(page) {
+		return await page.evaluate((t) => {
+			const e = window.__game.getEnemies().find(x => x.type === t);
+			return e ? { r: Math.floor(e.y + 0.5), c: Math.floor(e.x + 0.5), hp: e.hp } : null;
+		}, GIANT);
+	}
+
+	// (row,col) に立って dir を向いてロウソクを使い、巨人の HP の減りを返す。
+	async function candleAt(page, row, col, dir) {
+		await gotoFrozen(page, giantUrl(row, col));
+		const pos = await page.evaluate(() => {
+			const p = window.__game.getPlayer();
+			return { r: Math.floor(p.y + 0.5), c: Math.floor(p.x + 0.5), item: p.activeSubItem };
+		});
+		expect(pos, `(${row},${col}) に立てていない＝湧き位置が塞がれている`).toEqual({ r: row, c: col, item: 'candle' });
+		const before = await giantTopLeft(page);
+		await page.evaluate((d) => { window.__game.setHeroDir(d); window.__game.useSubItem(); }, dir);
+		const after = await giantTopLeft(page);
+		return { loss: before.hp - after.hp, giant: before };
+	}
+
+	test('2×2 の敵は占有する4タイルのどれを向いても炎が当たる', async ({ page }) => {
+		const errors = [];
+		page.on('pageerror', e => errors.push(e.message));
+
+		// 巨人の左上タイルを実データから読み、そこから「占有4タイル × 4方向」の立ち位置を作る。
+		await gotoFrozen(page, giantUrl(4, 4));
+		const g = await giantTopLeft(page);
+		expect(g, `${TEST_LAYER} ${stageKey('bal_forest_giant')} に ${GIANT} が居ない`).not.toBeNull();
+		expect({ w: gm.size?.w, h: gm.size?.h }, '前提＝2×2 の敵で測る').toEqual({ w: 2, h: 2 });
+
+		// 4タイルを別々の向きから焼く＝「左上以外でも通る」と「向きに依らない」を同時に見る。
+		const cases = [
+			{ tile: '左上', row: g.r,     col: g.c - 1, dir: 'right' },
+			{ tile: '右上', row: g.r - 1, col: g.c + 1, dir: 'down'  },
+			{ tile: '右下', row: g.r + 1, col: g.c + 2, dir: 'left'  },
+			{ tile: '左下', row: g.r + 2, col: g.c,     dir: 'up'    },
+		];
+		for (const c of cases) {
+			const { loss } = await candleAt(page, c.row, c.col, c.dir);
+			expect(loss, `${c.tile}タイルを ${c.dir} から焼いて通っていない`
+				+ '（占有範囲でなく左上タイルだけ見ている？）').toBe(FIRE_LOSS);
+		}
+		expect(errors).toEqual([]);
+	});
+
+	test('占有していないタイルを向いたら炎は当たらない', async ({ page }) => {
+		await gotoFrozen(page, giantUrl(4, 4));
+		const g = await giantTopLeft(page);
+		// 巨人の左上タイルの1つ外側（斜めに隣接する床）を向く＝占有範囲の外。
+		const { loss } = await candleAt(page, g.r - 1, g.c - 1, 'down');
+		expect(loss, '占有していないタイルでも当たっている＝当たり箱を広げすぎている').toBe(0);
 	});
 });
