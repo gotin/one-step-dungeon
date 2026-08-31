@@ -112,6 +112,11 @@ async function gotoFrozen(page, url) {
  */
 async function measure2x2(page, o) {
   await gotoFrozen(page, o.url ?? ARENA);
+  // 0d-3（7体目 G・2026-08-31）: G の素の meta は `momentum`（慣性）を持つ＝**何も点けなくても
+  // 体が滑る**。この本は「機構を1つだけ点けて 2×2 の算術を測る」形∴既定で慣性を切る
+  // （切らないと間合いも拍も慣性のせいになり、測っている機構の主張が立たなくなる）。
+  // 慣性そのものを測る本（boss-move-variety の G の節）は patch で上書きして点ける。
+  const patch = { momentum: null, ...(o.patch ?? {}) };
   return page.evaluate((a) => {
     const g = window.__game;
     if (a.patch) g.setEnemyMetaForTest(a.type, a.patch);
@@ -140,7 +145,7 @@ async function measure2x2(page, o) {
       });
     }
     return { gameTime0: 0, samples, player: { x: g.getPlayer().x, y: g.getPlayer().y } };
-  }, { ...o, type: BOSS });
+  }, { ...o, patch, type: BOSS });
 }
 
 /** 全 tick で 2×2 のままだったか（1×1 を測って「そのまま使える」と誤結論しないための番人） */
@@ -373,7 +378,12 @@ test('③ dash は 2×2 で「突進する車線」と「当たる車線」が�
 test('④ dash の壁激突と気絶窓は 2×2 でもそのまま使える', async ({ page }) => {
   const STUN_MS = 1440, COOLDOWN_MS = 1200;
   const meta = ENEMY_META[BOSS];
-  const PHASE_SPEED = meta.speed * meta.phases[0].speedMultiplier;   // 0.25 × 1.4
+  // 0d-3（2026-08-31）: G の相は**速度を書かなくなった**（慣性 `momentum` に移り、速さは
+  // accel/friction/maxSpeed の3つだけが決める＝`speedMultiplier` は書かない設計）∴
+  // この本が要る「動く駆動」は patch で作る（測っているのは 2×2 の突進の算術＝G の相の中身
+  // ではない。相そのものは tests/boss-phase-behavior.spec.js と boss-move-variety が持つ）。
+  const PHASE = { hpThreshold: 0.5, speedMultiplier: 1.4 };
+  const PHASE_SPEED = meta.speed * PHASE.speedMultiplier;   // 0.25 × 1.4
   const FREE_AT = (8 * TICK_MS + STUN_MS + COOLDOWN_MS) / TICK_MS;   // 3600ms = tick 30
   // 剣（0d-2.6）の予告は明けた tick に立って WINDUP_TICKS 後に解決する∴観測はそこまで要る。
   // ⚠️ tick 数は**データから導く**（直書きすると予告を延ばした瞬間に観測が足りず、
@@ -383,7 +393,10 @@ test('④ dash の壁激突と気絶窓は 2×2 でもそのまま使える', as
   const r = await measure2x2(page, {
     url: previewUrl('spare_arena', 1, 6),
     ex: 6, ey: 6, hp: 100, ticks: FREE_AT + WINDUP_TICKS + 1,
-    patch: { dash: { windupMs: 360, speed: 1.5, maxCells: 10, alignTol: 0.8, hitRange: 1.0, minRange: 2.0, maxRange: 9.0, stunMs: STUN_MS, cooldownMs: COOLDOWN_MS } },
+    patch: {
+      dash: { windupMs: 360, speed: 1.5, maxCells: 10, alignTol: 0.8, hitRange: 1.0, minRange: 2.0, maxRange: 9.0, stunMs: STUN_MS, cooldownMs: COOLDOWN_MS },
+      phases: [PHASE],
+    },
     moves: [[2, ['right', 'right']], [3, ['right', 'right']]],
     drops: [[10, 60]],                 // 100 → 40（0.4 ≤ 0.5）＝相が速度を書く
   });
@@ -532,7 +545,10 @@ test('⑦ leap/shell/blink/dash を持つ敵は対応するポーズ絵を必ず
 });
 
 // ── ⑧ ポーズ差替とヒット＆アウェイが `e.sprite` を取り合う（軽微だが直す）──────────
-// 13 ボス全部が `hitAndAway: true`＝bossTickHitAndAway は向きが変わった tick に
+// ❌ 「13 ボス全部が `hitAndAway: true`」は失効（2026-08-31・0d-3 で W/A/N/J/O/U/G の7体が
+//    固有の移動機構へ移った＝`hitAndAway: false`）。この本が測るのは**取り合いの規則**
+//    そのもの∴代表の G では patch で `hitAndAway: true` を点けて測る（下記）。
+// 以下は取り合いの説明（規則自体は変わっていない）＝bossTickHitAndAway は向きが変わった tick に
 // `e.sprite = ${base}${D|R|U}` を書く（enemy-ai.js:466-469）。一方ポーズ差替は
 // **接尾辞なしの素の名前**へ戻す（`swapEnemySprite(e, base)`）∴機構を持つボスは
 // 向き接尾辞を失う（次に向きが変わるまで戻らない）。今の 2×2 は D/R/L/U が同じ絵の
@@ -545,14 +561,17 @@ test('⑧ dash を足すと向き接尾辞が失われる（ポーズ差替が�
   const base = ENEMY_META[BOSS].sprite;
   const EX = 8, EY = 6;
   // 機構なし：ヒット＆アウェイの向き接尾辞が残る（プレイヤーは西∴'R' + flipX）
-  const plain = await measure2x2(page, { ex: EX, ey: EY, hp: 100, ticks: 4, patch: { speed: 0 } });
+  const plain = await measure2x2(page, {
+    ex: EX, ey: EY, hp: 100, ticks: 4, patch: { speed: 0, hitAndAway: true },
+  });
   expect(at(plain.samples, 4).sprite, 'ヒット＆アウェイが向き接尾辞を書いていない（前提が崩れた）')
     .toBe(`${base}R`);
 
   // 機構あり（突進しない位置＝idle のまま）：素の名前へ戻される
   const withDash = await measure2x2(page, {
     ex: EX, ey: EY, hp: 100, ticks: 4,
-    patch: { speed: 0, dash: { windupMs: 360, alignTol: 0.8, minRange: 2.0, maxRange: 9.0 } },
+    patch: { speed: 0, hitAndAway: true,
+      dash: { windupMs: 360, alignTol: 0.8, minRange: 2.0, maxRange: 9.0 } },
   });
   expect(at(withDash.samples, 4).dashPhase, '突進が始まってしまった（この本は idle で測る）').toBe('idle');
   expect(at(withDash.samples, 4).sprite, 'ポーズ差替が向き接尾辞を残している（実装が直った？）').toBe(base);

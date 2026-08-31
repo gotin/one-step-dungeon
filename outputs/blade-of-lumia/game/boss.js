@@ -215,6 +215,17 @@ export function createBoss(deps) {
 		//    実際の解決がずれない。逆にここで消すと**空中で相が消えて宙吊りになる**
 		//    （＝滞空したまま何も起きない敵になる。着地の硬直＝反撃の窓も消える）。
 		if (phase.soar !== undefined) boss._soar = phase.soar;
+		// Phase 8-4 (4) 0d-3（7体目 G 岩のゴーレム）: 慣性の設定を相で差し替える口
+		// （`resolveMomentum` が読む）。G は後半で「加速も上限も上がる＝もっと止まれない」形になる。
+		// ⚠️ 速度ベクトルは**捨てる**（`_dash` / `_coil` と同じ側の扱い）＝新しい上限
+		//    （`maxSpeed`）より速い惰性を引き継いだまま次の tick に入ると、切り上げの1 tick だけ
+		//    設定より速く走る＝「相が変わった瞬間に轢かれる」を作らない。捨てても即座に
+		//    走り直せる（状態機械ではない∴宙吊りになる相が無い＝`_soar`/`_gaze` とは事情が違う）。
+		if (phase.momentum !== undefined) {
+			boss._momentum = phase.momentum;
+			boss._momVx = 0;
+			boss._momVy = 0;
+		}
 	}
 
 	// ── 星の欠片を生成 ──────────────────────

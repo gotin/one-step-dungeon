@@ -399,6 +399,54 @@
                                 calc(var(--soar-vy, 0) * 6%)) scale(1.04); }
 }
 
+/* ── Phase 8-4 (4) 0d-3（7体目 G 岩のゴーレム）: 慣性（momentum）が乗った巨体 ──────────
+   この敵は予告の窓を持たない（状態機械ではなく速度ベクトル1つ）∴告知は
+   **「今この岩は速い＝触れたら痛い／壁へ誘えば崩れる」の1点**だけ。しきい値は
+   enemy-ai.js の `heavySpeed`（体当たりの成立・壁での自壊・この絵が読む同じ1つの数）。
+   ・体当たり（拡大縮小）・突進の溜め（足踏み）・剣（振り上げ）・ブレス（膨らむ玉）・
+     硬直（沈んで止まる）・滞空（浮いて影）と**どれとも別の形**（GUIDE §6-1）＝
+     こちらは**足元から土煙が広がる**＝「重いものが転がっている」を地面側の絵で見せる。
+   ・体は大型敵の揺れ（`.large-enemy` の golem-lumber・1.1s のゆったり）より**速く傾く**＝
+     同じ形の速さの違いで「今は本気で転がっている」が読める（後勝ちで上書きするため後に置く）。
+   ⚠️ 土煙は `::before`（`.hiding` / `.swing-windup` / `.breath-windup` が使う `::after` と
+      衝突させない）。`.soaring::before`（影）とは同時に付かない＝滞空を持つ敵と慣性を持つ
+      敵は別（G は飛ばない）。
+   ⚠️ 気絶（壁への激突）の間はクラスが外れる＝enemy-ai.js syncMomentumMotion が
+      `stunUntil` を見て落とす∴「崩れているのに土煙が出ている」＝殴れる窓を絵が否定する、
+      が起きない。 */
+.char-abs.momentum-heavy canvas.sprite {
+    transform-origin: 50% 100%;
+    animation: enemy-momentum-heavy 260ms linear infinite;
+    filter: brightness(1.05) saturate(1.12);
+}
+@keyframes enemy-momentum-heavy {
+    0%   { transform: translateY(0)     rotate(-3deg) scaleY(1);    }
+    50%  { transform: translateY(-4%)   rotate(3deg)  scaleY(1.03); }
+    100% { transform: translateY(0)     rotate(-3deg) scaleY(1);    }
+}
+.char-abs.momentum-heavy::before {
+    content: '';
+    position: absolute;
+    left: 50%;
+    top: 84%;
+    width: 76%;
+    height: 30%;
+    margin-left: -38%;
+    /* 土（茶）の煙。左右へ広がって薄れる＝転がった跡（色は岩と地面の中間） */
+    background: radial-gradient(ellipse at 50% 60%,
+        rgba(168, 142, 104, 0.52) 0%,
+        rgba(140, 118, 88,  0.30) 52%,
+        rgba(120, 100, 74,  0.00) 100%);
+    border-radius: 50%;
+    animation: enemy-momentum-dust 420ms ease-out infinite;
+    pointer-events: none;
+    z-index: 1;
+}
+@keyframes enemy-momentum-dust {
+    0%   { transform: scale(0.62, 0.72); opacity: 0.85; }
+    100% { transform: scale(1.18, 1.05); opacity: 0.15; }
+}
+
 @keyframes golem-lumber {
     0%   { transform: translateY(0)      rotate(-1.5deg) scaleY(1);    }
     25%  { transform: translateY(-3%)    rotate(0deg)    scaleY(1.02); }

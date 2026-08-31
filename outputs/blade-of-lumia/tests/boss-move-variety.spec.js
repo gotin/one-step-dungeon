@@ -298,6 +298,7 @@ const MECHANISM_FIELDS = [
   'coil',           // 0d-3（4体目 J）: 中心を決めて周回し輪を縮める移動（寄って来ない）
   'gaze',           // 0d-3（5体目 O）: 印（1拍前の足跡）へ寄る移動（プレイヤーを追わない）
   'soar',           // 0d-3（6体目 U）: 空へ退いて旋回し軸へ落ちる移動（届く手段が矢だけになる）
+  'momentum',       // 0d-3（7体目 G）: 速度を追う移動（止まれない・曲がれない・壁で自壊する）
 ];
 const mechanismsOf = (meta) => new Set(MECHANISM_FIELDS.filter(k => meta[k]));
 const attackTypesOf = (meta) => new Set(
@@ -3046,4 +3047,527 @@ test('㊽ 弓は画面内2本まで（3本目は1本目が消えてから）', a
   expect(out2.remaining, '40 tick 後も矢が画面に残っている＝消える前提が崩れている').toBeLessThan(2);
   expect(out2.after, '1本消えたのに3本目が出ない＝上限が「同時」ではなく別の何かで縛られている')
     .toBe(out2.remaining + 1);
+});
+
+// ══════════════════════════════════════════════════════════════════════════════
+// 7体目＝G 岩のゴーレム（2×2・D1 のボス）＝新機構 `momentum`（慣性）
+// ══════════════════════════════════════════════════════════════════════════════
+// 0d-3（2026-08-31）。層2 の設計＝**プレイヤーの「位置」ではなく「プレイヤーへ向かう速度」を
+// 積む**＝止まれない・曲がれない重量級。
+//   ・`accel` を毎 tick 速度へ足し、`friction` で減衰する∴終端速度＝`accel / friction`
+//     （素の設定ではこれが `maxSpeed` と一致する）。上限へ乗るまで 10 tick 以上かかる＝
+//     **止まるのにも曲がるのにも時間がかかる**（＝プレイヤーは横へ退いて空振りを作れる）。
+//   ・`heavySpeed` は**1つのしきい値が3つの意味を持つ**＝①体当たりが成立する ②壁に当たると
+//     自壊して長く気絶する ③土煙が出て地響きが鳴る。∴プレイヤーが覚える規則は1本
+//     （「土煙が出た岩は避けて壁へ誘う」）。
+//   ・答え＝**壁が武器になる**（ただし突進猪と違い敵は自分から壁へ走らない＝プレイヤーが
+//     誘導して初めて起きる）／密着したら弱点（剣 × 攻撃硬直の窓 ×3）で削る。
+//   ・後半（HP 50% 以下）＝`phases[].momentum` で**さらに止まれない**（最高速 ×1.4・
+//     崩れている時間は短い 1800→1320ms）。打点（`ramAtk`）は据え置き。
+//
+// ⚠️ 状態機械を持たない（状態＝速度ベクトル1つだけ）∴0d-2.7（跳躍）・0d-3（滞空）で踏んだ
+//    「相を忘れて宙吊り」の欠陥が構造的に存在しない＝その代わりに測るのは**連続量**
+//    （速さ・向き・位置の履歴）。
+// ⚠️ 測る湧きは (4,1)＝G (4,7) と**同じ行の西端**＝助走 6 セルと西の壁が1直線に並ぶ
+//    （＝「加速する」「体当たりする」「誘い込むと壁で崩れる」を同じ舞台で測れる）。
+// ⚠️ 壁激突を測る回だけ北の壁ぎわ (1,7)＝**G の真上**から測る（プレイヤーが横へ退いた後、
+//    残りの助走が短い側の壁＝主軸が変わる前に必ず当たる）。
+// ⚠️ 剣（range 1.2・予告 600ms）と岩（range 6）は `RAM_ONLY` で止める＝止めないと攻撃硬直が
+//    惰性を捨てて加速が測れない／体当たりの打点が剣のダメージと混ざる
+//    （U の `DIVE_ONLY`・O の `ROCK_ONLY`・J の `CRUSH_ONLY` と同型の罠）。
+const G_ROW = 4, G_COL = 7;            // 2×2 ∴ rows 4-5 / cols 7-8 を占める
+const G_PL_ROW = 4, G_PL_COL = 1;      // 測る湧き（同じ行の西端＝助走と壁が1直線）
+const G_WALL_SPAWN = { row: 1, col: 7 };   // 北の壁ぎわ＝G の真上（誘い込みを測る回）
+// D1 のボス直前の想定装備（`node scripts/audit-balance.mjs` の「D1 森の遺跡 / ボス直前」＝
+// ハート3・木の剣ティア0・盾ティア0・布の服ティア0）。サブ道具は1つも無い＝**D1 の世界には
+// 道具が無い**∴この敵の答えは道具ではなく「間」と「地形」（0d-2.11 (A) の弱点設計そのもの）。
+const D1_PRE = { ps_hearts: '3', ps_sword: '0', ps_shield: '0', ps_armor: '0', ps_weapon: '1' };
+// 慣性だけを測るための一時パッチ＝剣も岩も出させない（上の⚠️）。
+const RAM_ONLY = {
+  attacks: [{ type: 'sword', range: 0.01, cooldown: 999000, windupMs: 600 }],
+  attack: { type: 'sword', range: 0.01, cooldown: 999000, windupMs: 600 },
+};
+// SE の指紋（`installToneRec` は周波数だけを記録する）＝同じ tick に全部揃ったら鳴った。
+const RUMBLE_HZ = [58, 64, 55, 62];    // golemRumble＝heavySpeed を越えた瞬間の地響き
+const CRASH_HZ  = [180, 130, 100];     // doorLock＝壁への激突（＝崩れて殴れる合図）
+const rang = (tones, hz) => hz.every(f => tones.includes(f));
+
+/**
+ * `bal_rock_golem` の G を n tick 追う。毎 tick の速度ベクトル・位置・気絶・絵・音と
+ * プレイヤーの被弾を返す。
+ * @param {object} o
+ * @param {number} o.ticks       進める論理 tick 数
+ * @param {object} [o.spawn]     プレイヤーの湧き（既定＝(4,1)）
+ * @param {boolean} [o.debugOff] true＝'g' で debug を切る（ダメージが通る）
+ * @param {object} [o.patch]     ENEMY_META['G'] へ一時的に差し込むフィールド（RAM_ONLY 等）
+ * @param {number} [o.dropAt]    この tick の step より前に G へ与えるダメージの tick
+ * @param {number} [o.dmg]       その量（`dealDamage` は def を引く∴+def して渡す）
+ * @param {object} [o.moveWhen]  { atSpeed?, atReach?, dir, steps }＝**条件が満たされた tick から**
+ *                               1 tick に1歩ずつ steps 回だけその向きへ歩く（＝プレイヤーの
+ *                               「土煙を見たら横へ退く」をそのまま機械にする。⚠️ tick 番号で
+ *                               固定すると加速の数を変えた瞬間に意味がずれる＝O で踏んだ罠）
+ */
+async function trackGolem(page, o) {
+  await installToneRec(page);
+  const sp = o.spawn ?? { row: G_PL_ROW, col: G_PL_COL };
+  await gotoFrozen(page, previewUrl('bal_rock_golem', sp.row, sp.col, D1_PRE));
+  if (o.debugOff) await page.keyboard.press('g');
+  return page.evaluate((a) => {
+    const g = window.__game;
+    if (a.patch) g.setEnemyMetaForTest('G', a.patch);
+    const g0 = g.getEnemies().find(e => e.type === 'G');
+    if (!g0) return { error: 'G が盤面に居ない' };
+    const id = g0.id;
+    const find = () => g.getEnemies().find(e => e.id === id);
+    const edgeDist = (e, px, py) => {
+      const cx = e.x + ((e.w ?? 1) - 1) / 2, cy = e.y + ((e.h ?? 1) - 1) / 2;
+      const gx = Math.max(0, Math.abs(px - cx) - ((e.w ?? 1) - 1) / 2);
+      const gy = Math.max(0, Math.abs(py - cy) - ((e.h ?? 1) - 1) / 2);
+      return Math.hypot(gx, gy);
+    };
+
+    const samples = [];
+    const movedAt = [];
+    let stepsLeft = a.moveWhen?.steps ?? 0;
+    let stunSeen = 0;
+    for (let t = 1; t <= a.ticks; t++) {
+      const tone0 = window.__tones.length;
+      if (a.dropAt === t) g.dealDamage(id, a.dmg, a.dmgType);
+      const cur = find();
+      if (!cur) break;
+      const p0 = g.getPlayer();
+      if (stepsLeft > 0
+        && (a.moveWhen.atSpeed === undefined || (cur.momSpeed ?? 0) >= a.moveWhen.atSpeed)
+        && (a.moveWhen.atReach === undefined || edgeDist(cur, p0.x, p0.y) <= a.moveWhen.atReach)) {
+        g.movePlayer(a.moveWhen.dir); stepsLeft--; movedAt.push(t);
+      }
+      g.step(1);
+      const e = find();
+      if (!e) break;
+      const p = g.getPlayer(), st = g.getState();
+      const el = document.getElementById(`char-enemy-${id}`);
+      const sprite = el?.querySelector('canvas.sprite');
+      // 気絶の⭐（`showDashStun` が char-layer へ生やす）＝実時間のタイマで消える∴増分で読む
+      const stuns = [...document.querySelectorAll('.stun-burst')];
+      const newStuns = stuns.length - stunSeen;
+      stunSeen = stuns.length;
+      samples.push({
+        t, now: st.gameTime, hp: e.hp, x: e.x, y: e.y, dir: e.dir,
+        momVx: e.momVx ?? null, momVy: e.momVy ?? null, momSpeed: e.momSpeed ?? 0,
+        momCrashes: e.momCrashes ?? 0, momRams: e.momRams ?? 0,
+        momentum: e.momentum ?? null,
+        stunUntil: e.stunUntil ?? null, freezeUntil: e.freezeUntil ?? null,
+        swingAt: e.swingAt ?? null,
+        // 絵（機構の唯一の告知）＝土煙と速い傾き
+        heavy: !!el?.classList.contains('momentum-heavy'),
+        dust: el ? getComputedStyle(el, '::before').content !== 'none' : false,
+        bodyAnim: sprite ? getComputedStyle(sprite).animationName : '',
+        px: p.x, py: p.y, php: p.hp, pdef: st.player.def, inv: st.player.invincibleUntil,
+        reach: edgeDist(e, p.x, p.y),
+        newStuns, newTones: window.__tones.slice(tone0),
+        // ⭐の**長さ**＝気絶の長さと一致していること（印が先に消えると「まだ無抵抗なのに
+        // 終わったように見える」）。inline の変数と計算後の animation-duration の両方を見る。
+        stunMarkMs: stuns.length
+          ? stuns[stuns.length - 1].style.getPropertyValue('--stun-burst-ms').trim() : '',
+        stunMarkAnimMs: stuns.length
+          ? getComputedStyle(stuns[stuns.length - 1]).animationDuration : '',
+      });
+    }
+    const e = find();
+    return {
+      id, samples, movedAt,
+      end: e && { hp: e.hp, maxHp: e.maxHp, momSpeed: e.momSpeed ?? 0, momentum: e.momentum ?? null },
+    };
+  }, o);
+}
+
+// ── G-① データ＝G の層2（慣性の綴りと「終端速度・しきい値・打点」の算術）─────────────
+test('G-① 岩のゴーレムのデータ＝慣性の終端速度はプレイヤーより遅く、しきい値に必ず届く', () => {
+  const m = ENEMY_META['G'];
+  const c = m.momentum;
+
+  expect(c, 'momentum が無い＝G に固有の移動機構が無い').toBeTruthy();
+  // 綴りの番人（`resolveMomentum` を読む関数が読むキー＝1文字違うと既定値に落ちて黙って動く）
+  expect(Object.keys(c).sort()).toEqual([
+    'accel', 'crashStunMs', 'friction', 'heavySpeed', 'maxSpeed', 'ramAtk', 'ramRange',
+  ]);
+
+  // `hitAndAway` は enemyTick の分岐で momentum より優先される∴**明示 false** が要る
+  // （W/A/N/J/O/U で6回踏んだ罠＝書かないと新機構の分岐へ一度も来ない）。
+  expect('hitAndAway' in m, 'hitAndAway を書いていない＝既定の張り付きに戻る余地が残る').toBe(true);
+  expect(m.hitAndAway, 'hitAndAway が true ＝momentum の分岐に来ない').toBe(false);
+  // `initialModeWeights`＝`hitAndAway` の寄り方の抽選＝この敵では一度も通らない死んだ数値
+  expect(m.initialModeWeights, '寄り方の抽選が残っている＝読まれない数値（W/O/U で外した作法）')
+    .toBeUndefined();
+
+  // 終端速度＝accel / friction（enemy-ai.js は減衰→加速の順で積む∴この式が厳密に成り立つ）
+  expect(c.accel / c.friction, '終端速度が maxSpeed と一致しない＝上限の数を別に信じることになる')
+    .toBeCloseTo(c.maxSpeed, 6);
+  // プレイヤーは1 tick に MOVE_STEP（0.5 セル）進める∴これ未満＝**歩いて逃げ切れる**（GUIDE §7-2）
+  expect(c.maxSpeed, '最高速がプレイヤーの歩き（0.5 セル/tick）以上＝退く余地が無い')
+    .toBeLessThan(MOVE_STEP);
+  // しきい値は最高速より下＝「体当たりが成立する速さ」に必ず到達できる（死んだ数値でない）
+  expect(c.heavySpeed, 'heavySpeed が maxSpeed 以上＝土煙も体当たりも一度も起きない')
+    .toBeLessThan(c.maxSpeed);
+  // 体当たりの打点は既存の atk と同じ＝この機構が新しい最大打点を作らない（U の diveAtk と同作法）
+  expect(c.ramAtk, '体当たりの打点が atk と違う＝ボスの最大打点が機構で増えている').toBe(m.atk);
+  // 崩れている時間は「安全に殴れる時間」＝剣のクールダウン数振り分（弱点 ×3 は乗らない）
+  expect(c.crashStunMs, '崩れている時間が短すぎる＝壁へ誘っても見返りが無い')
+    .toBeGreaterThanOrEqual(1200);
+
+  // 後半＝**さらに止まれない**（最高速 ×1.4・崩れている時間は短い・打点は据え置き）
+  const p = (m.phases ?? []).find(ph => ph.momentum !== undefined);
+  expect(p, '後半の相が慣性を差し替えていない＝前半と同じ動きのまま').toBeTruthy();
+  expect(p.hpThreshold).toBe(0.5);
+  expect(p.momentum.maxSpeed, '後半の最高速が前半の 1.4 倍でない').toBeCloseTo(c.maxSpeed * 1.4, 6);
+  expect(p.momentum.maxSpeed, '後半の最高速がプレイヤーの歩き以上＝退く余地が消える')
+    .toBeLessThan(MOVE_STEP);
+  expect(p.momentum.crashStunMs, '後半の方が長く崩れている＝後半が易しくなっている')
+    .toBeLessThan(c.crashStunMs);
+  expect(p.momentum.ramAtk, '後半で打点が上がっている＝新しい最大打点を作っている').toBe(c.ramAtk);
+  expect(p.momentum.heavySpeed, '後半でしきい値が動いている＝プレイヤーの覚えた規則が変わる')
+    .toBe(c.heavySpeed);
+  // `speedMultiplier` は `resolveEnemySpeed`（歩幅の溜め）の数＝momentum は読まない∴死んだ数値
+  expect(p.speedMultiplier, '相に speedMultiplier が残っている＝momentum は読まない死んだ数値')
+    .toBeUndefined();
+
+  // 時間の床（0d-2.6/0d-2.7・実プレイ判定で決着した数）と弱点＝この機構の前提そのもの
+  const claw = m.attacks.find(a => a.type === 'sword');
+  expect(claw.windupMs, '剣の予告が 600ms でない＝決着した時間の床を動かしている').toBe(600);
+  expect(m.attackFreezeMs, '攻撃硬直が 480ms でない＝弱点 ×3 の窓の長さが変わっている').toBe(480);
+  expect(m.weakness, '弱点が「剣 × 攻撃硬直の窓 ×3」でない')
+    .toEqual({ type: 'sword', window: 'recover', multiplier: 3 });
+});
+
+// ── G-② 加速＝速度が単調に増えて終端へ漸近し、しきい値を越えた瞬間に土煙と地響き ────────
+test('G-② 慣性は少しずつ積まれて終端速度へ漸近し、heavySpeed を越えた瞬間だけ地響きが鳴る', async ({ page }) => {
+  const c = ENEMY_META['G'].momentum;
+  const out = await trackGolem(page, { ticks: 20, patch: RAM_ONLY });
+  const s = out.samples;
+  expect(out.error).toBeUndefined();
+
+  // ① 速さは単調に増える（減衰より加速が勝つ＝寄って来ることは寄って来る）
+  for (let i = 1; i < s.length; i++) {
+    expect(s[i].momSpeed, `t${s[i].t} で速さが落ちた＝加速が積まれていない`)
+      .toBeGreaterThan(s[i - 1].momSpeed - 1e-9);
+  }
+  // ② 上限を越えない・そして終端（accel/friction）へ漸近する
+  expect(Math.max(...s.map(x => x.momSpeed)), '最高速を越えた').toBeLessThanOrEqual(c.maxSpeed + 1e-9);
+  expect(s[s.length - 1].momSpeed, '20 tick 経っても終端速度の 7 割に届かない＝寄って来ない')
+    .toBeGreaterThan(c.maxSpeed * 0.7);
+  // ③ しきい値に**到達する**（＝体当たり・自壊・土煙が死んだ機構でない）が、すぐには届かない
+  //    ＝プレイヤーには「重くなっていく」を見る時間がある（GUIDE §7-8）。
+  const firstHeavy = s.findIndex(x => x.momSpeed >= c.heavySpeed);
+  expect(firstHeavy, 'heavySpeed に一度も届かない＝体当たりも自壊も起きない').toBeGreaterThan(-1);
+  expect(firstHeavy, '1 tick でしきい値を越える＝重い体に見えない').toBeGreaterThan(2);
+
+  // ④ 絵＝しきい値を越えている tick と `.momentum-heavy` が**完全に一致**する（土煙も出る）
+  for (const x of s) {
+    expect(x.heavy, `t${x.t}（速さ ${x.momSpeed.toFixed(3)}）で土煙の有無が速さと食い違う`)
+      .toBe(x.momSpeed >= c.heavySpeed);
+    if (x.heavy) {
+      expect(x.dust, `t${x.t} で土煙（::before）が出ていない`).toBe(true);
+      expect(x.bodyAnim, `t${x.t} で体の傾きが大型敵の既定（golem-lumber）のまま＝速さが絵に出ない`)
+        .toBe('enemy-momentum-heavy');
+    }
+  }
+  // ⑤ 音＝越えた**瞬間に1回だけ**（継続では鳴らさない＝GUIDE §7-6）
+  const rumbleTicks = s.filter(x => rang(x.newTones, RUMBLE_HZ)).map(x => x.t);
+  expect(rumbleTicks, '地響きが「越えた瞬間に1回」でない（0回＝告知が無い／2回以上＝轟音）')
+    .toEqual([s[firstHeavy].t]);
+});
+
+// ── G-③ 止まれない＝横へ退かれても元の向きへ進み続ける（`enemyChase` との型の差）────────
+// この本が守るのは設計そのもの＝「寄っては来るが、止まれないので狙った所に来られない」。
+// 位置を追う既存の移動（`enemyChase`）に差し替えると**次の tick で向きが変わる**＝ここが赤くなる。
+test('G-③ プレイヤーが横へ退いても数 tick は元の向きへ進み続ける（曲がるのに時間がかかる）', async ({ page }) => {
+  const c = ENEMY_META['G'].momentum;
+  // 土煙が出たら（＝しきい値を越えたら）北へ 6 歩＝3 セル退く＝プレイヤーの答えそのもの
+  const out = await trackGolem(page, {
+    ticks: 26, patch: RAM_ONLY,
+    moveWhen: { atSpeed: c.heavySpeed, dir: 'up', steps: 6 },
+  });
+  const s = out.samples;
+  expect(out.movedAt.length, 'プレイヤーが退けていない＝しきい値に届いていない').toBe(6);
+  const done = out.movedAt[out.movedAt.length - 1];        // 退き終わった tick
+  const after = s.filter(x => x.t > done);
+  expect(after.length, '退いた後の観測が足りない').toBeGreaterThanOrEqual(8);
+
+  // ⓪ 退き終わった時点で**プレイヤーは 3 セル北に居るのに、ゴーレムはまだ同じ行に居る**
+  //    ＝「重い体は付いて来られない」（避ける余地がここに在る）。
+  const atDone = s[done - 1];
+  expect((atDone.y + 0.5) - atDone.py, '退き終わった時点でもう追い付かれている＝避ける余地が無い')
+    .toBeGreaterThan(2);
+
+  // ① 退き終わった後も**西（元の向き）へ進み続ける**＝速度は位置ではなく速度を追っている
+  const keep = after.slice(0, 4);
+  for (const x of keep) {
+    expect(x.momVx, `t${x.t} で西向きの惰性が消えている＝止まれる体になっている`).toBeLessThan(0);
+    expect(x.dir, `t${x.t} で向きが即座に北を向いた＝位置を追う移動（enemyChase）と同じ`)
+      .toBe('left');
+  }
+  // ② 位置も西へ進み続ける（＝惰性が「絵の上でも」続いている）
+  expect(keep[keep.length - 1].x, '退いた後に西へ1歩も進んでいない＝惰性が効いていない')
+    .toBeLessThan(s[done - 1].x);
+  // ③ 曲がるには時間がかかる＝北へ**曲がり始めてはいる**（縦の速度が毎 tick 増える）のに、
+  //    8 tick かけても西向きの惰性を追い越せない＝「寄っては来るが狙った所には来られない」。
+  //    ⚠️ 指標を「|vy| が |vx| を追い越した tick」で書くと**永久に立たない**（実測＝この幾何では
+  //       追い越す前にプレイヤーへ届く：北 0.17 に対し西は 0.22 のまま）∴ここは
+  //       「増えている」と「追い越していない」の2つで測る（[[field-axis-met-not-noticed]] と
+  //       同じ話＝指標が満たされないことと機構が無いことは別）。
+  const seq = [atDone, ...after.slice(0, 8)];
+  for (let i = 1; i < seq.length; i++) {
+    const x = seq[i];
+    expect(Math.abs(x.momVy), `t${x.t} で北への曲がりが1 tick も進んでいない＝速度を追っていない`)
+      .toBeGreaterThan(Math.abs(seq[i - 1].momVy) - 1e-9);
+    expect(Math.abs(x.momVy), `t${x.t} で北向きが西向きを追い越した＝即座に曲がれる体になっている`)
+      .toBeLessThan(Math.abs(x.momVx));
+  }
+});
+
+// ── G-④ 壁激突＝誘い込むと自壊して長く崩れる（低速では崩れない）──────────────────
+// 「壁が武器になる」＝この敵の答え。突進猪（自分から壁へ走る）と違い**プレイヤーが誘導して
+// 初めて起きる**∴プレイヤーの操作（横へ退く）を機械にしてから測る。
+test('G-④ 速いまま壁に当たると自壊して長く気絶する（⭐の長さ＝crashStunMs・体当たりは空振り）', async ({ page }) => {
+  const c = ENEMY_META['G'].momentum;
+  const out = await trackGolem(page, {
+    ticks: 34, patch: RAM_ONLY, spawn: G_WALL_SPAWN,       // 北の壁ぎわ＝G の真上
+    moveWhen: { atSpeed: c.heavySpeed, dir: 'right', steps: 6 },   // 土煙を見たら東へ 3 セル退く
+  });
+  const s = out.samples;
+  const crashAt = s.findIndex(x => x.momCrashes >= 1);
+  expect(crashAt, '壁へ誘い込んだのに自壊していない＝「壁が武器になる」が成立していない')
+    .toBeGreaterThan(-1);
+  const crash = s[crashAt];
+  // ① 崩れた瞬間の姿＝速度は捨てられ、気絶の窓が立ち、⭐が1つ増える
+  expect(crash.momSpeed, '激突したのに速度が残っている＝滑りながら崩れる').toBe(0);
+  expect(crash.stunUntil, '気絶の窓が立っていない').toBeGreaterThan(crash.now);
+  expect(crash.newStuns, '⭐（気絶の印）が出ていない＝崩れたことが絵で分からない').toBe(1);
+  // ② 印の長さ＝気絶の長さ（先に消えると「まだ無抵抗なのに終わったように見える」）
+  expect(crash.stunMarkMs, `⭐の長さが crashStunMs と違う`).toBe(`${c.crashStunMs}ms`);
+  expect(crash.stunMarkAnimMs, '⭐の CSS が --stun-burst-ms を読んでいない')
+    .toBe(`${c.crashStunMs / 1000}s`);
+  // ③ 崩れる直前は heavySpeed 以上で走っていた（＝「速いまま当たった」が理由）
+  expect(s[crashAt - 1].momSpeed, '低速で当たって崩れた＝しきい値が効いていない')
+    .toBeGreaterThanOrEqual(c.heavySpeed);
+  // ④ 音＝激突は `doorLock`（「重いものが止まった」＝殴れる合図）。地響きとは別の音。
+  expect(rang(crash.newTones, CRASH_HZ), '激突の音が鳴っていない＝崩れた合図が耳に無い').toBe(true);
+  // ⑤ 体当たりは**空振り**（避けたから壁で崩れた）＝この機構が成立している証拠
+  expect(crash.momRams, '避けたのに体当たりが当たっている＝退く余地が無い').toBe(0);
+  expect(crash.php, '避けたのにダメージを受けている').toBe(s[0].php);
+
+  // ⑥ 歯＝**しきい値だけ**を上げると（＝速さが一度も heavySpeed を越えない）同じ誘い込みで
+  //    崩れない＝「速いまま当たること」が自壊の理由（壁に触ったことではない）。
+  const slow = await trackGolem(page, {
+    ticks: 34, spawn: G_WALL_SPAWN,
+    patch: { ...RAM_ONLY, momentum: { ...c, heavySpeed: 0.9 } },
+    moveWhen: { atReach: 1.6, dir: 'right', steps: 6 },
+  });
+  expect(slow.samples.some(x => x.momCrashes >= 1),
+    '低速（heavySpeed 未満）でも壁で崩れている＝壁に触っただけで自壊している').toBe(false);
+  expect(slow.samples.some(x => x.heavy), '越えられないしきい値なのに土煙が出ている').toBe(false);
+});
+
+// ── G-⑤ 体当たり＝速いときだけ潰される（低速の接触は痛くない）──────────────────
+test('G-⑤ 速いまま触れると ramAtk のダメージ、低速の接触では減らない', async ({ page }) => {
+  const c = ENEMY_META['G'].momentum;
+  const out = await trackGolem(page, { ticks: 34, patch: RAM_ONLY, debugOff: true });
+  const s = out.samples;
+  const ramAt = s.findIndex(x => x.momRams >= 1);
+  expect(ramAt, '真っすぐ寄って来て体当たりが一度も当たらない＝機構が届いていない')
+    .toBeGreaterThan(-1);
+  const ram = s[ramAt];
+  // ① 打点＝ramAtk − def（`ps_armor: 0` ＝布の服 def 1）
+  const expected = Math.max(1, c.ramAtk - ram.pdef);
+  expect(s[0].php - ram.php, `体当たりのダメージが ramAtk−def（${expected}）と違う`).toBe(expected);
+  // ② 当たった瞬間に止まる（＝ぶつかった巨体はそこで速度を捨てる）
+  expect(ram.momSpeed, '体当たりの後も走り続けている＝押し潰しながら通り抜ける').toBe(0);
+  // ③ 体当たりは攻撃の共通後処理を通る＝**直後は剣が出ない**かつ攻撃硬直（弱点 ×3 の窓）が立つ
+  //    ＝轢かれた側に反撃の権利が渡る（弱点の規則を「硬直の窓」の1本に保つ設計）。
+  expect(ram.freezeUntil, '体当たりの後に攻撃硬直が立っていない＝殴り返す窓が開かない')
+    .toBeGreaterThan(ram.now);
+  // ④ **プレイヤーの体は壁ではない**＝棒立ちで受け止めても自壊しない（この回に壁は絡まない＝
+  //    西の壁はプレイヤーの背後∴自壊が起きたらそれはプレイヤーに当たって崩れたということ）。
+  //    ⚠️ 実際に踏んだ欠陥＝行き止められた主軸を「激突」と見なし、無傷のプレイヤーが
+  //       1.8 秒の気絶を無料で取れていた（機構が裏返る）。
+  expect(s.some(x => x.momCrashes >= 1),
+    'プレイヤーの体に当たって自壊した＝棒立ちで気絶を取れる（機構が裏返っている）').toBe(false);
+
+  // ⑤ 歯＝しきい値だけ上げる（速さが一度も越えない）と、同じ距離まで寄られても痛くない
+  const slow = await trackGolem(page, {
+    ticks: 34, debugOff: true,
+    patch: { ...RAM_ONLY, momentum: { ...c, heavySpeed: 0.9 } },
+  });
+  // 「同じ距離まで寄られている」＝速い回が体当たりを決めた距離まで低速の回も詰めている。
+  // ⚠️ `ramRange` の数と直接比べない＝`isPassableForEnemy` はプレイヤーと重なる手前で必ず
+  //    止める（passable.js「どの向きでも最接近は 1.0」）∴刻みの端数だけ常に外側に居て
+  //    「reach <= 1.0」は満たされない（実測 1.02）。比べるのは**実測した最接近**どうし。
+  const closest = Math.min(...slow.samples.map(x => x.reach));
+  expect(closest, '低速の回で速い回と同じ距離まで寄って来ていない＝比べる前提が崩れている')
+    .toBeLessThanOrEqual(ram.reach + 1e-9);
+  expect(slow.samples.some(x => x.momRams >= 1),
+    '土煙が出ていない（低速の）岩に触れて潰された＝しきい値が絵と一致していない').toBe(false);
+  expect(slow.samples[slow.samples.length - 1].php, '低速の接触でダメージを受けている')
+    .toBe(slow.samples[0].php);
+});
+
+// ── G-⑥ 気絶のあいだ滑らない・土煙も消える（＝殴り返す窓が本当に止まっている）────────
+// GUIDE §7-8＝告知の長さ＝窓の長さ。崩れているのに滑っていたら「殴れる窓」は窓ではない。
+test('G-⑥ 崩れているあいだ体は1ミリも動かず、土煙も消える', async ({ page }) => {
+  const c = ENEMY_META['G'].momentum;
+  const out = await trackGolem(page, {
+    ticks: 40, patch: RAM_ONLY, spawn: G_WALL_SPAWN,
+    moveWhen: { atSpeed: c.heavySpeed, dir: 'right', steps: 6 },
+  });
+  const s = out.samples;
+  const crashAt = s.findIndex(x => x.momCrashes >= 1);
+  expect(crashAt, '自壊が観測できていない').toBeGreaterThan(-1);
+  const stunned = s.filter((x, i) => i >= crashAt && x.stunUntil > x.now);
+  expect(stunned.length, '気絶の窓が観測できていない（crashStunMs / TICK_MS ぶんは続く）')
+    .toBeGreaterThan(3);
+  for (const x of stunned) {
+    expect(x.x, `t${x.t}（気絶中）に横へ滑った`).toBe(stunned[0].x);
+    expect(x.y, `t${x.t}（気絶中）に縦へ滑った`).toBe(stunned[0].y);
+    expect(x.momSpeed, `t${x.t}（気絶中）に速度が積まれている＝明けた瞬間に走り出す`).toBe(0);
+    expect(x.heavy, `t${x.t}（気絶中）に土煙が出ている＝殴れる窓を絵が否定している`).toBe(false);
+    expect(x.dust, `t${x.t}（気絶中）に土煙（::before）が残っている`).toBe(false);
+  }
+});
+
+// ── G-⑦ 相の差し替え＝HP 半分で慣性の設定が変わり、走っている惰性は持ち込まれない ───────
+test('G-⑦ HP 半分で慣性の設定が差し替わり、その瞬間に速度が初期化される', async ({ page }) => {
+  const m = ENEMY_META['G'];
+  const c = m.momentum, pc = m.phases.find(p => p.momentum !== undefined).momentum;
+  await installToneRec(page);
+  await gotoFrozen(page, previewUrl('bal_rock_golem', G_PL_ROW, G_PL_COL, D1_PRE));
+  const out = await page.evaluate((a) => {
+    const g = window.__game;
+    g.setEnemyMetaForTest('G', a.patch);
+    const id = g.getEnemies().find(e => e.type === 'G').id;
+    const find = () => g.getEnemies().find(e => e.id === id);
+    for (let t = 0; t < 14; t++) g.step(1);              // 惰性を積む
+    const before = { momSpeed: find().momSpeed, momentum: find().momentum, hp: find().hp };
+    // `dealDamage` は def を引く∴+def して渡す（半分ちょうどを越えさせる）
+    g.dealDamage(id, a.dmg);
+    const after = { momSpeed: find().momSpeed, momentum: find().momentum, hp: find().hp,
+                    maxHp: find().maxHp };
+    g.step(1);
+    return { before, after, next: { momSpeed: find().momSpeed } };
+  }, { patch: RAM_ONLY, dmg: Math.ceil(m.hp / 2) + m.def });
+
+  expect(out.before.momSpeed, '相を切り替える前に走っていない＝惰性の持ち込みを測れない')
+    .toBeGreaterThan(c.heavySpeed);
+  expect(out.before.momentum, '最初から相の設定が入っている＝素の設定を測っていない').toBeNull();
+  expect(out.after.hp / out.after.maxHp, 'HP が半分を割っていない＝相が発火していない')
+    .toBeLessThanOrEqual(0.5);
+  // ① 設定が差し替わる（`resolveMomentum` が読む口＝`_momentum`）
+  expect(out.after.momentum, '後半の慣性が差し替わっていない').toEqual(pc);
+  // ② 走っている惰性は**捨てる**（`_dash`/`_coil` と同じ側の扱い）＝新しい上限より速い1 tick を
+  //    タダで作らない
+  expect(out.after.momSpeed, '相の切り替えで惰性が持ち込まれている＝一瞬だけ規則の外の速さになる')
+    .toBe(0);
+  // ③ 次の tick からは新しい設定で積み直す（＝止まったままにならない）
+  expect(out.next.momSpeed, '相の切り替え後に一度も加速していない＝動かなくなった')
+    .toBeCloseTo(pc.accel, 6);
+});
+
+// ── G-⑧ G の移動機構は W・A・N・J・O・U のどれとも重ならない（0d-3 の判定基準）──────────
+test('G-⑧ 慣性の使い手は G だけ・G は他の6体の移動機構を持たない', () => {
+  const gm = mechanismsOf(ENEMY_META['G']);
+  const others = ['W', 'A', 'N', 'J', 'O', 'U'].map(k => mechanismsOf(ENEMY_META[k]));
+  expect(gm.has('momentum'), 'G が移動機構（momentum）を持っていない').toBe(true);
+  expect([...gm].filter(k => others.every(x => !x.has(k))).length,
+    'G に W・A・N・J・O・U が持たない機構が1つも無い＝7体目の型になっていない').toBeGreaterThan(0);
+  expect(others.some(x => x.has('momentum')),
+    'W・A・N・J・O・U のどれかが慣性を持っている＝G の固有機構ではない').toBe(false);
+  const users = Object.entries(ENEMY_META).filter(([, m]) => m.momentum).map(([k]) => k);
+  expect(users, '慣性を持つ敵が G 以外にも居る（設計が重複した）').toEqual(['G']);
+  // 借り物でない番人＝特に `dash`（ω 突進猪と A の後半だけの機構）を持たないこと。
+  // ここが生えた瞬間に「軸を取って直進してくる」＝A と同型になり、7体目の意味が消える。
+  for (const k of ['combat', 'laneStalk', 'burrowAmbush', 'hide', 'dash', 'coil', 'gaze', 'soar', 'leap']) {
+    expect(ENEMY_META['G'][k], `${k} を持っている＝W/A/N/J/O/U の型を借りている`).toBeUndefined();
+  }
+  for (const p of ENEMY_META['G'].phases ?? []) {
+    for (const k of ['dash', 'coil', 'hide', 'gaze', 'soar']) {
+      expect(p[k], `後半に ${k} が生えている＝他のボスの後半と同じ型`).toBeUndefined();
+    }
+  }
+});
+
+// ── G-⑨ 検証ステージの幾何（GUIDE §4-3）───────────────────────────────
+test('G-⑨ bal_rock_golem は 10×12・外周は通路以外すべて壁・G が (4,7) に1体だけ・遮蔽ゼロ', () => {
+  const MAP_PATH = fileURLToPath(new URL('../work/blade-of-lumia.json', import.meta.url));
+  const MAP = JSON.parse(readFileSync(MAP_PATH, 'utf8'));
+  const sd = MAP.layers[TEST_LAYER].stages[stageKey('bal_rock_golem')];
+  expect(sd.rows).toBe(10);
+  expect(sd.cols).toBe(12);
+  // 遮蔽ゼロ＝惰性は地形で止まらない∴「壁で崩れた」は必ず**外周の壁**が理由になる
+  expect(Object.keys(sd.bgTiles ?? {}), '別地形が入った＝慣性の測定が地形のせいになる').toEqual([]);
+
+  const at = (r, c) => sd.tiles[r][c];
+  const golems = [];
+  for (let r = 0; r < sd.rows; r++) {
+    for (let c = 0; c < sd.cols; c++) {
+      const ch = at(r, c);
+      if (ch === TILE.ROCK_GOLEM) { golems.push([r, c]); continue; }
+      if (r === 6 && c === 1) continue;              // 看板 i（南の通路の脇）
+      const edge = r === 0 || c === 0 || r === sd.rows - 1 || c === sd.cols - 1;
+      const want = edge && !isArenaDoor(r, c, sd.cols) ? TILE.WALL : TILE.FLOOR;
+      expect(at(r, c), `(${r},${c}) が想定と違う`).toBe(want);
+    }
+  }
+  expect(golems, 'G が1体だけ (4,7) に居る前提が崩れた').toEqual([[G_ROW, G_COL]]);
+
+  // 助走と壁が**両軸に**ある＝どちらの向きへ誘い込んでも崩せる（層2 の答えが地形に在る）
+  for (let c = 1; c < G_COL; c++) {                  // 西の助走（測る湧き (4,1) の行）
+    expect(at(G_PL_ROW, c), `(${G_PL_ROW},${c}) が床でない＝西への助走が塞がっている`).toBe(TILE.FLOOR);
+  }
+  // 北の助走（壁ぎわの湧き (1,7) の列）＝G 自身のセル (4,7) は含めない（そこはタイル 'G'）
+  for (let r = 1; r < G_ROW; r++) {
+    expect(at(r, G_COL), `(${r},${G_COL}) が床でない＝北への助走が塞がっている`).toBe(TILE.FLOOR);
+  }
+  expect(at(G_PL_ROW, 0), '西の端が壁でない＝誘い込む先が無い').toBe(TILE.WALL);
+  expect(at(0, G_COL), '北の端が壁でない＝誘い込む先が無い').toBe(TILE.WALL);
+  // 壁ぎわの湧き (1,7)＝G-④/G-⑥ の前提（G の真上・北の壁に背を付けて待てる）
+  expect(at(G_WALL_SPAWN.row, G_WALL_SPAWN.col), '壁ぎわの湧きが床でない').toBe(TILE.FLOOR);
+});
+
+// ── G-⑩ 素のデータ（剣も岩も生きたまま）でも体当たりが届く＝土煙の告知が嘘にならない ──────
+// ⚠️ この本は**実プレイの測定で見つけた欠陥**の再発防止。上の G-②〜G-⑦ は `RAM_ONLY` で
+//    剣を止めて慣性だけを測る∴「剣が生きていると体当たりが一度も起きない」を見られなかった。
+//    実測（.scratch の使い捨て・棒立ち 80 tick）＝体当たり 0 回／剣の被弾 8 回／間合い 1.3 以内
+//    での最大速度 0.157 < heavySpeed 0.18。理由＝剣の到達距離 1.2 > 接触の距離 1.0 ∴必ず
+//    先に剣の間合いへ入り、予告の攻撃硬直が惰性を捨てる＝土煙が「潰す」と告知したまま潰せない。
+//    直し＝**走っている（速さ ≥ heavySpeed）あいだは剣を振らない**（enemy-ai.js `momFast`）。
+test('G-⑩ 素のデータでも体当たりが届き、走っているあいだ剣の予告は立たない', async ({ page }) => {
+  const c = ENEMY_META['G'].momentum;
+  // パッチなし＝実プレイと同じ meta（剣 range 1.2・岩 range 6・相も生きている）。
+  // ⚠️ ticks は最初の体当たりが決まるところまで（実測 t26）＝その後の剣で D1 装備（ハート3）の
+  //    プレイヤーが死ぬところまでは測らない（gameover は測定の前提ではない）。
+  const out = await trackGolem(page, { ticks: 30, debugOff: true });
+  const s = out.samples;
+
+  // ① 体当たりが実際に起きる（＝機構が実プレイで届く）
+  const ramAt = s.findIndex(x => x.momRams >= 1);
+  expect(ramAt, '素のデータでは体当たりが一度も起きない＝土煙の告知が嘘になっている')
+    .toBeGreaterThan(-1);
+  const ram = s[ramAt];
+  expect(s[0].php - ram.php, '体当たりのダメージが ramAtk−def と違う')
+    .toBe(Math.max(1, c.ramAtk - ram.pdef));
+
+  // ② 走っているあいだ剣の予告は一度も立たない（＝「速い」と「剣を振る」は排他）
+  const fast = s.filter(x => x.momSpeed >= c.heavySpeed);
+  expect(fast.length, '一度も heavySpeed を越えていない＝②の前提が測れていない')
+    .toBeGreaterThan(2);
+  for (const x of fast) {
+    expect(x.swingAt, `t${x.t}（速さ ${x.momSpeed.toFixed(3)}）に剣の予告が立った`
+      + '＝走りながら剣を振る＝攻撃硬直で惰性が消えて体当たりが届かなくなる').toBeNull();
+  }
+
+  // ③ 体当たりより前に剣が当たっていない（＝間合いの内側に入った瞬間は体当たりが先に来る）
+  //    ⚠️ 剣は ramAtk と同じ 4 ∴ php の減りだけでは区別できない∴**攻撃硬直が立った tick**で見る
+  //    （markAttack は剣でも体当たりでも硬直を立てる∴体当たりの tick より前に立ったら剣）。
+  const swordBefore = s.slice(0, ramAt).find(x => x.freezeUntil > x.now);
+  expect(swordBefore, '体当たりより前に剣が解決している＝寄って来る途中で剣が惰性を捨てている')
+    .toBeUndefined();
 });

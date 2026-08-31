@@ -80,6 +80,12 @@ import { TEST_LAYER, stageKey } from './test-stage-keys.js';
 
 const GAME = '/blade-of-lumia/game/';
 const BOSS = 'G';                       // 予告を入れた最初のボス（岩のゴーレム＝dungeon_1）
+// 注入敵を「その場から動かさない」ための patch。`speed: 0` だけでは足りない
+// ＝0d-3 で G は慣性（`momentum`）を持った＝**speed を読まない移動アルゴリズム**∴速度 0 でも
+// 毎 tick 滑って来る（この本の「距離が動かない」前提が崩れる）。
+// ∴この本では G の**移動機構だけを外して**近接の予告/硬直の拍を測る（近接の機構は移動の
+// アルゴリズムに依らない1経路＝G の慣性そのものは tests/boss-move-variety.spec.js が測る）。
+const STILL = { speed: 0, momentum: null };
 const P_ROW = 4, P_COL = 5;             // プレイヤーの立ち位置（通路 rows 7/8 と重ならない）
 
 function previewUrl(stage, row, col, extra) {
@@ -129,7 +135,7 @@ async function gotoFrozen(page, url) {
 /**
  * 東隣に 2×2 の G を注入して n tick 進め、毎 tick のスナップショットを返す。
  * @param {object} o
- * @param {object} [o.patch]  ENEMY_META[G] へ一時的に差し込む設定（既定 `{ speed: 0 }`）
+ * @param {object} [o.patch]  ENEMY_META[G] へ一時的に差し込む設定（既定 `STILL`＝動かない）
  * @param {number} o.ticks    進める論理 tick 数
  * @param {number} [o.fleeAt] この tick 以降、毎 tick プレイヤーをアリーナの西端へ逃がす
  * @param {boolean} [o.stickUntilSwing] 予告が立つまで毎 tick プレイヤーを敵の**真西の隣**へ置き直す。
@@ -199,7 +205,7 @@ async function measureSwing(page, o) {
     ...o,
     // 既定は 2×2 の G。`type`（＋w/h）を渡せば 1×1 のザコも同じ測り方で測れる（0d-2.7）。
     type:  o.type ?? BOSS,
-    patch: o.patch ?? { speed: 0 },
+    patch: o.patch ?? { ...STILL },
     atk:   ENEMY_META[o.type ?? BOSS].atk,
   });
 }
@@ -397,7 +403,7 @@ test.describe('Phase 8-4 (4) 0d-2.6/0d-2.7 – 近接（剣）の予告つき攻
     const r = await measureSwing(page, {
       ticks: RESOLVE_TICK() + 2,
       patch: {
-        speed: 0,
+        ...STILL,
         // ⚠️ 硬直（attackFreezeMs）は 0 にして測る＝硬直も同じゲートで攻撃を止める∴
         //    残したままだと「岩を投げた → 硬直で数 tick 沈黙 → 予告が立つ tick がずれる」で
         //    測りたい「予告中だけ出ない」が硬直の沈黙と混ざる（ARM_TICK の算術も崩れる）。
@@ -434,12 +440,19 @@ test.describe('Phase 8-4 (4) 0d-2.6/0d-2.7 – 近接（剣）の予告つき攻
     // 「盾で防がれたら接近モードの重みを下げる」学習が予告経路でも動く。
     // ps_shield はティア番号＝跳ね返しの無い木の盾（0）。敵は東∴右を向いて受ける。
     // 接近モードは乱択∴`initialModeWeights` を direct だけにして学習の観測を決定論にする。
+    // ⚠️ 接近モードの学習は `hitAndAway` を宣言した敵だけの機構。G は 0d-3 で慣性へ移った際に
+    //    `hitAndAway: false` を明示した（速度ベクトルしか状態を持たない＝寄って離れる相を
+    //    持たない）∴ここでは**学習の機構を持つ敵**として測るために true を差し込む
+    //    （測っているのは「盾で防がれた学習が予告経路でも動く」＝G の移動そのものではない）。
     await gotoFrozen(page, ARENA({ ps_shield: '0' }));
     await page.keyboard.press('g');           // HP を測るので debug OFF
     const r = await measureSwing(page, {
       ticks: RESOLVE_TICK() + 2,
       faceDir: 'right',
-      patch: { speed: 0, initialModeWeights: { flank: 0, direct: 1, wander: 0, strafe: 0 } },
+      patch: {
+        ...STILL, hitAndAway: true,
+        initialModeWeights: { flank: 0, direct: 1, wander: 0, strafe: 0 },
+      },
     });
     expectStayed2x2(r.samples);
 
@@ -476,7 +489,7 @@ test.describe('Phase 8-4 (4) 0d-2.6/0d-2.7 – 近接（剣）の予告つき攻
     const DEF_TICKS = Math.ceil(MELEE_WINDUP_MS / TICK_MS);
     const r = await measureSwing(page, {
       ticks: ARM_TICK() + DEF_TICKS + 1,
-      patch: { speed: 0, attacks: [sword], attack: sword },
+      patch: { ...STILL, attacks: [sword], attack: sword },
     });
     expectStayed2x2(r.samples);
 
@@ -505,7 +518,7 @@ test.describe('Phase 8-4 (4) 0d-2.6/0d-2.7 – 近接（剣）の予告つき攻
     const sword = { ...G_SWORD(), windupMs: 0 };
     const r = await measureSwing(page, {
       ticks: ARM_TICK() + 2,
-      patch: { speed: 0, attacks: [sword], attack: sword },
+      patch: { ...STILL, attacks: [sword], attack: sword },
     });
     expectStayed2x2(r.samples);
 
@@ -559,7 +572,7 @@ test.describe('Phase 8-4 (4) 0d-2.6/0d-2.7 – 近接（剣）の予告つき攻
     await gotoFrozen(page, ARENA());
     await page.keyboard.press('g');           // HP を測るので debug OFF
     const r = await measureSwing(page, {
-      type: TILE.SKELETON, w: 1, h: 1, ticks: ARM + WIND + 2, patch: { speed: 0 },
+      type: TILE.SKELETON, w: 1, h: 1, ticks: ARM + WIND + 2, patch: { ...STILL },
     });
     expect(new Set(r.samples.map(s => `${s.w}x${s.h}`)), '測った敵が 1×1 でない').toEqual(new Set(['1x1']));
 
@@ -750,7 +763,7 @@ test.describe('Phase 8-4 (4) 0d-2.6/0d-2.7 – 近接（剣）の予告つき攻
     await gotoFrozen(page, ARENA());
     const b = await measureSwing(page, {
       ticks: FREE_B + 1,
-      patch: { speed: 0, attacks: [sword], attack: sword },
+      patch: { ...STILL, attacks: [sword], attack: sword },
     });
     expectStayed2x2(b.samples);
     expect(at(b.samples, ARM_B).swingAt, '縮めたクールダウンで予告が立たない（前提が崩れた）').not.toBeNull();

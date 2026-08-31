@@ -78,6 +78,21 @@ const WEAK_JP = {
 	bomb: '爆弾', arrow: '矢', fire: '炎（ロウソク）', beam: '剣ビーム', boomerang: 'ブーメラン',
 	sword: '剣',
 };
+// 弱点の「窓」（`weakness.window`・0d-2.11 (A) で追加）＝倍率が乗る時間帯。
+// これを書かないと看板が「剣 ×3」だけを見せ、いつ斬れば ×3 なのかを隠す（G で実害）。
+const WEAK_WINDOW_JP = {
+	recover: '（乗るのは敵の攻撃直後の硬直の窓だけ＝それ以外は等倍）',
+};
+// 層2（0d-3）の固有機構＝「その敵の戦い方」を1行で書く。キーは ENEMY_META の機構フィールド名
+// ∴敵ではなく機構に紐づく（手書きの敵→文言の表を作らない＝[[blade-enemy-tables-derive-from-meta]]）。
+// 実装が済んだ機構から順に足す（未登録の機構は行が増えないだけ＝看板は壊れない）。
+// ⚠️ `coil`（J）・`soar`（U）の2行は元々**看板へ直接手で書かれていた**（＝この手順書の
+//    「手編集しない」に反していた＝再生成で消える形だった）∴ここへ移して導出に載せる。
+const MECH_HINT_JP = {
+	coil: '巻きつきの輪が閉じる前に輪の外へ出る',
+	soar: '滞空中は剣が届かない＝矢で射抜けば墜落して大きな隙',
+	momentum: '重い体は止まれない＝壁へ誘導して崩し、崩れているあいだに斬る',
+};
 
 // ── 並びの導出（ENEMY_META が単一の真実）──────────────────────────────
 // タイル文字 → TILE のキー名（看板名やステージ名の元）。
@@ -154,8 +169,12 @@ function signLinesFor(entry, index) {
 		`木の剣（攻撃力 ${WOOD_ATK}）で ${swingsFor(m)} 発。布の服（防御 ${CLOTH_DEF}）だと 1 発 ${hitFor(m)} ダメージ。`,
 		m.weakness
 			? `弱点＝${WEAK_JP[m.weakness.type] ?? m.weakness.type} ×${m.weakness.multiplier}`
+				+ (m.weakness.window ? (WEAK_WINDOW_JP[m.weakness.window] ?? `（窓＝${m.weakness.window}）`) : '')
 			: '弱点の属性は無し（剣で殴るのが基本）',
 	];
+	for (const [field, hint] of Object.entries(MECH_HINT_JP)) {
+		if (m[field]) lines.push(hint);
+	}
 	if (isAquatic(m)) {
 		lines.push('水の中の敵＝陸（row 6）に立って殴る。離れて撃つ相手には弓/ブーメランが要る。');
 	}

@@ -1216,8 +1216,8 @@ export const ENEMY_META = {
 	},
 	// ── 岩のゴーレム（Phase 3-2）：2×2 大型ボス ──────────────────
 	// size:{w,h} を持つ最初の大型敵。dungeon_1（最初のダンジョン）の
-	// ボスとして採用。hitAndAway AI で接近戦闘し、向きを変えながら戦う
-	// （正面固定にならないよう左右反転＋CSS の巨体揺れアニメを併用）。
+	// ボスとして採用。❌ 旧記述「hitAndAway AI で接近戦闘し、向きを変えながら戦う」は
+	// 失効（2026-08-31・0d-3 の7体目）＝移動は新機構 `momentum`（慣性）＝下記。
 	// dropsTriforce: true で撃破時に星の欠片を落とす（DARK_LORD と同等）。
 	// スプライトは 2×2 セル相当の 24×24（向きエイリアス rockGolemR/L/D/U）。
 	[TILE.ROCK_GOLEM]: {
@@ -1243,7 +1243,10 @@ export const ENEMY_META = {
 		// ∴この敵の meta が既に書いている「予告を見て避ける → 硬直に殴り返す」が
 		//   そのまま弱点になり、最初のダンジョンで「弱点とは何か」を教えられる。
 		weakness: { type: 'sword', window: 'recover', multiplier: 3 },
-		hitAndAway: true,          // 接近→攻撃→後退（向きも切り替わる）
+		// ❌ ここにあった `hitAndAway: true`（接近→攻撃→後退）は失効
+		//    （2026-08-31・0d-3 の7体目）＝移動は下の `momentum`（慣性）へ替えた。
+		//    今は同じキーを `false` で明示している（下記）＝**同じ物の宣言は1か所**に保つ
+		//    （同じオブジェクトに同名キーを2回書くと後勝ちで、読み手が前の行を信じる）。
 		// 攻撃硬直（Phase 8-4 (4) 0d-2.6・2026-08-25 の2回目の調整）＝振り下ろした後の隙。
 		// ユーザー実プレイ判定：「攻撃がおわったあともちょっと動けない時間をつくるとかしないと、
 		// 剣を当てること自体がほぼ不可能。攻撃をあてようとすると自分が絶対ダメージをくらう状況」。
@@ -1265,10 +1268,37 @@ export const ENEMY_META = {
 			{ type: 'stone', range: 6, cooldown: 2600, projectileSpeed: 1.0 }, // 岩投げ
 		],
 		attack: { type: 'sword', range: 1.2, cooldown: 900, windupMs: 600 },
-		// 直進寄り（大型は回り込みより正面から押す）
-		initialModeWeights: { flank: 0.2, direct: 1.4, wander: 0.4, strafe: 0 },
+		// Phase 8-4 (4) 0d-3（7体目・2026-08-31）＝**移動アルゴリズムを慣性（momentum）へ替えた**。
+		//   ・`hitAndAway: false` … **明示**しないと `momentum` の分岐に一度も来ない
+		//     （W/A/N/J/O/U で6回踏んだ罠＝`bossTickHitAndAway` が移動分岐の最優先）。
+		//   ・`initialModeWeights` は**外した** … `hitAndAway: false` では寄り方の抽選を
+		//     一度も通らない＝書いても効かない死んだ数値（W/O/U と同じ作法）。
+		//   ・`momentum` … プレイヤーの**位置ではなく速度**を追う＝止まれず曲がれない。
+		//     プレイヤーが横へ退くと大きく通り過ぎ、戻ってくるまでが殴れる時間になる。
+		//     `heavySpeed` は**1つの数を3人が読む**しきい値＝①体当たりが成立する速さ
+		//     ②壁で自壊する速さ ③土煙（`.momentum-heavy`）が出る速さ∴プレイヤーが覚える
+		//     規則は「土煙が出ている岩は危ないが、壁にぶつければ崩れる」の1本だけ。
+		//   ・`accel / friction === maxSpeed` … 終端速度と上限を一致させている
+		//     （片方だけ動かすと飽和点がずれる＝数を変えるときは必ず両方見る）。
+		//     飽和まで 10 tick ≒ 1.2 秒＝助走が見える長さ。
+		//   ・`maxSpeed 0.30` セル/tick ＝ 2.5 セル/秒 < プレイヤー 4.17（GUIDE §7-2）。
+		//   ・`ramAtk` は `atk` と同値＝新しい最大打点を作らない（U の `diveAtk` と同じ）。
+		//   ・`crashStunMs 1800` ＝ 15 tick ＝剣の cd 300ms で 6 振り＝12 ダメージ（HP の 20%）。
+		//     ⚠️ **ここに弱点 ×3 は乗せない**（乗せると 60 ダメージ＝即死）＝倍率は
+		//     攻撃硬直の窓に一本化する（U の「解除鍵は1つ」と同じ作法）。
+		hitAndAway: false,
+		momentum: {
+			accel: 0.03, maxSpeed: 0.30, friction: 0.10,
+			heavySpeed: 0.18, ramRange: 1.0, ramAtk: 4, crashStunMs: 1800,
+		},
 		phases: [
-			{ hpThreshold: 0.5, speedMultiplier: 1.4 }, // HP50%以下で加速
+			// HP50%以下＝**さらに止まれない**（最高速 ×1.4・崩れている時間は短い）。
+			// ⚠️ 旧 `speedMultiplier: 1.4` は外した＝`momentum` は `resolveEnemySpeed`
+			//    （歩幅の溜め）を一度も読まない＝死んだ数値。1.4 の意図は maxSpeed が継ぐ。
+			{ hpThreshold: 0.5, attackCooldownMultiplier: 0.85, momentum: {
+				accel: 0.045, maxSpeed: 0.42, friction: 0.09,
+				heavySpeed: 0.18, ramRange: 1.0, ramAtk: 4, crashStunMs: 1320,
+			} },
 		],
 	},
 	// ── 沼地の大蝦蟇（Phase 9-2c）：2×2 大型ボス・cave_1（沼地の洞窟）────

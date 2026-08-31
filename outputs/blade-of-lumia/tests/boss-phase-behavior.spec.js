@@ -327,7 +327,11 @@ test('⑤ ENEMY_META の phases[] は既知のキーだけを持ち、閾値は�
                       'gaze',
                       // 0d-3（6体目 U）: 滞空の設定を相で差し替える口（boss.js が `_soar` へ
                       // 書き、enemy-ai.js の `resolveSoar` が読む）＝地上の窓を削り落下を速める。
-                      'soar'];
+                      'soar',
+                      // 0d-3（7体目 G）: 慣性の設定を相で差し替える口（boss.js が `_momentum` へ
+                      // 書き、enemy-ai.js の `resolveMomentum` が読む）＝加速と上限を上げて
+                      // 「もっと止まれない」形にする（`speedMultiplier` はこの敵には効かない）。
+                      'momentum'];
   const MODE_KEYS = ['flank', 'direct', 'wander', 'strafe'];
   const withPhases = Object.entries(ENEMY_META).filter(([, m]) => m.phases);
   expect(withPhases.length, 'phases を持つ敵が居ない（データが消えた？）').toBeGreaterThanOrEqual(13);

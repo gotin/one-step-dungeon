@@ -598,6 +598,22 @@ export function playSound(kind) {
 		tone(ctx, now,        1500, 0.03, 'sine',     0.020);
 		tone(ctx, now + 0.03, 1900, 0.04, 'triangle', 0.014);
 	}
+	// 転がり出した「ゴロゴロゴロ…」（Phase 8-4 (4) 0d-3・7体目 G 岩のゴーレムの慣性）
+	// ⚠️ これは**予告ではなく状態の音**＝「今この岩は速い（触れたら痛い）」を告げる。速さが
+	//    しきい値（heavySpeed）を越えた**瞬間に1回だけ**鳴る（毎 tick 鳴らすと轟音になる）。
+	//    止まった側＝壁への激突は既存 `doorLock`（重いものが止まった音）＝聞き分けるのは
+	//    「動き出した（避けろ）」と「崩れた（殴れる）」の2つ（GUIDE §7-6）。
+	// ⚠️ 他の音と**形**で切り分ける（GUIDE §6-1）＝dashWindup（上昇する低音の段＝これから走る）・
+	//    maulWindup（滑らかに下がる唸り）・soarRise（等間隔の3打）。∴こちらは**帯域の狭い低音を
+	//    細かく震わせる**（＝転がり続けている＝始まりも終わりも無い形）。上昇も下降もさせない。
+	if (kind === 'golemRumble') {
+		tone(ctx, now,        58, 0.16, 'sawtooth', 0.075);
+		tone(ctx, now + 0.05, 64, 0.16, 'sawtooth', 0.065);
+		tone(ctx, now + 0.11, 55, 0.18, 'triangle', 0.070);
+		tone(ctx, now + 0.17, 62, 0.20, 'sawtooth', 0.060);
+		tone(ctx, now + 0.09, 210, 0.05, 'square',  0.018);   // 小石が跳ねる高音成分
+		tone(ctx, now + 0.22, 180, 0.05, 'square',  0.016);
+	}
 	// 扉ロック（ボス部屋）
 	if (kind === 'doorLock') {
 		tone(ctx, now,        180, 0.08, 'sawtooth', 0.08);

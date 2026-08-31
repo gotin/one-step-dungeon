@@ -2315,6 +2315,22 @@ export function getEnemiesSnapshot() {
 		// soar ＝滞空の設定そのもの（フェーズで差し替わる＝`resolveSoar` が読む側）。
 		// **meta.soar とは別物**＝「後半で地上の時間が短く・急降下が速くなった」の観測窓。
 		soar: e._soar ?? null,
+		// Phase 8-4 (4) 0d-3（7体目 G）: 慣性（momentum）の観測用。状態は**速度ベクトル1つだけ**
+		// ＝相を持たない（他の6体と違って `*Phase` が無い）∴観測窓もこの3つで足りる：
+		// momVx/momVy ＝今の速度（セル/tick・連続値）／momSpeed ＝その大きさ＝**体当たりの成立・
+		//   壁での自壊・土煙の3つが読む同じ1つの数**（`heavySpeed` と並べて読む）。
+		// momCrashes ＝壁に激突して自壊した回数（＝プレイヤーが壁へ誘い込めた回数）／
+		// momRams ＝体当たりが当たった回数。∴「避けたら空振りして壁で崩れた」は
+		//   momRams が増えず momCrashes が増えることで測れる（機構が成立している証拠）。
+		momVx: e._momVx ?? null,
+		momVy: e._momVy ?? null,
+		momSpeed: (e._momVx != null || e._momVy != null)
+			? Math.hypot(e._momVx ?? 0, e._momVy ?? 0) : null,
+		momCrashes: e._momCrashes ?? null,
+		momRams: e._momRams ?? null,
+		// momentum ＝慣性の設定そのもの（フェーズで差し替わる＝`resolveMomentum` が読む側）。
+		// **meta.momentum とは別物**＝「後半でもっと止まれなくなった」の観測窓。
+		momentum: e._momentum ?? null,
 		// Phase 8-4 (4) 層1: ボスのフェーズが差し替える「行動の元データ」の観測用。
 		// boss.js checkBossPhase は**エンティティ側にだけ書く**∴フェーズが効いたかは
 		// ここに出る値で読む（null＝差し替えなし＝ENEMY_META のまま）。

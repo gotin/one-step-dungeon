@@ -14,7 +14,7 @@ import { statefulTileClosed, overlapArea } from './passable.js';
 // 単一の真実（projectile.js showStunEffect も同じ関数を使う＝印の位置がずれない）。
 // Phase 8-4 (4) 0d-2.5: 大型敵の間合いは **左上ではなく中心/端** から測る
 // （enemyCellCenter / enemyHalf / enemyEdgeDist ＝hitbox.js が単一の真実）。
-import { enemyCenter, enemyCellCenter, enemyHalf, enemyEdgeDist } from './hitbox.js';
+import { enemyCenter, enemyCellCenter, enemyHalf, enemyEdgeDist, aabbOverlap } from './hitbox.js';
 // Phase 8-4 (4) 0d-2.11 (A): 攻撃硬直の窓（＝反撃の窓）の判定は enemy-state.js が単一の真実。
 // この絵（`.attack-recover`）と combat.js の弱点判定（`weakness.window: 'recover'`）が
 // 同じ窓を指すため＝どちらか片方だけ書き換えると理不尽な戦闘になる。
@@ -2705,6 +2705,179 @@ export function createEnemyAi(deps) {
 		setTimeout(() => el.remove(), stunMs);   // 消える瞬間＝気絶が明ける瞬間
 	}
 
+	// ── Phase 8-4 (4) 0d-3（7体目 G 岩のゴーレム）: 慣性で動く巨体 ──────────
+	// meta.momentum = { accel, maxSpeed, friction, heavySpeed, ramRange, ramAtk, crashStunMs }
+	// 他の 6 体と違うのは**移動アルゴリズムそのもの**＝プレイヤーの「位置」へ寄るのではなく、
+	// 自分の**速度ベクトル**を毎 tick 少しだけプレイヤーの方へ曲げる：
+	//   ・accel    … 毎 tick 速度へ足す量（プレイヤーへの単位ベクトル方向）
+	//   ・friction … 毎 tick 掛ける減衰（× (1 - friction)）。終端速度＝accel / friction
+	//   ・maxSpeed … 上限。`accel / friction === maxSpeed` に揃えている＝上限へ乗るまで
+	//                10 tick ≒1.2 秒かかる∴**止まるのにも曲がるのにも時間がかかる**
+	//                （これが機構の本体＝プレイヤーは横へ避けて空振りを作れる）
+	//   ・heavySpeed … ①体当たりが成立する ②壁で自壊する ③土煙が出る の**同じ1つのしきい値**
+	//                ＝プレイヤーが覚える規則を1本にする（「土煙が出た岩は避けて壁へ誘う」）
+	// ⚠️ 状態機械を持たない（状態は速度ベクトル1つだけ）＝「相を忘れて宙吊り」の欠陥が
+	//    構造的に存在しない（0d-2.7 の跳躍・0d-3 の滞空で踏んだ罠がここには無い）。
+	// ⚠️ 速度は `resolveEnemySpeed`（meta.speed / e.speed）を**読まない**＝この敵の速さは
+	//    momentum の3つの数だけが決める（`phases[].speedMultiplier` は効かない∴書かない）。
+	function resolveMomentum(e, meta) {
+		return e?._momentum !== undefined ? e._momentum : meta?.momentum;
+	}
+
+	// 今の速さ（ノルム）。体当たりの成立・壁での自壊・土煙・テストが**同じ1つの数**を読む。
+	function momentumSpeed(e) {
+		return Math.hypot(e._momVx ?? 0, e._momVy ?? 0);
+	}
+
+	// 惰性を捨てる（スタン・攻撃硬直・構えの tick に呼ぶ＝`cancelDash` と同じ列）。
+	// ⚠️ 「殴り返せる窓では体が本当に止まっている」ことがこの敵の唯一の攻略法∴硬直中に
+	//    滑ると窓が窓でなくなる（追いかけながら斬ることになる・GUIDE §7-8）。
+	function cancelMomentum(e) {
+		e._momVx = 0;
+		e._momVy = 0;
+	}
+
+	// 壁への激突＝自壊。突進猪（tickDash の 'wall'）と**同じ道具立て**を使う＝気絶の意味を
+	// 1つに保つ：`e.stunUntil`（enemyTick が先頭で全行動を止める窓）＋ ⭐ の印（長さ＝気絶の
+	// 長さ）＋ 音（既存 `doorLock`＝「重いものが止まった」）。
+	// ⚠️ 弱点の ×3 はこの窓には**乗らない**（`weakness.window: 'recover'` ＝攻撃硬直だけ）。
+	//    ここに乗せると crashStunMs 1800ms ＝剣 6 振り ×3 ＝ 60 ダメージ＝HP 60 が即死になる。
+	function crashMomentum(e, now, cfg) {
+		const stunMs = cfg?.crashStunMs ?? 1800;
+		cancelMomentum(e);
+		e.stunUntil = now + stunMs;
+		e._momCrashes = (e._momCrashes ?? 0) + 1;
+		showDashStun(e, stunMs);   // 印の長さ＝気絶の長さ
+		playSound('doorLock');
+	}
+
+	// 慣性の1 tick。呼ぶのは enemyTick の移動ゲート（＝硬直・構え・予告の tick には来ない）。
+	function enemyMomentumSlide(e, meta, cfg, now) {
+		if (!cfg) return;
+		const accel    = cfg.accel      ?? 0.03;
+		const maxSpeed = cfg.maxSpeed   ?? 0.30;
+		const friction = cfg.friction   ?? 0.10;
+		const heavy    = cfg.heavySpeed ?? 0.18;
+		const ramRange = cfg.ramRange   ?? 1.0;
+		const ew = e.w ?? 1, eh = e.h ?? 1;
+		const player = getPlayer();
+		// ① 先に減衰（＝惰性が抜ける分）を掛ける。**順序が意味を持つ**＝先に減衰させてから
+		//    加速を足すと終端速度がちょうど `accel / friction`（＝素の設定では maxSpeed）に
+		//    なる∴「上限は加速と減衰から導かれる数」で、上限の数だけを別に信じなくて済む
+		//    （逆順だと終端が accel×(1-friction)/friction ＝上限に**永久に届かない**）。
+		e._momVx = (e._momVx ?? 0) * (1 - friction);
+		e._momVy = (e._momVy ?? 0) * (1 - friction);
+		// ② プレイヤーへの単位ベクトルへ accel を足す（＝位置ではなく**速度**を追う）。
+		//    向きは**中心から**測る（左上のままだと 2×2 は軸が 0.5 セル偏る＝0d-2.5 と同じ話）。
+		if (player) {
+			const { cx, cy } = enemyCellCenter(e);
+			const dx = player.x - cx, dy = player.y - cy;
+			const d = Math.hypot(dx, dy);
+			if (d > 0.01) {
+				e._momVx = (e._momVx ?? 0) + (dx / d) * accel;
+				e._momVy = (e._momVy ?? 0) + (dy / d) * accel;
+			}
+		}
+		// ③ 上限（後半の相のように `accel / friction` が上限を上回る設定では、ここが効く）
+		const sp0 = momentumSpeed(e);
+		if (sp0 > maxSpeed) {
+			const k = maxSpeed / sp0;
+			e._momVx *= k; e._momVy *= k;
+		}
+		// 絵の向きは持たない（rockGolemD/R/L/U は同じ1枚のエイリアス）が、他の判定が読む
+		// `e.dir` は進行方向に合わせる（`enemyChase` が移動で向き直るのと同じ扱い）。
+		if (momentumSpeed(e) > 0.01) {
+			e.dir = Math.abs(e._momVy) >= Math.abs(e._momVx)
+				? (e._momVy > 0 ? 'down' : 'up')
+				: (e._momVx > 0 ? 'right' : 'left');
+		}
+		// 激突するのは**進行方向の主軸が塞がれたとき**だけ＝壁を擦って通り過ぎただけでは
+		// 崩れない（そうしないと部屋の隅を回るたびに勝手に自壊する＝誘い込む面白さが消える）。
+		const majorX = Math.abs(e._momVx) > Math.abs(e._momVy);
+		// 体当たり（＝プレイヤーを轢く）の後処理。**2箇所から呼ぶ**＝「間合いに入った」と
+		// 「プレイヤーに行き止められた」の両方が同じ1つの結果になる（下の ⑥/⑦ を参照）。
+		const ramPlayer = () => {
+			takeDamage(cfg.ramAtk ?? e.atk ?? meta?.atk ?? 1);
+			if (meta?.inflict) inflictDebuff?.(meta);
+			// クールダウン記録は攻撃の共通後処理に通す＝**体当たりの直後は剣が出ない**、
+			// かつ攻撃硬直（`attackFreezeMs`）が立つ＝弱点 ×3 の窓もここで開く
+			// （＝轢かれた側に反撃の権利が渡る。弱点の規則は「硬直の窓」の1本に保つ）。
+			markAttack(e, meta, 0, now);
+			e._momRams = (e._momRams ?? 0) + 1;
+			cancelMomentum(e);
+		};
+		// ④ 1 tick を MOVE_STEP 以下に刻んで**連続座標のまま**進める（グリッドに丸めない＝
+		//    GUIDE §7-11）。刻むのは速くしても当たり判定と壁判定を飛び越さないため
+		//    （[[blade-speed-up-needs-interpolation]]・tickDash と同じ作法）。
+		const steps = Math.max(1, Math.ceil(momentumSpeed(e) / MOVE_STEP));
+		let moved = false;
+		for (let k = 0; k < steps; k++) {
+			const sp = momentumSpeed(e);
+			if (sp <= 0) break;
+			// ⑥ 体当たり＝**進む前に見る**（プレイヤーは壁ではない＝tickDash と同じ順序）。
+			//    速さが heavySpeed 未満のときは当たらない＝「土煙が出ていない岩は触れても痛くない」。
+			//    当たったら速度を捨てる＝ぶつかった巨体はそこで止まる。
+			if (player && sp >= heavy && enemyEdgeDist(e, player.x, player.y) <= ramRange) {
+				ramPlayer();
+				break;
+			}
+			// ⑤ 軸ごとに進める（主軸を先に試す）
+			let crashed = false, rammed = false;
+			for (const axisX of (majorX ? [true, false] : [false, true])) {
+				const v = axisX ? e._momVx : e._momVy;
+				if (v === 0) continue;
+				const step = v / steps;
+				const ny = axisX ? e.y : e.y + step;
+				const nx = axisX ? e.x + step : e.x;
+				if (isPassableForEnemy(ny, nx, e)) { e.y = ny; e.x = nx; moved = true; continue; }
+				// ⑦ 塞いだのが**プレイヤーの体**なら、それは壁ではない＝轢く（自壊しない）。
+				// ⚠️ これが無いと機構が**裏返る**：`isPassableForEnemy` はプレイヤーと重なる手前
+				//    （端の距離 1.0）で必ず止める∴ ⑥ の間合い（ramRange 1.0）は刻みの端数の分だけ
+				//    永久に届かず（実測 1.02）、代わりに下の「主軸が塞がれた＝激突」が
+				//    プレイヤーの体に対して発火していた＝**棒立ちのプレイヤーが無傷で
+				//    1.8 秒の気絶を取れる**（0d-3 G の初回テストで実測）。
+				//    ∴プレイヤーが行き止めた場合だけを先に分岐させ、⑥ と同じ1つの結果に落とす。
+				//    重なり判定は passable.js のプレイヤー規則と同じ AABB（hitbox.js が単一の真実）。
+				if (player && aabbOverlap(nx, ny, ew, eh, player.x, player.y, 1, 1)) {
+					if (sp >= heavy) { ramPlayer(); rammed = true; break; }
+					// 遅いときは押し合いにならずその軸だけ 0＝「土煙の出ていない岩は痛くない」
+					if (axisX) e._momVx = 0; else e._momVy = 0;
+					continue;
+				}
+				// 半端な座標（0.5 の格子から外れた位置）だと 2×2 は 3 タイルを塞ぐ＝2 マス幅の
+				// 通路の口へ入れない∴**直交軸を格子へ寄せて1回だけ試す**（体をまっすぐにして
+				// 通す）。これが無いと巨体が通路の口で永久に詰まる＝ボスへ到達できなくなる。
+				const sy = axisX ? Math.round(e.y * 2) / 2 : ny;
+				const sx = axisX ? nx : Math.round(e.x * 2) / 2;
+				if ((sy !== ny || sx !== nx) && isPassableForEnemy(sy, sx, e)) {
+					e.y = sy; e.x = sx; moved = true; continue;
+				}
+				// 塞がれた。主軸を速さ heavySpeed 以上で塞がれたら激突（自壊）、
+				// そうでなければ**その軸だけ 0**＝壁に沿って擦る（横向きの惰性は残る）。
+				if (axisX === majorX && sp >= heavy) { crashMomentum(e, now, cfg); crashed = true; break; }
+				if (axisX) e._momVx = 0; else e._momVy = 0;
+			}
+			if (crashed || rammed) break;
+		}
+		if (moved) moveCharEl(`enemy-${e.id}`, e.x, e.y);
+	}
+
+	// 土煙（board.css `.momentum-heavy`）＝**今この岩は危ない**の唯一の告知。しきい値は
+	// 体当たりが成立する速さ（heavySpeed）と同じ1つの数∴「土煙が出ていない岩に触れても
+	// 痛くない」が絵と機構で一致する（GUIDE §6-1）。
+	// 音は**越えた瞬間に1回だけ**鳴らす（毎 tick 鳴らすと轟音になる）。激突音（doorLock）とは
+	// 別の音＝聞き分けるのは「動き出した（避けろ）」と「止まった（殴れる）」の2つ（GUIDE §7-6）。
+	function syncMomentumMotion(e, meta) {
+		const cfg = resolveMomentum(e, meta);
+		const heavy = cfg?.heavySpeed ?? 0.18;
+		const stunned = (e.stunUntil ?? 0) > gameNow();
+		const isHeavy = !stunned && momentumSpeed(e) >= heavy;
+		const el = document.getElementById(`char-enemy-${e.id}`);
+		if (el) el.classList.toggle('momentum-heavy', isHeavy);
+		if (isHeavy && !e._momHeavy) playSound('golemRumble');
+		e._momHeavy = isHeavy;
+	}
+
 	// ── Phase 5.5k k-4: 向きを固定して構える（盾騎士）─────────────────
 	// meta.blockFacing = { turnMs, knockback } を持つ敵は「向きが常時ブロックの面」＝
 	// e.dir がそのままダメージ無効化の方向になる（combat.js isBlockFacingDir）。
@@ -3251,6 +3424,11 @@ export function createEnemyAi(deps) {
 				// 走行中に止められたらそこで終わる）。壁への激突で立てた気絶もここを通る＝
 				// 気絶が明けた tick に走行が再開しないための後始末でもある。
 				if (resolveDash(e, meta)) { cancelDash(e); syncDashMotion(e); syncDashSprite(e, meta); }
+				// Phase 8-4 (4) 0d-3（7体目 G）: 気絶したら惰性も捨てる＝壁に激突して崩れた巨体が
+				// 滑り続けない（＝反撃の窓では本当に止まっている）。土煙の絵も**ここで**消す
+				// ＝この分岐は下の同期まで行かず `continue` する∴消し忘れると気絶中も土煙が
+				// 出たまま「まだ危ない」に見える（＝殴れる窓を絵が否定する）。
+				if (resolveMomentum(e, meta)) { cancelMomentum(e); syncMomentumMotion(e, meta); }
 				continue;
 			}
 			// Phase 5.5k k-7.5: 立っている予告は**他の専有状態より先に必ず解決する**
@@ -3289,6 +3467,11 @@ export function createEnemyAi(deps) {
 			// Phase 5.5k（2026-08-12）: 攻撃硬直＝攻撃を出した直後の窓は移動も攻撃もしない。
 			// プレイヤーの movePlayer が _atkUntil 中に足を止めるのと対称（player.js）。
 			const frozen = e._freezeUntil != null && now < e._freezeUntil;
+			// Phase 8-4 (4) 0d-3（7体目 G）: 慣性は**硬直と構えのあいだ捨てる**＝殴り返す窓では
+			// 体が本当に止まっている（滑りながら硬直すると窓が窓でなくなる＝GUIDE §7-8）。
+			// ⚠️ 下の移動ゲートは硬直中に呼ばれない∴ここで捨てないと「硬直が明けた瞬間に
+			//    さっきの速さで走り出す」＝プレイヤーから見ると硬直が無かったことになる。
+			if ((frozen || isGuarding) && resolveMomentum(e, meta)) cancelMomentum(e);
 			// Phase 5.5k（2026-08-12）: 遠隔／近接の二相を持つ敵はどちらのモードかを更新する
 			// （硬直中も時計は進める＝硬直でリズムが狂わない）。
 			const cmode = tickCombatMode(e, meta, now);
@@ -3355,13 +3538,30 @@ export function createEnemyAi(deps) {
 					// Phase 8-4 (4) 0d-3（6体目 U）: 滞空＝相で寄り方が変わる（地上は追う・
 					// 空は `orbitRange` を保って軸へ回り込む）。周期そのものは上の tickSoar が持ち主。
 					enemySoarStride(e, meta, resolveEnemySpeed(e, meta), resolveSoar(e, meta));
+				} else if (meta.momentum) {
+					// Phase 8-4 (4) 0d-3（7体目 G）: 慣性＝プレイヤーの**位置**ではなく自分の
+					// **速度**を追う＝止まれない・曲がれない。`resolveEnemySpeed` は渡さない
+					// （速さは momentum の3つの数だけが決める・設定はフェーズで差し替わる）。
+					enemyMomentumSlide(e, meta, resolveMomentum(e, meta), now);
 				} else if (meta.zigzag) {
 					enemyZigzagFly(e, meta, resolveEnemySpeed(e, meta), meta.zigzag);
 				} else {
 					enemyChase(e, resolveEnemySpeed(e, meta), dirLocked);
 				}
 				// 隠れ中は攻撃しない（隠れて寄るだけ）
-				if (!e.hidden) enemyAttack(e, meta);
+				// Phase 8-4 (4) 0d-3（7体目 G）: **走っている巨体は武器を振らない＝体でぶつかる**。
+				// ⚠️ これが無いと機構が絵と食い違う（実測してから足した）：剣の間合い 1.2 は体当たりの
+				//    間合い 1.0 より**外**∴速いまま寄って来ても必ず剣の間合いで止まって振り、予告の
+				//    tick は惰性を捨てる（cancelMomentum）∴接触の瞬間の速さは heavySpeed に届かない
+				//    ＝**土煙の告知が一度も実現しない**（素のデータで 120 tick 放置＝体当たり 0 回・
+				//    剣は 8 回・間合い 1.3 以内での最大速度 0.157 < heavySpeed 0.18）。
+				// ∴速さがしきい値を越えているあいだは攻撃しない＝告知（土煙・地響き）と結果（轢かれる）が
+				//    1本に繋がり、止まった／崩れた窓が「殴り合いの窓」になる（PLAN の
+				//    「速度が heavySpeed を越えているあいだは体当たりで潰す」の実体）。
+				const momFast = meta.momentum
+					? momentumSpeed(e) >= (resolveMomentum(e, meta)?.heavySpeed ?? 0.18)
+					: false;
+				if (!e.hidden && !momFast) enemyAttack(e, meta);
 			}
 			// Phase 5.5k: directional な敵は毎tick見た目を今の状態（向き/攻撃窓/構え窓）に
 			// 揃える＝enemyAttack が同tickで _atkUntil を立てた場合も即座に反映される
@@ -3392,6 +3592,11 @@ export function createEnemyAi(deps) {
 			// Phase 5.5k k-9: 突進の溜めモーション（前後に細かく揺れる）を状態に合わせる。
 			// k-9b: 絵そのものも溜め／気絶へ差し替える（揺れと ⭐ だけでは状態が読めない）。
 			if (resolveDash(e, meta)) { syncDashMotion(e); syncDashSprite(e, meta); }
+			// Phase 8-4 (4) 0d-3（7体目 G）: 慣性の告知（土煙＝**今この岩は危ない**）。
+			// 硬直の絵（`.attack-recover`）より後に置く＝速さがしきい値を越えている tick には
+			// 硬直は立っていない（硬直中は cancelMomentum で速度 0）∴衝突しないが、
+			// 「今どう動いているか」を最後に上書きする順番に揃える（U の滞空と同じ趣旨）。
+			if (meta.momentum) syncMomentumMotion(e, meta);
 		}
 	}
 
@@ -3409,6 +3614,8 @@ export function createEnemyAi(deps) {
 		resolveCoil,           // Phase 8-4 (4) 0d-3: 巻きつきの設定（フェーズ差替を含む・テスト用）
 		resolveGaze,           // Phase 8-4 (4) 0d-3: 見据えの設定（フェーズ差替を含む・テスト用）
 		resolveSoar,           // Phase 8-4 (4) 0d-3: 滞空の設定（フェーズ差替を含む・テスト用）
+		resolveMomentum,       // Phase 8-4 (4) 0d-3: 慣性の設定（フェーズ差替を含む・テスト用）
+		momentumSpeed,         // Phase 8-4 (4) 0d-3: 今の速さ（土煙/体当たり/自壊と同じ1つの数）
 		resolveEnemySprite,    // Phase 5.5k: 向き別スプライト名解決のテスト用
 		resolveAttackFreezeMs, // Phase 5.5k: 攻撃硬直の長さ（テスト用）
 		tickCombatMode,        // Phase 5.5k: 遠隔／近接の二相（テスト用）
