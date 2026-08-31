@@ -64,8 +64,14 @@ const meleeEntries = Object.entries(ENEMY_META)
 //   ・`${sprite}Atk` が ENEMY_SPRITES に在る … **剣を振り下ろすポーズ**を持つ敵の絵
 //     （skeletonDAtk / swordBeastDAtk / shieldKnightDAtk）。
 //   ⚠️ 投擲鬼（bombOgreDAtk 等）も Atk ポーズを持つが近接を持たない∴この集合には入らない。
-function artHoldsSword(meta) {
-  return !!(PLAYER_SPRITES[meta.sprite] || ENEMY_SPRITES[`${meta.sprite}Atk`]);
+// ⚠️ U 嵐の鷲王は**確認済みの例外**（2026-08-31・ユーザー確定）＝絵に剣は無いが、鉤爪の
+//    予備動作に既存の剣振り上げ（`.swing-windup`）を流用すると決めた（新規アートを増やさず、
+//    体当たり型より方向性のある動きの方が伝わるため）。U は `directional` を持たない∴
+//    `${sprite}Atk` へのポーズ差し替えは走らない＝技術的な矛盾は無い（意匠だけの選択）。
+const SWORD_STYLE_EXCEPTIONS = new Set(['U']);
+function artHoldsSword(meta, tile) {
+  return !!(PLAYER_SPRITES[meta.sprite] || ENEMY_SPRITES[`${meta.sprite}Atk`]
+    || SWORD_STYLE_EXCEPTIONS.has(tile));
 }
 
 // 毎 tick 西隣へ立ち直りながら予告のクラスと CSS 変数を集める。
@@ -121,13 +127,15 @@ test.describe('近接の予告は「剣を持っているか」で絵が分か�
     expect(meleeEntries.length, "'sword' 型の近接を持つ敵が居ない（名簿の形が変わった）")
       .toBeGreaterThan(10);
     const declared = meleeEntries.filter(([, m]) => m.wieldsSword).map(([t]) => t).sort();
-    const derived  = meleeEntries.filter(([, m]) => artHoldsSword(m)).map(([t]) => t).sort();
+    const derived  = meleeEntries.filter(([t, m]) => artHoldsSword(m, t)).map(([t]) => t).sort();
     expect(declared, '剣の絵を持つ敵と wieldsSword の宣言が食い違う（持っていない剣を振る／振らない）')
       .toEqual(derived);
     // 対照が在ること＝「全敵が剣持ち」に退化していない（退化すると②③が同じ本になる）
+    // ⚠️ 2026-08-31 に U 嵐の鷲王が例外として剣持ち側へ移った＝閾値を 10 → 9 に更新
+    // （ユーザー指摘の本命＝地中蟲は変わらず剣なし側に残っている＝下の assert で固定）。
     const bare = meleeEntries.filter(([, m]) => !m.wieldsSword);
     expect(bare.length, '剣を持たない近接の敵が居ない＝ユーザー指摘の対象（地中蟲など）が消えた')
-      .toBeGreaterThanOrEqual(10);
+      .toBeGreaterThanOrEqual(9);
     // 宣言だけあって近接を持たない敵（死んだ宣言）が無いこと
     const dead = Object.entries(ENEMY_META).filter(([, m]) => m.wieldsSword
       && ![...(m.attacks ?? []), ...(m.attack ? [m.attack] : [])].some(a => a?.type === 'sword'));

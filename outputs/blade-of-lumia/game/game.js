@@ -1793,7 +1793,15 @@ function useSubItem() {
 		placeBomb(); return;
 	}
 	if (id === 'bow') {
-		// 矢を発射（ブーメランより大幅に速い・貫通・1消費）
+		// 矢を発射（ブーメランより大幅に速い・貫通・1消費）。
+		// ⚠️ 画面内に飛んでいる自分の矢は**同時2本まで**（3本目は1本目が消えてから）。
+		// DECISIONS 2026-08-30（5）決定2＝弓は piercing かつクールダウン無し∴連打の唯一の
+		// 制約が矢の残数だった（U 嵐の鷲王の直線移動と重なって過剰ダメージが出た）。
+		// ブーメラン（同時1本＝上の分岐）と同じ作法＝新しい絵/文なしで「画面に見えている」
+		// こと自体が告知になる。矢は貫通のため必ず壁か画面外まで飛んで消える＝謎は詰まらない。
+		if (getProjectiles().filter(p => p.type === 'arrow' && p.owner === 'player').length >= 2) {
+			pulse('矢が飛んでいる！'); return;
+		}
 		if (si.count <= 0) { pulse('矢がない！'); return; }
 		si.count--;
 		if (si.count <= 0) { delete player.subItems[id]; player.activeSubItem = Object.keys(player.subItems)[0] ?? null; }
@@ -2291,6 +2299,19 @@ export function getEnemiesSnapshot() {
 		soarFlights: e._soarFlights ?? null,
 		soarDives: e._soarDives ?? null,
 		soarCrashes: e._soarCrashes ?? null,
+		// soarMaxAt ＝保険（宙吊り防止）の上限が終わる論理時刻（`airMs` は下限に変わった＝
+		//   0d-3「6体目 U の追い作業」・DECISIONS 2026-08-30（5）決定5）。
+		// 旋回（`air`）は連続角度で本当に円弧を描く（DECISIONS 2026-08-31（8）＝coil と同じ
+		// 仕組み）＝soarCx/soarCy（中心・プレイヤーへ緩く追従）／soarAng（今の角度）／
+		// soarSpin（回る向き・+1 時計回り・−1 反時計回り）／soarArc（次の反転までに進んだ
+		// 弧の量）／soarNextFlip（反転する弧の量・不規則に見えるが乱数ではない決定的な値）。
+		soarMaxAt: e._soarMaxAt ?? null,
+		soarCx: e._soarCx ?? null,
+		soarCy: e._soarCy ?? null,
+		soarAng: e._soarAng ?? null,
+		soarSpin: e._soarSpin ?? null,
+		soarArc: e._soarArc ?? null,
+		soarNextFlip: e._soarNextFlip ?? null,
 		// soar ＝滞空の設定そのもの（フェーズで差し替わる＝`resolveSoar` が読む側）。
 		// **meta.soar とは別物**＝「後半で地上の時間が短く・急降下が速くなった」の観測窓。
 		soar: e._soar ?? null,

@@ -111,14 +111,19 @@ export function initInput(deps) {
 			if (!e.repeat) { swordAttack(); startCharge?.(); }
 			return;
 		}
-		if (e.key === 'b' || e.key === 'B') { e.preventDefault(); useSubItem(); return; }
+		// ⚠️ サブアイテム使用も `!e.repeat` で守る（2026-08-30 ユーザー報告＝弓が連打できて
+		// しまう）。同時2本の上限はあるが、押しっぱなしだと OS のキーリピート（秒間30回
+		// 前後）が1本消えた瞬間の tick に必ず次を補充する＝「押し続ける＝ほぼ途切れず飛ぶ」
+		// になり、上限があっても連打に見える。攻撃キー（上の `swordAttack`）と同じ
+		// press-edge のみ（離して押し直すたびに1本）の作法へ揃えた。
+		if (e.key === 'b' || e.key === 'B') { e.preventDefault(); if (!e.repeat) useSubItem(); return; }
 		// ⚠️ トグル系（飛行・ポーズ・デバッグ）は必ず `!e.repeat` で守る。
 		// OS のキーリピートは押しっぱなしで keydown を秒間 30 回前後投げてくる∴
 		// ガードが無いと状態が反転し続ける（2026-08-23 ユーザー報告＝F を押し続けると
 		// 離陸と着陸を繰り返す。副作用として playSound / saveGame も毎リピート走っていた）。
 		if (e.key === 'f' || e.key === 'F') { e.preventDefault(); if (!e.repeat) toggleFlight?.(); return; }
-		// Mac: Commandキー / Windows: Altキー でもサブアイテム使用
-		if (e.key === 'Meta' || e.key === 'Alt') { e.preventDefault(); useSubItem(); return; }
+		// Mac: Commandキー / Windows: Altキー でもサブアイテム使用（同じ理由で `!e.repeat`）
+		if (e.key === 'Meta' || e.key === 'Alt') { e.preventDefault(); if (!e.repeat) useSubItem(); return; }
 		if (e.key === 'Escape') { e.preventDefault(); if (!e.repeat) togglePause(); return; }
 		if (e.key === 'g' || e.key === 'G') { e.preventDefault(); if (!e.repeat) toggleDebugMode(); return; }
 	});

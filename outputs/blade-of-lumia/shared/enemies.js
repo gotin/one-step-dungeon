@@ -1132,6 +1132,13 @@ export const ENEMY_META = {
 		// 「嵐の鷲王を射抜けば、最後の欠片が得られよう」がそのまま戦い方の説明になる。
 		weakness: { type: 'arrow', multiplier: 2 },
 		hitAndAway: false,   // 明示（W/A/N/J/O と同じ罠＝書かないと `soar` の分岐に来ない）
+		// wieldsSword（2026-08-31・ユーザー確定・既存の剣振り上げを流用）＝鉤爪の予備動作を
+		// 体当たり型（`.slam-windup`＝抱えて縮む）ではなく方向性のある振り上げ（`.swing-windup`）
+		// にする。**絵に剣は無い**が `directional` を持たない（2×2 ボスは向き別スプライトを
+		// 持たない）ため `${sprite}Atk` へのポーズ差し替えは走らない＝CSS の刃オーバーレイと
+		// 音・解決の絵だけが変わる（新規スプライト0）。`tests/enemy-melee-windup-by-weapon.spec.js`
+		// の①（宣言は絵から導出した集合と一致）に**確認済みの例外**として明記した。
+		wieldsSword: true,
 		// 滞空と急降下（層2の固有機構）。**空に居るあいだは地上の攻撃が届かない**（矢だけ届く）
 		// ＝「近づき方」そのものが他の12体と別になる（寄って来るのは地上に居る短い間だけ）。
 		//   ground … 地上＝歩いて寄り鉤爪を振る（＝剣を入れられる窓）
@@ -1143,7 +1150,14 @@ export const ENEMY_META = {
 		soar: {
 			groundMs:    1560,  // 13 tick 地上に居る＝剣を入れる窓（プレイヤーが寄る時間も含む）
 			riseMs:       480,  // 4 tick 舞い上がる溜め（＝「空へ逃げる」の予告。まだ殴れる）
-			airMs:       2880,  // 24 tick 滞空の上限（軸が揃えば早く `aim` へ移る）
+			// airMs＝滞空の**下限**（2026-08-30 ユーザー指摘で意味が変わった＝DECISIONS
+			// 2026-08-30（5）決定5）。「最低これだけ回る」＝旋回は結果として伸びる。
+			// 宙吊り防止の保険（軸が最後まで揃わなかったときの強制落下）は別の上限
+			// `airMaxMs` が持つ＝旧い意味（上限）を持つ保険を消さずに分けた。
+			airMs:       2880,  // 24 tick 滞空の下限（これより早く `aim` へは移らない）
+			airMaxMs:    4320,  // 36 tick 保険の上限（airMs の1.5倍・tick境地）＝ここまで
+			                    // 揃わなくても `soarAnyVec` で必ず落ちる（宙吊り防止）。
+			                    // ⛔ 止まる条件1参照＝sky/ground 比は前半 2.5・後半 2.83（<3）。
 			orbitRange:   3.5,  // 旋回で保つ距離（body の端から）＝剣の間合い外・弓の間合い内
 			orbitSpeed:   0.75, // 旋回の速さ（セル/tick 換算の歩幅倍率）
 			                    // ⚠️ プレイヤー（1.0）より必ず遅くする（GUIDE §7-2）
@@ -1158,6 +1172,22 @@ export const ENEMY_META = {
 			reachedBy: 'arrow', // 滞空中に**唯一届く攻撃**（＝`weakness.type` と同じ＝弓が答え）。
 			                    // combat.js `isSoarOutOfReach` が読む。δ の `split.blockedBy` と
 			                    // 同じ作法＝「機構を解く手段」をデータ側に1か所だけ書く。
+			// 旋回は連続角度で本当に円弧を描く（DECISIONS 2026-08-31（8）＝J 深海の海蛇の
+			// `coil`（`_coilAng` を cos/sin で動かす）と同じ仕組みを転用。ユーザー実プレイ
+			// 指摘＝「90度に曲がることではなく、本当に円弧を描くように回転する」で
+			// 「四角い軌道」は失効した）。中心（`_soarCx/_soarCy`）はプレイヤーに固定せず
+			// **緩く追従する**（ユーザー確定＝「きっちり追従させず、動いたら動いた方向に
+			// 少しずつ中心軸を移動させる」）。
+			centerFollow: 0.12, // 1歩ごとに中心→プレイヤーの差を詰める割合（0〜1・小さいほど緩い追従）
+			// 反転（時計回り↔反時計回り）の周期は不規則に見えるようにする（ユーザー確定＝
+			// 「不規則（時間や乱数っぽく）」）。ただし乱数は使わない（GUIDE §7-3）＝
+			// `e.id` と反転回数から決定的に「ランダムに見える」小数を作る（`soarFlipLaps`）。
+			// 1回の周回量は flipLapsMin〜flipLapsMax の間でこの決定的な値から決まる。
+			// ⚠️ 1回の滞空（`air`）の長さ自体が短い（前半24〜36 tick）＝1周（360度）を
+			//   反転の単位にすると1回の滞空でほぼ反転できない（実測で発見）。**滞空の中で
+			//   複数回向きが変わる**ためには反転の単位を1周よりずっと小さくする必要がある。
+			flipLapsMin: 0.1,   // 反転までの最短＝約0.1周（36度・約6 tick）
+			flipLapsMax: 0.35,  // 反転までの最長＝約0.35周（126度・約20 tick）
 		},
 		attacks: [
 			// 鉤爪＝**地上に居るあいだだけ**振れる（滞空中は近接を出さない＝enemyAttack のゲート）。
@@ -1176,9 +1206,11 @@ export const ENEMY_META = {
 			// ⚠️ `aimMs` 480ms でもプレイヤーは 4 tick ＝ 2.0 セル走れる > `alignTol` 0.6 ＝間に合う。
 			{ hpThreshold: 0.5, speedMultiplier: 1.3, attackCooldownMultiplier: 0.8,
 			  soar: {
-				groundMs: 960, riseMs: 360, airMs: 2160, orbitRange: 3.5, orbitSpeed: 0.95,
+				groundMs: 960, riseMs: 360, airMs: 2160, airMaxMs: 3240,
+				orbitRange: 3.5, orbitSpeed: 0.95,
 				alignTol: 0.6, aimMs: 480, diveSpeed: 1.9, diveCells: 9, diveHitRange: 1.0,
 				diveAtk: 6, landFreezeMs: 480, crashStunMs: 1320,
+				centerFollow: 0.12, flipLapsMin: 0.1, flipLapsMax: 0.35,
 			  } },
 		],
 	},

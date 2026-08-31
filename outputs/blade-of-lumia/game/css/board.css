@@ -341,6 +341,15 @@
     animation: enemy-soar-hover 900ms ease-in-out infinite;
     filter: brightness(1.08) drop-shadow(0 0 6px rgba(180, 220, 255, 0.6));
 }
+/* 旋回の反転予告＝**止めずに絵だけ**（DECISIONS 2026-08-30（5）決定1＝止まった敵は連打の
+   的になる）。`--soar-spin`（+1/−1＝回る向き）× `--soar-spin-heat`（0=反転直後～1=直前）で
+   傾く＝反転が近いほど大きく傾く。`.char-abs` 自体に掛ける（canvas.sprite は独自の
+   translate/scale アニメーションを持つため transform を奪わない＝親側で重ねる）。 */
+.char-abs.soaring {
+    transform: rotate(calc(var(--soar-spin, 1) * var(--soar-spin-heat, 0) * 10deg));
+    /* ⚠️ `.char-abs` の位置 transition（left/top）を上書きしない＝両方を明示して重ねる */
+    transition: left 0.08s linear, top 0.08s linear, transform 0.15s linear;
+}
 @keyframes enemy-soar-hover {
     0%   { transform: translateY(-22%) scale(1.06); }
     50%  { transform: translateY(-31%) scale(1.09); }

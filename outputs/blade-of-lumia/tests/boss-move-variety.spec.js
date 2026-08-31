@@ -2333,6 +2333,9 @@ async function trackEagle(page, o) {
         soarVec: e.soarVec ?? null, soarLeft: e.soarLeft ?? null,
         soarFlights: e.soarFlights ?? 0, soarDives: e.soarDives ?? 0,
         soarCrashes: e.soarCrashes ?? 0,
+        soarCx: e.soarCx ?? null, soarCy: e.soarCy ?? null, soarAng: e.soarAng ?? null,
+        soarSpin: e.soarSpin ?? null, soarArc: e.soarArc ?? null,
+        soarNextFlip: e.soarNextFlip ?? null, soarMaxAt: e.soarMaxAt ?? null,
         stunUntil: e.stunUntil ?? null, freezeUntil: e.freezeUntil ?? null,
         swingAt: e.swingAt ?? null, hidden: !!e.hidden,
         // 絵（機構の唯一の告知）＝浮いているか・真下の影・予告・落下・硬直
@@ -2389,8 +2392,9 @@ test('㊳ U 嵐の鷲王のデータ＝滞空は矢だけが届き、予告の�
   expect(c, 'soar が無い＝U に固有の移動機構が無い').toBeTruthy();
   // 綴りの番人（`resolveSoar` を読む4つの関数が読むキー＝1文字違うと既定値に落ちて黙って動く）
   expect(Object.keys(c).sort()).toEqual([
-    'aimMs', 'airMs', 'alignTol', 'crashStunMs', 'diveAtk', 'diveCells', 'diveHitRange',
-    'diveSpeed', 'groundMs', 'landFreezeMs', 'orbitRange', 'orbitSpeed', 'reachedBy', 'riseMs',
+    'aimMs', 'airMaxMs', 'airMs', 'alignTol', 'centerFollow', 'crashStunMs', 'diveAtk',
+    'diveCells', 'diveHitRange', 'diveSpeed', 'flipLapsMax', 'flipLapsMin', 'groundMs',
+    'landFreezeMs', 'orbitRange', 'orbitSpeed', 'reachedBy', 'riseMs',
   ]);
 
   // 他の5体の移動機構を**持っていない**＝型を借りていない
@@ -2430,18 +2434,30 @@ test('㊳ U 嵐の鷲王のデータ＝滞空は矢だけが届き、予告の�
       .toBeGreaterThan(cfg.alignTol + halfOff);
     // ② 予告は「初見でも気づける長さ」立っている（＝落ちる直前に出て終わらない）
     expect(aimTicks, `${label}の予告が数 tick で終わる＝告知に気づけない`).toBeGreaterThanOrEqual(4);
-    for (const k of ['groundMs', 'riseMs', 'airMs', 'aimMs', 'diveSpeed', 'diveCells',
-                     'landFreezeMs', 'crashStunMs', 'orbitRange', 'orbitSpeed', 'alignTol']) {
+    for (const k of ['groundMs', 'riseMs', 'airMs', 'airMaxMs', 'aimMs', 'diveSpeed', 'diveCells',
+                     'landFreezeMs', 'crashStunMs', 'orbitRange', 'orbitSpeed', 'alignTol',
+                     'flipLapsMin', 'flipLapsMax']) {
       expect(cfg[k], `${label}の ${k} が正の数でない`).toBeGreaterThan(0);
     }
+    // centerFollow は「緩い追従」の割合＝0〜1（0＝一切追従しない・1＝毎歩ぴったり乗る）
+    expect(cfg.centerFollow, `${label}の centerFollow が0以下＝中心が一切追従しない`).toBeGreaterThan(0);
+    expect(cfg.centerFollow, `${label}の centerFollow が1以上＝緩い追従になっていない`).toBeLessThan(1);
+    expect(cfg.flipLapsMax, `${label}の flipLapsMax が flipLapsMin 以下＝反転の間隔が不規則にならない`)
+      .toBeGreaterThan(cfg.flipLapsMin);
+    // airMs は**下限**（DECISIONS 2026-08-30（5）決定5）＝保険の上限（airMaxMs）は必ずそれより長い
+    expect(cfg.airMaxMs, `${label}の airMaxMs が airMs（下限）以下＝保険が下限を包摂しない`)
+      .toBeGreaterThan(cfg.airMs);
+    expect(cfg.airMaxMs % TICK_MS, `${label}の airMaxMs が tick に揃っていない`).toBe(0);
     // ③ 急降下は新しい最大打点を作らない（鉤爪と同じ＝J の crushAtk・O の stampAtk と同じ作法）
     expect(cfg.diveAtk, `${label}の急降下が鉤爪より痛い＝新しい最大打点を作っている`).toBe(m.atk);
-    // ④ 地上（＝殴れる窓）が周期の中に必ずある＝「ずっと空に居る案山子」にならない
-    const sky = cfg.riseMs + cfg.airMs + cfg.aimMs;
+    // ④ 地上（＝殴れる窓）が周期の中に必ずある＝「ずっと空に居る案山子」にならない。
+    //    ⚠️ sky は**保険の上限（airMaxMs）で測る**＝軸が最後まで揃わない最悪回でも
+    //    地上の3倍を超えない、が本当の保証（airMs だけで測ると下限＝最良回しか測れない）。
+    const sky = cfg.riseMs + cfg.airMaxMs + cfg.aimMs;
     const ground = cfg.groundMs + cfg.landFreezeMs;
     expect(Math.floor(cfg.groundMs / TICK_MS), `${label}の地上の窓が短すぎる＝剣が1度も届かない`)
       .toBeGreaterThanOrEqual(8);
-    expect(sky / ground, `${label}は空に居る時間が地上の3倍を超える＝弓が無いと戦いにならない`)
+    expect(sky / ground, `${label}は最悪回（保険の上限）でも空に居る時間が地上の3倍を超える＝弓が無いと戦いにならない`)
       .toBeLessThanOrEqual(3);
     // ⑤ 射抜いた（墜落）ほうが着地硬直より**大きい隙**＝矢を選ぶ理由が数で立っている
     expect(cfg.crashStunMs, `${label}の墜落の気絶が着地硬直以下＝射抜く旨みが無い`)
@@ -2462,6 +2478,7 @@ test('㊳ U 嵐の鷲王のデータ＝滞空は矢だけが届き、予告の�
   expect(ph.soar.groundMs, '後半の地上の時間が前半以上＝殴れる窓が減っていない')
     .toBeLessThan(c.groundMs);
   expect(ph.soar.airMs, '後半の滞空が前半以上＝周期が締まっていない').toBeLessThan(c.airMs);
+  expect(ph.soar.airMaxMs, '後半の保険の上限が前半以上＝周期が締まっていない').toBeLessThan(c.airMaxMs);
   expect(ph.soar.aimMs, '後半の予告が前半以上＝軸を外す猶予が減っていない').toBeLessThan(c.aimMs);
   expect(ph.soar.diveSpeed, '後半の落下が前半以下＝圧が上がっていない').toBeGreaterThan(c.diveSpeed);
   expect(ph.soar.orbitSpeed, '後半の旋回が前半以下＝軸へ回り込むのが速くなっていない')
@@ -2475,8 +2492,11 @@ test('㊴ U は6拍を順に回り、各相の長さ・絵のクラス・SE が 
   const c = ENEMY_META['U'].soar;
   const diveStep = Math.round(c.diveSpeed / MOVE_STEP) * MOVE_STEP;
   // 予告のあいだに**軸に沿って**逃げる（＝急降下が空を切らずに走る＝1 tick ぶんの落下量を測れる）
+  // ⚠️ ticks は airMs が**下限**になった分だけ前より要る（旧仕様は揃った瞬間に打ち切っていた
+  //    ＝同じ行の湧きは即座に aim へ抜けた。今は最低 airMs（24 tick）は必ず回る＝
+  //    0d-3「6体目 U の追い作業」でティック予算を計算し直した）。
   const out = await trackEagle(page, {
-    ticks: 40, patch: DIVE_ONLY, moveWhen: { phase: 'aim', dir: 'left', steps: 5 },
+    ticks: 75, patch: DIVE_ONLY, moveWhen: { phase: 'aim', dir: 'left', steps: 5 },
   });
   expect(out.error).toBeUndefined();
   const s = out.samples;
@@ -2490,6 +2510,15 @@ test('㊴ U は6拍を順に回り、各相の長さ・絵のクラス・SE が 
   }
   expect(runs.map(r => r.phase), '観測窓で1周（ground→…→land→ground）が回っていない')
     .toContain('land');
+
+  // ①b airMs は**下限**（DECISIONS 2026-08-30（5）決定5）＝旋回で軸が自然に揃うまでの
+  //    実測は下限以上になる（旧仕様は揃った瞬間に打ち切っていた＝この下限が効いている証拠）
+  const airRun = runs.find(r => r.phase === 'air' && r.complete);
+  expect(airRun, '完結した air の窓が観測できていない').toBeTruthy();
+  expect(airRun.samples.length, 'air の窓が airMs（下限）より短い＝下限が効いていない')
+    .toBeGreaterThanOrEqual(Math.round(c.airMs / TICK_MS));
+  expect(airRun.samples.length, 'air の窓が airMaxMs（保険）を超えた＝保険より先に軸が揃う前提が崩れた')
+    .toBeLessThanOrEqual(Math.round(c.airMaxMs / TICK_MS));
 
   // ② 長さは soar の数そのもの（＝CSS も音も測定もこの1つの時計を読む）
   for (const [phase, ms] of [['ground', c.groundMs], ['rise', c.riseMs],
@@ -2571,8 +2600,15 @@ test('㊵ 予告のあいだに落ちる軸の外へ出れば急降下は空を�
   const c = ENEMY_META['U'].soar;
   // 予告（5 tick）のあいだに直交へ3歩（1.5セル）＝軸の幅（alignTol 0.6 + 半身 0.5）の外。
   // ⚠️ 鉤爪と雷撃弾は止める（DIVE_ONLY）＝止めないと「無傷だった」が**無敵窓のおかげ**でも成立する。
+  // ⚠️ 旋回は本当に円弧を描く（0d-3「6体目 U の追い作業」2026-08-31）＝滞空が長いほど
+  //    落ちる軸（水平/垂直）が周回のどこで揃うか実測に依存し「上へ逃げれば必ず垂直へ
+  //    外れる」という前提が崩れる。∴`airMs:1` で**下限をほぼ0にし**、`rise` 直後の
+  //    まだ角度がほぼ0（同じ行＝水平）のうちに揃わせる＝落ちる軸を水平に固定する。
+  // ⚠️ airMs をほぼ0にした分、1周期が短くなった＝ticks を長く取ると2周目の dive まで
+  //    観測窓に入り、2周目の（別の）vec と1周目の vec の食い違いで赤くなる。1周目の
+  //    land で止まる長さに絞る。
   const out = await trackEagle(page, {
-    ticks: 40, debugOff: true, patch: DIVE_ONLY,
+    ticks: 35, debugOff: true, patch: { ...DIVE_ONLY, soar: { ...c, airMs: 1 } },
     moveWhen: { phase: 'aim', dir: 'up', steps: 3 },
   });
   const s = out.samples;
@@ -2613,7 +2649,7 @@ test('㊶ 落ちる軸に立ち止まると急降下に潰され、着地硬直�
   const m = ENEMY_META['U'];
   const c = m.soar;
   // 一歩も動かない＝軸に乗ったまま。鉤爪も雷撃弾も止める＝HP が減ったら急降下以外にありえない。
-  const out = await trackEagle(page, { ticks: 40, debugOff: true, patch: DIVE_ONLY });
+  const out = await trackEagle(page, { ticks: 100, debugOff: true, patch: DIVE_ONLY });
   const s = out.samples;
 
   // 当たった tick＝落下の途中で HP が減った tick
@@ -2668,7 +2704,7 @@ test('㊷ 滞空中の鷲王には剣が届かず、矢だけが刺さって墜�
   const c = m.soar;
   // 予告（`aim`＝滞空の窓・5 tick）のあいだに剣→矢の順で当てる（相で待つ＝tick 固定にしない）。
   const out = await trackEagle(page, {
-    ticks: 70, debugOff: true, patch: DIVE_ONLY,
+    ticks: 110, debugOff: true, patch: DIVE_ONLY,
     hits: [{ phase: 'aim', dmg: 4, atkType: 'sword' }, { phase: 'aim', dmg: 4, atkType: 'arrow' }],
   });
   const s = out.samples;
@@ -2722,16 +2758,24 @@ test('㊷ 滞空中の鷲王には剣が届かず、矢だけが刺さって墜�
     .toBeGreaterThanOrEqual(arrowTick.stunUntil + c.groundMs);
 });
 
-// ── ㊸ 空では鉤爪の間合いに入らず旋回で軸へ回り込む／雷撃弾だけが空から届く ───────────
+// ── ㊸ 空では鉤爪の間合いに入らず旋回は本当に円弧を描いて回る／雷撃弾だけが空から届く ─────
 // ⚠️ 「滞空中は近接を出さない」ゲート（enemy-ai.js `isSoaring(e,meta) && MELEE_ATTACK_TYPES`）
 //    そのものは**実プレイでは踏めない**（旋回の許容ずれ 1.1 < 鉤爪の直交許容 SWORD_PERP+0.5
 //    ＝1.3 で、位置は 0.5 刻み∴間の帯に立てない）＝二重の安全網。∴ここで測るのは
 //    **本物の保証**＝「空に居るあいだ鉤爪の間合い（range 1.1）に自分から入らない」。
-test('㊸ 滞空中は鉤爪を出さず、旋回は寄って来ないまま軸へ回り込み、雷撃弾だけが空から届く', async ({ page }) => {
-  const c = ENEMY_META['U'].soar;
+// ⚠️ 2026-08-31 ユーザー実プレイ指摘＝「90度に曲がることではなく、本当に円弧を描くように
+//    回転する」で「四角い軌道（DECISIONS 2026-08-30（5）決定6）」は失効＝連続角度で回る
+//    形（DECISIONS 2026-08-30（7）＝J の `coil` と同じ仕組み）に置き換えた。ここからは
+//    「中心（`_soarCx/Cy`）から見た距離が旋回半径のまわりに留まる（＝本当に円を描く）・
+//    向きが `soarSpin`（±1）で不規則な周期で反転する」を測る。
+test('㊸ 滞空中は鉤爪を出さず、旋回は本当に円弧を描いて回り、雷撃弾だけが空から届く', async ({ page }) => {
   // 軸を外した湧き（1,3）＝旋回（`air`）の窓が数 tick 続く＝空からの遠隔を捕まえられる。
+  // `alignTol:-1` で軸合わせを常に失敗させ、`airMaxMs`（保険）が尽きるまで確実に旋回を
+  // 観測できるようにする（乱数・実プレイの軌道に依存しない＝㊼と同じ作法）。
+  const c = ENEMY_META['U'].soar;
+  const patch = { ...BOLT_FAST, soar: { ...c, alignTol: -1 } };
   const out = await trackEagle(page, {
-    ticks: 60, spawn: U_OFF_SPAWN, patch: BOLT_FAST,
+    ticks: 120, spawn: U_OFF_SPAWN, patch,
   });
   const s = out.samples;
   const sky = s.filter(x => x.soaring);
@@ -2743,37 +2787,88 @@ test('㊸ 滞空中は鉤爪を出さず、旋回は寄って来ないまま軸�
   for (const x of sky) {
     expect(x.swingAt, `滞空中の t${x.t} に鉤爪の予告が立った＝空から殴られる`).toBeNull();
   }
-  // ② 旋回（air）は**寄って来ない**＝近すぎる（`orbitRange - 0.5` の内側）ときは離れる。
-  //    ⚠️ 「滞空中は常に鉤爪の間合いの外」とは書けない＝地上で密着してから舞い上がる回が
-  //       ある（＝上がった瞬間は近い）。保証は「**空に居るあいだ自分から詰めない**」の側。
-  const airTicks = s.filter((x, i) => x.soarPhase === 'air' && s[i - 1]?.soarPhase === 'air');
-  expect(airTicks.length, '旋回の tick が観測できていない').toBeGreaterThan(0);
-  for (const x of airTicks) {
-    const prev = s[s.indexOf(x) - 1];
-    if (prev.reach >= c.orbitRange - 0.5) continue;      // 遠い側は軸合わせで詰めてよい
-    expect(x.reach, `旋回中の t${x.t} に鉤爪の間合いへ自分から詰めた＝旋回が「追う」に化けている`)
-      .toBeGreaterThanOrEqual(prev.reach);
+
+  // 旋回の状態（`_soarCx/Cy/soarSpin/soarArc`）が立っている air サンプルだけを見る
+  // （歩幅の溜めが1.0に達する最初の一歩まで未初期化＝正常）。
+  const airSamples = s.filter(x => x.soarPhase === 'air' && x.soarCx != null);
+  expect(airSamples.length, '旋回の状態が1度も観測できていない').toBeGreaterThan(5);
+
+  // ② **中心からの距離**が旋回半径（`orbitRange`）のまわりに留まる＝本当に円を描いている
+  //    （四角い軌道の名残りの直線飛行や、壁まで一直線に離れる穴〈実測で見つけた〉が
+  //    無いことの数値的な証拠）。格子刻み（0.5セル）のノイズぶん幅を持たせる。
+  for (const x of airSamples) {
+    const dist = Math.hypot(x.x + 0.5 - x.soarCx, x.y + 0.5 - x.soarCy);   // 2×2 ∴中心は+0.5
+    expect(dist, `旋回中の t${x.t} の中心からの距離が旋回半径から大きく外れた（${dist.toFixed(2)}）`)
+      .toBeLessThanOrEqual(c.orbitRange + 1.2);
   }
-  // ③ 旋回＝**動きながら軸へ回り込む**。時間切れ（airMs）ではなく軸が揃って終わる。
-  const air = soarRuns(s).find(r => r.phase === 'air' && r.complete && r.samples.length >= 2);
-  expect(air, '旋回の窓が観測できていない（軸を外した湧きが効いていない？）').toBeTruthy();
-  expect(air.samples.length, '旋回が airMs いっぱい続いた＝軸へ回り込めていない')
-    .toBeLessThan(Math.round(c.airMs / TICK_MS));
-  const first = air.samples[0], last = air.samples[air.samples.length - 1];
-  expect(air.samples.some(x => x.x !== first.x || x.y !== first.y),
-    '旋回中に1歩も動かない＝空で止まっている').toBe(true);
-  // 直交のずれ（＝落ちる軸に対するずれ）が縮んで、最後は許容の内側に入る
-  const offOf = (x) => {
-    const cx = x.x + 0.5, cy = x.y + 0.5;                 // 2×2 ∴中心は左上＋0.5
-    return Math.abs(x.py - cy) >= Math.abs(x.px - cx) ? Math.abs(x.px - cx) : Math.abs(x.py - cy);
-  };
-  expect(offOf(last), '旋回が終わっても軸のずれが許容の外＝揃わずに落ち始めた')
-    .toBeLessThanOrEqual(c.alignTol + 0.5);
-  expect(offOf(last), '旋回でずれが縮んでいない＝軸へ回り込んでいない').toBeLessThan(offOf(first));
-  // ④ 雷撃弾（遠隔）は空からも飛ぶ＝「空に居るあいだ何も起きない」にならない
+  // 距離が1点に固定されない（＝実際に円周上を動いている・棒立ちではない）
+  const dists = airSamples.map(x => Math.hypot(x.x + 0.5 - x.soarCx, x.y + 0.5 - x.soarCy));
+  expect(Math.max(...dists) - Math.min(...dists), '中心からの距離が一切変わらない＝動いていない')
+    .toBeGreaterThan(0.5);
+
+  // ③ 観測は整数／有限（乱数っぽく見えても実は決定的＝テストが揺れない）。
+  //    soarSpin は常に ±1・soarArc は0以上・soarNextFlip は有限の正数
+  //    （`e.id` が `"行,列"` の文字列で四則演算に使うと NaN になる実バグを2026-08-31に
+  //    見つけて直した＝ここで NaN に戻っていないかを固定する）。
+  for (const x of airSamples) {
+    expect([1, -1], `t${x.t} の soarSpin が ±1 でない`).toContain(x.soarSpin);
+    expect(x.soarArc, `t${x.t} の soarArc が0以上の有限値でない`).toBeGreaterThanOrEqual(0);
+    expect(Number.isFinite(x.soarNextFlip) && x.soarNextFlip > 0,
+      `t${x.t} の soarNextFlip が有限の正数でない（id を数値扱いした NaN の再発）`).toBe(true);
+  }
+  // ④ 向きは不規則な周期で反転する（DECISIONS 2026-08-30（7）＝乱数は使わないが
+  //    「四角い軌道」のような単調な等間隔にはしない）＝観測窓の中で最低1回は反転する。
+  let flips = 0;
+  for (let i = 1; i < airSamples.length; i++) {
+    if (airSamples[i].soarSpin !== airSamples[i - 1].soarSpin) flips++;
+  }
+  expect(flips, '旋回中に1度も反転していない＝向きが固定されたまま').toBeGreaterThanOrEqual(1);
+
+  // ⑤ 雷撃弾（遠隔）は空からも飛ぶ＝「空に居るあいだ何も起きない」にならない
   expect(sky.some(x => x.bolts.includes('stone')),
     '滞空中に雷撃弾が1発も飛ばない＝空に居るあいだ無害な案山子').toBe(true);
 });
+
+// ── ㊾ 旋回の中心はプレイヤーへ「緩く」追従する（きっちり固定しない）─────────────────
+// ユーザー確定（2026-08-31）＝「きっちりプレーヤーに追従させず、うごいたら動いた方向に
+// 少しずつ中心軸を移動させる」。中心が①動かないプレイヤーには落ち着いて止まり、
+// ②動くプレイヤーには即座に追いつかず、時間をかけて差を詰めることを両方確かめる。
+test('㊾ 旋回の中心はプレイヤーを瞬時に追わず、時間をかけて差を詰める', async ({ page }) => {
+  const c = ENEMY_META['U'].soar;
+  const out = await trackEagle(page, {
+    ticks: 90, patch: { soar: { ...c, alignTol: -1 } },
+    moveWhen: { phase: 'air', dir: 'right', steps: 12 },
+  });
+  const s = out.samples;
+  const air = s.filter(x => x.soarPhase === 'air' && x.soarCx != null);
+  expect(air.length, '旋回の状態が観測できていない').toBeGreaterThan(10);
+  expect(out.movedAt.length, 'プレイヤーが動いた記録が無い').toBeGreaterThan(0);
+
+  // ① 滞空の開始時点＝旋回の中心はプレイヤーの**元の位置**から始まる（`resetSoarOrbit` が
+  //    入った瞬間にそこへ揃える）。`moveWhen` は air の最初の tick から動かし始めるため
+  //    「動く前に何 tick か静定する窓」は無い＝開始直後の値で確かめる。
+  const startPx = s[0].px;
+  expect(air[0].soarCx, '滞空開始時点で中心がプレイヤーの元位置から始まっていない')
+    .toBeCloseTo(startPx, 0);
+
+  // ② プレイヤーが動いた直後、中心はまだプレイヤーの新しい位置に**きっちり**は乗らない
+  //    （＝瞬時に追従しない）。差がゼロにならないことだけを見る＝丸めの偶然一致を避ける。
+  const justAfterMove = air.find(x => x.t === out.movedAt[0] + 1);
+  expect(justAfterMove, '動いた直後の旋回サンプルが観測できていない').toBeTruthy();
+  const playerJustAfter = s.find(x => x.t === justAfterMove.t)?.px;
+  expect(Math.abs(justAfterMove.soarCx - playerJustAfter),
+    '動いた直後に中心がプレイヤーへ完全に飛んだ＝きっちり追従してしまっている')
+    .toBeGreaterThan(0.01);
+
+  // ③ 時間が経つと中心は徐々にプレイヤー側へ近づく（差が単調に縮む・瞬間移動ではない）
+  const after = air.filter(x => x.t > out.movedAt[out.movedAt.length - 1]);
+  expect(after.length, '追いつく過程の窓が観測できていない').toBeGreaterThan(3);
+  const gaps = after.map(x => Math.abs(x.px - x.soarCx));
+  expect(gaps[0], '差が最初から詰まっている＝緩い追従になっていない').toBeGreaterThan(0);
+  expect(gaps[gaps.length - 1], '時間が経っても差が縮んでいない＝追従していない')
+    .toBeLessThan(gaps[0]);
+});
+
 
 // ── ㊹ HP 半分で「地上の時間が短く・落下が速く」変わる（層1 の `phases[].soar` が出荷データで効く）──
 test('㊹ HP 半分で地上の窓と予告が短くなり、急降下が速くなる', async ({ page }) => {
@@ -2882,4 +2977,73 @@ test('㊻ bal_storm_eagle は 10×12・外周は通路以外すべて壁・U が
   }
   // 軸を外した湧き (1,3)＝㊸（空からの遠隔）の前提
   expect(at(U_OFF_SPAWN.row, U_OFF_SPAWN.col), '軸を外した湧きが床でない').toBe(TILE.FLOOR);
+});
+
+// ── ㊼ airMs は下限・軸が最後まで揃わなければ保険（airMaxMs）で必ず落ちる ─────────────
+// 0d-3「6体目 U の追い作業」（2026-08-30・決定5）＝「最低これだけ回る」に意味が変わった
+// airMs の**もう半分**＝揃わなかった回の保証（宙吊り防止）を測る。`alignTol: -1` を注入すると
+// `soarDiveVec` は `off > alignTol + halfOff` が常に真になり**絶対に揃わない**（Math.abs は
+// 0 未満を返さない）＝保険の経路だけを確実に踏める（乱数・実プレイの軌道に依存しない）。
+test('㊼ 軸が最後まで揃わなければ airMaxMs で強制的に落ちる（宙吊り防止）', async ({ page }) => {
+  const c = ENEMY_META['U'].soar;
+  const out = await trackEagle(page, {
+    ticks: 70, patch: { soar: { ...c, alignTol: -1 } },
+  });
+  const s = out.samples;
+  const air = soarRuns(s).find(r => r.phase === 'air' && r.complete);
+  expect(air, '完結した air の窓が観測できていない').toBeTruthy();
+  // 保険の上限ぴったりで抜ける（`alignTol:-1` は自然な揃いを一切許さない∴強制のみが理由）
+  expect(air.samples.length, 'air の窓が airMaxMs（保険の上限）と合わない＝保険が効いていない')
+    .toBe(Math.round(c.airMaxMs / TICK_MS));
+  // 抜けた先（aim）の軸は `soarAnyVec`（成分の大きい軸）＝null ではない＝必ず落ちる
+  const aim = soarRuns(s).find(r => r.phase === 'aim' && r.complete);
+  expect(aim, '保険で抜けたのに aim（急降下の予告）へ移っていない').toBeTruthy();
+  expect(aim.samples[0].soarVec, '保険で抜けたのに落ちる軸が決まっていない＝宙吊りのまま')
+    .toBeTruthy();
+  // 着地まで一周する＝機構が本当に止まらない（宙吊り防止の目的そのもの）
+  expect(soarRuns(s).some(r => r.phase === 'land'), '保険で抜けても着地まで進んでいない').toBe(true);
+});
+
+// ── ㊽ 弓は画面内に飛んでいる自分の矢が同時2本まで（3本目は1本目が消えてから）─────────
+// DECISIONS 2026-08-30（5）決定2＝弓は piercing かつクールダウン無し∴連打の唯一の制約が
+// 矢の残数だった（U の直線移動と重なり過剰ダメージ）。ブーメラン（同時1枚）と同じ作法。
+test('㊽ 弓は画面内2本まで（3本目は1本目が消えてから）', async ({ page }) => {
+  const errors = [];
+  page.on('pageerror', e => errors.push(e.message));
+  // 隅（1,1）から右へ＝広い開けた床（bal_storm_eagle・鷲王は行が違うので射線に入らない）。
+  await gotoFrozen(page, previewUrl('bal_storm_eagle', 1, 1,
+    { ps_hearts: '10', ps_sword: '0', ps_shield: '0', ps_armor: '0', ps_bow: '1' }));
+  const out = await page.evaluate(() => {
+    const g = window.__game;
+    g.movePlayer('right'); g.step(1);    // 右向き＝壁に当たらない開けた向き
+    const arrows = () => g.getProjectiles().filter(p => p.type === 'arrow' && p.owner === 'player');
+    g.useSubItem(); g.step(1);           // 1本目
+    const afterFirst = arrows().length;
+    const countAfterFirst = g.getPlayer().subItems.bow.count;
+    g.useSubItem(); g.step(1);           // 2本目
+    const afterSecond = arrows().length;
+    g.useSubItem(); g.step(1);           // 3本目（拒否されるはず＝矢を消費しない）
+    const afterThird = arrows().length;
+    const countAfterThird = g.getPlayer().subItems.bow.count;
+    return { afterFirst, afterSecond, afterThird, countAfterFirst, countAfterThird };
+  });
+  expect(errors).toEqual([]);
+  expect(out.afterFirst, '1本目が飛んでいない').toBe(1);
+  expect(out.afterSecond, '2本目が飛んでいない＝同時2本まで許されていない').toBe(2);
+  expect(out.afterThird, '3本目が出た＝同時2本の上限が効いていない').toBe(2);
+  // 拒否された3本目は矢を消費していない（残数が減っていない）
+  expect(out.countAfterThird, '拒否された3本目で矢を消費した').toBe(out.countAfterFirst - 1);
+
+  // 1本が画面外まで飛んで消えるのを待ってから3本目を撃つ→今度は通る
+  const out2 = await page.evaluate(() => {
+    const g = window.__game;
+    for (let i = 0; i < 40; i++) g.step(1);   // 貫通∴壁か画面外まで進んで消える
+    const remaining = g.getProjectiles().filter(p => p.type === 'arrow' && p.owner === 'player').length;
+    g.useSubItem();
+    const after = g.getProjectiles().filter(p => p.type === 'arrow' && p.owner === 'player').length;
+    return { remaining, after };
+  });
+  expect(out2.remaining, '40 tick 後も矢が画面に残っている＝消える前提が崩れている').toBeLessThan(2);
+  expect(out2.after, '1本消えたのに3本目が出ない＝上限が「同時」ではなく別の何かで縛られている')
+    .toBe(out2.remaining + 1);
 });

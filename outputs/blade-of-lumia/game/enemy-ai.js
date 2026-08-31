@@ -1066,14 +1066,18 @@ export function createEnemyAi(deps) {
 	}
 
 	// ── Phase 8-4 (4) 0d-3（6体目 U 嵐の鷲王）: 滞空と急降下（soar）───────────────
-	// meta.soar = { groundMs, riseMs, airMs, orbitRange, orbitSpeed, alignTol, aimMs,
-	//               diveSpeed, diveCells, diveHitRange, diveAtk, landFreezeMs, crashStunMs }
+	// meta.soar = { groundMs, riseMs, airMs, airMaxMs, orbitRange, orbitSpeed, alignTol,
+	//               aimMs, diveSpeed, diveCells, diveHitRange, diveAtk, landFreezeMs,
+	//               crashStunMs, centerFollow, flipLapsMin, flipLapsMax, reachedBy }
 	// 6拍の状態機械。他の12体と違うのは「近づき方」ではなく **どこに居るか**：
 	//   ground … 地上（`groundMs`）＝歩いて寄り鉤爪を振る＝**プレイヤーが剣を入れられる窓**
 	//   rise   … 舞い上がる溜め（`riseMs`・動かない・攻撃しない・**まだ地上＝殴れる**）
-	//   air    … 滞空（`airMs` が上限）＝`orbitRange` を保って旋回し軸（行/列）を合わせる。
-	//             **剣/ブーメラン/爆風/炎は届かない＝矢だけが届く**（combat.js isSoarOutOfReach）。
-	//             軸のずれが `alignTol` 以内に入った tick に `aim` へ移る（上限超過なら強制）
+	//   air    … 滞空＝`orbitRange` を保ちながら**部屋を回る旋回**（DECISIONS 2026-08-30（5）
+	//             決定6・PLAN 0d-3「6体目 U の追い作業」＝旧仕様「軸へ回り込む」は直線移動を
+	//             生み弓の連打を許した反省で置き換えた）。**剣/ブーメラン/爆風/炎は届かない
+	//             ＝矢だけが届く**（combat.js isSoarOutOfReach）。`airMs` は**下限**（最低これ
+	//             だけ回る）＝下限を過ぎてから軸（行/列）が揃った tick に `aim` へ移る。揃わない
+	//             まま `airMaxMs`（保険の上限）を超えたら強制的に落ちる＝宙吊り防止。
 	//   aim    … 急降下の予告（`aimMs`）＝落ちる軸をここで確定する∴**軸から外れれば避けられる**
 	//   dive   … 急降下（`diveSpeed`）＝接触で `diveAtk`／地形に着けばそこで止まる
 	//   land   … 着地硬直（`landFreezeMs`）＝**殴り返す窓**（`.attack-recover` の絵が出る）
@@ -1202,19 +1206,30 @@ export function createEnemyAi(deps) {
 			return true;
 		}
 		if (e._soarPhase === 'air') {
+			// airMs は**下限**（DECISIONS 2026-08-30（5）決定5）＝最低限これだけ回るまで
+			// 軸合わせを判定しない（旧仕様＝揃った瞬間に打ち切る、を待たせる側へ変えた）。
+			// ⚠️ `e._soarAt` はここでは「もう抜けられる時刻」＝下限の終わりの意味に変わった。
+			if (now < e._soarAt) return false;   // 旋回は `enemySoarStride`（＝ゲートの中）が持つ
 			const vec = soarDiveVec(e, player, cfg);
-			if (vec || now >= e._soarAt) {
+			// 保険（宙吊り防止）＝下限を過ぎても軸が揃わないまま `airMaxMs` を超えたら
+			// `soarAnyVec` で強制的に落とす（旧 airMs の役割を引き継ぐ・別の上限として残した）。
+			const maxAt = e._soarMaxAt ?? e._soarAt;
+			if (vec || now >= maxAt) {
 				e._soarVec = vec ?? soarAnyVec(e, player);
 				e.dir = soarVecDir(e._soarVec);
 				enterSoarPhase(e, 'aim', now, cfg.aimMs ?? 600);
 				playSound('soarDive');
 				return true;
 			}
-			return false;                // 旋回は `enemySoarStride`（＝ゲートの中）が持つ
+			return false;
 		}
 		if (e._soarPhase === 'rise') {
 			if (now < e._soarAt) return true;
 			enterSoarPhase(e, 'air', now, cfg.airMs ?? 2880);
+			// 保険の上限も**入った瞬間に固定する**（`_soarSpan` と同じ作法）。
+			e._soarMaxAt = now + (cfg.airMaxMs ?? (cfg.airMs ?? 2880) * 1.5);
+			// 旋回はこの滞空のあいだ毎回その場から巻き直す（中心・角度・反転の周期を初期化）。
+			resetSoarOrbit(e, cfg);
 			return true;                 // 舞い上がった tick は専有（旋回は次の tick から）
 		}
 		// land ＝着地硬直（＝反撃の窓）。明けたら**必ず ground へ戻す**。
@@ -1234,9 +1249,59 @@ export function createEnemyAi(deps) {
 		return true;
 	}
 
+	// ⚠️ 敵の `id` は `"行,列"` の文字列（`buildEnemies`）＝そのまま四則演算に使うと NaN に
+	//    なる（`"4,7" * 97` → NaN・`"4,7" % 2` も NaN∴常に同じ側に落ちる＝coil の `_coilSpin`
+	//    が全個体で `-1` 固定になっていた既存の潜在欠陥と同根＝実測で発見・今回は soar 側だけ
+	//    このハッシュで直す＝J の coil は対象外〈scope外〉）。数値シードが要る場所はこれを通す。
+	function numericSeedOf(id) {
+		let h = 0;
+		const s = String(id);
+		for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) | 0;
+		return h;
+	}
+	// 旋回の反転は不規則に見えるようにするが**乱数は使わない**（GUIDE §7-3）。
+	// `e.id` と反転回数から決定的に「ランダムに見える」小数（0〜1）を作る＝shader 定番の
+	// sin ハッシュ（真の乱数ではない＝同じ入力からは必ず同じ出力＝テストが揺れない）。
+	function soarPseudo01(seed) {
+		const v = Math.sin(seed * 12.9898) * 43758.5453;
+		return v - Math.floor(v);
+	}
+	// 次の反転までの周回量（ラジアン）＝`flipLapsMin`〜`flipLapsMax` の間から決定的に選ぶ。
+	function soarFlipArc(e, cfg) {
+		const min = cfg.flipLapsMin ?? 0.4, max = cfg.flipLapsMax ?? 1.6;
+		const seed = numericSeedOf(e.id) * 97 + (e._soarFlipCount ?? 0) * 31;
+		const laps = min + soarPseudo01(seed) * (max - min);
+		return laps * Math.PI * 2;
+	}
+
+	// 新しい滞空（`air`）に入るたびに旋回をその場から巻き直す（tickSoar の rise→air が呼ぶ）。
+	// 中心はプレイヤーの**今の位置**から始める（`_soarSpin` は敵の生涯で持続＝`_coilSpin` と
+	// 同じ作法・`e.id` から決定的に初期化）。
+	function resetSoarOrbit(e, cfg) {
+		const player = getPlayer();
+		e._soarCx = player ? player.x : e.x;
+		e._soarCy = player ? player.y : e.y;
+		if (e._soarSpin == null) e._soarSpin = (numericSeedOf(e.id) % 2 === 0) ? 1 : -1;
+		const { cx, cy } = enemyCellCenter(e);
+		const dx = cx - e._soarCx, dy = cy - e._soarCy;
+		// 今居る方角から巻き始める＝中心を決めた瞬間に体が輪の反対側へ跳ばない（coil と同じ）。
+		e._soarAng = (Math.abs(dx) < 0.01 && Math.abs(dy) < 0.01) ? 0 : Math.atan2(dy, dx);
+		e._soarArc = 0;
+		e._soarFlipCount = 0;
+		e._soarNextFlip = soarFlipArc(e, cfg);
+	}
+
 	// 移動（＝ゲートの中）。相によって**寄り方そのものが変わる**：
 	//   ground … 普通に寄る（`enemyChase`）＝地上では他の敵と同じ「追う」
-	//   air    … 旋回＝`orbitRange` を保ちながら**軸へ回り込む**（自分から剣の間合いに入らない）
+	//   air    … 旋回＝**本当に円弧を描いて回る**（J の `coil` と同じ連続角度の仕組み＝
+	//            `_soarAng` を cos/sin で動かす）。ユーザー実プレイ指摘＝「90度に曲がる
+	//            ことではなく、本当に円弧を描くように回転する」で旧仕様（四角い軌道・
+	//            DECISIONS 2026-08-30（5）決定6）は失効した（詳細＝同（7））。
+	//            中心（`_soarCx/_soarCy`）はプレイヤーへ**緩く追従する**（`centerFollow`＝
+	//            1歩ごとに差を割合だけ詰める）＝きっちり中心に固定しない（ユーザー確定）。
+	//            回る向き（`_soarSpin`）は不規則に見える周期で反転する（`flipLapsMin/Max`・
+	//            上の `soarFlipArc` が乱数なしで決める＝ユーザー確定「不規則（時間や乱数
+	//            っぽく）」）。壁に当たって回れない側も同じ「反転」として扱う（coil と同じ）。
 	function enemySoarStride(e, meta, speed, cfg) {
 		if (!cfg) return;
 		if (e._soarPhase == null || e._soarPhase === 'ground') { enemyChase(e, speed); return; }
@@ -1245,41 +1310,54 @@ export function createEnemyAi(deps) {
 		if (!player) return;
 		const { cx, cy } = enemyCellCenter(e);
 		const dx = player.x - cx, dy = player.y - cy;
-		// 向きはプレイヤーへ（＝「狙われている」が読める）。
-		// ⚠️ 歩幅の溜め（`e.accum`）より**前**に書く（GUIDE §1-2）＝向き直りが1歩ぶん遅れない。
+		// 向きはプレイヤーへ（＝「狙われている」が読める）。**移動の角度とは別の値**。
 		if (Math.abs(dx) > 0.01 || Math.abs(dy) > 0.01) {
 			e.dir = Math.abs(dx) >= Math.abs(dy) ? (dx > 0 ? 'right' : 'left') : (dy > 0 ? 'down' : 'up');
 		}
-		// 旋回の速さは `soar` が持つ（＝地上の `speed` とは別の数）。
+		// ⚠️ 2026-08-31 ユーザー実プレイ再指摘＝「まっすぐ飛んでいるように見える」
+		// 「なんで X 軸か Y 軸かどちらかにだけ直進移動なの？」＝**実際にそうなっていた**。
+		// 旧実装は「1歩先の目標点へ最短軸（4方向）で1マス寄る」（`coil` を丸ごと転用）＝
+		// 目標点はごく僅かしか進まない（1歩あたり弧長 MOVE_STEP）のに、`resetSoarOrbit` した
+		// 瞬間の体は中心から半径 R ぶん離れていない（`ground` の追いで密着していた）∴
+		// **最初の数歩は「弧を追う」のではなく「半径のズレを1本の軸で埋める」動きになり、
+		// 見た目はまっすぐな直線**になった（実測＝x だけ数歩→y だけ数歩、の L 字）。
+		// ∴**目標点そのものへ毎 tick 連続座標で近づける**（MOVE_STEP のマス目に丸めない）
+		// ＝弧が追いつくのを待たず、体そのものが円周上の点を直接なぞる。半径のズレが
+		// 大きい最初だけ最大歩幅で近づき、ズレが無くなれば弧の進みと歩幅がほぼ一致する
+		// ＝結果として「円に収束してからは円をなぞる」滑らかな動きになる。
+		const follow = cfg.centerFollow ?? 0.12;
+		// 中心はプレイヤーへ**緩く追従**（毎 tick、差の `centerFollow` 割合だけ詰める）＝
+		// きっちり追いかけない＝プレイヤーが動くと中心もゆっくり動いた方向へずれる。
+		e._soarCx += (player.x - e._soarCx) * follow;
+		e._soarCy += (player.y - e._soarCy) * follow;
+
+		const R = cfg.orbitRange ?? 3.5;
+		// 角速度＝旋回の速さ（`orbitSpeed`）を弧長→ラジアンに変換（`enemyCoil` と同じ式）。
 		// ⚠️ プレイヤー（1.0）より必ず遅い数にする（GUIDE §7-2）＝データ側のテストで固定する。
-		e.accum = (e.accum ?? 0) + (cfg.orbitSpeed ?? 0.75);
-		if (e.accum < 1.0) return;
-		e.accum -= 1.0;
-		const reach = enemyEdgeDist(e, player.x, player.y);
-		const orbitRange = cfg.orbitRange ?? 3.5;
-		const vertical = Math.abs(dy) >= Math.abs(dx);      // 主軸＝落ちるときの軸
-		const off = vertical ? dx : dy;                     // 直交のずれ＝軸合わせで詰める量
-		// 1歩の候補を優先順に並べる（先に通れたものを採る＝壁際で固まらない）：
-		const cands = [];
-		//   ① 近すぎる＝主軸に沿って**離れる**（自分から剣の間合いに入らない＝滞空の意味）
-		if (reach < orbitRange - 0.5) {
-			cands.push(vertical ? [-(Math.sign(dy) || 1), 0] : [0, -(Math.sign(dx) || 1)]);
-		}
-		//   ② 軸合わせ＝直交のずれを詰める（＝急降下できる車線へ回り込む＝これが「旋回」）
-		if (Math.abs(off) > (cfg.alignTol ?? 0.6)) {
-			cands.push(vertical ? [0, Math.sign(off)] : [Math.sign(off), 0]);
-		}
-		//   ③ 遠すぎる＝主軸に沿って寄る（射程の端で棒立ちにならない）
-		if (reach > orbitRange + 0.5) {
-			cands.push(vertical ? [Math.sign(dy) || 1, 0] : [0, Math.sign(dx) || 1]);
-		}
-		for (const [sy, sx] of cands) {
-			const ny = e.y + sy * MOVE_STEP, nx = e.x + sx * MOVE_STEP;
-			if (!isPassableForEnemy(ny, nx, e)) continue;
-			e.y = ny; e.x = nx;
-			moveCharEl(`enemy-${e.id}`, e.x, e.y);
-			return;
-		}
+		const omega = (cfg.orbitSpeed ?? 0.75) * MOVE_STEP / Math.max(0.5, R);
+		const nextAng = e._soarAng + e._soarSpin * omega;
+		const halfW = ((e.w ?? 1) - 1) / 2, halfH = ((e.h ?? 1) - 1) / 2;
+		const targetX = e._soarCx + Math.cos(nextAng) * R - halfW;
+		const targetY = e._soarCy + Math.sin(nextAng) * R - halfH;
+		const gdx = targetX - e.x, gdy = targetY - e.y;
+		const gap = Math.hypot(gdx, gdy);
+		// 1 tick の最大歩幅＝旧仕様の1歩ぶん（MOVE_STEP）と同じ上限にする＝速度の意味を変えない。
+		const maxStep = (cfg.orbitSpeed ?? 0.75) * MOVE_STEP;
+		const nx = gap <= maxStep || gap < 1e-6 ? targetX : e.x + (gdx / gap) * maxStep;
+		const ny = gap <= maxStep || gap < 1e-6 ? targetY : e.y + (gdy / gap) * maxStep;
+
+		const flipNow = () => {
+			e._soarSpin = -e._soarSpin;
+			e._soarArc = 0;
+			e._soarFlipCount = (e._soarFlipCount ?? 0) + 1;
+			e._soarNextFlip = soarFlipArc(e, cfg);
+		};
+		if (!isPassableForEnemy(ny, nx, e)) { flipNow(); return; }   // 壁に当たった側＝反転（coil と同じ）
+		e.x = nx; e.y = ny;
+		moveCharEl(`enemy-${e.id}`, e.x, e.y);
+		e._soarAng = nextAng;
+		e._soarArc = (e._soarArc ?? 0) + omega;
+		if (e._soarArc >= (e._soarNextFlip ?? Infinity)) flipNow();
 	}
 
 	// ── 滞空の告知（機構の唯一の可視化）───────────────────────────────
@@ -1308,6 +1386,14 @@ export function createEnemyAi(deps) {
 		const [sy, sx] = e._soarVec ?? [0, 0];
 		el.style.setProperty('--soar-vx', String(sx));
 		el.style.setProperty('--soar-vy', String(sy));
+		// 旋回の予告＝**止めずに絵だけ**で「そろそろ向きを変える」を伝える
+		// （DECISIONS 2026-08-30（5）決定1＝止まった敵は連打の的）。`_coilHeat` と同じ作法＝
+		// 単一の数（0＝反転直後・1＝次の反転直前）を絵（羽の傾き）・テストが読む。
+		if (e._soarPhase === 'air') {
+			const heat = Math.min(1, (e._soarArc ?? 0) / (e._soarNextFlip || 1));
+			el.style.setProperty('--soar-spin', String(e._soarSpin ?? 1));
+			el.style.setProperty('--soar-spin-heat', heat.toFixed(3));
+		}
 	}
 
 	// ── Phase 5.5k: 陸上敵の向き別スプライト名解決（DECISIONS 2026-08-10）─────

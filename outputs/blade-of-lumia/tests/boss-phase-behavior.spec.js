@@ -415,15 +415,20 @@ test('⑤ ENEMY_META の phases[] は既知のキーだけを持ち、閾値は�
         // ⚠️ `reachedBy`（滞空中に届く手段）は**相のキーに入れない**＝combat.js
         //    `isSoarOutOfReach` が読むのは常に基底の `meta.soar` ∴相に書いても効かない
         //    （書けてしまうと「後半だけ剣が届く」と読める死んだ指定になる）。
-        const SOAR_KEYS = ['groundMs', 'riseMs', 'airMs', 'orbitRange', 'orbitSpeed', 'alignTol',
-                           'aimMs', 'diveSpeed', 'diveCells', 'diveHitRange', 'diveAtk',
-                           'landFreezeMs', 'crashStunMs'];
+        const SOAR_KEYS = ['groundMs', 'riseMs', 'airMs', 'airMaxMs', 'orbitRange', 'orbitSpeed',
+                           'alignTol', 'aimMs', 'diveSpeed', 'diveCells', 'diveHitRange', 'diveAtk',
+                           'landFreezeMs', 'crashStunMs', 'centerFollow', 'flipLapsMin', 'flipLapsMax'];
         expect(Object.keys(p.soar).filter(k => !SOAR_KEYS.includes(k)),
           `${t} の phases[].soar に未知のキー（reachedBy は相では効かない）`).toEqual([]);
         for (const k of SOAR_KEYS) {
           expect(p.soar[k], `${t} の phases[].soar.${k} が正の数でない（＝部分指定）`)
             .toBeGreaterThan(0);
         }
+        expect(p.soar.centerFollow, `${t} の phases[].soar.centerFollow が1以上＝緩い追従でない`)
+          .toBeLessThan(1);
+        // airMs は**下限**（DECISIONS 2026-08-30（5）決定5）＝保険（airMaxMs）は必ずそれより長い
+        expect(p.soar.airMaxMs, `${t} の phases[].soar.airMaxMs が airMs 以下`)
+          .toBeGreaterThan(p.soar.airMs);
         // 相の予告も**必ず軸から外れられる**（予告の tick 数 × 1歩 > 落ちる軸の半幅）＝
         // 短くしすぎると「予告を見てから外れられない」＝告知が飾りになる（gaze と同じ作法）。
         const halfOff = ((m.size?.w ?? 1) - 1) / 2;
@@ -439,10 +444,11 @@ test('⑤ ENEMY_META の phases[] は既知のキーだけを持ち、閾値は�
         // 射抜いた（墜落）ほうが着地硬直より大きい隙＝矢を選ぶ理由が相でも崩れない
         expect(p.soar.crashStunMs, `${t} の phases[].soar は射抜く旨みが無い（気絶 <= 着地硬直）`)
           .toBeGreaterThan(p.soar.landFreezeMs);
-        // 空に居る時間が地上の窓（地上＋着地硬直）の3倍を超えない＝弓が無いと戦えない形にしない
-        const sky = p.soar.riseMs + p.soar.airMs + p.soar.aimMs;
+        // 空に居る時間が地上の窓（地上＋着地硬直）の3倍を超えない＝弓が無いと戦えない形にしない。
+        // ⚠️ **保険の上限（airMaxMs）で測る**＝軸が最後まで揃わない最悪回でも崩れない、が保証。
+        const sky = p.soar.riseMs + p.soar.airMaxMs + p.soar.aimMs;
         expect(sky / (p.soar.groundMs + p.soar.landFreezeMs),
-          `${t} の phases[].soar は空に居る時間が地上の3倍超`).toBeLessThanOrEqual(3);
+          `${t} の phases[].soar は最悪回（保険の上限）でも空に居る時間が地上の3倍超`).toBeLessThanOrEqual(3);
       }
     }
   }
