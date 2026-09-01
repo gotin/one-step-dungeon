@@ -39,6 +39,7 @@ import {
 	callGainHeartContainer,
 	callGrantReward,
 	callGiveSubItem,
+	getPlacedFlamesSnapshot,
 	getFloorDropsSnapshot,
 	callPickupFloorDropAt,
 	callSpawnFloorDrop,
@@ -165,6 +166,8 @@ window.__game = {
 	// Phase 9-5a: giveSubItem テスト用（quiver/bombBag 等の passive 拡充アイテム）
 	giveSubItem: (id) => callGiveSubItem(id),
 	// Phase 9-5c: フロアドロップ確認・手動拾得（テスト用）
+	// 2026-08-31: 置いた炎（ロウソク）の一覧。上限3・寿命・「1つの炎は1体に1回」の観測用
+	getPlacedFlames: () => getPlacedFlamesSnapshot(),
 	getFloorDrops: () => getFloorDropsSnapshot(),
 	pickupFloorDrop: (r, c) => callPickupFloorDropAt(r, c),
 	spawnFloorDrop: (r, c, type) => callSpawnFloorDrop(r, c, type),

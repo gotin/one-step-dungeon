@@ -775,6 +775,36 @@
     100% { transform: scaleY(0.5) translateY(10%); opacity: 0; }
 }
 
+/* 2026-08-31: 置いた炎（床で燃え続ける炎）。
+   一瞬の演出（.candle-fire）と同じ色で「同じ火」だと読めるようにし、違いは
+   **消え方**だけにする＝置いた炎は最後まで揺らめいて細く消える。
+   ⚠️ 燃えている時間（animation-duration）と経過ぶんの巻き戻し（animation-delay）は
+   JS が px と同じ扱いで入れる（projectile.js ensureFlameEl）＝時間の単一の真実は
+   constants.js の CANDLE_FLAME_MS 側。CSS に秒数を書かない（2箇所管理を作らない）。
+   ⚠️ z-index は 24＝キャラ（char-abs）より**上**に出す。床より下だと 2×2 のボスの体で
+   完全に隠れて「このタイルは燃えている」が読めなくなる（体の上に炎が乗って見えるのが正）。 */
+.candle-flame {
+    border-radius: 50% 50% 45% 45%;
+    background: radial-gradient(ellipse at 50% 78%,
+        rgba(255, 245, 180, 0.9) 0%,
+        rgba(255, 165, 45, 0.8) 38%,
+        rgba(220, 65, 20, 0.5) 72%,
+        rgba(160, 20, 10, 0.0) 100%);
+    box-shadow: 0 0 14px 5px rgba(255, 140, 40, 0.55);
+    transform-origin: 50% 100%;
+    animation-name: candle-flame-live;
+    animation-timing-function: linear;
+    animation-fill-mode: forwards;
+}
+@keyframes candle-flame-live {
+    0%   { transform: scaleY(0.4) scaleX(0.8); opacity: 0.5; }
+    6%   { transform: scaleY(1.1)  scaleX(1.0); opacity: 1; }
+    30%  { transform: scaleY(0.9)  scaleX(1.05); opacity: 0.9; }
+    55%  { transform: scaleY(1.05) scaleX(0.95); opacity: 1; }
+    80%  { transform: scaleY(0.85) scaleX(1.0); opacity: 0.85; }
+    100% { transform: scaleY(0.35) scaleX(0.7); opacity: 0.25; }
+}
+
 /* Phase 5.5k k-4: 火吐き亀の炎（甲羅を開いた瞬間に正面へ吐く）。
    ロウソクの炎（.candle-fire）と同じ「セル1枚に置いて実時間で消える DOM」だが、
    プレイヤーの持ち物ではなく敵の攻撃∴赤を強めて「浴びたら痛い」色にする。
@@ -948,4 +978,112 @@
 @keyframes gaze-shadow-grow {
     from { transform: translate(-50%, -50%) scale(0.22); opacity: 0.35; }
     to   { transform: translate(-50%, -50%) scale(1);    opacity: 0.85; }
+}
+
+/* ── Phase 8-4 (4) 0d-3: 舌の帯（I 沼地の大蝦蟇）─────────────────────────
+   口元（body の表面）から先端まで伸びる1本の帯。**位置・長さ・角度・濃さは JS
+   （enemy-ai.js syncTongueMotion）が px と rad で入れる**＝CSS 側に数を1つも持たない
+   （coil の輪・gaze の印と同じ作法）。
+   ⚠️ 他の告知と**形と色で区別する**（GUIDE §6-1）＝炎（`.enemy-fire-breath`＝橙の丸）・
+   水（`.enemy-coil-crush`＝青の丸）・輪（細い線の円）・印（塗られた円）に対して、
+   こちらは**斜めにも伸びる細長い帯**＝「引っ張られる線」だと一目で読める桃色。
+   ⚠️ `transform` は JS が回転で使っている∴**アニメは transform を触らない**
+   （触ると帯が体から外れて飛ぶ）＝掴んでいる合図は filter だけを動かす。
+   ⚠️ 長さの transition は入れない（伸びは毎 tick JS が刻む＝補間すると先端の絵が
+   判定より遅れて「届いていないのに掴まれた」に見える＝効果 ⊇ 判定が崩れる）。 */
+.enemy-tongue {
+    --tongue-heat: 0;
+    border-radius: 999px;
+    background: linear-gradient(to right,
+        hsl(345 75% 46% / 0.95) 0%,
+        hsl(342 85% 62% / 0.95) 45%,
+        hsl(338 95% 74% / 0.98) 88%,
+        hsl(330 100% 88% / 0.9) 100%);
+    box-shadow:
+        0 0 calc(5px + 7px * var(--tongue-heat)) calc(1px + 2px * var(--tongue-heat))
+            hsl(340 90% 60% / calc(0.45 + 0.35 * var(--tongue-heat))),
+        inset 0 -1px 2px hsl(330 60% 30% / 0.5);
+}
+
+/* 先端の膨らみ（＝掴む場所）。帯の右端に丸を1つ載せる＝「ここに触れたら掴まれる」。
+   判定（TONGUE_GRAB_PAD）より少しだけ大きく描く＝効果の範囲 ⊇ 判定の範囲。 */
+.enemy-tongue::after {
+    content: '';
+    position: absolute;
+    right: -3%;
+    top: 50%;
+    width: 12px; height: 12px;
+    margin: -6px 0 0 0;
+    border-radius: 50%;
+    background: radial-gradient(circle,
+        hsl(330 100% 90% / 0.98) 0%,
+        hsl(340 90% 66% / 0.95) 60%,
+        hsl(345 80% 46% / 0.7) 100%);
+}
+
+/* 掴んでいるあいだ＝脈打つ（引き寄せられている＝**今この時間が殴れる窓**の合図）。
+   周期は 0.26s＝噛みつきの予告（480ms）より速い＝「まだ噛まれていない」と読み分けられる。 */
+.enemy-tongue.tongue-attached {
+    animation: enemy-tongue-reel 0.26s ease-in-out infinite alternate;
+}
+@keyframes enemy-tongue-reel {
+    from { filter: brightness(1)   saturate(1);   }
+    to   { filter: brightness(1.5) saturate(1.4); }
+}
+
+/* ── 2026-09-01: のしかかりの危険域（I 沼地の大蝦蟇）────────────────────────
+   跳ぶ前（`pounce`）から着地（`pounceAir` の終わり）まで床に出る「潰される範囲」。
+   ⚠️ 位置・大きさ・角の丸みは **JS（enemy-ai.js syncPounceZone）が px で入れる**＝
+   CSS 側に数を持たない（輪・印・帯と同じ作法）。角丸の矩形なのは判定
+   （`enemyEdgeDist ≤ pounceRadius` ＝body の箱を r だけ膨らませた集合）と**厳密に同じ形**
+   にするため＝隠れダメージも過剰警告も出ない。
+   ⚠️ 他の床の告知と**形・色・変化の3つで区別する**（GUIDE §6-1）：
+     ・形＝**角丸の矩形**（輪 `.enemy-coil-ring`・印 `.enemy-gaze-mark` はどちらも円）
+     ・色＝沼の黄緑（輪＝水色→赤／印＝黄→赤／水の飛沫＝青／舌＝桃）
+     ・変化＝**大きさが変わらない**（印は影が膨らみ、輪は縮む）＝「範囲は最初から決まって
+       いる＝今すぐ外へ出れば避かる」だけを伝える形。
+   ⚠️ 盾では防げない打点の告知∴「向きを変える」ではなく「外へ出る」と読める絵にする
+   （床に範囲を描くのがその唯一の手段＝敵の絵に載せる予告だけでは範囲が読めない）。 */
+.toad-pounce-zone {
+    box-sizing: border-box;
+    border: 3px dashed hsl(84 78% 56% / 0.72);
+    background: radial-gradient(circle,
+        hsl(96 60% 30% / 0.10) 0%,
+        hsl(90 65% 34% / 0.20) 70%,
+        hsl(84 70% 42% / 0.30) 100%);
+    animation: toad-pounce-zone-throb 0.42s ease-in-out infinite alternate;
+}
+@keyframes toad-pounce-zone-throb {
+    from { filter: brightness(1);    }
+    to   { filter: brightness(1.35); }
+}
+
+/* 滞空中＝**縁が実線になって濃くなる**（「もう落ちてくる」の1段）。
+   大きさは変えない（＝範囲は溜めの時点で確定している）＝点滅の速さだけで急を伝える。 */
+.toad-pounce-zone.pounce-zone-falling {
+    border-style: solid;
+    border-color: hsl(78 90% 62% / 0.95);
+    background: radial-gradient(circle,
+        hsl(96 60% 30% / 0.18) 0%,
+        hsl(90 70% 36% / 0.34) 70%,
+        hsl(80 80% 48% / 0.46) 100%);
+    box-shadow: inset 0 0 14px 3px hsl(88 80% 40% / 0.45);
+    animation: toad-pounce-zone-throb 0.16s ease-in-out infinite alternate;
+}
+
+/* 着地の衝撃（別 DOM ∴蝦蟇が倒れても残らない＝`.enemy-coil-crush` と同型）。
+   範囲と同じ角丸の矩形が一度だけ弾ける＝「今この形で潰された」が一目で繋がる。 */
+.toad-pounce-land {
+    box-sizing: border-box;
+    border: 4px solid hsl(72 95% 70% / 0.95);
+    background: radial-gradient(circle,
+        hsl(64 90% 74% / 0.55) 0%,
+        hsl(80 80% 52% / 0.34) 60%,
+        hsl(96 70% 34% / 0.10) 100%);
+    animation: toad-pounce-land-burst 0.36s ease-out forwards;
+}
+@keyframes toad-pounce-land-burst {
+    0%   { transform: scale(0.86); opacity: 0.35; }
+    30%  { transform: scale(1.06); opacity: 1;    }
+    100% { transform: scale(1);    opacity: 0;    }
 }

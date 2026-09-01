@@ -226,6 +226,25 @@ export function createBoss(deps) {
 			boss._momVx = 0;
 			boss._momVy = 0;
 		}
+		// Phase 8-4 (4) 0d-3（8体目 I 沼地の大蝦蟇）: 舌の設定を相で差し替える口
+		// （`resolveTongue` が読む）。I は後半で「速く打ち・長く届き・強く引く」形になる。
+		// ⚠️ 相は**畳む**（`_dash`/`_coil`/`_momentum` と同じ側の扱い）＝伸びている舌は捨てる。
+		//    新しい `cells`（7）より長い舌や旧 `holdMs` の掴みを引き継ぐと、見えている帯と
+		//    実際の判定が食い違う（「離れたのに引かれる」）。状態機械だが 'idle' からいつでも
+		//    打ち直せる∴宙吊りになる相は無い（`_soar`/`_gaze` とは事情が違う）。
+		// ⚠️ `_tongueAttached` は**ここでは消さない**＝掴んだままのプレイヤーを 0.5 格子へ
+		//    戻す後始末（`alignPlayerToGrid`）は deps を持つ enemy-ai.js 側にしか書けない∴
+		//    次の tick の `tickTongue` が「相は畳まれたのに掴んだまま」を見て畳み直す。
+		//    ここで消すと**プレイヤーが半端な座標に取り残される**（幅1マスの出入口へ入れない）。
+		// ⚠️ 2026-09-01 追加の のしかかり（'pounce'/'pounceAir'）も同じく畳まれる＝跳んでいる
+		//    途中で相が変わったら**着地の判定は出ない**（新しい `pounceRadius` で潰すと
+		//    「見えていた範囲と違う床で殴られる」）。跳び直せる∴宙吊りにはならない。
+		if (phase.tongue !== undefined) {
+			boss._tongue = phase.tongue;
+			boss._tonguePhase = 'idle';
+			boss._tongueLen = 0;
+			boss._tongueAt = null;
+		}
 	}
 
 	// ── 星の欠片を生成 ──────────────────────

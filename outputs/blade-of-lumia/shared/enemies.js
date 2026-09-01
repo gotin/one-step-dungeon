@@ -1301,30 +1301,95 @@ export const ENEMY_META = {
 			} },
 		],
 	},
-	// ── 沼地の大蝦蟇（Phase 9-2c）：2×2 大型ボス・cave_1（沼地の洞窟）────
-	// 沼地の主＝膨れ上がった毒蝦蟇。長い舌の打撃と毒沫の投擲で戦う。
-	// 鈍重だが体力が高く、HP半減で跳ねるように加速する。
-	// 8体目の dropsTriforce ボス（cave_1）。これで「大型ボス8＝欠片8」が揃う。
-	// 弱点は炎（ロウソク＝cave_1 入場前に入手済み）。剣でも倒せる。
+	// ── 沼地の大蝦蟇（Phase 9-2c）：2×2 大型ボス・dungeon_8（沼地の遺構）────
+	// 沼地の主＝膨れ上がった毒蝦蟇。8体目の dropsTriforce ボス。
+	// 弱点は炎（ロウソク＝D4 で入手済み）。剣でも倒せる。
+	// Phase 8-4 (4) 0d-3（8体目）: **移動アルゴリズムを `tongue`（舌）に置き換えた**。
+	//   ＝13体で唯一「自分ではなく相手を動かす」ボス。自分からは歩いて詰めない
+	//   （帯の外に居るときだけ跳ねて寄る）＝舌で**プレイヤーを口元へ引き寄せる**。
+	//   舌が出ているあいだ蝦蟇は錨で固定＝引かれている時間がそのまま殴れる窓になる。
+	// ⚠️ 旧データは `hitAndAway: true` ＋ `initialModeWeights` ＋ `phases[].speedMultiplier`
+	//    だった＝「間合いを往復して寄る」（W と同じ型）∴0d-3 の判定基準（近づき方を1体ずつ
+	//    変える）に反する。`tongue` の下では寄り方の抽選も歩幅の溜め（`resolveEnemySpeed`）も
+	//    一度も読まれない∴3つとも**外した**（残すと死んだ数値になる）。
 	[TILE.SWAMP_TOAD]: {
 		name: '沼地の大蝦蟇',
 		hp: 96, atk: 5, def: 2, exp: 56,      // 8-4: 木の剣で 48 振り（14秒）
-		speed: ENEMY_SPEED_SLOW,          // 鈍重
+		speed: ENEMY_SPEED_SLOW,          // 鈍重（跳ねる速さは tongue.hopCells/hopMs が決める）
 		sprite: 'swampToad',
 		pal:    'swampToad',
 		size:   { w: 2, h: 2 },
 		isBoss: true,
 		dropsTriforce: true,
-		weakness: { type: 'fire', multiplier: 2 },   // 炎で焼かれると弱い両生類
-		hitAndAway: true,
+		// 炎で焼かれると弱い両生類。
+		// ⚠️ 倍率は 2026-08-31 に ×2 → ×5 へ上げた（ユーザー実プレイ報告「ロウソクの炎が
+		//    連打できてしまうので簡単」への対処の後半）。同日にロウソクは**置いた炎**になり
+		//    「1つの炎は1体に1回・同時3つまで」＝当てられる回数が機構で縛られた∴1発が軽い
+		//    ままでは戦闘が異常に長くなる。`CANDLE_FIRE_DMG 3 × 5 − def 2 = 13`／hp 96 ＝
+		//    **8発**（旧＝4ダメージ × 24発を連打で数秒）。
+		// ⚠️ 調整は**この倍率**でやる（`CANDLE_FIRE_DMG` を上げると弱点でない雑魚まで
+		//    強く焼けてロウソクが汎用武器化する）。
+		weakness: { type: 'fire', multiplier: 5 },
+		hitAndAway: false,                // ⚠️ **明示する**（書かないと tongue の分岐に来ない）
 		attacks: [
-			{ type: 'sword', range: 1.4, cooldown: 900 },   // 舌の打撃（リーチ長）
+			{ type: 'sword', range: 1.4, cooldown: 900 },   // 噛みつき（引き寄せの終点）
 			{ type: 'stone', range: 7, cooldown: 2400, projectileSpeed: 1.1 }, // 毒沫
 		],
 		attack: { type: 'sword', range: 1.4, cooldown: 900 },
-		initialModeWeights: { flank: 0.25, direct: 1.4, wander: 0.35, strafe: 0 },
+		// 舌（＝この敵の移動機構）。数の意味は enemy-ai.js の tickTongue 冒頭に書いてある。
+		// ⚠️ 帯の**内端は書かない**＝噛みつきの到達距離（`attacks[]` の sword の range 1.4）が
+		//    そのまま内端になる（enemy-ai.js `tongueBiteRange`）。数を2箇所に持つと
+		//    「噛みつきも舌も届かない隙間」が生まれる＝実測で踏んだ欠陥（1.4〜1.8 に立つと
+		//    蝦蟇は毒沫しか撃てず、引き寄せの終点もその隙間だった＝GUIDE §7-12）。
+		// ⚠️ `cells` < 毒沫の range 7 ＝帯の外では毒沫が来る（何も来ない距離を作らない）。
+		// ⚠️ `reelSpeed 0.22` < プレイヤーの歩幅 MOVE_STEP 0.5 ＝**歩けば必ず離れられる**
+		//    （引き寄せは操作を奪わない＝払うのは時間）。
+		// ⚠️ `reelSpeed × (holdMs / TICK_MS) ≥ cells − 噛みつきの到達距離` を満たすこと
+		//    （0.22 × 23 tick ＝ 5.06 ≥ 5 − 1.4 ＝ 3.6）＝**帯のどこで掴まれても、歩かなければ
+		//    口元まで引かれる**。満たさないと帯の外端で掴まれた人だけ時間切れで解放される
+		//    ＝「掴まれたら噛まれる」の規則に穴が空く（cells 6 / holdMs 2400 では 4.4 < 4.6 で
+		//    穴があった＝holdMs を伸ばして埋めた）。
+		// ⚠️ `cells` は 2026-09-01 に 6 → 5（後半 7 → 6）へ**狭めた**＝ユーザー実プレイ報告
+		//    「なぜか全然移動しなかった」。闘技場 `test_mechanics 31,1` は 10×12 ∴帯 6 は部屋の
+		//    ほぼ全域＝**跳ねて寄る条件（帯の外）が実戦で一度も成立しない**＝置物に見えていた。
+		//    帯を狭めた分だけ「帯の外＝毒沫を撃ちながら跳ねて寄る」姿が見えるようになる。
+		//    ∴この数は舌の脅威範囲であると同時に**敵が動いて見えるかを決める数**（GUIDE §7-15）。
+		// ⚠️ `pounce*`（のしかかり）は 2026-09-01 に追加＝ユーザー実プレイ報告「舌でひきこまれる、
+		//    ろうそくで火をつける／これを繰り返すだけでノーダメージで倒せてしまう（攻撃は盾で
+		//    防御できてしまう）」への対処。噛みつき（sword）も毒沫（stone）も**盾が向きだけで
+		//    消せる**∴焼くために向くことがそのまま完全防御になっていた（実測＝22.9 秒・被弾 0）。
+		//    のしかかりは**盾では防げない**（体当たり・締め上げ・ブレスと同じ扱い）＝答えは
+		//    「下がる」だけ。相の並びと判定は enemy-ai.js「のしかかり（pounce）」の節。
+		// ⚠️ `pounceRadius ≥ 噛みつきの到達距離`（1.6 ≥ 1.4）＝**引き寄せた先は必ず円の中**
+		//    ＝立ち止まっていれば必ず当たる（さもなければ引き寄せの見返りが消える）。
+		// ⚠️ 猶予 = `pounceWindupMs + pounceAirMs` ＝840ms ＝7 tick ＝歩いて 3.5 セル ≫
+		//    `pounceRadius − 噛みつきの到達距離`（0.2）＝予告を見て下がれば必ず避かる。
+		// ⚠️ `pounceAtk` は `atk` と同値（5）＝O の `stampAtk`／U の `diveAtk` と同じ作法
+		//    （盾で防げない打点を通常攻撃より重くしない＝避けられる技は避けられる分だけで足る）。
+		tongue: {
+			castMs: 600, cells: 5, lashSpeed: 1.2,
+			reelSpeed: 0.22, holdMs: 2800, retractMs: 360, cooldownMs: 2600,
+			hopCells: 1.5, hopMs: 1400,
+			pounceWindupMs: 480, pounceAirMs: 360, pounceRadius: 1.6,
+			pounceAtk: 5, pounceRecoverMs: 480,
+		},
 		phases: [
-			{ hpThreshold: 0.5, speedMultiplier: 1.5, attackCooldownMultiplier: 0.8 },
+			// 後半＝速く打ち・長く届き・強く引く（`reelSpeed 0.34` でもまだ歩幅より遅い＝
+			// 歩いて振り切る前に holdMs が来る＝逃げ道は残るが「歩き」だけでは足りなくなる）。
+			// のしかかりは**広く・速く落ちる**（強くはしない＝`pounceAtk` は前半と同じ 5）：
+			// 猶予 480 + 300 ＝780ms ＝6 tick ＝歩いて 3.0 セル ＞ 半径 2.0 − 噛みつき 1.4 ＝0.6
+			// ∴避けられる余地は残る（避け始めるのが遅れると当たる＝要求が上がるだけ）。
+			// ⚠️ `pounceRadius 2.0 ≥ 噛みつきの到達距離 1.4` は前半と同じ不変条件。
+			// ⚠️ **`pounceWindupMs` だけは後半でも縮めない**（480＝MELEE_WINDUP_MS の床のまま）。
+			//    盾で防げない一撃の予告を床より短くすると「見てから動く」が成立しない＝
+			//    後半の強化は円の広さ（1.6 → 2.0）と落ちる速さ（滞空 360 → 300）で払う。
+			{ hpThreshold: 0.5, attackCooldownMultiplier: 0.8, tongue: {
+				castMs: 480, cells: 6, lashSpeed: 1.4,
+				reelSpeed: 0.34, holdMs: 2600, retractMs: 360, cooldownMs: 1800,
+				hopCells: 1.5, hopMs: 1100,
+				pounceWindupMs: 480, pounceAirMs: 300, pounceRadius: 2.0,
+				pounceAtk: 5, pounceRecoverMs: 420,
+			} },
 		],
 	},
 

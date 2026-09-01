@@ -15,7 +15,7 @@
 //  2) 隠し入口は茂みを燃やすまで遷移しない（踏んでも別ステージへ行かない）
 //  3) ロウソクで前方の茂みを燃やすと隠し入口が出現し、踏むと hidden_cave へ遷移する
 //  4) 前方に茂みがなければ何も出現しない（bushBurned が立たない）
-//  5) 前方に敵がいるとき炎ダメージが入る（Phase 4-3b）
+//  5) 茂みの上の敵は「茂みを燃やす」では無傷・燃え跡に置いた炎で焼ける（2026-08-31）
 //  6) 炎が弱点の敵（氷のリヴァイアサン L）は倍率ダメージを受ける（Phase 4-3b）
 //  7) 2×2 の敵は占有する4タイルの**どれを向いても**炎が通る（2026-08-30 の修正・下記）
 //  8) 占有していないタイルを向いたら当たらない（当たり箱を広げすぎていないことの裏取り）
@@ -27,6 +27,12 @@
 // 炎が弱点の敵は O 古森の巨人・L 氷のリヴァイアサン・I 沼地の大蝦蟇＝**3体とも 2×2**＝
 // 弱点が向き次第で死んでいた（剣は hitbox.js 経由で4方向とも当たる＝弱点だけが不利）。
 // 判定を `enemyOccupiesTile()`（hitbox.js）に寄せた＝占有範囲で見る。
+//
+// ── 2026-08-31 の変更（ユーザー実プレイ報告「炎が連打できてしまう」から出た）─────────
+// ロウソクは「押した瞬間に前方を殴る道具」から**炎を置く道具**になった。1つの炎は1体の敵に
+// 1回だけ・同時3つまで・寿命 CANDLE_FLAME_MS。∴このファイルの「炎が当たる」系テストは
+// すべて**置いた炎の初回判定**を見ている（置いた瞬間に重なっている敵へ1回）。
+// 機構そのもの（上限・寿命・後から踏んだ敵・連打の上限）は `tests/candle-flame.spec.js`。
 import { test, expect } from '@playwright/test';
 import { waitForBoard, SAVE_KEY } from './helpers.js';
 import { ENEMY_META } from '../shared/enemies.js';
@@ -123,7 +129,13 @@ test.describe('Blade of Lumia – ロウソク', () => {
 		expect(st.stageKey).toBe('6,13');
 	});
 
-	test('前方に敵がいるとき炎ダメージが入る', async ({ page }) => {
+	// ⚠️ 2026-08-31 に意味が変わったテスト。前方の敵は「ロウソクを使った瞬間に殴られる」の
+	// ではなく**置いた炎に焼かれる**（`game/game.js placeFlameAhead` → projectile.js）。
+	// ここで向く (4,7) は**茂み 'u'**（field 9,9 の実データ）∴1回目は茂みが燃えるだけで
+	// 敵は無傷になる＝「かがり火/茂みを向いて連打すれば上限を無視して殴れる」穴を
+	// 塞いだことの裏取り（ユーザー報告「ロウソクの炎が連打できてしまう」への対処）。
+	// 燃え尽きた茂みは床と同じ扱い∴2回目で炎が置けて敵が焼ける。
+	test('茂みの上の敵は茂みを燃やすだけでは無傷・燃えた跡に置いた炎で焼ける', async ({ page }) => {
 		const errors = [];
 		page.on('pageerror', e => errors.push(e.message));
 		// (4,6) スポーン・右向き → 右移動で player.x=6.5 → 前方 tc = toTileCol(6.5+1) = toTileCol(7.5) = 7
@@ -141,12 +153,23 @@ test.describe('Blade of Lumia – ロウソク', () => {
 			// player.x=6.5 → toTileCol(7.5)=7。player.x=6 → toTileCol(7)=7。
 			// どちらも tc=7 なので敵を (x=7, y=4) に注入する。
 			const id = window.__game.injectEnemy(7, 4, HP);
-			window.__game.useSubItem(); // ロウソクを使う
+			const hpOf = () => (window.__game.getEnemies().find(x => x.id === id)?.hp ?? -1);
+			window.__game.useSubItem();   // 1回目＝前方の茂みが燃える（敵は焼けない）
 			window.__game.step(1);
-			const e = window.__game.getEnemies().find(x => x.id === id);
-			return { hpAfter: e ? e.hp : -1, hpBefore: HP };
+			const hpAfterBush = hpOf();
+			const flamesAfterBush = window.__game.getPlacedFlames().length;
+			window.__game.useSubItem();   // 2回目＝燃え跡に炎を置く（重なっている敵へ1回）
+			window.__game.step(1);
+			return {
+				hpBefore: HP, hpAfterBush, hpAfterFlame: hpOf(),
+				flamesAfterBush, flamesAfterFlame: window.__game.getPlacedFlames().length,
+			};
 		});
-		expect(result.hpAfter).toBeLessThan(result.hpBefore);
+		expect(result.hpAfterBush, '茂みを燃やしただけで敵が焼けている＝連打の穴が残っている')
+			.toBe(result.hpBefore);
+		expect(result.flamesAfterBush, '茂みを燃やしたときに炎まで置いている').toBe(0);
+		expect(result.hpAfterFlame, '置いた炎が重なっている敵を焼いていない').toBeLessThan(result.hpBefore);
+		expect(result.flamesAfterFlame).toBe(1);
 		expect(errors).toEqual([]);
 	});
 

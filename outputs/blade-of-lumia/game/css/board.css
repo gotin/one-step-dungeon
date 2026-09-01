@@ -211,6 +211,56 @@
     100% { transform: translateX(0)    scaleY(1);    }
 }
 
+/* Phase 8-4 (4) 0d-3（8体目 I 沼地の大蝦蟇）: 舌を打つ前の予告＝**喉が膨らむ**。
+   体当たり（`.slam-windup` の拡大縮小2往復）・突進（`.dash-windup` の前後の揺れ）と
+   **3つとも別の形**にする（GUIDE §6-1）＝こちらは「一方向に膨らんで止まる」＝
+   息を吸い込んで舌を溜めている形（避け方も別＝横へ歩いて舌の線から外れる）。
+   ・長さは `--tongue-cast-ms`（enemy-ai.js syncTongueMotion が書く＝castMs と対）＝
+     CSS 側に長さを持たせない（状態機械が長さの単一の真実）
+   ・`forwards` で膨らんだ姿勢を保持＝打ち出す瞬間まで膨らみ続けて見える */
+.char-abs.tongue-windup canvas.sprite {
+    transform-origin: 50% 100%;
+    animation: enemy-tongue-cast var(--tongue-cast-ms, 600ms) ease-in forwards;
+}
+@keyframes enemy-tongue-cast {
+    0%   { transform: scale(1);           }
+    60%  { transform: scale(1.10, 0.94);  }
+    100% { transform: scale(1.16, 0.90);  }
+}
+
+/* 2026-09-01（8体目 I）: のしかかりの2相。**盾では防げない打点**∴避け方は「下がる」だけ＝
+   舌の予告（`.tongue-windup` の膨らみ＝横へ外れる）とは別の形にする（GUIDE §6-1）。
+   ・溜め（`.pounce-windup`）＝**深く沈んで小刻みに震える**（＝跳ぶ前のタメ）。体当たり
+     （`.slam-windup` の拡大縮小2往復）・突進（`.dash-windup` の前後の揺れ）・舌（一方向に
+     膨らんで止まる）と4つとも別の形。長さは `--pounce-windup-ms`（JS が入れる）。
+   ・滞空（`.pounce-air`）＝**体が持ち上がって小さくなる**＝13体で唯一「絵が上へ浮く」形
+     （＝画面の上に居ることが読める。落ちてくる範囲は床の `.toad-pounce-zone` が担う）。
+   ⚠️ どちらも大型敵の揺れ（`.large-enemy`）より後に置く＝同じ specificity で後勝ち。 */
+.char-abs.pounce-windup canvas.sprite {
+    transform-origin: 50% 100%;
+    animation: enemy-pounce-windup var(--pounce-windup-ms, 480ms) ease-in forwards,
+               enemy-pounce-shiver 90ms linear infinite;
+}
+@keyframes enemy-pounce-windup {
+    0%   { transform: scale(1);              }
+    45%  { transform: scale(1.18, 0.80);     }
+    100% { transform: scale(1.34, 0.62);     }
+}
+@keyframes enemy-pounce-shiver {
+    0%   { rotate: 0deg;      }
+    25%  { rotate: -1.6deg;   }
+    75%  { rotate: 1.6deg;    }
+    100% { rotate: 0deg;      }
+}
+.char-abs.pounce-air canvas.sprite {
+    transform-origin: 50% 100%;
+    animation: enemy-pounce-air 180ms ease-out forwards;
+}
+@keyframes enemy-pounce-air {
+    0%   { transform: scale(1.34, 0.62) translateY(0);    }
+    100% { transform: scale(0.82, 0.94) translateY(-34%); }
+}
+
 /* Phase 8-4 (4) 0d-2.6: 剣（近接攻撃）の予告モーション＝**剣を振り上げる**。
    2026-08-25 ユーザー指定：「体当たりの予告はキャラ自体の拡大縮小だが、剣の攻撃の予告が
    それだと変」∴キャラを縮小拡大せず、**剣そのものが頭上へ上がる**形にする

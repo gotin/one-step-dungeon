@@ -36,6 +36,9 @@ import { isInRecoverWindow, isSoaring } from './enemy-state.js';
  *   toTileCol(x)                 – float → タイル列
  *   gameNow()                    – 論理時間
  *   isPassableForEnemy(y, x, e)  – 敵の通行可否判定
+ *   isPassable(x, y, axis)       – **プレイヤー側の**通行可否判定（引数の順が敵側と逆＝x が先）
+ *                                  Phase 8-4 (4) 0d-3（8体目 I）: 舌の引き寄せでプレイヤーを
+ *                                  動かす先の確認に使う（combat.js knockbackPlayerFrom と同じ作法）
  *   moveCharEl(id, x, y)         – キャラ要素の位置更新
  *   takeDamage(amount)           – プレイヤーダメージ
  *   dealDamageToEnemy(e, dmg)    – 敵ダメージ
@@ -63,6 +66,9 @@ export function createEnemyAi(deps) {
 		getHeroDir, getCharLayerEl, getCellPx,
 		toTileRow, toTileCol, gameNow,
 		isPassableForEnemy, moveCharEl,
+		// Phase 8-4 (4) 0d-3（8体目 I 沼地の大蝦蟇）: 舌の引き寄せはプレイヤーを動かす∴
+		// **プレイヤー側の**通行判定が要る（壁・水・穴・石・敵の手前で止める）。
+		isPassable,
 		takeDamage, dealDamageToEnemy,
 		fireEnemyProjectile, isShieldBlockingDir, showShieldBlockEffect,
 		getDebugMode,
@@ -2878,6 +2884,564 @@ export function createEnemyAi(deps) {
 		e._momHeavy = isHeavy;
 	}
 
+	// ── Phase 8-4 (4) 0d-3（8体目 I 沼地の大蝦蟇）: 舌で引き寄せる ─────────────
+	// meta.tongue = { castMs, cells, lashSpeed, reelSpeed, holdMs, retractMs,
+	//                 cooldownMs, hopCells, hopMs,
+	//                 pounceWindupMs, pounceAirMs, pounceRadius, pounceAtk, pounceRecoverMs }
+	// 他の7体と違うのは**動くのがプレイヤーの方**＝13体で唯一「自分ではなく相手を動かす」：
+	//   ・castMs   … 打つ前の予告（体が膨らむ＝`.tongue-windup`）。この長さの終わりで狙いを固定する
+	//                ＝以後**追尾しない**（横へ歩けば空振りする＝避けられる予告・GUIDE §6-1）
+	//   ・cells    … 舌の届く帯の外端。帯の内端は**噛みつきの到達距離**（`attacks[]` の sword の
+	//                range）＝データに持たない（下の ⚠️）。この帯にプレイヤーが居るときだけ打つ
+	//                ＝**帯の外に立つ**が答えの1つになる
+	//   ・lashSpeed… 舌が伸びる速さ（セル/tick・当たり判定は MOVE_STEP 以下に刻む）
+	//   ・reelSpeed… 引き寄せる速さ。**プレイヤーの歩幅 MOVE_STEP より必ず遅い**＝操作は
+	//                一切奪わない（歩けば離れられる＝払うのは時間）。絵の濃さも同じ数を読む
+	//   ・holdMs   … 掴んでいられる上限。引き剥がせなくても必ず離される（詰まない保証）
+	//   ・pounce*  … 引き寄せた先（＝口元）での**のしかかり**＝盾では防げない唯一の打点。
+	//                詳しくは下の「のしかかり（pounce）」の節（2026-09-01 追加）
+	//   ・hopCells/hopMs … 帯の**外**に居るときだけ跳ねて寄る速さ（1.07 セル/秒 ≪ プレイヤー
+	//                4.17 セル/秒・GUIDE §7-2）＝自分から噛みつきの間合いへは詰めない
+	// ⚠️ 舌が出ているあいだ蝦蟇は**1歩も動かず攻撃もしない**（錨＝`tongueBusy` で行動ゲートを
+	//    閉じる）∴引かれている時間がそのまま「殴れる窓」になる（G の「硬直で滑らない」と同じ要件）。
+	// ⚠️ 速度は `resolveEnemySpeed` を読まない＝`phases[].speedMultiplier` は効かない（∴書かない）。
+	// ⚠️ 幾何は**几何中心（enemyCenter）基準の連続座標**で持つ（舌は斜めにも伸びる）。間合いの
+	//    判定だけは既存の全機構と同じ `enemyEdgeDist`（セル添字基準）を通す＝到達距離の表
+	//    （GUIDE §7-12）が他の攻撃と直接比べられる。
+	function resolveTongue(e, meta) {
+		return e?._tongue !== undefined ? e._tongue : meta?.tongue;
+	}
+
+	// 舌が出ている（＝この tick を専有する）か。相は7つ：
+	//   idle → cast → lash → hold →（口元まで引けた）pounce → pounceAir → idle
+	//                              →（空振り／引き剥がされた／時間切れ）retract → idle
+	// ⚠️ のしかかり（pounce/pounceAir）も busy に含める＝舌は出ていないが**錨は続く**
+	//    （沈んでいる蝦蟇が歩いたり噛んだりしない＝溜めの 840ms が殴れる窓になる）。
+	function isTongueBusy(e) {
+		const p = e?._tonguePhase ?? 'idle';
+		return p !== 'idle';
+	}
+
+	// 先端がプレイヤーの体（1×1）に触れたと見なす半幅。体の半分（0.5）＋わずかな余裕＝
+	// **絵で舌が届いて見えるのに掴めない**を作らない（効果の範囲 ⊇ 判定の範囲・GUIDE §6-1）。
+	const TONGUE_GRAB_PAD = 0.55;
+
+	// 中心から body の表面まで（几何座標・向きは単位ベクトル）。斜めでも箱の面で出す。
+	function tongueEdgeSpan(e, ux, uy) {
+		const w = e.w ?? 1, h = e.h ?? 1;
+		let t = Infinity;
+		if (Math.abs(ux) > 1e-6) t = Math.min(t, (w / 2) / Math.abs(ux));
+		if (Math.abs(uy) > 1e-6) t = Math.min(t, (h / 2) / Math.abs(uy));
+		return Number.isFinite(t) ? t : 0;
+	}
+
+	// 舌の先端（几何座標）。長さ（`_tongueLen`）は **body の表面から先**の値＝絵とテストと
+	// 当たり判定が同じ1つの数を読む。
+	function tongueTip(e) {
+		const { cx, cy } = enemyCenter(e);
+		const ang = e._tongueAng ?? 0;
+		const ux = Math.cos(ang), uy = Math.sin(ang);
+		const t = tongueEdgeSpan(e, ux, uy) + (e._tongueLen ?? 0);
+		return { tx: cx + ux * t, ty: cy + uy * t, ux, uy };
+	}
+
+	// 舌が出る**口の位置**（几何座標）＝絵だけが読む基準点。
+	// ⚠️ 帯を「body の表面」から描くと絵が体から浮く＝スプライトの体は footprint の内側に
+	//    描かれている（2×2 の蝦蟇は各辺 0.2 セルほど内側）∴幾何の表面は絵の輪郭ではない。
+	//    しかも表面から描くと出どころが**目の高さ**になり「舌が口から出ていない」ことになる
+	//    （実測：`.scratch/toad-mouth.png` で体との隙間と出どころのズレを目視で確認）。
+	//    ∴**判定は表面から測ったまま**（`tongueTip`＝`_tongueLen` の単一の真実）で、
+	//    絵だけ口元から先端まで引く（絵の先端＝判定の先端∴効果の範囲 ⊇ 判定の範囲は保つ）。
+	const TONGUE_MOUTH_DY = 0.3;     // 口の位置＝body の高さに対する中心からの下へのずれ
+	function tongueMouth(e) {
+		const { cx, cy } = enemyCenter(e);
+		return { mx: cx, my: cy + (e.h ?? 1) * TONGUE_MOUTH_DY };
+	}
+
+	// 噛みつきの到達距離＝**舌を離す距離**。表（`attacks[]`）から導く＝フェーズで表が
+	// 差し替わっても「引き寄せた先で必ず噛める」が保たれる（判定距離＝攻撃到達距離・
+	// [[blade-enemy-guard-range-must-match-reach]]／GUIDE §7-12）。
+	function tongueBiteRange(e, meta) {
+		const list = resolveAttackList(e, meta) ?? [];
+		let r = 0;
+		for (const a of list) if (a?.type === 'sword') r = Math.max(r, a.range ?? 0);
+		return r > 0 ? r : (meta?.attack?.range ?? 1.4);
+	}
+
+	// 舌を打つ（＝予告の始まり）。狙いはまだ固定しない（固定するのは castMs の終わり）。
+	function castTongue(e, cfg, now) {
+		const player = getPlayer();
+		e._tonguePhase  = 'cast';
+		e._tongueAt     = now + (cfg.castMs ?? 600);
+		e._tongueCastMs = cfg.castMs ?? 600;
+		e._tongueLen    = 0;
+		e._tongueAttached = false;
+		if (player) {
+			// 打つ前にプレイヤーの方を向く（舌の向きと絵の向きを一致させる＝breatheFire と同じ）
+			const { cx, cy } = enemyCellCenter(e);
+			const dx = player.x - cx, dy = player.y - cy;
+			if (Math.abs(dx) >= 0.01 || Math.abs(dy) >= 0.01) {
+				e.dir = Math.abs(dx) >= Math.abs(dy) ? (dx > 0 ? 'right' : 'left') : (dy > 0 ? 'down' : 'up');
+			}
+			const { cx: gcx, cy: gcy } = enemyCenter(e);
+			e._tongueAng = Math.atan2((player.y + 0.5) - gcy, (player.x + 0.5) - gcx);
+		}
+		playSound('tongueCast');
+	}
+
+	// 狙いを固定して舌を打ち出す。**この瞬間のプレイヤーの位置**しか見ない＝以後追尾しない。
+	function lockTongueAim(e) {
+		const player = getPlayer();
+		const { cx, cy } = enemyCenter(e);
+		const ax = player ? player.x + 0.5 : cx + 1, ay = player ? player.y + 0.5 : cy;
+		const dx = ax - cx, dy = ay - cy;
+		e._tongueAimX  = player ? player.x : null;
+		e._tongueAimY  = player ? player.y : null;
+		if (Math.hypot(dx, dy) > 0.01) e._tongueAng = Math.atan2(dy, dx);
+		e._tonguePhase = 'lash';
+		e._tongueLen   = 0;
+		e._tongueAt    = null;
+	}
+
+	// 舌が伸びる1 tick。壁で止まり（tilePassable＝炎のブレスと同じ作法）、先端がプレイヤーの
+	// 体に触れたら掴む。**MOVE_STEP 以下に刻む**＝速くしても当たり判定を飛び越さない
+	// （[[blade-speed-up-needs-interpolation]]）。
+	function tickTongueLash(e, cfg, now) {
+		const player = getPlayer();
+		const cells  = cfg.cells ?? 6;
+		const speed  = cfg.lashSpeed ?? 1.2;
+		const steps  = Math.max(1, Math.ceil(speed / MOVE_STEP));
+		for (let k = 0; k < steps; k++) {
+			e._tongueLen = (e._tongueLen ?? 0) + speed / steps;
+			const { tx, ty } = tongueTip(e);
+			// 壁の向こうへは伸びない（＝遮蔽が意味を持つ）
+			if (!tilePassable(Math.floor(ty), Math.floor(tx))) { snapTongue(e, cfg, now); return; }
+			if (player
+				&& Math.abs((player.x + 0.5) - tx) < TONGUE_GRAB_PAD
+				&& Math.abs((player.y + 0.5) - ty) < TONGUE_GRAB_PAD) {
+				grabTongue(e, cfg, now);
+				return;
+			}
+			if (e._tongueLen >= cells) { snapTongue(e, cfg, now); return; }
+		}
+	}
+
+	// 掴んだ（＝結果の音）。ここから holdMs のあいだ引き寄せる＝**蝦蟇は静止した的**。
+	function grabTongue(e, cfg, now) {
+		e._tonguePhase = 'hold';
+		e._tongueAt    = now + (cfg.holdMs ?? 2400);
+		e._tongueAttached = true;
+		e._tongueGrabs = (e._tongueGrabs ?? 0) + 1;
+		playSound('tongueGrab');
+		pulse?.('舌に掴まれた！', 900);
+	}
+
+	// 空振り／引き剥がされた／時間切れ（＝空振りの音）。舌は retractMs かけて戻る。
+	function snapTongue(e, cfg, now) {
+		const wasAttached = !!e._tongueAttached;
+		e._tonguePhase = 'retract';
+		e._tongueAt    = now + (cfg.retractMs ?? 360);
+		e._tongueRetractFrom = e._tongueLen ?? 0;
+		e._tongueAttached = false;
+		e._tongueSnaps = (e._tongueSnaps ?? 0) + 1;
+		playSound('tongueSnap');
+		if (wasAttached) alignPlayerToGrid(e);
+	}
+
+	// 口元まで引き寄せた＝舌を離して**のしかかり**へ渡す（retract を通さない＝引かれた先で
+	// 間が空かない）。⚠️ 2026-09-01 までは即 idle にして噛みつき（`attacks[0]`）へ譲っていた＝
+	// **その噛みつきは盾で消える**∴「引かれた先で必ず払う」が成立していなかった（下の
+	// のしかかりの ⚠️ とユーザー実プレイ報告）。クールダウンの起点も**着地**へ移した
+	// ＝1周（打つ→掴む→引く→潰す）が閉じるまでは次の舌を打たない。
+	function releaseTongue(e, cfg, now) {
+		e._tongueLen   = 0;
+		e._tongueAttached = false;
+		alignPlayerToGrid(e);
+		startPounce(e, cfg, now);
+	}
+
+	// ── のしかかり（pounce）＝口元に居る相手を跳んで潰す ───────────────────────────
+	// meta.tongue の { pounceWindupMs, pounceAirMs, pounceRadius, pounceAtk, pounceRecoverMs }。
+	// ⚠️ 2026-09-01 のユーザー実プレイ報告への対処＝「舌でひきこまれる／ろうそくで火をつける、
+	//    これを繰り返すだけでノーダメージで倒せてしまう（攻撃は盾で防御できてしまう）」。
+	//    実測で裏取りした（`.scratch/toad-shield-loop.mjs`＝**191 tick ＝22.9 秒で撃破・被弾 0**）。
+	//    原因＝I の打点は噛みつき（`sword`）と毒沫（`stone`）の2本しかなく、**どちらも盾が
+	//    「向き」だけで消せる**（projectile.js `isShieldBlockingDir`）∴ロウソクで焼くために
+	//    蝦蟇を向くことが、そのまま防ぐために向くことになっていた＝完全防御。
+	//    ∴**盾では防げない打点**を1つ足す（体当たり `tickSlam`・締め上げ `crushCoil`・
+	//    炎のブレス `breatheCone` と同じ扱い＝k-7.5 決定④「盾が効くのは剣攻撃と投擲攻撃だけ」）。
+	//    答えは「向き」ではなく **「下がる」** だけ。
+	// ⚠️ 新しい機構キーは作らず `tongue` の**相を2つ増やす**（2026-09-01 ユーザー決定）＝
+	//    I の型（13体で唯一「相手を動かす」）を保つ／`slam` は `{`（海の主）の候補に空けておく。
+	// 規則は1つ＝**口元（端 ≤ 噛みつきの到達距離）に居る相手にのしかかる**。入り口は2つ：
+	//   ① 引き寄せの終幕（hold → 口元 → 舌を離す → のしかかり）＝掴まれたら潰される
+	//   ② 口元に居座られたとき（idle で打ち終わりの間が明けた tick）
+	//      ⚠️ ② が無いと抜け道が残る＝舌は**内端より近い相手には打てない**∴自分から口元へ
+	//         踏み込んで盾を構え続ければ一度も掴まれず、報告と同じ完全防御が作れてしまう。
+	//         「逃げ切った相手は跳ばれない」（＝掴めたときだけ跳ぶ）は①②とも保たれる。
+	// ⚠️ `pounceRadius ≥ 噛みつきの到達距離`（1.6 ≥ 1.4）＝**引き寄せた先は必ず円の中**＝
+	//    立ち止まっていれば必ず当たる。逆にすると「引かれた末に空振り」＝引き寄せの見返りが
+	//    消える（GUIDE §7-12 の到達距離の表と同じ理屈で、判定距離は攻撃到達距離に合わせる）。
+	// ⚠️ 猶予（`pounceWindupMs + pounceAirMs` ＝840ms ＝7 tick ＝歩いて 3.5 セル）は
+	//    `pounceRadius − 噛みつきの到達距離`（0.2）を桁で上回る＝予告を見て下がれば必ず避かる
+	//    （後半は 660ms ＝2.5 セル ≫ 2.0 − 1.4 ＝0.6）。
+	// ⚠️ 跳んでも**蝦蟇は動かない**（その場で沈み・浮き・落ちる）＝跳び先へ体を運ぶと
+	//    「自分から噛みつきの間合いへは詰めない」（`tongue` の型）と `TOAD_HOP_KEEP` の床が壊れ、
+	//    しかも 2×2 の巨体が相手に貼り付いて離れられなくなる。
+	// ⚠️ 相のあいだは `isTongueBusy` が true ＝**錨で固定**（動かない・噛まない）∴予告の 840ms は
+	//    そのまま「殴れる窓」でもある（引き寄せている時間と同じ扱い＝GUIDE §7-8）。
+	function pounceRadiusOf(cfg) { return cfg.pounceRadius ?? 1.6; }
+
+	function startPounce(e, cfg, now) {
+		e._tonguePhase    = 'pounce';
+		e._tongueAt       = now + (cfg.pounceWindupMs ?? 480);
+		e._tonguePounceMs = cfg.pounceWindupMs ?? 480;   // 絵の長さ（CSS 側に長さを持たせない）
+		e._tongueLen      = 0;
+		e._tongueAttached = false;
+		playSound('toadPounce');
+	}
+
+	// 着地＝判定と告知。**盾を通さない**（`isShieldBlockingDir` を呼ばない＝呼べば
+	// 報告された完全防御がそのまま戻る）。ダメージは何セル重なっても1回。
+	function landPounce(e, meta, cfg, now) {
+		const player = getPlayer();
+		const r = pounceRadiusOf(cfg);
+		e._toadPounces = (e._toadPounces ?? 0) + 1;
+		showPounceLandEffect(e, r);
+		playSound('toadLand');
+		// 着地の硬直＝殴り返す窓（締め上げ `crushFreezeMs`・岩投げ `throwFreezeMs` と同型）。
+		// ⚠️ `markAttack` を通さない＝のしかかりは `attacks[]` の1エントリではなく**舌の周期の
+		//    帰結**（`crushCoil` と同じ立場）∴クールダウンの起点を持たない。
+		e._freezeUntil = now + (cfg.pounceRecoverMs ?? 480);
+		if (!player) return;
+		// 判定は他の全機構と同じ `enemyEdgeDist`（＝到達距離の表と直接比べられる・GUIDE §7-12）
+		if (enemyEdgeDist(e, player.x, player.y) <= r) {
+			takeDamage(cfg.pounceAtk ?? e.atk ?? meta?.atk ?? 1);
+			e._toadPounceHits = (e._toadPounceHits ?? 0) + 1;
+		}
+	}
+
+	// 舌を捨てる（スタンの tick に呼ぶ＝`cancelDash`/`cancelMomentum` と同じ列）。
+	// ⚠️ ボスはブーメランでスタンしない（`stunnable ?? !isBoss`）∴今の I では観測差が出ない
+	//    **二重の守り**＝`tongue` を雑魚に付けたときに効く（tickBlink と同じ立場）。
+	function cancelTongue(e) {
+		const wasAttached = !!e._tongueAttached;
+		e._tonguePhase = 'idle';
+		e._tongueLen   = 0;
+		e._tongueAt    = null;
+		e._tongueAttached = false;
+		e._tongueAimX = null; e._tongueAimY = null;
+		if (wasAttached) alignPlayerToGrid(e);
+	}
+
+	// プレイヤーを 0.5 の格子へ戻す（引き寄せが終わった瞬間に1回だけ）。
+	// ⚠️ これが**無いと詰む**：引き寄せは連続座標で動かす∴半端な位置（例 x=4.33）で放すと、
+	//    以後プレイヤーの1歩（±MOVE_STEP）は永久に格子へ戻らず、`isPassable` は
+	//    floor(x)〜floor(x+0.999) の2列を占有と見る＝**幅1マスの出入口へ二度と入れない**
+	//    （ボス部屋から出られなくなる）。盤面は 0.5 格子を前提にしている（player.js）。
+	// ⚠️ 寄せる先は**敵側の格子を先に試す**（四捨五入だと最大 0.25/軸だけ敵から離れる＝
+	//    実測で踏んだ欠陥：口元まで引き寄せた（間合い 1.27）のに格子合わせで 1.5 へ押し戻され、
+	//    噛みつき（到達 1.4）が永久に届かなかった＝引き寄せの見返りが消える）。
+	//    敵側が塞がっていれば反対側の格子へ落とす（両方塞がっている軸だけは動かさない＝
+	//    格子に乗せるために壁へ埋めることはしない）。
+	function alignPlayerToGrid(e) {
+		const player = getPlayer();
+		if (!player) return;
+		const near = e ? enemyCellCenter(e) : null;
+		// その軸の候補＝[敵に近い側の格子, 反対側の格子]（既に格子上なら1つだけ）
+		const cands = (v, toward) => {
+			const lo = Math.floor(v * 2) / 2, hi = Math.ceil(v * 2) / 2;
+			if (lo === hi) return [lo];
+			return toward > 0 ? [hi, lo] : [lo, hi];
+		};
+		for (const gx of cands(player.x, near ? near.cx - player.x : 0)) {
+			if (gx === player.x || isPassable?.(gx, player.y, 'h')) { player.x = gx; break; }
+		}
+		for (const gy of cands(player.y, near ? near.cy - player.y : 0)) {
+			if (gy === player.y || isPassable?.(player.x, gy, 'v')) { player.y = gy; break; }
+		}
+		moveCharEl?.('player', player.x, player.y);
+	}
+
+	// プレイヤーを body の中心へ `reelSpeed` だけ引き寄せる（1 tick 分）。
+	// ⚠️ 通行判定は必ず**プレイヤー側の `isPassable`** を通す（combat.js knockbackPlayerFrom と
+	//    同じ作法）＝壁・水・穴・石・敵の手前で止まる∴引き寄せで詰ませない／沼へ落とさない。
+	// ⚠️ 操作は一切奪わない（入力ロックを持たない）＝歩けるし剣も振れる。`reelSpeed` <
+	//    MOVE_STEP ∴真後ろへ歩けば必ず離れられる（差し引きの分だけ遅く）。
+	// 戻り値：実際に動いた距離（セル）＝テストが「引かれたか」「壁で止まったか」を読む数。
+	function reelPlayer(e, cfg) {
+		const player = getPlayer();
+		if (!player) return 0;
+		const { cx, cy } = enemyCellCenter(e);
+		const dx = cx - player.x, dy = cy - player.y;
+		const d = Math.hypot(dx, dy);
+		if (d < 0.01) return 0;
+		const pull  = cfg.reelSpeed ?? 0.22;
+		const steps = Math.max(1, Math.ceil(pull / MOVE_STEP));
+		let moved = 0;
+		for (let k = 0; k < steps; k++) {
+			const sx = (dx / d) * (pull / steps);
+			const sy = (dy / d) * (pull / steps);
+			// 軸ごとに独立に試す＝壁に沿って引かれる（片側が塞がれても斜めの残り半分は動く）
+			if (Math.abs(sx) > 1e-6 && isPassable?.(player.x + sx, player.y, 'h')) {
+				player.x += sx; moved += Math.abs(sx);
+			}
+			if (Math.abs(sy) > 1e-6 && isPassable?.(player.x, player.y + sy, 'v')) {
+				player.y += sy; moved += Math.abs(sy);
+			}
+		}
+		if (moved > 0) moveCharEl?.('player', player.x, player.y);
+		return moved;
+	}
+
+	// 掴んでいる1 tick＝引き寄せ＋離す条件の判定。舌の伸びと向きは**プレイヤーの今の位置**から
+	// 出し直す（掴んだ舌は相手に付いて動く＝`_tongueLen` が絵とテストの唯一の真実）。
+	function tickTongueHold(e, meta, cfg, now) {
+		const player = getPlayer();
+		if (!player) { snapTongue(e, cfg, now); return; }
+		reelPlayer(e, cfg);
+		// 舌の形をプレイヤーへ合わせ直す
+		const { cx, cy } = enemyCenter(e);
+		const gdx = (player.x + 0.5) - cx, gdy = (player.y + 0.5) - cy;
+		const gd  = Math.hypot(gdx, gdy);
+		if (gd > 0.01) {
+			e._tongueAng = Math.atan2(gdy, gdx);
+			e._tongueLen = Math.max(0, gd - tongueEdgeSpan(e, gdx / gd, gdy / gd));
+		}
+		const d = enemyEdgeDist(e, player.x, player.y);
+		// ① 口元まで引き寄せた＝舌を離して噛みつきへ譲る（判定距離＝噛みつきの到達距離）
+		if (d <= tongueBiteRange(e, meta)) { releaseTongue(e, cfg, now); return; }
+		// ② 引き剥がされた（帯の外へ歩き切った）＝空振りと同じ扱い
+		if (d > (cfg.cells ?? 6)) { snapTongue(e, cfg, now); return; }
+		// ③ 時間切れ＝掴み続けられない（引き剥がせなくても必ず離される＝詰まない保証）
+		if (now >= (e._tongueAt ?? 0)) { snapTongue(e, cfg, now); return; }
+	}
+
+	// 舌の時計（1 tick）。**行動ゲートの外**で呼ぶ（`tickCoilShrink`/`tickGaze` と同じ枠＝
+	// GUIDE §7-7）＝噛みつきの硬直や毒沫の硬直のあいだも伸びと引き寄せが止まらない
+	// （止まると「段階的に引かれる」に見える＝J で実測した罠）。
+	// 戻り値：true ならこの tick は移動も攻撃もしない（＝舌が出ているあいだ蝦蟇は錨で固定）。
+	function tickTongue(e, meta, now) {
+		const cfg = resolveTongue(e, meta);
+		if (!cfg) return false;
+		// フェーズ差し替え（boss.js applyBossPhase）が相だけ畳んだ場合の後始末＝掴んだままの
+		// プレイヤーを格子へ戻す（deps を持つのはこちら側だけ∴boss.js には畳ませない）。
+		if (e._tongueAttached && (e._tonguePhase ?? 'idle') !== 'hold') { cancelTongue(e); return false; }
+		const phase = e._tonguePhase ?? 'idle';
+		if (phase === 'idle') {
+			if (now < (e._tongueUntil ?? 0)) return false;      // 打ち終わりの間（cooldownMs）
+			const player = getPlayer();
+			if (!player || e.hidden) return false;
+			const d = enemyEdgeDist(e, player.x, player.y);
+			// 帯（噛みつきの到達距離の外 〜 cells）の中だけで打つ＝近ければ噛む・遠ければ
+			// 跳ねて寄る（GUIDE §7-12 の到達距離の表）。
+			// ⚠️ 内端は**噛みつきの到達距離そのもの**から出す（データに `minRange` を持たない）＝
+			//    さもなければ「噛みつきも舌も届かない隙間」ができる。実測で踏んだ欠陥＝
+			//    間合い 1.5 に立つと蝦蟇は毒沫しか撃てず、しかも**引き寄せの終点がその隙間**
+			//    だった（引かれた末に噛まれない＝機構の見返りが消える）。
+			// 口元に居る（＝内端より近い）＝舌ではなく**のしかかり**で答える（居座りへの罰・
+			// 上の ⚠️ ②）。打ち終わりの間（cooldownMs）は上で弾いてある∴ここへ来たら跳べる。
+			if (d <= tongueBiteRange(e, meta)) { startPounce(e, cfg, now); return true; }
+			if (d > (cfg.cells ?? 6)) return false;
+			castTongue(e, cfg, now);
+			return true;
+		}
+		if (phase === 'cast') {
+			if (now < (e._tongueAt ?? 0)) return true;
+			lockTongueAim(e);
+			return true;
+		}
+		if (phase === 'lash')  { tickTongueLash(e, cfg, now); return true; }
+		if (phase === 'hold')  {
+			tickTongueHold(e, meta, cfg, now);
+			// 口元まで引いた tick は 'pounce' へ移っている＝true のまま（錨は続く）。
+			// 引き剥がされた／時間切れは 'retract'＝これも true（戻すあいだも動かない）。
+			return isTongueBusy(e);
+		}
+		// のしかかりの溜め（体が沈む＝`.pounce-windup`）。この 840ms は錨＝殴れる窓。
+		if (phase === 'pounce') {
+			if (now < (e._tongueAt ?? 0)) return true;
+			e._tonguePhase = 'pounceAir';
+			e._tongueAt    = now + (cfg.pounceAirMs ?? 360);
+			return true;
+		}
+		// 滞空。着地したらそこで判定＝**ここが盾で消えない唯一の打点**。
+		if (phase === 'pounceAir') {
+			if (now < (e._tongueAt ?? 0)) return true;
+			landPounce(e, meta, cfg, now);
+			e._tonguePhase = 'idle';
+			e._tongueLen   = 0;
+			e._tongueAt    = null;
+			e._tongueUntil = now + (cfg.cooldownMs ?? 2600);
+			return false;
+		}
+		if (phase === 'retract') {
+			const span = Math.max(1, cfg.retractMs ?? 360);
+			const left = Math.max(0, (e._tongueAt ?? now) - now);
+			e._tongueLen = (e._tongueRetractFrom ?? 0) * (left / span);
+			if (now < (e._tongueAt ?? 0)) return true;
+			e._tonguePhase = 'idle';
+			e._tongueLen   = 0;
+			e._tongueAt    = null;
+			e._tongueUntil = now + (cfg.cooldownMs ?? 2600);
+			return false;
+		}
+		return false;
+	}
+
+	// 跳ねて寄る条件は2つ（どちらも「舌の仕事の外」であること）。
+	//   ① 帯の**外**に居る＝舌が届かない∴寄る（毒沫を撃ちながら近づく）
+	//   ② 帯の中でも**打ち終わりの間（cooldownMs）だけ**寄る＝**同じ地点から2度引かない**
+	// ⚠️ ② は 2026-09-01 のユーザー実プレイ報告「なぜか全然移動しなかった」への対処。
+	//    帯（`cells`）が闘技場をほぼ覆う∴①だけでは実戦で一度も成立せず**置物に見えていた**
+	//    （帯を狭める対処と組み；`shared/enemies.js` の I の `cells` のコメント／GUIDE §7-15）。
+	//    舌が出ているあいだ（cast/lash/hold/retract）は錨で固定＝**殴れる窓は不変**。
+	// ⚠️ どちらの場合も**自分から噛みつきの間合いへは詰めない**（`tongue` の型＝寄って来ない敵）
+	//    ∴跳ねる距離を「噛みつきの到達距離 ＋ TOAD_HOP_KEEP」で止める。この床は舌の内端
+	//    （＝`tongueBiteRange`）より外側∴止まった位置からは**必ず舌が打てる**（無反応にならない）。
+	// ⚠️ `resolveEnemySpeed` を読まない＝速さは hopCells/hopMs だけが決める（∴`speedMultiplier`
+	//    は効かない）。連続座標のまま MOVE_STEP 以下に刻んで進む（丸めない＝GUIDE §7-11）。
+	// ⚠️ 床すれすれ（`dist - keepOut` がほぼ 0）で跳ぶと**0.02 セルの跳び**が hopMs ごとに出る
+	//    ＝絵は動かないのに時計だけ消費する（実測：`.scratch/toad-motion.mjs` で 0.02→0.00 の
+	//    跳びが並んだ）∴刻みより小さい寄りは「もう十分近い」と同じ扱いにする。
+	const TOAD_HOP_KEEP = 0.5;
+	const TOAD_HOP_MIN  = 0.05;
+	function enemyToadHop(e, meta, cfg, now) {
+		if (!cfg) return;
+		const player = getPlayer();
+		if (!player) return;
+		if (isTongueBusy(e)) return;                       // 舌が出ている＝錨（呼び出し側と二重の門）
+		const dist    = enemyEdgeDist(e, player.x, player.y);
+		const inBand  = dist <= (cfg.cells ?? 6);
+		const cooling = now < (e._tongueUntil ?? 0);       // 打ち終わりの間＝次の舌はまだ打てない
+		if (inBand && !cooling) return;                    // 帯の中で打てる＝待つ（寄らない）
+		const keepOut = tongueBiteRange(e, meta) + TOAD_HOP_KEEP;
+		const hop     = Math.min(cfg.hopCells ?? 1.5, dist - keepOut);
+		if (hop <= TOAD_HOP_MIN) return;                   // もう十分近い＝これ以上は詰めない
+		if (now < (e._toadHopAt ?? 0)) return;
+		e._toadHopAt = now + (cfg.hopMs ?? 1400);
+		const { cx, cy } = enemyCellCenter(e);
+		const dx = player.x - cx, dy = player.y - cy;
+		const d  = Math.hypot(dx, dy);
+		if (d < 0.01) return;
+		const steps = Math.max(1, Math.ceil(hop / MOVE_STEP));
+		e.dir = Math.abs(dx) >= Math.abs(dy) ? (dx > 0 ? 'right' : 'left') : (dy > 0 ? 'down' : 'up');
+		let moved = false;
+		for (let k = 0; k < steps; k++) {
+			const nx = e.x + (dx / d) * (hop / steps);
+			const ny = e.y + (dy / d) * (hop / steps);
+			if (isPassableForEnemy(ny, nx, e)) { e.x = nx; e.y = ny; moved = true; continue; }
+			// 半端な座標だと 2×2 は 3 タイルを塞ぐ＝直交軸を格子へ寄せて1回だけ試す
+			// （enemyMomentumSlide と同じ理由＝巨体が通路の口で詰まらないため）。
+			const sy = Math.round(ny * 2) / 2, sx = Math.round(nx * 2) / 2;
+			if (isPassableForEnemy(sy, sx, e)) { e.x = sx; e.y = sy; moved = true; continue; }
+			break;
+		}
+		if (moved) moveCharEl(`enemy-${e.id}`, e.x, e.y);
+	}
+
+	// 舌の帯（`.enemy-tongue`）と打つ前の予告（`.tongue-windup`）を今の状態に揃える。
+	// ⚠️ 長さ・角度・濃さは**JS が単一の真実**として渡す（CSS 側に数を持たせない＝
+	//    coil/gaze と同じ作法）。濃さ（`--tongue-heat`）は引き寄せの速さそのもの＝
+	//    「濃い舌は強く引く」が絵と機構で一致する（GUIDE §6-1）。
+	function syncTongueMotion(e, meta) {
+		const cfg   = resolveTongue(e, meta);
+		const phase = e._tonguePhase ?? 'idle';
+		const el  = document.getElementById(`char-enemy-${e.id}`);
+		if (el) {
+			const casting = phase === 'cast';
+			if (casting) el.style.setProperty('--tongue-cast-ms', `${Math.round(e._tongueCastMs ?? 0)}ms`);
+			el.classList.toggle('tongue-windup', casting);
+			// のしかかりの2相＝**舌の予告とは別の絵**（沈む／浮く）＝避け方が違う
+			// （舌は横へ歩いて線から外れる・のしかかりは下がって円から出る＝GUIDE §6-1）。
+			if (phase === 'pounce') el.style.setProperty('--pounce-windup-ms', `${Math.round(e._tonguePounceMs ?? 0)}ms`);
+			el.classList.toggle('pounce-windup', phase === 'pounce');
+			el.classList.toggle('pounce-air',    phase === 'pounceAir');
+		}
+		syncPounceZone(e, cfg);
+		const id = `enemy-tongue-${e.id}`;
+		let strip = document.getElementById(id);
+		const len = e._tongueLen ?? 0;
+		if (!cfg || !isTongueBusy(e) || len <= 0) { if (strip) strip.remove(); return; }
+		const charLayerEl = getCharLayerEl();
+		if (!charLayerEl) return;
+		const cellPx = getCellPx();
+		if (!strip) {
+			strip = document.createElement('div');
+			strip.id = id;
+			charLayerEl.appendChild(strip);
+		}
+		// 帯は**口元から先端まで**引く（口→先端＝1本の線）＝体の上に少し重なるのが正しい姿
+		// （蝦蟇の舌は口から出て自分の顎の上を通る）。長さは判定より 0.15 セルだけ長く描く
+		// ＝効果の範囲 ⊇ 判定の範囲。角度も口元から見た角度＝絵の先端が判定の先端に載る。
+		const { tx, ty } = tongueTip(e);
+		const { mx, my } = tongueMouth(e);
+		const dx = tx - mx, dy = ty - my;
+		const ang = Math.atan2(dy, dx);
+		const ox = mx * cellPx, oy = my * cellPx;
+		const px = (Math.hypot(dx, dy) + 0.15) * cellPx;
+		const heat = Math.min(1, (cfg.reelSpeed ?? 0.22) / MOVE_STEP);
+		strip.className = 'enemy-tongue' + (e._tongueAttached ? ' tongue-attached' : '');
+		strip.style.cssText = `position:absolute;left:${ox}px;top:${oy}px;`
+			+ `width:${px}px;height:${Math.max(3, cellPx * 0.22)}px;z-index:24;pointer-events:none;`
+			+ `transform:translateY(-50%) rotate(${ang}rad);transform-origin:0 50%;`
+			+ `--tongue-heat:${heat.toFixed(3)};`;
+	}
+
+	// のしかかりの**危険域を床に描く**（`pounce` と `pounceAir` のあいだ）。
+	// ⚠️ 敵の絵に載せる予告（`.pounce-windup`）だけでは「どこまでが円の中か」が読めない＝
+	//    J の輪で実測した罠と同じ（GUIDE §6-1）。∴床の告知が本体。
+	// ⚠️ 形は**判定と同じ角丸の矩形**にする＝`enemyEdgeDist ≤ r` の集合は「body の箱を r だけ
+	//    膨らませた角丸矩形」そのもの（円ではない）∴`border-radius: r` で厳密に一致させられる
+	//    ＝隠れダメージ（塗られていない床で殴られる）も過剰警告も出ない。基準点はプレイヤーの
+	//    絵の中心（判定が読む `player.x + 0.5` と同じ点）。
+	function pounceZoneBox(e, r) {
+		const { cx, cy } = enemyCellCenter(e);
+		const { halfW, halfH } = enemyHalf(e);
+		// セル添字 → 描画座標（タイルの角原点）は +0.5
+		return { left: cx + 0.5 - halfW - r, top: cy + 0.5 - halfH - r,
+			w: halfW * 2 + r * 2, h: halfH * 2 + r * 2 };
+	}
+
+	function syncPounceZone(e, cfg) {
+		const id = `toad-pounce-zone-${e.id}`;
+		let el = document.getElementById(id);
+		const phase = e._tonguePhase ?? 'idle';
+		const on = !!cfg && (phase === 'pounce' || phase === 'pounceAir');
+		if (!on) { if (el) el.remove(); return; }
+		const charLayerEl = getCharLayerEl();
+		if (!charLayerEl) return;
+		const cellPx = getCellPx();
+		if (!el) {
+			el = document.createElement('div');
+			el.id = id;
+			charLayerEl.appendChild(el);
+		}
+		const r = pounceRadiusOf(cfg);
+		const box = pounceZoneBox(e, r);
+		// 溜め＝薄い警告／滞空＝濃い（＝もう落ちてくる）。閾値ではなく相そのものが色を決める。
+		el.className = 'toad-pounce-zone' + (phase === 'pounceAir' ? ' pounce-zone-falling' : '');
+		el.style.cssText = `position:absolute;left:${box.left * cellPx}px;top:${box.top * cellPx}px;`
+			+ `width:${box.w * cellPx}px;height:${box.h * cellPx}px;`
+			+ `border-radius:${r * cellPx}px;z-index:2;pointer-events:none;`
+			+ `--pounce-windup-ms:${Math.round(e._tonguePounceMs ?? 0)}ms;`;
+	}
+
+	// 着地の衝撃（`.enemy-coil-crush` と同型＝実時間で消える別 DOM ∴敵が倒れても残らない）。
+	function showPounceLandEffect(e, r) {
+		const charLayerEl = getCharLayerEl();
+		if (!charLayerEl) return;
+		const cellPx = getCellPx();
+		const box = pounceZoneBox(e, r);
+		const el = document.createElement('div');
+		el.className = 'toad-pounce-land';
+		el.style.cssText = `position:absolute;left:${box.left * cellPx}px;top:${box.top * cellPx}px;`
+			+ `width:${box.w * cellPx}px;height:${box.h * cellPx}px;`
+			+ `border-radius:${r * cellPx}px;z-index:23;pointer-events:none;`;
+		charLayerEl.appendChild(el);
+		setTimeout(() => el.remove(), 360);
+	}
+
 	// ── Phase 5.5k k-4: 向きを固定して構える（盾騎士）─────────────────
 	// meta.blockFacing = { turnMs, knockback } を持つ敵は「向きが常時ブロックの面」＝
 	// e.dir がそのままダメージ無効化の方向になる（combat.js isBlockFacingDir）。
@@ -3429,6 +3993,10 @@ export function createEnemyAi(deps) {
 				// ＝この分岐は下の同期まで行かず `continue` する∴消し忘れると気絶中も土煙が
 				// 出たまま「まだ危ない」に見える（＝殴れる窓を絵が否定する）。
 				if (resolveMomentum(e, meta)) { cancelMomentum(e); syncMomentumMotion(e, meta); }
+				// Phase 8-4 (4) 0d-3（8体目 I）: 気絶したら舌も捨てる＝掴まれたままにしない
+				// （止めたのに引き寄せられる、を作らない）。帯の絵も**ここで**消す＝この分岐は
+				// 下の同期まで行かず `continue` する∴消し忘れると気絶中も舌が伸びたまま残る。
+				if (resolveTongue(e, meta)) { cancelTongue(e); syncTongueMotion(e, meta); }
 				continue;
 			}
 			// Phase 5.5k k-7.5: 立っている予告は**他の専有状態より先に必ず解決する**
@@ -3450,6 +4018,12 @@ export function createEnemyAi(deps) {
 			// ここを行動ゲートの中に置くと、岩を投げた直後の硬直（throwFreezeMs）と歩幅の溜めの
 			// あいだ印が止まる＝「印が濃くなっていく」告知が途切れる（J で実測済みの罠）。
 			if (meta.gaze) tickGaze(e, meta, now);
+			// Phase 8-4 (4) 0d-3（8体目 I）: 舌の相も**硬直中も進める時計**（上と同じ枠）。
+			// 噛みつきの硬直（attackFreezeMs 480）と毒沫の硬直のあいだに伸びと引き寄せが
+			// 止まると「段階的に引かれる」に見える（J で実測した罠）。
+			// ⚠️ 戻り値 true ＝**この tick は移動も攻撃もしない**（錨で固定＝引かれている時間が
+			//    そのまま殴れる窓になる）∴下の行動ゲートの条件に `!tongueBusy` を入れる。
+			const tongueBusy = meta.tongue ? tickTongue(e, meta, now) : false;
 			// 隠れ↔出現の周期を更新（hide を持つ敵のみ＝潜み鮫・地中蟲・N 砂嵐の蠍王）
 			tickHide(e, meta, now);
 			// Phase 5.5k k-8: 瞬間移動（術士）＝消えている間と出現した tick を専有する。
@@ -3512,7 +4086,7 @@ export function createEnemyAi(deps) {
 			const dirLocked = tickFaceLock(e, meta, now);
 			// ⚠️ `!soaring` ＝`rise`/`aim`/`dive`/`land` の4相はこの tick を専有する。`ground` と
 			//    `air` は tickSoar が false を返す＝ここが開く（地上は歩き＋鉤爪、空は旋回＋雷撃弾）。
-			if (!isGuarding && !frozen && !leaping && !soaring && !shelled && !leeching && !slamming && !swinging && !breathing && !crushing && !blinking && !dashing) {
+			if (!isGuarding && !frozen && !leaping && !soaring && !shelled && !leeching && !slamming && !swinging && !breathing && !crushing && !blinking && !dashing && !tongueBusy) {
 				if (resolveHitAndAway(e, meta)) {
 					bossTickHitAndAway(e, meta);
 				} else if (cmode === 'ranged') {
@@ -3543,6 +4117,12 @@ export function createEnemyAi(deps) {
 					// **速度**を追う＝止まれない・曲がれない。`resolveEnemySpeed` は渡さない
 					// （速さは momentum の3つの数だけが決める・設定はフェーズで差し替わる）。
 					enemyMomentumSlide(e, meta, resolveMomentum(e, meta), now);
+				} else if (meta.tongue) {
+					// Phase 8-4 (4) 0d-3（8体目 I）: 舌＝**動くのは相手**∴舌が出ているあいだは
+					// 1歩も歩かない（錨）。跳ねて寄るのは帯の外に居るとき、および帯の中でも
+					// **打ち終わりの間（cooldownMs）だけ**＝同じ地点から2度引かない（2026-09-01）。
+					// `resolveEnemySpeed` は渡さない＝速さは hopCells/hopMs だけが決める。
+					enemyToadHop(e, meta, resolveTongue(e, meta), now);
 				} else if (meta.zigzag) {
 					enemyZigzagFly(e, meta, resolveEnemySpeed(e, meta), meta.zigzag);
 				} else {
@@ -3597,6 +4177,9 @@ export function createEnemyAi(deps) {
 			// 硬直は立っていない（硬直中は cancelMomentum で速度 0）∴衝突しないが、
 			// 「今どう動いているか」を最後に上書きする順番に揃える（U の滞空と同じ趣旨）。
 			if (meta.momentum) syncMomentumMotion(e, meta);
+			// Phase 8-4 (4) 0d-3（8体目 I）: 舌の告知（口元から伸びる帯＋打つ前に膨らむ体）。
+			// ⚠️ 最後に置く＝「今どう動いているか」を上書きする順番に揃える（G/U と同じ趣旨）。
+			if (meta.tongue) syncTongueMotion(e, meta);
 		}
 	}
 
@@ -3616,6 +4199,11 @@ export function createEnemyAi(deps) {
 		resolveSoar,           // Phase 8-4 (4) 0d-3: 滞空の設定（フェーズ差替を含む・テスト用）
 		resolveMomentum,       // Phase 8-4 (4) 0d-3: 慣性の設定（フェーズ差替を含む・テスト用）
 		momentumSpeed,         // Phase 8-4 (4) 0d-3: 今の速さ（土煙/体当たり/自壊と同じ1つの数）
+		resolveTongue,         // Phase 8-4 (4) 0d-3: 舌の設定（フェーズ差替を含む・テスト用）
+		tickTongue,            // Phase 8-4 (4) 0d-3: 舌の相の時計（5相の1周・テスト用）
+		reelPlayer,            // Phase 8-4 (4) 0d-3: 引き寄せ1 tick（通行判定を通す・テスト用）
+		enemyToadHop,          // Phase 8-4 (4) 0d-3: 帯の外だけ跳ねて寄る（I 沼地の大蝦蟇・テスト用）
+		tongueBiteRange,       // Phase 8-4 (4) 0d-3: 舌を離す距離＝噛みつきの到達距離（テスト用）
 		resolveEnemySprite,    // Phase 5.5k: 向き別スプライト名解決のテスト用
 		resolveAttackFreezeMs, // Phase 5.5k: 攻撃硬直の長さ（テスト用）
 		tickCombatMode,        // Phase 5.5k: 遠隔／近接の二相（テスト用）

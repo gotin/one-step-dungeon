@@ -16,7 +16,7 @@ import {
 	MOVE_STEP, TICK_MS, INVINCIBLE_MS, HP_PER_HEART,
 	MAP_JSON_URL, SAVE_KEY, CLEARED_KEY, DIR_DELTA,
 	SWORD_REACH, SWORD_COOLDOWN_MS, STONE_PUSH_COOLDOWN_MS,
-	DARK_TOWER_EXIT_ID, CANDLE_FIRE_DMG, RESPAWN_MOVES,
+	DARK_TOWER_EXIT_ID, CANDLE_FLAME_MAX, RESPAWN_MOVES,
 	ATTACK_POSE_MS,
 } from './constants.js';
 // ── セーブ/ロードの純粋変換ロジック（Phase 0-2 Step 1b: save.js へ切り出し）──
@@ -27,7 +27,8 @@ import {
 import { createPassable, STATEFUL_TILES, statefulTileClosed } from './passable.js';
 import { createConditions } from './conditions.js';
 // 占有範囲（AABB）の当たり判定＝大型敵（2×2）を取りこぼさないための単一の真実。
-import { toTileIndex, enemyOccupiesTile } from './hitbox.js';
+// （占有タイルで敵を探す判定は projectile.js の置き炎へ移した＝2026-08-31）
+import { toTileIndex } from './hitbox.js';
 // ── 描画系（Phase 0-2 Step 3: render-board.js / render-chars.js へ切り出し）──────
 import { createRenderBoard } from './render-board.js';
 import { createRenderChars } from './render-chars.js';
@@ -380,9 +381,11 @@ function enterStage(lk, sk, pRow, pCol) {
 		if (arrTile !== TILE.SKY && !arrIsWater && arrTile !== TILE.LAVA) player.flying = false;
 	}
 
-	// ステージ遷移時に飛翔物・設置爆弾をリセット
+	// ステージ遷移時に飛翔物・設置爆弾・置いた炎をリセット
+	// （炎は「1画面に3つまで」＝画面をまたいで持ち出せない＝constants.js CANDLE_FLAME_MAX）
 	clearProjectiles();
 	clearBombs();
+	clearFlames();
 	cancelCharge();   // チャージ中の遷移はキャンセル（Phase 3-1）
 	// ボス部屋ロックをリセット（非ボス部屋に移動したとき）
 	if (!stageData.isBossRoom) bossRoomLocked = false;
@@ -536,6 +539,10 @@ let clearProjectiles     = () => {};
 let clearBombs           = () => {};
 let bombTick             = () => {};
 let placeBomb            = () => {};
+let clearFlames          = () => {};
+let placeCandleFlame     = () => 'placed';
+let flameTick            = () => {};
+let getPlacedFlames      = () => [];
 let isShieldBlocking     = () => false;
 let isShieldBlockingDir  = () => false;
 let showShieldBlockEffect= () => {};
@@ -827,6 +834,9 @@ const { checkStoneOnSwitch, evaluateConditions, refreshGates } = createCondition
 		toTileCol,
 		gameNow,
 		isPassableForEnemy,
+		// Phase 8-4 (4) 0d-3（8体目 I 沼地の大蝦蟇）: 舌の引き寄せはプレイヤーを動かす∴
+		// プレイヤー側の通行判定を渡す（引数の順は x, y＝敵側と逆・combat.js と同じ形）。
+		isPassable:            (nx, ny, axis) => isPassable(nx, ny, axis),
 		moveCharEl:            (id, x, y) => moveCharEl(id, x, y),
 		takeDamage:            (amt) => takeDamage(amt),
 		dealDamageToEnemy:     (e, dmg, atkType) => dealDamageToEnemy(e, dmg, atkType),
@@ -858,6 +868,10 @@ const { checkStoneOnSwitch, evaluateConditions, refreshGates } = createCondition
 	clearBombs           = _proj.clearBombs;
 	bombTick             = _proj.bombTick;
 	placeBomb            = _proj.placeBomb;
+	clearFlames          = _proj.clearFlames;
+	placeCandleFlame     = (r, c) => _proj.placeCandleFlame(r, c);
+	flameTick            = _proj.flameTick;
+	getPlacedFlames      = () => _proj.getPlacedFlames();
 	addProjectile        = (config) => _proj.addProjectile(config);
 	getProjectiles       = () => _proj.getProjectiles();
 	fireEnemyProjectile  = _proj.fireEnemyProjectile;
@@ -1512,6 +1526,8 @@ function gameTick() {
 	enemyTick();
 	projectileTick();
 	bombTick();
+	flameTick();          // 置いた炎の寿命と「踏んだ敵を焼く」判定（2026-08-31）
+	                      // ＝enemyTick の**後**に置く∴同じ tick で炎に入った敵はその tick で焼ける
 	// Phase 5.5k k-7.5: **接触ダメージは廃止した**（2026-08-17 ユーザー決定②
 	// 「接触だけでは攻撃を受けることはないようにする」）。ここには checkEnemyContact() が
 	// あった＝「触れたら痛い」の唯一の入口。今は敵の攻撃はすべてモーションを持つ
@@ -1656,11 +1672,20 @@ function showFluteWarpEffect() {
 	setTimeout(() => el.remove(), 700);
 }
 
-// ── ロウソクを使う（Phase 4-3）─────────────────────────────────
-// 前方の茂み（BUSH）を燃やす（既存の cutBushes を再利用して通行可化）。
-// 燃やしたら ss.bushBurned=true → evaluateConditions() で showConditions の
-// 新トリガー bushBurned で gate された隠し通路/入口/アイテムが出現する。
-// 前方が茂みでなければ「炎が揺らめくだけ」のメッセージのみ。
+// ── ロウソクを使う（Phase 4-3／2026-08-31 で「炎を置く」道具になった）──────────
+// 前方1マスに対して次の順で解決する。**この順番が要点**：
+//   ① かがり火（TORCH）→ 点灯（既存のギミック鍵。置き炎に化けさせない）
+//   ② 未燃の茂み（BUSH）→ 燃やす（cutBushes を再利用して通行可化＋bushBurned を立てる）
+//   ③ それ以外（燃え尽きた茂みを含む）→ **その場に炎を置く**（constants.js CANDLE_FLAME_*）
+// ⚠️ ①② では敵にダメージを与えない。以前は「茂みの有無に関わらず前方の敵を焼く」だったが、
+//    それを残すと**かがり火や茂みを向いて連打する**だけで炎の上限を無視して殴り続けられる
+//    ＝2026-08-31 に塞いだ穴（ユーザー報告「ロウソクの炎が連打できてしまう」）が復活する。
+//    燃え尽きた茂み（ss.cutBushes に入ったタイル）は床と同じ扱い＝③へ流す∴「一度燃やした
+//    場所には炎が置けない」という嘘の穴は作らない。
+// 敵への炎ダメージは③の炎（projectile.js placeCandleFlame → burnEnemiesOnFlame）が
+// **唯一の入口**＝「置いた瞬間に重なっている敵へ1回」「後から踏んだ敵へ1回」を同じ式で扱う。
+// 2026-08-30 の修正（2×2 の敵は占有4タイルのどれを向いても当たる＝enemyOccupiesTile で
+// 見る）はそちらへ引き継いだ。
 function playCandle() {
 	if (isDialog || isPaused || isGameover || isTransitioning) return;
 	resumeAudio();
@@ -1673,18 +1698,6 @@ function playCandle() {
 	const posKey = `${tr},${tc}`;
 
 	playSound('fire');
-
-	// 前方の敵に炎ダメージ（茂みの有無に関わらず判定）。
-	// 隠れ中（地中/滞空/潜行）の敵は対象外＝炎も届かない（Phase 5.5k k-3）。
-	// ⚠️ 2026-08-30 修正：ここは `toTileRow(e.y) === tr && toTileCol(e.x) === tc`＝敵の座標
-	//    （占有範囲の**左上**）とタイルの完全一致で見ていた∴2×2 の敵は**左上タイルを向いた
-	//    ときだけ**炎が通り、他の向きでは無音・無表示の 0 ダメージになっていた。炎が弱点の敵は
-	//    O 古森の巨人・L 氷のリヴァイアサン・I 沼地の大蝦蟇＝**3体とも 2×2**＝弱点が向き次第で
-	//    死んでいた（剣は hitbox.js 経由で4方向とも当たる＝弱点だけが不利という逆転）。
-	const hitEnemy = enemies.find(e => !e.hidden && enemyOccupiesTile(e, tr, tc));
-	if (hitEnemy) {
-		dealDamageToEnemy(hitEnemy, CANDLE_FIRE_DMG, 'fire', player.x, player.y);
-	}
 
 	// 前方が TORCH なら点灯
 	if (tile === TILE.TORCH) {
@@ -1703,21 +1716,12 @@ function playCandle() {
 		return;
 	}
 
-	if (tile !== TILE.BUSH) {
-		showCandleFireEffect(player.x + ndx, player.y + ndy);
-		if (hitEnemy) {
-			pulse('🔥 炎が敵を焼いた！', 1400);
-		} else {
-			pulse('🕯 炎が揺らめいた…… 前に燃やせる茂みはない', 1600);
-		}
-		return;
-	}
-
 	const ss = getSS(currentLayer, stageKey);
 	if (!ss.cutBushes) ss.cutBushes = new Set();
-	if (ss.cutBushes.has(posKey)) {
-		showCandleFireEffect(player.x + ndx, player.y + ndy);
-		pulse('🕯 もう燃え尽きている', 1400);
+
+	// 未燃の茂み以外はすべて③「炎を置く」へ流す（燃え尽きた茂みも床と同じ扱い）。
+	if (tile !== TILE.BUSH || ss.cutBushes.has(posKey)) {
+		placeFlameAhead(tr, tc, player.x + ndx, player.y + ndy);
 		return;
 	}
 
@@ -1730,6 +1734,35 @@ function playCandle() {
 	showCandleFireEffect(player.x + ndx, player.y + ndy);
 	pulse('🔥 茂みが燃え上がった！', 1800);
 	saveGame();
+}
+
+// 前方1マスに炎を置く（2026-08-31）。置けたかどうかを必ず言葉で返す＝
+// 「押したのに何も起きない」を作らない（上限・重複・置けない床の3つを区別する）。
+// ⚠️ 置ける床の判定は `tilePassable`（passable.js）＝**歩ける床の上でだけ燃える**。
+//    壁・水・溶岩・閉じた扉の上で炎が燃える嘘を作らない（水に火を置ける絵は、
+//    後から「水で消える」等の例外を要求してしまう）。
+function placeFlameAhead(tr, tc, fx, fy) {
+	if (!tilePassable(tr, tc)) {
+		// 従来の一瞬の炎演出だけ出す＝「火は点いたが置き場所がない」が読める。
+		showCandleFireEffect(fx, fy);
+		pulse('🕯 炎が揺らめいた…… ここには置けない', 1600);
+		return;
+	}
+	const result = placeCandleFlame(tr, tc);
+	if (result === 'full') {
+		showCandleFireEffect(fx, fy);
+		pulse(`🕯 炎はもう ${CANDLE_FLAME_MAX} つ燃えている！`, 1600);
+		return;
+	}
+	if (result === 'exists') {
+		pulse('🕯 ここはもう燃えている', 1400);
+		return;
+	}
+	if (result === 'burned') {
+		pulse('🔥 炎が敵を焼いた！', 1400);
+		return;
+	}
+	pulse('🔥 炎を置いた（敵が踏めば焼ける）', 1600);
 }
 
 // ロウソクの炎演出（前方セルに一時 div を出す）
@@ -2331,6 +2364,37 @@ export function getEnemiesSnapshot() {
 		// momentum ＝慣性の設定そのもの（フェーズで差し替わる＝`resolveMomentum` が読む側）。
 		// **meta.momentum とは別物**＝「後半でもっと止まれなくなった」の観測窓。
 		momentum: e._momentum ?? null,
+		// Phase 8-4 (4) 0d-3（8体目 I）: 舌（tongue）の観測用。
+		// tonguePhase ＝'idle'（次を打つまで）| 'cast'（打つ前の予告＝体が膨らむ）|
+		//   'lash'（伸びている）| 'hold'（掴んでいる＝引き寄せ中＝**蝦蟇は静止した的**）|
+		//   'retract'（戻している）| 'pounce'（のしかかりの溜め＝体が沈む）|
+		//   'pounceAir'（滞空＝落ちてくる）。**この1つの値で「今どこに居るか」が全部読める**。
+		// tongueLen ＝body の表面から先端までの長さ（セル・連続値）＝絵（`--tongue-len` 相当の
+		//   px）とテストが読む同じ1つの数／tongueAng ＝伸びている向き（rad・斜めもある）。
+		// tongueAimX/Y ＝**予告の終わりに固定した**狙い（プレイヤーの当時の座標）＝解決で
+		//   追尾しないことをこの据え置きで測る（breathDir と同じ趣旨）。
+		// tongueAttached ＝掴んでいる実体（＝引き寄せが起きている tick）。
+		// tongueGrabs ＝掴んだ回数／tongueSnaps ＝空振り＋引き剥がされた＋時間切れの回数
+		//   ∴「帯の外に立てば掴まれない」は grabs が増えず snaps が増えることで測れる。
+		tonguePhase: e._tonguePhase ?? null,
+		tongueAt: e._tongueAt ?? null,          // 今の相が終わる論理時刻
+		tongueUntil: e._tongueUntil ?? null,    // 次に打てるようになる論理時刻（cooldownMs）
+		tongueLen: e._tongueLen ?? null,
+		tongueAng: e._tongueAng ?? null,
+		tongueAimX: e._tongueAimX ?? null,
+		tongueAimY: e._tongueAimY ?? null,
+		tongueAttached: e._tongueAttached ?? false,
+		tongueGrabs: e._tongueGrabs ?? null,
+		tongueSnaps: e._tongueSnaps ?? null,
+		// 2026-09-01 追加：のしかかり（＝**盾では防げない唯一の打点**）の観測窓。
+		// toadPounces ＝跳んだ回数／toadPounceHits ＝着地で当たった回数
+		// ∴「予告を見て下がれば避かる」は pounces が増えて hits が増えないことで測れる
+		//   （momRams/momCrashes と同じ趣旨＝機構が成立している証拠を2つの数の差で読む）。
+		toadPounces:    e._toadPounces ?? null,
+		toadPounceHits: e._toadPounceHits ?? null,
+		// tongue ＝舌の設定そのもの（フェーズで差し替わる＝`resolveTongue` が読む側）。
+		// **meta.tongue とは別物**＝「後半で速く打ち・長く届き・強く引くようになった」の観測窓。
+		tongue: e._tongue ?? null,
 		// Phase 8-4 (4) 層1: ボスのフェーズが差し替える「行動の元データ」の観測用。
 		// boss.js checkBossPhase は**エンティティ側にだけ書く**∴フェーズが効いたかは
 		// ここに出る値で読む（null＝差し替えなし＝ENEMY_META のまま）。
@@ -2426,6 +2490,10 @@ export function callGrantReward(content) { return grantReward(content); }
 
 // Phase 9-5a: giveSubItem テスト用（容量拡充アイテムの passive 分岐を確認するため）
 export function callGiveSubItem(id) { return giveSubItem(id); }
+
+// 2026-08-31: 置いた炎の一覧（テスト用）。上限・寿命・「1つの炎は1体に1回」を
+// 外から観測できる唯一の窓（`burnedCount` がその炎が焼いた敵の数）。
+export function getPlacedFlamesSnapshot() { return getPlacedFlames(); }
 
 // Phase 9-5c: フロアドロップ一覧（テスト用）
 export function getFloorDropsSnapshot() {

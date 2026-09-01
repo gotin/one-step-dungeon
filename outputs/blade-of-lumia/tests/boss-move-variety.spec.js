@@ -299,6 +299,7 @@ const MECHANISM_FIELDS = [
   'gaze',           // 0d-3（5体目 O）: 印（1拍前の足跡）へ寄る移動（プレイヤーを追わない）
   'soar',           // 0d-3（6体目 U）: 空へ退いて旋回し軸へ落ちる移動（届く手段が矢だけになる）
   'momentum',       // 0d-3（7体目 G）: 速度を追う移動（止まれない・曲がれない・壁で自壊する）
+  'tongue',         // 0d-3（8体目 I）: 舌で**プレイヤーを動かす**（自分は寄って来ない）
 ];
 const mechanismsOf = (meta) => new Set(MECHANISM_FIELDS.filter(k => meta[k]));
 const attackTypesOf = (meta) => new Set(
@@ -3570,4 +3571,1168 @@ test('G-⑩ 素のデータでも体当たりが届き、走っているあい�
   const swordBefore = s.slice(0, ramAt).find(x => x.freezeUntil > x.now);
   expect(swordBefore, '体当たりより前に剣が解決している＝寄って来る途中で剣が惰性を捨てている')
     .toBeUndefined();
+});
+
+// ══════════════════════════════════════════════════════════════════════════════
+// 8体目＝I 沼地の大蝦蟇（2×2・D8 のボス）＝新機構 `tongue`（舌）
+// ══════════════════════════════════════════════════════════════════════════════
+// 0d-3（2026-08-31）。層2 の設計＝**動くのはプレイヤーの方**＝13体で唯一「自分ではなく相手を
+// 動かす」ボス。自分から歩いて詰めることはしない（帯の外に居るときだけ跳ねて寄る）。
+//   ・相は7つ＝idle → cast（予告・体が膨らむ）→ lash（伸びる）→ hold（引き寄せる）→
+//     pounce（沈む＝のしかかりの溜め）→ pounceAir（滞空）→ idle／空振りなら retract。
+//     `cast` の**終わり**で狙いを固定する＝以後追尾しない（伸びているあいだに横へ 1 セル
+//     退けば空振りする）。
+//   ・掴まれても操作は一切奪われない＝`reelSpeed`（0.22）< プレイヤーの歩幅（MOVE_STEP 0.5）
+//     ∴**歩けば離れられる**（払うのは時間）。歩かなければ `holdMs` の間に口元まで引かれる。
+//   ・引き寄せの終点＝**噛みつきの到達距離**（`attacks[]` の sword の range 1.4）＝そこで舌を
+//     離し、そのまま**のしかかり**へ渡す（「引かれた末に潰される」が繋がる）。
+//   ・のしかかり（2026-09-01 追加）＝**口元（端 ≤ 噛みつきの間合い）に居る相手に跳ぶ**唯一の規則。
+//     入口は2つ＝① 引き寄せの終幕（掴めたとき）② 打ち終わりの間が明けてもまだ口元に居るとき。
+//     着地の一撃は**盾で防げない**（体当たり／締め上げ／ブレスと同じ扱い）∴これが I の
+//     「盾で全部消える」を閉じる答え＝ユーザー報告（2026-09-01）「舌でひきこまれる、ろうそくで
+//     火をつける／これを繰り返すだけでノーダメージで倒せてしまう。（攻撃は盾で防御できてしまう）」。
+//     猶予は溜め＋滞空（840ms＝7 tick＝3.5 セル歩ける）≫ 半径と噛みつきの間合いの差（0.2）。
+//   ・舌が出ているあいだ蝦蟇は**1歩も動かず攻撃もしない**（錨）＝引かれている時間がそのまま
+//     「殴れる窓」になる。舌そのものはダメージ 0（痛いのは終幕ののしかかり）。
+//
+// ⚠️ 到達距離の表（GUIDE §7-12）に隙間を作らないこと＝帯の**内端は噛みつきの到達距離そのもの**
+//    （データに `minRange` を持たない）。実測で踏んだ欠陥＝`minRange 1.8` を持っていたため
+//    間合い 1.5 では噛みつきも舌も来ず（毒沫だけ）、しかも**引き寄せの終点がその隙間**だった。
+// ⚠️ 引き寄せは連続座標で動かす∴終わった瞬間に必ず 0.5 格子へ戻すこと（半端な位置に置き去ると
+//    幅1マスの出入口へ二度と入れない＝ボス部屋から出られなくなる）。しかも寄せる先は
+//    **敵側の格子**（四捨五入だと間合い 1.27 → 1.5 へ押し戻され噛みつき 1.4 が永久に届かない
+//    ＝これも実測で踏んだ）。
+// ⚠️ この節は**ほとんどの本をパッチなし（実プレイと同じ meta）で測る**＝舌の時計は行動ゲートの
+//    外で走る∴噛みつきも毒沫も止めずに測れる（G の `RAM_ONLY` に相当するものが要らない）。
+//    唯一の例外は I-⑥＝**帯だけを付け替えて 2 つの極を作る**（`holdMs`・`reelSpeed` は素のまま）：
+//    (a) 引き剥がせる側＝`cells` 3 に縮める（部屋の中に「帯の外へ歩き切る助走」を作る）／
+//    (b) 引き剥がせない側＝`cells` 9 に伸ばす（部屋の対角 7.62 より長い＝どこへ歩いても帯の中）。
+const I_ROW = 4, I_COL = 7;                  // 2×2 ∴ rows 4-5 / cols 7-8 を占める
+const I_PL_ROW = 4, I_PL_COL = 2;            // 帯の内側（間合い 5.0）＝舌を打たせる立ち位置
+const I_FAR   = { row: 4, col: 2 };          // 帯の外端ちょうど（5.0）＝holdMs の算術を測る
+                                             // ⚠️ 2026-09-01 に cells 6 → 5 ∴col 1（6.0）から動かした。
+                                             //    整数の立ち位置で外端ぴったりが取れる `cells` を選んである
+                                             //    （edge 距離は整数 × 整数の hypot ∴4.5 は取れない）。
+const I_EDGE  = { row: 3, col: 6 };          // 噛みつきの到達距離のすぐ外（1.414）＝隙間を測る
+const I_NEAR  = { row: 4, col: 5 };          // 帯の内側で西に助走 4 セル＝引き剥がしを測る
+const I_OUT   = { row: 1, col: 1 };          // 帯の外（6.71）＝跳ねて寄るのを測る
+const I_MOUTH = { row: 4, col: 6 };          // 口元（0.5＝噛みつきの間合いの内側）＝舌は打てない
+                                             //   ∴ここに居座る相手にはのしかかりで答える（I-⑮）
+const I_MID   = { row: 4, col: 4 };          // 帯の内側（3.0）＝北へ 1 セル退いてもまだ帯の内側
+                                             //   （3.16）＝「打ち終わりの間だけ跳ぶ」を測る（I-⑫）
+// D8 のボス直前の想定装備（`node scripts/audit-balance.mjs` の「D8 沼地 / ボス直前」＝
+// DEF 1（布の服ティア0）・最大HP 26＝ハート 13・剣ティア0）。弱点の炎は D4 のロウソク＝持っている。
+const D8_PRE = {
+  ps_hearts: '13', ps_sword: '0', ps_shield: '0', ps_armor: '0', ps_weapon: '1', ps_candle: '1',
+};
+// SE の指紋（`installToneRec` は周波数だけを記録する）
+const TONGUE_CAST_HZ = [174];                // tongueCast＝打つ前の予告（音程を動かさず膨らむ）
+const TONGUE_GRAB_HZ = [320, 384, 296];      // tongueGrab＝掴んだ（打撃音ではない＝ダメージ0）
+const TONGUE_SNAP_HZ = [480, 720, 1000];     // tongueSnap＝空振り／引き剥がされた／時間切れ
+const BITE_WINDUP_HZ = [130, 104];           // maulWindup＝噛みつきの予告（口元での噛みつき）
+const POUNCE_HZ      = [196, 147, 110, 660]; // toadPounce＝沈んで跳んだ（終わりの高音＝滞空の合図）
+const POUNCE_LAND_HZ = [82, 116, 262, 208];  // toadLand＝落ちた（＝当たり判定と同じ tick）
+
+/**
+ * `bal_swamp_toad` の I を n tick 追う。毎 tick の相・舌の長さ・間合い・絵・音と
+ * プレイヤーの位置／HP を返す。
+ * @param {object} o
+ * @param {number} o.ticks       進める論理 tick 数
+ * @param {object} [o.spawn]     プレイヤーの湧き（既定＝(4,2)）
+ * @param {boolean} [o.debugOff] true＝'g' で debug を切る（ダメージが通る）
+ * @param {object} [o.patch]     ENEMY_META['I'] へ一時的に差し込むフィールド
+ * @param {number} [o.dropAt]    この tick の step より前に I へ与えるダメージの tick
+ * @param {number} [o.dmg]       その量（`dealDamage` は def を引く∴+def して渡す）
+ * @param {object} [o.moveWhen]  { atPhase?, attached?, dir, steps }＝**条件が満たされた tick から**
+ *                               1 tick に1歩ずつ steps 回だけその向きへ歩く（tick 番号で固定すると
+ *                               舌の数を変えた瞬間に意味がずれる＝O/G で踏んだ罠）
+ * @param {boolean} [o.face]     true＝毎 tick 蝦蟇の方へ向き直る（＝盾の正面を蝦蟇に向け続ける。
+ *                               ユーザー報告の戦法そのもの＝「向いて焼く」が完全防御だった）
+ * @param {boolean} [o.candle]   true＝毎 tick ロウソクを置く（弱点の炎＝報告された戦法の再現）
+ */
+async function trackToad(page, o) {
+  await installToneRec(page);
+  const sp = o.spawn ?? { row: I_PL_ROW, col: I_PL_COL };
+  await gotoFrozen(page, previewUrl('bal_swamp_toad', sp.row, sp.col, D8_PRE));
+  if (o.debugOff) await page.keyboard.press('g');
+  return page.evaluate((a) => {
+    const g = window.__game;
+    if (a.patch) g.setEnemyMetaForTest('I', a.patch);
+    const i0 = g.getEnemies().find(e => e.type === 'I');
+    if (!i0) return { error: 'I が盤面に居ない' };
+    const id = i0.id;
+    const find = () => g.getEnemies().find(e => e.id === id);
+    const cellPx = document.querySelector('#board .cell').getBoundingClientRect().width;
+    // 間合い＝`enemyEdgeDist`（セル添字基準の箱の面までの距離）と同じ式＝到達距離の表と揃う
+    const edgeDist = (e, px, py) => {
+      const cx = e.x + ((e.w ?? 1) - 1) / 2, cy = e.y + ((e.h ?? 1) - 1) / 2;
+      const gx = Math.max(0, Math.abs(px - cx) - ((e.w ?? 1) - 1) / 2);
+      const gy = Math.max(0, Math.abs(py - cy) - ((e.h ?? 1) - 1) / 2);
+      return Math.hypot(gx, gy);
+    };
+
+    const samples = [];
+    const movedAt = [];
+    let stepsLeft = a.moveWhen?.steps ?? 0;
+    for (let t = 1; t <= a.ticks; t++) {
+      const tone0 = window.__tones.length;
+      if (a.dropAt === t) g.dealDamage(id, a.dmg);
+      const cur = find();
+      if (!cur) break;
+      // 盾の正面を蝦蟇へ向け続ける／弱点の炎を置く（＝ユーザー報告の戦法を再現する）
+      if (a.face || a.candle) {
+        const p0 = g.getPlayer();
+        const cx = cur.x + ((cur.w ?? 1) - 1) / 2, cy = cur.y + ((cur.h ?? 1) - 1) / 2;
+        const dx = cx - p0.x, dy = cy - p0.y;
+        if (a.face) {
+          g.setHeroDir(Math.abs(dx) >= Math.abs(dy) ? (dx > 0 ? 'right' : 'left')
+            : (dy > 0 ? 'down' : 'up'));
+        }
+        if (a.candle) g.useSubItem();
+      }
+      const mw = a.moveWhen;
+      if (mw && stepsLeft > 0
+        && (mw.atPhase === undefined || (cur.tonguePhase ?? 'idle') === mw.atPhase)
+        && (mw.attached === undefined || !!cur.tongueAttached === mw.attached)) {
+        g.movePlayer(mw.dir); stepsLeft--; movedAt.push(t);
+      }
+      g.step(1);
+      const e = find();
+      if (!e) break;
+      const p = g.getPlayer(), st = g.getState();
+      const el = document.getElementById(`char-enemy-${id}`);
+      const strip = document.getElementById(`enemy-tongue-${id}`);
+      samples.push({
+        t, now: st.gameTime, hp: e.hp, x: e.x, y: e.y, dir: e.dir,
+        phase: e.tonguePhase ?? 'idle', len: e.tongueLen ?? 0, ang: e.tongueAng,
+        aimX: e.tongueAimX, aimY: e.tongueAimY, attached: !!e.tongueAttached,
+        grabs: e.tongueGrabs ?? 0, snaps: e.tongueSnaps ?? 0,
+        cfg: e.tongue ?? null, at: e.tongueAt ?? null, until: e.tongueUntil ?? null,
+        swingAt: e.swingAt ?? null, freezeUntil: e.freezeUntil ?? null,
+        projectiles: g.getProjectiles().length,
+        px: p.x, py: p.y, php: p.hp, pdef: st.player.def,
+        // 盾の向き・盾ティア・無敵窓＝「盾で防げない」を測るために要る3つ
+        // （向きが蝦蟇を向いていない／盾を持っていない／無敵で吸われた、を後から切り分ける）
+        pdir: st.heroDir, shieldTier: st.player.shieldTier, invUntil: st.player.invincibleUntil,
+        reach: edgeDist(e, p.x, p.y),
+        // 絵＝予告（体が膨らむ）と帯（舌そのもの）。数は JS が単一の真実として渡す。
+        windup: !!el?.classList.contains('tongue-windup'),
+        castMsVar: (el?.style.getPropertyValue('--tongue-cast-ms') ?? '').trim(),
+        strip: !!strip, stripW: strip ? parseFloat(strip.style.width) : 0,
+        stripAttached: !!strip?.classList.contains('tongue-attached'),
+        // のしかかり＝数（跳んだ回数・当てた回数）と絵（体の沈み／滞空／床の危険域）。
+        // 床の危険域は**セル単位**へ戻して渡す＝判定（`enemyEdgeDist ≤ r`）と同じ物差しで比べる。
+        // ⚠️ スナップショットは「機構を持たない敵では null」の作法∴ここで 0 へ正規化する
+        //    （grabs/snaps と同じ＝`toBe(0)` が null と食い違わない）
+        pounces: e.toadPounces ?? 0, pounceHits: e.toadPounceHits ?? 0,
+        pWindup: !!el?.classList.contains('pounce-windup'),
+        pAir: !!el?.classList.contains('pounce-air'),
+        pounceMsVar: (el?.style.getPropertyValue('--pounce-windup-ms') ?? '').trim(),
+        zone: (() => {
+          const z = document.getElementById(`toad-pounce-zone-${id}`);
+          if (!z) return null;
+          return { left: parseFloat(z.style.left) / cellPx, top: parseFloat(z.style.top) / cellPx,
+            w: parseFloat(z.style.width) / cellPx, h: parseFloat(z.style.height) / cellPx,
+            radius: parseFloat(z.style.borderRadius) / cellPx,
+            falling: z.classList.contains('pounce-zone-falling') };
+        })(),
+        landFx: !!document.querySelector('.toad-pounce-land'),
+        // 帯の付け根（char-layer の px 座標）と描いた角度＝絵の口元と先端を数で読む
+        stripBase: strip ? [parseFloat(strip.style.left), parseFloat(strip.style.top)] : null,
+        stripAng: strip
+          ? parseFloat((strip.style.transform.match(/rotate\(([-0-9.e]+)rad\)/) ?? [])[1]) : null,
+        newTones: window.__tones.slice(tone0),
+      });
+    }
+    const e = find();
+    return { id, cellPx, samples, movedAt,
+      end: e && { hp: e.hp, maxHp: e.maxHp, cfg: e.tongue ?? null } };
+  }, o);
+}
+
+// 相の連（[{ phase, from, to, ticks }]）＝時系列の順序と長さを1つの形で見る
+function tongueRuns(samples) {
+  const runs = [];
+  for (const s of samples) {
+    const last = runs[runs.length - 1];
+    if (last && last.phase === s.phase) { last.to = s.t; last.ticks++; continue; }
+    runs.push({ phase: s.phase, from: s.t, to: s.t, ticks: 1 });
+  }
+  return runs;
+}
+// 舌が出ているあいだの連（idle 以外が続く塊の配列）＝錨（出ているあいだ動かない）を
+// **一巡ずつ**見るために持つ。全 tick を1つに混ぜると「巡と巡のあいだに跳んだ」ぶんまで
+// 錨破りに数えてしまう（＝打ち終わりの間の跳び＝I-⑫ で正しい振る舞い）。
+const busyStreaks = (samples) => {
+  const runs = [];
+  let cur = null;
+  for (const s of samples) {
+    if ((s.phase ?? 'idle') === 'idle') { cur = null; continue; }
+    if (!cur) { cur = []; runs.push(cur); }
+    cur.push(s);
+  }
+  return runs;
+};
+// 舌の先端（判定側の几何）＝enemy-ai.js `tongueTip` と同じ式（中心＋向き×(体の表面+長さ)）。
+// 絵の先端がここに載っているかを測るために持つ（2×2 固定＝I 専用）。
+const hitTipOf = (s) => {
+  const w = 2, h = 2;
+  const ux = Math.cos(s.ang), uy = Math.sin(s.ang);
+  let t = Infinity;
+  if (Math.abs(ux) > 1e-6) t = Math.min(t, (w / 2) / Math.abs(ux));
+  if (Math.abs(uy) > 1e-6) t = Math.min(t, (h / 2) / Math.abs(uy));
+  const span = Number.isFinite(t) ? t : 0;
+  return { tx: s.x + w / 2 + ux * (span + s.len), ty: s.y + h / 2 + uy * (span + s.len) };
+};
+// 噛みつきの到達距離（＝舌を離す距離）を meta から導く＝`tongueBiteRange` と同じ導出
+const biteRangeOf = (m) => {
+  const list = m.attacks ?? (m.attack ? [m.attack] : []);
+  const r = Math.max(0, ...list.filter(a => a.type === 'sword').map(a => a.range ?? 0));
+  return r > 0 ? r : (m.attack?.range ?? 1.4);
+};
+
+// ── I-① データ＝I の層2（舌の綴りと「歩けば離れられる／歩かなければ必ず噛まれる」の算術）──
+test('I-① 沼地の大蝦蟇のデータ＝舌は歩幅より遅く引き、帯のどこで掴まれても口元まで届く', () => {
+  const m = ENEMY_META['I'];
+  const c = m.tongue;
+  const KEYS = ['castMs', 'cells', 'cooldownMs', 'holdMs', 'hopCells', 'hopMs',
+    'lashSpeed', 'pounceAirMs', 'pounceAtk', 'pounceRadius', 'pounceRecoverMs', 'pounceWindupMs',
+    'reelSpeed', 'retractMs'];
+
+  expect(c, 'tongue が無い＝I に固有の移動機構が無い').toBeTruthy();
+  // 綴りの番人（`resolveTongue` を読む関数が読むキー＝1文字違うと既定値に落ちて黙って動く）
+  expect(Object.keys(c).sort()).toEqual(KEYS);
+  // 帯の**内端は持たない**＝噛みつきの到達距離から導く（持つと「どちらも届かない隙間」ができる）
+  expect('minRange' in c, 'minRange を持っている＝噛みつきの到達距離と二重に数を持っている')
+    .toBe(false);
+
+  // `hitAndAway` は enemyTick の分岐で tongue より優先される∴**明示 false** が要る
+  // （W/A/N/J/O/U/G で7回踏んだ罠＝書かないと新機構の分岐へ一度も来ない）。
+  expect('hitAndAway' in m, 'hitAndAway を書いていない＝既定の張り付きに戻る余地が残る').toBe(true);
+  expect(m.hitAndAway, 'hitAndAway が true ＝tongue の分岐に来ない').toBe(false);
+  expect(m.initialModeWeights, '寄り方の抽選が残っている＝読まれない数値（W/O/U/G で外した作法）')
+    .toBeUndefined();
+
+  const bite  = biteRangeOf(m);
+  const spray = (m.attacks ?? []).find(a => a.type === 'stone');
+  expect(bite, '噛みつきの到達距離が 1.4 でない＝帯の内端が動いている').toBe(1.4);
+  // ① 到達距離の表に隙間が無い＝噛みつき(0,1.4] → 舌(1.4,6] → その外は毒沫（range 7）と跳ね寄り
+  expect(c.cells, '帯の外端が噛みつきの到達距離以下＝舌を打てる間合いが存在しない')
+    .toBeGreaterThan(bite);
+  expect(spray.range, '毒沫が帯の外端より短い＝帯の外に「何も来ない距離」ができる')
+    .toBeGreaterThan(c.cells);
+  // ② 歩けば離れられる（引き寄せは操作を奪わない＝払うのは時間）
+  expect(c.reelSpeed, '引き寄せがプレイヤーの歩幅以上＝歩いても離れられない（操作を奪う）')
+    .toBeLessThan(MOVE_STEP);
+  // ③ 歩かなければ必ず口元まで＝`reelSpeed × 掴める tick 数 ≥ 帯の幅`
+  //    （満たさないと帯の外端で掴まれた人だけ時間切れで解放される＝規則に穴が空く）
+  expect(c.reelSpeed * Math.floor(c.holdMs / TICK_MS),
+    '掴んでいられる間に帯の幅を引き切れない＝帯の外端で掴まれても噛まれない穴が残る')
+    .toBeGreaterThanOrEqual(c.cells - bite);
+  // ④ 伸びる当たり判定は MOVE_STEP 以下に刻める（速くしても判定を飛び越さない）
+  expect(c.lashSpeed / Math.max(1, Math.ceil(c.lashSpeed / MOVE_STEP)),
+    '舌の1刻みが MOVE_STEP を越える＝プレイヤーを飛び越して当たらない').toBeLessThanOrEqual(MOVE_STEP);
+  // ⑤ 予告は時間の床（近接の溜め＝480ms）以上＝見てから動ける長さ
+  expect(c.castMs, '予告が近接の溜め（MELEE_WINDUP_MS）より短い＝見てから動けない')
+    .toBeGreaterThanOrEqual(MELEE_WINDUP_MS);
+  // ⑥ 跳ねて寄る速さ ≪ プレイヤー（GUIDE §7-2）＝自分からは詰めて来ない
+  const playerCps = (MOVE_STEP / TICK_MS) * 1000;      // 4.17 セル/秒
+  expect((c.hopCells / c.hopMs) * 1000, '跳ねる速さがプレイヤーの半分以上＝自分から詰めて来る')
+    .toBeLessThan(playerCps / 2);
+  // ⑦ 噛みつきの予告は既定の床に任せる（`windupMs` を書かない＝MELEE_WINDUP_MS）
+  const biteAtk = m.attacks.find(a => a.type === 'sword');
+  expect(biteAtk.windupMs, '噛みつきに独自の予告時間を書いている＝時間の床から外れる').toBeUndefined();
+  // ⑧ のしかかりの算術（2026-09-01・ユーザー報告「盾＋ロウソクでノーダメージ」への答え）。
+  //    (a) 半径 ≥ 噛みつきの間合い＝**引き寄せの終点は必ず円の中**（＝掴まれて動かなければ潰される）。
+  //        逆にすると引かれた末に「円の外に置かれる」＝終幕の見返りが消える（設計が捻れる）。
+  //    (b) 猶予（溜め＋滞空）で**円の外へ歩き切れる**＝見てから避けられる（払うのは操作）。
+  //    (c) 予告は時間の床（MELEE_WINDUP_MS）以上＝盾で防げない一撃に「見てから」を保証する。
+  //    (d) 着地に硬直がある＝潰した後は殴り返せる（撃ち逃げにならない）。
+  //    (e) 打点は噛みつきと同じ atk まで＝盾で防げない一撃を防げる一撃より重くしない
+  //        （O の `stampAtk`／U の `diveAtk` と同じ作法）。
+  const pounceArith = (cc, label) => {
+    expect(cc.pounceRadius, `${label}：のしかかりの半径が噛みつきの間合い（${bite}）より小さい`
+      + '＝口元まで引いたのに円の外＝終幕の見返りが消える').toBeGreaterThanOrEqual(bite);
+    const graceTicks = Math.floor((cc.pounceWindupMs + cc.pounceAirMs) / TICK_MS);
+    expect(graceTicks * MOVE_STEP, `${label}：猶予 ${graceTicks} tick で歩ける `
+      + `${(graceTicks * MOVE_STEP).toFixed(2)} セルが円の外（${cc.pounceRadius} − ${bite}）へ`
+      + '届かない＝避けられない攻撃になる').toBeGreaterThan(cc.pounceRadius - bite);
+    expect(cc.pounceWindupMs, `${label}：のしかかりの溜めが時間の床（MELEE_WINDUP_MS）より短い`
+      + '＝盾で防げない一撃を見てから動けない').toBeGreaterThanOrEqual(MELEE_WINDUP_MS);
+    expect(cc.pounceRecoverMs, `${label}：着地に硬直が無い＝潰した直後に殴り返せない`)
+      .toBeGreaterThan(0);
+    expect(cc.pounceAtk, `${label}：のしかかりが噛みつき（atk ${m.atk}）より重い`
+      + '＝盾で防げない一撃の方が痛い').toBeLessThanOrEqual(m.atk);
+    expect(cc.pounceAtk, `${label}：のしかかりが D8 の防御（DEF 1）で 1 まで削れる＝罰にならない`)
+      .toBeGreaterThan(2);
+  };
+  pounceArith(c, '前半');
+  // ⑧ 弱点は炎＝D4 のロウソクが答えになる前提。倍率の**値**はここで固定しない
+  //    （2026-08-31：ロウソクが「置き炎」になり連打が効かなくなった代わりに ×2 → ×5 へ。
+  //     倍率が妥当かは `tests/candle-flame.spec.js` F-⑦ が戦闘時間の算術で見張る）。
+  expect(m.weakness?.type, '弱点が炎でない（D4 のロウソクが答えにならない）').toBe('fire');
+  expect(m.weakness?.multiplier, '炎が等倍以下＝弱点になっていない').toBeGreaterThan(1);
+
+  // 後半（HP 50% 以下）＝速く打ち・長く届き・強く引く。ただし上の①〜⑥は**すべて保つ**。
+  const p = (m.phases ?? []).find(ph => ph.tongue !== undefined);
+  expect(p, '後半の相が舌を差し替えていない＝前半と同じ動きのまま').toBeTruthy();
+  expect(p.hpThreshold).toBe(0.5);
+  expect(Object.keys(p.tongue).sort(), '後半の綴りが前半と違う＝どれかが既定値に落ちる').toEqual(KEYS);
+  expect(p.tongue.castMs, '後半の予告が短くなっていない').toBeLessThan(c.castMs);
+  expect(p.tongue.castMs, '後半の予告が時間の床を割った').toBeGreaterThanOrEqual(MELEE_WINDUP_MS);
+  expect(p.tongue.cells, '後半の帯が広がっていない').toBeGreaterThan(c.cells);
+  expect(p.tongue.reelSpeed, '後半の引きが強くなっていない').toBeGreaterThan(c.reelSpeed);
+  expect(p.tongue.reelSpeed, '後半の引きがプレイヤーの歩幅以上＝逃げ道が消える').toBeLessThan(MOVE_STEP);
+  expect(p.tongue.reelSpeed * Math.floor(p.tongue.holdMs / TICK_MS),
+    '後半は帯が広いのに引き切れない＝外端で掴まれても噛まれない穴ができる')
+    .toBeGreaterThanOrEqual(p.tongue.cells - bite);
+  expect(spray.range, '後半の帯が毒沫の射程を越えた＝帯の外に何も来ない距離ができる')
+    .toBeGreaterThanOrEqual(p.tongue.cells);
+  expect((p.tongue.hopCells / p.tongue.hopMs) * 1000,
+    '後半の跳ねる速さがプレイヤーの半分以上＝自分から詰めて来る').toBeLessThan(playerCps / 2);
+  // 後半のしかかり＝**広く・速く落ちる**。ただし上の(a)〜(e)は**すべて保つ**（避ける余地を残す）。
+  pounceArith(p.tongue, '後半');
+  expect(p.tongue.pounceRadius, '後半のしかかりの円が広がっていない＝後半の強化が無い')
+    .toBeGreaterThan(c.pounceRadius);
+  expect(p.tongue.pounceAirMs, '後半の滞空が短くなっていない＝落ちるのが速くなっていない')
+    .toBeLessThan(c.pounceAirMs);
+  // ⚠️ 溜めだけは**後半でも縮めない**（床のまま）＝盾で防げない一撃の「見てから動く」を守る。
+  //    後半の強化を溜めの短縮で払うと、円が広いのに猶予も短い＝避けられない攻撃に化ける。
+  expect(p.tongue.pounceWindupMs, '後半でのしかかりの溜めを縮めた＝盾で防げない一撃の予告が'
+    + '時間の床を割る（強化は円の広さと落ちる速さで払う）').toBe(c.pounceWindupMs);
+  expect(p.tongue.pounceAtk, '後半でのしかかりの打点を上げた＝避けられる技を重くしている')
+    .toBe(c.pounceAtk);
+  // `speedMultiplier` は `resolveEnemySpeed`（歩幅の溜め）の数＝tongue は読まない∴死んだ数値
+  expect(p.speedMultiplier, '相に speedMultiplier が残っている＝tongue は読まない死んだ数値')
+    .toBeUndefined();
+});
+
+// ── I-② 7相＝idle→cast→lash→hold→pounce→pounceAir→idle の順に回り、絵・音・長さが一致する ──
+test('I-② 舌は7相を順に回り、予告の長さ・絵（体が膨らむ）・音が castMs と1対1で対応する', async ({ page }) => {
+  const c = ENEMY_META['I'].tongue;
+  const out = await trackToad(page, { ticks: 44 });
+  const s = out.samples;
+  expect(out.error).toBeUndefined();
+
+  // ① 相の順序＝帯の内側に立っているだけで cast から始まり、hold の終わりは**のしかかり**
+  //    （＝口元で舌を離し、そのまま跳ぶ。2026-09-01 まではここが idle → 噛みつきだった）
+  const runs = tongueRuns(s);
+  expect(runs.map(r => r.phase).slice(0, 6),
+    '相の順序が idle→cast→lash→hold→pounce→pounceAir になっていない')
+    .toEqual(['cast', 'lash', 'hold', 'pounce', 'pounceAir', 'idle']);
+  // ② 予告の長さ＝castMs（時計は行動ゲートの外＝噛みつきや毒沫の硬直で伸び縮みしない）
+  expect(runs[0].ticks, `予告が ${c.castMs}ms（${c.castMs / TICK_MS} tick）でない`)
+    .toBe(c.castMs / TICK_MS);
+  // ③ 絵＝予告の tick と `.tongue-windup` が完全に一致し、CSS へ渡す長さも同じ数
+  for (const x of s) {
+    expect(x.windup, `t${x.t}（相 ${x.phase}）で体の膨らみの有無が相と食い違う`)
+      .toBe(x.phase === 'cast');
+    if (x.phase === 'cast') {
+      expect(x.castMsVar, `t${x.t} で CSS へ渡した予告の長さが castMs と違う`).toBe(`${c.castMs}ms`);
+      expect(x.len, `t${x.t}（予告中）に舌が伸びている＝予告が予告になっていない`).toBe(0);
+      expect(x.strip, `t${x.t}（予告中）に舌の帯が出ている`).toBe(false);
+    }
+  }
+  // ④ 音＝予告の始まりに1回だけ（GUIDE §7-6）／掴んだ瞬間に1回だけ
+  expect(s.filter(x => rang(x.newTones, TONGUE_CAST_HZ)).map(x => x.t),
+    '予告の音が「打つ前に1回」でない').toEqual([runs[0].from]);
+  expect(s.filter(x => rang(x.newTones, TONGUE_GRAB_HZ)).map(x => x.t),
+    '掴んだ音が「掴んだ瞬間に1回」でない').toEqual([runs[2].from]);
+  // ⑤ 伸びる＝lashSpeed 刻み（最後の刻みだけ掴んだ／端に当たった分だけ短い）
+  const lash = s.filter(x => x.phase === 'lash');
+  for (let i = 1; i < lash.length; i++) {
+    const d = lash[i].len - lash[i - 1].len;
+    expect(d, `t${lash[i].t} で舌が伸びていない`).toBeGreaterThan(0);
+    expect(d, `t${lash[i].t} で 1 tick に lashSpeed を越えて伸びた＝判定を飛び越す`)
+      .toBeLessThanOrEqual(c.lashSpeed + 1e-9);
+  }
+  // ⑥ 帯（絵）は**口元から先端まで**の1本＝付け根が体の中・先端が判定の先端に載る。
+  //    ⚠️ この2つは実測で踏んだ絵の欠陥の番人（`.scratch/toad-mouth.png`）＝帯を「幾何の
+  //       body 表面」から描いていたため (a) 体との間に 0.2 セルの隙間ができ（スプライトの体は
+  //       footprint の内側に描かれる）(b) 出どころが**目の高さ**になっていた（口から出ていない）。
+  const withStrip = s.filter(x => x.strip && x.len > 0);
+  expect(withStrip.length, '舌の帯が一度も出ていない＝機構が絵に出ていない').toBeGreaterThan(3);
+  const cell = out.cellPx;
+  for (const x of withStrip) {
+    // (a) 付け根は体の footprint の中（＝体から浮かない）。しかも**下半分**＝口の高さ
+    const [bx, by] = x.stripBase;
+    expect(bx / cell, `t${x.t} の帯の付け根（列 ${(bx / cell).toFixed(2)}）が体の外＝舌が体から浮く`)
+      .toBeGreaterThanOrEqual(x.x);
+    expect(bx / cell, `t${x.t} の帯の付け根が体の外＝舌が体から浮く`).toBeLessThanOrEqual(x.x + 2);
+    expect(by / cell, `t${x.t} の帯の付け根（行 ${(by / cell).toFixed(2)}）が体の上半分＝口ではなく`
+      + '目の高さから舌が出ている').toBeGreaterThan(x.y + 1);
+    expect(by / cell, `t${x.t} の帯の付け根が体の下へ抜けた`).toBeLessThanOrEqual(x.y + 2);
+    // (b) 絵の先端＝判定の先端（±0.2 セル＝判定より少し長く描くぶんだけ先）
+    const ex = (bx + x.stripW * Math.cos(x.stripAng)) / cell;
+    const ey = (by + x.stripW * Math.sin(x.stripAng)) / cell;
+    const hit = hitTipOf(x);
+    expect(Math.hypot(ex - hit.tx, ey - hit.ty),
+      `t${x.t} の絵の先端が判定の先端から離れている＝絵と判定が別の数を読んでいる`)
+      .toBeLessThan(0.25);
+    if (x.attached) {
+      expect(Math.hypot(ex - (x.px + 0.5), ey - (x.py + 0.5)),
+        `t${x.t} で掴んでいるのに絵の先端がプレイヤーから離れている`).toBeLessThan(0.6);
+    }
+  }
+  // 幅は長さと一緒に伸びる（絵が状態機械の数を読んでいる＝別の時計で動いていない）
+  const lashStrips = withStrip.filter(x => x.phase === 'lash');
+  for (let i = 1; i < lashStrips.length; i++) {
+    expect(lashStrips[i].stripW, `t${lashStrips[i].t} で帯の幅が伸びていない＝絵が長さを読んでいない`)
+      .toBeGreaterThan(lashStrips[i - 1].stripW);
+  }
+  // ⑦ 掴んでいるあいだだけ帯に `.tongue-attached`（＝引かれていることが絵で分かる）
+  for (const x of s) {
+    if (!x.strip) continue;
+    expect(x.stripAttached, `t${x.t}（相 ${x.phase}）で帯の「掴んでいる」表示が実体と食い違う`)
+      .toBe(x.attached);
+  }
+  // ⑧ 口元まで引き寄せた＝空振りではない（snaps 0）／掴んだのは1回
+  //    （見るのは**のしかかりへ移った tick**＝引き寄せの終幕。詳しくは I-⑬）
+  const firstPounce = s[runs[3].from - 1];
+  expect(firstPounce.phase, '相の連の 4 番目がのしかかりでない').toBe('pounce');
+  expect(firstPounce.grabs, '掴んだ回数が1回でない').toBe(1);
+  expect(firstPounce.snaps, '口元まで引いたのに空振り（snap）として数えている').toBe(0);
+});
+
+// ── I-③ 狙いは予告の終わりに固定＝以後追尾しない（伸びているあいだに退けば空振りする）────
+// この本が守るのは設計そのもの＝「予告の終わりに狙いを固定する」。伸びながら追尾する実装に
+// すると（＝毎 tick プレイヤーへ向き直す）ここが赤くなる。
+test('I-③ 舌は打ち出した向きへ真っすぐ伸びる＝横へ 1 セル退けば空振りして巻き戻る', async ({ page }) => {
+  const c = ENEMY_META['I'].tongue;
+  const out = await trackToad(page, {
+    ticks: 24,
+    // 伸び始めてから北へ 2 歩＝1 セル退く（予告中に退いても狙いは固定されていない＝意味が無い）
+    moveWhen: { atPhase: 'lash', dir: 'up', steps: 2 },
+  });
+  const s = out.samples;
+  expect(out.movedAt.length, 'プレイヤーが退けていない＝舌が伸びていない').toBe(2);
+
+  // ① 狙いは固定された値＝**予告の終わりのプレイヤーの座標**（湧いた場所のまま）
+  const lash = s.filter(x => x.phase === 'lash');
+  expect(lash.length, '伸びる相が観測できていない').toBeGreaterThan(2);
+  expect(lash[0].aimX, '固定した狙いの列が湧いた場所と違う').toBe(I_PL_COL);
+  expect(lash[0].aimY, '固定した狙いの行が湧いた場所と違う').toBe(I_PL_ROW);
+  for (const x of lash) {
+    expect(x.aimX, `t${x.t} で狙いが更新された＝追尾している`).toBe(lash[0].aimX);
+    expect(x.aimY, `t${x.t} で狙いが更新された＝追尾している`).toBe(lash[0].aimY);
+    expect(x.ang, `t${x.t} で伸びる向きが変わった＝伸びながら曲がって追いかけている`)
+      .toBeCloseTo(lash[0].ang, 9);
+  }
+  // ② 退いたので掴めない＝空振り（snap）1回・掴み 0回・HP も減らない
+  const snapAt = s.findIndex(x => x.snaps >= 1);
+  expect(snapAt, '空振りが観測できていない＝1 セル退いても掴まれる（避けられない予告）')
+    .toBeGreaterThan(-1);
+  expect(s[snapAt].grabs, '退いたのに掴まれている').toBe(0);
+  expect(s[snapAt].len, '帯の外端まで伸びる前に空振りした＝届く長さが足りていない')
+    .toBeGreaterThanOrEqual(c.cells - 1e-9);
+  expect(s[s.length - 1].php, '空振りなのに HP が減っている').toBe(s[0].php);
+  // ③ 音＝空振りは tongueSnap（掴んだ音とは別）＝1回だけ
+  expect(s.filter(x => rang(x.newTones, TONGUE_SNAP_HZ)).map(x => x.t),
+    '空振りの音が1回鳴っていない').toEqual([s[snapAt].t]);
+  // ④ 巻き戻しは retractMs かけて**補間**する（長さが単調に減って 0 になる＝瞬間消滅しない）
+  const retract = s.filter(x => x.phase === 'retract');
+  expect(retract.length, `巻き戻しが ${c.retractMs / TICK_MS} tick でない`)
+    .toBe(c.retractMs / TICK_MS);
+  for (let i = 1; i < retract.length; i++) {
+    expect(retract[i].len, `t${retract[i].t} で巻き戻しが進んでいない`)
+      .toBeLessThan(retract[i - 1].len);
+  }
+  // ⑤ 巻き戻した後は間（cooldownMs）が空く＝空振りの直後に打ち直さない
+  const after = s.find(x => x.t > retract[retract.length - 1].t);
+  expect(after.phase, '巻き戻した直後に次の舌が始まっている＝間が無い').toBe('idle');
+  expect(after.until - after.now, `打ち終わりの間が ${c.cooldownMs}ms でない`)
+    .toBeGreaterThan(c.cooldownMs - TICK_MS * 2);
+});
+
+// ── I-④ 掴む＝**プレイヤーが動く**（蝦蟇は錨・1歩も動かない）＝13体で唯一の型 ─────────
+test('I-④ 掴まれるとプレイヤーが reelSpeed で引かれ、蝦蟇は1歩も動かない', async ({ page }) => {
+  const c = ENEMY_META['I'].tongue;
+  const out = await trackToad(page, { ticks: 30 });
+  const s = out.samples;
+  const hold = s.filter(x => x.phase === 'hold');
+  expect(hold.length, '掴んでいる相が観測できていない').toBeGreaterThan(5);
+
+  // ① 動くのは**プレイヤーの方**＝毎 tick きっちり reelSpeed だけプレイヤーが運ばれる
+  //    （掴んだ tick は引かない∴2つ目の hold から見る）。
+  //    ⚠️ 「間合い」の縮みは reelSpeed より僅かに小さい＝斜めに引かれるとき箱の面までの距離
+  //       （`enemyEdgeDist`＝軸ごとに 0 で切る）は移動量の一部しか食わない∴ここは
+  //       **プレイヤーの移動距離**で測る（間合いは単調に縮むことだけを見る）。
+  for (let i = 1; i < hold.length; i++) {
+    const moved = Math.hypot(hold[i].px - hold[i - 1].px, hold[i].py - hold[i - 1].py);
+    expect(moved, `t${hold[i].t} でプレイヤーが運ばれた距離が reelSpeed と違う（${moved.toFixed(3)}）`)
+      .toBeCloseTo(c.reelSpeed, 6);
+    const closed = hold[i - 1].reach - hold[i].reach;
+    expect(closed, `t${hold[i].t} で間合いが縮んでいない＝引き寄せが空回りしている`)
+      .toBeGreaterThan(0);
+    expect(closed, `t${hold[i].t} で間合いが reelSpeed より速く縮んだ`)
+      .toBeLessThanOrEqual(c.reelSpeed + 1e-9);
+  }
+  // ② 蝦蟇は錨＝掴んでいるあいだ座標が1ミリも動かない（＝殴れる窓が本当に止まっている）
+  for (const x of s.filter(x => x.phase !== 'idle')) {
+    expect(x.x, `t${x.t}（舌が出ている）に蝦蟇が横へ動いた＝錨になっていない`).toBe(s[0].x);
+    expect(x.y, `t${x.t}（舌が出ている）に蝦蟇が縦へ動いた＝錨になっていない`).toBe(s[0].y);
+  }
+  // ③ 引かれているのは連続座標＝格子の外の位置を通る（＝「じわじわ引かれる」が絵に出る）
+  expect(hold.some(x => Math.round(x.px * 2) !== x.px * 2 || Math.round(x.py * 2) !== x.py * 2),
+    '引かれている途中も 0.5 格子の上にしか居ない＝段階的にワープして見える').toBe(true);
+  // ④ 舌そのものはダメージ 0（掴まれること自体では減らない）＝痛いのは引かれた先の噛みつき
+  for (const x of s.filter(x => x.phase !== 'idle')) {
+    expect(x.php, `t${x.t}（舌が出ている）に HP が減った＝舌が打点を持っている`).toBe(s[0].php);
+  }
+  // ⑤ 向きは掴んでいる相手を向く（絵と機構が食い違わない）
+  expect(hold[0].dir, '掴んでいるのに西（プレイヤー側）を向いていない').toBe('left');
+});
+
+// ── I-⑤ 引き寄せの終点で**必ずのしかかりが届く**（帯の外端で掴まれても）＋必ず 0.5 格子に戻る ──
+// ⚠️ この本は**実測で見つけた2つの欠陥**の再発防止：
+//    (a) 終点で格子へ戻すとき四捨五入していた＝間合い 1.27 → 1.5 へ押し戻され、噛みつき（1.4）が
+//        永久に届かなかった（引き寄せの見返りが消える）。
+//    (b) 帯の外端（6.0）で掴まれると holdMs 2400 では 4.4 セルしか引けず（帯の幅 4.6）、
+//        時間切れで解放されていた＝「掴まれたら噛まれる」の規則に穴があった。
+// ⚠️ 2026-09-01：終幕は噛みつきではなく**のしかかり**（盾で防げない）＝ユーザー報告への答え。
+//    「離した位置が噛みつきの間合いの内側」は**のしかかりの円の内側であることの言い換え**として
+//    残す（`pounceRadius ≥ 噛みつきの間合い` は I-① の不変条件）＝(a) の番人はそのまま効く。
+test('I-⑤ 帯の外端で掴まれても口元まで引かれ、離した同じ tick にのしかかりの溜めが立つ', async ({ page }) => {
+  const m = ENEMY_META['I'];
+  const bite = biteRangeOf(m);
+  const out = await trackToad(page, { ticks: 44, spawn: I_FAR, debugOff: true });
+  const s = out.samples;
+  // ① 帯の外端ちょうど（6.0）から始まっている＝(b) を測る前提
+  expect(s[0].reach, '湧きが帯の外端（cells）ちょうどでない＝(b) の穴を測れていない')
+    .toBeCloseTo(m.tongue.cells, 6);
+  expect(s[0].phase, '帯の外端では舌を打たない＝外端が帯に含まれていない').toBe('cast');
+
+  // ② 口元まで引かれて舌を離す（時間切れの snap ではない）＝離した tick はもう `pounce`
+  const relAt = s.findIndex((x, i) => i > 0 && x.phase === 'pounce' && s[i - 1].phase === 'hold');
+  expect(relAt, '掴んだのに離すところまで届かない＝引き寄せが途中で終わっている').toBeGreaterThan(-1);
+  const rel = s[relAt];
+  expect(rel.snaps, '時間切れ（snap）で解放された＝帯の外端で掴まれても噛まれない穴が残っている')
+    .toBe(0);
+  expect(rel.grabs, '掴んだ回数が1回でない').toBe(1);
+  // ③ 離した位置＝噛みつきが届く（(a) の番人）かつ **0.5 格子の上**（詰み防止の番人）
+  expect(rel.reach, `離した位置の間合い ${rel.reach.toFixed(2)} が噛みつきの到達距離 ${bite} を越えている`
+    + '＝引き寄せの終点で噛めない（見返りが消える）').toBeLessThanOrEqual(bite);
+  expect(rel.px * 2, `離した位置の列 ${rel.px} が 0.5 格子の上でない＝幅1マスの出入口へ入れなくなる`)
+    .toBe(Math.round(rel.px * 2));
+  expect(rel.py * 2, `離した位置の行 ${rel.py} が 0.5 格子の上でない＝幅1マスの出入口へ入れなくなる`)
+    .toBe(Math.round(rel.py * 2));
+  // ④ 離した**同じ tick** にのしかかりの溜めが立つ（窓を空けない＝「引かれた末に潰される」が繋がる）
+  expect(rel.phase, '離した tick にのしかかりの溜めが立っていない＝引き寄せと終幕が繋がっていない')
+    .toBe('pounce');
+  expect(rang(rel.newTones, POUNCE_HZ), 'のしかかりの溜めの音が鳴っていない').toBe(true);
+  expect(rel.swingAt, '離した tick に噛みつきの予告も立った＝終幕が二重になっている').toBeNull();
+  // ⑤ 溜め＋滞空のぶんだけ遅れて実際に潰される（打点＝pounceAtk − def・盾は関係しない）
+  const c = m.tongue;
+  const hitAt = s.findIndex((x, i) => i > relAt && x.php < rel.php);
+  expect(hitAt, '離した後に一度も潰されない＝引き寄せの終点が空振りになる').toBeGreaterThan(relAt);
+  expect(s[hitAt].t - rel.t, `のしかかりが溜め（${c.pounceWindupMs}ms）＋滞空（${c.pounceAirMs}ms）`
+    + 'の後に来ていない').toBe((c.pounceWindupMs + c.pounceAirMs) / TICK_MS);
+  expect(rel.php - s[hitAt].php, 'のしかかりのダメージが pounceAtk − def と違う')
+    .toBe(Math.max(1, c.pounceAtk - rel.pdef));
+  expect(s[hitAt].pounceHits, '当てた回数が1回でない').toBe(1);
+  expect(rang(s[hitAt].newTones, POUNCE_LAND_HZ), '着地の音が打点と同じ tick に鳴っていない').toBe(true);
+  // ⑥ 引き寄せの途中でプレイヤーを壁や水へ押し込んでいない（部屋の内側に居続ける）
+  for (const x of s) {
+    expect(x.px >= 1 && x.px <= 10, `t${x.t} でプレイヤーが列 ${x.px}＝部屋の外へ引き込まれた`).toBe(true);
+    expect(x.py >= 1 && x.py <= 8, `t${x.t} でプレイヤーが行 ${x.py}＝部屋の外へ引き込まれた`).toBe(true);
+  }
+});
+
+// ── I-⑥ 答え＝歩けば離れられる／引き剥がせなくても holdMs で必ず離される（詰まない保証）────
+test('I-⑥ 逆へ歩けば間合いが開いて舌が外れ、外せなくても時間切れで必ず離される', async ({ page }) => {
+  const m = ENEMY_META['I'];
+  const c = m.tongue;
+
+  // (a) 帯の外へ歩き切る＝掴まれたまま逆へ歩き続けると外れる。
+  //     ⚠️ 10×12 の部屋では帯 6 セルの外へ出る助走が取れない∴`cells` だけ 3 に縮めて測る
+  //        （縮めても「歩き < 引き」の関係は素のまま＝測るのは引き剥がせるかどうか）。
+  const escape = await trackToad(page, {
+    ticks: 30, spawn: I_NEAR,
+    patch: { tongue: { ...c, cells: 3 } },
+    moveWhen: { attached: true, dir: 'left', steps: 12 },
+  });
+  const es = escape.samples;
+  expect(escape.movedAt.length, '掴まれていない＝引き剥がしを測れていない').toBeGreaterThan(2);
+  const held = es.filter(x => x.attached);
+  expect(held.length, '掴んでいる相が観測できていない').toBeGreaterThan(2);
+  // ① 歩いているあいだ間合いは**開いていく**（reelSpeed < MOVE_STEP の差し引き）
+  for (let i = 1; i < held.length; i++) {
+    expect(held[i].reach, `t${held[i].t} で歩いているのに引き寄せに負けて間合いが縮んだ`)
+      .toBeGreaterThan(held[i - 1].reach);
+  }
+  // ② 帯の外まで開くと外れる（＝空振りと同じ扱い）／時間切れより前に外れている
+  const escAt = es.findIndex(x => x.snaps >= 1);
+  expect(escAt, '帯の外まで歩いても舌が外れない＝歩いて離れられない（操作を奪っている）')
+    .toBeGreaterThan(-1);
+  // 外れた tick の間合いは帯の外端まで開いている＝**帯の外へ出たから**外れた。
+  // ⚠️ ちょうど外端（3.00）で観測されるのは、外した後に 0.5 格子へ戻すとき**敵側の格子点**を
+  //    選ぶため（外れた瞬間の値は帯の外・戻した後は外端）＝詰み防止の作法の裏返し。
+  expect(es[escAt].reach, '帯の内側なのに外れた＝歩いた結果ではない別の理由で解放されている')
+    .toBeGreaterThanOrEqual(3);
+  expect(es[escAt - 1].reach, '帯の外へ出る前の tick で既に外れていた').toBeLessThan(3);
+  const grabbedAt = es.find(x => x.attached);
+  expect(es[escAt].now - grabbedAt.now, '時間切れで外れた＝歩いた結果ではない')
+    .toBeLessThan(c.holdMs);
+  // ③ 外れた後もプレイヤーは 0.5 格子の上（詰み防止）
+  expect(es[escAt].px * 2, '引き剥がした後に 0.5 格子から外れたまま').toBe(Math.round(es[escAt].px * 2));
+  expect(es[escAt].py * 2, '引き剥がした後に 0.5 格子から外れたまま').toBe(Math.round(es[escAt].py * 2));
+  expect(es[escAt].php, '引き剥がしただけで HP が減っている').toBe(es[0].php);
+
+  // (b) 壁を背にして引き剥がせない場合＝**必ず** holdMs で離される（＝詰まない保証）。
+  //     西の壁ぎわ（(4,2) から西へ歩くと 1 セルで壁）＝歩いても壁で止まる。
+  //     ⚠️ 2026-09-01：帯を 6 → 5 に狭めた∴壁ぎわ（間合い 6.0）は**帯の外**＝西へ歩くと
+  //        「外へ出た」で外れてしまい時間切れを測れない（実測：掴んだ 1 tick 後に外れた）。
+  //        ∴(a) が `cells` を縮めて引き剥がしを測るのと対称に、ここは `cells` を部屋の対角
+  //        （≈7.6）より長くして**どこへ歩いても帯の外へ出られない**状態を作る。
+  //        縮める／伸ばすのは帯だけ＝`holdMs`・`reelSpeed` は素のまま∴測るのは時計そのもの。
+  const pinned = await trackToad(page, {
+    ticks: 44, patch: { tongue: { ...c, cells: 9 } },
+    moveWhen: { attached: true, dir: 'left', steps: 40 },
+  });
+  const ps = pinned.samples;
+  const grab = ps.find(x => x.attached);
+  expect(grab, '掴まれていない＝時間切れを測れていない').toBeTruthy();
+  const outAt = ps.findIndex(x => x.snaps >= 1);
+  expect(outAt, '壁を背にすると永久に掴まれたまま＝詰む（holdMs の保証が効いていない）')
+    .toBeGreaterThan(-1);
+  // 時間切れは holdMs のところで来る（1 tick の刻みぶんだけ後）
+  expect(ps[outAt].now - grab.now, `時間切れが holdMs（${c.holdMs}ms）で来ていない`)
+    .toBeGreaterThanOrEqual(c.holdMs);
+  expect(ps[outAt].now - grab.now, '時間切れが holdMs より大きく遅れている')
+    .toBeLessThan(c.holdMs + TICK_MS * 2);
+  // 引き剥がせなかった＝噛みつきの間合いには入っていない（＝時間切れの解放と離すのは別物）
+  expect(ps[outAt].reach, '時間切れの時点で噛みつきの間合いに居る＝これは離す（release）の側')
+    .toBeGreaterThan(biteRangeOf(m));
+  expect(ps[outAt].px * 2, '時間切れの後に 0.5 格子から外れたまま').toBe(Math.round(ps[outAt].px * 2));
+  expect(ps[outAt].py * 2, '時間切れの後に 0.5 格子から外れたまま').toBe(Math.round(ps[outAt].py * 2));
+});
+
+// ── I-⑦ 舌が出ているあいだは移動も攻撃もしない＝引かれている時間が「殴れる窓」になる ────
+// ⚠️ 歯＝**舌が終わった直後に毒沫が飛ぶ**こと（＝止めていたのは行動ゲートで、そもそも
+//    撃てる状態だった）。これが無いと「たまたま撃たなかった」だけで本が緑になる。
+test('I-⑦ 舌が出ているあいだ噛みつきも毒沫も出ない（直後には毒沫が飛ぶ＝止めていた証拠）', async ({ page }) => {
+  const out = await trackToad(page, { ticks: 40, spawn: I_FAR, debugOff: true });
+  const s = out.samples;
+  const busy = s.filter(x => x.phase !== 'idle');
+  expect(busy.length, '舌が出ている tick が足りない＝窓の長さを測れていない').toBeGreaterThan(20);
+
+  for (const x of busy) {
+    expect(x.swingAt, `t${x.t}（舌が出ている）に噛みつきの予告が立った＝錨が効いていない`).toBeNull();
+    expect(x.freezeUntil, `t${x.t}（舌が出ている）に攻撃硬直が立った＝攻撃を解決している`).toBeNull();
+    expect(x.projectiles, `t${x.t}（舌が出ている）に毒沫が飛んだ＝錨が効いていない`).toBe(0);
+  }
+  // 舌が終わった直後に毒沫が飛ぶ＝ずっと「撃てるのに撃たなかった」
+  // ⚠️ 2026-09-01：終幕がのしかかりになった＝着地に硬直（`pounceRecoverMs`）が入る∴「同じ tick か
+  //    次の tick」では**もう緑にならない**（硬直は設計）。∴測るのは**硬直が明けた直後に飛ぶ**こと
+  //    ＝待たされた理由が「舌の錨 → 着地の硬直」だけで説明でき、毒沫のクールダウンではないこと。
+  const recoverTicks = Math.ceil(ENEMY_META['I'].tongue.pounceRecoverMs / TICK_MS);
+  const lastBusy = busy[busy.length - 1];
+  const firstShot = s.find(x => x.projectiles >= 1);
+  expect(firstShot, '舌が終わっても毒沫を一度も撃たない＝止めていた証拠が無い').toBeTruthy();
+  expect(firstShot.t - lastBusy.t, '毒沫が着地の硬直より早く飛んだ＝硬直が効いていない')
+    .toBeGreaterThan(recoverTicks - 2);
+  expect(firstShot.t - lastBusy.t, '毒沫が着地の硬直（'
+    + `${ENEMY_META['I'].tongue.pounceRecoverMs}ms＝${recoverTicks} tick）より遅れて飛んだ`
+    + '＝クールダウン待ちだった可能性').toBeLessThanOrEqual(recoverTicks + 2);
+});
+
+// ── I-⑧ 到達距離の表に隙間が無い（噛みつきの外なら必ず舌）／帯の外は跳ねて寄る ─────────
+test('I-⑧ 噛みつきのすぐ外（1.41）でも舌が来て、帯の外では跳ねて寄る', async ({ page }) => {
+  const m = ENEMY_META['I'];
+  const c = m.tongue;
+  const bite = biteRangeOf(m);
+
+  // (a) 噛みつきの到達距離のすぐ外＝**ここが実測で踏んだ隙間**（旧 minRange 1.8 では毒沫だけ）
+  const near = await trackToad(page, { ticks: 16, spawn: I_EDGE, debugOff: true });
+  const ns = near.samples;
+  expect(ns[0].reach, '湧きの間合いが「噛みつきの外・帯の内」でない＝隙間を測れていない')
+    .toBeGreaterThan(bite);
+  expect(ns[0].reach, '湧きの間合いが帯の外＝隙間を測れていない').toBeLessThanOrEqual(c.cells);
+  expect(ns[0].phase, `間合い ${ns[0].reach.toFixed(2)}（噛みつき ${bite} のすぐ外）で舌を打たない`
+    + '＝噛みつきも舌も届かない隙間ができている').toBe('cast');
+  // 掴んで口元まで引き、のしかかりへ繋ぐ（＝隙間ではなく「舌の帯の内側」として扱われている）
+  const relAt = ns.findIndex((x, i) => i > 0 && x.phase === 'pounce' && ns[i - 1].phase === 'hold');
+  expect(relAt, 'すぐ外から掴んだのに離すところまで来ない').toBeGreaterThan(-1);
+  expect(ns[relAt].reach, '離した位置がのしかかりの円の外＝終幕の見返りが消える')
+    .toBeLessThanOrEqual(c.pounceRadius);
+  expect(ns[relAt].reach, '離した位置で噛みつきが届かない').toBeLessThanOrEqual(bite);
+
+  // (b) 帯の外＝舌は打たず、跳ねて寄る（1回の跳びが hopCells・**帯へ入るまで跳び続ける**）
+  //     ⚠️ 2026-09-01：帯を 6 → 5 に狭めた∴帯の外（6.71）から 1 回の跳び（1.5）では
+  //        帯へ入らない（5.21）。「1回で入る」を固定すると帯を触るたびに嘘になる∴
+  //        測るのは **① 1回の跳びが hopCells ② 跳びの間隔が hopMs ③ 帯へ入るまで跳び続ける
+  //        ④ 入ったら舌へ切り替わり自分からは詰めない**の4点（跳びの回数は帯と部屋の広さの
+  //        引き算＝データ側の話∴固定しない）。
+  const far = await trackToad(page, { ticks: 30, spawn: I_OUT });
+  const fs = far.samples;
+  const spawnReach = Math.hypot(I_COL - 0.5 - I_OUT.col, I_ROW + 0.5 - I_OUT.row);
+  expect(fs[0].phase, '帯の外なのに舌を打った＝帯の外端が効いていない').toBe('idle');
+  const hop = Math.hypot(fs[0].x - I_COL, fs[0].y - I_ROW);
+  expect(hop, `跳んだ距離が hopCells（${c.hopCells}）と違う`).toBeCloseTo(c.hopCells, 6);
+  expect(fs[0].reach, '跳んでも間合いが縮んでいない＝プレイヤーの方へ跳んでいない')
+    .toBeLessThan(spawnReach);
+  // ② 跳びの**間隔**は hopMs（＝跳ぶたびに hopMs 待つ）。
+  //    ⚠️ これが無いと「毎 tick 1.5 セル跳ぶ（＝プレイヤーの 3 倍で滑って来る）」実装でも
+  //       緑になる（実測で踏んだ穴：`_toadHopAt` の門を外しても本が1つも赤くならなかった）。
+  const hopTicks = [];
+  for (let i = 0; i < fs.length; i++) {
+    const px = i === 0 ? I_COL : fs[i - 1].x, py = i === 0 ? I_ROW : fs[i - 1].y;
+    if (Math.hypot(fs[i].x - px, fs[i].y - py) > 1e-9) hopTicks.push(fs[i].t);
+  }
+  expect(hopTicks.length, '跳びが1回しか観測できていない＝間隔を測れない').toBeGreaterThan(1);
+  for (let i = 1; i < hopTicks.length; i++) {
+    expect(hopTicks[i] - hopTicks[i - 1], `t${hopTicks[i]} の跳びが前の跳びから`
+      + `${hopTicks[i] - hopTicks[i - 1]} tick しか経っていない（hopMs ${c.hopMs}ms）`)
+      .toBeGreaterThanOrEqual(Math.floor(c.hopMs / TICK_MS));
+  }
+  // ③ 帯の外に居るあいだは舌を打たず、跳び続けて帯の内側へ入る
+  const inAt = fs.findIndex(x => x.reach <= c.cells);
+  expect(inAt, '跳び続けても帯の内側へ入らない＝寄って来ない（置物に見える）').toBeGreaterThan(-1);
+  for (const x of fs.slice(0, inAt)) {
+    expect(x.phase, `t${x.t}（間合い ${x.reach.toFixed(2)}＝帯の外）で舌を打った`).toBe('idle');
+  }
+  // ④ 帯の内側に入ったら舌へ切り替わる（同じ tick か次の tick＝跳んだ tick は寄っただけ）
+  const castAt = fs.findIndex(x => x.phase === 'cast');
+  expect(castAt, '帯の内側へ入っても舌を打たない').toBeGreaterThan(-1);
+  expect(castAt - inAt, '帯の内側に入る前に舌を打った').toBeGreaterThanOrEqual(0);
+  expect(castAt - inAt, '帯の内側に入ってから舌までに間がある＝寄ったまま固まる tick がある')
+    .toBeLessThanOrEqual(1);
+  // 舌が出ているあいだは錨＝跳ねない（＝引かれている時間が殴れる窓のまま）
+  for (const run of busyStreaks(fs)) {
+    for (const x of run) {
+      expect(x.x, `t${x.t}（舌が出ている）に跳ねた＝錨が効いていない`).toBe(run[0].x);
+      expect(x.y, `t${x.t}（舌が出ている）に跳ねた＝錨が効いていない`).toBe(run[0].y);
+    }
+  }
+  // 自分からは噛みつきの間合いへ詰めない（＝寄って来るのは舌を打てる位置まで）
+  for (const x of fs.slice(0, castAt + 1)) {
+    expect(x.reach, `t${x.t} で自分から噛みつきの間合い（${bite}）へ詰めて来た`).toBeGreaterThan(bite);
+  }
+});
+
+// ── I-⑨ 相の差し替え＝HP 半分で舌の設定が変わり、掴んだままのプレイヤーは格子へ戻される ────
+// ⚠️ boss.js `applyBossPhase` は相を畳むだけ（`_tongueAttached` は消さない）＝格子へ戻す後始末は
+//    enemy-ai.js `tickTongue` の入口が受け持つ（deps を持つのがこちら側だけ∴役割を分けている）。
+//    ここを両方が畳むと「掴まれたまま半端な位置で放置」＝出入口へ入れなくなる詰みが復活する。
+test('I-⑨ HP 半分で舌の設定が差し替わり、掴んでいた舌は畳まれてプレイヤーが格子へ戻る', async ({ page }) => {
+  const m = ENEMY_META['I'];
+  const pc = m.phases.find(p => p.tongue !== undefined).tongue;
+  await installToneRec(page);
+  await gotoFrozen(page, previewUrl('bal_swamp_toad', I_PL_ROW, I_PL_COL, D8_PRE));
+  const out = await page.evaluate((a) => {
+    const g = window.__game;
+    const id = g.getEnemies().find(e => e.type === 'I').id;
+    const find = () => g.getEnemies().find(e => e.id === id);
+    const strip = () => document.getElementById(`enemy-tongue-${id}`);
+    // 掴まれてから2 tick 引かれるまで進める＝**プレイヤーが格子の外に居る**状態で切り替える
+    // （掴んだ tick はまだ引いていない＝格子の上∴そこで切り替えると後始末を測れない）。
+    let guard = 0;
+    while (!find().tongueAttached && guard++ < 60) g.step(1);
+    for (let k = 0; k < 2 && find().tongueAttached; k++) g.step(1);
+    const p0 = g.getPlayer();
+    const before = {
+      attached: !!find().tongueAttached, phase: find().tonguePhase, cfg: find().tongue ?? null,
+      px: p0.x, py: p0.y, strip: !!strip(),
+    };
+    g.dealDamage(id, a.dmg);
+    const at = {
+      hp: find().hp, maxHp: find().maxHp, cfg: find().tongue ?? null,
+      phase: find().tonguePhase, len: find().tongueLen, attached: !!find().tongueAttached,
+    };
+    g.step(1);
+    const p1 = g.getPlayer();
+    const after = {
+      attached: !!find().tongueAttached, phase: find().tonguePhase,
+      px: p1.x, py: p1.y, strip: !!strip(),
+    };
+    // 次の舌が始まるまで進める＝新しい設定（短い予告）で打つことを確かめる
+    let cast = 0, seen = 0;
+    for (let t = 0; t < 40; t++) {
+      g.step(1);
+      if (find().tonguePhase === 'cast') { cast++; seen = 1; } else if (seen) break;
+    }
+    return { before, at, after, castTicks: cast };
+  }, { dmg: Math.ceil(m.hp / 2) + m.def });
+
+  // 前提＝引き寄せの途中（掴んでいる・素の設定）で切り替えた
+  expect(out.before.attached, '掴まれる前に相を切り替えた＝後始末を測れていない').toBe(true);
+  expect(out.before.phase).toBe('hold');
+  expect(out.before.cfg, '最初から相の設定が入っている＝素の設定を測っていない').toBeNull();
+  expect(out.before.strip, '掴んでいるのに舌の帯が出ていない').toBe(true);
+  // この本が意味を持つ前提＝切り替えの瞬間にプレイヤーが 0.5 格子の**外**に居る
+  // （既に格子の上なら「格子へ戻す後始末」を測ったことにならない＝歯の無い本になる）
+  expect(out.before.px * 2 !== Math.round(out.before.px * 2)
+    || out.before.py * 2 !== Math.round(out.before.py * 2),
+  '切り替えの瞬間にプレイヤーが既に格子の上＝格子へ戻す後始末を測れていない').toBe(true);
+  expect(out.at.hp / out.at.maxHp, 'HP が半分を割っていない＝相が発火していない').toBeLessThanOrEqual(0.5);
+
+  // ① 設定が差し替わる（`resolveTongue` が読む口＝`_tongue`）＝後半の舌になる
+  expect(out.at.cfg, '後半の舌が差し替わっていない').toEqual(pc);
+  // ② 相は畳まれる（伸びも長さも持ち込まない＝新しい設定の外側の1 tick を作らない）
+  expect(out.at.phase, '相が畳まれていない＝古い相のまま新しい設定で走る').toBe('idle');
+  expect(out.at.len, '舌の長さが持ち込まれている').toBe(0);
+  // ③ 掴んでいた実体は**次の tick で** enemy-ai.js が畳み、プレイヤーは 0.5 格子へ戻る
+  expect(out.after.attached, '掴んだままの実体が残っている＝引き寄せが幽霊として続く').toBe(false);
+  expect(out.after.px * 2, `切り替え後の列 ${out.after.px} が 0.5 格子の上でない＝出入口へ入れなくなる`)
+    .toBe(Math.round(out.after.px * 2));
+  expect(out.after.py * 2, `切り替え後の行 ${out.after.py} が 0.5 格子の上でない＝出入口へ入れなくなる`)
+    .toBe(Math.round(out.after.py * 2));
+  // 格子へ戻すだけ＝ワープさせない（各軸 0.5 セル以内）
+  expect(Math.abs(out.after.px - out.before.px), '切り替えでプレイヤーが飛んだ').toBeLessThanOrEqual(0.5);
+  expect(Math.abs(out.after.py - out.before.py), '切り替えでプレイヤーが飛んだ').toBeLessThanOrEqual(0.5);
+  expect(out.after.strip, '畳んだのに舌の帯が絵として残っている').toBe(false);
+  // ④ 次に打つ舌は**後半の長さの予告**（＝差し替えた数が実際に効いている）
+  expect(out.castTicks, `後半の予告が ${pc.castMs}ms（${pc.castMs / TICK_MS} tick）でない`)
+    .toBe(pc.castMs / TICK_MS);
+});
+
+// ── I-⑩ I の移動機構は W・A・N・J・O・U・G のどれとも重ならない（0d-3 の判定基準）────────
+test('I-⑩ 舌の使い手は I だけ・I は他の7体の移動機構を持たない', () => {
+  const im = mechanismsOf(ENEMY_META['I']);
+  const others = ['W', 'A', 'N', 'J', 'O', 'U', 'G'].map(k => mechanismsOf(ENEMY_META[k]));
+  expect(im.has('tongue'), 'I が移動機構（tongue）を持っていない').toBe(true);
+  expect([...im].filter(k => others.every(x => !x.has(k))).length,
+    'I に他の7体が持たない機構が1つも無い＝8体目の型になっていない').toBeGreaterThan(0);
+  expect(others.some(x => x.has('tongue')),
+    '他のボスが舌を持っている＝I の固有機構ではない').toBe(false);
+  const users = Object.entries(ENEMY_META).filter(([, m]) => m.tongue).map(([k]) => k);
+  expect(users, '舌を持つ敵が I 以外にも居る（設計が重複した）').toEqual(['I']);
+  // 借り物でない番人＝特に `momentum`（G）や `dash`（ω/A）が生えた瞬間に「自分から詰めて来る」
+  // ＝「動くのは相手の方」という8体目の意味が消える。
+  for (const k of ['combat', 'laneStalk', 'burrowAmbush', 'hide', 'dash', 'coil', 'gaze',
+    'soar', 'momentum', 'leap']) {
+    expect(ENEMY_META['I'][k], `${k} を持っている＝W/A/N/J/O/U/G の型を借りている`).toBeUndefined();
+  }
+  for (const p of ENEMY_META['I'].phases ?? []) {
+    for (const k of ['dash', 'coil', 'hide', 'gaze', 'soar', 'momentum']) {
+      expect(p[k], `後半に ${k} が生えている＝他のボスの後半と同じ型`).toBeUndefined();
+    }
+  }
+});
+
+// ── I-⑪ 検証ステージの幾何（GUIDE §4-3）＝帯と跳び寄りを同じ部屋で測れる ─────────────
+test('I-⑪ bal_swamp_toad は 10×12・外周は通路以外すべて壁・I が (4,7) に1体だけ・遮蔽ゼロ', () => {
+  const MAP_PATH = fileURLToPath(new URL('../work/blade-of-lumia.json', import.meta.url));
+  const MAP = JSON.parse(readFileSync(MAP_PATH, 'utf8'));
+  const sd = MAP.layers[TEST_LAYER].stages[stageKey('bal_swamp_toad')];
+  expect(sd.rows).toBe(10);
+  expect(sd.cols).toBe(12);
+  // 遮蔽ゼロ＝舌が途中で止まる理由は**外周の壁だけ**（沼の水を敷くと引き寄せの測定が地形のせいになる）
+  expect(Object.keys(sd.bgTiles ?? {}), '別地形が入った＝舌と引き寄せの測定が地形のせいになる')
+    .toEqual([]);
+
+  const at = (r, c) => sd.tiles[r][c];
+  const toads = [];
+  for (let r = 0; r < sd.rows; r++) {
+    for (let c = 0; c < sd.cols; c++) {
+      const ch = at(r, c);
+      if (ch === TILE.SWAMP_TOAD) { toads.push([r, c]); continue; }
+      if (r === 6 && c === 1) continue;              // 看板 i（南の通路の脇）
+      const edge = r === 0 || c === 0 || r === sd.rows - 1 || c === sd.cols - 1;
+      const want = edge && !isArenaDoor(r, c, sd.cols) ? TILE.WALL : TILE.FLOOR;
+      expect(at(r, c), `(${r},${c}) が想定と違う`).toBe(want);
+    }
+  }
+  expect(toads, 'I が1体だけ (4,7) に居る前提が崩れた').toEqual([[I_ROW, I_COL]]);
+
+  // この節の湧きが全部床＝各本の前提（間合いは `enemyEdgeDist` と同じ式で出す）
+  const edgeDist = (row, col) => Math.hypot(
+    Math.max(0, Math.abs(col - (I_COL + 0.5)) - 0.5),
+    Math.max(0, Math.abs(row - (I_ROW + 0.5)) - 0.5));
+  const c = ENEMY_META['I'].tongue;
+  const bite = biteRangeOf(ENEMY_META['I']);
+  for (const [name, sp] of [['帯の内側', { row: I_PL_ROW, col: I_PL_COL }], ['帯の外端', I_FAR],
+    ['噛みつきのすぐ外', I_EDGE], ['西に助走', I_NEAR], ['帯の外', I_OUT], ['退く余地つき', I_MID]]) {
+    expect(at(sp.row, sp.col), `${name}の湧き(${sp.row},${sp.col}) が床でない`).toBe(TILE.FLOOR);
+  }
+  // I-⑫ の前提＝帯の内側で北へ 1 セル退いてもまだ帯の内側（＝跳ぶ理由が「打ち終わりの間」だけになる）
+  expect(edgeDist(I_MID.row, I_MID.col), '「退く余地つき」の湧きが帯の外').toBeLessThanOrEqual(c.cells);
+  expect(edgeDist(I_MID.row - 1, I_MID.col), '北へ 1 セル退くと帯の外＝帯の外の跳びと区別できない')
+    .toBeLessThanOrEqual(c.cells);
+  expect(at(I_MID.row - 1, I_MID.col), '「退く余地つき」の北が床でない').toBe(TILE.FLOOR);
+  // 帯の外端ちょうど（5.0）と帯の外（> 5.0）の両方がこの部屋に在る＝舌と跳び寄りを同じ舞台で測れる
+  expect(edgeDist(I_FAR.row, I_FAR.col), '帯の外端ちょうどの立ち位置が無い').toBeCloseTo(c.cells, 6);
+  expect(edgeDist(I_OUT.row, I_OUT.col), '帯の外に立てる場所が無い＝跳び寄りを測れない')
+    .toBeGreaterThan(c.cells);
+  // 帯の外の床が**部屋の1割以上**ある＝跳び寄りが実プレイで成立する（GUIDE §7-15）。
+  // ⚠️ 2026-09-01 のユーザー実プレイ報告「なぜか全然移動しなかった」の再発防止。帯 6 では
+  //    この部屋の床 82 枚のうち帯の外は 7 枚（8.5%）＝**跳ぶ条件が事実上立たない**＝置物に見えた
+  //    （帯 5 で 15 枚＝18.3%）。帯を広げ直すとここが赤くなる。
+  let floors = 0, outside = 0;
+  for (let r = 0; r < sd.rows; r++) {
+    for (let cc = 0; cc < sd.cols; cc++) {
+      if (at(r, cc) !== TILE.FLOOR) continue;
+      floors++;
+      if (edgeDist(r, cc) > c.cells) outside++;
+    }
+  }
+  expect(outside / floors, `帯の外の床が ${outside}/${floors} しかない`
+    + '＝プレイヤーが帯の外に居ることが稀＝跳ねて寄る姿が実プレイで見えない').toBeGreaterThan(0.1);
+  // 噛みつきのすぐ外（＝実測で踏んだ隙間）に立てる
+  const gap = edgeDist(I_EDGE.row, I_EDGE.col);
+  expect(gap, '噛みつきのすぐ外に立てる場所が無い＝隙間の再発を測れない').toBeGreaterThan(bite);
+  expect(gap, '「噛みつきのすぐ外」が帯の外だった').toBeLessThanOrEqual(c.cells);
+  // 西の助走＝引き剥がしの測定（I-⑥）が地形で止まらない
+  for (let col = 1; col < I_NEAR.col; col++) {
+    expect(at(I_NEAR.row, col), `(${I_NEAR.row},${col}) が床でない＝西へ引き剥がす助走が無い`)
+      .toBe(TILE.FLOOR);
+  }
+});
+
+// ── I-⑫ 打ち終わりの間（cooldownMs）は帯の内側でも跳ねる＝同じ地点から2度引かない ──────────
+// ⚠️ この本は 2026-09-01 のユーザー実プレイ報告「なぜか全然移動しなかった」への答え。
+//    設計どおり（帯の内側では舌を打つだけ）でも、舌の一巡が約 7 秒ある∴プレイヤーから見ると
+//    ボスは**置物**だった。∴「舌の仕事の外＝打ち終わりの間」だけ跳ねて位置を変える。
+// ⚠️ 歯＝**帯の内側で**跳ぶこと（`enemy-ai.js` の `inBand && !cooling` を `inBand` へ戻すと赤）。
+//    ∴湧きは「北へ 1 セル退いてもまだ帯の内側」の場所（I-⑪ が幾何を見張る）＝跳んだ理由が
+//    「帯の外へ出たから」に化けない。
+test('I-⑫ 空振りの後、帯の内側でも打ち終わりの間だけ跳ねて寄る（噛みつきの間合いへは詰めない）', async ({ page }) => {
+  const m = ENEMY_META['I'];
+  const c = m.tongue;
+  const bite = biteRangeOf(m);
+  // I-③ と同じ recipe＝伸びているあいだに北へ 1 セル退いて空振りさせる（狙いは固定∴当たらない）
+  const out = await trackToad(page, {
+    ticks: 40, spawn: I_MID, moveWhen: { atPhase: 'lash', dir: 'up', steps: 2 },
+  });
+  const s = out.samples;
+  expect(out.movedAt.length, 'プレイヤーが退けていない＝空振りを作れていない').toBe(2);
+  const snapAt = s.findIndex(x => x.snaps >= 1);
+  expect(snapAt, '空振りが観測できていない＝打ち終わりの間を測れていない').toBeGreaterThan(-1);
+
+  // 打ち終わりの間＝相が idle かつ次の舌までの時計が生きている tick
+  const coolFrom = s.findIndex(x => x.phase === 'idle' && x.until != null && x.now < x.until);
+  expect(coolFrom, '打ち終わりの間が観測できていない').toBeGreaterThan(0);
+  const cooling = s.filter(x => x.phase === 'idle' && x.until != null && x.now < x.until);
+  expect(cooling.length, '打ち終わりの間が短すぎる＝跳ぶ余地を測れていない').toBeGreaterThan(4);
+  // ① その窓のあいだ**プレイヤーは帯の内側に居る**＝跳んだ理由は「帯の外」ではない
+  for (const x of cooling) {
+    expect(x.reach, `t${x.t} でプレイヤーが帯の外（${x.reach.toFixed(2)}）`
+      + '＝帯の外の跳び寄りと区別できていない').toBeLessThanOrEqual(c.cells);
+  }
+  // ② その窓のあいだに跳んだ＝位置が変わった（ここが「置物」への答え）。
+  //    ⚠️ 比べるのは**打ち終わる直前（舌が出ていた＝錨の位置）**と窓の終わり。窓の中だけで
+  //       比べると赤くならない＝跳ぶのは窓の**最初の tick**（実測：t14 で 1.26 セル跳ぶ）。
+  const anchor = s[coolFrom - 1], last = cooling[cooling.length - 1];
+  const hopped = Math.hypot(last.x - anchor.x, last.y - anchor.y);
+  expect(hopped, '打ち終わりの間に一歩も動かない＝帯の内側では置物のまま').toBeGreaterThan(0.05);
+  expect(hopped, `1回の跳びが hopCells（${c.hopCells}）より大きい＝寄り方が粗い`)
+    .toBeLessThanOrEqual(c.hopCells + 1e-9);
+  // ③ 寄った＝間合いは縮む（プレイヤーの方へ跳んでいる）
+  expect(last.reach, '打ち終わりの間に跳んだのに間合いが縮んでいない').toBeLessThan(anchor.reach);
+  // ④ ただし**自分から噛みつきの間合いへは詰めない**（＝寄られても殴り返す間合いは残る）
+  //    ⚠️ 掴まれてからは「引かれた結果」＝自分で詰めたのではない∴最初に掴まれるまでを見る。
+  const grabAt = s.findIndex(x => x.attached);
+  for (const x of s.slice(0, grabAt === -1 ? s.length : grabAt)) {
+    expect(x.reach, `t${x.t} で自分から噛みつきの間合い（${bite}）へ詰めて来た`)
+      .toBeGreaterThan(bite);
+  }
+  // ⑤ 舌が出ているあいだは錨＝跳ばない（引かれている時間が殴れる窓のまま）
+  const streaks = busyStreaks(s);
+  expect(streaks[0]?.length ?? 0, '舌が出ている tick が無い＝錨を測れていない').toBeGreaterThan(4);
+  for (const run of streaks) {
+    for (const x of run) {
+      expect(x.x, `t${x.t}（舌が出ている）に跳ねた＝錨が効いていない`).toBe(run[0].x);
+      expect(x.y, `t${x.t}（舌が出ている）に跳ねた＝錨が効いていない`).toBe(run[0].y);
+    }
+  }
+});
+
+// ══════════════════════════════════════════════════════════════════════════════
+// I-⑬〜⑮＝のしかかり（2026-09-01 追加）＝**盾で防げない終幕**
+// ══════════════════════════════════════════════════════════════════════════════
+// ユーザー実プレイ報告（2026-09-01）：「舌でひきこまれる、ろうそくで火をつける／これを繰り返す
+// だけでノーダメージで倒せてしまう。（攻撃は盾で防御できてしまう）／ジャンプして、プレーヤーに
+// 体当たりしてくる、みたいな攻撃を加える、とか／何かしら付け加える必要がありそう。」
+//
+// 何が起きていたか（実測で裏取り）＝I の打点は噛みつき（`sword`）と毒沫（`stone`）の2つだけ＝
+// **どちらも盾が向きだけで消せる**。しかも弱点の炎（ロウソク）を当てるにも引き寄せられるにも
+// 蝦蟇の方を向く必要がある∴**「焼くために向く」＝「防ぐために向く」**＝完全防御が成立していた。
+//   ・張り付いて焼き続ける戦法：22.9 秒で撃破・**被弾 0**（`.scratch/toad-turtle.mjs`）
+//   ・のしかかりを入れた後：同じ戦法は t170 で**プレイヤーが力尽きる**（7回跳ばれ 7回被弾）
+//   ・下がりながら焼く戦法：32 秒で撃破・被弾 16（＝「下がる」が答えとして機能している）
+// ∴この3本が守るのは **「向いて焼くだけでは無傷で終わらない／下がれば避かる」** の両立。
+//
+// ⚠️ 測り方の罠（ここで実際に踏んだ）＝プレビュー（`fromEditor=1`）は `debugMode: true`＝
+//    `takeDamage()` が早期 return する∴**`debugOff: true` を忘れると被弾が永久に 0**＝
+//    「盾で防げない」の本が**歯なしで緑**になる（潰しても赤くならない）。下の3本すべてで渡す。
+
+// ── I-⑬ のしかかりの一巡＝溜め（沈む）→ 滞空 → 着地。長さ・床の告知・硬直が数と一致する ────
+test('I-⑬ 引き寄せの終幕でのしかかる＝溜め→滞空→着地の長さ・床の危険域・着地の硬直が数と一致', async ({ page }) => {
+  const c = ENEMY_META['I'].tongue;
+  const r = c.pounceRadius;
+  const out = await trackToad(page, { ticks: 50, spawn: I_FAR, debugOff: true });
+  const s = out.samples;
+  const runs = tongueRuns(s);
+  const pi = runs.findIndex(x => x.phase === 'pounce');
+  expect(pi, '引き寄せの終幕にのしかかりが来ない').toBeGreaterThan(-1);
+  expect(runs[pi - 1].phase, 'のしかかりの前が引き寄せ（hold）でない＝入口が違う').toBe('hold');
+
+  // ① 長さ＝溜め pounceWindupMs・滞空 pounceAirMs（時計は行動ゲートの外＝硬直で伸び縮みしない）
+  expect(runs[pi].ticks, `溜めが ${c.pounceWindupMs}ms（${c.pounceWindupMs / TICK_MS} tick）でない`)
+    .toBe(c.pounceWindupMs / TICK_MS);
+  expect(runs[pi + 1].phase, '溜めの次が滞空でない').toBe('pounceAir');
+  expect(runs[pi + 1].ticks, `滞空が ${c.pounceAirMs}ms（${c.pounceAirMs / TICK_MS} tick）でない`)
+    .toBe(c.pounceAirMs / TICK_MS);
+  expect(runs[pi + 2].phase, '滞空の次が idle でない＝着地で相が閉じていない').toBe('idle');
+
+  // ② 絵＝体の沈み（`.pounce-windup`）と滞空（`.pounce-air`）が相と1対1・CSS へ渡す長さも同じ数
+  for (const x of s) {
+    expect(x.pWindup, `t${x.t}（相 ${x.phase}）で体の沈みの有無が相と食い違う`)
+      .toBe(x.phase === 'pounce');
+    expect(x.pAir, `t${x.t}（相 ${x.phase}）で滞空の絵の有無が相と食い違う`)
+      .toBe(x.phase === 'pounceAir');
+    if (x.phase === 'pounce') {
+      expect(x.pounceMsVar, `t${x.t} で CSS へ渡した溜めの長さが pounceWindupMs と違う`)
+        .toBe(`${c.pounceWindupMs}ms`);
+    }
+    // 跳ぶときは舌を離している（帯が残っていると「掴んだまま跳んだ」ように見える）
+    if (x.phase === 'pounce' || x.phase === 'pounceAir') {
+      expect(x.strip, `t${x.t}（のしかかり中）に舌の帯が残っている`).toBe(false);
+      expect(x.attached, `t${x.t}（のしかかり中）にまだ掴んでいる`).toBe(false);
+      expect(x.len, `t${x.t}（のしかかり中）に舌が伸びたまま`).toBe(0);
+    }
+  }
+  // ③ 床の危険域＝溜めと滞空のあいだだけ出て、形が**判定と厳密に一致する**（角丸矩形・半径 r）。
+  //    ⚠️ ここが円だと「塗られていない床で殴られる／塗られているのに当たらない」が出る＝
+  //       `enemyEdgeDist ≤ r` の集合は body の箱を r 膨らませた角丸矩形（GUIDE §6-1）。
+  for (const x of s) {
+    const on = x.phase === 'pounce' || x.phase === 'pounceAir';
+    expect(!!x.zone, `t${x.t}（相 ${x.phase}）で床の危険域の有無が相と食い違う`).toBe(on);
+    if (!on) continue;
+    expect(x.zone.radius, `t${x.t} の危険域の角丸が半径（${r}）と違う＝形が判定と別物`)
+      .toBeCloseTo(r, 6);
+    expect(x.zone.left, `t${x.t} の危険域の左端が body を r 膨らませた箱と違う`)
+      .toBeCloseTo(x.x + 0.5 - r, 6);
+    expect(x.zone.top, `t${x.t} の危険域の上端が body を r 膨らませた箱と違う`)
+      .toBeCloseTo(x.y + 0.5 - r, 6);
+    expect(x.zone.w, `t${x.t} の危険域の幅が body（2セル）＋ r×2 と違う`).toBeCloseTo(1 + r * 2, 6);
+    expect(x.zone.h, `t${x.t} の危険域の高さが body（2セル）＋ r×2 と違う`).toBeCloseTo(1 + r * 2, 6);
+    // 溜め＝薄い／滞空＝濃い（`pounce-zone-falling`）＝「もう落ちてくる」が絵で分かれる
+    expect(x.zone.falling, `t${x.t}（相 ${x.phase}）で危険域の濃さが相と食い違う`)
+      .toBe(x.phase === 'pounceAir');
+  }
+  // ④ 錨＝溜めと滞空のあいだ蝦蟇は1ミリも動かない（＝跳んで場所を変える技ではない）
+  const anchor = s[runs[pi].from - 2];          // 引き寄せの最後の tick
+  for (const x of s.filter(x => x.phase === 'pounce' || x.phase === 'pounceAir')) {
+    expect(x.x, `t${x.t}（のしかかり中）に蝦蟇が横へ動いた＝その場で潰す技になっていない`)
+      .toBe(anchor.x);
+    expect(x.y, `t${x.t}（のしかかり中）に蝦蟇が縦へ動いた`).toBe(anchor.y);
+  }
+  // ⑤ 着地＝数（跳んだ回数）・絵（衝撃）・音・硬直・打ち終わりの間が**同じ tick で立つ**
+  const landAt = runs[pi + 2].from - 1;
+  const land = s[landAt];
+  expect(land.pounces, '跳んだ回数が1回でない').toBe(1);
+  expect(land.landFx, '着地の衝撃が絵に出ていない').toBe(true);
+  expect(s.slice(0, landAt).some(x => x.landFx), '着地する前から衝撃の絵が出ている').toBe(false);
+  expect(rang(land.newTones, POUNCE_LAND_HZ), '着地の音が鳴っていない').toBe(true);
+  expect(land.freezeUntil - land.now, `着地の硬直が pounceRecoverMs（${c.pounceRecoverMs}ms）でない`
+    + '＝潰した直後に殴り返せない').toBeGreaterThan(c.pounceRecoverMs - TICK_MS);
+  expect(land.freezeUntil - land.now, '着地の硬直が pounceRecoverMs より長い')
+    .toBeLessThanOrEqual(c.pounceRecoverMs);
+  expect(land.until - land.now, `着地から次の舌までの間が cooldownMs（${c.cooldownMs}ms）でない`)
+    .toBeGreaterThan(c.cooldownMs - TICK_MS * 2);
+  // ⑥ 溜めの音は跳び上がる前に1回だけ（＝滞空の合図の高音を含む指紋）
+  expect(s.filter(x => rang(x.newTones, POUNCE_HZ)).map(x => x.t),
+    'のしかかりの溜めの音が「跳ぶ前に1回」でない').toEqual([runs[pi].from]);
+});
+
+// ── I-⑭ のしかかりは**盾で防げない**（正面で受けても潰される）／円の外へ歩けば避かる ──────
+// ⚠️ この本がユーザー報告への直接の答え。歯＝(a) で `takeDamage` を盾判定つきの経路へ替えると赤／
+//    (b) で「猶予のあいだに歩いても当たる」実装（着地時ではなく跳ぶ時に判定する）にすると赤。
+test('I-⑭ のしかかりは盾を向けても防げず、円の外へ歩けば当たらない（答えは「下がる」）', async ({ page }) => {
+  const c = ENEMY_META['I'].tongue;
+
+  // (a) 報告の姿勢＝**蝦蟇を向いたまま一歩も下がらない**（盾の正面が蝦蟇を向いている）
+  const stand = await trackToad(page, {
+    ticks: 50, spawn: I_FAR, debugOff: true, face: true,
+  });
+  const ss = stand.samples;
+  expect(ss[0].shieldTier, '盾を持っていない＝「盾で防げない」を測れていない').toBeGreaterThanOrEqual(0);
+  const landAt = ss.findIndex(x => (x.pounces ?? 0) >= 1);
+  expect(landAt, '下がらないのに一度も跳ばれない＝報告の姿勢が罰されていない').toBeGreaterThan(-1);
+  const land = ss[landAt];
+  // 盾は蝦蟇（東）を向いたまま＝向きで消せる攻撃なら消えている
+  for (const x of ss.slice(0, landAt + 1)) {
+    expect(x.pdir, `t${x.t} で盾の正面が蝦蟇（東）を向いていない＝防げるはずの姿勢になっていない`)
+      .toBe('right');
+  }
+  // ① 着地までは**1ダメージも通らない**＝噛みつきも毒沫も舌も盾（と錨）で消えている
+  //    ＝ここが「盾＋ロウソクで無傷」だった中身そのもの。
+  for (const x of ss.slice(0, landAt)) {
+    expect(x.php, `t${x.t}（着地前）に HP が減った＝のしかかり以外の打点で測ってしまっている`)
+      .toBe(ss[0].php);
+  }
+  // ② 着地の tick に**盾を向けているのに**打点が通る（＝盾で防げない）
+  expect(land.php, '盾を向けて立っていれば着地の一撃も消える＝報告の完全防御が残っている')
+    .toBeLessThan(ss[0].php);
+  expect(ss[0].php - land.php, 'のしかかりのダメージが pounceAtk − def と違う')
+    .toBe(Math.max(1, c.pounceAtk - land.pdef));
+  expect(land.pounceHits, '当てた回数が数えられていない').toBe(1);
+  expect(land.projectiles, '着地の tick に毒沫が飛んでいる＝打点の出どころが混ざっている').toBe(0);
+
+  // (b) 答え＝**円の外へ歩く**（溜めが立ってから下がる＝猶予 840ms＝7 tick）
+  const dodge = await trackToad(page, {
+    ticks: 50, spawn: I_FAR, debugOff: true, face: true,
+    moveWhen: { atPhase: 'pounce', dir: 'left', steps: 4 },
+  });
+  const ds = dodge.samples;
+  expect(dodge.movedAt.length, '溜めのあいだに下がれていない＝避け方を測れていない').toBe(4);
+  const dLandAt = ds.findIndex(x => (x.pounces ?? 0) >= 1);
+  expect(dLandAt, '跳ばれてすらいない＝避けたことを測れていない').toBeGreaterThan(-1);
+  // ① 着地の時点で円の外に居る＝避け切れている（＝猶予が足りている＝I-① の算術の実測）
+  expect(ds[dLandAt].reach, `着地の時点でまだ円の中（${ds[dLandAt].reach.toFixed(2)} ≤ ${c.pounceRadius}）`
+    + '＝猶予のあいだに歩いても逃げ切れない').toBeGreaterThan(c.pounceRadius);
+  // ② 当たっていない＝跳ばれた回数は増えるが**当てた回数は 0**・HP も減らない
+  expect(ds[dLandAt].pounceHits, '円の外へ出たのに当たっている＝判定が円になっていない').toBe(0);
+  for (const x of ds) {
+    expect(x.php, `t${x.t} で HP が減った＝下がっても避けられない（答えが無い攻撃）`).toBe(ds[0].php);
+  }
+});
+
+// ── I-⑮ 口元に張り付く戦法の番人＝掴めなくても跳ぶ（「向いて焼くだけ」がもう無傷で終わらない）──
+// ⚠️ ユーザーの選択は「跳ぶのは掴めたときだけ」だったが、それだけでは**同じ穴が残る**：
+//    口元（端 ≤ 噛みつきの間合い）には舌を打てない（帯の内端）∴自分から張り付いた相手は
+//    永久に掴まれない＝盾＋ロウソクの無傷戦法がそのまま生き残る。
+//    ∴機構の規則は1つ＝**「口元に居る相手にのしかかる」**（入口が2つ：引き寄せの終幕／居座り）。
+//    「逃げ切った側は跳ばれない」は保たれる（I-⑭(b) が見張る）。
+test('I-⑮ 口元に張り付いて焼き続けても無傷では終わらない（掴めなくても居座りに跳ぶ）', async ({ page }) => {
+  const m = ENEMY_META['I'];
+  const bite = biteRangeOf(m);
+  const out = await trackToad(page, {
+    ticks: 60, spawn: I_MOUTH, debugOff: true, face: true, candle: true,
+  });
+  const s = out.samples;
+  // ① 前提＝口元に居る（帯の内端の内側）＝**舌は一度も打てない**立ち位置
+  expect(s[0].reach, '湧きが口元（噛みつきの間合いの内側）でない＝居座りを測れていない')
+    .toBeLessThanOrEqual(bite);
+  expect(s.some(x => x.phase === 'cast'), '口元なのに舌を打った＝帯の内端が効いていない').toBe(false);
+  expect(s.some(x => x.attached), '掴まれている＝「掴めない立ち位置」を測れていない').toBe(false);
+  // ② 居座りに対しては**即のしかかり**（打ち終わりの間を待たずに最初の tick から溜めが立つ）
+  expect(s[0].phase, '口元に居る相手に何もしない＝居座りへの罰が無い').toBe('pounce');
+  // ③ 報告の戦法そのもの（向いて焼く）＝炎は入っている（＝焼きながら被弾している）
+  expect(s[s.length - 1].hp, 'ロウソクの炎が一度も入っていない＝報告の戦法を再現できていない')
+    .toBeLessThan(s[0].hp);
+  for (const x of s) {
+    expect(x.pdir, `t${x.t} で盾の正面が蝦蟇（東）を向いていない`).toBe('right');
+  }
+  // ④ **無傷では終わらない**＝60 tick（7.2 秒）のうちに2回跳ばれ、2回とも当たる
+  //    （張り付いている＝円の中に居続ける∴跳ばれた回数＝当てた回数）
+  const last = s[s.length - 1];
+  expect(last.pounces, '張り付いても跳ばれる回数が足りない＝罰が薄すぎて戦法が生き残る')
+    .toBeGreaterThanOrEqual(2);
+  expect(last.pounceHits, '跳ばれたのに当たっていない＝張り付いていても避けられてしまう')
+    .toBe(last.pounces);
+  expect(last.php, '口元に張り付いて焼き続けても無傷＝ユーザー報告の穴がまだ空いている')
+    .toBeLessThan(s[0].php);
+  // ⑤ 打点の出どころはのしかかりだけ（盾で防げる攻撃は相変わらず全部消えている＝設計どおり）
+  let hits = 0;
+  for (let i = 1; i < s.length; i++) {
+    if (s[i].php >= s[i - 1].php) continue;
+    hits++;
+    expect(s[i - 1].php - s[i].php, `t${s[i].t} の被弾が pounceAtk − def と違う`
+      + '＝のしかかり以外の打点が混ざっている（盾で防げる攻撃が通っている）')
+      .toBe(Math.max(1, m.tongue.pounceAtk - s[i].pdef));
+    expect(s[i].pounceHits, `t${s[i].t} の被弾と「当てた回数」の数え上げが食い違う`).toBe(hits);
+  }
+  expect(hits, '被弾が観測できていない').toBeGreaterThanOrEqual(2);
 });

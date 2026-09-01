@@ -8,9 +8,12 @@ import { ENEMY_META } from '../shared/enemies.js';
 import { ITEM_META } from '../shared/items.js';
 import { makeSprite } from '../shared/sprites.js';
 import { playSound } from '../shared/sounds.js';
-import { MOVE_STEP, BOOMERANG_STUN_MS, ATTACK_POSE_MS } from './constants.js';
+import {
+	MOVE_STEP, BOOMERANG_STUN_MS, ATTACK_POSE_MS,
+	CANDLE_FIRE_DMG, CANDLE_FLAME_MS, CANDLE_FLAME_MAX,
+} from './constants.js';
 import { SHIELD_TIERS } from '../shared/items.js';
-import { enemyPointHit, enemyCenter } from './hitbox.js';
+import { enemyPointHit, enemyCenter, enemyOccupiesTile } from './hitbox.js';
 
 /**
  * createProjectile(deps) – factory
@@ -59,9 +62,10 @@ export function createProjectile(deps) {
 	} = deps;
 
 	// ── 内部状態 ──────────────────────────────────────────────
-	let _projectiles = [];
-	let _nextProjId  = 1;
-	let _placedBombs = [];
+	let _projectiles  = [];
+	let _nextProjId   = 1;
+	let _placedBombs  = [];
+	let _placedFlames = [];   // ロウソクで置いた炎（2026-08-31）
 
 	// ── 盾ブロック判定 ────────────────────────────────────────
 	// 盾を持っていて、攻撃が来る向きに正面を向いていれば完全ブロック
@@ -697,6 +701,102 @@ export function createProjectile(deps) {
 		_placedBombs = [];
 	}
 
+	// ── 置いた炎（ロウソク・2026-08-31）──────────────────────────────
+	// ロウソクは「押した瞬間に前方を殴る道具」から「その場に炎を置く道具」になった。
+	// 連打で溶ける穴を**機構で**塞ぐのが目的（理由と数の出どころは constants.js の
+	// CANDLE_FLAME_MS / CANDLE_FLAME_MAX のコメント）。
+	//   ・1つの炎は 1体の敵に**1回だけ**ダメージを与える（`burned` に敵 id を記録）
+	//   ・同時に置けるのは CANDLE_FLAME_MAX 個・寿命は CANDLE_FLAME_MS
+	//   ・敵AIは炎を避けない＝踏ませる読み合いはプレイヤー側の仕事
+	//   ・プレイヤーは自分の炎で焼けない（かがり火と同じ＝床の飾りではなく罠だが自傷はしない）
+	// 爆弾（_placedBombs / bombTick / clearBombs）と同型に揃える＝「置く・毎tick見る・
+	// 画面遷移で消す」の3点セット。
+	function clearFlames() {
+		for (const f of _placedFlames) f.el?.remove();
+		_placedFlames = [];
+	}
+
+	// 炎の DOM を作る／消えていたら作り直す。
+	// ⚠️ renderChars() は char-layer を innerHTML='' で作り直す（render-chars.js:374）∴
+	// 置いた炎の要素は再描画で消える。論理上は燃えているのに絵が無い＝「見えない炎に
+	// 焼かれる」になる∴毎tick 繋がっているか見て、外れていたら生やし直す。
+	function ensureFlameEl(flame) {
+		if (flame.el?.isConnected) return;
+		const charLayerEl = getCharLayerEl();
+		if (!charLayerEl) return;
+		const cellPx = getCellPx();
+		const el = document.createElement('div');
+		el.className = 'candle-flame';
+		el.id = `candle-flame-${flame.id}`;
+		el.style.cssText = `position:absolute;left:${flame.c * cellPx}px;top:${flame.r * cellPx}px;`
+			+ `width:${cellPx}px;height:${cellPx}px;z-index:24;pointer-events:none;`;
+		// 残り時間ぶんだけ揺らめかせる（絵の長さの単一の真実は論理時間側＝flame.until）。
+		const leftMs = Math.max(0, flame.until - gameNow());
+		el.style.animationDuration = `${leftMs}ms`;
+		el.style.animationDelay = `-${CANDLE_FLAME_MS - leftMs}ms`;
+		charLayerEl.appendChild(el);
+		flame.el = el;
+	}
+
+	// 炎のタイルに重なっている敵を焼く（その炎で未焼却の敵だけ）。焼いたら true。
+	function burnEnemiesOnFlame(flame) {
+		let burned = false;
+		for (const e of getEnemies()) {
+			if (!e || e.hp <= 0) continue;
+			if (e.hidden) continue;                       // 潜行/地中/滞空には炎も届かない
+			if (flame.burned.has(e.id)) continue;         // この炎ではもう焼いた
+			if (!enemyOccupiesTile(e, flame.r, flame.c)) continue;
+			flame.burned.add(e.id);
+			// 攻撃の発生源は**炎のタイル**（プレイヤーの位置ではない）＝置いたあとに
+			// プレイヤーがどこへ動いても向き依存のガード判定（isGuardBlockingDir）が変わらない。
+			dealDamageToEnemy(e, CANDLE_FIRE_DMG, 'fire', flame.c, flame.r);
+			burned = true;
+		}
+		return burned;
+	}
+
+	// (r, c) に炎を置く。戻り値＝'burned'（置いた瞬間に敵を焼いた）／'placed'／
+	// 'exists'（同じタイルが既に燃えている）／'full'（上限）。
+	// ⚠️ **置いた瞬間にも判定する**のが要点。これが無いと「動かない敵には炎が一生
+	// 当たらない」＝炎弱点のボスが弱点ごと機能停止する（じっと待つのが最適解になる）。
+	function placeCandleFlame(r, c) {
+		if (_placedFlames.some(f => f.r === r && f.c === c)) return 'exists';
+		if (_placedFlames.length >= CANDLE_FLAME_MAX)       return 'full';
+		const flame = {
+			id: _nextProjId++, r, c,
+			until: gameNow() + CANDLE_FLAME_MS,
+			burned: new Set(),
+			el: null,
+		};
+		_placedFlames.push(flame);
+		ensureFlameEl(flame);
+		return burnEnemiesOnFlame(flame) ? 'burned' : 'placed';
+	}
+
+	function flameTick() {
+		const now = gameNow();
+		for (const flame of [..._placedFlames]) {
+			if (now >= flame.until) { removeFlame(flame); continue; }
+			ensureFlameEl(flame);
+			burnEnemiesOnFlame(flame);
+		}
+	}
+
+	function removeFlame(flame) {
+		flame.el?.remove();
+		_placedFlames = _placedFlames.filter(f => f !== flame);
+	}
+
+	// テスト観測用スナップショット（敵スナップショットと同じホワイトリスト方式）。
+	function getPlacedFlames() {
+		return _placedFlames.map(f => ({
+			id: f.id, r: f.r, c: f.c,
+			until: f.until,
+			burnedCount: f.burned.size,
+			hasEl: !!f.el?.isConnected,
+		}));
+	}
+
 	function placeBomb() {
 		const player = getPlayer();
 		const id  = player.activeSubItem;
@@ -870,5 +970,10 @@ export function createProjectile(deps) {
 		placeBomb,
 		bombTick,
 		showExplosionEffect,
+		// 置いた炎（ロウソク・2026-08-31）
+		clearFlames,
+		placeCandleFlame,
+		flameTick,
+		getPlacedFlames,
 	};
 }

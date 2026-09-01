@@ -331,7 +331,11 @@ test('⑤ ENEMY_META の phases[] は既知のキーだけを持ち、閾値は�
                       // 0d-3（7体目 G）: 慣性の設定を相で差し替える口（boss.js が `_momentum` へ
                       // 書き、enemy-ai.js の `resolveMomentum` が読む）＝加速と上限を上げて
                       // 「もっと止まれない」形にする（`speedMultiplier` はこの敵には効かない）。
-                      'momentum'];
+                      'momentum',
+                      // 0d-3（8体目 I）: 舌の設定を相で差し替える口（boss.js が `_tongue` へ
+                      // 書き、enemy-ai.js の `resolveTongue` が読む）＝射程を伸ばし引く速さを
+                      // 上げる（`speedMultiplier` はこの敵の移動＝跳ねにも効かない）。
+                      'tongue'];
   const MODE_KEYS = ['flank', 'direct', 'wander', 'strafe'];
   const withPhases = Object.entries(ENEMY_META).filter(([, m]) => m.phases);
   expect(withPhases.length, 'phases を持つ敵が居ない（データが消えた？）').toBeGreaterThanOrEqual(13);
