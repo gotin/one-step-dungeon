@@ -42,7 +42,7 @@ import { readFileSync } from 'fs';
 import { fileURLToPath } from 'url';
 import { TILE } from '../shared/tiles.js';
 import { ENEMY_META } from '../shared/enemies.js';
-import { SWORD_REACH, MELEE_WINDUP_MS, MOVE_STEP, SWORD_COOLDOWN_MS } from '../game/constants.js';
+import { SWORD_REACH, MELEE_WINDUP_MS, MOVE_STEP, SWORD_COOLDOWN_MS, CANDLE_FIRE_DMG } from '../game/constants.js';
 import { waitForBoard } from './helpers.js';
 import { TEST_LAYER, stageKey } from './test-stage-keys.js';
 import { isArenaDoor } from './test-arena-doors.js';
@@ -301,6 +301,7 @@ const MECHANISM_FIELDS = [
   'momentum',       // 0d-3（7体目 G）: 速度を追う移動（止まれない・曲がれない・壁で自壊する）
   'tongue',         // 0d-3（8体目 I）: 舌で**プレイヤーを動かす**（自分は寄って来ない）
   'surge',          // 0d-3（9体目 {）: 居られる場所が**地形で決まる**（水から出るのは乗り上げだけ）
+  'glaciate',       // 0d-3（10体目 L）: 居場所を**自分で作る**（凍らせた床の上しか歩けない）
 ];
 const mechanismsOf = (meta) => new Set(MECHANISM_FIELDS.filter(k => meta[k]));
 const attackTypesOf = (meta) => new Set(
@@ -5818,3 +5819,675 @@ test('{-⑫ 水際で殴ると窓は strandedWaterMs・池から離して殴る�
       '陸の窓で剣が3回以上振れない＝引き離す旨みが無い').toBeGreaterThanOrEqual(3);
   });
 
+
+// ── 10体目 `L` 氷のリヴァイアサン：氷結（glaciate）＝**居場所を自分で作る**移動 ──────────
+// 設計の骨（PLAN 8-4 (4) 0d-3 の「10体目」）は3つ：
+//   ① L は**自分で凍らせた床の上しか歩けない**∴進む前に必ず足を止めて「道」を敷く
+//      （`freeze`＝`freezeMs`）。この相のあいだ**咬みつきも氷礫も出さない**＝剣を入れる唯一の窓。
+//   ② 道は敷いた瞬間に固定（向き・深さ `laneTiles`）＝走っている途中で追尾しない。
+//      塞がれたら（**プレイヤーの体でも**）その場で敷き直す。
+//   ③ 敷いた氷は `spikeMs` 後に**氷柱**となって噴き上がる＝**盾を無視する唯一の打点**。
+//      最後の `warnMs` が赤い予告。噴いたセルは消えるが**体の下だけ凍り直す**
+//      ∴L は足場を失わない／張り付き続けると `spikeMs` ごとに足元が噴く。
+// ⚠️ L の攻撃2本（咬みつき 1.5・氷礫 8）は**どちらも盾で消える**（`isShieldBlockingDir`）＝
+//    I 沼地の大蝦蟇・`{` 海の主と同じ穴∴氷柱が盾を通さないことがこの機構の存在理由。
+//    対価（GUIDE §7-16）は3つ＝予告 `warnMs 1080` ≧ 実測の逃げ切り 4.0 セル・床に描く危険域が
+//    当たり判定と同じ1タイル・**後半フェーズでも予告を縮めない**。
+// ⚠️ 弱点は炎 ×3。**炎は氷を溶かさない**（＝道を断つ機構は作らない）＝道から外れられない L に
+//    「置き炎」を踏ませるのが3つ目の答え（L-⑬）。溶かす形にすると L が炎の上を通らず
+//    `burnEnemiesOnFlame`（`enemyOccupiesTile` の重なり）が一度も成立せず弱点が死ぬ。
+const LV = TILE.ICE_LEVIATHAN;
+const LV_ROW = 4, LV_COL = 7;              // 2×2 ∴ rows 4-5 / cols 7-8
+const LV_WEST = { row: 4, col: 3 };        // 同じ行の西＝端距離 3.0（噛みつき 1.5 の外から測る）
+const LV_SOUTH = { row: 8, col: 7 };       // 真南＝道（南へ 3 枚）がプレイヤーの足元まで届く
+// 袋小路（`.scratch/leviathan-farm-spots.mjs` が見つけた床）＝貪欲な軸選びだと L が
+// cols 1-2 の縦の溝で振動して**60 秒でも被弾 0** になった立ち位置（`glaciateStepToward` の番人）。
+const LV_POCKET = { row: 7, col: 0 };
+// `{` と同じ「観測用に器だけ増やした」装備（盾は持たせる＝盾が氷柱を止めないことを測る）。
+const LV_OBS = { ps_hearts: '13', ps_sword: '0', ps_shield: '0', ps_armor: '0', ps_weapon: '1' };
+// SE の指紋（`installToneRec` は周波数だけを記録する）
+const FREEZE_HZ = [1568, 1319, 1109, 988, 831, 698];  // iceFreeze＝道を敷いた（＝剣の窓が開いた）
+const SPIKE_HZ  = [784, 1245, 1661, 2093];            // iceSpike＝氷柱が噴いた（低音を持たない）
+// 丸めの単一の真実（`hitbox.js toTileIndex`）＝氷柱の判定は「プレイヤーの中心が在るタイル」
+const lvTile = (v) => Math.floor(v + 0.5);
+
+/**
+ * `bal_ice_leviathan` の `L` を n tick 追い、毎 tick の相・位置・敷かれた氷・絵・音と
+ * プレイヤーの位置／HP を返す。
+ * @param {object} o
+ * @param {number} o.ticks       進める論理 tick 数
+ * @param {object} [o.spawn]     プレイヤーの湧き（既定＝西 (4,3)）
+ * @param {boolean} [o.debugOff] true＝'g' で debug を切る（プレイヤーにダメージが通る）
+ * @param {object} [o.patch]     ENEMY_META['L'] へ一時的に差し込むフィールド
+ * @param {object} [o.dropWhen]  { atPhase, dmg }＝**その相になった最初の tick**にダメージを落とす
+ * @param {object} [o.moveWhen]  { atPhase, dir, steps }＝その相のあいだ 1 tick に1歩ずつ歩く
+ * @param {boolean} [o.face]     true＝毎 tick L の方へ向き直る（＝盾の正面を向け続ける）
+ * @param {object} [o.extra]     URL のプリセット追加（ps_candle など）
+ */
+async function trackLeviathan(page, o) {
+  await installToneRec(page);
+  const sp = o.spawn ?? LV_WEST;
+  await gotoFrozen(page, previewUrl('bal_ice_leviathan', sp.row, sp.col, { ...LV_OBS, ...(o.extra ?? {}) }));
+  if (o.debugOff) await page.keyboard.press('g');
+  return page.evaluate((a) => {
+    const g = window.__game;
+    if (a.patch) g.setEnemyMetaForTest('L', a.patch);
+    const e0 = g.getEnemies().find(x => x.type === 'L');
+    if (!e0) return { error: 'L が盤面に居ない' };
+    const id = e0.id;
+    const find = () => g.getEnemies().find(x => x.id === id);
+    const tile = (v) => Math.floor(v + 0.5);
+    // 体が跨ぐタイル＝`enemy-ai.js glaciateBodyTiles`／`passable.js isPassableForEnemy` と同じ式
+    const bodyTiles = (e) => {
+      const ew = e.w ?? 1, eh = e.h ?? 1;
+      const c0 = Math.floor(e.x), c1 = Math.floor(e.x + ew - 1 + 0.999);
+      const r0 = Math.floor(e.y), r1 = Math.floor(e.y + eh - 1 + 0.999);
+      const out = [];
+      for (let r = r0; r <= r1; r++) for (let c = c0; c <= c1; c++) out.push(`${r},${c}`);
+      return out;
+    };
+    const edgeDist = (e, px, py) => {
+      const cx = e.x + ((e.w ?? 1) - 1) / 2, cy = e.y + ((e.h ?? 1) - 1) / 2;
+      const gx = Math.max(0, Math.abs(px - cx) - ((e.w ?? 1) - 1) / 2);
+      const gy = Math.max(0, Math.abs(py - cy) - ((e.h ?? 1) - 1) / 2);
+      return Math.hypot(gx, gy);
+    };
+    const frostPrefix = `frost-${id}-`;
+
+    const samples = [];
+    const movedAt = [];
+    let stepsLeft = a.moveWhen?.steps ?? 0;
+    let dropped = false;
+    for (let t = 1; t <= a.ticks; t++) {
+      const tone0 = window.__tones.length;
+      const cur = find();
+      if (!cur) break;
+      // ⚠️ スナップショット越しに読む＝`_glPhase` ではなく `glPhase`（`_` 付きは常に undefined）
+      const phase = cur.glPhase ?? null;
+      if (a.dropWhen && !dropped && phase === a.dropWhen.atPhase) {
+        g.dealDamage(id, a.dropWhen.dmg); dropped = true;
+      }
+      if (a.face) {
+        const p0 = g.getPlayer();
+        const cx = cur.x + ((cur.w ?? 1) - 1) / 2, cy = cur.y + ((cur.h ?? 1) - 1) / 2;
+        const dx = cx - p0.x, dy = cy - p0.y;
+        g.setHeroDir(Math.abs(dx) >= Math.abs(dy) ? (dx > 0 ? 'right' : 'left')
+          : (dy > 0 ? 'down' : 'up'));
+      }
+      const mw = a.moveWhen;
+      if (mw && stepsLeft > 0 && (mw.atPhase === undefined || phase === mw.atPhase)) {
+        g.movePlayer(mw.dir); stepsLeft--; movedAt.push(t);
+      }
+      g.step(1);
+      const e = find();
+      if (!e) break;
+      const p = g.getPlayer(), st = g.getState();
+      const el = document.getElementById(`char-enemy-${id}`);
+      const cells = e.frostCells ?? [];
+      samples.push({
+        t, now: st.gameTime, hp: e.hp, x: e.x, y: e.y, dir: e.dir,
+        phase: e.glPhase ?? null, span: e.glSpan ?? null, at: e.glAt ?? null,
+        dy: e.glDy ?? null, dx: e.glDx ?? null, left: e.glLeft ?? null,
+        blocked: e.glBlocked ?? null, freezes: e.glFreezes ?? 0,
+        spikes: e.spikes ?? 0, hits: e.spikeHits ?? 0,
+        cfg: e.glaciate ?? null,
+        // 氷＝キー（"r,c"）と時計だけを持ち出す（＝床に描く1枚と当たり判定が同じ集合）
+        frost: cells.map(f => ({ key: `${f.r},${f.c}`, at: f.at, span: f.span,
+          warn: f.warn, spikeAt: f.spikeAt, warnAt: f.warnAt })),
+        body: bodyTiles(e),
+        onIce: bodyTiles(e).every(k => cells.some(f => `${f.r},${f.c}` === k)),
+        attackTimes: JSON.stringify(e.attackTimes ?? null),
+        projectiles: g.getProjectiles().length,
+        px: p.x, py: p.y, php: p.hp, pdef: st.player.def,
+        ptile: `${tile(p.y)},${tile(p.x)}`,
+        pdir: st.heroDir, shieldTier: st.player.shieldTier,
+        reach: edgeDist(e, p.x, p.y),
+        // 絵＝凍結相だけ体に付くクラス（形は変えず filter だけ振る）＋長さは JS が渡す
+        freezeCls: !!el?.classList.contains('glaciate-freeze'),
+        spanVar: (el?.style.getPropertyValue('--glaciate-span-ms') ?? '').trim(),
+        // 床の氷の絵＝1セル＝1枚の div（id に r,c が入る＝判定と同じ集合を DOM で確かめる）
+        frostEls: [...document.querySelectorAll(`div[id^="${frostPrefix}"]`)].map(x => ({
+          key: x.id.slice(frostPrefix.length),
+          warn: x.classList.contains('frost-warn'),
+          heat: parseFloat(x.style.getPropertyValue('--frost-heat')),
+        })),
+        spikeFx: document.querySelectorAll('.enemy-frost-spike').length,
+        newTones: window.__tones.slice(tone0),
+      });
+    }
+    const e = find();
+    return { id, samples, movedAt, end: e && { hp: e.hp, maxHp: e.maxHp, cfg: e.glaciate ?? null } };
+  }, o);
+}
+
+// 相の連（[{ phase, from, to, ticks }]）＝`surgeRuns` と同じ形
+function glaciateRuns(samples) {
+  const runs = [];
+  for (const s of samples) {
+    const last = runs[runs.length - 1];
+    if (last && last.phase === s.phase) { last.to = s.t; last.ticks++; continue; }
+    runs.push({ phase: s.phase, from: s.t, to: s.t, ticks: 1 });
+  }
+  return runs;
+}
+// 相の長さ（tick）＝始まった tick も1 tick と数える（`nSurgeTicks` と同じ規約）
+const nGlTicks = (ms) => Math.ceil(ms / TICK_MS);
+
+test('L-① 氷のリヴァイアサンのデータ＝噛みつきは剣の外・氷柱の予告は実測の逃げ切りより長い', () => {
+  const m = ENEMY_META[LV];
+  const c = m.glaciate;
+  const KEYS = ['freezeMs', 'laneTiles', 'spikeAtk', 'spikeMs', 'warnMs'];
+  // `.scratch/leviathan-geom.mjs` の実測＝帯の中から帯の外の通れるセルへ歩く距離の最大
+  //   闘技場 4 マス／本番のボス部屋 3 マス／melee_only 検証室 2 マス
+  const WORST_ESCAPE_CELLS = 4.0;
+
+  expect(c, 'glaciate が無い＝L に固有の移動機構が無い').toBeTruthy();
+  // 綴りの番人（`resolveGlaciate` を読む関数が読むキー＝1文字違うと既定値に落ちて黙って動く）
+  expect(Object.keys(c).sort()).toEqual(KEYS);
+
+  // `hitAndAway` は enemyTick の分岐で glaciate より優先される∴**明示 false** が要る
+  //（W/A/N/J/O/U/G/I/`{` で9回踏んだ罠＝書かないと新機構の分岐へ一度も来ない）
+  expect('hitAndAway' in m, 'hitAndAway を書いていない＝既定の張り付きに戻る余地が残る').toBe(true);
+  expect(m.hitAndAway, 'hitAndAway が true ＝glaciate の分岐に来ない').toBe(false);
+  expect(m.initialModeWeights, '寄り方の抽選が残っている＝読まれない数値（W/O/U/G/I/{ で外した作法）')
+    .toBeUndefined();
+  // 弱点は炎 ×3（＝置き炎に道を踏ませる3つ目の答えの前提）
+  expect(m.weakness, '弱点が消えた＝「道の先に炎を仕込む」攻略が成り立たない')
+    .toMatchObject({ type: 'fire' });
+  expect(m.weakness.multiplier, '炎の倍率が下がった＝弱点が実用でなくなる').toBeGreaterThanOrEqual(2);
+
+  const bite  = m.attacks.find(a => a.type === 'sword');
+  const shard = m.attacks.find(a => a.type === 'stone');
+  // ① 到達距離の表（GUIDE §7-12）＝噛みつき 1.5 は**プレイヤーの剣 1.2 より外**
+  //    ＝歩いている L と剣を打ち合っても勝てない∴凍結相が窓であることに意味が出る
+  expect(bite.range, '噛みつきがプレイヤーの剣の内側＝歩いている L に打ち勝てる（窓が要らなくなる）')
+    .toBeGreaterThan(SWORD_REACH);
+  expect(shard.range, '氷礫の射程が噛みつきより短い＝到達距離の表が入れ子になっている')
+    .toBeGreaterThan(bite.range);
+  // ② 氷柱の予告＝時間の床（近接の溜め）以上（盾で防げない打点の対価・§7-16）
+  expect(c.warnMs, `予告 ${c.warnMs}ms が近接の溜め（MELEE_WINDUP_MS）より短い＝見てから動けない`)
+    .toBeGreaterThanOrEqual(MELEE_WINDUP_MS);
+  // ③ 予告のあいだに歩ける距離 > 実測した最悪の逃げ切り＝**歩けば必ず避かる**
+  const warnTicks = Math.floor(c.warnMs / TICK_MS);
+  expect(warnTicks * MOVE_STEP, `予告 ${warnTicks} tick で歩ける ${(warnTicks * MOVE_STEP).toFixed(2)} `
+    + `セルが実測の最悪 ${WORST_ESCAPE_CELLS} セルに足りない＝避けられない立ち位置が残る`)
+    .toBeGreaterThan(WORST_ESCAPE_CELLS);
+  // ④ 打点は `atk` と同値まで（盾で防げない一撃を防げる一撃より重くしない）＋罰になる重さ
+  expect(c.spikeAtk, '氷柱が噛みつき（atk）より重い＝盾で防げない一撃の方が痛い')
+    .toBeLessThanOrEqual(m.atk);
+  expect(c.spikeAtk - m.def, '氷柱が防御で 1 まで削れる＝張り付きの罰にならない').toBeGreaterThan(1);
+  // ⑤ 凍結相＝剣が2振り入る窓（弱点を使わない素の攻め口）
+  expect(Math.floor(c.freezeMs / SWORD_COOLDOWN_MS), '凍結相で剣が2回振れない＝窓が窓でない')
+    .toBeGreaterThanOrEqual(2);
+  // ⑥ 氷は溜まらない＝`spikeMs` は1周期（凍結＋道を歩き切る時間）より短い
+  //    ⚠️ 歩く速さは `speed` セル/tick **ではない**（`enemyGlaciateStride` は歩幅の溜め＝
+  //    `accum += speed` が 1.0 を越えた tick に `MOVE_STEP` だけ動く）∴1 tick あたりは
+  //    `MOVE_STEP × speed` ＝ 0.125 セル（＝1.04 セル/秒）。ここを `speed` で割ると2倍速く
+  //    見積もって不変条件が偽になる（実際に一度そう書いて PLAN の算術を疑った）。
+  const cellsPerTick = MOVE_STEP * m.speed;
+  const walkMs = (c.laneTiles / cellsPerTick) * TICK_MS;
+  expect(c.spikeMs, `氷柱までの ${c.spikeMs}ms が1周期（${Math.round(c.freezeMs + walkMs)}ms）より長い`
+    + '＝次の道を敷くとき前の氷が残る＝凍った面積が積み上がる（逃げ切りの算術が1枚の帯で閉じない）')
+    .toBeLessThan(c.freezeMs + walkMs);
+  // ⑦ 道は部屋を覆わない（§7-15 は半径ではなく**面積**で引き算する＝I の cells 6 の失敗の逆側）
+  //    体 4 枚＋前方 laneTiles × 幅2 ＝最大の帯。闘技場の床 83 枚の 2 割を越えたら
+  //    「氷の上に立たない」が成立しない（＝床がほぼ氷になる）。
+  const maxSlab = (m.size.w * m.size.h) + c.laneTiles * m.size.w;
+  expect(maxSlab, `帯の最大 ${maxSlab} 枚が闘技場の床 83 枚の 2 割を越える＝床が氷で埋まる`)
+    .toBeLessThan(83 * 0.2);
+
+  // 後半（`phases[0].glaciate`）＝速くなるのは**道を敷く速さと氷柱の早さだけ**
+  const p = m.phases.find(ph => ph.glaciate !== undefined);
+  expect(p, '後半の相が氷結の設定を差し替えていない＝前半と同じ動きのまま').toBeTruthy();
+  expect(Object.keys(p.glaciate).sort()).toEqual(KEYS);
+  expect(p.glaciate.freezeMs, '後半の凍結相が前半より長い＝窓が広がっている').toBeLessThan(c.freezeMs);
+  expect(p.glaciate.spikeMs, '後半の氷柱が前半より遅い＝床の時計が緩んでいる').toBeLessThan(c.spikeMs);
+  // ⚠️ 据え置きの番人（§7-16「後半でも予告を縮めない」＝逃げ切りの算術を1文字も変えない）
+  expect(p.glaciate.warnMs, '後半で予告を縮めた＝盾で防げない打点の予告が時間の床を割る')
+    .toBe(c.warnMs);
+  expect(p.glaciate.laneTiles, '後半で道を伸ばした＝帯の面積の引き算が変わる').toBe(c.laneTiles);
+  expect(p.glaciate.spikeAtk, '後半で氷柱の打点を上げた＝避けられる技を重くしている').toBe(c.spikeAtk);
+  // 後半でも「氷が溜まらない」が保つ（速度倍率ぶん歩くのが速い）
+  const walkMs2 = (c.laneTiles / (cellsPerTick * (p.speedMultiplier ?? 1))) * TICK_MS;
+  expect(p.glaciate.spikeMs, '後半は氷柱が1周期より遅い＝後半だけ氷が積み上がる')
+    .toBeLessThan(p.glaciate.freezeMs + walkMs2);
+});
+
+test('L-② 周期＝凍結（道を敷く）→ 歩行 の2相を順に回り、長さ・絵・音が glaciate の数と一致する',
+  async ({ page }) => {
+    const c = ENEMY_META[LV].glaciate;
+    const r = await trackLeviathan(page, { ticks: 60 });
+    expect(r.error).toBeUndefined();
+    const s = r.samples;
+
+    // ① 最初の相は凍結＝**足場を作ってからしか動かない**
+    const runs = glaciateRuns(s);
+    expect(runs[0].phase, '最初の相が凍結でない＝氷の無い床を歩き出している').toBe('freeze');
+    // ② 相は freeze と walk の2つだけ・交互に並ぶ（宙吊りの相が生えていない）
+    expect([...new Set(runs.map(x => x.phase))].sort(), '相が freeze / walk の2つでない')
+      .toEqual(['freeze', 'walk']);
+    for (let i = 1; i < runs.length; i++) {
+      expect(runs[i].phase, `t${runs[i].from} で同じ相が2度続いている＝連の切り方が壊れている`)
+        .not.toBe(runs[i - 1].phase);
+    }
+    // ③ 完走した凍結相の長さ＝freezeMs（JS が持つ1つの数＝絵にも同じ数を渡す）
+    const freezes = runs.filter(x => x.phase === 'freeze' && x.to < s.length);
+    expect(freezes.length, '凍結相が1度も完走していない＝周期が回っていない').toBeGreaterThanOrEqual(1);
+    for (const f of freezes.slice(0, -1)) {
+      expect(f.ticks, `凍結相が ${c.freezeMs}ms でない（t${f.from}〜t${f.to}）`).toBe(nGlTicks(c.freezeMs));
+    }
+    // ④ 絵＝凍結相のあいだだけクラスが付き、長さは JS が渡す（絵に閾値を持たせない）
+    for (const x of s) {
+      expect(x.freezeCls, `t${x.t}（相 ${x.phase}）の凍結の絵がずれている`).toBe(x.phase === 'freeze');
+    }
+    expect(s.find(x => x.phase === 'freeze').spanVar, '凍結の絵に渡す長さが freezeMs でない')
+      .toBe(`${c.freezeMs}ms`);
+    // ⑤ 音＝凍結に入った tick に iceFreeze（＝剣の窓が開いた合図）
+    const firstFreeze = s.find(x => x.phase === 'freeze');
+    expect(firstFreeze.newTones, '凍結に入った tick に iceFreeze が鳴っていない')
+      .toEqual(expect.arrayContaining(FREEZE_HZ));
+    // ⑥ 音＝氷柱が噴いた tick に iceSpike（何枚噴いても1回だけ）
+    const erupt = s.find((x, i) => i > 0 && x.spikes > s[i - 1].spikes);
+    expect(erupt, '60 tick で氷柱が1枚も噴かない＝床の時計が止まっている').toBeTruthy();
+    expect(erupt.newTones, '氷柱が噴いた tick に iceSpike が鳴っていない')
+      .toEqual(expect.arrayContaining(SPIKE_HZ));
+    const spikeCount = erupt.newTones.filter(f => f === SPIKE_HZ[0]).length;
+    expect(spikeCount, `同じ tick に iceSpike が ${spikeCount} 回鳴っている＝枚数ぶん重なっている`)
+      .toBe(1);
+  });
+
+test('L-③ 氷の上しか歩けない＝歩いた全 tick で体が氷に載り、1周で進むのは laneTiles まで',
+  async ({ page }) => {
+    const c = ENEMY_META[LV].glaciate;
+    const r = await trackLeviathan(page, { ticks: 60 });
+    const s = r.samples;
+
+    // ① 敷いた瞬間から**体の4枚は必ず氷**（＝足場を作ってから歩く）
+    for (const x of s) {
+      expect(x.onIce, `t${x.t}（相 ${x.phase}・(${x.y},${x.x})）で体が氷の上に載っていない`
+        + `＝氷の外を歩いている（氷 ${JSON.stringify(x.frost.map(f => f.key))}）`).toBe(true);
+    }
+    // ② 1周（凍結→歩行）で進む距離は laneTiles まで＝道の外へは出ない
+    const runs = glaciateRuns(s);
+    for (let i = 0; i < runs.length; i++) {
+      if (runs[i].phase !== 'walk') continue;
+      const first = s.find(x => x.t === runs[i].from), last = s.find(x => x.t === runs[i].to);
+      const moved = Math.abs(last.x - first.x) + Math.abs(last.y - first.y);
+      expect(moved, `t${runs[i].from}〜t${runs[i].to} の歩行で ${moved} セル進んだ＝道 ${c.laneTiles} `
+        + 'セルを越えている（追尾して道の外へ出た）').toBeLessThanOrEqual(c.laneTiles);
+      // 進んだ軸は道の向きだけ（斜めに動かない＝1軸の道）
+      if (first.dy !== 0) expect(last.x, `t${runs[i].to} で道の軸と違う向きに動いた`).toBe(first.x);
+      else expect(last.y, `t${runs[i].to} で道の軸と違う向きに動いた`).toBe(first.y);
+    }
+    // ③ 歩行相は残り（`left`）を食い潰しながらしか進まない（＝道が移動の定義域）
+    const walks = s.filter(x => x.phase === 'walk');
+    expect(walks.length, '歩行相が一度も来ない＝凍結で固まっている').toBeGreaterThan(0);
+    for (const x of walks) expect(x.left, `t${x.t} の道の残りが負＝道の外へ出ている`).toBeGreaterThanOrEqual(0);
+    // ④ 氷は溜まらない（§7-15 の面積の引き算＝**実測した最大枚数**で閉じる）。
+    //    L-① が静的に測るのは「`spikeMs` < 1周期」＝設計上は帯1枚だけ。ただし L は道を歩き切る
+    //    前に塞がれて敷き直すことが多い（実測＝1周で 1.5〜1.7 セル）∴実行時は前の帯が噴く前に
+    //    次の帯が敷かれて一時的に重なる。上限として帯の最大 × 2 を置く。
+    //    ここが破れると床がほぼ氷になり「氷の上に立たない」という答えが消える。
+    const m = ENEMY_META[LV];
+    const maxSlab = (m.size.w * m.size.h) + c.laneTiles * m.size.w;
+    const peak = Math.max(...s.map(x => x.frost.length));
+    expect(peak, `同時に凍っていた最大 ${peak} 枚が帯の最大 ${maxSlab} 枚の 2 倍を越えた`
+      + '＝帯が3枚以上重なっている（氷が積み上がっている）').toBeLessThanOrEqual(maxSlab * 2);
+    expect(peak, `同時に凍っていた最大 ${peak} 枚が闘技場の床 83 枚の 3 割を越えた`
+      + '＝床が氷で埋まって「氷の上に立たない」が選べない').toBeLessThan(83 * 0.3);
+  });
+
+test('L-④ 道は敷いた瞬間に固定＝歩いている途中でプレイヤーが動いても向きを変えない',
+  async ({ page }) => {
+    // 凍結相のあいだにプレイヤーを北へ歩かせる（＝道を敷いた向きの軸から外れる）
+    const r = await trackLeviathan(page, {
+      ticks: 60, spawn: LV_WEST, moveWhen: { atPhase: 'freeze', dir: 'up', steps: 8 },
+    });
+    const s = r.samples;
+    expect(r.movedAt.length, 'プレイヤーが一歩も動いていない＝追尾しないことを測れていない')
+      .toBeGreaterThan(0);
+
+    const runs = glaciateRuns(s);
+    const walk = runs.find(x => x.phase === 'walk' && x.to < s.length);
+    expect(walk, '歩行相が完走していない').toBeTruthy();
+    const first = s.find(x => x.t === walk.from);
+    for (const x of s.filter(x => x.t >= walk.from && x.t <= walk.to)) {
+      expect([x.dy, x.dx], `t${x.t} で道の向きが変わった＝走っている途中で追尾している`)
+        .toEqual([first.dy, first.dx]);
+      expect(x.dir, `t${x.t} で体の向きが道の向きと違う`).toBe(
+        first.dy !== 0 ? (first.dy > 0 ? 'down' : 'up') : (first.dx > 0 ? 'right' : 'left'));
+    }
+    // 敷いた氷の集合も固定＝歩行相のあいだに新しく凍るセルは無い（噴いて消える／体の下だけ戻る）
+    const laid = new Set(first.frost.map(f => f.key));
+    for (const x of s.filter(x => x.t > walk.from && x.t <= walk.to)) {
+      for (const f of x.frost) {
+        if (laid.has(f.key)) continue;
+        expect(x.body, `t${x.t} で体の外のセル ${f.key} が歩行中に凍った＝道を継ぎ足している`)
+          .toContain(f.key);
+      }
+    }
+  });
+
+test('L-⑤ 袋小路に立っても寄って来る（最短路の1歩目＝永久の安全地帯が生まれない）',
+  async ({ page }) => {
+    // ⚠️ この本の由来＝`.scratch/leviathan-farm-spots.mjs` の総当たりで見つけた実害。
+    //    貪欲な軸選び（離れている軸を先に試す）だと L は row 4 を西へ走り切って cols 1-2 の
+    //    縦の溝に入り、南は看板 (6,1)・西は外壁で塞がれて上下に振動し続けた
+    //    ＝(7,0) に立って動かないだけで **60 秒（500 tick）でも被弾 0**。
+    //    N 砂嵐の蠍王の待ち伏せと同じ穴（`planBurrowPath`）∴同じ道具＝BFS の最短路の1歩目。
+    const r = await trackLeviathan(page, { ticks: 300, spawn: LV_POCKET, debugOff: true, face: true });
+    const s = r.samples;
+    const last = s[s.length - 1];
+    // ① 端距離が噛みつきの間合いまで詰む＝溝から出て回り込んで来た
+    const closest = Math.min(...s.map(x => x.reach));
+    expect(closest, `袋小路 (${LV_POCKET.row},${LV_POCKET.col}) に立つと L が ${closest} まで`
+      + 'しか寄って来ない＝立っているだけで無傷の床が残っている').toBeLessThanOrEqual(1.5);
+    // ② 実害の指標そのもの＝**被弾する**（盾を向け続けていても氷柱は通る）
+    expect(s[0].php - last.php, '袋小路に立ち続けて HP が1も減らない＝無料の反撃窓が残っている')
+      .toBeGreaterThan(0);
+    // ③ 溝の中で振動していない＝1軸の往復だけで時間を使い切っていない
+    const cols = new Set(s.map(x => x.x));
+    expect(cols.size, 'L が同じ列で上下に振動しているだけ＝袋小路から出られていない').toBeGreaterThan(2);
+  });
+
+test('L-⑥ 氷柱は盾を無視する（正面で受けても通る）／氷から歩いて出れば当たらない',
+  async ({ page }) => {
+    const c = ENEMY_META[LV].glaciate;
+    // ① 真南に立って**盾の正面を L に向けたまま一歩も退かない**＝噛みつきと氷礫は消える
+    const stay = await trackLeviathan(page, {
+      ticks: 90, spawn: LV_SOUTH, debugOff: true, face: true,
+    });
+    const s = stay.samples;
+    expect(s[0].shieldTier, '盾を持っていない＝「盾で防げない」を測れていない').toBeGreaterThanOrEqual(0);
+    for (const x of s) {
+      expect(['up', 'down', 'left', 'right']).toContain(x.pdir);
+    }
+    expect(s[s.length - 1].hits, '盾を向けて立ち続けて氷柱が一度も当たらない＝盾で待つ抜け道が残る')
+      .toBeGreaterThanOrEqual(1);
+    // 打点＝spikeAtk − def ちょうど（当たった tick だけ HP が減る＝他の攻撃は盾で消えている）
+    const dmg = Math.max(1, c.spikeAtk - s[0].pdef);
+    const lost = s[0].php - s[s.length - 1].php;
+    expect(lost, `失った HP ${lost} が氷柱の回数 × (spikeAtk − def) と違う`
+      + '＝盾で消えるはずの噛みつき／氷礫が通っている').toBe(s[s.length - 1].hits * dmg);
+    // 当たった tick には**その1枚が本当に足元に在った**（塗られていないセルでは当たらない）
+    for (let i = 1; i < s.length; i++) {
+      if (s[i].hits === s[i - 1].hits) continue;
+      expect(s[i - 1].frost.map(f => f.key),
+        `t${s[i].t} で足元 ${s[i - 1].ptile} に氷が無いのに氷柱が当たった＝告知の嘘`)
+        .toContain(s[i - 1].ptile);
+    }
+
+    // ② 噴いた枚数 > 当たった回数＝**塗られた氷の大半は空振り**（立ち位置で決まる打点）
+    expect(s[s.length - 1].spikes, '噴いた氷柱が命中回数以下＝どこに居ても当たる打点になっている')
+      .toBeGreaterThan(s[s.length - 1].hits);
+
+    // ③ 帯（体と同じ2列／2行）から**歩いて出る**＝氷柱は噴くが1度も当たらない。
+    // ⚠️ 立ち位置は西 (4,3)＝道は西へ敷かれる（帯は rows 4-5）∴北へ3セル歩けば帯の外。
+    //    真南 (8,7) から西へ逃がすと row 8 は左右が隣室への通路＝**ステージを出てしまう**
+    //    （最初に書いた形。敵が消えて samples が途切れ、噴く前に測定が終わっていた）。
+    const flee = await trackLeviathan(page, {
+      ticks: 40, spawn: LV_WEST, debugOff: true, moveWhen: { dir: 'up', steps: 6 },
+    });
+    const f = flee.samples;
+    expect(f.length, '逃げた側の測定が途中で切れた＝ステージを出ている').toBe(40);
+    expect(f[f.length - 1].spikes, '逃げた側で氷柱が1枚も噴いていない＝比較になっていない')
+      .toBeGreaterThan(0);
+    expect(f[f.length - 1].hits, '歩いて氷から出ても氷柱が当たる＝避けられない打点になっている')
+      .toBe(0);
+  });
+
+test('L-⑦ 赤い予告は warnMs ぶん先に出て、噴いた瞬間に絵が消える（判定と絵が同じ集合）',
+  async ({ page }) => {
+    const c = ENEMY_META[LV].glaciate;
+    const r = await trackLeviathan(page, { ticks: 60 });
+    const s = r.samples;
+
+    // ① どのセルも「赤くなる時刻 ＝ 噴く時刻 − warnMs」＝敷いた瞬間に固定される
+    for (const x of s) {
+      for (const f of x.frost) {
+        expect(f.spikeAt - f.warnAt, `t${x.t} のセル ${f.key} の予告が warnMs でない`).toBe(c.warnMs);
+        expect(f.spikeAt - f.at, `t${x.t} のセル ${f.key} が spikeMs 後に噴かない`).toBe(c.spikeMs);
+      }
+    }
+    // ② 床の絵＝氷の集合と1対1（塗られたのに無傷は許すが、塗られずに被弾は許さない）
+    for (const x of s) {
+      const drawn = new Set(x.frostEls.map(e => e.key));
+      for (const f of x.frost) {
+        expect(drawn, `t${x.t} のセル ${f.key} が凍っているのに床に描かれていない`).toContain(f.key);
+      }
+    }
+    // ③ 赤（`frost-warn`）が付くのは warnAt を越えた後だけ＝早くも遅くもならない
+    for (const x of s) {
+      for (const e of x.frostEls) {
+        const cell = x.frost.find(f => f.key === e.key);
+        if (!cell) continue;                       // 噴いた直後の残骸（実時間で消える）は見ない
+        expect(e.warn, `t${x.t}（now ${x.now}）のセル ${e.key} の赤が warnAt ${cell.warnAt} と`
+          + '合っていない＝告知の色と時計がずれている').toBe(x.now >= cell.warnAt);
+        expect(e.heat, `t${x.t} のセル ${e.key} の濃さが 0〜1 の外`).toBeGreaterThanOrEqual(0);
+        expect(e.heat).toBeLessThanOrEqual(1);
+      }
+    }
+    // ④ 噴いた tick に氷柱の絵が出る（1枚＝1セル）
+    const erupt = s.find((x, i) => i > 0 && x.spikes > s[i - 1].spikes);
+    expect(erupt.spikeFx, '氷柱が噴いた tick に絵が1枚も出ていない＝盾を無視する打点が無告知')
+      .toBeGreaterThanOrEqual(1);
+  });
+
+test('L-⑧ 凍結相は咬みつきも氷礫も出さない＝そこだけが剣の窓', async ({ page }) => {
+    // 噛みつきの間合い（1.5）の内側に立つ＝「窓の外なら殴られる」も同じ run で見える
+    const r = await trackLeviathan(page, { ticks: 90, spawn: LV_SOUTH, debugOff: true });
+    const s = r.samples;
+    const runs = glaciateRuns(s);
+    const freezes = runs.filter(x => x.phase === 'freeze' && x.to < s.length);
+    expect(freezes.length, '凍結相が完走していない').toBeGreaterThanOrEqual(1);
+
+    // ① 凍結相のあいだ攻撃の時計が1つも進まない（＝咬みつきも氷礫も出ていない）
+    for (const f of freezes) {
+      const inRun = s.filter(x => x.t >= f.from && x.t <= f.to);
+      for (let i = 1; i < inRun.length; i++) {
+        expect(inRun[i].attackTimes, `t${inRun[i].t}（凍結相）で攻撃が出た＝剣の窓が窓でない`)
+          .toBe(inRun[0].attackTimes);
+      }
+      // 投擲物（氷礫）も増えない
+      for (const x of inRun) {
+        expect(x.projectiles, `t${x.t}（凍結相）で氷礫が飛んだ`).toBeLessThanOrEqual(inRun[0].projectiles);
+      }
+    }
+    // ② 対照＝歩行相では攻撃が出る（「ずっと攻撃しない案山子」になっていない）
+    const walkAttacked = s.some((x, i) => i > 0 && x.phase === 'walk'
+      && x.attackTimes !== s[i - 1].attackTimes);
+    expect(walkAttacked, '歩行相でも一度も攻撃しない＝凍結相が窓であることに意味が無い').toBe(true);
+    // ③ 凍結相でも**床の時計は進む**（止まると「赤くなったのに噴かない」＝告知の嘘）
+    const frozeSpiked = s.some((x, i) => i > 0 && x.phase === 'freeze' && x.spikes > s[i - 1].spikes);
+    expect(frozeSpiked, '凍結相のあいだ氷柱が1枚も噴かない＝床の時計が行動ゲートの中に入っている')
+      .toBe(true);
+  });
+
+test('L-⑨ 敷き直しても時計は戻らない／体の下だけ凍り直す（張り付きに対価がある）',
+  async ({ page }) => {
+    const c = ENEMY_META[LV].glaciate;
+    const r = await trackLeviathan(page, { ticks: 120, spawn: LV_SOUTH, debugOff: true, face: true });
+    const s = r.samples;
+
+    // ① 続けて在るセルの時計は**据え置き**（＝赤くなった予告が白紙に戻らない）
+    for (let i = 1; i < s.length; i++) {
+      for (const f of s[i].frost) {
+        const prev = s[i - 1].frost.find(x => x.key === f.key);
+        if (!prev) continue;                       // 新しく凍ったセル
+        if (prev.at !== f.at) {
+          // 噴いた直後の凍り直し＝**体の下のセルだけ**（それ以外は消える）
+          expect(s[i].body, `t${s[i].t} で体の外のセル ${f.key} が凍り直された＝氷が溜まる`)
+            .toContain(f.key);
+          expect(f.at, `t${s[i].t} のセル ${f.key} の凍り直しが過去の時刻になっている`)
+            .toBeGreaterThan(prev.at);
+          continue;
+        }
+        expect(f.spikeAt, `t${s[i].t} のセル ${f.key} の噴く時刻が後ろへずれた`
+          + '＝敷き直しで時計が戻っている（張り付けば足元が噴かない抜け道）').toBe(prev.spikeAt);
+      }
+    }
+    // ② 足場を失わない＝氷が 0 枚になる tick が無い（機構が自分を詰ませない）
+    for (const x of s) expect(x.frost.length, `t${x.t} で氷が0枚＝L が足場を失っている`).toBeGreaterThan(0);
+    // ③ 張り付き続けた対価＝`spikeMs` ごとに足元が噴く（当たった間隔がその周期に収まる）
+    const hitTicks = s.filter((x, i) => i > 0 && x.hits > s[i - 1].hits).map(x => x.now);
+    expect(hitTicks.length, '密着し続けて氷柱が一度も当たらない＝張り付きに対価が無い')
+      .toBeGreaterThanOrEqual(2);
+    for (let i = 1; i < hitTicks.length; i++) {
+      expect(hitTicks[i] - hitTicks[i - 1], `氷柱の当たる間隔 ${hitTicks[i] - hitTicks[i - 1]}ms が`
+        + `spikeMs（${c.spikeMs}ms）の 2 周を越える＝張り付きが安くなっている`)
+        .toBeLessThanOrEqual(c.spikeMs * 2);
+    }
+  });
+
+test('L-⑩ 相の差し替え＝HP 半分で道を敷くのが速く氷が早く噴く／予告は縮まない',
+  async ({ page }) => {
+    const m = ENEMY_META[LV];
+    const c = m.glaciate, p2 = m.phases.find(ph => ph.glaciate !== undefined).glaciate;
+    // 歩いている途中（＝殴られている最中）に相が変わる形で落とす
+    const r = await trackLeviathan(page, {
+      ticks: 90, dropWhen: { atPhase: 'walk', dmg: Math.ceil(m.hp * 0.6) },
+    });
+    const s = r.samples;
+    const after = s.filter(x => x.hp <= m.hp * 0.5);
+    expect(after.length, '後半に入っていない＝落としたダメージが足りない').toBeGreaterThan(0);
+
+    // ① 設定が差し替わった（`_glaciate`＝エンティティ側の1つの入口）
+    expect(after[0].cfg, '後半の設定が差し替わっていない（boss.js の applyBossPhase に口が無い）')
+      .toMatchObject(p2);
+    // ② 差し替え後の凍結相は短い（＝剣の窓が 2 振り→1 振り）
+    const runs = glaciateRuns(after);
+    const f2 = runs.find(x => x.phase === 'freeze' && x.to < after[after.length - 1].t);
+    expect(f2, '後半に凍結相が完走していない＝相が宙吊り').toBeTruthy();
+    expect(after.find(x => x.t === f2.from).span, `後半の凍結相が ${p2.freezeMs}ms でない`)
+      .toBe(p2.freezeMs);
+    // ③ 差し替え後に**新しく**凍ったセルは後半の spikeMs で噴く／予告は前半と同じ長さ
+    const before = new Set(s.filter(x => x.hp > m.hp * 0.5).flatMap(x => x.frost.map(f => f.key + '@' + f.at)));
+    const fresh = after.flatMap(x => x.frost).filter(f => !before.has(f.key + '@' + f.at));
+    expect(fresh.length, '後半に新しく凍ったセルが無い＝差し替えを測れていない').toBeGreaterThan(0);
+    for (const f of fresh) {
+      expect(f.span, `後半に凍ったセル ${f.key} が前半の spikeMs のまま`).toBe(p2.spikeMs);
+      expect(f.spikeAt - f.warnAt, `後半のセル ${f.key} の予告が縮んだ＝§7-16 の対価を割っている`)
+        .toBe(c.warnMs);
+    }
+    // ④ 相が変わる前に敷いた氷は**そのままの時計で噴く**（床の絵と噴く拍がずれない）
+    const old = after.flatMap(x => x.frost).filter(f => before.has(f.key + '@' + f.at));
+    for (const f of old) {
+      expect(f.span, `相が変わった瞬間に既存のセル ${f.key} の時計が書き換わった`).toBe(c.spikeMs);
+    }
+  });
+
+test('L-⑪ 氷結の使い手は L だけ・L は他の9体の移動機構を持たない', () => {
+  const lm = mechanismsOf(ENEMY_META[LV]);
+  const others = ['W', 'A', 'N', 'J', 'O', 'U', 'G', 'I', SL].map(k => mechanismsOf(ENEMY_META[k]));
+  expect(lm.has('glaciate'), 'L が移動機構（glaciate）を持っていない').toBe(true);
+  expect(others.some(x => x.has('glaciate')),
+    '他のボスが氷結を持っている＝L の固有機構ではない').toBe(false);
+  const users = Object.entries(ENEMY_META).filter(([, m]) => m.glaciate).map(([k]) => k);
+  expect(users, '氷結を持つ敵が L 以外にも居る（設計が重複した）').toEqual([LV]);
+  // 借り物でない番人＝特に `combat` や `surge` が生えた瞬間に「居場所を自分で作る」が消える
+  for (const k of ['combat', 'laneStalk', 'burrowAmbush', 'hide', 'dash', 'coil', 'gaze',
+    'soar', 'momentum', 'leap', 'tongue', 'zigzag', 'surge', 'blockFacing']) {
+    expect(ENEMY_META[LV][k], `${k} を持っている＝他の9体の型を借りている`).toBeUndefined();
+  }
+  for (const p of ENEMY_META[LV].phases ?? []) {
+    for (const k of ['dash', 'coil', 'hide', 'gaze', 'soar', 'momentum', 'tongue', 'surge']) {
+      expect(p[k], `後半に ${k} が生えている＝他のボスの後半と同じ型`).toBeUndefined();
+    }
+  }
+});
+
+test('L-⑫ 検証ステージと本番のボス部屋の幾何（GUIDE §4-3）＝氷の帯が部屋を覆わない', () => {
+  const MAP = JSON.parse(readFileSync(
+    fileURLToPath(new URL('../work/blade-of-lumia.json', import.meta.url)), 'utf8'));
+  const c = ENEMY_META[LV].glaciate;
+  const m = ENEMY_META[LV];
+
+  for (const [label, layer, key] of [
+    ['闘技場', TEST_LAYER, stageKey('bal_ice_leviathan')],
+    ['本番のボス部屋', 'dungeon_5', '0,0'],
+  ]) {
+    const sd = MAP.layers[layer].stages[key];
+    expect(sd, `${label}（${layer} ${key}）が無い`).toBeTruthy();
+    const rows = sd.tiles.map(r => (Array.isArray(r) ? r.join('') : r));
+    expect(rows.length, `${label} の行数が 10 でない`).toBe(10);
+    // ① 水が無い（`bgTiles` に水があると L の初期位置が水没する＝キュー 0f の注記）
+    expect(Object.keys(sd.bgTiles ?? {}).length, `${label} に bgTiles がある＝水没の恐れ`).toBe(0);
+    // ② L が1体だけ居る
+    const lv = [];
+    rows.forEach((row, r) => [...row].forEach((ch, cc) => { if (ch === LV) lv.push([r, cc]); }));
+    expect(lv.length, `${label} に L が1体ではない`).toBe(1);
+    // ③ 床（＝立てるセル）が帯の最大（体4枚＋前方 laneTiles × 幅2）の 5 倍以上ある
+    //    ＝「氷の上に立たない」という答えが選べる（床の大半が氷になる部屋では選べない）
+    const floors = rows.reduce((n, row) => n + [...row].filter(ch => ch === '.').length, 0);
+    const maxSlab = (m.size.w * m.size.h) + c.laneTiles * m.size.w;
+    expect(floors, `${label} の床 ${floors} 枚が帯の最大 ${maxSlab} 枚の 5 倍に届かない`
+      + '＝床が氷で埋まって逃げ場が無い').toBeGreaterThanOrEqual(maxSlab * 5);
+    // ④ L の初期位置から4方向すべてに道（laneTiles ぶん）が敷ける必要は無いが、
+    //    少なくとも1方向は歩ける＝置いた瞬間から機構が回る
+    const [lr, lc] = lv[0];
+    const open = (r, cc) => rows[r]?.[cc] === '.' || rows[r]?.[cc] === LV;
+    const walkable = [[-1, 0], [1, 0], [0, -1], [0, 1]].filter(([dr, dc]) => {
+      for (let i = 1; i <= c.laneTiles; i++) {
+        for (let k = 0; k < m.size.w; k++) {
+          const r = lr + (dr !== 0 ? (dr > 0 ? m.size.h - 1 : 0) + dr * i : k);
+          const cc = lc + (dc !== 0 ? (dc > 0 ? m.size.w - 1 : 0) + dc * i : k);
+          if (!open(r, cc)) return false;
+        }
+      }
+      return true;
+    });
+    expect(walkable.length, `${label} の L の初期位置 (${lr},${lc}) からどの向きへも `
+      + `${c.laneTiles} セルの道が敷けない＝置いた瞬間に固まる`).toBeGreaterThanOrEqual(1);
+  }
+
+  // ⑤ 本番のボス部屋だけの前提＝ハートの器の宝箱と扉（戦闘中は閉じる）が在る
+  const boss = MAP.layers.dungeon_5.stages['0,0'];
+  expect(boss.isBossRoom, '本番のボス部屋に isBossRoom が立っていない＝扉が閉じない').toBe(true);
+});
+
+test('L-⑬ 炎は氷を溶かさない＝道の上に置いた炎を L が踏んで弱点で焼ける', async ({ page }) => {
+  const m = ENEMY_META[LV];
+  // 置き炎（0j）は弱点 ×3 が乗る＝`3 × multiplier − def`。連打では増えない（candle-flame.spec.js）
+  const burn = Math.max(1, Math.round(CANDLE_FIRE_DMG * m.weakness.multiplier) - m.def);
+  const r = await trackLeviathan(page, {
+    ticks: 60, spawn: LV_SOUTH, extra: { ps_candle: '1' },
+  });
+  expect(r.error).toBeUndefined();
+
+  // 真南に立つ＝道は南へ敷かれる∴プレイヤーの手前（北）のセルは必ず氷になる。
+  // そこへ炎を置く＝L は道から外れられない∴必ず炎の上を通る。
+  const out = await page.evaluate(() => {
+    const g = window.__game;
+    const e = g.getEnemies().find(x => x.type === 'L');
+    const before = { hp: e.hp, frost: (e.frostCells ?? []).map(f => `${f.r},${f.c}`) };
+    g.setHeroDir('up');
+    g.useSubItem();                             // 北隣（＝道の上）に炎を置く
+    const flames0 = g.getPlacedFlames().map(f => `${f.r},${f.c}`);
+    let burned = 0, hp = before.hp;
+    const frostSeen = [];
+    for (let t = 0; t < 60; t++) {
+      g.step(1);
+      const cur = g.getEnemies().find(x => x.type === 'L');
+      if (!cur) break;
+      frostSeen.push((cur.frostCells ?? []).map(f => `${f.r},${f.c}`));
+      if (cur.hp < hp) { burned++; hp = cur.hp; }
+    }
+    const flames = g.getPlacedFlames();
+    return { before, flames0, flames: flames.map(f => ({ key: `${f.r},${f.c}`, burned: f.burnedCount })),
+      hp, frostSeen };
+  });
+
+  expect(out.flames0.length, '炎が置けていない＝ロウソクのプリセットが効いていない').toBe(1);
+  const spot = out.flames0[0];
+  // ① 炎を置いたセルは（氷が敷かれていれば）氷のまま＝**炎は氷を溶かさない**
+  const wasFrost = out.frostSeen.some(list => list.includes(spot));
+  expect(wasFrost, `炎を置いた ${spot} が一度も氷にならない＝道の上に置けていない（測れていない）`)
+    .toBe(true);
+  // ② L は道から外れられない∴炎の上を通って焼ける（弱点 ×3 が生きている）
+  expect(out.before.hp - out.hp, `L が炎で焼けていない（HP ${out.before.hp} → ${out.hp}）`
+    + '＝置き炎に道を踏ませる攻略が成り立たない').toBeGreaterThanOrEqual(burn);
+  // ③ 1つの炎は1回だけ焼く（連打の穴が氷経由で復活していない）
+  for (const f of out.flames) {
+    expect(f.burned, `炎 ${f.key} が同じ敵を2回以上焼いた＝連打の穴`).toBeLessThanOrEqual(1);
+  }
+});

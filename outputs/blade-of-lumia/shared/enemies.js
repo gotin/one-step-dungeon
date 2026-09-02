@@ -892,6 +892,21 @@ export const ENEMY_META = {
 	// 凍てつく海竜。全身が霜に覆われた巨体で、氷の息と咬みつきで戦う。
 	// 動きは遅いが防御力が高く、遠距離からの石投げが主な攻撃手段。
 	// dropsTriforce:true で撃破時に星の欠片を落とす。
+	//
+	// 【移動アルゴリズム】Phase 8-4 (4) 0d-3・10体目（2026-09-02）
+	// 氷結（`glaciate`）＝**自分で作った氷の上しか歩けない**。
+	//   凍結相（`freeze`）… 足を止め、体の 4 枚＋進む向きへ `laneTiles` 枚（幅は体と同じ2列）を
+	//     凍らせる。この相のあいだ**咬みつきも氷礫も出ない**＝剣を入れる唯一の窓。
+	//   歩行相（`walk`）… 凍らせた道の上だけを歩く。道を歩き切る／次の一歩が塞がれた
+	//     （プレイヤーの体でも塞がる）時点で終わり、その場で凍結相へ戻る。
+	//   氷は敷いてから `spikeMs` 後に**氷柱**となって噴き上がる（最後の `warnMs` が赤い予告）。
+	//     氷柱は**盾を無視する**唯一の打点＝L の2つの攻撃（咬みつき・氷礫）はどちらも
+	//     盾で消えるため、盾を上げたまま張り付く抜け穴を塞ぐのがこの打点の役目
+	//     （ENEMY-DIRECTIONAL-GUIDE §7-16 の支払い＝予告 `warnMs` ≧ 逃げ切りに要る歩数・
+	//      床に描く危険域＝当たり判定と同じ1タイル・後半フェーズでも予告を縮めない）。
+	// ∴「地形が硬直の長さを決める」`{` 海の主（与えられた地形）とは逆に、**居場所を自分で作る**
+	//   唯一のボス＝プレイヤーは①氷の上に立たない②凍結相に殴る③L が道から出られないことを
+	//   利用して道の上にロウソクの炎を置く（弱点 fire ×3）という3つの答えを持つ。
 	[TILE.ICE_LEVIATHAN]: {
 		name: '氷のリヴァイアサン',
 		hp: 96, atk: 4, def: 2, exp: 55,      // 8-4: def 3→2（木の剣が 1 に落ちるのを避ける）＝48 振り（14秒）
@@ -904,15 +919,30 @@ export const ENEMY_META = {
 		weakness: { type: 'fire', multiplier: 3 },   // ロウソクの炎で氷が溶ける
 		meleeOnly: true,           // 遠隔（arrow/beam/boomerang/bomb）は無効
 		reflectsProjectiles: true, // 投擲物はそのままプレイヤーへ打ち返す
-		hitAndAway: true,
+		// 0d-3（10体目）: 間合いの往復（hitAndAway）は W 巨大蜘蛛の型∴明示的に切る。
+		//   ⚠️ true のままだと bossTickHitAndAway が移動を専有して `glaciate` の分岐に
+		//   一度も来ない（W/A/N/J/O/U/G/I/`{` で9回踏んだ罠）。
+		hitAndAway: false,
+		// 氷結（層2）。凍結相の長さ・道の長さ・氷柱までの猶予・予告の長さ・氷柱の攻撃力。
+		//   freezeMs 700 … 木の剣 2 振り（SWORD_COOLDOWN_MS 300）が入る窓
+		//   laneTiles 3 … 道は体の 4 枚＋前方 3 枚 ＝最大 10 枚（床の 12〜14%）
+		//   spikeMs 2400 … 敷いてから噴くまで（20 tick ＝プレイヤーは 10 マス歩ける）
+		//   warnMs 1080 … 予告（9 tick ＝ 4.5 マス）。実測した最悪の逃げ切り 4 マスより長い
+		//     （`.scratch/leviathan-geom.mjs` ＝闘技場 4／本番 3／melee_only 2 マス）
+		glaciate: { freezeMs: 700, laneTiles: 3, spikeMs: 2400, warnMs: 1080, spikeAtk: 4 },
 		attacks: [
 			{ type: 'sword', range: 1.5, cooldown: 1100 },  // 咬みつき（リーチが長い）
 			{ type: 'stone', range: 8, cooldown: 2800, projectileSpeed: 0.9 }, // 氷の礫
 		],
 		attack: { type: 'sword', range: 1.5, cooldown: 1100 },
-		initialModeWeights: { flank: 0.2, direct: 1.6, wander: 0.2, strafe: 0 },
 		phases: [
-			{ hpThreshold: 0.5, speedMultiplier: 1.3, attackCooldownMultiplier: 0.75 },
+			// 第2形態＝凍結相が短くなる（剣の窓が 2 振り→1 振り）・氷柱が早く噴く。
+			//   ⚠️ `warnMs` は前半と同じ 1080 のまま＝予告を縮めると逃げ切れない
+			//   （§7-16「後半フェーズでも予告を短くしない」）。
+			{
+				hpThreshold: 0.5, speedMultiplier: 1.3, attackCooldownMultiplier: 0.75,
+				glaciate: { freezeMs: 520, laneTiles: 3, spikeMs: 1800, warnMs: 1080, spikeAtk: 4 },
+			},
 		],
 	},
 	// ── 砂嵐の蠍王（Phase 3-2）：2×2 大型ボス・dungeon_2（砂漠の神殿）──

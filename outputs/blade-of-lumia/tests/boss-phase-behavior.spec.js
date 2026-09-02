@@ -340,7 +340,13 @@ test('⑤ ENEMY_META の phases[] は既知のキーだけを持ち、閾値は�
                       // 書き、enemy-ai.js の `resolveSurge` が読む）＝引き金を広げ深く乗り上げ
                       // 休みを詰める。⚠️ 予告・当たり判定・打点は据え置き（据え置きの番人は
                       // boss-move-variety.spec.js の {-①）＝盾で防げない一撃の予告が縮まない。
-                      'surge'];
+                      'surge',
+                      // 0d-3（10体目 L）: 氷結の設定を相で差し替える口（boss.js が `_glaciate` へ
+                      // 書き、enemy-ai.js の `resolveGlaciate` が読む）＝道を敷くのが速く・氷が
+                      // 早く噴く。⚠️ 予告（`warnMs`）・道の長さ（`laneTiles`）・打点（`spikeAtk`）は
+                      // 据え置き（据え置きの番人は boss-move-variety.spec.js の L-①）＝
+                      // 盾で防げない氷柱の予告が後半でも縮まない（§7-16）。
+                      'glaciate'];
   const MODE_KEYS = ['flank', 'direct', 'wander', 'strafe'];
   const withPhases = Object.entries(ENEMY_META).filter(([, m]) => m.phases);
   expect(withPhases.length, 'phases を持つ敵が居ない（データが消えた？）').toBeGreaterThanOrEqual(13);

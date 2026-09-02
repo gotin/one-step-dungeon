@@ -2447,6 +2447,39 @@ export function getEnemiesSnapshot() {
 		// surge ＝打ち寄せの設定そのもの（フェーズで差し替わる＝`resolveSurge` が読む側）。
 		// **meta.surge とは別物**＝「後半で広く・深く・窓が短くなった」の観測窓。
 		surge: e._surge ?? null,
+		// Phase 8-4 (4) 0d-3（10体目 L）: 氷結（glaciate）の観測用。
+		// glPhase ＝'freeze'（足を止めて道を敷いている＝**剣を入れる唯一の窓**）| 'walk'
+		//   （敷いた氷の上を歩いている＝咬みつきと氷礫が出る）| null（まだ始まっていない）。
+		// glAt ＝凍結相が終わる論理時刻／glSpan ＝今の相の長さ（＝絵に渡す数と同じ1つの数）
+		// glDy/glDx ＝凍結相で固定した道の向き（±1 の単位ベクトル）＝歩行相は**追尾しない**
+		//   ことをこの据え置きで測る（surgeVx/Vy・tongueAimX/Y と同じ趣旨）。
+		// glLeft ＝道の残り（セル）／glBlocked ＝次の一歩が氷の外だった（＝その場で凍らせ直す）
+		// glFreezes ＝凍結相に入った回数／spikes ＝噴いた氷柱の枚数／spikeHits ＝氷柱が
+		//   当たった回数∴「赤い予告を見て氷から出れば避かる」は spikes が増えて spikeHits が
+		//   増えないことで測れる（surges/surgeHits・momRams/momCrashes と同じ趣旨）。
+		// frostCells ＝今 敷かれている氷（1枚＝1タイル＝当たり判定と同じ形）。cell ごとに
+		//   spikeAt（噴く論理時刻）と warnAt（赤い予告が始まる論理時刻）を持つ＝**敷いた瞬間に
+		//   固定される**（フェーズが変わっても床の絵と噴く拍がずれない・_gazeSpan と同じ作法）。
+		// glaciate ＝氷結の設定そのもの（フェーズで差し替わる＝`resolveGlaciate` が読む側）。
+		//   **meta.glaciate とは別物**＝「後半で凍結相が短く・氷柱が早く噴く」の観測窓。
+		glPhase: e._glPhase ?? null,
+		glAt: e._glAt ?? null,
+		glSpan: e._glSpan ?? null,
+		glDy: e._glDy ?? null,
+		glDx: e._glDx ?? null,
+		glLeft: e._glLeft ?? null,
+		glBlocked: e._glBlocked ?? null,
+		glFreezes: e._glFreezes ?? null,
+		spikes: e._spikes ?? null,
+		spikeHits: e._spikeHits ?? null,
+		frostCount: e._frost ? e._frost.size : null,
+		frostCells: e._frost
+			? [...e._frost.values()].map(f => ({
+				r: f.r, c: f.c, at: f.at, span: f.span, warn: f.warn,
+				spikeAt: f.spikeAt, warnAt: f.spikeAt - f.warn,
+			}))
+			: null,
+		glaciate: e._glaciate ?? null,
 		// Phase 8-4 (4) 層1: ボスのフェーズが差し替える「行動の元データ」の観測用。
 		// boss.js checkBossPhase は**エンティティ側にだけ書く**∴フェーズが効いたかは
 		// ここに出る値で読む（null＝差し替えなし＝ENEMY_META のまま）。

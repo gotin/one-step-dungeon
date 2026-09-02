@@ -1143,3 +1143,67 @@
     30%  { transform: scale(1.08); opacity: 1;    }
     100% { transform: scale(1);    opacity: 0;    }
 }
+
+/* ── 2026-09-02: 氷結の床（L 氷のリヴァイアサン）─────────────────────────────
+   L が敷いた氷。**1タイル＝1枚**＝当たり判定（プレイヤーの中心が在るタイル）と厳密に同じ形
+   （＝隠れダメージも過剰警告も出ない）。位置と寸法は JS（enemy-ai.js syncGlaciateFrost）が
+   px で入れる＝CSS 側に数を1つも持たない（輪・印・帯・危険域と同じ作法）。
+   ⚠️ 他の床の告知と**形・色・変化の3つで区別する**（GUIDE §6-1）：
+     ・形＝**格子に沿った四角**（輪と印は円・のしかかりと波は角丸矩形）＝「このマスに立つな」
+       ではなく「**このマスが L の道**」と読める形にする（氷は歩ける床でもある）
+     ・色＝**白い氷**（波＝海の青／のしかかり＝沼の黄緑／輪＝水色→赤／印＝土→赤）
+     ・変化＝時間で**霜が厚くなる**（`--frost-heat`）→最後の `warnMs` で**赤に反転**する
+       （＝「まだ道」「もう噴く」の2段が同じ1枚の絵で読める）
+   ⚠️ 赤への反転は `--frost-warn`（JS が入れる＝予告の閾値で 1 に正規化した数）だけで決める
+   ＝閾値を CSS 側に持たない（赤の到達と点滅の開始が必ず同じ拍になる）。 */
+.enemy-frost {
+    --frost-heat: 0;
+    --frost-warn: 0;
+    box-sizing: border-box;
+    border: 1px solid hsl(192 90% 92% / calc(0.30 + 0.45 * var(--frost-heat)));
+    /* 斜めの筋＝結晶の面（丸い告知たちと形で切り分ける）。厚みは霜の進みで濃くなる。 */
+    background:
+        linear-gradient(135deg,
+            hsl(190 95% 97% / calc(0.10 + 0.30 * var(--frost-heat))) 0%,
+            hsl(196 85% 88% / calc(0.06 + 0.22 * var(--frost-heat))) 48%,
+            hsl(204 80% 80% / calc(0.10 + 0.30 * var(--frost-heat))) 100%);
+    box-shadow: inset 0 0 calc(2px + 6px * var(--frost-heat)) hsl(190 90% 95% / calc(0.25 + 0.35 * var(--frost-heat)));
+}
+
+/* 最後の `warnMs`＝**赤い予告**（氷柱が噴く直前）。点滅の速さは残り時間で決めない
+   （`--frost-warn-ms` は残りの表示用）＝速さを一定にして「赤い＝もう噴く」だけを伝える。
+   ⚠️ 大きさは変えない＝範囲は敷いた時点で確定している（＝今すぐ外へ出れば避かる）。 */
+.enemy-frost.frost-warn {
+    border: 2px solid hsl(4 92% 68% / 0.95);
+    background:
+        linear-gradient(135deg,
+            hsl(6 90% 72% / 0.30) 0%,
+            hsl(0 85% 62% / 0.22) 48%,
+            hsl(352 80% 56% / 0.32) 100%);
+    box-shadow: inset 0 0 10px 2px hsl(2 88% 60% / 0.45);
+    animation: enemy-frost-warn 0.24s ease-in-out infinite alternate;
+}
+@keyframes enemy-frost-warn {
+    from { filter: brightness(1);    }
+    to   { filter: brightness(1.45); }
+}
+
+/* 氷柱が噴いた瞬間（別 DOM ∴L が倒れても残らない＝`.sea-surge-hit` と同型）。
+   ⚠️ 他の結果の絵と**動きで区別する**＝中心から膨らむ（潰す・波・岩）ではなく
+   **下から上へ突き上がる**（transform-origin が底辺）＝「床から生えた」が一目で繋がる。 */
+.enemy-frost-spike {
+    box-sizing: border-box;
+    background:
+        linear-gradient(to top,
+            hsl(200 80% 74% / 0.30) 0%,
+            hsl(192 95% 92% / 0.85) 55%,
+            hsl(186 100% 99% / 0.98) 100%);
+    clip-path: polygon(50% 0%, 78% 42%, 66% 100%, 34% 100%, 22% 42%);
+    transform-origin: 50% 100%;
+    animation: enemy-frost-spike-rise 0.38s cubic-bezier(0.2, 0.9, 0.3, 1) forwards;
+}
+@keyframes enemy-frost-spike-rise {
+    0%   { transform: scaleY(0.12); opacity: 0.5; }
+    35%  { transform: scaleY(1.15); opacity: 1;   }
+    100% { transform: scaleY(1);    opacity: 0;   }
+}

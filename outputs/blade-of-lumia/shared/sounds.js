@@ -709,6 +709,34 @@ export function playSound(kind) {
 		tone(ctx, now + 0.08, 587, 0.09, 'triangle', 0.030);   // しぶきが散る
 		tone(ctx, now + 0.14, 880, 0.12, 'sine',     0.022);
 	}
+	// ── 2026-09-02（10体目 L 氷のリヴァイアサン）: 氷結の2音 ────────────────────
+	//   iceFreeze … 足を止めて道を敷いた瞬間（＝**剣を入れられる窓**が開いた合図）
+	//   iceSpike  … 氷柱が噴き上がった瞬間（＝盾を無視する打点が出た tick）
+	//
+	// 道を敷く「パキパキ…」（freezeMs 700ms／後半 520ms に収める＝絵と同じ長さ）
+	// ⚠️ 他の予告と**形**で切り分ける（GUIDE §6-1/§7-6）＝seaSurge（低音から中音へ滑らかに
+	//    上がる）・tongueCast（音程を動かさず音量が膨らむ）・dashWindup（上昇する低音の段）・
+	//    coilWindup（2音の往復）・gazeMark（静止した和音）・soarRise（等間隔の3打）。
+	//    ∴こちらは**間隔がだんだん詰まる短い高音**＋**下がる音程**＝霜が広がって固まる形
+	//    （加速する打は他のどれも持たない＝耳だけで「凍らせている」と分かる）。
+	if (kind === 'iceFreeze') {
+		tone(ctx, now,        1568, 0.03, 'triangle', 0.030);
+		tone(ctx, now + 0.16, 1319, 0.03, 'triangle', 0.032);
+		tone(ctx, now + 0.28, 1109, 0.03, 'triangle', 0.034);
+		tone(ctx, now + 0.37, 988,  0.03, 'triangle', 0.036);
+		tone(ctx, now + 0.43, 831,  0.04, 'triangle', 0.038);
+		tone(ctx, now + 0.47, 698,  0.05, 'sine',     0.040);   // 固まった（＝道が出来た）
+	}
+	// 氷柱「シャキィン」（＝結果の音・当たり判定と同じ tick）
+	// ⚠️ 他の結果の音は**すべて低音の一撃を持つ**（seaCrash・rockSmash・coilCrush・toadLand・
+	//    soarLand）。∴こちらは**低音を一切持たず高音域だけが下から上へ**駆け上がる＝絵
+	//    （`.enemy-frost-spike` が床から突き上がる）と向きが揃う唯一の音。
+	if (kind === 'iceSpike') {
+		tone(ctx, now,        784,  0.05, 'triangle', 0.050);
+		tone(ctx, now + 0.03, 1245, 0.05, 'square',   0.030);
+		tone(ctx, now + 0.06, 1661, 0.06, 'triangle', 0.034);
+		tone(ctx, now + 0.10, 2093, 0.10, 'sine',     0.026);   // 刃先が鳴る尾
+	}
 	// 扉ロック（ボス部屋）
 	if (kind === 'doorLock') {
 		tone(ctx, now,        180, 0.08, 'sawtooth', 0.08);

@@ -3863,6 +3863,425 @@ export function createEnemyAi(deps) {
 		syncSurgeZone(e, cfg);
 	}
 
+	// ── Phase 8-4 (4) 0d-3（10体目 L 氷のリヴァイアサン）: 氷結（glaciate）─────────
+	// meta.glaciate = { freezeMs, laneTiles, spikeMs, warnMs, spikeAtk }
+	// **この敵の移動アルゴリズム＝「居場所を自分で作る」**＝L は**自分が凍らせた床の上しか
+	// 歩けない**。2拍の状態機械：
+	//   freeze … 足を止めて道を敷く（体が跨ぐタイル ＋ 進む向きへ `laneTiles` 枚・幅は体と同じ）。
+	//     この相のあいだ**咬みつきも氷礫も出さない**（`isGlaciateBusy` が行動ゲートを閉じる）
+	//     ＝**剣を入れる唯一の窓**（`freezeMs 700` ＝`SWORD_COOLDOWN_MS 300` で2振り）。
+	//   walk  … 敷いた道の上だけを歩く。道を歩き切る／次の一歩が氷の外（壁・プレイヤーの体・
+	//     噴き終わって消えた床）になった時点で終わり、その場で freeze へ戻る。
+	// 氷は**敷いた瞬間に噴く時刻が決まる**（セルごとの `spikeAt`）＝`spikeMs` 後に氷柱となって
+	// 噴き上がり、最後の `warnMs` が赤い予告。氷柱は**盾を無視する**（`isShieldBlockingDir` を
+	// 呼ばない＝掃過 `hitSurge`／のしかかり `landPounce`／締め上げ `crushCoil` と同じ列）。
+	// ⚠️ 盾を無視する打点が要る理由＝L の攻撃2本（咬みつき 1.5・氷礫 8）は**どちらも盾で消える**
+	//    ∴これが無いと「盾を上げて張り付く」だけで無傷になる（I／`{` で実測した穴・GUIDE §7-16）。
+	//    対価も §7-16 のとおり：予告 `warnMs 1080`（近接の床 `MELEE_WINDUP_MS 480` より長い）＋
+	//    **判定と同じ形の危険域を床に描く**（`syncGlaciateFrost`＝1セル＝1枚の絵）＋
+	//    **後半フェーズでも予告を縮めない**（`phases[0].glaciate.warnMs` も 1080）。
+	// ⚠️ 逃げ切れる猶予は実測で決めた（`.scratch/leviathan-geom.mjs` ④）：帯の中から帯の外の
+	//    通れるセルへ出るのに要る歩数の最大は闘技場 4／本番のボス部屋 3／melee_only 2 マス。
+	//    予告 1080ms ＝ 9 tick ＝ 4.5 マス ＞ 4 マス∴**どの床からでも歩いて出られる**。
+	// ⚠️ 炎（弱点 fire ×3）は**氷を溶かさない**。溶かす形にすると「道を切ればもう歩けない」＝
+	//    L が炎のタイルへ二度と乗らない＝`enemyOccupiesTile` を要求する炎の判定
+	//    （projectile.js burnEnemiesOnFlame）に永久に掛からず**弱点そのものが死ぬ**。氷は弱点を
+	//    届けるための装置＝「L は道から出られない」ことがロウソクを置く場所を教える。
+	// ⚠️ 既に凍っているセルを凍らせ直しても**時計は据え置く**（＝赤い予告は延びない）。例外は
+	//    1つだけ＝**噴いたセルのうち体の下に在るもの**は敷き直す（そうしないと L が足場を
+	//    失って詰む）∴張り付いていると `spikeMs` ごとに必ず氷柱が来る。
+	function resolveGlaciate(e, meta) {
+		return e?._glaciate !== undefined ? e._glaciate : meta?.glaciate;
+	}
+
+	// 氷結の周期がこの tick を専有しているか（＝移動も攻撃もしない）。
+	// ⚠️ 専有するのは**凍結相だけ**（歩行相は行動ゲートが開く＝歩きながら噛む）。
+	//    始まった凍結は硬直では止めない（`surgeBusy`/`soarBusy` と同じ枠＝自分で窓を立てる
+	//    状態機械を硬直で止めると2周目以降が宙吊りになる・0d-2.7）。
+	function isGlaciateBusy(e) {
+		return (e?._glPhase ?? null) === 'freeze';
+	}
+
+	const frostKey = (r, c) => `${r},${c}`;
+
+	// 体が跨ぐタイルの一覧。⚠️ 範囲の出し方は passable.js `isPassableForEnemy`／
+	// `surgeLandCount` と**同じ式**にする（半セル位置の 2×2 は 3 タイルに跨る）＝ここだけ
+	// 違う丸めを使うと「氷の上に立っているのに歩けない」種類のずれが生える。
+	function glaciateBodyTiles(e, y = e.y, x = e.x) {
+		const ew = e.w ?? 1, eh = e.h ?? 1;
+		const c0 = Math.floor(x), c1 = Math.floor(x + ew - 1 + 0.999);
+		const r0 = Math.floor(y), r1 = Math.floor(y + eh - 1 + 0.999);
+		const out = [];
+		for (let r = r0; r <= r1; r++) for (let c = c0; c <= c1; c++) out.push([r, c]);
+		return out;
+	}
+
+	function isFrostCell(e, r, c) {
+		return !!e?._frost?.has(frostKey(r, c));
+	}
+
+	// 体（＝跨いでいるタイル全部）が氷の上に載るか。氷の上しか歩けない、の実体。
+	function glaciateStepAllowed(e, y, x) {
+		return glaciateBodyTiles(e, y, x).every(([r, c]) => isFrostCell(e, r, c));
+	}
+
+	// 1枚凍らせる。戻り値 true ＝新しく凍った。
+	// ⚠️ 既に凍っているセルは**時計を据え置く**＝赤い予告が延びない（延ばせると「張り付いて
+	//    いれば永久に噴かない」＝盾を無視する打点が消える＝盾を上げて待つ戦法が復活する）。
+	// ⚠️ `span`/`warn` はセルごとに**敷いた瞬間の設定を持たせる**（`_gazeSpan`/`_gazeR` と同じ
+	//    作法）＝走っている周の途中でフェーズが変わっても床の絵と噴く拍がずれない。
+	function freezeCell(e, cfg, r, c, now) {
+		const frost = (e._frost ??= new Map());
+		const key = frostKey(r, c);
+		if (frost.has(key)) return false;
+		const span = cfg.spikeMs ?? 2400;
+		frost.set(key, { r, c, at: now, span, warn: cfg.warnMs ?? 1080, spikeAt: now + span });
+		return true;
+	}
+
+	// 噴いたセルを敷き直す（体の下だけ）。時刻は今から数え直す＝張り付いている相手には
+	// `spikeMs` ごとに氷柱が来る（＝密着が安全地帯にならない）。
+	function armFrostCell(e, cfg, cell, now) {
+		cell.at = now;
+		cell.span = cfg?.spikeMs ?? cell.span ?? 2400;
+		cell.warn = cfg?.warnMs ?? cell.warn ?? 1080;
+		cell.spikeAt = now + cell.span;
+	}
+
+	// 氷の進み具合 0〜1（0＝敷いた瞬間・1＝噴く瞬間）。絵と音とテストが**同じ1つの数**を読む
+	// （`gazeHeat` と同じ作法）。
+	function frostHeat(cell, now) {
+		const span = cell?.span ?? 0;
+		if (!(span > 0)) return 1;
+		return Math.max(0, Math.min(1, 1 - (cell.spikeAt - now) / span));
+	}
+
+	// 赤い予告に入っているか（＝最後の `warn` ミリ秒）。閾値はセルが持つ値だけで決まる。
+	function frostWarning(cell, now) {
+		return now >= (cell.spikeAt ?? 0) - (cell.warn ?? 0);
+	}
+
+	// 先端の列（進む向きの外側1枚）＝体の跨ぎ幅そのもの。道を敷く側と数える側が**同じ形**を
+	// 見るための単一の入口（2か所に書くと「歩けると思ったのに歩けない」が生える）。
+	function glaciateFrontCells(e, dy, dx) {
+		const body = glaciateBodyTiles(e);
+		const rs = body.map(([r]) => r), cs = body.map(([, c]) => c);
+		const r0 = Math.min(...rs), r1 = Math.max(...rs);
+		const c0 = Math.min(...cs), c1 = Math.max(...cs);
+		const front = [];
+		if (dy !== 0) {
+			const fr = dy > 0 ? r1 + 1 : r0 - 1;
+			for (let c = c0; c <= c1; c++) front.push([fr, c]);
+		} else {
+			const fc = dx > 0 ? c1 + 1 : c0 - 1;
+			for (let r = r0; r <= r1; r++) front.push([r, fc]);
+		}
+		return front;
+	}
+
+	// 進む向きへ道を敷く。戻り値＝**歩ける枚数**（`_glLeft` の初期値）。
+	// ⚠️ 凍るのは**通れるセルだけ**・歩ける深さは「先端の列が丸ごと通れる」あいだ（体は2枚幅）。
+	//    ∴壁際の窪みには氷だけが届いて L は歩けない。この形は実測で決めた
+	//    （`.scratch/leviathan-geom.mjs` ③）＝「両方通れる」ことを凍結の条件にすると
+	//    **一生凍らない床**が本番のボス部屋に 4 枚残った（宝箱と壁で囲われた窪み）＝そこは
+	//    L の2つの攻撃がどちらも盾で消える以上**永久の安全地帯**になる（0n `{` と同じ穴）。
+	function layGlaciateRoad(e, cfg, now, dy, dx) {
+		const lane = cfg.laneTiles ?? 3;
+		for (const [r, c] of glaciateBodyTiles(e)) if (tilePassable(r, c)) freezeCell(e, cfg, r, c, now);
+		const front = glaciateFrontCells(e, dy, dx);
+		let walk = 0, blocked = false;
+		for (let i = 0; i < lane; i++) {
+			const step = front.map(([fr, fc]) => [fr + dy * i, fc + dx * i]);
+			const openCells = step.filter(([fr, fc]) => tilePassable(fr, fc));
+			if (openCells.length === 0) break;
+			for (const [fr, fc] of openCells) freezeCell(e, cfg, fr, fc, now);
+			if (openCells.length === step.length && !blocked) walk++; else blocked = true;
+		}
+		return walk;
+	}
+
+	// 体（w×h）が丸ごと収まるか＝BFS の格子の通行可否。**プレイヤーは無視する**
+	// （`tilePassable` だけを見る）＝目的地はプレイヤーの立っているセル∴プレイヤーを
+	// 障害物に数えると必ず到達不能になり、BFS が一度も効かない。実際に止まるのは
+	// `enemyGlaciateStride`（`isPassableForEnemy`）の側＝「立ち塞がると L は止まり、その場で
+	// 凍らせ直す」は変わらない。
+	function glaciateBodyFits(e, r, c) {
+		const ew = e.w ?? 1, eh = e.h ?? 1;
+		for (let rr = r; rr < r + eh; rr++) {
+			for (let cc = c; cc < c + ew; cc++) if (!tilePassable(rr, cc)) return false;
+		}
+		return true;
+	}
+
+	// プレイヤーへ向かう最短路の**1歩目の軸**（4近傍・セル単位）。到達不能なら null。
+	// ⚠️ 起点は `glaciateBodyTiles` の左上＝道を敷く側と同じ形の箱を使う（半セル位置でも
+	//    「今どの4枚に乗っているか」と一致する）。
+	function glaciateStepToward(e) {
+		const player = getPlayer();
+		if (!player) return null;
+		const body = glaciateBodyTiles(e);
+		const sr = Math.min(...body.map(([r]) => r)), sc = Math.min(...body.map(([, c]) => c));
+		const gr = toTileRow(player.y), gc = toTileCol(player.x);
+		const key = (r, c) => `${r},${c}`;
+		// first ＝そのセルへ最初に踏み出した向き（1歩目の軸だけを持ち回る＝経路は要らない）
+		const first = new Map([[key(sr, sc), null]]);
+		const queue = [[sr, sc]];
+		for (let head = 0; head < queue.length; head++) {
+			const [r, c] = queue[head];
+			const from = first.get(key(r, c));
+			for (const [dr, dc] of BURROW_DIRS) {
+				const nr = r + dr, nc = c + dc, k = key(nr, nc);
+				if (first.has(k)) continue;
+				if (!glaciateBodyFits(e, nr, nc)) continue;
+				const step = from ?? [dr, dc];
+				// プレイヤーのセルは「体の左上」ではなく**体のどこかが載る**時点で到達＝
+				// 2×2 の体はプレイヤーの真上に左上を置けない場合がある（壁際）。
+				if (gr >= nr && gr < nr + (e.h ?? 1) && gc >= nc && gc < nc + (e.w ?? 1)) return step;
+				first.set(k, step);
+				queue.push([nr, nc]);
+			}
+		}
+		return null;
+	}
+
+	// 進む向きを決める（＝プレイヤーへ寄る唯一の口）。
+	// ⚠️ **貪欲な軸選び（離れている軸を先に試す）では行き止まりの袋に入って詰む**
+	//    ＝実測 2026-09-02：闘技場 `test_mechanics 25,1` の (7,0) に立つと、L は row 4 を西へ
+	//    走り切って cols 1-2 の縦の溝に入り、南は看板 (6,1)・西は外壁で塞がれて上下に振動し
+	//    続けた（500 tick＝60 秒でも**被弾 0**＝「立っているだけで無傷」の床が1枚生えた）。
+	//    N 砂嵐の蠍王の待ち伏せで同じ穴を踏んでいる（`planBurrowPath` の ⚠️）∴同じ道具＝
+	//    **BFS の最短路の1歩目**を採る。これで「道が在るなら必ず寄る」が幾何的に保証される
+	//    ＝この機構の設計の芯（永久の安全地帯は原理的に生まれない）が床の形に依存しなくなる。
+	// ⚠️ どの向きにも歩けない場合も向きだけは返す＝足場（footprint）は必ず敷く∴
+	//    囲まれても足元の氷は噴き続ける（張り付いた相手を押し出す）。
+	function pickGlaciateDir(e, cfg) {
+		const player = getPlayer();
+		const { cx, cy } = enemyCellCenter(e);
+		const dx = player ? player.x - cx : 0, dy = player ? player.y - cy : 1;
+		const h = [0, Math.sign(dx) || 1], v = [Math.sign(dy) || 1, 0];
+		const order = Math.abs(dx) > Math.abs(dy) ? [h, v] : [v, h];
+		// 逆向き（＝プレイヤーから離れる向き）は最後に試す＝寄る意思は保つ
+		order.push([-order[0][0], -order[0][1]], [-order[1][0], -order[1][1]]);
+		// BFS の1歩目を最優先（貪欲な軸より前）。道が敷けない向きなら貪欲へ落ちる。
+		const bfs = glaciateStepToward(e);
+		if (bfs && glaciateWalkable(e, cfg, bfs[0], bfs[1]) > 0) return bfs;
+		for (const [ddy, ddx] of order) if (glaciateWalkable(e, cfg, ddy, ddx) > 0) return [ddy, ddx];
+		return bfs ?? order[0];
+	}
+
+	// その向きへ**歩ける枚数**（凍らせずに数えるだけ＝`layGlaciateRoad` と同じ規則・同じ形を
+	// `glaciateFrontCells` から取る）。
+	function glaciateWalkable(e, cfg, dy, dx) {
+		const lane = cfg.laneTiles ?? 3;
+		const front = glaciateFrontCells(e, dy, dx);
+		let walk = 0;
+		for (let i = 0; i < lane; i++) {
+			const step = front.map(([fr, fc]) => [fr + dy * i, fc + dx * i]);
+			if (!step.every(([fr, fc]) => tilePassable(fr, fc))) break;
+			walk++;
+		}
+		return walk;
+	}
+
+	// 凍結相へ入る（＝足を止めて道を敷く。剣を入れる唯一の窓）。
+	// ⚠️ 道は**この瞬間にまとめて敷く**＝プレイヤーは凍結相のあいだ「次に L がどこへ来るか」と
+	//    「どの床が噴くか」を同時に読める（＝予告が1つの絵で済む）。
+	// ⚠️ `_freezeUntil` は立てない＝硬直は「攻撃を出した直後の窓」の意味に保つ（`{` の
+	//    `stranded` と同じ扱い＝停止は `isGlaciateBusy` が行動ゲートを閉じることで実現する）。
+	function beginGlaciateFreeze(e, cfg, now) {
+		const [dy, dx] = pickGlaciateDir(e, cfg);
+		e._glPhase   = 'freeze';
+		e._glDy      = dy; e._glDx = dx;
+		e._glSpan    = cfg.freezeMs ?? 700;
+		e._glAt      = now + e._glSpan;
+		e._glBlocked = false;
+		e._glLeft    = layGlaciateRoad(e, cfg, now, dy, dx);
+		e._glFreezes = (e._glFreezes ?? 0) + 1;
+		e.dir = dy !== 0 ? (dy > 0 ? 'down' : 'up') : (dx > 0 ? 'right' : 'left');
+		playSound('iceFreeze');
+	}
+
+	// 歩行相へ入る（＝敷いた道の上を歩く。ここからは咬みつきも氷礫も出る）。
+	function beginGlaciateWalk(e) {
+		e._glPhase = 'walk';
+		e._glSpan  = 0;
+		e._glAt    = null;
+	}
+
+	// 氷柱が当たった＝プレイヤーへダメージ。**盾は見ない**（`isShieldBlockingDir` を呼べば
+	// 報告された完全防御がそのまま戻る＝この機構の存在理由が消える）。
+	// ⚠️ 何枚同時に噴いても**打点は1 tick に1回**（`landPounce` と同じ規約）。
+	function hitFrostSpike(e, meta, cfg) {
+		e._spikeHits = (e._spikeHits ?? 0) + 1;
+		takeDamage(cfg?.spikeAtk ?? e.atk ?? meta?.atk ?? 1);
+		if (meta?.inflict) inflictDebuff?.(meta);
+	}
+
+	// 氷の時計（**行動ゲートの外**で毎 tick 呼ぶ＝`tickGaze`/`tickCoilShrink` と同じ枠）。
+	// ここでしか氷柱は噴かない∴咬みつきの硬直・歩幅の溜め・凍結相のどれでも予告は進む
+	// （止まると「赤くなったのに噴かない」＝告知が嘘になる）。
+	// ⚠️ 判定は**プレイヤーの中心が在るタイル**（`toTileRow/Col`＝丸めの単一の真実）＝床に
+	//    描いた1枚と厳密に同じ集合（ロウソクの炎・`enemyOccupiesTile` と同じ「タイル単位」の列）。
+	function tickFrost(e, meta, now) {
+		const frost = e._frost;
+		if (!frost || frost.size === 0) return;
+		const cfg = resolveGlaciate(e, meta);
+		const player = getPlayer();
+		const pKey = player ? frostKey(toTileRow(player.y), toTileCol(player.x)) : null;
+		const body = new Set(glaciateBodyTiles(e).map(([r, c]) => frostKey(r, c)));
+		let erupted = 0, hit = false;
+		for (const [key, cell] of [...frost]) {
+			if (now < (cell.spikeAt ?? 0)) continue;
+			erupted++;
+			if (pKey === key) hit = true;
+			showFrostSpikeEffect(e, cell);
+			removeFrostEl(e, cell);
+			// 体の下は敷き直す／それ以外は消える＝氷は溜まらない（＝床が氷で埋まらない）。
+			if (body.has(key)) armFrostCell(e, cfg, cell, now);
+			else frost.delete(key);
+		}
+		if (erupted > 0) {
+			e._spikes = (e._spikes ?? 0) + erupted;
+			playSound('iceSpike');          // 何枚噴いても音は1回（tick に1回）
+		}
+		if (hit) hitFrostSpike(e, meta, cfg);
+	}
+
+	// 氷結の周期を1 tick 進める。戻り値 true ＝**この tick は移動も攻撃もしない**（凍結相）。
+	// 相ごとに**必ず明示の分岐**を書く（GUIDE §7-8）。
+	function tickGlaciate(e, meta, now) {
+		const cfg = resolveGlaciate(e, meta);
+		if (!cfg) return false;
+		const phase = e._glPhase ?? null;
+		if (phase === 'freeze') {
+			if (now >= (e._glAt ?? 0)) beginGlaciateWalk(e);
+			return true;                    // 凍結相＝完全停止（咬みつきも氷礫も出さない）
+		}
+		if (phase === 'walk') {
+			// 道を歩き切った／次の一歩が氷の外だった（`enemyGlaciateStride` が立てる）
+			// → その場で凍らせ直す＝**道を継ぎ足しながらしか進めない**。
+			if ((e._glLeft ?? 0) <= 0.001 || e._glBlocked) { beginGlaciateFreeze(e, cfg, now); return true; }
+			return false;                   // 歩行相＝行動ゲートが開く
+		}
+		beginGlaciateFreeze(e, cfg, now);    // 初回＝まず足場を作る
+		return true;
+	}
+
+	// 氷の上を歩く（＝この敵の唯一の移動）。向きは凍結相で固定した道の向き＝**追尾しない**
+	// （追尾すると氷の外へ出る＝機構が破れる）。
+	// ⚠️ 歩幅の溜め（`e.accum`）は `enemyGazeStride` と同じ作法＝鈍足（0.25）でも刻みは
+	//    `MOVE_STEP` のまま（半セル刻みで 4 tick に1歩）。
+	function enemyGlaciateStride(e, meta, speed, cfg) {
+		if (!cfg) return;
+		const dy = e._glDy ?? 1, dx = e._glDx ?? 0;
+		e.dir = dy !== 0 ? (dy > 0 ? 'down' : 'up') : (dx > 0 ? 'right' : 'left');
+		e.accum = (e.accum ?? 0) + speed;
+		if (e.accum < 1.0) return;
+		e.accum -= 1.0;
+		const step = Math.min(MOVE_STEP, e._glLeft ?? 0);
+		if (step <= 0.001) { e._glBlocked = true; return; }
+		const ny = e.y + dy * step, nx = e.x + dx * step;
+		// 壁（`isPassableForEnemy`）と氷（`glaciateStepAllowed`）の**両方**を要求する。
+		// ⚠️ 塞いだのが**プレイヤーの体**でも止まる（`isPassableForEnemy` が手前で止める）＝
+		//    そこで凍らせ直す∴張り付くと足元が凍る（＝密着が咎められる）。
+		if (!isPassableForEnemy(ny, nx, e) || !glaciateStepAllowed(e, ny, nx)) {
+			e._glBlocked = true;
+			return;
+		}
+		e.y = ny; e.x = nx;
+		e._glLeft = (e._glLeft ?? 0) - step;
+		moveCharEl(`enemy-${e.id}`, e.x, e.y);
+	}
+
+	// 氷結を捨てる（スタンの tick に呼ぶ＝`cancelSurge`/`cancelTongue` と同じ列）。
+	// ⚠️ 敷いた氷も**全部消す**＝止めたのに氷柱が噴く、を作らない。足場を失っても次の tick の
+	//    `tickGlaciate` が凍結相から作り直す∴宙吊りにならない（＝`{` の「陸で idle」の穴が無い）。
+	// ⚠️ ボスはブーメランでスタンしない（`stunnable ?? !isBoss`）∴今の L では観測差が出ない
+	//    **二重の守り**＝`glaciate` を雑魚に付けたときに効く（cancelSurge と同じ立場）。
+	function cancelGlaciate(e) {
+		if (e._frost) {
+			for (const cell of e._frost.values()) removeFrostEl(e, cell);
+			e._frost.clear();
+		}
+		e._glPhase   = null;
+		e._glSpan    = 0;
+		e._glAt      = null;
+		e._glLeft    = 0;
+		e._glBlocked = false;
+	}
+
+	// ── 氷そのものを床に描く（氷結の唯一の告知）─────────────────────────
+	// ⚠️ 1セル＝1枚の div ＝**当たり判定（プレイヤーの中心が在るタイル）と厳密に同じ形**。
+	// ⚠️ 後始末＝`char-enemy-<id>` とは別の DOM ∴L が倒れても残る。実時間の消去タイマを毎 tick
+	//    貼り直す（＝tick が来なくなれば自然に消える）＝印・輪・炎と同じ作法。
+	const frostElTimers = new Map();
+	const frostElId = (e, cell) => `frost-${e.id}-${cell.r},${cell.c}`;
+
+	function removeFrostEl(e, cell) {
+		const id = frostElId(e, cell);
+		clearTimeout(frostElTimers.get(id));
+		frostElTimers.delete(id);
+		document.getElementById(id)?.remove();
+	}
+
+	function syncGlaciateFrost(e, meta, now) {
+		const frost = e._frost;
+		if (!frost || frost.size === 0) return;
+		const charLayerEl = getCharLayerEl();
+		if (!charLayerEl) return;
+		const cellPx = getCellPx();
+		for (const cell of frost.values()) {
+			const id = frostElId(e, cell);
+			let el = document.getElementById(id);
+			if (!el) {
+				el = document.createElement('div');
+				el.id = id;
+				charLayerEl.appendChild(el);
+			}
+			const heat = frostHeat(cell, now);
+			const hotAt = Math.max(0.001, (cell.span - cell.warn) / cell.span);
+			el.className = 'enemy-frost' + (frostWarning(cell, now) ? ' frost-warn' : '');
+			el.style.cssText = `position:absolute;left:${cell.c * cellPx}px;top:${cell.r * cellPx}px;`
+				+ `width:${cellPx}px;height:${cellPx}px;z-index:2;pointer-events:none;`
+				// 濃さ（0〜1）を CSS へ渡す＝色の作り方は CSS 側が持つ（閾値を2箇所に書かない）。
+				+ `--frost-heat:${heat.toFixed(3)};`
+				// 予告の閾値で 1 に正規化した数＝赤の到達と赤い点滅の開始が必ず同じ tick。
+				+ `--frost-warn:${Math.min(1, heat / hotAt).toFixed(3)};`
+				// 残り時間（＝噴くまで）＝点滅の速さを絵に持たせない（状態機械が長さの真実）。
+				+ `--frost-warn-ms:${Math.max(0, Math.round(cell.spikeAt - now))}ms;`;
+			clearTimeout(frostElTimers.get(id));
+			frostElTimers.set(id, setTimeout(() => el.remove(), 400));
+		}
+	}
+
+	// 氷柱が噴いた瞬間（`.enemy-coil-crush`／`.toad-pounce-land` と同型＝実時間で消える別 DOM
+	// ∴L が倒れても残らない）。1セル＝1枚＝噴いた床そのもの。
+	function showFrostSpikeEffect(e, cell) {
+		const charLayerEl = getCharLayerEl();
+		if (!charLayerEl) return;
+		const cellPx = getCellPx();
+		const el = document.createElement('div');
+		el.className = 'enemy-frost-spike';
+		el.style.cssText = `position:absolute;left:${cell.c * cellPx}px;top:${cell.r * cellPx}px;`
+			+ `width:${cellPx}px;height:${cellPx}px;z-index:23;pointer-events:none;`;
+		charLayerEl.appendChild(el);
+		setTimeout(() => el.remove(), 380);
+	}
+
+	// 氷結の告知（凍結相の体＋床の氷）。
+	// ⚠️ 凍結相の絵は**動かさない**（filter だけを振る）＝他の予告はすべて形が変わる
+	//    （`.surge-windup` は縦に伸び・`.tongue-windup` は横に膨らみ・`.pounce-windup` は潰れる）
+	//    ∴「止まっている＝殴れる」が一目で読める唯一の形になる（GUIDE §6-1）。
+	function syncGlaciateMotion(e, meta) {
+		const phase = e._glPhase ?? null;
+		const el = document.getElementById(`char-enemy-${e.id}`);
+		if (el) {
+			if (phase) el.style.setProperty('--glaciate-span-ms', `${Math.round(e._glSpan ?? 0)}ms`);
+			el.classList.toggle('glaciate-freeze', phase === 'freeze');
+		}
+		syncGlaciateFrost(e, meta, gameNow());
+	}
+
 	// ── Phase 5.5k k-4: 向きを固定して構える（盾騎士）─────────────────
 	// meta.blockFacing = { turnMs, knockback } を持つ敵は「向きが常時ブロックの面」＝
 	// e.dir がそのままダメージ無効化の方向になる（combat.js isBlockFacingDir）。
@@ -4422,6 +4841,11 @@ export function createEnemyAi(deps) {
 				// 打ち寄せる、を作らない。床の危険域も**ここで**消す＝この分岐は下の同期まで
 				// 行かず `continue` する∴消し忘れると気絶中も帯が塗られたまま残る（＝嘘の告知）。
 				if (resolveSurge(e, meta)) { cancelSurge(e); syncSurgeMotion(e, meta); }
+				// Phase 8-4 (4) 0d-3（10体目 L）: 気絶したら氷結も捨てる＝**敷いた氷まで消す**
+				// （止めたのに氷柱が噴く、を作らない）。床の氷は `cancelGlaciate` が div ごと外す
+				// ＝この分岐は下の同期まで行かず `continue` する∴消し忘れると気絶中も氷が残った
+				// まま「まだ噴く」に見える（＝嘘の告知）。
+				if (resolveGlaciate(e, meta)) { cancelGlaciate(e); syncGlaciateMotion(e, meta); }
 				continue;
 			}
 			// Phase 5.5k k-7.5: 立っている予告は**他の専有状態より先に必ず解決する**
@@ -4449,6 +4873,12 @@ export function createEnemyAi(deps) {
 			// ⚠️ 戻り値 true ＝**この tick は移動も攻撃もしない**（錨で固定＝引かれている時間が
 			//    そのまま殴れる窓になる）∴下の行動ゲートの条件に `!tongueBusy` を入れる。
 			const tongueBusy = meta.tongue ? tickTongue(e, meta, now) : false;
+			// Phase 8-4 (4) 0d-3（10体目 L）: 氷の時計も**硬直中も進める時計**（上と同じ枠）。
+			// ここでしか氷柱は噴かない∴咬みつきの硬直・歩幅の溜め・凍結相のどれでも予告は進む
+			// （止めると「赤くなったのに噴かない」＝床の告知が嘘になる＝J/O で実測した罠）。
+			// ⚠️ 氷結の状態機械（`tickGlaciate`）とは**別の時計**＝相が変わっても既に敷いた氷は
+			//    自分の時刻で噴く（＝道を継ぎ足しても赤い予告が延びない）。
+			if (meta.glaciate) tickFrost(e, meta, now);
 			// 隠れ↔出現の周期を更新（hide を持つ敵のみ＝潜み鮫・地中蟲・N 砂嵐の蠍王）
 			tickHide(e, meta, now);
 			// Phase 5.5k k-8: 瞬間移動（術士）＝消えている間と出現した tick を専有する。
@@ -4504,6 +4934,15 @@ export function createEnemyAi(deps) {
 			const surging = (meta.surge && !isGuarding && !leaping && !soaring
 				&& (surgeBusy || (!frozen && !slamming && !swinging && !breathing)))
 				? tickSurge(e, meta, now) : false;
+			// Phase 8-4 (4) 0d-3（10体目 L）: 氷結（凍結→歩行）も同じ枠＝**始まった凍結は硬直では
+			// 止めない**（`glaciateBusy`＝凍結相）。理由も同じ＝自分で停止の窓を立てる状態機械∴
+			// 硬直で止めると2周目以降が宙吊りになる（0d-2.7 の罠）。⚠️ 硬直で止めるのは
+			// **新しく凍り始めること**だけ＝咬みついた直後にいきなり足を止めない（＝殴り返す窓が
+			// 予告なく生えない）。歩行相は false を返す＝ここが開く（歩く＋咬みつき／氷礫）。
+			const glaciateBusy = isGlaciateBusy(e);
+			const glaciating = (meta.glaciate && !isGuarding && !leaping && !soaring && !surging
+				&& (glaciateBusy || (!frozen && !slamming && !swinging && !breathing)))
+				? tickGlaciate(e, meta, now) : false;
 			// Phase 5.5k k-4: 甲羅の開閉（火吐き亀）＝籠もっている間は移動も攻撃もしない
 			// （ガード/硬直/跳躍と同じ「この tick は他の行動をしない」枠）。開いた瞬間の炎は
 			// tickShell の中で出る＝籠もりから開く tick だけ攻撃が起きる。
@@ -4520,7 +4959,7 @@ export function createEnemyAi(deps) {
 			const dirLocked = tickFaceLock(e, meta, now);
 			// ⚠️ `!soaring` ＝`rise`/`aim`/`dive`/`land` の4相はこの tick を専有する。`ground` と
 			//    `air` は tickSoar が false を返す＝ここが開く（地上は歩き＋鉤爪、空は旋回＋雷撃弾）。
-			if (!isGuarding && !frozen && !leaping && !soaring && !shelled && !leeching && !slamming && !swinging && !breathing && !crushing && !blinking && !dashing && !tongueBusy && !surging) {
+			if (!isGuarding && !frozen && !leaping && !soaring && !shelled && !leeching && !slamming && !swinging && !breathing && !crushing && !blinking && !dashing && !tongueBusy && !surging && !glaciating) {
 				if (resolveHitAndAway(e, meta)) {
 					bossTickHitAndAway(e, meta);
 				} else if (cmode === 'ranged') {
@@ -4564,6 +5003,13 @@ export function createEnemyAi(deps) {
 					// 持ち主＝ここは寄るだけ。`resolveEnemySpeed` を通す＝`moveSpeed
 					// { water, land }` の地形倍率と `phases[].speedMultiplier`（後半 ×1.3）が効く。
 					enemySurgeRoam(e, meta, resolveEnemySpeed(e, meta), resolveSurge(e, meta));
+				} else if (meta.glaciate) {
+					// Phase 8-4 (4) 0d-3（10体目 L）: 氷結＝**自分が凍らせた床の上しか歩けない**。
+					// 向きは凍結相で固定した道の向き＝この tick は追尾しない（追尾すると氷の外へ
+					// 出る＝機構が破れる）。周期そのものは上の `tickGlaciate`（この tick を専有
+					// する枠）が持ち主＝ここは道の上を進むだけ。`resolveEnemySpeed` を通す＝
+					// `phases[].speedMultiplier`（後半 ×1.3）がそのまま効く。
+					enemyGlaciateStride(e, meta, resolveEnemySpeed(e, meta), resolveGlaciate(e, meta));
 				} else if (meta.zigzag) {
 					enemyZigzagFly(e, meta, resolveEnemySpeed(e, meta), meta.zigzag);
 				} else {
@@ -4624,6 +5070,9 @@ export function createEnemyAi(deps) {
 			// Phase 8-4 (4) 0d-3（9体目 {）: 打ち寄せの告知（溜め／掃過／陸で止まった体＋床の帯）。
 			// ⚠️ 最後に置く＝「今どう動いているか」を上書きする順番に揃える（G/U/I と同じ趣旨）。
 			if (meta.surge) syncSurgeMotion(e, meta);
+			// Phase 8-4 (4) 0d-3（10体目 L）: 氷結の告知（止まって白く冷える体＋床の氷1枚ずつ）。
+			// ⚠️ 最後に置く＝「今どう動いているか」を上書きする順番に揃える（G/U/I/`{` と同じ趣旨）。
+			if (meta.glaciate) syncGlaciateMotion(e, meta);
 		}
 	}
 
@@ -4682,6 +5131,14 @@ export function createEnemyAi(deps) {
 		tickSoar,              // Phase 8-4 (4) 0d-3: 滞空の状態機械（6拍の1周・テスト用）
 		enemySoarStride,       // Phase 8-4 (4) 0d-3: 地上は追う／空は旋回（U 嵐の鷲王・テスト用）
 		soarDiveVec,           // Phase 8-4 (4) 0d-3: 落ちる軸の判定（軸から外れれば落ちて来ない・テスト用）
+		resolveGlaciate,       // Phase 8-4 (4) 0d-3: 氷結の設定（フェーズ差替を含む・テスト用）
+		tickGlaciate,          // Phase 8-4 (4) 0d-3: 氷結の状態機械（凍結→歩行の1周・テスト用）
+		tickFrost,             // Phase 8-4 (4) 0d-3: 氷の時計（氷柱が噴く＝盾を無視する打点・テスト用）
+		enemyGlaciateStride,   // Phase 8-4 (4) 0d-3: 氷の上だけを歩く（L 氷のリヴァイアサン・テスト用）
+		glaciateWalkable,      // Phase 8-4 (4) 0d-3: その向きへ歩ける枚数（道の長さの単一の真実・テスト用）
+		glaciateStepAllowed,   // Phase 8-4 (4) 0d-3: 体が氷の上に載るか（移動の定義域・テスト用）
+		glaciateStepToward,    // Phase 8-4 (4) 0d-3: 最短路の1歩目（袋に詰まらないことの単一の真実・テスト用）
+		frostHeat,             // Phase 8-4 (4) 0d-3: 氷の進み具合 0〜1（絵と音とテストが読む数）
 		detachLeech,           // Phase 5.5k k-5: 張り付きを剥がす（combat.js の被弾フックが呼ぶ）
 		crashSoar,             // Phase 8-4 (4) 0d-3: 矢で射落とす（combat.js の被弾フックが呼ぶ）
 		bossTickHitAndAway,

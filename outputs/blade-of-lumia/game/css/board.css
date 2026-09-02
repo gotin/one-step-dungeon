@@ -312,6 +312,22 @@
     100% { transform: scale(1.06, 0.90) rotate(0deg);     }
 }
 
+/* 2026-09-02（10体目 L 氷のリヴァイアサン）: 凍結相の体。**この相だけ攻撃が出ない**＝
+   殴り返す唯一の窓∴「今は止まっている」が一目で読める必要がある。
+   ⚠️ 他の予告と**形で区別する**（GUIDE §6-1）＝あちらはすべて体の形が変わる
+   （`.surge-windup` は縦に伸び・`.tongue-windup` は横に膨らみ・`.pounce-windup` は潰れ・
+   `.slam-windup` は拡大縮小・`.dash-windup` は足踏み）。∴こちらは**形を一切変えず色だけが
+   白く冷えていく**＝「膨らんでいない＝溜めていない＝殴っても反撃が来ない」と読める唯一の形。
+   長さは `--glaciate-span-ms`（JS が入れる＝状態機械が長さの単一の真実）。
+   ⚠️ 大型敵の揺れ（`.large-enemy`）より後に置く＝同じ specificity で後勝ち。 */
+.char-abs.glaciate-freeze canvas.sprite {
+    animation: enemy-glaciate-freeze var(--glaciate-span-ms, 700ms) ease-out forwards;
+}
+@keyframes enemy-glaciate-freeze {
+    0%   { filter: brightness(1)    saturate(1);   }
+    100% { filter: brightness(1.35) saturate(0.5); }
+}
+
 /* Phase 8-4 (4) 0d-2.6: 剣（近接攻撃）の予告モーション＝**剣を振り上げる**。
    2026-08-25 ユーザー指定：「体当たりの予告はキャラ自体の拡大縮小だが、剣の攻撃の予告が
    それだと変」∴キャラを縮小拡大せず、**剣そのものが頭上へ上がる**形にする
