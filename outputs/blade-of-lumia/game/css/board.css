@@ -261,6 +261,57 @@
     100% { transform: scale(0.82, 0.94) translateY(-34%); }
 }
 
+/* 2026-09-01（9体目 { 海の主）: 打ち寄せの4相。**掃過は盾では防げない打点**∴避け方は
+   「横へ退く」＝床の帯（`.sea-surge-zone`）から出ること。絵の役目は「今どの相か」を4つとも
+   別の形で見せること（GUIDE §6-1・§7-6）。長さは `--surge-span-ms`（JS が入れる＝
+   状態機械が長さの単一の真実。CSS 側に数を持たせない）。
+   ・予告（`.surge-windup`）＝**縦に伸び上がって左右が薄くなる**＝水を集めて波が立つ形。
+     舌の予告（`.tongue-windup` は scale(1.16, 0.90) ＝横に膨らむ）と**軸がちょうど逆**＝
+     同じ「一方向に膨らんで止まる」でも別の敵の別の技だと読める。
+   ・掃過（`.surge-sweep`）＝立った波が**崩れて前へ潰れる**（＝当たり判定が出ている相）。
+   ・座礁（`.surge-stranded`）＝陸でぐったり潰れて**明滅する**＝**殴れる窓**の告知
+     （攻撃硬直の `.attack-recover` と役目は同じだが、こちらは相そのものが窓＝
+      `_freezeUntil` を立てないので別のクラスが要る）。
+   ・這い戻り（`.surge-crawl`）＝**左右に体をよじる**（ゆっくり無限反復）＝まだ動くが
+     もう攻めてこない（＝追う必要がない）ことを見せる。
+   ⚠️ すべて大型敵の揺れ（`.large-enemy`）より後に置く＝同じ specificity で後勝ち。 */
+.char-abs.surge-windup canvas.sprite {
+    transform-origin: 50% 100%;
+    animation: enemy-surge-windup var(--surge-span-ms, 600ms) ease-in forwards;
+}
+@keyframes enemy-surge-windup {
+    0%   { transform: scale(1);            }
+    60%  { transform: scale(0.94, 1.12);   }
+    100% { transform: scale(0.88, 1.22);   }
+}
+.char-abs.surge-sweep canvas.sprite {
+    transform-origin: 50% 100%;
+    animation: enemy-surge-sweep 160ms ease-out forwards;
+}
+@keyframes enemy-surge-sweep {
+    0%   { transform: scale(0.88, 1.22); }
+    100% { transform: scale(1.16, 0.86); }
+}
+.char-abs.surge-stranded canvas.sprite {
+    transform-origin: 50% 100%;
+    transform: scale(1.10, 0.84);
+    animation: enemy-surge-stranded 0.44s ease-in-out infinite alternate;
+}
+@keyframes enemy-surge-stranded {
+    from { filter: brightness(1)    saturate(0.9); }
+    to   { filter: brightness(1.28) saturate(1.2); }
+}
+.char-abs.surge-crawl canvas.sprite {
+    transform-origin: 50% 100%;
+    animation: enemy-surge-crawl 0.48s ease-in-out infinite;
+}
+@keyframes enemy-surge-crawl {
+    0%   { transform: scale(1.06, 0.90) rotate(0deg);     }
+    25%  { transform: scale(1.06, 0.90) rotate(-2.4deg);  }
+    75%  { transform: scale(1.06, 0.90) rotate(2.4deg);   }
+    100% { transform: scale(1.06, 0.90) rotate(0deg);     }
+}
+
 /* Phase 8-4 (4) 0d-2.6: 剣（近接攻撃）の予告モーション＝**剣を振り上げる**。
    2026-08-25 ユーザー指定：「体当たりの予告はキャラ自体の拡大縮小だが、剣の攻撃の予告が
    それだと変」∴キャラを縮小拡大せず、**剣そのものが頭上へ上がる**形にする

@@ -2182,6 +2182,21 @@ export function getStageStateSnapshot() {
 	};
 }
 
+// Phase 8-4 (4) 0d-3（9体目 { 海の主）: その敵が今「陸に乗っている」セル数。
+// ⚠️ 占有範囲の出し方は passable.js `isPassableForEnemy`／enemy-ai.js `surgeLandCount` と
+//    **同じ式**にする（半セル位置の 2×2 は 3 タイルに跨る）＝ここだけ違う丸めを使うと
+//    「機構は水から出ていないのにテストだけ陸と読む」種類のずれが生える。
+function enemyLandCells(e) {
+	const ew = e.w ?? 1, eh = e.h ?? 1;
+	const c0 = Math.floor(e.x), c1 = Math.floor(e.x + ew - 1 + 0.999);
+	const r0 = Math.floor(e.y), r1 = Math.floor(e.y + eh - 1 + 0.999);
+	let land = 0;
+	for (let r = r0; r <= r1; r++) {
+		for (let c = c0; c <= c1; c++) if (!isWaterAt(r, c)) land++;
+	}
+	return land;
+}
+
 // 敵のスナップショットを返す（テスト用：hp などの状態確認）
 export function getEnemiesSnapshot() {
 	return enemies.map(e => ({
@@ -2395,6 +2410,43 @@ export function getEnemiesSnapshot() {
 		// tongue ＝舌の設定そのもの（フェーズで差し替わる＝`resolveTongue` が読む側）。
 		// **meta.tongue とは別物**＝「後半で速く打ち・長く届き・強く引くようになった」の観測窓。
 		tongue: e._tongue ?? null,
+		// Phase 8-4 (4) 0d-3（9体目 {）: 打ち寄せ（surge）の観測用。
+		// surgePhase ＝'idle'（水を泳いでいる）| 'windup'（乗り上げの予告＝完全停止）|
+		//   'sweep'（掃過＝**盾では防げない唯一の打点**が出ている）| 'stranded'（陸で停止＝
+		//   反撃の窓）| 'crawl'（水へ這い戻っている）。**この1つの値で今どこに居るかが読める**。
+		// surgeAt ＝今の相が終わる論理時刻／surgeSpan ＝今の相の長さ（＝絵に渡す数と同じ1つの数）
+		// surgeReadyAt ＝次に乗り上げられる論理時刻（cooldownMs は**引き波が済んでから**数える）
+		// surgeVx/Vy ＝予告に入った瞬間に固定した狙い（軸に沿う単位ベクトル）＝**追尾しない**
+		//   ことをこの据え置きで測る（tongueAimX/Y・breathDir と同じ趣旨）。
+		// surgeSx/Sy ＝危険域を描く基準（＝予告に入った位置）／surgeLeft ＝掃過の残りセル。
+		// surges ＝乗り上げた回数／surgeHits ＝掃過が当たった回数∴「予告を見て横へ退けば
+		//   避かる」は surges が増えて surgeHits が増えないことで測れる（momRams/momCrashes・
+		//   toadPounces/toadPounceHits と同じ趣旨）。
+		// surgeLand ＝今 体が乗っている陸のセル数（0 ＝水の中）。0n で `{` は**両生**になった
+		//   ∴この数が測るのは居場所の縛りではなく「掃過がどこで終わったか」＝硬直の長さ。
+		// surgeAfloat ＝掃過が終わった tick に水の中だったか（true ＝短い窓 `strandedWaterMs`）
+		//   ＝「地形が硬直の長さを決める」の単一の真実（`beginSurgeStranded` が1度だけ書く）。
+		surgePhase: e._surgePhase ?? null,
+		surgeAt: e._surgeAt ?? null,
+		surgeSpan: e._surgeSpan ?? null,
+		surgeReadyAt: e._surgeReadyAt ?? null,
+		surgeVx: e._surgeVx ?? null,
+		surgeVy: e._surgeVy ?? null,
+		surgeSx: e._surgeSx ?? null,
+		surgeSy: e._surgeSy ?? null,
+		surgeLeft: e._surgeLeft ?? null,
+		// surgeHomeX/Y ＝引き波の帰り先（＝**乗り上げの起点**＝予告に入った座標）。0n までは
+		// 「最後に体が丸ごと水にあった座標」だった（両生になって水の意味が消えた）∴「引き波は
+		// 起点まで引く（掃過ぶん前へ出たままにならない）」はこの座標との一致で測る。
+		surgeHomeX: e._surgeHomeX ?? null,
+		surgeHomeY: e._surgeHomeY ?? null,
+		surgeAfloat: e._surgeAfloat ?? null,
+		surges: e._surges ?? null,
+		surgeHits: e._surgeHits ?? null,
+		surgeLand: enemyLandCells(e),
+		// surge ＝打ち寄せの設定そのもの（フェーズで差し替わる＝`resolveSurge` が読む側）。
+		// **meta.surge とは別物**＝「後半で広く・深く・窓が短くなった」の観測窓。
+		surge: e._surge ?? null,
 		// Phase 8-4 (4) 層1: ボスのフェーズが差し替える「行動の元データ」の観測用。
 		// boss.js checkBossPhase は**エンティティ側にだけ書く**∴フェーズが効いたかは
 		// ここに出る値で読む（null＝差し替えなし＝ENEMY_META のまま）。

@@ -1087,3 +1087,59 @@
     30%  { transform: scale(1.06); opacity: 1;    }
     100% { transform: scale(1);    opacity: 0;    }
 }
+
+/* ── 2026-09-01: 打ち寄せの危険域（{ 海の主）───────────────────────────────
+   予告（`windup`）から掃過（`sweep`）の終わりまで床に出る「波が通る帯」。
+   ⚠️ 位置・大きさ・角の丸みは **JS（enemy-ai.js syncSurgeZone）が px で入れる**＝
+   CSS 側に数を持たない（輪・印・のしかかりの範囲と同じ作法）。角丸の矩形なのは判定
+   （軸に沿って `enemyEdgeDist ≤ hitRange` を掃いた集合＝body の箱を掃過の長さぶん
+   伸ばして r だけ膨らませた形）と**厳密に同じ形**にするため。
+   ⚠️ 他の床の告知と**形・色・変化の3つで区別する**（GUIDE §6-1）：
+     ・形＝**細長い角丸の矩形**（のしかかりは正方形に近い角丸矩形・輪と印は円）
+     ・色＝**海の青**（のしかかり＝沼の黄緑／輪＝水色→赤／印＝黄→赤）
+     ・変化＝大きさが変わらず、掃過に入ると**進行方向へ流れる縞**が出る
+       （＝「今どちらへ波が来ているか」が床だけで読める＝この機構は向きが本質）。
+   ⚠️ 盾では防げない打点の告知∴「向きを変える」ではなく「**横へ出る**」と読める絵にする。 */
+.sea-surge-zone {
+    box-sizing: border-box;
+    border: 3px dashed hsl(196 82% 62% / 0.72);
+    background: linear-gradient(180deg,
+        hsl(202 70% 40% / 0.12) 0%,
+        hsl(198 74% 46% / 0.24) 60%,
+        hsl(194 80% 56% / 0.32) 100%);
+    animation: sea-surge-zone-throb 0.42s ease-in-out infinite alternate;
+}
+@keyframes sea-surge-zone-throb {
+    from { filter: brightness(1);    }
+    to   { filter: brightness(1.35); }
+}
+
+/* 掃過中＝**縁が実線になって濃くなる**（「もう波が来ている」の1段）。
+   大きさは変えない（＝帯は予告の時点で確定している）＝濃さと点滅の速さだけで急を伝える。 */
+.sea-surge-zone.surge-zone-sweeping {
+    border-style: solid;
+    border-color: hsl(190 92% 74% / 0.95);
+    background: linear-gradient(180deg,
+        hsl(202 70% 42% / 0.22) 0%,
+        hsl(196 80% 52% / 0.40) 60%,
+        hsl(190 88% 64% / 0.50) 100%);
+    box-shadow: inset 0 0 14px 3px hsl(194 86% 56% / 0.45);
+    animation: sea-surge-zone-throb 0.16s ease-in-out infinite alternate;
+}
+
+/* 波が覆い被さった瞬間（別 DOM ∴海の主が降参しても残らない＝`.toad-pounce-land` と同型）。
+   判定と同じ角丸の矩形が一度だけ弾ける＝「今この形で薙ぎ払われた」が一目で繋がる。 */
+.sea-surge-hit {
+    box-sizing: border-box;
+    border: 4px solid hsl(186 96% 82% / 0.95);
+    background: radial-gradient(circle,
+        hsl(190 92% 86% / 0.55) 0%,
+        hsl(196 84% 62% / 0.34) 60%,
+        hsl(204 70% 40% / 0.10) 100%);
+    animation: sea-surge-hit-burst 0.36s ease-out forwards;
+}
+@keyframes sea-surge-hit-burst {
+    0%   { transform: scale(0.86); opacity: 0.35; }
+    30%  { transform: scale(1.08); opacity: 1;    }
+    100% { transform: scale(1);    opacity: 0;    }
+}

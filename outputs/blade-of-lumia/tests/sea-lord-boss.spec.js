@@ -197,44 +197,86 @@ test.describe('Phase 9-6 – 海の主（部品としての定義）', () => {
       .toBeCloseTo(meta.speed * mult * meta.moveSpeed.water, 6);
   });
 
-  test('⑥b 実 spawn の主は水にも陸にも進める（両生が実ゲームで効く）', async ({ page }) => {
+  // ⚠️ この本は**2度書き換わっている**。読む順に：
+  //    (1) 〜2026-08: 「陸のプレイヤーを追って歩いて上がる」＝両生の証明。
+  //    (2) 2026-09-01（0d-3 打ち寄せ surge の実装）: 「平時は水のセルからはみ出さず、陸へ出る道は
+  //        予告つきの乗り上げ1本だけ」＝(1) を**通ってはいけない振る舞い**として裏返した。
+  //    (3) 2026-09-01（0n の作り直し）: ユーザーの実プレイ報告「この位置にいればずっと攻撃が
+  //        あたらず…のループで倒せてしまう」＝(2) は**斜めにずれた床を永久の安全地帯にした**
+  //        （水に閉じた主は軸を合わせられない）。∴両生へ戻し、地形が決めるのは
+  //        **硬直の長さ**（陸 `strandedMs` / 水 `strandedWaterMs`）だけにした。
+  //        ここで測るのは (1) の「陸へ上がって追う」＋**地形別の速さ**（水は陸の倍）の実装。
+  //    （旧版が触っていた `_haPhase` / `_approachMode` は hitAndAway:false ＝死んだ数値）
+  test('⑥b 実 spawn の主は平時から水を出て陸を追う（速さだけが地形で変わる）', async ({ page }) => {
     const errors = [];
     page.on('pageerror', e => errors.push(e.message));
-    // プレイヤーを陸の左端に置く＝主は陸へ上がってこないと届かない
-    await page.goto(previewUrl(4, 2));
-    await waitForBoard(page);
-    const res = await page.evaluate(() => {
-      // 実ループ（setInterval(step,120)）を止めてから手動 step する。
-      // 止めないと goto→evaluate 間の wall-clock 経過で実ループが余分な tick を
-      // 挟み、hitAndAway の approach/retreat フェーズが manual step 開始時点で揺れる。
+    const meta = ENEMY_META[TILE.SEA_LORD];
+    // 水域は rows1-8 × cols6-10・配置は (4,7)（body は rows4-5 / cols7-8）
+    // ∴ body の左端 x が 6 未満＝「水から陸へ出た」。
+    // 速さは `resolveEnemySpeed` が**体の左上のセル**の地形で決める（GUIDE §7-12）
+    // ∴同じ丸め（`toTileRow/Col` ＝ floor(v + 0.5)）で足元を再現して刻みを仕分ける。
+    const run = () => page.evaluate(() => {
+      // 実ループ（setInterval(step,120)）を止めてから手動 step する
+      // （止めないと goto〜evaluate の wall-clock ぶん余分な tick が挟まる）。
       window.__game.pause();
-      const spawnX = 7;                       // tiles の '{' は (4,7)＝水域(cols6-10)
-      const start = window.__game.getEnemies().find(e => e.type === '{');
-      // ⚠️ pause() は evaluate の中＝goto〜evaluate の隙間で走った実 tick は消せない。
-      // その分だけ hitAndAway の _haTimer と gameTime のズレが残り、さらに接近モードは
-      // Math.random()（direct 1.4 / flank 0.3 / wander 0.3）で選ばれる＝pause だけでは
-      // 決定論にならない（2026-07-29 実測：フル実行6回中2回赤・単独25回は全緑）。
-      // ∴ 測りたいもの（両生＝水から陸へ上がれるか）に無関係な AI のクジ引きを固定する。
-      start._haPhase     = 'approach';
-      start._haTimer     = Number.MAX_SAFE_INTEGER;  // 計測中に retreat へ落ちない
-      start._approachMode = 'direct';                // 迂回（flank/wander）を選ばせない
-      let minX = start.x;
+      const pick = () => window.__game.getEnemies().find(e => e.type === '{');
+      const start = pick();
+      const out = { spawnX: start.x, minX: start.x, surges: 0, samples: [] };
       for (let i = 0; i < 60; i++) {
         window.__game.step(1);
-        const cur = window.__game.getEnemies().find(e => e.type === '{');
-        if (cur) minX = Math.min(minX, cur.x);
+        const cur = pick();
+        if (!cur) break;
+        out.minX = Math.min(out.minX, cur.x);
+        out.surges = cur.surges ?? 0;
+        out.samples.push({
+          x: cur.x, y: cur.y, phase: cur.surgePhase ?? 'idle',
+          surges: cur.surges ?? 0, land: cur.surgeLand ?? 0,
+        });
       }
-      const now = window.__game.getEnemies().find(e => e.type === '{');
       window.__game.resume();
-      return { spawnX, seenX: start.x, minX, to: now ? { x: now.x, y: now.y } : null };
+      return out;
     });
-    expect(res.to, '主が消えた').toBeTruthy();
-    expect(res.minX, '主が全く動いていない').toBeLessThan(res.spawnX);
-    // 水域は cols6-10・配置は (4,7) ∴ x<6 まで来たら「水から陸へ上がった」＝両生の証明
-    // （水棲 move:'water' ならここで止まる・陸棲なら水上に配置できない）
-    // 最終位置ではなく「計測中に到達した最小 x」で判定する＝接触後の押し戻しや
-    // 攻撃命中による retreat で戻っても「陸に上がった事実」は消えない。
-    expect(res.minX, '主が水域から陸へ上がれていない').toBeLessThan(6);
+    const footWater = (s) => {
+      const r = Math.floor(s.y + 0.5), c = Math.floor(s.x + 0.5);
+      return r >= 1 && r <= 8 && c >= 6 && c <= 10;
+    };
+
+    // ① 斜めにずれた立ち位置（(8,2)）＝軸が合わない∴乗り上げは来ない。それでも主は
+    //    **水を出て陸へ上がり**寄って来る＝(3) の核（斜めの安全地帯が無い）。
+    await page.goto(previewUrl(8, 2));
+    await waitForBoard(page);
+    const far = await run();
+    expect(far.samples.length, '主が消えた').toBeGreaterThan(0);
+    expect(far.minX, '主が全く動いていない＝水の中でも寄って来ない').toBeLessThan(far.spawnX);
+    expect(far.minX, '平時に水から出ていない＝斜めにずれて立てば永久に安全（0n で捨てた設計）')
+      .toBeLessThan(6);
+    // ② 刻みの大きさ＝足元の地形（水は陸の倍）。乗り上げが始まる前の平時だけで測る。
+    const idle = far.samples.filter(s => s.phase === 'idle' && s.surges === 0);
+    const stepsBy = { water: [], land: [] };
+    for (let i = 1; i < idle.length; i++) {
+      const d = Math.abs(idle[i].x - idle[i - 1].x) + Math.abs(idle[i].y - idle[i - 1].y);
+      if (d < 1e-9) continue;                        // 塞がれて動けなかった tick は測らない
+      stepsBy[footWater(idle[i - 1]) ? 'water' : 'land'].push(d);
+    }
+    expect(stepsBy.water.length, '水の上を歩く tick が観測できていない').toBeGreaterThan(0);
+    expect(stepsBy.land.length, '陸の上を歩く tick が観測できていない＝水から出ていない')
+      .toBeGreaterThan(0);
+    for (const d of stepsBy.water) {
+      expect(d, `水の上の刻み ${d} が speed×moveSpeed.water と違う`)
+        .toBeCloseTo(meta.speed * meta.moveSpeed.water, 6);
+    }
+    for (const d of stepsBy.land) {
+      expect(d, `陸の上の刻み ${d} が speed×moveSpeed.land と違う＝陸で鈍っていない`)
+        .toBeCloseTo(meta.speed * meta.moveSpeed.land, 6);
+    }
+
+    // ③ 軸の合う立ち位置（(4,4)＝寄って来た body の面まで 2.0 セル）＝乗り上げが来る
+    await page.goto(previewUrl(4, 4));
+    await waitForBoard(page);
+    const near = await run();
+    expect(near.surges, '軸が合う位置に立っているのに乗り上げて来ない').toBeGreaterThanOrEqual(1);
+    expect(near.samples.some(s => s.land > 0 && s.phase !== 'idle'),
+      '乗り上げの相で体が陸へ出た tick が無い＝陸で止まる（長い窓）が起きていない').toBe(true);
     expect(errors).toEqual([]);
   });
 });

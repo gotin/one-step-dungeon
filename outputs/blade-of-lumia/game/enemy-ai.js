@@ -3442,6 +3442,427 @@ export function createEnemyAi(deps) {
 		setTimeout(() => el.remove(), 360);
 	}
 
+	// ── Phase 8-4 (4) 0d-3 / 0n（9体目 { 海の主）: 打ち寄せ（surge）─────────────
+	// **この敵の移動アルゴリズム＝「地形が硬直の長さを決める」**（他の8体はどれも
+	// プレイヤー・印・速度・自分の輪で位置が決まる∴被らない）。中身は2つ：
+	//   ① 平時は**両生**（`enemySurgeRoam`）＝水でも陸でもプレイヤーへ寄る。速さだけが
+	//      地形で変わる（`moveSpeed { water 1.0, land 0.5 }`＝水 2.08／陸 1.04 セル毎秒）
+	//   ② `triggerRange` に入り、かつ**当たる軸が在る**相手へ掃過する（この節の状態機械）：
+	//        idle →（距離＋軸）windup（予告・完全停止）→ sweep（掃過＝**盾では防げない打点**）
+	//             → stranded（完全停止＝反撃の窓・長さは足元の地形が決める）→ crawl（引き波）→ idle
+	// ⚠️ 0n（2026-09-01 の実プレイ NG）で「平時は水から出ない」を**捨てた**：水に閉じた主は
+	//    池の行と列にしか軸を合わせられない∴斜めにずれた床（実測9セル）が**永久の安全地帯**に
+	//    なる（掃過の帯の半幅は 1.3 で斜めのずれを覆えず、唯一の遠隔 `waterShot` は柱で消える）。
+	//    地形を足しても塞げない（十字の池は歩ける輪を4つに割る）∴機構そのものを両生へ移した。
+	//    代わりの「地形が決める」は**硬直の長さ**：陸で終われば `strandedMs`（長い＝攻め放題）、
+	//    水で終われば `strandedWaterMs`（短い）∴岸から引き離して戦うのが正解になる。
+	// ⚠️ 掃過が**盾を通さない**ことが機構の半分（`isShieldBlockingDir` を呼ばない＝体当たり／
+	//    `crushCoil`／`breatheCone`／のしかかりと同じ列）。`{` の攻撃2本（`sword` 1.2・
+	//    `waterShot` 8）は**どちらも盾で消える**∴これが無いと「正面を向いて待つ」だけで
+	//    無傷になる（I 沼地の大蝦蟇で実測した穴と同型・GUIDE §7-16）。`{` は弱点を持たない
+	//    腕試しのボス∴**弱点の代わりに敵が自分で作る隙（stranded）が唯一の攻め口**になる。
+	// ⚠️ 対価は §7-16 のとおり：予告 `windupMs 720`（近接の床 `MELEE_WINDUP_MS 480` より長い）
+	//    ＋**判定と同じ形の危険域を床に描く**（`syncSurgeZone`）＋**後半でも予告を縮めない**。
+	// ⚠️ 予告のあいだ猶予は 720ms ＝6 tick ＝歩いて 3.0 セル ＞ 危険域の半幅（halfW 0.5 ＋
+	//    `hitRange` 0.8 ＝1.3）∴**横へ退けば必ず避かる**（狙いは予告に入った瞬間に固定＝
+	//    以後追尾しない∴床に描いた帯が嘘にならない。追尾すると上の算術が成立しない）。
+	//    ⚠️ 720 は本番のボス部屋の実測値：両生になって主が輪の上にも立つ∴南北の 2 行しかない
+	//    通路で「帯の外へ出るのに 3 セル歩く」場合が 17 通り在り、600ms（2.5 セル）では
+	//    避けられなかった（`.scratch/sea-lord-dodge-budget.mjs`／`{-⑩` ⑤ が床で測り直す）。
+	// ⚠️ 速度は `resolveEnemySpeed` を読まない（掃過も引き波も surge の数だけが決める）。
+	//    平時の歩き／泳ぎだけは `resolveEnemySpeed` を通す＝`moveSpeed { water, land }` の地形倍率と
+	//    `phases[].speedMultiplier` がそのまま効く（＝水では速く陸では鈍い、が活きる）。
+	function resolveSurge(e, meta) {
+		return e?._surge !== undefined ? e._surge : meta?.surge;
+	}
+
+	// 乗り上げの周期がこの tick を専有しているか（＝移動も攻撃もしない）。
+	// ⚠️ `idle` 以外の全相＝**始まった打ち寄せは硬直では止めない**（`soarBusy`/`leapBusy` と
+	//    同じ枠＝自分で窓を立てる状態機械を硬直で止めると2周目以降が宙吊りになる・0d-2.7）。
+	function isSurgeBusy(e) {
+		const p = e?._surgePhase ?? 'idle';
+		return p !== 'idle';
+	}
+
+	// 体が占めるタイル範囲のうち「水でないセル」の数。
+	// ⚠️ 範囲の出し方は passable.js `isPassableForEnemy` と**同じ式**にする（半セル位置の
+	//    2×2 は 3 タイルに跨る）＝ここだけ違う丸めを使うと「通れるのに水と判定される」
+	//    種類のずれが生える（丸めの単一の真実は hitbox.js / passable.js 側）。
+	function surgeLandCount(e, y, x) {
+		if (!isWaterAt) return 0;
+		const ew = e.w ?? 1, eh = e.h ?? 1;
+		const c0 = Math.floor(x), c1 = Math.floor(x + ew - 1 + 0.999);
+		const r0 = Math.floor(y), r1 = Math.floor(y + eh - 1 + 0.999);
+		let land = 0;
+		for (let r = r0; r <= r1; r++) {
+			for (let c = c0; c <= c1; c++) if (!isWaterAt(r, c)) land++;
+		}
+		return land;
+	}
+
+	// 体が丸ごと水の中にあるか。0n 以降の用途は1つだけ＝**硬直の長さを決める**
+	// （平時の居場所は縛らない＝両生）。
+	function isSurgeAfloat(e, y = e.y, x = e.x) {
+		return surgeLandCount(e, y, x) === 0;
+	}
+
+	// 掃過に使う軸が**本当に当たるか**（帯の形＝進む軸に沿った長い矩形）。
+	// ⚠️ 直交のずれは `hitRange`（＝帯の半幅から body の半サイズを引いた残り）以内、
+	//    軸方向は `surgeCells + hitRange`（＝掃き切る距離）以内でなければ届かない。
+	//    これを見ずに予告すると「予告したのに当たらない」＝**無料の反撃窓**を配ることになる
+	//    （0n の実プレイ NG の正体。斜めにずれて立つだけで永久に無傷だった）。
+	function surgeAxisHits(e, cfg, player, ux, uy) {
+		const { cx, cy } = enemyCellCenter(e);
+		const { halfW, halfH } = enemyHalf(e);
+		const band  = cfg.hitRange ?? 0.8;
+		const reach = (cfg.surgeCells ?? 3.0) + band;
+		const gx = Math.max(0, Math.abs(player.x - cx) - halfW);
+		const gy = Math.max(0, Math.abs(player.y - cy) - halfH);
+		return ux !== 0 ? (gy <= band && gx <= reach) : (gx <= band && gy <= reach);
+	}
+
+	// 掃過の軸を選ぶ（`null` ＝どの軸でも当たらない∴**予告しない**＝歩いて軸を合わせる）。
+	// 順番は「離れている軸を優先」＝波は遠い岸へ向かって打つ（絵として素直）。
+	function surgeAxisFor(e, cfg, player) {
+		const { cx, cy } = enemyCellCenter(e);
+		const dx = player.x - cx, dy = player.y - cy;
+		const h = { ux: Math.sign(dx) || 1, uy: 0 };
+		const v = { ux: 0, uy: Math.sign(dy) || 1 };
+		const order = Math.abs(dx) > Math.abs(dy) ? [h, v] : [v, h];
+		return order.find(a => surgeAxisHits(e, cfg, player, a.ux, a.uy)) ?? null;
+	}
+
+	// 引き波の帰り先＝**乗り上げを始めた座標**（水かどうかは問わない）。
+	// ⚠️ 座標で持つ理由は 0d-3 の実測：条件（「丸ごと水」など）で帰り着きを判定すると、
+	//    固定幅の刻みでは条件を満たす点を**必ず通り過ぎる**（水帯 2 行に 2×2 の体だと
+	//    丸ごと浮ける y は1点だけ）∴刻みを残りで打ち切る形にしないと止まれない。
+	function rememberSurgeHome(e) {
+		e._surgeHomeX = e.x; e._surgeHomeY = e.y;
+	}
+
+	// 帰り先へ1 tick ぶん寄る（軸ごと・残りで打ち切る＝**通り過ぎない**）。
+	// 戻り値 true ＝帰り着いた。
+	function stepTowardSurgeHome(e, speed) {
+		const hx = e._surgeHomeX, hy = e._surgeHomeY;
+		if (hx === undefined || hy === undefined) return true;
+		for (const axisX of (Math.abs(hx - e.x) >= Math.abs(hy - e.y) ? [true, false] : [false, true])) {
+			const rest = axisX ? hx - e.x : hy - e.y;
+			if (Math.abs(rest) < 0.001) continue;
+			const step = Math.sign(rest) * Math.min(speed, Math.abs(rest));
+			const ny = axisX ? e.y : e.y + step;
+			const nx = axisX ? e.x + step : e.x;
+			if (!isPassableForEnemy(ny, nx, e)) continue;   // 塞がれていたら次の軸／次の tick
+			e.y = ny; e.x = nx;
+			moveCharEl(`enemy-${e.id}`, e.x, e.y);
+			break;
+		}
+		return Math.abs(hx - e.x) < 0.001 && Math.abs(hy - e.y) < 0.001;
+	}
+
+	// 予告に入る（＝狙いを固定して床に危険域を描き始める）。
+	// ⚠️ 直交軸を 0.5 の格子へ**この瞬間に**寄せる（2×2 は半端な座標だと 3 タイルを塞ぐ＝
+	//    momentum/hop と同じ理由で岸の口に詰まる）。寄せてから危険域を計算する順序が要＝
+	//    逆にすると描いた帯と実際に通る帯が最大 0.25 セルずれる（＝塗られていない床で殴られる）。
+	function startSurgeWindup(e, cfg, now, axis) {
+		const player = getPlayer();
+		if (!player) return;
+		// 乗り上げは**軸に沿った1本**（＝波が岸へ打ち寄せる向き）。斜めにしないのは
+		// 危険域の矩形を判定と厳密に一致させられるから（斜めの帯は角丸矩形で囲えない＝
+		// 過剰警告か隠れダメージのどちらかが出る。GUIDE §6-1 の「絵 ⊇ 判定」を厳密に守る）。
+		// 軸は `surgeAxisFor` が選んだもの＝**当たると分かっている軸だけ**（単一の真実）。
+		const { ux, uy } = axis ?? surgeAxisFor(e, cfg, player) ?? { ux: 0, uy: 1 };
+		// 直交軸の格子寄せ（通れる位置のときだけ）
+		const sy = ux === 0 ? e.y : Math.round(e.y * 2) / 2;
+		const sx = ux === 0 ? Math.round(e.x * 2) / 2 : e.x;
+		// ⚠️ 寄せは最大 0.25 セル動く＝寄せた結果**帯から外れる**ことが在る（0.8 の帯なら
+		//    ずれ 0.6 が 0.85 になり得る）∴寄せてから同じ判定で見直し、外れたら**寄せない**。
+		//    順序を逆にすると「描いた帯は正しいのに空振りする予告」＝無料の窓が戻ってくる。
+		if ((sy !== e.y || sx !== e.x) && isPassableForEnemy(sy, sx, e)) {
+			const y0 = e.y, x0 = e.x;
+			e.y = sy; e.x = sx;
+			if (surgeAxisHits(e, cfg, player, ux, uy)) moveCharEl(`enemy-${e.id}`, e.x, e.y);
+			else { e.y = y0; e.x = x0; }
+		}
+		rememberSurgeHome(e);            // 引き波の終点＝**この位置**（乗り上げの起点）
+		e._surgePhase = 'windup';
+		e._surgeAt    = now + (cfg.windupMs ?? 600);
+		e._surgeSpan  = cfg.windupMs ?? 600;      // 絵の長さ＝相の長さ（CSS に数を持たせない）
+		e._surgeVx    = ux; e._surgeVy = uy;
+		e._surgeSx    = e.x; e._surgeSy = e.y;    // 危険域の基準＝**予告に入った位置**
+		e._surgeLeft  = cfg.surgeCells ?? 3.0;
+		e._surgeHit   = false;
+		e._surges     = (e._surges ?? 0) + 1;
+		e.dir = ux === 0 ? (uy > 0 ? 'down' : 'up') : (ux > 0 ? 'right' : 'left');
+		playSound('seaSurge');
+	}
+
+	// 掃過に入る（予告の終わり）。狙いは**変えない**＝予告で固定した (`_surgeVx`,`_surgeVy`)。
+	function beginSurgeSweep(e, cfg, now) {
+		e._surgePhase = 'sweep';
+		e._surgeSpan  = Math.round(((cfg.surgeCells ?? 3.0) / (cfg.surgeSpeed ?? 1.1)) * TICK_MS);
+		e._surgeAt    = now + e._surgeSpan;       // 上限（壁で止まればもっと早く終わる）
+	}
+
+	// 掃過が当たった＝プレイヤーへダメージ。**盾は見ない**（`isShieldBlockingDir` を呼べば
+	// 報告された完全防御がそのまま戻る）。1回の乗り上げで何 tick 重なっても打点は1回。
+	// ⚠️ `markAttack` を通さない＝掃過は `attacks[]` の1エントリではなく**乗り上げの帰結**
+	//    （のしかかり `landPounce`／締め上げ `crushCoil` と同じ立場）∴クールダウンの起点を
+	//    持たない（周期は `cooldownMs` が単独で決める）。
+	function hitSurge(e, meta, cfg) {
+		e._surgeHit  = true;
+		e._surgeHits = (e._surgeHits ?? 0) + 1;
+		takeDamage(cfg.surgeAtk ?? e.atk ?? meta?.atk ?? 1);
+		if (meta?.inflict) inflictDebuff?.(meta);
+		showSurgeHitEffect(e, cfg);
+		playSound('seaCrash');
+	}
+
+	// 掃過の1 tick。連続座標のまま MOVE_STEP 以下に刻んで進める（＝速くしても当たり判定と
+	// 壁判定を飛び越さない・[[blade-speed-up-needs-interpolation]]／tickDash と同じ作法）。
+	function tickSurgeSweep(e, meta, cfg, now) {
+		const player = getPlayer();
+		const ux = e._surgeVx ?? 0, uy = e._surgeVy ?? 0;
+		const hitRange = cfg.hitRange ?? 0.8;
+		const ew = e.w ?? 1, eh = e.h ?? 1;
+		const per   = Math.min(cfg.surgeSpeed ?? 1.1, e._surgeLeft ?? 0);
+		const steps = Math.max(1, Math.ceil(per / MOVE_STEP));
+		let moved = false, done = false;
+		for (let k = 0; k < steps; k++) {
+			// ① 判定は**進む前に**見る（tickDash / momentum と同じ順序）
+			if (player && !e._surgeHit && enemyEdgeDist(e, player.x, player.y) <= hitRange) {
+				hitSurge(e, meta, cfg);
+			}
+			const step = per / steps;
+			const ny = e.y + uy * step, nx = e.x + ux * step;
+			if (isPassableForEnemy(ny, nx, e)) {
+				e.y = ny; e.x = nx; e._surgeLeft = (e._surgeLeft ?? 0) - step; moved = true;
+				continue;
+			}
+			// ② 塞いだのが**プレイヤーの体**なら、それは壁ではない＝波が覆い被さる。
+			// ⚠️ これが無いと機構が裏返る：`isPassableForEnemy` はプレイヤーと重なる手前
+			//    （端の距離 1.0）で必ず止める∴`hitRange 0.8` は**棒立ちの相手には永久に届かない**
+			//    ＝乗り上げても無傷（G 岩のゴーレムの初回テストで実測した罠と同型）。
+			if (player && !e._surgeHit && aabbOverlap(nx, ny, ew, eh, player.x, player.y, 1, 1)) {
+				hitSurge(e, meta, cfg);
+			}
+			done = true;   // 壁でも相手の体でも、止められたらそこで掃過は終わり
+			break;
+		}
+		if (moved) moveCharEl(`enemy-${e.id}`, e.x, e.y);
+		if (done || (e._surgeLeft ?? 0) <= 0.001 || now >= (e._surgeAt ?? 0)) {
+			beginSurgeStranded(e, cfg, now);
+		}
+	}
+
+	// 掃過し終わって完全停止＝**反撃の窓**。長さは**足元の地形が決める**（0n の機構の核）：
+	//   陸で終わった → `strandedMs 1300`（＝10 tick ＝`SWORD_COOLDOWN_MS 300` で4振り）
+	//   水で終わった → `strandedWaterMs 400`（＝3 tick ＝1振り）
+	// ∴「岸から引き離して戦う」が正解になる（水際で殴ると窓が 1/3 になる）。
+	// ⚠️ `_freezeUntil` は立てない＝硬直は「攻撃を出した直後の窓」の意味に保つ（弱点の
+	//    `window: 'recover'` と `.attack-recover` の絵が同じ窓を指す規約）。停止は
+	//    `isSurgeBusy` が行動ゲートを閉じることで実現する（＝相そのものが窓）。
+	function beginSurgeStranded(e, cfg, now) {
+		const afloat = isSurgeAfloat(e);
+		e._surgePhase  = 'stranded';
+		e._surgeAfloat = afloat;         // どちらの窓か（絵とテストが読む単一の真実）
+		e._surgeSpan   = afloat ? (cfg.strandedWaterMs ?? 400) : (cfg.strandedMs ?? 1300);
+		e._surgeAt     = now + e._surgeSpan;
+	}
+
+	// 引き波＝掃過の逆向きへ、掃過よりずっと遅く**起点まで**引く。
+	// ⚠️ 速さは**設定から導く**（`surgeCells / (crawlMs / TICK_MS)`）＝「`crawlMs` のあいだに
+	//    ちょうど起点へ帰れる」が定義になる∴後半で深く乗り上げる（`surgeCells 4.0`）ように
+	//    しても引き波が間に合う。数を1つ増やして食い違わせない（速さは掃過の約 1/4）。
+	function beginSurgeCrawl(e, cfg, now) {
+		e._surgePhase = 'crawl';
+		e._surgeSpan  = cfg.crawlMs ?? 1400;
+		e._surgeAt    = now + e._surgeSpan;
+	}
+
+	function surgeCrawlSpeed(cfg) {
+		const ticks = Math.max(1, (cfg.crawlMs ?? 1400) / TICK_MS);
+		return cfg.crawlSpeed ?? ((cfg.surgeCells ?? 3.0) / ticks);
+	}
+
+	// 引き波の1 tick。**起点へ寄る**＝掃過の逆向きを1歩ずつ辿るのと同じ道だが、残りで刻みを
+	// 打ち切る∴通り過ぎない（`rememberSurgeHome` の ⚠️ を見よ）。帰り着いたら（または上限が
+	// 来たら）idle ＝周期の終わり。
+	// ⚠️ ここでプレイヤーを押しのけない＝引いている巨体は無害（打点は掃過の1回だけ）。
+	//    退路を塞がれたら上限まで止まる＝窓が伸びるだけ（プレイヤーが得をする側に倒す）。
+	//    上限で切れて途中に残っても平時の歩き（`enemySurgeRoam`）がそのまま追跡を続ける
+	//    ∴宙吊りにならない（0n 以降は「水へ帰らないと動けない」制約が無い＝両生）。
+	function tickSurgeCrawl(e, meta, cfg, now) {
+		const home = stepTowardSurgeHome(e, surgeCrawlSpeed(cfg));
+		if (home || now >= (e._surgeAt ?? 0)) endSurgeCycle(e, cfg, now);
+	}
+
+	// 周期の終わり＝次の乗り上げまでの間（`cooldownMs`）を**ここから**数える
+	// （＝止まっていた分だけ次が遅れるのではなく、引き波が済んでから休む）。
+	function endSurgeCycle(e, cfg, now) {
+		e._surgePhase   = 'idle';
+		e._surgeSpan    = 0;
+		e._surgeAt      = null;
+		e._surgeLeft    = 0;
+		e._surgeReadyAt = now + (cfg.cooldownMs ?? 2600);
+	}
+
+	// 打ち寄せの周期を1 tick 進める。戻り値 true ＝**この tick は移動も攻撃もしない**
+	// （＝乗り上げ〜這い戻りのあいだ `sword` も `waterShot` も出さない＝反撃の窓が
+	//   本当に窓になる）。相ごとに**必ず明示の分岐**を書く（GUIDE §7-8）。
+	function tickSurge(e, meta, now) {
+		const cfg = resolveSurge(e, meta);
+		if (!cfg) return false;
+		const phase = e._surgePhase ?? 'idle';
+		if (phase === 'windup') {
+			if (now >= (e._surgeAt ?? 0)) beginSurgeSweep(e, cfg, now);
+			return true;
+		}
+		if (phase === 'sweep') {
+			tickSurgeSweep(e, meta, cfg, now);
+			return true;
+		}
+		if (phase === 'stranded') {
+			if (now >= (e._surgeAt ?? 0)) beginSurgeCrawl(e, cfg, now);
+			return true;
+		}
+		if (phase === 'crawl') {
+			tickSurgeCrawl(e, meta, cfg, now);
+			return true;
+		}
+		// idle ＝寄っている（この tick は行動ゲートが開く）。乗り上げの入口は条件2本：
+		//   ① 距離（`triggerRange`）… GUIDE §7-16＝「盾で防げない打点」の引き金は距離で書く
+		//   ② **当たる軸が在る**（`surgeAxisFor`）… 無ければ予告しないで歩く＝軸を合わせに行く
+		// ⚠️ ② が無いと「予告→空振り→硬直」が無料の反撃窓になる（0n の NG の正体）。
+		const player = getPlayer();
+		if (!player) return false;
+		if (now < (e._surgeReadyAt ?? 0)) return false;
+		if (enemyEdgeDist(e, player.x, player.y) > (cfg.triggerRange ?? 3.5)) return false;
+		const axis = surgeAxisFor(e, cfg, player);
+		if (!axis) return false;
+		startSurgeWindup(e, cfg, now, axis);
+		return true;
+	}
+
+	// 乗り上げを捨てる（スタンの tick に呼ぶ＝`cancelDash`/`cancelTongue` と同じ列）。
+	// ⚠️ ボスはブーメランでスタンしない（`stunnable ?? !isBoss`）∴今の `{` では観測差が
+	//    出ない**二重の守り**＝`surge` を雑魚に付けたときに効く（cancelTongue と同じ立場）。
+	// ⚠️ 陸の上で idle に戻ることがある＝それで構わない（両生∴陸でも歩ける）。
+	function cancelSurge(e) {
+		e._surgePhase = 'idle';
+		e._surgeSpan  = 0;
+		e._surgeAt    = null;
+		e._surgeLeft  = 0;
+		e._surgeHit   = false;
+	}
+
+	// 平時の歩き＝**両生**（水でも陸でもプレイヤーへ寄る）。地形が変えるのは速さだけ
+	// （`speed` は `resolveEnemySpeed` 経由＝`moveSpeed { water, land }` がそのまま効く）。
+	// ⚠️ 0n までは「水から出る手は指さない」が機構の核だった。捨てた理由は節の頭の ⚠️：
+	//    池に閉じた主は斜めにずれた床へ軸を合わせられず、そこが永久の安全地帯になった。
+	// ⚠️ 軸ごとに1歩ずつ試すのは `enemyChase` と同じ歩き方（壁で塞がれた軸を諦めて
+	//    残った軸で回り込む＝柱を回り込める）。
+	function enemySurgeRoam(e, meta, speed, cfg) {
+		if (!cfg) return;
+		const player = getPlayer();
+		if (!player) return;
+		const { cx, cy } = enemyCellCenter(e);
+		const dx = player.x - cx, dy = player.y - cy;
+		if (Math.hypot(dx, dy) < 0.01) return;
+		const majorX  = Math.abs(dx) > Math.abs(dy);
+		e.dir = majorX ? (dx > 0 ? 'right' : 'left') : (dy > 0 ? 'down' : 'up');
+		for (const axisX of (majorX ? [true, false] : [false, true])) {
+			const v = axisX ? dx : dy;
+			if (Math.abs(v) < 0.01) continue;
+			const step = Math.sign(v) * Math.min(speed, Math.abs(v));
+			const ny = axisX ? e.y : e.y + step;
+			const nx = axisX ? e.x + step : e.x;
+			if (!isPassableForEnemy(ny, nx, e)) continue;
+			e.y = ny; e.x = nx;
+			moveCharEl(`enemy-${e.id}`, e.x, e.y);
+			return;   // 1 tick に1軸だけ（enemyChase と同じ歩き方）
+		}
+	}
+
+	// 掃過の**危険域を床に描く**（`windup` と `sweep` のあいだ）。
+	// ⚠️ 形は**判定と同じ角丸矩形**＝「予告に入った位置の body」と「掃過し終わる位置の body」の
+	//    AABB を `hitRange` ぶん膨らませた形（＝`enemyEdgeDist ≤ hitRange` を軸に沿って掃いた
+	//    集合そのもの）∴`border-radius: hitRange` で厳密に一致する＝隠れダメージも出ない。
+	//    壁で早く止まった場合は**描いた帯のほうが広い**（過剰警告は許す・J/I で確立した規則）。
+	function surgeZoneBox(e, cfg) {
+		const { halfW, halfH } = enemyHalf(e);
+		const r  = cfg.hitRange ?? 0.8;
+		const d  = cfg.surgeCells ?? 3.0;
+		const ux = e._surgeVx ?? 0, uy = e._surgeVy ?? 0;
+		// セル添字基準の body 中心（＝予告に入った位置）→ 描画座標は +0.5
+		const cx = (e._surgeSx ?? e.x) + halfW, cy = (e._surgeSy ?? e.y) + halfH;
+		const ex = cx + ux * d, ey = cy + uy * d;
+		const left = Math.min(cx, ex) + 0.5 - halfW - r;
+		const top  = Math.min(cy, ey) + 0.5 - halfH - r;
+		return { left, top, w: Math.abs(ux) * d + halfW * 2 + r * 2, h: Math.abs(uy) * d + halfH * 2 + r * 2 };
+	}
+
+	function syncSurgeZone(e, cfg) {
+		const id = `sea-surge-zone-${e.id}`;
+		let el = document.getElementById(id);
+		const phase = e._surgePhase ?? 'idle';
+		const on = !!cfg && (phase === 'windup' || phase === 'sweep');
+		if (!on) { if (el) el.remove(); return; }
+		const charLayerEl = getCharLayerEl();
+		if (!charLayerEl) return;
+		const cellPx = getCellPx();
+		if (!el) {
+			el = document.createElement('div');
+			el.id = id;
+			charLayerEl.appendChild(el);
+		}
+		const box = surgeZoneBox(e, cfg);
+		const r = cfg.hitRange ?? 0.8;
+		// 予告＝薄い警告／掃過＝濃い（＝もう波が来ている）。閾値ではなく相そのものが色を決める。
+		el.className = 'sea-surge-zone' + (phase === 'sweep' ? ' surge-zone-sweeping' : '');
+		el.style.cssText = `position:absolute;left:${box.left * cellPx}px;top:${box.top * cellPx}px;`
+			+ `width:${box.w * cellPx}px;height:${box.h * cellPx}px;`
+			+ `border-radius:${r * cellPx}px;z-index:2;pointer-events:none;`
+			+ `--surge-windup-ms:${Math.round(e._surgeSpan ?? 0)}ms;`;
+	}
+
+	// 波が覆い被さった瞬間（`.enemy-coil-crush`／`.toad-pounce-land` と同型＝実時間で消える
+	// 別 DOM ∴敵が降参しても残らない）。位置は**今の体**の周り＝当たった場所そのもの。
+	function showSurgeHitEffect(e, cfg) {
+		const charLayerEl = getCharLayerEl();
+		if (!charLayerEl) return;
+		const cellPx = getCellPx();
+		const r = cfg.hitRange ?? 0.8;
+		const { cx, cy } = enemyCellCenter(e);
+		const { halfW, halfH } = enemyHalf(e);
+		const box = { left: cx + 0.5 - halfW - r, top: cy + 0.5 - halfH - r,
+			w: halfW * 2 + r * 2, h: halfH * 2 + r * 2 };
+		const el = document.createElement('div');
+		el.className = 'sea-surge-hit';
+		el.style.cssText = `position:absolute;left:${box.left * cellPx}px;top:${box.top * cellPx}px;`
+			+ `width:${box.w * cellPx}px;height:${box.h * cellPx}px;`
+			+ `border-radius:${r * cellPx}px;z-index:23;pointer-events:none;`;
+		charLayerEl.appendChild(el);
+		setTimeout(() => el.remove(), 360);
+	}
+
+	// 打ち寄せの絵を今の相に揃える。長さは**JS が単一の真実**として渡す（CSS に数を持たせない
+	// ＝coil/gaze/tongue と同じ作法・GUIDE §7-8）。相は4つとも別の絵にする＝
+	// 「溜めている（避けろ）」「打ち寄せている（当たる）」「陸で止まっている（殴れる）」
+	// 「這って戻っている（もう追えない）」が絵だけで読める（GUIDE §6-1・§7-6）。
+	function syncSurgeMotion(e, meta) {
+		const cfg   = resolveSurge(e, meta);
+		const phase = e._surgePhase ?? 'idle';
+		const el = document.getElementById(`char-enemy-${e.id}`);
+		if (el) {
+			if (phase !== 'idle') el.style.setProperty('--surge-span-ms', `${Math.round(e._surgeSpan ?? 0)}ms`);
+			el.classList.toggle('surge-windup',   phase === 'windup');
+			el.classList.toggle('surge-sweep',    phase === 'sweep');
+			el.classList.toggle('surge-stranded', phase === 'stranded');
+			el.classList.toggle('surge-crawl',    phase === 'crawl');
+		}
+		syncSurgeZone(e, cfg);
+	}
+
 	// ── Phase 5.5k k-4: 向きを固定して構える（盾騎士）─────────────────
 	// meta.blockFacing = { turnMs, knockback } を持つ敵は「向きが常時ブロックの面」＝
 	// e.dir がそのままダメージ無効化の方向になる（combat.js isBlockFacingDir）。
@@ -3997,6 +4418,10 @@ export function createEnemyAi(deps) {
 				// （止めたのに引き寄せられる、を作らない）。帯の絵も**ここで**消す＝この分岐は
 				// 下の同期まで行かず `continue` する∴消し忘れると気絶中も舌が伸びたまま残る。
 				if (resolveTongue(e, meta)) { cancelTongue(e); syncTongueMotion(e, meta); }
+				// Phase 8-4 (4) 0d-3（9体目 {）: 気絶したら乗り上げも捨てる＝止めたのに波が
+				// 打ち寄せる、を作らない。床の危険域も**ここで**消す＝この分岐は下の同期まで
+				// 行かず `continue` する∴消し忘れると気絶中も帯が塗られたまま残る（＝嘘の告知）。
+				if (resolveSurge(e, meta)) { cancelSurge(e); syncSurgeMotion(e, meta); }
 				continue;
 			}
 			// Phase 5.5k k-7.5: 立っている予告は**他の専有状態より先に必ず解決する**
@@ -4070,6 +4495,15 @@ export function createEnemyAi(deps) {
 			const soarBusy = e._soarPhase != null && e._soarPhase !== 'ground';
 			const soaring = (!isGuarding && !leaping && (soarBusy || (!frozen && !slamming && !swinging && !breathing)))
 				? tickSoar(e, meta, now) : false;
+			// Phase 8-4 (4) 0d-3（9体目 {）: 乗り上げ（予告→掃過→陸で停止→這い戻り）も
+			// 跳躍・滞空と同じ枠＝**始まったら硬直では止めない**（`surgeBusy`＝`idle` 以外の相）。
+			// 理由も同じ＝自分で停止の窓を立てる状態機械∴硬直で止めると2周目以降が宙吊りになる
+			// （0d-2.7 の罠）。⚠️ 硬直で止めるのは**新しく乗り上げること**だけ＝水弾や体当たりを
+			// 出した直後にいきなり乗り上げない（＝殴り返す窓が予告なく潰れない）。
+			const surgeBusy = isSurgeBusy(e);
+			const surging = (meta.surge && !isGuarding && !leaping && !soaring
+				&& (surgeBusy || (!frozen && !slamming && !swinging && !breathing)))
+				? tickSurge(e, meta, now) : false;
 			// Phase 5.5k k-4: 甲羅の開閉（火吐き亀）＝籠もっている間は移動も攻撃もしない
 			// （ガード/硬直/跳躍と同じ「この tick は他の行動をしない」枠）。開いた瞬間の炎は
 			// tickShell の中で出る＝籠もりから開く tick だけ攻撃が起きる。
@@ -4086,7 +4520,7 @@ export function createEnemyAi(deps) {
 			const dirLocked = tickFaceLock(e, meta, now);
 			// ⚠️ `!soaring` ＝`rise`/`aim`/`dive`/`land` の4相はこの tick を専有する。`ground` と
 			//    `air` は tickSoar が false を返す＝ここが開く（地上は歩き＋鉤爪、空は旋回＋雷撃弾）。
-			if (!isGuarding && !frozen && !leaping && !soaring && !shelled && !leeching && !slamming && !swinging && !breathing && !crushing && !blinking && !dashing && !tongueBusy) {
+			if (!isGuarding && !frozen && !leaping && !soaring && !shelled && !leeching && !slamming && !swinging && !breathing && !crushing && !blinking && !dashing && !tongueBusy && !surging) {
 				if (resolveHitAndAway(e, meta)) {
 					bossTickHitAndAway(e, meta);
 				} else if (cmode === 'ranged') {
@@ -4123,6 +4557,13 @@ export function createEnemyAi(deps) {
 					// **打ち終わりの間（cooldownMs）だけ**＝同じ地点から2度引かない（2026-09-01）。
 					// `resolveEnemySpeed` は渡さない＝速さは hopCells/hopMs だけが決める。
 					enemyToadHop(e, meta, resolveTongue(e, meta), now);
+				} else if (meta.surge) {
+					// Phase 8-4 (4) 0n（9体目 {）: 打ち寄せ＝平時は**両生**（水でも陸でも寄る）。
+					// 地形が決めるのは①速さ（水で倍速）②掃過後の硬直の長さ（陸で3倍長い）。
+					// 乗り上げの周期そのものは上の `tickSurge`（この tick を専有する枠）が
+					// 持ち主＝ここは寄るだけ。`resolveEnemySpeed` を通す＝`moveSpeed
+					// { water, land }` の地形倍率と `phases[].speedMultiplier`（後半 ×1.3）が効く。
+					enemySurgeRoam(e, meta, resolveEnemySpeed(e, meta), resolveSurge(e, meta));
 				} else if (meta.zigzag) {
 					enemyZigzagFly(e, meta, resolveEnemySpeed(e, meta), meta.zigzag);
 				} else {
@@ -4180,6 +4621,9 @@ export function createEnemyAi(deps) {
 			// Phase 8-4 (4) 0d-3（8体目 I）: 舌の告知（口元から伸びる帯＋打つ前に膨らむ体）。
 			// ⚠️ 最後に置く＝「今どう動いているか」を上書きする順番に揃える（G/U と同じ趣旨）。
 			if (meta.tongue) syncTongueMotion(e, meta);
+			// Phase 8-4 (4) 0d-3（9体目 {）: 打ち寄せの告知（溜め／掃過／陸で止まった体＋床の帯）。
+			// ⚠️ 最後に置く＝「今どう動いているか」を上書きする順番に揃える（G/U/I と同じ趣旨）。
+			if (meta.surge) syncSurgeMotion(e, meta);
 		}
 	}
 

@@ -335,7 +335,12 @@ test('⑤ ENEMY_META の phases[] は既知のキーだけを持ち、閾値は�
                       // 0d-3（8体目 I）: 舌の設定を相で差し替える口（boss.js が `_tongue` へ
                       // 書き、enemy-ai.js の `resolveTongue` が読む）＝射程を伸ばし引く速さを
                       // 上げる（`speedMultiplier` はこの敵の移動＝跳ねにも効かない）。
-                      'tongue'];
+                      'tongue',
+                      // 0d-3（9体目 {）: 打ち寄せの設定を相で差し替える口（boss.js が `_surge` へ
+                      // 書き、enemy-ai.js の `resolveSurge` が読む）＝引き金を広げ深く乗り上げ
+                      // 休みを詰める。⚠️ 予告・当たり判定・打点は据え置き（据え置きの番人は
+                      // boss-move-variety.spec.js の {-①）＝盾で防げない一撃の予告が縮まない。
+                      'surge'];
   const MODE_KEYS = ['flank', 'direct', 'wander', 'strafe'];
   const withPhases = Object.entries(ENEMY_META).filter(([, m]) => m.phases);
   expect(withPhases.length, 'phases を持つ敵が居ない（データが消えた？）').toBeGreaterThanOrEqual(13);

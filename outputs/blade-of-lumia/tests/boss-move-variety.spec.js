@@ -42,7 +42,7 @@ import { readFileSync } from 'fs';
 import { fileURLToPath } from 'url';
 import { TILE } from '../shared/tiles.js';
 import { ENEMY_META } from '../shared/enemies.js';
-import { SWORD_REACH, MELEE_WINDUP_MS, MOVE_STEP } from '../game/constants.js';
+import { SWORD_REACH, MELEE_WINDUP_MS, MOVE_STEP, SWORD_COOLDOWN_MS } from '../game/constants.js';
 import { waitForBoard } from './helpers.js';
 import { TEST_LAYER, stageKey } from './test-stage-keys.js';
 import { isArenaDoor } from './test-arena-doors.js';
@@ -300,6 +300,7 @@ const MECHANISM_FIELDS = [
   'soar',           // 0d-3（6体目 U）: 空へ退いて旋回し軸へ落ちる移動（届く手段が矢だけになる）
   'momentum',       // 0d-3（7体目 G）: 速度を追う移動（止まれない・曲がれない・壁で自壊する）
   'tongue',         // 0d-3（8体目 I）: 舌で**プレイヤーを動かす**（自分は寄って来ない）
+  'surge',          // 0d-3（9体目 {）: 居られる場所が**地形で決まる**（水から出るのは乗り上げだけ）
 ];
 const mechanismsOf = (meta) => new Set(MECHANISM_FIELDS.filter(k => meta[k]));
 const attackTypesOf = (meta) => new Set(
@@ -4736,3 +4737,1084 @@ test('I-⑮ 口元に張り付いて焼き続けても無傷では終わらな�
   }
   expect(hits, '被弾が観測できていない').toBeGreaterThanOrEqual(2);
 });
+
+// ── 9体目 `{` 海の主：打ち寄せ（surge）＝**地形が硬直の長さを決める**移動 ────────────
+// 設計の骨（PLAN 8-4 (4) 0n）は2つ：
+//   ① 平時は**両生**＝水でも陸でもプレイヤーへ寄る。地形が変えるのは**速さ**だけ
+//      （`moveSpeed { water 1.0, land 0.5 }`＝水 2.08／陸 1.04 セル毎秒）。
+//   ② `triggerRange` に入り、かつ**当たる軸が在る**相手へ掃過する：
+//      idle →（距離＋軸）windup（予告・完全停止）→ sweep（掃過＝**盾で防げない唯一の打点**）
+//           → stranded（完全停止＝反撃の窓・長さは足元の地形が決める）→ crawl（引き波）→ idle
+//      陸で終われば `strandedMs 1300`／水で終われば `strandedWaterMs 400` ∴**岸から
+//      引き離して戦うのが正解**になる（水際で殴ると窓が 1/3）。
+// ⚠️ 2026-09-01（0n）に「平時は水から出ない」を**捨てた**＝実プレイで「この位置にいれば
+//    ずっと攻撃があたらない」床が実測9セル在った（池に閉じた主は斜めにずれた床へ軸を合わせ
+//    られず、唯一の遠隔 `waterShot` は柱で消えた）。∴この節の「水から出ない」を測る本は
+//    **意図的に失効させ、逆（陸へも上がる）を測る本に置き換えた**（`{-⑤`／`{-⑥`）。
+// ⚠️ `{` は**弱点を持たない**腕試しのボス∴弱点の窓の代わりに「敵が自分で作る隙（stranded）」が
+//    唯一の攻め口になる＝機構と攻略法が1本に繋がる（GUIDE §7-16 の対価の払い方）。
+const SL = TILE.SEA_LORD;
+const SL_ROW = 4, SL_COL = 7;          // 2×2 ∴ rows 4-5 / cols 7-8（水帯 2 行にぴったり収まる）
+const SL_STAND = { row: 8, col: 7 };   // 南岸＝端 3.0（引き金 3.5 の内側）で掃過 3.0 がちょうど届く
+const SL_FAR   = { row: 8, col: 1 };   // 引き金の外（6.71）＝平時の泳ぎ（岸沿いの横滑り）を測る
+// `{` は field のボス＝ボス直前の装備が作れず audit-balance では「開始直後 / min」に落ちる
+// （ハート3＝掃過2発で死ぬ）∴**観測用に器だけ増やした**装備で測る（盾は持たせる＝
+// 「盾を向けても掃過は止まらない」を測るため・剣と防具は min のまま）。
+const SL_OBS = { ps_hearts: '13', ps_sword: '0', ps_shield: '0', ps_armor: '0', ps_weapon: '1' };
+// 本番のボス部屋（field 12,19）＝**水際の窓**（`strandedWaterMs`）を測れる唯一の舞台。
+// ⚠️ 闘技場 `bal_sea_lord` の水帯は 2 行＝体（2×2）が丸ごと水に入るのは y が整数のときだけ
+//    ∴「掃過が水で終わる」立ち位置が床の上に1つも無い（0n で測り直して分かった）。
+//    本番の池は 4×4（rows 3-6 × cols 4-7）∴池の縁に立てば掃過は**池の中で**止まる。
+function roomUrl(row, col) {
+  const p = new URLSearchParams({
+    fromEditor: '1', layer: 'field', stage: '12,19',
+    row: String(row), col: String(col), ...D1_MIN, ...SL_OBS,
+  });
+  return `${GAME}?${p.toString()}`;
+}
+// SE の指紋（`installToneRec` は周波数だけを記録する）
+const SURGE_HZ = [98, 131, 165, 208];  // seaSurge＝乗り上げの予告（低音から昇る＝波が立つ）
+const SL_CRASH_HZ = [87, 175, 587, 880]; // seaCrash＝波が覆い被さった（＝掃過の打点）
+
+/**
+ * `bal_sea_lord` の `{` を n tick 追い、毎 tick の相・位置・陸のセル数・危険域・音と
+ * プレイヤーの位置／HP を返す。
+ * @param {object} o
+ * @param {number} o.ticks       進める論理 tick 数
+ * @param {object} [o.spawn]     プレイヤーの湧き（既定＝南岸 (8,7)）
+ * @param {boolean} [o.debugOff] true＝'g' で debug を切る（ダメージが通る）
+ * @param {object} [o.patch]     ENEMY_META['{'] へ一時的に差し込むフィールド
+ * @param {object} [o.dropWhen]  { atPhase, dmg }＝**その相になった最初の tick**にダメージを落とす
+ *                               （tick 番号で固定すると相の長さを変えた瞬間に意味がずれる）
+ * @param {object} [o.moveWhen]  { atPhase, dir, steps }＝その相のあいだ 1 tick に1歩ずつ歩く
+ * @param {boolean} [o.face]     true＝毎 tick 海の主の方へ向き直る（＝盾の正面を向け続ける）
+ * @param {boolean} [o.room]     true＝闘技場でなく**本番のボス部屋**（field 12,19）で測る
+ */
+async function trackSeaLord(page, o) {
+  await installToneRec(page);
+  const sp = o.spawn ?? SL_STAND;
+  await gotoFrozen(page, o.room ? roomUrl(sp.row, sp.col)
+    : previewUrl('bal_sea_lord', sp.row, sp.col, SL_OBS));
+  if (o.debugOff) await page.keyboard.press('g');
+  return page.evaluate((a) => {
+    const g = window.__game;
+    if (a.patch) g.setEnemyMetaForTest('{', a.patch);
+    const e0 = g.getEnemies().find(x => x.type === '{');
+    if (!e0) return { error: '{ が盤面に居ない' };
+    const id = e0.id;
+    const find = () => g.getEnemies().find(x => x.id === id);
+    const cellPx = document.querySelector('#board .cell').getBoundingClientRect().width;
+    // 間合い＝`enemyEdgeDist`（セル添字基準の箱の面までの距離）と同じ式＝到達距離の表と揃う
+    const edgeDist = (e, px, py) => {
+      const cx = e.x + ((e.w ?? 1) - 1) / 2, cy = e.y + ((e.h ?? 1) - 1) / 2;
+      const gx = Math.max(0, Math.abs(px - cx) - ((e.w ?? 1) - 1) / 2);
+      const gy = Math.max(0, Math.abs(py - cy) - ((e.h ?? 1) - 1) / 2);
+      return Math.hypot(gx, gy);
+    };
+
+    const samples = [];
+    const movedAt = [];
+    let stepsLeft = a.moveWhen?.steps ?? 0;
+    let dropped = false;
+    for (let t = 1; t <= a.ticks; t++) {
+      const tone0 = window.__tones.length;
+      const cur = find();
+      if (!cur) break;
+      // ⚠️ `getEnemies()` はスナップショット＝`_surgePhase` ではなく `surgePhase` で読む
+      //   （`_` 付きで読むと常に undefined ＝相を狙った差し込みが1度も起きない）
+      const phase = cur.surgePhase ?? 'idle';
+      // ダメージは**相を見て**落とす（相の切り替えが「殴られている最中」に起きることの再現）
+      if (a.dropWhen && !dropped && phase === a.dropWhen.atPhase) {
+        g.dealDamage(id, a.dropWhen.dmg); dropped = true;
+      }
+      if (a.face) {
+        const p0 = g.getPlayer();
+        const cx = cur.x + ((cur.w ?? 1) - 1) / 2, cy = cur.y + ((cur.h ?? 1) - 1) / 2;
+        const dx = cx - p0.x, dy = cy - p0.y;
+        g.setHeroDir(Math.abs(dx) >= Math.abs(dy) ? (dx > 0 ? 'right' : 'left')
+          : (dy > 0 ? 'down' : 'up'));
+      }
+      const mw = a.moveWhen;
+      if (mw && stepsLeft > 0 && (mw.atPhase === undefined || phase === mw.atPhase)) {
+        g.movePlayer(mw.dir); stepsLeft--; movedAt.push(t);
+      }
+      g.step(1);
+      const e = find();
+      if (!e) break;
+      const p = g.getPlayer(), st = g.getState();
+      const el = document.getElementById(`char-enemy-${id}`);
+      samples.push({
+        t, now: st.gameTime, hp: e.hp, x: e.x, y: e.y, dir: e.dir,
+        phase: e.surgePhase ?? 'idle', span: e.surgeSpan ?? 0, at: e.surgeAt ?? null,
+        left: e.surgeLeft ?? 0, vx: e.surgeVx ?? null, vy: e.surgeVy ?? null,
+        sx: e.surgeSx ?? null, sy: e.surgeSy ?? null,
+        homeX: e.surgeHomeX ?? null, homeY: e.surgeHomeY ?? null,
+        surges: e.surges ?? 0, hits: e.surgeHits ?? 0, land: e.surgeLand,
+        afloat: e.surgeAfloat,          // 掃過が水で終わったか（＝短い窓）
+        cfg: e.surge ?? null, readyAt: e.surgeReadyAt ?? null,
+        attackTimes: e.attackTimes, projectiles: g.getProjectiles().length,
+        px: p.x, py: p.y, php: p.hp, pdef: st.player.def,
+        pdir: st.heroDir, shieldTier: st.player.shieldTier,
+        reach: edgeDist(e, p.x, p.y),
+        // 絵＝相ごとに別のポーズ（4つ）＋長さは JS が単一の真実として渡す
+        wind: !!el?.classList.contains('surge-windup'),
+        sweep: !!el?.classList.contains('surge-sweep'),
+        strand: !!el?.classList.contains('surge-stranded'),
+        crawl: !!el?.classList.contains('surge-crawl'),
+        spanVar: (el?.style.getPropertyValue('--surge-span-ms') ?? '').trim(),
+        // 床の危険域＝**セル単位**へ戻して渡す（判定 `enemyEdgeDist ≤ hitRange` と同じ物差し）
+        zone: (() => {
+          const z = document.getElementById(`sea-surge-zone-${id}`);
+          if (!z) return null;
+          return { left: parseFloat(z.style.left) / cellPx, top: parseFloat(z.style.top) / cellPx,
+            w: parseFloat(z.style.width) / cellPx, h: parseFloat(z.style.height) / cellPx,
+            radius: parseFloat(z.style.borderRadius) / cellPx,
+            sweeping: z.classList.contains('surge-zone-sweeping') };
+        })(),
+        hitFx: !!document.querySelector('.sea-surge-hit'),
+        newTones: window.__tones.slice(tone0),
+      });
+    }
+    const e = find();
+    return { id, cellPx, samples, movedAt,
+      end: e && { hp: e.hp, maxHp: e.maxHp, cfg: e.surge ?? null } };
+  }, o);
+}
+
+// 相の連（[{ phase, from, to, ticks }]）＝時系列の順序と長さを1つの形で見る
+function surgeRuns(samples) {
+  const runs = [];
+  for (const s of samples) {
+    const last = runs[runs.length - 1];
+    if (last && last.phase === s.phase) { last.to = s.t; last.ticks++; continue; }
+    runs.push({ phase: s.phase, from: s.t, to: s.t, ticks: 1 });
+  }
+  return runs;
+}
+// 相の長さ（tick）＝始まった tick も1 tick と数える（時計は「now が at を越えた tick」に進む）
+const nSurgeTicks = (ms) => Math.ceil(ms / TICK_MS);
+
+test('{-① 海の主のデータ＝乗り上げは体当たりの外から来て、予告のあいだに横へ退ける', () => {
+  const m = ENEMY_META[SL];
+  const c = m.surge;
+  const KEYS = ['cooldownMs', 'crawlMs', 'hitRange', 'strandedMs', 'strandedWaterMs',
+    'surgeAtk', 'surgeCells', 'surgeSpeed', 'triggerRange', 'windupMs'];
+  // 本番のボス部屋（field 12,19）で危険域の外へ出るのに要る最大の距離＝実測 3 セル
+  // （`{-⑩` ⑤ が床で測り直す。ここはデータ側の下限として同じ数を持つ）。
+  const ROOM_ESCAPE_CELLS = 3.0;
+
+  expect(c, 'surge が無い＝{ に固有の移動機構が無い').toBeTruthy();
+  // 綴りの番人（`resolveSurge` を読む関数が読むキー＝1文字違うと既定値に落ちて黙って動く）
+  expect(Object.keys(c).sort()).toEqual(KEYS);
+  // 這い戻りの速さは**持たない**＝`surgeCells / (crawlMs / TICK_MS)` から導く
+  //（数を2つ持つと「深く乗り上げるのに戻りが遅い」で陸に取り残される食い違いが生える）
+  expect('crawlSpeed' in c, 'crawlSpeed を持っている＝這い戻りの速さが二重管理になる').toBe(false);
+
+  // `hitAndAway` は enemyTick の分岐で surge より優先される∴**明示 false** が要る
+  // （W/A/N/J/O/U/G/I で8回踏んだ罠＝書かないと新機構の分岐へ一度も来ない）
+  expect('hitAndAway' in m, 'hitAndAway を書いていない＝既定の張り付きに戻る余地が残る').toBe(true);
+  expect(m.hitAndAway, 'hitAndAway が true ＝surge の分岐に来ない').toBe(false);
+  expect(m.initialModeWeights, '寄り方の抽選が残っている＝読まれない数値（W/O/U/G/I で外した作法）')
+    .toBeUndefined();
+  // 弱点を持たない＝「陸で止まっている窓」が唯一の攻め口という設計の前提そのもの
+  expect(m.weakness, '弱点が生えた＝stranded が「唯一の攻め口」でなくなる（設計の前提が変わる）')
+    .toBeUndefined();
+
+  const ram   = m.attacks.find(a => a.type === 'sword');
+  const spout = m.attacks.find(a => a.type === 'waterShot');
+  const halfW = ((m.size?.w ?? 1) - 1) / 2;
+  const playerCps = (MOVE_STEP / TICK_MS) * 1000;      // 4.17 セル/秒
+  // ① 到達距離の表に隙間も入れ子も無い（GUIDE §7-12）＝体当たり 1.2 < 乗り上げ 3.5 < 潮吹き 8
+  expect(c.triggerRange, '乗り上げの引き金が体当たりの間合いの内＝殴られる距離でしか乗り上げない')
+    .toBeGreaterThan(ram.range);
+  // ①' 体当たりの到達 ＝ プレイヤーの剣の到達（2026-09-01・実プレイの判断（d））。
+  //    1.8 だった間は「自分の剣が届かない距離から殴られる」＝水際で斬り合うという攻略の
+  //    芯が成立せず、横へ退く動作が（盾は向いている方向しか守らないので）被弾に変わっていた。
+  //    同値に固定する＝「届く間合いは殴り合いの間合い」＝間合いを覚える相手になる。
+  expect(ram.range, '体当たりの到達がプレイヤーの剣（SWORD_REACH）と違う＝'
+    + '一方的に殴られる距離（>）か体当たりが死ぬ距離（<）ができる').toBe(SWORD_REACH);
+  expect(c.triggerRange, '乗り上げの引き金が潮吹きの射程より外＝遠距離攻撃の意味が消える')
+    .toBeLessThan(spout.range);
+  // ② 予告は時間の床（近接の溜め）以上＝**見てから動ける**（盾で防げない打点の対価・§7-16）
+  expect(c.windupMs, '予告が近接の溜め（MELEE_WINDUP_MS）より短い＝見てから動けない')
+    .toBeGreaterThanOrEqual(MELEE_WINDUP_MS);
+  // ③ 予告のあいだに歩ける距離 > 危険域の半幅（halfW ＋ hitRange）＝**横へ退けば必ず避かる**
+  //    ⚠️ この算術は「狙いを予告に入った瞬間に固定する」から成立する（追尾すると成立しない）
+  const graceTicks = Math.floor(c.windupMs / TICK_MS);
+  expect(graceTicks * MOVE_STEP, `猶予 ${graceTicks} tick で歩ける `
+    + `${(graceTicks * MOVE_STEP).toFixed(2)} セルが危険域の半幅（${halfW} ＋ ${c.hitRange}）`
+    + 'を越えない＝避けられない攻撃になる').toBeGreaterThan(halfW + c.hitRange);
+  // ③' 半幅ぶんでは足りない：**本番の部屋の床**は真横が空いていない場所がある（両生になって
+  //    主が輪の上にも立つ∴南北 2 行の通路で軸に沿って背中側へ抜けるしかない場合が在る）。
+  //    ∴猶予は「実測で要る 3 セル」を歩ける長さが要る（600ms＝2.5 セルでは 17 通り避けられない）。
+  expect(graceTicks * MOVE_STEP, `猶予 ${c.windupMs}ms で歩ける ${graceTicks * MOVE_STEP} セルが`
+    + `本番の部屋で逃げるのに要る ${ROOM_ESCAPE_CELLS} セルに足りない＝避けられない立ち位置が残る`)
+    .toBeGreaterThanOrEqual(ROOM_ESCAPE_CELLS);
+  // ④ 掃過は MOVE_STEP 以下に刻める（速くしても判定と壁を飛び越さない）
+  expect(c.surgeSpeed / Math.max(1, Math.ceil(c.surgeSpeed / MOVE_STEP)),
+    '掃過の1刻みが MOVE_STEP を越える＝プレイヤーを飛び越して当たらない').toBeLessThanOrEqual(MOVE_STEP);
+  // ⑤ 打点は体当たりと同じ atk まで（盾で防げない一撃を防げる一撃より重くしない）＋罰になる重さ
+  expect(c.surgeAtk, '掃過が体当たり（atk）より重い＝盾で防げない一撃の方が痛い')
+    .toBeLessThanOrEqual(m.atk);
+  expect(c.surgeAtk, '掃過が防御で 1 まで削れる＝罰にならない').toBeGreaterThan(2);
+  // ⑥ 陸で止まる窓＝木の剣を3振り以上返せる長さ（弱点が無い敵の唯一の攻め口）
+  expect(Math.floor(c.strandedMs / SWORD_COOLDOWN_MS),
+    `反撃の窓 ${c.strandedMs}ms で剣を3振り返せない＝弱点も窓も無い＝削り切れない`)
+    .toBeGreaterThanOrEqual(3);
+  // ⑥' **地形が窓の長さを決める**（0n の機構の核）＝水で終わった掃過の硬直は陸の窓より短く、
+  //    しかも「剣を3振り返せない」側に落ちる∴岸から引き離して戦うことが報酬になる。
+  //    ⚠️ ここが同値（または水のほうが長い）に戻ったら機構が消える＝水際で殴っても同じになる。
+  expect(c.strandedWaterMs, '水で終わった硬直が陸と同じか長い＝「岸から引き離す」に意味が無い')
+    .toBeLessThan(c.strandedMs);
+  expect(Math.floor(c.strandedWaterMs / SWORD_COOLDOWN_MS),
+    `水の窓 ${c.strandedWaterMs}ms で剣を3振り返せる＝陸の窓と体感が変わらない（引き離す理由が無い）`)
+    .toBeLessThan(3);
+  expect(c.strandedWaterMs, '水の窓が 0 ＝水際では反撃が一切できない（両生の圧に答えが無くなる）')
+    .toBeGreaterThan(0);
+  // ⑦ 引き波は掃過よりずっと遅く、かつ**上限のうちに起点まで引き切れる**
+  //   （0n で「水へ帰る」ではなくなった＝帰り先は乗り上げの起点＝水か陸かは問わない）
+  const crawlSpeed = c.surgeCells / (c.crawlMs / TICK_MS);
+  expect(crawlSpeed, '引き波が掃過の半分より速い＝「戻りは遅い」が数の関係になっていない')
+    .toBeLessThan(c.surgeSpeed / 2);
+  expect(crawlSpeed * nSurgeTicks(c.crawlMs),
+    '引き波の上限のうちに乗り上げた深さを戻れない＝掃過ぶん前へ出たまま次の周期に入る')
+    .toBeGreaterThanOrEqual(c.surgeCells);
+  expect(c.cooldownMs, '次の乗り上げまでの間が無い＝予告と窓が連続して読めない').toBeGreaterThan(0);
+  // ⑧ 泳ぎ < プレイヤー（GUIDE §7-2）＝走って逃げれば必ず引き離せる。
+  //    ⚠️ 0n で両生になった＝「陸に上がれば追われない」は**もう成立しない**（縛りが要る理由が
+  //    強くなった側の変更）。縛りは据え置きで **7 割以下**＝並ばない・追い抜かない。
+  const SWIM_CAP = playerCps * 0.7;
+  expect((m.speed * (m.moveSpeed?.water ?? 1) / TICK_MS) * 1000,
+    '泳ぎがプレイヤーの 7 割より速い＝走って逃げても引き離せない')
+    .toBeLessThanOrEqual(SWIM_CAP);
+  // ⑧' 地形が変えるのは**速さだけ**（陸でも歩ける＝両生）＝水は速く陸は鈍い
+  expect(m.moveSpeed.land, '陸の倍率が水以上＝陸に上がっても鈍くならない（水の意味が消える）')
+    .toBeLessThan(m.moveSpeed.water);
+  expect(m.moveSpeed.land, '陸の倍率が 0 ＝陸へ上がれない（両生でなくなる＝斜めの安全地帯が戻る）')
+    .toBeGreaterThan(0);
+
+  // 後半（HP 50% 以下）＝広く・深く・休みは短く。ただし①〜⑧は**すべて保つ**。
+  const p = (m.phases ?? []).find(ph => ph.surge !== undefined);
+  expect(p, '後半の相が打ち寄せを差し替えていない＝前半と同じ動きのまま').toBeTruthy();
+  expect(p.hpThreshold).toBe(0.5);
+  expect(Object.keys(p.surge).sort(), '後半の綴りが前半と違う＝どれかが既定値に落ちる').toEqual(KEYS);
+  expect(p.surge.triggerRange, '後半の引き金が広がっていない').toBeGreaterThan(c.triggerRange);
+  expect(p.surge.triggerRange, '後半の引き金が潮吹きの射程を越えた＝射程外が消える')
+    .toBeLessThan(spout.range);
+  expect(p.surge.surgeCells, '後半の乗り上げが深くなっていない').toBeGreaterThan(c.surgeCells);
+  expect(p.surge.cooldownMs, '後半の休みが短くなっていない').toBeLessThan(c.cooldownMs);
+  expect(p.surge.strandedMs, '後半の窓が短くなっていない').toBeLessThan(c.strandedMs);
+  // ⚠️ 後半でも**窓は残す**（弱点の無い敵から攻め口を消すと `yieldAt` に届かない）
+  expect(Math.floor(p.surge.strandedMs / SWORD_COOLDOWN_MS),
+    '後半の窓で剣を3振り返せない＝攻め口が消える').toBeGreaterThanOrEqual(3);
+  // 後半も「地形が窓を決める」を保つ（水の窓は陸より短く・0 でなく・3振りは返せない）
+  expect(p.surge.strandedWaterMs, '後半の水の窓が陸と同じか長い＝引き離す意味が後半で消える')
+    .toBeLessThan(p.surge.strandedMs);
+  expect(p.surge.strandedWaterMs, '後半の水の窓が 0 ＝水際で反撃が一切できない').toBeGreaterThan(0);
+  expect(Math.floor(p.surge.strandedWaterMs / SWORD_COOLDOWN_MS),
+    '後半の水の窓で剣を3振り返せる＝陸と体感が変わらない').toBeLessThan(3);
+  expect(p.surge.strandedWaterMs, '後半の水の窓が前半より長い＝後半で楽になっている')
+    .toBeLessThanOrEqual(c.strandedWaterMs);
+  // ⚠️ 予告と打点と当たり判定は**後半でも据え置き**＝「見てから横へ退く」が最後まで成立する
+  expect(p.surge.windupMs, '後半で予告を縮めた＝盾で防げない一撃の予告が時間の床を割る'
+    + '（強化は間合いと深さと休みの短さで払う）').toBe(c.windupMs);
+  expect(p.surge.hitRange, '後半で当たり判定を広げた＝横へ退く算術が変わる').toBe(c.hitRange);
+  expect(p.surge.surgeAtk, '後半で掃過の打点を上げた＝避けられる技を重くしている').toBe(c.surgeAtk);
+  // 後半も③③'④⑦を満たす（深さが増えた分だけ引き波も速くなる＝前へ出たままにならない）
+  expect(Math.floor(p.surge.windupMs / TICK_MS) * MOVE_STEP,
+    '後半は猶予のあいだに危険域の外へ出られない').toBeGreaterThan(halfW + p.surge.hitRange);
+  expect(Math.floor(p.surge.windupMs / TICK_MS) * MOVE_STEP,
+    `後半は猶予のあいだに本番の部屋で要る ${ROOM_ESCAPE_CELLS} セルを歩けない`)
+    .toBeGreaterThanOrEqual(ROOM_ESCAPE_CELLS);
+  const crawl2 = p.surge.surgeCells / (p.surge.crawlMs / TICK_MS);
+  expect(crawl2 * nSurgeTicks(p.surge.crawlMs),
+    '後半は深く乗り上げるのに引き波の上限が足りない＝掃過ぶん前へ出たまま次の周期に入る')
+    .toBeGreaterThanOrEqual(p.surge.surgeCells);
+  expect(crawl2, '後半の引き波が掃過の半分より速い').toBeLessThan(p.surge.surgeSpeed / 2);
+  expect(crawl2, '後半の引き波の1刻みが MOVE_STEP を越える').toBeLessThanOrEqual(MOVE_STEP);
+  // `speedMultiplier` は**生きている数値**＝平時の泳ぎ（resolveEnemySpeed）に効く（I とは違う）
+  expect(p.speedMultiplier, '後半に泳ぎの加速が無い＝水の中の圧が変わらない').toBeGreaterThan(1);
+  expect((m.speed * p.speedMultiplier * m.moveSpeed.water / TICK_MS) * 1000,
+    '後半の泳ぎがプレイヤーの 7 割より速い＝岸沿いに逃げても引き離せない')
+    .toBeLessThanOrEqual(SWIM_CAP);
+});
+
+test('{-② 乗り上げは5相を順に回り、各相の長さ・絵・音・床の危険域が surge の数と一致する', async ({ page }) => {
+  const c = ENEMY_META[SL].surge;
+  const out = await trackSeaLord(page, { ticks: 40 });
+  const s = out.samples;
+  expect(out.error).toBeUndefined();
+
+  // ① 相の順序＝南岸（端 3.0＝引き金の内側）に立っているだけで乗り上げが始まる
+  const runs = surgeRuns(s);
+  expect(runs.map(r => r.phase).slice(0, 5),
+    '相の順序が windup→sweep→stranded→crawl→idle になっていない')
+    .toEqual(['windup', 'sweep', 'stranded', 'crawl', 'idle']);
+  // ② 予告の長さ＝windupMs（時計は行動ゲートの外＝他の攻撃の硬直で伸び縮みしない）
+  expect(runs[0].ticks, `予告が ${c.windupMs}ms（${c.windupMs / TICK_MS} tick）でない`)
+    .toBe(c.windupMs / TICK_MS);
+  // ③ 予告のあいだ体は1ミリも動かない（＝床に描いた帯が動かない＝嘘にならない）
+  for (const x of s.slice(0, runs[0].ticks)) {
+    expect(x.phase).toBe('windup');
+    expect(x.y, `t${x.t}（予告中）に体が動いた＝帯の基準がずれる`).toBe(s[0].y);
+    expect(x.x, `t${x.t}（予告中）に体が動いた＝帯の基準がずれる`).toBe(s[0].x);
+    expect(x.land, `t${x.t}（予告中）に陸へ出ている＝予告の前に乗り上げている`).toBe(0);
+  }
+  // ④ 狙い＝軸に沿った1本（南）で、予告に入った瞬間に固定される（以後 1 tick も動かない）
+  const aimed = s.slice(0, runs[0].to);
+  for (const x of aimed) {
+    expect([x.vx, x.vy], `t${x.t} の狙いが南（0,+1）でない＝軸に沿っていない`).toEqual([0, 1]);
+    expect([x.sx, x.sy], `t${x.t} で帯の基準が動いた`).toEqual([s[0].sx, s[0].sy]);
+  }
+  expect(s[0].dir, '予告の向きが狙いと食い違う').toBe('down');
+  // ⑤ 掃過＝陸へ乗り上げる（陸のセル数が 0 → 正）＝**この舞台では窓は陸の長さ**（0n の核）
+  const strandRun = runs[2], crawlRun = runs[3];
+  const strand = s.find(x => x.t === strandRun.from);
+  expect(strand.land, '陸で止まっているのに体が水の中＝乗り上げていない').toBeGreaterThan(0);
+  expect(strand.afloat, '陸で止まったのに「水で終わった」と記録されている＝窓の長さが逆に出る')
+    .toBe(false);
+  expect(strand.span, `陸で終わった窓の長さが ${c.strandedMs}ms でない＝地形で窓を選べていない`)
+    .toBe(c.strandedMs);
+  expect(strandRun.ticks, `陸での停止が ${c.strandedMs}ms でない＝反撃の窓の長さが数と食い違う`)
+    .toBe(nSurgeTicks(c.strandedMs));
+  // ⑥ 引き波の終点＝**乗り上げを始めた位置**（0n で「水へ帰る」ではなくなった＝起点へ引く。
+  //    この舞台では起点が水帯の中∴結果として水へ帰る＝陸のセル数も 0 に戻る）
+  const back = s.find(x => x.t === crawlRun.to + 1);
+  expect(back.phase, '引き波の次が idle でない').toBe('idle');
+  expect([back.x, back.y], '帰り着いた位置が乗り上げの起点と違う＝掃過ぶん前へ出たままになる')
+    .toEqual([strand.homeX, strand.homeY]);
+  expect([back.homeX, back.homeY], '帰り先の記録が起点と食い違う').toEqual([s[0].sx, s[0].sy]);
+  expect(back.land, '起点（水帯の中）へ帰ったのに陸のセル数が 0 でない＝起点の記録がずれている')
+    .toBe(0);
+  // ⑦ 絵＝4相それぞれ別のポーズが立ち、長さは JS が渡した数（CSS に数を持たせない）
+  for (const x of s) {
+    expect([x.wind, x.sweep, x.strand, x.crawl].filter(Boolean).length,
+      `t${x.t} で相のポーズが2つ以上（または相と食い違って）立っている`)
+      .toBe(x.phase === 'idle' ? 0 : 1);
+    if (x.phase === 'windup')   expect(x.wind, `t${x.t} の絵が予告になっていない`).toBe(true);
+    if (x.phase === 'sweep')    expect(x.sweep, `t${x.t} の絵が掃過になっていない`).toBe(true);
+    if (x.phase === 'stranded') expect(x.strand, `t${x.t} の絵が陸での停止になっていない`).toBe(true);
+    if (x.phase === 'crawl')    expect(x.crawl, `t${x.t} の絵が這い戻りになっていない`).toBe(true);
+    if (x.phase !== 'idle') {
+      expect(x.spanVar, `t${x.t} の絵の長さが相の長さ（${x.span}ms）と違う`).toBe(`${x.span}ms`);
+    }
+  }
+  // ⑧ 床の危険域＝予告と掃過のあいだだけ・形は「起点の body → 終点の body」を hitRange ぶん
+  //    膨らませた角丸矩形（＝判定 `enemyEdgeDist ≤ hitRange` を軸に沿って掃いた集合そのもの）
+  // ⚠️ 形は**判定と同じ座標系**で測る＝`enemyEdgeDist` は body を「セル添字の箱」
+  //    （中心から半幅 (w-1)/2 ＝ 0.5）として見る∴危険域は その箱 を hitRange ぶん膨らませた物
+  //    ＝幅 (w-1) + hitRange×2。描画は +0.5 セルずらす（セル添字→左上原点）。
+  //    絵をセル幅（2.0）基準で描くと**判定より広い帯**になる＝「塗ってあるのに当たらない」。
+  const HALF = 1;                        // body 2×2 の (w-1) ＝ 判定が見る箱の一辺
+  const zone = s[0].zone;
+  expect(zone, '予告なのに床の危険域が描かれていない＝盾で防げない打点に告知が無い').toBeTruthy();
+  expect(zone.radius, '角の丸みが hitRange と違う＝描いた形が判定の形でない').toBeCloseTo(c.hitRange, 6);
+  expect(zone.w, '帯の幅が 判定の箱（w-1） ＋ hitRange×2 と違う').toBeCloseTo(HALF + c.hitRange * 2, 6);
+  expect(zone.h, '帯の長さが 乗り上げの深さ ＋ 判定の箱 ＋ hitRange×2 と違う')
+    .toBeCloseTo(c.surgeCells + HALF + c.hitRange * 2, 6);
+  // 判定の箱＝添字で [sx, sx+1]／描画では各セルの**中心**（＝添字 +0.5）が基準
+  // ∴帯の左端 ＝ sx + 0.5 − hitRange（右端も同じだけ外へ出る＝体に対して左右対称）
+  expect(zone.left, '帯の左端が起点の body から hitRange ぶん外へ広がっていない')
+    .toBeCloseTo(s[0].sx + 0.5 - c.hitRange, 6);
+  expect(zone.top, '帯の上端が起点の body から hitRange ぶん外へ広がっていない')
+    .toBeCloseTo(s[0].sy + 0.5 - c.hitRange, 6);
+  expect(zone.sweeping, '予告の帯が「もう来ている」色になっている').toBe(false);
+  expect(s.find(x => x.phase === 'sweep').zone.sweeping,
+    '掃過なのに帯の色が予告のまま＝「もう当たる」が絵で読めない').toBe(true);
+  for (const x of s) {
+    if (x.phase === 'windup' || x.phase === 'sweep') continue;
+    expect(x.zone, `t${x.t}（${x.phase}）に危険域が残っている＝当たらない床が塗られている`).toBeNull();
+  }
+  // ⑨ 音＝予告の立ち上がりに seaSurge、当たった tick に seaCrash（＝打点と音が1対1）
+  expect(s[0].newTones, '乗り上げの予告に SE が鳴っていない').toEqual(SURGE_HZ);
+  const hitAt = s.findIndex(x => x.hits >= 1);
+  expect(hitAt, '南岸に立ち続けて一度も当たらない＝乗り上げが届いていない').toBeGreaterThan(-1);
+  expect(s[hitAt].newTones, '波が覆い被さった tick に seaCrash が鳴っていない').toEqual(SL_CRASH_HZ);
+  expect(s[hitAt].hitFx, '当たった tick に波の絵が出ていない').toBe(true);
+});
+
+test('{-③ 掃過は盾を向けても防げず、陸で止まっている窓のあいだ攻撃は一切出ない', async ({ page }) => {
+  const m = ENEMY_META[SL];
+  const c = m.surge;
+  // 報告と同じ姿勢＝**海の主を向いたまま一歩も退かない**（盾の正面が海の主を向いている）
+  const out = await trackSeaLord(page, { ticks: 70, debugOff: true, face: true });
+  const s = out.samples;
+  expect(out.error).toBeUndefined();
+  expect(s[0].shieldTier, '盾を持っていない＝「盾で防げない」を測れていない').toBeGreaterThanOrEqual(0);
+  for (const x of s) {
+    expect(x.pdir, `t${x.t} で盾の正面が海の主（北）を向いていない＝防げるはずの姿勢になっていない`)
+      .toBe('up');
+  }
+  // ① 掃過が当たる（盾を向けていても）＝ダメージは surgeAtk − def ちょうど
+  const hitAt = s.findIndex(x => x.hits >= 1);
+  expect(hitAt, '盾を向けて立っていれば掃過も消える＝「向いて待つだけで無傷」が残っている')
+    .toBeGreaterThan(-1);
+  expect(s[hitAt].php, '当てた回数は増えたのに HP が減っていない＝盾に吸われている')
+    .toBeLessThan(s[0].php);
+  expect(s[0].php - s[hitAt].php, '掃過のダメージが surgeAtk − def と違う')
+    .toBe(Math.max(1, c.surgeAtk - s[hitAt].pdef));
+  // ② 掃過の前に1ダメージも通らない＝体当たりも潮吹きも盾で消えている（＝穴の中身そのもの）
+  for (const x of s.slice(0, hitAt)) {
+    expect(x.php, `t${x.t}（掃過の前）に HP が減った＝掃過以外の打点で測ってしまっている`)
+      .toBe(s[0].php);
+  }
+  // ③ 1回の乗り上げで打点は1回だけ（何 tick 重なっても増えない）
+  const firstCycle = s.filter(x => x.surges === 1);
+  expect(Math.max(...firstCycle.map(x => x.hits)), '1回の乗り上げで2回以上当たっている').toBe(1);
+  // ④ 陸で止まっている窓＝**攻撃が一切出ない**（体当たりの間合いの内に居るのに振らない）
+  const win = s.filter(x => ['sweep', 'stranded', 'crawl'].includes(x.phase));
+  const ram = m.attacks.find(a => a.type === 'sword');
+  expect(win.some(x => x.reach <= ram.range),
+    '陸で止まった巨体が体当たりの間合いの外に居る＝窓の意味（殴り合える距離）が無い').toBe(true);
+  // ⚠️ 比べる相手は「窓に入る直前の値」＝巡と巡のあいだ（idle）には潮吹きを撃つのが正しい
+  //    （全 tick を t1 の値と比べると、休みのあいだの射撃まで窓破りに数える＝歯のない赤）
+  const streaks = [];
+  let cur = null;
+  for (let i = 0; i < s.length; i++) {
+    if (!['sweep', 'stranded', 'crawl'].includes(s[i].phase)) { cur = null; continue; }
+    if (!cur) { cur = { before: s[i - 1] ?? s[0], items: [] }; streaks.push(cur); }
+    cur.items.push(s[i]);
+  }
+  expect(streaks.length, '窓が1度も来ていない').toBeGreaterThanOrEqual(2);
+  for (const st of streaks) {
+    const before = JSON.stringify(st.before.attackTimes);
+    for (const x of st.items) {
+      expect(JSON.stringify(x.attackTimes),
+        `t${x.t}（${x.phase}）に新しい攻撃が出た＝反撃の窓が窓でない`).toBe(before);
+    }
+  }
+  // ⑤ 周期は繰り返す（＝陸で固まらない＝機構が2周目に入る）
+  const last = s[s.length - 1];
+  expect(last.surges, '70 tick（8.4 秒）で乗り上げが2回来ない＝陸で固まっているか休みが長すぎる')
+    .toBeGreaterThanOrEqual(2);
+  expect(last.hits, '2回目の乗り上げが当たっていない＝棒立ちが罰されていない')
+    .toBe(last.surges);
+  // ⑥ 打点の出どころは掃過だけ（盾で防げる攻撃は相変わらず全部消えている＝設計どおり）
+  let hits = 0;
+  for (let i = 1; i < s.length; i++) {
+    if (s[i].php >= s[i - 1].php) continue;
+    hits++;
+    expect(s[i - 1].php - s[i].php, `t${s[i].t} の被弾が surgeAtk − def と違う`
+      + '＝掃過以外の打点が混ざっている（盾で防げる攻撃が通っている）')
+      .toBe(Math.max(1, c.surgeAtk - s[i].pdef));
+    expect(s[i].hits, `t${s[i].t} の被弾と「当てた回数」の数え上げが食い違う`).toBe(hits);
+  }
+  expect(hits, '被弾が観測できていない').toBeGreaterThanOrEqual(2);
+});
+
+test('{-④ 予告のあいだに横へ退けば波は空を打つ（狙いは追尾しない＝床の帯が嘘にならない）', async ({ page }) => {
+  const c = ENEMY_META[SL].surge;
+  // 予告に入ってから西へ3歩（1.5 セル）＝危険域の半幅（0.5 ＋ 0.8）の外へ出る
+  const out = await trackSeaLord(page, {
+    ticks: 36, debugOff: true, moveWhen: { atPhase: 'windup', dir: 'left', steps: 3 },
+  });
+  const s = out.samples;
+  expect(out.error).toBeUndefined();
+  expect(out.movedAt.length, '予告のあいだに退けていない＝避け方を測れていない').toBe(3);
+  // ① 乗り上げは来た（＝引き金は引かれた）が、当たっていない
+  const last = s[s.length - 1];
+  expect(last.surges, '一度も乗り上げて来ない＝避けたことを測れていない').toBeGreaterThanOrEqual(1);
+  expect(last.hits, '横へ退いたのに当たっている＝狙いが追尾している（帯が嘘になる）').toBe(0);
+  for (const x of s) {
+    expect(x.php, `t${x.t} で HP が減った＝横へ退いても避けられない（答えが無い攻撃）`).toBe(s[0].php);
+  }
+  // ② 掃過は**予告で固定した向き**へ真っすぐ進んだ（＝退いた方へ曲がっていない）
+  const sweeps = s.filter(x => x.phase === 'sweep');
+  for (const x of sweeps) {
+    expect([x.vx, x.vy], `t${x.t} の狙いが変わった＝追尾している`).toEqual([0, 1]);
+    expect(x.x, `t${x.t} で横（西）へ寄った＝軸に沿った1本になっていない`).toBe(s[0].x);
+  }
+  // ③ 逃げ切った時点で床の帯の外に居る＝「絵を見て避けた」が数で言える
+  const lastZone = [...s].reverse().find(x => x.zone)?.zone;
+  expect(lastZone, '掃過のあいだ床の帯が消えている').toBeTruthy();
+  const px = s[sweeps.length - 1].px + 0.5;
+  expect(px < lastZone.left || px > lastZone.left + lastZone.w,
+    `プレイヤー（描画 x ${px}）がまだ帯（${lastZone.left}〜${lastZone.left + lastZone.w}）の中`
+    + '＝避け切れていない立ち位置で測っている').toBe(true);
+  // ④ 避けても乗り上げは完結する（硬直して起点まで引く）＝空振りで宙吊りにならない。
+  //    ⚠️ 0n（両生）以降は「空振りの後に陸へ残っていないこと」では測れない＝周期が畳まれた後は
+  //    平時の歩きが陸へも上がる∴測るのは**引き波が起点まで引き切ったこと**。
+  expect(s.some(x => x.phase === 'stranded'), '空振りだと硬直しない').toBe(true);
+  // ⚠️ 「掃過は空を打っても最後まで走る」を測るのは**この本**（南へ 3.0 セル走る道が
+  //    ボスの体（2×2）にとって最後まで空いている唯一の幾何）。`{-⑪`（西へ走る）では
+  //    舞台の看板 (6,1) が両生になった主の体に当たって途中で止まる∴深さは測れない。
+  const strandFirst = s.find(x => x.phase === 'stranded');
+  expect(strandFirst.y - s[0].y, '南へ進んだ量が surgeCells に届かない＝空振りだと途中で止まる')
+    .toBeCloseTo(c.surgeCells, 6);
+  const crawlEnd = surgeRuns(s).find(r => r.phase === 'crawl');
+  expect(crawlEnd, '空振りの後に引き波へ入っていない').toBeTruthy();
+  const home = s.find(x => x.t === crawlEnd.to);
+  expect(home.x, '引き波が横へずれた＝掃過の道を逆に辿っていない').toBe(home.homeX);
+  // ⚠️ **端数は許す**：引き波の速さは `surgeCells / (crawlMs / TICK_MS)` ＝「上限でちょうど
+  //    帰り着く」設計∴実時間の tick が 120ms より僅かに長いだけで最後の1歩が上限に切られる
+  //    （満タンの深さ 3.0 を引くとき実測 0.17 セル残った）。測るのは「起点へ**帰った**こと」
+  //    ∴残りは1歩（0.5 セル）未満で足りる（引き波が無い／逆向きなら残りは 3.0 になる）。
+  expect(Math.abs(home.y - home.homeY),
+    `空振りの後に起点まで引いていない（残り ${Math.abs(home.y - home.homeY)} セル）`
+    + '＝掃過ぶん前へ出たままになる').toBeLessThan(MOVE_STEP);
+  expect(last.phase, '空振りの後に相が畳まれていない').toBe('idle');
+  expect(last.readyAt, '次の乗り上げまでの間が数えられていない').toBeGreaterThan(0);
+  expect(c.hitRange, '当たり判定が広がった＝この本の立ち位置（1.5 セル退避）では測れない')
+    .toBeLessThan(1.5 - 0.5);
+});
+
+// ⚠️ この本は 0n（2026-09-01）で**意図的に裏返した**：旧 `{-⑤` は「平時は水のセルから
+//    はみ出さない／陸の向こうの相手には岸に沿って横滑りする」を測っていた。捨てた理由は
+//    節の頭の ⚠️（池に閉じた主は斜めにずれた床へ軸を合わせられず、実測9セルが永久の安全地帯に
+//    なった）。∴測る物を「水から出ないこと」から「**陸へも上がって寄ること**」へ入れ替える。
+test('{-⑤ 平時は両生＝水でも陸でもプレイヤーへ寄る（地形が変えるのは速さだけ）', async ({ page }) => {
+  // 引き金の外（端 6.71）＝乗り上げは起きない∴平時の歩きだけを測れる
+  const m = ENEMY_META[SL];
+  const out = await trackSeaLord(page, { ticks: 14, spawn: SL_FAR });
+  const s = out.samples;
+  expect(out.error).toBeUndefined();
+  const first = s[0], last = s[s.length - 1];
+  // ① 前提＝この 14 tick は一度も乗り上げていない（＝測っているのは平時の歩き）
+  expect(last.surges, '引き金の外なのに乗り上げた＝triggerRange が効いていない').toBe(0);
+  for (const x of s) expect(x.phase, `t${x.t} の相が idle でない`).toBe('idle');
+  // ② **水帯を出て陸へ上がる**（両生）＝プレイヤーは南（陸の向こう）に居る∴南へ動く手を指す。
+  //    ここが 0 のままなら「水から出ない」実装に戻った＝斜めの安全地帯が復活している。
+  expect(last.y, 'プレイヤー側（南）へ 1 ミリも動かない＝水帯に閉じている（両生でない）')
+    .toBeGreaterThan(first.y);
+  expect(Math.max(...s.map(x => x.land)), '14 tick のあいだ体が一度も陸に掛からない'
+    + '＝水の外へ出られていない（＝斜めにずれて立つだけで無敵に戻る）').toBeGreaterThan(0);
+  // ③ 遠い軸から詰める（`enemyChase` と同じ歩き方）＝西（dx 6.5）が先で、南（dy 3.5）は後
+  //    （s[0] ＝1 tick 進めた後の値∴湧きの座標は定数 SL_ROW/SL_COL で見る）
+  expect(last.x, '西へ寄っていない＝プレイヤーを追っていない（置物）').toBeLessThan(first.x);
+  expect(s[0].x, '1 tick 目に西へ動いていない').toBeLessThan(SL_COL);
+  expect(s[0].y, '1 tick 目に南へ動いた＝遠い軸（西）より近い軸を先に詰めている').toBe(SL_ROW);
+  // ④ 1 tick の刻みは**必ず** `speed × moveSpeed`（水 0.25／陸 0.125）の内側＝
+  //    プレイヤーの1歩（MOVE_STEP 0.5）より小さい＝走って逃げれば必ず引き離せる
+  const swim = m.speed * m.moveSpeed.water;
+  for (let i = 1; i < s.length; i++) {
+    const d = Math.abs(s[i].x - s[i - 1].x) + Math.abs(s[i].y - s[i - 1].y);
+    expect(d, `t${s[i].t} の刻みが speed × moveSpeed.water（${swim}）を越えた＝地形倍率が効いていない`)
+      .toBeLessThanOrEqual(swim + 1e-9);
+    expect(d, `t${s[i].t} の刻みがプレイヤーの1歩（${MOVE_STEP}）以上＝逃げ切れない`)
+      .toBeLessThan(MOVE_STEP);
+  }
+  // ⑤ 平時に**帰り先を記録しない**＝帰り先は「乗り上げの起点」だけを指す（0n の単一の真実）。
+  //    ⚠️ 0n までは毎 tick 更新していた（＝最後に丸ごと水だった座標）。毎 tick 更新へ戻すと
+  //    引き波が「起点」ではなく「直前の位置」へ引く＝掃過ぶん前へ出たままになる。
+  for (const x of s) {
+    expect(x.homeX, `t${x.t} に帰り先が記録された＝乗り上げていないのに引き波の終点が動いている`)
+      .toBeNull();
+    expect(x.homeY, `t${x.t} に帰り先が記録された`).toBeNull();
+  }
+});
+
+// ⚠️ この本も 0n で前提を入れ替えた：旧題は「乗り上げた体は**必ず水へ帰る**（這い戻りが
+//    上限で切れても泳ぎが帰り先へ連れ戻す）」＝水に閉じた主だから要った保証。両生になった今
+//    「陸に残ること」は事故ではない（陸でも歩ける）∴測るべきは
+//    **引き波が上限で切れて途中に残っても周期が宙吊りにならない**ことへ移る。
+test('{-⑥ 引き波は起点へ引き、上限で切れて途中に残っても周期は宙吊りにならない', async ({ page }) => {
+  const c = ENEMY_META[SL].surge;
+  // 引き波を**わざと間に合わない遅さにする**＝上限（`crawlMs`）で切れた時点でまだ起点から
+  // 遠い、という状況を作る。⚠️ `crawlMs` を縮めるだけでは作れない：引き波の速さは
+  // `surgeCells / (crawlMs/TICK_MS)` の**導出値**∴縮めるほど速くなり、必ず間に合ってしまう
+  // （実測＝`crawlMs 240` は 1.5 セル/tick で 2 tick で帰り着く＝この本の前提に届かない）。
+  // ∴取り残しを作る唯一の入口は `crawlSpeed` の直接指定（出荷データには無い＝{-① が番をする）。
+  const m = ENEMY_META[SL];
+  const out = await trackSeaLord(page, {
+    ticks: 50, patch: { surge: { ...c, crawlMs: 240, crawlSpeed: 0.05 } },
+  });
+  const s = out.samples;
+  expect(out.error).toBeUndefined();
+  // ① 上限が足りない＝引き波の終わりに**まだ起点から遠い**（この本の前提）
+  const crawlRun = surgeRuns(s).find(r => r.phase === 'crawl');
+  expect(crawlRun, '引き波に入っていない＝前提が崩れた').toBeTruthy();
+  expect(crawlRun.ticks, '引き波が上限で切れていない＝取り残される状況を作れていない')
+    .toBe(nSurgeTicks(240));
+  const stuck = s.find(x => x.t === crawlRun.to);
+  const distTo = (x) => Math.hypot(x.x - stuck.homeX, x.y - stuck.homeY);
+  expect(distTo(stuck), '引き波の上限で切れたのに起点へ帰り着いている＝前提が崩れた')
+    .toBeGreaterThan(MOVE_STEP);
+  expect(stuck.land, '掃過が陸で終わっていない＝この舞台（南岸）の前提が崩れた').toBeGreaterThan(0);
+  // ② 引き波のあいだは**起点から遠ざからない**（＝掃過の逆向きへ引く。追い直さない）
+  const crawling = s.filter(x => x.phase === 'crawl');
+  for (let i = 1; i < crawling.length; i++) {
+    expect(distTo(crawling[i]), `t${crawling[i].t} で起点から遠ざかった＝引き波が追っている`)
+      .toBeLessThanOrEqual(distTo(crawling[i - 1]) + 1e-9);
+  }
+  // ③ 上限で切れたら**必ず idle へ畳む**＝相が crawl のまま固まらない（宙吊りの正体）
+  const after = s.find(x => x.t === crawlRun.to + 1);
+  expect(after.phase, '引き波が切れた後の相が idle でない＝周期が crawl で固まる').toBe('idle');
+  expect(after.readyAt, '次の乗り上げまでの間が数えられていない＝周期が止まる').toBeGreaterThan(0);
+  // ④ 途中に残ったまま**平時の歩きが再開する**（両生∴陸でも歩ける＝置物にならない）。
+  //    ⚠️ ここが 0n の変更点そのもの：旧実装は「陸に居るあいだの仕事は帰ることだけ」で、
+  //    その規則を落とすと巨体が陸で永久に固まった。今はその規則自体が無い＝歩けることを測る。
+  const roam = s.filter(x => x.t > crawlRun.to && x.phase === 'idle');
+  expect(roam.length, '引き波の後に idle の tick が無い＝測れていない').toBeGreaterThan(2);
+  expect(roam.some(x => x.x !== after.x || x.y !== after.y),
+    '引き波が切れた後 1 ミリも動かない＝陸で固まっている（機構が死ぬ）').toBe(true);
+  const swim = m.speed * m.moveSpeed.water;
+  for (let i = 1; i < roam.length; i++) {
+    const d = Math.abs(roam[i].x - roam[i - 1].x) + Math.abs(roam[i].y - roam[i - 1].y);
+    if (roam[i].t !== roam[i - 1].t + 1) continue;      // 相を跨いだ差分は測らない
+    expect(d, `t${roam[i].t} の刻みが speed × moveSpeed.water を越えた＝陸の上で速くなっている`)
+      .toBeLessThanOrEqual(swim + 1e-9);
+  }
+  // ⑤ 周期は普通に回る（＝2回目の乗り上げが来る）＝取り残しが周期を殺していない
+  expect(s[s.length - 1].surges, '取り残された後に乗り上げが再開しない＝周期が宙吊り')
+    .toBeGreaterThanOrEqual(2);
+});
+
+test('{-⑦ HP 半分で打ち寄せの設定が差し替わり、走っている周期は畳まれない（窓は縮まない）', async ({ page }) => {
+  const m = ENEMY_META[SL];
+  const c = m.surge, p2 = m.phases.find(ph => ph.surge !== undefined).surge;
+  // **陸で止まっている最中に**半分を割らせる（＝殴り返している最中に相が切り替わる状況そのもの）
+  const out = await trackSeaLord(page, {
+    ticks: 60, debugOff: true, dropWhen: { atPhase: 'stranded', dmg: 53 + m.def },
+  });
+  const s = out.samples;
+  expect(out.error).toBeUndefined();
+  const runs = surgeRuns(s);
+  const strandRun = runs.find(r => r.phase === 'stranded');
+  expect(strandRun, '陸で止まる相に入っていない＝前提が崩れた').toBeTruthy();
+  const dropIdx = s.findIndex(x => x.hp < m.hp);
+  expect(dropIdx, 'ダメージが入っていない').toBeGreaterThan(-1);
+  expect(s[dropIdx].hp, 'HP が半分を割っていない＝相が発火しない').toBeLessThanOrEqual(m.hp * 0.5);
+  expect(s[dropIdx].phase, '陸で止まっている最中に落とせていない＝測りたい場面と違う')
+    .toBe('stranded');
+  // ① 設定が差し替わった（`_surge`＝エンティティ側の1つの入口）
+  expect(s[s.length - 1].cfg, '後半の打ち寄せの設定が入っていない').toEqual(p2);
+  // ② **走っている1周は畳まれない**＝殴り返している窓が「殴った本人のせいで」消えない
+  expect(strandRun.ticks, `相が切り替わった瞬間に陸での停止が ${p2.strandedMs}ms へ縮んだ`
+    + '＝殴り返す窓が殴った本人のせいで消える').toBe(nSurgeTicks(c.strandedMs));
+  expect(runs[runs.indexOf(strandRun) + 1].phase, '相の切り替えで周期が idle へ飛んだ'
+    + '＝陸の上で泳ぎしか持たない移動に戻る（動かない砲台になる）').toBe('crawl');
+  // ③ 2周目は後半の数で動く＝**深く**乗り上げ、**予告は縮まない**
+  const second = s.filter(x => x.surges >= 2);
+  expect(second.length, '後半に入ってから乗り上げが来ない').toBeGreaterThan(0);
+  const w2 = surgeRuns(second).find(r => r.phase === 'windup');
+  expect(w2.ticks, '後半で予告が縮んだ＝盾で防げない一撃を見てから動けない')
+    .toBe(p2.windupMs / TICK_MS);
+  const sw2 = second.filter(x => x.phase === 'sweep');
+  expect(Math.max(...sw2.map(x => x.zone?.h ?? 0)),
+    '後半の帯が深くなっていない＝強化が絵に出ていない')
+    .toBeCloseTo(p2.surgeCells + 1 + p2.hitRange * 2, 6);
+  // ④ 後半でも周期は宙吊りにならない＝2周目も予告→掃過→硬直と進む（相が sweep で固まらない）。
+  //    ⚠️ 「水へ帰れず陸で固まっている」を測る本ではなくなった（0n＝両生∴陸に居てよい）。
+  expect(surgeRuns(second).map(r => r.phase).slice(0, 2),
+    '後半の2周目が 予告→掃過 の順で進んでいない').toEqual(['windup', 'sweep']);
+  expect(second.some(x => x.phase === 'stranded'),
+    '後半の掃過の後に硬直へ入っていない＝相が sweep のまま固まる').toBe(true);
+});
+
+test('{-⑧ 打ち寄せの使い手は { だけ・{ は他の8体の移動機構を持たない', () => {
+  const sm = mechanismsOf(ENEMY_META[SL]);
+  const others = ['W', 'A', 'N', 'J', 'O', 'U', 'G', 'I'].map(k => mechanismsOf(ENEMY_META[k]));
+  expect(sm.has('surge'), '{ が移動機構（surge）を持っていない').toBe(true);
+  expect([...sm].filter(k => others.every(x => !x.has(k))).length,
+    '{ に他の8体が持たない機構が1つも無い＝9体目の型になっていない').toBeGreaterThan(0);
+  expect(others.some(x => x.has('surge')),
+    '他のボスが打ち寄せを持っている＝{ の固有機構ではない').toBe(false);
+  const users = Object.entries(ENEMY_META).filter(([, m]) => m.surge).map(([k]) => k);
+  expect(users, '打ち寄せを持つ敵が { 以外にも居る（設計が重複した）').toEqual([SL]);
+  // 借り物でない番人＝特に `combat`（W）や `dash` が生えた瞬間に「地形が位置を決める」が消える
+  for (const k of ['combat', 'laneStalk', 'burrowAmbush', 'hide', 'dash', 'coil', 'gaze',
+    'soar', 'momentum', 'leap', 'tongue', 'zigzag']) {
+    expect(ENEMY_META[SL][k], `${k} を持っている＝W/A/N/J/O/U/G/I の型を借りている`).toBeUndefined();
+  }
+  for (const p of ENEMY_META[SL].phases ?? []) {
+    for (const k of ['dash', 'coil', 'hide', 'gaze', 'soar', 'momentum', 'tongue']) {
+      expect(p[k], `後半に ${k} が生えている＝他のボスの後半と同じ型`).toBeUndefined();
+    }
+  }
+});
+
+test('{-⑨ bal_sea_lord は 10×12・水帯は body と同じ 2 行・{ が (4,7) に1体だけ・南北に岸がある', () => {
+  const MAP_PATH = fileURLToPath(new URL('../work/blade-of-lumia.json', import.meta.url));
+  const MAP = JSON.parse(readFileSync(MAP_PATH, 'utf8'));
+  const sd = MAP.layers[TEST_LAYER].stages[stageKey('bal_sea_lord')];
+  expect(sd.rows).toBe(10);
+  expect(sd.cols).toBe(12);
+  const c = ENEMY_META[SL].surge;
+  // 水判定は passable.js `isWaterAt` と同じ式（tiles 層でも bgTiles 層でも水）
+  const water = (r, cc) => sd.tiles[r]?.[cc] === TILE.WATER
+    || sd.bgTiles?.[`${r},${cc}`] === TILE.WATER;
+
+  const lords = [];
+  for (let r = 0; r < sd.rows; r++) {
+    for (let cc = 0; cc < sd.cols; cc++) {
+      const ch = sd.tiles[r][cc];
+      if (ch === TILE.SEA_LORD) { lords.push([r, cc]); continue; }
+      if (r === 6 && cc === 1) continue;              // 看板 i（南岸の脇）
+      if (water(r, cc)) continue;                     // 水帯（下で形を測る）
+      const edge = r === 0 || cc === 0 || r === sd.rows - 1 || cc === sd.cols - 1;
+      const want = edge && !isArenaDoor(r, cc, sd.cols) ? TILE.WALL : TILE.FLOOR;
+      expect(sd.tiles[r][cc], `(${r},${cc}) が想定と違う`).toBe(want);
+    }
+  }
+  expect(lords, '{ が1体だけ (4,7) に居る前提が崩れた').toEqual([[SL_ROW, SL_COL]]);
+  // ① 水帯＝**body と同じ 2 行**（rows 4-5）で横は端から端まで。
+  // ⚠️ この「丸ごと水に入れる y が1点しかない」幾何を**残す**こと＝引き波の帰り先を座標で
+  //    持たず条件（「丸ごと水」など）で判定すると、固定幅の刻みでは条件を満たす点を必ず
+  //    通り過ぎる（2026-09-01 に実装中に踏んだ＝北岸で永久に固まった）＝その罠を再発させたら
+  //    赤くなる舞台。両生（0n）になっても引き波の刻み方は同じ∴この舞台の価値は変わらない。
+  const rowsOfWater = [];
+  for (let r = 0; r < sd.rows; r++) {
+    const n = [...Array(sd.cols).keys()].filter(cc => water(r, cc) || sd.tiles[r][cc] === TILE.SEA_LORD).length;
+    if (n > 0) rowsOfWater.push([r, n]);
+  }
+  expect(rowsOfWater.map(([r]) => r), '水帯が rows 4-5 の 2 行でない＝機構の舞台が変わった')
+    .toEqual([SL_ROW, SL_ROW + 1]);
+  for (const [r, n] of rowsOfWater) {
+    expect(n, `水帯 row ${r} が端から端まで（10 セル）でない＝横滑りの助走が足りない`).toBe(10);
+  }
+  // ② 南北に岸がある＝乗り上げの深さ（surgeCells）ぶんの床が両方にある
+  for (const dir of [-1, 1]) {
+    for (let k = 1; k <= c.surgeCells; k++) {
+      const r = dir < 0 ? SL_ROW - k : SL_ROW + 1 + k;
+      expect(sd.tiles[r]?.[SL_COL], `(${r},${SL_COL}) が床でない＝${dir < 0 ? '北' : '南'}へ`
+        + '乗り上げる深さが足りない').toBe(TILE.FLOOR);
+    }
+  }
+  // ③ この節の湧きの前提＝間合い（`enemyEdgeDist` と同じ式）
+  const edgeDist = (row, col) => Math.hypot(
+    Math.max(0, Math.abs(col - (SL_COL + 0.5)) - 0.5),
+    Math.max(0, Math.abs(row - (SL_ROW + 0.5)) - 0.5));
+  expect(sd.tiles[SL_STAND.row][SL_STAND.col], '南岸の湧きが床でない').toBe(TILE.FLOOR);
+  expect(sd.tiles[SL_FAR.row][SL_FAR.col], '引き金の外の湧きが床でない').toBe(TILE.FLOOR);
+  // 南岸＝引き金の内側で、掃過（surgeCells）がちょうど届く距離
+  expect(edgeDist(SL_STAND.row, SL_STAND.col), '南岸の湧きが引き金の外')
+    .toBeLessThanOrEqual(c.triggerRange);
+  expect(edgeDist(SL_STAND.row, SL_STAND.col), '南岸の湧きへ掃過が届かない＝当たりを測れない')
+    .toBeLessThanOrEqual(c.surgeCells);
+  // 引き金の外が実在する（GUIDE §7-15＝部屋が狭くて常に射程内、を作らない）
+  expect(edgeDist(SL_FAR.row, SL_FAR.col), '引き金の外に立てる場所が無い＝平時の泳ぎを測れない')
+    .toBeGreaterThan(c.triggerRange);
+  // 西へ 3 歩（1.5 セル）退く床がある（{-④ の避け方）
+  for (let k = 1; k <= 2; k++) {
+    expect(sd.tiles[SL_STAND.row][SL_STAND.col - k], `(${SL_STAND.row},${SL_STAND.col - k}) が床でない`
+      + '＝横へ退く助走が無い').toBe(TILE.FLOOR);
+  }
+});
+
+// ── {-⑩ 本番のボス部屋（field 12,19）の前提＝闘技場で測った機構がそのまま成立する ─────────
+// ⚠️ 検証ステージで緑でも本番の部屋で機構が死ぬ（＝プレイヤーが一生見ない）ことがある
+//    ＝U 嵐の鷲王・I 沼地の大蝦蟇の実プレイ報告で2度踏んだ穴（GUIDE §7-15）。∴本番の幾何も測る。
+// ⚠️ 0n（2026-09-01 の再判定 NG）で**測り方そのものを入れ替えた**（下の ⑤〜⑧ の ⚠️）。
+test('{-⑩ 本番のボス部屋に無敵セルが無く、予告のあいだに危険域の外へ出られる（前半・後半とも）', () => {
+  const MAP_PATH = fileURLToPath(new URL('../work/blade-of-lumia.json', import.meta.url));
+  const MAP = JSON.parse(readFileSync(MAP_PATH, 'utf8'));
+  const sd = MAP.layers.field.stages['12,19'];
+  expect(sd?.isBossRoom, '本番のボス部屋（field 12,19）がボス部屋でない').toBe(true);
+  const c = ENEMY_META[SL].surge;
+  const water = (r, cc) => sd.tiles[r]?.[cc] === TILE.WATER
+    || sd.bgTiles?.[`${r},${cc}`] === TILE.WATER;
+  // 陸＝乗り上げ先になれる床（石畳・床）。壁／家の外壁は乗り上げられない。
+  const landable = (r, cc) => {
+    const ch = sd.tiles[r]?.[cc];
+    return !!ch && !water(r, cc) && (ch === TILE.FLOOR || ch === TILE.STONE_FLOOR);
+  };
+  let at = null;
+  for (let r = 0; r < sd.rows; r++) {
+    for (let cc = 0; cc < sd.cols; cc++) if (sd.tiles[r][cc] === TILE.SEA_LORD) at = [r, cc];
+  }
+  expect(at, '本番のボス部屋に { が居ない').toBeTruthy();
+  const [br, bc] = at;
+  // ① { は**水の中**に立っている（2×2 の4セルすべて水）＝平時の泳ぎが成立する
+  for (let r = br; r <= br + 1; r++) {
+    for (let cc = bc; cc <= bc + 1; cc++) {
+      expect(water(r, cc) || sd.tiles[r][cc] === TILE.SEA_LORD,
+        `本番の { の body (${r},${cc}) が水でない＝湧いた瞬間に陸に乗っている`).toBe(true);
+    }
+  }
+  // ② 乗り上げ先＝4軸のどれかで、掃過の道が塞がっておらず、**終点で体の下に陸がある**
+  //    （＝盾で防げない唯一の打点が本番でも出る。ここが 0 なら「正面を向いて待つだけで無傷」に戻る）
+  const passable = (r, cc) => water(r, cc) || landable(r, cc)
+    || sd.tiles[r]?.[cc] === TILE.SEA_LORD || sd.tiles[r]?.[cc] === TILE.DOORWAY_BOSS;
+  const bodyOk = (r, cc) => passable(r, cc) && passable(r + 1, cc)
+    && passable(r, cc + 1) && passable(r + 1, cc + 1);
+  const bodyLand = (r, cc) => [[r, cc], [r + 1, cc], [r, cc + 1], [r + 1, cc + 1]]
+    .filter(([y, x]) => landable(y, x)).length;
+  const hauls = [[0, -1], [0, 1], [-1, 0], [1, 0]].filter(([dr, dc]) => {
+    // 掃過は連続座標を surgeSpeed 刻みで進む∴間のセルも通れないと途中で止まる
+    for (let k = 1; k <= c.surgeCells; k++) {
+      if (!bodyOk(br + dr * k, bc + dc * k)) return false;
+    }
+    return bodyLand(br + dr * c.surgeCells, bc + dc * c.surgeCells) > 0;
+  });
+  expect(hauls.length, '本番のボス部屋では乗り上げる先が無い＝盾で防げない唯一の打点が出ない'
+    + '（＝正面を向いて待つだけで無傷に戻る）').toBeGreaterThan(0);
+  // ③ 引き金（triggerRange）の内側に**立てる床**がある＝乗り上げが実プレイで起きる
+  let inside = 0;
+  const edgeDist = (row, col) => Math.hypot(
+    Math.max(0, Math.abs(col - (bc + 0.5)) - 0.5),
+    Math.max(0, Math.abs(row - (br + 0.5)) - 0.5));
+  for (let r = 0; r < sd.rows; r++) {
+    for (let cc = 0; cc < sd.cols; cc++) {
+      if (landable(r, cc) && edgeDist(r, cc) <= c.triggerRange) inside++;
+    }
+  }
+  expect(inside, '引き金の内側に立てる床が無い＝本番では一度も乗り上げて来ない').toBeGreaterThan(0);
+  // ④ { が実際に泳げる水面＝**body を含む水の連結成分**（部屋の外周も水だが石畳の輪で隔たれて
+  //    いる∴部屋全体の水を数えても意味が無い）。
+  //    ⚠️ 2026-09-01 実測＝内側の池は 4×4 の 16 セル（body 2×2 ∴横滑りの余地は縦横 2 セルずつ）。
+  //    実プレイの判断（d）で部屋を作り直したが、**池はこの 16 セルのまま**（広げたのは
+  //    まわりの輪＝下の ⑤/⑥）＝ユーザー決定「このボスがいる4x4の枠はそのままに、そのまわりの
+  //    移動できる部分を外側に広げる」。∴この数が動いたら池を触った＝別の設計変更。
+  const seen = new Set([`${br},${bc}`]);
+  const q = [[br, bc]];
+  while (q.length) {
+    const [r, cc] = q.shift();
+    for (const [dr, dc] of [[0, 1], [0, -1], [1, 0], [-1, 0]]) {
+      const nr = r + dr, nc = cc + dc, k = `${nr},${nc}`;
+      if (seen.has(k) || nr < 0 || cc < 0 || nr >= sd.rows || nc >= sd.cols) continue;
+      if (!water(nr, nc) && sd.tiles[nr][nc] !== TILE.SEA_LORD) continue;
+      seen.add(k); q.push([nr, nc]);
+    }
+  }
+  expect(seen.size, '本番の池の広さが変わった＝横滑りの余地が変わった'
+    + '（PROGRESS に実測を記録してこの数を更新せよ）').toBe(16);
+  // 池は body より縦横 2 セル大きい＝**滑る余地はあるが張り付き続けられはしない**
+  const rowsIn = [...seen].map(k => +k.split(',')[0]);
+  const colsIn = [...seen].map(k => +k.split(',')[1]);
+  expect(Math.max(...rowsIn) - Math.min(...rowsIn) + 1, '池の縦幅が body（2）より狭い＝泳げない')
+    .toBeGreaterThan(2);
+  expect(Math.max(...colsIn) - Math.min(...colsIn) + 1, '池の横幅が body（2）より狭い＝泳げない')
+    .toBeGreaterThan(2);
+
+  // ── ⑤〜⑧ 2026-09-01（0n）実プレイの再判定 NG＝「この位置にいればずっと攻撃があたらず、
+  //    枠攻撃のあとに近づいて剣攻撃連打、あたらなくなったらまたこの位置に戻る、で倒せてしまう」
+  // 旧 ⑤/⑥ は**両生になって嘘になった**∴測り方を2つ入れ替えた：
+  //   ・立ち位置＝「池の中に収まる 2×2」ではなく**両生の BFS**（水も陸も通る）で数える。
+  //     旧＝池の中だけ ∴池の外に立って撃つ掃過を1つも数えていなかった（＝安全地帯を見逃す側）。
+  //   ・危険域＝軸を**無限の行／列**として見ていた（池に閉じた主ならそれで足りた）。両生では
+  //     嘘になる（掃過は前方 `surgeCells` で終わる∴軸に沿って主の背中側へ抜ける逃げ方が実在
+  //     するのに、無限の行では逃げ場ゼロに見える＝実測 111 通りの偽の違反）。∴**床に描く矩形と
+  //     同じ形**（`surgeZoneBox`）で測り、逃げ道は床グラフの BFS で数える。
+  // ⚠️ 柱（家の外壁 'h' ×4）は 0n で撤去した：2×2 の体には柱の**斜めの影**があり、隅の2セル
+  //    （(1,10)・(8,1)）が「乗り上げは起きるのに当たらない」床として残った（実測＝乗り上げ5回・
+  //    命中0）。海の聖域に家の外壁が立っている絵の不自然さも同時に消える。
+  expect(sd.tiles.flatMap(row => [...row]).filter(ch => ch === TILE.HOUSE_WALL).length,
+    '柱（家の外壁）が戻った＝2×2 の体に斜めの影ができる＝無料の反撃窓が復活する').toBe(0);
+  const HALF = 0.5;
+  // 戦闘中にプレイヤーが立てる床（門は入室で `boss_closed` ＝**戦闘中は通れない**）
+  const bossFloor = (r, cc) => landable(r, cc) && sd.tiles[r]?.[cc] !== TILE.DOORWAY_BOSS;
+  const inPool = (r, cc) => seen.has(`${r},${cc}`);
+  // 主の体（2×2）が入れる位置＝**両生**∴水でも陸でもよい（塞ぐのは壁・宝箱・閉じた門）
+  const bodyFree = (r, cc) => [[r, cc], [r + 1, cc], [r, cc + 1], [r + 1, cc + 1]]
+    .every(([y, x]) => y >= 0 && x >= 0 && y < sd.rows && x < sd.cols
+      && (water(y, x) || landable(y, x) || sd.tiles[y][x] === TILE.SEA_LORD));
+  // 主が実際に取り得る立ち位置＝湧き位置から BFS（整数格子＝engine の 0.5 刻みの部分集合
+  // ∴ここで到達と言えるものは engine でも到達できる／取りこぼしは安全側に出る）
+  expect(bodyFree(br, bc), '主の体が湧き位置に入らない＝部屋の形が前提と違う').toBe(true);
+  const anchors = [];
+  {
+    const seenA = new Set([`${br},${bc}`]);
+    const q2 = [[br, bc]];
+    while (q2.length) {
+      const [r, cc] = q2.shift();
+      anchors.push([r, cc]);
+      for (const [dr, dc] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+        const nr = r + dr, nc = cc + dc, k = `${nr},${nc}`;
+        if (seenA.has(k) || !bodyFree(nr, nc)) continue;
+        seenA.add(k); q2.push([nr, nc]);
+      }
+    }
+  }
+  expect(anchors.some(([r, cc]) => !inPool(r, cc)),
+    '主の立ち位置が池の中だけ＝両生になっていない（＝斜めにずれた床が永久の安全地帯に戻る）')
+    .toBe(true);
+  const floors = [];
+  for (let r = 0; r < sd.rows; r++) {
+    for (let cc = 0; cc < sd.cols; cc++) if (bossFloor(r, cc)) floors.push([r, cc]);
+  }
+  expect(floors.length, '戦闘中に立てる床が数えられない＝部屋の形が前提と違う').toBeGreaterThan(20);
+  const anchorEdge = (ar, ac, pr, pc) => Math.hypot(
+    Math.max(0, Math.abs(pc - (ac + HALF)) - HALF),
+    Math.max(0, Math.abs(pr - (ar + HALF)) - HALF));
+  // 実際に飛んで来る掃過＝軸が合い（直交のずれ ≤ hitRange）・軸方向に届き・道が塞がっていないもの
+  const firingAxes = (cfg, ar, ac, pr, pc) => [[0, 1], [0, -1], [1, 0], [-1, 0]].filter(([uy, ux]) => {
+    const gx = Math.max(0, Math.abs(pc - (ac + HALF)) - HALF);
+    const gy = Math.max(0, Math.abs(pr - (ar + HALF)) - HALF);
+    if (ux !== 0 ? gy > cfg.hitRange : gx > cfg.hitRange) return false;
+    if (ux !== 0 ? gx > cfg.surgeCells + cfg.hitRange : gy > cfg.surgeCells + cfg.hitRange) return false;
+    if (ux !== 0 ? Math.sign(pc - (ac + HALF)) !== ux : Math.sign(pr - (ar + HALF)) !== uy) return false;
+    const need = Math.ceil(ux !== 0 ? gx : gy);
+    for (let k = 1; k <= need; k++) if (!bodyFree(ar + uy * k, ac + ux * k)) return false;
+    return true;
+  });
+  // 危険域＝床に描く角丸矩形と**同じ形**（`enemy-ai.js surgeZoneBox`）
+  const inZone = (cfg, ar, ac, uy, ux, r, cc) => {
+    const pad = HALF + cfg.hitRange;
+    const cx = ac + HALF, cy = ar + HALF;
+    const ex = cx + ux * cfg.surgeCells, ey = cy + uy * cfg.surgeCells;
+    return cc >= Math.min(cx, ex) - pad && cc <= Math.max(cx, ex) + pad
+      && r >= Math.min(cy, ey) - pad && r <= Math.max(cy, ey) + pad;
+  };
+  // 危険域の外の床へ出るまでの歩数（床グラフの BFS・1歩＝1セル）。出られなければ Infinity
+  const escapeSteps = (cfg, ar, ac, uy, ux, pr, pc) => {
+    if (!inZone(cfg, ar, ac, uy, ux, pr, pc)) return 0;
+    const got = new Set([`${pr},${pc}`]);
+    let front = [[pr, pc]];
+    for (let step = 1; step <= 8; step++) {
+      const next = [];
+      for (const [r, cc] of front) {
+        for (const [dr, dc] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+          const nr = r + dr, nc = cc + dc, k = `${nr},${nc}`;
+          if (got.has(k) || !bossFloor(nr, nc)) continue;
+          if (!inZone(cfg, ar, ac, uy, ux, nr, nc)) return step;
+          got.add(k); next.push([nr, nc]);
+        }
+      }
+      front = next;
+      if (!front.length) return Infinity;
+    }
+    return Infinity;
+  };
+  // ⑤〜⑦ は**前半・後半それぞれの数**で測る（後半は深さ 4.0 ＝危険域が長い＝逃げるのも遠い）
+  const PHASES = [['前半', c], ['後半', ENEMY_META[SL].phases.find(ph => ph.surge).surge]];
+  // ⑤ **無敵セルが無い**：どの床にも「体当たりが届く立ち位置」と「実際に飛んで来る掃過」が在る。
+  //    ＝実プレイの NG（立っているだけで無傷な床が9セル）を幾何で潰した本体。
+  const noRam = floors.filter(([r, cc]) =>
+    !anchors.some(([ar, ac]) => anchorEdge(ar, ac, r, cc) <= SWORD_REACH));
+  expect(noRam.map(([r, cc]) => `(${r},${cc})`),
+    '体当たりが永久に届かない床がある＝そこに立てば無傷で待てる').toEqual([]);
+  for (const [label, cfg] of PHASES) {
+    const noSweep = floors.filter(([r, cc]) =>
+      !anchors.some(([ar, ac]) => firingAxes(cfg, ar, ac, r, cc).length));
+    expect(noSweep.map(([r, cc]) => `(${r},${cc})`),
+      `${label}: 掃過が永久に届かない床がある＝盾で防げない打点が来ない立ち位置（＝無料の反撃窓）`)
+      .toEqual([]);
+    // ⑥ 予告を見てから危険域の外へ出られる（歩ける距離＝`windupMs / TICK_MS × MOVE_STEP` セル）。
+    //    ⚠️ ここが 0n で `windupMs` を 600 → 720 へ上げた理由そのもの（2.5 セルでは 17 通り
+    //    出られなかった＝南北の 2 行しかない通路で軸に沿って 3 セル走るしかない場合が在る）。
+    const budget = (cfg.windupMs / TICK_MS) * MOVE_STEP;
+    const trapped = [];
+    for (const [pr, pc] of floors) {
+      for (const [ar, ac] of anchors) {
+        for (const [uy, ux] of firingAxes(cfg, ar, ac, pr, pc)) {
+          const steps = escapeSteps(cfg, ar, ac, uy, ux, pr, pc);
+          if (steps > budget) {
+            trapped.push(`(${pr},${pc})←主(${ar},${ac})の`
+              + `${ux ? (ux > 0 ? '東' : '西') : (uy > 0 ? '南' : '北')}掃過(${steps}歩)`);
+          }
+        }
+      }
+    }
+    expect(trapped.length, `${label}: 予告 ${cfg.windupMs}ms（${budget} セル）で危険域から出られない`
+      + `床が ${trapped.length} 通りある＝予告を見ても避ける先が無い立ち位置`
+      + `: ${trapped.slice(0, 6).join(' / ')}`).toBe(0);
+  }
+  // ⑦ 「岸から引き離すのが正解」が**床の上で成立する**＝どちらの窓も選べる。
+  //    水際（池に接した床）で殴れば掃過は水で終わり得る＝窓は `strandedWaterMs`（短い）／
+  //    池から `surgeCells` 以上離れた床へ届く掃過は必ず陸で終わる＝窓は `strandedMs`（長い）。
+  const poolDist = (r, cc) => Math.min(...[...seen].map((k) => {
+    const [pr, pc] = k.split(',').map(Number);
+    return Math.hypot(r - pr, cc - pc);
+  }));
+  const shore = floors.filter(([r, cc]) => poolDist(r, cc) <= 1);
+  const inland = floors.filter(([r, cc]) => poolDist(r, cc) >= c.surgeCells);
+  expect(shore.length, '池に接した床が無い＝水際で殴る（短い窓）という選択が存在しない')
+    .toBeGreaterThan(0);
+  expect(inland.length, `池から ${c.surgeCells} セル以上離れた床が無い＝主を岸から引き離せない`
+    + '（＝長い窓 strandedMs を取る攻略が床の上に無い）').toBeGreaterThan(0);
+  // ⑧ 「射程外」＝0n 以降は**空間ではなく時間**（`cooldownMs`）が作る。
+  //    ⚠️ 旧 ⑥ は「素の `triggerRange`（3.5）の外に立てる床が在る」を測っていた。両生になった
+  //    今その床は**幾何的に作れない**（主は部屋のどこへでも歩いて来る）∴この本で測るのは
+  //    「引き金の内側に立てる床が在る（＝機構が起きる）」＝上の ③ だけにして、息を継ぐ側は
+  //    `{-①` の `cooldownMs > 0` と「主はプレイヤーより遅い（7 割以下）」が保証する。
+});
+
+test('{-⑪ 狙いは予告に**入った瞬間**に固定される（掃過の開始で取り直さない）', async ({ page }) => {
+  // {-④（横へ退く）では狙いの取り直しを検出できない：あの立ち位置（南 3.5・西 2.5 まで退避）
+  // では取り直しても軸が西へ倒れない∴「予告の終わりで取り直す」細工が緑のまま通る。
+  // ∴**軸が入れ替わる**幾何をわざと作る：
+  //   立ち位置 (6,4) ＝ dx −3.5 / dy 1.5 ∴予告に入った瞬間の軸は**西**（面まで 3.16＝引き金 3.5 の内側）。
+  //   予告のあいだに南へ 4 歩（0.5×4）歩くと (8,4) ＝ dx −3.5 / dy 3.5 ＝**同点**
+  //   ∴`Math.abs(dx) > Math.abs(dy)` が偽になり、取り直せば軸は**南**へ倒れる。
+  const c = ENEMY_META[SL].surge;
+  const out = await trackSeaLord(page, {
+    ticks: 24, debugOff: true, spawn: { row: 6, col: 4 },
+    moveWhen: { atPhase: 'windup', dir: 'down', steps: 4 },
+  });
+  const s = out.samples;
+  expect(out.error).toBeUndefined();
+  expect(out.movedAt.length, '予告のあいだに南へ歩けていない＝軸の入れ替えを作れていない').toBe(4);
+  // ① 予告の帯は**西向き**（＝入った瞬間の軸）で描かれる
+  const wind = s.filter(x => x.phase === 'windup');
+  expect(wind.length, '予告に入っていない＝引き金の内側に立てていない').toBeGreaterThan(0);
+  for (const x of wind) {
+    expect([x.vx, x.vy], `t${x.t} の予告の軸が西でない＝立ち位置の前提が崩れた`).toEqual([-1, 0]);
+  }
+  const z = wind[wind.length - 1].zone;
+  expect(z, '予告のあいだ床の帯が無い').toBeTruthy();
+  expect(z.w, '西向きの帯の幅が surgeCells ぶんに伸びていない')
+    .toBeCloseTo(c.surgeCells + 1 + c.hitRange * 2, 6);
+  expect(z.h, '西向きの帯の高さが body 1本ぶんでない＝軸に沿った1本になっていない')
+    .toBeCloseTo(1 + c.hitRange * 2, 6);
+  // ② 掃過は**南へ倒れない**＝軸は予告に入った瞬間のまま（取り直したらここで赤くなる）
+  const sweeps = s.filter(x => x.phase === 'sweep');
+  expect(sweeps.length, '掃過に入っていない＝取り直しを測れていない').toBeGreaterThan(0);
+  for (const x of sweeps) {
+    expect([x.vx, x.vy], `t${x.t} の狙いが取り直された＝予告のあいだに追尾している`).toEqual([-1, 0]);
+  }
+  // 軸が西のまま∴**周期のあいだ**体は1 tick も縦へ動かない（南へ倒れていれば赤くなる）。
+  // ⚠️ 基準は s[0] ではなく**予告に入った tick**の y＝0n（両生）の主は平時の歩きで南へ寄る
+  //    ∴予告が始まるまでに y が 4 → 4.5 へ動く（実測）。それは正しい動きで、測りたいのは
+  //    「予告に入ってから軸が倒れないこと」∴基準を予告の1 tick 目に取る。
+  const cycle = s.filter(x => x.phase === 'windup' || x.phase === 'sweep' || x.phase === 'stranded');
+  for (const x of cycle) {
+    expect(x.y, `t${x.t} で南（歩いた方）へ動いた＝軸が倒れている`).toBeCloseTo(wind[0].y, 6);
+  }
+  // ③ 体は西へ走り、**止まるのは地形だけ**（＝空を打っても自分から途中で止めない）
+  // ⚠️ ここで深さ（surgeCells ぶん走り切る）は測れない：両生になった主は予告までに南へ半セル
+  //    寄る∴体（2×2）が行 6 に掛かり、西へ走ると舞台の看板 (6,1) に当たって 2.6／3.0 で止まる
+  //    （壁で止まるのは仕様どおり＝`beginSurgeSweep` の上限の ⚠️）。深さは `{-④` が測る。
+  const strand = s.find(x => x.phase === 'stranded');
+  expect(strand, '掃過の後に止まっていない＝走り切りを測れていない').toBeTruthy();
+  expect(wind[0].x - strand.x, '西へほとんど進んでいない＝空を打つと途中で止めている')
+    .toBeGreaterThan(c.surgeCells - 1);
+  // ④ 歩いて離れた相手には当たらない（＝床の帯の外に居るのに殴られない）
+  const last = s[s.length - 1];
+  expect(last.hits, '帯の外へ歩いたのに当たっている＝狙いが追尾している').toBe(0);
+  for (const x of s) expect(x.php, `t${x.t} で HP が減った＝帯の外で殴られている`).toBe(s[0].php);
+});
+
+// 0n の機構の核＝**地形が決めるのは硬直の長さ**。ここが `{` の攻略の分かれ道になる：
+//   池の縁で殴る → 掃過は池の中で止まる（水）→ 窓は `strandedWaterMs`（1振り）
+//   池から離れて誘う → 掃過は輪の上で止まる（陸）→ 窓は `strandedMs`（4振り）
+// ⚠️ この対比は**本番のボス部屋でしか作れない**（`roomUrl` の ⚠️）∴この1本だけ舞台が違う。
+test('{-⑫ 水際で殴ると窓は strandedWaterMs・池から離して殴ると strandedMs（地形が窓を決める）',
+  async ({ page }) => {
+    const c = ENEMY_META[SL].surge;
+    // ① 池の縁（(7,5)＝池の南の岸のすぐ外）に立つ＝掃過はプレイヤーの体に阻まれて**池の中で**
+    //    止まる∴主は水に浮いたまま＝短い窓
+    const near = await trackSeaLord(page, { ticks: 24, room: true, spawn: { row: 7, col: 5 } });
+    expect(near.error).toBeUndefined();
+    const ns = near.samples;
+    const nStrand = surgeRuns(ns).find(r => r.phase === 'stranded');
+    expect(nStrand, '池の縁に立っても乗り上げて来ない＝本番の部屋で機構が起きていない').toBeTruthy();
+    const nFirst = ns.find(x => x.t === nStrand.from);
+    expect(nFirst.afloat, '池の中で止まったのに「陸で終わった」と記録されている＝窓が長く出る')
+      .toBe(true);
+    expect(nFirst.land, '水で終わったはずなのに体が陸のセルに掛かっている').toBe(0);
+    expect(nFirst.span, `水で終わった窓が ${c.strandedWaterMs}ms でない`).toBe(c.strandedWaterMs);
+    expect(nStrand.ticks, `水際の停止が ${c.strandedWaterMs}ms でない＝窓が地形で変わっていない`)
+      .toBe(nSurgeTicks(c.strandedWaterMs));
+    expect(ns[ns.length - 1].hits, '池の縁に立ち続けて一度も当たらない＝この立ち位置が安全になっている')
+      .toBeGreaterThanOrEqual(1);
+
+    // ② 池から 1 セル離れて立つ（(8,5)）＝掃過は輪の上まで来て止まる∴陸＝長い窓
+    const far = await trackSeaLord(page, { ticks: 24, room: true, spawn: { row: 8, col: 5 } });
+    expect(far.error).toBeUndefined();
+    const fs = far.samples;
+    const fStrand = surgeRuns(fs).find(r => r.phase === 'stranded');
+    expect(fStrand, '池から離れて立つと乗り上げて来ない＝引き離す攻略が成り立たない').toBeTruthy();
+    const fFirst = fs.find(x => x.t === fStrand.from);
+    expect(fFirst.afloat, '輪の上まで来たのに「水で終わった」と記録されている').toBe(false);
+    expect(fFirst.land, '陸で終わったのに体が水の中＝乗り上げていない').toBeGreaterThan(0);
+    expect(fFirst.span, `陸で終わった窓が ${c.strandedMs}ms でない`).toBe(c.strandedMs);
+
+    // ③ ∴「引き離して戦う」が正解＝窓の差は剣を振れる回数の差（1振り ⇔ 4振り）
+    expect(fStrand.ticks, '陸の窓が水の窓より長くない＝地形で攻略が変わらない')
+      .toBeGreaterThan(nStrand.ticks);
+    expect(Math.floor(c.strandedWaterMs / SWORD_COOLDOWN_MS),
+      '水際の窓でも剣が2回以上振れる＝水際で殴るのが損にならない').toBeLessThan(2);
+    expect(Math.floor(c.strandedMs / SWORD_COOLDOWN_MS),
+      '陸の窓で剣が3回以上振れない＝引き離す旨みが無い').toBeGreaterThanOrEqual(3);
+  });
+

@@ -1495,17 +1495,72 @@ export const ENEMY_META = {
 		yieldAt: 0.25,
 		move:   'amphibious',
 		moveSpeed: { water: 1.0, land: 0.5 },   // 水では定速・陸では半速
-		hitAndAway: true,
+		// ⚠️ **明示する**（書かないと surge の分岐に一度も来ない＝W/A/N/J/O/U/G/I で8回踏んだ罠）。
+		//    旧値は true ＝汎用の「間合いを詰めて離れる」＝2体目 W と同じ動きだった。
+		hitAndAway: false,
 		attacks: [
-			{ type: 'sword', range: 1.8, cooldown: 1100 },   // 巨体の体当たり
+			// 巨体の体当たり。
+			// ⚠️ 到達は 1.8 → **1.2**（2026-09-01・実プレイの判断（d））＝プレイヤーの
+			//    `SWORD_REACH 1.2` と同値。1.8 は「自分の剣が届かない距離から殴られる」＝
+			//    水際に立って斬り合うという攻略の芯が成立しなかった（＋盾は向いている方向しか
+			//    守らない∴横へ退く動作が被弾に変わる）。同値なら「届く間合いは殴り合いの間合い」。
+			{ type: 'sword', range: 1.2, cooldown: 1100 },
 			// 潮吹き＝水弾（射水魚と同じ waterShot 型。任意角へ飛ぶ）
 			{ type: 'waterShot', range: 8, cooldown: 2400, projectileSpeed: 1.3 },
 		],
-		attack: { type: 'sword', range: 1.8, cooldown: 1100 },
-		initialModeWeights: { flank: 0.3, direct: 1.4, wander: 0.3, strafe: 0 },
+		attack: { type: 'sword', range: 1.2, cooldown: 1100 },
+		// ⚠️ `initialModeWeights` は **hitAndAway を落としたときに消した**（読み手＝
+		//    `resolveModeWeights`／`pickApproachMode` は `bossTickHitAndAway` の中だけ）
+		//    ＝死んだ数値をデータに残さない（W 潮鳴りのセイレーンと同じ作法）。
+		// 打ち寄せ（＝この敵の移動機構）。相の並びと判定は enemy-ai.js「打ち寄せ（surge）」の節。
+		//   ・triggerRange … 乗り上げに入る端距離。**1.2 < 3.5 < 6.7** ＝体当たり（`sword` 1.2）の
+		//     外・部屋の対角（闘技場 10×12 で 6.7）の内＝「射程外」が実在する（GUIDE §7-15）。
+		//   ・windupMs 720 … 予告。**`MELEE_WINDUP_MS 480` の床より長い**＝6 tick ＝歩いて
+		//     3.0 セル ＞ 危険域の半幅（halfW 0.5 ＋ hitRange 0.8 ＝1.3）∴横へ退けば必ず避かる。
+		//     ⚠️ 600 → 720（0n）＝**本番の部屋で実測した必要量**。両生にすると主は輪の上にも
+		//     立つ∴南北の通り道（rows 1〜2 の2行）に沿う掃過は危険域が2行とも覆う＝逃げ道は
+		//     「軸に沿って帯の端まで走る」だけになり、最悪 3 セル歩く必要がある（＝6 tick）。
+		//     600 のままだと 2.5 セルしか歩けず 17 通りが避けられない（`.scratch/sea-lord-dodge-budget.mjs`
+		//     ＝`scripts/migrate-sea-lord-room-clear-pillars.mjs` の不変条件 ⑤ が番をする）。
+		//   ・surgeSpeed 1.1 / surgeCells 3.0 … 掃過の速さと深さ（＝327ms で 3 セル進む）。
+		//   ・hitRange 0.8 … 掃過の当たり判定（端距離）。床に描く帯はこの値で膨らませた角丸矩形。
+		//   ・strandedMs 1300 … **陸で**掃過を終えたときの完全停止＝反撃の窓（10 tick ＝木の剣で4振り）。
+		//   ・strandedWaterMs 400 … **水で**終えたときの窓（3 tick ＝1振り）。0n で新設＝
+		//     「地形が硬直の長さを決める」＝水際で殴ると窓が 1/3 ∴岸から引き離すのが正解になる。
+		//   ・crawlMs 1400 … 起点まで引き波で戻る上限（速さは `surgeCells / (crawlMs / TICK_MS)` ＝
+		//     0.26 セル/tick ＝掃過の約 1/4 ∴「戻りは遅い」が数の関係として出る）。
+		//   ・cooldownMs 2600 … 引き波が済んでから次の乗り上げまで。
+		// ⚠️ **掃過だけは盾で防げない**（`isShieldBlockingDir` を呼ばない）＝機構の半分。
+		//    `{` の攻撃2本（`sword` 1.2・`waterShot` 8）は**どちらも盾で消える**∴これが無いと
+		//    正面を向いて待つだけで無傷になる（I 沼地の大蝦蟇で実測した穴・GUIDE §7-16）。
+		//    `{` は**弱点を持たない**腕試しのボス∴弱点の代わりに「敵が自分で作る隙（陸で
+		//    止まっている 1300ms）」が唯一の攻め口になる＝機構と攻略法が1本に繋がる。
+		// ⚠️ 平時は**両生**（水でも陸でも寄る・0n）。旧「水から出ない」は捨てた＝池に閉じた主は
+		//    斜めにずれた床へ軸を合わせられず、その床（実測9セル）が永久の安全地帯になった
+		//    （2026-09-01 の実プレイ NG）。地形の役割は上の `strandedWaterMs` へ移した。
+		// ⚠️ `surgeAtk` は `atk` と同値（5）＝O の `stampAtk`／U の `diveAtk`／I の `pounceAtk` と
+		//    同じ作法（盾で防げない打点を通常攻撃より重くしない＝避けられる技は避けられる分で足る）。
+		// ⚠️ 水際に立てば陸から剣が届く（水際の端距離 1.0 < `SWORD_REACH 1.2`）＝
+		//    「水で待つだけで無敵」を作らない（`triggerRange` を縮めても崩れない床）。
+		surge: {
+			triggerRange: 3.5, windupMs: 720,
+			surgeSpeed: 1.1, surgeCells: 3.0, hitRange: 0.8, surgeAtk: 5,
+			strandedMs: 1300, strandedWaterMs: 400, crawlMs: 1400, cooldownMs: 2600,
+		},
 		phases: [
-			// 半分削ると本気になる（＝合格ラインの 25% までが一番の山場）
-			{ hpThreshold: 0.5, speedMultiplier: 1.3, attackCooldownMultiplier: 0.75 },
+			// 半分削ると本気になる（＝合格ラインの 25% までが一番の山場）。
+			// 打ち寄せは**広く・深く・窓は短く**（`windupMs` と `hitRange` と `surgeAtk` は据え置き）。
+			// ⚠️ **後半でも `windupMs` は縮めない**（720 のまま）＝盾で防げない一撃の予告を短くすると
+			//    「見てから横へ退く」が成立しない（I の `pounceWindupMs` と同じ規則・GUIDE §7-16）。
+			//    後半の強化は**間合い（3.5 → 4.5）と深さ（3.0 → 4.0）と休みの短さ**で払う。
+			// ⚠️ 反撃の窓は 1300 → 1000ms（8 tick ＝3振り）＝**窓は残す**（弱点が無い敵から
+			//    攻め口を消すと削り切れなくなる＝`yieldAt 0.25` に届かない）。水の窓も
+			//    400 → 300ms（＝どちらの地形でも短くなるが、陸と水の差＝攻略の芯は残る）。
+			{ hpThreshold: 0.5, speedMultiplier: 1.3, attackCooldownMultiplier: 0.75, surge: {
+				triggerRange: 4.5, windupMs: 720,
+				surgeSpeed: 1.1, surgeCells: 4.0, hitRange: 0.8, surgeAtk: 5,
+				strandedMs: 1000, strandedWaterMs: 300, crawlMs: 1400, cooldownMs: 2000,
+			} },
 		],
 	},
 };
