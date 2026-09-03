@@ -42,7 +42,9 @@ import { readFileSync } from 'fs';
 import { fileURLToPath } from 'url';
 import { TILE } from '../shared/tiles.js';
 import { ENEMY_META } from '../shared/enemies.js';
-import { SWORD_REACH, MELEE_WINDUP_MS, MOVE_STEP, SWORD_COOLDOWN_MS, CANDLE_FIRE_DMG } from '../game/constants.js';
+import { ARMOR_TIERS } from '../shared/items.js';
+import { SWORD_REACH, MELEE_WINDUP_MS, MELEE_FREEZE_MS, MOVE_STEP, SWORD_COOLDOWN_MS,
+  INVINCIBLE_MS, CANDLE_FIRE_DMG } from '../game/constants.js';
 import { waitForBoard } from './helpers.js';
 import { TEST_LAYER, stageKey } from './test-stage-keys.js';
 import { isArenaDoor } from './test-arena-doors.js';
@@ -302,6 +304,8 @@ const MECHANISM_FIELDS = [
   'tongue',         // 0d-3（8体目 I）: 舌で**プレイヤーを動かす**（自分は寄って来ない）
   'surge',          // 0d-3（9体目 {）: 居られる場所が**地形で決まる**（水から出るのは乗り上げだけ）
   'glaciate',       // 0d-3（10体目 L）: 居場所を**自分で作る**（凍らせた床の上しか歩けない）
+  'lockstep',       // 0d-3（11体目 X）: 詔（盾を無視する打点）の器＝時間で満ち、歩いた距離で
+                    //   冷える（2026-09-03: 移動は魔将と同じ張り付き＝`hitAndAway` へ差し替え）
 ];
 const mechanismsOf = (meta) => new Set(MECHANISM_FIELDS.filter(k => meta[k]));
 const attackTypesOf = (meta) => new Set(
@@ -6491,3 +6495,696 @@ test('L-⑬ 炎は氷を溶かさない＝道の上に置いた炎を L が踏�
     expect(f.burned, `炎 ${f.key} が同じ敵を2回以上焼いた＝連打の穴`).toBeLessThanOrEqual(1);
   }
 });
+
+// ── 11体目 `X` 魔王：詔（lockstep）＝**盾を無視する魔法攻撃**＋魔将と同じ張り付き ──────
+// 2026-09-03（ユーザーの実プレイ判定→追い作業）: 旧設計（歩調＝自分の時計では歩かず、
+// プレイヤーが歩いた距離ぶんだけ進む）は「今までのボスより弱い」と判定された。
+// ユーザーの言葉＝「魔将のほうがスピードが早い？早いのに、こちらの横や背後を取ろうとする
+// 動きがあって、盾で防げない位置にこようとするのが強さになってる。なのに魔王は魔将より
+// 遅くて、その強さがまったくなくなってしまってる。魔将と同じような速さがあって、かつ、
+// 魔法攻撃があると強さが出ると思う」＝一旦その数値で試すことをユーザー自身が了承済み
+// （「強すぎて倒せないかもしれないけど、一度それで試してみたい」）。
+// ✅ 現行の設計の骨は2つ：
+//   ① 移動は**魔将（V）と同じ張り付き**（`hitAndAway`＋`initialModeWeights` を魔将の
+//      後半フェーズと同じ数で丸ごと借りる）＝速さ `ENEMY_SPEED_FAST`（魔将と同速）・
+//      背後・側面を取りに来る（flank 主体）＝盾の正面が守らない位置を取りに来る。
+//   ② 詔（みことのり＝「魔法攻撃」）は移動の主導権を失っても**残す**＝器（`_lsHeat` 0〜1）
+//      は**時間で満ち、歩いた距離だけ押し戻る**（`fillPerSec`/`coolPerCell`）。満ちると
+//      錨のように止まって唱え（`warnMs`）、**唱え始めた瞬間のプレイヤーのタイル**を中心に
+//      半径 `radius`（端距離）の集合へ**盾を無視する**打点が落ちる。当たれば `sealMs`
+//      だけ剣が封じられ、外せば `rootMs` の硬直（＝避けた側の追加の窓）。
+// ⚠️ X の攻撃2本（剣 1.5・石 6）は**どちらも盾で消える**（`isShieldBlockingDir`）＝
+//    I 沼地の大蝦蟇・`{` 海の主・L 氷のリヴァイアサンと同じ穴∴詔が盾を通さないことが
+//    この機構の存在理由。対価（GUIDE §7-16）は3つ＝予告 `warnMs 1200` ≧ 実測の逃げ切り
+//    3.0 セル＋剣の硬直 1.5 セル・床に描く円が当たり判定と同じ集合・**後半でも予告を縮めない**。
+// ⚠️ 「距離のゲート」を持たない（＝どこに立っていても詔は来る）＝I/`{`/L で塞いだ
+//    「立っているだけで無傷」の穴を距離ではなく**時間**で閉じる。実測＝闘技場の床 82 セル
+//    すべてで 60 tick 以内に被弾（`.scratch/darklord-farm-spots.mjs`）。
+// ⚠️ §7-2「敵の速度をプレイヤーと同速にしてはいけない」に**意図的に触れる**（魔将 V も
+//    既に同じ数で運用されている＝ユーザーがその強さを「正解」として指定した2026-09-03）。
+const DL = TILE.DARK_LORD;
+const DL_ROW = 4, DL_COL = 8;              // 1×1（`bal_dark_lord` の実配置）
+const DL_FAR  = { row: 1, col: 1 };        // 北西の隅＝X から 7.62（石 6 の外）＝距離ゲートの番人
+const DL_NEAR = { row: 4, col: 6 };        // 同じ行の西 2.0（剣 1.5 の外・石 6 の内）
+const DL_OBS = { ps_hearts: '13', ps_sword: '0', ps_shield: '0', ps_armor: '0', ps_weapon: '1' };
+// SE の指紋（`installToneRec` は周波数だけを記録する）
+const DECREE_CAST_HZ = [110, 165, 110, 104];   // decreeCast＝唱え始め（低音の鐘が3つ・最後だけ下がる）
+const DECREE_HIT_HZ  = [82, 233, 311];         // decreeHit＝盾を無視する打点が入った
+const DECREE_MISS_HZ = [294, 220, 147];        // decreeMiss＝外した（＝硬直が開く）
+// 丸めの単一の真実（`hitbox.js toTileIndex`）＝詔の判定は「プレイヤーの中心が在るタイル」
+const dlTile = (v) => Math.floor(v + 0.5);
+// 相の長さ（tick）＝始まった tick も1 tick と数える（`nGlTicks` と同じ規約）
+const nDlTicks = (ms) => Math.ceil(ms / TICK_MS);
+
+/**
+ * `bal_dark_lord` の `X` を n tick 追い、毎 tick の器・相・位置・詔の集合・絵・音と
+ * プレイヤーの位置／HP／剣封じを返す。
+ * @param {object} o
+ * @param {number} o.ticks       進める論理 tick 数
+ * @param {object} [o.spawn]     プレイヤーの湧き（既定＝北西の隅 (1,1)）
+ * @param {boolean} [o.debugOff] true＝'g' で debug を切る（プレイヤーにダメージが通る）
+ * @param {boolean} [o.pace]     true＝毎 tick 上下に歩き続ける（rows 1〜5 を往復＝器を押し戻す）
+ * @param {object} [o.moveWhen]  { atPhase, dir, steps }＝その相のあいだ 1 tick に1歩ずつ歩く
+ * @param {object} [o.dropWhen]  { atPhase, dmg }＝**その相になった最初の tick**にダメージを落とす
+ * @param {boolean} [o.face]     true＝毎 tick X の方へ向き直る（＝盾の正面を向け続ける）
+ * @param {object} [o.extra]     URL のプリセット追加
+ * @param {object} [o.patch]     `setEnemyMetaForTest('X', patch)`＝出荷の数値では見えない
+ *                               不変条件（溜めの上限）だけを極端な数で測るための口
+ */
+async function trackDarkLord(page, o) {
+  await installToneRec(page);
+  const sp = o.spawn ?? DL_FAR;
+  await gotoFrozen(page, previewUrl('bal_dark_lord', sp.row, sp.col, { ...DL_OBS, ...(o.extra ?? {}) }));
+  if (o.debugOff) await page.keyboard.press('g');
+  return page.evaluate((a) => {
+    const g = window.__game;
+    if (a.patch) g.setEnemyMetaForTest('X', a.patch);
+    const e0 = g.getEnemies().find(x => x.type === 'X');
+    if (!e0) return { error: 'X が盤面に居ない' };
+    // ⚠️ `getEnemies()` は**スナップショット**（ホワイトリスト・別オブジェクト）＝ここへの
+    //    代入は実体に効かない。`speed` はスポーン時に実体へ写された値（`e.speed`）を
+    //    `resolveEnemySpeed` が優先して読む（`e.speed ?? meta.speed`）＝META の patch も
+    //    間に合わない（実体はもう出来ている）∴実体を直接書く `setEnemyFieldForTest` を使う
+    //    （`speed:0` で X を立ち止まらせたい呼び出し元のため＝移動だけ止め、詔の時計は動かす）。
+    if (a.patch?.speed !== undefined) g.setEnemyFieldForTest(e0.id, { speed: a.patch.speed });
+    // `entityPatch`＝任意のフィールドを実体へ直接書く（座標・`_haPhase` を固定して
+    // 角に追い詰められた状況を作るためなど）。
+    if (a.entityPatch) g.setEnemyFieldForTest(e0.id, a.entityPatch);
+    const id = e0.id;
+    const find = () => g.getEnemies().find(x => x.id === id);
+    const tile = (v) => Math.floor(v + 0.5);
+    const zonePrefix = `decree-${id}-`;
+
+    const samples = [];
+    const movedAt = [];
+    let stepsLeft = a.moveWhen?.steps ?? 0;
+    let dropped = false;
+    let paceDir = 'up';
+    const p0 = g.getPlayer();
+    let prev = { px: p0.x, py: p0.y, ex: e0.x, ey: e0.y };
+    let travel = 0, enemyMoved = 0;
+    for (let t = 1; t <= a.ticks; t++) {
+      const tone0 = window.__tones.length;
+      const cur = find();
+      if (!cur) break;
+      // ⚠️ スナップショット越しに読む＝`_lsPhase` ではなく `lsPhase`（`_` 付きは常に undefined）
+      const phase = cur.lsPhase ?? null;
+      if (a.dropWhen && !dropped && phase === a.dropWhen.atPhase) {
+        g.dealDamage(id, a.dropWhen.dmg); dropped = true;
+      }
+      if (a.face) {
+        const p1 = g.getPlayer();
+        const dx = cur.x - p1.x, dy = cur.y - p1.y;
+        g.setHeroDir(Math.abs(dx) >= Math.abs(dy) ? (dx > 0 ? 'right' : 'left')
+          : (dy > 0 ? 'down' : 'up'));
+      }
+      if (a.pace) {
+        const p1 = g.getPlayer();
+        if (p1.y <= 1) paceDir = 'down';
+        if (p1.y >= 5) paceDir = 'up';
+        g.movePlayer(paceDir); movedAt.push(t);
+      }
+      const mw = a.moveWhen;
+      if (mw && stepsLeft > 0 && (mw.atPhase === undefined || phase === mw.atPhase)) {
+        g.movePlayer(mw.dir); stepsLeft--; movedAt.push(t);
+      }
+      g.step(1);
+      const e = find();
+      if (!e) break;
+      const p = g.getPlayer(), st = g.getState();
+      travel     += Math.hypot(p.x - prev.px, p.y - prev.py);
+      enemyMoved += Math.hypot(e.x - prev.ex, e.y - prev.ey);
+      prev = { px: p.x, py: p.y, ex: e.x, ey: e.y };
+      const el = document.getElementById(`char-enemy-${id}`);
+      samples.push({
+        t, now: st.gameTime, hp: e.hp, x: e.x, y: e.y, dir: e.dir,
+        heat: e.lsHeat ?? 0, phase: e.lsPhase ?? null, span: e.lsSpan ?? null, at: e.lsAt ?? null,
+        center: e.lsR != null ? `${e.lsR},${e.lsC}` : null,
+        cells: (e.lsCells ?? []).map(c => `${c.r},${c.c}`),
+        step: e.lsTravel ?? 0, casts: e.lsCasts ?? 0, hits: e.lsHits ?? 0, whiffs: e.lsWhiffs ?? 0,
+        cfg: e.lockstep ?? null,
+        travel: travel, enemyMoved: enemyMoved,
+        attackTimes: JSON.stringify(e.attackTimes ?? null),
+        projectiles: g.getProjectiles().length,
+        px: p.x, py: p.y, php: p.hp, pdef: st.player.def,
+        ptile: `${tile(p.y)},${tile(p.x)}`,
+        pdir: st.heroDir, shieldTier: st.player.shieldTier,
+        sealed: !!st.player.swordSealed, sealUntil: st.player.sealUntil ?? null,
+        // 絵＝唱えている体／外した硬直（形は変えず浮く・傾く）＋器と長さは JS が渡す
+        castCls: !!el?.classList.contains('lockstep-cast'),
+        rootCls: !!el?.classList.contains('lockstep-root'),
+        heatVar: (el?.style.getPropertyValue('--lockstep-heat') ?? '').trim(),
+        spanVar: (el?.style.getPropertyValue('--lockstep-span-ms') ?? '').trim(),
+        // 床の円＝1セル＝1枚の div（id に r,c が入る＝判定と同じ集合を DOM で確かめる）
+        zoneEls: [...document.querySelectorAll(`div[id^="${zonePrefix}"]`)].map(x => ({
+          key: x.id.slice(zonePrefix.length),
+          progress: parseFloat(x.style.getPropertyValue('--decree-progress')),
+        })),
+        fallFx: document.querySelectorAll('.enemy-decree-fall').length,
+        newTones: window.__tones.slice(tone0),
+      });
+    }
+    const e = find();
+    return { id, samples, movedAt,
+      end: e && { hp: e.hp, maxHp: e.maxHp, cfg: e.lockstep ?? null,
+        casts: e.lsCasts ?? 0, hits: e.lsHits ?? 0, whiffs: e.lsWhiffs ?? 0 } };
+  }, o);
+}
+
+// 相の連（[{ phase, from, to, ticks }]）＝`glaciateRuns` と同じ形
+function lockstepRuns(samples) {
+  const runs = [];
+  for (const s of samples) {
+    const last = runs[runs.length - 1];
+    if (last && last.phase === s.phase) { last.to = s.t; last.ticks++; continue; }
+    runs.push({ phase: s.phase, from: s.t, to: s.t, ticks: 1 });
+  }
+  return runs;
+}
+
+test('X-① 魔王のデータ＝魔将と同じ速さで寄る／詔の予告は実測の逃げ切り＋剣の硬直より長い', () => {
+  const m = ENEMY_META[DL];
+  const v = ENEMY_META[TILE.BOSS];   // 魔将＝ユーザーが「同じ速さ」の基準に指定した相手
+  const c = m.lockstep;
+  const KEYS = ['coolPerCell', 'decreeAtk', 'fillPerSec', 'radius', 'rootMs', 'sealMs', 'warnMs'];
+  // `.scratch/darklord-geom.mjs` の実測（闘技場 10×12・立てるセル 84 枚を総当たり）＝
+  // 半径 1.6 の円（端距離）の外へ出るのに要るタイル数は**どのセルでも 3 タイル＝3.0 セル
+  // ＝6 tick**（出られないセル 0・円の枚数 7〜21）∴逃げ切りの床はここ。
+  const ESCAPE_CELLS = 3.0;
+
+  expect(c, 'lockstep が無い＝X に固有の機構（詔）が無い').toBeTruthy();
+  // 綴りの番人（`resolveLockstep` を読む関数が読むキー＝1文字違うと既定値に落ちて黙って動く）
+  expect(Object.keys(c).sort()).toEqual(KEYS);
+
+  // 2026-09-03（ユーザーの実プレイ判定）＝移動は魔将（V）と同じ張り付きに差し替えた。
+  // `hitAndAway` は enemyTick の分岐で他の10体の機構より優先される＝明示 true が要る。
+  expect(m.hitAndAway, '移動が魔将と同じ張り付きでない＝速さが実感できない設計に戻っている')
+    .toBe(true);
+  expect(m.speed, '速さが魔将と違う＝「魔将と同じような速さ」の判定と食い違う').toBe(v.speed);
+  // 2026-09-03（2回目のユーザー実プレイ判定）＝寄り方の癖は魔将から意図的に外した
+  // （「もっと回り込んでくる動きを積極的にやらせたほうがいいかも」）＝魔将の既定の均等抽選
+  // （flank 1/3）より flank を強く出す。値は W 魔物の後半フェーズと同じ（実測済みの重み）。
+  expect(m.initialModeWeights, '寄り方の重みが無い＝魔将と同じ均等抽選のまま（回り込みを強めていない）')
+    .toEqual({ flank: 1.6, direct: 0.7, strafe: 0.25, wander: 0.15 });
+  expect(m.initialModeWeights.flank, '回り込み（flank）の重みが他の型以下＝均等抽選から強めていない')
+    .toBeGreaterThan(m.initialModeWeights.direct + m.initialModeWeights.wander);
+
+  // ① 詔の予告＝時間の床（近接の溜め）以上（盾で防げない打点の対価・§7-16）
+  expect(c.warnMs, `予告 ${c.warnMs}ms が近接の溜め（MELEE_WINDUP_MS）より短い＝見てから動けない`)
+    .toBeGreaterThanOrEqual(MELEE_WINDUP_MS);
+  // ② 予告のあいだに歩ける距離 > 実測の逃げ切り ＋ **剣を振った硬直で歩けない距離**
+  //    ＝「殴っていた最中に唱えられても、振り終えてから歩けば避かる」
+  const warnTicks = Math.floor(c.warnMs / TICK_MS);
+  const freezeCells = Math.ceil(MELEE_FREEZE_MS / TICK_MS) * MOVE_STEP;
+  expect(warnTicks * MOVE_STEP, `予告 ${warnTicks} tick で歩ける ${(warnTicks * MOVE_STEP).toFixed(2)} `
+    + `セルが実測の逃げ切り ${ESCAPE_CELLS} ＋剣の硬直 ${freezeCells} セルに足りない`
+    + '＝剣を振った直後に唱えられると避けられない')
+    .toBeGreaterThan(ESCAPE_CELLS + freezeCells);
+
+  // ③ 打点は `atk` と同値まで（盾で防げない一撃を防げる一撃より重くしない）＋罰になる重さ
+  expect(c.decreeAtk, '詔が剣（atk）より重い＝盾で防げない一撃の方が痛い').toBeLessThanOrEqual(m.atk);
+  // 被弾は `max(1, decreeAtk - player.def)` の減算∴**最強の防具（伝説の鎧 def 3）でも**
+  // 床の 1 に張り付かない＝立ち止まりの罰が終盤で消えない
+  const maxDef = Math.max(...ARMOR_TIERS.map(a => a.def));
+  expect(c.decreeAtk - maxDef, `詔が最強の防具（def ${maxDef}）で 1 まで削れる`
+    + '＝終盤に立ち止まりの罰が消える').toBeGreaterThan(1);
+  // ④ 剣封じは無敵より短い＝被弾が「次も殴れない」へ連鎖しない
+  expect(c.sealMs, `剣封じ ${c.sealMs}ms が無敵 ${INVINCIBLE_MS}ms 以上＝起き上がっても振れない`)
+    .toBeLessThan(INVINCIBLE_MS);
+  // ⑤ 外したときの硬直＝剣が1振り入る窓（避けるのが報われる）
+  expect(Math.floor(c.rootMs / SWORD_COOLDOWN_MS), '外させても剣が1回も振れない＝避ける旨みが無い')
+    .toBeGreaterThanOrEqual(1);
+
+  // ⑥ 器＝止まれば必ず満ちる／歩けば必ず押し戻る（両方向の番人）
+  const fillPerTick = c.fillPerSec * (TICK_MS / 1000);
+  const coolPerTick = c.coolPerCell * MOVE_STEP;     // 全速で歩いた 1 tick ぶん
+  expect(coolPerTick, '全速で歩いても器が満ちる＝「走れば来ない」が成り立たない')
+    .toBeGreaterThan(fillPerTick);
+  const fillTicks = Math.ceil(1 / fillPerTick);
+  expect(fillTicks * TICK_MS, `器が満ちるまで ${fillTicks * TICK_MS}ms＝剣が2振りも入らない`
+    + '（詔が来る前に何もできない）').toBeGreaterThan(SWORD_COOLDOWN_MS * 2);
+  // 剣を振り続ける（硬直で歩けない）だけでも器は満ちる＝立ち回りの穴を作らない
+  expect(MELEE_FREEZE_MS * c.fillPerSec / 1000, '剣1振りの硬直で器が1%も満ちない＝振り続けが安全')
+    .toBeGreaterThan(0.01);
+
+  // ⑦ 円は部屋を覆わない（§7-15 は半径ではなく**面積**で引き算する）
+  //    端距離 radius のタイル集合の枚数＝`enemy-ai.js decreeCells` と同じ式で数える
+  const span = Math.ceil(c.radius + 0.5);
+  let area = 0;
+  for (let dr = -span; dr <= span; dr++) {
+    for (let dc = -span; dc <= span; dc++) {
+      const gy = Math.max(0, Math.abs(dr) - 0.5), gx = Math.max(0, Math.abs(dc) - 0.5);
+      if (Math.hypot(gx, gy) <= c.radius) area++;
+    }
+  }
+  expect(area, `詔の円 ${area} 枚が闘技場の床 83 枚の 3 割を越える＝部屋のどこへ逃げても同じ`)
+    .toBeLessThan(83 * 0.3);
+
+  // ⑧ 到達距離の表（GUIDE §7-12）＝剣 1.5 はプレイヤーの剣 1.2 より外・石はその外
+  const sword = m.attacks.find(a => a.type === 'sword');
+  const stone = m.attacks.find(a => a.type === 'stone');
+  expect(sword.range, '魔王の剣がプレイヤーの剣の内側＝張り付いても打ち勝てる')
+    .toBeGreaterThan(SWORD_REACH);
+  expect(stone.range, '石の射程が剣より短い＝到達距離の表が入れ子になっている')
+    .toBeGreaterThan(sword.range);
+  // 2026-09-03（ユーザーの実プレイ判定）＝密着（斬り合いの間合い）では石を出さない。
+  // 剣と石の cooldown は完全に独立∴距離のゲートが無いと「盾で受けた直後に斬りたいのに、
+  // 斬っている間に石が刺さる」＝見てから動けない一撃になる（§9-6 の minRange と同じ型）。
+  expect(stone.minRange, '石に minRange が無い＝密着でも構わず飛んでくる').toBeGreaterThan(sword.range);
+  expect(stone.minRange, '石の minRange がプレイヤーの剣より内側＝斬り合いの間合いで石が来る')
+    .toBeGreaterThan(SWORD_REACH);
+
+  // 後半（`phases[0]`）＝魔将と同じ加速（×1.5）＋詔の器だけ速く満ちる
+  const p = m.phases.find(ph => ph.lockstep !== undefined);
+  expect(p, '後半の相が詔の設定を差し替えていない＝前半と同じ強さのまま').toBeTruthy();
+  const vPhaseSpeed = v.phases.find(ph => ph.speedMultiplier)?.speedMultiplier;
+  expect(vPhaseSpeed, '基準にした魔将の後半加速が読めない＝比較の裏取りが崩れている').toBeTruthy();
+  expect(p.speedMultiplier, '後半で速さが魔将の後半（×1.5）と違う＝強さの基準がずれる').toBe(vPhaseSpeed);
+  expect(Object.keys(p.lockstep).sort()).toEqual(KEYS);
+  expect(p.lockstep.fillPerSec, '後半の器が前半より遅く満ちる＝詔の間隔が伸びている')
+    .toBeGreaterThan(c.fillPerSec);
+  // ⚠️ 据え置きの番人（§7-16「後半でも予告を縮めない」＝逃げ切りの算術を1文字も変えない）
+  for (const k of ['warnMs', 'radius', 'decreeAtk', 'sealMs', 'coolPerCell', 'rootMs']) {
+    expect(p.lockstep[k], `後半で ${k} を動かした＝盾で防げない打点の対価（§7-16）を割っている`)
+      .toBe(c[k]);
+  }
+  // 回り込みの重みは後半で差し替えない（速さだけ増す＝前半と同じ癖のまま強くなる）
+  expect(p.modeWeights, '後半に modeWeights がある＝速さと同時に寄り方の癖まで変わる').toBeUndefined();
+  // 後半でも「歩けば器が押し戻る」が保つ
+  expect(p.lockstep.coolPerCell * MOVE_STEP, '後半は全速で歩いても器が満ちる＝走る答えが消える')
+    .toBeGreaterThan(p.lockstep.fillPerSec * (TICK_MS / 1000));
+});
+
+test('X-② 移動＝プレイヤーが止まっていても魔将と同じ速さで寄る／器は歩いた距離だけ冷える',
+  async ({ page }) => {
+    // ① 止まっているプレイヤーへ実際に寄る（＝旧「歩調」の逆＝これが今回の追い作業の核）。
+    //    北西の隅（距離 7.62）から確実に間合いへ入ることを確かめる。
+    // ⚠️ 60 tick だと approach/retreat の周期（1周 約32〜45 tick）が1〜2回しか回らず、
+    //    flank/strafe/wander の均等抽選（魔将と同じ既定の重み）が**たまたま**遠回りだけを
+    //    引く確率が無視できない（実測でも 3.04 セルまで詰め切れない回が出た＝閾値の
+    //    すぐ外＝空振り）。150 tick（複数周）に伸ばして「引きの悪さ」を均す。
+    const still = await trackDarkLord(page, { ticks: 150, spawn: DL_FAR });
+    expect(still.error).toBeUndefined();
+    const dist = (x) => Math.hypot(x.y - x.py, x.x - x.px);
+    const start = dist(still.samples[0]);
+    const closest = Math.min(...still.samples.map(dist));
+    expect(start, '測定の前提＝最初は剣も石も届かない距離であること').toBeGreaterThan(7);
+    expect(closest, `150 tick 経っても最接近が ${closest.toFixed(2)} セル＝魔将と同じ速さで`
+      + '寄っていない（旧「歩調」の再発）').toBeLessThan(2.0);
+    // 止まっていても**器は満ちる**＝寄るだけでなく詔でも罰が来る（案山子ではない）
+    expect(still.samples[still.samples.length - 1].casts,
+      '150 tick 止まっていて詔が一度も来ない＝止まるのが最強の戦法になる').toBeGreaterThanOrEqual(2);
+
+    // ② 歩き続ける（`pace`）と器は満ちない（`coolPerCell` が `fillPerSec` を上回る）
+    //    ＝「立ち止まりの罰」は移動アルゴリズムを差し替えても保つ（詔だけの不変条件）。
+    const pace = await trackDarkLord(page, { ticks: 60, spawn: { row: 3, col: 3 }, pace: true });
+    const last = pace.samples[pace.samples.length - 1];
+    expect(last.travel, '歩いていない＝測れていない').toBeGreaterThan(10);
+    for (const x of pace.samples) {
+      expect(x.heat, `t${x.t} で歩き続けているのに器が満ちた（器 ${x.heat}）`
+        + '＝「走れば詔は来ない」が成り立たない').toBeLessThan(1);
+    }
+  });
+
+test('X-③ 器が満ちた tick に唱え始め、唱えているあいだは錨（移動も剣も石も出ない）',
+  async ({ page }) => {
+    const c = ENEMY_META[DL].lockstep;
+    const r = await trackDarkLord(page, { ticks: 60, spawn: DL_NEAR });
+    const s = r.samples;
+    expect(r.error).toBeUndefined();
+
+    // ① 器は毎 tick `fillPerSec × TICK_MS` ぶんだけ満ちる（止まっている＝押し戻しゼロ）
+    const fill = c.fillPerSec * (TICK_MS / 1000);
+    for (let i = 1; i < s.length; i++) {
+      if (s[i].phase || s[i - 1].phase) continue;           // 唱え／硬直の tick は器が動かない
+      if (s[i].heat >= 1 || s[i].heat === 0) continue;       // 満ちた tick・落ちた直後は別の規則
+      expect(s[i].heat - s[i - 1].heat, `t${s[i].t} の器の満ちが fillPerSec と違う`)
+        .toBeCloseTo(fill, 6);
+    }
+    // ② 器が 1 に届いた tick に唱え始める（＝告知と時計が同じ数で動く）
+    const cast = s.find(x => x.phase === 'warn');
+    expect(cast, `60 tick で詔が一度も来ない＝器の時計が止まっている`).toBeTruthy();
+    expect(cast.heat, '唱え始めた tick の器が 1 でない＝満ちる前／後に唱えている').toBe(1);
+    // ③ 唱えは warnMs ぶん続く（完走した連で測る）
+    const runs = lockstepRuns(s);
+    const warns = runs.filter(x => x.phase === 'warn' && x.to < s.length);
+    expect(warns.length, '唱えが1度も完走していない＝周期が回っていない').toBeGreaterThanOrEqual(1);
+    for (const w of warns) {
+      expect(w.ticks, `唱えが ${c.warnMs}ms でない（t${w.from}〜t${w.to}）`).toBe(nDlTicks(c.warnMs));
+    }
+    // ④ 錨＝唱えているあいだ1歩も動かず、攻撃の時計も1つも進まない
+    for (const w of warns) {
+      const inRun = s.filter(x => x.t >= w.from && x.t <= w.to);
+      for (const x of inRun) {
+        expect(x.y, `t${x.t}（唱え中）に X が動いた＝錨が効いていない`).toBe(inRun[0].y);
+        expect(x.x, `t${x.t}（唱え中）に X が動いた＝錨が効いていない`).toBe(inRun[0].x);
+      }
+      for (let i = 1; i < inRun.length; i++) {
+        expect(inRun[i].attackTimes, `t${inRun[i].t}（唱え中）に攻撃が出た＝剣の窓が窓でない`)
+          .toBe(inRun[0].attackTimes);
+      }
+    }
+    // ⑤ 絵＝唱えているあいだだけクラスが付き、長さは JS が渡す（絵に閾値を持たせない）
+    for (const x of s) {
+      expect(x.castCls, `t${x.t}（相 ${x.phase}）の唱えの絵がずれている`).toBe(x.phase === 'warn');
+      expect(x.rootCls, `t${x.t}（相 ${x.phase}）の硬直の絵がずれている`).toBe(x.phase === 'root');
+    }
+    expect(s.find(x => x.phase === 'warn').spanVar, '唱えの絵に渡す長さが warnMs でない')
+      .toBe(`${c.warnMs}ms`);
+    // ⑥ 器はオーラの色へ**そのまま**渡る（閾値を絵に持たせない＝新しい絵を作らない）
+    for (const x of s.filter(y => !y.phase)) {
+      expect(parseFloat(x.heatVar), `t${x.t} のオーラに渡した器 ${x.heatVar} が実際の器と違う`)
+        .toBeCloseTo(x.heat, 2);
+    }
+    // ⑦ 音＝唱え始めた tick に decreeCast（＝錨に入った＝剣を入れる窓の合図）
+    expect(cast.newTones, '唱え始めた tick に decreeCast が鳴っていない')
+      .toEqual(expect.arrayContaining(DECREE_CAST_HZ));
+  });
+
+test('X-④ 詔は盾を無視する＝盾を向けて構えていても剣は封じられて通る（剣・石は黙らせて測る）',
+  async ({ page }) => {
+    const m = ENEMY_META[DL];
+    const c = m.lockstep;
+    // 2026-09-03: 移動が魔将と同じ張り付きに替わった＝X 自身が寄って来る∴この本の主題
+    // （距離のゲートが無いこと＝**部屋の隅に立ち止まっても詔は届く**）を測るには X を
+    // 立ち止まらせる必要がある（寄って来ること自体は別に X-② で確かめてある）。
+    // `speed: 0` は歩調の器・詔の周期には効かない（`tickLockstep` は `resolveEnemySpeed` を
+    // 読まない＝`bossTickHitAndAway` の歩幅の溜めだけを黙らせる）。剣・石は cooldown を
+    // 巨大化して黙らせ、**詔だけの被弾**を測る。
+    const NEUTER = { attacks: m.attacks.map(a => ({ ...a, cooldown: 999999 })), speed: 0 };
+    const r = await trackDarkLord(page, {
+      ticks: 80, spawn: DL_FAR, debugOff: true, face: true, patch: NEUTER,
+    });
+    const s = r.samples;
+    const last = s[s.length - 1];
+    expect(s[0].shieldTier, '盾を持っていない＝「盾で防げない」を測れていない').toBeGreaterThanOrEqual(0);
+
+    // ① 一歩も動いていない（＝プレイヤーも `speed:0` の X も＝本当に届かない距離のまま）
+    for (const x of s) {
+      expect(`${x.py},${x.px}`, `t${x.t} でプレイヤーが動いた＝測定が崩れている`)
+        .toBe(`${DL_FAR.row},${DL_FAR.col}`);
+      expect(Math.hypot(x.py - x.y, x.px - x.x), `t${x.t} で X が石の射程 6 の内側まで寄った`)
+        .toBeGreaterThan(m.attacks.find(a => a.type === 'stone').range);
+    }
+    // ② 盾を向けて立ち続けても詔は当たる（＝この機構の存在理由）
+    expect(last.hits, '盾を向けて立ち続けて詔が一度も当たらない＝盾で待つ抜け道が残る')
+      .toBeGreaterThanOrEqual(1);
+    expect(last.whiffs, '立ち止まっているのに詔が外れた＝円の中心の取り方が壊れている').toBe(0);
+    // ③ 打点＝(decreeAtk − def) ちょうど × 当たった回数（剣・石は黙らせてある＝詔だけの被弾）
+    const dmg = Math.max(1, c.decreeAtk - s[0].pdef);
+    expect(s[0].php - last.php, `失った HP が詔の回数 ${last.hits} × ${dmg} と違う`
+      + '＝黙らせたはずの剣／石が通っている').toBe(last.hits * dmg);
+    // ④ 当たった tick には**足元が本当に円の中**だった（描かれていないセルでは当たらない）
+    for (let i = 1; i < s.length; i++) {
+      if (s[i].hits === s[i - 1].hits) continue;
+      expect(s[i - 1].cells, `t${s[i].t} で足元 ${s[i - 1].ptile} が円の外なのに詔が当たった＝告知の嘘`)
+        .toContain(s[i - 1].ptile);
+      // 剣が封じられる（`sealMs`）＝当たった罰が「痛い」だけで終わらない
+      expect(s[i].sealed, `t${s[i].t} に詔が当たったのに剣が封じられていない`).toBe(true);
+      expect(s[i].sealUntil - s[i].now, `剣封じの窓が sealMs（${c.sealMs}ms）でない`).toBe(c.sealMs);
+      // 音＝当たった tick に decreeHit
+      expect(s[i].newTones, `t${s[i].t}（詔が当たった tick）に decreeHit が鳴っていない`)
+        .toEqual(expect.arrayContaining(DECREE_HIT_HZ));
+    }
+    // ⑤ 当てた側に硬直は付かない（プレイヤーは無敵 1500ms ∴窓を二重にしない）
+    for (let i = 1; i < s.length; i++) {
+      if (s[i].hits === s[i - 1].hits) continue;
+      expect(s[i].phase, `t${s[i].t} で詔を当てた直後に硬直が付いた＝無敵と窓が二重になる`).toBe(null);
+    }
+    // ⑥ 器は落ちた tick に 0 へ戻り、また満ち始める（＝立ち続ければ何度でも来る）
+    expect(last.casts, '80 tick で詔が2回来ない＝落ちた後に器が回っていない').toBeGreaterThanOrEqual(2);
+  });
+
+test('X-⑤ 予告のあいだに円の外へ歩けば外れ、外した硬直のあいだ魔王は完全に止まる',
+  async ({ page }) => {
+    const c = ENEMY_META[DL].lockstep;
+    // 唱え始めたら北へ 3 タイル（6歩）歩く＝端距離 1.6 の円の外（実測の最悪 3.0 セル）
+    // ⚠️ `debugOff` は**付けない**（既定の debugMode:true のまま）＝2026-09-03 以降は X が
+    //    寄って来る（`hitAndAway`）∴デバッグを切ると「敵と重なる位置には移動できない」
+    //    （`game/passable.js isPassable`＝Phase 5.5k k-7.5）が効き、逃げる先の北の列に
+    //    たまたま X の body が居合わせると 6 歩の北上げが物理的に塞がれて**外れなくなる**
+    //    （実測＝25 回中 1〜2 回の頻度で再現）。この本の主題（外した詔の相）は被弾の
+    //    実数値を測らない∴デバッグは切らず、X との重なりをすり抜けさせて測る。
+    const r = await trackDarkLord(page, {
+      ticks: 80, spawn: DL_NEAR,
+      moveWhen: { atPhase: 'warn', dir: 'up', steps: 6 },
+    });
+    const s = r.samples;
+    const last = s[s.length - 1];
+    expect(s.length, '測定が途中で切れた＝ステージを出ている／死んでいる').toBe(80);
+
+    // ① 外れた（＝歩いて避けられる）
+    expect(last.whiffs, '予告のあいだに円の外まで歩いても詔が当たった＝避けられない打点')
+      .toBeGreaterThanOrEqual(1);
+    // ② 外した tick に音（decreeMiss）＋硬直へ入る
+    const miss = s.find((x, i) => i > 0 && x.whiffs > s[i - 1].whiffs);
+    expect(miss.newTones, '外した tick に decreeMiss が鳴っていない')
+      .toEqual(expect.arrayContaining(DECREE_MISS_HZ));
+    expect(miss.phase, '外したのに硬直へ入らない＝避けた側の窓が無い').toBe('root');
+    expect(miss.span, `硬直が rootMs（${c.rootMs}ms）でない`).toBe(c.rootMs);
+    // ③ 硬直は rootMs ぶん続き、そのあいだ1歩も動かず攻撃も出ない（＝2つめの反撃の窓）
+    const runs = lockstepRuns(s);
+    const roots = runs.filter(x => x.phase === 'root' && x.to < s.length);
+    expect(roots.length, '硬直が1度も完走していない').toBeGreaterThanOrEqual(1);
+    for (const rt of roots) {
+      expect(rt.ticks, `硬直が ${c.rootMs}ms でない（t${rt.from}〜t${rt.to}）`).toBe(nDlTicks(c.rootMs));
+      const inRun = s.filter(x => x.t >= rt.from && x.t <= rt.to);
+      for (const x of inRun) {
+        expect(`${x.y},${x.x}`, `t${x.t}（硬直中）に X が動いた`).toBe(`${inRun[0].y},${inRun[0].x}`);
+      }
+      for (let i = 1; i < inRun.length; i++) {
+        expect(inRun[i].attackTimes, `t${inRun[i].t}（硬直中）に攻撃が出た＝硬直が窓でない`)
+          .toBe(inRun[0].attackTimes);
+      }
+    }
+    // ④ 円は**唱え始めた瞬間のタイル**に据え置き＝走っている先に付いて来ない
+    //    ⚠️ 80 tick には詔が何度も来る∴**1つの詔のあいだ**（`casts` が同じ tick）で測る
+    //       （中心で束ねると、たまたま同じタイルへ2度唱えた詔が混ざる）
+    const firstCast = s.find(x => x.phase === 'warn').casts;
+    const warnTicks = s.filter(x => x.phase === 'warn' && x.casts === firstCast);
+    const centers = new Set(warnTicks.map(x => x.center));
+    const cellSets = new Set(warnTicks.map(x => x.cells.join('|')));
+    expect(centers.size, '唱えているあいだに円の中心が動いた＝追尾する円（歩いて避ける答えが消える）')
+      .toBe(1);
+    expect(cellSets.size, '唱えているあいだに円の集合が変わった＝床の告知が嘘になる').toBe(1);
+    // ⑤ 外した後、プレイヤーの足元は本当に円の外だった
+    expect(miss.cells, '外した tick に円の集合が残っている＝解決で消していない').toEqual([]);
+    const before = s.find(x => x.t === miss.t - 1);
+    expect(before.cells, `外した直前の足元 ${before.ptile} が円の中にある＝外れる理屈が合わない`)
+      .not.toContain(before.ptile);
+  });
+
+test('X-⑥ 床に描いた円＝当たり判定の集合そのもの（進みは 0→1・落ちた瞬間に消えて絵が出る）',
+  async ({ page }) => {
+    const c = ENEMY_META[DL].lockstep;
+    const r = await trackDarkLord(page, { ticks: 60, spawn: DL_NEAR });
+    const s = r.samples;
+
+    // ① 唱えているあいだ、床の div の集合は判定の集合と**同一**（順序を除いて一致）
+    const warnTicks = s.filter(x => x.phase === 'warn');
+    expect(warnTicks.length, '唱えている tick が無い＝測れていない').toBeGreaterThanOrEqual(1);
+    for (const x of warnTicks) {
+      expect([...x.zoneEls.map(e => e.key)].sort(), `t${x.t} の床の円が判定の集合と違う`)
+        .toEqual([...x.cells].sort());
+      // 進みは 0〜1（1 になる tick は落ちる tick＝そこでは消えている）
+      for (const e of x.zoneEls) {
+        expect(e.progress, `t${x.t} のセル ${e.key} の進み ${e.progress} が 0〜1 の外`)
+          .toBeGreaterThanOrEqual(0);
+        expect(e.progress).toBeLessThan(1);
+      }
+    }
+    // ② 進みは単調に増える（＝残り時間そのもの＝速さを絵に持たせていない）
+    for (let i = 1; i < warnTicks.length; i++) {
+      if (warnTicks[i].casts !== warnTicks[i - 1].casts) continue;   // 別の詔（唱えた回数で分ける）
+      const a = warnTicks[i - 1].zoneEls[0], b = warnTicks[i].zoneEls[0];
+      if (!a || !b) continue;
+      expect(b.progress, `t${warnTicks[i].t} の進みが前の tick より小さい＝時計が戻っている`)
+        .toBeGreaterThan(a.progress);
+    }
+    // ③ 円の枚数は「通れるセルだけ」＝壁の中には描かない（＝嘘の告知を出さない）
+    for (const x of warnTicks) {
+      expect(x.cells.length, `t${x.t} の円が0枚＝告知の無い打点`).toBeGreaterThan(0);
+      expect(x.cells.length, `t${x.t} の円 ${x.cells.length} 枚が半径 ${c.radius} の最大より多い`)
+        .toBeLessThanOrEqual(21);
+    }
+    // ④ 落ちた tick＝床の円が消え、落ちた絵（`.enemy-decree-fall`）が出る
+    const resolved = s.find((x, i) => i > 0 && (x.hits + x.whiffs) > (s[i - 1].hits + s[i - 1].whiffs));
+    expect(resolved, '60 tick で詔が一度も解決していない').toBeTruthy();
+    expect(resolved.zoneEls, '落ちた tick に床の円が残っている＝消し忘れ（次の詔と混ざる）')
+      .toEqual([]);
+    const prev = s.find(x => x.t === resolved.t - 1);
+    expect(resolved.fallFx - prev.fallFx, '落ちた tick に絵が1枚も出ていない＝盾を無視する打点が無告知')
+      .toBe(prev.cells.length);
+  });
+
+test('X-⑦ 相の差し替え＝HP 半分で速さ（魔将と同じ×1.5）と詔の器が速くなる／予告は縮まず、唱えている詔は畳まれない',
+  async ({ page }) => {
+    const m = ENEMY_META[DL];
+    const c = m.lockstep, p2 = m.phases.find(ph => ph.lockstep !== undefined).lockstep;
+    // **唱えている最中**に相を跨がせる（＝走っている詔が畳まれないことを測る）
+    const r = await trackDarkLord(page, {
+      ticks: 90, spawn: DL_NEAR, dropWhen: { atPhase: 'warn', dmg: Math.ceil(m.hp * 0.6) },
+    });
+    const s = r.samples;
+    const after = s.filter(x => x.hp <= m.hp * 0.5);
+    expect(after.length, '後半に入っていない＝落としたダメージが足りない').toBeGreaterThan(0);
+
+    // ① 設定が差し替わった（`_lockstep`＝エンティティ側の1つの入口）
+    expect(after[0].cfg, '後半の設定が差し替わっていない（boss.js の applyBossPhase に口が無い）')
+      .toMatchObject(p2);
+    // ② 走っていた詔は畳まれない＝相を跨いだ tick も同じ集合・同じ落ちる時刻のまま
+    const swapAt = after[0];
+    if (swapAt.phase === 'warn') {
+      // ⚠️ 同じ詔だけを見る＝`casts`（唱えた回数）で束ねる（中心だと別の詔が混ざる）
+      const sameCast = s.filter(x => x.phase === 'warn' && x.casts === swapAt.casts);
+      const ats = new Set(sameCast.map(x => x.at));
+      const sets = new Set(sameCast.map(x => x.cells.join('|')));
+      expect(ats.size, '相が変わった瞬間に落ちる時刻が書き換わった＝床の絵と落ちる拍がずれる').toBe(1);
+      expect(sets.size, '相が変わった瞬間に円の集合が書き換わった＝告知が嘘になる').toBe(1);
+      expect(sameCast.length, `相を跨いだ詔が ${c.warnMs}ms 続いていない＝畳まれた`)
+        .toBe(nDlTicks(c.warnMs));
+    }
+    // ③ 差し替え後の器は**後半の速さ**で満ちる
+    const fill2 = p2.fillPerSec * (TICK_MS / 1000);
+    const pairs = [];
+    for (let i = 1; i < after.length; i++) {
+      if (after[i].phase || after[i - 1].phase) continue;
+      if (after[i].heat >= 1 || after[i].heat === 0) continue;
+      pairs.push(after[i].heat - after[i - 1].heat);
+    }
+    expect(pairs.length, '後半に器が満ちる tick が無い＝差し替えを測れていない').toBeGreaterThan(0);
+    for (const d of pairs) expect(d, '後半の器の満ちが phases[].lockstep と違う').toBeCloseTo(fill2, 6);
+    // ④ 後半に唱えた詔の予告は前半と同じ長さ（§7-16 の据え置き）
+    const runs2 = lockstepRuns(after);
+    const warn2 = runs2.filter(x => x.phase === 'warn' && x.to < after[after.length - 1].t);
+    expect(warn2.length, '後半に唱えが完走していない').toBeGreaterThanOrEqual(1);
+    for (const w of warn2) {
+      expect(after.find(x => x.t === w.from).span, `後半の唱えが ${c.warnMs}ms でない＝予告が縮んだ`)
+        .toBe(c.warnMs);
+    }
+  });
+
+test('X-⑧ 詔（lockstep）の使い手は X だけ・X は他の10体の移動機構を持たない', () => {
+  const xm = mechanismsOf(ENEMY_META[DL]);
+  const others = ['W', 'A', 'N', 'J', 'O', 'U', 'G', 'I', SL, LV].map(k => mechanismsOf(ENEMY_META[k]));
+  expect(xm.has('lockstep'), 'X が固有機構（詔＝lockstep）を持っていない').toBe(true);
+  expect(others.some(x => x.has('lockstep')),
+    '他のボスが詔を持っている＝X の固有機構ではない').toBe(false);
+  const users = Object.entries(ENEMY_META).filter(([, m]) => m.lockstep).map(([k]) => k);
+  expect(users, '詔を持つ敵が X 以外にも居る（設計が重複した）').toEqual([DL]);
+  // 借り物でない番人＝特に `blink`（η 術士の素の機構）が生えた瞬間に「歩調」が意味を失う
+  for (const k of ['combat', 'laneStalk', 'burrowAmbush', 'hide', 'dash', 'coil', 'gaze',
+    'soar', 'momentum', 'leap', 'tongue', 'zigzag', 'surge', 'glaciate', 'blink', 'blockFacing']) {
+    expect(ENEMY_META[DL][k], `${k} を持っている＝他の10体の型を借りている`).toBeUndefined();
+  }
+  for (const p of ENEMY_META[DL].phases ?? []) {
+    for (const k of ['dash', 'coil', 'hide', 'gaze', 'soar', 'momentum', 'tongue', 'surge',
+      'glaciate', 'hitAndAway', 'combat']) {
+      expect(p[k], `後半に ${k} が生えている＝他のボスの後半と同じ型`).toBeUndefined();
+    }
+  }
+});
+
+test('X-⑨ 検証ステージの幾何（GUIDE §4-3）＝詔の円が床を覆わない／X が1体だけ', () => {
+  const MAP = JSON.parse(readFileSync(
+    fileURLToPath(new URL('../work/blade-of-lumia.json', import.meta.url)), 'utf8'));
+  const c = ENEMY_META[DL].lockstep;
+  const sd = MAP.layers[TEST_LAYER].stages[stageKey('bal_dark_lord')];
+  expect(sd, `闘技場（${TEST_LAYER} ${stageKey('bal_dark_lord')}）が無い`).toBeTruthy();
+  const rows = sd.tiles.map(r => (Array.isArray(r) ? r.join('') : r));
+  expect(rows.length, '闘技場の行数が 10 でない').toBe(10);
+  expect(sd.cols, '闘技場の列数が 12 でない').toBe(12);
+  // ① 水が無い（歩調は地形を見ない＝水があると測定が地形のせいになる）
+  expect(Object.keys(sd.bgTiles ?? {}).length, '闘技場に bgTiles がある＝地形が測定に混ざる').toBe(0);
+  // ② X が1体だけ、実測どおりの位置に居る
+  const found = [];
+  rows.forEach((row, r) => [...row].forEach((ch, cc) => { if (ch === DL) found.push([r, cc]); }));
+  expect(found.length, '闘技場に X が1体ではない').toBe(1);
+  expect(found[0], 'X の位置が出荷データと違う＝測定の立ち位置（距離）の前提が崩れる')
+    .toEqual([DL_ROW, DL_COL]);
+  // ③ 床（立てるセル）＝円の 3 倍以上ある＝「円の外へ歩く」答えが選べる
+  const floors = rows.reduce((n, row) => n + [...row].filter(ch => ch === '.').length, 0) + 1;
+  const span = Math.ceil(c.radius + 0.5);
+  let area = 0;
+  for (let dr = -span; dr <= span; dr++) {
+    for (let dc = -span; dc <= span; dc++) {
+      const gy = Math.max(0, Math.abs(dr) - 0.5), gx = Math.max(0, Math.abs(dc) - 0.5);
+      if (Math.hypot(gx, gy) <= c.radius) area++;
+    }
+  }
+  expect(floors, `闘技場の床 ${floors} 枚が円 ${area} 枚の 3 倍に届かない＝逃げ場が無い`)
+    .toBeGreaterThanOrEqual(area * 3);
+  // ④ 測定に使う立ち位置が床である（(1,1) の隅・(4,6) の剣の外）
+  for (const p of [DL_FAR, DL_NEAR]) {
+    expect(rows[p.row][p.col], `測定の立ち位置 (${p.row},${p.col}) が床でない`).toBe('.');
+  }
+  // ⑤ 予告のあいだに逃げ切れる床が (4,6) の北にある＝X-⑤ の前提（3 タイル）
+  for (let i = 1; i <= 3; i++) {
+    expect(rows[DL_NEAR.row - i][DL_NEAR.col], `(${DL_NEAR.row - i},${DL_NEAR.col}) が床でない`
+      + '＝X-⑤ の「北へ3タイル歩く」が成り立たない').toBe('.');
+  }
+});
+
+// 2026-09-03（ユーザーの実プレイ判定）＝剣と石は cooldown が完全に独立＝距離のゲート
+// （`minRange`）が無いと密着している最中でも石が普通に飛んできて「盾で受けた直後に
+// 斬りたいのに、斬っている間に石が刺さる」＝見てから動けない一撃になる。
+test('X-⑩ 石はプレイヤーの剣の間合い（密着）では出さない＝斬り合いの最中に石が刺さらない',
+  async ({ page }) => {
+    const m = ENEMY_META[DL];
+    const stoneIdx = m.attacks.findIndex(a => a.type === 'stone');
+    const swordIdx = m.attacks.findIndex(a => a.type === 'sword');
+    const stone = m.attacks[stoneIdx];
+    expect(stoneIdx, '石の index が読めない＝この本の前提が崩れている').toBeGreaterThanOrEqual(0);
+    // ⚠️ approach/retreat の自然な往復に任せると「密着している瞬間に石のクールダウンが
+    //    ちょうど明けている」が滅多に起きず、歯の無い（潰しても緑の）本になる（実測で確認
+    //    ＝`minRange` を外すミュータントでも 200 tick 陣取りでは1度も緑にならなかった）。
+    //    ∴機械的に固定する＝`speed: 0` で密着（1.0）に居させ続け、石の cooldown を極端に
+    //    縮めて「ゲートが無ければ毎 tick でも撃てる」状態を作る。剣（近接）は cooldown その
+    //    ままで密着から普通に出る＝「X は攻撃を試み続けている」ことも同時に確かめる。
+    const NEUTER = { attacks: m.attacks.map(a => a.type === 'stone' ? { ...a, cooldown: 10 } : a), speed: 0 };
+    const r = await trackDarkLord(page, { ticks: 60, spawn: { row: 4, col: 7 }, patch: NEUTER });
+    const s = r.samples;
+    expect(r.error).toBeUndefined();
+
+    let stoneFired = 0, swordFired = 0;
+    const violations = [];
+    for (let i = 1; i < s.length; i++) {
+      const prev = JSON.parse(s[i - 1].attackTimes ?? '{}');
+      const cur  = JSON.parse(s[i].attackTimes ?? '{}');
+      if (cur[swordIdx] !== prev[swordIdx]) swordFired++;
+      if (cur[stoneIdx] === prev[stoneIdx]) continue;
+      stoneFired++;
+      // `enemyAttack` は移動を終えた後のこの tick の位置で間合いを見る＝この tick の
+      // サンプル（post-step）がその判定に使われた位置と同じ（GUIDE §7-4）。X は 1×1 ＝
+      // 端距離は中心距離と一致する（`enemyEdgeDist`）。
+      const reach = Math.hypot(s[i].py - s[i].y, s[i].px - s[i].x);
+      if (reach < stone.minRange) violations.push({ t: s[i].t, reach: reach.toFixed(2) });
+    }
+    expect(swordFired, '密着なのに剣が1回も出ていない＝X が攻撃を試みていない（測定の前提が崩れている）')
+      .toBeGreaterThan(0);
+    expect(stoneFired, `60 tick・cooldown 10ms でも石が一度も飛んでいない＝${stoneIdx} 番の`
+      + 'index が違うか、この本自体が空振りしている').toBe(0);
+    expect(violations, `密着（minRange ${stone.minRange} 未満）で石が飛んだ tick: `
+      + `${JSON.stringify(violations)}`).toEqual([]);
+  });
+
+// 2026-09-03（ユーザーの実プレイ報告・スクリーンショットつき）＝X が部屋の角に留まり続け、
+// プレイヤーが距離を詰め直すだけで「密着→防御→攻撃→魔法を避けて詰め直す」を繰り返せてしまう。
+// 原因は `bossTickHitAndAway` の retreat（後退）が「プレイヤーの逆方向」の2択（軸優先＋直交）
+// しか見ておらず、角ではどちらも壁で固まっていた＝**X だけでなく `hitAndAway` を使う
+// 全ボス（魔将 V・魔物 W の後半）に共通の穴**＝この本は X を借りて測る（`DL` の闘技場の
+// (1,1) は北＝壁・西＝壁の実在の角）。
+test('X-⑪ 角に追い詰められても退避（retreat）で固まらない＝通れる方向へ逃げて局面を動かす',
+  async ({ page }) => {
+    // X を角（1,1）へ直接置き、retreat 中に固定する（`_haTimer` を遠い未来にして
+    // 時間切れでの相の切り替えを止める）。プレイヤーを (2,2) に置く＝「プレイヤーの逆」は
+    // 北・西のどちらも壁＝旧実装ならここで1歩も動けない。
+    const r = await trackDarkLord(page, {
+      ticks: 5, spawn: { row: 2, col: 2 },
+      entityPatch: { x: 1, y: 1, _haPhase: 'retreat', _haTimer: 1e9 },
+    });
+    const s = r.samples;
+    expect(r.error).toBeUndefined();
+    expect(`${s[0].y},${s[0].x}`, '角（1,1）から1歩も動けていない＝退避が壁で固まったまま')
+      .not.toBe('1,1');
+  });

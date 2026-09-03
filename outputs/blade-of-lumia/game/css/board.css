@@ -328,6 +328,36 @@
     100% { filter: brightness(1.35) saturate(0.5); }
 }
 
+/* 2026-09-02（11体目 X 魔王）: 詔を唱えている体（`warnMs` のあいだ＝**錨で止まる**∴
+   移動も剣も出ない＝殴り返せる唯一の窓）。
+   ⚠️ 他の予告と**形で区別する**（GUIDE §6-1）＝`.surge-windup` は縦に伸び・
+   `.tongue-windup` は横に膨らみ・`.pounce-windup` は潰れ・`.slam-windup` は拡大縮小・
+   `.dash-windup` は左右の揺れ・`.glaciate-freeze` は形を変えず色だけ・
+   `.swing-windup` は刃が上がる。∴こちらは**寸法を一切変えず体が床から浮き上がる**
+   （純粋な translateY）＝「歩いていない＝今なら届く」と読める唯一の形。
+   長さは `--lockstep-span-ms`（JS が入れる＝状態機械が長さの単一の真実）。
+   ⚠️ 大型敵の揺れ（`.large-enemy`）より後に置く＝同じ specificity で後勝ち。 */
+.char-abs.lockstep-cast canvas.sprite {
+    animation: enemy-lockstep-cast var(--lockstep-span-ms, 1200ms) ease-out forwards;
+}
+@keyframes enemy-lockstep-cast {
+    0%   { transform: translateY(0);     filter: brightness(1);    }
+    100% { transform: translateY(-16%);  filter: brightness(1.18); }
+}
+
+/* 詔を外された直後の硬直（`rootMs`＝空振りの対価∴ここが2つめの殴り返す窓）。
+   浮いた体が**前へ傾いて落ちる**＝浮上（唱え）と逆の動きで「終わった」が読める。
+   ⚠️ 予告と混ざらないよう、揺れも膨らみも入れない（静止した傾き＋暗さだけ）。 */
+.char-abs.lockstep-root canvas.sprite {
+    transform-origin: 50% 100%;
+    animation: enemy-lockstep-root var(--lockstep-span-ms, 900ms) ease-out forwards;
+}
+@keyframes enemy-lockstep-root {
+    0%   { transform: translateY(-16%) rotate(0deg);    filter: brightness(1.18);              }
+    30%  { transform: translateY(0)    rotate(-7deg);   filter: brightness(0.78) saturate(0.7); }
+    100% { transform: translateY(0)    rotate(-5deg);   filter: brightness(0.85) saturate(0.8); }
+}
+
 /* Phase 8-4 (4) 0d-2.6: 剣（近接攻撃）の予告モーション＝**剣を振り上げる**。
    2026-08-25 ユーザー指定：「体当たりの予告はキャラ自体の拡大縮小だが、剣の攻撃の予告が
    それだと変」∴キャラを縮小拡大せず、**剣そのものが頭上へ上がる**形にする

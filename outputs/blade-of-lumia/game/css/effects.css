@@ -608,6 +608,72 @@
     filter: blur(3px);
 }
 
+/* ── 2026-09-02（11体目 X 魔王）: 器（`--lockstep-heat`）を既存のオーラの色で見せる ──
+   歩調の器は「時間で満ち、歩くと押し戻る」1つの数（GUIDE §7-7）∴**新しい絵を作らず**
+   もとからある魔王のオーラの色をその数で動かす（＝プレイヤーは「金→赤」だけを覚えればよい）。
+   ・数は enemy-ai.js syncLockstepMotion が wrapper（`char-enemy-<id>`）に入れる＝
+     子のオーラへ継承される。未設定なら 0（＝もとの金色のまま＝他の `aura` 持ちに影響なし）
+   ・閾値は CSS 側にも JS 側にも持たない＝**連続に赤くなる**（「もう唱える」は詔の円が告げる）
+   ⚠️ 上の素の定義より後・かつ子孫セレクタ（specificity 0,2,0）で確実に後勝ちさせる。 */
+.char-abs .dark-lord-aura {
+    border-color: hsl(calc((45 - 55 * var(--lockstep-heat, 0)) * 1deg) 87% calc(60% + 6% * var(--lockstep-heat, 0)));
+    box-shadow: 0 0 calc(12px + 10px * var(--lockstep-heat, 0)) calc(4px + 3px * var(--lockstep-heat, 0))
+        hsl(calc((45 - 55 * var(--lockstep-heat, 0)) * 1deg) 87% 58% / calc(0.5 + 0.3 * var(--lockstep-heat, 0)));
+}
+.char-abs .dark-lord-aura-2 {
+    border-color: hsl(calc((45 - 55 * var(--lockstep-heat, 0)) * 1deg) 87% 60% / 0.4);
+    box-shadow: 0 0 calc(18px + 12px * var(--lockstep-heat, 0)) calc(6px + 4px * var(--lockstep-heat, 0))
+        hsl(calc((45 - 55 * var(--lockstep-heat, 0)) * 1deg) 87% 58% / calc(0.25 + 0.3 * var(--lockstep-heat, 0)));
+}
+.char-abs .dark-lord-aura-smoke {
+    background: hsl(calc((45 - 55 * var(--lockstep-heat, 0)) * 1deg) 87% 58% / 0.35);
+}
+
+/* ── 2026-09-02（11体目 X 魔王）: 詔（みことのり）の円 ────────────────────────
+   唱え始めた瞬間のプレイヤーの足元を中心に敷かれる盤（`warnMs` のあいだ表示）。
+   **1タイル＝1枚**＝当たり判定（`_lsCells`）と同じ配列を回して描く（形を似せるのではなく
+   同じ配列＝隠れダメージも過剰警告も出ない）。位置と寸法は JS が px で入れる。
+   ⚠️ 他の床の告知と**形・色・変化の3つで区別する**（GUIDE §6-1）：
+     ・形＝四角の枠が**内へ閉じていく**（輪と印は円・波とのしかかりは角丸矩形・
+       氷は斜めの筋の四角）＝「この床が閉じる＝出ろ」と読める
+     ・色＝**魔王の金**（波＝海の青／のしかかり＝沼の黄緑／氷＝白／印＝土→赤）
+     ・変化＝`--decree-progress`（0→1）だけで閉じる＝閾値を持たない
+   ⚠️ 盾では防げない打点∴「立っていれば安全」と誤読させない濃さにする（枠を太く）。 */
+.enemy-decree {
+    --decree-progress: 0;
+    box-sizing: border-box;
+    border: 2px solid hsl(45 90% 62% / calc(0.45 + 0.5 * var(--decree-progress)));
+    background: radial-gradient(circle,
+        hsl(42 88% 58% / calc(0.06 + 0.20 * var(--decree-progress))) 0%,
+        hsl(30 80% 44% / calc(0.04 + 0.16 * var(--decree-progress))) 100%);
+}
+/* 内へ閉じる四角＝残り時間そのもの（`--decree-progress` が 1 で中心に収束＝落ちる拍）。 */
+.enemy-decree::after {
+    content: '';
+    position: absolute;
+    inset: calc(6% + 38% * var(--decree-progress));
+    border: 2px solid hsl(40 92% 66% / calc(0.35 + 0.6 * var(--decree-progress)));
+    background: hsl(38 88% 60% / calc(0.05 + 0.18 * var(--decree-progress)));
+}
+
+/* 詔が落ちた瞬間（別 DOM ∴X が倒れても残らない＝`.enemy-frost-spike` と同型）。
+   ⚠️ 他の結果の絵と**動きで区別する**＝中心から膨らむ（波・岩・潰す）でも
+   下から突き上がる（氷柱）でもなく、**上から落ちて床で潰れる**＝「詔＝降ってくる」。 */
+.enemy-decree-fall {
+    box-sizing: border-box;
+    border: 3px solid hsl(46 96% 74% / 0.95);
+    background: linear-gradient(to bottom,
+        hsl(48 96% 80% / 0.85) 0%,
+        hsl(36 88% 56% / 0.45) 60%,
+        hsl(24 70% 34% / 0.15) 100%);
+    animation: enemy-decree-fall-drop 0.38s cubic-bezier(0.3, 0.85, 0.2, 1) forwards;
+}
+@keyframes enemy-decree-fall-drop {
+    0%   { transform: translateY(-70%) scaleY(1.25); opacity: 0.25; }
+    45%  { transform: translateY(0)    scaleY(1);    opacity: 1;    }
+    100% { transform: translateY(0)    scaleY(0.86); opacity: 0;    }
+}
+
 /* ── 家のドア 開閉アニメーション（左右に開く） ────────────── */
 @keyframes house-door-open-left {
     0% {

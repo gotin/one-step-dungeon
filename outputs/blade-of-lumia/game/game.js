@@ -2480,6 +2480,34 @@ export function getEnemiesSnapshot() {
 			}))
 			: null,
 		glaciate: e._glaciate ?? null,
+		// Phase 8-4 (4) 0d-3（11体目 X）: 歩調（lockstep）の観測用。
+		// lsHeat ＝詔の器（0〜1）＝**絵・音・テストが読む1つの数**（GUIDE §7-7）。時間で満ち、
+		//   **プレイヤーが歩いた距離だけ**冷える∴「止まっていると満ちる」はこの数で測る。
+		// lsPhase ＝'warn'（唱えている＝錨。円が落ちるまで移動も攻撃もしない）| 'root'（外した
+		//   硬直＝避けた側の追加の窓）| null（器が満ちるのを待っている）。
+		// lsAt ＝今の相が終わる論理時刻／lsSpan ＝今の相の長さ（＝絵に渡す数と同じ1つの数）
+		// lsR/lsC ＝詔の中心タイル＝**唱え始めた瞬間のプレイヤーのタイル**（以後追わない＝
+		//   `gazeCy/Cx`・`surgeAimY/X` と同じ「据え置きで追尾しないことを測る」趣旨）。
+		// lsCells ＝円のタイル集合（1枚＝1タイル）＝**床に描く div と同じ配列**∴「塗った集合と
+		//   当たった集合が一致する」を計算の再現ではなく**同一性**で測れる。
+		// lsTravel ＝この tick にプレイヤーが歩いた距離（上限 MOVE_STEP）＝歩調の唯一の燃料。
+		// lsCasts/lsHits/lsWhiffs ＝唱えた回数／当てた回数／外した回数∴「予告を見て円の外へ
+		//   歩けば避かる」は lsCasts が増えて lsHits が増えないことで測れる（spikes/spikeHits と
+		//   同じ趣旨）。
+		// lockstep ＝歩調の設定そのもの（フェーズで差し替わる＝`resolveLockstep` が読む側）。
+		//   **meta.lockstep とは別物**＝「後半は歩調が速く器が速く満ちる」の観測窓。
+		lsHeat: e._lsHeat ?? null,
+		lsPhase: e._lsPhase ?? null,
+		lsAt: e._lsAt ?? null,
+		lsSpan: e._lsSpan ?? null,
+		lsR: e._lsR ?? null,
+		lsC: e._lsC ?? null,
+		lsCells: e._lsCells ? e._lsCells.map(([r, c]) => ({ r, c })) : null,
+		lsTravel: e._lsTravel ?? null,
+		lsCasts: e._lsCasts ?? null,
+		lsHits: e._lsHits ?? null,
+		lsWhiffs: e._lsWhiffs ?? null,
+		lockstep: e._lockstep ?? null,
 		// Phase 8-4 (4) 層1: ボスのフェーズが差し替える「行動の元データ」の観測用。
 		// boss.js checkBossPhase は**エンティティ側にだけ書く**∴フェーズが効いたかは
 		// ここに出る値で読む（null＝差し替えなし＝ENEMY_META のまま）。
@@ -2537,6 +2565,16 @@ export function injectEnemyProjectileForTest(x, y, dx, dy, atk = 4, speed = 2) {
 export function stunEnemyById(id, durationMs) {
 	const e = enemies.find(x => x.id === id);
 	if (e) e.stunUntil = gameTime + durationMs;
+}
+
+// テスト用：指定 id の敵の実体フィールドを直接書き換える（0d-3・11体目 X）。
+// ⚠️ `setEnemyMetaForTest` は `ENEMY_META[type]` を書き換えるだけ＝`speed` のように
+//    スポーン時に entity へ写された値（`resolveEnemySpeed` の `e.speed ?? meta.speed`）は
+//    META を後から patch しても効かない（entity はもう出来ている）。この口は entity 自身を
+//    直接書く＝`speed:0` で移動だけを止めて機構の時計（詔の器など）は動かし続けたいとき用。
+export function setEnemyFieldForTest(id, patch) {
+	const e = enemies.find(x => x.id === id);
+	if (e) Object.assign(e, patch);
 }
 
 // Phase 6-1b: テスト用 — 撃破ボスフラグを直接追加する

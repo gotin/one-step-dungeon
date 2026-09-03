@@ -21,6 +21,7 @@ import {
 	dealDamageToEnemyById,
 	injectEnemyProjectileForTest,
 	stunEnemyById,
+	setEnemyFieldForTest,
 	addDefeatedBossForTest,
 	startAnimLoop,
 	redrawAnimSprites,
@@ -148,6 +149,8 @@ window.__game = {
 	injectEnemyProjectile: (x, y, dx, dy, atk, speed) => injectEnemyProjectileForTest(x, y, dx, dy, atk, speed),
 	// 指定 id の敵をスタン（ブーメランスタン Phase 3-4 の検証用）
 	stunEnemy: (id, ms) => stunEnemyById(id, ms),
+	// テスト用：指定 id の敵の実体フィールドを直接書き換える（0d-3・11体目 X＝speed 等）
+	setEnemyFieldForTest: (id, patch) => setEnemyFieldForTest(id, patch),
 	// Phase 6-1b: 撃破ボスフラグをテストから直接追加する
 	addDefeatedBoss: (type) => addDefeatedBossForTest(type),
 	// Phase 7-1: 剣ティアテスト用

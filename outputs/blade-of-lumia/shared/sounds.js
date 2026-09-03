@@ -737,6 +737,38 @@ export function playSound(kind) {
 		tone(ctx, now + 0.06, 1661, 0.06, 'triangle', 0.034);
 		tone(ctx, now + 0.10, 2093, 0.10, 'sine',     0.026);   // 刃先が鳴る尾
 	}
+	// ── 2026-09-02（11体目 X 魔王）: 詔（みことのり）の3音 ─────────────────────
+	//   decreeCast … 器が満ちて唱え始めた瞬間（＝**錨で止まった＝剣を入れられる窓**の合図。
+	//                ただし円の中に留まれば落ちる∴「殴るか退くか」の二択が始まる音）
+	//   decreeHit  … 円の中に居た＝盾を無視する打点が入った tick（剣も封じられる）
+	//   decreeMiss … 円の外へ歩き切った＝空振り（＝`rootMs` の硬直が開く合図）
+	//
+	// 唱え始め「ゴォ…ン」（warnMs 1200ms に収める＝床の円の絵と同じ長さ）
+	// ⚠️ 他の予告と**形**で切り分ける（GUIDE §6-1/§7-6）＝iceFreeze（間隔が詰まる高音）・
+	//    seaSurge（低音から中音へ滑らかに上がる）・tongueCast（音量が膨らむ）・
+	//    dashWindup（上昇する低音の段）・coilWindup（2音の往復）・gazeMark（静止した和音）・
+	//    soarRise（等間隔の3打）。∴こちらは**低音の鐘が等間隔で3つ鳴り、最後だけ半音下がる**
+	//    ＝鐘（減衰の長い低音の連打）は他のどれも持たない＝耳だけで「詔」と分かる。
+	if (kind === 'decreeCast') {
+		tone(ctx, now,        110, 0.30, 'sine',     0.055);
+		tone(ctx, now,        165, 0.18, 'triangle', 0.024);   // 鐘の倍音
+		tone(ctx, now + 0.40, 110, 0.30, 'sine',     0.050);
+		tone(ctx, now + 0.80, 104, 0.34, 'sine',     0.048);   // 最後だけ半音下がる＝落ちる直前
+	}
+	// 詔が落ちた（＝結果の音・当たり判定と同じ tick）。低音の一撃＋不協和な高音＝
+	// 「盾では消えない」を耳で知らせる（iceSpike は低音を持たない・こちらは持つ＝別の形）。
+	if (kind === 'decreeHit') {
+		tone(ctx, now,        82,  0.22, 'sawtooth', 0.070);
+		tone(ctx, now + 0.02, 233, 0.16, 'square',   0.034);
+		tone(ctx, now + 0.06, 311, 0.20, 'triangle', 0.030);   // 増4度＝濁った響き
+	}
+	// 空振り（＝避けた・`rootMs` の硬直が開く）。**下がって消える**＝結果の音の中で唯一
+	// 打点を持たない形（rockSmash/coilCrush/toadLand と混ざらない）。
+	if (kind === 'decreeMiss') {
+		tone(ctx, now,        294, 0.10, 'triangle', 0.030);
+		tone(ctx, now + 0.08, 220, 0.14, 'sine',     0.026);
+		tone(ctx, now + 0.18, 147, 0.20, 'sine',     0.020);
+	}
 	// 扉ロック（ボス部屋）
 	if (kind === 'doorLock') {
 		tone(ctx, now,        180, 0.08, 'sawtooth', 0.08);

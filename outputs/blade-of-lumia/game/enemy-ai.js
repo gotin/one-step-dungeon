@@ -1838,18 +1838,28 @@ export function createEnemyAi(deps) {
 						);
 					}
 				} else {
-					const rdx = -Math.sign(dx), rdy = -Math.sign(dy);
+					// 2026-09-03（ユーザーの実プレイ報告・スクリーンショットつき）: 「プレイヤーの
+					// 逆方向」の2択（軸優先＋直交）しか見ていなかった＝**角に追い詰められると
+					// どちらも壁**で、下がれずその場に固まる。プレイヤーが距離を詰め直し続ける
+					// 限り retreatDist が 3.0 に届かず 'approach' へも戻れない∴「角へ寄せて
+					// 殴り続ける」が最適手になっていた（今回の穴＝I/`{`/L/X で塞いだ「立って
+					// いるだけで無傷」とは逆の「敵が動けなくなる」という抜け穴）。
+					// ✅ 4方向すべてを候補にし、**通れる中でプレイヤーから最も離れる**ものを選ぶ
+					// （距離を保つ／詰める判定と同じ「変化の向きで見る」作法＝GUIDE §7-9）。
+					// 角では軸優先の2択がどちらも壁でも、直交する別の1方向（この場合は左）が
+					// 開いていれば必ずそこへ逃げられる。
 					const step = MOVE_STEP;
-					const cands = Math.abs(dy) >= Math.abs(dx)
-						? [[rdy*step,0],[0,rdx*step]] : [[0,rdx*step],[rdy*step,0]];
+					const dirs = [[-step, 0], [step, 0], [0, -step], [0, step]];
+					let best = null, bestDist = -Infinity;
+					for (const [my, mx] of dirs) {
+						if (!isPassableForEnemy(e.y + my, e.x + mx, e)) continue;
+						const nd = Math.hypot((e.y + my) - player.y, (e.x + mx) - player.x);
+						if (nd > bestDist) { bestDist = nd; best = [my, mx]; }
+					}
 					e.accum = (e.accum ?? 0) + resolveEnemySpeed(e, meta);
 					if (e.accum >= 1.0) {
 						e.accum -= 1.0;
-						for (const [my,mx] of cands) {
-							if (isPassableForEnemy(e.y+my, e.x+mx, e)) {
-								e.y += my; e.x += mx; break;
-							}
-						}
+						if (best) { e.y += best[0]; e.x += best[1]; }
 						moveCharEl(`enemy-${e.id}`, e.x, e.y);
 					}
 				}
@@ -4282,6 +4292,243 @@ export function createEnemyAi(deps) {
 		syncGlaciateFrost(e, meta, gameNow());
 	}
 
+	// ── Phase 8-4 (4) 0d-3（11体目 X 魔王）: 詔（lockstep）─────────────
+	// 2026-09-03（ユーザーの実プレイ判定→追い作業）: **移動そのものはもう歩調で持たない**。
+	// ❌ 旧設計＝「自分の時計では動かず、プレイヤーが歩いた距離ぶんだけ進む」は「魔将より弱い」
+	//   と判定された＝プレイヤーが走ると絶対に追いつけず、詔（唯一の強さ）が一度も起きない
+	//   まま倒せてしまっていた。✅ 移動は**魔将と同じ張り付き（`hitAndAway`＝
+	//   `bossTickHitAndAway`）に丸ごと差し替えた**（`shared/enemies.js` の X の項）。
+	// meta.lockstep = { fillPerSec, coolPerCell, radius, warnMs, decreeAtk, sealMs, rootMs }
+	// を持つ敵は**「魔法攻撃」の役目を持つ詔（みことのり）**を持つ：
+	//   器（`_lsHeat` 0〜1）が `fillPerSec` で満ち、押し戻せるのは**歩いた距離だけ**
+	//   （`coolPerCell`）。満ちると錨のように止まって唱え（`warnMs`）、
+	//   **唱え始めた瞬間にプレイヤーが居たタイル**を中心に半径 `radius`（端距離）の
+	//   タイル集合へ**盾を無視する**打点が落ちる。外せば `rootMs` の硬直・当てれば
+	//   `sealMs` だけ剣を封じる。
+	// ∴「止まる」「盾を構える」「剣を振る（MELEE_FREEZE_MS 360 は歩けない）」がすべて器を
+	//   満たす＝I/`{`/L で塞いだ「立っているだけで無傷」の穴を**機構の側から**閉じる。
+	//   X の攻撃2本（剣 1.5・石 6）はどちらも盾で消える∴この打点が機構の存在理由
+	//   （§7-16 の支払い＝予告 `warnMs` ≧ 逃げ切りの歩数・危険域の絵＝当たり判定と同じ集合・
+	//    後半フェーズでも予告を縮めない）。
+	function resolveLockstep(e, meta) {
+		return e?._lockstep !== undefined ? e._lockstep : meta?.lockstep;
+	}
+
+	// この tick にプレイヤーが歩いた距離（セル）。**1つの数**に閉じる＝器の冷やしも
+	// テストもこれを読む（GUIDE §7-7）。
+	// ⚠️ 上限は `MOVE_STEP`（＝プレイヤーの1 tick の歩幅）＝ノックバック・場面の切り替え・
+	//    瞬間移動で**歩いていない距離が冷やしに化けない**。
+	function measureLockstepTravel(e) {
+		const player = getPlayer();
+		if (!player) { e._lsTravel = 0; return 0; }
+		const had = e._lsPx != null && e._lsPy != null;
+		const raw = had ? Math.hypot(player.x - e._lsPx, player.y - e._lsPy) : 0;
+		e._lsPx = player.x; e._lsPy = player.y;
+		e._lsTravel = Math.min(MOVE_STEP, raw);
+		return e._lsTravel;
+	}
+
+	// 詔が落ちるタイルの集合（中心タイルから**端距離** radius 以内・通れるセルだけ）。
+	// ⚠️ ここで作った集合を `_lsCells` に持ち、**床の絵も当たり判定も同じ配列を読む**
+	//    ＝「塗られていないセルでは絶対に当たらない」を計算の一致ではなく**同一性**で守る
+	//    （J・I・`{`・L で確立した規約）。
+	function decreeCells(cr, cc, radius) {
+		const span = Math.ceil(radius + 0.5);
+		const cells = [];
+		for (let dr = -span; dr <= span; dr++) {
+			for (let dc = -span; dc <= span; dc++) {
+				const gy = Math.max(0, Math.abs(dr) - 0.5);
+				const gx = Math.max(0, Math.abs(dc) - 0.5);
+				if (Math.hypot(gx, gy) > radius) continue;
+				const r = cr + dr, c = cc + dc;
+				if (!tilePassable(r, c)) continue;
+				cells.push([r, c]);
+			}
+		}
+		return cells;
+	}
+
+	// 唱え始める（＝錨。ここから `warnMs` のあいだ1歩も歩かず剣も石も出さない）。
+	// ⚠️ 中心は**この瞬間のプレイヤーのタイル**＝以後は追わない（O の印・`{` の狙いと同じ
+	//    作法＝走っている途中に円が付いて来ると「歩いて出る」が答えにならない）。
+	function beginDecree(e, cfg, now, meta) {
+		// 2026-09-03（移動を魔将の張り付きへ差し替えた副作用で実測して見つけた）＝剣の振り上げ
+		// （`tickSwing`）は `lockstepBusy` の外で毎 tick 先に解決する（GUIDE §7-8「立っている
+		// 予告は他の専有状態より先に解決する」）∴唱え始める瞬間に振り上げ中だと、その解決
+		// （`_attackTimes` の更新＝`enemyAttack` を経由しない直接の一撃）が**錨のあいだに
+		// そのまま起きる**＝「唱えているあいだは剣も石も出さない」の約束が破れる（実測＝
+		// X-③ の歯の確認で `attackTimes` が唱え中に動いた）。∴唱え始める瞬間に畳む。
+		if (e._swingAt != null) { e._swingAt = null; e._swingIdx = null; syncSwingMotion(e, meta); }
+		const player = getPlayer();
+		const cr = player ? toTileRow(player.y) : Math.round(e.y);
+		const cc = player ? toTileCol(player.x) : Math.round(e.x);
+		e._lsPhase = 'warn';
+		e._lsSpan  = cfg.warnMs ?? 1200;
+		e._lsAt    = now + e._lsSpan;
+		e._lsR     = cr; e._lsC = cc;
+		e._lsCells = decreeCells(cr, cc, cfg.radius ?? 1.6);
+		e._lsCasts = (e._lsCasts ?? 0) + 1;
+		if (player) {
+			const { cx, cy } = enemyCellCenter(e);
+			const dx = player.x - cx, dy = player.y - cy;
+			e.dir = Math.abs(dx) >= Math.abs(dy) ? (dx > 0 ? 'right' : 'left') : (dy > 0 ? 'down' : 'up');
+		}
+		playSound('decreeCast');
+	}
+
+	// 詔が落ちる（＝解決）。**盾は見ない**（`isShieldBlockingDir` を呼べば報告された完全防御が
+	// そのまま戻る＝この機構の存在理由が消える）。判定は**プレイヤーの中心が在るタイル**が
+	// `_lsCells` に含まれるかだけ＝床に描いた集合と同一。
+	function resolveDecree(e, cfg, now) {
+		const player = getPlayer();
+		const pr = player ? toTileRow(player.y) : null;
+		const pc = player ? toTileCol(player.x) : null;
+		const hit = player != null && (e._lsCells ?? []).some(([r, c]) => r === pr && c === pc);
+		showDecreeEffect(e);
+		clearDecreeEls(e);
+		e._lsHeat  = 0;
+		e._lsCells = [];
+		if (hit) {
+			e._lsHits = (e._lsHits ?? 0) + 1;
+			takeDamage(cfg.decreeAtk ?? e.atk ?? 1);
+			// 剣封じ＝`sealMs`（既定 1200）は `INVINCIBLE_MS 1500` より短い∴無敵の最後は
+			// 必ず振れる（被弾が「次も殴れない」へ連鎖しない）。
+			inflictDebuff?.({ inflict: { type: 'sealSword', ms: cfg.sealMs ?? 1200 } });
+			playSound('decreeHit');
+			// 当てた側に硬直は付けない（プレイヤーは無敵 1500ms ∴ここで止めると窓が二重になる）。
+			e._lsPhase = null; e._lsAt = null; e._lsSpan = 0;
+			return;
+		}
+		// 外した＝硬直（避けた側の追加の窓＝避けるのが報われる）。
+		e._lsWhiffs = (e._lsWhiffs ?? 0) + 1;
+		playSound('decreeMiss');
+		e._lsPhase = 'root';
+		e._lsSpan  = cfg.rootMs ?? 900;
+		e._lsAt    = now + e._lsSpan;
+	}
+
+	// 歩調と詔の時計を1 tick 進める（**行動ゲートの外**で毎 tick 呼ぶ＝`tickFrost`/`tickGaze`/
+	// `tickTongue` と同じ枠）。ここでしか器は動かない∴X 自身の攻撃硬直中でも器は満ちる
+	// （止めると「濃くなったのに落ちない」＝告知が嘘になる＝J/O/L で実測した罠）。
+	// 戻り値 true ＝**この tick は移動も攻撃もしない**（唱えている／外した硬直）。
+	// 相ごとに**必ず明示の分岐**を書く（GUIDE §7-8）。
+	function tickLockstep(e, meta, now) {
+		const cfg = resolveLockstep(e, meta);
+		if (!cfg) return false;
+		// 歩いた距離は**相に関係なく毎 tick 測る**＝唱えているあいだの移動も器の冷やしに
+		// 数えない（下で相ごとに使い分ける）が、基準点は途切れさせない（途切れると次の
+		// tick に「その場に湧いた距離」が入る）。
+		const travel = measureLockstepTravel(e);
+		const phase = e._lsPhase ?? null;
+		if (phase === 'warn') {
+			if (now >= (e._lsAt ?? 0)) resolveDecree(e, cfg, now);
+			return true;                       // 唱えている＝錨（剣の窓・ただし円の中）
+		}
+		if (phase === 'root') {
+			if (now >= (e._lsAt ?? 0)) { e._lsPhase = null; e._lsAt = null; e._lsSpan = 0; }
+			return true;                       // 外した硬直＝完全停止
+		}
+		// 相なし＝器が満ちる／歩いた距離だけ冷える。
+		const fill = (cfg.fillPerSec ?? 0.34) * (TICK_MS / 1000);
+		const cool = (cfg.coolPerCell ?? 0.30) * travel;
+		e._lsHeat = Math.min(1, Math.max(0, (e._lsHeat ?? 0) + fill - cool));
+		if (e._lsHeat >= 1) { beginDecree(e, cfg, now, meta); return true; }
+		return false;                          // 行動ゲートが開く（張り付き＋剣/石＝下の hitAndAway）
+	}
+
+	// 詔を捨てる（スタンの tick に呼ぶ＝`cancelGlaciate`/`cancelSurge` と同じ列）。
+	// ⚠️ 床に描いた円も**全部消す**＝止めたのに詔が落ちる、を作らない。器も 0 に戻す
+	//    （＝止めた直後にいきなり唱え直さない）。ボスはブーメランでスタンしない
+	//    （`stunnable ?? !isBoss`）∴今の X では観測差が出ない**二重の守り**＝`lockstep` を
+	//    雑魚に付けたときに効く。`e.accum` も併せて 0 に戻す＝`bossTickHitAndAway` の歩幅の
+	//    溜めも他の機構と同じ作法で捨てる（2026-09-03: 移動が hitAndAway に替わった後も
+	//    accum は同じフィールドを共有する）。
+	function cancelLockstep(e) {
+		clearDecreeEls(e);
+		e._lsPhase = null;
+		e._lsAt    = null;
+		e._lsSpan  = 0;
+		e._lsCells = [];
+		e._lsHeat  = 0;
+		e.accum    = 0;
+	}
+
+	// ── 詔の円を床に描く（唱えていることの唯一の告知）───────────────────
+	// ⚠️ 1セル＝1枚の div ＝**当たり判定（`_lsCells`）と同じ配列**を回す（形の一致ではなく
+	//    同一性で守る）。後始末＝`char-enemy-<id>` とは別の DOM ∴X が倒れても残る
+	//    ∴実時間の消去タイマを毎 tick 貼り直す（＝tick が来なくなれば自然に消える）。
+	const decreeElTimers = new Map();
+	const decreeElId = (e, r, c) => `decree-${e.id}-${r},${c}`;
+
+	function clearDecreeEls(e) {
+		for (const [r, c] of e._lsCells ?? []) {
+			const id = decreeElId(e, r, c);
+			clearTimeout(decreeElTimers.get(id));
+			decreeElTimers.delete(id);
+			document.getElementById(id)?.remove();
+		}
+	}
+
+	function syncDecreeZone(e, now) {
+		if ((e._lsPhase ?? null) !== 'warn') return;
+		const charLayerEl = getCharLayerEl();
+		if (!charLayerEl) return;
+		const cellPx = getCellPx();
+		const span = Math.max(1, e._lsSpan ?? 1);
+		const left = Math.max(0, (e._lsAt ?? now) - now);
+		for (const [r, c] of e._lsCells ?? []) {
+			const id = decreeElId(e, r, c);
+			let el = document.getElementById(id);
+			if (!el) {
+				el = document.createElement('div');
+				el.id = id;
+				el.className = 'enemy-decree';
+				charLayerEl.appendChild(el);
+			}
+			el.style.cssText = `position:absolute;left:${c * cellPx}px;top:${r * cellPx}px;`
+				+ `width:${cellPx}px;height:${cellPx}px;z-index:2;pointer-events:none;`
+				// 進み（0〜1）＝落ちるまでの残りを正規化した**1つの数**（§7-7）。
+				+ `--decree-progress:${(1 - left / span).toFixed(3)};`
+				// 残り時間＝点滅の速さを絵に持たせない（状態機械が長さの真実）。
+				+ `--decree-left-ms:${Math.round(left)}ms;`;
+			clearTimeout(decreeElTimers.get(id));
+			decreeElTimers.set(id, setTimeout(() => el.remove(), 400));
+		}
+	}
+
+	// 詔が落ちた瞬間（`.enemy-frost-spike`／`.toad-pounce-land` と同型＝実時間で消える別 DOM
+	// ∴X が倒れても残らない）。1セル＝1枚＝落ちた床そのもの。
+	function showDecreeEffect(e) {
+		const charLayerEl = getCharLayerEl();
+		if (!charLayerEl) return;
+		const cellPx = getCellPx();
+		for (const [r, c] of e._lsCells ?? []) {
+			const el = document.createElement('div');
+			el.className = 'enemy-decree-fall';
+			el.style.cssText = `position:absolute;left:${c * cellPx}px;top:${r * cellPx}px;`
+				+ `width:${cellPx}px;height:${cellPx}px;z-index:23;pointer-events:none;`;
+			charLayerEl.appendChild(el);
+			setTimeout(() => el.remove(), 380);
+		}
+	}
+
+	// 歩調の告知（器の満ち＝既存の魔王オーラの色／唱えている体）。
+	// ⚠️ 新規スプライトは作らない＝`aura` は絵だけの旗（`render-chars.js`）∴器の数を
+	//    CSS 変数で渡せば色の作り方は CSS 側が持つ（閾値を2箇所に書かない）。
+	function syncLockstepMotion(e, meta) {
+		const cfg = resolveLockstep(e, meta);
+		if (!cfg) return;
+		const phase = e._lsPhase ?? null;
+		const el = document.getElementById(`char-enemy-${e.id}`);
+		if (el) {
+			el.style.setProperty('--lockstep-heat', (e._lsHeat ?? 0).toFixed(3));
+			if (phase) el.style.setProperty('--lockstep-span-ms', `${Math.round(e._lsSpan ?? 0)}ms`);
+			el.classList.toggle('lockstep-cast', phase === 'warn');
+			el.classList.toggle('lockstep-root', phase === 'root');
+		}
+		syncDecreeZone(e, gameNow());
+	}
+
 	// ── Phase 5.5k k-4: 向きを固定して構える（盾騎士）─────────────────
 	// meta.blockFacing = { turnMs, knockback } を持つ敵は「向きが常時ブロックの面」＝
 	// e.dir がそのままダメージ無効化の方向になる（combat.js isBlockFacingDir）。
@@ -4846,6 +5093,11 @@ export function createEnemyAi(deps) {
 				// ＝この分岐は下の同期まで行かず `continue` する∴消し忘れると気絶中も氷が残った
 				// まま「まだ噴く」に見える（＝嘘の告知）。
 				if (resolveGlaciate(e, meta)) { cancelGlaciate(e); syncGlaciateMotion(e, meta); }
+				// Phase 8-4 (4) 0d-3（11体目 X）: 気絶したら詔も捨てる＝止めたのに円が落ちる、を
+				// 作らない（器も 0 に戻す＝明けた瞬間に唱え直さない）。床の円は `cancelLockstep`
+				// が div ごと外す＝この分岐は下の同期まで行かず `continue` する∴消し忘れると
+				// 気絶中も円が塗られたまま「まだ落ちる」に見える（＝嘘の告知）。
+				if (resolveLockstep(e, meta)) { cancelLockstep(e); syncLockstepMotion(e, meta); }
 				continue;
 			}
 			// Phase 5.5k k-7.5: 立っている予告は**他の専有状態より先に必ず解決する**
@@ -4879,6 +5131,14 @@ export function createEnemyAi(deps) {
 			// ⚠️ 氷結の状態機械（`tickGlaciate`）とは**別の時計**＝相が変わっても既に敷いた氷は
 			//    自分の時刻で噴く（＝道を継ぎ足しても赤い予告が延びない）。
 			if (meta.glaciate) tickFrost(e, meta, now);
+			// Phase 8-4 (4) 0d-3（11体目 X）: 歩調と詔の時計も**硬直中も進める時計**（上と同じ枠）。
+			// ここでしか器（`_lsHeat`）は動かない∴剣を振った直後の硬直でも器は満ちる
+			// （止めると「濃くなったのに落ちない」＝オーラの告知が嘘になる＝J/O/L で実測した罠）。
+			// ⚠️ 戻り値 true ＝**この tick は移動も攻撃もしない**（唱えている錨／外した硬直）
+			//    ∴下の行動ゲートの条件に `!lockstepBusy` を入れる。
+			// ⚠️ 硬直では**何も止めない**＝始まった詔もこれから満ちる器も硬直の外で回る
+			//    （自分で窓を立てる状態機械を硬直で止めると2周目以降が宙吊りになる・0d-2.7）。
+			const lockstepBusy = resolveLockstep(e, meta) ? tickLockstep(e, meta, now) : false;
 			// 隠れ↔出現の周期を更新（hide を持つ敵のみ＝潜み鮫・地中蟲・N 砂嵐の蠍王）
 			tickHide(e, meta, now);
 			// Phase 5.5k k-8: 瞬間移動（術士）＝消えている間と出現した tick を専有する。
@@ -4959,7 +5219,7 @@ export function createEnemyAi(deps) {
 			const dirLocked = tickFaceLock(e, meta, now);
 			// ⚠️ `!soaring` ＝`rise`/`aim`/`dive`/`land` の4相はこの tick を専有する。`ground` と
 			//    `air` は tickSoar が false を返す＝ここが開く（地上は歩き＋鉤爪、空は旋回＋雷撃弾）。
-			if (!isGuarding && !frozen && !leaping && !soaring && !shelled && !leeching && !slamming && !swinging && !breathing && !crushing && !blinking && !dashing && !tongueBusy && !surging && !glaciating) {
+			if (!isGuarding && !frozen && !leaping && !soaring && !shelled && !leeching && !slamming && !swinging && !breathing && !crushing && !blinking && !dashing && !tongueBusy && !surging && !glaciating && !lockstepBusy) {
 				if (resolveHitAndAway(e, meta)) {
 					bossTickHitAndAway(e, meta);
 				} else if (cmode === 'ranged') {
@@ -5073,6 +5333,10 @@ export function createEnemyAi(deps) {
 			// Phase 8-4 (4) 0d-3（10体目 L）: 氷結の告知（止まって白く冷える体＋床の氷1枚ずつ）。
 			// ⚠️ 最後に置く＝「今どう動いているか」を上書きする順番に揃える（G/U/I/`{` と同じ趣旨）。
 			if (meta.glaciate) syncGlaciateMotion(e, meta);
+			// Phase 8-4 (4) 0d-3（11体目 X）: 歩調の告知（器の満ち＝魔王オーラの色＋唱えている
+			// 体＋床の円）。⚠️ 最後に置く＝「今どう動いているか」を上書きする順番に揃える
+			// （G/U/I/`{`/L と同じ趣旨）。
+			if (resolveLockstep(e, meta)) syncLockstepMotion(e, meta);
 		}
 	}
 

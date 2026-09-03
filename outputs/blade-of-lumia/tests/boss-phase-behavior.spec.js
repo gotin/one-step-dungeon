@@ -346,7 +346,13 @@ test('⑤ ENEMY_META の phases[] は既知のキーだけを持ち、閾値は�
                       // 早く噴く。⚠️ 予告（`warnMs`）・道の長さ（`laneTiles`）・打点（`spikeAtk`）は
                       // 据え置き（据え置きの番人は boss-move-variety.spec.js の L-①）＝
                       // 盾で防げない氷柱の予告が後半でも縮まない（§7-16）。
-                      'glaciate'];
+                      'glaciate',
+                      // 0d-3（11体目 X）: 歩調の設定を相で差し替える口（boss.js が `_lockstep` へ
+                      // 書き、enemy-ai.js の `resolveLockstep` が読む）＝歩調の比と器の満ちを
+                      // 上げる。⚠️ 予告（`warnMs`）・半径（`radius`）・打点（`decreeAtk`）・
+                      // 剣封じ（`sealMs`）は据え置き（据え置きの番人は
+                      // boss-move-variety.spec.js の X-①）＝盾で防げない詔の予告が縮まない（§7-16）。
+                      'lockstep'];
   const MODE_KEYS = ['flank', 'direct', 'wander', 'strafe'];
   const withPhases = Object.entries(ENEMY_META).filter(([, m]) => m.phases);
   expect(withPhases.length, 'phases を持つ敵が居ない（データが消えた？）').toBeGreaterThanOrEqual(13);
