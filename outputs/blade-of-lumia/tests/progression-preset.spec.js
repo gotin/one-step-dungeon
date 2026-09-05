@@ -93,9 +93,13 @@ test.describe('進行地点プリセット', () => {
     const dt = report.checkpoints.at(-1);
     expect(dt.id).toBe('dark_tower');
     expect(dt.min.hearts, 'DT min のハート数（2026-08-24 の実プレイは 15）').toBe(15);
-    expect(dt.min.sword,  'DT min の剣ティア（木の剣）').toBe(0);
+    // 下限は木の剣のまま＝寄道の剣（聖剣・ルミアの剣）が min へ漏れていないことの歯。
+    expect(dt.min.sword,  'DT min の剣ティア（木の剣＝寄道の剣が下限へ漏れている）').toBe(0);
     expect(dt.min.shield, 'DT min の盾ティア（盾は3つとも必須ダンジョン産＝ティア2）').toBe(2);
-    expect(dt.max.sword,  'DT max の剣ティア（聖剣）').toBe(3);
+    // ⚠️ 旧値は 3（聖剣＝寄道 void_shrine）。0o-2（2026-09-05）で寄道 `darklord_prison`
+    //    （X 魔王の封魔の間）に**ルミアの剣＝`SWORD_TIERS[4]`** を置いた∴max（寄道も全部
+    //    回収する上限）では DT に入る時点で tier4 を持っている。
+    expect(dt.max.sword,  'DT max の剣ティア（寄道 魔王の岩牢のルミアの剣）').toBe(4);
     // ⚠️ 旧値は 1（フィールドの鎖かたびら）＝伝説の鎧が世界のどこにも置かれていなかった時代の値。
     //    0h（2026-09-05）で寄道 `warlord_lair`（魔将 V の主の間）に伝説の鎧＝`ARMOR_TIERS[2]` を
     //    置いた∴max（寄道も全部回収する上限）では DT に入る時点でティア2 を着ている。

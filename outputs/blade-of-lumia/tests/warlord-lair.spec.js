@@ -7,19 +7,22 @@
 // 置いた。盤面は scripts/migrate-warlord-lair.mjs が生成・自己検証している。
 //
 // 盤面:
-//   0,0 「岩窟の入口」…… 空島（field 8,1）の扉 (8,9) から降りてくる部屋。中央の岩塊を
+//   0,0 「岩窟の入口」…… 虚空の淵（field 6,0）の裂け目の向こう岸の扉 (2,6) から入る部屋。中央の岩塊を
 //        回り込んで**東辺 rows 4-5**（2行の通路＝着地 footprint が跨れる幅）から主の間へ抜ける。
 //        敵は置かない＝主との一対一を薄めない。
 //   1,0 「魔将の間」…… isBossRoom。入室で `:`（西辺 4,0/5,0）が閉じ、V を倒すと
 //        killAll 封印が解けて宝箱 (1,10) から伝説の鎧（DEF 3）が出る。
 //
-// 入場ゲートは地形そのもの＝虚空の祠（void_shrine）と同型で、field 8,1 の虚空 SKY を
-// 翼の羽衣で飛んで越えないと扉 (8,9) に立てない（完了条件 e）。
+// 入場ゲートは地形そのもの＝虚空の祠（void_shrine）と同型で、field 6,0（虚空の淵）の
+// 裂け目（row 3 の虚空 SKY 8枚）を翼の羽衣で飛んで越えないと向こう岸の岩棚に立てない。
+// ⚠️ 入口は 2026-09-05（0o-2 (c)）に空島（field 8,1 の扉 (8,9)）から**移した**＝寄道の入口が
+//    3枚とも空島に並んでいたのを分散させた（ユーザーの再考「洞窟の入り口が全部 8,1 なのも変」）。
+//    扉の対応は id（`fieldToWarlordLair`）で解決される∴この寄道の盤面は1セルも動いていない。
 //
 // ここで守るもの（migrate の自己検証は「データがそう書けている」ことしか言えない。
 // **実エンジンでその手順が通るか**は別物∴実プレイで通す）:
-//   ① データ契約（2部屋・盤面・報酬・封印・敵の向き・進行表・field 側の扉と石碑）
-//   ② 空島の南は飛行でしか渡れない／扉に乗ると岩窟へ入れる（＝羽衣ゲート）
+//   ① データ契約（2部屋・盤面・報酬・封印・敵の向き・進行表・field 側の扉と伝承碑）
+//   ② 裂け目の向こう岸は飛行でしか渡れない／扉に乗ると岩窟へ入れる（＝羽衣ゲート）
 //   ③ 入口から東へ抜けて主の間に入ると `:` が閉じて HP バーが出る（一対一の一戦）
 //   ④ V を倒すと封印が解け、伝説の鎧（ARMOR_TIERS[2]・DEF 3）が手に入る
 //   ⑤ dark_tower 2,3・3,3 に V は居らず、差し替えた敵が実機で spawn する
@@ -29,6 +32,7 @@ import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import { waitForBoard } from './helpers.js';
 import { ARMOR_TIERS, BASE_DEF } from '../shared/items.js';
+import { TILE } from '../shared/tiles.js';
 import { ENEMY_META } from '../shared/enemies.js';
 import { gameLayerEntries } from '../shared/layers.js';
 import { EXTRA_ENEMY_ROOMS, stageThreat } from '../scripts/lib/enemy-placement.mjs';
@@ -127,7 +131,7 @@ async function walkAcross(page, dir, tries = 6) {
 
 test.describe('Blade of Lumia – 魔将の巣（伝説の鎧）', () => {
 
-  test('① データ契約：2部屋・報酬は伝説の鎧・V は世界に1体・field 側の扉と石碑', () => {
+  test('① データ契約：2部屋・報酬は伝説の鎧・V は世界に1体・field 側の扉と伝承碑', () => {
     expect(Object.keys(STAGES).sort()).toEqual(['0,0', '1,0']);
     expect(MAP.layers.warlord_lair.name, 'レイヤー名（HUD と進行地点のラベルの出所）').toBe('魔将の巣');
     expect(MAP.layers.warlord_lair.bossStage, '主の間が bossStage として登録されていない').toBe('1,0');
@@ -235,7 +239,13 @@ test.describe('Blade of Lumia – 魔将の巣（伝説の鎧）', () => {
       .toBeGreaterThan(-1);
     expect(ORDER[i].optional, '寄道でない（下限に数えると DT の判定諸元が動く）').toBe(true);
     expect(ids[i - 1], 'warlord_lair の直前が虚空の祠でない').toBe('void_shrine');
-    expect(ids[i + 1], 'warlord_lair の直後が暗黒の塔でない＝DT min が動く').toBe('dark_tower');
+    // 守りたいのは「巣の後に**本編**が挟まらない」＝DT min（下限の想定装備）が動かないこと。
+    // 2026-09-05（0o）に魔王の岩牢（同じ羽衣ゲートの寄道）が後ろへ入った∴「直後が dark_tower」
+    // という書き方は失効した。寄道は `optional`＝報酬を持ち越さない∴何枚挟んでも DT min は不変。
+    const after = ORDER.slice(i + 1);
+    expect(after.at(-1).id, 'ORDER の最後が暗黒の塔でない').toBe('dark_tower');
+    expect(after.slice(0, -1).filter((o) => !o.optional), 'warlord_lair と DT の間に本編が挟まった')
+      .toEqual([]);
     // 羽衣で来る部屋＝全道具所持（弱点判定の基準表）。
     const usable = toolsUsableIn(MAP).warlord_lair;
     for (const item of ['boomerang', 'bow', 'candle', 'ladder', 'bomb', 'flute']) {
@@ -257,14 +267,42 @@ test.describe('Blade of Lumia – 魔将の巣（伝説の鎧）', () => {
       expect(registry[registry[id].destId], `${id} の行き先が無い`).toBeTruthy();
       expect(registry[registry[id].destId].destId, `${id} が相互リンクになっていない`).toBe(id);
     }
-    expect(registry.fieldToWarlordLair).toMatchObject({ layer: 'field', stage: '8,1', pos: '8,9' });
+    expect(registry.fieldToWarlordLair).toMatchObject({ layer: 'field', stage: '6,0', pos: '2,6' });
     expect(registry.warlordLair).toMatchObject({ layer: 'warlord_lair', stage: '0,0', pos: '1,1' });
 
-    // ── field 側（空島の南＝虚空の向こうに扉／石碑の追記）──────────────
-    expect(tileAt(FIELD['8,1'], 8, 9), '巣の扉が置かれていない').toBe('>');
-    expect(rowStr(FIELD['8,1'], 8).slice(4, 8), '虚空 SKY が埋まっている＝歩いて行ける').toBe('%%%%');
-    const stele = FIELD['8,1'].signData['7,2'].lines;
-    expect(stele.join('\n'), '石碑に魔将の案内が無い').toContain('魔将');
+    // ── field 側（虚空の淵＝裂け目の向こう岸の岩棚に扉／伝承碑の追記）──────────
+    const rift = FIELD['6,0'];
+    expect(rift.tiles.slice(0, 4).map((_, r) => rowStr(rift, r)), '裂け目の向こう岸の地形').toEqual([
+      'MMMMMMMMMMMM',
+      'MMMMM..MMMMM',
+      'MMMM..>.MMMM',
+      'MM%%%%%%%%MM',
+    ]);
+    expect(tileAt(rift, 2, 6), '巣の扉が置かれていない').toBe(TILE.MAP_ENTER);
+    // 岩棚の南は裂け目（虚空 SKY）・東西と北の奥は山＝飛ばないと立てない
+    // （山 `M` と壁 `#` は FLYABLE_OVER に無い＝飛んでも越えられない∴外周は境界のまま）。
+    for (const c of [4, 5, 6, 7]) {
+      expect(tileAt(rift, 3, c), `岩棚の南 (3,${c}) が虚空でない＝歩いて渡れる橋になった`).toBe(TILE.SKY);
+      expect(rift.bgTiles[`2,${c}`], `岩棚 (2,${c}) の下地が岩肌でない＝崖の棚に見えない`).toBe(TILE.ASH);
+    }
+    // 岩棚から他の陸へ抜ける穴が無い（南の裂け目だけが出入口）。
+    for (const [r, c] of [[2, 3], [2, 8], [1, 4], [1, 7], [0, 5], [0, 6]]) {
+      expect(tileAt(rift, r, c), `岩棚の外周 (${r},${c}) が山でない＝迂回路ができた`).toBe(TILE.MOUNTAIN);
+    }
+    const lore = FIELD['6,0'].signData['8,3'].lines.join('\n');
+    expect(lore, '伝承碑に魔将の案内が無い＝岩棚に気づけない').toContain('魔将');
+    expect(lore, '伝承碑が報酬（伝説の鎧）に触れていない').toContain('鎧');
+    // 既存の案内（暗黒の塔へは飛べ）を壊していない＝追記であって上書きでない。
+    expect(lore, '淵の伝承碑の元の案内を上書きしている').toContain('黒き塔');
+
+    // 旧入口（空島 field 8,1 の扉 (8,9)）は撤去済み＝2箇所から入れる二重の口を残さない。
+    const sky = FIELD['8,1'];
+    expect(Object.keys(sky.mapEnters ?? {}).sort(), '空島の扉が3枚（塔への戻り／塔の入口／虚空の祠）でない')
+      .toEqual(['3,2', '3,9', '6,9']);
+    expect(tileAt(sky, 8, 9), '空島に巣の扉跡が残っている').toBe(TILE.FLOOR);
+    const stele = sky.signData['7,2'].lines;
+    expect(stele.join('\n'), '空島の石碑に魔将の案内が残っている（入口は虚空の淵へ移した）')
+      .not.toContain('魔将');
     // 既存の案内（虚空の祠＝void_shrine spec が参照している行）を壊していない。
     expect(stele.join('\n'), '祠の案内を上書きしている').toContain('もう一つの扉');
 
@@ -287,33 +325,45 @@ test.describe('Blade of Lumia – 魔将の巣（伝説の鎧）', () => {
       .toBeLessThan(stageThreat(DT['1,2'], ENEMY_META));
   });
 
-  test('② 空島の南は飛行でしか渡れず、扉に乗ると岩窟へ入れる', async ({ page }) => {
+  test('② 裂け目の向こう岸は飛行でしか渡れず、扉に乗ると岩窟へ入れる', async ({ page }) => {
     const errors = [];
     page.on('pageerror', (e) => errors.push(e.message));
 
-    // 羽衣なし：虚空(cols 4-7)の手前で止まる＝歩いては辿り着けない（完了条件 e）。
-    await page.goto(fieldUrl('8,1', 8, 2));
+    // 淵の南岸には敵が2体（E (4,4)／ζ (5,6)）居る＝ノックバックで座標が動くと
+    // 「歩いて越えたか」の測定が嘘になる∴どちらの経路でも先に片付けてから測る。
+    const clearScreen = async () => {
+      await page.evaluate(() => {
+        for (const e of window.__game.getEnemies()) window.__game.dealDamage(e.id, 9999, 'sword');
+      });
+      await page.waitForFunction(() => window.__game.getEnemies().length === 0, null,
+        { timeout: 10_000 });
+    };
+
+    // 羽衣なし：裂け目（row 3 の虚空）の手前 row 4 から北へ進めない＝歩いては岩棚に立てない。
+    await page.goto(fieldUrl('6,0', 4, 7, { ps_weapon: '1', ps_hearts: '15' }));
     await waitForBoard(page);
+    await clearScreen();
     await page.evaluate(() => window.__game.toggleFlight());
     expect((await page.evaluate(() => window.__game.getState().player.flying)),
       '羽衣なしで飛べた').toBe(false);
-    await walkTiles(page, 'right', 8);
-    expect((await at(page)).c, '歩いて虚空を越えた').toBeLessThan(4);
+    await walkTiles(page, 'up', 4);
+    expect((await at(page)).r, '歩いて裂け目を越えた').toBe(4);
     expect(await page.evaluate(() => window.__game.getState().currentLayer),
       '歩いて魔将の巣へ入れた').toBe('field');
 
-    // 羽衣あり：飛んで谷を渡り、台地 (8,8) に降りてから扉 (8,9) に乗る。
-    await page.goto(fieldUrl('8,1', 8, 2, { ps_wingrobe: '1' }));
+    // 羽衣あり：飛んで裂け目を越え、岩棚 (2,7) に降りてから扉 (2,6) に乗る。
+    await page.goto(fieldUrl('6,0', 4, 7, { ps_weapon: '1', ps_hearts: '15', ps_wingrobe: '1' }));
     await waitForBoard(page);
+    await clearScreen();
     await page.evaluate(() => window.__game.toggleFlight());
     expect((await page.evaluate(() => window.__game.getState().player.flying))).toBe(true);
-    await walkTiles(page, 'right', 6);
-    expect(await at(page), '虚空を越えられていない').toEqual({ r: 8, c: 8 });
+    await walkTiles(page, 'up', 2);
+    expect(await at(page), '裂け目を越えて岩棚まで飛べていない').toEqual({ r: 2, c: 7 });
     await page.evaluate(() => window.__game.toggleFlight());
     expect((await page.evaluate(() => window.__game.getState().player.flying)),
-      '台地に降りられていない').toBe(false);
+      '岩棚に降りられていない').toBe(false);
 
-    await walkTiles(page, 'right', 1);
+    await walkTiles(page, 'left', 1);
     await page.waitForFunction(() => window.__game.getState().currentLayer === 'warlord_lair',
       null, { timeout: 3000 });
     const st = await page.evaluate(() => window.__game.getState());

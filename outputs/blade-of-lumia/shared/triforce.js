@@ -10,9 +10,16 @@ import { gameLayerEntries } from './layers.js';
  * mapData の本編レイヤーを横断して「集めるべき星の欠片の総数」を返す。
  * 対象：
  *   - ITEM_TRIFORCE_PIECE('Q') タイル：直接拾える欠片
- *   - DARK_LORD('X') タイル：撃破で欠片を落とす魔王
- *   - ENEMY_META[tile].dropsTriforce === true なタイル：大型ボス等
+ *   - ENEMY_META[tile].dropsTriforce === true なタイル：8ダンジョンのボス
  * ZARNEL('Z') は isFinalBoss で欠片を落とさないため含めない。
+ *
+ * ⚠️ 2026-09-05（実行キュー 0o）まで DARK_LORD('X') タイルを**タイル名で決め打ち**して
+ *    数えていた。X を世界に配置した瞬間にこれが破綻する＝総数が 8 → 9 になり、古代の祭壇
+ *    （`game/boss.js offerAtAltar()` は `triforce >= total` で翼の羽衣を授ける）が永久に開かない。
+ *    X は「8ダンジョンの欠片を集め終えた後の寄道の主」＝欠片を落とす役ではない∴判定を
+ *    `ENEMY_META[tile].dropsTriforce` の一本にした（V 魔将と同じ「欠片を落とさないボス」）。
+ *    敵の性質は `ENEMY_META` から導出する＝タイル名の手書き分岐を残さない
+ *    （敵タイル一覧を手書きして13タイル漏らした前例と同じ理由）。
  *
  * ⚠️ テストレイヤー（`test_` 接頭辞）は除外する。ギミック検証ステージには
  * dropsTriforce のボス（`J`/`L`）が置かれており、数えると必要な欠片数が
@@ -26,7 +33,6 @@ export function countTriforces(mapData) {
 			for (const row of sd.tiles ?? []) {
 				for (const tile of row) {
 					if (tile === TILE.ITEM_TRIFORCE_PIECE) { total++; continue; }
-					if (tile === TILE.DARK_LORD) { total++; continue; }
 					if (ENEMY_META[tile]?.dropsTriforce) total++;
 				}
 			}
@@ -52,8 +58,6 @@ export function listTriforceEntries(mapData) {
 					const tile = row[c];
 					if (tile === TILE.ITEM_TRIFORCE_PIECE) {
 						entries.push({ kind: 'piece', tile, label: '星の欠片', layer: lk, stage: sk, r, c });
-					} else if (tile === TILE.DARK_LORD) {
-						entries.push({ kind: 'boss', tile, label: '魔王', layer: lk, stage: sk, r, c });
 					} else if (ENEMY_META[tile]?.dropsTriforce) {
 						const name = ENEMY_META[tile]?.name ?? `ボス(${tile})`;
 						entries.push({ kind: 'boss', tile, label: `${name}（ボス撃破）`, layer: lk, stage: sk, r, c });

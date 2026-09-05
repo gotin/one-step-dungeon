@@ -383,10 +383,12 @@ export function createBoss(deps) {
 			setTimeout(() => startEnding(), 2500);
 			return;
 		}
-		// 7b. 星の欠片付与（DARK_LORD または dropsTriforce フラグを持つボス）
-		// 大型ボス（岩のゴーレム等）も dropsTriforce:true で欠片を落とす。
-		const dropsTriforce = boss.type === TILE.DARK_LORD
-			|| ENEMY_META[boss.type]?.dropsTriforce;
+		// 7b. 星の欠片付与（`ENEMY_META[tile].dropsTriforce` を持つボス＝8ダンジョンのボス）
+		// ⚠️ 2026-09-05（実行キュー 0o）まで `boss.type === TILE.DARK_LORD` を or で足していた。
+		//    X 魔王は寄道（魔王の岩牢）の主＝**古代の祭壇より後**に会う相手∴欠片を落としてはいけない
+		//    （落とすと `calcTotalTriforces()` の総数 8 と噛み合わず、羽衣の授与条件が壊れる）。
+		//    判定は `ENEMY_META` の1本に寄せた＝`shared/triforce.js` の数え方と同じ式になる。
+		const dropsTriforce = ENEMY_META[boss.type]?.dropsTriforce;
 		if (dropsTriforce) {
 			spawnTriforcePiece(boss);
 			await sleep(600);

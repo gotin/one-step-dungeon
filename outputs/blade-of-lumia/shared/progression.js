@@ -30,6 +30,8 @@ import { listTriforceEntries } from './triforce.js';
 //   secret_grotto … 笛（D8 の後）＝銀の剣 tier2
 //   void_shrine   … 翼の羽衣（祭壇の後）＝聖剣 tier3
 //   warlord_lair  … 翼の羽衣（祭壇の後）＝伝説の鎧 armorTier2（0h・2026-09-05）
+//   darklord_prison … 翼の羽衣（祭壇の後）＝ルミアの剣 tier4 ＋ ハートの器×1（0o／0o-2・2026-09-05）
+//                     ＝X 魔王の岩牢（剣は主の間 `0,2` の killAll 封印・器は「二色の錠の間」`0,1`）
 //
 // ⚠️ **ダンジョンの名前はここに書かない**＝表示名は実マップの `layers[x].name` から導出する
 //    （`labelOf()`）。理由＝`layer.name` は `game/ui.js` の HUD でプレイヤーに見えている側＝
@@ -55,6 +57,7 @@ export const ORDER = [
 	{ id: 'dungeon_7',     prefix: 'D7',   layer: 'dungeon_7' },
 	{ id: 'void_shrine',   prefix: '寄道', layer: 'void_shrine', optional: true },
 	{ id: 'warlord_lair',  prefix: '寄道', layer: 'warlord_lair', optional: true },
+	{ id: 'darklord_prison', prefix: '寄道', layer: 'darklord_prison', optional: true },
 	{ id: 'dark_tower',    prefix: 'DT',   layer: 'dark_tower' },
 ];
 

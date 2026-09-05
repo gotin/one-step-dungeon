@@ -42,7 +42,7 @@ export const TILE = {
 	POISON_LEECH:'Γ',  // 毒沼ヒル（陸上通常敵・鈍足。触れると継続ダメージの毒を付与＝後を引く）
 	BOSS:      'V',  // 魔将（ボス）
 	MONSTER:   'W',  // 魔物（中ボス）
-	DARK_LORD: 'X',  // 魔王（ダンジョンボス・星の欠片を落とす）
+	DARK_LORD: 'X',  // 魔王（寄道「魔王の岩牢」の主。欠片は落とさない＝0o・2026-09-05）
 	ZARNEL:    'Z',  // ザーネル（ラスボス・撃破でエンディング。Phase 1-3）
 	ROCK_GOLEM:   'G',  // 岩のゴーレム（2×2 大型ボス・dungeon_1）
 	SAND_SCORPION:'N',  // 砂嵐の蠍王（2×2 大型ボス・dungeon_2）

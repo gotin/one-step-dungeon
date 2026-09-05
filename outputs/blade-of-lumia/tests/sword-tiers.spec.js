@@ -21,12 +21,12 @@ import { fileURLToPath } from 'url';
 import { GAME_URL, SAVE_KEY, waitForBoard } from './helpers.js';
 
 const BASE_ATK    = 2;                 // shared/items.js（テストからは import せず結果を独立に書く）
-const TIER_ATK    = [2, 4, 7, 12];     // SWORD_TIERS[].atk
-const TIER_NAME   = ['木の剣', '銅の剣', '銀の剣', '聖剣'];
+const TIER_ATK    = [2, 4, 7, 12, 14];     // SWORD_TIERS[].atk
+const TIER_NAME   = ['木の剣', '銅の剣', '銀の剣', '聖剣', 'ルミアの剣'];
 
 // 剣あり状態でセーブをロードし、ゲームボードが描画されるまで待つ
 async function seedWithSword(page, swordTier) {
-  const atk = 2 + [2, 4, 7, 12][swordTier];
+  const atk = 2 + TIER_ATK[swordTier];
   const saveData = JSON.stringify({
     player: {
       x: 2, y: 5,
@@ -37,7 +37,7 @@ async function seedWithSword(page, swordTier) {
       shield: null, armor: null,
       subItems: {}, activeSubItem: null,
       rupees: 0, triforceCount: 0,
-      _equip: { swordName: ['木の剣','銅の剣','銀の剣','聖剣'][swordTier], swordBonus: [2,4,7,12][swordTier] },
+      _equip: { swordName: TIER_NAME[swordTier], swordBonus: TIER_ATK[swordTier] },
     },
     stageState: {},
     currentLayer: 'field',
@@ -179,7 +179,7 @@ test.describe('Blade of Lumia – 剣ティアシステム', () => {
 
   // ── プレビュー設定の剣ティア（2026-08-24）─────────────────────
   test('⑥: ps_sword で剣ティア・ATK・ビーム/貫通の可否が再現される', async ({ page }) => {
-    for (const tier of [0, 1, 2, 3]) {
+    for (const tier of [0, 1, 2, 3, 4]) {   // 4＝ルミアの剣（0o-2・2026-09-05）
       const p = new URLSearchParams({
         fromEditor: '1', layer: 'test_mechanics', stage: '32,0',
         row: '4', col: '2',

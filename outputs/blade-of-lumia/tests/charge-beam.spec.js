@@ -19,7 +19,7 @@ import { test, expect } from '@playwright/test';
 import { GAME_URL, SAVE_KEY } from './helpers.js';
 
 async function seedAndStart(page, swordTier = 1) {
-  const atkMap = [4, 6, 9, 14];
+  const atkMap = [4, 6, 9, 14, 16];   // BASE_ATK 2 + SWORD_TIERS[].atk（tier4＝ルミアの剣）
   const saveData = JSON.stringify({
     player: {
       x: 2, y: 5,
@@ -185,6 +185,48 @@ test.describe('Blade of Lumia – チャージ攻撃（剣ビーム）', () => {
     await page.evaluate(() => { window.__game.releaseCharge(); window.__game.step(2); });
     expect(await held(), '離した後も剣が出しっぱなしになっている')
       .toEqual({ sword: 0, sprite: 'heroR' });
+  });
+
+  // ── 溜め時間はティアごと（0o-2・2026-09-05）─────────────────
+  // ルミアの剣（tier4）は `SWORD_TIERS[4].chargeMs = 480`＝**4フレームで満タン**。
+  // 「満タンかどうか」は貫通で外から見える（fireBeam: piercing = full && tier.pierce）
+  // ∴同じ4フレームで
+  //   ルミアの剣 → 貫通する（奥の敵も倒れる）
+  //   聖剣      → 貫通しない（720ms＝6フレーム必要∴奥の敵が残る）
+  // の差が出ることが、ティア別の溜め時間が本当に効いている証拠になる。
+  // ⚠️ `getChargeFullMs()` が定数 720 に戻ると①が落ちる＝この2本が歯。
+  // ⚠️ gameTime は TICK_MS=120ms 刻み∴chargeMs は 120 の倍数でないと切り上がる
+  //    （480=4フレーム。例えば 500 にすると実質 600ms＝表の数が嘘になる）。
+  test('条件6: ルミアの剣（tier4）は4フレーム（480ms）で満タン＝貫通ビームになる', async ({ page }) => {
+    await seedAndStart(page, 4);
+    const id1 = await page.evaluate(() => window.__game.injectEnemy(4, 5, 1));
+    const id2 = await page.evaluate(() => window.__game.injectEnemy(6, 5, 1));
+
+    await page.evaluate(() => window.__game.startCharge());
+    await page.evaluate(() => window.__game.step(4));   // 480ms
+    await page.evaluate(() => window.__game.releaseCharge());
+    await page.evaluate(() => window.__game.step(10));
+
+    const e1 = await page.evaluate((id) => window.__game.getEnemies().find(e => e.id === id) ?? null, id1);
+    const e2 = await page.evaluate((id) => window.__game.getEnemies().find(e => e.id === id) ?? null, id2);
+    expect(e1, '手前の敵が倒れていない').toBeNull();
+    expect(e2, '4フレームで満タンになっていない（貫通せず奥の敵が残った）').toBeNull();
+  });
+
+  test('条件7: 聖剣（tier3）は同じ4フレームでは満タンにならない＝奥の敵が残る', async ({ page }) => {
+    await seedAndStart(page, 3);
+    const id1 = await page.evaluate(() => window.__game.injectEnemy(4, 5, 1));
+    const id2 = await page.evaluate(() => window.__game.injectEnemy(6, 5, 1));
+
+    await page.evaluate(() => window.__game.startCharge());
+    await page.evaluate(() => window.__game.step(4));   // 480ms（聖剣の満タンは 720ms）
+    await page.evaluate(() => window.__game.releaseCharge());
+    await page.evaluate(() => window.__game.step(10));
+
+    const e1 = await page.evaluate((id) => window.__game.getEnemies().find(e => e.id === id) ?? null, id1);
+    const e2 = await page.evaluate((id) => window.__game.getEnemies().find(e => e.id === id) ?? null, id2);
+    expect(e1, '弱ビームで手前の敵が倒れていない').toBeNull();
+    expect(e2, '聖剣が4フレームで満タンになっている（溜め時間がティアで変わっていない）').not.toBeNull();
   });
 
 });

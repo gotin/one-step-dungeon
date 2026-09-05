@@ -39,14 +39,16 @@ test.describe('ギミック検証レイヤーとライブマップの同居', ()
 		expect(countTriforces(MAP)).toBe(8);
 
 		// 素朴に全レイヤーを数えると増える＝除外が効いていることの証明（vacuous pass 防止）。
-		// countTriforces と同じ数え方（欠片タイル・魔王・dropsTriforce ボス）を除外なしで回す。
+		// countTriforces と同じ数え方（欠片タイル・dropsTriforce ボス）を除外なしで回す。
+		// ⚠️ 2026-09-05（0o）まで `t === TILE.DARK_LORD` も数えていた＝X 魔王をタイル名で
+		//    決め打ちしていた側の写し。X は寄道（魔王の岩牢）の主で欠片を落とさない∴両方から
+		//    外した（`shared/triforce.js` と同じ式を保つ＝ここが本体の写しであることが検査の前提）。
 		let naive = 0;
 		for (const ld of Object.values(MAP.layers)) {
 			for (const sd of Object.values(ld.stages ?? {})) {
 				for (const row of sd.tiles ?? []) {
 					for (const t of row) {
-						if (t === TILE.ITEM_TRIFORCE_PIECE || t === TILE.DARK_LORD
-							|| ENEMY_META[t]?.dropsTriforce) naive++;
+						if (t === TILE.ITEM_TRIFORCE_PIECE || ENEMY_META[t]?.dropsTriforce) naive++;
 					}
 				}
 			}

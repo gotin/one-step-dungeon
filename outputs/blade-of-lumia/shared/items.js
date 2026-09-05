@@ -16,6 +16,16 @@ export const SWORD_TIERS = [
 	// index 3: 聖剣
 	{ key: 'holy',   name: '聖剣',    atk: 12, sprite: 'swordHoly',   pal: 'swordHoly',
 	  beam: true,  pierce: true  },
+	// index 4: ルミアの剣（寄道「魔王の岩牢」の主 X の討伐報酬・0o-2・2026-09-05）
+	// ⚠️ ATK は最小の刻み（+2）だけ上げる＝ユーザー確定「攻撃力はちょっとだけの強化に
+	//    して、ビームのため時間を短くしよう」∴この剣の売りは火力ではなく**溜めの速さ**。
+	// chargeMs … 満タンビームまでの所要時間（ms）。**この列を持つのはこのティアだけ**で、
+	//    書かないティアは `game/charge.js` の既定（`CHARGE_FULL_MS` 720）に落ちる。
+	//    ⚠️ 読み手は `game/charge.js getChargeRatio()` と `scripts/audit-balance.mjs`
+	//    `statsOf()` の2か所だけ＝定数を直接読む箇所を残すと「表に書いたのに効かない
+	//    死んだ数」になる（`guardRange` で踏んだのと同型）。
+	{ key: 'lumia',  name: 'ルミアの剣', atk: 14, sprite: 'swordLumia', pal: 'swordLumia',
+	  beam: true,  pierce: true, chargeMs: 480 },
 ];
 export const BASE_ATK = 2;  // 剣なし時の基礎ATK
 

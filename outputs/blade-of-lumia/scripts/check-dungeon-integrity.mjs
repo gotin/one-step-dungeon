@@ -67,8 +67,11 @@ const TOOLS_USABLE_IN = toolsUsableIn(d);
 //           cave_1       … 笛の洞窟
 //           warlord_lair … 魔将の巣（0h・2026-09-05）。`bossStage` と `isBossRoom` は持つが
 //                          落とすのは伝説の鎧＝星の欠片もハートの器も無い∴`triforce` の要求は当てない。
+//           darklord_prison … 魔王の岩牢（0o・2026-09-05）。X 魔王の一対一。`bossStage` と
+//                          `isBossRoom` を持ち報酬にハートの器はあるが**星の欠片は落とさない**
+//                          （祭壇より後の寄道∴落とすと総数が 9 になって祭壇が開かない）。
 // 鍵の収支・links・関門・順序（5〜8）は種別に関係なく全レイヤーへ効かせる。
-const LAYER_KIND = { dark_tower: 'final', cave_1: 'side', warlord_lair: 'side' };
+const LAYER_KIND = { dark_tower: 'final', cave_1: 'side', warlord_lair: 'side', darklord_prison: 'side' };
 
 // 鍵扉 D を「物理的な1枚の扉」に畳むための隣接規則。
 //  ① 同一部屋内の4近傍で連結した D は1枚（game/player.js collectDoorRun と同じ）。

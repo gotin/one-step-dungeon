@@ -71,6 +71,10 @@ function statsOf(p) {
 		maxHp: p.hearts * HP_PER_HEART,
 		beam:   p.sword >= 0 && SWORD_TIERS[p.sword].beam,
 		pierce: p.sword >= 0 && SWORD_TIERS[p.sword].pierce,
+		// 溜め時間はティアごと（`chargeMs` を持たないティアは既定 720）。
+		// ⚠️ 定数のまま測ると「溜めが速いことが売りの剣」を監査が見落とす
+		//    ＝ルミアの剣（0o-2）の実効ビーム DPS は 1.5 倍なのに表は同じ数を出す。
+		chargeMs: (p.sword >= 0 ? SWORD_TIERS[p.sword].chargeMs : null) ?? CHARGE_FULL_MS,
 		reflect: p.shield >= 0 ? SHIELD_TIERS[p.shield].reflect : null,
 	};
 }
@@ -143,8 +147,9 @@ function offense(stats, meta) {
 		ttkMs: swings * SWORD_COOLDOWN_MS,
 		beamDmg,
 		beamShots: beamDmg ? Math.ceil(meta.hp / beamDmg) : null,
-		// ビームは「溜め時間 + 発射」でしか撃てない∴1発ごとに CHARGE_FULL_MS を払う
-		beamTtkMs: beamDmg ? Math.ceil(meta.hp / beamDmg) * CHARGE_FULL_MS : null,
+		// ビームは「溜め時間 + 発射」でしか撃てない∴1発ごとに溜め時間を払う
+		// （剣ティアごと＝`stats.chargeMs`。定数を直に使うと速い剣の得が消える）
+		beamTtkMs: beamDmg ? Math.ceil(meta.hp / beamDmg) * stats.chargeMs : null,
 	};
 }
 

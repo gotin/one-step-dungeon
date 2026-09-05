@@ -75,10 +75,18 @@ export function createCharge(deps) {
 
 	function isCharging() { return _chargeStart !== null; }
 
+	// 満タンまでの所要時間（ms）。剣ティアが `chargeMs` を持つならそれ、無ければ既定。
+	// ⚠️ CHARGE_FULL_MS を直に割る箇所をここ以外に残すと、ティア表の chargeMs が
+	//    効かない死んだ数になる（0o-2・ルミアの剣＝溜めが速いことが売りの剣）。
+	function getChargeFullMs() {
+		const tier = SWORD_TIERS[getPlayer()?.swordTier ?? -1];
+		return tier?.chargeMs ?? CHARGE_FULL_MS;
+	}
+
 	// 0〜1 のチャージ割合
 	function getChargeRatio() {
 		if (_chargeStart === null) return 0;
-		return Math.min(1, (gameNow() - _chargeStart) / CHARGE_FULL_MS);
+		return Math.min(1, (gameNow() - _chargeStart) / getChargeFullMs());
 	}
 
 	// 攻撃ボタンを離した時に呼ぶ。チャージ量でビーム発射を判定する。
@@ -107,8 +115,8 @@ export function createCharge(deps) {
 		const ndx = dx / MOVE_STEP;
 		const ndy = dy / MOVE_STEP;
 		const baseAtk = hasCleared() ? player.atk * 2 : player.atk;
-		const piercing = full && !!tier.pierce;  // 満タン＆聖剣のみ貫通
-		const strong   = full && !!tier.pierce;  // 聖剣満タンのみ強ビーム演出
+		const piercing = full && !!tier.pierce;  // 満タン＆貫通ティア（聖剣／ルミアの剣）のみ貫通
+		const strong   = full && !!tier.pierce;  // 同条件で強ビーム演出
 		const atk = strong ? baseAtk * BEAM_STRONG_MULT : baseAtk;
 		resumeAudio();
 		playSound('slash');
