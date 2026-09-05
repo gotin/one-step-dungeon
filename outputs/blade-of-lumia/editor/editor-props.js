@@ -1,6 +1,7 @@
 // ── editor-props.js ── 右パネル（ゲート・宝箱・NPC・条件等） ──
 import { TILE, TILE_META } from '../shared/tiles.js';
-import { getCurrentStage, findTilePositions } from './editor-state.js';
+import { getCurrentStage, findTilePositions, state, stageKey } from './editor-state.js';
+import { buildExitRegistry, resolveExit, reverseRefs, resolveFluteWarp } from '../shared/exits.js';
 
 // ── 右パネル統合呼び出し ──────────────────────────────────────
 export function renderSidePanel() {
@@ -271,17 +272,67 @@ function renderShops(sd) {
 	}
 }
 
-// ── MAP_ENTER 出口設定 ─────────────────────────────────────────
+// ── MAP_ENTER 出口設定（2026-09-05 実行キュー 0w＝「どこに繋がるか」を解決して表示）──
+// レイヤー表示名は実マップの `layers[x].name` から導出する（手書きしない＝shared/progression.js
+// labelOf と同じ理由）。辺遷移（同レイヤーの隣画面）はここに出さない＝世界グリッドが既に見せている。
+function layerDisplayName(lk) {
+	return state.mapData?.layers?.[lk]?.name ?? lk;
+}
+function describeDest(dest) {
+	if (!dest) return null;
+	return `${layerDisplayName(dest.layer)} ${dest.stage} (${dest.cell})`;
+}
+function renderResolvedLine(el, layer, stage, key, registry) {
+	const r = resolveExit(state.mapData, layer, stage, key, registry);
+	if (!r || !r.destId) {
+		el.textContent = '着地専用（相手から来るだけ・destId 未指定）';
+		el.className = 'hint mapenter-resolved mapenter-resolved-neutral';
+		return;
+	}
+	if (r.resolved) {
+		el.textContent = `→ ${describeDest(r.resolved)}`;
+		el.className = 'hint mapenter-resolved mapenter-resolved-ok';
+	} else {
+		el.textContent = `❌ 繋がっていない（destId "${r.destId}" を持つ MAP_ENTER が世界にない）`;
+		el.className = 'hint mapenter-resolved mapenter-resolved-bad';
+	}
+}
+function renderReverseLine(el, id, registry) {
+	if (!id) { el.textContent = ''; return; }
+	const refs = reverseRefs(state.mapData, id).map(
+		(ref) => `${layerDisplayName(ref.layer)} ${ref.stage} (${ref.cell})`
+	);
+	el.textContent = refs.length
+		? `← このIDを destId に指す側：${refs.join(' / ')}`
+		: `← このIDを destId に指す側：なし`;
+	el.className = 'hint mapenter-reverse';
+}
+
 function renderMapEnters(sd) {
 	const el = document.getElementById('mapenter-list');
 	el.innerHTML = '';
+
+	const layer = state.currentLayer;
+	const stage = state.currentCoord ? stageKey(state.currentCoord.x, state.currentCoord.y) : null;
+	const registry = buildExitRegistry(state.mapData);
+
+	// 笛ワープ（fluteEffect: {type:'warp'}）＝MAP_ENTER とは別経路の接続先も同じ欄に出す。
+	const flute = layer && stage ? resolveFluteWarp(state.mapData, layer, stage, registry) : null;
+	if (flute) {
+		const fluteEl = document.createElement('div');
+		fluteEl.className = 'hint mapenter-resolved ' + (flute.resolved ? 'mapenter-resolved-ok' : 'mapenter-resolved-bad');
+		fluteEl.textContent = flute.resolved
+			? `🎵 笛ワープ → ${layerDisplayName(flute.layer)} ${flute.stage} (${flute.row},${flute.col})`
+			: `🎵 笛ワープ → ❌ 繋がっていない（destId "${flute.destId}"）`;
+		el.appendChild(fluteEl);
+	}
 
 	// > タイルの座標 + mapEnters 既存エントリ（タイルなし含む）をマージ
 	const tileKeys = new Set(findTilePositions(sd, TILE.MAP_ENTER).map(({r,c}) => `${r},${c}`));
 	const dataKeys = new Set(Object.keys(sd.mapEnters ?? {}));
 	const allKeys  = [...new Set([...tileKeys, ...dataKeys])].sort();
 
-	if (!allKeys.length) { el.innerHTML = '<div class="hint">MAP_ENTER なし</div>'; }
+	if (!allKeys.length && !flute) { el.innerHTML = '<div class="hint">MAP_ENTER なし</div>'; }
 
 	for (const key of allKeys) {
 		const hasTile = tileKeys.has(key);
@@ -305,7 +356,13 @@ function renderMapEnters(sd) {
 			<label>着地 col（任意）
 				<input type="number" value="${data.col??''}" data-key="${key}" data-f="col" placeholder="省略可">
 			</label>
+			<div class="mapenter-resolved" data-resolved="${key}"></div>
+			<div class="mapenter-reverse" data-reverse="${key}"></div>
 		`;
+		if (layer && stage) {
+			renderResolvedLine(item.querySelector(`[data-resolved="${key}"]`), layer, stage, key, registry);
+			renderReverseLine(item.querySelector(`[data-reverse="${key}"]`), data.id, registry);
+		}
 		item.querySelectorAll('[data-key]').forEach(inp => {
 			inp.addEventListener('input', () => {
 				if (!sd.mapEnters) sd.mapEnters = {};
@@ -316,6 +373,12 @@ function renderMapEnters(sd) {
 					else sd.mapEnters[key][inp.dataset.f] = Number(val);
 				} else {
 					sd.mapEnters[key][inp.dataset.f] = val;
+				}
+				// 解決結果は入力ごとにその場で引き直す（IDの表全体は再構築しない＝入力欄のフォーカスを保つ）。
+				const freshRegistry = buildExitRegistry(state.mapData);
+				if (layer && stage) {
+					renderResolvedLine(item.querySelector(`[data-resolved="${key}"]`), layer, stage, key, freshRegistry);
+					renderReverseLine(item.querySelector(`[data-reverse="${key}"]`), sd.mapEnters[key].id, freshRegistry);
 				}
 			});
 		});

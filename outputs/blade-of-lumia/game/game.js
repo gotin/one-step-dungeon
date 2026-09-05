@@ -1,6 +1,7 @@
 // ── Blade of Lumia – game.js ──────────────────────────────────
 // Phase 1: マップ読み込み・プレイヤー移動（半セル）・ステージ遷移
 import { TILE, BG_TILES } from '../shared/tiles.js';
+import { buildExitRegistry as buildExitRegistryShared } from '../shared/exits.js';
 import { ENEMY_META, ENEMY_SPEED_NORMAL } from '../shared/enemies.js';
 import { ITEM_META, EQUIP_META, BOOMERANG_TIERS } from '../shared/items.js';
 import { NPC_SPRITE_MAP, NPC_DEFAULT_DIALOG } from '../shared/npcs.js';
@@ -274,17 +275,11 @@ async function loadMapData() {
 }
 
 function buildExitRegistry() {
-	exitRegistry = {};
-	for (const [lk, ld] of Object.entries(mapData.layers ?? {})) {
-		for (const [sk, sd] of Object.entries(ld.stages ?? {})) {
-			for (const [posKey, enter] of Object.entries(sd.mapEnters ?? {})) {
-				if (enter.id) {
-					const [row, col] = posKey.split(',').map(Number);
-					exitRegistry[enter.id] = { layer: lk, stage: sk, row, col };
-				}
-			}
-		}
-	}
+	// 2026-09-05（実行キュー 0w）＝走査そのものを shared/exits.js へ寄せた
+	// （エディタも同じ解決を必要とする＝手書きの対応表を2つ持たない）。
+	// 挙動は不変＝`{layer,stage,cell,row,col}` のうち row/col/layer/stage を使うのは
+	// これまでと同じ（`cell` は解決器の内部でも使う共有の追加フィールド）。
+	exitRegistry = buildExitRegistryShared(mapData);
 }
 
 function getStageData(lk, sk) {
@@ -2628,6 +2623,9 @@ export function addDefeatedBossForTest(bossType) {
 
 // テスト用：player オブジェクトへの参照を返す（Phase 7-1 剣ティアテスト用）
 export function getPlayerForTest() { return player; }
+
+// テスト用：exitRegistry への参照を返す（実行キュー 0w＝shared/exits.js との等価性を測る）
+export function getExitRegistryForTest() { return exitRegistry; }
 
 // テスト用: heroDir を直接向ける。movePlayer は先頭で必ず heroDir を更新するが、
 // 「壁で弾かれる向き」が無い画面（例: かがり火列が通り抜けられる D5）では

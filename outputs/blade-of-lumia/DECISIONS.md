@@ -8,6 +8,22 @@
 
 ---
 
+### 2026-09-05（7） — **MAP_ENTER の接続先解決はゲームとエディタで1本の関数を共有する**／**「同一であること」を測るテストは、この機能では単純な `getExitRegistry()` の突き合わせで十分（追加フィールド `cell` は行動に影響しない）**／**旅の途中に立ち寄る `fluteEffect: {type:'warp'}` は座標直指定と `destId` の2形式を両方解決する**（実行キュー 0w＝エディタの MAP_ENTER 欄に「どこへ繋がるか」を解決表示）
+
+**背景：** `editor/editor-props.js renderMapEnters()` は `id`/`destId` を素のテキスト入力で並べるだけで、「どこの何番に繋がるか」は編者の記憶に頼っていた。ゲーム側の解決（`game/game.js buildExitRegistry()`）は走査を1箇所に持っていたが、エディタはそれを見ていなかった＝手書きの対応表と同じ構造の問題（[[blade-tile-sprite-single-source]]）。
+
+**決定1（走査を `shared/exits.js` へ寄せる）：** `buildExitRegistry(map)` を新設し、`game/game.js` はこれを呼ぶだけに置き換えた（`exitRegistry = buildExitRegistryShared(mapData)`）。挙動は変えない＝呼び出し側（`game.js:1356` の遷移判定・`game.js:1662` の笛ワープ）は `.layer`/`.stage`/`.row`/`.col` を読むだけで、新設の `.cell` フィールドは無視される。
+
+**決定2（「同一であること」の測り方）：** 完了条件は「shared 版と旧 game.js 版がキーも値も同一」だったが、**旧実装は `cell` を持っていなかった**＝ここで言う「同一」は行動に効くフィールド（layer/stage/row/col）が一致すること、と読み替えた。テストは `window.__game.getExitRegistry()`（新設・`game/game.js getExitRegistryForTest()` 経由）と Node 側で計算した `buildExitRegistry(MAP)` を突き合わせ、`cell === "${row},${col}"` も別に固定する（`tests/exits-resolve.spec.js` ⑤）。**「同一」を主張する前に、新しい実装が旧実装より広い出力を返していないかを確認する**＝この場合は広がった分（`cell`）が既存の読み手に一つも読まれていないことを実装前に裏取りした（`grep -n exitRegistry game.js` で参照箇所を全部洗った）。
+
+**決定3（エディタの表示は3種）：** ① 解決できる＝「→ レイヤー名 stage (cell)」（緑）② `destId` が空欄＝「着地専用（相手から来るだけ）」（中立）③ `destId` があって解決できない＝「❌ 繋がっていない」（赤）。レイヤー名は実マップの `layers[x].name` から導出（手書きしない＝`shared/progression.js labelOf` と同じ理由）。加えて逆引き（`reverseRefs`＝このIDを `destId` に指す側）と、`fluteEffect:{type:'warp'}` の解決（`resolveFluteWarp`＝座標直指定と `destId` の2形式）も同じ関数群に持たせた＝笛ワープは MAP_ENTER と経路は別だが「どこかへ繋がる」という性質は同じで、エディタの同じ欄に出す。
+
+**結果＝`dungeon_7 1,3` の (7,2) を開くと実際に「❌ 繋がっていない（destId "field_dungeon7" を持つ MAP_ENTER が世界にない）」と出た**＝実行キュー 0x（D7 に入口が無くクリア不能）の実害がエディタから見えるようになった（0x はこの表示を直すのではなく、0x 自身が入口を作って初めて緑になる＝この行の表示が0xの完了条件そのもの）。
+
+**入力欄の再描画は全体再構築ではなく差分更新にした：** `id`/`destId` の入力に対する `input` イベントで、解決行・逆引き行だけを `renderResolvedLine`/`renderReverseLine` で書き換える（`renderMapEnters(sd)` を丸ごと呼び直すと入力中のフォーカスが飛ぶ）。
+
+フル **1103 passed**（基準 1096 ＋新規7）・`node scripts/check-dungeon-integrity.mjs all` ❌0/⚠️1（基準と同数）・`node scripts/audit-balance.mjs` は数値・マップとも無変更（欠陥は既存のまま）。
+
 ### 2026-09-05（6） — **入室ロック型の扉は「プレイヤーが扉のセルから降りてから」閉める**／**着地点の仕様を変えたら「着地セルに乗っている状態つきタイル」を全部数え直す**／**`isPassable` は今いるセルを免除しない＝立っている足元を通行不可にする処理は必ず詰みを作る**／**「入った途端に動けない」型のバグの回帰テストは"待つ"のが歯**（🔀 分岐B＝ユーザー報告「darklord_prison の 0,2 に入った途端に動けなくなった」）
 
 **背景：** ボス部屋 `darklord_prison 0,2` に入った瞬間にプレイヤーが動けなくなる報告。ユーザーの仮説（「ボスドアは中に入ってから閉めるようにしないとだめなのでは？」）はそのまま正しく、**実測すると `':'` を境界に持つボス部屋8つすべてで再現した**＝1部屋の配置ミスではなくエンジンの穴。

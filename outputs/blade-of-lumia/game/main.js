@@ -32,6 +32,7 @@ import {
 	callStopGameLoop,
 	callStartGameLoop,
 	getPlayerForTest,
+	getExitRegistryForTest,
 	callEquipSwordTier,
 	callEquipArmorTier,
 	callEquipShieldTier,
@@ -156,6 +157,8 @@ window.__game = {
 	addDefeatedBoss: (type) => addDefeatedBossForTest(type),
 	// Phase 7-1: 剣ティアテスト用
 	getPlayer: () => getPlayerForTest(),
+	// 実行キュー 0w：shared/exits.js の buildExitRegistry() との等価性を測るためのテスト用露出
+	getExitRegistry: () => getExitRegistryForTest(),
 	equipSwordTier: (idx) => callEquipSwordTier(idx),
 	// Phase 7-2: 防具・盾ティアテスト用
 	equipArmorTier: (idx) => callEquipArmorTier(idx),

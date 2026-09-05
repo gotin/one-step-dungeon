@@ -837,6 +837,19 @@ html, body {
     line-height: 1.5;
 }
 
+/* MAP_ENTER 欄の接続先解決表示（実行キュー 0w） */
+.mapenter-resolved {
+    font-weight: 600;
+    margin-top: 6px;
+}
+.mapenter-resolved-ok   { color: #7fd97f; }
+.mapenter-resolved-bad  { color: #ff8080; }
+.mapenter-resolved-neutral { color: var(--muted); }
+.mapenter-reverse {
+    color: var(--muted);
+    font-style: italic;
+}
+
 .hidden {
     display: none !important;
 }
