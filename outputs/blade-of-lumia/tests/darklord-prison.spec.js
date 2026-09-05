@@ -15,9 +15,8 @@
 //        row 1-2 が前室（着地 (1,1)・刻み文 (2,1)・回復薬（大）(1,10)）、rows 3-4 の漏斗を経て
 //        rows 5-9 の 2 列幅（cols 5-6）の竪坑を下り、南辺から錠の間へ降りる。敵は置かない。
 //   0,1 「二色の錠の間」… 色スイッチ＋色門＋石車のパズル（ユーザー確定の組み合わせ）。
-//        幅1の一方通行レーンに置いた石2個を、色門の奥のボタン2個へ据えると T (7,5)/(7,6) が
-//        開いて主の間へ降りられる。**ハートの器はここへ移した**（封印なし＝解いて到達すれば
-//        開く。killAll ではない）。
+//        石3個を色門の奥のボタン3個へ据えると T (7,5)/(7,6) が開いて主の間へ降りられる。
+//        **ハートの器はここへ移した**（封印なし＝解いて到達すれば開く。killAll ではない）。
 //   0,2 「封魔の間」…… isBossRoom。入室で `:`（北辺 0,5/0,6）が閉じ、X を倒すと killAll
 //        封印が解けて宝箱 (8,10) から**ルミアの剣（剣 tier4）**が出る。
 //
@@ -36,17 +35,29 @@
 //    循環になる。0o で `game/boss.js` と `shared/triforce.js` のタイル名決め打ちを撤去して
 //    `ENEMY_META[tile].dropsTriforce` の一本にした＝⑦ でその帰結を実機で測る。
 //
-// ⚠️ 錠の間は「石を戻す手段が笛だけ」＝再入室では石が戻らない（`game/game.js` の
-//    resetStones が唯一の戻し）∴詰みは幾何で 0 にしてある。② がその根拠（デッドロック 0・
-//    noEscape 0・レーン幅1）を状態空間で測り、⑤ が実エンジンで同じ手順を通す。
+// ⚠️ 0o-3（2026-09-05・ユーザーの実プレイ判定「ちょっとまって、パズル簡単すぎない？
+//    こんな簡単なパズルならない方がいいでしょ。もっと難しくしてよ」）で錠の間の盤面を
+//    **全面的に作り直した**（石2→3・ボタン2→3・L 32→120・ボタンの充填順は A→B→C の1通り）。
+//    書き込むのは `scripts/rebuild-lock-room.mjs`。
+//    ⚠️ このとき「デッドロック 0」の設計方針を**捨てた**（浅さの主犯だった＝幅1レーンで
+//    石の奥へ回り込めない＝読む余地が無い）。代わりに `fluteEffect:{type:'resetStones'}` を
+//    部屋に付け、**詰んだら笛で石を初期位置へ戻せる**ようにした∴② が測るのは
+//    「デッドロックが 0 であること」ではなく「笛を吹けば必ず立て直せること」。
+//    ⚠️ 石を戻す手段は笛**だけではない**＝未解決のまま部屋を出れば `enterStage`
+//    （`game/game.js:296-324`）が `stonePositions` を空に戻す（解けている／`stonesLocked`
+//    のときだけ保たれる）∴笛は「歩いて出入りする手間を省く救済」。恒久詰みになるのは
+//    「詰みのせいで出口にも戻れない」場合だけ∴② が測るのはそこ（`noEscape` の中身）。
 //
 // ここで守るもの（migrate の自己検証は「データがそう書けている」ことしか言えない。
 // **実エンジンでその手順が通るか**は別物∴実プレイで通す）:
 //   ① データ契約（3部屋・盤面・報酬・封印・敵の向き・進行表・field 側の岩礁と標）
-//   ② 錠の間のパズルが状態空間で成立している（石を押さないと届かない／デッドロック 0）
+//   ② 錠の間のパズルが状態空間で成立している（石を押さないと届かない／マクロ貪欲で解けない／
+//      ボタンの充填順が1通り／詰んでも笛で立て直せる）
 //   ③ 岩礁は飛行でしか行けない（徒歩✗・はしご✗）／扉に乗ると岩牢へ入れる（＝羽衣ゲート）
 //   ④ 前室で回復薬（大）を拾い、竪坑を下ると錠の間に着く（T は閉じ・色門も両方閉）
 //   ⑤ 錠の間：ソルバーの最短手順（剣だけ）を実機で再生すると T が開き、器で最大ハート +1
+//   ⑧ 錠の間：石を動かした後は笛（`fluteEffect`）で初期配置に戻る／動かす前は不発
+//      （解いた後に不発なのは ⑤ の末尾で測る＝解いたパズルを笛で壊せない）
 //   ⑥ 主の間：X を倒すと封印が解け、ルミアの剣（ATK 16・4フレームで満タンビーム）が出る
 //   ⑦ X を倒しても星の欠片は現れない（祭壇の総数 8 が動かない）
 import { test, expect } from '@playwright/test';
@@ -61,7 +72,7 @@ import { SWORD_COOLDOWN_MS } from '../game/constants.js';
 import { gameLayerEntries } from '../shared/layers.js';
 import { countTriforces } from '../shared/triforce.js';
 import { ROWS, COLS, makeSolver } from '../scripts/lib/blade-solver.mjs';
-import { measureMetrics } from '../scripts/lib/puzzle-metrics.mjs';
+import { measureMetrics, makeGreedyPush, buttonFillOrders } from '../scripts/lib/puzzle-metrics.mjs';
 import { EXTRA_ENEMY_ROOMS, stageThreat } from '../scripts/lib/enemy-placement.mjs';
 import { ORDER, toolsUsableIn } from '../shared/progression.js';
 
@@ -79,6 +90,12 @@ const SWORD_CELL = '8,10';        // 主の間の宝箱（ルミアの剣）
 const SWORD_TIER = 4;
 const PUZZLE_ENTRY = { r: 0, c: 6 };          // 竪坑から降りてくるセル（東側）
 const PUZZLE_EXIT = ['9,5', '9,6'];           // 主の間へ降りるセル
+/**
+ * 「石が乗れて／プレイヤーが立てる」タイル＝押しの成立幾何を数えるための集合。
+ * ⚠️ 看板 `i` は**通行不可**（`game/passable.js` の「隣接して剣で読む」）∴入れない。
+ *    色スイッチは石を通さないが**プレイヤーは立てる**＝押しの足場になり得る∴入れる。
+ */
+const PUSHABLE = new Set([TILE.FLOOR, TILE.BUTTON, TILE.SWITCH_RED, TILE.SWITCH_BLUE, 'B', TILE.STONE]);
 
 const rowStr = (st, r) => st.tiles[r].join('');
 const tileAt = (st, r, c) => st.tiles[r][c];
@@ -160,6 +177,16 @@ const at = (page) => page.evaluate(() => {
   const p = window.__game.getState().player;
   return { r: Math.floor(p.y + 0.5), c: Math.floor(p.x + 0.5) };
 });
+/**
+ * そのセルに石（岩）の絵が描かれているか。
+ * ⚠️ 石はクラスではなく **canvas スプライト**（`makeSprite('block')`）で描かれ、
+ *    `stonePositions` にそのセルがあるあいだは描かれない（動いた石は char-layer が描く）
+ *    ∴「クラス名に stone が入る」等では測れない＝盤のセルの子 canvas を数える。
+ */
+const stoneDrawnAt = (page, r, c) => page.evaluate(({ r: rr, c: cc }) => {
+  const el = document.querySelector(`#board .cell[data-row="${rr}"][data-col="${cc}"]`);
+  return !!el && el.querySelectorAll('canvas.obj-sprite').length > 0;
+}, { r, c });
 /** 石押しの整列判定用＝生の座標（floor で丸めると半セル位置を隣セルと誤認する）。 */
 const rawPos = (page) => page.evaluate(() => {
   const p = window.__game.getState().player;
@@ -349,33 +376,59 @@ test.describe('Blade of Lumia – 魔王の岩牢（X 魔王）', () => {
     const pz = STAGES[PUZZLE];
     expect(pz.tiles.map((_, r) => rowStr(pz, r))).toEqual([
       '#####..#####',
-      '#S.(*..*).S#',
-      '####....####',
-      '###[....]###',
-      '###i....####',
-      '####....####',
-      '####....####',
-      '#####TT#####',
+      '#..........#',
+      '#.##.#i.##.#',
+      '#S)..(...(S#',
+      '###.##.#####',
+      '#....*.....#',
+      '#.*#.*)..(S#',
+      '#.[##TT...]#',
       '###B(..#####',
       '#####..#####',
     ]);
     expect(pz.isBossRoom ?? false, '錠の間がボス部屋になっている').toBe(false);
     expect(enemiesOf(pz), '錠の間に敵を置いている（石を押す部屋に戦闘を混ぜない）').toEqual({});
     // 部品の座標（手書きの表ではなく盤面から拾う）。
-    expect(cellsOf(pz, TILE.BUTTON), 'ボタンは色門の奥に2個').toEqual(['1,1', '1,10']);
-    expect(cellsOf(pz, TILE.STONE), '石はレーンの口に2個').toEqual(['1,4', '1,7']);
+    expect(cellsOf(pz, TILE.BUTTON), 'ボタンは色門の奥に3個（A/B/C）').toEqual(['3,1', '3,10', '6,10']);
+    expect(cellsOf(pz, TILE.STONE), '石は3個').toEqual(['5,5', '6,2', '6,5']);
     expect(cellsOf(pz, TILE.GATE), 'T は主の間への南口の手前に2枚').toEqual(['7,5', '7,6']);
-    expect(cellsOf(pz, TILE.SWITCH_RED), '色スイッチ（赤）が1枚でない').toEqual(['3,3']);
-    expect(cellsOf(pz, TILE.SWITCH_BLUE), '色スイッチ（青）が1枚でない').toEqual(['3,8']);
-    expect(cellsOf(pz, TILE.GATE_RED), '赤門はレーンと宝箱前の2枚').toEqual(['1,3', '8,4']);
-    expect(cellsOf(pz, TILE.GATE_BLUE), '青門は東レーンの1枚').toEqual(['1,8']);
+    expect(cellsOf(pz, TILE.SWITCH_RED), '色スイッチ（赤）が1枚でない').toEqual(['7,2']);
+    expect(cellsOf(pz, TILE.SWITCH_BLUE), '色スイッチ（青）が1枚でない').toEqual(['7,10']);
+    expect(cellsOf(pz, TILE.GATE_RED), '赤門の枚数・位置が変わった').toEqual(['3,5', '3,9', '6,9', '8,4']);
+    expect(cellsOf(pz, TILE.GATE_BLUE), '青門の枚数・位置が変わった').toEqual(['3,2', '6,6']);
     // 初期色を持たせない＝両門とも閉から始まる（まず色スイッチを叩くのが第一歩）。
     expect(pz.initActiveColor, '錠の間に初期色が付いている').toBeUndefined();
-    // ⚠️ デッドロック 0 の根拠は「レーンが幅1で奥が行き止まり」＝石の奥へ回り込めないこと。
-    //    レーンの上下を掘るとその根拠が消える（笛以外に石を戻す手段は無い）。
-    for (const c of [1, 2, 3, 8, 9, 10]) {
-      expect(tileAt(pz, 0, c), `レーンの上 (0,${c}) を掘った＝石の奥へ回り込める`).toBe('#');
-      expect(tileAt(pz, 2, c), `レーンの下 (2,${c}) を掘った＝石の奥へ回り込める`).toBe('#');
+    // ⚠️ 0o-3 で「デッドロック 0」は捨てた（笛 `fluteEffect:{type:'resetStones'}` で戻せる）∴
+    //    守るのは「デッドロックが無いこと」ではなく **笛で立て直せること**＝以下の幾何。
+    expect(pz.fluteEffect, '笛で石を戻せない＝デッドロックが本当の詰みになる')
+      .toEqual({ type: 'resetStones' });
+    // (a) col 3 の縦穴 (3,3)/(5,3) は**プレイヤー専用**＝上下 (2,3)/(6,3) が壁で石を押し込めない。
+    //     ここを掘ると石1個で広間と帯が永久に分断される（笛を吹くまで戻れない）。
+    for (const k of ['2,3', '6,3']) {
+      const [r, c] = k.split(',').map(Number);
+      expect(tileAt(pz, r, c), `縦穴の上下 (${k}) を掘った＝石が縦穴に入って道を塞ぐ`).toBe(TILE.WALL);
+    }
+    // (b) 直列に並ぶ異色の門のあいだは床2枚（1枚だと最後の押し位置が他色の門の上＝解けない）。
+    expect(rowStr(pz, 3).slice(2, 6), 'row 3 の「青・床・床・赤」が崩れた').toBe(')..(');
+    expect(rowStr(pz, 6).slice(6, 10), 'row 6 の「青・床・床・赤」が崩れた').toBe(')..(');
+    // (c) 連絡通路（竪坑からの入口・主の間への南口）へ石を押し出せない＝押しの成立幾何が無い。
+    //     押し出せると通路が石で塞がり、上下の部屋を行き来できなくなる（笛は錠の間でしか吹けない）。
+    const at = (r, c) => pz.tiles[r]?.[c];
+    for (const k of ['0,5', '0,6', ...PUZZLE_EXIT]) {
+      const [r, c] = k.split(',').map(Number);
+      for (const [dr, dc] of [[-1, 0], [1, 0], [0, -1], [0, 1]]) {
+        const from = at(r - dr, c - dc), stand = at(r - 2 * dr, c - 2 * dc);
+        expect(PUSHABLE.has(from) && PUSHABLE.has(stand),
+          `石を連絡通路 ${k} へ押し込める（${r - dr},${c - dc} の石を ${r - 2 * dr},${c - 2 * dc} から押す）`)
+          .toBe(false);
+      }
+    }
+    // (d) ボタンは T に隣接しない（隣接すると足踏みで T を跨げて石を据えずに抜けられる）。
+    for (const b of cellsOf(pz, TILE.BUTTON)) {
+      const [br, bc] = b.split(',').map(Number);
+      for (const [dr, dc] of [[-1, 0], [1, 0], [0, -1], [0, 1]]) {
+        expect(tileAt(pz, br + dr, bc + dc), `ボタン ${b} が T に隣接`).not.toBe(TILE.GATE);
+      }
     }
     // ⚠️ 主の間への南口は色で仕切らない＝閉じ込め（ハードロック）が起きない。
     for (const k of PUZZLE_EXIT) {
@@ -386,7 +439,11 @@ test.describe('Blade of Lumia – 魔王の岩牢（X 魔王）', () => {
     expect(pz.chestContents[HEART_CELL])
       .toEqual({ type: 'heartContainer', name: ITEM_META.heartContainer.name });
     expect(pz.showConditions?.[HEART_CELL], '錠の間の宝箱に封印が付いている').toBeUndefined();
-    expect(pz.signData['4,3']?.lines?.length, '錠の間の刻み文が無言看板').toBeGreaterThan(0);
+    // 看板は 0o-3 で (2,6)（広間から見上げる位置）へ移した＝笛の案内を載せている。
+    expect(pz.signData['4,3'], '旧位置 (4,3) の看板が残っている').toBeUndefined();
+    expect(pz.signData['2,6']?.lines?.length, '錠の間の刻み文が無言看板').toBeGreaterThan(0);
+    expect(pz.signData['2,6'].lines.join('\n'), '刻み文が笛（詰んだときの戻し方）に触れていない')
+      .toContain('笛');
     expect(stageThreat(pz, ENEMY_META), '錠の間に雑魚が居る').toBe(0);
 
     // ── 封魔の間（報酬と封印）───────────────────────────────
@@ -547,15 +604,18 @@ test.describe('Blade of Lumia – 魔王の岩牢（X 魔王）', () => {
     expect(stele.join('\n'), '祠の案内を上書きしている').toContain('もう一つの扉');
   });
 
-  test('② 錠の間：石を押さないと主の間にも宝箱にも届かず、押しても詰まない（状態空間）', () => {
+  test('② 錠の間：石を押さないと届かず・貪欲では解けず・順序が一意（状態空間）', () => {
+    // 1 部屋で 190 万状態を4回測る＝重い（合計 40 秒台）。既定の 30 秒では落ちる。
+    test.setTimeout(180_000);
     const S = puzzleSolver();
     const entries = [[0, 5], [0, 6]].map(([r, c]) => S.encode(r, c, S.initStones, 0, 0, 0));
     const atExit = (s) => PUZZLE_EXIT.includes(posOf(s));
     const atChest = (s) => posOf(s) === HEART_CELL;
     const escapeTest = (s) => ['0,5', '0,6', ...PUZZLE_EXIT].includes(posOf(s));
+    const BUTTONS = cellsOf(STAGES[PUZZLE], TILE.BUTTON);   // 盤面から拾う（手書きしない）
     const h = (goal) => {
       const [gr, gc] = goal.split(',').map(Number);
-      const btn = [[1, 1], [1, 10]];
+      const btn = BUTTONS.map((b) => b.split(',').map(Number));
       const man = (a, b) => Math.abs(a[0] - b[0]) + Math.abs(a[1] - b[1]);
       return (state) => {
         const [pos, stonesStr] = state.split('|');
@@ -568,7 +628,10 @@ test.describe('Blade of Lumia – 魔王の岩牢（X 魔王）', () => {
         return acc;
       };
     };
-    const opt = { guardMax: 6000000, escapeTest };
+    // ⚠️ `greedyFn` を渡さないと既定の1手ヒルクライムになり、石の裏へ回り込む歩行が必ず h を
+    //    悪化させる＝**どんな倉庫番でも「貪欲では解けない」**になり軸②が空虚になる
+    //    （0o-2 のこのテストが実際にそうなっていた）∴押し単位のマクロ貪欲を渡す。
+    const opt = { guardMax: 6000000, escapeTest, greedyFn: makeGreedyPush(BUTTONS) };
 
     // 必須性：石を押せない（noPush）と南口にも宝箱にも届かない＝パズルも報酬も飾りでない。
     const NP = puzzleSolver({ noPush: true });
@@ -580,26 +643,62 @@ test.describe('Blade of Lumia – 魔王の岩牢（X 魔王）', () => {
     expect([...seen].some(atExit), '石を押さずに主の間へ行けてしまう（パズルが飾り）').toBe(false);
     expect([...seen].some(atChest), '石を押さずに宝箱へ届いてしまう（報酬が飾り）').toBe(false);
 
-    // 解ける・作業ゲーでない・詰まない（笛以外に石を戻す手段は無い＝デッドロックは 0 が必須）。
     const exitM = measureMetrics(S, entries, atExit, h(PUZZLE_EXIT[0]), opt);
     const chestM = measureMetrics(S, entries, atChest, h(HEART_CELL), opt);
-    expect(exitM.L, '南口までの最短手数が変わった（盤面を触ったら測り直す）').toBe(32);
-    expect(chestM.L, '宝箱までの最短手数が変わった').toBe(33);
-    expect(exitM.greedy, '貪欲法で解けてしまう（insight=0＝作業ゲー）').toBe(false);
-    expect(chestM.greedy, '貪欲法で宝箱まで行けてしまう').toBe(false);
-    expect(exitM.deadlocks, '石を戻せない状態がある（笛が無いと詰む）').toBe(0);
-    expect(chestM.deadlocks, '石を戻せない状態がある（宝箱側）').toBe(0);
-    expect(exitM.noEscape, '画面外へ戻れない状態がある（ハードロック）').toBe(0);
-    expect(chestM.noEscape, '画面外へ戻れない状態がある（宝箱側）').toBe(0);
+    // 軸①：深さ。0o-3（ユーザーの「こんな簡単なパズルならない方がいい。もっと難しくしてよ」）で
+    // 32 → 120 に組み直した＝数字が動いたら盤面を触った合図∴測り直して DECISIONS に残す。
+    expect(exitM.L, '南口までの最短手数が変わった（盤面を触ったら測り直す）').toBe(120);
+    expect(chestM.L, '宝箱までの最短手数が変わった').toBe(122);
+    // 軸②：押し単位のマクロ貪欲でも解けない＝「ボタンへ近づける押し」だけでは詰む。
+    expect(exitM.greedy, 'マクロ貪欲で解けてしまう（insight=0＝作業ゲー）').toBe(false);
+    expect(chestM.greedy, 'マクロ貪欲で宝箱まで行けてしまう').toBe(false);
+    // 軸③：デッドロックは**在ってよい**（0o-3 で笛を付けた）＝0 は「幅1レーンに戻った」合図。
+    expect(exitM.deadlocks, 'デッドロックが 0＝考える余地の無い一本道に戻っている').toBeGreaterThan(0);
+    // 軸④：解が細い（最短解の本数・強制手率）。一本道でもなく、無数の解でもない。
+    expect(exitM.forcedRatio, '強制手率が高すぎる＝ほぼ一本道').toBeLessThanOrEqual(0.7);
+    expect(Number(exitM.solCount), '最短解が多すぎる＝どう押しても最短になる').toBeLessThan(5000);
+    // 詰みの扱い：ハードロックは笛（`fluteEffect`）で解く＝noEscape は 0 でなくてよいが、
+    // 「笛を吹いても出られない」は不可∴笛の直後の盤面（石＝初期位置・両色門閉・T 開）で
+    // 全床が歩けることを静的に測る（① の (a)-(d) と合わせて笛の効き目を保証する）。
+    const pz = STAGES[PUZZLE];
+    const walk = (pass, stop = new Set()) => {
+      const wq = ['0,5', '0,6'], vis = new Set(wq);
+      for (let i = 0; i < wq.length; i++) {
+        const [r, c] = wq[i].split(',').map(Number);
+        for (const [dr, dc] of [[-1, 0], [1, 0], [0, -1], [0, 1]]) {
+          const nr = r + dr, nc = c + dc, k = `${nr},${nc}`;
+          if (vis.has(k)) continue;
+          const ch = pz.tiles[nr]?.[nc];
+          if (ch === undefined || stop.has(ch)) continue;
+          if (!PUSHABLE.has(ch) && !pass.has(ch)) continue;
+          if (ch === TILE.STONE) continue;                     // 笛の直後＝石は初期位置＝壁と同じ
+          vis.add(k); wq.push(k);
+        }
+      }
+      return vis;
+    };
+    const base = walk(new Set([TILE.GATE]));                   // T だけ開いた盤面で歩ける床
+    const withoutT = walk(new Set([TILE.GATE_RED, TILE.GATE_BLUE]), new Set([TILE.GATE]));
+    pz.tiles.forEach((row, r) => row.forEach((ch, c) => {
+      const k = `${r},${c}`;
+      if (!PUSHABLE.has(ch) || base.has(k)) return;
+      if (ch === TILE.STONE
+        && [[-1, 0], [1, 0], [0, -1], [0, 1]].some(([dr, dc]) => base.has(`${r + dr},${c + dc}`))) return;
+      expect(withoutT.has(k), `笛を吹いても立て直せないセル ${k}（色門の奥／初期石で孤立）`).toBe(false);
+    }));
+
+    // ユーザーの難易度の軸「読みの深さ（順序が一意）」＝最短解 DAG 上で、ボタンが初めて石で
+    // 埋まる順序が1通りしか無い（0o-2 は2通り＝どちらでもよい＝読む必要が無かった）。
+    const { orders } = buttonFillOrders(S, entries, atExit, BUTTONS);
+    expect(orders, 'ボタンを埋める順序が一意でない＝順序を読む必要が無い').toEqual([[0, 1, 2]]);
 
     // 剣だけ（弓/ブーメランを持たない）でも解ける＝⑤ の実機再生が成立する条件。
     const melee = puzzleSolver({ noTools: true });
     const meleeM = measureMetrics(
       melee, [[0, 5], [0, 6]].map(([r, c]) => melee.encode(r, c, melee.initStones, 0, 0, 0)),
       atChest, h(HEART_CELL), opt);
-    expect(meleeM.L, '剣だけで宝箱まで行く最短手数が変わった').toBe(37);
-    expect(meleeM.deadlocks, '剣だけだと詰む状態がある').toBe(0);
-    expect(meleeM.noEscape, '剣だけだと出られない状態がある').toBe(0);
+    expect(meleeM.L, '剣だけで宝箱まで行く最短手数が変わった').toBe(126);
+    expect(meleeM.greedy, '剣だけならマクロ貪欲で解けてしまう').toBe(false);
   });
 
   test('③ 岩礁は飛行でしか行けず（徒歩✗・はしご✗）、扉に乗ると岩牢へ入れる', async ({ page }) => {
@@ -714,6 +813,9 @@ test.describe('Blade of Lumia – 魔王の岩牢（X 魔王）', () => {
   test('⑤ 錠の間：ソルバーの最短手順（剣だけ）を実機で再生すると T が開き、器で最大ハート +1', async ({ page }) => {
     const errors = [];
     page.on('pageerror', (e) => errors.push(e.message));
+    // 0o-3 で手順が 37 → 126 手になった（石押しは 650ms 待ち・叩きは剣のクールダウン待ち）∴
+    // 既定の 30 秒では再生しきれない。
+    test.setTimeout(240_000);
 
     // 手順はソルバー（noTools＝剣で隣接して叩く解だけ）から起こす。
     // ⚠️ 実機の開始セルと同じ1点から探す（両入口の min を再生すると初手が噛み合わない）。
@@ -723,14 +825,15 @@ test.describe('Blade of Lumia – 魔王の岩牢（X 魔王）', () => {
     expect(chain, '剣だけで宝箱まで届く手順が無い（盤面が解けなくなった）').toBeTruthy();
     const steps = toSteps(chain);
 
-    await page.goto(previewUrl(PUZZLE, PUZZLE_ENTRY.r, PUZZLE_ENTRY.c));
+    // 笛も持たせる＝末尾で「解いた後は笛が不発」を測る（`activeSubItem` は笛になる）。
+    await page.goto(previewUrl(PUZZLE, PUZZLE_ENTRY.r, PUZZLE_ENTRY.c, { ps_flute: '1' }));
     await waitForBoard(page);
     const before = await page.evaluate(() => window.__game.getPlayer());
     expect(before.maxHearts, '前提：ps_hearts でハート数が入っていない').toBe(15);
 
     await replay(page, steps);
 
-    // 石が2個ともボタンに乗った＝T が開き、石は恒久ロックされる（足踏みでは ON にならない）。
+    // 石が3個ともボタンに乗った＝T が開き、石は恒久ロックされる（足踏みでは ON にならない）。
     const st = await ss(page);
     expect(st.stonesLocked, '石がロックされていない（ボタンに乗っていない）').toBe(true);
     expect([...(st.openGates ?? [])].sort(), 'T (7,5)/(7,6) が開いていない').toEqual(['7,5', '7,6']);
@@ -743,6 +846,15 @@ test.describe('Blade of Lumia – 魔王の岩牢（X 魔王）', () => {
     const after = await page.evaluate(() => window.__game.getPlayer());
     expect(after.maxHp, '最大 HP がハート数から導出されていない')
       .toBe(before.maxHp + (before.maxHp / before.maxHearts));
+
+    // 解いた後に笛を吹いても石は戻らない＝笛は救済であって「解き直し」ではない
+    // （`playFlute` の allSolved / stonesLocked ガード。ここが抜けると T が閉じて詰む）。
+    await page.evaluate(() => window.__game.useSubItem());
+    await step(page, 2);
+    const afterFlute = await ss(page);
+    expect(afterFlute.stonesLocked, '解いた後に笛で石が動いた').toBe(true);
+    expect([...(afterFlute.openGates ?? [])].sort(), '解いた後に笛を吹いたら T が閉じた')
+      .toEqual(['7,5', '7,6']);
 
     // T を開けた後は南口から主の間へ降りられる（赤門 (8,4) を通って戻る）。
     await walkTiles(page, 'right', 2);
@@ -847,6 +959,51 @@ test.describe('Blade of Lumia – 魔王の岩牢（X 魔王）', () => {
       'X が星の欠片を落とした＝祭壇の総数 8 と噛み合わず羽衣が永久に手に入らなくなる').toBe(false);
     expect(await page.evaluate(() => window.__game.getPlayer().triforceCount),
       '欠片の所持数が増えた').toBe(8);
+    expect(errors, 'pageerror が出た').toEqual([]);
+  });
+
+  test('⑧ 錠の間：石を動かした後は笛で初期配置に戻る（動かす前は不発）', async ({ page }) => {
+    const errors = [];
+    page.on('pageerror', (e) => errors.push(e.message));
+
+    // 0o-3 の錠の間はデッドロックを**許す**設計＝救済は笛だけ（再入室では石は戻らない）∴
+    // 「笛が実エンジンで本当に効くか」は ② の静的検査とは別に実機で測る必要がある。
+    // 縦穴の南（5,3）から始める＝石 (5,5) を1回押せる位置。
+    await page.goto(previewUrl(PUZZLE, 5, 3, { ps_flute: '1' }));
+    await waitForBoard(page);
+    expect(await page.evaluate(() => window.__game.getPlayer().subItems.flute?.count > 0),
+      '前提：ps_flute で笛を持っていない').toBe(true);
+
+    // ① まだ石を動かしていない＝笛は不発（石の初期配置は stonePositions が空で表される）。
+    expect((await ss(page)).stonePositions, '前提：入った時点で石が動いている').toEqual({});
+    await page.evaluate(() => window.__game.useSubItem());
+    await step(page, 2);
+    expect((await ss(page)).stonePositions, '石を動かす前に笛が石を「戻した」').toEqual({});
+
+    // ② 石を1回押す＋色スイッチを叩く → 笛で石も色も初期状態へ戻る。
+    await walkTiles(page, 'right', 1);
+    expect(await at(page), '縦穴の南から東へ歩けない').toEqual({ r: 5, c: 4 });
+    await page.evaluate(() => window.__game.movePlayer('right'));
+    await step(page, 6);   // 石押しのクールダウン（600ms）＝TICK_MS 120 × 5
+    await page.evaluate(() => window.__game.movePlayer('right'));
+    await step(page, 6);
+    const pushed = await ss(page);
+    expect(Object.values(pushed.stonePositions).map((s) => `${s.r},${s.c}`),
+      '石 (5,5) を東へ押せていない（笛の効き目を測る前提が崩れた）').toContain('5,6');
+    // 押した後は元のセルに石の絵が無い（`stonePositions` があるセルは render-board が描かない）。
+    expect(await stoneDrawnAt(page, 5, 5), '押した後も (5,5) に石が描かれている').toBe(false);
+
+    // ③ 笛 → 石が初期位置に戻り、activeColor も消える（`resetStones` は色も戻す）。
+    await page.evaluate(() => window.__game.useSubItem());
+    await step(page, 2);
+    const reset = await ss(page);
+    expect(reset.stonePositions, '笛を吹いても石が初期位置に戻らない（詰みが本当の詰みになる）')
+      .toEqual({});
+    expect(reset.activeColor, '笛を吹いても色が残っている（門の開閉が石とずれる）').toBeNull();
+    expect(reset.openGates ?? [], '笛で T が開いた').toEqual([]);
+    // 盤面の描画も戻る＝石は元の岩のセルに描かれている（renderBoard を呼び忘れると盤だけ古い）。
+    expect(await stoneDrawnAt(page, 5, 5),
+      '笛の後も (5,5) に石が描かれない（renderBoard の呼び忘れ＝状態と盤がずれる）').toBe(true);
     expect(errors, 'pageerror が出た').toEqual([]);
   });
 

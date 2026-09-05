@@ -144,6 +144,133 @@ function greedySolvable(S, starts, goalTest, h) {
 }
 
 /**
+ * 石パズル（倉庫番型）用の軸②の貪欲モデル＝**押し単位のマクロ貪欲**（単一ソース）。
+ *
+ * 既定の `greedySolvable` は1手単位のヒルクライムで、石の裏へ回り込む歩行が必ず h を増やす
+ * ∴石パズルでは常に「貪欲では解けない」になり軸②が空虚になる。ここでは
+ *   ・石を1個も動かさない歩きは自由（同じ石配置のあいだは h を見ない）
+ *   ・押しは「石とボタンの割当（最小マンハッタン和）が必ず減る押し」だけ許す
+ * とし、それで解けたら「考えずに手が進む＝作業ゲー」と判定する。
+ *
+ * ⚠️ 2026-09-05（0o-3）にここへ集約した。それまでは鍵部屋の生成スクリプト各々に写しが
+ *    あるだけで（generate-sokoban-playable / generate-key-room-d4,d6,d8,dark-tower-43 /
+ *    migrate-test-sokoban-tiers）、`measureMetrics` に渡し忘れた測定（0o-2 の錠の間・
+ *    tests/darklord-prison.spec.js の②）が「貪欲では解けない」を空虚に主張していた。
+ *    上記スクリプトは一度きりの生成物（実行済み）なので写しはそのまま残す＝**新規の
+ *    石パズル測定はここから import する**。
+ *
+ * @param {string[]} buttons ボタンのセル（"r,c"）
+ * @returns {(S:object, starts:string[], goalTest:Function)=>boolean} greedyFn
+ */
+export function makeGreedyPush(buttons) {
+  const parse = (s) => s.split(',').map(Number);
+  const bpos = buttons.map(parse);
+  const man = (a, b) => Math.abs(a[0] - b[0]) + Math.abs(a[1] - b[1]);
+  const perms = (xs) => xs.length <= 1 ? [xs]
+    : xs.flatMap((x, i) => perms([...xs.slice(0, i), ...xs.slice(i + 1)]).map((p) => [x, ...p]));
+  const BPERM = perms(bpos.map((_, i) => i));
+  const potential = (stones) => {
+    const sp = stones.map(parse);
+    let best = Infinity;
+    for (const p of BPERM) {
+      let sum = 0;
+      for (let i = 0; i < sp.length; i++) sum += man(sp[i], bpos[p[i]]);
+      best = Math.min(best, sum);
+    }
+    return best;
+  };
+  const stonesOf = (state) => { const f = state.split('|')[1]; return f ? f.split(';') : []; };
+  const macroKey = (state) => state.split('|').slice(0, 2).join('|');
+  return (S, starts, goalTest) => {
+    const q = [...starts];
+    const seen = new Set(q.map(macroKey));
+    for (let i = 0; i < q.length; i++) {
+      const cur = q[i];
+      const curStones = stonesOf(cur).join(';');
+      const p0 = potential(stonesOf(cur));
+      const walk = new Set([cur]), wq = [cur];
+      for (let j = 0; j < wq.length; j++) {
+        if (goalTest(wq[j])) return true;
+        for (const nx of S.nextStates(wq[j])) {
+          if (stonesOf(nx).join(';') === curStones) {
+            if (!walk.has(nx)) { walk.add(nx); wq.push(nx); }
+            continue;
+          }
+          if (potential(stonesOf(nx)) >= p0) continue;
+          const k = macroKey(nx);
+          if (!seen.has(k)) { seen.add(k); q.push(nx); }
+        }
+      }
+    }
+    return false;
+  };
+}
+
+/**
+ * ユーザーの難易度の軸「読みの深さ（順序が一意）」を測る（0o-3・2026-09-05 に追加）。
+ *
+ * 最短解 DAG（`dist + distToGoal === L` の状態だけ）の上で「ボタンが**初めて**石で埋まる
+ * 順序」を全部集める。1通りしか無い＝プレイヤーは順序を読みで決めるしかない。2通り以上＝
+ * どちらでもよい＝順序は考えなくてよい（0o-2 の錠の間がそれだった）。
+ *
+ * @param {object} S makeSolver の戻り値
+ * @param {string[]} starts 入口状態
+ * @param {(state:string)=>boolean} goalTest
+ * @param {string[]} buttons ボタンのセル（"r,c"）＝返る順序はこの配列の添字
+ * @returns {{L:number|null, orders:number[][]}} orders は添字列の集合（辞書順）
+ */
+export function buttonFillOrders(S, starts, goalTest, buttons) {
+  const dist = new Map(), rev = new Map(), q = [];
+  for (const s of starts) if (!dist.has(s)) { dist.set(s, 0); q.push(s); }
+  for (let i = 0; i < q.length; i++) {
+    const d = dist.get(q[i]);
+    for (const nx of S.nextStates(q[i])) {
+      if (!rev.has(nx)) rev.set(nx, []);
+      rev.get(nx).push(q[i]);
+      if (!dist.has(nx)) { dist.set(nx, d + 1); q.push(nx); }
+    }
+  }
+  const goals = q.filter(goalTest);
+  if (!goals.length) return { L: null, orders: [] };
+  const L = Math.min(...goals.map((g) => dist.get(g)));
+  // ゴールからの逆距離＝最短解 DAG の判定に使う。
+  const dtg = new Map(), bq = [];
+  for (const g of goals) if (!dtg.has(g)) { dtg.set(g, 0); bq.push(g); }
+  for (let i = 0; i < bq.length; i++) {
+    const d = dtg.get(bq[i]);
+    for (const p of rev.get(bq[i]) ?? []) if (!dtg.has(p)) { dtg.set(p, d + 1); bq.push(p); }
+  }
+  const onOpt = (s) => dtg.has(s) && dist.get(s) + dtg.get(s) === L;
+  const bIdx = new Map(buttons.map((b, i) => [b, i]));
+  const filled = (s) => {
+    const f = s.split('|')[1];
+    return new Set((f ? f.split(';') : []).filter((p) => bIdx.has(p)).map((p) => bIdx.get(p)));
+  };
+  const orders = new Map();
+  for (const s of starts) if (onOpt(s)) orders.set(s, new Set(['']));
+  for (const st of q.filter(onOpt).sort((a, b) => dist.get(a) - dist.get(b))) {
+    const cur = orders.get(st);
+    if (!cur) continue;
+    const fromFilled = filled(st);
+    for (const nx of S.nextStates(st)) {
+      if (!onOpt(nx) || dist.get(nx) !== dist.get(st) + 1) continue;
+      const gained = [...filled(nx)].filter((i) => !fromFilled.has(i));
+      if (!orders.has(nx)) orders.set(nx, new Set());
+      const dst = orders.get(nx);
+      for (const seq of cur) {
+        const have = seq ? seq.split(',').map(Number) : [];
+        let out = seq;
+        for (const g of gained) if (!have.includes(g)) out = out ? `${out},${g}` : `${g}`;
+        dst.add(out);
+      }
+    }
+  }
+  const full = new Set();
+  for (const g of goals) if (dist.get(g) === L) for (const seq of orders.get(g) ?? []) full.add(seq);
+  return { L, orders: [...full].sort().map((s) => (s ? s.split(',').map(Number) : [])) };
+}
+
+/**
  * 下限条件（PUZZLE-DESIGN §2・v1）:
  *   L ≥ 6 かつ (insight>0 or deadlock>0) かつ 強制手率 ≤ 0.7 かつ 貪欲で解けない。
  * @returns {{pass:boolean, label:string}}
