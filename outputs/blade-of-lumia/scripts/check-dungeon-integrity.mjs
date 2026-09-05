@@ -70,8 +70,15 @@ const TOOLS_USABLE_IN = toolsUsableIn(d);
 //           darklord_prison … 魔王の岩牢（0o・2026-09-05）。X 魔王の一対一。`bossStage` と
 //                          `isBossRoom` を持ち報酬にハートの器はあるが**星の欠片は落とさない**
 //                          （祭壇より後の寄道∴落とすと総数が 9 になって祭壇が開かない）。
+//           forest_cave  … 爆弾＋かがり火で入る小部屋（0v・2026-09-05）。`bossStage` 無し。
+//           secret_grotto … 笛 reveal で現れる寄道（D8 の後）。ミラーシールドを持つ。`bossStage` 無し。
+//           void_shrine  … 羽衣ゲートの2部屋。`isBossRoom` を持たない代わりに脱出ゲート 'T' と
+//                          色門・石車がある。`bossStage` 無し。
 // 鍵の収支・links・関門・順序（5〜8）は種別に関係なく全レイヤーへ効かせる。
-const LAYER_KIND = { dark_tower: 'final', cave_1: 'side', warlord_lair: 'side', darklord_prison: 'side' };
+const LAYER_KIND = {
+  dark_tower: 'final', cave_1: 'side', warlord_lair: 'side', darklord_prison: 'side',
+  forest_cave: 'side', secret_grotto: 'side', void_shrine: 'side',
+};
 
 // 鍵扉 D を「物理的な1枚の扉」に畳むための隣接規則。
 //  ① 同一部屋内の4近傍で連結した D は1枚（game/player.js collectDoorRun と同じ）。
@@ -594,8 +601,8 @@ function checkDungeon(layerName) {
 const target = process.argv[2] || 'all';
 // `all` の対象＝8ダンジョン ＋ dark_tower ＋ LAYER_KIND に載っている寄道。
 // dark_tower は 2026-08-05 まで漏れていた（最終ダンジョンだけ無検査だった）。
-// ⚠️ 寄道は `LAYER_KIND` に `side` として載せた分だけが対象＝forest_cave / secret_grotto /
-//    void_shrine は今も無検査（既存の穴。埋めるなら3つまとめて別タスク＝IDEA.md に残す）。
+// ⚠️ 寄道は `LAYER_KIND` に `side` として載せた分だけが対象。forest_cave / secret_grotto /
+//    void_shrine は 2026-09-05（0v）に追加＝それまで3つとも無検査だった（既存の穴）。
 const dungeons = target === 'all'
   ? Object.keys(d.layers).filter(l => l.startsWith('dungeon') || l === 'dark_tower' || LAYER_KIND[l] === 'side')
   : [target];
