@@ -3327,7 +3327,8 @@
           "chestContents": {
             "3,7": {
               "type": "rupee",
-              "value": "large"
+              "value": 20,
+              "name": "大ルピー"
             },
             "8,10": {
               "type": "heartContainer"
@@ -70273,8 +70274,8 @@
           "chestContents": {
             "6,5": {
               "type": "item",
-              "item": "redPotion",
-              "name": "大回復薬"
+              "item": "bigHealPotion",
+              "name": "回復薬（大）"
             }
           },
           "floorItems": {},
@@ -88267,7 +88268,7 @@
           "chestContents": {
             "3,8": {
               "type": "item",
-              "item": "healPotionL",
+              "item": "bigHealPotion",
               "name": "回復薬（大）"
             }
           },
@@ -96177,8 +96178,8 @@
           "chestContents": {
             "6,5": {
               "type": "item",
-              "item": "redPotion",
-              "name": "大回復薬"
+              "item": "bigHealPotion",
+              "name": "回復薬（大）"
             }
           },
           "objects": {},
@@ -96846,13 +96847,12 @@
           "chestContents": {
             "2,4": {
               "type": "item",
-              "item": "redPotion",
-              "name": "大回復薬"
+              "item": "bigHealPotion",
+              "name": "回復薬（大）"
             },
             "2,7": {
-              "type": "item",
-              "item": "coin",
-              "amount": 50,
+              "type": "rupee",
+              "value": 50,
               "name": "大ルピー×50"
             }
           },
@@ -97688,8 +97688,8 @@
           "chestContents": {
             "2,4": {
               "type": "item",
-              "item": "redPotion",
-              "name": "大回復薬"
+              "item": "bigHealPotion",
+              "name": "回復薬（大）"
             }
           },
           "objects": {},
@@ -98840,8 +98840,8 @@
           "chestContents": {
             "2,4": {
               "type": "item",
-              "item": "redPotion",
-              "name": "大回復薬"
+              "item": "bigHealPotion",
+              "name": "回復薬（大）"
             }
           },
           "objects": {},
@@ -99679,13 +99679,12 @@
           "chestContents": {
             "2,4": {
               "type": "item",
-              "item": "redPotion",
-              "name": "大回復薬"
+              "item": "bigHealPotion",
+              "name": "回復薬（大）"
             },
             "2,7": {
-              "type": "item",
-              "item": "coin",
-              "amount": 30,
+              "type": "rupee",
+              "value": 30,
               "name": "ルピー×30"
             }
           },
@@ -100511,8 +100510,8 @@
           "chestContents": {
             "6,4": {
               "type": "item",
-              "item": "redPotion",
-              "name": "大回復薬"
+              "item": "bigHealPotion",
+              "name": "回復薬（大）"
             }
           },
           "objects": {},
@@ -107751,8 +107750,8 @@
           "enemyDirs": {},
           "chestContents": {
             "4,5": {
-              "type": "item",
-              "item": "rupee",
+              "type": "rupee",
+              "value": 5,
               "name": "ルピー×5"
             }
           },
@@ -108248,8 +108247,8 @@
           "enemyDirs": {},
           "chestContents": {
             "2,9": {
-              "type": "item",
-              "item": "rupee",
+              "type": "rupee",
+              "value": 10,
               "name": "ルピー×10"
             }
           },
@@ -109549,8 +109548,8 @@
           "enemyDirs": {},
           "chestContents": {
             "4,5": {
-              "type": "item",
-              "item": "rupee",
+              "type": "rupee",
+              "value": 5,
               "name": "ルピー×5"
             }
           },
@@ -113858,8 +113857,8 @@
           "enemyDirs": {},
           "chestContents": {
             "2,5": {
-              "type": "item",
-              "item": "rupee",
+              "type": "rupee",
+              "value": 10,
               "name": "ルピー×10"
             }
           },
@@ -114687,8 +114686,8 @@
           "enemyDirs": {},
           "chestContents": {
             "2,5": {
-              "type": "item",
-              "item": "rupee",
+              "type": "rupee",
+              "value": 5,
               "name": "ルピー×5"
             }
           },
@@ -116020,8 +116019,8 @@
           "enemyDirs": {},
           "chestContents": {
             "2,9": {
-              "type": "item",
-              "item": "rupee",
+              "type": "rupee",
+              "value": 5,
               "name": "ルピー×5"
             }
           },
@@ -116350,8 +116349,8 @@
           "enemyDirs": {},
           "chestContents": {
             "2,5": {
-              "type": "item",
-              "item": "rupee",
+              "type": "rupee",
+              "value": 5,
               "name": "ルピー×5"
             }
           },
@@ -116679,8 +116678,8 @@
           "enemyDirs": {},
           "chestContents": {
             "2,5": {
-              "type": "item",
-              "item": "rupee",
+              "type": "rupee",
+              "value": 10,
               "name": "ルピー×10"
             }
           },
@@ -116849,8 +116848,8 @@
           "enemyDirs": {},
           "chestContents": {
             "2,9": {
-              "type": "item",
-              "item": "rupee",
+              "type": "rupee",
+              "value": 10,
               "name": "ルピー×10"
             }
           },
@@ -117021,8 +117020,8 @@
           "enemyDirs": {},
           "chestContents": {
             "2,5": {
-              "type": "item",
-              "item": "rupee",
+              "type": "rupee",
+              "value": 5,
               "name": "ルピー×5"
             }
           },
@@ -117421,8 +117420,8 @@
           "enemyDirs": {},
           "chestContents": {
             "2,5": {
-              "type": "item",
-              "item": "rupee",
+              "type": "rupee",
+              "value": 10,
               "name": "ルピー×10"
             }
           },
@@ -117591,8 +117590,8 @@
           "enemyDirs": {},
           "chestContents": {
             "2,9": {
-              "type": "item",
-              "item": "rupee",
+              "type": "rupee",
+              "value": 10,
               "name": "ルピー×10"
             }
           },
@@ -117763,8 +117762,8 @@
           "enemyDirs": {},
           "chestContents": {
             "2,5": {
-              "type": "item",
-              "item": "rupee",
+              "type": "rupee",
+              "value": 5,
               "name": "ルピー×5"
             }
           },
@@ -118597,8 +118596,8 @@
           "enemyDirs": {},
           "chestContents": {
             "2,5": {
-              "type": "item",
-              "item": "rupee",
+              "type": "rupee",
+              "value": 5,
               "name": "ルピー×5"
             }
           },
@@ -120266,8 +120265,8 @@
           "enemyDirs": {},
           "chestContents": {
             "2,5": {
-              "type": "item",
-              "item": "rupee",
+              "type": "rupee",
+              "value": 5,
               "name": "ルピー×5"
             }
           },
@@ -120595,8 +120594,8 @@
           "enemyDirs": {},
           "chestContents": {
             "2,5": {
-              "type": "item",
-              "item": "rupee",
+              "type": "rupee",
+              "value": 5,
               "name": "ルピー×5"
             }
           },
@@ -121987,9 +121986,8 @@
           "enemyDirs": {},
           "chestContents": {
             "3,5": {
-              "type": "item",
-              "item": "rupee",
-              "amount": 10,
+              "type": "rupee",
+              "value": 10,
               "name": "ルピー×10"
             }
           },
@@ -124151,9 +124149,8 @@
           "enemyDirs": {},
           "chestContents": {
             "1,8": {
-              "type": "item",
-              "item": "rupee",
-              "amount": 10,
+              "type": "rupee",
+              "value": 10,
               "name": "ルピー×10"
             }
           },
@@ -124321,9 +124318,8 @@
           "enemyDirs": {},
           "chestContents": {
             "4,5": {
-              "type": "item",
-              "item": "rupee",
-              "amount": 30,
+              "type": "rupee",
+              "value": 30,
               "name": "ルピー×30"
             }
           },
@@ -124657,9 +124653,8 @@
           "enemyDirs": {},
           "chestContents": {
             "4,5": {
-              "type": "item",
-              "item": "rupee",
-              "amount": 5,
+              "type": "rupee",
+              "value": 5,
               "name": "ルピー×5"
             }
           },
@@ -124826,9 +124821,8 @@
           "enemyDirs": {},
           "chestContents": {
             "2,8": {
-              "type": "item",
-              "item": "rupee",
-              "amount": 15,
+              "type": "rupee",
+              "value": 15,
               "name": "ルピー×15"
             }
           },
@@ -124996,9 +124990,8 @@
           "enemyDirs": {},
           "chestContents": {
             "3,5": {
-              "type": "item",
-              "item": "rupee",
-              "amount": 20,
+              "type": "rupee",
+              "value": 20,
               "name": "ルピー×20"
             }
           },
@@ -126619,11 +126612,9 @@
               "name": "ルピー"
             },
             "2,10": {
-              "items": [
-                {
-                  "type": "compass"
-                }
-              ]
+              "type": "rupee",
+              "value": 5,
+              "name": "ルピー"
             }
           },
           "rows": 10,

@@ -706,12 +706,21 @@ export function createPlayer(deps) {
 	function giveSubItem(id) {
 		const player = getPlayer();
 		const meta = ITEM_META[id];
+		// ⚠️ ITEM_META に無い id／`grantable: false` の id ではスロットを作らない。
+		// 作ると「メタの無いサブアイテム」が持ち物に並び、ポーズ画面はスプライトも
+		// 名前も引けず生の id を文字で並べる（2026-09-05 のユーザー報告＝宝箱が
+		// `item:'rupee'` を指定していて欄に "rupee" と出た）。ルピーは所持金であって
+		// サブアイテムではない＝宝箱側は `{type:'rupee', value:N}` で書く。
+		if (!meta || meta.grantable === false) {
+			console.warn(`[item] 渡せないサブアイテム id: ${id}`);
+			return false;
+		}
 		if (meta?.type === 'passive') {
 			if (id === 'heartContainer') gainHeartContainer();
 			else if (id === 'ladder')    player.hasLadder  = true;
 			else if (id === 'quiver')    player.maxArrows  = (player.maxArrows  ?? 8) + 8;
 			else if (id === 'bombBag')   player.maxBombs   = (player.maxBombs   ?? 8) + 8;
-			return;
+			return true;
 		}
 		if (!player.subItems[id]) player.subItems[id] = { count: meta?.uses === Infinity ? Infinity : 1 };
 		else if (meta?.uses !== Infinity) player.subItems[id].count++;
@@ -720,6 +729,7 @@ export function createPlayer(deps) {
 		if (id === 'bow')  player.subItems.bow.count  = Math.min(player.subItems.bow.count,  player.maxArrows ?? 8);
 		if (!player.activeSubItem) player.activeSubItem = id;
 		maybeShowSubItemHint();
+		return true;
 	}
 
 	// ── 報酬付与（チェストとガチャの共通ロジック）──────────
@@ -728,7 +738,8 @@ export function createPlayer(deps) {
 	function grantReward(content) {
 		const player = getPlayer();
 		if (content.type === 'item') {
-			giveSubItem(content.item);
+			// 渡せない id（未定義／床タイル専用）は「手に入れた！」と嘘をつかない＝空文字。
+			if (!giveSubItem(content.item)) return '';
 			return `${content.name ?? content.item} を手に入れた！`;
 		} else if (content.type === 'weapon') {
 			const tierIndex = content.swordTier ?? 0;
@@ -768,8 +779,11 @@ export function createPlayer(deps) {
 				return `${tier?.name ?? 'ブーメラン'} を拾った（今のブーメランの方が強い）`;
 			}
 		} else if (content.type === 'rupee') {
-			player.rupees += content.value ?? 1;
-			return `ルピー ×${content.value ?? 1}`;
+			// ⚠️ 数でない額面（旧データの `value: 'large'` など）を足すと文字列連結になり
+			// 所持ルピーが "12large" に化けて HUD もセーブも壊れる∴数だけ受ける。
+			const add = Number.isFinite(content.value) ? content.value : 1;
+			player.rupees += add;
+			return `ルピー ×${add}`;
 		} else if (content.type === 'heartContainer') {
 			gainHeartContainer();
 			return 'ハートの器を手に入れた！';
@@ -787,7 +801,9 @@ export function createPlayer(deps) {
 		const content = stageData.chestContents?.[posKey];
 		if (content) {
 			const msg = grantReward(content);
-			pulse(`☐ ${msg}`);
+			// 渡せない指定（未知の type／渡せない item）は空文字が返る＝「☐ 」だけの
+			// 無言の泡を出さず、空箱と同じ文にする（指定の間違いはテストで赤くする側）。
+			pulse(msg ? `☐ ${msg}` : '☐ 宝箱は空だった…');
 		} else { pulse('☐ 宝箱は空だった…'); }
 		renderBoard(); renderChars(); updateHud(); saveGame();
 	}

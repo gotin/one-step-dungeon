@@ -115,13 +115,21 @@ export const ITEM_META = {
 		uses: null,
 	},
 	dungeonMap: {
+		// ⚠️ 宝箱・報酬からは渡せない（`grantable: false`）＝地図とコンパスは
+		// **床タイル専用**（`game/player.js pickDungeonItem()` が
+		// `player.dungeonItems[layer]` に立てる）。`giveSubItem()` の passive 分岐は
+		// この2つを扱わない∴宝箱に指定すると「手に入れた！」と出るだけで何も起きない。
+		// 宝箱から渡したくなったら先に `giveSubItem` を直す（この旗も外す）。
 		name: '地図', icon: '🗺', sprite: 'dungeonMap',
 		type: 'passive',
+		grantable: false,
 		uses: null,
 	},
 	compass: {
+		// ⚠️ 宝箱・報酬からは渡せない（上の `dungeonMap` と同じ理由）。
 		name: 'コンパス', icon: '🧭', sprite: 'compass',
 		type: 'passive',
+		grantable: false,
 		uses: null,
 	},
 	heartContainer: {

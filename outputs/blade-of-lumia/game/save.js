@@ -96,12 +96,17 @@ export function deserializeStageState(rawSS) {
 // 混入していた旧セーブデータを修正する純粋関数（player を直接書き換える）。
 // itemMeta は items.js の ITEM_META を渡す（純粋性のため引数で受け取る）。
 export function sanitizeLoadedPlayer(player, itemMeta) {
+	// ⚠️ 2つ落とす：① passive アイテム（heartContainer 等＝欄に並べる物ではない）
+	// ② `itemMeta` に無い id。②は壊れた宝箱データが渡してしまったゴミ（2026-09-05 の
+	// `item:'rupee'`）＝メタが無いのでポーズ画面が生の id を文字で並べる。データを
+	// 直しても**既に保存されたセーブには残る**∴ロード時にここで消す。
 	for (const k of Object.keys(player.subItems ?? {})) {
-		if (itemMeta[k]?.type === 'passive') {
+		if (!itemMeta[k] || itemMeta[k].type === 'passive') {
 			delete player.subItems[k];
 		}
 	}
-	if (player.activeSubItem && itemMeta[player.activeSubItem]?.type === 'passive') {
+	const active = player.activeSubItem;
+	if (active && (!itemMeta[active] || itemMeta[active].type === 'passive')) {
 		player.activeSubItem = Object.keys(player.subItems)[0] ?? null;
 	}
 	// Phase 9-5a: 旧セーブデータへのデフォルト補完

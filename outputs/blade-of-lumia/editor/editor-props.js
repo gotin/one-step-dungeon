@@ -1,5 +1,6 @@
 // ── editor-props.js ── 右パネル（ゲート・宝箱・NPC・条件等） ──
 import { TILE, TILE_META } from '../shared/tiles.js';
+import { ITEM_META } from '../shared/items.js';
 import { getCurrentStage, findTilePositions, state, stageKey } from './editor-state.js';
 import { buildExitRegistry, resolveExit, reverseRefs, resolveFluteWarp } from '../shared/exits.js';
 
@@ -97,18 +98,13 @@ function renderEquipItems(sd) {
 }
 
 // ── 宝箱の内容 ────────────────────────────────────────────────
-const CHEST_ITEM_OPTIONS = [
-	{ value: 'healPotion',    label: '回復薬（小）' },
-	{ value: 'bigHealPotion', label: '回復薬（大）' },
-	{ value: 'boomerang',     label: 'ブーメラン' },
-	{ value: 'flute',         label: '笛' },
-	{ value: 'candle',        label: 'ロウソク' },
-	{ value: 'bomb',          label: '爆弾' },
-	{ value: 'bow',           label: '弓矢' },
-	{ value: 'heartContainer',label: 'ハートの器' },
-	{ value: 'dungeonMap',    label: 'ダンジョン地図' },
-	{ value: 'compass',       label: 'コンパス' },
-];
+// 宝箱に入れられるサブアイテムは `ITEM_META` から導出する（手書きの表を持たない
+// ＝[[blade-tile-sprite-single-source]] と同じ作法）。`grantable: false`（地図・コンパス
+// ＝床タイル専用）は除く＝**選べる物とエンジンが実際に渡せる物を一致させる**
+// （2026-09-05：ここに載っていない `rupee` を指定した宝箱が持ち物欄にゴミを作っていた）。
+const CHEST_ITEM_OPTIONS = Object.entries(ITEM_META)
+	.filter(([, meta]) => meta.grantable !== false)
+	.map(([value, meta]) => ({ value, label: meta.name }));
 const CHEST_TYPE_OPTIONS = [
 	{ value: 'item',   label: 'アイテム（サブ）' },
 	{ value: 'weapon', label: '武器（剣）' },
