@@ -491,6 +491,43 @@ export function createBoss(deps) {
 		return true;
 	}
 
+	// プレイヤーの占有範囲がボス扉（':'）のセルに重なっているか。
+	// 半セル移動があるので「跨いでいる2セル」も見る（isPassable と同じ範囲の取り方）。
+	function playerOnBossDoor() {
+		const stageData = getStageData();
+		const player    = getPlayer();
+		if (!stageData || !player) return false;
+		const r0 = Math.floor(player.y), r1 = Math.floor(player.y + 0.999);
+		const c0 = Math.floor(player.x), c1 = Math.floor(player.x + 0.999);
+		for (let r = r0; r <= r1; r++) {
+			for (let c = c0; c <= c1; c++) {
+				if (stageData.tiles?.[r]?.[c] === TILE.DOORWAY_BOSS) return true;
+			}
+		}
+		return false;
+	}
+
+	// 🔴 2026-09-05 ユーザー報告「darklord_prison 0,2 に入った途端に動けなくなった／ボス扉に
+	//    挟まれたような状態」の修正点。ボス扉は**プレイヤーが扉のセルから降りてから**閉める。
+	//    理由＝ボス部屋の ':' はどれも**部屋の境界セル**に在り（実マップ8部屋すべて）、端遷移の
+	//    着地は境界セルそのもの（game.js checkStageTransition・9-6 ⑥-landing 2026-07-29）∴
+	//    着地した瞬間に閉じると**自分が立っているセルが通行不可になる**。isPassable は「今いる
+	//    セル」を免除しない（免除は はしごの水/穴だけ）＝半セル動いても必ず扉セルに重なる∴
+	//    4方向すべて塞がれ、さらに bossRoomLocked が端遷移も禁じる＝恒久詰み（実測：8部屋全滅）。
+	//    ∴閉めるのを「扉から降りるまで」待つ。降りずに引き返した／部屋を出たら閉めずに諦める
+	//    （再入室で startBossBattle がもう一度呼ばれる＝passable.js が ':' を着地でブロックしない
+	//    のと同じ「逃げた後の再入場」の考え方）。
+	function whenClearOfBossDoors(delayMs, run) {
+		const startLayer = getCurrentLayer(), startStage = getStageKey();
+		const tick = () => {
+			// 部屋を出た（＝入室が成立しなかった）ら閉めない
+			if (getCurrentLayer() !== startLayer || getStageKey() !== startStage) return;
+			if (playerOnBossDoor()) { setTimeout(tick, 100); return; }
+			run();
+		};
+		setTimeout(tick, delayMs);
+	}
+
 	// ── ボス戦開始 ────────────────────────────────────────
 	function startBossBattle(lk, sk) {
 		const boss = getEnemies().find(e => ENEMY_META[e.type]?.isBoss);
@@ -499,7 +536,7 @@ export function createBoss(deps) {
 			return;
 		}
 
-		setTimeout(() => {
+		whenClearOfBossDoors(400, () => {
 			lockBossDoors();
 			showBossRoomLockEffect();
 			playSound('stageTransition');
@@ -514,7 +551,7 @@ export function createBoss(deps) {
 				showBossHpBar(boss);
 				pulse(`${ENEMY_META[boss.type].name} が 現れた！`, 2500);
 			}, 800);
-		}, 400);
+		});
 	}
 
 	// ── スタッフロール HTML ───────────────────────────────

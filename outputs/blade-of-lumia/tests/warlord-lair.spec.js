@@ -400,6 +400,13 @@ test.describe('Blade of Lumia – 魔将の巣（伝説の鎧）', () => {
     // 入室で一戦が始まる＝V が spawn し、`:` が閉じ、HP バーが出る（setTimeout 400+800ms 越し）。
     expect(await page.evaluate(() => window.__game.getEnemies().map((e) => e.type)),
       '主の間に V が spawn しない').toEqual(['V']);
+
+    // ⚠️ 扉が閉じるのは**プレイヤーが扉のセルから降りてから**（2026-09-05 修正）。
+    //    着地セル (4,0) はボス扉そのもの∴その上で閉じると4方向すべて塞がって恒久詰みになる
+    //    （game/boss.js startBossBattle・詳細は tests/boss-door-entry.spec.js）。
+    await walkTiles(page, 'right', 1);
+    expect(await at(page), '扉のセルから内側へ降りられない').toEqual({ r: 4, c: 1 });
+
     await page.waitForFunction(
       () => !document.getElementById('boss-hpbar')?.classList.contains('hidden'), null,
       { timeout: 5000 });

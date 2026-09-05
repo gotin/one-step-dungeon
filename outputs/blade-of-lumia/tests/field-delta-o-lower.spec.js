@@ -326,7 +326,11 @@ test.describe('Phase 9-6 深洋O ④ – デルタ下半9画面 実エンジン�
     const stage = FIELD['12,19'];
     expect(stage.isBossRoom, '12,19 が isBossRoom でない').toBe(true);
     expect(cellsWith(stage, TILE.SEA_LORD), '12,19 の海の主が 4,5 でない').toEqual(['4,5']);
-    // ボス扉は**プレイヤーが着地する境界セルそのもの**（内側に置くと入場直後に閉じ込められる）。
+    // ボス扉は**プレイヤーが着地する境界セルそのもの**。
+    // ⚠️ 旧コメントは「内側に置くと入場直後に閉じ込められる」と書いていたが逆で、
+    //    閉じ込めるのは**境界セルに置いて着地の瞬間に閉じること**だった（2026-09-05 ユーザー報告）。
+    //    ∴ロックは「扉のセルから降りてから」掛ける（game/boss.js startBossBattle）＝
+    //    このテストも入室後に1歩内側へ進んでから閉まるのを待つ。詳細は tests/boss-door-entry.spec.js。
     expect(cellsWith(stage, TILE.DOORWAY_BOSS).sort(), 'ボス扉が四隅の入口セルに無い')
       .toEqual(['4,0', '4,11', '5,0', '5,11']);
     // 2026-08-19 ユーザー確定：報酬は淵の北の回廊に**宝箱**で現れる（その場で授与しない）。
@@ -349,6 +353,10 @@ test.describe('Phase 9-6 深洋O ④ – デルタ下半9画面 実エンジン�
     });
     expect(before.tier, '前提：銀ブーメラン未所持').toBeLessThan(1);
     expect(before.conditionsMet, '戦う前から宝箱の封印が解けている').not.toContain(CHEST);
+
+    // 扉のセル (5,11) から1歩内側へ降りる＝これで扉が閉まる（降りる前は閉まらない）。
+    await walkTiles(page, 'left', 1);
+    expect(await at(page), '扉のセルから内側へ降りられない').toEqual({ r: 5, c: 10 });
 
     await page.waitForFunction(
       () => !document.getElementById('boss-hpbar')?.classList.contains('hidden'), { timeout: 5000 });
@@ -382,8 +390,9 @@ test.describe('Phase 9-6 深洋O ④ – デルタ下半9画面 実エンジン�
 
     // 淵の北の回廊まで歩いて自分で開ける。闘技場は中央が淵（rows3-6 × cols4-7 が水）の
     // **リング**∴row5 を直進すると 5,7 の水で止まる。東の辺を北上して北の回廊へ回り込む：
-    //   5,11 →(左3) 5,8 →(上3) 2,8 →(左3) 2,5（宝箱）。row2 の 'h'（2,2 / 2,9）は跨がない。
-    await walkTiles(page, 'left', 3);
+    //   5,10（入室時に1歩降りた位置）→(左2) 5,8 →(上3) 2,8 →(左3) 2,5（宝箱）。
+    //   row2 の 'h'（2,2 / 2,9）は跨がない。
+    await walkTiles(page, 'left', 2);
     await walkTiles(page, 'up', 3);
     await walkTiles(page, 'left', 3);
     expect(await at(page), '宝箱のセルへ歩いて着けない').toEqual({ r: 2, c: 5 });
