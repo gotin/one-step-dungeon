@@ -339,17 +339,16 @@ test.describe('Blade of Lumia – 9-6 フィールド不変条件（ratchet）',
   // metric that catches the secret_grotto flute-warp landing on field 2,0 (4,4)=M
   // (fixed by moving it to 8,6), and it guards every future warp/MAP_ENTER too.
   //
-  // KNOWN out-of-⑥-scope residuals (must NOT regress, tracked as an allow-list):
-  //   dungeon_7/1,3 exit destId=field_dungeon7 → unresolved — the field-side
-  //     receiver for D7's return exit is not wired (9-2i/9-2T scope; D7 is entered
-  //     by flute-warp so this only affects the return trip).
+  // KNOWN out-of-⑥-scope residuals (must NOT regress, tracked as an allow-list)＝**今は空**。
   // Drop a key from KNOWN_BAD_LANDINGS the moment its owning task fixes it.
   // 2026-08-23（8.5 虚空の祠）: `mapEnter field/8,1@3,2`（fieldToTower → 8,0(3,2)='M'）は
   //   ここで解消した＝塔の扉のタイルを 'M' から '>' に直した（mapEnter だけあってタイルが
   //   山＝踏めない＝暗黒の塔に永久に入れない＝クリア不能だった）∴allowlist から外した。
-  const KNOWN_BAD_LANDINGS = new Set([
-    'mapEnter dungeon_7/1,3@7,2',  // field_dungeon7 unresolved (9-2i D7 return)
-  ]);
+  // 2026-09-05（実行キュー 0x）: `mapEnter dungeon_7/1,3@7,2`（destId=field_dungeon7 が未解決）も
+  //   解消した＝`field/2,0 (6,5)` に受け側の入口を作った（笛で出現する隠し MAP_ENTER）。
+  //   ここに書かれていた「D7 は笛ワープで入るから帰りだけの問題」は**誤り**だった＝笛ワープの
+  //   入口はどこにも無く、D7 は世界のどこからも入れなかった（＝8個目の欠片が取れずクリア不能）。
+  const KNOWN_BAD_LANDINGS = new Set([]);
 
   test('ワープ/テレポート着地が壁でない (warp-landing soft-lock) — ⑥-warp', () => {
     const bad = warpEnterLandings(loadMap());

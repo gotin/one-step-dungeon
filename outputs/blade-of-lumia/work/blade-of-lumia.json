@@ -61257,7 +61257,7 @@
               "i",
               "o",
               "o",
-              ".",
+              ">",
               ".",
               "o",
               "o",
@@ -61437,8 +61437,17 @@
           "objects": {},
           "npcData": {},
           "shopData": {},
-          "mapEnters": {},
-          "showConditions": {},
+          "mapEnters": {
+            "6,5": {
+              "id": "field_dungeon7",
+              "destId": "dungeon_7"
+            }
+          },
+          "showConditions": {
+            "6,5": {
+              "trigger": "flutePlayed"
+            }
+          },
           "breakableWalls": {},
           "isBossRoom": false,
           "signData": {
@@ -61447,9 +61456,14 @@
               "lines": [
                 "【風の環状列石】",
                 "石を環に並べたのは 古き森の民。",
-                "風がここへ 人を運ぶという。"
+                "風がここへ 人を運ぶという。",
+                "環の中で笛を吹けば 風は空へ渡すという。"
               ]
             }
+          },
+          "fluteEffect": {
+            "type": "reveal",
+            "message": "🎵 風が渦を巻き 空へ続く石の門が現れた！"
           }
         },
         "3,0": {

@@ -81,12 +81,16 @@ function bfsReachableEntrances(field, { start }) {
 }
 
 test.describe('Blade of Lumia – フィールド接続（全ダンジョン到達性）', () => {
-  // The 7 dungeons reachable on foot (incl. through solvable bomb-wall / key-door
-  // gates). dark_tower is intentionally flight-only (endgame) and excluded here.
+  // 本編8ダンジョン ＋ 寄道 cave_1 は徒歩で入口まで行ける（解ける爆弾壁・鍵扉は通す）。
+  // dark_tower だけは意図的に飛行専用（終盤）∴ここから除く。
+  // 2026-09-05（実行キュー 0x）: `dungeon_7` を追加した＝それまで「笛ワープ専用（歩いて
+  //   入る入口が無い）」と書いてあったが、**笛ワープの入口自体がどこにも無く D7 に入る手段が
+  //   0 だった**（クリア不能）。`field/2,0 (6,5)` に笛で現れる入口を作って解消（PLAN 0x）。
+  //   入口セルは笛を吹くまで見えないが、このデータレベル BFS は歩行だけを見る＝到達可能。
+  //   `dungeon_8` も表から漏れていた（テスト名は「全8」なのに7件しか検査していなかった）。
   const FOOT_DUNGEONS = [
     'dungeon_1', 'dungeon_2', 'dungeon_3', 'dungeon_4',
-    'dungeon_5', 'dungeon_6', 'cave_1',
-    // dungeon_7 is flute-warp only (no walking entrance)
+    'dungeon_5', 'dungeon_6', 'dungeon_7', 'dungeon_8', 'cave_1',
   ];
 
   test('全8ダンジョン入口が開始村から徒歩（ギミック解放込み）で到達可能', () => {
