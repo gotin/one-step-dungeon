@@ -29,6 +29,7 @@ import { listTriforceEntries } from './triforce.js';
 //   forest_cave   … 爆弾（D6 の後）＝銅の剣 tier1
 //   secret_grotto … 笛（D8 の後）＝銀の剣 tier2
 //   void_shrine   … 翼の羽衣（祭壇の後）＝聖剣 tier3
+//   warlord_lair  … 翼の羽衣（祭壇の後）＝伝説の鎧 armorTier2（0h・2026-09-05）
 //
 // ⚠️ **ダンジョンの名前はここに書かない**＝表示名は実マップの `layers[x].name` から導出する
 //    （`labelOf()`）。理由＝`layer.name` は `game/ui.js` の HUD でプレイヤーに見えている側＝
@@ -53,6 +54,7 @@ export const ORDER = [
 	{ id: 'secret_grotto', prefix: '寄道', layer: 'secret_grotto', optional: true },
 	{ id: 'dungeon_7',     prefix: 'D7',   layer: 'dungeon_7' },
 	{ id: 'void_shrine',   prefix: '寄道', layer: 'void_shrine', optional: true },
+	{ id: 'warlord_lair',  prefix: '寄道', layer: 'warlord_lair', optional: true },
 	{ id: 'dark_tower',    prefix: 'DT',   layer: 'dark_tower' },
 ];
 
@@ -120,7 +122,9 @@ export function bossRoomKeysOf(map) {
 }
 
 // ボス部屋を1つでも持つレイヤー名の Set＝「ボス直前」の選択肢を出せる進行地点の判定に使う
-// （寄道 4つは isBossRoom の部屋を持たない∴死んだ選択肢を作らない）。
+// （ボス部屋を持たないレイヤーでは死んだ選択肢を作らない）。
+// ⚠️ 「寄道はボス部屋を持たない」は 2026-09-05（0h）に**崩れた**＝`warlord_lair` の主の間は
+//    `isBossRoom: true`（魔将 V の一戦）∴寄道でも「ボス直前」が出る。判定は実マップだけを見る。
 export function bossRoomLayersOf(map) {
 	const layers = new Set();
 	for (const key of bossRoomKeysOf(map)) layers.add(key.slice(0, key.indexOf('|')));
@@ -185,7 +189,8 @@ export function fieldRewardsOf(perLayer) {
 
 // 進行地点ごとのプレイヤー諸元＝実プレイが必ず入る帯（min ≦ 実プレイ ≦ max）。
 //   min … その地点までの**必須レイヤー**の報酬だけ＋木の剣。
-//         寄道（forest_cave / secret_grotto / void_shrine / cave_1 ＝ ORDER の optional）は
+//         寄道（forest_cave / cave_1 / secret_grotto / void_shrine / warlord_lair
+//         ＝ ORDER の optional）は
 //         **入らなくてもクリアできる**∴下限には数えない。ここを数えると
 //         「DT に来た人は必ず聖剣（ATK 14）を持っている」という嘘の下限になる
 //         （実際は木の剣 ATK 4 で塔に入れる＝3.5 倍の差）。
@@ -196,7 +201,9 @@ export function fieldRewardsOf(perLayer) {
 //         という実プレイでは起こらない下限だった（2026-08-25、D1 の G が min で勝てないと
 //         いう実プレイ報告の真因）。ボス戦の判定はこちらで見る。
 //         ボス部屋の中身（撃破報酬のハートの器・欠片・D8 の銀の盾）は数えない＝倒す前には無い。
-//         ボス部屋を持たないレイヤー（寄道4つ）と `start` では **null** を返す＝選択肢を作らない。
+//         ボス部屋を持たないレイヤー（寄道のうち forest_cave / cave_1 / secret_grotto /
+//         void_shrine）と `start` では **null** を返す＝選択肢を作らない。
+//         ⚠️ 寄道 `warlord_lair`（魔将の巣）は主の間が `isBossRoom` ∴ boss を作る（0h・2026-09-05）。
 // ∴調整の当たり判定は min（道中）と boss（ボス戦）で見る。
 // max で速いのは「寄道の剣＝報酬」＝設計どおり∴参考値として併記するだけ。
 // 第4引数 `preBossHere`＝**この地点のレイヤーの**「ボス部屋の外」の報酬バケツ（`null` で boss なし）。
@@ -258,7 +265,8 @@ export function totalTriforceOf(perLayer) {
 
 // ── 使い勝手のための1関数（エディタのプリセットはこれだけ呼べばよい）──────────
 // 返り値＝`[{ id, label, min, max, boss }, …]`（ORDER と同じ順・同じ長さ）。
-// `boss` は「ボス部屋を持つレイヤーの地点」だけ非 null＝寄道4つと `start` では null。
+// `boss` は「ボス部屋を持つレイヤーの地点」だけ非 null＝`start` とボス部屋の無い寄道では null
+// （寄道でも `warlord_lair` は主の間を持つ∴非 null）。
 export function presetsFrom(map) {
 	const perLayer     = collectRewards(map);
 	const preBoss      = collectRewards(map, { excludeBossRooms: true });

@@ -17,7 +17,8 @@
 //   ⑥: プレビュー設定の shield/armor/progress が必要な箇所すべてに揃っている（静的検査）
 //   ⑦: 「ボス直前」＝min ＋ そのレイヤーの**ボス部屋の外**の報酬（0d-2.8・2026-08-25）
 //       ＝撃破報酬（ボス部屋のハートの器・欠片・D8 の銀の盾）は含まない／
-//         ボス部屋を持たないレイヤー（寄道4つ）と開始直後には作らない
+//         ボス部屋を持たないレイヤー（ボス部屋の無い寄道4つ）と開始直後には作らない
+//         （寄道 warlord_lair は主の間が isBossRoom ∴作る＝0h・2026-09-05）
 //   ⑧: エディタの選択肢に「ボス直前」が出る（出ない地点には出ない）＋選ぶと欄が埋まる
 
 import { test, expect } from '@playwright/test';
@@ -95,7 +96,12 @@ test.describe('進行地点プリセット', () => {
     expect(dt.min.sword,  'DT min の剣ティア（木の剣）').toBe(0);
     expect(dt.min.shield, 'DT min の盾ティア（盾は3つとも必須ダンジョン産＝ティア2）').toBe(2);
     expect(dt.max.sword,  'DT max の剣ティア（聖剣）').toBe(3);
-    expect(dt.max.armor,  'DT max の防具ティア（フィールドの鎖かたびら）').toBe(1);
+    // ⚠️ 旧値は 1（フィールドの鎖かたびら）＝伝説の鎧が世界のどこにも置かれていなかった時代の値。
+    //    0h（2026-09-05）で寄道 `warlord_lair`（魔将 V の主の間）に伝説の鎧＝`ARMOR_TIERS[2]` を
+    //    置いた∴max（寄道も全部回収する上限）では DT に入る時点でティア2 を着ている。
+    expect(dt.max.armor,  'DT max の防具ティア（寄道 魔将の巣の伝説の鎧）').toBe(2);
+    // 下限は動かない＝寄道の報酬は min に数えない（ここが動くと V/Z の判定諸元が変わる）。
+    expect(dt.min.armor,  'DT min の防具ティア（寄道の伝説の鎧が下限へ漏れている）').toBe(0);
   });
 
   test('③: サブアイテムの所在が実マップから導出でき、翼の羽衣は欠片から導出される', () => {
@@ -291,6 +297,11 @@ test.describe('進行地点プリセット', () => {
     for (const id of ['forest_cave', 'cave_1', 'secret_grotto', 'void_shrine']) {
       expect(at(id).boss, `${id}: ボス部屋の無い寄道にボス直前の選択肢を作っている（死んだ選択肢）`).toBeNull();
     }
+    // ⚠️ 「寄道はボス部屋を持たない」は 0h（2026-09-05）で崩れた＝`warlord_lair`（魔将の巣）の
+    //    主の間は `isBossRoom`（魔将 V の一戦）∴寄道でも「ボス直前」が出るのが正しい。
+    //    ここを上の一覧に足すと「寄道なら null」という古い前提に戻る＝(a) と食い違って赤くなる。
+    expect(at('warlord_lair').boss,
+      'warlord_lair: 主の間（isBossRoom）を持つ寄道にボス直前の選択肢が無い').not.toBeNull();
 
     // (b) D1＝実データ（革の鎧 3,0／木の盾 1,1／ハートの器 3,3 がボス部屋 0,0 の外）
     const d1 = at('dungeon_1');

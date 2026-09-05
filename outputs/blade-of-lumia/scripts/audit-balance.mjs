@@ -119,8 +119,12 @@ function encountersOf(map) {
 // 測ると「溶けている」と誤検出する（実例＝W 魔物を 0d-2.8 で hp 48 に下げたら BOSS_MELT）。
 // ⚠️ 中ボスの一覧は**手書きしない**＝実マップの `isBossRoom` から導出する
 //    （敵タイル一覧を手書きして13タイル漏らした前例と同じ轍を踏まない）。
-//    2026-08-25 の実データ＝ボス部屋に居る11種（G N J A L O U I Z ＋ field の { 海の主）に対し、
-//    W 魔物（D1/D2/D7/cave_1 の道中）と V 魔将（dark_tower 2,3・3,3）は**ボス部屋に居ない**＝中ボス。
+//    2026-09-05（0h）の実データ＝ボス部屋に居る12種（G N J A L O U I Z ＋ field の { 海の主
+//    ＋ 寄道 warlord_lair の V 魔将）に対し、W 魔物（D1/D2/D7/cave_1 の道中）だけが
+//    **ボス部屋に居ない**＝中ボス。
+//    ⚠️ V は 2026-09-05 まで dark_tower 2,3・3,3 の道中に3体居る中ボスだった。0h で
+//       「寄道の主」へ格上げ＝warlord_lair の主の間（isBossRoom）に1体だけになった∴格は boss。
+//       DT の3体は雑魚（λ×2／μ×2＋π）へ差し替えた。
 function kindOf(tile, meta, enc) {
 	if (meta.isBoss) return enc?.inBossRoom ? 'boss' : 'midBoss';
 	return ONE_SWING_OK[tile] ? 'weak' : 'zako';
@@ -248,8 +252,10 @@ const DEFECTS = {
 //   ・ボス 30〜60振り … 機構（開閉・反射・投擲・突進）が数巡する長さ。
 //   ・中ボス 10〜60振り … **下限だけをボスより緩めた帯**（0d-2.9）。中ボスは道中に複数回出る
 //     ∴ボスの下限（30振り＝9秒）を課すとボス部屋に着く前に消耗しきる。上限はボスと同じ
-//     （＝60振りを超えたら殴る時間だけが伸びている）。実データ＝W 16振り／V 48振り＝どちらも帯内
-//     （V は 2026-08-24 のユーザー実プレイ判定で【現状維持】が確定済み＝下げる根拠がない）。
+//     （＝60振りを超えたら殴る時間だけが伸びている）。実データ＝W 16振り＝帯内。
+//     ⚠️ V 魔将は 0h（2026-09-05）で寄道の主へ格上げ＝格が boss になった。振り数は 48 で
+//        変わらない（判定諸元＝DT min と同じ ATK 4）∴ボス帯 30〜60 の内側に入る
+//        （2026-08-24 のユーザー実プレイ判定【現状維持】は失効しない）。
 //   ・プレイヤーが死ぬまで 雑魚12発・ボス8発 … ハート換算で 雑魚6ハート・ボス4ハート分。
 const TARGET = {
 	zakoSwings: [2, 6],
@@ -278,8 +284,9 @@ function main() {
 
 	const fieldRewards = fieldRewardsOf(perLayer);
 
-	// 「ボス直前」＝min ＋ そのレイヤーのボス部屋の外の報酬。ボス部屋を持たないレイヤー
-	// （寄道4つ）と `start` では作らない＝`shared/progression.js presetsFrom()` と同じ規則。
+	// 「ボス直前」＝min ＋ そのレイヤーのボス部屋の外の報酬。ボス部屋を持たないレイヤーと
+	// `start` では作らない＝`shared/progression.js presetsFrom()` と同じ規則
+	// （寄道でも `warlord_lair` は主の間を持つ∴作る＝0h・2026-09-05）。
 	const preBoss    = collectRewards(map, { excludeBossRooms: true });
 	const bossLayers = bossRoomLayersOf(map);
 	const EMPTY_REWARDS = { sword: [], armor: [], shield: [], boomerang: [], items: [], hearts: 0, triforce: 0 };

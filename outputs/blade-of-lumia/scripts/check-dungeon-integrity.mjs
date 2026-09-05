@@ -63,9 +63,12 @@ const TOOLS_USABLE_IN = toolsUsableIn(d);
 // レイヤーの種別。トライフォース8ダンジョン以外は「ボスがトライフォースを落とす」
 // 「ハートの器がある」「地図とコンパスがある」を要求してはいけない。
 //   final = dark_tower（最終ダンジョン。ボスは Z＝トライフォースを落とさない終幕役）
-//   side  = cave_1（笛の洞窟。ボスもフロアマップも持たない寄道）
+//   side  = 寄道（トライフォースもフロアマップも持たない）
+//           cave_1       … 笛の洞窟
+//           warlord_lair … 魔将の巣（0h・2026-09-05）。`bossStage` と `isBossRoom` は持つが
+//                          落とすのは伝説の鎧＝星の欠片もハートの器も無い∴`triforce` の要求は当てない。
 // 鍵の収支・links・関門・順序（5〜8）は種別に関係なく全レイヤーへ効かせる。
-const LAYER_KIND = { dark_tower: 'final', cave_1: 'side' };
+const LAYER_KIND = { dark_tower: 'final', cave_1: 'side', warlord_lair: 'side' };
 
 // 鍵扉 D を「物理的な1枚の扉」に畳むための隣接規則。
 //  ① 同一部屋内の4近傍で連結した D は1枚（game/player.js collectDoorRun と同じ）。
@@ -586,9 +589,12 @@ function checkDungeon(layerName) {
 
 // ── CLI ──────────────────────────────────────────────────────────────────────
 const target = process.argv[2] || 'all';
+// `all` の対象＝8ダンジョン ＋ dark_tower ＋ LAYER_KIND に載っている寄道。
+// dark_tower は 2026-08-05 まで漏れていた（最終ダンジョンだけ無検査だった）。
+// ⚠️ 寄道は `LAYER_KIND` に `side` として載せた分だけが対象＝forest_cave / secret_grotto /
+//    void_shrine は今も無検査（既存の穴。埋めるなら3つまとめて別タスク＝IDEA.md に残す）。
 const dungeons = target === 'all'
-  // dark_tower も対象（2026-08-05 まで漏れていた＝最終ダンジョンだけ無検査だった）。
-  ? Object.keys(d.layers).filter(l => l.startsWith('dungeon') || l === 'cave_1' || l === 'dark_tower')
+  ? Object.keys(d.layers).filter(l => l.startsWith('dungeon') || l === 'dark_tower' || LAYER_KIND[l] === 'side')
   : [target];
 
 let totalErrors = 0;

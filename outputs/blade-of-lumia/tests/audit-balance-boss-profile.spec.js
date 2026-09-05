@@ -133,8 +133,11 @@ test.describe('数値監査：ボスは「ボス直前」で測る（0d-2.9）',
     const gotBoss = REPORT.encounters.filter((r) => r.kind === 'boss').map((r) => r.tile).sort();
     expect(gotMid,  '中ボスの集合が実マップの isBossRoom から導出できていない').toEqual(wantMid);
     expect(gotBoss, 'ボスの集合が実マップの isBossRoom から導出できていない').toEqual(wantBoss);
-    // 2026-08-25 の実データ＝W 魔物（D1/D2/D7/cave_1 の道中）と V 魔将（dark_tower 2,3・3,3）
-    expect(wantMid, '中ボスが実データと違う（マップを動かしたなら記述も直す）').toEqual(['V', 'W']);
+    // 2026-09-05（0h）の実データ＝中ボスは W 魔物（D1/D2/D7/cave_1 の道中）だけ。
+    // V 魔将は 2026-09-05 まで dark_tower 2,3・3,3 の道中に3体居る中ボスだったが、
+    // 「寄道の主」へ格上げして warlord_lair の主の間（isBossRoom）に1体だけになった＝格は boss。
+    expect(wantMid, '中ボスが実データと違う（マップを動かしたなら記述も直す）').toEqual(['W']);
+    expect(wantBoss, 'V が boss に分類されていない（道中へ戻したなら記述も直す）').toContain('V');
 
     // `isBoss` だけでは分けられない＝両者とも isBoss true（フラグ頼みだとボス帯で測ってしまう）
     for (const t of wantMid) expect(ENEMY_META[t].isBoss, `${t} は isBoss でない`).toBe(true);
@@ -189,13 +192,27 @@ test.describe('数値監査：ボスは「ボス直前」で測る（0d-2.9）',
     };
     expect(melt('MIDBOSS_MELT'), '中ボスの MELT の床がボスと同じ（道中の敵にボスの床を課している）')
       .toBeLessThan(melt('BOSS_MELT'));
-    // 実データ＝W 16振り／V 48振り＝どちらも中ボスの帯の中（V は 2026-08-24 に【現状維持】確定）
-    for (const t of ['W', 'V']) {
+    // 実データ＝W 16振り＝中ボスの帯の中（中ボスは 0h・2026-09-05 以降 W だけ）
+    for (const t of ['W']) {
       const r = rowOf(t);
       expect(r.judge.swings, `${t} が中ボスの帯 ${mid.join('〜')} の外`).toBeGreaterThanOrEqual(mid[0]);
       expect(r.judge.swings, `${t} が中ボスの帯 ${mid.join('〜')} の外`).toBeLessThanOrEqual(mid[1]);
       expect(r.flags, `${t} に欠陥が出ている`).toEqual([]);
     }
+    // V 魔将＝0h で寄道 warlord_lair の主（isBossRoom）へ格上げ∴**ボス帯**で測る。
+    // ⚠️ 格上げで体感が変わっていないことを2点で固定する：
+    //    ・判定 ATK が DT min と同じ（warlord_lair を ORDER の DT 直前に挿した＝必須レイヤーの
+    //      積み上げが同じ）＝2026-08-24 のユーザー実プレイ判定【現状維持】が失効しない
+    //    ・振り数が hp / 1振りダメージのままボス帯 30〜60 の内側（48振り・TTK 14.4s）
+    const v = rowOf('V');
+    expect(v.kind, 'V が boss で測られていない').toBe('boss');
+    const dt = REPORT.checkpoints.find((c) => c.id === 'dark_tower');
+    expect(v.atk.judge, 'V の判定 ATK が DT min と違う＝格上げで体感が変わっている').toBe(dt.min.atk);
+    expect(v.judge.swings, 'V の振り数が実データ（hp / 1振りダメージ）と違う')
+      .toBe(Math.ceil(ENEMY_META.V.hp / Math.max(1, v.atk.judge - ENEMY_META.V.def)));
+    expect(v.judge.swings, `V がボスの帯 ${boss.join('〜')} の外`).toBeGreaterThanOrEqual(boss[0]);
+    expect(v.judge.swings, `V がボスの帯 ${boss.join('〜')} の外`).toBeLessThanOrEqual(boss[1]);
+    expect(v.flags, 'V に欠陥が出ている').toEqual([]);
   });
 
   test('⑥: 判定プロファイルでの欠陥は 0 件（数値を戻さずに W の BOSS_MELT が消えた）', () => {

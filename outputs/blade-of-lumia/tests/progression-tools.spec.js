@@ -99,6 +99,7 @@ test.describe('レイヤーの中で使える道具（導出）', () => {
       cave_1:        ['bomb', 'ladder'],
       secret_grotto: ['flute'],                                              // 笛 reveal で入口が出る
       void_shrine:   ['boomerang', 'bow', 'candle', 'ladder', 'bomb', 'flute'], // 羽衣＝全道具の後
+      warlord_lair:  ['boomerang', 'bow', 'candle', 'ladder', 'bomb', 'flute'], // 同じ羽衣ゲート（0h）
     };
     for (const [layer, tools] of Object.entries(NEED)) {
       for (const tool of tools) {
