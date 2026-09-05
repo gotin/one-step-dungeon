@@ -7419,7 +7419,9 @@ async function huntMirages(page, o) {
       const x0 = pos().x, y0 = pos().y;
       g.movePlayer(dir);
       g.step(1);
-      note(target, Math.abs(pos().x - x0) > 1e-9 || Math.abs(pos().y - y0) > 1e-9);
+      const moved = Math.abs(pos().x - x0) > 1e-9 || Math.abs(pos().y - y0) > 1e-9;
+      note(target, moved);
+      return moved;
     };
     // 波が畳まれた**その tick** で次の波までの間隔を測る（1 tick でも遅れて測ると
     // `respawnMs` から tick ぶん足りない数が出る＝時計を測ったことにならない）。
@@ -7439,15 +7441,23 @@ async function huntMirages(page, o) {
         .sort((A, B) => Math.hypot(A.x - px0, A.y - py0) - Math.hypot(B.x - px0, B.y - py0))[0];
       if (!target) return { error: '斬る像が残っていない', count0, onCells, kills };
       let lastDir = null;
-      // 列 → 行の順に寄せる（像も歩いて寄って来る∴残り 0.5 セル未満になったら詰め終わり）
+      // 列 → 行の順に寄せる（像も歩いて寄って来る∴残り 0.5 セル未満になったら詰め終わり）。
+      // ⚠️ 経路上に本体（駐め先）や別の像が挟まって移動が拒否されることがある（0y で実測）
+      //    ∴その軸で動けなかった tick は逆軸へ1歩迂回してから同じ軸を再試行する。
       const cur = () => g.getMirages().find(o => o.id === target.id) ?? target;
       for (let k = 0; k < 30 && Math.abs(pos().x - cur().x) >= a.moveStep; k++) {
         lastDir = pos().x < cur().x ? 'right' : 'left';
-        stepMove(lastDir, target);
+        if (!stepMove(lastDir, target)) {
+          const altDir = pos().y < cur().y ? 'down' : 'up';
+          stepMove(altDir, target);
+        }
       }
       for (let k = 0; k < 30 && Math.abs(pos().y - cur().y) >= a.moveStep; k++) {
         lastDir = pos().y < cur().y ? 'down' : 'up';
-        stepMove(lastDir, target);
+        if (!stepMove(lastDir, target)) {
+          const altDir = pos().x < cur().x ? 'right' : 'left';
+          stepMove(altDir, target);
+        }
       }
       const back = { up: 'down', down: 'up', left: 'right', right: 'left' }[lastDir] ?? 'down';
       g.movePlayer(back); g.step(1);               // 1歩（0.5 セル）下がる＝剣の間合い
