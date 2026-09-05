@@ -897,7 +897,13 @@ export const ENEMY_META = {
 		// 寄道の剣を取らずに塔へ入ると 80 発（24秒）殴るだけの作業になっていた。
 		// hp 120 / def 2 ＝木の剣 60 振り（18秒）＝目標帯（30〜60振り）の上端＝ラスボスの位置。
 		hp: 120, atk: 8, def: 2, exp: 0,  // 撃破でクリアなので exp は不要
-		speed: ENEMY_SPEED_NORMAL,
+		// Phase 8-4 (4) 0d-3（12体目・2026-09-04）＝**速さを魔将 V／魔王 X と同値へ上げた**。
+		// 旧 `ENEMY_SPEED_NORMAL`（0.5）は V/X（どちらも 1.0）の半分＝相1 でラスボスが魔将より
+		// 鈍い＝X が 2026-09-03 の実プレイ判定で落とされた「魔将のほうが速くて、魔王はその強さが
+		// まったくなくなっている」と**同じ形**だった。§7-2「敵の速度をプレイヤーと同速にしては
+		// いけない」に意図的に触れる**3例目**＝V・X の2体でユーザーがこの強さを「正解」として
+		// 指定済み（`hitAndAway` の approach/retreat 周期がそのまま実プレイ上の緩和になる）。
+		speed: ENEMY_SPEED_FAST,
 		sprite: 'darklordD',
 		pal:    'darklord',
 		isBoss: true,
@@ -911,6 +917,15 @@ export const ENEMY_META = {
 			{
 				type:            'stone',
 				range:           7,
+				// 2026-09-04（0d-3 の 12 体目）: 魔王 X が 2026-09-03 の割り込み 0q で受けたのと
+				// **同じ欠陥**をラスボスも持っていた＝剣（range 1.5）と石は cooldown が独立
+				// している∴密着して斬り合っている最中でも石のクールダウンが明ければ飛んでくる
+				// ＝プレイヤーの剣の間合い `SWORD_REACH 1.2` の内側では予告も回避の間合いも無い。
+				// X と同じ `minRange 2.0`（潜み鮫の型＝§9-6・η 術士の魔弾と同じ数）を入れる＝
+				// 魔王の剣 1.5 とプレイヤーの剣 1.2 のどちらより外∴斬り合っている間は石が来ない。
+				// ⚠️ 最終的な数値の調整そのものは 0u（8-4 リバランス）の管轄＝ここでは
+				//   「密着で予告なしの一撃が刺さる」構造だけを潰す。
+				minRange:        2.0,
 				cooldown:        1600,
 				projectileSpeed: 1.2,
 			},
@@ -920,10 +935,40 @@ export const ENEMY_META = {
 				cooldown: 700,
 			},
 		],
-		attack: { type: 'stone', range: 7, cooldown: 1600, projectileSpeed: 1.2 },
+		attack: { type: 'stone', range: 7, minRange: 2.0, cooldown: 1600, projectileSpeed: 1.2 },
+		// Phase 8-4 (4) 0d-3（12体目・2026-09-04）＝新機構 `mirage`（幻影）＝「どれが本物か」。
+		//   ⚠️ **base に `mirage` を持たせない**＝`phases[].mirage` だけに持たせる∴相1（100〜66%）
+		//   では像が湧かない（A 後半の `dash` と同じ「phases で機構ごと生やす」作法）。
+		//   ⚠️ 機構の使い手を数える導出表は `phases[]` の中まで数えること（base だけ見ると
+		//   `mirage` が「使い手0」に見える）。
+		//   ⚠️ 差し替えは**丸ごと**（`resolveMirage` は相をまたいで値を混ぜない）∴違うのが
+		//   一部でも全キーを書く。`convergeWarnMs 720` は相2・相3 で**同値**＝後半でも予告を
+		//   縮めない（§7-16 の床）。収束の打点は `convergeAtkPerMirage 2 × count 4 = 8`＝
+		//   `atk 8` と同値が上限＝新しい最大打点を作らない（§7-16）。
 		phases: [
-			{ hpThreshold: 0.66, speedMultiplier: 1.3 },
-			{ hpThreshold: 0.33, speedMultiplier: 1.6, attackCooldownMultiplier: 0.55 },
+			{
+				hpThreshold: 0.66, speedMultiplier: 1.3,
+				mirage: {
+					count: 2, mirageMs: 4800, respawnMs: 2400,
+					convergeWarnMs: 720, convergeRadius: 1.6, convergeAtkPerMirage: 2,
+					spawnKeepMin: 2.5, spawnSpread: 3.0,
+				},
+			},
+			{
+				hpThreshold: 0.33, speedMultiplier: 1.6, attackCooldownMultiplier: 0.55,
+				mirage: {
+					count: 4, mirageMs: 3600, respawnMs: 1600,
+					// 2026-09-04: `2.0` → `2.2`。危険域は `decreeCells` で**タイルへ量子化される**
+					// ∴端距離 1.6 と 2.0 は**同じ 21 枚**（`|dr|=2` の列が両方 3 枚で止まる）＝
+					// 「相3 は円が広い」が絵にも当たり判定にも一切出ない死んだ数だった。2.2 で
+					// 初めて 21 → 25 枚に増える（`|dr|=2` の列が 3 → 5 枚）。
+					// ⚠️ 下限＝Z の剣 1.5 より外（＝剣の間合いに立つ側が必ず払う）／上限＝闘技場の
+					//    床 82 枚の 1/3 未満（§7-15 の面積の引き算）∴この機構で使える端距離は
+					//    実質 1.6（21 枚）と 2.2（25 枚）の2段だけ。
+					convergeWarnMs: 720, convergeRadius: 2.2, convergeAtkPerMirage: 2,
+					spawnKeepMin: 2.5, spawnSpread: 3.0,
+				},
+			},
 		],
 	},
 	// ── 炎のサラマンドラ（Phase 3-2）：2×2 大型ボス・dungeon_4（炎の神殿）─────

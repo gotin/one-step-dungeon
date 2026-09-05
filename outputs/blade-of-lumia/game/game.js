@@ -381,11 +381,15 @@ function enterStage(lk, sk, pRow, pCol) {
 		if (arrTile !== TILE.SKY && !arrIsWater && arrTile !== TILE.LAVA) player.flying = false;
 	}
 
-	// ステージ遷移時に飛翔物・設置爆弾・置いた炎をリセット
+	// ステージ遷移時に飛翔物・設置爆弾・置いた炎・幻影をリセット
 	// （炎は「1画面に3つまで」＝画面をまたいで持ち出せない＝constants.js CANDLE_FLAME_MAX）
+	// （幻影＝Z の像は char-layer の別 DOM ∴画面を出たら必ず捨てる＝別のステージへ
+	//   持ち込まれると「持ち主の居ない魔王」が歩く。持ち主が居ない像は enemyTick 冒頭の
+	//   pruneMirages も掃くが、こちらは画面遷移そのものの後始末＝二重の守り）
 	clearProjectiles();
 	clearBombs();
 	clearFlames();
+	clearMirages();
 	cancelCharge();   // チャージ中の遷移はキャンセル（Phase 3-1）
 	// ボス部屋ロックをリセット（非ボス部屋に移動したとき）
 	if (!stageData.isBossRoom) bossRoomLocked = false;
@@ -525,6 +529,12 @@ let detachLeech         = () => {};
 // Phase 8-4 (4) 0d-3（6体目 U）: 同じ理由でここへ引き出す（矢が滞空に刺さったとき＝
 // combat.js の被弾フックが呼ぶ「射落とす」。状態機械の持ち主は enemy-ai.js）。
 let crashSoar           = () => false;
+// Phase 8-4 (4) 0d-3（12体目 Z）: 幻影＝**敵ではない置き物**（`getEnemies()` に居ない）∴
+// 剣の当たり判定（combat.js）と場面の切り替え（下の reset）から呼ぶために引き出す。
+// 状態機械と器の持ち主は enemy-ai.js（`getMirages()` が唯一の真実）。
+let getMirages          = () => [];
+let destroyMirage       = () => false;
+let clearMirages        = () => {};
 // Phase 5.5k k-7: プレイヤー側の一時デバフ窓（剣封じ・毒）＝game/debuff.js が持ち主。
 // combat.js（剣の門）・charge.js（溜めの門）・enemy-ai.js（体当たりの解決で立てる）の3経路が
 // 参照するので、factory の生成より先に let を置いて wrapper 経由で読ませる。
@@ -885,6 +895,9 @@ const { checkStoneOnSwitch, evaluateConditions, refreshGates } = createCondition
 	enemyAttack          = _ai.enemyAttack;
 	detachLeech          = _ai.detachLeech;
 	crashSoar            = _ai.crashSoar;
+	getMirages           = _ai.getMirages;
+	destroyMirage        = _ai.destroyMirage;
+	clearMirages         = _ai.clearMirages;
 }
 
 // ── チャージ攻撃・剣ビーム（Phase 3-1）──────────────────────────
@@ -1006,6 +1019,10 @@ const { checkStoneOnSwitch, evaluateConditions, refreshGates } = createCondition
 		detachLeech:      (e) => detachLeech(e),
 		// Phase 8-4 (4) 0d-3（6体目 U）: 矢が刺さったら滞空を墜落へ落とす（＝弱点が機構の解除鍵）。
 		crashSoar:        (e, meta) => crashSoar(e, meta),
+		// Phase 8-4 (4) 0d-3（12体目 Z）: 幻影は剣の一撃で消える（HP を持たない置き物）。
+		// 剣の当たり判定は combat.js の1か所だけ＝そこに像の配列を渡す（判定を2つ書かない）。
+		getMirages:       () => getMirages(),
+		destroyMirage:    (id) => destroyMirage(id),
 		spawnDropEffect:  (r, c, icon, color) => spawnDropEffect(r, c, icon, color),
 		spawnFloorDrop:   (r, c, type) => spawnFloorDrop(r, c, type),
 		getStageMoves:    () => player.stageMoves ?? 0,
@@ -2508,6 +2525,32 @@ export function getEnemiesSnapshot() {
 		lsHits: e._lsHits ?? null,
 		lsWhiffs: e._lsWhiffs ?? null,
 		lockstep: e._lockstep ?? null,
+		// Phase 8-4 (4) 0d-3（12体目 Z）: 幻影（mirage）の観測用。
+		// mgPhase ＝'live'（像が歩いている＝本体も普通に戦う）| 'warn'（収束の予告＝本体は錨で
+		//   止まり移動も攻撃もしない）| null（次の波を待っている）。
+		// mgAt ＝今の相が終わる論理時刻／mgSpan ＝今の相の長さ（＝絵に渡す数と同じ1つの数）。
+		// mgNextAt ＝次の波が湧く論理時刻（`respawnMs` の観測窓）。
+		// mgR/mgC ＝収束の中心タイル＝**収束を始めた瞬間の本体のタイル**（以後追わない）。
+		// mgCells ＝収束が落ちるタイル集合＝**床に描く div と同じ配列**∴「塗った集合と当たった
+		//   集合が一致する」を計算の再現ではなく**同一性**で測れる（lsCells と同じ趣旨）。
+		// mgWaves/mgConverges/mgHits/mgWhiffs/mgSlain ＝湧いた波／収束した回数／当てた回数／
+		//   外した回数／**斬って消した像の数**∴「像を斬れば打点が減る」は mgSlain が増えたときに
+		//   mgHits の打点が減ることで測れる（spikes/spikeHits と同じ趣旨）。
+		// mirage ＝幻影の設定そのもの（相で差し替わる＝`resolveMirage` が読む側）。
+		//   **`ENEMY_META` の base には無い**＝この値が null でないことが「相2以降」の証拠。
+		mgPhase: e._mgPhase ?? null,
+		mgAt: e._mgAt ?? null,
+		mgSpan: e._mgSpan ?? null,
+		mgNextAt: e._mgNextAt ?? null,
+		mgR: e._mgR ?? null,
+		mgC: e._mgC ?? null,
+		mgCells: e._mgCells ? e._mgCells.map(([r, c]) => ({ r, c })) : null,
+		mgWaves: e._mgWaves ?? null,
+		mgConverges: e._mgConverges ?? null,
+		mgHits: e._mgHits ?? null,
+		mgWhiffs: e._mgWhiffs ?? null,
+		mgSlain: e._mgSlain ?? null,
+		mirage: e._mirage ?? null,
 		// Phase 8-4 (4) 層1: ボスのフェーズが差し替える「行動の元データ」の観測用。
 		// boss.js checkBossPhase は**エンティティ側にだけ書く**∴フェーズが効いたかは
 		// ここに出る値で読む（null＝差し替えなし＝ENEMY_META のまま）。
@@ -2617,6 +2660,17 @@ export function callGiveSubItem(id) { return giveSubItem(id); }
 // 2026-08-31: 置いた炎の一覧（テスト用）。上限・寿命・「1つの炎は1体に1回」を
 // 外から観測できる唯一の窓（`burnedCount` がその炎が焼いた敵の数）。
 export function getPlacedFlamesSnapshot() { return getPlacedFlames(); }
+
+// 2026-09-04（12体目 Z）: 幻影の一覧（テスト用）。像は敵ではない（`getEnemies()` に居ない）
+// ∴敵のスナップショットからは数えられない＝**この配列が像の数の唯一の真実**（絵・収束の
+// 打点・テストが同じ数を読む＝§7-7）。`id` は剣の一撃（`destroyMirage`）の宛先でもある。
+export function getMiragesSnapshot() {
+	return getMirages().map((m) => ({
+		id: m.id, ownerId: m.ownerId, type: m.type,
+		x: m.x, y: m.y, dir: m.dir, sprite: m.sprite, pal: m.pal, flipX: !!m.flipX,
+		speed: m.speed ?? null,
+	}));
+}
 
 // Phase 9-5c: フロアドロップ一覧（テスト用）
 export function getFloorDropsSnapshot() {

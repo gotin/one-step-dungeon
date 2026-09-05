@@ -41,6 +41,7 @@ import {
 	callGrantReward,
 	callGiveSubItem,
 	getPlacedFlamesSnapshot,
+	getMiragesSnapshot,
 	getFloorDropsSnapshot,
 	callPickupFloorDropAt,
 	callSpawnFloorDrop,
@@ -171,6 +172,8 @@ window.__game = {
 	// Phase 9-5c: フロアドロップ確認・手動拾得（テスト用）
 	// 2026-08-31: 置いた炎（ロウソク）の一覧。上限3・寿命・「1つの炎は1体に1回」の観測用
 	getPlacedFlames: () => getPlacedFlamesSnapshot(),
+	// 2026-09-04（12体目 Z）: 幻影（像）の一覧＝像は敵ではない∴getEnemies では数えられない。
+	getMirages: () => getMiragesSnapshot(),
 	getFloorDrops: () => getFloorDropsSnapshot(),
 	pickupFloorDrop: (r, c) => callPickupFloorDropAt(r, c),
 	spawnFloorDrop: (r, c, type) => callSpawnFloorDrop(r, c, type),

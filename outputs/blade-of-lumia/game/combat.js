@@ -686,6 +686,40 @@ export function createCombat(deps) {
 		const pcx = player.x + 0.5;
 		const pcy = player.y + 0.5;
 
+		// 剣が届いているか（＝この1か所だけが「剣の当たり判定」の持ち主）。
+		// 戻り値＝振った向きに沿った距離（近い方が優先される）／届かないなら null。
+		// 占有範囲（AABB）対応：大型敵は中心が遠く半身が広いので、
+		// body の半幅ぶんだけ「届く距離」と「横の許容幅」を広げる。
+		// 1×1 敵では halfFwd=halfSide=0 となり従来挙動と一致する。
+		// ⚠️ Phase 8-4 (4) 0d-3（12体目 Z）: **幻影（`mirage`）にも同じ関数を通す**ために
+		//    切り出した＝像は敵ではない（`getEnemies()` に居ない）が、剣の間合いだけは
+		//    本体と1文字も違ってはいけない（違うと「像だけ届かない位置」が生まれて
+		//    見分けられる＝機構が死ぬ）。判定を2つ書かないための切り出し。
+		const reachOf = (t) => {
+			const { cx: ecx, cy: ecy } = enemyCenter(t);
+			const relX = ecx - pcx;
+			const relY = ecy - pcy;
+
+			const dot = relX * ndx + relY * ndy;
+			if (dot < 0) return null;
+
+			// 攻撃方向(ndx,ndy)に沿った body 半サイズ・直交方向の body 半サイズ
+			const halfW = (enemyW(t) - 1) / 2;
+			const halfH = (enemyH(t) - 1) / 2;
+			const halfFwd  = Math.abs(ndx) * halfW + Math.abs(ndy) * halfH;
+			const halfSide = Math.abs(ndy) * halfW + Math.abs(ndx) * halfH;
+
+			const projDist = dot;
+			if (projDist - halfFwd > SWORD_REACH) return null;
+
+			const perpX = relX - ndx * projDist;
+			const perpY = relY - ndy * projDist;
+			const perpDist = Math.sqrt(perpX * perpX + perpY * perpY);
+			if (perpDist > 0.8 + halfSide) return null;
+
+			return projDist;
+		};
+
 		let hitEnemy = null;
 		let hitDist  = Infinity;
 		for (const e of enemies) {
@@ -693,32 +727,19 @@ export function createCombat(deps) {
 			// ここで外さないと「無敵の敵が剣を吸う」＝背後の茂み切り（下の return 前）や
 			// 別の敵への攻撃まで潰れる（2026-08-14 ユーザー報告の同型）。
 			if (e.hidden) continue;
-			// 占有範囲（AABB）対応：大型敵は中心が遠く半身が広いので、
-			// body の半幅ぶんだけ「届く距離」と「横の許容幅」を広げる。
-			// 1×1 敵では halfFwd=halfSide=0 となり従来挙動と一致する。
-			const { cx: ecx, cy: ecy } = enemyCenter(e);
-			const relX = ecx - pcx;
-			const relY = ecy - pcy;
-
-			const dot = relX * ndx + relY * ndy;
-			if (dot < 0) continue;
-
-			// 攻撃方向(ndx,ndy)に沿った body 半サイズ・直交方向の body 半サイズ
-			const halfW = (enemyW(e) - 1) / 2;
-			const halfH = (enemyH(e) - 1) / 2;
-			const halfFwd  = Math.abs(ndx) * halfW + Math.abs(ndy) * halfH;
-			const halfSide = Math.abs(ndy) * halfW + Math.abs(ndx) * halfH;
-
-			const projDist = dot;
-			if (projDist - halfFwd > SWORD_REACH) continue;
-
-			const perpX = relX - ndx * projDist;
-			const perpY = relY - ndy * projDist;
-			const perpDist = Math.sqrt(perpX * perpX + perpY * perpY);
-			if (perpDist > 0.8 + halfSide) continue;
-
-			if (projDist < hitDist) { hitDist = projDist; hitEnemy = e; }
+			const d = reachOf(e);
+			if (d != null && d < hitDist) { hitDist = d; hitEnemy = e; }
 		}
+
+		// Phase 8-4 (4) 0d-3（12体目 Z）: 幻影＝**HP を持たない置き物**∴剣の一撃で消える
+		// （ダメージの計算も無敵窓も通らない）。同じ距離なら**本物が勝つ**（`<` で比較＝
+		// 重なって見えるときに剣が像に吸われて本体を殴れない、を作らない）。
+		let hitMirage = null;
+		for (const m of (deps.getMirages?.() ?? [])) {
+			const d = reachOf(m);
+			if (d != null && d < hitDist) { hitDist = d; hitMirage = m; hitEnemy = null; }
+		}
+		if (hitMirage) { deps.destroyMirage?.(hitMirage.id); return; }
 
 		// 二周目は攻撃力2倍
 		const swordAtk = hasCleared() ? player.atk * 2 : player.atk;

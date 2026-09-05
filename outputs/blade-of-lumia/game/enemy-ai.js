@@ -4529,6 +4529,416 @@ export function createEnemyAi(deps) {
 		syncDecreeZone(e, gameNow());
 	}
 
+	// ── Phase 8-4 (4) 0d-3（12体目 Z ラスボス）: 幻影（mirage）─────────────
+	// meta.phases[].mirage = { count, mirageMs, respawnMs, convergeWarnMs, convergeRadius,
+	//                          convergeAtkPerMirage, spawnKeepMin, spawnSpread }
+	// を持つ敵は「どれが本物か」を問う機構を持つ：
+	//   `count` 体の**像**が湧く（本体も同時に散る）。像は本体と**完全に同じ見た目・同じ速さ・
+	//   同じ歩き方**（`bossTickHitAndAway` をそのまま通す）で寄って来るが、**攻撃を持たない**
+	//   ＝剣を振り上げず石も撃たない（＝予告を出すのは本物だけ＝見分ける唯一の手掛かり）。
+	//   像は**すり抜けられる**（`getEnemies()` に居ない∴プレイヤーの通行判定が見ない）し
+	//   **剣の一撃で消える**（HP を持たない）。`mirageMs` 放っておくと像は本体へ**収束**し、
+	//   `convergeWarnMs` の予告のあと**盾を無視する**打点が本体の周囲へ落ちる。
+	//   打点＝`convergeAtkPerMirage × 生き残った像の数`∴**斬って消した像は打点を削る**
+	//   （像を消す作業が無駄な時間ではなく、被弾を減らす作業になる）。
+	// ⚠️ base には持たせない＝`phases[].mirage` だけ（相1では像が湧かない）。
+	// ⚠️ 像は敵ではない＝`getEnemies()`／`killAll`／遭遇表／数値監査に一切影響させない
+	//    （0j の置き炎と同じ枠＝別配列＋スナップショット API `getMirages()`）。
+	function resolveMirage(e, meta) {
+		return e?._mirage !== undefined ? e._mirage : meta?.mirage;
+	}
+
+	// 像の器＝**1つの配列だけが真実**（絵・収束の打点・テストがすべてこれを読む＝§7-7）。
+	// ⚠️ 敵の配列とは完全に別（`setEnemies` には入れない）。持ち主は `ownerId` で辿る。
+	const mirages = [];
+	let mirageSeq = 0;
+
+	function getMirages() { return mirages; }
+	function miragesOf(e) { return mirages.filter((m) => m.ownerId === e.id); }
+
+	// ── 像の DOM（`renderChars()` は char-layer を作り直す＝毎 tick 貼り直す）──────
+	// [[blade-renderboard-pairs-renderchars]]／0j の `ensureFlameEl` と同じ型。
+	// ⚠️ 見た目は**本体と1バイトも変えない**＝同じ `sprite`/`pal`、同じ `aura` の3枚
+	//    （`render-chars.js` の敵ループと同じクラス・同じ順番）。半透明・影・色差を付けた
+	//    瞬間に「どれが本物か」が消える＝機構そのものが死ぬ。
+	function positionMirageEl(m) {
+		if (!m.el) return;
+		const cellPx = getCellPx();
+		m.el.style.left = `${m.x * cellPx}px`;
+		m.el.style.top  = `${m.y * cellPx}px`;
+	}
+
+	function ensureMirageEl(m) {
+		if (m.el?.isConnected) return m.el;
+		const charLayerEl = getCharLayerEl();
+		if (!charLayerEl) return null;
+		const div = document.createElement('div');
+		div.className = 'char-abs';
+		div.id = `char-enemy-${m.id}`;
+		// テストと後始末のための目印だけ（見た目には出ない＝`dataset.enemyId` は付けない
+		// ＝像は敵として数えられてはいけない）。
+		div.dataset.mirageOwner = String(m.ownerId);
+		const cv = makeSprite(m.sprite, m.pal, true, m.flipX);
+		if (cv) div.appendChild(cv);
+		for (const cls of ['dark-lord-aura-smoke', 'dark-lord-aura-2', 'dark-lord-aura']) {
+			const d = document.createElement('div');
+			d.className = cls;
+			div.appendChild(d);
+		}
+		charLayerEl.appendChild(div);
+		m.el = div;
+		positionMirageEl(m);
+		return div;
+	}
+
+	function removeMirageEl(m) {
+		m.el?.remove();
+		document.getElementById(`char-enemy-${m.id}`)?.remove();
+		m.el = null;
+	}
+
+	// 像を1体消す（＝剣の一撃・`combat.js` の唯一の当たり判定から呼ばれる）。
+	// ⚠️ 消した像は**収束しない**＝打点がその場で `convergeAtkPerMirage` ぶん減る。
+	function destroyMirage(id) {
+		const idx = mirages.findIndex((m) => m.id === id);
+		if (idx < 0) return false;
+		const m = mirages[idx];
+		removeMirageEl(m);
+		mirages.splice(idx, 1);
+		const owner = getEnemies().find((e) => e.id === m.ownerId);
+		if (owner) owner._mgSlain = (owner._mgSlain ?? 0) + 1;
+		playSound('mirageFade');
+		return true;
+	}
+
+	// 全部消す（場面の切り替え＝`clearFlames()` と同じ列で呼ぶ）。
+	function clearMirages() {
+		for (const m of mirages) removeMirageEl(m);
+		mirages.length = 0;
+	}
+
+	function dropMirages(e) {
+		for (const m of miragesOf(e)) removeMirageEl(m);
+		for (let i = mirages.length - 1; i >= 0; i--) {
+			if (mirages[i].ownerId === e.id) mirages.splice(i, 1);
+		}
+	}
+
+	// 持ち主が居なくなった像を捨てる（ボスは `killEnemy` を通らず `onBossDefeated` へ
+	// 短絡する∴撃破の後始末をそこに頼れない＝毎 tick の頭で掃く）。
+	function pruneMirages() {
+		if (mirages.length === 0) return;
+		const alive = new Set(getEnemies().map((e) => e.id));
+		for (let i = mirages.length - 1; i >= 0; i--) {
+			if (alive.has(mirages[i].ownerId)) continue;
+			removeMirageEl(mirages[i]);
+			mirages.splice(i, 1);
+		}
+	}
+
+	// 湧き先／本体の散り先の候補（**同じ制約を通す**＝invariant 12）。
+	//   ・床の上（`tilePassable`）かつ他の敵・石・プレイヤーと重ならない（`isPassableForEnemy`）
+	//   ・プレイヤーから `spawnKeepMin` セル以上離れている（隣に湧く理不尽を潰す／本体が
+	//     プレイヤーの隣にワープして即殴られる・即斬られるのも同じ制約で防ぐ）
+	//   ・互いに重ならない（AABB＝`isPassableForEnemy` の敵同士と同じ規則）
+	// 放射状＝`spawnSpread` の距離に近いセルを優先する（乱れを少し混ぜて毎回同じ形にしない）。
+	function mirageSpawnSpots(e, cfg, count, fromX, fromY) {
+		const sd = getStageData();
+		if (!sd || count <= 0) return [];
+		const player = getPlayer();
+		const keep   = cfg.spawnKeepMin ?? 2.5;
+		const spread = cfg.spawnSpread ?? 3.0;
+		const spots = [];
+		for (let r = 0; r < sd.rows; r++) {
+			for (let c = 0; c < sd.cols; c++) {
+				if (!tilePassable(r, c)) continue;
+				if (!isPassableForEnemy(r, c, null)) continue;
+				if (player && Math.hypot(c - player.x, r - player.y) < keep) continue;
+				const d = Math.abs(Math.hypot(c - fromX, r - fromY) - spread);
+				spots.push({ r, c, d: d + Math.random() * 0.6 });
+			}
+		}
+		spots.sort((a, b) => a.d - b.d);
+		const chosen = [];
+		for (const s of spots) {
+			if (chosen.some((o) => Math.abs(o.c - s.c) < 1 && Math.abs(o.r - s.r) < 1)) continue;
+			chosen.push(s);
+			if (chosen.length >= count) break;
+		}
+		return chosen;
+	}
+
+	// 波を1つ立てる（本体も散る＝「どれが本物か」が湧いた瞬間に分からない）。
+	function spawnMirages(e, cfg, meta, now) {
+		const count = Math.max(0, cfg.count ?? 0);
+		if (count === 0) return;
+		// ① 本体の散り先（像より先に決める＝以後その1セルは埋まった扱いになる）。
+		const bodySpot = mirageSpawnSpots(e, cfg, 1, e.x, e.y)[0];
+		if (bodySpot) {
+			e.x = bodySpot.c; e.y = bodySpot.r;
+			e.accum = 0;                       // 歩幅の溜めは持ち込まない（cancel* と同じ作法）
+			moveCharEl(`enemy-${e.id}`, e.x, e.y);
+		}
+		// ② 像の湧き先（本体の**新しい**位置から放射状・本体のセルは埋まっている）。
+		const spots = mirageSpawnSpots(e, cfg, count, e.x, e.y);
+		const player = getPlayer();
+		for (const s of spots) {
+			const m = {
+				id: `mirage${++mirageSeq}`,
+				ownerId: e.id,
+				type: e.type,                  // `bossTickHitAndAway` が `ENEMY_META[e.type]` を読む
+				x: s.c, y: s.r,
+				w: 1, h: 1,
+				dir: e.dir ?? 'down',
+				sprite: e.sprite, pal: e.pal,
+				flipX: !!e.flipX,
+				speed: e.speed,                // §7-2＝速さは本体と同値（相の倍率もそのまま）
+				accum: 0,
+				// 学習した回り込みの癖も写す＝寄り方の癖まで本体と同じにする（invariant 2）。
+				_modeWeights: { ...(e._modeWeights ?? resolveModeWeights(e, meta)) },
+				el: null,
+			};
+			if (player) {
+				const dx = player.x - m.x, dy = player.y - m.y;
+				m.dir = Math.abs(dy) >= Math.abs(dx) ? (dy > 0 ? 'down' : 'up') : (dx > 0 ? 'right' : 'left');
+				m.flipX = (m.dir === 'left');
+				m.sprite = resolveEnemySprite(m, meta, now);
+			}
+			mirages.push(m);
+			ensureMirageEl(m);
+		}
+		e._mgPhase = 'live';
+		e._mgSpan  = cfg.mirageMs ?? 4800;
+		e._mgAt    = now + e._mgSpan;
+		e._mgCells = [];
+		e._mgWaves = (e._mgWaves ?? 0) + 1;
+		e._mgNextAt = null;
+		playSound('mirageSplit');
+	}
+
+	// 像を1 tick 歩かせる（**本体と同じ関数**を通す＝歩き方が同じであることを実装で保証する
+	// ＝invariant 2/6。像は `enemyAttack` を一度も通らない∴攻撃ポーズにもならない＝
+	// `syncDirectionalSprite` は素の向き絵を返す＝差が出るのは本体の予告だけ）。
+	// ⚠️ 像同士の重なりは `isPassableForEnemy` では見られない（像は `getEnemies()` に居ない）
+	//    ∴歩いた後に重なっていたら**その1歩を戻す**（重なると「1体に見える2体」ができて
+	//    数が濁る＝invariant 7）。
+	function tickMirageWalk(e, meta) {
+		for (const m of miragesOf(e)) {
+			m.speed = e.speed;                 // 相の倍率が本体に乗った tick も同値を保つ
+			const px = m.x, py = m.y;
+			bossTickHitAndAway(m, meta);
+			const clash = mirages.some((o) => o !== m
+				&& Math.abs(o.x - m.x) < 1 && Math.abs(o.y - m.y) < 1);
+			if (clash) { m.x = px; m.y = py; }
+			ensureMirageEl(m);
+			syncDirectionalSprite(m, meta);
+			positionMirageEl(m);
+		}
+	}
+
+	// 収束を始める（＝錨。ここから `convergeWarnMs` のあいだ本体は1歩も歩かず剣も石も出さない）。
+	// ⚠️ 中心は**この瞬間の本体のタイル**＝像が集まる先そのもの（＝「本体から離れれば避けられる」
+	//    が絵と一致する）。§7-16 の支払い＝予告の長さ＋床の危険域。
+	// ⚠️ 振り上げ中の剣は畳む（§7-8＝立っている予告は他の専有状態より先に解決する∴畳まないと
+	//    錨のあいだに一撃が出る＝X の `beginDecree` で実測した罠と同型）。
+	function beginConverge(e, cfg, now, meta) {
+		if (e._swingAt != null) { e._swingAt = null; e._swingIdx = null; syncSwingMotion(e, meta); }
+		const cr = toTileRow(e.y);
+		const cc = toTileCol(e.x);
+		e._mgPhase = 'warn';
+		e._mgSpan  = cfg.convergeWarnMs ?? 720;
+		e._mgAt    = now + e._mgSpan;
+		e._mgR     = cr; e._mgC = cc;
+		// 床の絵と当たり判定は**同じ配列**を読む（X の `decreeCells` をそのまま使う＝
+		// 端距離 `radius` 以内の通れるセル）。
+		e._mgCells = decreeCells(cr, cc, cfg.convergeRadius ?? 1.6);
+		e._mgConverges = (e._mgConverges ?? 0) + 1;
+		for (const m of miragesOf(e)) { m._cvX = m.x; m._cvY = m.y; }
+		playSound('mirageConverge');
+	}
+
+	// 収束が落ちる（＝解決）。**盾は見ない**（`isShieldBlockingDir` を呼べば完全防御が戻る＝
+	// 盾を上げたまま待つ抜け穴が開く＝この機構の存在理由が消える＝§7-16）。
+	// 判定は**プレイヤーの中心が在るタイル**が `_mgCells` に含まれるかだけ＝床に描いた集合と同一。
+	function resolveConverge(e, cfg, meta, now) {
+		const survivors = miragesOf(e).length;
+		const player = getPlayer();
+		const pr = player ? toTileRow(player.y) : null;
+		const pc = player ? toTileCol(player.x) : null;
+		const hit = player != null && survivors > 0
+			&& (e._mgCells ?? []).some(([r, c]) => r === pr && c === pc);
+		showConvergeEffect(e);
+		clearMirageZoneEls(e);
+		if (hit) {
+			// 打点＝**生き残った像の数だけ**。⚠️ `atk` を超えさせない＝新しい最大打点を作らない
+			//    （§7-16／O の `stampAtk`・U の `diveAtk`・X の `decreeAtk` と同じ床）。
+			//    素のデータでは `2 × 4 = 8 = atk` ∴この上限は今は効かない＝将来 `count` を
+			//    増やしたときの歯止め。
+			const per = cfg.convergeAtkPerMirage ?? 2;
+			const cap = meta?.atk ?? e.atk ?? (per * survivors);
+			e._mgHits = (e._mgHits ?? 0) + 1;
+			takeDamage(Math.min(per * survivors, cap));
+			playSound('mirageCurse');
+		} else {
+			e._mgWhiffs = (e._mgWhiffs ?? 0) + 1;
+			playSound('mirageFade');
+		}
+		endWave(e, cfg, now);
+	}
+
+	// 波を畳む（収束の解決／像を全部斬られた／機構が消えた）。次の波は `respawnMs` 後。
+	function endWave(e, cfg, now) {
+		dropMirages(e);
+		clearMirageZoneEls(e);
+		e._mgPhase = null;
+		e._mgAt    = null;
+		e._mgSpan  = 0;
+		e._mgCells = [];
+		e._mgNextAt = now + (cfg?.respawnMs ?? 2400);
+	}
+
+	// 像の寿命と収束の時計を1 tick 進める（**行動ゲートの外**で毎 tick 呼ぶ＝`tickLockstep`/
+	// `tickFrost`/`tickGaze` と同じ枠）。ここでしか時計は動かない∴本体が攻撃硬直中でも収束は
+	// 進む（止めると「集まってきたのに落ちない」＝告知が嘘になる＝J/O/L/X で実測した罠）。
+	// 戻り値 true ＝**この tick は本体が移動も攻撃もしない**（収束の予告＝錨）。
+	// 相ごとに**必ず明示の分岐**を書く（GUIDE §7-8）。
+	function tickMirage(e, meta, now) {
+		const cfg = resolveMirage(e, meta);
+		if (!cfg) {
+			// 相1（＝`mirage` を持たない）へ戻ることは今の Z では起きないが、機構が消えたら
+			// 像も消す（＝設定だけの差し替えで幽霊が残らない）。
+			if (miragesOf(e).length > 0) dropMirages(e);
+			if (e._mgPhase) { e._mgPhase = null; e._mgAt = null; e._mgSpan = 0; e._mgCells = []; }
+			return false;
+		}
+		const phase = e._mgPhase ?? null;
+		if (phase === 'warn') {
+			// 予告中も像は斬れる∴全部消えたら**無害に解ける**（＝斬った作業が報われる）。
+			const left = miragesOf(e);
+			if (left.length === 0) {
+				clearMirageZoneEls(e);
+				playSound('mirageFade');
+				endWave(e, cfg, now);
+				return false;
+			}
+			if (now >= (e._mgAt ?? 0)) { resolveConverge(e, cfg, meta, now); return true; }
+			// 像は本体へ吸い寄せられる（＝収束が絵で見える）。歩かせない＝予告のあいだの
+			// 位置は時間の関数（進み率）で決める＝「どこへ集まるか」が一意に読める。
+			const span = Math.max(1, e._mgSpan ?? 1);
+			const p = Math.min(1, Math.max(0, 1 - ((e._mgAt ?? now) - now) / span));
+			for (const m of left) {
+				const sx = m._cvX ?? m.x, sy = m._cvY ?? m.y;
+				m.x = sx + (e.x - sx) * p;
+				m.y = sy + (e.y - sy) * p;
+				ensureMirageEl(m);
+				positionMirageEl(m);
+			}
+			return true;                       // 錨（＝殴り返す窓・ただし円の中）
+		}
+		if (phase === 'live') {
+			tickMirageWalk(e, meta);
+			// 全部斬った＝この波は打点 0 で終わる（＝像を消す作業が被弾を消す）。
+			if (miragesOf(e).length === 0) { endWave(e, cfg, now); return false; }
+			if (now >= (e._mgAt ?? 0)) beginConverge(e, cfg, now, meta);
+			return false;                      // 像が居るあいだ本体は普通に戦う
+		}
+		// 相なし＝次の波を待つ（`_mgNextAt` が無い＝機構を得た直後∴すぐ湧く）。
+		if (e._mgNextAt == null) e._mgNextAt = now;
+		if (now >= e._mgNextAt) spawnMirages(e, cfg, meta, now);
+		return false;
+	}
+
+	// 幻術を捨てる（スタンの tick に呼ぶ＝`cancelLockstep`/`cancelGlaciate` と同じ列）＝
+	// 止めた瞬間に像が消える＝分かりやすい報酬。床の危険域も**全部消す**（止めたのに収束が
+	// 落ちる、を作らない）。次の波は素直に `respawnMs` 後から数え直す。
+	// ⚠️ ボスはブーメランでスタンしない（`stunnable ?? !isBoss`）∴今の Z では観測差が出ない
+	//    **二重の守り**＝`mirage` を雑魚に付けたときに効く（lockstep/coil/gaze と同じ立場）。
+	function cancelMirage(e) {
+		const cfg = e?._mirage ?? ENEMY_META[e?.type]?.mirage;
+		dropMirages(e);
+		clearMirageZoneEls(e);
+		e._mgPhase = null;
+		e._mgAt    = null;
+		e._mgSpan  = 0;
+		e._mgCells = [];
+		e._mgNextAt = gameNow() + (cfg?.respawnMs ?? 2400);
+		e.accum = 0;
+	}
+
+	// ── 収束の危険域を床に描く（盾を無視する打点の唯一の告知）───────────────
+	// ⚠️ 1セル＝1枚の div ＝**当たり判定（`_mgCells`）と同じ配列**を回す（形の一致ではなく
+	//    同一性で守る＝J/I/`{`/L/X で確立した規約）。後始末＝`char-enemy-<id>` とは別の DOM
+	//    ∴Z が倒れても残る∴実時間の消去タイマを毎 tick 貼り直す。
+	const mirageElTimers = new Map();
+	const mirageElId = (e, r, c) => `mirage-${e.id}-${r},${c}`;
+
+	function clearMirageZoneEls(e) {
+		for (const [r, c] of e._mgCells ?? []) {
+			const id = mirageElId(e, r, c);
+			clearTimeout(mirageElTimers.get(id));
+			mirageElTimers.delete(id);
+			document.getElementById(id)?.remove();
+		}
+	}
+
+	function syncMirageZone(e, now) {
+		if ((e._mgPhase ?? null) !== 'warn') return;
+		const charLayerEl = getCharLayerEl();
+		if (!charLayerEl) return;
+		const cellPx = getCellPx();
+		const span = Math.max(1, e._mgSpan ?? 1);
+		const left = Math.max(0, (e._mgAt ?? now) - now);
+		for (const [r, c] of e._mgCells ?? []) {
+			const id = mirageElId(e, r, c);
+			let el = document.getElementById(id);
+			if (!el) {
+				el = document.createElement('div');
+				el.id = id;
+				el.className = 'enemy-mirage-zone';
+				charLayerEl.appendChild(el);
+			}
+			el.style.cssText = `position:absolute;left:${c * cellPx}px;top:${r * cellPx}px;`
+				+ `width:${cellPx}px;height:${cellPx}px;z-index:2;pointer-events:none;`
+				// 進み（0〜1）＝落ちるまでの残りを正規化した**1つの数**（§7-7）。
+				+ `--mirage-progress:${(1 - left / span).toFixed(3)};`
+				+ `--mirage-left-ms:${Math.round(left)}ms;`;
+			clearTimeout(mirageElTimers.get(id));
+			mirageElTimers.set(id, setTimeout(() => el.remove(), 400));
+		}
+	}
+
+	// 収束が落ちた瞬間（`.enemy-decree-fall`／`.enemy-frost-spike` と同型＝実時間で消える
+	// 別 DOM ∴Z が倒れても残らない）。1セル＝1枚＝落ちた床そのもの。
+	function showConvergeEffect(e) {
+		const charLayerEl = getCharLayerEl();
+		if (!charLayerEl) return;
+		const cellPx = getCellPx();
+		for (const [r, c] of e._mgCells ?? []) {
+			const el = document.createElement('div');
+			el.className = 'enemy-mirage-burst';
+			el.style.cssText = `position:absolute;left:${c * cellPx}px;top:${r * cellPx}px;`
+				+ `width:${cellPx}px;height:${cellPx}px;z-index:23;pointer-events:none;`;
+			charLayerEl.appendChild(el);
+			setTimeout(() => el.remove(), 380);
+		}
+	}
+
+	// 幻影の告知（像の DOM の貼り直し＋収束のあいだの本体の輪郭＋床の危険域）。
+	// ⚠️ 毎 tick 呼ぶ＝`renderChars()` が char-layer を作り直しても像が消えない
+	//    （[[blade-renderboard-pairs-renderchars]]）。
+	function syncMirageMotion(e, meta) {
+		const now = gameNow();
+		for (const m of miragesOf(e)) { ensureMirageEl(m); positionMirageEl(m); }
+		const el = document.getElementById(`char-enemy-${e.id}`);
+		if (el) {
+			const warning = (e._mgPhase ?? null) === 'warn';
+			if (warning) el.style.setProperty('--mirage-span-ms', `${Math.round(e._mgSpan ?? 0)}ms`);
+			// **本物だけが光る**＝収束のあいだに限り本体が見分けられる（＝機構の支払い）。
+			el.classList.toggle('mirage-converge', warning);
+		}
+		syncMirageZone(e, now);
+	}
+
 	// ── Phase 5.5k k-4: 向きを固定して構える（盾騎士）─────────────────
 	// meta.blockFacing = { turnMs, knockback } を持つ敵は「向きが常時ブロックの面」＝
 	// e.dir がそのままダメージ無効化の方向になる（combat.js isBlockFacingDir）。
@@ -5025,6 +5435,10 @@ export function createEnemyAi(deps) {
 	function enemyTick() {
 		const enemies = getEnemies();
 		const now = gameNow();
+		// Phase 8-4 (4) 0d-3（12体目 Z）: 持ち主が居なくなった幻影を捨てる。ボスは
+		// `killEnemy` を通らず `onBossDefeated` へ短絡する∴撃破の後始末をそこに頼れない
+		// （倒した後も像が歩き続ける＝実装前に分かっていた唯一の後始末の穴）。
+		pruneMirages();
 		for (const e of enemies) {
 			const meta = ENEMY_META[e.type];
 			if (!meta) continue;
@@ -5098,6 +5512,11 @@ export function createEnemyAi(deps) {
 				// が div ごと外す＝この分岐は下の同期まで行かず `continue` する∴消し忘れると
 				// 気絶中も円が塗られたまま「まだ落ちる」に見える（＝嘘の告知）。
 				if (resolveLockstep(e, meta)) { cancelLockstep(e); syncLockstepMotion(e, meta); }
+				// Phase 8-4 (4) 0d-3（12体目 Z）: 気絶したら幻術も解ける＝像を全部捨てる
+				// （止めたのに収束が落ちる、を作らない）。床の危険域は `cancelMirage` が div ごと
+				// 外す＝この分岐は下の同期まで行かず `continue` する∴消し忘れると気絶中も
+				// 危険域が塗られたまま「まだ落ちる」に見える（＝嘘の告知）。
+				if (resolveMirage(e, meta)) { cancelMirage(e); syncMirageMotion(e, meta); }
 				continue;
 			}
 			// Phase 5.5k k-7.5: 立っている予告は**他の専有状態より先に必ず解決する**
@@ -5139,6 +5558,12 @@ export function createEnemyAi(deps) {
 			// ⚠️ 硬直では**何も止めない**＝始まった詔もこれから満ちる器も硬直の外で回る
 			//    （自分で窓を立てる状態機械を硬直で止めると2周目以降が宙吊りになる・0d-2.7）。
 			const lockstepBusy = resolveLockstep(e, meta) ? tickLockstep(e, meta, now) : false;
+			// Phase 8-4 (4) 0d-3（12体目 Z）: 像の寿命と収束の時計も**硬直中も進める時計**
+			// （上と同じ枠）。ここでしか像は湧かず収束も進まない∴剣を振った直後の硬直でも
+			// 集まってくる（止めると「集まったのに落ちない」＝床の告知が嘘になる）。
+			// ⚠️ 戻り値 true ＝**この tick は移動も攻撃もしない**（収束の予告＝錨）∴下の
+			//    行動ゲートの条件に `!mirageBusy` を入れる。
+			const mirageBusy = resolveMirage(e, meta) ? tickMirage(e, meta, now) : false;
 			// 隠れ↔出現の周期を更新（hide を持つ敵のみ＝潜み鮫・地中蟲・N 砂嵐の蠍王）
 			tickHide(e, meta, now);
 			// Phase 5.5k k-8: 瞬間移動（術士）＝消えている間と出現した tick を専有する。
@@ -5219,7 +5644,7 @@ export function createEnemyAi(deps) {
 			const dirLocked = tickFaceLock(e, meta, now);
 			// ⚠️ `!soaring` ＝`rise`/`aim`/`dive`/`land` の4相はこの tick を専有する。`ground` と
 			//    `air` は tickSoar が false を返す＝ここが開く（地上は歩き＋鉤爪、空は旋回＋雷撃弾）。
-			if (!isGuarding && !frozen && !leaping && !soaring && !shelled && !leeching && !slamming && !swinging && !breathing && !crushing && !blinking && !dashing && !tongueBusy && !surging && !glaciating && !lockstepBusy) {
+			if (!isGuarding && !frozen && !leaping && !soaring && !shelled && !leeching && !slamming && !swinging && !breathing && !crushing && !blinking && !dashing && !tongueBusy && !surging && !glaciating && !lockstepBusy && !mirageBusy) {
 				if (resolveHitAndAway(e, meta)) {
 					bossTickHitAndAway(e, meta);
 				} else if (cmode === 'ranged') {
@@ -5337,6 +5762,10 @@ export function createEnemyAi(deps) {
 			// 体＋床の円）。⚠️ 最後に置く＝「今どう動いているか」を上書きする順番に揃える
 			// （G/U/I/`{`/L と同じ趣旨）。
 			if (resolveLockstep(e, meta)) syncLockstepMotion(e, meta);
+			// Phase 8-4 (4) 0d-3（12体目 Z）: 幻影の告知（像の DOM の貼り直し＋収束のあいだの
+			// 本体の輪郭＋床の危険域）。⚠️ 最後に置く＝「今どう動いているか」を上書きする順番に
+			// 揃える（G/U/I/`{`/L/X と同じ趣旨）。像の貼り直しはここが唯一の窓口。
+			if (resolveMirage(e, meta)) syncMirageMotion(e, meta);
 		}
 	}
 
@@ -5356,6 +5785,11 @@ export function createEnemyAi(deps) {
 		resolveSoar,           // Phase 8-4 (4) 0d-3: 滞空の設定（フェーズ差替を含む・テスト用）
 		resolveMomentum,       // Phase 8-4 (4) 0d-3: 慣性の設定（フェーズ差替を含む・テスト用）
 		momentumSpeed,         // Phase 8-4 (4) 0d-3: 今の速さ（土煙/体当たり/自壊と同じ1つの数）
+		resolveMirage,         // Phase 8-4 (4) 0d-3: 幻影の設定（phases[] 差替を含む・テスト用）
+		tickMirage,            // Phase 8-4 (4) 0d-3: 像の寿命と収束の時計（1周・テスト用）
+		getMirages,            // Phase 8-4 (4) 0d-3: 像の配列＝**1つの数が真実**（絵/打点/テスト）
+		destroyMirage,         // Phase 8-4 (4) 0d-3: 像を1体消す（剣の一撃＝combat.js から）
+		clearMirages,          // Phase 8-4 (4) 0d-3: 全部消す（場面の切り替え＝clearFlames と同じ列）
 		resolveTongue,         // Phase 8-4 (4) 0d-3: 舌の設定（フェーズ差替を含む・テスト用）
 		tickTongue,            // Phase 8-4 (4) 0d-3: 舌の相の時計（5相の1周・テスト用）
 		reelPlayer,            // Phase 8-4 (4) 0d-3: 引き寄せ1 tick（通行判定を通す・テスト用）

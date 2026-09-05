@@ -203,7 +203,11 @@ test('② attackCooldownMultiplier で攻撃間隔が縮む（出荷データ・
   const r = await measureBoss(page, {
     type: 'Z', atDx: 4, hp: meta.hp, ticks: 90,
     drops: [[DROP_AT, 81]],            // 120 → 39（0.325 ≤ 0.33）＝相1・相2が同時に成立
-    patch: { speed: 0 },
+    // ⚠️ `mirage`（0d-3 の12体目・2026-09-04）を相から**外して**測る理由＝像が湧く瞬間に
+    //    **本体も一緒に散る**（放射状にワープする）∴`speed: 0` でも位置が飛び、「距離は
+    //    動いていない」という前提が崩れる（この本が測るのは倍率であって幻影ではない）。
+    //    ⚠️ 外すのは `mirage` キーだけ＝閾値と倍率は**出荷データそのまま**を使う。
+    patch: { speed: 0, phases: meta.phases.map(({ mirage, ...rest }) => rest) },
   });
   expect(r.gameTime0, '実ループの tick が漏れている').toBe(0);
   expect(new Set(r.samples.map(s => `${s.x},${s.y}`)), '敵が動いた＝距離が変わった').toEqual(
@@ -352,7 +356,15 @@ test('⑤ ENEMY_META の phases[] は既知のキーだけを持ち、閾値は�
                       // 上げる。⚠️ 予告（`warnMs`）・半径（`radius`）・打点（`decreeAtk`）・
                       // 剣封じ（`sealMs`）は据え置き（据え置きの番人は
                       // boss-move-variety.spec.js の X-①）＝盾で防げない詔の予告が縮まない（§7-16）。
-                      'lockstep'];
+                      'lockstep',
+                      // 0d-3（12体目 Z）: 幻影の設定を相で差し替える口（boss.js が `_mirage` へ
+                      // 書き、enemy-ai.js の `resolveMirage` が読む）＝像を増やし収束を早め円を
+                      // 広げる。⚠️ この機構だけ **base に持たせない**（`phases[].mirage` だけ＝
+                      // 相1 では像が湧かない）∴機構の使い手を数える表は `phases[]` の中まで数える。
+                      // ⚠️ 予告（`convergeWarnMs`）・打点（`convergeAtkPerMirage × count ≤ atk`）は
+                      // 据え置き（据え置きの番人は boss-move-variety.spec.js の Z-①）＝
+                      // 盾を無視する収束の予告が後半でも縮まない（§7-16）。
+                      'mirage'];
   const MODE_KEYS = ['flank', 'direct', 'wander', 'strafe'];
   const withPhases = Object.entries(ENEMY_META).filter(([, m]) => m.phases);
   expect(withPhases.length, 'phases を持つ敵が居ない（データが消えた？）').toBeGreaterThanOrEqual(13);

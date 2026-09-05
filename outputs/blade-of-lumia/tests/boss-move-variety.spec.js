@@ -306,15 +306,25 @@ const MECHANISM_FIELDS = [
   'glaciate',       // 0d-3（10体目 L）: 居場所を**自分で作る**（凍らせた床の上しか歩けない）
   'lockstep',       // 0d-3（11体目 X）: 詔（盾を無視する打点）の器＝時間で満ち、歩いた距離で
                     //   冷える（2026-09-03: 移動は魔将と同じ張り付き＝`hitAndAway` へ差し替え）
+  'mirage',         // 0d-3（12体目 Z）: 見分けのつかない像を並べる（＝「どれが本物か」）。
+                    //   ⚠️ **`phases[]` の中だけ**にある＝素のメタを見るだけでは使い手0に見える
 ];
 const mechanismsOf = (meta) => new Set(MECHANISM_FIELDS.filter(k => meta[k]));
+// 相の中まで数える版（2026-09-04・12体目 Z）＝`mirage` は `phases[].mirage` だけに在る
+// （相1では像が湧かない）∴機構の在処は素のメタだけでは数えられない
+// （[[blade-enemy-tables-derive-from-meta]]＝手書きの表も素のメタだけの導出も同じ穴を持つ）。
+const mechanismsDeepOf = (meta) => new Set([
+  ...MECHANISM_FIELDS.filter(k => meta[k]),
+  ...(meta.phases ?? []).flatMap(p => MECHANISM_FIELDS.filter(k => p[k])),
+]);
 const attackTypesOf = (meta) => new Set(
   (meta.attacks ?? (meta.attack ? [meta.attack] : [])).map(a => a.type));
 
 test('⑤ 機構の語彙は全部生きている／W の移動機構は G と重ならない', () => {
   // 語彙の番人＝どのフィールドも最低1体が使っている（改名・削除で表が腐るのを防ぐ）
+  // ⚠️ 数えるのは `mechanismsDeepOf`＝**`phases[]` の中まで**（`mirage` は相の中だけに在る）。
   for (const k of MECHANISM_FIELDS) {
-    const users = Object.entries(ENEMY_META).filter(([, m]) => m[k]);
+    const users = Object.entries(ENEMY_META).filter(([, m]) => mechanismsDeepOf(m).has(k));
     expect(users.length, `機構フィールド ${k} を使う敵が居ない（改名された？）`).toBeGreaterThan(0);
   }
   const w = mechanismsOf(ENEMY_META['W']);
@@ -7188,3 +7198,806 @@ test('X-⑪ 角に追い詰められても退避（retreat）で固まらない�
     expect(`${s[0].y},${s[0].x}`, '角（1,1）から1歩も動けていない＝退避が壁で固まったまま')
       .not.toBe('1,1');
   });
+
+// ── 12体目 `Z` ザーネル（ラスボス）：幻影（mirage）＝**「どれが本物か」** ────────────
+// 2026-09-04（0d-3 の最後）。他の11体はすべて「敵が**どこに**居るか／**どこへ**行くか」を
+// 読む機構だった∴Z だけは**敵の同定**を課題にする＝Z は自分と見分けのつかない像を並べる。
+//   ・像は `count` 体（相2＝2・相3＝4）湧き、**そのとき本体も一緒に散る**（放射状）
+//     ∴「今どれが本物か」が波ごとにリセットされる（`blink` の流用ではない）。
+//   ・像は**打点を持たない**（剣を振り上げず石も撃たない）＝**予告を出すのは本物だけ**。
+//   ・像は**すり抜けられる**（`getEnemies()` に居ない＝プレイヤーの通行判定が見ない）。
+//   ・像は**剣の一撃で消える**（HP を持たない置き物）。
+//   ・`mirageMs` 放っておくと像は本体へ**収束**し、`convergeWarnMs` の予告のあと
+//     **盾を無視する**打点が本体の周囲（端距離 `convergeRadius`）へ落ちる。打点は
+//     `convergeAtkPerMirage × 生き残った像の数`∴**斬って消した像は打点を削る**。
+// ⚠️ データは **base に持たせず `phases[].mirage` だけ**（相1では像が湧かない）
+//    ∴機構の使い手を数える導出は `phases[]` の中まで見る（`mechanismsDeepOf`）。
+// ⚠️ Z の攻撃2本（剣 1.5・石 7.0）は**どちらも盾で消える**＝I／`{`／L／X と同じ穴
+//    ∴収束が「盾を無視する唯一の打点」＝この機構の存在理由（§7-16）。対価は
+//    予告 `convergeWarnMs 720` を**相3 でも縮めない**・床に描いた危険域が当たり判定と同じ集合・
+//    像を斬れば打点が減る（＝逃げる以外の答えがある）の3つ。
+// ⚠️ 本番＝`dark_tower 0,0`（玉座の間・床 78・完全な空箱）／闘技場＝`test_mechanics 33,1`
+//    （`bal_zarnel`・床 82）＝ほぼ同型∴`{`／L が踏んだ「闘技場で測って本番で壊れる」幾何差は
+//    無いが、幾何の本（Z-⑪）は**両方**を測る。
+const Z = TILE.ZARNEL;
+const Z_ROW = 4, Z_COL = 8;                 // 闘技場 `bal_zarnel` の実配置（1×1）
+const Z_FAR   = { row: 1, col: 1 };         // 北西の隅＝Z から 7.62（石 7.0 の外）
+const Z_HUNT  = { row: 6, col: 3 };         // 像を追って斬る本の立ち位置（駐める場所と離す）
+// 本体を駐める場所＝**部屋の中央 (4,5)**（＝像を追う運を測定から外す）。隅ではなく中央にする
+// 理由＝`decreeCells` は壁のセルを落とす∴隅に駐めると危険域が壁で削れて枚数が測れない。
+// (4,5) は闘技場・本番のどちらでも上下左右 2 セルすべてが床＝円が1枚も欠けない。
+const Z_PARK  = { row: 4, col: 5 };
+// 像を追って斬る本（`huntMirages`）で本体を退かす先の候補＝闘技場の床の四隅と中央の上下。
+// 像の湧き先は放射状＋乱れ∴**そのとき像から一番遠い候補**を選ぶ（固定の1点は像の隣になりうる）。
+const Z_PARK_CANDS = [
+  { row: 1, col: 1 }, { row: 1, col: 10 }, { row: 6, col: 10 }, { row: 6, col: 5 },
+  { row: 1, col: 5 }, { row: 6, col: 2 },
+];
+const Z_OBS   = { ps_hearts: '13', ps_sword: '0', ps_shield: '0', ps_armor: '0', ps_weapon: '1' };
+// HP 120 に対して落とす量＝相の境（0.66 / 0.33）をどこまで踏むかで2種類だけ使う。
+const Z_P2_DMG = 45;                        // → 75（62.5%）＝相2 だけ（33% は跨がない）
+const Z_P3_DMG = 85;                        // → 35（29%）＝相2・相3 を続けて踏む
+// SE の指紋（`installToneRec` は周波数だけを記録する）＝4音すべて**離調した対**を持つ
+const MG_SPLIT_HZ    = [523, 531, 494, 508];        // 像が湧いた（本体も散った）
+const MG_CONVERGE_HZ = [392, 698, 440, 622, 523, 538]; // 収束の予告（上がる線と下がる線）
+const MG_CURSE_HZ    = [73, 138, 146, 277];         // 盾を無視する打点が入った
+const MG_FADE_HZ     = [659, 672, 440, 444];        // 無害に解けた（斬り切った／外した）
+const nZTicks = (ms) => Math.ceil(ms / TICK_MS);
+// 端距離 `radius` のタイル集合の枚数（`enemy-ai.js decreeCells` と同じ式＝X-① と同型）
+function edgeArea(radius) {
+  const span = Math.ceil(radius + 0.5);
+  let area = 0;
+  for (let dr = -span; dr <= span; dr++) {
+    for (let dc = -span; dc <= span; dc++) {
+      const gy = Math.max(0, Math.abs(dr) - 0.5), gx = Math.max(0, Math.abs(dc) - 0.5);
+      if (Math.hypot(gx, gy) <= radius) area++;
+    }
+  }
+  return area;
+}
+// タイル (r,c) が中心 (cr,cc) から端距離 radius 以内か（床に描いた集合の検算用）
+const inEdgeRadius = (cr, cc, r, c, radius) => Math.hypot(
+  Math.max(0, Math.abs(c - cc) - 0.5), Math.max(0, Math.abs(r - cr) - 0.5)) <= radius + 1e-9;
+
+/**
+ * `bal_zarnel` の `Z` を n tick 追い、毎 tick の相・像の一覧・床の危険域・絵・音と
+ * プレイヤーの位置／HP を返す。
+ * @param {object} o
+ * @param {number} o.ticks        進める論理 tick 数
+ * @param {object} [o.spawn]      プレイヤーの湧き（既定＝北西の隅 (1,1)）
+ * @param {number} [o.drop]       t=1 の step より前に Z へ与えるダメージ（相を跨がせる）
+ * @param {boolean} [o.debugOff]  true＝'g' で debug を切る（プレイヤーにダメージが通る）
+ * @param {object} [o.park]       {row,col}＝**像が湧いた後**に本体をそこへ駐める（speed 0）
+ * @param {boolean} [o.stop]      true＝像が湧いた後に本体を speed 0 にする（位置は動かさない）
+ * @param {boolean} [o.chaseBody] true＝毎 tick 本体へ1歩寄る（収束の円の中に立つ）
+ * @param {boolean} [o.face]      true＝毎 tick 本体の方へ向き直る（盾の正面を向け続ける）
+ * @param {object} [o.patch]      `setEnemyMetaForTest('Z', patch)`
+ */
+async function trackZarnel(page, o) {
+  await installToneRec(page);
+  const sp = o.spawn ?? Z_FAR;
+  await gotoFrozen(page, previewUrl('bal_zarnel', sp.row, sp.col, { ...Z_OBS, ...(o.extra ?? {}) }));
+  if (o.debugOff) await page.keyboard.press('g');
+  return page.evaluate((a) => {
+    const g = window.__game;
+    if (a.patch) g.setEnemyMetaForTest('Z', a.patch);
+    const e0 = g.getEnemies().find(x => x.type === 'Z');
+    if (!e0) return { error: 'Z が盤面に居ない' };
+    const id = e0.id;
+    const find = () => g.getEnemies().find(x => x.id === id);
+    const tile = (v) => Math.floor(v + 0.5);
+    const zonePrefix = `mirage-${id}-`;
+    const samples = [];
+    let stopped = false;
+    for (let t = 1; t <= a.ticks; t++) {
+      const tone0 = window.__tones.length;
+      const cur = find();
+      if (!cur) break;
+      if (a.drop && t === 1) g.dealDamage(id, a.drop);
+      // ⚠️ 駐めるのは**像が湧いた後**＝`spawnMirages` が本体を散らした後（先に駐めると
+      //    散る先が測定の外から決まる＝湧きの制約そのものを測れなくなる）。
+      if ((a.park || a.stop) && !stopped && (cur.mgPhase ?? null) === 'live') {
+        g.setEnemyFieldForTest(id, a.park
+          ? { x: a.park.col, y: a.park.row, speed: 0, accum: 0 }
+          : { speed: 0, accum: 0 });
+        stopped = true;
+      }
+      if (a.chaseBody && stopped) {
+        const p1 = g.getPlayer(), b = find();
+        const dx = b.x - p1.x, dy = b.y - p1.y;
+        // 円の中（本体の隣）まで寄ったら止まる＝そこから先は立ち止まって収束を受ける
+        if (Math.hypot(dx, dy) > 1.2) {
+          g.movePlayer(Math.abs(dx) >= Math.abs(dy) ? (dx > 0 ? 'right' : 'left')
+            : (dy > 0 ? 'down' : 'up'));
+        }
+      }
+      if (a.face) {
+        const p1 = g.getPlayer(), b = find();
+        const dx = b.x - p1.x, dy = b.y - p1.y;
+        g.setHeroDir(Math.abs(dx) >= Math.abs(dy) ? (dx > 0 ? 'right' : 'left')
+          : (dy > 0 ? 'down' : 'up'));
+      }
+      g.step(1);
+      const e = find();
+      if (!e) break;
+      const p = g.getPlayer(), st = g.getState();
+      const bodyEl = document.getElementById(`char-enemy-${id}`);
+      samples.push({
+        t, now: st.gameTime, hp: e.hp, x: e.x, y: e.y, dir: e.dir, sprite: e.sprite,
+        speed: e.speed ?? null,
+        // ⚠️ スナップショット越し＝`_mgPhase` ではなく `mgPhase`（`_` 付きは常に undefined）
+        phase: e.mgPhase ?? null, span: e.mgSpan ?? null, at: e.mgAt ?? null,
+        nextAt: e.mgNextAt ?? null,
+        center: e.mgR != null ? `${e.mgR},${e.mgC}` : null,
+        cells: (e.mgCells ?? []).map(c => `${c.r},${c.c}`),
+        waves: e.mgWaves ?? 0, converges: e.mgConverges ?? 0,
+        hits: e.mgHits ?? 0, whiffs: e.mgWhiffs ?? 0, slain: e.mgSlain ?? 0,
+        cfg: e.mirage ?? null,
+        // 像は敵ではない＝この数は像が湧いても増えない（`killAll` ゲート・遭遇表の番人）
+        enemies: g.getEnemies().length,
+        // 像の数の唯一の真実（§7-7）＝絵・打点・テストが同じ配列を読む
+        mirages: g.getMirages().map(m => ({ id: m.id, ownerId: m.ownerId, type: m.type,
+          x: m.x, y: m.y, sprite: m.sprite, pal: m.pal, speed: m.speed })),
+        // 像の DOM（毎 tick 貼り直す＝`renderChars()` が char-layer を作り直しても消えない）
+        mirageEls: [...document.querySelectorAll('[data-mirage-owner]')].map(x => ({
+          id: x.id, owner: x.dataset.mirageOwner, cls: x.className,
+          canvas: !!x.querySelector('canvas'),
+          auras: [...x.children].filter(c => String(c.className).startsWith('dark-lord-aura')).length,
+          enemyId: x.dataset.enemyId ?? null,
+        })),
+        bodyCls: !!bodyEl?.classList.contains('mirage-converge'),
+        spanVar: (bodyEl?.style.getPropertyValue('--mirage-span-ms') ?? '').trim(),
+        // 床の危険域＝1セル＝1枚の div（id に r,c が入る＝判定と同じ集合を DOM で確かめる）
+        zoneEls: [...document.querySelectorAll(`div[id^="${zonePrefix}"]`)].map(x => ({
+          key: x.id.slice(zonePrefix.length),
+          progress: parseFloat(x.style.getPropertyValue('--mirage-progress')),
+        })),
+        burstFx: document.querySelectorAll('.enemy-mirage-burst').length,
+        attackTimes: JSON.stringify(e.attackTimes ?? null),
+        projOwners: g.getProjectiles().map(pr => pr.ownerId ?? null),
+        px: p.x, py: p.y, php: p.hp, pdef: st.player.def, pdir: st.heroDir,
+        ptile: `${tile(p.y)},${tile(p.x)}`, shieldTier: st.player.shieldTier,
+        newTones: window.__tones.slice(tone0),
+      });
+    }
+    return { id, samples };
+  }, o);
+}
+
+/**
+ * 像を**歩いて追い、剣で斬る**本のための道具（Z-④／Z-⑧）。
+ * 相2 へ落として像を湧かせ、**本体を隅へ駐めて**（speed 0）像の寿命の時計も止め（`_mgAt`）、
+ * 一番近い像へ列→行の順に歩いて**その像のセルへ乗り**（＝すり抜けの証拠）、1歩下がって斬る。
+ * @param {object} o
+ * @param {number|'all'} o.kill 斬る像の数（'all'＝全部）
+ */
+async function huntMirages(page, o) {
+  await installToneRec(page);
+  await gotoFrozen(page, previewUrl('bal_zarnel', Z_HUNT.row, Z_HUNT.col, Z_OBS));
+  return page.evaluate((a) => {
+    const g = window.__game;
+    if (a.patch) g.setEnemyMetaForTest('Z', a.patch);
+    const e0 = g.getEnemies().find(x => x.type === 'Z');
+    if (!e0) return { error: 'Z が盤面に居ない' };
+    const id = e0.id;
+    const find = () => g.getEnemies().find(x => x.id === id);
+    g.dealDamage(id, a.dmg);                       // 相2 へ（像が湧く）
+    for (let t = 0; t < 60 && g.getMirages().length === 0; t++) g.step(1);
+    const count0 = g.getMirages().length;
+    if (count0 === 0) return { error: '相2 に落としても 60 tick で像が1体も湧かない' };
+    // 本体を**像から一番遠い床**へ駐め、**像の寿命を止める**（`_mgAt` を遠い未来）＝歩いて
+    // 追うあいだに収束が始まらない（この本が測るのは「すり抜け」と「剣で消える」だけ）。
+    // ⚠️ 駐める先を固定値にしてはいけない＝像の湧き先は放射状＋乱れ∴固定の1点は像の隣に
+    //    なりうる（本体の体は塞ぐ＝歩く道が測定の外の理由で詰まる／剣が本体に吸われる）。
+    const park = a.parkCands
+      .map(p => ({ ...p, d: Math.min(...g.getMirages().map(m => Math.hypot(m.x - p.col, m.y - p.row))) }))
+      .sort((A, B) => B.d - A.d)[0];
+    if (park.d < 2) return { error: `どの候補も像から 2 セル以内（最遠 ${park.d.toFixed(2)}）`, count0 };
+    g.setEnemyFieldForTest(id, { x: park.col, y: park.row, speed: 0, accum: 0, _mgAt: 1e9 });
+    g.step(1);
+    const onCells = [];
+    const kills = [];
+    let warnPhase = null;                          // `forceWarn` で立てた相（'warn' を期待）
+    const want = a.kill === 'all' ? count0 : a.kill;
+    const pos = () => g.getPlayer();
+    // すり抜けの証拠＝**プレイヤーが歩いて像に重なった**（AABB＝|dx|<1 かつ |dy|<1）。
+    // ⚠️ 「同じセルにぴったり乗る」で測ってはいけない＝像は毎 tick 0.16 セルずつ歩く
+    //    ∴座標が一致することはほぼ無い。通行判定が見るのは重なり（AABB）そのもの
+    //    ∴敵として実装されていればこの1歩が**そもそも拒否される**＝重なりが証拠になる。
+    const note = (target, moved) => {
+      const p = pos();
+      const m = g.getMirages().find(o => o.id === target.id);
+      if (!moved || !m) return;
+      if (Math.abs(p.x - m.x) < 1 && Math.abs(p.y - m.y) < 1) {
+        onCells.push({ id: m.id, at: `${p.y.toFixed(2)},${p.x.toFixed(2)}`,
+          mirage: `${m.y.toFixed(2)},${m.x.toFixed(2)}` });
+      }
+    };
+    // ⚠️ `getPlayer()` は**実体そのもの**を返す（コピーではない）∴前後を比べるときは
+    //    数値を先に取り出す（同じオブジェクトを2回読むと差は常に 0＝「歩いていない」に見える）。
+    const stepMove = (dir, target) => {
+      const x0 = pos().x, y0 = pos().y;
+      g.movePlayer(dir);
+      g.step(1);
+      note(target, Math.abs(pos().x - x0) > 1e-9 || Math.abs(pos().y - y0) > 1e-9);
+    };
+    // 波が畳まれた**その tick** で次の波までの間隔を測る（1 tick でも遅れて測ると
+    // `respawnMs` から tick ぶん足りない数が出る＝時計を測ったことにならない）。
+    let fold = null;
+    const stepAndWatch = (n) => {
+      for (let k = 0; k < n; k++) {
+        g.step(1);
+        const e1 = find();
+        if (fold == null && (e1?.mgPhase ?? null) === null && e1?.mgNextAt != null) {
+          fold = { gap: e1.mgNextAt - g.getState().gameTime, at: g.getState().gameTime };
+        }
+      }
+    };
+    for (let n = 0; n < want; n++) {
+      const px0 = pos().x, py0 = pos().y;
+      const target = g.getMirages()
+        .sort((A, B) => Math.hypot(A.x - px0, A.y - py0) - Math.hypot(B.x - px0, B.y - py0))[0];
+      if (!target) return { error: '斬る像が残っていない', count0, onCells, kills };
+      let lastDir = null;
+      // 列 → 行の順に寄せる（像も歩いて寄って来る∴残り 0.5 セル未満になったら詰め終わり）
+      const cur = () => g.getMirages().find(o => o.id === target.id) ?? target;
+      for (let k = 0; k < 30 && Math.abs(pos().x - cur().x) >= a.moveStep; k++) {
+        lastDir = pos().x < cur().x ? 'right' : 'left';
+        stepMove(lastDir, target);
+      }
+      for (let k = 0; k < 30 && Math.abs(pos().y - cur().y) >= a.moveStep; k++) {
+        lastDir = pos().y < cur().y ? 'down' : 'up';
+        stepMove(lastDir, target);
+      }
+      const back = { up: 'down', down: 'up', left: 'right', right: 'left' }[lastDir] ?? 'down';
+      g.movePlayer(back); g.step(1);               // 1歩（0.5 セル）下がる＝剣の間合い
+      // 予告のあいだに斬る（＝盾を無視する打点が落ちる**直前**に無害化する）を測るための口。
+      // 収束を今から始めさせる＝像はまだ動いていない（進み 0）∴足元の像がそのまま斬れる。
+      if (a.forceWarn) {
+        g.setEnemyFieldForTest(id, { _mgAt: g.getState().gameTime + 1 });
+        g.step(1);
+        warnPhase = find()?.mgPhase ?? null;
+      }
+      g.setHeroDir(lastDir ?? 'down');
+      const before = g.getMirages().length;
+      const tone0 = window.__tones.length;
+      g.swordAttack();
+      kills.push({ id: target.id, before, after: g.getMirages().length,
+        tones: window.__tones.slice(tone0) });
+      stepAndWatch(6);                             // 硬直＋クールダウンを明けさせる
+    }
+    const e = find();
+    const st = g.getState();
+    return { id, count0, onCells, kills, fold, warnPhase,
+      mirages: g.getMirages().length,
+      phase: e?.mgPhase ?? null, nextAt: e?.mgNextAt ?? null, now: st.gameTime,
+      hits: e?.mgHits ?? 0, whiffs: e?.mgWhiffs ?? 0, converges: e?.mgConverges ?? 0,
+      slain: e?.mgSlain ?? 0, waves: e?.mgWaves ?? 0,
+      cfg: e?.mirage ?? null, php: g.getPlayer().hp };
+  }, { ...o, dmg: o.dmg ?? Z_P2_DMG, parkCands: o.parkCands ?? Z_PARK_CANDS, moveStep: MOVE_STEP });
+}
+
+test('Z-① ラスボスのデータ＝相の中だけに幻影がある／到達距離の入れ子・打点の上限・据え置きの予告', () => {
+  const m = ENEMY_META[Z];
+  const v = ENEMY_META[TILE.BOSS];       // 魔将＝速さの基準（X と同じ 3例目の根拠）
+  const KEYS = ['convergeAtkPerMirage', 'convergeRadius', 'convergeWarnMs', 'count',
+    'mirageMs', 'respawnMs', 'spawnKeepMin', 'spawnSpread'];
+
+  // ① データの持ち方＝**base に `mirage` を持たせない**（相1では像が湧かない）
+  expect(m.mirage, 'base に mirage がある＝相1（100〜66%）から像が湧く（設計と違う）')
+    .toBeUndefined();
+  const ph = (m.phases ?? []).filter(p => p.mirage !== undefined);
+  expect(ph.length, '幻影を持つ相が2つでない（相2・相3）').toBe(2);
+  // 綴りの番人＝`resolveMirage` を読む側が読むキー（1文字違うと既定値に落ちて黙って動く）
+  for (const p of ph) expect(Object.keys(p.mirage).sort()).toEqual(KEYS);
+
+  // ② 速さ＝魔将 V・魔王 X と同値（§7-2 の意図的な例外の3例目）＋張り付きの移動
+  expect(m.speed, 'ラスボスが魔将より鈍い＝X が 2026-09-03 に落とされたのと同じ形').toBe(v.speed);
+  expect(m.hitAndAway, '移動が張り付きでない＝相1 の圧が出ない').toBe(true);
+
+  // ③ 収束の打点は `atk` を超えない（新しい最大打点を作らない・§7-16）
+  for (const p of ph) {
+    expect(p.mirage.convergeAtkPerMirage * p.mirage.count,
+      `収束の打点 ${p.mirage.convergeAtkPerMirage * p.mirage.count} が atk ${m.atk} を超える`)
+      .toBeLessThanOrEqual(m.atk);
+  }
+  // 相3 は**ちょうど `atk` と同値**＝上限に触れている（＝これ以上増やせない設計の証拠）
+  expect(ph[1].mirage.convergeAtkPerMirage * ph[1].mirage.count).toBe(m.atk);
+
+  // ④ 予告は相をまたいで**同値**（§7-16 の据え置き＝後半でも縮めない）かつ近接の溜め以上
+  expect(ph[1].mirage.convergeWarnMs, '相3 で予告を縮めた＝盾を無視する打点の対価を割っている')
+    .toBe(ph[0].mirage.convergeWarnMs);
+  expect(ph[0].mirage.convergeWarnMs,
+    `予告 ${ph[0].mirage.convergeWarnMs}ms が近接の溜め（${MELEE_WINDUP_MS}ms）より短い`
+    + '＝見てから動けない').toBeGreaterThanOrEqual(MELEE_WINDUP_MS);
+
+  // ⑤ 到達距離の表（GUIDE §7-12）＝プレイヤーの剣 1.2 ＜ Z の剣 1.5 ＜ 収束 1.6/2.0 ＜ 石 7.0
+  const sword = m.attacks.find(x => x.type === 'sword');
+  const stone = m.attacks.find(x => x.type === 'stone');
+  expect(sword.range, 'Z の剣がプレイヤーの剣の内側＝張り付いても打ち勝てる')
+    .toBeGreaterThan(SWORD_REACH);
+  for (const p of ph) {
+    expect(p.mirage.convergeRadius, '収束の円が Z の剣の間合いの内側＝「剣の間合いに居るのに'
+      + '収束だけ避ける」が成立する＝殴りに来た側が払わない').toBeGreaterThan(sword.range);
+    expect(stone.range, '石の射程が収束の円より短い＝到達距離の表が入れ子になっていない')
+      .toBeGreaterThan(p.mirage.convergeRadius);
+  }
+  // 石の距離のゲート＝X が 2026-09-03 の割り込み 0q で受けたのと同じ欠陥をラスボスも持っていた
+  expect(stone.minRange, '石に minRange が無い＝斬り合いの最中に予告なしの石が刺さる')
+    .toBeGreaterThan(sword.range);
+  expect(stone.minRange, '石の minRange がプレイヤーの剣より内側＝密着で石が来る')
+    .toBeGreaterThan(SWORD_REACH);
+  expect(m.attack.minRange, 'legacy `attack` の石にゲートが無い＝古い経路から抜ける')
+    .toBe(stone.minRange);
+
+  // ⑥ 湧きの制約＝プレイヤーの隣に像も本体も湧かない（＝湧いた瞬間に殴られない・斬られない）
+  for (const p of ph) {
+    expect(p.mirage.spawnKeepMin, '湧きの最小距離が Z の剣の間合い以内＝散った本体が'
+      + 'プレイヤーの隣に出て即殴れる／即斬れる').toBeGreaterThan(sword.range);
+    expect(p.mirage.spawnKeepMin, '湧きの最小距離がプレイヤーの剣の間合い以内')
+      .toBeGreaterThan(SWORD_REACH);
+  }
+
+  // ⑦ 相3 は「数が増えて周期が速くなり、円が広がる」（＝予告と1体あたりの打点は動かさない）
+  expect(ph[1].mirage.count, '相3 で像が増えない').toBeGreaterThan(ph[0].mirage.count);
+  // ⚠️ 円の広さは**タイルへ量子化された枚数**で測る＝端距離の数字だけ見ると嘘になる
+  //    （1.6 と 2.0 は同じ 21 枚＝「広がった」が絵にも判定にも出ない死んだ数だった）。
+  expect(edgeArea(ph[1].mirage.convergeRadius),
+    `相3 の円 ${edgeArea(ph[1].mirage.convergeRadius)} 枚が相2 の円 `
+    + `${edgeArea(ph[0].mirage.convergeRadius)} 枚と同じ＝端距離を上げても量子化で消えている`)
+    .toBeGreaterThan(edgeArea(ph[0].mirage.convergeRadius));
+  expect(ph[1].mirage.mirageMs, '相3 で収束までが長い＝後半のほうが緩い')
+    .toBeLessThan(ph[0].mirage.mirageMs);
+  expect(ph[1].mirage.respawnMs, '相3 で次の波までが長い＝後半のほうが緩い')
+    .toBeLessThan(ph[0].mirage.respawnMs);
+  expect(ph[1].mirage.convergeAtkPerMirage, '相3 で1体あたりの打点を上げた＝斬る作業の価値が変わる')
+    .toBe(ph[0].mirage.convergeAtkPerMirage);
+
+  // ⑧ 円は部屋を覆わない（§7-15 は半径ではなく**面積**で引き算する・闘技場の床 82 枚）
+  for (const p of ph) {
+    const area = edgeArea(p.mirage.convergeRadius);
+    expect(area, `収束の円 ${area} 枚が闘技場の床 82 枚の 1/3 を越える＝どこへ逃げても同じ`)
+      .toBeLessThan(82 / 3);
+  }
+  // 相の器の側（速さ）も魔将・魔王と同じ形で増える
+  expect(m.phases[0].speedMultiplier, '相2 の加速が無い').toBeGreaterThan(1);
+  expect(m.phases[1].speedMultiplier, '相3 で相2 より速くならない')
+    .toBeGreaterThan(m.phases[0].speedMultiplier);
+});
+
+test('Z-② 相1（100〜66%）では像が1体も湧かない／66% を割ると湧き、波は respawnMs ごとに回る',
+  async ({ page }) => {
+    const m = ENEMY_META[Z];
+    const cfg = m.phases[0].mirage;
+
+    // ① 素のデータのまま 120 tick＝相1 では像 0（＝`phases[].mirage` だけに在ることの実測）
+    const p1 = await trackZarnel(page, { ticks: 120 });
+    expect(p1.error).toBeUndefined();
+    for (const x of p1.samples) {
+      expect(x.mirages.length, `t${x.t}（相1・HP ${x.hp}）で像が湧いた＝base に機構が漏れている`)
+        .toBe(0);
+      expect(x.phase, `t${x.t}（相1）で幻影の相が立った`).toBe(null);
+      expect(x.cfg, `t${x.t}（相1）に幻影の設定が入っている`).toBe(null);
+    }
+    expect(p1.samples[p1.samples.length - 1].hp, '相1 の測定で HP が 66% を割った＝前提が崩れた')
+      .toBeGreaterThan(m.hp * 0.66);
+
+    // ② 66% を割ると湧く（⛔(i) の番人＝`hitAndAway` の分岐が機構を食っていないこと）
+    const r = await trackZarnel(page, { ticks: 120, drop: Z_P2_DMG });
+    const s = r.samples;
+    expect(r.error).toBeUndefined();
+    expect(s[s.length - 1].cfg, '相2 の設定が差し替わっていない（boss.js に mirage の口が無い）')
+      .toMatchObject(cfg);
+    const first = s.find(x => x.mirages.length > 0);
+    expect(first, '相2 へ落として 120 tick 進めても像が1体も湧かない'
+      + '（⛔(i)＝機構が hitAndAway の分岐に食われている／相の切り替えが読んでいない）')
+      .toBeTruthy();
+    expect(first.mirages.length, `湧いた像が ${cfg.count} 体でない`).toBe(cfg.count);
+    expect(first.phase, '像が湧いた tick の相が live でない').toBe('live');
+    expect(first.span, `像の寿命が mirageMs（${cfg.mirageMs}ms）でない`).toBe(cfg.mirageMs);
+    expect(first.newTones, '像が湧いた tick に mirageSplit が鳴っていない')
+      .toEqual(expect.arrayContaining(MG_SPLIT_HZ));
+    // 湧いた瞬間は**本体も散る**＝プレイヤーから `spawnKeepMin` 以上離れる（湧きの制約）。
+    // ⚠️ 本体は散った**同じ tick に1歩歩く**（湧きは行動ゲートを閉じない＝像が居るあいだ本体は
+    //    普通に戦う）∴1歩（≤ 0.5 セル）の余裕を見て測る。像はこの tick に歩かない∴厳密。
+    expect(Math.hypot(first.x - first.px, first.y - first.py),
+      '散った本体がプレイヤーの近く（spawnKeepMin 未満）に出た＝湧いた瞬間に殴り合いが始まる')
+      .toBeGreaterThan(cfg.spawnKeepMin - MOVE_STEP);
+    for (const mg of first.mirages) {
+      expect(Math.hypot(mg.x - first.px, mg.y - first.py),
+        `像 ${mg.id} がプレイヤーの隣（spawnKeepMin 未満）に湧いた＝理不尽`)
+        .toBeGreaterThanOrEqual(cfg.spawnKeepMin - 1e-9);
+    }
+
+    // ③ 波は回る＝収束が解決した tick から respawnMs 後に次の波（時計は1つの数だけ）
+    const resolved = s.find((x, i) => i > 0 && x.converges > 0 && x.phase === null
+      && s[i - 1].phase === 'warn');
+    expect(resolved, '120 tick で収束が一度も解決していない＝波の時計が止まっている').toBeTruthy();
+    expect(resolved.nextAt - resolved.now, `次の波までが respawnMs（${cfg.respawnMs}ms）でない`)
+      .toBe(cfg.respawnMs);
+    expect(s[s.length - 1].waves, '120 tick で波が2つ立たない＝周期が回っていない')
+      .toBeGreaterThanOrEqual(2);
+    // 像は**敵として数えない**（`killAll` ゲート・遭遇表・数値監査に影響させない）
+    for (const x of s) {
+      expect(x.enemies, `t${x.t} で敵の数が ${x.enemies} ＝像が敵として数えられている`).toBe(1);
+    }
+  });
+
+test('Z-③ 像は本体と同じ見た目・同じ速さで**歩いて**寄る／攻撃だけ持たない（予告は本物だけ）',
+  async ({ page }) => {
+    const m = ENEMY_META[Z];
+    // 相2 の live のあいだだけを見る（収束は Z-⑤ 以降で測る）。プレイヤーは隅で動かない。
+    const r = await trackZarnel(page, { ticks: 40, drop: Z_P2_DMG });
+    const s = r.samples;
+    expect(r.error).toBeUndefined();
+    const live = s.filter(x => x.phase === 'live' && x.mirages.length > 0);
+    expect(live.length, 'live の tick が無い＝測れていない').toBeGreaterThan(10);
+
+    for (const x of live) {
+      for (const mg of x.mirages) {
+        // ① 速さは本体と**同値**（相の倍率が乗った tick も）＝動きで見分けられない
+        expect(mg.speed, `t${x.t} の像 ${mg.id} の速さ ${mg.speed} が本体 ${x.speed} と違う`
+          + '＝速さだけで本物が分かる').toBe(x.speed);
+        // ② パレット・型も同じ（新規スプライト0・半透明や色差を付けない）
+        expect(mg.pal, `t${x.t} の像 ${mg.id} のパレットが本体と違う＝色で見分けられる`).toBe('darklord');
+        expect(mg.type, `t${x.t} の像 ${mg.id} の型が Z でない＝歩き方の導出が変わる`).toBe(Z);
+        // ③ **攻撃の絵を持たない**＝像は剣を振り上げない（`*Atk` の絵になるのは本物だけ）
+        expect(mg.sprite, `t${x.t} の像 ${mg.id} が攻撃の絵（${mg.sprite}）になった`
+          + '＝予告を出すのは本物だけ、が壊れている').toMatch(/^darklord[DRU]$/);
+      }
+      // ④ DOM は毎 tick 貼り直されている＝像の数だけ要素が在る（`renderChars()` に消されない）
+      expect(x.mirageEls.length, `t${x.t} の像の要素が ${x.mirageEls.length} 枚＝`
+        + `像 ${x.mirages.length} 体と合わない（貼り直しが漏れている）`).toBe(x.mirages.length);
+      for (const el of x.mirageEls) {
+        expect(el.cls, `t${x.t} の像の要素のクラスが本体と違う`).toBe('char-abs');
+        expect(el.canvas, `t${x.t} の像 ${el.id} に絵が無い`).toBe(true);
+        expect(el.auras, `t${x.t} の像 ${el.id} のオーラが3枚でない＝本体と見た目が違う`).toBe(3);
+        // 像は敵として数えられてはいけない（`dataset.enemyId` を持たない）
+        expect(el.enemyId, `t${x.t} の像 ${el.id} が敵の目印を持っている`).toBe(null);
+      }
+      // ⑤ 石を撃つのは本物だけ（投擲物の持ち主に像の id が出ない）
+      const mgIds = new Set(x.mirages.map(mg => mg.id));
+      for (const owner of x.projOwners) {
+        expect(mgIds.has(owner), `t${x.t} の投擲物の持ち主 ${owner} が像＝像が石を撃っている`)
+          .toBe(false);
+      }
+    }
+    // ⑥ 像は**歩いて寄って来る**（止まっている置き物なら一目で見分けられる＝機構が死ぬ）
+    const nearest = (x) => Math.min(...x.mirages.map(mg => Math.hypot(mg.x - x.px, mg.y - x.py)));
+    const start = nearest(live[0]);
+    expect(Math.min(...live.map(nearest)), `像がプレイヤーへ寄っていない（最初 ${start.toFixed(2)}`
+      + ' セルから縮まらない）＝「動かないのが像」で一目で分かる').toBeLessThan(start - 1);
+    // 歩いた総距離＝像ごとに 0 でない（全部が同じ場所に立ち続けていない）
+    for (const mg of live[0].mirages) {
+      const last = live[live.length - 1].mirages.find(o => o.id === mg.id);
+      if (!last) continue;
+      expect(Math.hypot(last.x - mg.x, last.y - mg.y), `像 ${mg.id} が1歩も動いていない`)
+        .toBeGreaterThan(0);
+    }
+  });
+
+test('Z-④ 像はすり抜けられる（敵ではない）／剣の一撃で消え、斬った数だけ打点が減る',
+  async ({ page }) => {
+    const r = await huntMirages(page, { kill: 1 });
+    expect(r.error).toBeUndefined();
+    expect(r.count0, '像が湧いていない').toBeGreaterThanOrEqual(2);
+
+    // ① **像のセルへ乗れた**＝プレイヤーの通行判定は像を見ない（⛔(iii)＝`passable.js` に
+    //    2つ目の例外を作らずに済んだことの実測＝像を `getEnemies()` に入れていない証拠）
+    expect(r.onCells.length, '像のセルへ一度も乗れなかった＝すり抜けられない'
+      + '（＝像が通行判定に見えている＝敵として実装されている）').toBeGreaterThanOrEqual(1);
+    // ② 剣の一撃で1体だけ消える（HP を持たない置き物＝ダメージ計算も無敵窓も通らない）
+    expect(r.kills.length).toBe(1);
+    expect(r.kills[0].after, `剣を振っても像が減っていない（${r.kills[0].before} → `
+      + `${r.kills[0].after}）＝剣の当たり判定が像を見ていない`).toBe(r.kills[0].before - 1);
+    expect(r.kills[0].tones, '像を斬った tick に mirageFade が鳴っていない')
+      .toEqual(expect.arrayContaining(MG_FADE_HZ));
+    // ③ 斬った数が数えられている＝「像を消す作業が打点を削る」の観測窓
+    expect(r.slain, '斬った像の数が数えられていない（mgSlain）').toBe(1);
+    expect(r.mirages, '斬った後の像の数が合わない').toBe(r.count0 - 1);
+    // ④ 斬っても本物は無傷（＝剣が像に吸われても本体の HP は動かない・その逆も無い）
+    expect(r.hits, '像を斬っただけで収束が当たったことになっている').toBe(0);
+  });
+
+test('Z-⑤ 収束の予告＝本体は錨（1歩も動かず攻撃も出ない）／像は本体へ吸い寄せられ、本物だけ光る',
+  async ({ page }) => {
+    const cfg = ENEMY_META[Z].phases[0].mirage;
+    // 本体は隅に駐めて（像を追う運を外す）＝寿命はそのまま＝40 tick 後に収束が始まる
+    const r = await trackZarnel(page, { ticks: 60, drop: Z_P2_DMG, park: Z_PARK });
+    const s = r.samples;
+    expect(r.error).toBeUndefined();
+    const warn = s.filter(x => x.phase === 'warn');
+    expect(warn.length, `60 tick で収束の予告が一度も来ない（mirageMs ${cfg.mirageMs}ms）`)
+      .toBeGreaterThanOrEqual(1);
+
+    // ① 予告の長さ＝`convergeWarnMs`（＝絵に渡す長さと同じ1つの数）
+    const begin = warn[0];
+    expect(begin.span, `予告が convergeWarnMs（${cfg.convergeWarnMs}ms）でない`)
+      .toBe(cfg.convergeWarnMs);
+    expect(begin.newTones, '収束が始まった tick に mirageConverge が鳴っていない')
+      .toEqual(expect.arrayContaining(MG_CONVERGE_HZ));
+    const sameWave = warn.filter(x => x.converges === begin.converges);
+    expect(sameWave.length, `予告が ${cfg.convergeWarnMs}ms 続いていない`)
+      .toBe(nZTicks(cfg.convergeWarnMs));
+
+    // ② 錨＝予告のあいだ本体は1歩も動かず、攻撃の時計も1つも進まない
+    for (const x of sameWave) {
+      expect(`${x.y},${x.x}`, `t${x.t}（予告中）に本体が動いた＝錨が効いていない`)
+        .toBe(`${sameWave[0].y},${sameWave[0].x}`);
+    }
+    for (let i = 1; i < sameWave.length; i++) {
+      expect(sameWave[i].attackTimes, `t${sameWave[i].t}（予告中）に攻撃が出た＝殴り返す窓が窓でない`)
+        .toBe(sameWave[0].attackTimes);
+    }
+    // ③ 像は本体へ**単調に**吸い寄せられる（＝収束が絵で見える／どこへ集まるかが読める）
+    const dists = sameWave.map(x => x.mirages.map(mg => Math.hypot(mg.x - x.x, mg.y - x.y)));
+    expect(dists[0].length, '予告中に像が居ない＝測れていない').toBeGreaterThanOrEqual(1);
+    for (let i = 1; i < dists.length; i++) {
+      for (let k = 0; k < dists[i].length; k++) {
+        expect(dists[i][k], `t${sameWave[i].t} の像が本体から遠ざかった＝収束していない`)
+          .toBeLessThanOrEqual(dists[i - 1][k] + 1e-9);
+      }
+    }
+    expect(Math.max(...dists[dists.length - 1]), '予告の終わりに像が本体へ寄り切っていない')
+      .toBeLessThan(Math.max(...dists[0]));
+    // ④ **本物だけが光る**＝予告のあいだに限りクラスが付き、長さは JS が渡す（絵に閾値を持たせない）
+    for (const x of s) {
+      expect(x.bodyCls, `t${x.t}（相 ${x.phase}）の輪郭の光りがずれている`).toBe(x.phase === 'warn');
+    }
+    expect(begin.spanVar, '輪郭の光りに渡す長さが convergeWarnMs でない')
+      .toBe(`${cfg.convergeWarnMs}ms`);
+  });
+
+test('Z-⑥ 床に描いた危険域＝当たり判定の集合そのもの（進みは 0→1・落ちた瞬間に消えて絵が出る）',
+  async ({ page }) => {
+    const cfg = ENEMY_META[Z].phases[0].mirage;
+    const r = await trackZarnel(page, { ticks: 60, drop: Z_P2_DMG, park: Z_PARK });
+    const s = r.samples;
+    const warn = s.filter(x => x.phase === 'warn');
+    expect(warn.length, '予告の tick が無い＝測れていない').toBeGreaterThanOrEqual(1);
+
+    for (const x of warn) {
+      // ① 床の div の集合は判定の集合と**同一**（順序を除いて一致）
+      expect([...x.zoneEls.map(e => e.key)].sort(), `t${x.t} の床の危険域が判定の集合と違う`)
+        .toEqual([...x.cells].sort());
+      expect(x.cells.length, `t${x.t} の危険域が0枚＝告知の無い打点`).toBeGreaterThan(0);
+      // ② 中心は**収束を始めた瞬間の本体のタイル**（以後追わない）／半径どおり
+      const [cr, cc] = x.center.split(',').map(Number);
+      for (const key of x.cells) {
+        const [rr, cc2] = key.split(',').map(Number);
+        expect(inEdgeRadius(cr, cc, rr, cc2, cfg.convergeRadius),
+          `t${x.t} のセル ${key} が中心 ${x.center} から半径 ${cfg.convergeRadius} の外`)
+          .toBe(true);
+      }
+      // ③ 進みは 0〜1（1 になる tick は落ちる tick＝そこでは消えている）
+      for (const e of x.zoneEls) {
+        expect(e.progress, `t${x.t} のセル ${e.key} の進み ${e.progress} が 0〜1 の外`)
+          .toBeGreaterThanOrEqual(0);
+        expect(e.progress).toBeLessThan(1);
+      }
+    }
+    // ④ 同じ波のあいだ中心も集合も動かない（＝走っている先へ付いて来ない・告知が嘘にならない）
+    const wave = warn.filter(x => x.converges === warn[0].converges);
+    expect(new Set(wave.map(x => x.center)).size, '予告中に危険域の中心が動いた＝追尾する円').toBe(1);
+    expect(new Set(wave.map(x => x.cells.join('|'))).size, '予告中に集合が変わった＝告知が嘘になる')
+      .toBe(1);
+    // ⑤ 進みは単調に増える（＝残り時間そのもの＝速さを絵に持たせていない）
+    for (let i = 1; i < wave.length; i++) {
+      const a = wave[i - 1].zoneEls[0], b = wave[i].zoneEls[0];
+      if (!a || !b) continue;
+      expect(b.progress, `t${wave[i].t} の進みが前の tick より小さい＝時計が戻っている`)
+        .toBeGreaterThan(a.progress);
+    }
+    // ⑥ 落ちた tick＝床の危険域が消え、落ちた絵（`.enemy-mirage-burst`）が枚数ぶん出る
+    const idx = s.findIndex((x, i) => i > 0 && s[i - 1].phase === 'warn' && x.phase !== 'warn');
+    expect(idx, '収束が一度も解決していない').toBeGreaterThan(0);
+    expect(s[idx].zoneEls, '落ちた tick に床の危険域が残っている＝次の波と混ざる').toEqual([]);
+    expect(s[idx].burstFx - s[idx - 1].burstFx,
+      '落ちた tick に絵が1枚も出ていない＝盾を無視する打点が無告知で終わる')
+      .toBe(s[idx - 1].cells.length);
+  });
+
+test('Z-⑦ 収束は盾を無視して当たる／打点は生き残った像の数ぶん（剣・石は黙らせて測る）',
+  async ({ page }) => {
+    const m = ENEMY_META[Z];
+    const cfg = m.phases[0].mirage;
+    // 剣（1.5）と石（7.0）は cooldown を巨大化して黙らせる＝**収束だけの被弾**を測る。
+    // 本体は像が湧いた位置で止め（`stop`）、プレイヤーは本体の隣まで歩いて盾を向け続ける
+    // ＝「盾を上げて待つ」が抜け道にならないことがこの機構の存在理由（§7-16）。
+    const NEUTER = { attacks: m.attacks.map(a => ({ ...a, cooldown: 999999 })) };
+    const r = await trackZarnel(page, {
+      ticks: 60, drop: Z_P2_DMG, debugOff: true, stop: true, chaseBody: true, face: true,
+      patch: NEUTER,
+    });
+    const s = r.samples;
+    expect(r.error).toBeUndefined();
+    expect(s[0].shieldTier, '盾を持っていない＝「盾で防げない」を測れていない')
+      .toBeGreaterThanOrEqual(0);
+
+    const idx = s.findIndex((x, i) => i > 0 && x.hits > s[i - 1].hits);
+    expect(idx, '本体の隣で盾を向けて立ち続けても収束が一度も当たらない'
+      + '＝盾を上げて待つ抜け道が残っている').toBeGreaterThan(0);
+    const hit = s[idx], before = s[idx - 1];
+    // ① 当たった tick の足元は**本当に危険域の中**だった（描いていないセルでは当たらない）
+    expect(before.cells, `t${hit.t} で足元 ${before.ptile} が危険域の外なのに収束が当たった`)
+      .toContain(before.ptile);
+    // ② 盾は正面を向けていた（＝それでも通る＝盾を無視する打点）
+    expect(before.pdir, '盾の向きが本体側でない＝「盾を向けていても通る」を測れていない')
+      .toBeTruthy();
+    // ③ 打点＝`convergeAtkPerMirage × 生き残った像の数`（`atk` が上限）− 防具
+    const survivors = before.mirages.length;
+    expect(survivors, '生き残った像が0体＝打点の式を測れていない').toBeGreaterThanOrEqual(1);
+    const raw = Math.min(cfg.convergeAtkPerMirage * survivors, m.atk);
+    expect(before.php - hit.php, `失った HP が「像 ${survivors} 体 × `
+      + `${cfg.convergeAtkPerMirage}（上限 ${m.atk}）− 防具 ${before.pdef}」と違う`
+      + '＝黙らせたはずの剣／石が通っているか、打点の式が像の数を見ていない')
+      .toBe(Math.max(1, raw - before.pdef));
+    // ④ 音＝当たった tick に mirageCurse
+    expect(hit.newTones, `t${hit.t}（収束が当たった tick）に mirageCurse が鳴っていない`)
+      .toEqual(expect.arrayContaining(MG_CURSE_HZ));
+    // ⑤ 落ちた後は波が畳まれ、次の波は `respawnMs` 後（＝立ち続ければ何度でも来る）
+    expect(hit.phase, '収束が落ちた tick に相が残っている＝波が畳まれていない').toBe(null);
+    expect(hit.mirages.length, '収束が落ちたのに像が残っている').toBe(0);
+    expect(hit.nextAt - hit.now, `次の波までが respawnMs（${cfg.respawnMs}ms）でない`)
+      .toBe(cfg.respawnMs);
+  });
+
+test('Z-⑧ 像を全部斬れば波は打点0で畳まれる＝斬る作業が被弾を消す（次の波は respawnMs 後）',
+  async ({ page }) => {
+    const cfg = ENEMY_META[Z].phases[0].mirage;
+    const r = await huntMirages(page, { kill: 'all' });
+    expect(r.error).toBeUndefined();
+    expect(r.count0, '像が湧いていない').toBe(cfg.count);
+
+    // ① 全部斬れた＝像は1体も残っていない（数の真実は `getMirages()` だけ）
+    expect(r.mirages, '斬り切ったのに像が残っている').toBe(0);
+    expect(r.slain, `斬った像の数が ${cfg.count} でない`).toBe(cfg.count);
+    // ② 波は畳まれ、**収束は一度も落ちていない**＝斬った作業がそのまま被弾を消した
+    expect(r.phase, '像を全部斬っても相が残っている＝幽霊の波が続く').toBe(null);
+    expect(r.hits, '像を全部斬ったのに収束が当たっている＝斬る作業が報われない').toBe(0);
+    // ③ 次の波は `respawnMs` 後（＝斬り切った直後に湧き直さない）
+    expect(r.fold, '波が畳まれた tick を捕まえられていない').toBeTruthy();
+    expect(r.fold.gap, `次の波までが respawnMs（${cfg.respawnMs}ms）でない`).toBe(cfg.respawnMs);
+    // ④ 最後の1体を斬った tick の音＝mirageFade（＝無害に解けた合図）
+    expect(r.kills[r.kills.length - 1].tones, '最後の像を斬った tick に mirageFade が鳴っていない')
+      .toEqual(expect.arrayContaining(MG_FADE_HZ));
+  });
+
+test('Z-⑧b **予告のあいだ**に斬り切っても無害に解ける＝盾を無視する打点が落ちる直前まで答えがある',
+  async ({ page }) => {
+    const m = ENEMY_META[Z];
+    const cfg = m.phases[0].mirage;
+    // ⚠️ 像を1体だけにする＝**予告は 720ms（6 tick）しかない**∴剣のクールダウン 300ms を
+    //    挟んで複数体を斬り切るのは tick の並びに依存する（歯の無い flaky になる）。
+    //    この本が測る分岐は「予告中に**最後の1体**が消えたら波が畳まれる」であって数ではない
+    //    ∴`count` を 1 に落として分岐だけを裸にする（数の側は Z-⑧ が測っている）。
+    const patch = {
+      phases: m.phases.map(p => (p.mirage
+        ? { ...p, mirage: { ...p.mirage, count: 1 } } : { ...p })),
+    };
+    const r = await huntMirages(page, { kill: 'all', patch, forceWarn: true });
+    expect(r.error).toBeUndefined();
+    expect(r.count0, '像が1体になっていない（patch が効いていない）').toBe(1);
+
+    // ① 収束の予告が立っていた（＝斬ったのは「もう落ちる」状態の波）
+    expect(r.warnPhase, '予告が立っていない＝この本が測りたい分岐に入っていない').toBe('warn');
+    expect(r.converges, '収束が始まった数が1でない').toBe(1);
+    // ② 斬った＝波は畳まれ、**結果の判定は一度も走らなかった**（当たりも空振りも0）
+    expect(r.mirages, '予告中に斬っても像が残っている').toBe(0);
+    expect(r.slain, '斬った像が数えられていない').toBe(1);
+    expect(r.phase, '予告のまま止まっている＝落ちない打点が居座る').toBe(null);
+    expect(r.hits, '予告中に斬り切ったのに盾を無視する打点が入った').toBe(0);
+    expect(r.whiffs, '空振りとして解決された＝収束が落ちてしまっている'
+      + '（＝「落ちる直前に無害化する」が成立していない）').toBe(0);
+    // ③ 次の波は `respawnMs` 後（＝予告を潰した直後に湧き直さない）
+    expect(r.fold, '波が畳まれた tick を捕まえられていない').toBeTruthy();
+    expect(r.fold.gap, `次の波までが respawnMs（${cfg.respawnMs}ms）でない`).toBe(cfg.respawnMs);
+    // ④ 床の危険域も消えている（＝畳んだのに告知だけ残らない）
+    const zones = await page.evaluate(id =>
+      document.querySelectorAll(`div[id^="mirage-${id}-"]`).length, r.id);
+    expect(zones, '波を畳んだのに床の危険域が残っている').toBe(0);
+  });
+
+test('Z-⑨ 相3（33% 以下）＝像が4体・収束までが短く円が広い／予告は縮まない・打点は atk を超えない',
+  async ({ page }) => {
+    const m = ENEMY_META[Z];
+    const c2 = m.phases[0].mirage, c3 = m.phases[1].mirage;
+    const r = await trackZarnel(page, { ticks: 60, drop: Z_P3_DMG, park: Z_PARK });
+    const s = r.samples;
+    expect(r.error).toBeUndefined();
+
+    // ① 設定が相3 のものへ差し替わっている（`_mirage`＝エンティティ側の1つの入口）
+    expect(s[s.length - 1].cfg, '相3 の設定が差し替わっていない').toMatchObject(c3);
+    // ⚠️ 速さは**駐める前の tick**（t=1＝相の差し替えが起きた tick）で測る＝以後は
+    //    `park` が speed 0 を差し込む（駐めた後の値を見ると常に 0 で無条件に落ちる）。
+    expect(s[0].speed, '相3 の速さが meta.speed × 1.6 でない')
+      .toBeCloseTo(m.speed * m.phases[1].speedMultiplier, 6);
+    // ② 像は4体（相2 の2体より多い）＝湧きの制約は同じまま
+    const first = s.find(x => x.mirages.length > 0);
+    expect(first, '相3 で像が1体も湧かない').toBeTruthy();
+    expect(first.mirages.length, `相3 の像が ${c3.count} 体でない`).toBe(c3.count);
+    expect(first.mirages.length, '相3 の像が相2 より増えていない').toBeGreaterThan(c2.count);
+    // ③ 収束までが短い（`mirageMs` 3600＝30 tick）
+    expect(first.span, `相3 の像の寿命が ${c3.mirageMs}ms でない`).toBe(c3.mirageMs);
+    // ④ 予告は**縮まない**（§7-16 の据え置き）／円は広い（半径 2.0）
+    const warn = s.filter(x => x.phase === 'warn');
+    expect(warn.length, '相3 で収束の予告が来ない').toBeGreaterThanOrEqual(1);
+    expect(warn[0].span, `相3 の予告が ${c2.convergeWarnMs}ms から縮んだ`).toBe(c2.convergeWarnMs);
+    const [cr, cc] = warn[0].center.split(',').map(Number);
+    for (const key of warn[0].cells) {
+      const [rr, cc2] = key.split(',').map(Number);
+      expect(inEdgeRadius(cr, cc, rr, cc2, c3.convergeRadius),
+        `相3 のセル ${key} が中心 ${warn[0].center} から半径 ${c3.convergeRadius} の外`).toBe(true);
+    }
+    // 中央 (4,5) に駐めた＝壁で1枚も欠けない∴枚数は端距離から決まる数と**一致**する。
+    expect(warn[0].center, `本体が駐めた中央 (${Z_PARK.row},${Z_PARK.col}) に居ない`)
+      .toBe(`${Z_PARK.row},${Z_PARK.col}`);
+    expect(warn[0].cells.length, `相3 の危険域が ${edgeArea(c3.convergeRadius)} 枚でない`)
+      .toBe(edgeArea(c3.convergeRadius));
+    expect(warn[0].cells.length, `相3 の円が相2 の円（${edgeArea(c2.convergeRadius)} 枚）より広くない`
+      + '＝端距離を上げてもタイルへの量子化で消えている')
+      .toBeGreaterThan(edgeArea(c2.convergeRadius));
+    // ⑤ 打点は `atk` を超えない（生き残り4体 × 2 ＝ 8 ＝ atk＝上限にちょうど触れる）
+    expect(Math.min(c3.convergeAtkPerMirage * c3.count, m.atk), '相3 の打点が atk を超えている')
+      .toBe(m.atk);
+  });
+
+test('Z-⑩ 幻影（mirage）の使い手は Z だけ・Z は他の11体の移動機構を借りていない', () => {
+  // ⚠️ 数えるのは**相の中まで**（`mirage` は `phases[].mirage` だけに在る＝素のメタを見る
+  //    導出だと「使い手0」に見える＝[[blade-enemy-tables-derive-from-meta]] と同じ穴）。
+  const zm = mechanismsDeepOf(ENEMY_META[Z]);
+  expect(zm.has('mirage'), 'Z が固有機構（幻影＝mirage）を持っていない（相の中まで数えた）')
+    .toBe(true);
+  expect(mechanismsOf(ENEMY_META[Z]).has('mirage'),
+    '素のメタに mirage がある＝相1 から像が湧く（設計と違う）').toBe(false);
+  const users = Object.entries(ENEMY_META)
+    .filter(([, m]) => mechanismsDeepOf(m).has('mirage')).map(([k]) => k);
+  expect(users, '幻影を持つ敵が Z 以外にも居る（設計が重複した）').toEqual([Z]);
+  // 借り物でない番人＝ザコの素の機構（`blink`／`split`）を横流ししていない（2026-09-03 の裏取り）
+  for (const k of ['combat', 'laneStalk', 'burrowAmbush', 'hide', 'dash', 'coil', 'gaze',
+    'soar', 'momentum', 'leap', 'tongue', 'zigzag', 'surge', 'glaciate', 'lockstep',
+    'blink', 'split', 'blockFacing', 'shell', 'leech']) {
+    expect(ENEMY_META[Z][k], `${k} を持っている＝他の11体／ザコの型を借りている`).toBeUndefined();
+    for (const p of ENEMY_META[Z].phases ?? []) {
+      expect(p[k], `相の中に ${k} が生えている＝他のボスの後半と同じ型`).toBeUndefined();
+    }
+  }
+});
+
+test('Z-⑪ 幾何（GUIDE §4-3）＝闘技場（床 82）と本番 dark_tower 0,0（床 78・空箱）の両方で'
+  + '収束の円が部屋を覆わない', () => {
+  const MAP = JSON.parse(readFileSync(
+    fileURLToPath(new URL('../work/blade-of-lumia.json', import.meta.url)), 'utf8'));
+  const c3 = ENEMY_META[Z].phases[1].mirage;      // 最大の円（半径 2.0）で測る
+  const area = edgeArea(c3.convergeRadius);
+  const rooms = [
+    { label: '闘技場 test_mechanics 33,1', layer: TEST_LAYER, key: stageKey('bal_zarnel'),
+      floors: 82, at: [Z_ROW, Z_COL] },
+    { label: '本番 dark_tower 0,0（玉座の間）', layer: 'dark_tower', key: '0,0',
+      floors: 78, at: [1, 5] },
+  ];
+  for (const room of rooms) {
+    const sd = MAP.layers[room.layer]?.stages[room.key];
+    expect(sd, `${room.label} が無い`).toBeTruthy();
+    const rows = sd.tiles.map(r => (Array.isArray(r) ? r.join('') : r));
+    expect(rows.length, `${room.label} の行数が 10 でない`).toBe(10);
+    expect(sd.cols, `${room.label} の列数が 12 でない`).toBe(12);
+    // ① 水も塗り分けも無い＝幻影は地形を見ない（在ると測定が地形のせいになる）
+    expect(Object.keys(sd.bgTiles ?? {}).length, `${room.label} に bgTiles がある`).toBe(0);
+    // ② Z が1体だけ、実測どおりの位置に居る
+    const found = [];
+    rows.forEach((row, r) => [...row].forEach((ch, cc) => { if (ch === Z) found.push([r, cc]); }));
+    expect(found.length, `${room.label} に Z が1体ではない`).toBe(1);
+    expect(found[0], `${room.label} の Z の位置が出荷データと違う`).toEqual(room.at);
+    // ③ 床の枚数（＝§7-15 の引き算と `.scratch` の総当たりが使う数の裏取り）
+    const floors = rows.reduce((n, row) => n + [...row].filter(ch => ch === '.').length, 0);
+    expect(floors, `${room.label} の床が ${room.floors} 枚でない＝部屋が作り変えられた`
+      + '（無傷セル0の総当たりの前提が崩れる）').toBe(room.floors);
+    // ④ 円は部屋を覆わない＝「本体から離れる」答えが選べる（§7-15）
+    expect(floors, `${room.label} の床 ${floors} 枚が円 ${area} 枚の 3 倍に届かない＝逃げ場が無い`)
+      .toBeGreaterThanOrEqual(area * 3);
+    // ⑤ 湧きの逃げ場＝像 4 体＋本体 1 体が `spawnKeepMin` の外に立てる床が在る
+    expect(floors - area, `${room.label} は円の外の床が ${floors - area} 枚しかない`)
+      .toBeGreaterThan(c3.count + 1);
+  }
+});

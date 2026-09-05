@@ -769,6 +769,52 @@ export function playSound(kind) {
 		tone(ctx, now + 0.08, 220, 0.14, 'sine',     0.026);
 		tone(ctx, now + 0.18, 147, 0.20, 'sine',     0.020);
 	}
+	// ── 2026-09-04（12体目 Z ラスボス）: 幻影（mirage）の4音 ────────────────────
+	//   mirageSplit    … 像が湧いた瞬間（本体も散る＝「増えた」の合図）
+	//   mirageConverge … 像が本体へ集まり始めた瞬間（convergeWarnMs 720ms の予告）
+	//   mirageCurse    … 収束が落ちた＝**盾を無視する打点**が入った tick
+	//   mirageFade     … 像が全部消えた／収束を外した＝無害に解けた（＝斬った作業が報われた音）
+	//
+	// ⚠️ 4音すべてに**離調した対（ほぼ同じ2つの周波数＝うなり）**を持たせる＝この機構だけの
+	//    指紋（他の音は1音ずつ独立した音程しか持たない）＝耳だけで「幻影の系列」と分かる。
+	//    他の予告との形の切り分け（GUIDE §6-1/§7-6）＝decreeCast（低音の鐘が等間隔で3つ）・
+	//    iceFreeze（間隔が詰まる高音）・seaSurge（低音から中音へ滑らかに上がる）・
+	//    tongueCast（音程を動かさず音量が膨らむ）・gazeMark（静止した和音）。
+	//
+	// 湧き「ふわん…」＝1つの音が2つに割れて広がる（離調が開いていく＝分身の形）。
+	if (kind === 'mirageSplit') {
+		tone(ctx, now,        523, 0.14, 'sine',     0.034);
+		tone(ctx, now,        531, 0.14, 'sine',     0.030);   // +26 cent＝うなり（1音が2つに割れる）
+		tone(ctx, now + 0.10, 494, 0.16, 'triangle', 0.026);
+		tone(ctx, now + 0.10, 508, 0.16, 'triangle', 0.024);   // 離調がさらに開く＝数が増えた
+	}
+	// 収束の予告「シュゥゥ…」（convergeWarnMs 720ms に収める＝床の危険域の絵と同じ長さ）。
+	// **上がる線と下がる線が中央で出会う**＝「集まってくる」を音程の向きで見せる
+	// （他のどの予告も2つの向きを同時に持たない）。
+	if (kind === 'mirageConverge') {
+		tone(ctx, now,        392, 0.24, 'triangle', 0.026);   // 下がる線
+		tone(ctx, now,        698, 0.24, 'triangle', 0.024);   // 上がる線（逆向き）
+		tone(ctx, now + 0.26, 440, 0.22, 'triangle', 0.028);
+		tone(ctx, now + 0.26, 622, 0.22, 'triangle', 0.026);
+		tone(ctx, now + 0.50, 523, 0.20, 'sine',     0.032);
+		tone(ctx, now + 0.50, 538, 0.20, 'sine',     0.030);   // 出会って1つのうなりになる＝落ちる直前
+	}
+	// 収束が落ちた（＝結果の音・当たり判定と同じ tick）。低音の一撃＋**半音のうなり**＝
+	// 「盾では消えない」を耳で知らせる（decreeHit は増4度の濁り・こちらは半音の軋み＝別の形）。
+	if (kind === 'mirageCurse') {
+		tone(ctx, now,        73,  0.24, 'sawtooth', 0.072);
+		tone(ctx, now + 0.02, 138, 0.18, 'square',   0.032);
+		tone(ctx, now + 0.02, 146, 0.18, 'square',   0.030);   // 半音＝軋むうなり
+		tone(ctx, now + 0.08, 277, 0.20, 'triangle', 0.026);
+	}
+	// 解けた（＝像を斬り切った／収束を外した）。**打点を持たず離調が閉じて消える**＝
+	// decreeMiss（単音が下がる）と混ざらない＝「幻が畳まれた」の形。
+	if (kind === 'mirageFade') {
+		tone(ctx, now,        659, 0.10, 'sine', 0.026);
+		tone(ctx, now,        672, 0.10, 'sine', 0.024);   // 開いたうなりから始まる
+		tone(ctx, now + 0.10, 440, 0.16, 'sine', 0.022);
+		tone(ctx, now + 0.10, 444, 0.16, 'sine', 0.020);   // 離調が閉じる＝1つに戻った
+	}
 	// 扉ロック（ボス部屋）
 	if (kind === 'doorLock') {
 		tone(ctx, now,        180, 0.08, 'sawtooth', 0.08);
