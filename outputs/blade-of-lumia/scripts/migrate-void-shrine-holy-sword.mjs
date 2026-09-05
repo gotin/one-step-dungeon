@@ -59,7 +59,7 @@
  *   ⑥ 敵：脅威度 39.0（寄道最重 `secret_grotto 2,0`=33.5 より重く本編最重 `dark_tower 1,2`=50
  *      より軽い）・外周と着地セル（とその隣接）に敵を置かない・向き別スプライトに向きがある・
  *      床/敵 ≥ 10・`EXTRA_ENEMY_ROOMS` に宣言済み。
- *   ⑦ 進行：`UNLOCKED_AT.void_shrine`（全道具）が宣言済み。
+ *   ⑦ 進行：`shared/progression.js` の ORDER に void_shrine が載っており、その位置で全道具を持つ。
  *   ⑧ 入口の対：field `8,1`(6,9) ↔ `0,0`(1,1)／`0,0`(8,6) ↔ `1,0`(8,5) の id が対で衝突なし。
  *   ⑨ 修理①②が実データに入っている（`'^'` が1枚以上ある・塔の扉が `'>'`）。
  *
@@ -78,7 +78,7 @@ import { SWORD_TIERS, BASE_ATK } from '../shared/items.js';
 import { isHardBlocked } from './lib/connectivity.mjs';
 import { ROWS, COLS, makeSolver } from './lib/blade-solver.mjs';
 import { EXTRA_ENEMY_ROOMS, stageThreat } from './lib/enemy-placement.mjs';
-import { UNLOCKED_AT } from './lib/progression.mjs';
+import { ORDER, toolsUsableIn } from '../shared/progression.js';
 
 const __dir = dirname(fileURLToPath(import.meta.url));
 const MAP_PATH = join(__dir, '../work/blade-of-lumia.json');
@@ -590,10 +590,14 @@ function buildStage(room, tiles) {
 }
 
 // ── ⑦ 進行の宣言 ───────────────────────────────────────────────────────────
-const unlocked = UNLOCKED_AT[LAYER];
-if (!unlocked) throw new Error(`⑦ UNLOCKED_AT.${LAYER} が無い（progression.mjs に宣言する）`);
+// 「この地点で何を持っているか」は `shared/progression.js` の ORDER の位置から導出する
+// （2026-09-05・0g で手書きの `UNLOCKED_AT` を廃止）∴宣言の実体は ORDER の登録。
+if (!ORDER.some((cp) => cp.layer === LAYER)) {
+  throw new Error(`⑦ ${LAYER} が shared/progression.js の ORDER に無い（進行上の位置を宣言する）`);
+}
+const unlocked = toolsUsableIn(d)[LAYER];
 for (const tool of ['boomerang', 'bow', 'candle', 'ladder', 'bomb', 'flute'])
-  if (!unlocked.has(tool)) throw new Error(`⑦ UNLOCKED_AT.${LAYER} に ${tool} が無い（羽衣は全道具の後）`);
+  if (!unlocked.has(tool)) throw new Error(`⑦ ${LAYER} の地点で ${tool} を持っていない（羽衣は全道具の後）`);
 
 // ── 部屋を組み立てて検証 ────────────────────────────────────────────────────
 const built = {};

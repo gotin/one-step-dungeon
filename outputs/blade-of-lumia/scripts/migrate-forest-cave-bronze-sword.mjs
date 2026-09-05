@@ -35,7 +35,8 @@
  *      （火元が無い＝ブーメランの火運びも成立しない）。宝箱は 'B' かつ torchesLit 封印。
  *   ⑥ 敵：脅威度 20.0（D6 看板部屋 22.0 未満）・着地セルと外周に敵を置かない・
  *      向き別スプライトの敵に向きがある・`EXTRA_ENEMY_ROOMS` に部屋が宣言済み。
- *   ⑦ 進行：`UNLOCKED_AT.forest_cave` が宣言済み（爆弾を持つ地点＝D6 以降・はしご/笛は不要）。
+ *   ⑦ 進行：`shared/progression.js` の ORDER に forest_cave が載っており、その位置で
+ *      爆弾を持っている（＝D6 以降・はしご/笛は不要）。
  *   ⑧ field 側の入口と id が対になっている（`field_forest_cave` ↔ `forest_cave`）。
  *
  * 使い方: node scripts/migrate-forest-cave-bronze-sword.mjs [--dry]
@@ -50,7 +51,7 @@ import { SWORD_TIERS } from '../shared/items.js';
 import { isHardBlocked } from './lib/connectivity.mjs';
 import { ROWS, COLS, makeSolver } from './lib/blade-solver.mjs';
 import { EXTRA_ENEMY_ROOMS, THREAT_OF, stageThreat } from './lib/enemy-placement.mjs';
-import { UNLOCKED_AT } from './lib/progression.mjs';
+import { ORDER, toolsUsableIn } from '../shared/progression.js';
 
 const __dir = dirname(fileURLToPath(import.meta.url));
 const MAP_PATH = join(__dir, '../work/blade-of-lumia.json');
@@ -274,10 +275,15 @@ for (const [lk, ld] of Object.entries(d.layers)) {
 }
 
 // ⑦ 進行の宣言（爆弾を持つ地点＝D6 以降。はしご・笛は要らない）。
-const unlocked = UNLOCKED_AT[LAYER];
-if (!unlocked) throw new Error(`UNLOCKED_AT.${LAYER} が無い（progression.mjs に宣言する）`);
-if (!unlocked.has('bomb')) throw new Error(`UNLOCKED_AT.${LAYER} に bomb が無い（入口は爆弾で開く）`);
-if (!unlocked.has('candle')) throw new Error(`UNLOCKED_AT.${LAYER} に candle が無い（かがり火の鍵）`);
+// 「この地点で何を持っているか」は `shared/progression.js` の ORDER の位置から導出する
+// （2026-09-05・0g で手書きの `UNLOCKED_AT` を廃止）∴宣言の実体は ORDER にこのレイヤーが
+// 載っていること＝載っていなければ導出表にも出ない。
+if (!ORDER.some((cp) => cp.layer === LAYER)) {
+  throw new Error(`${LAYER} が shared/progression.js の ORDER に無い（進行上の位置を宣言する）`);
+}
+const unlocked = toolsUsableIn(d)[LAYER];
+if (!unlocked.has('bomb')) throw new Error(`${LAYER} の地点で bomb を持っていない（入口は爆弾で開く）`);
+if (!unlocked.has('candle')) throw new Error(`${LAYER} の地点で candle を持っていない（かがり火の鍵）`);
 
 const built = {};
 const report = [];

@@ -35,7 +35,7 @@
 import { readFileSync } from 'fs';
 import { bfsLayer, SOLVABLE_GATES, findEntryRoom, firstWalkable } from './lib/connectivity.mjs';
 import { isEnemyTile } from '../shared/enemies.js';
-import { UNLOCKED_AT } from './lib/progression.mjs';
+import { toolsUsableIn } from '../shared/progression.js';
 
 // BLADE_MAP_PATH で読むマップを差し替えられる（既定は実マップ）。
 // 用途＝「わざと壊したコピー」を食わせて検査そのものが本当に落ちるかを確かめる
@@ -52,10 +52,13 @@ const TRIFORCE_BOSS_TILES = new Set(['A', 'L', 'N', 'J', 'O', 'U', 'G', 'I']);
 // so it belongs here only and must stay out of TRIFORCE_BOSS_TILES.
 const ALL_BOSS_TILES      = new Set(['W', 'V', 'X', 'Z', 'A', 'L', 'N', 'J', 'O', 'U', 'G', 'I', '{']);
 
-// Item unlock order: dungeonLayer → items available when the player enters
-// (i.e. items won from the PREVIOUS dungeon and earlier)
-// ⚠️ 2026-08-19（5.5m）に `scripts/lib/progression.mjs` へ移した＝敵配置の「弱点道具が
-//    入手済みか」の判定と同じ表を使うため（二重管理をやめた）。ここは import するだけ。
+// dungeonLayer → そのレイヤーの中で使える道具（入場時の所持 ∪ そのレイヤー自身の報酬）。
+// ⚠️ 2026-08-19（5.5m）に `scripts/lib/progression.mjs`（手書き）へ移し、2026-09-05（0g）で
+//    手書きを消して `shared/progression.js` の**実マップからの導出**に置き換えた。
+//    ここで引くのは `ITEM_LOCKED_TILES` の `ladder`（D5 の報酬）と `bomb`（D6 の報酬）だけ＝
+//    どちらも「自分のレイヤーの報酬」を含む緩い上限で正しい（D5 の中で拾ったはしごで D5 の
+//    奥の水を渡る）。部屋の順序は見ない粒度∴これ単体はソフトロックの厳密判定ではない。
+const TOOLS_USABLE_IN = toolsUsableIn(d);
 
 // レイヤーの種別。トライフォース8ダンジョン以外は「ボスがトライフォースを落とす」
 // 「ハートの器がある」「地図とコンパスがある」を要求してはいけない。
@@ -289,7 +292,7 @@ function checkDungeon(layerName) {
   }
 
   // ── 4. Late-item dependency ──────────────────────────────────────────────
-  const unlocked = UNLOCKED_AT[layerName] ?? new Set();
+  const unlocked = TOOLS_USABLE_IN[layerName] ?? new Set();
   for (const [stageKey, stage] of Object.entries(stages)) {
     const stageTiles = tilesOf(stage);
     for (const [tile, { item, label }] of Object.entries(ITEM_LOCKED_TILES)) {

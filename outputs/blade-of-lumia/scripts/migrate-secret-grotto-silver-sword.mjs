@@ -1,12 +1,14 @@
 #!/usr/bin/env node
 /**
  * migrate-secret-grotto-silver-sword.mjs
- *   空中の遺跡（secret_grotto）を拡張し、**銀の剣（swordTier 2）** を置く。
+ *   秘密の洞窟（secret_grotto）を拡張し、**銀の剣（swordTier 2）** を置く。
+ *   ⚠️ 2026-09-05 までこの寄道は無名で、当時の記述は `dungeon_7` の実名「空中の遺跡」を
+ *      借りていた（名前の確定＝`scripts/migrate-secret-grotto-name.mjs`）。
  *
  * 背景（PLAN「剣のtier強化」／キュー8番の一部）:
  *   ライブマップに存在する剣は field 7,14 の floorItems「木の剣（tier0）」1本だけで、
  *   SWORD_TIERS（shared/items.js）の 1〜3 は誰も手に入れられなかった。その tier2＝銀の剣を
- *   「笛でしか入れない終盤の寄道」である secret_grotto に置く（ロア【空中の遺跡】＝笛所持後
+ *   「笛でしか入れない終盤の寄道」である secret_grotto に置く（ロア【秘密の洞窟】＝笛所持後
  *   にしか来られない∴全道具前提のパズルを置ける唯一の場所）。
  *
  * 作るもの（既存 0,0 は宝箱ルピー30の小部屋のまま・東の壁を1マス開けるだけ）:
@@ -407,15 +409,18 @@ for (const [label, fromTiles, fromKey, toTiles, toKey] of boundary) {
   if (f[0] !== t[0]) throw new Error(`${label}: 行が揃っていない（${fromKey} vs ${toKey}）`);
 }
 
-// field 9,9 の石碑（7,8）＝【空中の遺跡】の案内。「→ 東の空島（右の画面）で笛を吹け。」は
+// field 9,9 の石碑（7,8）＝この寄道の案内。「→ 東の空島（右の画面）で笛を吹け。」は
 // 入口が同じ画面の (5,3)（笛 reveal）に移った後も直っていなかった失効記述∴ここで正す。
 // 併せて奥に銀の刃があることを匂わせる（報酬への導線が世界の中に無いと誰も辿り着けない）。
+// ⚠️ 2026-09-05 に寄道の名前を「秘密の洞窟」に確定した（それまで無名で、この石碑が
+//    `dungeon_7` の実名【空中の遺跡】を借りていた）∴本文もそれに合わせてある
+//    （`scripts/migrate-secret-grotto-name.mjs` と同じ5行＝再実行しても名前が巻き戻らない）。
 const tablet = d.layers.field?.stages?.['9,9']?.npcData?.['7,8'];
 if (!tablet) throw new Error('field 9,9 の石碑 (7,8) が無い');
 tablet.lines = [
-  '【空中の遺跡】',
-  '空を漂う謎の古代遺跡。',
-  '笛の音色だけが 雲上への扉を開く。',
+  '【秘密の洞窟】',
+  '岩肌に隠された 古い洞窟。',
+  '笛の音色だけが その入口を開く。',
   '→ この地で笛を吹け。扉は 北西に現れる。',
   '奥には 銀の刃が 眠るという。',
 ];

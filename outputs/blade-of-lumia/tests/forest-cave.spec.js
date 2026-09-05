@@ -22,7 +22,7 @@ import { waitForBoard } from './helpers.js';
 import { SWORD_TIERS, BASE_ATK } from '../shared/items.js';
 import { ENEMY_META } from '../shared/enemies.js';
 import { EXTRA_ENEMY_ROOMS } from '../scripts/lib/enemy-placement.mjs';
-import { UNLOCKED_AT } from '../scripts/lib/progression.mjs';
+import { toolsUsableIn } from '../shared/progression.js';
 
 const __dir = dirname(fileURLToPath(import.meta.url));
 const MAP = JSON.parse(readFileSync(join(__dir, '../work/blade-of-lumia.json'), 'utf8'));
@@ -134,7 +134,8 @@ test.describe('Blade of Lumia – 樹海の岩室（銅の剣）', () => {
     expect(EXTRA_ENEMY_ROOMS.some((e) => e.layer === 'forest_cave' && e.stage === '1,0'),
       'かがり火の岩室が EXTRA_ENEMY_ROOMS に宣言されていない').toBe(true);
     // 進行の宣言＝爆弾とロウソクを持つ地点（D6 以降）。はしご・笛は要らない設計。
-    expect([...UNLOCKED_AT.forest_cave].sort()).toEqual(['bomb', 'boomerang', 'bow', 'candle']);
+    // （2026-09-05・0g で手書き表を廃止＝実マップの報酬配置からの導出で測る）
+    expect([...toolsUsableIn(MAP).forest_cave].sort()).toEqual(['bomb', 'boomerang', 'bow', 'candle']);
   });
 
   test('② field 側の入口は爆弾で岩を割るまで入れない', async ({ page }) => {

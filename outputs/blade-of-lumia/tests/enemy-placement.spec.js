@@ -13,7 +13,8 @@
 //      鍵の関門部屋（56.0 / 102.0 / 225.0＝8-4 リバランス後、W が居る2部屋は 0d-2.8 で低下）の
 //      値を固定した上で、最終関門（225.0）を追い越さない
 //   ④ 弱点持ちの敵は、その弱点道具が入手済みの地点以降にしか居ない
-//      （δ 分裂スライム＝爆弾／η 術士＝弓。表は `scripts/lib/progression.mjs` と共有）
+//      （δ 分裂スライム＝爆弾／η 術士＝弓。表は `shared/progression.js` の
+//       `toolsUsableIn()` ＝実マップの報酬配置から導出する。0g・2026-09-05 に手書きを廃止）
 //   ⑤ 置いた敵は素の床の上に立ち・外周にも出入口の着地セルにも居ない
 //      （敵のセルへプレイヤーは進入できない＝着地セルに敵が居ると入室できない）
 //   ⑥ enemyDirs に幽霊キーが無く、向き別スプライトの敵には初期の向きがある
@@ -33,11 +34,13 @@ import {
   NEW_ENEMY_PLACEMENT, SIGNATURE_LADDER, PINNED_STAGES, WEAKNESS_ITEM,
   THREAT_OF, stageThreat, tilesOf,
 } from '../scripts/lib/enemy-placement.mjs';
-import { UNLOCKED_AT } from '../scripts/lib/progression.mjs';
+import { toolsUsableIn } from '../shared/progression.js';
 
 const GAME = '/blade-of-lumia/game/';
 const MAP_PATH = fileURLToPath(new URL('../work/blade-of-lumia.json', import.meta.url));
 const MAP = JSON.parse(readFileSync(MAP_PATH, 'utf8'));
+// 「そのレイヤーの中で使える道具」＝実マップの報酬配置から導出（2026-09-05・0g）。
+const TOOLS_USABLE_IN = toolsUsableIn(MAP);
 
 const BLOCKING = new Set([TILE.WALL, TILE.WATER, TILE.TREE, TILE.BREAKABLE_WALL, TILE.GATE, TILE.DOOR]);
 const isMob = (ch) => !!ENEMY_META[ch] && !ENEMY_META[ch].isBoss;
@@ -138,7 +141,7 @@ test.describe('Phase 5.5m – 新規敵15種の本編配置', () => {
           const item = WEAKNESS_ITEM[meta.weakness.type];
           expect(item, `'${tile}' の弱点 ${meta.weakness.type} に対応する道具が表に無い`).toBeTruthy();
           // field は地域ごとに到達時期が違う＝空集合扱い∴弱点持ちを置くには地域別の表が必要
-          const unlocked = UNLOCKED_AT[layerName] ?? new Set();
+          const unlocked = TOOLS_USABLE_IN[layerName] ?? new Set();
           if (!unlocked.has(item)) bad.push(`${layerName}/${sk} ${keys.join('・')} '${tile}'（要 ${item}）`);
         }
       }

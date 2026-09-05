@@ -27,13 +27,14 @@ import {
 	NEW_ENEMY_PLACEMENT, SIGNATURE_LADDER, PINNED_STAGES, WEAKNESS_ITEM,
 	THREAT_OF, stageThreat, tilesOf,
 } from './lib/enemy-placement.mjs';
-import { UNLOCKED_AT } from './lib/progression.mjs';
+import { toolsUsableIn } from '../shared/progression.js';
 
 const MAP_PATH = new URL('../work/blade-of-lumia.json', import.meta.url);
 const DRY = process.argv.includes('--dry');
 const ROWS = 10, COLS = 12;
 
-// 「その地点で持っている道具」は `scripts/lib/progression.mjs`（整合性検査と共有）。
+// 「そのレイヤーの中で使える道具」は `shared/progression.js` の `toolsUsableIn(map)`＝
+// 実マップの報酬配置からの導出（2026-09-05・0g で手書きの `UNLOCKED_AT` を消して置き換えた）。
 // ⚠️ field はその表に無い＝地域ごとに到達時期が違う∴空集合として扱う。
 //    フィールドへ弱点持ちを置こうとすると ⑩ で落ちる（地域別の表を作るまで置けない）。
 
@@ -45,6 +46,7 @@ const isEnemy = (ch) => !!ENEMY_META[ch];
 const isMob = (ch) => !!ENEMY_META[ch] && !ENEMY_META[ch].isBoss;
 
 const data = JSON.parse(readFileSync(MAP_PATH, 'utf8'));
+const TOOLS_USABLE_IN = toolsUsableIn(data);
 const results = [];
 
 for (const entry of NEW_ENEMY_PLACEMENT) {
@@ -98,7 +100,7 @@ for (const entry of NEW_ENEMY_PLACEMENT) {
 		if (meta.weakness) {
 			const item = WEAKNESS_ITEM[meta.weakness.type];
 			if (!item) fail(`${id}: '${tile}' の弱点 ${meta.weakness.type} に対応する道具が表に無い`);
-			if (!(UNLOCKED_AT[entry.layer] ?? new Set()).has(item)) {
+			if (!(TOOLS_USABLE_IN[entry.layer] ?? new Set()).has(item)) {
 				fail(`${id}: '${tile}'（${meta.name}）の弱点道具 ${item} がこの地点では未入手`);
 			}
 		}

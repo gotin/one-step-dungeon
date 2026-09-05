@@ -1,7 +1,7 @@
 // ── editor-io.js ── 保存・読み込み・プレビュー ─────────────────
 import { state, cellInfoEl, getCurrentStages, getCurrentStage } from './editor-state.js';
 import { canvas } from './editor-canvas.js';
-import { ORDER, SUB_ITEM_KEYS, presetsFrom } from '../shared/progression.js';
+import { SUB_ITEM_KEYS, presetsFrom } from '../shared/progression.js';
 
 // ── 保存データ構築 ────────────────────────────────────────────
 export function buildSaveData() {
@@ -138,14 +138,14 @@ export function buildPreviewPresetOptions() {
 	if (!sel) return;
 	const keep = sel.value;
 	for (const opt of [...sel.querySelectorAll('option[data-generated]')]) opt.remove();
-	const presets = presetsFrom(state.mapData);
-	for (const cp of ORDER) {
-		const preset = presets.find((p) => p.id === cp.id);
+	// `presetsFrom` は ORDER と同じ順・同じ長さで返す＝ここは返り値をそのまま並べればよい。
+	// ラベルは実マップのレイヤー名から導出済み（0g・2026-09-05＝ORDER は名前を持たない）。
+	for (const preset of presetsFrom(state.mapData)) {
 		for (const v of PROGRESS_VARIANTS) {
-			if (!preset?.[v.key]) continue;    // boss が null の地点＝選択肢を作らない
+			if (!preset[v.key]) continue;      // boss が null の地点＝選択肢を作らない
 			const opt = document.createElement('option');
-			opt.value = `${cp.id}:${v.key}`;
-			opt.textContent = `${cp.label}（${v.label}）`;
+			opt.value = `${preset.id}:${v.key}`;
+			opt.textContent = `${preset.label}（${v.label}）`;
 			opt.dataset.generated = '1';
 			sel.appendChild(opt);
 		}

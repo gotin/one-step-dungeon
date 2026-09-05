@@ -31,7 +31,7 @@ import { ENEMY_META } from '../shared/enemies.js';
 import { countTriforces } from '../shared/triforce.js';
 import { gameLayerEntries } from '../shared/layers.js';
 import { EXTRA_ENEMY_ROOMS, stageThreat } from '../scripts/lib/enemy-placement.mjs';
-import { UNLOCKED_AT } from '../scripts/lib/progression.mjs';
+import { toolsUsableIn } from '../shared/progression.js';
 
 const __dir = dirname(fileURLToPath(import.meta.url));
 const MAP = JSON.parse(readFileSync(join(__dir, '../work/blade-of-lumia.json'), 'utf8'));
@@ -166,8 +166,10 @@ test.describe('Blade of Lumia – 虚空の祠（聖剣）', () => {
     expect(EXTRA_ENEMY_ROOMS.some((e) => e.layer === 'void_shrine' && e.stage === '1,0'),
       '聖剣の間が EXTRA_ENEMY_ROOMS に宣言されていない').toBe(true);
     // 羽衣より後に来る部屋＝全道具所持（弱点判定の基準表）。
+    // （2026-09-05・0g で手書き表を廃止＝実マップの報酬配置からの導出で測る）
+    const usable = toolsUsableIn(MAP).void_shrine;
     for (const item of ['boomerang', 'bow', 'candle', 'ladder', 'bomb', 'flute']) {
-      expect(UNLOCKED_AT.void_shrine?.has(item), `UNLOCKED_AT.void_shrine に ${item} が無い`).toBe(true);
+      expect(usable?.has(item), `void_shrine の地点で ${item} を持っていない`).toBe(true);
     }
 
     // ── mapEnter の対応（id/destId が両側で噛み合う）──────────────

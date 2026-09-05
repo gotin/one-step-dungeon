@@ -1,4 +1,5 @@
-// 空中の遺跡（secret_grotto）＝銀の剣（swordTier 2）の寄道
+// 秘密の洞窟（secret_grotto）＝銀の剣（swordTier 2）の寄道
+// （2026-09-05 に命名。それまで無名で `dungeon_7` の実名「空中の遺跡」を借りていた）
 //
 // 盤面（scripts/migrate-secret-grotto-silver-sword.mjs が生成・自己検証済み）:
 //   0,0 「入口の間」 …… 既存の小部屋（ルピー30）。東 (5,11) を1マス開けた。
@@ -60,7 +61,7 @@ const useTool = (page, ticks = 30) => page.evaluate((n) => {
 
 const tileAt = (stageKey, r, c) => STAGES[stageKey].tiles[r][c];
 
-test.describe('Blade of Lumia – 空中の遺跡（銀の剣）', () => {
+test.describe('Blade of Lumia – 秘密の洞窟（銀の剣）', () => {
 
   test('① データ契約：3部屋・境界が揃う・宝箱は銀の剣・killAll 封印', () => {
     expect(Object.keys(STAGES).sort()).toEqual(['0,0', '1,0', '2,0']);

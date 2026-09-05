@@ -1145,7 +1145,7 @@ test('㉑ bal_sand_scorpion は 10×12・外周は通路以外すべて壁・N �
 const J_ROW = 4, J_COL = 7;          // 2×2 ∴ rows 4-5 / cols 7-8 を占める
 const J_PL_ROW = 4, J_PL_COL = 4;    // 輪が壁に噛まない中央寄り（上の⚠️）
 // D3 のボス直前の想定装備（audit-balance の「D3 水の迷宮 / ボス直前 DEF 1・最大HP 14」＝
-// ハート7・木の剣ティア0・盾なし・防具なし）＋`UNLOCKED_AT.dungeon_3`＝弓とブーメラン持ち
+// ハート7・木の剣ティア0・盾なし・防具なし）＋`toolsUsableIn(map).dungeon_3`＝弓とブーメラン持ち
 // （弱点 arrow ×2 の答えを持っている状態）。
 const D3_PRE = {
   ps_hearts: '7', ps_sword: '0', ps_shield: '0', ps_armor: '0',
@@ -1730,8 +1730,8 @@ test('㉙ bal_sea_serpent は 10×12・外周は通路以外すべて壁・J が
 //    （プレビューは `debugMode: true`＝`takeDamage()` が早期 return する）。
 const O_ROW = 4, O_COL = 7;          // 2×2 ∴ rows 4-5 / cols 7-8 を占める
 const O_PL_ROW = 4, O_PL_COL = 4;    // 測る湧き（上の⚠️）
-// D6 のボス直前の想定装備（audit-balance の「D6 火山 / ボス直前 DEF 1・最大HP 20」＝
-// ハート10・木の剣ティア0・盾なし・布の服ティア0）＋`UNLOCKED_AT.dungeon_6`＝
+// D6 のボス直前の想定装備（audit-balance の「D6 森の聖域 / ボス直前 DEF 1・最大HP 20」＝
+// ハート10・木の剣ティア0・盾なし・布の服ティア0）＋`toolsUsableIn(map).dungeon_6`＝
 // ブーメラン・弓・ロウソク・爆弾持ち（弱点 fire ×2 の答え＝ロウソクを持っている状態）。
 const D6_PRE = {
   ps_hearts: '10', ps_sword: '0', ps_shield: '0', ps_armor: '0',
@@ -2253,8 +2253,8 @@ test('㊲ bal_forest_giant は 10×12・外周は通路以外すべて壁・O �
 const U_ROW = 4, U_COL = 7;          // 2×2 ∴ rows 4-5 / cols 7-8 を占める
 const U_PL_ROW = 4, U_PL_COL = 4;    // 測る湧き（同じ行＝軸に乗っている）
 const U_OFF_SPAWN = { row: 1, col: 3 };   // 軸を外した湧き（＝旋回で軸へ回り込む様子を測る）
-// D7 のボス直前の想定装備（audit-balance の「D7 空の神殿 / ボス直前 DEF 1・最大HP 28」＝
-// ハート14・木の剣ティア0・盾なし・布の服ティア0）＋`UNLOCKED_AT.dungeon_7`＝
+// D7 のボス直前の想定装備（audit-balance の「D7 空中の遺跡 / ボス直前 DEF 1・最大HP 28」＝
+// ハート14・木の剣ティア0・盾なし・布の服ティア0）＋`toolsUsableIn(map).dungeon_7`＝
 // ブーメラン・弓・ロウソク・梯子・爆弾・笛持ち（弱点 arrow ×2 の答え＝弓を持っている状態）。
 const D7_PRE = {
   ps_hearts: '14', ps_sword: '0', ps_shield: '0', ps_armor: '0',

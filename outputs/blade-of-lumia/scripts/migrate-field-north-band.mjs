@@ -279,7 +279,7 @@ const SCREENS = [
     // 北の灰境（`10,0`）と南の篝火跡（`10,2`）をつなぐ草の辻。中央の茂みの塊の奥に宝箱、
     // 東の登り口には跳躍蜘蛛 β が居座る（茂みの塊を跳び越えて来る＝地形が効く相手）。
     // ⚠️ 弱点持ちの敵（η 術士＝矢 など）は**フィールドに置けない**。
-    //    tests/enemy-placement.spec.js ④ は UNLOCKED_AT['field'] を空集合として扱う
+    //    tests/enemy-placement.spec.js ④ は `toolsUsableIn(MAP)['field']` を空集合として扱う
     //    （地域ごとに到達時期が違う∴地域別の表を作るまでは「道具を持たない地点」扱い）。
     tiles: [
       '...........M',
@@ -663,7 +663,7 @@ function checkContent(spec, stage) {
     if (ENEMY_META[t[r][c]]?.directional && !stage.enemyDirs[key(r, c)])
       throw new Error(`${spec.key}: 向き別スプライトの敵 '${t[r][c]}'(${key(r, c)}) に enemyDirs が無い`);
     // 弱点持ちはフィールドに置けない（tests/enemy-placement.spec.js ④ は
-    // UNLOCKED_AT['field'] を空集合＝道具未所持として扱う）。
+    // `toolsUsableIn(MAP)['field']` を空集合＝道具未所持として扱う）。
     if (ENEMY_META[t[r][c]]?.weakness)
       throw new Error(`${spec.key}: 弱点持ちの敵 '${t[r][c]}'(${key(r, c)}) は field に置けない`
         + `（要 ${ENEMY_META[t[r][c]].weakness.type}）`);

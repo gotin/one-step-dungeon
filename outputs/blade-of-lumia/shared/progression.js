@@ -15,37 +15,86 @@
 //    プリセットが数値を計算して渡すと二重管理になる（`shared/items.js` が単一の真実）。
 //    監査スクリプトが表に出す ATK/DEF は audit-balance 側の `statsOf()` が導出する。
 //
-// ⚠️ `scripts/lib/progression.mjs`（`UNLOCKED_AT`）とは別物。あちらは「そのレイヤーへ入る
-//    時点で持っている道具」の**手書き**テーブル（敵配置の弱点関門の判定用）。こちらは実マップの
-//    宝箱・床置き・欠片タイルから**導出**する。将来あちらをこちらから導出するのが筋だが、
-//    現状 `UNLOCKED_AT` はやや緩い（例：`dungeon_3` に `bow` が入っているが弓は D3 の報酬
-//    ＝入場時には持っていない）∴突き合わせは別タスクにした（PLAN 実行キュー 0g）。
+// ⚠️ 「そのレイヤーの中で使える道具」の表（旧 `scripts/lib/progression.mjs` の手書き
+//    `UNLOCKED_AT`）も 2026-09-05（実行キュー 0g）にここへ統合した＝`toolsUsableIn(map)`。
+//    手書きの表は消した（`scripts/lib/progression.mjs` 自体を削除）＝2通りの言い方を残さない。
 
 import { listTriforceEntries } from './triforce.js';
 
 // ── 進行順（PLAN 9-1）＝報酬が手に入る順序の単一の真実 ────────────────
 // 本編：D1→D2→D3→D4→D6→D5→D8→D7→（祭壇）→dark_tower
-// 寄道は「入るのに必要な道具」で本編のどこに挟まるかが決まる（scripts/lib/progression.mjs）：
+// 寄道は「入るのに必要な道具」で本編のどこに挟まるかが決まる（要件は下記＝`toolsUsableIn()` が
+// この順序から導出する。入口の仕掛けそのものは実マップ側・関門は tests/progression-tools.spec.js ④）：
 //   cave_1        … 爆弾+はしご（D5 の後）
 //   forest_cave   … 爆弾（D6 の後）＝銅の剣 tier1
 //   secret_grotto … 笛（D8 の後）＝銀の剣 tier2
 //   void_shrine   … 翼の羽衣（祭壇の後）＝聖剣 tier3
+//
+// ⚠️ **ダンジョンの名前はここに書かない**＝表示名は実マップの `layers[x].name` から導出する
+//    （`labelOf()`）。理由＝`layer.name` は `game/ui.js` の HUD でプレイヤーに見えている側＝
+//    そちらが真実。ここに手書きしていた名前は 6 件が実マップと食い違っていた（2026-08-26 に
+//    監査出力で発覚＝「A 炎のサラマンドラ … D4 砂の遺跡」＝実際の `dungeon_4` は炎の神殿・
+//    2026-09-05 の実行キュー 0g で導出へ寄せた）。`prefix` は進行上の位置（D番号／寄道）＝
+//    マップに無い情報だけを持つ。`fallbackName` は `start`（レイヤーを持たない地点）だけの保険
+//    ＝**レイヤーを持つ地点は全部マップ側に `name` がある**（関門は tests/progression-tools.spec.js ⑧
+//    ＝名前の欠落と、寄道が本編と同名になる衝突の両方を赤にする。`secret_grotto` は 2026-09-05 に
+//    「秘密の洞窟」を与えた＝それまで `dungeon_7` の実名「空中の遺跡」を借りていて紛らわしかった）。
 export const ORDER = [
-	{ id: 'start',         label: '開始直後',            layer: null },
-	{ id: 'dungeon_1',     label: 'D1 森の遺跡',         layer: 'dungeon_1' },
-	{ id: 'dungeon_2',     label: 'D2 岩窟',             layer: 'dungeon_2' },
-	{ id: 'dungeon_3',     label: 'D3 湖の神殿',         layer: 'dungeon_3' },
-	{ id: 'dungeon_4',     label: 'D4 砂の遺跡',         layer: 'dungeon_4' },
-	{ id: 'dungeon_6',     label: 'D6 火山',             layer: 'dungeon_6' },
-	{ id: 'forest_cave',   label: '寄道 樹海の岩室',     layer: 'forest_cave', optional: true },
-	{ id: 'dungeon_5',     label: 'D5 氷の遺跡',         layer: 'dungeon_5' },
-	{ id: 'cave_1',        label: '寄道 洞窟',           layer: 'cave_1', optional: true },
-	{ id: 'dungeon_8',     label: 'D8 沼地',             layer: 'dungeon_8' },
-	{ id: 'secret_grotto', label: '寄道 空中の遺跡',     layer: 'secret_grotto', optional: true },
-	{ id: 'dungeon_7',     label: 'D7 空の神殿',         layer: 'dungeon_7' },
-	{ id: 'void_shrine',   label: '寄道 虚空の祠',       layer: 'void_shrine', optional: true },
-	{ id: 'dark_tower',    label: 'DT 暗黒の塔',         layer: 'dark_tower' },
+	{ id: 'start',         prefix: '',     fallbackName: '開始直後',    layer: null },
+	{ id: 'dungeon_1',     prefix: 'D1',   layer: 'dungeon_1' },
+	{ id: 'dungeon_2',     prefix: 'D2',   layer: 'dungeon_2' },
+	{ id: 'dungeon_3',     prefix: 'D3',   layer: 'dungeon_3' },
+	{ id: 'dungeon_4',     prefix: 'D4',   layer: 'dungeon_4' },
+	{ id: 'dungeon_6',     prefix: 'D6',   layer: 'dungeon_6' },
+	{ id: 'forest_cave',   prefix: '寄道', layer: 'forest_cave', optional: true },
+	{ id: 'dungeon_5',     prefix: 'D5',   layer: 'dungeon_5' },
+	{ id: 'cave_1',        prefix: '寄道', layer: 'cave_1', optional: true },
+	{ id: 'dungeon_8',     prefix: 'D8',   layer: 'dungeon_8' },
+	{ id: 'secret_grotto', prefix: '寄道', layer: 'secret_grotto', optional: true },
+	{ id: 'dungeon_7',     prefix: 'D7',   layer: 'dungeon_7' },
+	{ id: 'void_shrine',   prefix: '寄道', layer: 'void_shrine', optional: true },
+	{ id: 'dark_tower',    prefix: 'DT',   layer: 'dark_tower' },
 ];
+
+// 進行地点の表示名＝`prefix`（進行上の位置）＋ 実マップのレイヤー名。
+// マップが `name` を持たないレイヤーだけ ORDER の `fallbackName` に落ちる。
+export function labelOf(map, cp) {
+	const name = (cp.layer ? map?.layers?.[cp.layer]?.name : null) || cp.fallbackName || cp.layer || cp.id;
+	return cp.prefix ? `${cp.prefix} ${name}` : name;
+}
+
+// 進行地点 id → 表示名（監査スクリプト・エディタのプリセットが読む）。
+export function labelsFrom(map) {
+	return new Map(ORDER.map((cp) => [cp.id, labelOf(map, cp)]));
+}
+
+// ── そのレイヤーの中で使える道具（旧 `scripts/lib/progression.mjs` の `UNLOCKED_AT`）──────
+// 返り値＝`{ [layerName]: Set<道具名> }`。意味は **「入場時の所持」ではなく
+// 「そのレイヤーの中に居るあいだに使える道具の上限」**＝入場時の所持 ∪ **そのレイヤー自身の報酬**。
+//   例＝`dungeon_3` は `bow` を含む。弓は D3 の報酬だが、D3 の中で拾って D3 の奥の弓ゲートを
+//        開ける∴「D3 の中で弓を要求する仕掛け」は正当。同じ形で D5 のはしご・D6 の爆弾も含む。
+// ∴これは**緩い上限**＝「その部屋に来た時点で必ず持っている」ことは保証しない（部屋の順序は
+//   見ない＝レイヤー単位の粒度）。ソフトロックの厳密判定には使えない。
+// 寄道（ORDER の `optional`）の報酬は**次の地点へ持ち越さない**＝入らなくてもクリアできる
+// （下限側に数えない＝`profilesAt` の min と同じ約束）。
+// `field` は表に載らない＝地域ごとに到達時期が違う∴`?? new Set()` で空集合＝道具未所持として
+// 扱う（読み手側の約束＝`scripts/lib/enemy-placement.mjs` のコメントも同じ前提）。
+//
+// 読み手＝`scripts/check-dungeon-integrity.mjs`（道具で封鎖される出口の検出＝引くのは
+//         `ladder`/`bomb` だけ）／`scripts/migrate-place-new-enemies.mjs`・
+//         `tests/enemy-placement.spec.js`（弱点持ちの敵を置ける地点の関門）ほか。
+export function toolsUsableIn(map) {
+	const perLayer = collectRewards(map);
+	const table = {};
+	const carried = new Set();          // 必須レイヤーの報酬だけを積み上げる
+	for (const cp of ORDER) {
+		if (!cp.layer) continue;
+		const own = perLayer.get(cp.layer)?.items ?? [];
+		table[cp.layer] = new Set([...carried, ...own]);   // 入場時 ∪ 自分の報酬
+		if (!cp.optional) for (const k of own) carried.add(k);
+	}
+	return table;
+}
 
 // 宝箱／床置きから拾える「道具」＝プレビュー設定のチェックボックスと1対1で対応する。
 // はしごは `player.hasLadder`（subItems ではない）だが、プレビューでは同じ扱いで足りる。
@@ -220,6 +269,7 @@ export function presetsFrom(map) {
 		// ボス部屋が無いレイヤーは「ボス直前」を作らない（報酬が有っても選択肢にしない）。
 		const preBossHere = cp.layer && bossLayers.has(cp.layer) ? (preBoss.get(cp.layer) ?? empty) : null;
 		const { min, max, boss } = profilesAt(i, perLayer, fieldRewards, preBossHere);
-		return { id: cp.id, label: cp.label, min, max, boss };
+		// ラベルは実マップのレイヤー名から導出する（ORDER は手書きの名前を持たない）。
+		return { id: cp.id, label: labelOf(map, cp), min, max, boss };
 	});
 }

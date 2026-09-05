@@ -49,7 +49,7 @@ import { THREAT_OF } from './lib/enemy-placement.mjs';
 // ⚠️ `profilesAt()` が返すのは**ティア番号とハート数だけ**＝ATK/DEF はこのファイルの
 //    `statsOf()` が `shared/items.js` から導出する（プリセットは数値を計算しない）。
 import {
-	ORDER, collectRewards, fieldRewardsOf, bossRoomLayersOf, profilesAt as rawProfilesAt,
+	ORDER, collectRewards, fieldRewardsOf, bossRoomLayersOf, labelOf, profilesAt as rawProfilesAt,
 } from '../shared/progression.js';
 
 const __dir = dirname(fileURLToPath(import.meta.url));
@@ -316,7 +316,8 @@ function main() {
 
 	ORDER.forEach((cp, i) => {
 		const { min, max, boss } = profilesAt(i, perLayer, fieldRewards, preBossAt(i));
-		report.checkpoints.push({ id: cp.id, label: cp.label, min, max, boss });
+		// 地点の表示名＝実マップのレイヤー名から導出（0g・2026-09-05）＝ORDER は名前を持たない。
+		report.checkpoints.push({ id: cp.id, label: labelOf(map, cp), min, max, boss });
 	});
 
 	// 実際に起こる遭遇だけを測る＝敵タイル1行。
@@ -344,7 +345,7 @@ function main() {
 		rows.push({
 			tile, name: meta.name, isBoss: !!meta.isBoss, kind,
 			threat: +THREAT_OF(meta).toFixed(1),
-			at: cp.id, atLabel: cp.label, layers: enc.layers,
+			at: cp.id, atLabel: labelOf(map, cp), layers: enc.layers,
 			inBossRoom: enc.inBossRoom,
 			judgeVariant,
 			atk: { judge: judgeStats.atk, max: max.atk },

@@ -173,8 +173,8 @@ export const SIGNATURE_LADDER = [
 	{ layer: 'dark_tower', stage: '0,1' },
 ];
 
-// 弱点持ちの敵と、その弱点を解決する道具（`scripts/check-dungeon-integrity.mjs` の
-// UNLOCKED_AT と同じ語彙）。ここに載る敵は道具が入手済みのレイヤー以降にしか置けない。
+// 弱点持ちの敵と、その弱点を解決する道具（`shared/progression.js` の `toolsUsableIn()` が
+// 返す道具名と同じ語彙）。ここに載る敵は道具が入手済みのレイヤー以降にしか置けない。
 export const WEAKNESS_ITEM = { bomb: 'bomb', arrow: 'bow', fire: 'candle', boomerang: 'boomerang' };
 
 // 5.5m の配置表の**外**で、後から一点物として設計した敵部屋。
@@ -261,7 +261,7 @@ export const EXTRA_ENEMY_ROOMS = [
 	// 地図北端の帯を1画面ずつ作り込んだ際の配置。脅威度は 13.0〜40.0＝D1 の関門（56.0・0d-2.8 で
 	// 116.0 から下がった値）より軽い＝草原〜空島手前の通り道として置いた。
 	// ⚠️ **弱点持ちの敵は1体も置いていない**（tests/enemy-placement.spec.js ④ は
-	//    UNLOCKED_AT['field'] を空集合＝道具未所持として扱う∴field には置けない）。
+	//    `toolsUsableIn(MAP)['field']` を空集合＝道具未所持として扱う∴field には置けない）。
 	//    設計当初 10,1 に置いた η 術士（弱点 arrow）はこの不変条件に従って β へ差し替えた。
 	// 向き別スプライトの敵は ζ 盾騎士（6,0）だけ＝その1体に enemyDirs を持たせている。
 	{
