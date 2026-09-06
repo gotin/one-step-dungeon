@@ -2,6 +2,8 @@
 // ダンジョンテーマ別パレットをプレビュー・編集・エクスポートする
 import { SPRITES } from '../shared/sprites.js';
 import { TILE_PAL, TILE_SPRITES } from '../shared/sprites-tiles.js';
+import { TILE_SPRITE_MAP } from '../shared/tile-sprites.js';
+import { TILE } from '../shared/tiles.js';
 
 // ── 表示対象ダンジョンタイル ─────────────────────────────────────
 const DUNGEON_TILES = [
@@ -353,24 +355,31 @@ function generateExportCode() {
 // 背景スプライト編集（BG タイルのピクセルグリッドエディタ）
 // ══════════════════════════════════════════════════════════════════
 
-// 編集対象のフィールド/BG タイル一覧（tile-sprites.js の TILE_SPRITE_MAP 由来）
-const BG_TILE_LIST = [
-	{ key: 'grass',     spr: 'grass',      pal: 'grass',      label: '草地'   },
-	{ key: 'sand',      spr: 'sand',       pal: 'sand',       label: '砂地'   },
-	{ key: 'stoneFloor',spr: 'stoneFloor', pal: 'stoneFloor', label: '石畳'   },
-	{ key: 'snow',      spr: 'grass',      pal: 'snow',       label: '雪地'   },
-	{ key: 'ash',       spr: 'sand',       pal: 'ash',        label: '灰地'   },
-	{ key: 'mud',       spr: 'grass',      pal: 'mud',        label: '泥地'   },
-	{ key: 'bridge',    spr: 'bridge',     pal: 'bridge',     label: '橋'     },
-	{ key: 'tree',      spr: 'tree',       pal: 'tree',       label: '木'     },
-	{ key: 'mountain',  spr: 'mountain',   pal: 'mountain',   label: '山'     },
-	{ key: 'bush',      spr: 'bush',       pal: 'bush',       label: '茂み'   },
-	{ key: 'fence',     spr: 'fence',      pal: 'fence',      label: '柵'     },
-	{ key: 'houseWall', spr: 'houseWall',  pal: 'houseWall',  label: '家の壁' },
-	{ key: 'houseDoor', spr: 'houseDoor',  pal: 'houseDoor',  label: '家のドア'},
-	{ key: 'houseRoof', spr: 'houseRoof',  pal: 'houseRoof',  label: '屋根'   },
-	{ key: 'sign',      spr: 'sign',       pal: 'sign',       label: '看板'   },
+// 編集対象のフィールド/BG タイル一覧。
+// 🔴 spr/pal は書き写さず TILE_SPRITE_MAP から引く（[[blade-tile-sprite-single-source]]）。
+//    書き写していた頃は雪・灰・泥がゲーム側と違う形を指していた（2026-09-06 に是正）。
+const BG_TILE_TARGETS = [
+	{ tile: TILE.GRASS,       label: '草地'    },
+	{ tile: TILE.SAND,        label: '砂地'    },
+	{ tile: TILE.STONE_FLOOR, label: '石畳'    },
+	{ tile: TILE.SNOW,        label: '雪地'    },
+	{ tile: TILE.ASH,         label: '灰地'    },
+	{ tile: TILE.MUD,         label: '泥地'    },
+	{ tile: TILE.BRIDGE,      label: '橋'      },
+	{ tile: TILE.TREE,        label: '木'      },
+	{ tile: TILE.MOUNTAIN,    label: '山'      },
+	{ tile: TILE.BUSH,        label: '茂み'    },
+	{ tile: TILE.FENCE,       label: '柵'      },
+	{ tile: TILE.HOUSE_WALL,  label: '家の壁'  },
+	{ tile: TILE.HOUSE_DOOR,  label: '家のドア'},
+	{ tile: TILE.HOUSE_ROOF,  label: '屋根'    },
+	{ tile: TILE.SIGN,        label: '看板'    },
 ];
+const BG_TILE_LIST = BG_TILE_TARGETS.map(({ tile, label }) => {
+	const si = TILE_SPRITE_MAP[tile];
+	// key はパレット名＝テーマ地形（雪/灰/泥）を別項目として並べるための識別子
+	return { key: si.pal, spr: si.spr, pal: si.pal, label };
+});
 
 const BG_CELL_PX = 18;
 

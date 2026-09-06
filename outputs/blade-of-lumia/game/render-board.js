@@ -19,6 +19,7 @@
 import { TILE } from '../shared/tiles.js';
 import { SPRITES, PAL, drawSpriteFrame, drawSpriteLayers, makeSprite, applyBgSpriteToCell } from '../shared/sprites.js';
 import { TILE_SPRITE_MAP } from '../shared/tile-sprites.js';
+import { bgVariantName } from '../shared/sprites-tiles.js';
 import { connectedTileParts, isConnectTile } from '../shared/tile-connect.js';
 import { NPC_SPRITE_MAP } from '../shared/npcs.js';
 
@@ -43,6 +44,14 @@ const ITEM_FALLBACK_TILES = new Set([
 	TILE.ITEM_ARMOR, TILE.ITEM_BOMB, TILE.ITEM_BOW,
 	TILE.ITEM_HEAL_POTION, TILE.ITEM_BIG_HEAL_POTION,
 	TILE.ITEM_HEART_CONTAINER, TILE.ITEM_DUNGEON_MAP, TILE.ITEM_COMPASS,
+]);
+
+// tiles 層で「そのタイル自身の絵」を描くフィールドタイル。形と色は TILE_SPRITE_MAP から引く
+// ∴ここは一覧だけ（茂みは切り倒し状態を見るので専用分岐に残す）。
+const FIELD_SPRITE_TILES = new Set([
+	TILE.GRASS, TILE.SAND, TILE.STONE_FLOOR, TILE.SNOW, TILE.ASH, TILE.MUD,
+	TILE.TREE, TILE.MOUNTAIN, TILE.FENCE,
+	TILE.HOUSE_WALL, TILE.HOUSE_DOOR, TILE.HOUSE_ROOF, TILE.SIGN,
 ]);
 
 /**
@@ -85,7 +94,8 @@ export function createRenderBoard(deps) {
 		cellEl.style.background = PAL[parts.pal]?.[2] ?? '';
 		const cv = document.createElement('canvas');
 		cv.className = 'sprite tile-sprite';
-		cv.dataset.tileEdges = parts.edgeCode;   // テストが縁の選択を観測できるようにする
+		cv.dataset.tileEdges   = parts.edgeCode;   // テストが縁の選択を観測できるようにする
+		cv.dataset.tileVariant = parts.sprs[0];    // 同じく本体の変種（千鳥）を観測できるように
 		drawSpriteLayers(cv, parts.sprs, PAL[parts.pal]);
 		cellEl.appendChild(cv);
 		return true;
@@ -101,11 +111,15 @@ export function createRenderBoard(deps) {
 		if (isConnectTile(bgTile) && drawConnectTile(cellEl, posKey, bgTile)) return;
 		const cls = BG_TILE_COLOR_CLASS[bgTile];
 		if (cls) cellEl.classList.add(cls);
-		// bgTile のスプライトを CSS background-image repeat で背景に敷く
+		// bgTile のスプライトを CSS background-image repeat で背景に敷く。
+		// 絵はセルごとの変種を選ぶ（草地は房の位置が違う4種）＝隣のセルと同じ絵が
+		// 並ばない＝「地面の模様がパターン化されすぎ」を減らす（bgVariantName）。
 		if (bgTile !== TILE.FLOOR) {
 			const si = TILE_SPRITE_MAP[bgTile];
-			if (si && SPRITES[si.spr]) {
-				applyBgSpriteToCell(cellEl, si.spr, si.pal);
+			if (si) {
+				const [br, bc] = posKey.split(',').map(Number);
+				const spr = bgVariantName(si.spr, br, bc);
+				if (SPRITES[spr]) applyBgSpriteToCell(cellEl, spr, si.pal);
 			}
 		}
 	}
@@ -401,23 +415,12 @@ export function createRenderBoard(deps) {
 		// 連結タイル（橋のデッキ）＝隣接状況で部品を重ねる。
 		if (isConnectTile(tile) && drawConnectTile(cellEl, posKey, tile)) return;
 		// フィールドタイルのスプライト描画
-		const fieldSpriteMap = {
-			[TILE.GRASS]:       ['grass',      'grass'],
-			[TILE.SAND]:        ['sand',       'sand'],
-			[TILE.STONE_FLOOR]: ['stoneFloor', 'stoneFloor'],
-			[TILE.SNOW]:        ['grass',      'snow'],
-			[TILE.ASH]:         ['sand',       'ash'],
-			[TILE.MUD]:         ['grass',      'mud'],
-			[TILE.TREE]:        ['tree',       'tree'],
-			[TILE.MOUNTAIN]:    ['mountain',   'mountain'],
-			[TILE.FENCE]:       ['fence',      'fence'],
-			[TILE.HOUSE_WALL]:  ['houseWall',  'houseWall'],
-			[TILE.HOUSE_DOOR]:  ['houseDoor',  'houseDoor'],
-			[TILE.HOUSE_ROOF]:  ['houseRoof',  'houseRoof'],
-			[TILE.SIGN]:        ['sign',       'sign'],
-		};
-		if (fieldSpriteMap[tile]) {
-			const [spr, pal] = fieldSpriteMap[tile];
+		// 🔴 スプライトとパレットの対応は shared/tile-sprites.js の TILE_SPRITE_MAP だけが正
+		//    （[[blade-tile-sprite-single-source]]）。ここに表を書き写していたら雪が草の形の
+		//    まま取り残されていた（灰/泥を専用の形にした 2026-09-06 に発覚）∴タイルの一覧だけ
+		//    持ち、形と色は共通表から引く。
+		if (FIELD_SPRITE_TILES.has(tile) && TILE_SPRITE_MAP[tile]) {
+			const { spr, pal } = TILE_SPRITE_MAP[tile];
 			if (SPRITES[spr]) {
 				const ANIMATED_FIELD = new Set([TILE.GRASS, TILE.SAND, TILE.SNOW, TILE.ASH, TILE.MUD, TILE.TREE, TILE.BUSH]);
 				const cv = makeSprite(spr, pal, ANIMATED_FIELD.has(tile));

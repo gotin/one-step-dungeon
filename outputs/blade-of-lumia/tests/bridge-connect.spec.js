@@ -9,10 +9,15 @@
 //
 // 観測できること（＝テストの当て所）：
 //   ① 部品選択    connectedTileParts() の戻り（base の向き・edges の rail/trim）
-//   ② 絵の性質    デッキは不透明で横方向に一様＝連続配置で1枚の長板に繋がる
+//   ② 絵の性質    デッキは不透明で板の向きに一様＝連続配置で1枚の長板に繋がる
 //   ③ 実マップ    field/8,9（12x10 の木デッキ）で内側に縁が出ない・水際に手すりが出る
 //   ④ 実エンジン  ゲームの DOM で canvas.tile-sprite がセル全体を埋め、
 //                 dataset.tileEdges が ③ と同じ選択になっている
+//
+// ⚠ 2026-09-06（10a-1b-2）: デッキ本体は「セルごとの変種」になった。どのセルも同じ絵だと
+//   12セル並べて 1296px の一枚板＝色が1ドットも変わらず「のっぺり」する（ユーザー指摘）。
+//   ∴ 板ごとに木口（板の端）を千鳥で入れ、板の地の色を微妙に変える。
+//   sprs[0] は変種名（`bridgeDeckH@i,j`）∴向きを見るテストは base を読む。
 //
 // ⚠ 画面外の隣は「隣画面へデッキが続く」＝縁なしにしている。ここに縁を描くと、
 //   辺スクロールで実際に繋がっている通路が塞がって見える（湖の橋アームは
@@ -23,6 +28,7 @@ import { readFileSync } from 'fs';
 import { fileURLToPath } from 'url';
 import { TILE } from '../shared/tiles.js';
 import { SPRITES } from '../shared/sprites.js';
+import { BR_VAR_ROWS, BR_VAR_COLS, connectVariantName } from '../shared/sprites-tiles.js';
 import { connectedTileParts, isConnectTile, connectTileAt } from '../shared/tile-connect.js';
 import { waitForBoard } from './helpers.js';
 
@@ -49,7 +55,9 @@ test.describe('連結タイル – 部品の選択', () => {
 	test('② 塊の内側は縁なし（＝畑のうねになる柱が内側に出ない）', () => {
 		const p = connectedTileParts(stage(['vvv', 'vvv', 'vvv']), 1, 1, V);
 		expect(p.edgeCode).toBe('');
-		expect(p.sprs).toEqual(['bridgeDeckH']);
+		expect(p.base).toBe('bridgeDeckH');
+		// 本体はそのセルの変種1枚だけ（縁は足されない）
+		expect(p.sprs).toEqual([connectVariantName('bridgeDeckH', 1, 1)]);
 	});
 
 	test('③ 水に面した辺は手すり（rail）', () => {
@@ -86,12 +94,12 @@ test.describe('連結タイル – 部品の選択', () => {
 	test('⑥ 板の向きは渡る方向と直交する（東西の橋＝板は南北）', () => {
 		// 東西に1幅で伸びる橋アーム（南北は水）
 		const ew = connectedTileParts(stage(['~~~', 'vvv', '~~~'], {}), 1, 1, V);
-		expect(ew.sprs[0]).toBe('bridgeDeckV');
+		expect(ew.base).toBe('bridgeDeckV');
 		expect(ew.edges.N).toBe('rail');
 		expect(ew.edges.S).toBe('rail');
 		// 南北に1幅で伸びる橋アーム（東西は水）
 		const ns = connectedTileParts(stage(['~v~', '~v~', '~v~'], {}), 1, 1, V);
-		expect(ns.sprs[0]).toBe('bridgeDeckH');
+		expect(ns.base).toBe('bridgeDeckH');
 		expect(ns.edges.E).toBe('rail');
 		expect(ns.edges.W).toBe('rail');
 	});
@@ -106,7 +114,7 @@ test.describe('連結タイル – 部品の選択', () => {
 			'.~~.',
 		]);
 		for (const [r, c] of [[1, 1], [1, 2], [2, 1], [2, 2]]) {
-			expect(connectedTileParts(st, r, c, V).sprs[0], `(${r},${c}) の板の向き`).toBe('bridgeDeckV');
+			expect(connectedTileParts(st, r, c, V).base, `(${r},${c}) の板の向き`).toBe('bridgeDeckV');
 		}
 		// 90度回した形（東西が水・南北が床）は板が東西になる
 		const st2 = stage([
@@ -116,7 +124,7 @@ test.describe('連結タイル – 部品の選択', () => {
 			'....',
 		]);
 		for (const [r, c] of [[1, 1], [1, 2], [2, 1], [2, 2]]) {
-			expect(connectedTileParts(st2, r, c, V).sprs[0], `(${r},${c}) の板の向き`).toBe('bridgeDeckH');
+			expect(connectedTileParts(st2, r, c, V).base, `(${r},${c}) の板の向き`).toBe('bridgeDeckH');
 		}
 	});
 
@@ -135,7 +143,7 @@ test.describe('連結タイル – 部品の選択', () => {
 		const bases = new Set();
 		for (let r = 0; r < st.tiles.length; r++)
 			for (let c = 0; c < st.tiles[r].length; c++)
-				if (st.tiles[r][c] === V) bases.add(connectedTileParts(st, r, c, V).sprs[0]);
+				if (st.tiles[r][c] === V) bases.add(connectedTileParts(st, r, c, V).base);
 		expect([...bases]).toEqual(['bridgeDeckH']);
 	});
 
@@ -157,7 +165,7 @@ test.describe('連結タイル – 部品の選択', () => {
 		expect(connectedTileParts(mixed, 1, 1, V).edges.W).toBe(null);
 		// 向きも1枚のデッキとして揃う（成分＝3セルの東西の腕 → 板は南北）
 		for (const c of [0, 1, 2]) {
-			expect(connectedTileParts(mixed, 1, c, V).sprs[0], `(1,${c}) の板の向き`).toBe('bridgeDeckV');
+			expect(connectedTileParts(mixed, 1, c, V).base, `(1,${c}) の板の向き`).toBe('bridgeDeckV');
 		}
 	});
 
@@ -189,28 +197,124 @@ test.describe('連結タイル – 部品の選択', () => {
 		}
 	});
 
+	test('⑦b 本体の絵はセルごとに変わる＝同じ絵が並んで「のっぺり」しない', () => {
+		// どのセルも同じ変種だと 12 セル＝1296px が1枚の板になり、色が1ドットも
+		// 変わらない（2026-09-06 ユーザー指摘）。∴セル座標から変種を選ぶ。
+		const rows = BR_VAR_ROWS + 1, cols = BR_VAR_COLS + 1;
+		const st = stage(Array.from({ length: rows }, () => 'v'.repeat(cols)));
+		const at = (r, c) => connectedTileParts(st, r, c, V).sprs[0];
+		const seen = new Set();
+		for (let r = 0; r < rows; r++) {
+			for (let c = 0; c < cols; c++) {
+				seen.add(at(r, c));
+				expect(connectedTileParts(st, r, c, V).base, '向きは変種で変わらない').toBe('bridgeDeckH');
+			}
+		}
+		// 板が並ぶ向き（deckH なら行方向）に隣のセルは必ず別の変種＝木口が千鳥で続く
+		for (let r = 0; r + 1 < rows; r++) {
+			expect(at(r, 0), `(${r},0) と (${r + 1},0) が同じ絵`).not.toBe(at(r + 1, 0));
+		}
+		expect(seen.size, '変種が1つしか使われていない').toBeGreaterThanOrEqual(BR_VAR_ROWS);
+	});
+
 });
 
 test.describe('連結タイル – デッキの絵の性質（畑に戻らないための退行防止）', () => {
 
+	// デッキ本体の変種を全部並べる（`bridgeDeckH@i,j`）。
+	const deckNames = base => {
+		const out = [];
+		for (let i = 0; i < BR_VAR_ROWS; i++)
+			for (let j = 0; j < BR_VAR_COLS; j++) out.push(`${base}@${i},${j}`);
+		return out;
+	};
+	const N        = () => SPRITES.bridgeDeckH[0].length;
+	const PLANK    = () => N() / 4;                     // 断面の周期（セル内に板4枚）
+	// 板の向きに沿った「線」を取り出す（deckH は行／deckV は列）。
+	const lineOf = (grid, orient, i) => orient === 'H' ? grid[i] : grid.map(row => row[i]);
+	// その線の中で最も多い値＝板の地の色（木口・木目は例外的な少数）
+	const dominant = line => {
+		const count = new Map();
+		for (const v of line) count.set(v, (count.get(v) ?? 0) + 1);
+		return [...count.entries()].sort((a, b) => b[1] - a[1])[0][0];
+	};
+	// 板 b の木口（板の端＝板を横切る最暗のドット）の位置。
+	const seamPos = (name, orient, b) => {
+		const line = lineOf(SPRITES[name][0], orient, b * PLANK() + 3);   // 板の地の行/列
+		return line.map((v, k) => (v === 6 ? k : -1)).filter(k => k >= 0);
+	};
+
 	test('⑧ デッキは不透明＝隣のセルとの間に隙間が空かない', () => {
-		for (const name of ['bridgeDeckH', 'bridgeDeckV']) {
-			const grid = SPRITES[name][0];
-			for (const row of grid) {
+		for (const name of [...deckNames('bridgeDeckH'), ...deckNames('bridgeDeckV')]) {
+			const grid = SPRITES[name];
+			expect(grid, `SPRITES['${name}'] が無い`).toBeTruthy();
+			for (const row of grid[0]) {
 				expect(row.includes(0), `${name} に透明ドットがある`).toBe(false);
 			}
 		}
 	});
 
-	test('⑨ デッキ本体に柱がない＝行/列が一様で長板が繋がって見える', () => {
-		// deckH は各行が一定（東西に板が走る）／deckV は各列が一定（南北に走る）
-		for (const row of SPRITES.bridgeDeckH[0]) {
-			expect(new Set(row).size, 'deckH の行に模様がある＝柱に見える').toBe(1);
+	test('⑨ 板の木口は千鳥＝縦の印が隣の板と同じ列に揃わない（周期が目に見えない）', () => {
+		// ⚠ 旧テストは「行が一様」を要求していた＝木口も禁止してしまう。守りたいのは
+		//   「柱が等間隔に並ばない」ことなので、条件を「千鳥であること」に置き換える
+		//   （10a-1b-2・ユーザー承認）。等間隔の支柱は ⑩b が別に守っている。
+		const dist = (a, b) => {
+			const d = Math.abs(a - b);
+			return Math.min(d, N() - d);
+		};
+		// セル境界を越えて板を順に並べる（変種の周期＋1セル分＝境界もまたぐ）
+		for (const [orient, pick] of [['H', R => connectVariantName('bridgeDeckH', R, 0)],
+			['V', C => connectVariantName('bridgeDeckV', 0, C)]]) {
+			const seams = [];
+			for (let k = 0; k < BR_VAR_ROWS + 1; k++) {
+				const name = pick(k);
+				for (let b = 0; b < 4; b++) {
+					const s = seamPos(name, orient, b);
+					expect(s, `${name} の板 ${b} に木口が1本ない`).toHaveLength(1);
+					seams.push(s[0]);
+				}
+			}
+			for (let k = 1; k < seams.length; k++) {
+				expect(dist(seams[k], seams[k - 1]),
+					`deck${orient}: 隣り合う板の木口が近すぎる＝縦一直線に見える（${seams[k - 1]}→${seams[k]}）`)
+					.toBeGreaterThanOrEqual(6);
+			}
+			// 少数の列を行き来するだけ（例：2列の交互）だと縞に見える
+			expect(new Set(seams).size, `deck${orient}: 木口の列が少なすぎる`).toBeGreaterThanOrEqual(4);
 		}
-		const v = SPRITES.bridgeDeckV[0];
-		for (let c = 0; c < v[0].length; c++) {
-			expect(new Set(v.map(r => r[c])).size, 'deckV の列に模様がある').toBe(1);
+	});
+
+	test('⑨c デッキ本体は板の向きに一様＝柱に見えない（木口・木目は少数の例外）', () => {
+		// 木口を入れたので「行がすべて同一」ではなくなった。代わりに「板の向きの線は
+		// 大半が同じ色」＝模様が線の 1/4 を超えない、で柱・畑のうねを防ぐ。
+		for (const [base, orient] of [['bridgeDeckH', 'H'], ['bridgeDeckV', 'V']]) {
+			for (const name of deckNames(base)) {
+				const grid = SPRITES[name][0];
+				for (let i = 0; i < N(); i++) {
+					const line = lineOf(grid, orient, i);
+					const dom  = dominant(line);
+					const odd  = line.filter(v => v !== dom).length;
+					expect(odd, `${name} の ${orient === 'H' ? '行' : '列'} ${i} に模様が多すぎる＝柱に見える`)
+						.toBeLessThanOrEqual(N() / 4);
+				}
+			}
 		}
+	});
+
+	test('⑨d 板の地の色は板ごとに変わる／1枚の板の中では変わらない', () => {
+		// 「板ごとに微妙な色差」＝のっぺり対策。ただし1枚の板の中で色が変わると
+		// 板が途中で切れて見える∴板の中（断面の地の行）は同じ色でなければならない。
+		const tones = new Set();
+		for (let R = 0; R < BR_VAR_ROWS; R++) {
+			const name = connectVariantName('bridgeDeckH', R, 0);
+			const grid = SPRITES[name][0];
+			for (let b = 0; b < 4; b++) {
+				const body = [2, 3, 4, 5].map(rr => dominant(lineOf(grid, 'H', b * PLANK() + rr)));
+				expect(new Set(body).size, `${name} の板 ${b} の中で地の色が変わっている`).toBe(1);
+				tones.add(body[0]);
+			}
+		}
+		expect(tones.size, '板の地の色が1色だけ＝12セル並べると1枚板でのっぺりする').toBeGreaterThanOrEqual(2);
 	});
 
 	test('⑨b 木口（trim）の厚みは格子の 1/10 以下＝陸側に枠が回らない', () => {
@@ -231,15 +335,20 @@ test.describe('連結タイル – デッキの絵の性質（畑に戻らない
 		}
 	});
 
-	test('⑩ デッキの継ぎ目は板幅で周期的＝セル境界を越えて板が続く', () => {
+	test('⑩ 板の境目（横線）は板幅ごと＝周期が格子の約数でセル境界を越えて板が続く', () => {
 		// 周期が格子の約数でないと、セルの継ぎ目で板が半端に切れて畑のうねに戻る。
-		const h = SPRITES.bridgeDeckH[0];
-		const period = h.findIndex((row, r) => r > 0 && row[0] === h[0][0]);
-		expect(period, '継ぎ目の周期が見つからない').toBeGreaterThan(1);
-		expect(h.length % period, `周期 ${period} が格子 ${h.length} の約数でない`).toBe(0);
-		for (let r = 0; r + period < h.length; r++) expect(h[r][0]).toBe(h[r + period][0]);
-		const v = SPRITES.bridgeDeckV[0];
-		for (let c = 0; c + period < v[0].length; c++) expect(v[0][c]).toBe(v[0][c + period]);
+		// ⚠ 板ごとに地の色を変えたので「行がそのまま繰り返す」ことでは測れない。
+		//   測るのは構造＝「板の境目の線がどこに来るか」。
+		for (const [base, orient] of [['bridgeDeckH', 'H'], ['bridgeDeckV', 'V']]) {
+			for (const name of deckNames(base)) {
+				const grid = SPRITES[name][0];
+				const divs = [];
+				for (let i = 0; i < N(); i++) if (dominant(lineOf(grid, orient, i)) === 6) divs.push(i);
+				expect(divs, `${name} の板の境目が板幅 ${PLANK()} ごとに来ていない`)
+					.toEqual([0, 1, 2, 3].map(b => b * PLANK()));
+			}
+		}
+		expect(N() % PLANK(), `板幅 ${PLANK()} が格子 ${N()} の約数でない`).toBe(0);
 	});
 
 	test('⑩b 手すりの支柱は等間隔で、間隔が格子の約数＝隣セルと繋いでも詰まらない', () => {
@@ -296,7 +405,7 @@ test.describe('連結タイル – 実マップ field/8,9（12x10 の木デッ�
 		const bases = new Set();
 		for (let r = 0; r < st.tiles.length; r++)
 			for (let c = 0; c < st.tiles[r].length; c++)
-				if (st.tiles[r][c] === V) bases.add(connectedTileParts(st, r, c, V).sprs[0]);
+				if (st.tiles[r][c] === V) bases.add(connectedTileParts(st, r, c, V).base);
 		expect([...bases]).toEqual(['bridgeDeckH']);
 	});
 
@@ -305,7 +414,7 @@ test.describe('連結タイル – 実マップ field/8,9（12x10 の木デッ�
 		const d = MAP.layers.dungeon_3.stages['3,3'];
 		for (const [r, c] of [[4, 7], [4, 8], [5, 7], [5, 8]]) {
 			expect(d.tiles[r][c]).toBe(V);
-			expect(connectedTileParts(d, r, c, V).sprs[0]).toBe('bridgeDeckV');
+			expect(connectedTileParts(d, r, c, V).base).toBe('bridgeDeckV');
 		}
 		expect(connectedTileParts(d, 4, 7, V).edges.N).toBe('rail');
 		expect(connectedTileParts(d, 4, 7, V).edges.W).toBe('trim');
@@ -340,6 +449,21 @@ test.describe('連結タイル – 実エンジンの描画', () => {
 		expect(probe.inner.edges).toBe('');
 		expect(probe.north.edges).toBe('N');
 		expect(probe.east.edges).toBe('E');
+	});
+
+	test('⑭b ゲームでも縦に並んだ橋セルは別の変種を描く（実画面で木口が千鳥になる）', async ({ page }) => {
+		// 部品表（⑦b）だけ千鳥でも、エンジンが代表1枚を描いていたら画面はのっぺりのまま。
+		// ∴ DOM の canvas に本体の変種名を持たせて実際の描画を観測する。
+		const p = new URLSearchParams({
+			fromEditor: '1', layer: 'field', stage: '8,9', row: '4', col: '0',
+		});
+		await page.goto(`${GAME}?${p.toString()}`);
+		await waitForBoard(page);
+
+		const variants = await page.evaluate(() => [3, 4, 5].map(r =>
+			document.querySelector(`.cell[data-row="${r}"][data-col="0"] canvas.tile-sprite`)?.dataset.tileVariant));
+		for (const v of variants) expect(v, '本体の変種名が canvas に無い').toMatch(/^bridgeDeck[HV]@\d+,\d+$/);
+		expect(new Set(variants).size, `縦に並んだ橋が同じ絵（${variants.join(' / ')}）`).toBe(3);
 	});
 
 	test('⑮ 橋セルは下地スプライトを外す＝セル境界に草色の格子線が出ない', async ({ page }) => {

@@ -170,12 +170,37 @@ function makeBgDataUrl(frames, palette, scale = 1) {
 	return cv.toDataURL();
 }
 
-// bgTile を CSS background-image repeat で cellEl に適用する
-// BG_DOT_SCALE=2 が基準（キャラスプライトと同等の粒感）。ただし
+// 同じ絵を何度も canvas に描いて toDataURL するのを避けるキャッシュ。
+// 1画面は 120 セル∴セルごとに描くと盤面を作り直すたび 120 回 toDataURL を呼ぶ。
+// キーにコマ番号を含める＝水のアニメーションは従来どおり切り替わる。
+const bgUrlCache = new Map();
+function bgDataUrl(spriteName, frames, palette, palName, scale) {
+	const key = `${spriteName}|${palName}|${animFrame % frames.length}|${scale}`;
+	let url = bgUrlCache.get(key);
+	if (url === undefined) {
+		url = makeBgDataUrl(frames, palette, scale);
+		bgUrlCache.set(key, url);
+	}
+	return url;
+}
+
+// セル1枚ぶんの地面スプライトの格子（キャラ・橋と同じ 32 ドット）。
+// この寸法の絵は「セルに1枚だけ」敷く＝repeat しない（1ドット＝cellPx/32＝3.375px）。
+export const CELL_GROUND_N = 32;
+
+// bgTile を CSS background-image で cellEl に適用する。
+//
+// 🔴 32×32 の地面＝セル1枚に1枚だけ敷く（2026-09-06 ユーザー確定＝方針A）。
+//    `background-size: 100% 100%` ∴1ドットは常に cellPx/32 で窓サイズに依らず
+//    キャラ・橋と一致し、セル境界で模様が切れることも無い（`#board` に
+//    `image-rendering: pixelated` があるので非整数倍率でも滲まない＝橋と同じ）。
+//
+// それ以外（水など）は従来どおり CSS repeat で敷く。BG_DOT_SCALE=2 が基準だが
 // tilePx = dotCount×scale が cellPx を割り切れないとセル境界でパターンがズレるため、
 // 「cellPx % (dotCount×s) === 0 を満たす s のうち 2 に最も近い値」を動的に選ぶ。
 // --cell=48 → s=2（16px、3タイル/cell、元通り）
 // --cell=72 → s=3（24px、3タイル/cell、1dot≒3px）
+// --cell=108 → 水（12ドット幅）は s=3（36px、3タイル/cell、1dot=3px）
 export function applyBgSpriteToCell(cellEl, spriteName, palName) {
 	const frames = SPRITES[spriteName];
 	if (!frames) return;
@@ -183,6 +208,14 @@ export function applyBgSpriteToCell(cellEl, spriteName, palName) {
 	const grid = frames[0];
 	const dotCols = grid[0].length;
 	const dotRows = grid.length;
+	cellEl.dataset.bgSprite = spriteName;
+	cellEl.dataset.bgPal    = palName;
+	if (dotCols === CELL_GROUND_N && dotRows === CELL_GROUND_N) {
+		cellEl.style.backgroundImage  = `url(${bgDataUrl(spriteName, frames, pal, palName, 1)})`;
+		cellEl.style.backgroundSize   = '100% 100%';
+		cellEl.style.backgroundRepeat = 'no-repeat';
+		return;
+	}
 	const cellPx = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--cell')) || 48;
 	// cellPx を (dotCount×s) で割り切れる s を探し、2 に最も近い値を選ぶ（同距離なら大きい方）
 	let scale = 1, bestDist = Infinity;
@@ -196,9 +229,7 @@ export function applyBgSpriteToCell(cellEl, spriteName, palName) {
 	}
 	const w = dotCols * scale;
 	const h = dotRows * scale;
-	cellEl.dataset.bgSprite = spriteName;
-	cellEl.dataset.bgPal    = palName;
-	cellEl.style.backgroundImage  = `url(${makeBgDataUrl(frames, pal, scale)})`;
+	cellEl.style.backgroundImage  = `url(${bgDataUrl(spriteName, frames, pal, palName, scale)})`;
 	cellEl.style.backgroundSize   = `${w}px ${h}px`;
 	cellEl.style.backgroundRepeat = 'repeat';
 }

@@ -45,14 +45,37 @@ export const TILE_PAL = {
 	// 条件付きドアウェイ（暗青・鉄）
 	doorwayLocked: ['transparent','#0a0a14','#182030','#304060','#506090','#8090c0'],
 	// フィールドタイル
-	grass:       ['transparent','#3a7028','#427830','#4a8038','#528840','#ffffff','#386828'],
-	sand:        ['transparent','#a07830','#c8a84a','#e0c068','#f0d888','#ffffff','#806020'],
+	// 🔴 地面パレットの 1〜6 は全種で同じ意味（1=暗 2=地 3=中 4=明 5=白 6=最暗）。
+	//    7/8 は「1〜4 の外側」＝7 が最明・8 が最暗で、細かい模様のコントラストを稼ぐため
+	//    2026-09-06 に追加した。1ドット＝3.375px まで細かくすると 1〜4 の階調差
+	//    （8/255 刻み）では模様がまったく見えなかった（10a-1b-3 で実測）。
+	//    地面の形は形ごとに専用のパレットを使う∴7/8 は地面6種全部に置く。
+	// 🔴 7/8 の幅は「地の色から離しすぎない」（2026-09-06 ユーザー判定＝
+	//    「粒の色の下地に対するコントラストが強すぎる・ゴミゴミして見える」）。
+	//    ∴最初に入れた強い値（草 #7ab84a／#22501c など）は**弱めた**＝素材の陰影に見える幅に留める。
+	// 🔴 2026-09-06（2回目の判定）＝「火山灰＝いい／泥＝まぁまぁ／草地・砂地＝やっぱり
+	//    コントラストが強い感じが目立つ」。∴**地形ごとに許す幅が違う**（同じ数字で揃えない）：
+	//    ・草・砂・泥＝模様に使う色は地の色から明度（Y=0.299R+0.587G+0.114B）で ±18 まで
+	//    ・雪＝同日の追加指定「雪も砂地と同じようにコントラスト抑えた方がよさそう」∴同じ ±18
+	//    ・火山灰＝岩が浮いて見えるのが正しい（ユーザー「いい」）∴幅は広いまま
+	//    テストで地形ごとの上限を固定した（tests/ground-variants.spec.js ⑤）。
+	grass:       ['transparent','#3a7028','#427830','#4a8038','#528840','#ffffff','#386828','#588c34','#2e5c1e'],
+	// 砂は地の色が明るい∴同じ「1段」でも明度差が大きく出る（旧 3/4 は +25/+47 だった）。
+	// ∴1〜4 を地の色の近くに詰め直した（7/8 は他の用途のために定義だけ残す）。
+	sand:        ['transparent','#bc9c42','#c8a84a','#d0b058','#d8b862','#ffffff','#806020','#dcc06c','#b09038'],
 	// Phase 9-4a: テーマ地形パレット
-	snow:        ['transparent','#8aaec0','#b0ccd8','#cce0ec','#e0f0f8','#ffffff','#6090a8'],
-	ash:         ['transparent','#2a1810','#503828','#705040','#9a7060','#ffffff','#1a1008'],
-	mud:         ['transparent','#283818','#384a24','#4a6030','#608040','#ffffff','#182010'],
-	stoneFloor:  ['transparent','#3a3848','#5a5868','#7a7888','#9a9aa8','#ffffff','#2a2838'],
-	bridge:      ['transparent','#5a3a18','#8a6030','#b08050','#d0a070','#ffffff','#3a2010'],
+	// 雪も砂と同じ扱い（2026-09-06 ユーザー指定「雪も砂地と同じようにコントラスト抑えた方が
+	// よさそう」）＝地の色が明るい∴同じ「1段」でも明度差が大きく出る（旧 7/1 は +35/-32）。
+	// ∴明るい側（3/4/7）を地の色の近くに詰め、窪みの影（1）も寄せた。8 は模様に使わない。
+	snow:        ['transparent','#9ec0d0','#b0ccd8','#b8d4e0','#c0d8e2','#ffffff','#6090a8','#c4dae4','#7ea4b8'],
+	ash:         ['transparent','#2a1810','#503828','#705040','#9a7060','#ffffff','#1a1008','#6a4c3c','#241408'],
+	// 泥は筋（1）・沈み（8）・照り（7）で描く∴この3色を地の色に寄せた（8 は 1 より暗い＝順序は不変）。
+	mud:         ['transparent','#30401e','#384a24','#4a6030','#608040','#ffffff','#182010','#425828','#283818'],
+	stoneFloor:  ['transparent','#3a3848','#5a5868','#7a7888','#9a9aa8','#ffffff','#2a2838','#c0c0cc','#171526'],
+	// bridge の 7/8 は「板ごとの微妙な色差」用（3=板の地 に対して ±1段）。
+	// 板が全部同じ色だと 12 セル分が1枚の巨大な板に見えて「のっぺり」する
+	// （2026-09-06 ユーザー指摘）。差は小さく＝縞に見えない程度に留める。
+	bridge:      ['transparent','#5a3a18','#8a6030','#b08050','#d0a070','#ffffff','#3a2010','#a87848','#b88858'],
 	tree:        ['transparent','#0e3008','#1a4810','#286018','#407830','#8a5020','#5a3010'],
 	mountain:    ['transparent','#3a3030','#5a5050','#7a7070','#9a9090','#b0a8a0','#2a2020'],
 	bush:        ['transparent','#1a4010','#2a5a18','#388028','#50a040','#6aba50','#0e2808'],
@@ -649,82 +672,217 @@ TILE_SPRITES.doorwayLocked = [
 	],
 ];
 
-// ── フィールドタイル（8×8px）──────────────────────────────────
+// ── フィールドタイル ────────────────────────────────────────────
 
-// 草地
-TILE_SPRITES.grass = [[
-	[1,1,1,1,1,1,1,1],
-	[1,2,1,1,2,1,1,1],
-	[1,3,2,1,3,2,1,1],
-	[2,2,2,2,2,2,2,2],
-	[2,3,2,2,3,2,2,3],
-	[2,2,2,2,2,2,2,2],
-	[2,2,3,2,2,3,2,2],
-	[2,2,2,2,2,2,2,2],
-],[
-	[1,1,1,2,1,1,1,1],
-	[1,1,2,3,1,1,2,1],
-	[1,2,3,2,1,2,3,1],
-	[2,2,2,2,2,2,2,2],
-	[2,2,2,3,2,2,2,3],
-	[2,3,2,2,2,3,2,2],
-	[2,2,2,2,2,2,2,2],
-	[2,2,2,2,2,2,2,2],
-]];
+// セル座標などから決まる整数ハッシュ。「同じ画面はいつ来ても同じ絵」にするため
+// 乱数は使わない（マップデータも変えない）。地面の変種選択・橋の木目に使う。
+export function tileHash(a, b) {
+	let h = Math.imul((a | 0) + 0x9e37, 73856093) ^ Math.imul((b | 0) + 0x85eb, 19349663);
+	h = Math.imul(h ^ (h >>> 13), 1274126177);
+	return (h ^ (h >>> 16)) >>> 0;
+}
 
-// 雪原（grass とは独立した専用形状。タイルエディタで作成・エクスポート）
-TILE_SPRITES.snow = [[
-	[2,2,2,2,2,2,2,2],
-	[2,2,2,2,2,2,2,2],
-	[2,2,2,2,2,2,2,2],
-	[2,2,2,2,2,2,2,2],
-	[2,3,2,2,2,2,2,2],
-	[2,2,2,2,2,2,2,2],
-	[2,2,2,2,2,3,2,2],
-	[2,2,2,2,2,2,2,2],
-],[
-	[1,1,1,2,1,1,1,1],
-	[1,1,2,3,1,1,2,1],
-	[1,2,3,2,1,2,3,1],
-	[2,2,2,2,2,2,2,2],
-	[2,2,2,3,2,2,2,3],
-	[2,3,2,2,2,3,2,2],
-	[2,2,2,2,2,2,2,2],
-	[2,2,2,2,2,2,2,2],
-]];
+// ── 地面（bgTiles）＝「セル1枚の 32 ドット絵」 ─────────────────
+//
+// 🔴 地面はセルに1枚だけ敷く（CSS の repeat をしない）＝1ドットが `--cell`/32＝
+//    実測 3.375px でキャラ・橋と完全に一致する（2026-09-06 ユーザー確定＝方針A
+//    「全部 3.375px に揃える」）。旧版は 8×8 を `background-repeat` で1セルに
+//    13.5 枚敷いており、①`applyBgSpriteToCell` の倍率探索が `--cell` 108px では
+//    成立せず 1ドット＝1px に落ちる（窓サイズで粒の大きさが変わる）②8px の模様が
+//    セル境界で中途半端に切れて薄い格子が残る ③セル内部の反復は変種では消せない
+//    ——の3つを同時に抱えていた。セル1枚にすると3つとも消える。
+//
+// 絵の作り方（デッキ＝橋と同じ考え方）：
+//   ・粒は孤立点のディザではなく「かたまり」にする（草の房・砂の風紋・雪の吹きだまり・
+//     石畳の目地）＝素材に見える条件。
+//   ・セルごとに違う絵を選ぶ（`bgVariantName` がセル座標のハッシュで決める＝決定的）。
+//   ⚠ 変種どうしで色の使用数（ヒストグラム）を必ず揃える。密度が違うとセルごとに
+//     明るさが変わり「地面が市松模様」に見える（＝周期を消すつもりで別の模様を作る）。
+//     ∴ 散らす絵は位置を手で並べず「衝突したら捨てる」方式（個数が構造的に一定）、
+//       構造を持つ絵（石畳）は変種で表を回転させるだけにする（回転は個数を変えない）。
+export const GROUND_N = 32;          // 地面の格子＝セル1枚ぶん（キャラ・橋と同じ）
+const GROUND_VARIANTS_N = 4;         // セルごとに選ぶ変種の数
 
-// 砂地
-TILE_SPRITES.sand = [[
-	[2,2,2,2,2,2,2,2],
-	[2,3,2,2,3,2,2,2],
-	[2,2,2,3,2,2,3,2],
-	[2,2,2,2,2,2,2,2],
-	[2,3,2,2,2,3,2,2],
-	[2,2,2,2,3,2,2,3],
-	[2,2,3,2,2,2,2,2],
-	[2,2,2,2,2,3,2,2],
-],[
-	[2,2,2,3,2,2,2,2],
-	[2,2,2,2,2,2,3,2],
-	[2,3,2,2,2,2,2,2],
-	[2,2,2,2,3,2,2,2],
-	[2,2,3,2,2,2,2,3],
-	[2,2,2,2,2,3,2,2],
-	[2,3,2,2,2,2,2,2],
-	[2,2,2,2,2,2,3,2],
-]];
+const groundFill = (val) => Array.from({ length: GROUND_N }, () => Array(GROUND_N).fill(val));
 
-// 石畳
-TILE_SPRITES.stoneFloor = [[
-	[1,3,3,3,1,3,3,3],
-	[3,3,3,3,3,3,3,3],
-	[3,3,3,3,3,4,3,3],
-	[1,1,1,1,1,1,1,1],
-	[3,3,1,3,3,3,1,3],
-	[3,3,3,3,3,3,3,3],
-	[4,3,3,3,3,3,3,4],
-	[1,1,1,1,1,1,1,1],
-]];
+// かたまりを「ブロックごとに同じ個数・ブロックの中はハッシュで」置く共通器。
+//
+// 🔴 全面に投げて衝突を捨てるだけだと**偏る**（32×32 に 22 個投げると 5 行ぶん
+//    まるごと空く帯が出て、地面が斑に見えた＝最初の実装で実測）。∴8×8 のブロックに
+//    割り、どのブロックにも同じ数だけ置く（＝疎密が揃う）。位置はブロックの中で
+//    ハッシュが決める∴模様は揃わない。
+// ⚠ 個数がブロック数×perBlock で固定∴どの変種も色の使用数が同じ
+//    （＝セルごとに明るさが変わらない＝地面が市松模様にならない）。
+// ⚠ 上下左右は輪（トーラス）として扱う＝端に寄ったかたまりも密度が落ちない。
+export const SCATTER_BLOCK = 8;
+
+function scatter(g, seedBase, steps) {
+	const N = GROUND_N, B = SCATTER_BLOCK;
+	const taken = new Set();
+	const key = (r, c) => `${r},${c}`;
+	const wrap = (n) => ((n % N) + N) % N;
+	let seed = 0;
+	for (const { perBlock, shape, margin, paint } of steps) {
+		for (let br = 0; br < N; br += B) {
+			for (let bc = 0; bc < N; bc += B) {
+				for (let placed = 0; placed < perBlock; placed++) {
+					let done = false;
+					// 決定的∴一度置ければ常に置ける（詰まるなら必ず import 時に落ちる）
+					for (let tries = 0; tries < 400 && !done; tries++) {
+						const h = tileHash(seedBase * 977 + seed++, br * 61 + bc + 613);
+						const cells = shape(br + h % B, bc + (h >>> 8) % B)
+							.map(([r, c]) => [wrap(r), wrap(c)]);
+						const blocked = cells.some(([r, c]) => margin
+							? [[0, 0], [1, 0], [-1, 0], [0, 1], [0, -1]]
+								.some(([dr, dc]) => taken.has(key(wrap(r + dr), wrap(c + dc))))
+							: taken.has(key(r, c)));
+						if (blocked) continue;
+						cells.forEach(([r, c], i) => { taken.add(key(r, c)); paint(g, r, c, i); });
+						done = true;
+					}
+					if (!done) throw new Error(`scatter: ブロック(${br},${bc}) に置けない＝密度が高すぎる`);
+				}
+			}
+		}
+	}
+	return g;
+}
+
+// 🔴 形は地形ごとに専用にする（2026-09-06 ユーザー判定）。
+//    「今はノイズ粒子を入れました、みたいに見える」＝地形ごとの素材に見えない∴
+//    草地＝草の株／砂地＝小石の粒／雪原＝吹きだまり／火山灰＝角のある岩／泥＝溜まり。
+//    以前は砂の形を灰に、草の形を泥に流用していた（パレットだけ違う）＝素材が違うのに
+//    同じ模様だった＝[[derive-geometry-per-direction]] と同じ誤り（流用せず導出し直す）。
+// ⚠ 粒は「かたまり」で置く＝孤立点のディザは砂嵐のノイズに見える（10a-1b-2 の条件(2)）。
+// ⚠ 明暗の幅は地の色から離しすぎない（同ユーザー判定＝「ゴミゴミして見える」）。
+
+// 🔴 1ドットだけの印は置かない（2026-09-06）。1ドット＝3.375px の四角が地の色の上に
+//    ぽつんと乗ると、素材の模様ではなく「ノイズ粒子」に見える（ユーザー判定）。
+//    ∴どの印も 3ドット以上のかたまり＝小さいながら形を持たせる。
+//    印の数もブロック（8×8＝64ドット）あたり 2 個までに絞る＝地の色が主役になる。
+export const GROUND_MARK_MIN = 3;    // 印1つの最小ドット数（模様であってノイズでない）
+
+// 草地：草の株を「本当に草の形」で描く（2026-09-06 ユーザー判定＝「草地は本当に草の絵を
+// 書くとかでもいいのかも？」）。3本の葉が株元から立ち上がる形＝9ドット。
+//   4 . 4      ← 両側の葉先
+//   3 4 3      ← 中央の葉先
+//   3 3 3      ← 葉が重なる
+//   . 1 .      ← 株元（地より少し暗い）
+// ⚠ 明暗は 3（+8）・4（+16）・1（-8）だけ＝7/8（±19〜24）は使わない。
+//   「粒を目立たせる」のではなく「形で草に見せる」＝コントラストを上げずに読める。
+function grassGrid(v) {
+	return scatter(groundFill(2), v * 4 + 1, [
+		{ perBlock: 1, margin: true,
+			shape: (r, c) => [
+				[r, c], [r, c + 2],
+				[r + 1, c], [r + 1, c + 1], [r + 1, c + 2],
+				[r + 2, c], [r + 2, c + 1], [r + 2, c + 2],
+				[r + 3, c + 1],
+			],
+			paint: (g, r, c, i) => { g[r][c] = [4, 4, 3, 4, 3, 3, 3, 3, 1][i]; } },
+		// 寝た葉（折れて横に倒れた1本）＝株だけだと同じ形の判子が並んで見える
+		{ perBlock: 1, margin: true, shape: (r, c) => [[r, c], [r, c + 1], [r + 1, c + 1]],
+			paint: (g, r, c) => { g[r][c] = 1; } },
+	]);
+}
+
+// 砂地：小石（上の面が明るく右下に影＝丸みが出る）＋風紋の筋
+// ⚠ 形は変えていない＝ユーザー判定「砂は色変化を抑えればそれでいいのかも」∴
+//   影を 8（-56）から 1（-11）へ、明部も詰めたパレットに任せた（形で直さない）。
+function sandGrid(v) {
+	return scatter(groundFill(2), v * 4 + 2, [
+		{ perBlock: 1, margin: true,
+			shape: (r, c) => [[r, c + 1], [r, c + 2], [r + 1, c], [r + 1, c + 1], [r + 1, c + 2]],
+			paint: (g, r, c, i) => { g[r][c] = [4, 4, 3, 3, 1][i]; } },
+		{ perBlock: 1, margin: true, shape: (r, c) => [[r, c], [r, c + 1], [r, c + 2], [r + 1, c + 2]],
+			paint: (g, r, c, i) => { g[r][c] = i === 3 ? 1 : 3; } },
+	]);
+}
+
+// 雪原：吹きだまり（7＝やわらかい明るさ）＋窪みの影
+function snowGrid(v) {
+	return scatter(groundFill(2), v * 4 + 3, [
+		{ perBlock: 1, margin: true, shape: (r, c) => [[r, c], [r, c + 1], [r, c + 2], [r + 1, c + 1], [r + 1, c + 2]],
+			paint: (g, r, c) => { g[r][c] = 7; } },
+		{ perBlock: 1, margin: true, shape: (r, c) => [[r, c], [r, c + 1], [r, c + 2], [r + 1, c + 2]],
+			paint: (g, r, c) => { g[r][c] = 1; } },
+	]);
+}
+
+// 火山灰：角のある岩（上の面だけ光が当たる＝7／側面と下は暗い 1・8）＋灰が流れた筋
+function ashGrid(v) {
+	return scatter(groundFill(2), v * 4 + 5, [
+		{ perBlock: 1, margin: true,
+			shape: (r, c) => [[r, c + 1], [r, c + 2], [r + 1, c], [r + 1, c + 1], [r + 1, c + 2], [r + 1, c + 3]],
+			paint: (g, r, c, i) => { g[r][c] = [7, 7, 1, 1, 1, 8][i]; } },
+		{ perBlock: 1, margin: true, shape: (r, c) => [[r, c], [r, c + 1], [r, c + 2]],
+			paint: (g, r, c) => { g[r][c] = 3; } },
+	]);
+}
+
+// 泥：横に伸びた「なすられた」跡。
+// ⚠ 左右対称のかたまりを1種類だけ散らすと、粒に見えないかわりに**同じ絵の判子**が
+//    並んで見えた（2026-09-06 の実画面で確認）∴長さの違う横筋にした＝
+//    ドロドロが引きずられた跡に見せる。中心だけ沈み（8）、短い筋に照り（7）を乗せる。
+//   1 1 1 1 1 1 1
+//   . . 8 8 8 . .
+// ⚠ 形は変えていない（ユーザー判定「まぁまぁ」）＝色だけ地の色に寄せた（1/7/8 のパレット値）。
+function mudGrid(v) {
+	return scatter(groundFill(2), v * 4 + 6, [
+		{ perBlock: 1, margin: true,
+			shape: (r, c) => [
+				[r, c], [r, c + 1], [r, c + 2], [r, c + 3], [r, c + 4], [r, c + 5], [r, c + 6],
+				[r + 1, c + 2], [r + 1, c + 3], [r + 1, c + 4],
+			],
+			paint: (g, r, c, i) => { g[r][c] = i < 7 ? 1 : 8; } },
+		{ perBlock: 1, margin: true, shape: (r, c) => [[r, c], [r, c + 1], [r, c + 2]],
+			paint: (g, r, c, i) => { g[r][c] = i === 1 ? 7 : 1; } },
+	]);
+}
+
+// 石畳：8ドット角の石を4段×4列。**縦の目地は段ごとにずらす（千鳥）**＝橋のデッキと
+// 同じ考え方（等間隔に揃うと畑のうねに見える）。石ごとの色差は「1個の中では変えない」。
+export const STONE_SIDE = 8;             // 石1個の一辺（目地を含む）
+export const STONE_OFF  = [0, 4, 2, 6];  // 段ごとの横ずれ＝縦の目地が段で揃わない
+const STONE_TONE   = [3, 3, 2, 3];       // 石ごとの地の色（回転させる∴個数は変種で不変）
+                                         // ⚠ [3,2,3,2] だと明暗が交互＝市松に見えた
+// 🔴 横ずれは「段だけ」で決める＝変種で変えない。セルの幅 32 は石の一辺 8 の倍数∴
+//    どの隣り合うセルでも目地が繋がり、石が途中で切れない。変種ごとに横ずれを
+//    変えると境界で 1〜2 ドット幅の欠けた石が出て、108px ごとの縦線＝セルの格子が
+//    見えてしまう（10a-1b-3 の実画面で確認）。変種の差は「石ごとの色」だけで付ける。
+function stoneGrid(v) {
+	const N = GROUND_N, S = STONE_SIDE;
+	const g = groundFill(3);
+	for (let r = 0; r < N; r++) {
+		const band = Math.floor(r / S);
+		const off  = STONE_OFF[band % STONE_OFF.length];
+		const rr   = r % S;
+		for (let c = 0; c < N; c++) {
+			const cc = (c + off) % S;
+			if (rr === S - 1 || cc === S - 1) { g[r][c] = 6; continue; }          // 目地（縦横）
+			const stone = Math.floor(((c + off) % N) / S);
+			g[r][c] = STONE_TONE[(stone + band + v) % STONE_TONE.length];         // 石ごとの地
+			if (rr === 0)     g[r][c] = 4;                                        // 面取り（上＝明）
+			if (rr === S - 2) g[r][c] = 1;                                        // 面取り（下＝影）
+		}
+	}
+	return g;
+}
+
+// 変種を事前生成して登録する（`SPRITES` は import 時の spread ∴遅延登録できない）。
+// 代表の名前（`grass` など＝tiles 層のタイル・エディタのパレット見本・世界地図の
+// サムネイル）は変種 0 を指す。草だけは従来どおり2コマで風に揺れる。
+const GROUND_SHAPES = {
+	grass: grassGrid, sand: sandGrid, snow: snowGrid,
+	ash: ashGrid, mud: mudGrid, stoneFloor: stoneGrid,
+};
+const GROUND_GRIDS = {};
+for (const [name, gen] of Object.entries(GROUND_SHAPES)) {
+	GROUND_GRIDS[name] = Array.from({ length: GROUND_VARIANTS_N }, (_, v) => gen(v));
+	GROUND_GRIDS[name].forEach((g, v) => { TILE_SPRITES[`${name}@${v}`] = [g]; });
+	TILE_SPRITES[name] = [GROUND_GRIDS[name][0]];
+}
+TILE_SPRITES.grass = [GROUND_GRIDS.grass[0], GROUND_GRIDS.grass[1]];
 
 // ── 橋（木のデッキ）── 連結タイル・32×32 ──────────────────────
 // 旧 `bridge` は1枚の絵の中に「板＋両端の柱」を全部詰め込んでいたため、
@@ -757,15 +915,75 @@ const brTranspose = g => g[0].map((_, c) => g.map(row => row[c]));
 const brFlipRows  = g => [...g].reverse();
 const brFlipCols  = g => g.map(row => [...row].reverse());
 
-// 板1枚の断面（継ぎ目→明部→板の地→影）。行の中は一様＝デッキ本体に柱を作らない。
+// 板1枚の断面（継ぎ目→明部→板の地→影）。3＝板の地は板ごとの色に差し替える。
 const BR_PLANK_ROWS = [6, 4, 3, 3, 3, 3, 2, 2];
 
-// デッキH＝板が東西に走る（南北に渡る橋＝進行方向と直交）。周期 BR_PLANK で継ぎ目が
-// セル境界を越えて繋がる＝連続配置しても1枚の長い板に見える。
-TILE_SPRITES.bridgeDeckH = [brGrid(r => BR_PLANK_ROWS[r % BR_PLANK])];
+// ── 板の「模様の周期」を殺す（方針C・2026-09-06 ユーザー承認）──────
+// 断面だけのデッキは、どのセルも全く同じ絵＝12セル並べると 1296px の一枚板になり、
+// 色が1ドットも変わらない＝「板状のところがのっぺりしすぎて違和感」（ユーザー指摘）。
+// 本物の桟橋は板の端（木口）がレンガのように互い違い＝千鳥になっている。
+// ∴ ①板ごとに木口を千鳥で入れる ②板ごとに地の色を微妙に変える＋まばらに木目を引く。
+//
+// ⚠ ドットのピッチ（32×32）は変えない＝ここで直すのは「周期」だけ。
+// ⚠ SPRITES は import 時の spread で確定する（shared/sprites.js）∴変種は遅延生成できない。
+//    ∴ 行 5 × 列 3 の周期で作り置きし、セル座標から名前を引く（connectVariantName）。
+//    周期を素数どうし（5 と 3）にすると、繰り返しは 5セル×3セル＝画面より広くなる。
+const BR_PLANKS_PER_CELL = BR_N / BR_PLANK;      // セル内の板の枚数（4）
+// 木口の列は「隣り合う板どうしで循環距離 6 ドット以上」離す＝縦に揃わない（千鳥）。
+// 0/31 を避けるのはセル境界の真上に木口が来ないようにするため。
+const BR_SEAM_OFF = [3, 16, 9, 22, 28];          // 板ごとの木口の列。長さ＝行方向の変種の数
+const BR_SEAM_JIT = [0, 5, 11];                  // セル列ごとのずらし。長さ＝列方向の変種の数
+const BR_TONE     = [3, 7, 3, 8, 7];             // 板ごとの地の色（3 を基準に ±1段）
+export const BR_VAR_ROWS = BR_SEAM_OFF.length;   // ＝BR_TONE.length（板の並びで1周する）
+export const BR_VAR_COLS = BR_SEAM_JIT.length;
 
-// デッキV＝板が南北に走る（東西に渡る橋）。deckH の転置。
-TILE_SPRITES.bridgeDeckV = [brTranspose(TILE_SPRITES.bridgeDeckH[0])];
+// 木目＝板の向きに沿った1ドットの筋。3枚に1枚だけ・長さ3〜6ドット（まばら）。
+// 板の向きに沿うので柱には見えない（＝畑のうねを作らない）。
+function brGrain(band, j, sub) {
+	const h = tileHash(band * 2 + sub, j * 31 + 7);
+	if (h % 3) return null;
+	const len = 3 + (h >>> 5) % 4;
+	const start = (h >>> 9) % (BR_N - len);
+	return [start, start + len];
+}
+
+// デッキH＝板が東西に走る（南北に渡る橋＝進行方向と直交）。断面の周期は BR_PLANK の
+// ままなので、セル境界を越えても板の高さは揃う＝1枚の長い板に見える。
+function brDeckH(i, j) {
+	const planks = Array.from({ length: BR_PLANKS_PER_CELL }, (_, b) => {
+		const band = BR_PLANKS_PER_CELL * i + b;     // 変種の周期の中での板の通し番号
+		const k    = band % BR_VAR_ROWS;
+		return {
+			tone:  BR_TONE[k],
+			seam:  (BR_SEAM_OFF[k] + BR_SEAM_JIT[j]) % BR_N,
+			grain: [brGrain(band, j, 0), brGrain(band, j, 1)],
+		};
+	});
+	return brGrid((r, c) => {
+		const p  = planks[Math.floor(r / BR_PLANK)];
+		const rr = r % BR_PLANK;
+		let v = BR_PLANK_ROWS[rr];
+		if (v === 3) v = p.tone;                     // 板の地＝板ごとに微妙に違う
+		const g = rr === 3 ? p.grain[0] : rr === 5 ? p.grain[1] : null;
+		if (g && c >= g[0] && c < g[1]) v = 2;       // 木目
+		if (c === p.seam) v = 6;                     // 木口（板の端）＝板を横切る2ドット
+		else if (c === (p.seam + 1) % BR_N) v = 1;
+		return v;
+	});
+}
+
+// デッキV＝板が南北に走る（東西に渡る橋）。deckH の転置＝行と列の役割が入れ替わる∴
+// 変種の引き方も (r,c) が入れ替わる（connectVariantName 側で対応）。
+for (let i = 0; i < BR_VAR_ROWS; i++) {
+	for (let j = 0; j < BR_VAR_COLS; j++) {
+		const g = brDeckH(i, j);
+		TILE_SPRITES[`bridgeDeckH@${i},${j}`] = [g];
+		TILE_SPRITES[`bridgeDeckV@${i},${j}`] = [brTranspose(g)];
+	}
+}
+// 変種を持たない呼び出し（パレット見本・世界地図のサムネイル）用の代表1枚。
+TILE_SPRITES.bridgeDeckH = TILE_SPRITES['bridgeDeckH@0,0'];
+TILE_SPRITES.bridgeDeckV = TILE_SPRITES['bridgeDeckV@0,0'];
 
 // 手すり（rail）＝落ちる隣（水/溶岩）に面した辺に立てる。
 // 断面＝外側の輪郭2＋笠木の明部3＋その影1（計6ドット＝画面 20px）、内側へ支柱が4ドット。
@@ -797,6 +1015,44 @@ TILE_SPRITES.bridgeTrimE = [brFlipCols(brTranspose(brTrimN))];
 // 単体の `bridge` 名は残す（TILE_SPRITE_MAP・エディタのパレット見本・世界地図の
 // サムネイルが参照する「そのタイルの代表1枚」）。代表＝板だけのデッキ。
 TILE_SPRITES.bridge = TILE_SPRITES.bridgeDeckH;
+
+// ── セル座標から変種を選ぶ（単一の真実）───────────────────────
+// エディタ（editor/editor-canvas.js）とゲーム（game/render-board.js）の両方が
+// 必ずここを通す＝「エディタとゲームで見た目が違う」を作らない。
+// 決定的＝同じセルはいつ来ても同じ絵（乱数を使わない・マップデータも変えない）。
+
+// 連結タイルの本体（デッキ）の変種。板の並ぶ向きが「行方向か列方向か」で
+// (r,c) の役割が入れ替わる∴向きごとに引き方を持つ。
+export const CONNECT_VARIANTS = {
+	bridgeDeckH: (r, c) => [r, c],   // 板は東西に走る＝板が並ぶのは行方向
+	bridgeDeckV: (r, c) => [c, r],   // 板は南北に走る＝板が並ぶのは列方向
+};
+
+// 画面外の隣（エディタの隣接プレビューは r=-0.5 のような座標で描く）でも
+// 実在する名前を返す＝絵が消えない。
+const varMod = (n, m) => ((Math.floor(n) % m) + m) % m;
+
+export function connectVariantName(base, r, c) {
+	const pick = CONNECT_VARIANTS[base];
+	if (!pick) return base;
+	const [a, b] = pick(r, c);
+	return `${base}@${varMod(a, BR_VAR_ROWS)},${varMod(b, BR_VAR_COLS)}`;
+}
+
+// 下地（bgTiles）に敷く地面スプライトの変種。セル座標のハッシュで選ぶ。
+// 形は4種＝草地（mud も 'grass' の形を使う）・砂地（ash も同じ形）・雪原・石畳
+// ∴パレットだけ違うタイルも同じ恩恵を受ける（TILE_SPRITE_MAP）。
+// ⚠ 水（'water'）は対象外＝アニメーションする下地で、tiles 層の水・溶岩・潮ゲートと
+//    同じ形を共有している。しかも 12 ドット幅は `--cell` 108px を割り切る∴既に
+//    1ドット 3px で敷けている（倍率探索が s=3 を選ぶ）＝ピッチの問題が無い。
+export const GROUND_VARIANTS = Object.fromEntries(
+	Object.keys(GROUND_SHAPES).map(name => [name, GROUND_VARIANTS_N]));
+
+export function bgVariantName(spr, r, c) {
+	const n = GROUND_VARIANTS[spr];
+	if (!n) return spr;
+	return `${spr}@${tileHash(Math.floor(r), Math.floor(c)) % n}`;
+}
 
 // 木
 TILE_SPRITES.tree = [[

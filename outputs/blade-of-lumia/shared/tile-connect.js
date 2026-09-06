@@ -16,6 +16,7 @@
 //     ここで縁を描くと、辺スクロールで繋がっている通路が塞がって見える。）
 
 import { TILE } from './tiles.js';
+import { connectVariantName } from './sprites-tiles.js';
 
 // 「落ちる」隣＝手すりを立てる相手。tiles 層と bgTiles 層のどちらで水でも同じ。
 const FALL_TILES = new Set([TILE.WATER, TILE.LAVA]);
@@ -117,8 +118,9 @@ export function isConnectTile(tile) {
  * @param {number} r 行
  * @param {number} c 列
  * @param {string} tile そのセルのタイル文字
- * @returns {{pal:string, sprs:string[], edges:object, edgeCode:string}|null}
- *   sprs = 下から順に重ねるスプライト名（base → N,E,S,W の縁）
+ * @returns {{pal:string, base:string, sprs:string[], edges:object, edgeCode:string}|null}
+ *   base = 本体の向き（'bridgeDeckH'|'bridgeDeckV'）＝変種を剥がした名前
+ *   sprs = 下から順に重ねるスプライト名（本体の変種 → N,E,S,W の縁）
  *   edges = { N:'rail'|'trim'|null, ... }／edgeCode = 縁がある方向を並べた文字列
  */
 export function connectedTileParts(stageData, r, c, tile) {
@@ -159,13 +161,17 @@ export function connectedTileParts(stageData, r, c, tile) {
 			base = parts.baseV;
 		}
 	}
-	const sprs = [base];
+	// 本体はセル座標で変種を選ぶ（板の木口が千鳥になる＝模様の周期が目に見えない）。
+	// 向きの判定（base）と変種の選択は別物∴向きは base として別に返す
+	// ＝テストや呼び出し側は「どっち向きのデッキか」を変種名から剥がして読める。
+	const sprs = [connectVariantName(base, r, c)];
 	for (const dir of DIR_ORDER) {
 		const kind = edges[dir];
 		if (kind) sprs.push(parts[kind][dir]);
 	}
 	return {
 		pal: parts.pal,
+		base,
 		sprs,
 		edges,
 		edgeCode: DIR_ORDER.filter(d => edges[d]).join(''),

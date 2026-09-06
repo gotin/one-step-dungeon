@@ -100,8 +100,10 @@ export const TILE_SPRITE_MAP = {
 	[TILE.STONE_FLOOR]: { spr: 'stoneFloor',pal: 'stoneFloor'},
 	[TILE.BRIDGE]:      { spr: 'bridge',    pal: 'bridge'    },
 	[TILE.SNOW]:        { spr: 'snow',      pal: 'snow'      },
-	[TILE.ASH]:         { spr: 'sand',      pal: 'ash'       },
-	[TILE.MUD]:         { spr: 'grass',     pal: 'mud'       },
+	// 灰・泥は砂/草の形の流用をやめて専用の形にした（2026-09-06）＝
+	// 火山灰は角のある岩、泥はドロドロの溜まりに見せるため（同じ形＋色替えでは素材が違って見えない）
+	[TILE.ASH]:         { spr: 'ash',       pal: 'ash'       },
+	[TILE.MUD]:         { spr: 'mud',       pal: 'mud'       },
 	// Phase 5-1: 色スイッチ・色ゲート（基本スプライト。状態依存描画はゲーム側）
 	[TILE.SWITCH_RED]:  { spr: 'switchRed', pal: 'switchRed' },
 	[TILE.SWITCH_BLUE]: { spr: 'switchBlu', pal: 'switchBlu' },
