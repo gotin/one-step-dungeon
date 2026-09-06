@@ -17,8 +17,9 @@
 // は直接 import する（game.js スコープ外・再代入なし）。
 
 import { TILE } from '../shared/tiles.js';
-import { SPRITES, PAL, drawSpriteFrame, makeSprite, applyBgSpriteToCell } from '../shared/sprites.js';
+import { SPRITES, PAL, drawSpriteFrame, drawSpriteLayers, makeSprite, applyBgSpriteToCell } from '../shared/sprites.js';
 import { TILE_SPRITE_MAP } from '../shared/tile-sprites.js';
+import { connectedTileParts, isConnectTile } from '../shared/tile-connect.js';
 import { NPC_SPRITE_MAP } from '../shared/npcs.js';
 
 // bgTile の背景色クラスマップ（renderBoard 内でのみ使う定数）
@@ -68,10 +69,36 @@ export function createRenderBoard(deps) {
 		getDoorwayState,
 	} = deps;
 
+	// 連結タイル（橋のデッキ）を1セル分描く（内部用）。tiles 層／bgTiles 層のどちらに
+	// 置かれていても同じ部品表（shared/tile-connect.js）で描く＝置いた層で見た目が変わらない。
+	// セル全体を埋める（0.7倍の中央寄せだと連続配置で隙間が空き「畑」に見える＝キュー10番）。
+	function drawConnectTile(cellEl, posKey, tile) {
+		const [cr, cc] = posKey.split(',').map(Number);
+		const parts = connectedTileParts(getStageData(), cr, cc, tile);
+		if (!parts) return false;
+		// 下地（bgTiles のスプライト）を消し、セル背景をデッキの色にする。
+		// デッキは不透明なので下地は見えない…はずだが、8ドットの絵を 75px 等の
+		// 非整数倍率へ拡大するとき端の1デバイスピクセルに下地が滲み、セル境界に
+		// 草色の格子線が出る（DSF2/4 で実測）。下地を消せば滲みもデッキ色になる。
+		delete cellEl.dataset.bgSprite;
+		delete cellEl.dataset.bgPal;
+		cellEl.style.background = PAL[parts.pal]?.[2] ?? '';
+		const cv = document.createElement('canvas');
+		cv.className = 'sprite tile-sprite';
+		cv.dataset.tileEdges = parts.edgeCode;   // テストが縁の選択を観測できるようにする
+		drawSpriteLayers(cv, parts.sprs, PAL[parts.pal]);
+		cellEl.appendChild(cv);
+		return true;
+	}
+
 	// bgTile 背景クラス＋スプライトを cellEl に適用するヘルパー（内部用）
 	function applyBgTileClass(cellEl, posKey) {
 		const stageData = getStageData();
 		const bgTile = stageData.bgTiles?.[posKey] ?? TILE.FLOOR;
+		// 下地に置かれた連結タイル（エディタのタイルパレットの「橋」は BG_TILES ＝ bgTiles 層へ
+		// 書かれる）は、CSS 背景タイル敷きではなく tiles 層の橋と同じ部品で描く。
+		// ここを下の背景敷きに任せると、同じ「橋」なのに置いた層で見た目が変わる。
+		if (isConnectTile(bgTile) && drawConnectTile(cellEl, posKey, bgTile)) return;
 		const cls = BG_TILE_COLOR_CLASS[bgTile];
 		if (cls) cellEl.classList.add(cls);
 		// bgTile のスプライトを CSS background-image repeat で背景に敷く
@@ -371,12 +398,13 @@ export function createRenderBoard(deps) {
 			if (cv) { cv.classList.add('item-sprite'); cellEl.appendChild(cv); }
 			return;
 		}
+		// 連結タイル（橋のデッキ）＝隣接状況で部品を重ねる。
+		if (isConnectTile(tile) && drawConnectTile(cellEl, posKey, tile)) return;
 		// フィールドタイルのスプライト描画
 		const fieldSpriteMap = {
 			[TILE.GRASS]:       ['grass',      'grass'],
 			[TILE.SAND]:        ['sand',       'sand'],
 			[TILE.STONE_FLOOR]: ['stoneFloor', 'stoneFloor'],
-			[TILE.BRIDGE]:      ['bridge',     'bridge'],
 			[TILE.SNOW]:        ['grass',      'snow'],
 			[TILE.ASH]:         ['sand',       'ash'],
 			[TILE.MUD]:         ['grass',      'mud'],

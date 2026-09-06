@@ -7,6 +7,7 @@ import {
 	stageLabelEl, stageInfoEl, borderWarnEl, cellInfoEl, countTile,
 } from './editor-state.js';
 import { TILE_SPRITE_MAP, drawSpriteAt } from './editor-palette.js';
+import { connectedTileParts, connectTileAt } from '../shared/tile-connect.js';
 
 export const canvas    = document.getElementById('stage-canvas');
 export const canvasCtx = canvas.getContext('2d');
@@ -34,6 +35,23 @@ export function drawCell(c, r, tileChar) {
 	canvasCtx.strokeStyle = 'rgba(0,0,0,0.3)';
 	canvasCtx.lineWidth = 0.5;
 	canvasCtx.strokeRect(x + 0.5, y + 0.5, CELL_SIZE - 1, CELL_SIZE - 1);
+
+	// 連結タイル（橋のデッキ）＝ゲームと同じ shared/tile-connect.js で部品を選ぶ。
+	// ここを TILE_SPRITE_MAP の代表1枚で描くと、エディタでは柱つきの橋が並ぶのに
+	// ゲームでは繋がったデッキが出る＝見た目が食い違う。
+	// ⚠ タイルパレットの「橋」は地形（BG_TILES）なので bgTiles 層に書かれる。
+	//    tileChar だけを見ると連結タイルと気づけない＝connectTileAt で両層から解決する。
+	const cTile  = connectTileAt(sd, r, c);
+	const cparts = cTile ? connectedTileParts(sd, r, c, cTile) : null;
+	if (cparts) {
+		for (const spr of cparts.sprs) drawSpriteAt(canvasCtx, spr, cparts.pal, x, y, CELL_SIZE, CELL_SIZE);
+		// 下地が橋で tiles 層に別の物が乗っている場合は、デッキの上にその物を描く。
+		if (cTile !== tileChar) {
+			const siOn = TILE_SPRITE_MAP[tileChar];
+			if (siOn) drawSpriteAt(canvasCtx, siOn.spr, siOn.pal, x, y, CELL_SIZE, CELL_SIZE);
+		}
+		return;
+	}
 
 	const si = TILE_SPRITE_MAP[tileChar];
 	if (si && drawSpriteAt(canvasCtx, si.spr, si.pal, x, y, CELL_SIZE, CELL_SIZE)) {

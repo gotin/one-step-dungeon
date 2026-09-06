@@ -726,17 +726,77 @@ TILE_SPRITES.stoneFloor = [[
 	[1,1,1,1,1,1,1,1],
 ]];
 
-// 橋
-TILE_SPRITES.bridge = [[
-	[0,1,0,0,0,0,1,0],
-	[0,1,0,0,0,0,1,0],
-	[2,2,2,2,2,2,2,2],
-	[3,3,3,3,3,3,3,3],
-	[3,4,3,3,3,3,4,3],
-	[3,3,3,3,3,3,3,3],
-	[2,2,2,2,2,2,2,2],
-	[0,1,0,0,0,0,1,0],
-]];
+// ── 橋（木のデッキ）── 連結タイル・32×32 ──────────────────────
+// 旧 `bridge` は1枚の絵の中に「板＋両端の柱」を全部詰め込んでいたため、
+// 隣に並べると柱が等間隔に並んで畑のうねに見えた（2026-08-20 ユーザー指摘）。
+// ∴ 「敷き詰める本体（デッキ）」と「開いた辺だけに足す縁（手すり／木口）」に分解し、
+// 隣接状況から shared/tile-connect.js が重ねる部品を選ぶ。
+//
+// 🔴 格子は 32×32＝キャラ（heroD ほか）と同じ密度にする。理由は「画面上の1ドットの
+//    大きさを揃える」こと。連結タイルは canvas 1枚をセル全体へ拡大して描く∴
+//    8×8 だと 1ドット＝セル幅/8＝13.5px（`--cell` 108px の実測）＝プレイヤーの
+//    3.4px の4倍で、同じ画面の中でドットの粗さが揃わない
+//    （2026-09-06 ユーザー指摘「草地とかに比べてドットサイズが大きすぎて違和感しかない」）。
+//    ⚠ 草地などの地面が細かく見えるのは解像度が高いからではない＝あれは bgTiles の
+//      CSS repeat で 8×8 を1セルに13.5枚敷いている（1ドット 1px）。粗く見えるのは
+//      「1枚でセルを埋める／0.7倍で1枚だけ置く」絵だけ＝連結タイルと obj-sprite。
+//
+// ⚠ 32×32＝1部品 1024 ドット。手で数字を並べると板の周期や支柱の間隔を1つ間違えても
+//    目で気づけないので、周期の決まった幾何（板・笠木・支柱）は関数で組む。
+//    手描きの絵（木・家など）は従来どおり literal のまま。
+//
+// パレット bridge: 1=輪郭(暗茶) 2=影 3=板の地 4=板の明部 6=板の継ぎ目(最暗)
+
+const BR_N     = 32;   // 連結タイルの格子（キャラと同じ密度）
+const BR_PLANK = 8;    // 板1枚の幅（ドット）。BR_N の約数∴セル境界を越えて板が続く
+const BR_POST  = 16;   // 手すりの支柱の間隔（ドット）。BR_N の約数∴同じく等間隔で続く
+
+const brGrid = fill => Array.from({ length: BR_N }, (_, r) =>
+	Array.from({ length: BR_N }, (_, c) => fill(r, c)));
+const brTranspose = g => g[0].map((_, c) => g.map(row => row[c]));
+const brFlipRows  = g => [...g].reverse();
+const brFlipCols  = g => g.map(row => [...row].reverse());
+
+// 板1枚の断面（継ぎ目→明部→板の地→影）。行の中は一様＝デッキ本体に柱を作らない。
+const BR_PLANK_ROWS = [6, 4, 3, 3, 3, 3, 2, 2];
+
+// デッキH＝板が東西に走る（南北に渡る橋＝進行方向と直交）。周期 BR_PLANK で継ぎ目が
+// セル境界を越えて繋がる＝連続配置しても1枚の長い板に見える。
+TILE_SPRITES.bridgeDeckH = [brGrid(r => BR_PLANK_ROWS[r % BR_PLANK])];
+
+// デッキV＝板が南北に走る（東西に渡る橋）。deckH の転置。
+TILE_SPRITES.bridgeDeckV = [brTranspose(TILE_SPRITES.bridgeDeckH[0])];
+
+// 手すり（rail）＝落ちる隣（水/溶岩）に面した辺に立てる。
+// 断面＝外側の輪郭2＋笠木の明部3＋その影1（計6ドット＝画面 20px）、内側へ支柱が4ドット。
+// 支柱は BR_POST 間隔・幅3∴隣セルへ繋いでも等間隔に並ぶ（セル内に2本）。
+const BR_RAIL_ROWS  = [1, 1, 4, 4, 4, 2];        // 辺から内側へ向かう断面
+const BR_POST_DEPTH = BR_RAIL_ROWS.length + 4;   // 支柱の先端（辺から数えたドット）
+const brRailN = brGrid((r, c) => {
+	if (r < BR_RAIL_ROWS.length) return BR_RAIL_ROWS[r];
+	const inPost = (c % BR_POST) >= 2 && (c % BR_POST) <= 4;
+	return (r < BR_POST_DEPTH && inPost) ? 2 : 0;
+});
+TILE_SPRITES.bridgeRailN = [brRailN];
+TILE_SPRITES.bridgeRailS = [brFlipRows(brRailN)];
+TILE_SPRITES.bridgeRailW = [brTranspose(brRailN)];
+TILE_SPRITES.bridgeRailE = [brFlipCols(brTranspose(brRailN))];
+
+// 木口（trim）＝陸に面した辺。手すりを立てると「渡れない縁」に見えて
+// デッキへ乗り降りできる辺を塞いだように読めるので、板の端の陰だけを描く。
+// ⚠ 厚みは格子の 1/16（2ドット＝画面 7px）に留める。8×8 時代の「1ドット」は
+//   画面 13.5px＝これより太かった。格子の 1/4 まで太らせると陸側にも枠が回り、
+//   幅2セルの渡しが「木箱」に見えた（拡大確認 2026-09-06）。
+const BR_TRIM_ROWS = [1, 2];
+const brTrimN = brGrid(r => BR_TRIM_ROWS[r] ?? 0);
+TILE_SPRITES.bridgeTrimN = [brTrimN];
+TILE_SPRITES.bridgeTrimS = [brFlipRows(brTrimN)];
+TILE_SPRITES.bridgeTrimW = [brTranspose(brTrimN)];
+TILE_SPRITES.bridgeTrimE = [brFlipCols(brTranspose(brTrimN))];
+
+// 単体の `bridge` 名は残す（TILE_SPRITE_MAP・エディタのパレット見本・世界地図の
+// サムネイルが参照する「そのタイルの代表1枚」）。代表＝板だけのデッキ。
+TILE_SPRITES.bridge = TILE_SPRITES.bridgeDeckH;
 
 // 木
 TILE_SPRITES.tree = [[

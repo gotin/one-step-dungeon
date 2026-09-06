@@ -707,6 +707,14 @@ canvas.sprite.door-sprite {
     height: var(--cell);
 }
 
+/* 連結タイル（橋のデッキなど shared/tile-connect.js が部品を重ねるタイル）も
+   セル全体を埋める。0.7倍の中央寄せだと連続配置でセルごとに隙間が空き、
+   板と柱が等間隔に並んで「畑のうね」に見える（2026-08-20 ユーザー指摘）。 */
+canvas.sprite.tile-sprite {
+    width: var(--cell);
+    height: var(--cell);
+}
+
 /* 小アイテム */
 canvas.sprite.item-sprite {
     width: calc(var(--cell) * 0.55);

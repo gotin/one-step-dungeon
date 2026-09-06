@@ -100,6 +100,32 @@ export function drawSpriteFrame(canvas, frames, frameIdx, palette, flipX = false
 	}
 }
 
+// 複数のスプライトを同じパレットで1枚のcanvasに重ねて描く（連結タイル用）。
+// 先頭が下＝以降が上。index 0（透明）は下の絵を残す。全部同じドット数を前提とする。
+export function drawSpriteLayers(canvas, spriteNames, palette) {
+	const base = SPRITES[spriteNames[0]];
+	if (!base) return false;
+	const grid0 = base[0];
+	canvas.width  = grid0[0].length;
+	canvas.height = grid0.length;
+	const ctx = canvas.getContext('2d');
+	ctx.clearRect(0, 0, canvas.width, canvas.height);
+	for (const name of spriteNames) {
+		const frames = SPRITES[name];
+		if (!frames) continue;
+		const grid = frames[0];
+		for (let r = 0; r < grid.length; r++) {
+			for (let c = 0; c < grid[r].length; c++) {
+				const idx = grid[r][c];
+				if (!idx) continue;
+				ctx.fillStyle = palette[idx] ?? 'transparent';
+				ctx.fillRect(c, r, 1, 1);
+			}
+		}
+	}
+	return true;
+}
+
 // アニメーションスプライトの再描画（アニメループ内から呼ぶ）
 export function redrawAnimSprites() {
 	document.querySelectorAll('canvas.sprite[data-sprite]').forEach(cv => {
