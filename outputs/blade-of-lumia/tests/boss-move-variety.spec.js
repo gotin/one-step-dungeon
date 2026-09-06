@@ -1916,7 +1916,15 @@ test('㉚ O 古森の巨人のデータ＝見据えは印1つ＝岩1つで、印
   expect(sword.range, '枝腕の間合いが印の半径より広い＝離れても殴られる（印を読む意味が薄れる）')
     .toBeLessThanOrEqual(c.stampRadius + 0.5);
   // 弱点＝炎（ロウソク＝密着して焼く）＝この機構と噛み合う（寄って留まると足元に印が立つ）
-  expect(m.weakness).toEqual({ type: 'fire', multiplier: 2 });
+  // 倍率は 0u（2026-09-05 の横並び1パス）で ×2 → ×5。置き炎は「1体に1回・同時3つまで」＝
+  // 当てられる回数が機構で縛られている∴軽い1発では弱点ルートが死ぬ（旧 ×2 ＝24発）。
+  expect(m.weakness).toEqual({ type: 'fire', multiplier: 5 });
+  // 炎の弱点を持つ3体（I ×5／L ×3／O ×5）を**同じ武器で**並べた発数の帯＝8〜14発。
+  // 手書きの数を置かず `CANDLE_FIRE_DMG` と meta から導く＝どちらを動かしても赤くなる。
+  const burnHits = Math.ceil(m.hp / Math.max(1, Math.round(CANDLE_FIRE_DMG * m.weakness.multiplier) - m.def));
+  expect(burnHits, 'O を炎で焼き切る発数が 8〜14 の帯から外れた（他の炎ボスと並ばない）')
+    .toBeGreaterThanOrEqual(8);
+  expect(burnHits).toBeLessThanOrEqual(14);
 
   // ── 後半＝速く押し直して広く潰す（打点は据え置き）──────────────────────
   expect(ph.gaze.stampMs, '後半の印が前半以上に長い＝押し直しが速くなっていない')
@@ -4224,9 +4232,9 @@ test('I-⑥ 逆へ歩けば間合いが開いて舌が外れ、外せなくて�
 });
 
 // ── I-⑦ 舌が出ているあいだは移動も攻撃もしない＝引かれている時間が「殴れる窓」になる ────
-// ⚠️ 歯＝**舌が終わった直後に毒沫が飛ぶ**こと（＝止めていたのは行動ゲートで、そもそも
-//    撃てる状態だった）。これが無いと「たまたま撃たなかった」だけで本が緑になる。
-test('I-⑦ 舌が出ているあいだ噛みつきも毒沫も出ない（直後には毒沫が飛ぶ＝止めていた証拠）', async ({ page }) => {
+// ⚠️ 歯＝**舌が終わった直後に攻撃が出る**こと（＝止めていたのは行動ゲートで、そもそも
+//    出せる状態だった）。これが無いと「たまたま出さなかった」だけで本が緑になる。
+test('I-⑦ 舌が出ているあいだ噛みつきも毒沫も出ない（直後に攻撃が出る＝止めていた証拠）', async ({ page }) => {
   const out = await trackToad(page, { ticks: 40, spawn: I_FAR, debugOff: true });
   const s = out.samples;
   const busy = s.filter(x => x.phase !== 'idle');
@@ -4237,19 +4245,28 @@ test('I-⑦ 舌が出ているあいだ噛みつきも毒沫も出ない（直�
     expect(x.freezeUntil, `t${x.t}（舌が出ている）に攻撃硬直が立った＝攻撃を解決している`).toBeNull();
     expect(x.projectiles, `t${x.t}（舌が出ている）に毒沫が飛んだ＝錨が効いていない`).toBe(0);
   }
-  // 舌が終わった直後に毒沫が飛ぶ＝ずっと「撃てるのに撃たなかった」
+  // 舌が終わった直後に攻撃が出る＝ずっと「出せるのに出さなかった」
   // ⚠️ 2026-09-01：終幕がのしかかりになった＝着地に硬直（`pounceRecoverMs`）が入る∴「同じ tick か
-  //    次の tick」では**もう緑にならない**（硬直は設計）。∴測るのは**硬直が明けた直後に飛ぶ**こと
-  //    ＝待たされた理由が「舌の錨 → 着地の硬直」だけで説明でき、毒沫のクールダウンではないこと。
+  //    次の tick」では**もう緑にならない**（硬直は設計）。∴測るのは**硬直が明けた直後に出る**こと
+  //    ＝待たされた理由が「舌の錨 → 着地の硬直」だけで説明でき、クールダウン待ちではないこと。
+  // ⚠️ 2026-09-06（0u-2）：証拠を**毒沫から「噛みつきの予告または毒沫」へ広げた**。毒沫は
+  //    `minRange 2.0` を持った＝引き寄せの終点（噛みつきの間合い 1.4 の内側）では**設計どおり
+  //    飛ばない**∴「直後に毒沫が飛ぶ」はもう成り立たない。毒沫が来ない理由が「撃てないから」
+  //    ではなく「近すぎるから」であることは、この後の間合いの数で確かめる。
   const recoverTicks = Math.ceil(ENEMY_META['I'].tongue.pounceRecoverMs / TICK_MS);
   const lastBusy = busy[busy.length - 1];
-  const firstShot = s.find(x => x.projectiles >= 1);
-  expect(firstShot, '舌が終わっても毒沫を一度も撃たない＝止めていた証拠が無い').toBeTruthy();
-  expect(firstShot.t - lastBusy.t, '毒沫が着地の硬直より早く飛んだ＝硬直が効いていない')
+  const firstAct = s.find(x => x.t > lastBusy.t && (x.swingAt !== null || x.projectiles >= 1));
+  expect(firstAct, '舌が終わっても噛みつきも毒沫も一度も出ない＝止めていた証拠が無い').toBeTruthy();
+  expect(firstAct.t - lastBusy.t, '攻撃が着地の硬直より早く出た＝硬直が効いていない')
     .toBeGreaterThan(recoverTicks - 2);
-  expect(firstShot.t - lastBusy.t, '毒沫が着地の硬直（'
-    + `${ENEMY_META['I'].tongue.pounceRecoverMs}ms＝${recoverTicks} tick）より遅れて飛んだ`
+  expect(firstAct.t - lastBusy.t, '攻撃が着地の硬直（'
+    + `${ENEMY_META['I'].tongue.pounceRecoverMs}ms＝${recoverTicks} tick）より遅れて出た`
     + '＝クールダウン待ちだった可能性').toBeLessThanOrEqual(recoverTicks + 2);
+  // 毒沫が来ないのは撃てないからではなく**近すぎるから**（0u-2 の下限）＝引き寄せの終点は密着。
+  const spray = ENEMY_META['I'].attacks.find(a => a.type === 'stone');
+  expect(firstAct.reach, `錨が解けた時点の間合い ${firstAct.reach.toFixed(2)} が毒沫の下限`
+    + ` ${spray.minRange} の外＝この本の前提（引き寄せの終点は噛みつきの間合い）が崩れている`)
+    .toBeLessThan(spray.minRange);
 });
 
 // ── I-⑧ 到達距離の表に隙間が無い（噛みつきの外なら必ず舌）／帯の外は跳ねて寄る ─────────

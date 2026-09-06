@@ -358,9 +358,12 @@ test('③ dash は 2×2 で「突進する車線」と「当たる車線」が�
 //
 // 「凍って何もしない」を主張するには**するはずの行動**を先に用意する必要がある
 // （歯の実測 2026-08-25）。ここでは2つ用意した：
-//   ・岩投げ（G の attacks[1]・range 6・cooldown 2600）… 激突地点は端から 1.0 ＝**射程内**
-//     ∴凍結が明けた tick 30 に**即座に**投げる（予告を持たない攻撃＝その tick に記録が立つ）
-//     ＝ tick 9〜29 の沈黙は「撃てないから」ではなく守りのせい
+//   ・剣（G の attacks[0]・range 1.2）… 激突地点は端から 1.0 ＝**間合いの内側**∴凍結が
+//     明けた tick 30 に**即座に**振り上げる（`swingAt` がその tick に立つ）＝ tick 9〜29 の
+//     沈黙は「出せないから」ではなく守りのせい。
+//     ⚠️ 2026-09-06（0u-2）まではこの証拠を**岩投げ**（attacks[1]・range 6）で採っていた。
+//        岩に `minRange 2.0` が入った＝激突地点（端から 1.0）は**下限の内側**∴設計どおり
+//        投げない∴証拠には使えなくなった（下でも「投げないこと」を明示して固定する）。
 //   ・歩く駆動 … 注入敵は `e.speed = 0`（resolveEnemySpeed は `e.speed ?? meta.speed`
 //     ∴meta を patch しても 0）∴ tick 10 に HP を割って G の相（hpThreshold 0.5 /
 //     speedMultiplier 1.4）に `e.speed = 0.25×1.4` を書かせる
@@ -420,15 +423,19 @@ test('④ dash の壁激突と気絶窓は 2×2 でもそのまま使える', as
     .toEqual(new Set(['{}']));
 
   // 明ける刻は気絶＋硬直の合計ぶん後（＝気絶明け即再突進にならない）。
-  // 明けた tick に**即**岩が飛ぶ＝射程内で待たされていた＝上の沈黙は守りのせい。
   expect(at(r.samples, FREE_AT - 1).dashPhase, '硬直が算術より早く明けた（即・再突進の回帰）').toBe('recover');
   expect(at(r.samples, FREE_AT).dashPhase, '硬直が算術どおり明けていない').toBe('idle');
-  expect(at(r.samples, FREE_AT).attackTimes['1'], '明けたのに岩を投げない＝凍結中の沈黙が守りのせいだと言えない')
-    .toBe(FREE_AT * TICK_MS);
-
   // 剣（0d-2.6）は明けた tick に**予告が立つだけ**＝WINDUP_TICKS 後に当たる。
-  expect(at(r.samples, FREE_AT).swingAt, '明けた tick に剣の予告が立っていない')
+  // この予告が「明けた tick に即」立つこと＝間合いの内側で待たされていた＝上の沈黙は守りのせい。
+  expect(at(r.samples, FREE_AT).swingAt, '明けたのに剣の予告が立たない'
+    + '＝凍結中の沈黙が守りのせいだと言えない')
     .toBe(FREE_AT * TICK_MS + sword.windupMs);
+  // 岩（attacks[1]）は明けても投げない＝密着（端から 1.0 < minRange 2.0）では遠隔を出さない
+  // （0u-2・`shared/enemies.js` 冒頭の minRange の項）。剣と岩で拍が違うことをここで固定する。
+  const stone = (meta.attacks ?? []).find(a => a.type === 'stone');
+  expect(stone.minRange, '岩に minRange が無い＝密着でも投げる形に戻っている').toBeGreaterThan(1.0);
+  expect(at(r.samples, FREE_AT).attackTimes['1'], '密着なのに岩を投げた（minRange のゲートが効いていない）')
+    .toBeUndefined();
   expect(at(r.samples, FREE_AT).attackTimes['0'], '予告なしで剣が当たった（0d-2.6 の予告が消えた）')
     .toBeUndefined();
   expect(at(r.samples, FREE_AT + WINDUP_TICKS).attackTimes['0'], '予告の後に剣が解決していない')

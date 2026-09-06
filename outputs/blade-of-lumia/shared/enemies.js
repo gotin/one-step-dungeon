@@ -34,6 +34,20 @@ export const ENEMY_SPEED_FAST   = 1.0;  // 高速敵
 //   近接と遠隔を1体に持たせるとき「隣接では遠隔を撃たず噛みつきに切り替わる」を
 //   宣言的に書くためのフィールド。省略時は下限なし＝従来挙動（後方互換）。
 //
+//   ⚠️ **ボスの遠隔（stone/waterShot/magicBolt など）には必ず minRange 2.0 を置く**
+//     （0u-2・2026-09-06 に10体へ一斉に入れた。既定値＝プレイヤーの剣 SWORD_REACH 1.2 と
+//     ボスの剣 1.5 のどちらより外）。理由は実測（`.scratch/0u2-pointblank.mjs`）：
+//     密着（端から 1.2 以内）で撃たれた弾は**撃たれた step の中で決着する**＝避ける猶予が
+//     0 tick（W/V/L/N/G の石は 20〜40 発すべて猶予 0）。しかも盾は振っている間は下がる
+//     （`isShieldActive` が `_atkUntil`／ATTACK_POSE_MS の窓で false）∴斬り返している
+//     最中の弾は受けられない＝「見てから動けない一撃」。当たるか外れるかはプレイヤーの
+//     半セルのずれで決まる（2×2 の敵は体の中心を狙い左上セルから撃つ＝密着ではちょうど
+//     0.5 ずれて外れることがある）＝プレイヤーの操作では変えられない。
+//   例外＝**予告が近接の予告（MELEE_WINDUP_MS 480ms）以上ある遠隔**は密着でも出してよい
+//     （見てから動ける∴近接と同じ約束になる）。今これに当たるのは A 炎のサラマンドラの
+//     `breath`（windupMs 720）だけ＝A は近接を持たない∴密着の答えがここしか無い。
+//   番人＝`tests/boss-pointblank-ranged.spec.js`（データ・機構・逆側の3本）。
+//
 // ⚠️ range / minRange は **body の端からプレイヤーまでの距離**（Phase 8-4 (4) 0d-2.5 で
 //   統一）。1×1 の敵では「自分のセルからの距離」と同値∴従来の数値の意味は変わらない。
 //   2×2 の大型ボスは**それまで左上角から測っていた**＝西/北から測ると体の幅ぶん（1セル）
@@ -696,6 +710,8 @@ export const ENEMY_META = {
 			{
 				type:            'stone',
 				range:           4,
+				minRange:        2.0,   // 密着では投げない（0u-2・冒頭の minRange の項）。
+				// ⚠️ 二相（`combat.keepMin` 2.5）の遠隔相は下限の外＝この石は1発も減らない。
 				cooldown:        2800,  // 石投げ（魔将より頻度低）
 				projectileSpeed: 1.0,
 				// 投げた直後は固まらない（2026-08-26）。`directional: true` を絵のために立てると
@@ -752,6 +768,7 @@ export const ENEMY_META = {
 			{
 				type:            'stone',
 				range:           5,
+				minRange:        2.0,   // 密着では投げない（0u-2・冒頭の minRange の項）
 				cooldown:        1800,  // 中距離から石投げ
 				projectileSpeed: 1.2,
 			},
@@ -873,7 +890,11 @@ export const ENEMY_META = {
 				cooldown: 800,    // 近距離に来たら剣も使う
 			},
 		],
-		attack: { type: 'stone', range: 6, cooldown: 2000, projectileSpeed: 1.0 },
+		// 後方互換用（`resolveAttackList` は `attacks` があるとこちらを読まない）。
+		// ⚠️ それでも `minRange` を同じ数で持たせる＝`attacks` を消した／古いセーブから
+		//    エンティティが復元されたときに**下限の無い石**が復活する経路を残さない
+		//    （Z ザーネルの legacy `attack` も同じ理由で 2.0 を持っている）。
+		attack: { type: 'stone', range: 6, minRange: 2.0, cooldown: 2000, projectileSpeed: 1.0 },
 		phases: [
 			// 第2形態＝魔将の唯一のフェーズと同じ加速（×1.5）・器が速く満ちる（2.94 秒 → 2.0 秒）。
 			//   ⚠️ `radius`/`warnMs`/`decreeAtk`/`sealMs`/`coolPerCell`/`rootMs` は据え置き＝
@@ -1016,7 +1037,11 @@ export const ENEMY_META = {
 			// （体の幅 2 レーン → 2セル目以降は 4 レーン）。breathAtk は書かない＝本体の atk。
 			{ type: 'breath', range: 3.0, cooldown: 2600, windupMs: 720, cells: 3, spread: 1,
 			  breathMs: 420, freezeMs: 480 },
-			{ type: 'stone', range: 7, cooldown: 2200, projectileSpeed: 1.2 }, // 炎の石
+			// 炎の石。密着では投げない（0u-2・冒頭の minRange の項）。
+			// ⚠️ A は**近接を持たない**∴ブレス（上）には下限を入れない＝密着の答えはブレス
+			//   1つだけになる（両方に下限を入れると密着で無力化する＝実測で被弾 13.4→0.0/10秒）。
+			//   ブレスは windupMs 720（近接の予告 480 より長い）＝見てから動ける∴例外に当たる。
+			{ type: 'stone', range: 7, minRange: 2.0, cooldown: 2200, projectileSpeed: 1.2 },
 		],
 		attack: { type: 'breath', range: 3.0, cooldown: 2600, windupMs: 720, cells: 3, spread: 1,
 		          breathMs: 420, freezeMs: 480 },
@@ -1073,7 +1098,8 @@ export const ENEMY_META = {
 		glaciate: { freezeMs: 700, laneTiles: 3, spikeMs: 2400, warnMs: 1080, spikeAtk: 4 },
 		attacks: [
 			{ type: 'sword', range: 1.5, cooldown: 1100 },  // 咬みつき（リーチが長い）
-			{ type: 'stone', range: 8, cooldown: 2800, projectileSpeed: 0.9 }, // 氷の礫
+			// 氷の礫。密着では投げない（0u-2・冒頭の minRange の項）
+			{ type: 'stone', range: 8, minRange: 2.0, cooldown: 2800, projectileSpeed: 0.9 },
 		],
 		attack: { type: 'sword', range: 1.5, cooldown: 1100 },
 		phases: [
@@ -1120,7 +1146,8 @@ export const ENEMY_META = {
 		burrowAmbush: { ambushDist: 1 },  // プレイヤーの向こう側・隣接まで回り込む
 		attacks: [
 			{ type: 'sword', range: 1.3, cooldown: 750 },   // 鉗肢なぎ払い
-			{ type: 'stone', range: 7, cooldown: 2400, projectileSpeed: 1.3 }, // 毒針投げ
+			// 毒針投げ。密着では投げない（0u-2・冒頭の minRange の項）
+			{ type: 'stone', range: 7, minRange: 2.0, cooldown: 2400, projectileSpeed: 1.3 },
 		],
 		attack: { type: 'sword', range: 1.3, cooldown: 750 },
 		phases: [
@@ -1198,7 +1225,8 @@ export const ENEMY_META = {
 		},
 		attacks: [
 			{ type: 'sword', range: 1.6, cooldown: 1000 },  // 咬みつき（リーチ長）
-			{ type: 'stone', range: 8, cooldown: 2600, projectileSpeed: 1.0 }, // 水球
+			// 水球。密着では投げない（0u-2・冒頭の minRange の項）
+			{ type: 'stone', range: 8, minRange: 2.0, cooldown: 2600, projectileSpeed: 1.0 },
 		],
 		attack: { type: 'sword', range: 1.6, cooldown: 1000 },
 		phases: [
@@ -1248,7 +1276,21 @@ export const ENEMY_META = {
 		size:   { w: 2, h: 2 },
 		isBoss: true,
 		dropsTriforce: true,
-		weakness: { type: 'fire', multiplier: 2 },   // 炎で樹皮を焼き払う
+		// 炎で樹皮を焼き払う。
+		// ⚠️ 倍率は 2026-09-05（実行キュー 0u ＝全ボスの横並び1パス）に ×2 → ×5 へ上げた。
+		//    理由＝**炎の弱点を持つ3体を同じ武器で並べたら発数が 8／14／24 に散っていた**
+		//    （I 沼地の大蝦蟇 ×5＝8発／L 氷のリヴァイアサン ×3＝14発／O ×2＝**24発**）。
+		//    ロウソクは 2026-08-31 に**置いた炎**になり「1つの炎は1体に1回・同時3つまで
+		//    （`CANDLE_FLAME_MAX` 3・`CANDLE_FLAME_MS` 3500）」＝**当てられる回数が機構で
+		//    縛られている**∴1発が軽いままだと弱点ルートが事実上死ぬ（O は連打では詰められない）。
+		//    `CANDLE_FIRE_DMG 3 × 5 − def 2 = 13`／hp 96 ＝**8発**＝I（調整済みの基準）と同数。
+		//    O を帯の下限（8発）に置くのは、3体のうち**最も炎を当てにくい**から＝I は鈍重に
+		//    跳ね・L は道から出られないが、O は速さ 0.5 で歩き回る（当てる手は `gaze` の
+		//    「印の上に置く」＝機構と噛み合う）。L の ×3（14発）は据え置き＝道の上に置けば
+		//    必ず踏む＝最も当てやすい∴帯の上端。
+		// ⚠️ 調整は**この倍率**でやる（`CANDLE_FIRE_DMG` を上げると弱点でない雑魚まで
+		//    強く焼けてロウソクが汎用武器化する＝I の meta に書いた同じ理由）。
+		weakness: { type: 'fire', multiplier: 5 },
 		hitAndAway: false,   // 明示（W/A/N/J と同じ罠＝書かないと `gaze` の分岐に来ない）
 		// 見据え（層2の固有機構）。**「印1つ＝岩1つ」の1つの時計**で回す（GUIDE §7-7）。
 		gaze: {
@@ -1365,7 +1407,10 @@ export const ENEMY_META = {
 			// 予告は全敵の既定（MELEE_WINDUP_MS 480ms・0d-2.7）∴書かない。
 			{ type: 'sword', range: 1.1, cooldown: 700 },
 			// 雷撃弾＝空からも届く唯一の攻撃＝「待っていれば安全」を消す（弓で落とす動機になる）。
-			{ type: 'stone', range: 7, cooldown: 2000, projectileSpeed: 1.4 },
+			// 密着では撃たない（0u-2・冒頭の minRange の項）。
+			// ⚠️ 「真下に立てば安全」は生まれない＝急降下（`tickSoar` の `airMaxMs`）は
+			//   **時間で強制**される＝距離では止められない∴滞空を待つ立ち回りは通らない。
+			{ type: 'stone', range: 7, minRange: 2.0, cooldown: 2000, projectileSpeed: 1.4 },
 		],
 		attack: { type: 'sword', range: 1.1, cooldown: 700 },
 		// ⚠️ `initialModeWeights` は外した＝`hitAndAway: false` は寄り方の抽選
@@ -1436,7 +1481,8 @@ export const ENEMY_META = {
 			//    よけられない」と判定された（2026-08-25）∴5 tick へ延ばした。人が振り上げを
 			//    見てから逃げる向きを決める時間を予告に含める（詳細は attack.windupMs の項）。
 			{ type: 'sword', range: 1.2, cooldown: 900, windupMs: 600 },
-			{ type: 'stone', range: 6, cooldown: 2600, projectileSpeed: 1.0 }, // 岩投げ
+			// 岩投げ。密着では投げない（0u-2・冒頭の minRange の項）
+			{ type: 'stone', range: 6, minRange: 2.0, cooldown: 2600, projectileSpeed: 1.0 },
 		],
 		attack: { type: 'sword', range: 1.2, cooldown: 900, windupMs: 600 },
 		// Phase 8-4 (4) 0d-3（7体目・2026-08-31）＝**移動アルゴリズムを慣性（momentum）へ替えた**。
@@ -1504,7 +1550,10 @@ export const ENEMY_META = {
 		hitAndAway: false,                // ⚠️ **明示する**（書かないと tongue の分岐に来ない）
 		attacks: [
 			{ type: 'sword', range: 1.4, cooldown: 900 },   // 噛みつき（引き寄せの終点）
-			{ type: 'stone', range: 7, cooldown: 2400, projectileSpeed: 1.1 }, // 毒沫
+			// 毒沫。密着では吐かない（0u-2・冒頭の minRange の項）。
+			// ⚠️ 1.4〜2.0（噛みつきの外・毒沫の下限の内）に「何も来ない隙間」は生まれない＝
+			//   舌（下の `tongue`）の帯の内端が噛みつきの range 1.4 ∴この帯で引き寄せられる。
+			{ type: 'stone', range: 7, minRange: 2.0, cooldown: 2400, projectileSpeed: 1.1 },
 		],
 		attack: { type: 'sword', range: 1.4, cooldown: 900 },
 		// 舌（＝この敵の移動機構）。数の意味は enemy-ai.js の tickTongue 冒頭に書いてある。
@@ -1676,8 +1725,10 @@ export const ENEMY_META = {
 			//    水際に立って斬り合うという攻略の芯が成立しなかった（＋盾は向いている方向しか
 			//    守らない∴横へ退く動作が被弾に変わる）。同値なら「届く間合いは殴り合いの間合い」。
 			{ type: 'sword', range: 1.2, cooldown: 1100 },
-			// 潮吹き＝水弾（射水魚と同じ waterShot 型。任意角へ飛ぶ）
-			{ type: 'waterShot', range: 8, cooldown: 2400, projectileSpeed: 1.3 },
+			// 潮吹き＝水弾（射水魚と同じ waterShot 型。任意角へ飛ぶ）。
+			// 密着では吹かない（0u-2・冒頭の minRange の項）＝水際で斬り合う芯（上の体当たりの
+			// 到達 1.2 と同じ思想）を守る：間合いが同値なのに弾が刺さると殴り合いが成立しない。
+			{ type: 'waterShot', range: 8, minRange: 2.0, cooldown: 2400, projectileSpeed: 1.3 },
 		],
 		attack: { type: 'sword', range: 1.2, cooldown: 1100 },
 		// ⚠️ `initialModeWeights` は **hitAndAway を落としたときに消した**（読み手＝
