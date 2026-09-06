@@ -2,6 +2,7 @@
 // block・door・switch・gate・water・mapEnter・doorway系
 // フィールドタイル（grass/sand/stoneFloor/bridge/tree/mountain/bush/fence/house/sign）
 // breakableWall
+import { skinName, MOUNTAIN_SKIN_DEFAULT } from './tile-skins.js';
 
 export const TILE_PAL = {
 	block:    ['transparent','#0a0a14','#6a7470','#9aa3a0','#b8bfbc','#ffffff'],
@@ -83,6 +84,19 @@ export const TILE_PAL = {
 	// （#b0a8a0）で足りていたが、32 ドットで雪の面積が広がると岩（4=#9a9090）と
 	// 見分けが付かず「ただの明るい岩山」に見えた（10a-1c で実画面を見て判定）∴白へ。
 	mountain:    ['transparent','#3a3030','#5a5050','#7a7070','#9a9090','#e4ecf2','#2a2020'],
+	// 山の肌は下地から選ぶ（10a-1d・shared/tile-skins.js）＝色も肌ごとに持つ。
+	// 🔴 どの肌も「6＝輪郭」を下地よりはっきり暗くする＝地面と同化して山が消えない
+	//    （雪原の雪山を全面白にすると輪郭が失せて山が見えなくなる＝設計時の警告）。
+	// 5 の意味は肌ごとに違う（雪冠／雪／溶岩の熾火）。使わない肌もある。
+	// alpine は従来の `mountain` と同じ色∴この下で参照を張る（書き写すとずれる）。
+	// 火山＝黒い玄武岩。下地の火山灰（#503828）より暗い側へ寄せ、日向（4）だけ灰色に上げる。
+	'mountain@volcanic': ['transparent','#161010','#282020','#3e3230','#605250','#e0621c','#0a0606'],
+	// 雪山＝青みの岩に白い雪。雪（5）は下地の雪原（#b0ccd8）よりさらに白い。
+	'mountain@snowy':    ['transparent','#2a3038','#3c4550','#54606c','#6e7c8a','#f2f8fc','#161c22'],
+	// メサ＝砂岩。下地の砂（#c8a84a）は黄色∴赤褐色へ振って見分ける。
+	'mountain@mesa':     ['transparent','#7a4620','#96602c','#b4763c','#cc9258','#e8c088','#54300e'],
+	// 低い岩山＝灰色の岩。下地の泥（#384a24）は暗い緑∴彩度を落として明るい側へ。
+	'mountain@rocky':    ['transparent','#2c2e2a','#42463c','#5a6050','#727a66','#8e9682','#1a1c18'],
 	bush:        ['transparent','#1a4010','#2a5a18','#388028','#50a040','#6aba50','#0e2808'],
 	fence:       ['transparent','#5a3810','#8a6030','#b08050','#c8a070','#ffffff','#3a2008'],
 	houseWall:   ['transparent','#805030','#c09060','#e0b080','#f0d0a0','#6080c0','#3a3060'],
@@ -90,6 +104,9 @@ export const TILE_PAL = {
 	houseRoof:   ['transparent','#6a0808','#b02018','#d04030','#e06050','#c06030','#402010'],
 	sign:        ['transparent','#5a3810','#8a6030','#b08050','#c09060','#000000','#403010'],
 };
+
+// 山の草地の肌は従来の `mountain` の色そのもの（書き写さず参照を張る）。
+TILE_PAL[skinName('mountain', MOUNTAIN_SKIN_DEFAULT)] = TILE_PAL.mountain;
 
 export const TILE_SPRITES = {};
 
@@ -1180,55 +1197,124 @@ function treeGrid(frame) {
 }
 TILE_SPRITES.tree = [treeGrid(0), treeGrid(1)];
 
-// ── 山（パレット: 1=最暗 2=影 3=中 4=明 5=雪 6=輪郭）─────────────────
+// ── 山（パレット: 1=最暗 2=影 3=中 4=明 5=雪/熾火 6=輪郭）───────────────
 // 行ごとの左右の張り出しを手で決める（左右対称の等差だと定規で引いた三角に見える）。
+//
+// 10a-1d：同じ `'M'` タイルを**下地から選んだ肌**で描き分ける（`shared/tile-skins.js`）。
+// 5種＝雪冠つきの高山（草地）／黒い火山（火山灰）／雪山（雪原）／砂岩のメサ（砂）／
+//       低い岩山（泥）。輪郭表・雪線・模様・パレットを肌ごとに持つ。
 const MT_TOP  = 5;
 const MT_EDGE = [
 	[1, 1], [2, 2], [2, 3], [3, 4], [4, 4], [4, 5], [5, 6], [6, 7], [6, 8], [7, 8],
 	[8, 9], [8, 10], [9, 10], [10, 11], [10, 11], [11, 12], [11, 12], [12, 12], [12, 12], [12, 12],
 ];
+// メサ＝平らな頂と段（背が低い＝砂漠の岩山に見せる）。上から始まって既に幅がある。
+const MT_EDGE_MESA = [
+	[6, 6], [6, 6], [7, 7], [7, 7], [7, 8], [8, 8], [8, 9], [9, 9],
+	[9, 10], [10, 10], [10, 11], [11, 11], [11, 12], [12, 12], [12, 12],
+];
+// 低い岩山＝丸い頂の岩塊。高山より 4 行低く、頂の幅は広い。
+const MT_EDGE_ROCKY = [
+	[3, 4], [4, 5], [5, 6], [6, 6], [6, 7], [7, 8], [8, 8], [8, 9],
+	[9, 10], [10, 10], [10, 11], [11, 11], [11, 12], [12, 12], [12, 12], [12, 12],
+];
 const MT_SNOW_JAG = [-1, 1, 0, 2, 1, -1, 0, 1];   // 雪の下端の凸凹（列ごと）
-function mountainGrid() {
+
+// 肌ごとの絵の作り。`snow` の意味＝
+//   'cap'     …頂だけの雪冠（上半分で止まる）
+//   'blanket' …裾まで下りた雪（下半分まで来る＝雪山）。岩と輪郭は必ず残す
+//   'none'    …雪を1ドットも置かない
+//   'ember'   …雪ではなく溶岩の熾火（5 を火口と溶岩の筋に使う）
+// `marks` ＝[行番号, 列0, 列1, 色]（3ドット以上のかたまり＝3.375px の粒に見えない）。
+export const MT_SKIN_ART = {
+	alpine: {
+		top: MT_TOP, edge: MT_EDGE, snow: 'cap',
+		snowLine: { c0: 8, c1: 23, base: 8, slope: 0.55 },
+		marks: [[12, 19, 21, 1], [13, 20, 22, 1], [17, 18, 21, 1], [15, 9, 11, 3], [16, 10, 12, 3]],
+	},
+	volcanic: {
+		top: MT_TOP, edge: MT_EDGE, snow: 'ember',
+		// 火口＝頂の2行を最暗にして口が開いて見せる。溶岩の筋は右の斜面を下る。
+		marks: [[0, 14, 17, 1], [1, 14, 17, 1], [2, 15, 17, 5], [3, 16, 18, 5], [4, 17, 19, 5],
+			[12, 19, 21, 1], [13, 20, 22, 1], [17, 18, 21, 1], [15, 9, 11, 2], [16, 10, 12, 2]],
+	},
+	snowy: {
+		top: MT_TOP, edge: MT_EDGE, snow: 'blanket',
+		// 🔴 雪は右の斜面まで被せない＝下地の雪原と同化しないための岩の面を残す。
+		snowLine: { c0: 6, c1: 21, base: 15, slope: 0.45 },
+		marks: [[12, 22, 24, 1], [13, 23, 25, 1], [17, 19, 22, 1], [18, 20, 23, 2]],
+	},
+	mesa: {
+		top: 10, edge: MT_EDGE_MESA, snow: 'none',
+		plateau: 2,          // 上から2行は日の当たる平らな頂＝明（4）で塗る
+		strata: 4,           // 4行ごとに1段暗い横縞＝堆積岩の層
+		marks: [[8, 6, 9, 2], [11, 21, 24, 2]],
+	},
+	rocky: {
+		top: 9, edge: MT_EDGE_ROCKY, snow: 'none',
+		marks: [[3, 11, 13, 1], [6, 17, 20, 1], [9, 8, 11, 4], [12, 18, 21, 1], [13, 9, 12, 4]],
+	},
+};
+
+export function mountainGrid(skin, art = MT_SKIN_ART[skin]) {
 	const g = fdBlank();
-	MT_EDGE.forEach(([dl, dr], i) => {
-		const r = MT_TOP + i;
+	const top = art.top;
+	art.edge.forEach(([dl, dr], i) => {
+		const r = top + i;
 		const ridge = 15.5 - i * 0.12;                  // 稜線＝頂上からわずかに左へ流れる
 		for (let c = 16 - dl; c <= 15 + dr; c++) {
 			const d = c - ridge;
 			fdPut(g, r, c, d < -1.5 ? 4 : d < 1.5 ? 3 : 2);
 			if (i >= 10 && d > dr * 0.62) fdPut(g, r, c, 1);   // 右の裾は落ち込む
 		}
-		// 岩の筋（3ドット以上のかたまり＝ノイズに見えない）
-		if (i === 12) fdSpan(g, r, 19, 21, 1);
-		if (i === 13) fdSpan(g, r, 20, 22, 1);
-		if (i === 17) fdSpan(g, r, 18, 21, 1);
-		if (i === 15) fdSpan(g, r, 9, 11, 3);            // 光側の岩肌
-		if (i === 16) fdSpan(g, r, 10, 12, 3);
+		// 平らな頂（メサ）＝上の数行を日向の色で埋める
+		if (art.plateau && i < art.plateau) fdSpan(g, r, 16 - dl, 15 + dr, 4);
+		// 堆積岩の層（メサ）＝一定間隔で1段暗くする（形は崩さず色だけ落とす）
+		if (art.strata && i % art.strata === art.strata - 1) {
+			for (let c = 16 - dl; c <= 15 + dr; c++) {
+				const v = g[r][c];
+				fdPut(g, r, c, v === 4 ? 3 : v === 3 ? 2 : v);
+			}
+		}
+		// 岩の筋・火口・溶岩（3ドット以上のかたまり＝ノイズに見えない）
+		// ⚠ 必ずその行の輪郭の内側へ丸める＝行から出た筋は山の横に瘤を作る（実測で出た）。
+		for (const [mi, mc0, mc1, v] of art.marks) {
+			if (mi !== i) continue;
+			fdSpan(g, r, Math.max(mc0, 16 - dl), Math.min(mc1, 15 + dr), v);
+		}
 	});
-	// 雪冠：列ごとに下端の行を決めてそこまで塗る（1ドットずつ判定すると斑になる）。
+	// 雪：列ごとに下端の行を決めてそこまで塗る（1ドットずつ判定すると斑になる）。
 	// 凸凹は2列ずつ＝1列だけの歯（ノイズに見える）を作らない。
-	const snowC0 = 8, snowC1 = 23;
-	const snowBottom = [];
-	for (let c = snowC0; c <= snowC1; c++) {
-		const jag = MT_SNOW_JAG[Math.floor((c - snowC0) / 2) % MT_SNOW_JAG.length];
-		snowBottom.push(MT_TOP + Math.max(1, 8 + jag - Math.round(Math.abs(c - 15.5) * 0.55)));
+	if (art.snowLine) {
+		const { c0: snowC0, c1: snowC1, base, slope } = art.snowLine;
+		const snowBottom = [];
+		for (let c = snowC0; c <= snowC1; c++) {
+			const jag = MT_SNOW_JAG[Math.floor((c - snowC0) / 2) % MT_SNOW_JAG.length];
+			snowBottom.push(top + Math.max(1, base + jag - Math.round(Math.abs(c - 15.5) * slope)));
+		}
+		// 凸凹（2列ごと）と「頂上から離れるほど雪線が上がる」分が噛み合わず、1列だけ
+		// 深い／浅い列が出る＝雪の中に岩の1ドット、岩の中に雪の1ドットが浮く（試作で実測）。
+		// ∴両隣に挟まれた範囲へ丸める＝段差は必ず2列以上の幅を持つ。
+		for (let i = 1; i < snowBottom.length - 1; i++) {
+			const lo = Math.min(snowBottom[i - 1], snowBottom[i + 1]);
+			const hi = Math.max(snowBottom[i - 1], snowBottom[i + 1]);
+			snowBottom[i] = Math.min(Math.max(snowBottom[i], lo), hi);
+		}
+		snowBottom.forEach((bottom, i) => {
+			const c = snowC0 + i;
+			for (let r = top; r <= bottom; r++) if (g[r]?.[c]) fdPut(g, r, c, 5);
+		});
 	}
-	// 凸凹（2列ごと）と「頂上から離れるほど雪線が上がる」分が噛み合わず、1列だけ
-	// 深い／浅い列が出る＝雪の中に岩の1ドット、岩の中に雪の1ドットが浮く（試作で実測）。
-	// ∴両隣に挟まれた範囲へ丸める＝段差は必ず2列以上の幅を持つ。
-	for (let i = 1; i < snowBottom.length - 1; i++) {
-		const lo = Math.min(snowBottom[i - 1], snowBottom[i + 1]);
-		const hi = Math.max(snowBottom[i - 1], snowBottom[i + 1]);
-		snowBottom[i] = Math.min(Math.max(snowBottom[i], lo), hi);
-	}
-	snowBottom.forEach((bottom, i) => {
-		const c = snowC0 + i;
-		for (let r = MT_TOP; r <= bottom; r++) if (g[r]?.[c]) fdPut(g, r, c, 5);
-	});
 	fdRim(g, 6, 1);
 	return fdSeal(g);
 }
-TILE_SPRITES.mountain = [mountainGrid()];
+
+// 5種を作り置きする（`SPRITES` は import 時に spread ∴遅延登録できない）。
+for (const skin of Object.keys(MT_SKIN_ART)) {
+	TILE_SPRITES[skinName('mountain', skin)] = [mountainGrid(skin)];
+}
+// 基本名は草地の肌（TILE_SPRITE_MAP が指す代表＝肌を解決しない描画先でもこれが出る）
+TILE_SPRITES.mountain = TILE_SPRITES[skinName('mountain', MOUNTAIN_SKIN_DEFAULT)];
 
 // ── 茂み（パレット: 1=暗 2=中暗 3=中 4=明 5=最明 6=最暗）──────────
 // 木と同じ作り。木より低く横に広い＝低木に見える。

@@ -29,7 +29,8 @@ import { readFileSync } from 'node:fs';
 import { TILE } from '../shared/tiles.js';
 import { SPRITES, PAL, CELL_GROUND_N } from '../shared/sprites.js';
 import { TILE_SPRITE_MAP } from '../shared/tile-sprites.js';
-import { FIELD_N } from '../shared/sprites-tiles.js';
+import { FIELD_N, MT_SKIN_ART } from '../shared/sprites-tiles.js';
+import { MOUNTAIN_SKINS, skinName } from '../shared/tile-skins.js';
 import { waitForBoard } from './helpers.js';
 
 const GAME = '/blade-of-lumia/game/';
@@ -37,12 +38,22 @@ const MAP = JSON.parse(readFileSync(new URL('../work/blade-of-lumia.json', impor
 
 // 木・山・茂み・看板が1画面に同居する（見比べ用に選んだ）画面。
 const PROBE_STAGE = '10,1';
-const ART_TILES = [
+// 山は下地から選ぶ肌が5種ある（10a-1d）∴絵の品質はどの肌でも満たす。
+// 一覧は手書きせず TILE_SPRITE_MAP と肌の一覧から導く（[[blade-tile-sprite-single-source]]）。
+const MT = TILE_SPRITE_MAP[TILE.MOUNTAIN];
+// タイル単位の一覧（山は肌が5種あっても 'M' 1タイル）＝共通表の検査・実 DOM の検査はこちら。
+const ART_TILE_KINDS = [
 	{ tile: TILE.TREE,     spr: 'tree',     label: '木'   },
-	{ tile: TILE.MOUNTAIN, spr: 'mountain', label: '山'   },
+	{ tile: TILE.MOUNTAIN, spr: MT.spr,     label: '山'   },
 	{ tile: TILE.BUSH,     spr: 'bush',     label: '茂み' },
 	{ tile: TILE.SIGN,     spr: 'sign',     label: '看板' },
 ];
+// 絵単位の一覧＝山だけ肌ごとの5枚へ展開する（絵の品質はどの肌でも満たす）。
+const MOUNTAIN_ART = MOUNTAIN_SKINS.map(skin => ({
+	tile: TILE.MOUNTAIN, spr: skinName(MT.spr, skin), pal: skinName(MT.pal, skin),
+	label: `山(${skin})`, skin,
+}));
+const ART_TILES = ART_TILE_KINDS.flatMap(e => (e.tile === TILE.MOUNTAIN ? MOUNTAIN_ART : [e]));
 
 const framesOf = (spr) => SPRITES[spr];
 
@@ -175,16 +186,20 @@ test.describe('木・山・茂み・看板の 32 ドット絵', () => {
 			expect(Math.abs(a.h - b.h), `${spr} のコマ間で高さが変わりすぎ`).toBeLessThanOrEqual(2);
 			expect(Math.abs(a.r1 - b.r1), `${spr} のコマ間で接地位置が動く＝浮いて見える`).toBeLessThanOrEqual(1);
 		}
-		// 山・看板は動かない（風で揺れる物ではない）
-		expect(framesOf('mountain').length, '山が複数コマ＝山が揺れる').toBe(1);
+		// 山・看板は動かない（風で揺れる物ではない）＝山は5肌すべて1コマ
+		for (const { spr, label } of MOUNTAIN_ART) {
+			expect(framesOf(spr).length, `${label} が複数コマ＝山が揺れる`).toBe(1);
+		}
 		expect(framesOf('sign').length, '看板が複数コマ＝看板が揺れる').toBe(1);
 	});
 
 	test('⑤ 使う色番号は全部パレットに定義済み＝透明の抜けが出ない', () => {
 		// 木は陰影を4段にするため 7（葉の日向）を足した。片方だけ直すと
 		// `palette[idx] ?? 'transparent'` で葉に穴が空く。
-		for (const { tile, spr, label } of ART_TILES) {
-			const { pal } = TILE_SPRITE_MAP[tile];
+		for (const entry of ART_TILES) {
+			const { spr, label } = entry;
+			// 山は肌ごとに色を持つ∴その肌のパレットを見る（基本名だと熾火などを見落とす）
+			const pal = entry.pal ?? TILE_SPRITE_MAP[entry.tile].pal;
 			const palette = PAL[pal];
 			expect(palette, `パレット ${pal} が無い`).toBeTruthy();
 			for (const g of framesOf(spr)) {
@@ -198,51 +213,94 @@ test.describe('木・山・茂み・看板の 32 ドット絵', () => {
 		}
 	});
 
-	test('⑥ 山の雪は列ごとに1本の塊で、雪線の段差は2列以上の幅を持つ', () => {
+	test('⑥ 雪を持つ肌の雪は列ごとに1本の塊で、雪線の段差は2列以上の幅を持つ', () => {
 		// 🔴 凸凹（2列ごと）と「頂上から離れるほど雪線が上がる」分が噛み合わず、
 		//    1列だけ深い／浅い列が出て、雪の中に岩の1ドット・岩の中に雪の1ドットが
 		//    浮いた（試作で実測）。3.375px の粒＝ノイズに見える。
-		const g = framesOf('mountain')[0];
-		const SNOW = 5;
-		const bottoms = [];
-		for (let c = 0; c < FIELD_N; c++) {
-			const rows = [];
-			for (let r = 0; r < FIELD_N; r++) if (g[r][c] === SNOW) rows.push(r);
-			if (!rows.length) { bottoms.push(null); continue; }
-			expect(rows[rows.length - 1] - rows[0], `列 ${c} の雪が上下に飛んでいる（岩が挟まっている）`)
-				.toBe(rows.length - 1);
-			bottoms.push(rows[rows.length - 1]);
-		}
-		expect(bottoms.filter(b => b !== null).length, '山に雪冠が無い').toBeGreaterThan(6);
-		for (let c = 1; c < FIELD_N - 1; c++) {
-			if (bottoms[c] === null || bottoms[c - 1] === null || bottoms[c + 1] === null) continue;
-			const lo = Math.min(bottoms[c - 1], bottoms[c + 1]);
-			const hi = Math.max(bottoms[c - 1], bottoms[c + 1]);
-			expect(bottoms[c] >= lo && bottoms[c] <= hi,
-				`列 ${c} の雪線が両隣（${bottoms[c - 1]}, ${bottoms[c + 1]}）と食い違う（${bottoms[c]}）`
-				+ '＝1列だけの歯＝雪に岩の粒が浮く').toBe(true);
-			expect(Math.abs(bottoms[c] - bottoms[c - 1]), `列 ${c} で雪線が飛んでいる`).toBeLessThanOrEqual(2);
+		// 対象は「雪を持つ肌」だけ（雪なしの肌・熾火の肌は⑦で別に見る）＝作りの表から導く。
+		const SNOWY_MODES = new Set(['cap', 'blanket']);
+		const targets = MOUNTAIN_ART.filter(({ skin }) => SNOWY_MODES.has(MT_SKIN_ART[skin].snow));
+		expect(targets.length, '雪を持つ肌が1つも無い＝この検査が空回りしている').toBeGreaterThan(1);
+		for (const { spr, label } of targets) {
+			const g = framesOf(spr)[0];
+			const SNOW = 5;
+			const bottoms = [];
+			for (let c = 0; c < FIELD_N; c++) {
+				const rows = [];
+				for (let r = 0; r < FIELD_N; r++) if (g[r][c] === SNOW) rows.push(r);
+				if (!rows.length) { bottoms.push(null); continue; }
+				expect(rows[rows.length - 1] - rows[0],
+					`${label} 列 ${c} の雪が上下に飛んでいる（岩が挟まっている）`).toBe(rows.length - 1);
+				bottoms.push(rows[rows.length - 1]);
+			}
+			expect(bottoms.filter(b => b !== null).length, `${label} に雪が無い`).toBeGreaterThan(6);
+			for (let c = 1; c < FIELD_N - 1; c++) {
+				if (bottoms[c] === null || bottoms[c - 1] === null || bottoms[c + 1] === null) continue;
+				const lo = Math.min(bottoms[c - 1], bottoms[c + 1]);
+				const hi = Math.max(bottoms[c - 1], bottoms[c + 1]);
+				expect(bottoms[c] >= lo && bottoms[c] <= hi,
+					`${label} 列 ${c} の雪線が両隣（${bottoms[c - 1]}, ${bottoms[c + 1]}）と食い違う`
+					+ `（${bottoms[c]}）＝1列だけの歯＝雪に岩の粒が浮く`).toBe(true);
+				expect(Math.abs(bottoms[c] - bottoms[c - 1]),
+					`${label} 列 ${c} で雪線が飛んでいる`).toBeLessThanOrEqual(2);
+			}
 		}
 	});
 
-	test('⑦ 山の輪郭は下へ行くほど広がり、雪は上半分だけ', () => {
-		const g = framesOf('mountain')[0];
-		const b = bbox(g);
-		const widths = [];
-		for (let r = b.r0; r <= b.r1; r++) {
-			const cols = g[r].map((v, c) => (v ? c : -1)).filter(c => c >= 0);
-			widths.push(cols[cols.length - 1] - cols[0] + 1);
-			// 各行は1本の帯（山の途中が透明で切れない）
-			expect(cols.length, `山の行 ${r} が途切れている`).toBe(widths[widths.length - 1]);
+	test('⑦ 山の輪郭は5肌すべて下へ行くほど広がる', () => {
+		for (const { spr, label } of MOUNTAIN_ART) {
+			const g = framesOf(spr)[0];
+			const b = bbox(g);
+			const widths = [];
+			for (let r = b.r0; r <= b.r1; r++) {
+				const cols = g[r].map((v, c) => (v ? c : -1)).filter(c => c >= 0);
+				widths.push(cols[cols.length - 1] - cols[0] + 1);
+				// 各行は1本の帯（山の途中が透明で切れない）
+				expect(cols.length, `${label} の行 ${r} が途切れている`).toBe(widths[widths.length - 1]);
+			}
+			for (let i = 1; i < widths.length; i++) {
+				expect(widths[i], `${label} の行 ${b.r0 + i} が上の行より細い＝山に見えない`)
+					.toBeGreaterThanOrEqual(widths[i - 1]);
+			}
 		}
-		for (let i = 1; i < widths.length; i++) {
-			expect(widths[i], `山の行 ${b.r0 + i} が上の行より細い＝山に見えない`)
-				.toBeGreaterThanOrEqual(widths[i - 1]);
+	});
+
+	test('⑦b 5（雪／熾火）の使い方は肌ごとの作り方どおり', () => {
+		// 🔴 「雪は上半分だけ」は雪山（blanket）では必ず破れる∴肌ごとに条件を分ける。
+		//    ・cap     …雪冠＝上半分で止まる（下半分まで来たら雪原に見える）
+		//    ・blanket …裾まで下りる＝下半分まで来る。ただし岩と輪郭を必ず残す
+		//                （全面白にすると下地の雪原と同化して山が消える）
+		//    ・none    …5 を1ドットも使わない（砂漠・泥の山に雪は要らない）
+		//    ・ember   …雪ではなく溶岩＝上の 1/3 に収まる少量（雪と見間違えない）
+		for (const { spr, label, skin } of MOUNTAIN_ART) {
+			const g = framesOf(spr)[0];
+			const b = bbox(g);
+			const mid = b.r0 + (b.r1 - b.r0) / 2;
+			const dots = g.flat().filter(Boolean).length;
+			const five = g.flat().filter(v => v === 5).length;
+			let lowest = -1;
+			for (let r = 0; r < FIELD_N; r++) if (g[r].includes(5)) lowest = r;
+			const mode = MT_SKIN_ART[skin].snow;
+			if (mode === 'cap') {
+				expect(lowest, `${label} の雪が下半分まで来ている＝雪原に見える`).toBeLessThan(mid);
+			} else if (mode === 'blanket') {
+				expect(lowest, `${label} の雪が上半分で止まっている＝雪山に見えない`).toBeGreaterThan(mid);
+				// 雪でないドット（岩・影・輪郭）が全体の 1/5 以上残る＝地面に沈まない
+				expect((dots - five) / dots, `${label} が真っ白＝下地の雪原と同化して山が消える`)
+					.toBeGreaterThanOrEqual(0.2);
+				// 雪の下に岩が見える（最下行は雪でない）
+				expect(g[b.r1].includes(5), `${label} の最下行まで雪＝裾の岩が無い`).toBe(false);
+			} else if (mode === 'none') {
+				expect(five, `${label} に雪／熾火が入っている（この肌には要らない）`).toBe(0);
+			} else if (mode === 'ember') {
+				expect(five, `${label} に熾火が無い`).toBeGreaterThan(3);
+				expect(five / dots, `${label} の熾火が広すぎ＝雪冠に見える`).toBeLessThan(0.05);
+				expect(lowest, `${label} の熾火が山の中腹まで垂れている`)
+					.toBeLessThan(b.r0 + (b.r1 - b.r0) / 3);
+			} else {
+				throw new Error(`${label} の雪の作り方 '${mode}' に対する条件が無い`);
+			}
 		}
-		let lowestSnow = -1;
-		for (let r = 0; r < FIELD_N; r++) if (g[r].includes(5)) lowestSnow = r;
-		expect(lowestSnow, '雪が山の下半分まで来ている＝雪原に見える')
-			.toBeLessThan(b.r0 + (b.r1 - b.r0) / 2);
 	});
 
 	test('⑧ 木は樹冠の下に幹が見える（葉だけの玉になっていない）', () => {
@@ -260,7 +318,7 @@ test.describe('木・山・茂み・看板の 32 ドット絵', () => {
 	});
 
 	test('⑨ 形と色は TILE_SPRITE_MAP から引く（書き写した表を持たない）', () => {
-		for (const { tile, spr, label } of ART_TILES) {
+		for (const { tile, spr, label } of ART_TILE_KINDS) {
 			const si = TILE_SPRITE_MAP[tile];
 			expect(si, `${label} が共通表に無い`).toBeTruthy();
 			expect(si.spr, `${label} の形が ${spr} でない`).toBe(spr);
@@ -282,7 +340,7 @@ test.describe('木・山・茂み・看板 – 実エンジンのドット密度
 		stage.tiles.forEach((row, r) => [...row].forEach((ch, c) => {
 			if (!at[ch]) at[ch] = { r, c };
 		}));
-		for (const { tile, label } of ART_TILES) {
+		for (const { tile, label } of ART_TILE_KINDS) {
 			expect(at[tile], `画面 field ${PROBE_STAGE} に ${label} が無い`).toBeTruthy();
 		}
 
@@ -311,13 +369,13 @@ test.describe('木・山・茂み・看板 – 実エンジンのドット密度
 				out.tiles[key] = read(cell?.querySelector('canvas'));
 			}
 			return out;
-		}, Object.fromEntries(ART_TILES.map(({ tile, label }) => [label, at[tile]])));
+		}, Object.fromEntries(ART_TILE_KINDS.map(({ tile, label }) => [label, at[tile]])));
 
 		expect(probe.cellPx, 'セルの寸法が取れない').toBeGreaterThan(10);
 		expect(probe.hero, 'プレイヤーの canvas が無い').toBeTruthy();
 		const heroPitch = probe.hero.cssW / probe.hero.attr;
 
-		for (const { label } of ART_TILES) {
+		for (const { label } of ART_TILE_KINDS) {
 			const t = probe.tiles[label];
 			expect(t, `${label} のセルに canvas が無い`).toBeTruthy();
 			expect(t.attr, `${label} の絵が 32 ドットでない（${t.attr}）`).toBe(32);

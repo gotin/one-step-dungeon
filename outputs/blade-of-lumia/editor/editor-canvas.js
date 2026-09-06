@@ -8,6 +8,7 @@ import {
 } from './editor-state.js';
 import { TILE_SPRITE_MAP, drawSpriteAt } from './editor-palette.js';
 import { connectedTileParts, connectTileAt } from '../shared/tile-connect.js';
+import { mountainSkinAt, skinName } from '../shared/tile-skins.js';
 
 export const canvas    = document.getElementById('stage-canvas');
 export const canvasCtx = canvas.getContext('2d');
@@ -53,7 +54,13 @@ export function drawCell(c, r, tileChar) {
 		return;
 	}
 
-	const si = TILE_SPRITE_MAP[tileChar];
+	// 山は同じ 'M' でも下地から肌を選ぶ（10a-1d）＝ゲームと同じ shared/tile-skins.js で解決する。
+	// ここを基本の1枚で描くと、エディタでは砂漠にも雪冠の山が立ってゲームと食い違う
+	// （橋のデッキで同じ食い違いを踏んでいる＝この段の上のコメント）。
+	const si0 = TILE_SPRITE_MAP[tileChar];
+	const si = (si0 && tileChar === TILE.MOUNTAIN)
+		? (skin => ({ spr: skinName(si0.spr, skin), pal: skinName(si0.pal, skin) }))(mountainSkinAt(sd, r, c))
+		: si0;
 	if (si && drawSpriteAt(canvasCtx, si.spr, si.pal, x, y, CELL_SIZE, CELL_SIZE)) {
 		// drawn
 	} else if (tileChar !== TILE.FLOOR && tileChar !== TILE.WALL) {
