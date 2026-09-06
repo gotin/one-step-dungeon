@@ -54,6 +54,15 @@ const FIELD_SPRITE_TILES = new Set([
 	TILE.HOUSE_WALL, TILE.HOUSE_DOOR, TILE.HOUSE_ROOF, TILE.SIGN,
 ]);
 
+// 32ドットで描き直した「セルを埋めない絵」（キュー10番 10a-1c）。
+// 絵の中に透明の余白を持つ∴canvas はセル全面（field-sprite）に貼る＝1ドットが
+// 厳密に cellPx/32 = キャラ・地面と同じ 3.375px になる。見かけの大きさは絵側の
+// 余白で決まる（22/32 ≒ 0.69 セル＝従来の obj-sprite 0.7 倍と同じ）。
+// 🔴 逆に obj-sprite（0.7 倍＋中央寄せ）へ 32 ドットの絵を入れると 1ドット 2.36px
+//    ＝キャラより細かくなる∴この4種は必ず全面で貼る。
+const FIELD_ART_32_TILES = new Set([TILE.TREE, TILE.MOUNTAIN, TILE.BUSH, TILE.SIGN]);
+const fieldSpriteClass = (tile) => (FIELD_ART_32_TILES.has(tile) ? 'field-sprite' : 'obj-sprite');
+
 /**
  * タイルグリッド描画関数群を生成して返す factory。
  * @param {object} deps
@@ -424,7 +433,7 @@ export function createRenderBoard(deps) {
 			if (SPRITES[spr]) {
 				const ANIMATED_FIELD = new Set([TILE.GRASS, TILE.SAND, TILE.SNOW, TILE.ASH, TILE.MUD, TILE.TREE, TILE.BUSH]);
 				const cv = makeSprite(spr, pal, ANIMATED_FIELD.has(tile));
-				if (cv) { cv.classList.add('obj-sprite'); cellEl.appendChild(cv); }
+				if (cv) { cv.classList.add(fieldSpriteClass(tile)); cellEl.appendChild(cv); }
 			}
 			return;
 		}
@@ -432,7 +441,7 @@ export function createRenderBoard(deps) {
 		if (tile === TILE.BUSH) {
 			if (!ss.cutBushes?.has(posKey)) {
 				const cv = makeSprite('bush', 'bush', true);
-				if (cv) { cv.classList.add('obj-sprite'); cellEl.appendChild(cv); }
+				if (cv) { cv.classList.add(fieldSpriteClass(tile)); cellEl.appendChild(cv); }
 			}
 			return;
 		}

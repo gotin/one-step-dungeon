@@ -715,6 +715,16 @@ canvas.sprite.tile-sprite {
     height: var(--cell);
 }
 
+/* 木・山・茂み・看板（キュー10番 10a-1c）＝セル全体に貼るが、絵の側が
+   透明の余白を持つので見かけの大きさは従来（0.7 セル）のまま。
+   canvas をセル全面にすることで 1ドット＝cellPx/32 になり、キャラ（32ドット）・
+   地面（32ドット）と粗さが揃う。0.7 倍のまま 32 ドットの絵を入れると
+   1ドット 2.36px ＝キャラより細かく、同じ画面で解像度が混ざる。 */
+canvas.sprite.field-sprite {
+    width: var(--cell);
+    height: var(--cell);
+}
+
 /* 小アイテム */
 canvas.sprite.item-sprite {
     width: calc(var(--cell) * 0.55);

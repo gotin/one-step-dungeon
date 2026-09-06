@@ -76,8 +76,13 @@ export const TILE_PAL = {
 	// 板が全部同じ色だと 12 セル分が1枚の巨大な板に見えて「のっぺり」する
 	// （2026-09-06 ユーザー指摘）。差は小さく＝縞に見えない程度に留める。
 	bridge:      ['transparent','#5a3a18','#8a6030','#b08050','#d0a070','#ffffff','#3a2010','#a87848','#b88858'],
-	tree:        ['transparent','#0e3008','#1a4810','#286018','#407830','#8a5020','#5a3010'],
-	mountain:    ['transparent','#3a3030','#5a5050','#7a7070','#9a9090','#b0a8a0','#2a2020'],
+	// 木の 7 は「葉に日が当たっている面」＝4 より 1 段明るい（陰影を4段にして
+	// 塊が丸く見えるようにした。10a-1c）。
+	tree:        ['transparent','#0e3008','#1a4810','#286018','#407830','#8a5020','#5a3010','#5a9440'],
+	// 山の 5 は雪冠。8×8 の頃は頂上の1ドットだけだったので岩色に近い明るい灰
+	// （#b0a8a0）で足りていたが、32 ドットで雪の面積が広がると岩（4=#9a9090）と
+	// 見分けが付かず「ただの明るい岩山」に見えた（10a-1c で実画面を見て判定）∴白へ。
+	mountain:    ['transparent','#3a3030','#5a5050','#7a7070','#9a9090','#e4ecf2','#2a2020'],
 	bush:        ['transparent','#1a4010','#2a5a18','#388028','#50a040','#6aba50','#0e2808'],
 	fence:       ['transparent','#5a3810','#8a6030','#b08050','#c8a070','#ffffff','#3a2008'],
 	houseWall:   ['transparent','#805030','#c09060','#e0b080','#f0d0a0','#6080c0','#3a3060'],
@@ -1040,8 +1045,8 @@ export function connectVariantName(base, r, c) {
 }
 
 // 下地（bgTiles）に敷く地面スプライトの変種。セル座標のハッシュで選ぶ。
-// 形は4種＝草地（mud も 'grass' の形を使う）・砂地（ash も同じ形）・雪原・石畳
-// ∴パレットだけ違うタイルも同じ恩恵を受ける（TILE_SPRITE_MAP）。
+// 形は6種＝草地・砂地・雪原・火山灰・泥・石畳で、地形と1対1（10a-1b-4 で
+// 「砂の形を灰に流用」等をやめた＝素材が違えば模様も違う）。対応は TILE_SPRITE_MAP。
 // ⚠ 水（'water'）は対象外＝アニメーションする下地で、tiles 層の水・溶岩・潮ゲートと
 //    同じ形を共有している。しかも 12 ドット幅は `--cell` 108px を割り切る∴既に
 //    1ドット 3px で敷けている（倍率探索が s=3 を選ぶ）＝ピッチの問題が無い。
@@ -1054,59 +1059,183 @@ export function bgVariantName(spr, r, c) {
 	return `${spr}@${tileHash(Math.floor(r), Math.floor(c)) % n}`;
 }
 
-// 木
-TILE_SPRITES.tree = [[
-	[0,0,2,3,3,2,0,0],
-	[0,2,3,4,4,3,2,0],
-	[0,3,4,4,4,3,2,0],
-	[2,3,4,4,3,3,3,2],
-	[2,3,3,3,3,2,2,0],
-	[0,2,2,2,2,2,0,0],
-	[0,0,5,6,6,5,0,0],
-	[0,0,5,6,6,5,0,0],
-],[
-	[0,0,3,2,2,3,0,0],
-	[0,3,4,3,3,4,3,0],
-	[0,2,3,4,4,2,3,0],
-	[2,2,4,4,3,3,3,2],
-	[2,2,3,3,4,2,2,0],
-	[0,2,2,2,2,2,0,0],
-	[0,0,6,5,5,6,0,0],
-	[0,0,5,6,6,5,0,0],
-]];
+// ── tiles 層に置く「セルを埋めない絵」（木・山・茂み・看板）── 32×32 ────────
+// キュー10番 10a-1c。それまで 8×8 で描いていて、0.7 セル（75.59px）に伸ばすと
+// 1ドット＝9.45px ∴同じ画面でキャラ（3.375px）や地面（3.375px）と粗さが揃わず、
+// 木や山だけ「別のゲームの絵」に見えていた。
+//
+// 見た目の大きさは変えない（PLAN の制約＝「セルを埋めない絵」は意図的）。
+// ∴ 32×32 の格子の中に**透明の余白**を取り、絵そのものは 20〜24 ドットに収める。
+// 描画側（render-board.js）はこの4種をセル全面に貼る＝1ドットが厳密に cellPx/32 に
+// なり、絵の見かけの大きさは 22/32 ≒ 0.69 セルで従来と同じ。
+const FIELD_ART_N = 32;
+export const FIELD_N = FIELD_ART_N;
 
-// 山
-TILE_SPRITES.mountain = [[
-	[0,0,0,0,5,0,0,0],
-	[0,0,0,4,4,4,0,0],
-	[0,0,3,3,4,3,3,0],
-	[0,0,3,3,3,3,2,0],
-	[0,3,2,2,3,2,2,3],
-	[0,2,2,2,2,2,2,2],
-	[2,2,2,2,2,2,2,2],
-	[1,1,1,1,1,1,1,1],
-]];
+const fdBlank = () => Array.from({ length: FIELD_ART_N }, () => Array(FIELD_ART_N).fill(0));
+const fdPut = (g, r, c, v) => {
+	if (r >= 0 && r < FIELD_ART_N && c >= 0 && c < FIELD_ART_N) g[r][c] = v;
+};
+const fdSpan = (g, r, c0, c1, v) => { for (let c = c0; c <= c1; c++) fdPut(g, r, c, v); };
 
-// 茂み
-TILE_SPRITES.bush = [[
-	[0,0,2,2,2,0,0,0],
-	[0,2,3,4,3,2,0,0],
-	[0,3,4,4,4,3,3,0],
-	[2,3,4,4,3,4,3,2],
-	[2,3,3,4,3,3,2,0],
-	[0,2,3,3,3,2,0,0],
-	[0,0,1,2,1,0,0,0],
-	[0,0,0,0,0,0,0,0],
-],[
-	[0,0,0,2,2,2,0,0],
-	[0,2,2,3,4,3,2,0],
-	[0,3,4,4,4,3,3,0],
-	[2,3,4,3,4,4,3,2],
-	[2,3,3,3,4,3,2,0],
-	[0,2,2,3,3,2,0,0],
-	[0,0,0,1,2,1,0,0],
-	[0,0,0,0,0,0,0,0],
-]];
+// 輪郭：外に接するドットを縁の色に、下端はさらに暗く＝絵が地面から浮かない。
+function fdRim(g, side, bottom) {
+	const src = g.map(row => [...row]);
+	const empty = (r, c) => !(src[r]?.[c]);
+	for (let r = 0; r < FIELD_ART_N; r++) {
+		for (let c = 0; c < FIELD_ART_N; c++) {
+			if (!src[r][c]) continue;
+			if (empty(r + 1, c)) fdPut(g, r, c, bottom);
+			else if (empty(r - 1, c) || empty(r, c - 1) || empty(r, c + 1)) fdPut(g, r, c, side);
+		}
+	}
+}
+
+// 絵に挟まれた1ドットの透明（上下または左右が絵）を隣の色で塞ぐ。
+// 輪郭の1ドットの欠け＝3.375px の穴が地面を透かして見える（櫛の歯）。房の合併でも
+// 樹冠と幹の合成でも出るので、絵を組み終えた最後に必ず通す。
+function fdSeal(g) {
+	const src = g.map(row => [...row]);
+	for (let r = 1; r < FIELD_ART_N - 1; r++) {
+		for (let c = 1; c < FIELD_ART_N - 1; c++) {
+			if (src[r][c]) continue;
+			if (src[r][c - 1] && src[r][c + 1]) fdPut(g, r, c, src[r][c - 1]);
+			else if (src[r - 1][c] && src[r + 1][c]) fdPut(g, r, c, src[r - 1][c]);
+		}
+	}
+	return g;
+}
+
+// 葉のかたまり（木の樹冠・茂みで共通）。房＝[行, 列, 半径, 手前の房か]。
+//   ① 房（円）の合併で輪郭を作る＝でこぼこした葉の塊になる
+//   ② 1ドットの欠け（円の重なりでできる隙間）を埋める＝輪郭が櫛の歯にならない
+//   ③ 陰影は「塊ぜんたい」に1方向から付ける（房ごとに付けると斑になる＝試作で確認）
+//   ④ 手前の房の下側の弧だけ1段暗い線＝葉のかたまりの区切りが見える
+//      （全部の円のふちを引くと絵の全面が線で埋まる）
+const fdDist2 = (r, c, r0, c0) => (r - r0) ** 2 + (c - c0) ** 2;
+function fdFoliage(lobes, ramp) {
+	const g = fdBlank();
+	const inLobe = (r, c, [r0, c0, rad]) => fdDist2(r, c, r0, c0) <= rad * rad + rad * 0.5;
+	const mask = [];
+	let r0 = 99, r1 = -1, c0 = 99, c1 = -1;
+	for (let r = 0; r < FIELD_ART_N; r++) {
+		mask.push([]);
+		for (let c = 0; c < FIELD_ART_N; c++) {
+			const hit = lobes.some(L => inLobe(r, c, L));
+			mask[r].push(hit);
+			if (hit) {
+				r0 = Math.min(r0, r); r1 = Math.max(r1, r);
+				c0 = Math.min(c0, c); c1 = Math.max(c1, c);
+			}
+		}
+	}
+	for (let r = 0; r < FIELD_ART_N; r++) {
+		for (let c = 1; c < FIELD_ART_N - 1; c++) {
+			if (mask[r][c]) continue;
+			if (mask[r][c - 1] && mask[r][c + 1]) mask[r][c] = true;
+			else if (mask[r - 1]?.[c] && mask[r + 1]?.[c]) mask[r][c] = true;
+		}
+	}
+	const rc = (r0 + r1) / 2, cc = (c0 + c1) / 2, R = Math.max(r1 - r0, c1 - c0) / 2;
+	for (let r = 0; r < FIELD_ART_N; r++) {
+		for (let c = 0; c < FIELD_ART_N; c++) {
+			if (!mask[r][c]) continue;
+			const t = ((r - rc) * 0.8 + (c - cc) * 0.55) / R;   // 左上→右下の明暗軸
+			fdPut(g, r, c, t < -0.66 ? ramp.glow : t < -0.30 ? ramp.hi : t < 0.22 ? ramp.mid : ramp.sh);
+		}
+	}
+	for (const [lr, lc, rad] of lobes.filter(L => L[3])) {
+		for (let c = lc - rad; c <= lc + rad; c++) {
+			const dr = Math.round(Math.sqrt(Math.max(0, rad * rad - (c - lc) ** 2)));
+			const r = lr + dr;
+			if (!mask[r]?.[c]) continue;
+			if (!(mask[r + 1]?.[c])) continue;                  // 輪郭は fdRim に任せる
+			fdPut(g, r, c, ramp.sh);
+			if (mask[r - 1]?.[c] && g[r - 1][c] === ramp.sh) fdPut(g, r - 1, c, ramp.mid);
+		}
+	}
+	fdRim(g, ramp.rimS, ramp.rimB);
+	return fdSeal(g);
+}
+
+// ── 木（パレット: 1=最暗 2=暗 3=中 4=明 5=幹明 6=幹暗 7=葉の日向）─────────
+// frame1 は「風で葉がざわつく」＝房の位置を少しずらす。絵全体を横にずらすと
+// 木そのものが飛んで見える（試作で確認）∴動かすのは一部の房だけ。
+const TREE_LOBES  = [[11, 15, 7], [11, 11, 6], [11, 20, 6], [16, 11, 4, 1], [16, 20, 4, 1]];
+const TREE_LOBES1 = [[11, 15, 7], [11, 12, 6], [11, 20, 6], [16, 12, 4, 1], [16, 21, 4, 1]];
+const TREE_RAMP = { glow: 7, hi: 4, mid: 3, sh: 2, rimS: 2, rimB: 1 };
+function treeGrid(frame) {
+	const g = fdBlank();
+	for (let r = 16; r <= 26; r++) {
+		fdPut(g, r, 14, 6); fdPut(g, r, 15, 5); fdPut(g, r, 16, 5); fdPut(g, r, 17, 6);
+	}
+	fdSpan(g, 25, 13, 18, 6); fdSpan(g, 26, 12, 19, 6);      // 根張り
+	fdPut(g, 25, 15, 5); fdPut(g, 25, 16, 5);
+	// 樹冠は別の紙に描いて輪郭を付けてから幹の上に重ねる
+	// （同じ紙でやると幹の縁まで葉の色で縁取ってしまう）
+	const canopy = fdFoliage(frame ? TREE_LOBES1 : TREE_LOBES, TREE_RAMP);
+	for (let r = 0; r < FIELD_ART_N; r++) {
+		for (let c = 0; c < FIELD_ART_N; c++) if (canopy[r][c]) fdPut(g, r, c, canopy[r][c]);
+	}
+	return fdSeal(g);
+}
+TILE_SPRITES.tree = [treeGrid(0), treeGrid(1)];
+
+// ── 山（パレット: 1=最暗 2=影 3=中 4=明 5=雪 6=輪郭）─────────────────
+// 行ごとの左右の張り出しを手で決める（左右対称の等差だと定規で引いた三角に見える）。
+const MT_TOP  = 5;
+const MT_EDGE = [
+	[1, 1], [2, 2], [2, 3], [3, 4], [4, 4], [4, 5], [5, 6], [6, 7], [6, 8], [7, 8],
+	[8, 9], [8, 10], [9, 10], [10, 11], [10, 11], [11, 12], [11, 12], [12, 12], [12, 12], [12, 12],
+];
+const MT_SNOW_JAG = [-1, 1, 0, 2, 1, -1, 0, 1];   // 雪の下端の凸凹（列ごと）
+function mountainGrid() {
+	const g = fdBlank();
+	MT_EDGE.forEach(([dl, dr], i) => {
+		const r = MT_TOP + i;
+		const ridge = 15.5 - i * 0.12;                  // 稜線＝頂上からわずかに左へ流れる
+		for (let c = 16 - dl; c <= 15 + dr; c++) {
+			const d = c - ridge;
+			fdPut(g, r, c, d < -1.5 ? 4 : d < 1.5 ? 3 : 2);
+			if (i >= 10 && d > dr * 0.62) fdPut(g, r, c, 1);   // 右の裾は落ち込む
+		}
+		// 岩の筋（3ドット以上のかたまり＝ノイズに見えない）
+		if (i === 12) fdSpan(g, r, 19, 21, 1);
+		if (i === 13) fdSpan(g, r, 20, 22, 1);
+		if (i === 17) fdSpan(g, r, 18, 21, 1);
+		if (i === 15) fdSpan(g, r, 9, 11, 3);            // 光側の岩肌
+		if (i === 16) fdSpan(g, r, 10, 12, 3);
+	});
+	// 雪冠：列ごとに下端の行を決めてそこまで塗る（1ドットずつ判定すると斑になる）。
+	// 凸凹は2列ずつ＝1列だけの歯（ノイズに見える）を作らない。
+	const snowC0 = 8, snowC1 = 23;
+	const snowBottom = [];
+	for (let c = snowC0; c <= snowC1; c++) {
+		const jag = MT_SNOW_JAG[Math.floor((c - snowC0) / 2) % MT_SNOW_JAG.length];
+		snowBottom.push(MT_TOP + Math.max(1, 8 + jag - Math.round(Math.abs(c - 15.5) * 0.55)));
+	}
+	// 凸凹（2列ごと）と「頂上から離れるほど雪線が上がる」分が噛み合わず、1列だけ
+	// 深い／浅い列が出る＝雪の中に岩の1ドット、岩の中に雪の1ドットが浮く（試作で実測）。
+	// ∴両隣に挟まれた範囲へ丸める＝段差は必ず2列以上の幅を持つ。
+	for (let i = 1; i < snowBottom.length - 1; i++) {
+		const lo = Math.min(snowBottom[i - 1], snowBottom[i + 1]);
+		const hi = Math.max(snowBottom[i - 1], snowBottom[i + 1]);
+		snowBottom[i] = Math.min(Math.max(snowBottom[i], lo), hi);
+	}
+	snowBottom.forEach((bottom, i) => {
+		const c = snowC0 + i;
+		for (let r = MT_TOP; r <= bottom; r++) if (g[r]?.[c]) fdPut(g, r, c, 5);
+	});
+	fdRim(g, 6, 1);
+	return fdSeal(g);
+}
+TILE_SPRITES.mountain = [mountainGrid()];
+
+// ── 茂み（パレット: 1=暗 2=中暗 3=中 4=明 5=最明 6=最暗）──────────
+// 木と同じ作り。木より低く横に広い＝低木に見える。
+const BUSH_LOBES  = [[15, 15, 6], [15, 10, 5], [15, 21, 5], [18, 12, 4, 1], [18, 19, 4, 1]];
+const BUSH_LOBES1 = [[15, 16, 6], [15, 10, 5], [15, 22, 5], [18, 13, 4, 1], [18, 20, 4, 1]];
+const BUSH_RAMP = { glow: 5, hi: 4, mid: 3, sh: 2, rimS: 1, rimB: 6 };
+TILE_SPRITES.bush = [fdFoliage(BUSH_LOBES, BUSH_RAMP), fdFoliage(BUSH_LOBES1, BUSH_RAMP)];
 
 // 柵
 TILE_SPRITES.fence = [[
@@ -1156,17 +1285,26 @@ TILE_SPRITES.houseRoof = [[
 	[4,4,4,4,4,4,4,4],
 ]];
 
-// 看板
-TILE_SPRITES.sign = [[
-	[0,1,1,1,1,1,1,0],
-	[1,4,4,4,4,4,4,1],
-	[1,4,5,5,5,5,4,1],
-	[1,4,5,5,5,5,4,1],
-	[0,1,1,1,1,1,1,0],
-	[0,0,0,2,2,0,0,0],
-	[0,0,0,2,2,0,0,0],
-	[0,0,6,2,2,6,0,0],
-]];
+// ── 看板（パレット: 1=枠/影 2=柱 3=板の地 4=板の日向 5=文字 6=釘）── 32×32 ──
+function signGrid() {
+	const g = fdBlank();
+	// 柱（板より先に描く＝板が手前に重なる）
+	for (let r = 16; r <= 25; r++) { fdPut(g, r, 15, 2); fdPut(g, r, 16, 2); fdPut(g, r, 17, 1); }
+	fdSpan(g, 25, 14, 18, 1);                                  // 地際
+	// 板
+	for (let r = 6; r <= 17; r++) fdSpan(g, r, 7, 24, 3);
+	for (let r = 7; r <= 9; r++) fdSpan(g, r, 8, 23, 4);        // 上半分は日が当たる
+	fdSpan(g, 10, 8, 23, 1);                                   // 板の継ぎ目（2枚を打ち合わせ）
+	fdSpan(g, 6, 7, 24, 1); fdSpan(g, 17, 7, 24, 1);           // 枠（上下）
+	for (let r = 6; r <= 17; r++) { fdPut(g, r, 7, 1); fdPut(g, r, 24, 1); }   // 枠（左右）
+	fdPut(g, 7, 8, 6); fdPut(g, 7, 23, 6); fdPut(g, 16, 8, 6); fdPut(g, 16, 23, 6);  // 釘
+	// 文字（2行・単語ごとに切る＝1本の帯にすると縞模様に見える）
+	for (const [r, words] of [[12, [[9, 12], [14, 17], [19, 22]]], [14, [[9, 11], [13, 18]]]]) {
+		for (const [c0, c1] of words) fdSpan(g, r, c0, c1, 5);
+	}
+	return fdSeal(g);
+}
+TILE_SPRITES.sign = [signGrid()];
 
 // ── TORCH（かがり火）── 12×16・2フレーム ──────────────────────
 // パレット: 1=輪郭 2=台座暗 3=台座中 4=芯/炭 5=炎暗(オレンジ) 6=炎明(黄) 7=炎中(赤橙)
