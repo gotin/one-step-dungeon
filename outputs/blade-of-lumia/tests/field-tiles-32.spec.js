@@ -30,7 +30,7 @@ import { TILE } from '../shared/tiles.js';
 import { SPRITES, PAL, CELL_GROUND_N } from '../shared/sprites.js';
 import { TILE_SPRITE_MAP } from '../shared/tile-sprites.js';
 import { FIELD_N, MT_SKIN_ART } from '../shared/sprites-tiles.js';
-import { MOUNTAIN_SKINS, skinName } from '../shared/tile-skins.js';
+import { MOUNTAIN_SKINS, VEG_SKINS, skinName } from '../shared/tile-skins.js';
 import { waitForBoard } from './helpers.js';
 
 const GAME = '/blade-of-lumia/game/';
@@ -48,12 +48,21 @@ const ART_TILE_KINDS = [
 	{ tile: TILE.BUSH,     spr: 'bush',     label: '茂み' },
 	{ tile: TILE.SIGN,     spr: 'sign',     label: '看板' },
 ];
-// 絵単位の一覧＝山だけ肌ごとの5枚へ展開する（絵の品質はどの肌でも満たす）。
+// 絵単位の一覧＝山・木・茂みは肌ごとの5枚へ展開する（絵の品質はどの肌でも満たす）。
+// ⚠ 木・茂みも 10a-5 から肌ごとに**形を作り直した**（色の差し替えではない）∴素の名前
+//    1枚だけ見ると針葉樹・椰子・葦の品質を一度も見ないまま緑になる。
 const MOUNTAIN_ART = MOUNTAIN_SKINS.map(skin => ({
 	tile: TILE.MOUNTAIN, spr: skinName(MT.spr, skin), pal: skinName(MT.pal, skin),
 	label: `山(${skin})`, skin,
 }));
-const ART_TILES = ART_TILE_KINDS.flatMap(e => (e.tile === TILE.MOUNTAIN ? MOUNTAIN_ART : [e]));
+const vegArt = (tile, label) => VEG_SKINS.map(skin => ({
+	tile, spr: skinName(TILE_SPRITE_MAP[tile].spr, skin), pal: skinName(TILE_SPRITE_MAP[tile].pal, skin),
+	label: `${label}(${skin})`, skin,
+}));
+const TREE_ART = vegArt(TILE.TREE, '木');
+const BUSH_ART = vegArt(TILE.BUSH, '茂み');
+const SKIN_ART = { [TILE.MOUNTAIN]: MOUNTAIN_ART, [TILE.TREE]: TREE_ART, [TILE.BUSH]: BUSH_ART };
+const ART_TILES = ART_TILE_KINDS.flatMap(e => SKIN_ART[e.tile] ?? [e]);
 
 const framesOf = (spr) => SPRITES[spr];
 
@@ -177,7 +186,7 @@ test.describe('木・山・茂み・看板の 32 ドット絵', () => {
 	test('④ 木・茂みは2コマで別の絵、かつ見かけの大きさが揃う＝風でざわつくだけ', () => {
 		// 絵全体を横にずらすと「木そのものが1ドット飛ぶ」ように見える∴動かすのは
 		// 一部の房だけ＝影絵の大きさはコマ間でほぼ同じになる。
-		for (const spr of ['tree', 'bush']) {
+		for (const { spr } of [...TREE_ART, ...BUSH_ART]) {
 			const frames = framesOf(spr);
 			expect(frames.length, `${spr} が2コマでない＝揺れない`).toBe(2);
 			expect(JSON.stringify(frames[0]), `${spr} の2コマが同じ絵`).not.toBe(JSON.stringify(frames[1]));
@@ -303,17 +312,29 @@ test.describe('木・山・茂み・看板の 32 ドット絵', () => {
 		}
 	});
 
-	test('⑧ 木は樹冠の下に幹が見える（葉だけの玉になっていない）', () => {
+	test('⑧ 木はどの肌でも樹冠の下に幹が見える（葉だけの玉になっていない）', () => {
 		const TRUNK = new Set([5, 6]);       // 幹明・幹暗
-		for (const g of framesOf('tree')) {
-			const b = bbox(g);
-			const lowest = g[b.r1].filter(Boolean);
-			expect(lowest.length, '木の最下行が空').toBeGreaterThan(0);
-			expect(lowest.every(v => TRUNK.has(v)), '木の最下行が幹の色でない＝葉が地面に着いている').toBe(true);
-			// 幹は樹冠より下へ 4 ドット以上伸びる
-			let lowestLeaf = -1;
-			for (let r = 0; r < FIELD_N; r++) if (g[r].some(v => v && !TRUNK.has(v))) lowestLeaf = r;
-			expect(b.r1 - lowestLeaf, '幹が短すぎる＝樹冠に埋もれて木に見えない').toBeGreaterThanOrEqual(4);
+		for (const { spr, label } of TREE_ART) {
+			for (const g of framesOf(spr)) {
+				const b = bbox(g);
+				const lowest = g[b.r1].filter(Boolean);
+				expect(lowest.length, `${label} の最下行が空`).toBeGreaterThan(0);
+				expect(lowest.every(v => TRUNK.has(v)), `${label} の最下行が幹の色でない＝葉が地面に着いている`).toBe(true);
+				// 幹は樹冠より下へ 4 ドット以上伸びる。
+				// 🔴 測るのは**幹の色が現れる列の帯**の中だけ（2026-09-07）。行のどこかに
+				//    葉の色があるかで測ると、幹から離れて垂れる苔（沼の木）まで「幹が
+				//    埋もれている」と数えた。苔の形は field-art-variants ⑳ が縛る。
+				const tc = [];
+				for (let r = 0; r < FIELD_N; r++) {
+					for (let c = 0; c < FIELD_N; c++) if (TRUNK.has(g[r][c])) tc.push(c);
+				}
+				const [c0, c1] = [Math.min(...tc), Math.max(...tc)];
+				let lowestLeaf = -1;
+				for (let r = 0; r < FIELD_N; r++) {
+					for (let c = c0; c <= c1; c++) if (g[r][c] && !TRUNK.has(g[r][c])) { lowestLeaf = r; break; }
+				}
+				expect(b.r1 - lowestLeaf, `${label} の幹が短すぎる＝樹冠に埋もれて木に見えない`).toBeGreaterThanOrEqual(4);
+			}
 		}
 	});
 

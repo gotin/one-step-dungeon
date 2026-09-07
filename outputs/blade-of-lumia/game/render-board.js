@@ -21,7 +21,7 @@ import { SPRITES, PAL, drawSpriteFrame, drawSpriteLayers, makeSprite, applyBgSpr
 import { TILE_SPRITE_MAP } from '../shared/tile-sprites.js';
 import { bgVariantName, objVariantName } from '../shared/sprites-tiles.js';
 import { connectedTileParts, isConnectTile } from '../shared/tile-connect.js';
-import { mountainSkinAt, skinName } from '../shared/tile-skins.js';
+import { skinnedSprite } from '../shared/tile-skins.js';
 import { NPC_SPRITE_MAP } from '../shared/npcs.js';
 
 // bgTile の背景色クラスマップ（renderBoard 内でのみ使う定数）
@@ -439,15 +439,14 @@ export function createRenderBoard(deps) {
 		//    まま取り残されていた（灰/泥を専用の形にした 2026-09-06 に発覚）∴タイルの一覧だけ
 		//    持ち、形と色は共通表から引く。
 		if (FIELD_SPRITE_TILES.has(tile) && TILE_SPRITE_MAP[tile]) {
-			let { spr, pal } = TILE_SPRITE_MAP[tile];
 			const [mr, mc] = posKey.split(',').map(Number);
-			// 山は同じ 'M' でも「下地から導いた肌」で描き分ける（10a-1d）。
-			// 肌の決め方は shared/tile-skins.js だけが持つ＝エディタも同じ関数を読む。
-			if (tile === TILE.MOUNTAIN) {
-				const skin = mountainSkinAt(stageData, mr, mc);
-				spr = skinName(spr, skin);
-				pal = skinName(pal, skin);
-				cellEl.dataset.mountainSkin = skin;   // どの肌を選んだかテストから見える
+			// 山 'M'・木 't'・茂み 'u' は同じタイルでも「下地から導いた肌」で描き分ける
+			// （10a-1d／10a-5）。どのタイルが肌を持つか・山は塊で植生はセルか、の判断は
+			// shared/tile-skins.js の skinnedSprite() だけが持つ＝エディタも同じ関数を読む。
+			let { spr, pal, skin } = skinnedSprite(stageData, mr, mc, tile, TILE_SPRITE_MAP[tile]);
+			if (skin) {
+				cellEl.dataset.artSkin = skin;        // どの肌を選んだかテストから見える
+				if (tile === TILE.MOUNTAIN) cellEl.dataset.mountainSkin = skin;
 			}
 			// 木・山・茂みはセルごとに違う絵にする（10a-4）＝肌を解決した後に変種を選ぶ
 			// （名前の順序は必ず 肌 → 変種＝`mountain@mesa#2`）。パレットは変えない。
@@ -466,10 +465,13 @@ export function createRenderBoard(deps) {
 				// 茂みもセルごとに違う絵（10a-4）＝木・山と同じ `objVariantName` を通す。
 				// ⚠ 茂みは FIELD_SPRITE_TILES に載っていない（この枝で描く）∴ここも直す
 				//    ＝片方だけ直すと「木は違う絵・茂みは同じ絵」になる。
+				// 肌（10a-5）も同じ理由でこの枝に要る＝上の枝だけ直すと茂みだけ緑のまま残る。
 				const [br, bc] = posKey.split(',').map(Number);
-				const spr = objVariantName('bush', br, bc);
+				const si = skinnedSprite(stageData, br, bc, tile, TILE_SPRITE_MAP[tile]);
+				if (si.skin) cellEl.dataset.artSkin = si.skin;
+				const spr = objVariantName(si.spr, br, bc);
 				cellEl.dataset.artSprite = spr;
-				const cv = makeSprite(spr, 'bush', true);
+				const cv = makeSprite(spr, si.pal, true);
 				if (cv) { cv.classList.add(fieldSpriteClass(tile)); cellEl.appendChild(cv); }
 			}
 			return;

@@ -3,7 +3,7 @@
 // 何を守るテストか：
 //   ① 同じ絵が木 3113／山 2391／茂み 193 セルに並んでいた（実マップの実測）。
 //      ∴ セル座標の決定的なハッシュで**セルごとに違う絵**を選ぶ（10a-1b の地面・
-//      10a-2 の家と同じ作法）。名前の付け方は 肌 → 変種＝`mountain@mesa#2` / `tree#3`
+//      10a-2 の家と同じ作法）。名前の付け方は 肌 → 変種＝`mountain@mesa#2` / `tree@snowy#3`
 //      （`@`＝下地から導く肌・`#`＝セル座標から引く変種）。
 //   ② 揺れの同期も一緒に潰す。コマを選ぶのは世界に1つの `animFrame`
 //      （`shared/sprites.js` の `startAnimLoop`）∴形を増やしただけでは
@@ -28,7 +28,7 @@ import { TILE } from '../shared/tiles.js';
 import { SPRITES, PAL, CELL_GROUND_N } from '../shared/sprites.js';
 import { TILE_SPRITE_MAP } from '../shared/tile-sprites.js';
 import { OBJ_VARIANTS, FIELD_N, MT_SKIN_ART, objVariantName } from '../shared/sprites-tiles.js';
-import { MOUNTAIN_SKINS, skinName } from '../shared/tile-skins.js';
+import { MOUNTAIN_SKINS, VEG_SKINS, skinName } from '../shared/tile-skins.js';
 import { waitForBoard } from './helpers.js';
 
 const GAME = '/blade-of-lumia/game/';
@@ -36,10 +36,17 @@ const EDITOR = '/blade-of-lumia/editor/';
 const MAP = JSON.parse(readFileSync(new URL('../work/blade-of-lumia.json', import.meta.url), 'utf8'));
 
 // 揺れる絵（2コマ）と動かない絵（1コマ）で条件が分かれる。
+// ⚠ 木・茂みも 10a-5 から肌 5種それぞれに変種を持つ（`tree@snowy#3`）∴素の名前で
+//    数えると `OBJ_VARIANTS.tree` が undefined で、このファイルの条件が**全部空回り**する
+//    （素の名前に変種を作らないことは ⑪ の歯で別に守る）。山と同じく一覧から導く。
 const SWAY = [
-	{ base: 'tree', pal: TILE_SPRITE_MAP[TILE.TREE].pal, label: '木' },
-	{ base: 'bush', pal: TILE_SPRITE_MAP[TILE.BUSH].pal, label: '茂み' },
-];
+	{ tile: TILE.TREE, label: '木' },
+	{ tile: TILE.BUSH, label: '茂み' },
+].flatMap(({ tile, label }) => VEG_SKINS.map(skin => ({
+	base: skinName(TILE_SPRITE_MAP[tile].spr, skin),
+	pal: skinName(TILE_SPRITE_MAP[tile].pal, skin),
+	label: `${label}(${skin})`, skin, tile,
+})));
 // 山は肌 5種それぞれに変種を持つ（一覧は手書きせず肌の一覧から導く）。
 const STILL = MOUNTAIN_SKINS.map(skin => ({
 	base: skinName(TILE_SPRITE_MAP[TILE.MOUNTAIN].spr, skin),
@@ -292,15 +299,28 @@ test.describe('木・山・茂みの変種 – 絵の性質', () => {
 
 	test('⑥ 木はどの変種でも樹冠の下に幹が見える', () => {
 		const TRUNK = new Set([5, 6]);       // 幹明・幹暗
-		for (const name of variantNames('tree')) {
+		const treeNames = SWAY.filter(s => s.tile === TILE.TREE).flatMap(s => variantNames(s.base));
+		expect(treeNames.length, '木の変種が1枚も無い＝この条件が空回りしている').toBeGreaterThan(0);
+		for (const name of treeNames) {
 			SPRITES[name].forEach((g, fi) => {
 				const b = bbox(g);
 				const lowest = g[b.r1].filter(Boolean);
 				expect(lowest.length, `${name}[${fi}] の最下行が空`).toBeGreaterThan(0);
 				expect(lowest.every(v => TRUNK.has(v)),
 					`${name}[${fi}] の最下行が幹の色でない＝葉が地面に着いている`).toBe(true);
+				// 🔴 「行のどこかに葉の色があるか」で測ると、**幹から離れて下へ垂れる樹冠**
+				//    （沼の木）まで「幹が埋もれている」と数える（2026-09-07・実装で踏んだ）。
+				//    幹が埋もれるのは幹の真上に葉が来たときだけ∴**幹の色が現れる列の帯**
+				//    だけで測る。帯の外で葉が下へ垂れるのは沼の木の樹冠＝⑳で別に縛る。
+				const tc = [];
+				for (let r = 0; r < FIELD_N; r++) {
+					for (let c = 0; c < FIELD_N; c++) if (TRUNK.has(g[r][c])) tc.push(c);
+				}
+				const [c0, c1] = [Math.min(...tc), Math.max(...tc)];
 				let lowestLeaf = -1;
-				for (let r = 0; r < FIELD_N; r++) if (g[r].some(v => v && !TRUNK.has(v))) lowestLeaf = r;
+				for (let r = 0; r < FIELD_N; r++) {
+					for (let c = c0; c <= c1; c++) if (g[r][c] && !TRUNK.has(g[r][c])) { lowestLeaf = r; break; }
+				}
 				expect(b.r1 - lowestLeaf, `${name}[${fi}] の幹が短すぎる＝樹冠に埋もれて木に見えない`)
 					.toBeGreaterThanOrEqual(4);
 			});
@@ -377,6 +397,134 @@ test.describe('木・山・茂みの変種 – 絵の性質', () => {
 		}
 	});
 
+	test('⑲ 雪原の木の雪は矩形でない＝行ごとに幅が変わり、段差の角に混色がある', () => {
+		// 🔴 ユーザー判定（2026-09-07・10a-5）＝「雪の表現が長方形になっちゃってて、
+		//    もう少し工夫したい。雪らしい丸みをだすとか。…白と緑を混ぜたドットを角に
+		//    おくとか」。②〜④の枠は**雪の形を1つも見ていない**∴3×2 の白い矩形を貼った
+		//    実装でも全部緑だった。∴雪（8）そのものを測る。
+		//    ・同じ区間の雪が2行続いたら、そこは幅の変わらない白い矩形＝ユーザーが見た絵。
+		//    ・混色（9）は「角を中間色で落として丸く見せる」ための色∴雪に接して置かれる
+		//      （実測：接する混色は変種ごとに 12〜16 ドット）。
+		const SNOW = 8, MIX = 9;
+		const names = SWAY.filter(s => s.tile === TILE.TREE && s.skin === 'snowy')
+			.flatMap(s => variantNames(s.base));
+		expect(names.length, '雪原の木の変種が無い＝この条件が空回りしている').toBeGreaterThan(0);
+		for (const name of names) {
+			SPRITES[name].forEach((g, fi) => {
+				// 行ごとの雪の区間（連続した 8 の並び）
+				const runs = g.map(row => {
+					const out = [];
+					for (let c = 0; c < FIELD_N; c++) {
+						if (row[c] !== SNOW) continue;
+						const s = c;
+						while (c < FIELD_N && row[c] === SNOW) c++;
+						out.push(`${s}-${c - 1}`);
+					}
+					return out.join(',');
+				});
+				for (let r = 0; r + 1 < FIELD_N; r++) {
+					if (!runs[r]) continue;
+					expect(runs[r + 1], `${name}[${fi}] の ${r}/${r + 1} 行の雪が同じ区間 ${runs[r]}`
+						+ '＝幅の変わらない白い矩形になっている').not.toBe(runs[r]);
+				}
+				let touching = 0;
+				for (let r = 0; r < FIELD_N; r++) {
+					for (let c = 0; c < FIELD_N; c++) {
+						if (g[r][c] !== MIX) continue;
+						if ([[1, 0], [-1, 0], [0, 1], [0, -1]].some(([dr, dc]) => g[r + dr]?.[c + dc] === SNOW)) touching++;
+					}
+				}
+				expect(touching, `${name}[${fi}] の雪に接した混色が ${touching} ドットしかない`
+					+ '＝段差の角が落ちていない（雪が階段のまま）').toBeGreaterThanOrEqual(8);
+			});
+		}
+	});
+
+	test('⑳ 沼の木は支柱根の影絵で語る＝根が分かれて広がり、細い房を生やさない', () => {
+		// 🔴 ユーザー判定を**2回**もらった条件（2026-09-07・10a-5 と 10a-5b）。
+		//    1回目＝「薄い緑の何かが木から垂れ下がってるの？これはどういう表現なの？」
+		//    2回目＝「木から薄い緑色のものが生えてるけどこれはなんなの？？」
+		//    ＝1ドット幅の房（苔）は 3.375px/ドットでは「草の葉」にしか見えず、同じ画面の
+		//    葦（1〜2ドットの黄緑の線）と区別が付かなかった。∴質感（苔）で語るのをやめて
+		//    **輪郭（支柱根＝根が分かれて水面から立ち上がる）**で語る形に置き換えた。
+		//    ここで縛るのは「置き換えた形が残ること」と「細い房が戻らないこと」の2点。
+		const TRUNK_C = new Set([5, 6]);
+		const skinNames = (skin) => SWAY
+			.filter(s => s.tile === TILE.TREE && s.skin === skin).flatMap(s => variantNames(s.base));
+		// 最下の幹色の行での「幹色の塊の数」と「広がり」＝支柱根の指標。
+		const roots = (g) => {
+			let bottom = -1;
+			for (let r = 0; r < FIELD_N; r++) {
+				for (let c = 0; c < FIELD_N; c++) if (TRUNK_C.has(g[r][c])) bottom = r;
+			}
+			const cols = [];
+			for (let c = 0; c < FIELD_N; c++) if (TRUNK_C.has(g[bottom][c])) cols.push(c);
+			let groups = cols.length ? 1 : 0;
+			for (let i = 1; i < cols.length; i++) if (cols[i] - cols[i - 1] > 1) groups++;
+			return { groups, spread: cols.length ? cols[cols.length - 1] - cols[0] + 1 : 0 };
+		};
+		const swampNames = skinNames('swamp');
+		expect(swampNames.length, '沼の木の変種が無い＝この条件が空回りしている').toBeGreaterThan(0);
+		for (const name of swampNames) {
+			SPRITES[name].forEach((g, fi) => {
+				const { groups, spread } = roots(g);
+				expect(groups, `${name}[${fi}] の根が ${groups} 本の塊＝1本の幹に見える`)
+					.toBeGreaterThanOrEqual(2);
+				expect(spread, `${name}[${fi}] の根の広がりが ${spread} ドット＝支柱根に見えない`)
+					.toBeGreaterThanOrEqual(10);
+				// 4近傍が1以下＝先が1ドットで飛び出した所＝「生えている細い房」。実測で沼は 0。
+				let filament = 0;
+				for (let r = 0; r < FIELD_N; r++) {
+					for (let c = 0; c < FIELD_N; c++) {
+						if (!g[r][c]) continue;
+						const nb = [[1, 0], [-1, 0], [0, 1], [0, -1]]
+							.filter(([dr, dc]) => g[r + dr]?.[c + dc]).length;
+						if (nb <= 1) filament++;
+					}
+				}
+				expect(filament, `${name}[${fi}] に1ドットで飛び出した部分が ${filament} ドット`
+					+ '＝また「木から生えている薄緑の何か」に見える').toBe(0);
+			});
+		}
+		// 対照＝他の肌の木は根が1本の塊（この測り方が自明に真でないことの担保）。
+		for (const skin of ['leafy', 'snowy', 'charred', 'arid']) {
+			for (const n of skinNames(skin)) {
+				expect(roots(SPRITES[n][0]).groups,
+					`${n} の根が分かれている＝支柱根が沼だけの形になっていない`).toBe(1);
+			}
+		}
+	});
+
+	test('㉑ 木の形どうしは樹冠で違う＝並べても同じ木に見えない', () => {
+		// 🔴 ⑱（山の頂）と同じ失敗を木でもう一度した（2026-09-07・ユーザー判定＝「沼の木は
+		//    複数パターンある？」＝4形あるのに見分けられなかった）。④の「差 20 ドット以上」は
+		//    絵のどこが違ってもよい∴沼の木は差が**苔と脚**から出ていて、樹冠は4形ほぼ同じ
+		//    だった。∴木は「樹冠の帯」と「影絵の寸法」で違いを課す。
+		const CROWN_ROWS = 12;            // 上から12行＝樹冠が占める帯
+		const MIN_CROWN_DIFF = 10;        // 実測の最小は 12（雪原の #0/#2）
+		for (const { base, label } of SWAY.filter(s => s.tile === TILE.TREE)) {
+			const shapes = variantNames(base).filter((_, v) => v % 2 === 0);   // 位相を除いた「形」
+			const grids = shapes.map(n => SPRITES[n][0]);
+			const r0 = Math.min(...grids.map(g => g.findIndex(row => row.some(Boolean))));
+			for (let i = 0; i < grids.length; i++) {
+				for (let j = i + 1; j < grids.length; j++) {
+					let d = 0;
+					for (let r = r0; r < r0 + CROWN_ROWS; r++) {
+						for (let c = 0; c < FIELD_N; c++) if (!!grids[i][r][c] !== !!grids[j][r][c]) d++;
+					}
+					expect(d, `${label} ${shapes[i]} と ${shapes[j]} の樹冠の帯の違いが ${d} ドットだけ`
+						+ '＝並べると同じ木に見える').toBeGreaterThanOrEqual(MIN_CROWN_DIFF);
+				}
+			}
+			// 寸法そのものも散らす（樹冠の模様だけ違って輪郭が同じ＝遠目には同じ木）。
+			// 下限は実測から（現状はどの肌も4形すべて別の寸法）。1組だけ同寸法は許す
+			// ＝赤にできる改変で確かめたのは上の「樹冠の帯」の側。
+			const sizes = new Set(grids.map(g => { const b = bbox(g); return `${b.w}x${b.h}`; }));
+			expect(sizes.size, `${label} の形の寸法が ${[...sizes].join(' ')} ＝種類が少なすぎる`)
+				.toBeGreaterThanOrEqual(3);
+		}
+	});
+
 	test('⑨ 揺れる絵は形が同じ2変種でコマの順が逆＝同じ瞬間に別のコマが出る', () => {
 		// 🔴 これが 10a-4 の後半（揺れの同期）の本体。コマを選ぶのは世界に1つの
 		//    `animFrame` ∴「絵の中でコマを入れ替えた変種」を隣に置くことでしか
@@ -413,11 +561,17 @@ test.describe('木・山・茂みの変種 – 選び方', () => {
 
 	test('⑪ 変種を持たない絵は素の名前のまま＝機構が他を壊さない', () => {
 		// 看板は揺れも変種も持たない（10a-4 の対象外）。肌を解決していない 'mountain'
-		// も素のまま＝肌 → 変種の順序を守らせるための歯。
+		// 'tree' 'bush' も素のまま＝肌 → 変種の順序を守らせるための歯。
+		// 🔴 素の名前に変種を作ると「肌を解決し忘れた描画」が変種だけ付いて動いてしまい、
+		//    緑の木が火山灰の上に立ち続けるのに全テストが緑になる。
 		expect(OBJ_VARIANTS.sign, '看板に変種を作ってしまっている').toBeUndefined();
 		expect(objVariantName('sign', 2, 3)).toBe('sign');
 		expect(objVariantName('water', 2, 3)).toBe('water');
-		expect(objVariantName('mountain', 2, 3)).toBe('mountain');
+		for (const base of ['mountain', 'tree', 'bush']) {
+			expect(OBJ_VARIANTS[base], `${base}（素の名前）に変種を作ってしまっている`).toBeUndefined();
+			expect(objVariantName(base, 2, 3)).toBe(base);
+			expect(SPRITES[base], `${base}（素の名前）の絵が無い`).toBeTruthy();
+		}
 	});
 
 	test('⑫ 1画面で全変種が出る・隣が同じ絵になりすぎない・位相が偏らない', () => {
@@ -483,7 +637,9 @@ test.describe('木・山・茂みの変種 – 実エンジンの描画', () => 
 		await openStage(page, stage);
 		const names = await artNames(page, /^tree/);
 		expect(names.length, `画面 field ${stage} に木が描かれていない`).toBeGreaterThan(20);
-		for (const n of names) expect(n, '代表1枚（tree）が敷かれている').toMatch(/^tree#\d+$/);
+		for (const n of names) {
+			expect(n, '肌 → 変種の名前になっていない（代表1枚か肌の解決漏れ）').toMatch(/^tree@[a-z]+#\d+$/);
+		}
 		expect(new Set(names).size, `画面全体が同じ絵（${[...new Set(names)].join(' ')}）`)
 			.toBeGreaterThanOrEqual(4);
 	});
@@ -507,7 +663,9 @@ test.describe('木・山・茂みの変種 – 実エンジンの描画', () => 
 		await openStage(page, stage);
 		const names = await artNames(page, /^bush/);
 		expect(names.length, `画面 field ${stage} に茂みが描かれていない`).toBeGreaterThan(4);
-		for (const n of names) expect(n, '代表1枚（bush）が敷かれている').toMatch(/^bush#\d+$/);
+		for (const n of names) {
+			expect(n, '肌 → 変種の名前になっていない（代表1枚か肌の解決漏れ）').toMatch(/^bush@[a-z]+#\d+$/);
+		}
 		expect(new Set(names).size, '茂みが1種類だけ＝変種が効いていない').toBeGreaterThanOrEqual(2);
 	});
 
@@ -520,15 +678,15 @@ test.describe('木・山・茂みの変種 – 実エンジンの描画', () => 
 			const byVariant = new Map();
 			document.querySelectorAll('.cell[data-art-sprite]').forEach(cell => {
 				const name = cell.dataset.artSprite;
-				if (!name.startsWith('tree#')) return;
+				if (!name.startsWith('tree@')) return;
 				const cv = cell.querySelector('canvas');
 				if (!cv) return;
 				if (!byVariant.has(name)) byVariant.set(name, cv.toDataURL());
 			});
 			// 形が同じ（v>>1 が同じ）で位相が違う組を探す
 			for (const [nameA, urlA] of byVariant) {
-				const v = Number(nameA.split('#')[1]);
-				const nameB = `tree#${v ^ 1}`;
+				const [head, v] = nameA.split('#');
+				const nameB = `${head}#${Number(v) ^ 1}`;
 				if (!byVariant.has(nameB)) continue;
 				return { nameA, nameB, same: urlA === byVariant.get(nameB), n: byVariant.size };
 			}

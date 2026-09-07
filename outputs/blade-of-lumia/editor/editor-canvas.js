@@ -8,7 +8,7 @@ import {
 } from './editor-state.js';
 import { TILE_SPRITE_MAP, drawSpriteAt } from './editor-palette.js';
 import { connectedTileParts, connectTileAt } from '../shared/tile-connect.js';
-import { mountainSkinAt, skinName } from '../shared/tile-skins.js';
+import { skinnedSprite } from '../shared/tile-skins.js';
 import { objVariantName } from '../shared/sprites-tiles.js';
 
 export const canvas    = document.getElementById('stage-canvas');
@@ -55,13 +55,11 @@ export function drawCell(c, r, tileChar) {
 		return;
 	}
 
-	// 山は同じ 'M' でも下地から肌を選ぶ（10a-1d）＝ゲームと同じ shared/tile-skins.js で解決する。
-	// ここを基本の1枚で描くと、エディタでは砂漠にも雪冠の山が立ってゲームと食い違う
-	// （橋のデッキで同じ食い違いを踏んでいる＝この段の上のコメント）。
-	const si0 = TILE_SPRITE_MAP[tileChar];
-	const siSkin = (si0 && tileChar === TILE.MOUNTAIN)
-		? (skin => ({ spr: skinName(si0.spr, skin), pal: skinName(si0.pal, skin) }))(mountainSkinAt(sd, r, c))
-		: si0;
+	// 山 'M'・木 't'・茂み 'u' は同じタイルでも下地から肌を選ぶ（10a-1d／10a-5）
+	// ＝ゲームと同じ shared/tile-skins.js の skinnedSprite() 1本で解決する。
+	// ここを基本の1枚で描くと、エディタでは砂漠にも雪冠の山・火山灰の上に緑の木が立って
+	// ゲームと食い違う（橋のデッキで同じ食い違いを踏んでいる＝この段の上のコメント）。
+	const siSkin = skinnedSprite(sd, r, c, tileChar, TILE_SPRITE_MAP[tileChar]);
 	// 木・山・茂みはセルごとに違う絵（10a-4）＝ゲームと同じ shared/sprites-tiles.js で選ぶ。
 	// ここを代表1枚のままにすると、エディタでは同じ木が並ぶのにゲームでは違う木が出る
 	// （橋のデッキ・山の肌で2度踏んだ食い違い＝この段の上のコメント）。
