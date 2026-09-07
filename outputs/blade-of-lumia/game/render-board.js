@@ -68,6 +68,22 @@ const FIELD_SPRITE_TILES = new Set([
 const FIELD_ART_32_TILES = new Set([TILE.TREE, TILE.MOUNTAIN, TILE.BUSH, TILE.SIGN]);
 const fieldSpriteClass = (tile) => (FIELD_ART_32_TILES.has(tile) ? 'field-sprite' : 'obj-sprite');
 
+// 盤面の「物」の canvas をセルに貼る唯一の入口（キュー10番 10d）。
+// 絵が 32×32 なら `dot32`（セル全面）を足す＝1ドットが cellPx/32＝キャラ・地面と同じ
+// 粗さになる。見かけの大きさは絵の側の透明余白で作る（shared/sprites-obj32.js）。
+// 🔴 判定は「絵そのものの実寸（canvas.width）」から導く＝32 に描き直した絵の一覧を
+//    ここに書き写さない。一覧を持つと絵と一覧がずれて「描き直したのに 0.7 倍の箱に
+//    入ったまま＝1ドット 2.36px」になる（[[blade-tile-sprite-single-source]] と同じ罠）。
+// ⚠ obj-sprite / item-sprite のクラスはそのまま付ける＝テストが「その物が描かれている」
+//    目印として数えている。dot32 は大きさだけを上書きする。
+export function putCellSprite(cellEl, cv, sizeClass) {
+	if (!cv) return null;
+	cv.classList.add(sizeClass);
+	if (cv.width === 32 && cv.height === 32) cv.classList.add('dot32');
+	cellEl.appendChild(cv);
+	return cv;
+}
+
 /**
  * タイルグリッド描画関数群を生成して返す factory。
  * @param {object} deps
@@ -217,7 +233,7 @@ export function createRenderBoard(deps) {
 				const cond = stageData.showConditions?.[posKey];
 				if (cond && !ss.conditionsMet.has(posKey)) return;
 				const cv = makeSprite('chest', 'chest', true);
-				if (cv) { cv.classList.add('obj-sprite'); cellEl.appendChild(cv); }
+				putCellSprite(cellEl, cv, 'obj-sprite');
 			}
 			return;
 		}
@@ -228,7 +244,7 @@ export function createRenderBoard(deps) {
 			const keyCond = stageData.showConditions?.[posKey];
 			if (keyCond && !ss.conditionsMet.has(posKey)) return;
 			const cv = makeSprite('key', 'key', true);
-			if (cv) { cv.classList.add('item-sprite'); cellEl.appendChild(cv); }
+			putCellSprite(cellEl, cv, 'item-sprite');
 			return;
 		}
 		if (tile === TILE.BUTTON) {
@@ -238,9 +254,9 @@ export function createRenderBoard(deps) {
 			const pal    = PAL['button'];
 			if (frames && pal) {
 				const cv = document.createElement('canvas');
-				cv.className = 'sprite obj-sprite';
+				cv.className = 'sprite';
 				drawSpriteFrame(cv, frames, ss.switchStates[posKey] ? 1 : 0, pal);
-				cellEl.appendChild(cv);
+				putCellSprite(cellEl, cv, 'obj-sprite');
 			}
 			return;
 		}
@@ -251,9 +267,9 @@ export function createRenderBoard(deps) {
 			const pal    = PAL['lever'];
 			if (frames && pal) {
 				const cv = document.createElement('canvas');
-				cv.className = 'sprite obj-sprite';
+				cv.className = 'sprite';
 				drawSpriteFrame(cv, frames, ss.switchToggles?.has(posKey) ? 1 : 0, pal);
-				cellEl.appendChild(cv);
+				putCellSprite(cellEl, cv, 'obj-sprite');
 			}
 			return;
 		}
@@ -263,7 +279,7 @@ export function createRenderBoard(deps) {
 			//    「開いてもゲートが見えたまま」になる（実際に起きたバグ）。
 			if (!ss.openGates.has(posKey)) {
 				const cv = makeSprite('gateG', 'gateG', false);
-				if (cv) { cv.classList.add('obj-sprite'); cellEl.appendChild(cv); }
+				putCellSprite(cellEl, cv, 'obj-sprite');
 			}
 			return;
 		}
@@ -275,7 +291,7 @@ export function createRenderBoard(deps) {
 				const sprName = tile === TILE.GATE_RED ? 'gateRed' : 'gateBlu';
 				const palName = tile === TILE.GATE_RED ? 'gateRed' : 'gateBlu';
 				const cv = makeSprite(sprName, palName, false);
-				if (cv) { cv.classList.add('obj-sprite'); cellEl.appendChild(cv); }
+				putCellSprite(cellEl, cv, 'obj-sprite');
 			}
 			return;
 		}
@@ -289,9 +305,9 @@ export function createRenderBoard(deps) {
 			const pal      = PAL[palName];
 			if (frames && pal) {
 				const cv = document.createElement('canvas');
-				cv.className = 'sprite obj-sprite';
+				cv.className = 'sprite';
 				drawSpriteFrame(cv, frames, ss.activeColor === color ? 1 : 0, pal);
-				cellEl.appendChild(cv);
+				putCellSprite(cellEl, cv, 'obj-sprite');
 			}
 			return;
 		}
@@ -314,17 +330,17 @@ export function createRenderBoard(deps) {
 				sprName = isOpen ? 'doorLopen' : 'doorL';  // 中間も左半分流用（枠は両端のみ見える）
 			}
 			const cv = makeSprite(sprName, 'door', false, flipX);
-			if (cv) { cv.classList.add('door-sprite'); cellEl.appendChild(cv); }
+			putCellSprite(cellEl, cv, 'door-sprite');
 			return;
 		}
 		if (tile === TILE.WATER) {
 			const cv = makeSprite('water', 'water', true);
-			if (cv) { cv.classList.add('obj-sprite'); cellEl.appendChild(cv); }
+			putCellSprite(cellEl, cv, 'obj-sprite');
 			return;
 		}
 		if (tile === TILE.LAVA) {
 			const cv = makeSprite('water', 'lava', true);   // water 形状＋lava 赤橙パレット
-			if (cv) { cv.classList.add('obj-sprite'); cellEl.appendChild(cv); }
+			putCellSprite(cellEl, cv, 'obj-sprite');
 			return;
 		}
 		if (tile === TILE.TIDE_GATE) {
@@ -333,7 +349,7 @@ export function createRenderBoard(deps) {
 			// return を忘れると末尾 fallback が再描画して「引いても水が残る」バグになる）。
 			if (!ss.openGates.has(posKey)) {
 				const cv = makeSprite('water', 'tide', true);  // water 形状＋tide 青緑パレット
-				if (cv) { cv.classList.add('obj-sprite'); cellEl.appendChild(cv); }
+				putCellSprite(cellEl, cv, 'obj-sprite');
 			}
 			return;
 		}
@@ -341,7 +357,7 @@ export function createRenderBoard(deps) {
 			// 未破壊のときだけ壁を描く（破壊後は床）。必ず return すること。
 			if (!ss.brokenWalls.has(posKey)) {
 				const cv = makeSprite('breakableWall', 'breakableWall', true);
-				if (cv) { cv.classList.add('obj-sprite'); cellEl.appendChild(cv); }
+				putCellSprite(cellEl, cv, 'obj-sprite');
 			}
 			return;
 		}
@@ -349,12 +365,12 @@ export function createRenderBoard(deps) {
 			const cond = stageData.showConditions?.[posKey];
 			if (cond && !ss.conditionsMet.has(posKey)) return;
 			const cv = makeSprite('mapEnter', 'mapEnter', true);
-			if (cv) { cv.classList.add('obj-sprite'); cellEl.appendChild(cv); }
+			putCellSprite(cellEl, cv, 'obj-sprite');
 			return;
 		}
 		if (tile === TILE.ALTAR) {
 			const cv = makeSprite('altar', 'altar', false);
-			if (cv) { cv.classList.add('obj-sprite'); cellEl.appendChild(cv); }
+			putCellSprite(cellEl, cv, 'obj-sprite');
 			return;
 		}
 		if (tile === TILE.TORCH) {
@@ -363,9 +379,9 @@ export function createRenderBoard(deps) {
 			const pal    = PAL['torch'];
 			if (frames && pal) {
 				const cv = document.createElement('canvas');
-				cv.className = 'sprite obj-sprite';
+				cv.className = 'sprite';
 				drawSpriteFrame(cv, frames, ss.litTorches?.has(posKey) ? 1 : 0, pal);
-				cellEl.appendChild(cv);
+				putCellSprite(cellEl, cv, 'obj-sprite');
 			}
 			return;
 		}
@@ -373,12 +389,12 @@ export function createRenderBoard(deps) {
 			const _ssSt = getSS(currentLayer, stageKey);
 			if (_ssSt.stonePositions?.[posKey]) return;
 			const cv = makeSprite('block', 'block', false);
-			if (cv) { cv.classList.add('obj-sprite'); cellEl.appendChild(cv); }
+			putCellSprite(cellEl, cv, 'obj-sprite');
 			return;
 		}
 		if (tile === TILE.DOORWAY) {
 			const cv = makeSprite('doorway', 'doorway', true);
-			if (cv) { cv.classList.add('obj-sprite'); cellEl.appendChild(cv); }
+			putCellSprite(cellEl, cv, 'obj-sprite');
 			return;
 		}
 		if (tile === TILE.DOORWAY_BOSS) {
@@ -387,10 +403,10 @@ export function createRenderBoard(deps) {
 			const pal    = PAL['doorwayBoss'];
 			if (frames && pal) {
 				const cv = document.createElement('canvas');
-				cv.className = 'sprite obj-sprite';
+				cv.className = 'sprite';
 				const frameIdx = (dwState === 'boss_closed') ? 1 : 0;
 				drawSpriteFrame(cv, frames, frameIdx, pal);
-				cellEl.appendChild(cv);
+				putCellSprite(cellEl, cv, 'obj-sprite');
 			}
 			return;
 		}
@@ -400,10 +416,10 @@ export function createRenderBoard(deps) {
 			const pal    = PAL['doorwayLocked'];
 			if (frames && pal) {
 				const cv = document.createElement('canvas');
-				cv.className = 'sprite obj-sprite';
+				cv.className = 'sprite';
 				const frameIdx = (dwState === 'open') ? 1 : 0;
 				drawSpriteFrame(cv, frames, frameIdx, pal);
-				cellEl.appendChild(cv);
+				putCellSprite(cellEl, cv, 'obj-sprite');
 			}
 			return;
 		}
@@ -428,7 +444,7 @@ export function createRenderBoard(deps) {
 			if (itemCond && !ss.conditionsMet.has(posKey)) return;
 			const [spr, pal] = itemMap[tile];
 			const cv = makeSprite(spr, pal, false);
-			if (cv) { cv.classList.add('item-sprite'); cellEl.appendChild(cv); }
+			putCellSprite(cellEl, cv, 'item-sprite');
 			return;
 		}
 		// 連結タイル（橋のデッキ）＝隣接状況で部品を重ねる。
@@ -487,7 +503,7 @@ export function createRenderBoard(deps) {
 				const itemCond = stageData.showConditions?.[posKey];
 				if (itemCond && !ss.conditionsMet.has(posKey)) return;
 				const cv = makeSprite(si.spr, si.pal, false);
-				if (cv) { cv.classList.add('item-sprite'); cellEl.appendChild(cv); }
+				putCellSprite(cellEl, cv, 'item-sprite');
 			}
 		}
 	}

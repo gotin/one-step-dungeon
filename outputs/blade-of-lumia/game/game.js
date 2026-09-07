@@ -31,7 +31,7 @@ import { createConditions } from './conditions.js';
 // （占有タイルで敵を探す判定は projectile.js の置き炎へ移した＝2026-08-31）
 import { toTileIndex } from './hitbox.js';
 // ── 描画系（Phase 0-2 Step 3: render-board.js / render-chars.js へ切り出し）──────
-import { createRenderBoard } from './render-board.js';
+import { createRenderBoard, putCellSprite } from './render-board.js';
 import { createRenderChars } from './render-chars.js';
 // ── 入力・UI（Phase 0-2 Step 4: input.js / ui.js へ切り出し）──────────────────
 import { initInput } from './input.js';
@@ -1437,8 +1437,10 @@ function spawnFloorDrop(r, c, type) {
 	const sprMap = FLOOR_DROP_SPRITES[type];
 	const cv = sprMap ? makeSprite(sprMap[0], sprMap[1], false) : null;
 	if (cv) {
-		cv.classList.add('item-sprite');
-		el.appendChild(cv);
+		// 大きさの決め方は盤面と同じ入口（render-board.js の putCellSprite）に任せる
+		// ＝32 ドットに描き直したアイテムはセル全面に貼られる（10d）。ここに 'item-sprite'
+		// だけを付けていると、同じアイテムが「落ちている間だけ小さい」ことになる。
+		putCellSprite(el, cv, 'item-sprite');
 	} else {
 		// スプライト未定義の型は従来どおり絵文字でフォールバック
 		el.style.fontSize = `${Math.round(cellPx * 0.55)}px`;

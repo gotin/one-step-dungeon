@@ -58,7 +58,10 @@ export function createRenderChars(deps) {
 
 	// 石の canvas を描画するヘルパー（stoneDiv に追加する）
 	function makeStoneCanvas(cellPx) {
-		const stSize = Math.round(cellPx * 0.7) + 'px';
+		// 石は 32 ドットに描き直した（10d-1）＝canvas はセル全面。絵の中に透明の余白が
+		// あるので見かけは従来（0.7 セル）のまま。ここを 0.7 倍にすると、盤面に置かれた
+		// 石（render-board.js の .dot32）より小さい石が動く＝押した瞬間に石が縮む。
+		const stSize = Math.round(cellPx) + 'px';
 		const cv = document.createElement('canvas');
 		cv.style.cssText = `position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:${stSize};height:${stSize};image-rendering:pixelated;`;
 		const frames = SPRITES['block'];

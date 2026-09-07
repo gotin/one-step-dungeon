@@ -6,6 +6,7 @@ import { PLAYER_PAL, PLAYER_SPRITES } from './sprites-player.js';
 import { ENEMY_PAL, ENEMY_SPRITES }   from './sprites-enemies.js';
 import { ITEM_PAL, ITEM_SPRITES }     from './sprites-items.js';
 import { TILE_PAL, TILE_SPRITES }     from './sprites-tiles.js';
+import { OBJ32_SPRITES }              from './sprites-obj32.js';
 
 // ── パレット（全カテゴリをマージ）────────────────────────────
 export const PAL = {
@@ -21,6 +22,10 @@ export const SPRITES = {
 	...ENEMY_SPRITES,
 	...ITEM_SPRITES,
 	...TILE_SPRITES,
+	// 盤面に乗る「物」を 32 ドットで描き直した絵（キュー10番 10d）。
+	// 名前は従来と同じ＝呼び出し側（makeSprite('chest', …) 等）は変わらない。
+	// パレットは ITEM_PAL / TILE_PAL のまま＝色は変えずドットの粗さだけ揃える。
+	...OBJ32_SPRITES,
 };
 
 // ── Animation ──────────────────────────────────────────────────

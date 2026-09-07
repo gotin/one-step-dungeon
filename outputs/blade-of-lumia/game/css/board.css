@@ -730,3 +730,15 @@ canvas.sprite.item-sprite {
     width: calc(var(--cell) * 0.55);
     height: calc(var(--cell) * 0.55);
 }
+
+/* 32 ドットで描き直した盤面の「物」（キュー10番 10d）＝canvas をセル全面に貼る。
+   1ドット＝cellPx/32＝プレイヤー・地面・木と同じ 3.375px（--cell:108px）になる。
+   見かけの大きさは絵の側の透明余白で作る（shared/sprites-obj32.js）∴従来と同じ
+   大きさに見える。
+   ⚠ obj-sprite / item-sprite のクラスは外さない＝「その物が描かれている」目印として
+     テストが数えている（宝箱＝obj-sprite・鍵＝item-sprite）。この規則は大きさだけを
+     上書きする∴詳細度が同じ obj-sprite / item-sprite より必ず後ろに置くこと。 */
+canvas.sprite.dot32 {
+    width: var(--cell);
+    height: var(--cell);
+}

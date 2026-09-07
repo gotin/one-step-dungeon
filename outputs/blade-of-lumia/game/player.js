@@ -519,7 +519,9 @@ export function createPlayer(deps) {
 				// アニメーションしない他の移動済み石を先に描画
 				{
 					const _otherCellPx = getCellPx();
-					const _otherStSize = Math.round(_otherCellPx * 0.7) + 'px';
+					// 石は 32 ドット＝canvas はセル全面（10d-1。render-chars.js の
+					// makeStoneCanvas と同じ約束）。0.7 倍にすると盤面の石より小さくなる。
+					const _otherStSize = Math.round(_otherCellPx) + 'px';
 					for (const [otherKey, otherSt] of Object.entries(ss.stonePositions ?? {})) {
 						if (otherKey === stoneKey) continue;
 						const otherDiv = document.createElement('div');
@@ -562,7 +564,7 @@ export function createPlayer(deps) {
 				_animStDiv.className = 'char-abs';
 				_animStDiv.id = `char-stone-${stoneKey.replace(',', '-')}`;
 				_animStDiv.style.zIndex = '1';
-				const _animStSize = Math.round(_animCellPx * 0.7) + 'px';
+				const _animStSize = Math.round(_animCellPx) + 'px';   // 32 ドット＝セル全面（10d-1）
 				const _animStCv = document.createElement('canvas');
 				_animStCv.style.cssText = `position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:${_animStSize};height:${_animStSize};image-rendering:pixelated;`;
 				const _animFrames = SPRITES['block'];
