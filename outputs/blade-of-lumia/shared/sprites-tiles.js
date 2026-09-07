@@ -99,9 +99,17 @@ export const TILE_PAL = {
 	'mountain@rocky':    ['transparent','#2c2e2a','#42463c','#5a6050','#727a66','#8e9682','#1a1c18'],
 	bush:        ['transparent','#1a4010','#2a5a18','#388028','#50a040','#6aba50','#0e2808'],
 	fence:       ['transparent','#5a3810','#8a6030','#b08050','#c8a070','#ffffff','#3a2008'],
-	houseWall:   ['transparent','#805030','#c09060','#e0b080','#f0d0a0','#6080c0','#3a3060'],
-	houseDoor:   ['transparent','#3a1808','#7a3818','#a85030','#c07040','#d0a000','#8a6010'],
-	houseRoof:   ['transparent','#6a0808','#b02018','#d04030','#e06050','#c06030','#402010'],
+	// 家（10a-2 で連結タイル化＝石積みの壁＋瓦の屋根に描き直した）。
+	// 外壁 `h` は世界の 12 箇所で「岩・柱」としても単独で置かれている（実測）∴
+	// 土壁の一枚絵ではなく**石積み**にする＝1セルだけでも石のブロックとして読める。
+	// 1〜4 は外壁・ドアの石で共通（ドアの石枠が壁と繋がって見えるように同じ色）。
+	// 外壁 1=目地/影 2=石の影 3=石の地 4=石の日向 5=漆喰（笠石・まぐさ・ガラスの映り込み）
+	//      6=ガラス 7=窓枠の木
+	houseWall:   ['transparent','#3d3026','#6f5a48','#9c8670','#bfa88e','#e6dac2','#241f30','#6a4a28'],
+	// ドア 5=板の日向 6=板の地 7=板の影 8=帯金・取っ手（真鍮）
+	houseDoor:   ['transparent','#3d3026','#6f5a48','#9c8670','#bfa88e','#8a5a2c','#6a4218','#40270e','#d8ae46'],
+	// 屋根 1=段の影/輪郭 2=瓦の合わせ目 3=瓦の地 4=瓦の日向 5=棟瓦・破風板 6=軒下の木部
+	houseRoof:   ['transparent','#4a0f0c','#8c1c16','#b8362a','#d4574a','#e88b6a','#33200f'],
 	sign:        ['transparent','#5a3810','#8a6030','#b08050','#c09060','#000000','#403010'],
 };
 
@@ -1043,11 +1051,15 @@ TILE_SPRITES.bridge = TILE_SPRITES.bridgeDeckH;
 // 必ずここを通す＝「エディタとゲームで見た目が違う」を作らない。
 // 決定的＝同じセルはいつ来ても同じ絵（乱数を使わない・マップデータも変えない）。
 
-// 連結タイルの本体（デッキ）の変種。板の並ぶ向きが「行方向か列方向か」で
+// 連結タイルの本体の変種。板の並ぶ向きが「行方向か列方向か」で
 // (r,c) の役割が入れ替わる∴向きごとに引き方を持つ。
+// ⚠ 周期の数（rows/cols）は本体ごとに違う（橋は 5×3・家の壁は 3×5）∴
+//    引き方と一緒に持つ。ここを橋の数で固定すると、家の変種が存在しない名前
+//    （`houseWallBase@4,0` など）に落ちて絵が消える。
 export const CONNECT_VARIANTS = {
-	bridgeDeckH: (r, c) => [r, c],   // 板は東西に走る＝板が並ぶのは行方向
-	bridgeDeckV: (r, c) => [c, r],   // 板は南北に走る＝板が並ぶのは列方向
+	bridgeDeckH: { pick: (r, c) => [r, c], rows: BR_VAR_ROWS, cols: BR_VAR_COLS },  // 板は東西＝並ぶのは行方向
+	bridgeDeckV: { pick: (r, c) => [c, r], rows: BR_VAR_ROWS, cols: BR_VAR_COLS },  // 板は南北＝並ぶのは列方向
+	// 家の壁・屋根はこのファイルの下（fd* ヘルパーより後）で足す。
 };
 
 // 画面外の隣（エディタの隣接プレビューは r=-0.5 のような座標で描く）でも
@@ -1055,10 +1067,10 @@ export const CONNECT_VARIANTS = {
 const varMod = (n, m) => ((Math.floor(n) % m) + m) % m;
 
 export function connectVariantName(base, r, c) {
-	const pick = CONNECT_VARIANTS[base];
-	if (!pick) return base;
-	const [a, b] = pick(r, c);
-	return `${base}@${varMod(a, BR_VAR_ROWS)},${varMod(b, BR_VAR_COLS)}`;
+	const v = CONNECT_VARIANTS[base];
+	if (!v) return base;
+	const [a, b] = v.pick(r, c);
+	return `${base}@${varMod(a, v.rows)},${varMod(b, v.cols)}`;
 }
 
 // 下地（bgTiles）に敷く地面スプライトの変種。セル座標のハッシュで選ぶ。
@@ -1335,41 +1347,201 @@ TILE_SPRITES.fence = [[
 	[0,0,0,0,0,0,0,0],
 ]];
 
-// 家の外壁
-TILE_SPRITES.houseWall = [[
-	[2,2,2,2,2,2,2,2],
-	[2,1,2,2,2,2,1,2],
-	[2,2,2,2,2,2,2,2],
-	[1,1,1,1,1,1,1,1],
-	[2,2,2,5,5,2,2,2],
-	[2,2,2,6,6,2,2,2],
-	[1,1,1,5,5,1,1,1],
-	[2,2,2,2,2,2,2,2],
-]];
+// ── 家（外壁 `h` ／屋根 `p` ／ドア `e`）── 連結タイル・32×32 ─────────────
+// キュー10番 10a-2。旧 8×8 は1枚の絵の中に「窓」や「切妻の三角」まで描き込んで
+// いたので、実際の家（横に 2〜8 セル並ぶ）では窓が等間隔に並び、屋根は三角の
+// のこぎり歯になった＝橋 `v` と同じ「連続で並べると崩れる」問題。
+// ∴ 敷き詰める本体（base）＋開いた辺だけの縁（edge）に分解し、隣接から
+// shared/tile-connect.js が部品を選ぶ。
+//
+// 🔴 格子は 32×32＝キャラ・地面と同じ密度（10a-1b の標準）。連結タイルは canvas 1枚を
+//    セル全体へ拡大する∴8×8 だと 1ドット＝13.5px でキャラの4倍になる。
+//
+// 家は「屋根 `p` の1行＋その下に外壁 `h` の輪郭」で組まれている（実測：24棟すべて
+// 屋根は1行で、必ず壁の真上）。∴縁の種類は橋の rail/trim ではなく：
+//   外壁 … 軒の影（北が屋根）／笠石（北が空）／土台（南が地面）／隅石（東西が外）
+//   屋根 … 棟（北）／軒（南）／破風（東西）
+// 「家の一部か」は h/p/e をひとまとめ（kin）で見る＝壁とドアの間に縁を描かない。
+//
+// ⚠ 外壁 `h` は単独でも置かれている（実測：家に繋がらない孤立した `h` が 10 箇所＝
+//    砂漠・深洋Oの中州の岩／柱。さらに「屋根1枚の下に壁1枚」だけの幅1の小屋が 9 箇所）。
+//    ∴1セルだけの `h` は四辺すべてに縁が付き「笠石つきの石塊」／「小さな小屋」として
+//    読めることが要件（マップデータは変えない＝10a-1d と同じ方針）。
+const HS_N      = FIELD_ART_N;
+const HS_COURSE = 8;    // 石の段の高さ（32 の約数∴セル境界を越えて段が続く）
+const HS_BLOCK  = 16;   // 石1個の幅（32 の約数∴同じく目地が縦に揃う）
 
-// 家のドア
-TILE_SPRITES.houseDoor = [[
-	[1,1,1,1,1,1,1,1],
-	[1,2,2,2,2,2,2,1],
-	[1,2,3,3,3,3,2,1],
-	[1,2,3,3,3,3,2,1],
-	[1,2,3,5,3,3,2,1],
-	[1,2,3,3,3,3,2,1],
-	[1,2,2,2,2,2,2,1],
-	[1,1,1,1,1,1,1,1],
-]];
+// 変種の周期。壁は横に長く並ぶので列方向を多めに取る（3 と 5＝互いに素）。
+export const HS_VAR_ROWS = 3;
+export const HS_VAR_COLS = 5;
 
-// 家の屋根
-TILE_SPRITES.houseRoof = [[
-	[0,0,0,1,0,0,0,0],
-	[0,0,1,2,1,0,0,0],
-	[0,1,2,3,2,1,0,0],
-	[1,2,3,4,3,2,1,0],
-	[2,3,4,4,4,3,2,1],
-	[4,4,4,5,4,4,4,4],
-	[4,5,4,4,4,5,4,4],
-	[4,4,4,4,4,4,4,4],
-]];
+const hsGrid = fill => Array.from({ length: HS_N }, (_, r) =>
+	Array.from({ length: HS_N }, (_, c) => fill(r, c)));
+const hsFlipCols = g => g.map(row => [...row].reverse());
+
+// 石1個ごとの「肌」＝0=標準／1=くすみ／2=明るい。
+// 🔴 明暗の2値（地の色を1段落とす）にすると、幅 16 ドット＝54px の塊が明暗で市松に
+//    並んで「斑」に見えた（実マップを合成して目視で判明・2026-09-06）。∴地の色は
+//    変えず「照りの広さ・影の広さ」だけを 3 段階で変える＝同じ石壁の中の個体差に留める。
+// 🔴 鍵は**世界座標の石**で決めること。セル内の番号で決めると、段のずらしで
+//    セル境界をまたぐ石の左半分と右半分が別の状態になり、境界に継ぎ目が出る。
+//    変種の周期を 3（行）×5（列）に取ると、世界座標の段 4r+k と石 per*c+s の
+//    剰余が変種の添字だけで復元できる（4r≡r mod 3・per*c mod 5 は c mod 5 で決まる）。
+// 🔴 `per` ＝セル1枚に入る石／瓦の個数（壁 32/16=2・屋根 32/8=4）。ここを取り違えると
+//    「セル境界をまたぐ1個の石」の左半分と右半分で肌が変わる＝27px の瓦の真ん中に
+//    継ぎ目が出る（屋根で実際に 2 のままになっていた・テストで検出）。
+const hsShade = (i, course, j, stone, per) => {
+	const h = tileHash((i + course) % HS_VAR_ROWS, (per * j + stone) % HS_VAR_COLS) % 6;
+	return h <= 1 ? 1 : h === 2 ? 2 : 0;
+};
+
+// 外壁の本体＝石積み。段の高さ 8・石の幅 16・段ごとに半個ずらす。
+function hsWallBase(i, j) {
+	return hsGrid((r, c) => {
+		const course = Math.floor(r / HS_COURSE), rr = r % HS_COURSE;
+		const off    = (course % 2) * (HS_BLOCK / 2);      // 段ごとに半個ずらす（芋目地を避ける）
+		const cc     = (c + off) % HS_BLOCK;
+		const sh     = hsShade(i, course, j, Math.floor((c + off) / HS_BLOCK), HS_N / HS_BLOCK);
+		if (rr === 0 || cc === 0) return 1;                // 目地（横・縦）
+		if (sh === 1) return rr <= 4 ? 3 : 2;              // くすんだ石＝上端の照りが無く影が広い
+		if (sh === 2) return rr <= 2 ? 4 : rr <= 5 ? 3 : 2;// 明るい石＝照りが広い
+		return rr === 1 ? 4 : rr <= 5 ? 3 : 2;             // 標準（上端が日向・下端が影）
+	});
+}
+for (let i = 0; i < HS_VAR_ROWS; i++) {
+	for (let j = 0; j < HS_VAR_COLS; j++) TILE_SPRITES[`houseWallBase@${i},${j}`] = [hsWallBase(i, j)];
+}
+
+// 軒の影（北が屋根）＝屋根が張り出して壁の上を暗くする。屋根側の軒（houseRoofEaveS）と対。
+// 屋根側の軒（houseRoofEaveS）が既に 4 ドット暗い∴壁側は 3 ドットに留める
+// （両方 4 ドットだと屋根と壁の間に 8 ドット＝27px の黒帯が出て壁が潰れた）。
+TILE_SPRITES.houseWallEaveN = [hsGrid(r => (r <= 1 ? 1 : r === 2 ? 2 : 0))];
+// 笠石（北が空）＝壁の天端。屋根が乗っていない壁・単独の `h`（岩/柱）の頂部。
+TILE_SPRITES.houseWallCapN  = [hsGrid(r => (r === 0 ? 1 : r <= 2 ? 5 : r === 3 ? 4 : r === 4 ? 1 : 0))];
+// 土台（南が地面）＝基礎の石と地際の影。これが無いと壁が地面から浮く。
+TILE_SPRITES.houseWallFootS = [hsGrid(r => (r >= HS_N - 2 ? 1 : r >= HS_N - 4 ? 2 : 0))];
+// 隅石（東西が外）＝角に積んだ大きい石。段ごとに明暗が入れ替わる＝角が立つ。
+const hsQuoinW = hsGrid((r, c) => {
+	if (c > 2) return 0;
+	if (c === 0) return 1;                                 // 輪郭
+	const course = Math.floor(r / HS_COURSE), rr = r % HS_COURSE;
+	if (rr === 0) return 1;                                // 目地は隅石でも通す
+	return course % 2 === 0 ? (c === 1 ? 4 : 3) : 2;
+});
+TILE_SPRITES.houseWallQuoinW = [hsQuoinW];
+TILE_SPRITES.houseWallQuoinE = [hsFlipCols(hsQuoinW)];
+
+// 窓＝軒の下（北が屋根）の壁にだけ、しかも全部ではなく散らして出す
+// （どのセルにも窓があると等間隔に並んで「窓の帯」になる＝旧 8×8 の失敗）。
+// どのセルに出すかは shared/tile-connect.js が決める（幾何＋座標のハッシュ）。
+TILE_SPRITES.houseWallWindow = [(() => {
+	const g = fdBlank();
+	fdSpan(g,  7, 9, 22, 1);                               // まぐさの上の影
+	fdSpan(g,  8, 9, 22, 5);                               // まぐさ（明るい石）
+	fdSpan(g,  9, 10, 21, 7); fdSpan(g, 21, 10, 21, 7);    // 枠（上下）
+	for (let r = 10; r <= 20; r++) {
+		fdPut(g, r, 10, 7); fdPut(g, r, 21, 7);            // 枠（左右）
+		for (let c = 11; c <= 20; c++) fdPut(g, r, c, 6);   // ガラス（室内の暗がり）
+		fdPut(g, r, 15, 7); fdPut(g, r, 16, 7);            // 中桟（縦）
+	}
+	fdSpan(g, 15, 11, 20, 7);                              // 中桟（横）
+	// ガラスの映り込み＝4枚それぞれの左上に小さな光。
+	// ⚠ 以前は「下段だけ明かり（金色）」にしていたが、窓の下半分だけが金色に光る
+	//    理由が絵の中に無く、昼の村で不自然だった（合成して目視で判明）。
+	//    4枚すべて同じ扱いにすると「ガラスが入った窓」として読める。
+	for (const pr of [10, 16]) for (const pc of [11, 17]) {
+		fdSpan(g, pr,     pc, pc + 1, 5);
+		fdSpan(g, pr + 1, pc, pc + 1, 5);
+	}
+	fdSpan(g, 22, 9, 22, 5); fdSpan(g, 23, 9, 22, 1);      // 窓台とその影
+	return g;
+})()];
+
+// ── 屋根（瓦）───────────────────────────────────────────
+const HR_COURSE = 8;    // 瓦の段の高さ（32 の約数）
+const HR_TILE   = 8;    // 瓦1枚の幅（32 の約数）
+export const HR_VAR_ROWS = 3;
+export const HR_VAR_COLS = 5;
+
+// 屋根の本体＝瓦の段。段ごとに半枚ずらす＝魚の鱗に見える。
+// 段の影（1）が 8 ドットごとに来る∴横に何セル並べても段が一直線に続く。
+function hsRoofBase(i, j) {
+	return hsGrid((r, c) => {
+		const course = Math.floor(r / HR_COURSE), rr = r % HR_COURSE;
+		const off    = (course % 2) * (HR_TILE / 2);
+		const cc     = (c + off) % HR_TILE;
+		const sh     = hsShade(i, course, j, Math.floor((c + off) / HR_TILE), HS_N / HR_TILE);
+		if (rr === 0) return 1;                            // 段の重なりの影
+		if (cc === 0) return 2;                            // 瓦の合わせ目
+		if (sh === 1) return rr <= 4 ? 3 : 2;              // 色の褪せた瓦（壁と同じ 3 段階）
+		if (sh === 2) return rr <= 3 ? 4 : rr <= 5 ? 3 : 2;// 焼きの明るい瓦
+		return rr <= 2 ? 4 : rr <= 5 ? 3 : 2;              // 標準
+	});
+}
+for (let i = 0; i < HR_VAR_ROWS; i++) {
+	for (let j = 0; j < HR_VAR_COLS; j++) TILE_SPRITES[`houseRoofBase@${i},${j}`] = [hsRoofBase(i, j)];
+}
+
+// 棟（北が屋根でない＝屋根の上辺）＝棟瓦を横に伏せる。8 ドットごとに切れ目を入れて
+// 「1本の帯」に見えないようにする（帯だと屋根の上に定規を置いたように見える）。
+TILE_SPRITES.houseRoofRidgeN = [hsGrid((r, c) => {
+	if (r > 4) return 0;
+	if (r === 0 || r === 4) return 1;
+	if (c % 8 === 0) return 2;                             // 棟瓦の切れ目
+	return r <= 2 ? 5 : 4;
+})];
+// 軒（南）＝瓦の小口と、その下の木部・影。壁側の軒の影（houseWallEaveN）と繋がって
+// 「屋根が張り出している」ように読める。
+TILE_SPRITES.houseRoofEaveS = [hsGrid((r, c) => {
+	if (r < HS_N - 5) return 0;
+	if (r === HS_N - 5) return c % 8 === 0 ? 2 : 4;        // 瓦の先端
+	if (r === HS_N - 4) return 1;                          // 小口の影
+	if (r <= HS_N - 2) return 6;                           // 軒下の木部
+	return 1;
+})];
+// 破風（東西）＝妻側の板。屋根の端をここで切る＝隣に屋根が無いのに瓦が続かない。
+// ⚠ 明るい面は 2 ドット取る（1 ドットだと 3.4px の明線＝板ではなく描き損じに見えた・実画面で判明）。
+const hsGableW = hsGrid((r, c) => (c === 0 ? 1 : c <= 2 ? 5 : c === 3 ? 2 : 0));
+TILE_SPRITES.houseRoofGableW = [hsGableW];
+TILE_SPRITES.houseRoofGableE = [hsFlipCols(hsGableW)];
+
+// ── ドア（`e`・2セルだけ）─────────────────────────────────
+// 壁と同じ石積みの中に開口を開け、板戸を入れる。石の色（1〜4）は houseWall と同じ∴
+// 左右の壁と石が繋がって見える。連結の縁は持たない（隣は必ず壁＝kin）。
+// 🔴 下地の石は壁と同じ変種族にする（`@i,j`）。固定の 1 枚にすると、ドアの左右に
+//    見えている石の帯だけ肌が隣の壁と食い違い、そこが継ぎ目に見える。
+function hsDoorBase(i, j) {
+	const g = hsWallBase(i, j).map(row => [...row]);       // 下地は壁と同じ石積み
+	// まぐさ（開口の上の石）
+	fdSpan(g, 5, 4, 27, 1); fdSpan(g, 6, 4, 27, 4); fdSpan(g, 7, 4, 27, 4); fdSpan(g, 8, 4, 27, 2);
+	// 板戸（縦板3枚）＋左右の隙間
+	for (let r = 9; r < HS_N; r++) {
+		fdPut(g, r, 6, 1); fdPut(g, r, 25, 1);             // 戸と石枠の隙間
+		for (let c = 7; c <= 24; c++) {
+			const k = (c - 7) % 6;                         // 板1枚＝6ドット
+			fdPut(g, r, c, k === 0 ? 5 : k === 5 ? 7 : 6);
+		}
+	}
+	for (const r of [14, 15, 24, 25]) fdSpan(g, r, 7, 24, 5);   // 桟（横木）
+	for (const r of [11, 12, 27, 28]) fdSpan(g, r, 7, 11, 8);   // 蝶番の帯金
+	fdSpan(g, 19, 21, 22, 8); fdSpan(g, 20, 21, 22, 8);         // 取っ手
+	fdSpan(g, HS_N - 1, 6, 25, 1);                              // 敷居の影
+	return g;
+}
+for (let i = 0; i < HS_VAR_ROWS; i++) {
+	for (let j = 0; j < HS_VAR_COLS; j++) TILE_SPRITES[`houseDoorBase@${i},${j}`] = [hsDoorBase(i, j)];
+}
+
+// 変種の引き方を登録する（この節は fd* ヘルパーより後∴CONNECT_VARIANTS へ後から足す）。
+CONNECT_VARIANTS.houseWallBase = { pick: (r, c) => [r, c], rows: HS_VAR_ROWS, cols: HS_VAR_COLS };
+CONNECT_VARIANTS.houseRoofBase = { pick: (r, c) => [r, c], rows: HR_VAR_ROWS, cols: HR_VAR_COLS };
+CONNECT_VARIANTS.houseDoorBase = { pick: (r, c) => [r, c], rows: HS_VAR_ROWS, cols: HS_VAR_COLS };
+
+// 単体名＝そのタイルの代表1枚（TILE_SPRITE_MAP・エディタのパレット見本・世界地図の
+// サムネイルが参照する）。縁の付かない本体を代表にする（橋と同じ扱い）。
+TILE_SPRITES.houseWall = TILE_SPRITES['houseWallBase@0,0'];
+TILE_SPRITES.houseRoof = TILE_SPRITES['houseRoofBase@0,0'];
+TILE_SPRITES.houseDoor = TILE_SPRITES['houseDoorBase@0,0'];
 
 // ── 看板（パレット: 1=枠/影 2=柱 3=板の地 4=板の日向 5=文字 6=釘）── 32×32 ──
 function signGrid() {

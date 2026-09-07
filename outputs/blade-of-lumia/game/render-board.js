@@ -49,10 +49,13 @@ const ITEM_FALLBACK_TILES = new Set([
 
 // tiles 層で「そのタイル自身の絵」を描くフィールドタイル。形と色は TILE_SPRITE_MAP から引く
 // ∴ここは一覧だけ（茂みは切り倒し状態を見るので専用分岐に残す）。
+// ⚠ 家（外壁 `h`／ドア `e`／屋根 `p`）は 10a-2 で連結タイルへ移した＝隣接から部品を
+//    選ぶ（下の isConnectTile の分岐が先に処理する）∴この一覧には入れない。
+//    ここに残すと、連結タイルの描画が何かの理由で落ちたときに 32 ドットの本体が
+//    obj-sprite（0.7 セル）で描かれ、1ドット 2.36px＝キャラより細かい絵になる。
 const FIELD_SPRITE_TILES = new Set([
 	TILE.GRASS, TILE.SAND, TILE.STONE_FLOOR, TILE.SNOW, TILE.ASH, TILE.MUD,
-	TILE.TREE, TILE.MOUNTAIN, TILE.FENCE,
-	TILE.HOUSE_WALL, TILE.HOUSE_DOOR, TILE.HOUSE_ROOF, TILE.SIGN,
+	TILE.TREE, TILE.MOUNTAIN, TILE.FENCE, TILE.SIGN,
 ]);
 
 // 32ドットで描き直した「セルを埋めない絵」（キュー10番 10a-1c）。

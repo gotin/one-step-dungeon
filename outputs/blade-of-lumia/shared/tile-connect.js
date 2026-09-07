@@ -8,18 +8,28 @@
 // 足す縁（edge）」に分解する。柱や手すりを絵の中に描き込むと、隣に並べたときに
 // 内側にも柱が並んで畑のうねに見える（2026-08-20 ユーザー指摘の橋 `v`）。
 //
-// 辺の種類は2つある：
-//   rail（手すり）… 隣が水/溶岩＝落ちる側。柵を立てるのが自然。
-//   trim（木口）  … 隣が陸＝乗り降りできる側。手すりを立てると「渡れない縁」に
-//                   見えてしまうので、板の端の陰だけを描く。
-//   （隣が同じタイル／画面外＝辺なし。画面外は隣画面へデッキが続くとみなす。
-//     ここで縁を描くと、辺スクロールで繋がっている通路が塞がって見える。）
+// 縁の種類は「そのタイルが何なのか」で違う∴部品表がタイルごとに `edge(dir, nb)` を
+// 持ち、隣の状況（nb）から縁の種類を返す。共通の機構はここまで＝どの方向を見るか・
+// 画面外や層をまたぐ隣の解決・部品名の組み立て。
+//   橋   rail（手すり）… 隣が水/溶岩＝落ちる側。柵を立てるのが自然。
+//        trim（木口）  … 隣が陸＝乗り降りできる側。手すりを立てると「渡れない縁」に
+//                        見えてしまうので、板の端の陰だけを描く。
+//        画面外＝隣画面へデッキが続くとみなす（縁なし）。ここで縁を描くと、辺
+//        スクロールで繋がっている通路が塞がって見える。
+//   家   軒の影／笠石／土台／隅石（外壁）・棟／軒／破風（屋根）。
+//        画面外は**縁を描く**＝家は跨いで続かない（実測：境界に接する家は単独の1セル
+//        だけで、隣画面に続く棟は無い）。橋と逆なので方向ごとの規則をタイルに持たせる。
 
 import { TILE } from './tiles.js';
-import { connectVariantName } from './sprites-tiles.js';
+import { connectVariantName, tileHash } from './sprites-tiles.js';
 
 // 「落ちる」隣＝手すりを立てる相手。tiles 層と bgTiles 層のどちらで水でも同じ。
 const FALL_TILES = new Set([TILE.WATER, TILE.LAVA]);
+
+// 家＝外壁・ドア・屋根の3タイルで1つの建物（kin）。互いの間には縁を描かない
+// （壁とドアの間に隅石が立つと1枚の壁に見えない）。ただし壁の北に屋根が来たときは
+// 「軒の影」を描く＝kin でも縁が要る∴kin は edge() の中で使う判断材料に留める。
+const HOUSE_KIN = new Set([TILE.HOUSE_WALL, TILE.HOUSE_DOOR, TILE.HOUSE_ROOF]);
 
 // 連結タイルの部品表。base/edge のスプライト名は shared/sprites-tiles.js にある。
 export const CONNECT_TILE_PARTS = {
@@ -29,13 +39,64 @@ export const CONNECT_TILE_PARTS = {
 		// 進行方向と板を直交させると「渡る板」に見える。塊（両軸が繋がる）は deckH。
 		baseH: 'bridgeDeckH',
 		baseV: 'bridgeDeckV',
+		edge: (dir, nb, tile) => (nb.offscreen || nb.tile === tile ? null : nb.falls ? 'rail' : 'trim'),
 		rail: { N: 'bridgeRailN', E: 'bridgeRailE', S: 'bridgeRailS', W: 'bridgeRailW' },
 		trim: { N: 'bridgeTrimN', E: 'bridgeTrimE', S: 'bridgeTrimS', W: 'bridgeTrimW' },
+		layer: ['N', 'S', 'E', 'W'],   // 角は縦（東西）の手すりが手前
+	},
+	// 外壁＝石積み。北が屋根なら軒の影・北が外なら笠石（天端）・南が外なら土台・
+	// 東西が外なら隅石。1セルだけの壁は四辺に縁が付く＝実マップには孤立した `h`（岩/柱）が
+	// 10 箇所、屋根1枚の下に壁1枚だけの幅1の小屋が 9 箇所ある（tests/house-connect.spec.js ㉑）。
+	[TILE.HOUSE_WALL]: {
+		pal: 'houseWall',
+		base: 'houseWallBase',
+		edge: (dir, nb) => {
+			const kin = HOUSE_KIN.has(nb.tile);
+			if (dir === 'N') return nb.tile === TILE.HOUSE_ROOF ? 'eave' : kin ? null : 'cap';
+			if (dir === 'S') return kin ? null : 'foot';
+			return kin ? null : 'quoin';
+		},
+		eave:  { N: 'houseWallEaveN' },
+		cap:   { N: 'houseWallCapN' },
+		foot:  { S: 'houseWallFootS' },
+		quoin: { E: 'houseWallQuoinE', W: 'houseWallQuoinW' },
+		// 笠石・土台・軒の影は角まで通す＝横（南北）の帯を隅石より後に重ねる。
+		layer: ['E', 'W', 'N', 'S'],
+		// 窓は「軒の下（北が屋根）の壁」にだけ、しかも 1/3 のセルにだけ足す。
+		// 全セルに描くと窓が等間隔に並んで「窓の帯」になる（旧 8×8 の失敗）。
+		// 決定的（座標のハッシュ）＝同じ家はいつ見ても同じ窓の並び。
+		extra: (r, c, edges) =>
+			(edges.N === 'eave' && tileHash(Math.floor(r), Math.floor(c)) % 3 === 0
+				? ['houseWallWindow'] : []),
+	},
+	// 屋根＝瓦。隣が屋根でなければ、北は棟・南は軒・東西は破風で切る。
+	// 実測では屋根は必ず1行∴北は棟・南は軒（下は壁）になる。
+	[TILE.HOUSE_ROOF]: {
+		pal: 'houseRoof',
+		base: 'houseRoofBase',
+		edge: (dir, nb) => (nb.tile === TILE.HOUSE_ROOF ? null
+			: dir === 'N' ? 'ridge' : dir === 'S' ? 'eave' : 'gable'),
+		ridge: { N: 'houseRoofRidgeN' },
+		eave:  { S: 'houseRoofEaveS' },
+		gable: { E: 'houseRoofGableE', W: 'houseRoofGableW' },
+		// 破風板は棟瓦・軒先の小口を覆う＝縦（東西）の板を後に重ねる。
+		layer: ['N', 'S', 'E', 'W'],
+	},
+	// ドア＝石の開口に板戸。絵の中に石枠を持つ（左右は必ず壁）∴縁は無い。
+	// 連結タイルにするのは「壁と同じ 32 ドットの密度で描く」ため。
+	[TILE.HOUSE_DOOR]: {
+		pal: 'houseDoor',
+		base: 'houseDoorBase',
+		edge: () => null,
 	},
 };
 
 const DIRS = { N: [-1, 0], E: [0, 1], S: [1, 0], W: [0, -1] };
-const DIR_ORDER = ['N', 'E', 'S', 'W'];
+const DIR_ORDER = ['N', 'E', 'S', 'W'];   // 辺を見る順＝edgeCode の並び（時計回り）
+// 縁を重ねる順は辺を見る順とは別物。DIR_ORDER のまま重ねると N,E,S,W ＝ 東の縁だけが
+// 南の帯に上塗りされ、西の縁は南の帯を上塗りする＝左右で角の見え方が違う（実測で発覚）。
+// ∴どちらの帯を手前にするかはタイルごとに決める（部品表の `layer`）。
+const layerOrder = parts => parts.layer ?? DIR_ORDER;
 
 /**
  * そのセルの「連結タイル」は何か。tiles 層と bgTiles 層のどちらに置かれていても同じ橋。
@@ -113,62 +174,81 @@ export function isConnectTile(tile) {
 }
 
 /**
+ * 隣のセルの状況を1つの値にまとめる（縁の種類を決める材料）。
+ * @returns {{offscreen:boolean, tile:string|null, falls:boolean}}
+ *   tile  = 隣の「効いているタイル」＝連結タイルなら層を問わずその文字、そうでなければ
+ *           tiles 層の文字。画面外は null。
+ *   falls = 隣が水/溶岩（tiles 層・bgTiles 層のどちらでも）＝落ちる側
+ */
+function neighborInfo(stageData, r, c, dir) {
+	const [dr, dc] = DIRS[dir];
+	const nr = r + dr, nc = c + dc;
+	const row = stageData.tiles?.[nr];
+	if (!row || nc < 0 || nc >= row.length) return { offscreen: true, tile: null, falls: false };
+	const nbg = stageData.bgTiles?.[`${nr},${nc}`];
+	return {
+		offscreen: false,
+		tile: connectTileAt(stageData, nr, nc) ?? row[nc],
+		falls: FALL_TILES.has(row[nc]) || FALL_TILES.has(nbg),
+	};
+}
+
+/**
  * 連結タイル1セルの描画部品を返す。
  * @param {object} stageData ステージデータ（tiles / bgTiles を持つ）
  * @param {number} r 行
  * @param {number} c 列
  * @param {string} tile そのセルのタイル文字
  * @returns {{pal:string, base:string, sprs:string[], edges:object, edgeCode:string}|null}
- *   base = 本体の向き（'bridgeDeckH'|'bridgeDeckV'）＝変種を剥がした名前
- *   sprs = 下から順に重ねるスプライト名（本体の変種 → N,E,S,W の縁）
- *   edges = { N:'rail'|'trim'|null, ... }／edgeCode = 縁がある方向を並べた文字列
+ *   base = 本体の名前（橋は板の向き 'bridgeDeckH'|'bridgeDeckV'）＝変種を剥がした名前
+ *   sprs = 下から順に重ねるスプライト名（本体の変種 → 縁（部品表の layer 順）→ 追加の部品）
+ *   edges = { N:'rail'|'trim'|'eave'|…|null, ... }／edgeCode = 縁がある方向を並べた文字列
  */
 export function connectedTileParts(stageData, r, c, tile) {
 	const parts = CONNECT_TILE_PARTS[tile];
 	const tiles = stageData?.tiles;
 	if (!parts || !tiles) return null;
 
+	// 縁の種類はタイルごとの規則（parts.edge）に任せる＝橋の rail/trim と家の
+	// 軒/笠石/隅石を同じ機構で扱う。画面外の扱いも規則の中で決まる。
 	const edges = {};
-	const linked = {};
 	for (const dir of DIR_ORDER) {
-		const [dr, dc] = DIRS[dir];
-		const nr = r + dr, nc = c + dc;
-		const row = tiles[nr];
-		// 画面外＝隣画面へ続く扱い（縁を描かない）
-		if (!row || nc < 0 || nc >= row.length) { linked[dir] = true; edges[dir] = null; continue; }
-		// 隣が同じ連結タイル（層は問わない）＝デッキが続く
-		if (connectTileAt(stageData, nr, nc) === tile) { linked[dir] = true; edges[dir] = null; continue; }
-		const nt = row[nc];
-		const nbg = stageData.bgTiles?.[`${nr},${nc}`];
-		linked[dir] = false;
-		edges[dir] = (FALL_TILES.has(nt) || FALL_TILES.has(nbg)) ? 'rail' : 'trim';
+		edges[dir] = parts.edge(dir, neighborInfo(stageData, r, c, dir), tile) ?? null;
 	}
 
-	// 板の向きは「連結成分ごと」に1つ決める。
+	// 本体の向き。家のように向きが1つしかない部品表は `base` をそのまま使う。
+	// 橋は「連結成分ごと」に1つ決める。
 	// ⚠ セルごとに「長い方の軸」で決めると、広いデッキの中で草に挟まれた1セルだけ
 	//   向きが変わって継ぎはぎに見える（field/8,9 で実際に4セル発生した）。
 	//   ∴ 成分の外接矩形で決め、成分の中では必ず同じ向きにする。
 	//   細長い成分＝橋の腕だけ渡る方向と直交させ、それ以外（塊・L字など）は
 	//   deckH＝1枚の広い床として揃える。
-	const comp = component(stageData, r, c, tile);
-	let base = parts.baseH;
-	if (comp.h <= 2 && comp.w >= 3)      base = parts.baseV;  // 東西に細長い腕 → 板は南北
-	else if (comp.w <= 2 && comp.h >= 3) base = parts.baseH;  // 南北に細長い腕 → 板は東西
-	else if (comp.h <= 2 && comp.w <= 2) {
-		// 2×2 以下の小さな渡しは形では判別できない＝端を見て渡る軸を決める。
-		const [rr, cc] = comp.rep;
-		if (axisCrosses(stageData, rr, cc, tile, 0, 1) && !axisCrosses(stageData, rr, cc, tile, 1, 0)) {
-			base = parts.baseV;
+	let base = parts.base;
+	if (!base) {
+		const comp = component(stageData, r, c, tile);
+		base = parts.baseH;
+		if (comp.h <= 2 && comp.w >= 3)      base = parts.baseV;  // 東西に細長い腕 → 板は南北
+		else if (comp.w <= 2 && comp.h >= 3) base = parts.baseH;  // 南北に細長い腕 → 板は東西
+		else if (comp.h <= 2 && comp.w <= 2) {
+			// 2×2 以下の小さな渡しは形では判別できない＝端を見て渡る軸を決める。
+			const [rr, cc] = comp.rep;
+			if (axisCrosses(stageData, rr, cc, tile, 0, 1) && !axisCrosses(stageData, rr, cc, tile, 1, 0)) {
+				base = parts.baseV;
+			}
 		}
 	}
-	// 本体はセル座標で変種を選ぶ（板の木口が千鳥になる＝模様の周期が目に見えない）。
-	// 向きの判定（base）と変種の選択は別物∴向きは base として別に返す
+	// 本体はセル座標で変種を選ぶ（板の木口・石の風化が隣のセルと違う＝模様の周期が
+	// 目に見えない）。向きの判定（base）と変種の選択は別物∴向きは base として別に返す
 	// ＝テストや呼び出し側は「どっち向きのデッキか」を変種名から剥がして読める。
 	const sprs = [connectVariantName(base, r, c)];
-	for (const dir of DIR_ORDER) {
+	for (const dir of layerOrder(parts)) {
 		const kind = edges[dir];
-		if (kind) sprs.push(parts[kind][dir]);
+		if (!kind) continue;
+		const name = parts[kind]?.[dir];
+		if (name) sprs.push(name);
 	}
+	// 幾何から決まる追加の部品（家の窓）。縁ではないので edgeCode には出ない。
+	if (parts.extra) sprs.push(...parts.extra(r, c, edges));
 	return {
 		pal: parts.pal,
 		base,
