@@ -19,7 +19,7 @@
 import { TILE } from '../shared/tiles.js';
 import { SPRITES, PAL, drawSpriteFrame, drawSpriteLayers, makeSprite, applyBgSpriteToCell } from '../shared/sprites.js';
 import { TILE_SPRITE_MAP } from '../shared/tile-sprites.js';
-import { bgVariantName } from '../shared/sprites-tiles.js';
+import { bgVariantName, objVariantName } from '../shared/sprites-tiles.js';
 import { connectedTileParts, isConnectTile } from '../shared/tile-connect.js';
 import { mountainSkinAt, skinName } from '../shared/tile-skins.js';
 import { NPC_SPRITE_MAP } from '../shared/npcs.js';
@@ -440,15 +440,19 @@ export function createRenderBoard(deps) {
 		//    持ち、形と色は共通表から引く。
 		if (FIELD_SPRITE_TILES.has(tile) && TILE_SPRITE_MAP[tile]) {
 			let { spr, pal } = TILE_SPRITE_MAP[tile];
+			const [mr, mc] = posKey.split(',').map(Number);
 			// 山は同じ 'M' でも「下地から導いた肌」で描き分ける（10a-1d）。
 			// 肌の決め方は shared/tile-skins.js だけが持つ＝エディタも同じ関数を読む。
 			if (tile === TILE.MOUNTAIN) {
-				const [mr, mc] = posKey.split(',').map(Number);
 				const skin = mountainSkinAt(stageData, mr, mc);
 				spr = skinName(spr, skin);
 				pal = skinName(pal, skin);
 				cellEl.dataset.mountainSkin = skin;   // どの肌を選んだかテストから見える
 			}
+			// 木・山・茂みはセルごとに違う絵にする（10a-4）＝肌を解決した後に変種を選ぶ
+			// （名前の順序は必ず 肌 → 変種＝`mountain@mesa#2`）。パレットは変えない。
+			spr = objVariantName(spr, mr, mc);
+			cellEl.dataset.artSprite = spr;           // どの絵を選んだかテストから見える
 			if (SPRITES[spr]) {
 				const ANIMATED_FIELD = new Set([TILE.GRASS, TILE.SAND, TILE.SNOW, TILE.ASH, TILE.MUD, TILE.TREE, TILE.BUSH]);
 				const cv = makeSprite(spr, pal, ANIMATED_FIELD.has(tile));
@@ -459,7 +463,13 @@ export function createRenderBoard(deps) {
 		// 茂み
 		if (tile === TILE.BUSH) {
 			if (!ss.cutBushes?.has(posKey)) {
-				const cv = makeSprite('bush', 'bush', true);
+				// 茂みもセルごとに違う絵（10a-4）＝木・山と同じ `objVariantName` を通す。
+				// ⚠ 茂みは FIELD_SPRITE_TILES に載っていない（この枝で描く）∴ここも直す
+				//    ＝片方だけ直すと「木は違う絵・茂みは同じ絵」になる。
+				const [br, bc] = posKey.split(',').map(Number);
+				const spr = objVariantName('bush', br, bc);
+				cellEl.dataset.artSprite = spr;
+				const cv = makeSprite(spr, 'bush', true);
 				if (cv) { cv.classList.add(fieldSpriteClass(tile)); cellEl.appendChild(cv); }
 			}
 			return;

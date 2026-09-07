@@ -1088,6 +1088,26 @@ export function bgVariantName(spr, r, c) {
 	return `${spr}@${tileHash(Math.floor(r), Math.floor(c)) % n}`;
 }
 
+// tiles 層に立つ物（木・山・茂み）の変種。キュー10番 10a-4。
+//
+// 🔴 なぜ要るか＝同じ絵が木 3173／山 2391／茂み 227 セルに並んでいた。しかも木・茂みの
+//    2コマは1枚の `setInterval`（`startAnimLoop`）が全 canvas を同じコマで描き替える∴
+//    林が「1本の木のコピー」に見え、さらに全画面が一斉にざわついていた。
+//
+// 名前の付け方（10a-1d の引き継ぎで「規則をここで決める」とした分）：
+//   ・肌（下地から導く・塊単位）  … `@` ＝ `mountain@mesa`（`shared/tile-skins.js`）
+//   ・変種（セル座標から引く）    … `#` ＝ `tree#3` / `mountain@mesa#2`
+//   ∴ 2軸は別の記号を使う＝名前から「肌なのか変種なのか」が読める。順序は必ず
+//     肌 → 変種（`objVariantName` は肌を解決した後の名前を受け取る）。
+//   ⚠ パレットは変種で変えない（形と揺れの位相だけを変える）＝色の軸は肌だけが持つ。
+export const OBJ_VARIANTS = {};      // 絵の名前 → 変種の数（この節の下で埋める）
+
+export function objVariantName(base, r, c) {
+	const n = OBJ_VARIANTS[base];
+	if (!n) return base;
+	return `${base}#${tileHash(Math.floor(r), Math.floor(c)) % n}`;
+}
+
 // ── tiles 層に置く「セルを埋めない絵」（木・山・茂み・看板）── 32×32 ────────
 // キュー10番 10a-1c。それまで 8×8 で描いていて、0.7 セル（75.59px）に伸ばすと
 // 1ドット＝9.45px ∴同じ画面でキャラ（3.375px）や地面（3.375px）と粗さが揃わず、
@@ -1189,10 +1209,27 @@ function fdFoliage(lobes, ramp) {
 // ── 木（パレット: 1=最暗 2=暗 3=中 4=明 5=幹明 6=幹暗 7=葉の日向）─────────
 // frame1 は「風で葉がざわつく」＝房の位置を少しずらす。絵全体を横にずらすと
 // 木そのものが飛んで見える（試作で確認）∴動かすのは一部の房だけ。
-const TREE_LOBES  = [[11, 15, 7], [11, 11, 6], [11, 20, 6], [16, 11, 4, 1], [16, 20, 4, 1]];
-const TREE_LOBES1 = [[11, 15, 7], [11, 12, 6], [11, 20, 6], [16, 12, 4, 1], [16, 21, 4, 1]];
+//
+// 10a-4：樹冠の房の並びを**変種ごとに**持つ（[コマ0の房, コマ1の房]）。幹は共通＝
+// どの変種でも「幹が樹冠の下に 4 ドット以上見える」（field-tiles-32 ⑧）を保つ。
+// ⚠ 房を動かすと影絵の幅・高さ・中心が動く＝18〜25 ドット／中心±1 の枠から出ると
+//    「隣のセルへずれた木」「セルを埋める木」になる∴変種ごとに枠内に収める。
+const TREE_SHAPES = [
+	// 0＝丸く広い樹冠（従来の絵＝基本名 `tree` もこれ）
+	[[[11, 15, 7], [11, 11, 6], [11, 20, 6], [16, 11, 4, 1], [16, 20, 4, 1]],
+		[[11, 15, 7], [11, 12, 6], [11, 20, 6], [16, 12, 4, 1], [16, 21, 4, 1]]],
+	// 1＝背が高く細い（幹が長く見える＝林の中の高木）
+	[[[10, 15, 7], [13, 11, 5], [13, 20, 5], [17, 12, 4, 1], [17, 19, 4, 1]],
+		[[10, 16, 7], [13, 11, 5], [13, 21, 5], [17, 12, 4, 1], [17, 20, 4, 1]]],
+	// 2＝低く横に広い（枝を張った古木）
+	[[[13, 15, 7], [13, 10, 6], [13, 21, 6], [17, 12, 4, 1], [17, 19, 4, 1]],
+		[[13, 15, 7], [13, 11, 6], [13, 21, 6], [17, 13, 4, 1], [17, 20, 4, 1]]],
+	// 3＝左右が非対称（片側の枝が伸びた木）＝中心は±1に収める
+	[[[11, 16, 7], [12, 11, 5], [10, 20, 6], [16, 12, 4, 1], [16, 20, 4, 1]],
+		[[11, 16, 7], [12, 12, 5], [10, 20, 6], [16, 13, 4, 1], [16, 21, 4, 1]]],
+];
 const TREE_RAMP = { glow: 7, hi: 4, mid: 3, sh: 2, rimS: 2, rimB: 1 };
-function treeGrid(frame) {
+function treeGrid(lobes) {
 	const g = fdBlank();
 	for (let r = 16; r <= 26; r++) {
 		fdPut(g, r, 14, 6); fdPut(g, r, 15, 5); fdPut(g, r, 16, 5); fdPut(g, r, 17, 6);
@@ -1201,13 +1238,35 @@ function treeGrid(frame) {
 	fdPut(g, 25, 15, 5); fdPut(g, 25, 16, 5);
 	// 樹冠は別の紙に描いて輪郭を付けてから幹の上に重ねる
 	// （同じ紙でやると幹の縁まで葉の色で縁取ってしまう）
-	const canopy = fdFoliage(frame ? TREE_LOBES1 : TREE_LOBES, TREE_RAMP);
+	const canopy = fdFoliage(lobes, TREE_RAMP);
 	for (let r = 0; r < FIELD_ART_N; r++) {
 		for (let c = 0; c < FIELD_ART_N; c++) if (canopy[r][c]) fdPut(g, r, c, canopy[r][c]);
 	}
 	return fdSeal(g);
 }
-TILE_SPRITES.tree = [treeGrid(0), treeGrid(1)];
+
+// 風で揺れる絵（木・茂み）の変種を作り置きする（`SPRITES` は import 時の spread ∴
+// 後から足せない）。変種 v ＝ **形 `v>>1` × 揺れの位相 `v&1`**。
+//
+// 🔴 位相をコマの順の入れ替えで作る理由＝コマを選ぶのは世界に1つの `animFrame`
+//    （`shared/sprites.js` の `startAnimLoop`／`drawSprite` は `animFrame % frames.length`）。
+//    ∴形を増やしただけでは「林全体が同じ瞬間に同じ向きへざわつく」が残る。
+//    コマの順を入れ替えた絵を隣に置けば、同じ瞬間に逆のコマが出る＝ざわつきがばらける。
+//    エンジン（makeSprite/drawSprite/redrawAnimSprites）は一切触らない＝位相を
+//    「絵の名前」に織り込む＝読み手（ゲーム・エディタ）を増やさない。
+//    ⚠ コマは2枚しか無い∴位相も2種類が上限（それ以上は絵を増やすしかない）。
+function registerSwayVariants(base, framePairs) {
+	const n = framePairs.length * 2;
+	for (let v = 0; v < n; v++) {
+		const [f0, f1] = framePairs[v >> 1];
+		TILE_SPRITES[`${base}#${v}`] = (v & 1) ? [f1, f0] : [f0, f1];
+	}
+	OBJ_VARIANTS[base] = n;
+	// 基本名＝形0・位相0（TILE_SPRITE_MAP・エディタのパレット見本が参照する代表1枚）
+	TILE_SPRITES[base] = TILE_SPRITES[`${base}#0`];
+}
+
+registerSwayVariants('tree', TREE_SHAPES.map(([a, b]) => [treeGrid(a), treeGrid(b)]));
 
 // ── 山（パレット: 1=最暗 2=影 3=中 4=明 5=雪/熾火 6=輪郭）───────────────
 // 行ごとの左右の張り出しを手で決める（左右対称の等差だと定規で引いた三角に見える）。
@@ -1282,7 +1341,8 @@ export function mountainGrid(skin, art = MT_SKIN_ART[skin]) {
 		// 平らな頂（メサ）＝上の数行を日向の色で埋める
 		if (art.plateau && i < art.plateau) fdSpan(g, r, 16 - dl, 15 + dr, 4);
 		// 堆積岩の層（メサ）＝一定間隔で1段暗くする（形は崩さず色だけ落とす）
-		if (art.strata && i % art.strata === art.strata - 1) {
+		// `strataOff` ＝縞の位相（10a-4 の変種＝メサは背を削れない∴縞の位置で違いを出す）
+		if (art.strata && i % art.strata === (art.strata - 1 + (art.strataOff ?? 0)) % art.strata) {
 			for (let c = 16 - dl; c <= 15 + dr; c++) {
 				const v = g[r][c];
 				fdPut(g, r, c, v === 4 ? 3 : v === 3 ? 2 : v);
@@ -1298,10 +1358,10 @@ export function mountainGrid(skin, art = MT_SKIN_ART[skin]) {
 	// 雪：列ごとに下端の行を決めてそこまで塗る（1ドットずつ判定すると斑になる）。
 	// 凸凹は2列ずつ＝1列だけの歯（ノイズに見える）を作らない。
 	if (art.snowLine) {
-		const { c0: snowC0, c1: snowC1, base, slope } = art.snowLine;
+		const { c0: snowC0, c1: snowC1, base, slope, jagOff = 0 } = art.snowLine;
 		const snowBottom = [];
 		for (let c = snowC0; c <= snowC1; c++) {
-			const jag = MT_SNOW_JAG[Math.floor((c - snowC0) / 2) % MT_SNOW_JAG.length];
+			const jag = MT_SNOW_JAG[(Math.floor((c - snowC0) / 2) + jagOff) % MT_SNOW_JAG.length];
 			snowBottom.push(top + Math.max(1, base + jag - Math.round(Math.abs(c - 15.5) * slope)));
 		}
 		// 凸凹（2列ごと）と「頂上から離れるほど雪線が上がる」分が噛み合わず、1列だけ
@@ -1321,19 +1381,101 @@ export function mountainGrid(skin, art = MT_SKIN_ART[skin]) {
 	return fdSeal(g);
 }
 
-// 5種を作り置きする（`SPRITES` は import 時に spread ∴遅延登録できない）。
+// ── 山の変種（10a-4）── 肌 5種 × 変種 4種 ────────────────────────────
+// 🔴 裾（最下行）と幅の最大値は動かさない。動かすと隣り合う山の裾が段違いになり、
+//    山脈が「別々の高さの三角形の列」に見える（幅の最大＝25 ドットは中心±1・
+//    18〜25 ドットの枠の上限そのもの∴広げる余地は無い＝削る方向だけを使う）。
+// 変えるのは ①頂の削り（`topCut`＝上から何行落とすか＝背の高さ）②肩の削り
+// （`cut`＝その行の左右を1ドット内側へ）③雪の凸凹の位相 ④岩の筋の横ずれ。
+// ⚠ ①②の後に「下から上へ内側へ丸める」＝幅は必ず下へ行くほど広がる（山に見える条件・
+//    field-tiles-32 ⑦）。丸めをやめると細い行が挟まって山が「くびれる」。
+const MT_VAR_N = 4;
+const MT_VAR_MIN_ROWS = 15;          // 削っても残す行数（影絵の高さ 14 ドットの下限を割らない）
+const MT_MARK_FIXED_ROWS = 6;        // ここより上の模様（火口・溶岩）は横にずらさない
+const MT_VARS = [
+	{ topCut: 0, cut: [],                  jag: 0, markShift:  0 },   // 0＝基本（従来の絵）
+	{ topCut: 2, cut: [0, 1, 2, 3],        jag: 3, markShift:  2 },   // 背が低く頂が尖る
+	{ topCut: 1, cut: [3, 4, 5, 6, 7],     jag: 5, markShift: -2 },   // 肩が細く落ちる
+	{ topCut: 0, cut: [1, 3, 5, 7, 9],     jag: 1, markShift:  1 },   // 稜線が段になる
+];
+
+function mountainVariantArt(skin, v) {
+	const base = MT_SKIN_ART[skin];
+	const spec = MT_VARS[v];
+	// ⚠ 熾火の肌（火山）は火口・溶岩の筋が「頂上に固定された絵」＝頂を削ると
+	//    火口が消える／溶岩が宙に浮く∴この肌だけ頂は削らない。
+	const ember = base.snow === 'ember';
+	const cut = ember
+		? 0
+		: Math.min(spec.topCut, Math.max(0, base.edge.length - MT_VAR_MIN_ROWS));
+	// 熾火の肌は頂そのものを細めない（細めると火口の穴が輪郭に飲まれて消える＝実測で
+	// 2ドット → 0）。ただし削る行を**捨てる**と影絵が基本と同じになり、変種が
+	// 「模様が少しずれただけの同じ山」になる（実測＝#0 と #1 の差 13 ドットで
+	// 稜線は完全に一致）∴削る位置を裾側へ丸ごとずらして影絵の違いを確保する。
+	const shrink = ember
+		? spec.cut.map(i => i + MT_MARK_FIXED_ROWS).filter(i => i < base.edge.length - 1)
+		: spec.cut;
+	const edge = base.edge.slice(cut).map(([dl, dr], i) => (
+		shrink.includes(i) ? [Math.max(1, dl - 1), Math.max(1, dr - 1)] : [dl, dr]
+	));
+	for (let i = edge.length - 2; i >= 0; i--) {
+		edge[i] = [Math.min(edge[i][0], edge[i + 1][0]), Math.min(edge[i][1], edge[i + 1][1])];
+	}
+	const art = { ...base, top: base.top + cut, edge };
+	// メサは 15 行しか無く背を削れない∴堆積岩の縞の位相で違いを出す
+	if (base.strata) art.strataOff = v;
+	// 雪線は頂からの距離で決まる∴頂を削った分だけ引く（＝雪の絶対の行を動かさない）
+	if (base.snowLine) {
+		art.snowLine = { ...base.snowLine, base: base.snowLine.base - cut, jagOff: spec.jag };
+	}
+	// 岩の筋は「輪郭表の何行目か」で置く∴頂を削った分だけ行番号をずらす。
+	// 横は変種ごとにずらす（行の輪郭の内側へは mountainGrid が丸める）。
+	// ⚠ 頂の近く（`MT_MARK_FIXED_ROWS` 行より上）は横にずらさない＝火口・溶岩の筋は
+	//    稜線に載った絵で、横へずらすと行の輪郭に丸められた上に `fdRim` の縁で
+	//    塗り潰されて消える（実測＝溶岩が 0 ドットになった）。
+	if (base.marks) {
+		art.marks = base.marks
+			.map(([mi, c0, c1, col]) => (mi >= MT_MARK_FIXED_ROWS
+				? [mi - cut, c0 + spec.markShift, c1 + spec.markShift, col]
+				: [mi - cut, c0, c1, col]))
+			.filter(([mi]) => mi >= 0);
+	}
+	return art;
+}
+
+// 作り置きする（`SPRITES` は import 時に spread ∴遅延登録できない）。
 for (const skin of Object.keys(MT_SKIN_ART)) {
-	TILE_SPRITES[skinName('mountain', skin)] = [mountainGrid(skin)];
+	const base = skinName('mountain', skin);
+	for (let v = 0; v < MT_VAR_N; v++) {
+		TILE_SPRITES[`${base}#${v}`] = [mountainGrid(skin, mountainVariantArt(skin, v))];
+	}
+	OBJ_VARIANTS[base] = MT_VAR_N;
+	TILE_SPRITES[base] = TILE_SPRITES[`${base}#0`];   // 肌の代表1枚＝変種0
 }
 // 基本名は草地の肌（TILE_SPRITE_MAP が指す代表＝肌を解決しない描画先でもこれが出る）
 TILE_SPRITES.mountain = TILE_SPRITES[skinName('mountain', MOUNTAIN_SKIN_DEFAULT)];
 
 // ── 茂み（パレット: 1=暗 2=中暗 3=中 4=明 5=最明 6=最暗）──────────
 // 木と同じ作り。木より低く横に広い＝低木に見える。
-const BUSH_LOBES  = [[15, 15, 6], [15, 10, 5], [15, 21, 5], [18, 12, 4, 1], [18, 19, 4, 1]];
-const BUSH_LOBES1 = [[15, 16, 6], [15, 10, 5], [15, 22, 5], [18, 13, 4, 1], [18, 20, 4, 1]];
+// 10a-4：木と同じく房の並びを変種ごとに持つ。⚠ 茂みは影絵の高さが 14 ドット
+// （下限そのもの）＝低くする方向に余地が無い∴変種は「高さを足す／横に広げる」で作る。
+const BUSH_SHAPES = [
+	// 0＝従来の絵（横に広い低木＝基本名 `bush` もこれ）
+	[[[15, 15, 6], [15, 10, 5], [15, 21, 5], [18, 12, 4, 1], [18, 19, 4, 1]],
+		[[15, 16, 6], [15, 10, 5], [15, 22, 5], [18, 13, 4, 1], [18, 20, 4, 1]]],
+	// 1＝丸く盛り上がった茂み
+	[[[14, 15, 6], [15, 10, 5], [15, 21, 5], [18, 12, 4, 1], [18, 19, 4, 1]],
+		[[14, 16, 6], [15, 10, 5], [15, 22, 5], [18, 12, 4, 1], [18, 20, 4, 1]]],
+	// 2＝左右の房が高い（中央が低い＝二股に見える茂み）
+	[[[16, 15, 6], [14, 10, 5], [14, 21, 5], [18, 12, 4, 1], [18, 19, 4, 1]],
+		[[16, 16, 6], [14, 11, 5], [14, 21, 5], [18, 13, 4, 1], [18, 20, 4, 1]]],
+	// 3＝2株が寄り合う（左が大きい）＝中心は±1に収める
+	[[[15, 13, 6], [16, 20, 5], [15, 8, 4], [18, 11, 4, 1], [18, 18, 4, 1]],
+		[[15, 14, 6], [16, 20, 5], [15, 8, 4], [18, 12, 4, 1], [18, 19, 4, 1]]],
+];
 const BUSH_RAMP = { glow: 5, hi: 4, mid: 3, sh: 2, rimS: 1, rimB: 6 };
-TILE_SPRITES.bush = [fdFoliage(BUSH_LOBES, BUSH_RAMP), fdFoliage(BUSH_LOBES1, BUSH_RAMP)];
+registerSwayVariants('bush',
+	BUSH_SHAPES.map(([a, b]) => [fdFoliage(a, BUSH_RAMP), fdFoliage(b, BUSH_RAMP)]));
 
 // ── 柵（`f`・パレット: 1=輪郭/影 2=丸太の地 4=照り 6=陰）── 32×32・連結タイル ──
 // キュー10番 10a-3。旧 8×8 は柱＋横棒を1枚の絵に描き込んでいたので、連続で並べると

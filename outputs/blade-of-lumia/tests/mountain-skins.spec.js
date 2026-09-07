@@ -24,6 +24,7 @@ import {
 	MOUNTAIN_SKINS, GROUND_TO_MOUNTAIN_SKIN, MOUNTAIN_SKIN_DEFAULT,
 	skinName, mountainSkinMap, mountainSkinAt,
 } from '../shared/tile-skins.js';
+import { OBJ_VARIANTS, objVariantName } from '../shared/sprites-tiles.js';
 import { waitForBoard } from './helpers.js';
 
 const GAME = '/blade-of-lumia/game/';
@@ -31,6 +32,24 @@ const MAP = JSON.parse(readFileSync(new URL('../work/blade-of-lumia.json', impor
 
 const MT = TILE_SPRITE_MAP[TILE.MOUNTAIN];      // 形と色の基本名（単一の真実）
 const posKey = (r, c) => `${r},${c}`;
+
+// ❌失効（10a-4）：かつてここは肌ごとに「代表1枚」の絵と突き合わせていた。
+//   いまは山もセルごとに変種を引く（`mountain@mesa#2`）∴代表1枚と比べると
+//   一致率が 75〜90% に落ちて赤くなる（実測）。∴肌ごとに**全変種**の色表を作り、
+//   「どれか1枚と一致するか」＋「一致したのが座標から引ける変種か」で見る。
+//   変種そのものの品質は tests/field-art-variants.spec.js が受け持つ。
+const skinColorGrids = (skin) => {
+	const base = skinName(MT.spr, skin);
+	const p = PAL[skinName(MT.pal, skin)];
+	const n = OBJ_VARIANTS[base] ?? 0;
+	const names = n ? Array.from({ length: n }, (_, v) => `${base}#${v}`) : [base];
+	return names.map(nm => SPRITES[nm][0].map(row => row.map(v => (v ? p[v] : null))));
+};
+// 座標から引かれるはずの変種の番号（絵の名前の `#` の後ろ）
+const wantVariant = (skin, r, c) => {
+	const name = objVariantName(skinName(MT.spr, skin), r, c);
+	return name.includes('#') ? Number(name.split('#')[1]) : 0;
+};
 
 // 実マップの全画面（レイヤー横断）
 function allStages() {
@@ -266,11 +285,7 @@ test.describe('山の肌 – 実エンジン', () => {
 			//    ∴canvas のドットを肌ごとの「あるべき色」と突き合わせる。色は書き写さず
 			//    実物のスプライトとパレットから作る（透明のドットは下地が見えるので除く）。
 			const want = {};
-			for (const s of MOUNTAIN_SKINS) {
-				const g = SPRITES[skinName(MT.spr, s)][0];
-				const p = PAL[skinName(MT.pal, s)];
-				want[s] = g.map(row => row.map(v => (v ? p[v] : null)));
-			}
+			for (const s of MOUNTAIN_SKINS) want[s] = skinColorGrids(s);
 			const got = await page.evaluate((want) => {
 				const out = {};
 				for (const cell of document.querySelectorAll('#board .cell')) {
@@ -281,6 +296,7 @@ test.describe('山の肌 – 実エンジン', () => {
 						attr: cv?.width ?? null,
 						cls: cv?.className ?? null,
 						match: {},
+						variant: {},
 					};
 					if (cv) {
 						const px = cv.getContext('2d').getImageData(0, 0, cv.width, cv.height).data;
@@ -290,16 +306,23 @@ test.describe('山の肌 – 実エンジン', () => {
 							return `#${[px[i], px[i + 1], px[i + 2]]
 								.map(v => v.toString(16).padStart(2, '0')).join('')}`;
 						};
-						for (const [s, grid] of Object.entries(want)) {
-							let hit = 0, total = 0;
-							for (let r = 0; r < grid.length; r++) {
-								for (let c = 0; c < grid[r].length; c++) {
-									if (!grid[r][c]) continue;
-									total++;
-									if (hex(r, c) === grid[r][c]) hit++;
+						// 肌ごとに変種を全部当てて、いちばん合う1枚の一致率とその番号を返す
+						for (const [s, grids] of Object.entries(want)) {
+							let best = 0, bestV = -1;
+							grids.forEach((grid, v) => {
+								let hit = 0, total = 0;
+								for (let r = 0; r < grid.length; r++) {
+									for (let c = 0; c < grid[r].length; c++) {
+										if (!grid[r][c]) continue;
+										total++;
+										if (hex(r, c) === grid[r][c]) hit++;
+									}
 								}
-							}
-							rec.match[s] = total ? hit / total : 0;
+								const rate = total ? hit / total : 0;
+								if (rate > best) { best = rate; bestV = v; }
+							});
+							rec.match[s] = best;
+							rec.variant[s] = bestV;
 						}
 					}
 					out[`${cell.dataset.row},${cell.dataset.col}`] = rec;
@@ -316,9 +339,15 @@ test.describe('山の肌 – 実エンジン', () => {
 				expect(got[key].cls, `山 ${key} がセル全面で貼られていない`).toContain('field-sprite');
 				// 描かれたドットが本当にその肌の絵（名前だけ合っている状態を弾く）
 				expect(got[key].match[wantSkin],
-					`山 ${key} のドットが ${wantSkin} の絵と違う（一致率 `
-					+ `${(got[key].match[wantSkin] * 100).toFixed(1)}%）＝基本の1枚で描いている`)
+					`山 ${key} のドットが ${wantSkin} のどの変種とも違う（一致率 `
+					+ `${(got[key].match[wantSkin] * 100).toFixed(1)}%）＝別の肌の絵で描いている`)
 					.toBeGreaterThan(0.95);
+				// 描かれた1枚が「座標から引ける変種」であること（10a-4）＝
+				// 肌が合っていても代表1枚に戻っていれば別の番号になって赤くなる
+				const [mr, mc] = key.split(',').map(Number);
+				expect(got[key].variant[wantSkin],
+					`山 ${key} に描かれた ${wantSkin} の絵が座標から引ける変種でない`)
+					.toBe(wantVariant(wantSkin, mr, mc));
 				for (const s of MOUNTAIN_SKINS) {
 					if (s === wantSkin) continue;
 					expect(got[key].match[s], `山 ${key} が ${s} の絵とも一致する＝肌の見分けが付かない`)
@@ -357,11 +386,13 @@ test.describe('山の肌 – 実エンジン', () => {
 
 		// 肌ごとの「このドットは何色になるはず」を実物のスプライトとパレットから作る
 		// （色を書き写さない。透明のドットは下地が見えるので比べない）。
+		// ❌失効（10a-4）：代表1枚ではなく「そのセルの座標から引ける変種」と比べる。
+		const at0 = { r: BLOCK[0][0], c: BLOCK[0][1] };
 		const want = {};
 		for (const skin of MOUNTAIN_SKINS) {
-			const g = SPRITES[skinName(MT.spr, skin)][0];
 			const p = PAL[skinName(MT.pal, skin)];
-			want[skin] = g.map(row => row.map(v => (v ? p[v] : null)));
+			const nm = objVariantName(skinName(MT.spr, skin), at0.r, at0.c);
+			want[skin] = SPRITES[nm][0].map(row => row.map(v => (v ? p[v] : null)));
 		}
 
 		const hits = await page.evaluate(({ want, cell, at }) => {
@@ -387,7 +418,7 @@ test.describe('山の肌 – 実エンジン', () => {
 				out[skin] = { hit, total };
 			}
 			return out;
-		}, { want, cell: CELL, at: { r: BLOCK[0][0], c: BLOCK[0][1] } });
+		}, { want, cell: CELL, at: at0 });
 
 		const mesa = GROUND_TO_MOUNTAIN_SKIN[TILE.SAND];
 		expect(hits[mesa].hit / hits[mesa].total,

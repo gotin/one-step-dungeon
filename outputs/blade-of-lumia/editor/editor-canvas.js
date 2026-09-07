@@ -9,6 +9,7 @@ import {
 import { TILE_SPRITE_MAP, drawSpriteAt } from './editor-palette.js';
 import { connectedTileParts, connectTileAt } from '../shared/tile-connect.js';
 import { mountainSkinAt, skinName } from '../shared/tile-skins.js';
+import { objVariantName } from '../shared/sprites-tiles.js';
 
 export const canvas    = document.getElementById('stage-canvas');
 export const canvasCtx = canvas.getContext('2d');
@@ -58,9 +59,13 @@ export function drawCell(c, r, tileChar) {
 	// ここを基本の1枚で描くと、エディタでは砂漠にも雪冠の山が立ってゲームと食い違う
 	// （橋のデッキで同じ食い違いを踏んでいる＝この段の上のコメント）。
 	const si0 = TILE_SPRITE_MAP[tileChar];
-	const si = (si0 && tileChar === TILE.MOUNTAIN)
+	const siSkin = (si0 && tileChar === TILE.MOUNTAIN)
 		? (skin => ({ spr: skinName(si0.spr, skin), pal: skinName(si0.pal, skin) }))(mountainSkinAt(sd, r, c))
 		: si0;
+	// 木・山・茂みはセルごとに違う絵（10a-4）＝ゲームと同じ shared/sprites-tiles.js で選ぶ。
+	// ここを代表1枚のままにすると、エディタでは同じ木が並ぶのにゲームでは違う木が出る
+	// （橋のデッキ・山の肌で2度踏んだ食い違い＝この段の上のコメント）。
+	const si = siSkin ? { ...siSkin, spr: objVariantName(siSkin.spr, r, c) } : siSkin;
 	if (si && drawSpriteAt(canvasCtx, si.spr, si.pal, x, y, CELL_SIZE, CELL_SIZE)) {
 		// drawn
 	} else if (tileChar !== TILE.FLOOR && tileChar !== TILE.WALL) {
