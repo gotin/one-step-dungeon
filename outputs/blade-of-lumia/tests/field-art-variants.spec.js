@@ -237,6 +237,40 @@ test.describe('木・山・茂みの変種 – 絵の性質', () => {
 		}
 	});
 
+	test('⑱ 山の頂は変種ごとに違う＝いちばん目に入る所が同じ絵にならない', () => {
+		// 🔴 ユーザー判定（2026-09-07・10a-4b）＝「頂上のところは全部同じになってるけど
+		//    そこは変化させないの？」。④の「差 20 ドット以上」は**絵のどこが違ってもよい**
+		//    ∴裾だけ違う変種でも通る（火山は火口を守るため頂を削らない例外を入れていた
+		//    ＝4変種すべて頂が同一で、並べると同じ山に見えた）。
+		//    ∴「頂の帯」＝いちばん高い変種の頂から6行だけを取り出して差を測る。
+		const PEAK_ROWS = 6;
+		const MIN_PEAK_DIFF = 6;          // 実測の最小は 7（rocky #1/#3）
+		for (const { base, label, skin } of STILL) {
+			const names = variantNames(base);
+			const grids = names.map(n => SPRITES[n][0]);
+			const tops = grids.map(g => g.findIndex(row => row.some(Boolean)));
+			const r0 = Math.min(...tops);
+			for (let i = 0; i < names.length; i++) {
+				for (let j = i + 1; j < names.length; j++) {
+					let d = 0;
+					for (let r = r0; r < r0 + PEAK_ROWS; r++) {
+						for (let c = 0; c < FIELD_N; c++) {
+							if (!!grids[i][r][c] !== !!grids[j][r][c]) d++;
+						}
+					}
+					expect(d, `${label} ${names[i]} と ${names[j]} の頂の帯の違いが ${d} ドットだけ`
+						+ '＝並べると頂が同じ山に見える').toBeGreaterThanOrEqual(MIN_PEAK_DIFF);
+				}
+			}
+			// 削る余地のある肌（行数 > 15）は**背の高さ自体**が2種類以上ある。
+			// メサ（15行）は削れない∴幅と縞で違いを出す＝この条件から外す（宣言された例外）。
+			if (MT_SKIN_ART[skin].edge.length > 15) {
+				expect(new Set(tops).size, `${label} の変種の背の高さが1種類だけ（頂の行 ${tops.join(',')}）`
+					+ '＝頂を削らない例外が復活している').toBeGreaterThanOrEqual(2);
+			}
+		}
+	});
+
 	test('⑤ パレットは変種で変えない＝どの変種の色番号もその肌のパレットにある', () => {
 		// 名前の2軸のうち色を持つのは肌（`@`）だけ＝変種（`#`）は形と位相しか変えない。
 		// ここが崩れると `palette[idx] ?? 'transparent'` で絵に穴が空く。

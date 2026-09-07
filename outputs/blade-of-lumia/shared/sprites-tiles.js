@@ -1305,9 +1305,12 @@ export const MT_SKIN_ART = {
 	},
 	volcanic: {
 		top: MT_TOP, edge: MT_EDGE, snow: 'ember',
-		// 火口＝頂の2行を最暗にして口が開いて見せる。溶岩の筋は右の斜面を下る。
-		marks: [[0, 14, 17, 1], [1, 14, 17, 1], [2, 15, 17, 5], [3, 16, 18, 5], [4, 17, 19, 5],
-			[12, 19, 21, 1], [13, 20, 22, 1], [17, 18, 21, 1], [15, 9, 11, 2], [16, 10, 12, 2]],
+		// 火口＝`crater: true`＝**頂の実際の幅から毎回導く**（10a-4b）。
+		// ❌ 旧＝行番号を固定した `marks`（`[0,14,17,1]`…）で描いていた∴頂を削る変種を
+		//    作れず（削ると火口が輪郭に飲まれて消える）、火山の山は4変種すべて頂が同じ絵に
+		//    なっていた＝ユーザー判定「頂上のところは全部同じ」（2026-09-07）。
+		crater: true,
+		marks: [[12, 19, 21, 1], [13, 20, 22, 1], [17, 18, 21, 1], [15, 9, 11, 2], [16, 10, 12, 2]],
 	},
 	snowy: {
 		top: MT_TOP, edge: MT_EDGE, snow: 'blanket',
@@ -1330,9 +1333,12 @@ export const MT_SKIN_ART = {
 export function mountainGrid(skin, art = MT_SKIN_ART[skin]) {
 	const g = fdBlank();
 	const top = art.top;
+	// `ridgeOff` ＝陰影の中心の横ずれ（10a-4b＝頂を傾けた変種で光の当たる面も傾ける）。
+	// ⚠ 輪郭そのものは `edge` が絶対値で持つ（傾きは張り出しに畳んである）＝ここで
+	//    形を動かしてはいけない。動かすと絶対座標の単調性が崩れ、雪の列に穴が空く（実測）。
 	art.edge.forEach(([dl, dr], i) => {
 		const r = top + i;
-		const ridge = 15.5 - i * 0.12;                  // 稜線＝頂上からわずかに左へ流れる
+		const ridge = 15.5 - i * 0.12 + (art.ridgeOff?.[i] ?? 0);   // 稜線＝頂上からわずかに左へ流れる
 		for (let c = 16 - dl; c <= 15 + dr; c++) {
 			const d = c - ridge;
 			fdPut(g, r, c, d < -1.5 ? 4 : d < 1.5 ? 3 : 2);
@@ -1355,6 +1361,34 @@ export function mountainGrid(skin, art = MT_SKIN_ART[skin]) {
 			fdSpan(g, r, Math.max(mc0, 16 - dl), Math.min(mc1, 15 + dr), v);
 		}
 	});
+	// 火口（火山）＝**頂の実際の幅から導く**＝変種で頂の高さ・傾きが動いても必ず頂に載る。
+	// ⚠ 行番号で固定すると頂を削れない（削ると輪郭に飲まれて消える＝10a-4 の実測）。
+	if (art.crater) {
+		let p = 0;
+		while (p < art.edge.length && art.edge[p][0] + art.edge[p][1] < MT_CRATER_MIN_W) p++;
+		if (p + MT_CRATER_ROWS <= art.edge.length) {
+			const span = (i) => [16 - art.edge[i][0], 15 + art.edge[i][1]];
+			// ①火口の縁＝口の上端を最暗にして「口が開いている」ことを見せる。
+			// ⚠ 影絵のいちばん上の行には置けない＝その行は全ドットが「上が透明」＝
+			//    `fdRim` が輪郭色で塗り潰す（実測で火口が 0 ドットになった）∴1行下から。
+			const [l0, r0] = span(p + 1);
+			fdSpan(g, top + p + 1, l0, r0, 1);
+			// ②火口の中＝縁の 1 ドット内側だけを熾火の色に（`fdRim` が輪郭を上書きする）。
+			// ⚠ 幅は 3 ドットまで＝行の幅ぶん塗ると「山頂が溶岩の帯」になり、面積の上限
+			//    （熾火は影絵の 5% 未満）も割る（実測 5.5%）。
+			for (let k = 2; k <= 3; k++) {
+				const [l, r] = span(p + k);
+				const cen = Math.round((l + r) / 2);
+				fdSpan(g, top + p + k, Math.max(l + 1, cen - 1), Math.min(r - 1, cen + 1), 5);
+			}
+			// ③溶岩の筋＝右の斜面を 1 ドットずつ右へ下る（幅 2＝粒に見えない）
+			for (let k = 4; k < MT_CRATER_ROWS; k++) {
+				const [l, r] = span(p + k);
+				const c0 = Math.min(r - 2, Math.round((l + r) / 2) + (k - 2));
+				fdSpan(g, top + p + k, Math.max(l + 1, c0), Math.min(r - 1, c0 + 1), 5);
+			}
+		}
+	}
 	// 雪：列ごとに下端の行を決めてそこまで塗る（1ドットずつ判定すると斑になる）。
 	// 凸凹は2列ずつ＝1列だけの歯（ノイズに見える）を作らない。
 	if (art.snowLine) {
@@ -1386,42 +1420,52 @@ export function mountainGrid(skin, art = MT_SKIN_ART[skin]) {
 //    山脈が「別々の高さの三角形の列」に見える（幅の最大＝25 ドットは中心±1・
 //    18〜25 ドットの枠の上限そのもの∴広げる余地は無い＝削る方向だけを使う）。
 // 変えるのは ①頂の削り（`topCut`＝上から何行落とすか＝背の高さ）②肩の削り
-// （`cut`＝その行の左右を1ドット内側へ）③雪の凸凹の位相 ④岩の筋の横ずれ。
-// ⚠ ①②の後に「下から上へ内側へ丸める」＝幅は必ず下へ行くほど広がる（山に見える条件・
+// （`cut`＝その行の左右を1ドット内側へ）③雪の凸凹の位相 ④岩の筋の横ずれ
+// ⑤**頂の傾き**（`lean`＝上の数行を左右へずらす）⑥**頂の細り**（`topNarrow`＝
+// 上の数行の左右を1ドット内側へ＝メサの平らな頂の幅が変わる）。
+// 🔴 ⑤⑥は 10a-4b で足した＝ユーザー判定「頂上のところは全部同じ」（2026-09-07）。
+//    ①〜④だけだと**いちばん目に入る頂の形が変種間でほとんど同じ**になる（火山は
+//    火口を守るため頂を削らない例外まで入れていた∴裾しか違わなかった）。
+// ⚠ ①②⑥の後に「下から上へ内側へ丸める」＝幅は必ず下へ行くほど広がる（山に見える条件・
 //    field-tiles-32 ⑦）。丸めをやめると細い行が挟まって山が「くびれる」。
+// ⚠ ⑤は幅を変えず横へずらすだけ＝枠（幅 25・中心±1）と裾の位置を壊さない。
 const MT_VAR_N = 4;
 const MT_VAR_MIN_ROWS = 15;          // 削っても残す行数（影絵の高さ 14 ドットの下限を割らない）
-const MT_MARK_FIXED_ROWS = 6;        // ここより上の模様（火口・溶岩）は横にずらさない
+const MT_MARK_FIXED_ROWS = 6;        // ここより上の模様（岩の筋）は横にずらさない
+const MT_PEAK_ROWS = 5;              // 「頂」＝上から何行を傾け／細めるか
+const MT_CRATER_MIN_W = 4;           // 火口を置ける行の最小の幅（これ未満だと縁に食われる）
+const MT_CRATER_ROWS = 6;            // 火口＋溶岩の筋が使う行数
 const MT_VARS = [
-	{ topCut: 0, cut: [],                  jag: 0, markShift:  0 },   // 0＝基本（従来の絵）
-	{ topCut: 2, cut: [0, 1, 2, 3],        jag: 3, markShift:  2 },   // 背が低く頂が尖る
-	{ topCut: 1, cut: [3, 4, 5, 6, 7],     jag: 5, markShift: -2 },   // 肩が細く落ちる
-	{ topCut: 0, cut: [1, 3, 5, 7, 9],     jag: 1, markShift:  1 },   // 稜線が段になる
+	{ topCut: 0, cut: [],                  jag: 0, markShift:  0, lean:  0, topNarrow: 0 },   // 0＝基本（従来の絵）
+	{ topCut: 2, cut: [0, 1, 2, 3],        jag: 3, markShift:  2, lean:  2, topNarrow: 0 },   // 背が低く頂が右へ傾く
+	{ topCut: 1, cut: [3, 4, 5, 6, 7],     jag: 5, markShift: -2, lean: -2, topNarrow: 0 },   // 頂が左へ傾き肩が細い
+	{ topCut: 3, cut: [1, 3, 5, 7, 9],     jag: 1, markShift:  1, lean:  1, topNarrow: 2 },   // 稜線が段・頂が低く細い
 ];
 
 function mountainVariantArt(skin, v) {
 	const base = MT_SKIN_ART[skin];
 	const spec = MT_VARS[v];
-	// ⚠ 熾火の肌（火山）は火口・溶岩の筋が「頂上に固定された絵」＝頂を削ると
-	//    火口が消える／溶岩が宙に浮く∴この肌だけ頂は削らない。
-	const ember = base.snow === 'ember';
-	const cut = ember
-		? 0
-		: Math.min(spec.topCut, Math.max(0, base.edge.length - MT_VAR_MIN_ROWS));
-	// 熾火の肌は頂そのものを細めない（細めると火口の穴が輪郭に飲まれて消える＝実測で
-	// 2ドット → 0）。ただし削る行を**捨てる**と影絵が基本と同じになり、変種が
-	// 「模様が少しずれただけの同じ山」になる（実測＝#0 と #1 の差 13 ドットで
-	// 稜線は完全に一致）∴削る位置を裾側へ丸ごとずらして影絵の違いを確保する。
-	const shrink = ember
-		? spec.cut.map(i => i + MT_MARK_FIXED_ROWS).filter(i => i < base.edge.length - 1)
-		: spec.cut;
-	const edge = base.edge.slice(cut).map(([dl, dr], i) => (
-		shrink.includes(i) ? [Math.max(1, dl - 1), Math.max(1, dr - 1)] : [dl, dr]
-	));
+	// ❌ 失効（10a-4b）＝「熾火の肌だけ頂を削らない／削る位置を裾へずらす」。
+	//    火口を行番号で固定していたための例外で、結果として火山の4変種は頂が同一＝
+	//    並べると同じ山に見えた（ユーザー判定 2026-09-07）。火口は `crater: true` で
+	//    頂の実際の幅から導くようにした∴頂を削っても消えない＝例外は不要になった。
+	const cut = Math.min(spec.topCut, Math.max(0, base.edge.length - MT_VAR_MIN_ROWS));
+	// 頂の傾き＝上の `MT_PEAK_ROWS` 行を横へずらす（下へ行くほど 0 に戻す＝稜線が繋がる）。
+	// 🔴 ずれは**張り出しに畳む**（左を -off・右を +off）＝以降は絶対座標だけを扱う。
+	//    描画時に横へずらす実装だと**丸めが幅（相対値）に効いて絶対座標の単調性が崩れる**＝
+	//    上の行が下の行より右にはみ出し、`fdSeal` が塞いだ1ドットで雪の列に穴が空いた（実測）。
+	const lean = (i) => (i < MT_PEAK_ROWS ? Math.round(spec.lean * (1 - i / MT_PEAK_ROWS)) : 0);
+	const edge = base.edge.slice(cut).map(([dl, dr], i) => {
+		let [l, r] = [dl, dr];
+		if (spec.cut.includes(i)) { l = Math.max(1, l - 1); r = Math.max(1, r - 1); }
+		if (i < spec.topNarrow) { l = Math.max(1, l - 1); r = Math.max(1, r - 1); }
+		const off = lean(i);
+		return [Math.max(1, l - off), Math.max(1, r + off)];
+	});
 	for (let i = edge.length - 2; i >= 0; i--) {
 		edge[i] = [Math.min(edge[i][0], edge[i + 1][0]), Math.min(edge[i][1], edge[i + 1][1])];
 	}
-	const art = { ...base, top: base.top + cut, edge };
+	const art = { ...base, top: base.top + cut, edge, ridgeOff: edge.map((_, i) => lean(i)) };
 	// メサは 15 行しか無く背を削れない∴堆積岩の縞の位相で違いを出す
 	if (base.strata) art.strataOff = v;
 	// 雪線は頂からの距離で決まる∴頂を削った分だけ引く（＝雪の絶対の行を動かさない）
