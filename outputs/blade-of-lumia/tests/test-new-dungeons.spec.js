@@ -28,8 +28,10 @@ test.describe('Blade of Lumia – 新規ダンジョン接続', () => {
     const errors = [];
     page.on('pageerror', e => errors.push(e.message));
 
-    // field 13,5 row8 col5 に '>', col4 からスポーン
-    const url = `${GAME}?fromEditor=1&layer=field&stage=13%2C5&row=8&col=4`;
+    // field 13,5 row3 col9（鍵 4,9 の真上）に '>', col8 からスポーン。
+    // 2026-09-07 に 8,5 から移設した＝8,5 は家のドア前の袋小路 7,5 の唯一の出口で、
+    // 家から出るだけでダンジョンに落ちていた（ユーザー報告）。
+    const url = `${GAME}?fromEditor=1&layer=field&stage=13%2C5&row=3&col=8`;
     await page.goto(url);
     await waitForBoard(page);
 
