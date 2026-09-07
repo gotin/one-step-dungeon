@@ -1335,17 +1335,104 @@ const BUSH_LOBES1 = [[15, 16, 6], [15, 10, 5], [15, 22, 5], [18, 13, 4, 1], [18,
 const BUSH_RAMP = { glow: 5, hi: 4, mid: 3, sh: 2, rimS: 1, rimB: 6 };
 TILE_SPRITES.bush = [fdFoliage(BUSH_LOBES, BUSH_RAMP), fdFoliage(BUSH_LOBES1, BUSH_RAMP)];
 
-// 柵
-TILE_SPRITES.fence = [[
-	[0,1,0,0,0,0,1,0],
-	[0,1,0,0,0,0,1,0],
-	[2,2,2,2,2,2,2,2],
-	[3,1,3,3,3,3,1,3],
-	[0,1,0,0,0,0,1,0],
-	[0,1,0,0,0,0,1,0],
-	[0,0,0,0,0,0,0,0],
-	[0,0,0,0,0,0,0,0],
-]];
+// ── 柵（`f`・パレット: 1=輪郭/影 2=丸太の地 4=照り 6=陰）── 32×32・連結タイル ──
+// キュー10番 10a-3。旧 8×8 は柱＋横棒を1枚の絵に描き込んでいたので、連続で並べると
+// 柱が等間隔に並んで「畑のうね」に見えた（橋 `v`・家と同じ「連続で崩れる」問題）。
+//
+// 家・橋と違う点＝柵は「本体そのものの向き」自体が隣接で変わる
+// （横棒／縦の柱／L字の角／単独の柱の4パターン。実マップ54セルに全パターンが実在
+// する＝矩形の囲い field/10,14 に角4・直線に横棒/柱・孤立した単独の柵も多数）。
+// ∴ 縁を後から足すだけでは表現できない＝shared/tile-connect.js の `baseFrom` が
+// 隣接（4方向）だけから本体名を選ぶ。縁（cap＝端の柱）は「本体の軸のうち開いて
+// いる側」にだけ足す。
+//
+// 🔴 柵は「セルを埋めない絵」（10a-1c の obj-sprite 系と同じ約束）＝横棒は上下に、
+//    縦の柱は左右に地面が見える透明の余白を持つ。連結タイル（.tile-sprite・
+//    セル全面に貼る）で描くが、橋・家のように不透明ではない（`opaque:false`＝
+//    render-board.js は下地を消さず、隙間から bgTiles の地面が見えるままにする）。
+const FENCE_RAIL_ROWS = [
+	[9, 1], [10, 4], [11, 2], [12, 6],       // 上段の横棒（4ドット厚）
+	[19, 1], [20, 4], [21, 2], [22, 6],      // 下段の横棒（上段との間は透明＝隙間から地面）
+];
+const FENCE_POST_COLS = [[14, 1], [15, 4], [16, 2], [17, 6]];   // 柱の断面（4ドット幅）
+
+function fenceRailSpan(c0, c1) {
+	const g = fdBlank();
+	for (const [r, v] of FENCE_RAIL_ROWS) fdSpan(g, r, c0, c1, v);
+	return g;
+}
+// 横に続く＝横棒がセル全幅（0〜31）を通る＝隣のセルと途切れずに繋がる。
+TILE_SPRITES.fenceRailH = [fenceRailSpan(0, 31)];
+
+function fencePostSpan(r0, r1) {
+	const g = fdBlank();
+	for (const [c, v] of FENCE_POST_COLS) for (let r = r0; r <= r1; r++) fdPut(g, r, c, v);
+	return g;
+}
+// 縦に続く＝柱がセル上下（0〜31）いっぱいに通る＝隣のセルと途切れずに繋がる。
+TILE_SPRITES.fenceRailV = [fencePostSpan(0, 31)];
+
+const fenceFlipCols = g => g.map(row => [...row].reverse());
+const fenceFlipRows = g => [...g].reverse();
+
+// 角＝縦横それぞれ1方向にだけ続く。
+// ❌ 旧実装は「南＋東」の1枚だけ描いて他3方向を画素の反転（reverse）で作っていたが、
+//    これは橋・家の対称な絵では問題にならなかった手法を柵に誤って持ち込んだバグ。
+//    横棒・縦の柱の中身は「上端＝暗い輪郭／明／中間／下端＝最暗」という**帯の中の
+//    陰影順が固定**（どの向きでも光は上から当たる＝FENCE_RAIL_ROWS/FENCE_POST_COLS
+//    が決める絶対の色順）。reverse() は伸びる範囲（左右／上下）だけでなく**帯の中の
+//    色の並びまで逆転**させてしまい、直進セル（`fenceRailH`/`fenceRailV`＝常に正規の
+//    色順）との境界で陰影が食い違って見えた（ユーザー報告＝矩形の囲いの下2角が
+//    隣のセルと繋がって見えない・実際にレンダリングして確認済み）。
+// ✅ 正しい直し方＝反転ではなく直接描く。柱・横棒の色は常に `FENCE_POST_COLS`／
+//    `FENCE_RAIL_ROWS` の絶対順（この2定数は柱の左右／横棒の上下いずれでも不変）で
+//    置き、**伸びる範囲（どちら向きに続くか）だけ**を hDir/vDir で変える。
+//    柱は続く軸の反対側の縁（南に続くなら row9 から下端まで／北に続くなら row0 から
+//    row22 まで）を頂点にし、横棒は柱の位置（col14〜17）を頂点にして続く側へ伸ばす
+//    ＝柱と横棒がぶつかる場所は横棒の色を上塗り（横棒が柱の手前に重なる継ぎ目）。
+function fenceCorner(hDir, vDir) {
+	const [postR0, postR1] = vDir === 'S' ? [9, 31] : [0, 22];
+	const g = fencePostSpan(postR0, postR1).map(row => [...row]);
+	const [railC0, railC1] = hDir === 'E' ? [14, 31] : [0, 17];
+	for (const [r, v] of FENCE_RAIL_ROWS) fdSpan(g, r, railC0, railC1, v);
+	return g;
+}
+TILE_SPRITES.fenceCornerSE = [fenceCorner('E', 'S')];   // 南＋東（┌）
+TILE_SPRITES.fenceCornerSW = [fenceCorner('W', 'S')];   // 南＋西（┐）
+TILE_SPRITES.fenceCornerNE = [fenceCorner('E', 'N')];   // 北＋東（└）
+TILE_SPRITES.fenceCornerNW = [fenceCorner('W', 'N')];   // 北＋西（┘）
+
+// 端の柱（cap）＝続いていない側にだけ立てる。本体（横棒／縦の柱）に重ねて描く。
+function fenceCapE() {
+	const g = fdBlank();
+	for (const [c, v] of [[28, 1], [29, 4], [30, 2], [31, 6]]) for (let r = 9; r <= 22; r++) fdPut(g, r, c, v);
+	return g;
+}
+TILE_SPRITES.fenceCapE = [fenceCapE()];
+TILE_SPRITES.fenceCapW = [fenceFlipCols(TILE_SPRITES.fenceCapE[0])];
+
+function fenceCapN() {
+	const g = fdBlank();
+	fdSpan(g, 0, 12, 19, 1); fdSpan(g, 1, 12, 19, 4); fdSpan(g, 2, 12, 19, 2); fdSpan(g, 3, 12, 19, 6);
+	return g;
+}
+TILE_SPRITES.fenceCapN = [fenceCapN()];
+TILE_SPRITES.fenceCapS = [fenceFlipRows(TILE_SPRITES.fenceCapN[0])];
+
+// 単独の柵（どちらにも続かない＝孤立）＝両端に柱を持つ短い柵として自己完結させる
+// （旧 8×8 も同じ考え方＝柱の左右に余白を残す）。
+function fencePost() {
+	const g = fdBlank();
+	for (const [r, v] of FENCE_RAIL_ROWS) fdSpan(g, r, 4, 27, v);
+	for (const [c, v] of [[4, 1], [5, 4], [6, 2], [7, 6], [24, 1], [25, 4], [26, 2], [27, 6]]) {
+		for (let r = 9; r <= 22; r++) fdPut(g, r, c, v);
+	}
+	return g;
+}
+TILE_SPRITES.fencePost = [fencePost()];
+
+// 単体名＝パレット見本／サムネイルが参照する代表1枚（橋・家と同じ扱い）。
+TILE_SPRITES.fence = TILE_SPRITES.fencePost;
 
 // ── 家（外壁 `h` ／屋根 `p` ／ドア `e`）── 連結タイル・32×32 ─────────────
 // キュー10番 10a-2。旧 8×8 は1枚の絵の中に「窓」や「切妻の三角」まで描き込んで

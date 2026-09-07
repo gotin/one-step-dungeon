@@ -49,13 +49,14 @@ const ITEM_FALLBACK_TILES = new Set([
 
 // tiles 層で「そのタイル自身の絵」を描くフィールドタイル。形と色は TILE_SPRITE_MAP から引く
 // ∴ここは一覧だけ（茂みは切り倒し状態を見るので専用分岐に残す）。
-// ⚠ 家（外壁 `h`／ドア `e`／屋根 `p`）は 10a-2 で連結タイルへ移した＝隣接から部品を
-//    選ぶ（下の isConnectTile の分岐が先に処理する）∴この一覧には入れない。
-//    ここに残すと、連結タイルの描画が何かの理由で落ちたときに 32 ドットの本体が
-//    obj-sprite（0.7 セル）で描かれ、1ドット 2.36px＝キャラより細かい絵になる。
+// ⚠ 家（外壁 `h`／ドア `e`／屋根 `p`）は 10a-2、柵（`f`）は 10a-3 で連結タイルへ
+//    移した＝隣接から部品を選ぶ（下の isConnectTile の分岐が先に処理する）∴この
+//    一覧には入れない。ここに残すと、連結タイルの描画が何かの理由で落ちたときに
+//    32 ドットの本体が obj-sprite（0.7 セル）で描かれ、1ドット 2.36px＝キャラより
+//    細かい絵になる。
 const FIELD_SPRITE_TILES = new Set([
 	TILE.GRASS, TILE.SAND, TILE.STONE_FLOOR, TILE.SNOW, TILE.ASH, TILE.MUD,
-	TILE.TREE, TILE.MOUNTAIN, TILE.FENCE, TILE.SIGN,
+	TILE.TREE, TILE.MOUNTAIN, TILE.SIGN,
 ]);
 
 // 32ドットで描き直した「セルを埋めない絵」（キュー10番 10a-1c）。
@@ -102,9 +103,14 @@ export function createRenderBoard(deps) {
 		// デッキは不透明なので下地は見えない…はずだが、8ドットの絵を 75px 等の
 		// 非整数倍率へ拡大するとき端の1デバイスピクセルに下地が滲み、セル境界に
 		// 草色の格子線が出る（DSF2/4 で実測）。下地を消せば滲みもデッキ色になる。
-		delete cellEl.dataset.bgSprite;
-		delete cellEl.dataset.bgPal;
-		cellEl.style.background = PAL[parts.pal]?.[2] ?? '';
+		// ⚠ 柵（opaque:false）はこれをやらない＝隙間から地面が見える絵なので、
+		//   下地を消すと隙間が地面でなく柵の色で塗られてしまう（setCellClass が
+		//   先に敷いた bgTiles の見た目をそのまま残す）。
+		if (parts.opaque) {
+			delete cellEl.dataset.bgSprite;
+			delete cellEl.dataset.bgPal;
+			cellEl.style.background = PAL[parts.pal]?.[2] ?? '';
+		}
 		const cv = document.createElement('canvas');
 		cv.className = 'sprite tile-sprite';
 		cv.dataset.tileEdges   = parts.edgeCode;   // テストが縁の選択を観測できるようにする

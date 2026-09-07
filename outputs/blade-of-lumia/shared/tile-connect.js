@@ -19,6 +19,13 @@
 //   家   軒の影／笠石／土台／隅石（外壁）・棟／軒／破風（屋根）。
 //        画面外は**縁を描く**＝家は跨いで続かない（実測：境界に接する家は単独の1セル
 //        だけで、隣画面に続く棟は無い）。橋と逆なので方向ごとの規則をタイルに持たせる。
+//   柵   橋・家と違い「本体そのものの向き」が隣接で変わる（横棒／縦の柱／L字の角／
+//        単独の柱）∴縁の加算だけでは表現できない＝`baseFrom(nbAll)` で本体名を
+//        セルごとに決める（橋の「成分の外接矩形」は角では機能しないので使わない）。
+//        縁（cap）は「本体の軸のうち開いた側だけ」に立てる端の柱。
+//        ⚠ 柵は不透明ではない（`opaque:false`）＝上下左右に隙間があり、下の地面
+//        （bgTiles）が見える絵。描画側（render-board.js）はこのフラグを見て、
+//        橋・家のように下地を消して単色で塗りつぶす処理を skip する。
 
 import { TILE } from './tiles.js';
 import { connectVariantName, tileHash } from './sprites-tiles.js';
@@ -88,6 +95,40 @@ export const CONNECT_TILE_PARTS = {
 		pal: 'houseDoor',
 		base: 'houseDoorBase',
 		edge: () => null,
+	},
+	// 柵＝横棒（横に連続）／柱（縦に連続）／角（両方に連続）／単独の柱、の4パターン。
+	// 実マップ（54セル）に4種すべて実在する＝矩形の囲い（角4）・直線（横棒/柱）・
+	// 単独の柵（孤立）。opaque:false＝隙間から地面が見える（他の連結タイルと違い
+	// 「セルを埋めない絵」＝10a-1c の obj-sprite 系と同じ見た目の約束）。
+	[TILE.FENCE]: {
+		pal: 'fence',
+		opaque: false,
+		baseFrom: (nbAll, tile) => {
+			const kinH = nbAll.E.tile === tile || nbAll.W.tile === tile;
+			const kinV = nbAll.N.tile === tile || nbAll.S.tile === tile;
+			if (kinH && kinV) {
+				// 角＝続いている縦横それぞれ1方向の頭文字を組んだ名前
+				// （例：南と東に続く＝左上の角＝'fenceCornerSE'）。
+				const vDir = nbAll.N.tile === tile ? 'N' : 'S';
+				const hDir = nbAll.E.tile === tile ? 'E' : 'W';
+				return `fenceCorner${vDir}${hDir}`;
+			}
+			if (kinH) return 'fenceRailH';
+			if (kinV) return 'fenceRailV';
+			return 'fencePost';   // どちらにも続かない＝孤立した単独の柵
+		},
+		// 端の柱（cap）は「本体の軸のうち開いている側」にだけ立てる。
+		// 角・単独は自分の絵の中で既に閉じている（縁は要らない＝edge は null のまま）。
+		edge: (dir, nb, tile, nbAll) => {
+			const kinH = nbAll.E.tile === tile || nbAll.W.tile === tile;
+			const kinV = nbAll.N.tile === tile || nbAll.S.tile === tile;
+			if (nb.tile === tile) return null;             // 続く側には縁を立てない
+			if (kinH && !kinV && (dir === 'E' || dir === 'W')) return 'cap';
+			if (kinV && !kinH && (dir === 'N' || dir === 'S')) return 'cap';
+			return null;
+		},
+		cap: { N: 'fenceCapN', E: 'fenceCapE', S: 'fenceCapS', W: 'fenceCapW' },
+		layer: ['N', 'S', 'E', 'W'],
 	},
 };
 
@@ -199,32 +240,43 @@ function neighborInfo(stageData, r, c, dir) {
  * @param {number} r 行
  * @param {number} c 列
  * @param {string} tile そのセルのタイル文字
- * @returns {{pal:string, base:string, sprs:string[], edges:object, edgeCode:string}|null}
+ * @returns {{pal:string, base:string, sprs:string[], edges:object, edgeCode:string, opaque:boolean}|null}
  *   base = 本体の名前（橋は板の向き 'bridgeDeckH'|'bridgeDeckV'）＝変種を剥がした名前
  *   sprs = 下から順に重ねるスプライト名（本体の変種 → 縁（部品表の layer 順）→ 追加の部品）
  *   edges = { N:'rail'|'trim'|'eave'|…|null, ... }／edgeCode = 縁がある方向を並べた文字列
+ *   opaque = false なら描画側は下地（bgTiles）を消さない＝柵のように隙間から地面が
+ *            見える連結タイル用（既定 true＝橋・家と同じ「下地を覆う」扱い）
  */
 export function connectedTileParts(stageData, r, c, tile) {
 	const parts = CONNECT_TILE_PARTS[tile];
 	const tiles = stageData?.tiles;
 	if (!parts || !tiles) return null;
 
+	// 4方向の隣接状況をまとめて計算する（edge() と baseFrom() の両方が使う）。
+	const nbAll = {};
+	for (const dir of DIR_ORDER) nbAll[dir] = neighborInfo(stageData, r, c, dir);
+
 	// 縁の種類はタイルごとの規則（parts.edge）に任せる＝橋の rail/trim と家の
 	// 軒/笠石/隅石を同じ機構で扱う。画面外の扱いも規則の中で決まる。
+	// 4引目に nbAll を渡す＝柵のように「4方向の続き具合」で自分の縁を決めるタイル用
+	// （橋・家は隣接1方向だけで決まるので使わない＝既存の呼び方のまま動く）。
 	const edges = {};
 	for (const dir of DIR_ORDER) {
-		edges[dir] = parts.edge(dir, neighborInfo(stageData, r, c, dir), tile) ?? null;
+		edges[dir] = parts.edge(dir, nbAll[dir], tile, nbAll) ?? null;
 	}
 
 	// 本体の向き。家のように向きが1つしかない部品表は `base` をそのまま使う。
-	// 橋は「連結成分ごと」に1つ決める。
+	// 橋は「連結成分ごと」に1つ決める。柵は `baseFrom`＝セルごとに4方向の隣接だけで決める
+	// （橋の「成分の外接矩形」は柵の L字の角では機能しない∴別の方式を持つ）。
 	// ⚠ セルごとに「長い方の軸」で決めると、広いデッキの中で草に挟まれた1セルだけ
 	//   向きが変わって継ぎはぎに見える（field/8,9 で実際に4セル発生した）。
 	//   ∴ 成分の外接矩形で決め、成分の中では必ず同じ向きにする。
 	//   細長い成分＝橋の腕だけ渡る方向と直交させ、それ以外（塊・L字など）は
 	//   deckH＝1枚の広い床として揃える。
 	let base = parts.base;
-	if (!base) {
+	if (!base && parts.baseFrom) {
+		base = parts.baseFrom(nbAll, tile);
+	} else if (!base) {
 		const comp = component(stageData, r, c, tile);
 		base = parts.baseH;
 		if (comp.h <= 2 && comp.w >= 3)      base = parts.baseV;  // 東西に細長い腕 → 板は南北
@@ -255,5 +307,6 @@ export function connectedTileParts(stageData, r, c, tile) {
 		sprs,
 		edges,
 		edgeCode: DIR_ORDER.filter(d => edges[d]).join(''),
+		opaque: parts.opaque !== false,
 	};
 }
