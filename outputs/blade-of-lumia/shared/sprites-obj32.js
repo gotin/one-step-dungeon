@@ -103,15 +103,27 @@ function blockGrid() {
 // ── 宝箱（CHEST 'C'）── ink 22×20（rows 5..24 / cols 5..26）──────────
 // 蓋＋胴＋鉄帯＋金の錠。2フレーム＝わずかに明るくなる（従来と同じ「ちらつき」）。
 // 本体は rows 6..23 / cols 6..25。
+// ⚠️ 追記（2026-09-08・ユーザー指摘＝「宝箱ももうちょっと陰影つけたりしてほしい。
+// ドアだけかっこよくて逆に変」）＝木目の板目（縦線）と鉄帯の鋲を足して質感を扉
+// （10d-2）に近づけた。ink・輪郭・完了条件は無変更＝見た目の情報量だけ増やした。
 function chestGrid() {
 	const g = blank();
 	rrect(g, 6, 6, 12, 25, 2, 3);          // 蓋（中間）
 	rect(g, 7, 8, 8, 23, 4);               // 蓋の天面（明）
+	// 蓋の板目（縦線・交互に暗）
+	for (let c = 9; c <= 23; c += 3) rect(g, 9, c, 12, c, 2);
 	rect(g, 12, 6, 12, 25, 2);             // 蓋と胴の合わせ目（暗）
 	rect(g, 13, 6, 23, 25, 3);             // 胴（中間）
+	// 胴の板目（縦線・鉄帯の位置は避ける）
+	for (let c = 8; c <= 24; c += 3) {
+		if (c === 9 || c === 10 || c === 21 || c === 22) continue;
+		rect(g, 13, c, 20, c, 2);
+	}
 	rect(g, 21, 6, 23, 25, 2);             // 底（暗）＝接地の影
 	rect(g, 6, 9, 23, 10, 2);              // 鉄帯（左）
 	rect(g, 6, 21, 23, 22, 2);             // 鉄帯（右）
+	// 鉄帯の鋲（明るい点を等間隔に）
+	for (let r = 7; r <= 22; r += 4) { put(g, r, 9, 4); put(g, r, 21, 4); }
 	rrect(g, 10, 13, 17, 18, 1, 5);        // 金の錠（合わせ目の手前に描く＝錠が上）
 	rect(g, 13, 15, 14, 16, 1);            // 鍵穴（縦2×横2の穴）
 	put(g, 15, 15, 1); put(g, 15, 16, 1);
@@ -1016,18 +1028,45 @@ function bombItemGrid() {
 
 // 鍵（floor drop のみ）── ink 11×14・2コマ（frame1=輝き）。輪（ドーナツ）＋軸＋歯。
 // key パレット：1輪郭 2暗金 3中金 4明金 5白（輝き用）。
+// ❌ 失効（2026-09-08・ユーザー指摘＝「鍵ももうちょっと鍵らしい絵に改善できる気が
+// する。今はドアだけがやけにリアル」）＝旧版は輪・軸・歯のすべてが単色の面塗りで、
+// 扉（10d-2・多段の陰影）と並ぶと情報量の差が目立った。✅ やり直し＝光源を他の絵と
+// 同じ左上に統一し、輪は象限で塗り分け・軸は左右の縁1ドットだけ明暗・歯は3層（明→中→暗）
+// で厚みを付けた（重ねた円で中心をずらす手法は輪の形そのものが歪むため、角度判定で
+// 1つの円から作る）。
 function keyGrid(bright) {
 	const g = blank();
-	const mid = bright ? 4 : 3;
-	const hi  = bright ? 5 : 4;
-	disc(g, 13, 15, 4, mid);
-	disc(g, 13, 15, 2, 0);                  // 中空
-	put(g, 11, 13, hi);
-	rect(g, 15, 15, 20, 16, mid);           // 軸
-	rect(g, 18, 17, 19, 18, mid);           // 歯
-	rect(g, 20, 17, 20, 19, mid);
+	const dark = 2, mid = bright ? 4 : 3, hi = bright ? 5 : 4;
+	const cr = 13, cc = 15, rOuter = 4, rInner = 2;
+	for (let r = cr - rOuter; r <= cr + rOuter; r++) {
+		for (let c = cc - rOuter; c <= cc + rOuter; c++) {
+			const d2 = (r - cr) ** 2 + (c - cc) ** 2;
+			if (d2 > rOuter * rOuter + rOuter * 0.4) continue;
+			if (d2 < rInner * rInner + rInner * 0.4) continue; // 中空
+			const dr = r - cr, dc = c - cc;
+			let v = mid;
+			if (dr <= 0 && dc <= 0) v = hi;         // 左上＝明
+			else if (dr >= 1 && dc >= 1) v = dark;  // 右下＝暗
+			put(g, r, c, v);
+		}
+	}
+	// 軸＝中間色で塗り、左右の縁1ドットだけ明暗にして丸みを出す
+	rect(g, 15, 15, 21, 16, mid);
+	for (let r = 15; r <= 21; r++) { put(g, r, 15, hi); put(g, r, 16, dark); }
+	// 歯＝長さの違う2枚。上面は明・本体は中間・下面は暗の3層で厚みを出す
+	rect(g, 17, 17, 17, 19, hi);
+	rect(g, 18, 17, 18, 19, mid);
+	rect(g, 19, 17, 19, 19, dark);
+	rect(g, 21, 17, 21, 18, hi);
+	rect(g, 22, 17, 22, 18, dark);
 	strokeOutside(g);
-	put(g, 13, 15, 0);                      // 中空を確実に穴として残す
+	// 中空を輪郭でも塞がせない
+	for (let r = cr - rInner; r <= cr + rInner; r++) {
+		for (let c = cc - rInner; c <= cc + rInner; c++) {
+			const d2 = (r - cr) ** 2 + (c - cc) ** 2;
+			if (d2 < rInner * rInner + rInner * 0.4) put(g, r, c, 0);
+		}
+	}
 	return g;
 }
 

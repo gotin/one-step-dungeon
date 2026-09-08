@@ -54,7 +54,7 @@ const KINDS = [
 	{ spr: 'boomerang',pal: 'boomerang',label: 'ブーメラン',frames: 1, ink: { w: 14, h: 14 }, was: { w: 0.4125,h: 0.4125}, tol: 0.06, holes: false },
 	{ spr: 'bow',      pal: 'bow',      label: '弓',       frames: 1, ink: { w: 18, h: 19 }, was: { w: 0.481, h: 0.55  }, tol: 0.10, holes: false },
 	{ spr: 'bombItem', pal: 'bombItem', label: '爆弾',     frames: 1, ink: { w: 13, h: 18 }, was: { w: 0.447, h: 0.55  }, tol: 0.06, holes: false },
-	{ spr: 'key',      pal: 'key',      label: '鍵',       frames: 2, ink: { w: 11, h: 14 }, was: { w: 0.367, h: 0.378 }, tol: 0.06, holes: true  },
+	{ spr: 'key',      pal: 'key',      label: '鍵',       frames: 2, ink: { w: 11, h: 16 }, was: { w: 0.367, h: 0.378 }, tol: 0.15, holes: true  },
 	{ spr: 'rupee',    pal: 'rupee',    label: 'ルピー',   frames: 1, ink: { w: 15, h: 18 }, was: { w: 0.481, h: 0.481 }, tol: 0.09, holes: false },
 	{ spr: 'triforce', pal: 'triforce', label: '星の欠片', frames: 1, ink: { w: 19, h: 11 }, was: { w: 0.55,  h: 0.33  }, tol: 0.06, holes: false },
 	{ spr: 'potion',   pal: 'potion',   label: '回復薬(小)',frames:1, ink: { w: 10, h: 18 }, was: { w: 0.31,  h: 0.55  }, tol: 0.06, holes: false },
