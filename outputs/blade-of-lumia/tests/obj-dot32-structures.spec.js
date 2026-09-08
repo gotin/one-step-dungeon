@@ -66,7 +66,7 @@ const KINDS_OBJ = [
 	{ spr: 'doorway',       pal: 'doorway',       label: 'ドアウェイ',     frames: 2, ink: { w: 22, h: 22 }, was: { w: 0.700, h: 0.700 } },
 	{ spr: 'doorwayBoss',   pal: 'doorwayBoss',   label: 'ドアウェイ(ボス)', frames: 2, ink: { w: 22, h: 22 }, was: { w: 0.700, h: 0.700 } },
 	{ spr: 'doorwayLocked', pal: 'doorwayLocked', label: 'ドアウェイ(施錠)', frames: 2, ink: { w: 22, h: 22 }, was: { w: 0.700, h: 0.700 } },
-	{ spr: 'torch',         pal: 'torch',         label: '松明',           frames: 2, ink: { w: 19, h: 21 }, was: { w: 0.583, h: 0.656 } },
+	{ spr: 'torch',         pal: 'torch',         label: '松明',           frames: 3, ink: { w: 19, h: 21 }, was: { w: 0.583, h: 0.656 } },
 	{ spr: 'altar',         pal: 'altar',         label: '祭壇',           frames: 1, ink: { w: 22, h: 22 }, was: { w: 0.700, h: 0.700 } },
 ];
 

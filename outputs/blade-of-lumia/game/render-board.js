@@ -17,7 +17,7 @@
 // は直接 import する（game.js スコープ外・再代入なし）。
 
 import { TILE } from '../shared/tiles.js';
-import { SPRITES, PAL, drawSpriteFrame, drawSpriteLayers, makeSprite, applyBgSpriteToCell } from '../shared/sprites.js';
+import { SPRITES, PAL, drawSprite, drawSpriteFrame, drawSpriteLayers, makeSprite, applyBgSpriteToCell } from '../shared/sprites.js';
 import { TILE_SPRITE_MAP } from '../shared/tile-sprites.js';
 import { bgVariantName, objVariantName } from '../shared/sprites-tiles.js';
 import { connectedTileParts, isConnectTile } from '../shared/tile-connect.js';
@@ -374,13 +374,23 @@ export function createRenderBoard(deps) {
 			return;
 		}
 		if (tile === TILE.TORCH) {
-			// frame0=消灯（暗い台座）／frame1=点灯（燃える炎）
+			// frame0=消灯（暗い台座・静止）／frame1,2=点灯（燃える炎・2コマで揺らめく）。
+			// 消灯中は data-sprite を付けず animFrame の影響を受けない＝frame0固定。
+			// 点灯中だけ data-sprite='torch' + data-frame-start='1' を付け、
+			// redrawAnimSprites が frame1/2 だけを animFrame で巡回する（frame0は巡回対象外）。
 			const frames = SPRITES['torch'];
 			const pal    = PAL['torch'];
 			if (frames && pal) {
 				const cv = document.createElement('canvas');
 				cv.className = 'sprite';
-				drawSpriteFrame(cv, frames, ss.litTorches?.has(posKey) ? 1 : 0, pal);
+				if (ss.litTorches?.has(posKey)) {
+					cv.dataset.sprite     = 'torch';
+					cv.dataset.pal        = 'torch';
+					cv.dataset.frameStart = '1';
+					drawSprite(cv, frames, pal, false, 1);
+				} else {
+					drawSpriteFrame(cv, frames, 0, pal);
+				}
 				putCellSprite(cellEl, cv, 'obj-sprite');
 			}
 			return;

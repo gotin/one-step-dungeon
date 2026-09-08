@@ -48,8 +48,11 @@ export function stopAnimLoop() {
 }
 
 // ── Sprite drawing ──────────────────────────────────────────────
-export function drawSprite(canvas, frames, palette, flipX = false) {
-	const f    = animFrame % frames.length;
+// frameStart: 先頭の何コマを animFrame の巡回から外すか（例＝松明の消灯コマ）。
+// 巡回するのは frames[frameStart..] だけ＝frameStart=0 なら従来どおり全コマ巡回。
+export function drawSprite(canvas, frames, palette, flipX = false, frameStart = 0) {
+	const cycle = frames.length - frameStart;
+	const f    = frameStart + (animFrame % cycle);
 	const grid = frames[f];
 	const rows = grid.length;
 	const cols = grid[0].length;
@@ -137,7 +140,8 @@ export function redrawAnimSprites() {
 		const frames = SPRITES[cv.dataset.sprite];
 		const pal    = PAL[cv.dataset.pal] || PAL.hero;
 		const flipX  = cv.dataset.flipX === '1';
-		if (frames && frames.length > 1) drawSprite(cv, frames, pal, flipX);
+		const frameStart = Number(cv.dataset.frameStart || 0);
+		if (frames && frames.length - frameStart > 1) drawSprite(cv, frames, pal, flipX, frameStart);
 	});
 	// bgTile は原則アニメーションしない（草/砂/雪…は静止）。ただし水下地
 	// （bgTiles 層の水 '~'）は tiles 層の水と同じ波アニメで揺らす（Phase 9-6 深洋O・
