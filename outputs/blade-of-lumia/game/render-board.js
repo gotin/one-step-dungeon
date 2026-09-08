@@ -232,7 +232,8 @@ export function createRenderBoard(deps) {
 			if (!ss.openedChests.has(posKey)) {
 				const cond = stageData.showConditions?.[posKey];
 				if (cond && !ss.conditionsMet.has(posKey)) return;
-				const cv = makeSprite('chest', 'chest', true);
+				// 静物＝ちらつかせない（2026-09-08 ユーザー指摘＝壁と同じ理由）。
+				const cv = makeSprite('chest', 'chest', false);
 				putCellSprite(cellEl, cv, 'obj-sprite');
 			}
 			return;
@@ -356,7 +357,8 @@ export function createRenderBoard(deps) {
 		if (tile === TILE.BREAKABLE_WALL) {
 			// 未破壊のときだけ壁を描く（破壊後は床）。必ず return すること。
 			if (!ss.brokenWalls.has(posKey)) {
-				const cv = makeSprite('breakableWall', 'breakableWall', true);
+				// 壁＝ちらつかせない（2026-09-08 ユーザー指摘＝「壁だよ？動いたら変じゃない？」）。
+				const cv = makeSprite('breakableWall', 'breakableWall', false);
 				putCellSprite(cellEl, cv, 'obj-sprite');
 			}
 			return;

@@ -53,7 +53,7 @@ function findTile(stage, ch) {
 // 10d-1 で描き直した物。`was` は従来の見かけの大きさ（セル比・上のコメントの実測値）。
 const KINDS = [
 	{ spr: 'block',  pal: 'block',  label: '石',     frames: 1, ink: { w: 22, h: 22 }, was: { w: 0.70, h: 0.70 } },
-	{ spr: 'chest',  pal: 'chest',  label: '宝箱',   frames: 2, ink: { w: 22, h: 20 }, was: { w: 0.70, h: 0.61 } },
+	{ spr: 'chest',  pal: 'chest',  label: '宝箱',   frames: 1, ink: { w: 22, h: 20 }, was: { w: 0.70, h: 0.61 } },
 	{ spr: 'button', pal: 'button', label: 'ボタン', frames: 2, ink: { w: 18, h: 18 }, was: { w: 0.57, h: 0.55 } },
 	{ spr: 'lever',  pal: 'lever',  label: 'レバー', frames: 2, ink: { w: 20, h: 18 }, was: { w: 0.61, h: 0.55 } },
 ];

@@ -61,7 +61,7 @@ function findUnconditionalTile(layer, stage, ch) {
 // obj-sprite 系（0.7 セル中央寄せ）＝10d-1 と同じ「見かけの大きさを変えない」制約。
 const KINDS_OBJ = [
 	{ spr: 'gateG',         pal: 'gateG',         label: 'ゲート',         frames: 1, ink: { w: 22, h: 21 }, was: { w: 0.700, h: 0.656 } },
-	{ spr: 'breakableWall', pal: 'breakableWall', label: '壊せる壁',       frames: 2, ink: { w: 22, h: 22 }, was: { w: 0.700, h: 0.700 } },
+	{ spr: 'breakableWall', pal: 'breakableWall', label: '壊せる壁',       frames: 1, ink: { w: 22, h: 22 }, was: { w: 0.700, h: 0.700 } },
 	{ spr: 'mapEnter',      pal: 'mapEnter',      label: 'MAP_ENTER',     frames: 2, ink: { w: 22, h: 21 }, was: { w: 0.700, h: 0.656 } },
 	{ spr: 'doorway',       pal: 'doorway',       label: 'ドアウェイ',     frames: 2, ink: { w: 22, h: 22 }, was: { w: 0.700, h: 0.700 } },
 	{ spr: 'doorwayBoss',   pal: 'doorwayBoss',   label: 'ドアウェイ(ボス)', frames: 2, ink: { w: 22, h: 22 }, was: { w: 0.700, h: 0.700 } },
