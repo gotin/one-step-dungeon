@@ -63,8 +63,9 @@ import { fileURLToPath } from 'url';
 import { TILE, TILE_META } from '../shared/tiles.js';
 import { ENEMY_META, ENEMY_SPEED_FAST, PROJECTILE_SPRITE } from '../shared/enemies.js';
 import { ENEMY_SPRITES, ENEMY_PAL } from '../shared/sprites-enemies.js';
-import { ITEM_SPRITES, ITEM_PAL } from '../shared/sprites-items.js';
+import { ITEM_PAL } from '../shared/sprites-items.js';
 import { SPRITES, PAL } from '../shared/sprites.js';
+import { OBJ32_SPRITES } from '../shared/sprites-obj32.js';
 import { TILE_SPRITE_MAP } from '../shared/tile-sprites.js';
 import { ITEM_META } from '../shared/items.js';
 import { waitForBoard } from './helpers.js';
@@ -217,7 +218,9 @@ test.describe('Phase 5.5k k-6 – 投擲物の種別追加（爆弾鬼・ブー�
 
     // 投げる爆弾の絵：createProjEl は makeSprite(proj.type, proj.type) を呼ぶ＝
     // **type 名**（'thrownBomb'）でスプライトとパレットの両方が引けないと弾が描かれない。
-    expect(ITEM_SPRITES.thrownBomb, 'thrownBomb スプライトが無い').toBeTruthy();
+    // ⚠️ スプライトの単一の真実は 10d-3 で shared/sprites-obj32.js（OBJ32_SPRITES）へ
+    // 移った＝ITEM_SPRITES 側には無い（マージ後の SPRITES で引けることを見る）。
+    expect(OBJ32_SPRITES.thrownBomb, 'thrownBomb スプライトが無い').toBeTruthy();
     expect(ITEM_PAL.thrownBomb, 'thrownBomb パレットが無い').toBeTruthy();
     expect(SPRITES.thrownBomb, 'マージ後の SPRITES に thrownBomb が無い').toBeTruthy();
     expect(PAL.thrownBomb, 'マージ後の PAL に thrownBomb が無い').toBeTruthy();

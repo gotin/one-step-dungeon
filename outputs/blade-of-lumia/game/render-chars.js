@@ -130,11 +130,17 @@ export function createRenderChars(deps) {
 	// 左手が進行方向へ伸びる∴右手は必ず「後ろ側」に残る：
 	//   右向き … 右手＝我々から見て左（heroR の col 10・row 24 の手）→ 中心 (0.33, 0.77)
 	//   左向き … その左右反転（col 21）                              → 中心 (0.67, 0.77)
+	// Phase 10d-3: 'shield' の絵を32ドット化した際、絵の中の透明余白が増えた分だけ
+	// 固定セル比の箱（cellPx*定数）に入れると見かけが縮む（'shieldSide'/'shieldBack'
+	// は今回絵を変えていないため無補正）。旧見かけ＝旧ink比(0.875/1.0) を新ink比
+	// (0.469/0.594) で割り直した値の平均＝約1.78（`.scratch/proto-10d3.mjs` で算出）。
+	const SHIELD_32_SCALE = 1.78;
 	const SHIELD_ATK_GEO = {
 		down:  { spr: 'shieldSide', flipX: false, x: 0.16, y: 0.46, w: 0.17, h: 0.44, zi: '4'  },
 		up:    { spr: 'shieldSide', flipX: true,  x: 0.68, y: 0.50, w: 0.17, h: 0.44, zi: '4'  },
 		// 右向きは盾の正面がカメラ側を向く＝プレイヤーより前面（zi 5）に置く。
-		right: { spr: 'shield',     flipX: false, x: 0.18, y: 0.62, w: 0.30, h: 0.30, zi: '5'  },
+		// w/h は SHIELD_32_SCALE 分だけ拡大し、x/y は中心が動かないよう半分だけ戻す。
+		right: { spr: 'shield',     flipX: false, x: 0.063, y: 0.503, w: 0.30 * SHIELD_32_SCALE, h: 0.30 * SHIELD_32_SCALE, zi: '5'  },
 		// 左向きは右手が奥＝盾の裏面が見え、プレイヤーが上に重なる（zi -1）。
 		left:  { spr: 'shieldBack', flipX: false, x: 0.50, y: 0.66, w: 0.34, h: 0.21, zi: '-1' },
 	};
@@ -197,12 +203,14 @@ export function createRenderChars(deps) {
 		const cellPx = getCellPx();
 
 		if (heroDir === 'down') {
-			const sz = Math.round(cellPx * 0.40) + 'px';
+			// Phase 10d-3: SHIELD_32_SCALE 分だけ箱を拡大し、中心が動かないよう
+			// left/top を半分だけ戻す（0.40→0.712・左上原点なので -(delta/2)）。
+			const sz = Math.round(cellPx * 0.40 * SHIELD_32_SCALE) + 'px';
 			cv.style.setProperty('width',  sz, 'important');
 			cv.style.setProperty('height', sz, 'important');
 			cv.style.zIndex = '4';
-			cv.style.left   = `${Math.round(cellPx * 0.08 + 1)}px`;
-			cv.style.top    = `${Math.round(cellPx * 0.48 + 1)}px`;
+			cv.style.left   = `${Math.round(cellPx * -0.076 + 1)}px`;
+			cv.style.top    = `${Math.round(cellPx * 0.324 + 1)}px`;
 			cv.style.transform = 'none';
 		} else if (heroDir === 'right') {
 			const w = Math.round(cellPx * 0.17) + 'px';
@@ -224,12 +232,14 @@ export function createRenderChars(deps) {
 			cv.style.top    = '50%';
 			cv.style.transform = 'none';
 		} else {
-			const sz = Math.round(cellPx * 0.34) + 'px';
+			// Phase 10d-3: SHIELD_32_SCALE 分だけ箱を拡大。right 基準の座標なので
+			// 中心を保つには right 側のオフセットを半分だけ減らす（0.34→0.605）。
+			const sz = Math.round(cellPx * 0.34 * SHIELD_32_SCALE) + 'px';
 			cv.style.setProperty('width',  sz, 'important');
 			cv.style.setProperty('height', sz, 'important');
 			cv.style.setProperty('z-index', '-1', 'important');
-			const rPx  = Math.round(cellPx * 0.08) - 3;
-			const tPct = Math.round(cellPx * 0.45 + 4);
+			const rPx  = Math.round(cellPx * -0.0525) - 3;
+			const tPct = Math.round(cellPx * 0.3175 + 4);
 			cv.style.right  = `${rPx + 4}px`;
 			cv.style.left   = 'auto';
 			cv.style.top    = `${tPct + 3}px`;

@@ -30,6 +30,13 @@ import { SPRITES, PAL, makeSprite } from '../shared/sprites.js';
 import { ITEM_META, BOOMERANG_TIERS } from '../shared/items.js';
 import { playSound } from '../shared/sounds.js';
 
+// HUD のハート（heart/heartEmpty/heartHalf）の固定表示サイズ。Phase 10d-3 で
+// 絵を32ドット化した際、絵の中の透明余白が増えた分だけ見かけが縮むのを補う
+// （旧8×8は ink が canvas の 1.0×0.875 を占めていたが、新32×32は 0.531×0.5＝
+// この箱をそのままにすると旧の約55%の大きさに見える）。旧見かけ＝16px を
+// 新ink比で割り直した値（16 × (旧ink/新ink の平均 1.82) ≒ 29px）。
+const HEART_ICON_PX = 29;
+
 // ── サブアイテムの表示名（Phase 9-6）───────────────────────────
 // ブーメランはティア（木／銀）で名前が変わる。他のアイテムは ITEM_META の名前。
 // HUD のツールチップとポーズのアイテム一覧で共用する。
@@ -117,7 +124,7 @@ export function createUi(deps) {
 				const grid = frames[0];
 				cv.width  = grid[0].length;
 				cv.height = grid.length;
-				cv.style.cssText = 'width:16px;height:16px;image-rendering:pixelated;display:inline-block;flex-shrink:0;';
+				cv.style.cssText = `width:${HEART_ICON_PX}px;height:${HEART_ICON_PX}px;image-rendering:pixelated;display:inline-block;flex-shrink:0;`;
 				const ctx = cv.getContext('2d');
 				for (let r = 0; r < grid.length; r++) {
 					for (let c = 0; c < grid[0].length; c++) {
@@ -356,7 +363,7 @@ export function createUi(deps) {
 				const cv = document.createElement('canvas');
 				cv.width  = grid[0].length;
 				cv.height = grid.length;
-				cv.style.cssText = 'width:16px;height:16px;image-rendering:pixelated;display:inline-block;flex-shrink:0;';
+				cv.style.cssText = `width:${HEART_ICON_PX}px;height:${HEART_ICON_PX}px;image-rendering:pixelated;display:inline-block;flex-shrink:0;`;
 				const ctx = cv.getContext('2d');
 				for (let rr = 0; rr < grid.length; rr++) {
 					for (let cc = 0; cc < grid[0].length; cc++) {

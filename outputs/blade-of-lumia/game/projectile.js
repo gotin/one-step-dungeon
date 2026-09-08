@@ -15,6 +15,19 @@ import {
 import { SHIELD_TIERS } from '../shared/items.js';
 import { enemyPointHit, enemyCenter, enemyOccupiesTile } from './hitbox.js';
 
+// Phase 10d-3: boomerang・thrownBomb は落ちアイテムと同じ絵を共有する（同じ名前で
+// SPRITES を参照）。落ちアイテム側を 32 ドット化した際、絵の中の透明余白が増えた
+// （ink が canvas を占める比率が下がった）分だけ、この固定ピクセル箱（cellPx 比の
+// 定数）で表示する飛翔中の見かけが縮む。dot32（CSS）で自動補正される床アイコンと
+// 違い、飛翔物は cellPx 比の固定サイズなので、ここだけ拡大係数を掛けて相殺する。
+// 係数＝旧8×8/16×16の ink 実測比 ÷ 新32×32の ink 実測比（`.scratch/proto-10d3.mjs`
+// で算出・PLAN 10d-3 参照）。絵を変えていない他の投擲物（arrow/stone/magicBolt/
+// waterShot/waterBlade）は係数1（無補正）のまま。
+const PROJ_SPRITE_SCALE = { boomerang: 1.71, thrownBomb: 1.89 };
+// ブーメランが拾った床ドロップ（rupee/heart/bombItem/arrow）を追従表示するアイコン
+// にも同じ理由の補正が要る（arrow は今回絵を変えていないため係数1）。
+const CARRY_SPRITE_SCALE = { rupee: 1.87, heart: 1.82, bombItem: 1.89 };
+
 /**
  * createProjectile(deps) – factory
  *
@@ -209,7 +222,7 @@ export function createProjectile(deps) {
 
 		const cv = makeSprite(proj.type, proj.type, false);  // 静止表示（アニメなし）
 		if (cv) {
-			const sz = Math.round(cellPx * 0.35) + 'px';
+			const sz = Math.round(cellPx * 0.35 * (PROJ_SPRITE_SCALE[proj.type] ?? 1)) + 'px';
 			cv.style.setProperty('width',  sz, 'important');
 			cv.style.setProperty('height', sz, 'important');
 			// 矢（arrow）は向きに応じてスプライトを回転する
@@ -273,7 +286,7 @@ export function createProjectile(deps) {
 				const cv = makeSprite(carry.spr, carry.pal, false);
 				if (cv) {
 					cv.className = 'boomerang-carry';
-					const isz = Math.round(getCellPx() * 0.3) + 'px';
+					const isz = Math.round(getCellPx() * 0.3 * (CARRY_SPRITE_SCALE[carry.spr] ?? 1)) + 'px';
 					cv.style.setProperty('width',  isz, 'important');
 					cv.style.setProperty('height', isz, 'important');
 					el.appendChild(cv);
