@@ -21,11 +21,14 @@ import { enemyPointHit, enemyCenter, enemyOccupiesTile } from './hitbox.js';
 // 定数）で表示する飛翔中の見かけが縮む。dot32（CSS）で自動補正される床アイコンと
 // 違い、飛翔物は cellPx 比の固定サイズなので、ここだけ拡大係数を掛けて相殺する。
 // 係数＝旧8×8/16×16の ink 実測比 ÷ 新32×32の ink 実測比（`.scratch/proto-10d3.mjs`
-// で算出・PLAN 10d-3 参照）。絵を変えていない他の投擲物（arrow/stone/magicBolt/
+// で算出・PLAN 10d-3 参照）。絵を変えていない他の投擲物（stone/magicBolt/
 // waterShot/waterBlade）は係数1（無補正）のまま。
+// Phase 10d-4: arrow も32ドット化したが、新旧の ink 比（幅方向は縮む・高さ方向は
+// 伸びる）が平均でほぼ1.0（実測≈0.99・`.scratch/proto-10d4.mjs`）＝打ち消し合って
+// 補正不要∴意図的にキーを追加していない（無指定→既定の1）。
 const PROJ_SPRITE_SCALE = { boomerang: 1.71, thrownBomb: 1.89 };
 // ブーメランが拾った床ドロップ（rupee/heart/bombItem/arrow）を追従表示するアイコン
-// にも同じ理由の補正が要る（arrow は今回絵を変えていないため係数1）。
+// にも同じ理由の補正が要る（arrow は上と同じ理由で無補正のまま＝係数1）。
 const CARRY_SPRITE_SCALE = { rupee: 1.87, heart: 1.82, bombItem: 1.89 };
 
 /**

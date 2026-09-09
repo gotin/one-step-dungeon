@@ -957,6 +957,58 @@ function shieldGrid() {
 	return g;
 }
 
+// 盾・側面（10d-5・両凸→片凸に描き直し）── ink 12×21。
+// ❌ 失効（2026-09-09・ユーザー指摘＝「どら焼きみたいに両面が膨らんでいる」）＝
+// 旧版は中心軸(mid)から左右対称に膨らむ菱形＝盾の厚み方向の断面が両凸レンズに
+// 見えた（盾は片面だけ凸のはず）。✅ やり直し＝表面側(mid+側)だけ半径7まで丸く
+// 張り出す・背面側(mid-側)は半径2止まりの浅い平面＝平凸レンズ形にした。
+// shield パレット共用：1輪郭 2暗青 3中青 5白（4金は側面に写らない）。
+function shieldSideGrid() {
+	const g = blank();
+	const HALF_R = [0, 1, 2, 3, 4, 5, 6, 7, 7, 7, 7, 7, 6, 5, 4, 3, 2, 1, 0]; // 表面側(凸)・19行
+	const HALF_L = [0, 1, 1, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 1, 1, 0]; // 背面側(平ら・浅い)
+	const r0 = 6, mid = 16;
+	for (let i = 0; i < HALF_R.length; i++) {
+		const r = r0 + i, hr = HALF_R[i], hl = HALF_L[i];
+		if (hr <= 0 && hl <= 0) { put(g, r, mid, 3); continue; }
+		rect(g, r, mid - hl, r, mid + hr, 3);
+	}
+	// 表面(凸)の縁を一段暗く（丸みの立体感・半径が大きい区間だけ）
+	for (let i = 0; i < HALF_R.length; i++) {
+		const r = r0 + i, hr = HALF_R[i];
+		if (hr >= 5) put(g, r, mid + hr, 2);
+	}
+	// 頂点にハイライト（凸の一番出っ張った3行だけ・縁の1つ内側＝縁取りにしない）
+	for (let i = 8; i <= 10; i++) put(g, r0 + i, mid + HALF_R[i] - 1, 5);
+	strokeOutside(g);
+	return g;
+}
+
+// 盾・背面（10d-5・紋章を撤去し陰影を反転）── ink 17×19。正面 shieldGrid と
+// 同じ外形（上部矩形＋下部三角）を再利用し「同じ盾の裏側」に見える輪郭を保証する。
+// ❌ 失効（2026-09-09・ユーザー指摘＝「裏側が見えているはずなのに表と同じデザイン。
+// 裏側には十文字のデザインはなくてよく、裏側から見たら凹んでいる前提の陰影に」）＝
+// 旧版は金のバックル(4)が紋章に見え、陰影も無くフラットで正面と同じ「盛り上がり」
+// 前提に見えた。✅ やり直し＝金のバックルを撤去しストラップ(腕帯)は横一本の帯のみ
+// に単純化・陰影は正面（左上明・右下暗＝盛り上がり）と反転させ左半分を暗くする
+// （裏側は凹んでいる前提＝内壁に光が回り込む右半分が明るい・10d-1の床ボタンの
+// 凸/凹表現と同じロジック）。
+// shield パレット共用：1輪郭 2暗青 3中青（4金・5白は未使用＝裏面には紋章も輝きも無い）。
+function shieldBackGrid() {
+	const g = blank();
+	const c0 = 9, c1 = 23, mid = 16; // shieldGrid と同じ外形（cols9..23・重心=16）
+	rect(g, 9, c0, 17, c1, 3);                // 上部（矩形・中間色ベース）
+	put(g, 9, c0, 0); put(g, 9, c1, 0);       // 角を1ドット落とす
+	for (let i = 0; i <= 7; i++) rect(g, 18 + i, c0 + i, 18 + i, c1 - i, 3); // 下部（直線で1点へ）
+	// 凹みの陰影＝左半分を暗く（正面の「右半分を暗く」と反転）
+	for (let r = 9; r <= 17; r++) rect(g, r, c0, r, mid - 1, 2);
+	for (let i = 0; i <= 7; i++) { const cc0 = c0 + i; if (cc0 <= mid - 1) rect(g, 18 + i, cc0, 18 + i, mid - 1, 2); }
+	// ストラップ（腕帯）＝紋章に見えない単純な横帯1本だけ（金のバックルは無し）
+	rect(g, 14, c0 + 1, 17, c1 - 1, 2);
+	strokeOutside(g);
+	return g;
+}
+
 // ブーメラン（floor drop・飛翔中と共用）── ink 14×14。くの字（L字を丸めた形）。
 // boomerang パレット：1輪郭 2中茶 3中茶 4明茶 5白。
 function boomerangGrid() {
@@ -973,7 +1025,25 @@ function boomerangGrid() {
 	return g;
 }
 
-// 弓（矢を番えた弓・floor drop のみ＝飛翔中の矢は別名 'arrow' で今回対象外）──
+// 矢（10d-4・飛翔中＋弓を構えた矢羽根）── ink 27×15。右向き固定（回転は
+// game/projectile.js が CSS transform で8方向に対応・絵は変えない）。軸(茶)＋
+// 矢羽根2枚(淡・軸に接触させて浮いた粒にしない)＋三角の矢頭(灰)。
+// arrow パレット：1輪郭 2軸(茶) 3矢頭(灰) 4矢羽根(淡)。
+function arrowGrid() {
+	const g = blank();
+	rect(g, 15, 6, 17, 23, 2);              // 軸（シャフト）
+	rect(g, 12, 5, 15, 8, 4);               // 矢羽根（上）
+	rect(g, 17, 5, 20, 8, 4);               // 矢羽根（下）
+	for (let i = 0; i <= 6; i++) {          // 矢頭（三角・先端へ収束）
+		const half = 6 - i;
+		if (half <= 0) { put(g, 16, 23 + i, 3); continue; }
+		rect(g, 16 - half, 23 + i, 16 + half, 23 + i, 3);
+	}
+	strokeOutside(g);
+	return g;
+}
+
+// 弓（矢を番えた弓・floor drop のみ＝飛翔中の矢は別絵 'arrow' で 10d-4 にて32ドット化）──
 // ink 18×19。bow パレット：1輪郭 2暗茶 3中茶 4明茶 5弦(淡)。
 function bowGrid() {
 	const g = blank();
@@ -1266,4 +1336,8 @@ export const OBJ32_SPRITES = {
 	heart:         [heartGrid()],
 	heartEmpty:    [heartEmptyGrid()],
 	heartHalf:     [heartHalfGrid()],
+	// ── 10d-4 ──
+	arrow:         [arrowGrid()],
+	shieldSide:    [shieldSideGrid()],
+	shieldBack:    [shieldBackGrid()],
 };
