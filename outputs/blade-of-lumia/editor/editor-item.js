@@ -1,5 +1,17 @@
 // ── editor-item.js ── アイテム定義エディタ ───────────────────────
 import { ITEM_META, EQUIP_META } from '../shared/items.js';
+import { iconCanvas } from '../shared/ui-icons.js';
+
+// 一覧の絵（10e）＝`meta.sprite` / `meta.pal` の絵を出す。絵が引けないときだけ
+// `meta.icon`（絵文字）に落ちる∴**表の書き間違いは絵文字で見える**（黙って空にならない）。
+function itemIconEl(meta) {
+	const span = document.createElement('span');
+	span.className = 'item-icon';
+	const cv = meta?.sprite ? iconCanvas({ spr: meta.sprite, pal: meta.pal ?? meta.sprite }, 22) : null;
+	if (cv) span.appendChild(cv);
+	else span.textContent = meta?.icon || '';
+	return span;
+}
 
 // ── 内部状態 ───────────────────────────────────────────────────
 let currentSection = null;  // 'item' | 'equip'
@@ -32,19 +44,19 @@ function renderItemList() {
 
 	const subTitle = document.createElement('div');
 	subTitle.className = 'item-section-title';
+	// 📦 は「入れ物」＝絵が無い（盤面に箱は無い）∴絵文字のまま残す（10e の対象外）。
 	subTitle.textContent = '📦 サブアイテム';
 	listEl.appendChild(subTitle);
 
 	Object.entries(itemBuffer).forEach(([key, meta]) => {
 		const div = document.createElement('div');
 		div.className = 'item-list-item' + (currentSection === 'item' && currentKey === key ? ' active' : '');
-		div.innerHTML = `
-			<span class="item-icon">${meta.icon || ''}</span>
-			<div>
-				<div class="item-name">${meta.name}</div>
-				<div class="item-type-tag">${meta.type}</div>
-			</div>
+		const body = document.createElement('div');
+		body.innerHTML = `
+			<div class="item-name">${meta.name}</div>
+			<div class="item-type-tag">${meta.type}</div>
 		`;
+		div.append(itemIconEl(meta), body);
 		div.addEventListener('click', () => {
 			currentSection = 'item';
 			currentKey = key;
@@ -57,19 +69,23 @@ function renderItemList() {
 	const equipTitle = document.createElement('div');
 	equipTitle.className = 'item-section-title';
 	equipTitle.style.marginTop = '12px';
-	equipTitle.textContent = '⚔ 装備';
+	// ⚔ は剣の絵に置き換える（10e）。絵が引けない時だけ絵文字に落ちる。
+	equipTitle.textContent = '';
+	const equipIcon = iconCanvas('sword', 16);
+	if (equipIcon) equipTitle.appendChild(equipIcon);
+	else equipTitle.appendChild(document.createTextNode('⚔'));
+	equipTitle.appendChild(document.createTextNode(' 装備'));
 	listEl.appendChild(equipTitle);
 
 	Object.entries(equipBuffer).forEach(([key, meta]) => {
 		const div = document.createElement('div');
 		div.className = 'item-list-item' + (currentSection === 'equip' && currentKey === key ? ' active' : '');
-		div.innerHTML = `
-			<span class="item-icon">${meta.icon || ''}</span>
-			<div>
-				<div class="item-name">${meta.name}</div>
-				<div class="item-type-tag">${meta.slot}</div>
-			</div>
+		const body = document.createElement('div');
+		body.innerHTML = `
+			<div class="item-name">${meta.name}</div>
+			<div class="item-type-tag">${meta.slot}</div>
 		`;
+		div.append(itemIconEl(meta), body);
 		div.addEventListener('click', () => {
 			currentSection = 'equip';
 			currentKey = key;

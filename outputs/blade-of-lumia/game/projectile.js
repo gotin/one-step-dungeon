@@ -494,7 +494,7 @@ export function createProjectile(deps) {
 			// Phase 5.5k k-6: 敵が受け取るときは音もメッセージも出さない
 			// （「キャッチした！」はプレイヤーの手応えの表示＝敵の手元では嘘になる）。
 			if (proj.owner === 'player') {
-				playSound('item'); pulse('🪃 ブーメランをキャッチした！');
+				playSound('item'); pulse('{{boomerang}} ブーメランをキャッチした！');
 				if (finalizeCarried) for (const c of (proj.carried || [])) finalizeCarried(c);
 			}
 			return;
@@ -572,7 +572,7 @@ export function createProjectile(deps) {
 				bss.litTorches.add(bpk);  // 消えたかがり火に点火
 				evaluateConditions();
 				renderBoard(); renderChars();
-				pulse('🔥 かがり火に火が灯った！');
+				pulse('{{torch}} かがり火に火が灯った！');
 				saveGame();
 			}
 		}
@@ -858,10 +858,20 @@ export function createProjectile(deps) {
 		el.style.left = `${c * cellPx}px`;
 		el.style.top  = `${r * cellPx}px`;
 		el.style.zIndex = '8';
-		el.textContent = '💣';
-		el.style.fontSize = `${cellPx * 0.55}px`;
-		el.style.lineHeight = `${cellPx}px`;
-		el.style.textAlign = 'center';
+		// 10e: 置いた爆弾は絵文字でなく爆弾の絵（持ち物・ドロップと同じ bombItem）。
+		// 大きさは飛翔物と同じ 0.35 ではなくセルの 0.6＝「床に置いてある物」として読める大きさ。
+		const bombCv = makeSprite('bombItem', 'bombItem', false);
+		if (bombCv) {
+			const sz = Math.round(cellPx * 0.6) + 'px';
+			bombCv.style.setProperty('width',  sz, 'important');
+			bombCv.style.setProperty('height', sz, 'important');
+			el.appendChild(bombCv);
+		} else {
+			el.textContent = '💣';
+			el.style.fontSize = `${cellPx * 0.55}px`;
+			el.style.lineHeight = `${cellPx}px`;
+			el.style.textAlign = 'center';
+		}
 		charLayerEl?.appendChild(el);
 
 		playSound('item');

@@ -3,6 +3,7 @@ import { TILE, TILE_META } from '../shared/tiles.js';
 import { ITEM_META } from '../shared/items.js';
 import { getCurrentStage, findTilePositions, state, stageKey } from './editor-state.js';
 import { buildExitRegistry, resolveExit, reverseRefs, resolveFluteWarp } from '../shared/exits.js';
+import { mountIconEls, iconText } from '../shared/ui-icons.js';
 
 // ── 右パネル統合呼び出し ──────────────────────────────────────
 export function renderSidePanel() {
@@ -63,10 +64,12 @@ function renderEquipItems(sd) {
 	const allItems    = [...swordItems, ...armorItems, ...shieldItems];
 	if (!allItems.length) { el.innerHTML = '<div class="hint">剣・防具・盾なし</div>'; return; }
 	// Phase 7-2: 剣・防具・盾はティア番号で段階を指定する（SWORD/ARMOR/SHIELD_TIERS）
+	// 10e: 見出しの絵は `data-icon`（shared/ui-icons.js が絵に差し替える）。中の
+	// 絵文字は絵が引けなかった時の保険として残す。
 	const TIER_FIELD = {
-		[TILE.ITEM_SWORD]:  { f: 'swordTier',  names: ['木の剣','銅の剣','銀の剣','聖剣'],          icon: '⚔ 剣' },
-		[TILE.ITEM_ARMOR]:  { f: 'armorTier',  names: ['布の服','鎖かたびら','伝説の鎧'],            icon: '⚚ 防具' },
-		[TILE.ITEM_SHIELD]: { f: 'shieldTier', names: ['木の盾','鉄の盾','ミラーシールド'],          icon: '🛡 盾' },
+		[TILE.ITEM_SWORD]:  { f: 'swordTier',  names: ['木の剣','銅の剣','銀の剣','聖剣'],          iconKey: 'sword',  emoji: '⚔', label: '剣' },
+		[TILE.ITEM_ARMOR]:  { f: 'armorTier',  names: ['布の服','鎖かたびら','伝説の鎧'],            iconKey: 'armor',  emoji: '⚚', label: '防具' },
+		[TILE.ITEM_SHIELD]: { f: 'shieldTier', names: ['木の盾','鉄の盾','ミラーシールド'],          iconKey: 'shield', emoji: '🛡', label: '盾' },
 	};
 	for (const { r, c, tile } of allItems) {
 		const key  = `${r},${c}`;
@@ -77,7 +80,7 @@ function renderEquipItems(sd) {
 		const item = document.createElement('div');
 		item.className = 'link-item';
 		item.innerHTML = `
-			<div class="link-item-header"><span>${spec.icon} (${r},${c})</span></div>
+			<div class="link-item-header"><span><span data-icon="${spec.iconKey}" data-icon-px="16">${spec.emoji}</span> ${spec.label} (${r},${c})</span></div>
 			<label>名前 <input type="text" value="${data.name ?? ''}" data-key="${key}" data-f="name" placeholder="（省略可）"></label>
 			<label>ティア
 				<select data-key="${key}" data-f="${field}">
@@ -85,6 +88,7 @@ function renderEquipItems(sd) {
 				</select>
 			</label>
 		`;
+		mountIconEls(item);
 		item.querySelectorAll('input,select').forEach(inp => {
 			inp.addEventListener('input', () => {
 				if (!sd.floorItems) sd.floorItems = {};
@@ -317,9 +321,10 @@ function renderMapEnters(sd) {
 	if (flute) {
 		const fluteEl = document.createElement('div');
 		fluteEl.className = 'hint mapenter-resolved ' + (flute.resolved ? 'mapenter-resolved-ok' : 'mapenter-resolved-bad');
-		fluteEl.textContent = flute.resolved
-			? `🎵 笛ワープ → ${layerDisplayName(flute.layer)} ${flute.stage} (${flute.row},${flute.col})`
-			: `🎵 笛ワープ → ❌ 繋がっていない（destId "${flute.destId}"）`;
+		// 10e: `{{flute}}` は笛の絵に差し替わる（絵が引けなければ `{{flute}}` のまま出る）。
+		iconText(fluteEl, flute.resolved
+			? `{{flute}} 笛ワープ → ${layerDisplayName(flute.layer)} ${flute.stage} (${flute.row},${flute.col})`
+			: `{{flute}} 笛ワープ → ❌ 繋がっていない（destId "${flute.destId}"）`, 16);
 		el.appendChild(fluteEl);
 	}
 

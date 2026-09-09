@@ -27,15 +27,52 @@
 
 import { HP_PER_HEART } from './constants.js';
 import { SPRITES, PAL, makeSprite } from '../shared/sprites.js';
-import { ITEM_META, BOOMERANG_TIERS } from '../shared/items.js';
+import { ITEM_META, EQUIP_META, BOOMERANG_TIERS, SWORD_TIERS, SHIELD_TIERS, ARMOR_TIERS } from '../shared/items.js';
+import { iconCanvas, iconText, iconPxOf } from '../shared/ui-icons.js';
 import { playSound } from '../shared/sounds.js';
 
-// HUD のハート（heart/heartEmpty/heartHalf）の固定表示サイズ。Phase 10d-3 で
+// HUD のハート（heart/heartEmpty/heartHalf）の表示サイズ。Phase 10d-3 で
 // 絵を32ドット化した際、絵の中の透明余白が増えた分だけ見かけが縮むのを補う
 // （旧8×8は ink が canvas の 1.0×0.875 を占めていたが、新32×32は 0.531×0.5＝
-// この箱をそのままにすると旧の約55%の大きさに見える）。旧見かけ＝16px を
-// 新ink比で割り直した値（16 × (旧ink/新ink の平均 1.82) ≒ 29px）。
-const HEART_ICON_PX = 29;
+// この箱をそのままにすると旧の約55%の大きさに見える）。
+// 10e-2：数値ではなく CSS 変数を渡す＝PC では vw 指定（game/css/responsive.css）で
+// 文字と同じ比で伸縮する。基準値（16 × 旧ink/新ink ≒ 29px）は hud.css 側にある。
+const HEART_ICON_PX = 'var(--hud-heart)';
+// 装備3枠・SUBアイテム・ルピー・星の欠片の絵の大きさ（同じく CSS 変数）。
+const HUD_ICON_PX = 'var(--hud-icon)';
+
+// ハート3種の絵を返す（HUD とポーズの体力欄で共用）。
+// 3種は同じ大きさで並ばなければならない∴ink 正規化ではなく **固定箱**（fit:'box'）で描く
+// ＝tests/obj-dot32-items.spec.js ⑩「HUD のハート3種は同じ表示サイズ」を守るため。
+function heartIconCanvas(hpForThis) {
+	const key = hpForThis >= HP_PER_HEART ? 'heart' : (hpForThis === 1 ? 'heartHalf' : 'heartEmpty');
+	return iconCanvas(key, HEART_ICON_PX, { fit: 'box' });
+}
+
+// サブアイテム・装備の絵（ポーズ／HUD で共用）。ティアで色が変わる物は
+// SWORD_TIERS 等の `pal` を優先する（形は共通・色だけ違う＝shared/items.js の作法）。
+// ⚠️ 形も違うティアがある（布の服＝armorCloth）∴`sprite` も表から引く。絵が無い名前が
+//    書かれていたら EQUIP_META の絵に落ちる＝ティア表に嘘を書いても無言の空欄にならない。
+function equipIconCanvas(kind, player, px) {
+	const meta = EQUIP_META[kind];
+	if (!meta?.sprite) return null;
+	const tiers = kind === 'sword' ? SWORD_TIERS : (kind === 'shield' ? SHIELD_TIERS : ARMOR_TIERS);
+	const tierIdx = kind === 'sword' ? player?.swordTier : (kind === 'shield' ? player?.shieldTier : player?.armorTier);
+	const tier = tiers?.[tierIdx];
+	const pal = tier?.pal ?? meta.pal;
+	const spr = tier?.sprite && SPRITES[tier.sprite] ? tier.sprite : meta.sprite;
+	return iconCanvas({ spr, pal }, px);
+}
+
+function subItemIconCanvas(id, player, px) {
+	const meta = ITEM_META[id];
+	if (!meta?.sprite) return null;
+	// ブーメランはティアで色が変わる（木＝茶／銀＝銀）
+	const pal = id === 'boomerang'
+		? (BOOMERANG_TIERS[player?.boomerangTier ?? 0]?.pal ?? meta.pal)
+		: (meta.pal ?? meta.sprite);
+	return iconCanvas({ spr: meta.sprite, pal }, px);
+}
 
 // ── サブアイテムの表示名（Phase 9-6）───────────────────────────
 // ブーメランはティア（木／銀）で名前が変わる。他のアイテムは ITEM_META の名前。
@@ -108,34 +145,14 @@ export function createUi(deps) {
 		const player = getPlayer();
 		heartsEl.innerHTML = '';
 		for (let i = 0; i < player.maxHearts; i++) {
-			let sprName, palName;
-			const hpForThis = player.hp - i * HP_PER_HEART;
-			if (hpForThis >= HP_PER_HEART) {
-				sprName = 'heart'; palName = 'heart';
-			} else if (hpForThis === 1) {
-				sprName = 'heartHalf'; palName = 'heartHalf';
-			} else {
-				sprName = 'heartEmpty'; palName = 'heartEmpty';
-			}
-			const frames = SPRITES[sprName];
-			const palette = PAL[palName];
-			if (frames && palette) {
-				const cv = document.createElement('canvas');
-				const grid = frames[0];
-				cv.width  = grid[0].length;
-				cv.height = grid.length;
-				cv.style.cssText = `width:${HEART_ICON_PX}px;height:${HEART_ICON_PX}px;image-rendering:pixelated;display:inline-block;flex-shrink:0;`;
-				const ctx = cv.getContext('2d');
-				for (let r = 0; r < grid.length; r++) {
-					for (let c = 0; c < grid[0].length; c++) {
-						const idx = grid[r][c];
-						if (idx === 0) continue;
-						ctx.fillStyle = palette[idx] ?? 'transparent';
-						ctx.fillRect(c, r, 1, 1);
-					}
-				}
-				heartsEl.appendChild(cv);
-			}
+			const cv = heartIconCanvas(player.hp - i * HP_PER_HEART);
+			if (cv) heartsEl.appendChild(cv);
+		}
+		// 装備欄の絵はティアで色が変わる∴持ち替えのたびに描き直す（10e）。
+		for (const [kind, el] of [['sword', equipSwordEl], ['shield', equipShieldEl], ['armor', equipArmorEl]]) {
+			if (!el) continue;
+			const cv = equipIconCanvas(kind, player, iconPxOf(el, HUD_ICON_PX));
+			if (cv) { el.textContent = ''; el.appendChild(cv); }
 		}
 		equipSwordEl.classList.toggle('has-item',  !!player.weapon);
 		equipShieldEl.classList.toggle('has-item', !!player.shield);
@@ -151,7 +168,9 @@ export function createUi(deps) {
 		const ai = player.activeSubItem;
 		if (ai && player.subItems[ai]) {
 			const meta = ITEM_META[ai];
-			subIconEl.textContent  = meta?.icon ?? ai;
+			const cv = subItemIconCanvas(ai, player, HUD_ICON_PX);
+			if (cv) { subIconEl.textContent = ''; subIconEl.appendChild(cv); }
+			else subIconEl.textContent = meta?.icon ?? ai;
 			// Phase 9-6: ブーメランはティア名（木／銀）を表示名にする
 			subIconEl.title        = subItemDisplayName(ai, player);
 			const cnt = player.subItems[ai].count;
@@ -172,7 +191,11 @@ export function createUi(deps) {
 			return;
 		}
 		if (msgTimer) clearTimeout(msgTimer);
-		msgBarEl.textContent = text;
+		// 10e: 本文中の `{{key}}`（例 `{{key}}を手に入れた！`）を絵に差し替える。
+		// ⚠️ 文字はテキストノードとして残る∴`#msg-bar` の textContent を見るテストは緑のまま
+		//    （絵は canvas＝文字を持たない）。未知のキーは `{{key}}` のまま出る＝書き間違いが
+		//    黙って消えない（shared/ui-icons.js iconText の注記）。
+		iconText(msgBarEl, text, 18);
 		msgBarEl.classList.remove('hidden');
 		msgTimer = setTimeout(() => msgBarEl.classList.add('hidden'), duration);
 	}
@@ -193,10 +216,13 @@ export function createUi(deps) {
 			dungeonInfoEl.classList.remove('hidden');
 			dungeonNameEl.textContent = layerName;
 			const dm = player.dungeonItems?.[lk];
-			let items = '';
-			if (dm?.hasMap)     items += '🗺';
-			if (dm?.hasCompass) items += '🧭';
-			dungeonItemsEl.textContent = items;
+			dungeonItemsEl.textContent = '';
+			for (const [have, key, emoji] of [[dm?.hasMap, 'map', '🗺'], [dm?.hasCompass, 'compass', '🧭']]) {
+				if (!have) continue;
+				const cv = iconCanvas(key, 14);
+				if (cv) dungeonItemsEl.appendChild(cv);
+				else dungeonItemsEl.appendChild(document.createTextNode(emoji));
+			}
 		} else {
 			dungeonInfoEl.classList.add('hidden');
 		}
@@ -235,7 +261,8 @@ export function createUi(deps) {
 	}
 
 	function showDialogLine() {
-		dialogTextEl.textContent = dialogLines[dialogLineIdx] ?? '';
+		// 10e: 台詞も `{{key}}` を絵に差し替える（会話で道具の名を出す看板・NPC 用）。
+		iconText(dialogTextEl, dialogLines[dialogLineIdx] ?? '', 18);
 		const isLast = dialogLineIdx >= dialogLines.length - 1;
 		document.getElementById('dialog-next').textContent =
 			isLast ? '▼ 閉じる（Spaceキー）' : '▼ 次へ（Spaceキー）';
@@ -299,29 +326,9 @@ export function createUi(deps) {
 				div.className = `pause-item-slot${i === pauseItemIdx ? ' selected' : ''}`;
 				const iconDiv = document.createElement('div');
 				iconDiv.className = 'pause-item-icon';
-				const sprName = meta?.sprite;
-				const palName = meta?.pal ?? sprName;
-				if (sprName && SPRITES[sprName]) {
-					const frames  = SPRITES[sprName];
-					const palette = PAL[palName] || PAL[sprName] || PAL.hero;
-					const cv = document.createElement('canvas');
-					cv.style.cssText = 'width:24px;height:24px;image-rendering:pixelated;display:block;';
-					const grid = frames[0];
-					cv.width  = grid[0].length;
-					cv.height = grid.length;
-					const ctx = cv.getContext('2d');
-					for (let rr = 0; rr < grid.length; rr++) {
-						for (let cc = 0; cc < grid[0].length; cc++) {
-							const idx = grid[rr][cc];
-							if (idx === 0) continue;
-							ctx.fillStyle = palette[idx] ?? 'transparent';
-							ctx.fillRect(cc, rr, 1, 1);
-						}
-					}
-					iconDiv.appendChild(cv);
-				} else {
-					iconDiv.textContent = meta?.icon ?? id;
-				}
+				const cv = subItemIconCanvas(id, player, 24);
+				if (cv) iconDiv.appendChild(cv);
+				else iconDiv.textContent = meta?.icon ?? id;
 				div.appendChild(iconDiv);
 				const nameDiv = document.createElement('div');
 				nameDiv.className = 'pause-item-name';
@@ -339,46 +346,35 @@ export function createUi(deps) {
 			}
 		}
 
-		const swordLabel  = player.weapon ? `⚔${player._equip?.swordName ?? '剣'}(ATK${player.atk})` : '⚔なし';
-		const armorLabel  = player.armor  ? `⚚${player._equip?.armorName ?? '防具'}(DEF${player.def})` : '⚚なし';
-		const shieldLabel = player.shield ? `🛡${player._equip?.shieldName ?? 'たて'}` : '🛡なし';
-
 		pauseStatsEl.innerHTML = '';
 		const heartRow = document.createElement('div');
 		heartRow.style.cssText = 'display:flex;align-items:center;gap:2px;margin-bottom:4px;';
 		for (let i = 0; i < player.maxHearts; i++) {
-			const hpForThis = player.hp - i * HP_PER_HEART;
-			let sprName, palName;
-			if (hpForThis >= HP_PER_HEART) {
-				sprName = 'heart'; palName = 'heart';
-			} else if (hpForThis === 1) {
-				sprName = 'heartHalf'; palName = 'heartHalf';
-			} else {
-				sprName = 'heartEmpty'; palName = 'heartEmpty';
-			}
-			const frames = SPRITES[sprName];
-			const palette = PAL[palName];
-			if (frames && palette) {
-				const grid = frames[0];
-				const cv = document.createElement('canvas');
-				cv.width  = grid[0].length;
-				cv.height = grid.length;
-				cv.style.cssText = `width:${HEART_ICON_PX}px;height:${HEART_ICON_PX}px;image-rendering:pixelated;display:inline-block;flex-shrink:0;`;
-				const ctx = cv.getContext('2d');
-				for (let rr = 0; rr < grid.length; rr++) {
-					for (let cc = 0; cc < grid[0].length; cc++) {
-						const idx = grid[rr][cc];
-						if (idx === 0) continue;
-						ctx.fillStyle = palette[idx] ?? 'transparent';
-						ctx.fillRect(cc, rr, 1, 1);
-					}
-				}
-				heartRow.appendChild(cv);
-			}
+			const cv = heartIconCanvas(player.hp - i * HP_PER_HEART);
+			if (cv) heartRow.appendChild(cv);
 		}
 		pauseStatsEl.appendChild(heartRow);
+
+		// 所持金・装備の行（10e）＝絵文字の代わりに絵（canvas）を混ぜる。
+		// 装備の絵はティアの色（木／銀…）になる∴equipIconCanvas を通す。
 		const statsLine = document.createElement('div');
-		statsLine.textContent = `💰${player.rupees}　${swordLabel}　${armorLabel}　${shieldLabel}`;
+		statsLine.style.cssText = 'display:flex;align-items:center;gap:2px;flex-wrap:wrap;';
+		const putIcon = (cv, fallback) => {
+			if (cv) statsLine.appendChild(cv);
+			else statsLine.appendChild(document.createTextNode(fallback));
+		};
+		const putText = (t) => statsLine.appendChild(document.createTextNode(t));
+		putIcon(iconCanvas('rupee', 16), '💰');
+		putText(`${player.rupees}　`);
+		const equipLabels = [
+			['sword',  player.weapon, player.weapon ? `${player._equip?.swordName ?? '剣'}(ATK${player.atk})` : 'なし', '⚔'],
+			['armor',  player.armor,  player.armor  ? `${player._equip?.armorName ?? '防具'}(DEF${player.def})` : 'なし', '⚚'],
+			['shield', player.shield, player.shield ? `${player._equip?.shieldName ?? 'たて'}` : 'なし', '🛡'],
+		];
+		for (const [kind, , label, emoji] of equipLabels) {
+			putIcon(equipIconCanvas(kind, player, 16), emoji);
+			putText(`${label}　`);
+		}
 		pauseStatsEl.appendChild(statsLine);
 		renderPauseDungeonMap();
 	}
@@ -510,14 +506,27 @@ export function createUi(deps) {
 		shopGoods.forEach((g, i) => {
 			const meta = ITEM_META[g.id];
 			const price = g.gacha ? g.gacha.price : g.price;
-			const icon = meta?.icon ?? (g.gacha ? '🎲' : g.id);
 			const name = g.name ?? meta?.name ?? g.id;
 			const row  = document.createElement('div');
 			const canBuy = player.rupees >= price;
 			row.className = `shop-item-row${i === shopIdx ? ' selected' : ''}${canBuy ? '' : ' cannot-afford'}`;
-			row.innerHTML = `<span class="shop-item-icon">${icon}</span>
-				<span class="shop-item-name">${name}${g.count ? ` ×${g.count}` : ''}</span>
-				<span class="shop-item-price">💰${price}</span>`;
+			// 10e: 絵文字ではなく絵（canvas）を並べる。innerHTML では canvas を差せない∴
+			// DOM を組む（品名は `g.name` にステージ由来の文字列が入る∴HTML 埋め込みも避けたい）。
+			const iconSpan = document.createElement('span');
+			iconSpan.className = 'shop-item-icon';
+			const iconCv = g.gacha ? iconCanvas('dice', 22) : subItemIconCanvas(g.id, player, 22);
+			if (iconCv) iconSpan.appendChild(iconCv);
+			else iconSpan.textContent = meta?.icon ?? (g.gacha ? '🎲' : g.id);
+			const nameSpan = document.createElement('span');
+			nameSpan.className = 'shop-item-name';
+			nameSpan.textContent = `${name}${g.count ? ` ×${g.count}` : ''}`;
+			const priceSpan = document.createElement('span');
+			priceSpan.className = 'shop-item-price';
+			const priceCv = iconCanvas('rupee', 16);
+			if (priceCv) priceSpan.appendChild(priceCv);
+			else priceSpan.appendChild(document.createTextNode('💰'));
+			priceSpan.appendChild(document.createTextNode(String(price)));
+			row.append(iconSpan, nameSpan, priceSpan);
 			row.addEventListener('click', () => { shopIdx = i; renderShop(); shopBuy(); });
 			shopItemsEl.appendChild(row);
 		});

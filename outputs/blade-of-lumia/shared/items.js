@@ -84,15 +84,21 @@ export const BOOMERANG_TIERS = [
 ];
 
 // ── ITEM_META: サブアイテム定義 ───────────────────────────────
+// 🔴 `sprite` / `pal` は **SPRITES / PAL に実在する名前**を書くこと。
+//    2026-09-09（10e）までは bomb / healPotion / dungeonMap / ladder など6件が実在しない
+//    名前で、読み手（`game/ui.js` のポーズのアイテム一覧・`editor/editor-item.js`）が
+//    黙って `icon`（絵文字）に落ちていた＝「絵はあるのに出ない」事故。
+//    実在の確認＝`node -e "import('./shared/sprites.js').then(({SPRITES,PAL})=>…)"` で
+//    両方を引く（`icon` があるせいで欠落が例外にならない∴目で見ても気づけない）。
 export const ITEM_META = {
 	boomerang: {
-		name: 'ブーメラン', icon: '🪃', sprite: 'boomerang',
+		name: 'ブーメラン', icon: '🪃', sprite: 'boomerang', pal: 'boomerang',
 		type: 'throwable',
 		breakPower: 0,
 		uses: Infinity,    // 回数無制限（戻ってきたら再使用可）
 	},
 	bomb: {
-		name: '爆弾', icon: '💣', sprite: 'bomb',
+		name: '爆弾', icon: '💣', sprite: 'bombItem', pal: 'bombItem',
 		type: 'placeable',
 		breakPower: 3,
 		aoeRadius: 2,      // 爆風半径（セル）
@@ -100,20 +106,20 @@ export const ITEM_META = {
 		uses: null,        // スタック数で管理
 	},
 	bow: {
-		name: '弓矢', icon: '🏹', sprite: 'arrow',
+		name: '弓矢', icon: '🏹', sprite: 'bow', pal: 'bow',
 		type: 'throwable',
 		breakPower: 0,
 		piercing: true,    // 貫通
 		uses: null,
 	},
 	healPotion: {
-		name: '回復薬（小）', icon: '🧪', sprite: 'healPotion',
+		name: '回復薬（小）', icon: '🧪', sprite: 'potion', pal: 'potion',
 		type: 'consumable',
 		healAmount: 5,
 		uses: null,
 	},
 	bigHealPotion: {
-		name: '回復薬（大）', icon: '💊', sprite: 'bigHealPotion',
+		name: '回復薬（大）', icon: '💊', sprite: 'bigHealPotion', pal: 'potionBig',
 		type: 'consumable',
 		healAmount: 999,   // HP 全回復
 		uses: null,
@@ -124,14 +130,14 @@ export const ITEM_META = {
 		// `player.dungeonItems[layer]` に立てる）。`giveSubItem()` の passive 分岐は
 		// この2つを扱わない∴宝箱に指定すると「手に入れた！」と出るだけで何も起きない。
 		// 宝箱から渡したくなったら先に `giveSubItem` を直す（この旗も外す）。
-		name: '地図', icon: '🗺', sprite: 'dungeonMap',
+		name: '地図', icon: '🗺', sprite: 'dmap', pal: 'dmap',
 		type: 'passive',
 		grantable: false,
 		uses: null,
 	},
 	compass: {
 		// ⚠️ 宝箱・報酬からは渡せない（上の `dungeonMap` と同じ理由）。
-		name: 'コンパス', icon: '🧭', sprite: 'compass',
+		name: 'コンパス', icon: '🧭', sprite: 'compass', pal: 'compass',
 		type: 'passive',
 		grantable: false,
 		uses: null,
@@ -167,21 +173,21 @@ export const ITEM_META = {
 		// Phase 4-1: はしご。所持しているだけで効果を発揮する「自動わたり」装備。
 		// サブアイテムスロットでは使わず player.hasLadder フラグで管理する
 		// （hasWingRobe と同型）。両隣が地上の水/穴を1セルだけ自動で渡れる。
-		name: 'はしご', icon: '🪜', sprite: 'ladder', pal: 'ladder',
+		name: 'はしご', icon: '🪜', sprite: 'ladderV', pal: 'ladder',
 		type: 'passive',
 		uses: null,
 	},
 	quiver: {
 		// Phase 9-5a: 矢筒。所持するだけで矢の上限 +8（player.maxArrows+=8）。
 		// 最大3個配置 → 上限 8+8+8+8=32。heartContainer/ladder と同型の passive。
-		name: '矢筒', icon: '🏹', sprite: 'arrow',
+		name: '矢筒', icon: '🏹', sprite: 'arrow', pal: 'arrow',
 		type: 'passive',
 		uses: null,
 	},
 	bombBag: {
 		// Phase 9-5a: 爆弾袋。所持するだけで爆弾の上限 +8（player.maxBombs+=8）。
 		// 最大3個配置 → 上限 8+8+8+8=32。heartContainer/ladder と同型の passive。
-		name: '爆弾袋', icon: '💣', sprite: 'bomb',
+		name: '爆弾袋', icon: '💣', sprite: 'bombItem', pal: 'bombItem',
 		type: 'passive',
 		uses: null,
 	},
@@ -197,17 +203,20 @@ export const ATTACK_BREAK_POWER = {
 };
 
 // ── 装備メタ ────────────────────────────────────────────────────
+// sprite / pal（10e で追加）＝HUD・ポーズの装備欄に出す絵。`pal` は**ティア未所持時の
+// 既定**で、持っている時は SWORD_TIERS / SHIELD_TIERS / ARMOR_TIERS の `pal` で上書きする
+// （形は共通・色だけティアで変わる＝SHIELD_TIERS の注記と同じ作法）。
 export const EQUIP_META = {
 	sword: {
-		name: '剣', icon: '⚔', slot: 'weapon',
+		name: '剣', icon: '⚔', slot: 'weapon', sprite: 'sword', pal: 'swordWood',
 		atkBonus: 2,
 	},
 	shield: {
-		name: 'たて', icon: '🛡', slot: 'shield',
+		name: 'たて', icon: '🛡', slot: 'shield', sprite: 'shield', pal: 'shieldWood',
 		damageReduction: 0.5,  // 防御中ダメージ50%軽減
 	},
 	armor: {
-		name: '防具', icon: '⚚', slot: 'armor',
+		name: '防具', icon: '⚚', slot: 'armor', sprite: 'armor', pal: 'armorCloth',
 		defBonus: 2,
 	},
 };

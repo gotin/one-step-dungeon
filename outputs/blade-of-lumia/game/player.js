@@ -7,6 +7,7 @@ import { statefulTileClosed } from './passable.js';
 import { ITEM_META, EQUIP_META, SWORD_TIERS, BASE_ATK, ARMOR_TIERS, BASE_DEF, SHIELD_TIERS, BOOMERANG_TIERS } from '../shared/items.js';
 import { NPC_SPRITE_MAP } from '../shared/npcs.js';
 import { SPRITES, PAL, makeSprite } from '../shared/sprites.js';
+import { iconCanvas } from '../shared/ui-icons.js';
 import { playSound, resumeAudio } from '../shared/sounds.js';
 import {
 	MOVE_STEP, DIR_DELTA, STONE_PUSH_COOLDOWN_MS, SWORD_COOLDOWN_MS, HP_PER_HEART,
@@ -172,14 +173,14 @@ export function createPlayer(deps) {
 		const player = getPlayer();
 		if (getIsDialog() || getIsPaused() || getIsGameover() || getIsTransitioning()) return;
 		if (!player.hasWingRobe) {
-			pulse('🪽 翼の羽衣を まだ持っていない', 1800);
+			pulse('{{wingRobe}} 翼の羽衣を まだ持っていない', 1800);
 			return;
 		}
 		if (!player.flying) {
 			// 離陸
 			player.flying = true;
 			playSound('item');
-			pulse('🪽 翼の羽衣で 空へ舞い上がった！', 1800);
+			pulse('{{wingRobe}} 翼の羽衣で 空へ舞い上がった！', 1800);
 			renderChars(); updateHud(); saveGame();
 			return;
 		}
@@ -191,7 +192,7 @@ export function createPlayer(deps) {
 		}
 		player.flying = false;
 		playSound('move');
-		pulse('🪽 地上に 降り立った', 1500);
+		pulse('{{wingRobe}} 地上に 降り立った', 1500);
 		renderChars(); updateHud(); saveGame();
 	}
 
@@ -248,7 +249,7 @@ export function createPlayer(deps) {
 		if (ss.openedDoors?.has(`${nr},${nc}`)) return true;
 
 		if (player.keys <= 0) {
-			pulse('🗝 鍵がない！', 1500);
+			pulse('{{key}} 鍵がない！', 1500);
 			return false;
 		}
 		player.keys--;
@@ -260,7 +261,7 @@ export function createPlayer(deps) {
 		}
 
 		playSound('gateOpen');
-		pulse('🗝 扉を開けた！', 1500);
+		pulse('{{key}} 扉を開けた！', 1500);
 		renderBoard(); renderChars(); updateHud(); saveGame();
 		return true;
 	}
@@ -803,10 +804,10 @@ export function createPlayer(deps) {
 		const content = stageData.chestContents?.[posKey];
 		if (content) {
 			const msg = grantReward(content);
-			// 渡せない指定（未知の type／渡せない item）は空文字が返る＝「☐ 」だけの
+			// 渡せない指定（未知の type／渡せない item）は空文字が返る＝宝箱の絵だけの
 			// 無言の泡を出さず、空箱と同じ文にする（指定の間違いはテストで赤くする側）。
-			pulse(msg ? `☐ ${msg}` : '☐ 宝箱は空だった…');
-		} else { pulse('☐ 宝箱は空だった…'); }
+			pulse(msg ? `{{chest}} ${msg}` : '{{chest}} 宝箱は空だった…');
+		} else { pulse('{{chest}} 宝箱は空だった…'); }
 		renderBoard(); renderChars(); updateHud(); saveGame();
 	}
 
@@ -821,10 +822,10 @@ export function createPlayer(deps) {
 		}
 		if (tile === TILE.ITEM_DUNGEON_MAP) {
 			player.dungeonItems[getCurrentLayer()].hasMap = true;
-			playSound('item'); pulse('🗺 ダンジョンの地図を手に入れた！');
+			playSound('item'); pulse('{{map}} ダンジョンの地図を手に入れた！');
 		} else if (tile === TILE.ITEM_COMPASS) {
 			player.dungeonItems[getCurrentLayer()].hasCompass = true;
-			playSound('item'); pulse('🧭 コンパスを手に入れた！');
+			playSound('item'); pulse('{{compass}} コンパスを手に入れた！');
 		}
 		deps.updateDungeonHud(getCurrentLayer());
 		renderBoard(); renderChars(); updateHud(); saveGame();
@@ -851,7 +852,7 @@ export function createPlayer(deps) {
 			const keyCond = stageData.showConditions?.[posKey];
 			if (keyCond && !ss.conditionsMet.has(posKey)) return;
 			ss.pickedKeys.add(posKey); player.keys++;
-			playSound('key'); pulse('🗝 鍵を手に入れた！');
+			playSound('key'); pulse('{{key}} 鍵を手に入れた！');
 			renderBoard(); renderChars(); updateHud(); saveGame(); return;
 		}
 		if (tile === TILE.BUTTON) {
@@ -869,10 +870,10 @@ export function createPlayer(deps) {
 			const tierIndex = stageData.floorItems?.[posKey]?.swordTier ?? 0;
 			if (equipSwordTier(tierIndex)) {
 				const tier = SWORD_TIERS[tierIndex];
-				playSound('item'); pulse(`⚔ ${tier.name}を手に入れた！（ATK+${tier.atk}）`);
+				playSound('item'); pulse(`{{sword}} ${tier.name}を手に入れた！（ATK+${tier.atk}）`);
 			} else {
 				const tier = SWORD_TIERS[tierIndex];
-				playSound('item'); pulse(`⚔ ${tier?.name ?? '剣'}を拾った（今の剣の方が強い）`);
+				playSound('item'); pulse(`{{sword}} ${tier?.name ?? '剣'}を拾った（今の剣の方が強い）`);
 			}
 			renderBoard(); renderChars(); updateHud(); saveGame(); return;
 		}
@@ -881,10 +882,10 @@ export function createPlayer(deps) {
 			const tierIndex = stageData.floorItems?.[posKey]?.shieldTier ?? 0;
 			if (equipShieldTier(tierIndex)) {
 				const tier = SHIELD_TIERS[tierIndex];
-				playSound('item'); pulse(`🛡 ${tier.name}を手に入れた！`);
+				playSound('item'); pulse(`{{shield}} ${tier.name}を手に入れた！`);
 			} else {
 				const tier = SHIELD_TIERS[tierIndex];
-				playSound('item'); pulse(`🛡 ${tier?.name ?? 'たて'}を拾った（今の盾の方が強い）`);
+				playSound('item'); pulse(`{{shield}} ${tier?.name ?? 'たて'}を拾った（今の盾の方が強い）`);
 			}
 			renderBoard(); renderChars(); updateHud(); saveGame(); return;
 		}
@@ -893,10 +894,10 @@ export function createPlayer(deps) {
 			const tierIndex = stageData.floorItems?.[posKey]?.armorTier ?? 0;
 			if (equipArmorTier(tierIndex)) {
 				const tier = ARMOR_TIERS[tierIndex];
-				playSound('item'); pulse(`⚚ ${tier.name}を手に入れた！（DEF+${tier.def}）`);
+				playSound('item'); pulse(`{{armor}} ${tier.name}を手に入れた！（DEF+${tier.def}）`);
 			} else {
 				const tier = ARMOR_TIERS[tierIndex];
-				playSound('item'); pulse(`⚚ ${tier?.name ?? '防具'}を拾った（今の防具の方が強い）`);
+				playSound('item'); pulse(`{{armor}} ${tier?.name ?? '防具'}を拾った（今の防具の方が強い）`);
 			}
 			renderBoard(); renderChars(); updateHud(); saveGame(); return;
 		}
@@ -907,9 +908,9 @@ export function createPlayer(deps) {
 			const tierIndex = stageData.floorItems?.[posKey]?.boomerangTier ?? 0;
 			const tier = BOOMERANG_TIERS[tierIndex];
 			if (equipBoomerangTier(tierIndex)) {
-				playSound('item'); maybeShowSubItemHint(); pulse(`🪃 ${tier.name}を手に入れた！`);
+				playSound('item'); maybeShowSubItemHint(); pulse(`{{boomerang}} ${tier.name}を手に入れた！`);
 			} else {
-				playSound('item'); maybeShowSubItemHint(); pulse(`🪃 ${tier?.name ?? 'ブーメラン'}を拾った（今のブーメランの方が強い）`);
+				playSound('item'); maybeShowSubItemHint(); pulse(`{{boomerang}} ${tier?.name ?? 'ブーメラン'}を拾った（今のブーメランの方が強い）`);
 			}
 			renderBoard(); renderChars(); updateHud(); saveGame();
 			return;
@@ -922,10 +923,10 @@ export function createPlayer(deps) {
 			const prevB = player.subItems.bomb.count;
 			player.subItems.bomb.count = Math.min(prevB + bombCount, maxB);
 			if (player.subItems.bomb.count <= prevB) {
-				pulse('💣 もう持てない！'); renderBoard(); renderChars(); updateHud(); saveGame(); return;
+				pulse('{{bomb}} もう持てない！'); renderBoard(); renderChars(); updateHud(); saveGame(); return;
 			}
 			if (!player.activeSubItem) player.activeSubItem = 'bomb';
-			playSound('item'); maybeShowSubItemHint(); pulse(`💣 爆弾 ×${bombCount} を手に入れた！`);
+			playSound('item'); maybeShowSubItemHint(); pulse(`{{bomb}} 爆弾 ×${bombCount} を手に入れた！`);
 			renderBoard(); renderChars(); updateHud(); saveGame();
 			return;
 		}
@@ -937,45 +938,45 @@ export function createPlayer(deps) {
 			const prevA = player.subItems.bow.count;
 			player.subItems.bow.count = Math.min(prevA + arrowCount, maxA);
 			if (player.subItems.bow.count <= prevA) {
-				pulse('🏹 もう持てない！'); renderBoard(); renderChars(); updateHud(); saveGame(); return;
+				pulse('{{bow}} もう持てない！'); renderBoard(); renderChars(); updateHud(); saveGame(); return;
 			}
 			if (!player.activeSubItem) player.activeSubItem = 'bow';
-			playSound('item'); maybeShowSubItemHint(); pulse(`🏹 弓矢 ×${arrowCount} を手に入れた！`);
+			playSound('item'); maybeShowSubItemHint(); pulse(`{{bow}} 弓矢 ×${arrowCount} を手に入れた！`);
 			renderBoard(); renderChars(); updateHud(); saveGame();
 			return;
 		}
 		if (tile === TILE.ITEM_HEAL_POTION && !ss.pickedKeys.has(posKey)) {
 			ss.pickedKeys.add(posKey);
 			giveSubItem('healPotion');
-			playSound('item'); pulse('🧪 回復薬（小）を手に入れた！');
+			playSound('item'); pulse('{{potion}} 回復薬（小）を手に入れた！');
 			renderBoard(); renderChars(); updateHud(); saveGame(); return;
 		}
 		if (tile === TILE.ITEM_BIG_HEAL_POTION && !ss.pickedKeys.has(posKey)) {
 			ss.pickedKeys.add(posKey);
 			giveSubItem('bigHealPotion');
-			playSound('item'); pulse('💊 回復薬（大）を手に入れた！');
+			playSound('item'); pulse('{{potionBig}} 回復薬（大）を手に入れた！');
 			renderBoard(); renderChars(); updateHud(); saveGame(); return;
 		}
 		if (tile === TILE.ITEM_HEART_CONTAINER && !ss.pickedKeys.has(posKey)) {
 			ss.pickedKeys.add(posKey);
 			gainHeartContainer();
-			playSound('item'); pulse('❤ ハートの器を手に入れた！');
+			playSound('item'); pulse('{{heart}} ハートの器を手に入れた！');
 			renderBoard(); renderChars(); updateHud(); saveGame(); return;
 		}
 		if (tile === TILE.ITEM_RUPEE && !ss.pickedKeys.has(posKey)) {
 			ss.pickedKeys.add(posKey); player.rupees += 1;
-			playSound('rupee'); pulse('◆ ルピー ×1');
+			playSound('rupee'); pulse('{{rupee}} ルピー ×1');
 			renderBoard(); renderChars(); updateHud(); saveGame(); return;
 		}
 		if (tile === TILE.ITEM_RUPEE_LARGE && !ss.pickedKeys.has(posKey)) {
 			ss.pickedKeys.add(posKey); player.rupees += 5;
-			playSound('rupee'); pulse('◇ ルピー ×5');
+			playSound('rupee'); pulse('{{rupeeBlue}} ルピー ×5');
 			renderBoard(); renderChars(); updateHud(); saveGame(); return;
 		}
 		if (tile === TILE.ITEM_TRIFORCE_PIECE && !ss.pickedKeys.has(posKey)) {
 			ss.pickedKeys.add(posKey); player.triforceCount++;
 			console.log(`[TRIFORCE] handleTileEvent: ITEM_TRIFORCE_PIECE picked at ${posKey}, triforceCount=${player.triforceCount}`);
-			playSound('item'); pulse('◭ 星の欠片を手に入れた！');
+			playSound('item'); pulse('{{triforce}} 星の欠片を手に入れた！');
 			renderBoard(); renderChars(); updateHud(); saveGame();
 			checkTriforceClear();
 			return;
@@ -1034,11 +1035,11 @@ export function createPlayer(deps) {
 
 		let info = null;
 		if (tile === TILE.KEY) {
-			info = { keys: 1, rupees: 0, spr: 'key',   pal: 'key',       sound: 'key',   msg: '🪃🗝 ブーメランが鍵を持ち帰った！' };
+			info = { keys: 1, rupees: 0, spr: 'key',   pal: 'key',       sound: 'key',   msg: '{{boomerang}}{{key}} ブーメランが鍵を持ち帰った！' };
 		} else if (tile === TILE.ITEM_RUPEE) {
-			info = { keys: 0, rupees: 1, spr: 'rupee', pal: 'rupee',     sound: 'rupee', msg: '🪃◆ ブーメランがルピーを持ち帰った！' };
+			info = { keys: 0, rupees: 1, spr: 'rupee', pal: 'rupee',     sound: 'rupee', msg: '{{boomerang}}{{rupee}} ブーメランがルピーを持ち帰った！' };
 		} else if (tile === TILE.ITEM_RUPEE_LARGE) {
-			info = { keys: 0, rupees: 5, spr: 'rupee', pal: 'rupeeBlue', sound: 'rupee', msg: '🪃◇ ブーメランがルピー×5を持ち帰った！' };
+			info = { keys: 0, rupees: 5, spr: 'rupee', pal: 'rupeeBlue', sound: 'rupee', msg: '{{boomerang}}{{rupeeBlue}} ブーメランがルピー×5を持ち帰った！' };
 		}
 		if (!info) return null;
 
@@ -1068,7 +1069,10 @@ export function createPlayer(deps) {
 	function restoreCarried(carried) { carried?.restore?.(); }
 
 	// ── ドロップエフェクト ────────────────────────────────
-	function spawnDropEffect(r, c, icon, color) {
+	// 10e: `iconKey` は shared/ui-icons.js UI_ICON のキー（'heart' / 'rupee' …）。
+	// 絵文字ではなくアイテムと同じ絵を浮かせる＝「同じ物は同じ絵」（絵が引けない時だけ
+	// `fallbackText` の文字を出す）。
+	function spawnDropEffect(r, c, iconKey, color, fallbackText = '') {
 		const charLayerEl = getCharLayerEl();
 		if (!charLayerEl) return;
 		const cellPx = getCellPx();
@@ -1084,7 +1088,9 @@ export function createPlayer(deps) {
 			pointer-events:none;
 			animation:drop-popup 0.6s ease-out forwards;
 		`;
-		el.textContent = icon;
+		const cv = iconCanvas(iconKey, Math.round(cellPx * 0.55));
+		if (cv) { cv.style.position = 'static'; cv.style.transform = 'none'; el.appendChild(cv); }
+		else el.textContent = fallbackText || iconKey;
 		charLayerEl.appendChild(el);
 		setTimeout(() => el.remove(), 650);
 	}

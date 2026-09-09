@@ -16,6 +16,7 @@ import { initSpriteEditor, onLeaveSpriteEditor } from './editor-sprite.js';
 import { initCharacterEditor, onLeaveCharacterEditor } from './editor-character.js';
 import { initItemEditor, onLeaveItemEditor } from './editor-item.js';
 import { initTileEditor, onLeaveTileEditor } from './editor-tile.js';
+import { mountIconEls } from '../shared/ui-icons.js';
 
 const viewSpriteEl = document.getElementById('view-sprite');
 const tabSpriteEl  = document.getElementById('tab-sprite');
@@ -189,6 +190,8 @@ startAnimLoop(() => {
 
 // ── 初期化 ────────────────────────────────────────────────────
 function init() {
+	// 静的 HTML の `data-icon` を絵に差し替える（10e）。動的に作る所は各 render 側で呼ぶ。
+	mountIconEls(document);
 	buildTilePalette(updateToolButtons);
 	updateToolButtons();
 	initSpriteEditor();

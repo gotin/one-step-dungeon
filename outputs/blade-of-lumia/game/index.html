@@ -21,16 +21,19 @@
     </div>
     <div id="hud-right">
       <div id="hud-equip">
-        <span id="hud-equip-sword" class="equip-slot" title="剣">⚔</span>
-        <span id="hud-equip-shield" class="equip-slot" title="たて">🛡</span>
-        <span id="hud-equip-armor" class="equip-slot" title="防具">⚚</span>
+        <!-- data-icon＝shared/ui-icons.js が起動時に絵（canvas）へ差し替える。
+             中の絵文字は「絵が引けなかった時の保険」で残している（10e）。
+             大きさは CSS 変数 --hud-icon（game/css/hud.css）＝文字と同じ単位で伸縮する（10e-2）。 -->
+        <span id="hud-equip-sword" class="equip-slot" title="剣" data-icon="sword" data-icon-px="var(--hud-icon)">⚔</span>
+        <span id="hud-equip-shield" class="equip-slot" title="たて" data-icon="shield" data-icon-px="var(--hud-icon)">🛡</span>
+        <span id="hud-equip-armor" class="equip-slot" title="防具" data-icon="armor" data-icon-px="var(--hud-icon)">⚚</span>
       </div>
       <div id="hud-sub-item">
         <span id="hud-sub-label">SUB:</span>
         <span id="hud-sub-icon">—</span>
         <span id="hud-sub-count"></span>
       </div>
-      <div id="hud-wallet">💰<span id="hud-rupees">0</span>　◭<span id="hud-triforce">0</span></div>
+      <div id="hud-wallet"><span data-icon="rupee" data-icon-px="var(--hud-icon)">💰</span><span id="hud-rupees">0</span>　<span data-icon="triforce" data-icon-px="var(--hud-icon)">◭</span><span id="hud-triforce">0</span></div>
     </div>
   </div>
 
@@ -68,9 +71,9 @@
       <div id="pause-stats"></div>
       <!-- ダンジョンマップ（地図入手済みのときのみ表示） -->
       <div id="pause-dungeon-map" class="hidden">
-        <div id="pause-map-title">🗺 ダンジョンマップ</div>
+        <div id="pause-map-title"><span data-icon="map" data-icon-px="18">🗺</span> ダンジョンマップ</div>
         <canvas id="pause-map-canvas"></canvas>
-        <div id="pause-map-hint" class="hidden">🧭 ボス部屋あり</div>
+        <div id="pause-map-hint" class="hidden"><span data-icon="compass" data-icon-px="16">🧭</span> ボス部屋あり</div>
       </div>
     </div>
   </div>
@@ -78,7 +81,7 @@
   <!-- ── タイトル（続きから / はじめから）── -->
   <div id="title-overlay" class="hidden">
     <div id="title-box">
-      <div id="title-logo">⚔ Blade of Lumia</div>
+      <div id="title-logo"><span data-icon="sword" data-icon-px="26">⚔</span> Blade of Lumia</div>
       <div id="title-buttons">
         <button id="btn-continue" class="title-btn">続きから</button>
         <button id="btn-newgame"  class="title-btn title-btn--new">はじめから</button>
@@ -103,7 +106,7 @@
       <div id="shop-title">🏪 みせ</div>
       <div id="shop-items"></div>
       <div id="shop-result" class="hidden"></div>
-      <div id="shop-wallet">💰 <span id="shop-rupees">0</span></div>
+      <div id="shop-wallet"><span data-icon="rupee" data-icon-px="18">💰</span> <span id="shop-rupees">0</span></div>
       <div id="shop-hint">↑↓ で選択　Space/Z で購入　Escape で閉じる</div>
     </div>
   </div>
@@ -150,9 +153,9 @@
     </div>
     <div id="action-btns">
       <button id="btn-sub" class="action-btn">SUB</button>
-      <button id="btn-sword" class="action-btn">⚔</button>
-      <button id="btn-shield" class="action-btn shield-btn">🛡</button>
-      <button id="btn-fly" class="action-btn hidden">🪽</button>
+      <button id="btn-sword" class="action-btn" data-icon="sword" data-icon-px="26">⚔</button>
+      <button id="btn-shield" class="action-btn shield-btn" data-icon="shield" data-icon-px="26">🛡</button>
+      <button id="btn-fly" class="action-btn hidden" data-icon="wingRobe" data-icon-px="26">🪽</button>
       <button id="btn-menu" class="action-btn">MENU</button>
     </div>
   </div>

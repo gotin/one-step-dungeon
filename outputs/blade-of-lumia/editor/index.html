@@ -14,7 +14,10 @@
 <div class="app">
   <!-- ヘッダー -->
   <header class="toolbar">
-    <span class="toolbar-title">⚔ Blade of Lumia Editor</span>
+    <!-- data-icon＝shared/ui-icons.js が起動時に絵（canvas）へ差し替える。中の絵文字は
+         「絵が引けなかった時の保険」で残している（10e）。絵が無い物（📦 入れ物・🎨 パレット・
+         💾 保存など「盤面に無い物」）の絵文字はそのまま残す。 -->
+    <span class="toolbar-title"><span data-icon="sword" data-icon-px="18">⚔</span> Blade of Lumia Editor</span>
     <div class="toolbar-actions">
       <button id="btn-save"    class="btn btn-primary">💾 保存</button>
       <button id="btn-load"    class="btn">📂 読み込み</button>
@@ -128,7 +131,7 @@
 
           <!-- 笛の効果（最上部） -->
           <div class="props-section">
-            <h3 class="panel-title">🎵 笛の効果</h3>
+            <h3 class="panel-title"><span data-icon="flute" data-icon-px="16">🎵</span> 笛の効果</h3>
             <label class="meta-label">タイプ
               <select id="stage-flute-type" class="input-med">
                 <option value="">(なし)</option>
@@ -203,7 +206,7 @@
 
           <!-- 剣・防具のステータス設定 -->
           <div class="props-section">
-            <h2 class="panel-title">⚔ 剣・防具のステータス</h2>
+            <h2 class="panel-title"><span data-icon="sword" data-icon-px="16">⚔</span> 剣・防具のステータス</h2>
             <p class="hint">ATK+/DEF+ ボーナス値を設定</p>
             <div id="equip-flooritems-list" class="links-list"></div>
           </div>
@@ -520,11 +523,11 @@
         </select></label>
         <label>ATK<input id="ps-atk"  type="number" value="10" min="1" max="99" style="width:54px"></label>
         <label>DEF<input id="ps-def"  type="number" value="10" min="0" max="99" style="width:54px"></label>
-        <label>❤ハート<input id="ps-hearts" type="number" value="3" min="1" max="30" style="width:54px"></label>
+        <label><span data-icon="heart" data-icon-px="14">❤</span>ハート<input id="ps-hearts" type="number" value="3" min="1" max="30" style="width:54px"></label>
         <!-- 2026-08-24: 剣ティア。選ぶと ATK は BASE_ATK + ティアの atk で導出され、
              ためビーム（ティア1以上）・貫通（ティア2以上）まで再現される
              ＝上の ATK 欄の値は無視される（「指定なし」なら従来どおり ATK 欄が効く）。 -->
-        <label>⚔ティア<select id="ps-sword" style="width:104px">
+        <label><span data-icon="sword" data-icon-px="14">⚔</span>ティア<select id="ps-sword" style="width:104px">
           <option value="-1">指定なし</option>
           <option value="0">0 木の剣</option>
           <option value="1">1 銅の剣</option>
@@ -532,34 +535,34 @@
           <option value="3">3 聖剣</option>
           <option value="4">4 ルミアの剣</option>
         </select></label>
-        <label>💰ルピー<input id="ps-rupees" type="number" value="10" min="0" max="9999" style="width:70px"></label>
-        <label>◭カケラ<input id="ps-triforce" type="number" value="0" min="0" max="99" style="width:54px"></label>
+        <label><span data-icon="rupee" data-icon-px="14">💰</span>ルピー<input id="ps-rupees" type="number" value="10" min="0" max="9999" style="width:70px"></label>
+        <label><span data-icon="triforce" data-icon-px="14">◭</span>カケラ<input id="ps-triforce" type="number" value="0" min="0" max="99" style="width:54px"></label>
         <!-- 2026-08-25: 盾/防具はチェックボックスからティアのセレクトに変えた。理由＝チェックの
              ON(`1`) が「ティア0」と解釈されていて **ティア1（鉄の盾・鎖かたびら）が指定できず**、
              さらに OFF(`0`) でもティア0 を装備してしまい「外す」が表現できなかった。
              値はそのままティア番号として URL に載る（「なし」なら ps_ を付けない）。 -->
-        <label>🛡盾ティア<select id="ps-shield" style="width:150px">
+        <label><span data-icon="shield" data-icon-px="14">🛡</span>盾ティア<select id="ps-shield" style="width:150px">
           <option value="-1">なし</option>
           <option value="0" selected>0 木の盾</option>
           <option value="1">1 鉄の盾</option>
           <option value="2">2 ミラーシールド</option>
         </select></label>
-        <label>⚚防具ティア<select id="ps-armor" style="width:150px">
+        <label><span data-icon="armor" data-icon-px="14">⚚</span>防具ティア<select id="ps-armor" style="width:150px">
           <option value="-1">なし</option>
           <option value="0" selected>0 布の服</option>
           <option value="1">1 鎖かたびら</option>
           <option value="2">2 伝説の鎧</option>
         </select></label>
-        <label class="ps-check"><input id="ps-weapon" type="checkbox" checked> ⚔ 剣</label>
-        <label class="ps-check"><input id="ps-bow"    type="checkbox" checked> 🏹 弓矢</label>
-        <label class="ps-check"><input id="ps-boomerang" type="checkbox" checked> 🪃 ブーメラン</label>
-        <label class="ps-check"><input id="ps-silverboomerang" type="checkbox"> 🪃 銀のブーメラン</label>
-        <label class="ps-check"><input id="ps-bomb" type="checkbox" checked> 💣 爆弾</label>
-        <label class="ps-check"><input id="ps-flute" type="checkbox" checked> 🎵 笛</label>
-        <label class="ps-check"><input id="ps-candle" type="checkbox" checked> 🕯 ロウソク</label>
-        <label class="ps-check"><input id="ps-ladder" type="checkbox" checked> 🪜 はしご</label>
-        <label class="ps-check"><input id="ps-wingrobe" type="checkbox"> 🪽 翼の羽衣</label>
-        <label class="ps-check"><input id="ps-cleared" type="checkbox"> 👸 姫状態（二周目）</label>
+        <label class="ps-check"><input id="ps-weapon" type="checkbox" checked> <span data-icon="sword" data-icon-px="14">⚔</span> 剣</label>
+        <label class="ps-check"><input id="ps-bow"    type="checkbox" checked> <span data-icon="bow" data-icon-px="14">🏹</span> 弓矢</label>
+        <label class="ps-check"><input id="ps-boomerang" type="checkbox" checked> <span data-icon="boomerang" data-icon-px="14">🪃</span> ブーメラン</label>
+        <label class="ps-check"><input id="ps-silverboomerang" type="checkbox"> <span data-icon="boomerangSilver" data-icon-px="14">🪃</span> 銀のブーメラン</label>
+        <label class="ps-check"><input id="ps-bomb" type="checkbox" checked> <span data-icon="bomb" data-icon-px="14">💣</span> 爆弾</label>
+        <label class="ps-check"><input id="ps-flute" type="checkbox" checked> <span data-icon="flute" data-icon-px="14">🎵</span> 笛</label>
+        <label class="ps-check"><input id="ps-candle" type="checkbox" checked> <span data-icon="candle" data-icon-px="14">🕯</span> ロウソク</label>
+        <label class="ps-check"><input id="ps-ladder" type="checkbox" checked> <span data-icon="ladder" data-icon-px="14">🪜</span> はしご</label>
+        <label class="ps-check"><input id="ps-wingrobe" type="checkbox"> <span data-icon="wingRobe" data-icon-px="14">🪽</span> 翼の羽衣</label>
+        <label class="ps-check"><input id="ps-cleared" type="checkbox"> <span data-icon="princess" data-icon-px="14">👸</span> 姫状態（二周目）</label>
       </div>
       <div class="preview-settings-actions">
         <button id="ps-btn-start" class="btn btn-accent">▶ この設定でプレビュー</button>

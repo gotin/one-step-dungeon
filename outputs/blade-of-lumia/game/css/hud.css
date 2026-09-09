@@ -1,5 +1,17 @@
 /* ── HUD（ゲームボード上オーバーレイ） ────────────────────── */
+/* 絵（canvas）の大きさは JS ではなくここで決める（10e-2）。
+   理由＝HUD の文字は PC で vw 指定（responsive.css）∴絵を固定 px で描くと
+   ビューポートが広いほど文字だけ大きくなり絵が相対的に縮む。CSS 変数にして
+   `data-icon-px="var(--hud-icon)"` で渡せば絵も文字と同じ単位で伸縮する。
+   --hud-icon  … ink 正規化で描く絵（装備3枠・SUBアイテム・ルピー・星の欠片）の見かけの長辺。
+                 SUB: の文字（13px / PC 2.5vw）より少し大きい＝ユーザー確定（2026-09-09）。
+   --hud-heart … ハート3種は固定箱（fit:'box'）で描く∴透明余白を含む箱の一辺。
+                 見かけは箱の約0.53倍（32ドットの絵の ink 比）。
+                 ⚠️ こちらは PC でも vw にしない（10d-3 からの 29px 据え置き）＝横1列に
+                 並ぶ個数に上限が無い∴大きくすると盤面の上段を覆う（responsive.css の注記）。 */
 #hud {
+    --hud-icon: 16px;
+    --hud-heart: 29px;
     display: flex;
     justify-content: space-between;
     align-items: flex-start;

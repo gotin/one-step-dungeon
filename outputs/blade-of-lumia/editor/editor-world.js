@@ -8,6 +8,7 @@ import {
 	worldShardSummaryEl,
 } from './editor-state.js';
 import { TILE_SPRITE_MAP, drawSpriteAt } from './editor-palette.js';
+import { mountIconEls } from '../shared/ui-icons.js';
 
 function minimapBgColor(tileChar) {
 	return TILE_META[tileChar]?.color ?? TILE_META[TILE.FLOOR].color;
@@ -158,7 +159,7 @@ export function updateShardSummary() {
 			<span class="shard-summary-title">★ 星の欠片 合計</span>
 			<span class="shard-summary-total">${total}</span>
 		</div>
-		<div class="shard-summary-sub">直接拾える欠片(◭) ${pieceCount} ＋ ボス撃破で出現 ${bossCount}</div>
+		<div class="shard-summary-sub">直接拾える欠片(<span data-icon="triforce" data-icon-px="14">◭</span>) ${pieceCount} ＋ ボス撃破で出現 ${bossCount}</div>
 		<p class="hint" style="margin:4px 0">この ${total} 個すべて集めると終盤フローが進む（祭壇があれば祭壇へ誘導／無ければ即エンディング）。プレビューの「星の欠片」初期値を ${total} にすると祭壇の挙動を確認できる。</p>
 	`;
 	if (total === 0) {
@@ -166,7 +167,8 @@ export function updateShardSummary() {
 	} else {
 		html += `<ul class="shard-list">`;
 		for (const e of entries) {
-			const icon = e.kind === 'piece' ? '◭' : e.tile;
+			// 欠片は星の欠片の絵（data-icon）／ボスはタイル文字のまま（ボス字に絵は無い）。
+			const icon = e.kind === 'piece' ? '<span data-icon="triforce" data-icon-px="14">◭</span>' : e.tile;
 			html += `<li class="shard-list-item"><span class="shard-list-icon">${icon}</span>`
 				+ `<span class="shard-list-loc">${e.layer} / ${e.stage} / (row ${e.r}, col ${e.c})</span>`
 				+ `<span class="shard-list-kind">${e.label}</span></li>`;
@@ -174,6 +176,7 @@ export function updateShardSummary() {
 		html += `</ul>`;
 	}
 	worldShardSummaryEl.innerHTML = html;
+	mountIconEls(worldShardSummaryEl);
 }
 
 function getWorldSize() {

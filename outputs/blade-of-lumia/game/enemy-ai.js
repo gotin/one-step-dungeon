@@ -5065,7 +5065,7 @@ export function createEnemyAi(deps) {
 		e._stolenRupees = (e._stolenRupees ?? 0) + amount;
 		updateHud?.();
 		playSound('rupee');
-		pulse?.(`◆ ルピー ×${amount} を吸われた！`, 900);
+		pulse?.(`{{rupee}} ルピー ×${amount} を吸われた！`, 900);
 	}
 
 	// 張り付きを剥がす（被弾＝combat.js の被弾フックから／吸うものが無くなったとき）。

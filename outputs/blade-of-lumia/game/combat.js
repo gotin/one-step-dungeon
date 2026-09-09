@@ -265,7 +265,7 @@ export function createCombat(deps) {
 		player.rupees = (player.rupees ?? 0) + back;
 		updateHud();
 		playSound('rupee');
-		pulse(`◆ ルピー ×${back} を取り戻した！`, 1200);
+		pulse(`{{rupee}} ルピー ×${back} を取り戻した！`, 1200);
 	}
 
 	// ── 敵を倒す ──────────────────────────────────────────
@@ -756,13 +756,13 @@ export function createCombat(deps) {
 				if (rand < 0.12) {
 					player.hp = Math.min(player.maxHp, player.hp + 1);
 					updateHud();
-					spawnDropEffect(tr, tc, '❤', '#ff4040');
-					pulse('🌿 ❤ HP+1');
+					spawnDropEffect(tr, tc, 'heart', '#ff4040', '❤');
+					pulse('{{bush}} {{heart}} HP+1');
 				} else if (rand < 0.16) {
 					player.rupees += 1;
 					updateHud();
-					spawnDropEffect(tr, tc, '◆', '#20c040');
-					pulse('🌿 ルピー ×1');
+					spawnDropEffect(tr, tc, 'rupee', '#20c040', '◆');
+					pulse('{{bush}} ルピー ×1');
 				}
 				deps.renderBoard(); deps.renderChars(); saveGame();
 			}

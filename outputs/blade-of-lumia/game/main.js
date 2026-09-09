@@ -4,6 +4,7 @@
 // ゲームロジックは game.js に集約されており、必要な関数を import して使う。
 
 import { applyBgSpriteToCell } from '../shared/sprites.js';
+import { mountIconEls } from '../shared/ui-icons.js';
 import { ENEMY_META } from '../shared/enemies.js';
 import {
 	init,
@@ -54,6 +55,11 @@ import {
 
 // ── アニメーション ────────────────────────────────────────────
 startAnimLoop(() => { redrawAnimSprites(); });
+
+// ── 静的 HTML の絵文字 → 自前スプライト（10e）────────────────────
+// index.html の `data-icon` を持つ要素（装備欄・操作ボタン・財布・タイトルロゴ）を
+// 起動時に一度だけ canvas へ差し替える。init() より前でよい＝DOM は既にある。
+mountIconEls(document);
 
 // ── 起動 ─────────────────────────────────────────────────────
 init().catch(err => {

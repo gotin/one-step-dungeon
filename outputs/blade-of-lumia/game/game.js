@@ -407,23 +407,10 @@ function enterStage(lk, sk, pRow, pCol) {
 }
 
 // ── レイヤー HUD 更新 ─────────────────────────────────────────
-// field/dungeon の区別なく、name が設定されているレイヤーは HUD に表示する
-function updateDungeonHud(lk) {
-	const ld = mapData.layers[lk];
-	const layerName = ld?.name ?? '';
-	if (layerName) {
-		dungeonInfoEl.classList.remove('hidden');
-		dungeonNameEl.textContent = layerName;
-		// 地図・コンパスの所持状況を表示
-		const dm = player.dungeonItems?.[lk];
-		let items = '';
-		if (dm?.hasMap)     items += '🗺';
-		if (dm?.hasCompass) items += '🧭';
-		dungeonItemsEl.textContent = items;
-	} else {
-		dungeonInfoEl.classList.add('hidden');
-	}
-}
+// 実装は ui.js（createUi）にあり、下の UI ブロックで代入される（10e で
+// ここに残っていた旧実装＝絵文字の 🗺🧭 を出す死んだ複製を削除した。
+// モジュール読み込み時に上書きされる∴呼ばれることは無かった）。
+let updateDungeonHud = () => {};
 
 // ── 敵生成 ────────────────────────────────────────────────────
 function buildEnemies(sd, lk, sk) {
@@ -510,7 +497,7 @@ let shopSelectNext   = () => {};
 let shopBuy          = () => {};
 let openDialog       = () => {};
 let maybeShowSubItemHint = () => {};
-// updateDungeonHud は上で function 宣言済みなので let 不要
+// updateDungeonHud は上で let 宣言済み（旧実装の複製を 10e で削除した）
 // ── projectile.js / enemy-ai.js ──
 let addProjectile    = () => {};
 let getProjectiles   = () => [];
@@ -1356,7 +1343,7 @@ function checkStageTransition() {
 		// Phase 1-5: 暗黒の塔の入り口は翼の羽衣がないと通れない（飛行ゲート）。
 		// 入り口自体が空島にあり飛行しないと到達できないが、安全策として明示判定する。
 		if (enter.destId === DARK_TOWER_EXIT_ID && !player.hasWingRobe) {
-			pulse('🪽 翼の羽衣が なければ 暗黒の塔へは 渡れない', 2500);
+			pulse('{{wingRobe}} 翼の羽衣が なければ 暗黒の塔へは 渡れない', 2500);
 			return;
 		}
 		const dest = exitRegistry[enter.destId];
@@ -1470,24 +1457,24 @@ function applyFloorDropEffect(type) {
 		const prev = player.subItems.bomb.count;
 		player.subItems.bomb.count = Math.min(prev + 3, maxB);
 		if (player.subItems.bomb.count > prev) {
-			playSound('item'); pulse('💣 ×3'); updateHud(); saveGame();
+			playSound('item'); pulse('{{bomb}} ×3'); updateHud(); saveGame();
 		}
 	} else if (type === 'arrow') {
 		if (!player.subItems.bow) player.subItems.bow = { count: 0 };
 		const prev = player.subItems.bow.count;
 		player.subItems.bow.count = Math.min(prev + 3, maxA);
 		if (player.subItems.bow.count > prev) {
-			playSound('item'); pulse('🏹 ×3'); updateHud(); saveGame();
+			playSound('item'); pulse('{{arrow}} ×3'); updateHud(); saveGame();
 		}
 	} else if (type === 'heart') {
 		const prev = player.hp;
 		player.hp = Math.min(player.maxHp, player.hp + 1);
 		if (player.hp > prev) {
-			playSound('item'); pulse('❤ HP+1'); updateHud(); saveGame();
+			playSound('item'); pulse('{{heart}} HP+1'); updateHud(); saveGame();
 		}
 	} else if (type === 'rupee') {
 		player.rupees = (player.rupees ?? 0) + 1;
-		playSound('item'); pulse('◆ ルピー ×1'); updateHud(); saveGame();
+		playSound('item'); pulse('{{rupee}} ルピー ×1'); updateHud(); saveGame();
 	}
 }
 
@@ -1600,16 +1587,16 @@ function playFlute() {
 	playSound('flute');  // 魔法の音色（笛の短いメロディ）
 	const fx = stageData?.fluteEffect;
 	if (!fx) {
-		pulse('🎵 不思議な音色が響いた…… 特に何も起きない', 1800);
+		pulse('{{flute}} 不思議な音色が響いた…… 特に何も起きない', 1800);
 		return;
 	}
 	if (fx.type === 'reveal') {
 		const ss = getSS(currentLayer, stageKey);
-		if (ss.flutePlayed) { pulse('🎵 もう何かが現れている', 1500); return; }
+		if (ss.flutePlayed) { pulse('{{flute}} もう何かが現れている', 1500); return; }
 		ss.flutePlayed = true;
 		evaluateConditions();
 		renderBoard(); renderChars();
-		pulse(fx.message ?? '🎵 音色に応えて 何かが現れた！', 2200);
+		pulse(fx.message ?? '{{flute}} 音色に応えて 何かが現れた！', 2200);
 		saveGame();
 		return;
 	}
@@ -1620,11 +1607,11 @@ function playFlute() {
 	if (fx.type === 'resetStones') {
 		const ss = getSS(currentLayer, stageKey);
 		if (!ss.stonePositions || Object.keys(ss.stonePositions).length === 0) {
-			pulse('🎵 音色は響いたが 特に何も起きない', 1800);
+			pulse('{{flute}} 音色は響いたが 特に何も起きない', 1800);
 			return;
 		}
 		if (ss.stonesLocked) {
-			pulse('🎵 音色は響いたが 石はもう動かない', 1800);
+			pulse('{{flute}} 音色は響いたが 石はもう動かない', 1800);
 			return;
 		}
 		const buttons = [];
@@ -1638,7 +1625,7 @@ function playFlute() {
 			return Object.values(ss.stonePositions).some((st) => st.r === br && st.c === bc);
 		});
 		if (allSolved) {
-			pulse('🎵 音色は響いたが 石はもう動かない', 1800);
+			pulse('{{flute}} 音色は響いたが 石はもう動かない', 1800);
 			return;
 		}
 		ss.stonePositions = {};
@@ -1646,7 +1633,7 @@ function playFlute() {
 		refreshGates();
 		evaluateConditions();
 		renderBoard(); renderChars();
-		pulse(fx.message ?? '🎵 音色に応えて 石が元の位置に戻った！', 2200);
+		pulse(fx.message ?? '{{flute}} 音色に応えて 石が元の位置に戻った！', 2200);
 		saveGame();
 		return;
 	}
@@ -1658,13 +1645,13 @@ function playFlute() {
 		} else if (fx.destId) {
 			dest = exitRegistry[fx.destId];
 		}
-		if (!dest) { pulse('🎵 音色は響いたが 行き先が見つからない', 1800); return; }
+		if (!dest) { pulse('{{flute}} 音色は響いたが 行き先が見つからない', 1800); return; }
 		if (isTransitioning) return;
 		isTransitioning = true;
 		showFluteWarpEffect();
 		playSound('stageTransition');
 		saveGame();
-		pulse(fx.message ?? '🎵 竜巻が巻き起こり 運ばれていく！', 2000);
+		pulse(fx.message ?? '{{flute}} 竜巻が巻き起こり 運ばれていく！', 2000);
 		setTimeout(() => {
 			enterStage(dest.layer, dest.stage, dest.row, dest.col);
 			isTransitioning = false;
@@ -1672,7 +1659,7 @@ function playFlute() {
 		}, 400);
 		return;
 	}
-	pulse('🎵 不思議な音色が響いた……', 1800);
+	pulse('{{flute}} 不思議な音色が響いた……', 1800);
 }
 
 // 笛ワープの渦巻き演出（プレイヤーの上に一時 div を出す）
@@ -1718,13 +1705,13 @@ function playCandle() {
 		const ss = getSS(currentLayer, stageKey);
 		if (ss.litTorches.has(posKey)) {
 			showCandleFireEffect(player.x + ndx, player.y + ndy);
-			pulse('🕯 もう火がついている', 1400);
+			pulse('{{candle}} もう火がついている', 1400);
 		} else {
 			ss.litTorches.add(posKey);
 			evaluateConditions();
 			renderBoard(); renderChars();
 			showCandleFireEffect(player.x + ndx, player.y + ndy);
-			pulse('🔥 かがり火に火をつけた！', 1600);
+			pulse('{{torch}} かがり火に火をつけた！', 1600);
 			saveGame();
 		}
 		return;
@@ -1746,7 +1733,7 @@ function playCandle() {
 	// 炎演出は renderBoard/renderChars が charLayerEl を作り直した後に出す
 	// （先に出すと再描画で消えてしまうため）。
 	showCandleFireEffect(player.x + ndx, player.y + ndy);
-	pulse('🔥 茂みが燃え上がった！', 1800);
+	pulse('{{bush}} 茂みが燃え上がった！', 1800);
 	saveGame();
 }
 
@@ -1759,24 +1746,24 @@ function placeFlameAhead(tr, tc, fx, fy) {
 	if (!tilePassable(tr, tc)) {
 		// 従来の一瞬の炎演出だけ出す＝「火は点いたが置き場所がない」が読める。
 		showCandleFireEffect(fx, fy);
-		pulse('🕯 炎が揺らめいた…… ここには置けない', 1600);
+		pulse('{{candle}} 炎が揺らめいた…… ここには置けない', 1600);
 		return;
 	}
 	const result = placeCandleFlame(tr, tc);
 	if (result === 'full') {
 		showCandleFireEffect(fx, fy);
-		pulse(`🕯 炎はもう ${CANDLE_FLAME_MAX} つ燃えている！`, 1600);
+		pulse(`{{candle}} 炎はもう ${CANDLE_FLAME_MAX} つ燃えている！`, 1600);
 		return;
 	}
 	if (result === 'exists') {
-		pulse('🕯 ここはもう燃えている', 1400);
+		pulse('{{candle}} ここはもう燃えている', 1400);
 		return;
 	}
 	if (result === 'burned') {
-		pulse('🔥 炎が敵を焼いた！', 1400);
+		pulse('{{candle}} 炎が敵を焼いた！', 1400);
 		return;
 	}
-	pulse('🔥 炎を置いた（敵が踏めば焼ける）', 1600);
+	pulse('{{candle}} 炎を置いた（敵が踏めば焼ける）', 1600);
 }
 
 // ロウソクの炎演出（前方セルに一時 div を出す）

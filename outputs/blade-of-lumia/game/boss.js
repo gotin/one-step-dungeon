@@ -7,6 +7,7 @@ import { ENEMY_META } from '../shared/enemies.js';
 import { countTriforces } from '../shared/triforce.js';
 import { gameLayerEntries } from '../shared/layers.js';
 import { makeSprite } from '../shared/sprites.js';
+import { mountIconEls } from '../shared/ui-icons.js';
 import { playSound, playBgm, stopBgm } from '../shared/sounds.js';
 import { SAVE_KEY, CLEARED_KEY, ALTAR_EXIT_ID } from './constants.js';
 
@@ -313,7 +314,16 @@ export function createBoss(deps) {
 			z-index:12; pointer-events:none;
 			animation:triforce-pulse 1.5s ease-in-out infinite;
 		`;
-		el.textContent = '◭';
+		// 10e: 盤面に置く欠片は絵文字ではなく配置アイテムと同じ triforce スプライト。
+		const pieceCv = makeSprite('triforce', 'triforce', false);
+		if (pieceCv) {
+			const sz = Math.round(cellPx * 0.8) + 'px';
+			pieceCv.style.setProperty('width',  sz, 'important');
+			pieceCv.style.setProperty('height', sz, 'important');
+			pieceCv.style.setProperty('position', 'static', 'important');
+			pieceCv.style.setProperty('transform', 'none', 'important');
+			el.appendChild(pieceCv);
+		} else el.textContent = '◭';
 		charLayerEl.appendChild(el);
 		setPendingTriforcePieceEl(el);
 	}
@@ -370,7 +380,7 @@ export function createBoss(deps) {
 		const stageData = getStageData();
 		const hasBossDoors = stageData?.tiles?.some(row => row.includes(TILE.DOORWAY_BOSS));
 		unlockBossDoors();
-		if (hasBossDoors) pulse('🔓 扉が開いた！', 2000);
+		if (hasBossDoors) pulse('{{doorOpen}} 扉が開いた！', 2000);
 		// 6. 条件評価
 		evaluateConditions();
 		// 7a. ラスボス（ザーネル）撃破 → エンディングへ（Phase 1-3）
@@ -392,7 +402,7 @@ export function createBoss(deps) {
 		if (dropsTriforce) {
 			spawnTriforcePiece(boss);
 			await sleep(600);
-			pulse('◭ 星の欠片が 現れた！', 3000);
+			pulse('{{triforce}} 星の欠片が 現れた！', 3000);
 			deps.setPendingTriforcePos(null);
 			const tfx = boss.x, tfy = boss.y;
 			setTimeout(() => { deps.setPendingTriforcePos({ x: tfx, y: tfy }); }, 1500);
@@ -473,7 +483,7 @@ export function createBoss(deps) {
 		// 7. 扉を開ける。最後のメッセージは待たない＝ここでループを返してプレイヤーを解放する。
 		const hasBossDoors = stageData?.tiles?.some(row => row.includes(TILE.DOORWAY_BOSS));
 		unlockBossDoors();
-		if (hasBossDoors) pulse('🔓 扉が開いた！', 2000);
+		if (hasBossDoors) pulse('{{doorOpen}} 扉が開いた！', 2000);
 
 		saveGame();
 		setBossDefeating(false);
@@ -565,7 +575,9 @@ export function createBoss(deps) {
 			'Story Writer', 'World Builder', 'Dungeon Architect',
 			'Monster Designer', 'Lore Creator', 'QA Lead', 'Playtester',
 		];
-		let html = `<div class="scroll-game-title">⚔ Blade of Lumia</div>`;
+		// data-icon＝差し込んだ後に mountIconEls() が絵（canvas）へ差し替える（10e。
+		// 中の絵文字は絵が引けなかった時の保険＝index.html のタイトルロゴと同じ作法）。
+		let html = `<div class="scroll-game-title"><span data-icon="sword" data-icon-px="26">⚔</span> Blade of Lumia</div>`;
 		html += `<div class="scroll-subtitle">～ ルミアの剣 ～</div>`;
 		for (const role of roles) {
 			html += `<div class="scroll-role">${role}</div>`;
@@ -612,20 +624,20 @@ export function createBoss(deps) {
 	function offerAtAltar() {
 		const player = getPlayer();
 		if (player.hasWingRobe) {
-			pulse('⛩ 古代の祭壇 …翼の羽衣は すでに授かった', 2500);
+			pulse('{{altar}} 古代の祭壇 …翼の羽衣は すでに授かった', 2500);
 			return;
 		}
 		const total = calcTotalTriforces();
 		if (total <= 0 || player.triforceCount < total) {
 			const remain = Math.max(0, total - player.triforceCount);
-			pulse(`⛩ 古代の祭壇 …星の欠片が ${remain}つ 足りない`, 3000);
+			pulse(`{{altar}} 古代の祭壇 …星の欠片が ${remain}つ 足りない`, 3000);
 			return;
 		}
 		// 全収集 → 翼の羽衣を授かる
 		player.hasWingRobe = true;
 		playSound('fanfare');
 		showAltarLightPillar();
-		pulse('✦ 古代の祭壇が 光り輝いた！「翼の羽衣」を 授かった！', 5000);
+		pulse('{{wingRobe}} 古代の祭壇が 光り輝いた！「翼の羽衣」を 授かった！', 5000);
 		updateHud();
 		saveGame();
 	}
@@ -659,7 +671,7 @@ export function createBoss(deps) {
 			// Phase 1-4 で配置される古代の祭壇へ誘導する。
 			// エンディングはまだ出さず、祭壇で翼の羽衣を授かるよう促す。
 			setTimeout(() => {
-				pulse('✦ すべての星の欠片が 集まった！古代の祭壇へ向かおう', 4500);
+				pulse('{{triforce}} すべての星の欠片が 集まった！古代の祭壇へ向かおう', 4500);
 			}, 800);
 			return;
 		}
@@ -690,7 +702,7 @@ export function createBoss(deps) {
 		player.triforceCount++;
 		console.log(`[TRIFORCE] checkPendingTriforce: collected, triforceCount=${player.triforceCount}`, new Error().stack);
 		playSound('item');
-		pulse('◭ 星の欠片を 手に入れた！', 4000);
+		pulse('{{triforce}} 星の欠片を 手に入れた！', 4000);
 		updateHud();
 		saveGame();
 
@@ -717,6 +729,7 @@ export function createBoss(deps) {
 
 		const scrollEl = document.getElementById('ending-scroll');
 		scrollEl.innerHTML = buildStaffRollHtml();
+		mountIconEls(scrollEl);   // 10e: タイトル行の data-icon を絵に差し替える
 
 		await new Promise(r => {
 			scrollEl.addEventListener('animationend', r, { once: true });
