@@ -21,6 +21,9 @@ export const ITEM_PAL = {
 	shield:   ['transparent','#1a1a20','#2040a0','#4070d0','#c0c030','#ffffff'],
 	// ブーメラン（木・茶）
 	boomerang:['transparent','#2a1a08','#8a5028','#c08040','#e0b060','#ffffff'],
+	// 銀のブーメラン（形は共通・色だけ茶→鋼銀に差し替え＝BOOMERANG_TIERS[1].pal）。
+	// ユーザー指摘（2026-09-09）「銀のブーメランの場合は銀色にしてほしい」。
+	boomerangSilver:['transparent','#12161c','#5a6a76','#9aacb6','#dcebf2','#ffffff'],
 	// やり（鉄・灰）
 	spear:    ['transparent','#1a1a20','#506070','#8090a0','#c0d0e0','#ffffff'],
 	// 石つぶて（灰）

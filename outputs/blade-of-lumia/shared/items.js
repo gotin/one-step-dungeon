@@ -70,13 +70,17 @@ export const SHIELD_TIERS = [
 //   speed    … 飛翔速度（projectile.js boomerangStep が proj.speed を参照）
 //   maxRange … 折り返し距離（同 proj.maxRange を参照）
 // ∴ 発射時に値を差し替えるだけでよく、飛翔ロジックの改変は不要。
+// pal … 飛翔中の見た目（game/projectile.js createProjEl が makeSprite に渡す）。
+// 形状（shared/sprites-obj32.js boomerangGrid）はティア間で共通＝色だけ変える
+// （剣/防具/盾ティアと同じ「形は共通・パレットだけ差し替え」の作法＝SHIELD_TIERS参照）。
 export const BOOMERANG_TIERS = [
 	// index 0: 木のブーメラン（従来の値そのまま＝既存挙動の回帰）
-	{ key: 'wood',   name: 'ブーメラン',     atk: 3, speed: 2.0, maxRange: 3 },
+	{ key: 'wood',   name: 'ブーメラン',     atk: 3, speed: 2.0, maxRange: 3, pal: 'boomerang' },
 	// index 1: 銀のブーメラン（海の主の報酬。速く・遠く・強い）
 	// speed 5.0 ＝ 20.8セル/秒＝弓矢（4.5＝18.8）より速い（ユーザー確定 2026-07-26
 	// 「もっと速くてよさそう」＝3.0 では上位品なのに矢より鈍かった）。
-	{ key: 'silver', name: '銀のブーメラン', atk: 6, speed: 5.0, maxRange: 6 },
+	// pal='boomerangSilver'（ユーザー指摘 2026-09-09＝「銀のブーメランの場合は銀色にしてほしい」）。
+	{ key: 'silver', name: '銀のブーメラン', atk: 6, speed: 5.0, maxRange: 6, pal: 'boomerangSilver' },
 ];
 
 // ── ITEM_META: サブアイテム定義 ───────────────────────────────

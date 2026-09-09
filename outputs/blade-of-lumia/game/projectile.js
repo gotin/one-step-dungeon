@@ -9,7 +9,7 @@ import { ITEM_META } from '../shared/items.js';
 import { makeSprite } from '../shared/sprites.js';
 import { playSound } from '../shared/sounds.js';
 import {
-	MOVE_STEP, BOOMERANG_STUN_MS, ATTACK_POSE_MS,
+	MOVE_STEP, TICK_MS, BOOMERANG_STUN_MS, ATTACK_POSE_MS,
 	CANDLE_FIRE_DMG, CANDLE_FLAME_MS, CANDLE_FLAME_MAX,
 } from './constants.js';
 import { SHIELD_TIERS } from '../shared/items.js';
@@ -30,6 +30,17 @@ const PROJ_SPRITE_SCALE = { boomerang: 1.71, thrownBomb: 1.89 };
 // ブーメランが拾った床ドロップ（rupee/heart/bombItem/arrow）を追従表示するアイコン
 // にも同じ理由の補正が要る（arrow は上と同じ理由で無補正のまま＝係数1）。
 const CARRY_SPRITE_SCALE = { rupee: 1.87, heart: 1.82, bombItem: 1.89 };
+
+// Phase 10d-6: ブーメラン飛翔中の回転周期。「多めに回す」固定値ではなく、実際の
+// 飛距離/速度から求めた往復（投げてから戻ってキャッチされるまで）の実時間を、
+// 往復あたりの回転数（実測して決めた値＝速すぎず遅すぎず）で割って個体ごとに出す。
+// ∴木/銀ブーメラン（speed/maxRangeが違う）・敵の boomerangThrow（速度が atk 設定
+// で変わる）のどれでも自動で追従する（固定 ms を書かない）。
+const BOOMERANG_ROTATIONS_PER_TRIP = 4;
+function boomerangSpinMs(proj) {
+	const roundTripMs = (2 * proj.maxRange) / (proj.speed * MOVE_STEP) * TICK_MS;
+	return Math.max(60, roundTripMs / BOOMERANG_ROTATIONS_PER_TRIP);
+}
 
 /**
  * createProjectile(deps) – factory
@@ -223,7 +234,11 @@ export function createProjectile(deps) {
 			return;
 		}
 
-		const cv = makeSprite(proj.type, proj.type, false);  // 静止表示（アニメなし）
+		// Phase 10d-6b: proj.pal があれば形は共通のままパレットだけ差し替える
+		// （ブーメランのティア＝木/銀。剣/防具/盾ティアと同じ「形共通・色だけ差し替え」の
+		// 作法＝SHIELD_TIERS参照）。proj.pal を持たない投擲物（矢・爆弾等）は proj.type
+		// のまま（既存挙動そのまま）。
+		const cv = makeSprite(proj.type, proj.pal ?? proj.type, false);  // 静止表示（アニメなし）
 		if (cv) {
 			const sz = Math.round(cellPx * 0.35 * (PROJ_SPRITE_SCALE[proj.type] ?? 1)) + 'px';
 			cv.style.setProperty('width',  sz, 'important');
@@ -247,6 +262,13 @@ export function createProjectile(deps) {
 			if (proj.type === 'waterBlade') {
 				const deg = Math.atan2(proj.dy, proj.dx) * 180 / Math.PI;
 				cv.style.setProperty('transform', `translate(-50%,-50%) rotate(${deg}deg)`, 'important');
+			}
+			// Phase 10d-6: ブーメランは飛行中ずっと回転する（実物のブーメランの見た目）。
+			// アウラ（.boomerang-flaming）・運搬アイコン（.boomerang-carry）は別要素＝
+			// この canvas だけに掛けるので回転しない。
+			if (proj.type === 'boomerang') {
+				cv.classList.add('boomerang-spin');
+				cv.style.setProperty('--spin-ms', `${boomerangSpinMs(proj)}ms`);
 			}
 			div.appendChild(cv);
 		}

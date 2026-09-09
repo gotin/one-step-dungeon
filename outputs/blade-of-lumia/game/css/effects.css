@@ -858,6 +858,21 @@
     100% { transform: rotate(900deg) scale(0.1); opacity: 0; }
 }
 
+/* Phase 10d-6: ブーメラン飛翔中の回転（実際のブーメランの見た目）。
+   周期は個体ごとに JS（projectile.js boomerangSpinMs）が --spin-ms で指定する
+   （速度/飛距離から往復時間を算出し、往復あたりの回転数で割った値＝ティア・敵の
+   速度差に自動追従。「多めに回す」固定値ではない）。canvas.sprite 側の
+   `transform: none`（board.css）はアニメーションの transform に自動的に負ける
+   （CSSアニメーションは非 !important の通常宣言より優先される）ので !important は不要。
+   オーラ（.boomerang-flaming）・運搬アイコン（.boomerang-carry）は別要素＝回転の対象外。 */
+.boomerang-spin {
+    animation: boomerang-spin-anim var(--spin-ms, 200ms) linear infinite;
+}
+@keyframes boomerang-spin-anim {
+    from { transform: rotate(0deg); }
+    to   { transform: rotate(360deg); }
+}
+
 /* Phase 4-5 ②: 炎持ちブーメランのオーラ */
 .boomerang-flaming {
     position: absolute;

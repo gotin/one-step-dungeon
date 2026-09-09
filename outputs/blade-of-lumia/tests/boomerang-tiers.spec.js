@@ -224,4 +224,39 @@ test.describe('Phase 9-6 – 銀のブーメラン（ティア方式）', () => 
       () => document.querySelector('#pause-items .pause-item-name')?.textContent ?? '');
     expect(name).toBe('銀のブーメラン');
   });
+
+  // ── Phase 10d-6b: ユーザー指摘「銀のブーメランの場合は銀色にしてほしい」 ──
+  // 形（boomerangGrid）はティア間で共通＝色（パレット）だけ差し替える作法（剣/防具/
+  // 盾ティアと同型・SHIELD_TIERS参照）。dataset.pal は非アニメーション描画では
+  // 付かない（makeSprite の animated=false 分岐）ので、canvas の実ピクセル色を
+  // getImageData で読んで確認する（[[judge-obvious-visual-defects-yourself]]と同じ
+  // 「表示名の一致だけでは絵の色まで保証しない」への対処）。
+  test('⑨ 銀ブーメランは飛翔中の色が銀パレットになる（木は木のまま・形は共通）', async ({ page }) => {
+    // boomerangGrid() の i=0 ドット：grid[9][21]=中心(色3)/grid[9][20]=色4/grid[9][22]=色2
+    async function centerColor(pageArg) {
+      return pageArg.evaluate(() => {
+        window.__game.movePlayer('right');
+        window.__game.step(1);
+        window.__game.useSubItem();
+        const p = window.__game.getProjectiles().find(x => x.type === 'boomerang');
+        const el = document.getElementById(`proj-${p.id}`);
+        const cv = el.querySelector('canvas.sprite');
+        const ctx = cv.getContext('2d');
+        const [r, g, b] = ctx.getImageData(21, 9, 1, 1).data;
+        return `rgb(${r}, ${g}, ${b})`;
+      });
+    }
+    // 木（既定）
+    await page.goto(previewUrl());
+    await waitForBoard(page);
+    const wood = await centerColor(page);
+    expect(wood).toBe('rgb(192, 128, 64)');   // boomerang[3] = #c08040
+
+    // 銀
+    await page.goto(previewUrl({ silver: true }));
+    await waitForBoard(page);
+    const silver = await centerColor(page);
+    expect(silver).toBe('rgb(154, 172, 182)'); // boomerangSilver[3] = #9aacb6
+    expect(silver).not.toBe(wood);
+  });
 });

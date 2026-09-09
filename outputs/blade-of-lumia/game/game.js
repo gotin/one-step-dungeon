@@ -1827,6 +1827,7 @@ function useSubItem() {
 			atk: bt.atk,  // ブーメランは固定ダメージ（剣ATK不使用）
 			returning: false,
 			maxRange: bt.maxRange,
+			pal: bt.pal,  // ティアの見た目（木＝boomerang／銀＝boomerangSilver）
 		});
 		return;
 	}
