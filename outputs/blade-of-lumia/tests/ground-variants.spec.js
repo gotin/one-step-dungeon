@@ -332,8 +332,11 @@ test.describe('地面の変種 – 実エンジンの描画', () => {
 			return names;
 		});
 		expect(probe.length, '草の下地セルが無い画面を見ている').toBeGreaterThan(20);
-		for (const n of probe) expect(n, '代表1枚（grass）が敷かれている').toMatch(/^grass@\d+$/);
-		expect(new Set(probe).size, `画面全体が同じ絵（${[...new Set(probe)].join(' ')}）`)
+		// 名前は `grass@2`、隣に強い地形があるセルは `grass@2~n=water~3,4`（継ぎ目＝10b）。
+		// ここで見たいのは変種の割り振り∴継ぎ目の部分を落として数える。
+		const bases = probe.map(n => n.split('~')[0]);
+		for (const n of bases) expect(n, '代表1枚（grass）が敷かれている').toMatch(/^grass@\d+$/);
+		expect(new Set(bases).size, `画面全体が同じ絵（${[...new Set(bases)].join(' ')}）`)
 			.toBeGreaterThanOrEqual(3);
 	});
 

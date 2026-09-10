@@ -469,13 +469,42 @@ const GROUND_SHAPES = {
 	grass: grassGrid, sand: sandGrid, snow: snowGrid,
 	ash: ashGrid, mud: mudGrid, stoneFloor: stoneGrid,
 };
-const GROUND_GRIDS = {};
+export const GROUND_GRIDS = {};
 for (const [name, gen] of Object.entries(GROUND_SHAPES)) {
 	GROUND_GRIDS[name] = Array.from({ length: GROUND_VARIANTS_N }, (_, v) => gen(v));
 	GROUND_GRIDS[name].forEach((g, v) => { TILE_SPRITES[`${name}@${v}`] = [g]; });
 	TILE_SPRITES[name] = [GROUND_GRIDS[name][0]];
 }
 TILE_SPRITES.grass = [GROUND_GRIDS.grass[0], GROUND_GRIDS.grass[1]];
+
+// ── 地形の継ぎ目に使う「隣の地面の色」（キュー10番 10b）────────────
+//
+// 🔴 継ぎ目は**自分のセルの 32 ドット絵の中**に隣の地面の色を塗って作る
+//    （新しい層も遷移タイルも作らない＝`shared/ground-seams.js`）。∴1枚の絵は
+//    1つのパレットで描かれる∴「隣の地面の色」も自分のパレットに要る。
+//    ここで地面6種のパレットに 9〜16 を足す＝どの地面からでも隣の地面の色が塗れる。
+// ⚠ 1〜8 の意味（1=暗 2=地 3=中 4=明 5=白 6=最暗 7=最明 8=最暗）は変えない＝
+//   既存の絵は 1〜8 だけを使う（`tests/ground-variants.spec.js` ⑤の帯もそのまま）。
+// ⚠ 水は「浅瀬」の色（`water` パレットの 4＝明るい側）を使う＝深い水の色をそのまま
+//   陸に塗ると「陸のセルが水没している」と読めてしまう（歩ける所を歩けなく見せない）。
+// ⚠ 溶岩は水と別の色番号を持つ＝`TILE_SPRITE_MAP` では溶岩も `water` 形状だが、
+//   継ぎ目で青を塗ったら火山が水辺になる。
+export const SEAM_TONE_IDX = {
+	grass: 9, sand: 10, snow: 11, ash: 12, mud: 13, stoneFloor: 14, water: 15, lava: 16,
+};
+const SEAM_TONE = {
+	grass:      TILE_PAL.grass[2],
+	sand:       TILE_PAL.sand[2],
+	snow:       TILE_PAL.snow[2],
+	ash:        TILE_PAL.ash[2],
+	mud:        TILE_PAL.mud[2],
+	stoneFloor: TILE_PAL.stoneFloor[2],
+	water:      TILE_PAL.water[4],   // 浅瀬（深い水 2 ではない）
+	lava:       TILE_PAL.lava[3],    // 熱い縁（一番明るい 4 は光り過ぎる）
+};
+for (const name of Object.keys(GROUND_SHAPES)) {
+	for (const [u, i] of Object.entries(SEAM_TONE_IDX)) TILE_PAL[name][i] = SEAM_TONE[u];
+}
 
 // ── 橋（木のデッキ）── 連結タイル・32×32 ──────────────────────
 // 旧 `bridge` は1枚の絵の中に「板＋両端の柱」を全部詰め込んでいたため、
@@ -488,9 +517,10 @@ TILE_SPRITES.grass = [GROUND_GRIDS.grass[0], GROUND_GRIDS.grass[1]];
 //    8×8 だと 1ドット＝セル幅/8＝13.5px（`--cell` 108px の実測）＝プレイヤーの
 //    3.4px の4倍で、同じ画面の中でドットの粗さが揃わない
 //    （2026-09-06 ユーザー指摘「草地とかに比べてドットサイズが大きすぎて違和感しかない」）。
-//    ⚠ 草地などの地面が細かく見えるのは解像度が高いからではない＝あれは bgTiles の
-//      CSS repeat で 8×8 を1セルに13.5枚敷いている（1ドット 1px）。粗く見えるのは
-//      「1枚でセルを埋める／0.7倍で1枚だけ置く」絵だけ＝連結タイルと obj-sprite。
+//    ⚠ 旧記述「草地が細かく見えるのは bgTiles の CSS repeat で 8×8 を1セルに 13.5 枚
+//      敷いているから（1ドット 1px）」は失効（2026-09-06 方針A）。地面も 32×32 を
+//      セル1枚に `no-repeat` で1枚だけ敷く＝1ドット cellPx/32 で全部揃っている
+//      （`applyBgSpriteToCell`）。今も `repeat` なのは水・溶岩（12×16・波のアニメ）だけ。
 //
 // ⚠ 32×32＝1部品 1024 ドット。手で数字を並べると板の周期や支柱の間隔を1つ間違えても
 //    目で気づけないので、周期の決まった幾何（板・笠木・支柱）は関数で組む。

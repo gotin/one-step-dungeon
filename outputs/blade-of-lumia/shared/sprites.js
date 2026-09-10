@@ -28,6 +28,17 @@ export const SPRITES = {
 	...OBJ32_SPRITES,
 };
 
+// ── 遅延登録 ───────────────────────────────────────────────────
+// `SPRITES` は import 時の spread ∴サブファイル側で後から足しても届かない。
+// 「組み合わせの数が多くて事前に全部作れない絵」だけここを通して足す。
+// 現在の利用者＝地形の継ぎ目（`shared/ground-seams.js`／キュー10番 10b）＝
+// 「自分の地面 × 変種 × 隣がどの地面か × セル座標」で決まる∴実際に画面へ出た
+// 組み合わせだけを作る（1画面 120 セル・名前が同じなら絵も同じ＝使い回す）。
+export function registerSprite(name, frames) {
+	if (!SPRITES[name]) SPRITES[name] = frames;
+	return SPRITES[name];
+}
+
 // ── Animation ──────────────────────────────────────────────────
 export let animFrame = 0;
 let animTimer = null;

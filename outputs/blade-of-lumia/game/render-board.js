@@ -19,7 +19,8 @@
 import { TILE } from '../shared/tiles.js';
 import { SPRITES, PAL, drawSprite, drawSpriteFrame, drawSpriteLayers, makeSprite, applyBgSpriteToCell } from '../shared/sprites.js';
 import { TILE_SPRITE_MAP } from '../shared/tile-sprites.js';
-import { bgVariantName, objVariantName } from '../shared/sprites-tiles.js';
+import { objVariantName } from '../shared/sprites-tiles.js';
+import { groundSpriteName } from '../shared/ground-seams.js';
 import { connectedTileParts, isConnectTile } from '../shared/tile-connect.js';
 import { skinnedSprite } from '../shared/tile-skins.js';
 import { NPC_SPRITE_MAP } from '../shared/npcs.js';
@@ -146,14 +147,16 @@ export function createRenderBoard(deps) {
 		if (isConnectTile(bgTile) && drawConnectTile(cellEl, posKey, bgTile)) return;
 		const cls = BG_TILE_COLOR_CLASS[bgTile];
 		if (cls) cellEl.classList.add(cls);
-		// bgTile のスプライトを CSS background-image repeat で背景に敷く。
+		// bgTile のスプライトを CSS background-image でセルに敷く（地面は 32×32 を1枚だけ）。
 		// 絵はセルごとの変種を選ぶ（草地は房の位置が違う4種）＝隣のセルと同じ絵が
 		// 並ばない＝「地面の模様がパターン化されすぎ」を減らす（bgVariantName）。
+		// さらに隣のセルの地面が違う辺では、その色を自分の絵の縁へ食い込ませる
+		// （10b・`shared/ground-seams.js`）＝地面の境界が定規で切ったように見えない。
 		if (bgTile !== TILE.FLOOR) {
 			const si = TILE_SPRITE_MAP[bgTile];
 			if (si) {
 				const [br, bc] = posKey.split(',').map(Number);
-				const spr = bgVariantName(si.spr, br, bc);
+				const spr = groundSpriteName(stageData, si.spr, br, bc);
 				if (SPRITES[spr]) applyBgSpriteToCell(cellEl, spr, si.pal);
 			}
 		}
