@@ -538,7 +538,7 @@
         <label><span data-icon="rupee" data-icon-px="14">💰</span>ルピー<input id="ps-rupees" type="number" value="10" min="0" max="9999" style="width:70px"></label>
         <label><span data-icon="triforce" data-icon-px="14">◭</span>カケラ<input id="ps-triforce" type="number" value="0" min="0" max="99" style="width:54px"></label>
         <!-- 2026-08-25: 盾/防具はチェックボックスからティアのセレクトに変えた。理由＝チェックの
-             ON(`1`) が「ティア0」と解釈されていて **ティア1（鉄の盾・鎖かたびら）が指定できず**、
+             ON(`1`) が「ティア0」と解釈されていて **ティア1（鉄の盾・青銅の鎧）が指定できず**、
              さらに OFF(`0`) でもティア0 を装備してしまい「外す」が表現できなかった。
              値はそのままティア番号として URL に載る（「なし」なら ps_ を付けない）。 -->
         <label><span data-icon="shield" data-icon-px="14">🛡</span>盾ティア<select id="ps-shield" style="width:150px">
@@ -550,7 +550,7 @@
         <label><span data-icon="armor" data-icon-px="14">⚚</span>防具ティア<select id="ps-armor" style="width:150px">
           <option value="-1">なし</option>
           <option value="0" selected>0 布の服</option>
-          <option value="1">1 鎖かたびら</option>
+          <option value="1">1 青銅の鎧</option>
           <option value="2">2 伝説の鎧</option>
         </select></label>
         <label class="ps-check"><input id="ps-weapon" type="checkbox" checked> <span data-icon="sword" data-icon-px="14">⚔</span> 剣</label>

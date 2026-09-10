@@ -5,16 +5,16 @@
 // player.atk = BASE_ATK + SWORD_TIERS[tier].atk で再計算する（加算廃止）。
 export const SWORD_TIERS = [
 	// index 0: 木の剣
-	{ key: 'wood',   name: '木の剣',  atk: 2,  sprite: 'swordWood',   pal: 'swordWood',
+	{ key: 'wood',   name: '木の剣',  atk: 2,  sprite: 'sword',   pal: 'swordWood',
 	  beam: false, pierce: false },
 	// index 1: 銅の剣
-	{ key: 'bronze', name: '銅の剣',  atk: 4,  sprite: 'swordBronze', pal: 'swordBronze',
+	{ key: 'bronze', name: '銅の剣',  atk: 4,  sprite: 'sword', pal: 'swordBronze',
 	  beam: true,  pierce: false },
 	// index 2: 銀の剣
-	{ key: 'silver', name: '銀の剣',  atk: 7,  sprite: 'swordSilver', pal: 'swordSilver',
+	{ key: 'silver', name: '銀の剣',  atk: 7,  sprite: 'sword', pal: 'swordSilver',
 	  beam: true,  pierce: false },
 	// index 3: 聖剣
-	{ key: 'holy',   name: '聖剣',    atk: 12, sprite: 'swordHoly',   pal: 'swordHoly',
+	{ key: 'holy',   name: '聖剣',    atk: 12, sprite: 'sword',   pal: 'swordHoly',
 	  beam: true,  pierce: true  },
 	// index 4: ルミアの剣（寄道「魔王の岩牢」の主 X の討伐報酬・0o-2・2026-09-05）
 	// ⚠️ ATK は最小の刻み（+2）だけ上げる＝ユーザー確定「攻撃力はちょっとだけの強化に
@@ -24,7 +24,7 @@ export const SWORD_TIERS = [
 	//    ⚠️ 読み手は `game/charge.js getChargeRatio()` と `scripts/audit-balance.mjs`
 	//    `statsOf()` の2か所だけ＝定数を直接読む箇所を残すと「表に書いたのに効かない
 	//    死んだ数」になる（`guardRange` で踏んだのと同型）。
-	{ key: 'lumia',  name: 'ルミアの剣', atk: 14, sprite: 'swordLumia', pal: 'swordLumia',
+	{ key: 'lumia',  name: 'ルミアの剣', atk: 14, sprite: 'sword', pal: 'swordLumia',
 	  beam: true,  pierce: true, chargeMs: 480 },
 ];
 export const BASE_ATK = 2;  // 剣なし時の基礎ATK
@@ -40,8 +40,8 @@ export const BASE_ATK = 2;  // 剣なし時の基礎ATK
 export const ARMOR_TIERS = [
 	// index 0: 布の服
 	{ key: 'cloth',  name: '布の服',     def: 1, sprite: 'armorCloth',  pal: 'armorCloth'  },
-	// index 1: 鎖かたびら
-	{ key: 'chain',  name: '鎖かたびら', def: 2, sprite: 'armorChain',  pal: 'armorChain'  },
+	// index 1: 青銅の鎧（旧「鎖かたびら」・2026-09-09 ユーザー確定で改名＋絵を参考画像から描き直し）
+	{ key: 'bronze', name: '青銅の鎧',   def: 2, sprite: 'armorBronze', pal: 'armorBronze' },
 	// index 2: 伝説の鎧
 	{ key: 'legend', name: '伝説の鎧',   def: 3, sprite: 'armorLegend', pal: 'armorLegend' },
 ];

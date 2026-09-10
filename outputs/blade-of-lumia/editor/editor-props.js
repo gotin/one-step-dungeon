@@ -68,7 +68,7 @@ function renderEquipItems(sd) {
 	// 絵文字は絵が引けなかった時の保険として残す。
 	const TIER_FIELD = {
 		[TILE.ITEM_SWORD]:  { f: 'swordTier',  names: ['木の剣','銅の剣','銀の剣','聖剣'],          iconKey: 'sword',  emoji: '⚔', label: '剣' },
-		[TILE.ITEM_ARMOR]:  { f: 'armorTier',  names: ['布の服','鎖かたびら','伝説の鎧'],            iconKey: 'armor',  emoji: '⚚', label: '防具' },
+		[TILE.ITEM_ARMOR]:  { f: 'armorTier',  names: ['布の服','青銅の鎧','伝説の鎧'],            iconKey: 'armor',  emoji: '⚚', label: '防具' },
 		[TILE.ITEM_SHIELD]: { f: 'shieldTier', names: ['木の盾','鉄の盾','ミラーシールド'],          iconKey: 'shield', emoji: '🛡', label: '盾' },
 	};
 	for (const { r, c, tile } of allItems) {
@@ -121,7 +121,7 @@ const CHEST_TYPE_OPTIONS = [
 // Phase 7-2: ティア装備（剣/防具/盾）はティア番号で段階を指定する
 const CHEST_TIER_FIELD = {
 	weapon: { f: 'swordTier',  names: ['木の剣','銅の剣','銀の剣','聖剣'] },
-	armor:  { f: 'armorTier',  names: ['布の服','鎖かたびら','伝説の鎧'] },
+	armor:  { f: 'armorTier',  names: ['布の服','青銅の鎧','伝説の鎧'] },
 	shield: { f: 'shieldTier', names: ['木の盾','鉄の盾','ミラーシールド'] },
 };
 

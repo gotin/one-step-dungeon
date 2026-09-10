@@ -35,7 +35,7 @@ async function seed(page, { armorTier = -1, shieldTier = -1, swordTier = -1 } = 
     rupees: 0, triforceCount: 0,
     _equip: {
       swordName: swordTier >= 0 ? ['木の剣','銅の剣','銀の剣','聖剣'][swordTier] : undefined,
-      armorName: armorTier >= 0 ? ['布の服','鎖かたびら','伝説の鎧'][armorTier] : undefined,
+      armorName: armorTier >= 0 ? ['布の服','青銅の鎧','伝説の鎧'][armorTier] : undefined,
       armorBonus: armorTier >= 0 ? ARMOR_DEF[armorTier] : undefined,
       shieldName: shieldTier >= 0 ? ['木の盾','鉄の盾','ミラーシールド'][shieldTier] : undefined,
     },
@@ -130,12 +130,12 @@ test.describe('Blade of Lumia – 防具・盾ティアシステム', () => {
 
   test('⑥: HUD の防具名・DEF がティアどおりに表示される', async ({ page }) => {
     await seed(page);
-    await page.evaluate(() => window.__game.equipArmorTier(1));  // 鎖かたびら
+    await page.evaluate(() => window.__game.equipArmorTier(1));  // 青銅の鎧
     await page.evaluate(() => window.__game.updateHud());
     const player = await page.evaluate(() => window.__game.getPlayer());
     expect(player.def).toBe(BASE_DEF + ARMOR_TIERS[1].def);
     expect(player.armorTier).toBe(1);
-    expect(player._equip.armorName).toBe('鎖かたびら');
+    expect(player._equip.armorName).toBe('青銅の鎧');
   });
 
 });

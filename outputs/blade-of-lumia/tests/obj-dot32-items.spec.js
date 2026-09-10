@@ -52,14 +52,23 @@ const KINDS = [
 	{ spr: 'sword',    pal: 'sword',    label: '剣',       frames: 1, ink: { w: 20, h: 19 }, was: { w: 0.55,  h: 0.55  }, tol: 0.08, holes: false },
 	{ spr: 'shield',   pal: 'shield',   label: '盾',       frames: 1, ink: { w: 17, h: 19 }, was: { w: 0.481, h: 0.55  }, tol: 0.06, holes: false },
 	{ spr: 'boomerang',pal: 'boomerang',label: 'ブーメラン',frames: 1, ink: { w: 14, h: 14 }, was: { w: 0.4125,h: 0.4125}, tol: 0.06, holes: false },
-	{ spr: 'bow',      pal: 'bow',      label: '弓',       frames: 1, ink: { w: 18, h: 19 }, was: { w: 0.481, h: 0.55  }, tol: 0.10, holes: false },
+	// ⚠️ 10h（2026-09-10）で矢を番えたクロスボウ状の絵→矢なしの縦持ちリカーブボウへ
+	// 描き直し＝形が別物になった。`was`（旧絵の見かけ）との比較は意味を持たない
+	// （10gの星の欠片と同型）＝新しい絵の ink 自身を歯として固定する。
+	// ⚠️ 弓本体（弧）と弦で「D」字に閉じる＝中は意図的な空洞（鍵の輪と同型）＝holes:true。
+	{ spr: 'bow',      pal: 'bow',      label: '弓',       frames: 1, ink: { w: 15, h: 28 }, was: { w: 15/32, h: 28/32 }, tol: 0.01, holes: true },
 	{ spr: 'bombItem', pal: 'bombItem', label: '爆弾',     frames: 1, ink: { w: 13, h: 18 }, was: { w: 0.447, h: 0.55  }, tol: 0.06, holes: false },
 	{ spr: 'key',      pal: 'key',      label: '鍵',       frames: 2, ink: { w: 11, h: 16 }, was: { w: 0.367, h: 0.378 }, tol: 0.15, holes: true  },
 	{ spr: 'rupee',    pal: 'rupee',    label: 'ルピー',   frames: 1, ink: { w: 15, h: 18 }, was: { w: 0.481, h: 0.481 }, tol: 0.09, holes: false },
-	{ spr: 'triforce', pal: 'triforce', label: '星の欠片', frames: 1, ink: { w: 19, h: 11 }, was: { w: 0.55,  h: 0.33  }, tol: 0.06, holes: false },
+	// ⚠️ 10g（2026-09-09）で金の三角形→青い結晶（菱形）へ描き直し＝形が別物になった
+	// ため `was`（旧10d3絵の見かけ・0.55×0.33セル）との比較は意味を持たない。
+	// ここは「新しい絵の ink がこの値であること」だけを固定する（歯＝旧絵に戻すと赤）。
+	{ spr: 'triforce', pal: 'triforce', label: '星の欠片', frames: 1, ink: { w: 17, h: 21 }, was: { w: 17/32, h: 21/32 }, tol: 0.01, holes: false },
 	{ spr: 'potion',   pal: 'potion',   label: '回復薬(小)',frames:1, ink: { w: 10, h: 18 }, was: { w: 0.31,  h: 0.55  }, tol: 0.06, holes: false },
 	{ spr: 'bigHealPotion', pal: 'potionBig', label: '回復薬(大)', frames: 1, ink: { w: 12, h: 18 }, was: { w: 0.4125, h: 0.55 }, tol: 0.06, holes: false },
-	{ spr: 'dmap',     pal: 'dmap',     label: '地図',     frames: 1, ink: { w: 14, h: 14 }, was: { w: 0.447, h: 0.447 }, tol: 0.06, holes: false },
+	// ⚠️ 10i（2026-09-10）で「枠＋バツ印」→「羊皮紙＋部屋＋通路」へ描き直し＝形が
+	// 別物になった。`was` との比較は意味を持たない（10g/10hと同型）。
+	{ spr: 'dmap',     pal: 'dmap',     label: '地図',     frames: 1, ink: { w: 26, h: 28 }, was: { w: 26/32, h: 28/32 }, tol: 0.01, holes: false },
 	{ spr: 'compass',  pal: 'compass',  label: 'コンパス', frames: 1, ink: { w: 17, h: 17 }, was: { w: 0.516, h: 0.516 }, tol: 0.06, holes: false },
 	{ spr: 'armor',    pal: 'armor',    label: 'よろい',   frames: 1, ink: { w: 17, h: 17 }, was: { w: 0.55,  h: 0.55  }, tol: 0.08, holes: false },
 	{ spr: 'heart',    pal: 'heart',    label: 'ハートの器', frames: 1, ink: { w: 15, h: 15 }, was: { w: 0.55,  h: 0.481 }, tol: 0.09, holes: false },
