@@ -12,7 +12,9 @@
 //   ・発火条件   隣が同じ地形／画面外／地面が隠れるタイルなら継ぎ目を作らない
 //   ・食い込み   指定した辺だけ・深さは 1〜SEAM_DEPTH_MAX・辺の全長に1ドット以上
 //   ・連続性     同じ境界線に並ぶセルは輪郭が続く（同じ絵のコピーでもない）
-//   ・実エンジン 継ぎ目セルが実際に立つ／絵は 32 ドット1枚のまま／水は repeat のまま
+//   ・実エンジン 継ぎ目セルが実際に立つ／絵は 32 ドット1枚のまま／水は継ぎ目機構に
+//              巻き込まれず名前が変わらない（10j で水自身も 32 ドット no-repeat に
+//              なったので「repeat のまま」では見分けられない＝名前で見分ける）
 
 import { test, expect } from '@playwright/test';
 import { TILE } from '../shared/tiles.js';
@@ -62,7 +64,7 @@ test.describe('地形の継ぎ目 – 決め事', () => {
 		expect(names, '溶岩が優先順位表に無い').toContain('lava');
 		const vals = Object.values(SEAM_PRIORITY);
 		expect(new Set(vals).size, '優先順位に同じ値がある＝どちらが塗るか決まらない').toBe(vals.length);
-		// 水・溶岩は必ず陸へ食い込む側（水/溶岩の絵はアニメーションする 12×16 ∴触れない）
+		// 水・溶岩は必ず陸へ食い込む側（水/溶岩の絵はアニメーションする∴触れない）
 		for (const g of Object.keys(GROUND_VARIANTS)) {
 			expect(SEAM_PRIORITY.water, `水が ${g} より弱い＝渚が水側に描かれる（描けない）`)
 				.toBeGreaterThan(SEAM_PRIORITY[g]);
@@ -188,18 +190,23 @@ test.describe('地形の継ぎ目 – 実エンジンの描画', () => {
 			const cells = [...document.querySelectorAll('.cell[data-bg-sprite]')];
 			const names = cells.map(c => c.dataset.bgSprite);
 			const seamCell = cells.find(c => c.dataset.bgSprite.includes('~'));
+			const waterCell = cells.find(c => c.dataset.bgSprite === 'water');
 			const read = async (cell) => {
 				if (!cell) return null;
 				const st = getComputedStyle(cell);
 				const img = new Image();
 				await new Promise(res => { img.onload = res; img.src = st.backgroundImage.slice(5, -2); });
-				return { repeat: st.backgroundRepeat, size: st.backgroundSize, dots: img.naturalWidth };
+				return {
+					repeat: st.backgroundRepeat, size: st.backgroundSize,
+					dots: img.naturalWidth, dotsH: img.naturalHeight,
+				};
 			};
 			return {
 				names,
 				seam: await read(seamCell),
 				seamName: seamCell?.dataset.bgSprite ?? null,
-				water: await read(cells.find(c => c.dataset.bgSprite === 'water')),
+				water: await read(waterCell),
+				waterName: waterCell?.dataset.bgSprite ?? null,
 			};
 		});
 
@@ -211,9 +218,18 @@ test.describe('地形の継ぎ目 – 実エンジンの描画', () => {
 		expect(probe.seam.dots, '継ぎ目の絵が 32 ドットでない').toBe(32);
 		expect(probe.seam.repeat, '継ぎ目の絵を repeat で敷いている').toBe('no-repeat');
 		expect(probe.seam.size, '継ぎ目の絵がセル全体に伸びていない').toBe('100% 100%');
-		// 水は 12×16・波でアニメーションする＝この機構の外側（壊していない）
+		// 水は波でアニメーションする＝この機構の外側（壊していない）。10j で水自身も
+		// 32 ドット no-repeat になった＝「repeat のまま」では見分けられない∴名前で見る
+		// （継ぎ目に巻き込まれると `water~...` のような合成名になり animFrame の巡回対象
+		// （`ANIMATED_BG_SPRITES` は 'water' 単独名しか見ない）から外れて波が止まる）。
 		expect(probe.water, '水のセルが無い画面を見ている').toBeTruthy();
-		expect(probe.water.repeat, '水まで継ぎ目機構に巻き込んだ＝波が止まる').toBe('repeat');
+		expect(probe.waterName, '水まで継ぎ目機構に巻き込んだ＝波が止まる').toBe('water');
+		expect(probe.water.repeat, '水セルの絵が no-repeat でない').toBe('no-repeat');
+		// 縦横とも 32 ドット（正方形）であること＝キュー10番 10j の歯。旧 12×16 は縦横が
+		// 違う長方形で、CSS repeat の倍率探索が横幅（dotCols）しか見ていなかったため
+		// 縦だけ割り切れず（108/48=2.25）セルの中で波が途中で切れていた。
+		expect(probe.water.dots, '水の絵の横ドット数が 32 でない＝方針Aが未適用').toBe(32);
+		expect(probe.water.dotsH, '水の絵の縦ドット数が横と違う＝縦だけ再発する形').toBe(32);
 	});
 
 	test('⑩ 砂↔石畳の画面（field 15,8）で石畳側は素の絵のまま', async ({ page }) => {

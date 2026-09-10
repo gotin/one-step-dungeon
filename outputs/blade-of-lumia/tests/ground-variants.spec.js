@@ -288,7 +288,7 @@ test.describe('地面の変種 – 選び方', () => {
 	});
 
 	test('⑫ 変種を持たないスプライトはそのままの名前（機構が他を壊さない）', () => {
-		// 水（12×16・波でアニメーション）は変種を持たない＝この機構の外側にいる。
+		// 水（波でアニメーション）は変種を持たない＝この機構の外側にいる。
 		expect(GROUND_VARIANTS.water, '水に変種を作ってしまっている').toBeUndefined();
 		expect(bgVariantName('water', 2, 3)).toBe('water');
 		expect(SPRITES[bgVariantName('grass', 2, 3)], '選ばれた変種が実在しない').toBeTruthy();
@@ -381,9 +381,10 @@ test.describe('地面の変種 – 実エンジンの描画', () => {
 			.toBeCloseTo(g.cellPx / 32, 5);
 		expect(g.cellPx / g.dots, '1ドットが 1px 級＝旧機構に戻っている').toBeGreaterThan(2);
 
-		// 水は 12×16・波でアニメーションする∴従来どおり repeat（機構の外側）。
+		// 水も 10j で 32×32・no-repeat に移った（波のアニメは維持＝変種の機構の外側なのは変わらない）。
 		expect(probe.water, '水のセルが無い画面を見ている').toBeTruthy();
-		expect(probe.water.repeat, '水まで no-repeat にしている').toBe('repeat');
+		expect(probe.water.repeat, '水の絵が no-repeat でない＝方針Aが未適用').toBe('no-repeat');
+		expect(probe.water.dots, '水の絵が 32 ドットでない').toBe(32);
 	});
 
 	test('⑯ 火山灰・泥の画面には専用の形が敷かれている（砂・草の流用に戻っていない）', async ({ page }) => {

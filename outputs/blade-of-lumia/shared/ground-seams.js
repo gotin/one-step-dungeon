@@ -31,7 +31,7 @@ import { GROUND_N, GROUND_VARIANTS, SEAM_TONE_IDX, bgVariantName, tileHash } fro
 
 // 食い込む向き（数字が大きいほど強い＝弱い側の絵に食い込む）。
 // 溶岩・水が一番強い＝渚／熱い縁は必ず陸側のセルに描かれる（水・溶岩はアニメーション
-// する 12×16 の絵∴そちらを触れない、という都合とも一致する）。
+// する絵〈32×32・10j〉∴そちらを触れない、という都合とも一致する）。
 // 石畳は舗装＝崩れた縁が土に散る側が自然∴土（草/砂/泥/灰/雪）より強い。
 export const SEAM_PRIORITY = {
 	grass: 0, snow: 1, sand: 2, mud: 3, ash: 4, stoneFloor: 5, water: 6, lava: 7,
@@ -125,7 +125,7 @@ function seamGrid(baseName, seams, r, c) {
 export function groundSpriteName(stageData, spr, r, c) {
 	const base = bgVariantName(spr, r, c);
 	const mine = SEAM_PRIORITY[spr];
-	// 変種を持たない地面（水・溶岩＝アニメーションする 12×16）はこの機構の外側。
+	// 変種を持たない地面（水・溶岩＝アニメーションする絵）はこの機構の外側。
 	if (mine === undefined || !GROUND_VARIANTS[spr]) return base;
 
 	const seams = {};
