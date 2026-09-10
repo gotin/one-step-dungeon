@@ -227,26 +227,38 @@ TILE_SPRITES.gateGopen = [
 // ∴横縞だけが出る＝倍率探索が横幅〈dotCols〉しか見ておらず縦を検査していなかった）。
 // ∴地面（10a-1b-3・方針A）と同じ「セル1枚＝32×32・no-repeat」に合わせる
 // （寸法が `CELL_GROUND_N` と一致し `applyBgSpriteToCell` が自動で no-repeat 枝を選ぶ）。
-// 周期は 8（32 の約数）＝セルの内側でも隣セルとの継ぎ目でも途切れない。
+// 周期は横16・縦8（どちらも32の約数）＝セルの内側でも隣セルとの継ぎ目でも途切れない。
+//
+// 🔴 最初の版（対角の市松＋対角の谷/頂）はユーザー判定NG（2026-09-10）＝「水が斜めの
+//    線になってて、逆に変です。バリアかなにかにしか見えない」。参考画像（海／川、
+//    ユーザー提供）を見ると、どちらも「横方向に緩やかに波打つ明るい筋」が海面に
+//    連なる形＝45°の縞ではない。**海と川の描き分けは今回は採らない**（ユーザー選択＝
+//    「むずかしいなら海のほうがいい」）＝この機構には地域を判定するデータが無く
+//    （[[field-water-tile-no-skins]]）、新設するとデータ配線から要る規模になる∴
+//    まず海の質感1種に寄せて全水域（湖・川・海・溶岩の地）を統一する。
 const WATER_N = 32;
+const WATER_LINE_GAP = 8;    // 波筋どうしの縦の間隔
+const WATER_LINE_PX  = 16;   // 1本の波筋がうねる横の周期
 function waterFrame(shift) {
-	const g = [];
-	for (let r = 0; r < WATER_N; r++) {
-		const row = [];
+	const g = groundFill2(2, WATER_N);   // 地＝暗い水（2）
+	for (let k = 0; k * WATER_LINE_GAP < WATER_N; k++) {
+		const base = k * WATER_LINE_GAP;
 		for (let c = 0; c < WATER_N; c++) {
-			const d = (r + c + shift) % 8;
-			let v = (r + c) % 2 === 0 ? 2 : 3;   // 細かい市松＝水面のさざ波
-			if (d === 0) v = 1;                  // 波の谷（暗）
-			else if (d === 4) v = 4;              // 波の頂（明）
-			row.push(v);
+			const t = ((c + shift) % WATER_LINE_PX + WATER_LINE_PX) % WATER_LINE_PX;
+			const half = WATER_LINE_PX / 2;
+			const tri = t < half ? t / half : (WATER_LINE_PX - t) / half;   // 0→1→0
+			const off = Math.round((tri - 0.5) * 2);                        // -1..1
+			const r = ((base + off) % WATER_N + WATER_N) % WATER_N;
+			g[r][c] = 3;                              // 波筋（中間の明るさ）
+			if (tri >= 0.85) g[r][c] = 4;              // 波頭のきらめき（明るい点）
 		}
-		g.push(row);
 	}
 	return g;
 }
-// 2コマ＝`shift` を半周期（4）ずらして波が流れて見えるアニメにする
+function groundFill2(val, n) { return Array.from({ length: n }, () => Array(n).fill(val)); }
+// 2コマ＝`shift` を半周期ずらして波が流れて見えるアニメにする
 // （`ANIMATED_BG_SPRITES`／`redrawAnimSprites` が `animFrame%2` で切り替える）。
-TILE_SPRITES.water = [waterFrame(0), waterFrame(4)];
+TILE_SPRITES.water = [waterFrame(0), waterFrame(WATER_LINE_PX / 2)];
 
 // ── BREAKABLE WALL / MAP ENTER / DOORWAY 系 ── 10d-2 で 32×32 へ移行＝絵の単一の
 //    真実は shared/sprites-obj32.js（対応する _SRC 定数＋scaleAndCenter）に移した
