@@ -66,7 +66,7 @@ if (ROWS.includes(7)) throw new Error('assumption changed: 7 is now in ROWS (thi
 stage.tiles[7][6] = TILE.BRIDGE;
 delete stage.bgTiles['7,6'];
 
-writeFileSync(MAP_PATH, JSON.stringify(data));
+writeFileSync(MAP_PATH, JSON.stringify(data, null, 2));
 
 // ── 自己検証 ──────────────────────────────────────────────────────
 const check = JSON.parse(readFileSync(MAP_PATH, 'utf8'));
