@@ -137,6 +137,16 @@ export const TILE = {
 	HOUSE_DOOR:  'e',  // 家のドア（通行可）
 	HOUSE_ROOF:  'p',  // 家の屋根（通行不可）
 	SIGN:        'i',  // 看板（通行可・近づいて読める）
+
+	// ── キュー10番・10c 追い作業（2026-09-11）：小さな島の丸い角 ──────────
+	// 草地の隅を丸く見せる手配置の bgTile（`shared/sprites-tiles.js` の
+	// `islandCornerNw/Ne/Sw/Se`）。4方向で別タイル＝色スイッチ(赤/青)と同型の
+	// 「1概念・複数文字」の前例に従う（自動の向き判定〈tile-connect.js 型〉は
+	// この1機能のためには作らない）。
+	ISLAND_CORNER_NW: 'q',
+	ISLAND_CORNER_NE: 'j',
+	ISLAND_CORNER_SW: 'y',
+	ISLAND_CORNER_SE: 'z',
 };
 
 // タイルのメタ情報
@@ -244,6 +254,11 @@ export const TILE_META = {
 	[TILE.SNOW]:        { label: '雪原',       color: '#c8dce8', passable: true,  icon: '❄' },
 	[TILE.ASH]:         { label: '火山灰',     color: '#4a3028', passable: true,  icon: '▪' },
 	[TILE.MUD]:         { label: '泥/沼床',   color: '#3a4a28', passable: true,  icon: '∿' },
+	// キュー10番・10c 追い作業：小さな島の丸い角（草地・通行可）
+	[TILE.ISLAND_CORNER_NW]: { label: '島の角（北西）', color: '#3a6e28', passable: true, icon: '◜' },
+	[TILE.ISLAND_CORNER_NE]: { label: '島の角（北東）', color: '#3a6e28', passable: true, icon: '◝' },
+	[TILE.ISLAND_CORNER_SW]: { label: '島の角（南西）', color: '#3a6e28', passable: true, icon: '◟' },
+	[TILE.ISLAND_CORNER_SE]: { label: '島の角（南東）', color: '#3a6e28', passable: true, icon: '◞' },
 };
 
 // タイルの一覧（パレット表示用）
@@ -261,6 +276,8 @@ export const BG_TILES = new Set([
 	// 敵（tiles 層）と水（bgTiles 層）が同一セルに共存できる＝水棲敵を水上に立たせられる。
 	// tilePassable は bgTiles 水も不通と判定する（passable.js の isWaterAt）。
 	TILE.WATER,
+	// キュー10番・10c 追い作業：島の角（草地の変種・通行可）
+	TILE.ISLAND_CORNER_NW, TILE.ISLAND_CORNER_NE, TILE.ISLAND_CORNER_SW, TILE.ISLAND_CORNER_SE,
 ]);
 
 // 空のステージデータを生成する

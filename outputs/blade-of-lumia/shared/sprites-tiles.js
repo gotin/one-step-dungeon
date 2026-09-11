@@ -506,6 +506,46 @@ for (const name of Object.keys(GROUND_SHAPES)) {
 	for (const [u, i] of Object.entries(SEAM_TONE_IDX)) TILE_PAL[name][i] = SEAM_TONE[u];
 }
 
+// ── ISLAND CORNER（草地の丸い角）── 32×32 ──────────────────────────
+// 小さな島（湖の飛び石渡り）の四隅を、定規で切った直角ではなく丸みで見せる
+// 手配置タイル（キュー10番・10c 追い作業＝2026-09-11 ユーザー判定で確定）。
+// 🔴 決め事（ユーザー2回の訂正を経て確定）＝
+//   ① 丸みは「草側が丸く残る」方向＝隅の外側の小さな三角だけが欠ける
+//     （逆＝水が丸く盛り上がる形にすると「島に水が食い込んでいる」ように見えて
+//     不自然、という指摘で訂正）。
+//   ② 欠けた部分はフラットな色ではなく**本物の水スプライトの模様**を敷く
+//     （継ぎ目色 1 トーンで塗ると隣の水と模様が繋がらず「色が違う」と指摘された）。
+//     ∴ このタイル専用のパレット `islandCorner` を持つ＝1-8 は草の色そのまま・
+//     17-20 は水パレットの 1-4 番を退避（`SEAM_TONE_IDX` の 9-16 と衝突しない
+//     ずらし先）。
+// 読み手は水/溶岩と同じ経路（`applyBgSpriteToCell` の 32×32 no-repeat 枝）＝
+// 新しい分岐は増やしていない。配置は手動（`SEAM_PRIORITY`/`GROUND_VARIANTS` に
+// 入れていない＝自動継ぎ目・変種の対象外＝`groundSpriteName` は素の名前を返す）。
+const ISLAND_CORNER_R = 12;   // 丸みの半径（ドット）＝32の3/8ほど
+function islandCornerGrid(corner) {
+	const N = WATER_N, R = ISLAND_CORNER_R;
+	const cx = corner.includes('w') ? R : N - 1 - R;
+	const cy = corner.includes('n') ? R : N - 1 - R;
+	const inBoxR = corner.includes('n') ? (r) => r < R : (r) => r >= N - R;
+	const inBoxC = corner.includes('w') ? (c) => c < R : (c) => c >= N - R;
+	const g = GROUND_GRIDS.grass[0].map((row) => row.slice());
+	const water = TILE_SPRITES.water[0];
+	for (let r = 0; r < N; r++) {
+		if (!inBoxR(r)) continue;
+		for (let c = 0; c < N; c++) {
+			if (!inBoxC(c)) continue;
+			if (Math.hypot(r - cy, c - cx) > R) g[r][c] = water[r][c] + 16;
+		}
+	}
+	return g;
+}
+for (const corner of ['nw', 'ne', 'sw', 'se']) {
+	const key = `islandCorner${corner[0].toUpperCase()}${corner[1]}`;
+	TILE_SPRITES[key] = [islandCornerGrid(corner)];
+}
+TILE_PAL.islandCorner = ['transparent', ...TILE_PAL.grass.slice(1, 9)];
+for (let v = 1; v <= 4; v++) TILE_PAL.islandCorner[16 + v] = TILE_PAL.water[v];
+
 // ── 橋（木のデッキ）── 連結タイル・32×32 ──────────────────────
 // 旧 `bridge` は1枚の絵の中に「板＋両端の柱」を全部詰め込んでいたため、
 // 隣に並べると柱が等間隔に並んで畑のうねに見えた（2026-08-20 ユーザー指摘）。

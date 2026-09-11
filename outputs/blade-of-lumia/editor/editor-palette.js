@@ -38,7 +38,7 @@ export function drawSpriteAt(ctx, spriteName, palName, dx, dy, dw, dh) {
 
 // カテゴリ分け
 const PALETTE_CATEGORIES = [
-	{ label: '地形（背景）', tiles: [TILE.FLOOR, TILE.GRASS, TILE.SAND, TILE.STONE_FLOOR, TILE.BRIDGE, TILE.SNOW, TILE.ASH, TILE.MUD] },
+	{ label: '地形（背景）', tiles: [TILE.FLOOR, TILE.GRASS, TILE.SAND, TILE.STONE_FLOOR, TILE.BRIDGE, TILE.SNOW, TILE.ASH, TILE.MUD, TILE.ISLAND_CORNER_NW, TILE.ISLAND_CORNER_NE, TILE.ISLAND_CORNER_SW, TILE.ISLAND_CORNER_SE] },
 	{ label: '障害物・建物', tiles: [TILE.WALL, TILE.WATER, TILE.LAVA, TILE.BREAKABLE_WALL, TILE.TREE, TILE.MOUNTAIN, TILE.BUSH, TILE.FENCE, TILE.HOUSE_WALL, TILE.HOUSE_DOOR, TILE.HOUSE_ROOF, TILE.SIGN] },
 	{ label: 'プレイヤー', tiles: [TILE.PLAYER] },
 	// ⚠️ 新しい敵タイルを shared/tiles.js に足したらここにも足す（ここに無い敵は
