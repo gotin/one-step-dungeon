@@ -10,9 +10,17 @@
 // 観測できること（＝テストの当て所）：
 //   ① 部品選択    connectedTileParts() の戻り（base の向き・edges の rail/trim）
 //   ② 絵の性質    デッキは不透明で板の向きに一様＝連続配置で1枚の長板に繋がる
-//   ③ 実マップ    field/8,9（12x10 の木デッキ）で内側に縁が出ない・水際に手すりが出る
+//   ③ 広いデッキ  内側に縁が出ない・水際に手すりが出る・縁が付くのは一部だけ
 //   ④ 実エンジン  ゲームの DOM で canvas.tile-sprite がセル全体を埋め、
 //                 dataset.tileEdges が ③ と同じ選択になっている
+//
+// ⚠ 2026-09-12（10c-2）: ③④ の標本を **ライブマップ `field 8,9` から合成のデッキへ移した**。
+//   以前は 8,9 に敷かれていた「板の絨毯」（陸の上の板 約70セル）を標本にしていたが、
+//   陸に板を敷くのは誤ったデータで、10c-2 でフィールドから撤去した（板は水を渡る所だけ）。
+//   ∴ 世界のどの画面にも「内側のあるデッキ」は残っていない（最大 28セル・内側 0セル）＝
+//   ここで守りたい機構の性質（内側に縁が出ない／縁は全体の一部）は合成でしか観測できない。
+//   実エンジン側（⑭〜⑰）は同じ形を `page.route` でマップ応答へ足して観測する
+//   （⑰ が先に使っていた作法＝マップデータは1バイトも変えない）。
 //
 // ⚠ 2026-09-06（10a-1b-2）: デッキ本体は「セルごとの変種」になった。どのセルも同じ絵だと
 //   12セル並べて 1296px の一枚板＝色が1ドットも変わらず「のっぺり」する（ユーザー指摘）。
@@ -42,6 +50,43 @@ function stage(rows, bg = {}) {
 }
 
 const V = TILE.BRIDGE, W = TILE.WATER, F = TILE.FLOOR;
+
+// ── 広いデッキの標本（合成・③④で共有する単一の形）────────────────────────
+// rows1-8 × cols0-4 が板。北（row0）だけ下地が水＝水際に手すりが出る。
+// 東（col5）は草の床＝乗り降りできる縁に木口が出る。西（col0）は画面外＝縁なし。
+const DECK_ROWS = [1, 2, 3, 4, 5, 6, 7, 8];
+const DECK_COLS = [0, 1, 2, 3, 4];
+const inDeck = (r, c) => DECK_ROWS.includes(r) && DECK_COLS.includes(c);
+
+/** 合成ステージ（12×10）を作る＝部品選択のテスト用。 */
+function wideDeckStage() {
+	const rows = [], bg = {};
+	for (let r = 0; r < 10; r++) {
+		let line = '';
+		for (let c = 0; c < 12; c++) {
+			line += inDeck(r, c) ? V : F;
+			bg[`${r},${c}`] = (r === 0 && DECK_COLS.includes(c)) ? W : TILE.GRASS;
+		}
+		rows.push(line);
+	}
+	return stage(rows, bg);
+}
+
+/**
+ * 実エンジンで同じ形を観測するために、マップ応答の `field 8,9` へ同じデッキを足す。
+ * ライブの 8,9 は (0,0-4) の下地が水・(4,5)(5,5) が草の床＝合成と同じ縁の条件を持つ。
+ * マップデータ自体は変更しない（テスト内の応答差し替えだけ）。
+ */
+async function routeWideDeck(page, extra = () => {}) {
+	await page.route('**/work/blade-of-lumia.json', async route => {
+		const res  = await route.fetch();
+		const json = await res.json();
+		const sd   = json.layers.field.stages['8,9'];
+		for (const r of DECK_ROWS) for (const c of DECK_COLS) sd.tiles[r][c] = V;
+		extra(sd);
+		await route.fulfill({ json });
+	});
+}
 
 test.describe('連結タイル – 部品の選択', () => {
 
@@ -369,9 +414,9 @@ test.describe('連結タイル – デッキの絵の性質（畑に戻らない
 
 });
 
-test.describe('連結タイル – 実マップ field/8,9（12x10 の木デッキ）', () => {
+test.describe('連結タイル – 広いデッキ（12x10・合成）', () => {
 
-	const st = FIELD['8,9'];
+	const st = wideDeckStage();
 
 	test('⑪ デッキの内側セルは縁を持たない', () => {
 		const p = connectedTileParts(st, 4, 0, V);
@@ -395,18 +440,19 @@ test.describe('連結タイル – 実マップ field/8,9（12x10 の木デッ�
 				if (connectedTileParts(st, r, c, V).edgeCode) withEdge++;
 			}
 		}
-		expect(total).toBeGreaterThan(60);
+		expect(total, '標本のデッキが「内側」を持てる大きさでない').toBeGreaterThan(30);
 		expect(withEdge / total).toBeLessThan(0.5);
 	});
 
-	test('⑬b 1枚に繋がったデッキは板の向きが揃う（実マップで4セルだけ縦板になっていた）', () => {
-		// field/8,9 のデッキは草地に挟まれて1セルだけ幅1になる箇所がある。
-		// セル単位で向きを決めるとそこだけ縦板になり、広い床の中で継ぎはぎに見えた。
+	test('⑬b 1枚に繋がったデッキは板の向きが揃う（実マップの湖の橋アームで確認）', () => {
+		// セル単位で向きを決めると幅1になる箇所だけ板が縦になり、継ぎはぎに見えた。
+		// ライブの `field 8,9` は南北へ渡る腕2本（cols5-6）だけが板＝向きは1種に揃うはず。
+		const live = FIELD['8,9'];
 		const bases = new Set();
-		for (let r = 0; r < st.tiles.length; r++)
-			for (let c = 0; c < st.tiles[r].length; c++)
-				if (st.tiles[r][c] === V) bases.add(connectedTileParts(st, r, c, V).base);
-		expect([...bases]).toEqual(['bridgeDeckH']);
+		for (let r = 0; r < live.tiles.length; r++)
+			for (let c = 0; c < live.tiles[r].length; c++)
+				if (live.tiles[r][c] === V) bases.add(connectedTileParts(live, r, c, V).base);
+		expect([...bases]).toEqual(['bridgeDeckH']);   // 南北に渡る＝板は横
 	});
 
 	test('⑬c dungeon_3/3,3 の 2×2 の渡しは板が渡る方向と直交する', () => {
@@ -425,6 +471,7 @@ test.describe('連結タイル – 実マップ field/8,9（12x10 の木デッ�
 test.describe('連結タイル – 実エンジンの描画', () => {
 
 	test('⑭ ゲームの橋セルはセル全体を埋め、縁の選択が部品表と一致する', async ({ page }) => {
+		await routeWideDeck(page);
 		const p = new URLSearchParams({
 			fromEditor: '1', layer: 'field', stage: '8,9', row: '4', col: '0',
 		});
@@ -454,6 +501,7 @@ test.describe('連結タイル – 実エンジンの描画', () => {
 	test('⑭b ゲームでも縦に並んだ橋セルは別の変種を描く（実画面で木口が千鳥になる）', async ({ page }) => {
 		// 部品表（⑦b）だけ千鳥でも、エンジンが代表1枚を描いていたら画面はのっぺりのまま。
 		// ∴ DOM の canvas に本体の変種名を持たせて実際の描画を観測する。
+		await routeWideDeck(page);
 		const p = new URLSearchParams({
 			fromEditor: '1', layer: 'field', stage: '8,9', row: '4', col: '0',
 		});
@@ -471,6 +519,7 @@ test.describe('連結タイル – 実エンジンの描画', () => {
 		// 1デバイスピクセルに下地（bgTiles の草）が滲み、セル境界に緑の細線が並ぶ。
 		// ∴ 橋セルでは下地の background-image を外し、セル背景をデッキの色にする。
 		// dataset.bgSprite を残すとアニメの再適用（redrawAnimSprites）で戻ってしまう。
+		await routeWideDeck(page);
 		const p = new URLSearchParams({
 			fromEditor: '1', layer: 'field', stage: '8,9', row: '4', col: '0',
 		});
@@ -497,17 +546,13 @@ test.describe('連結タイル – 実エンジンの描画', () => {
 	});
 
 	test('⑰ 下地（bgTiles）の橋もゲームで同じ絵になる＝置いた層で見た目が変わらない', async ({ page }) => {
-		// ライブマップの橋は 870 セルすべて tiles 層にある（＝スクリプトが書いた）。
+		// ライブマップの橋は tiles 層にある（＝スクリプトが書いた）。
 		// エディタのタイルパレットの「橋」は BG_TILES ＝ bgTiles 層に書かれるので、
 		// 「これから置く橋」はこの経路を通る。実マップに例が無いので、マップ JSON の
 		// 応答だけをテスト内で差し替えて確かめる（マップデータは変更しない）。
-		await page.route('**/work/blade-of-lumia.json', async route => {
-			const res  = await route.fetch();
-			const json = await res.json();
-			const sd   = json.layers.field.stages['8,9'];
-			sd.bgTiles['4,5'] = 'v';    // 元は草の床（デッキに挟まれた隙間）
+		await routeWideDeck(page, sd => {
+			sd.bgTiles['4,5'] = 'v';    // 合成デッキの東隣＝草の床（デッキに挟まれた隙間）
 			sd.bgTiles['5,5'] = 'v';
-			await route.fulfill({ json });
 		});
 		const p = new URLSearchParams({
 			fromEditor: '1', layer: 'field', stage: '8,9', row: '4', col: '0',
