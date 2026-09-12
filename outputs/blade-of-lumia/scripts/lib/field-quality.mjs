@@ -20,7 +20,7 @@ import {
 } from './connectivity.mjs';
 import { gameLayerEntries } from '../../shared/layers.js';
 import { ENEMY_META, ENEMY_TILES as ENEMY_TILE_CHARS } from '../../shared/enemies.js';
-import { TILE } from '../../shared/tiles.js';
+import { TILE, BRIDGE_KIN } from '../../shared/tiles.js';
 
 // ── Region label map (叩き台 ZONE_MAP from analyze-zone-rebalance.mjs) ────────
 // Rows = sy (0=north), cols = sx (0=west). Key format: "sx,sy" = stageKey.
@@ -265,7 +265,9 @@ const SECRET_TILES = new Set(['u', '!', '*', 'Q']);
 // '=' 潮ゲート（スイッチ/ボタンで開く水の門）も解ける障害。2026-07-27 に追加:
 // 深洋O の廊下は戦闘ゼロ・秘密ゼロで「潮ゲート＋石押し」だけで成立させる設計なので、
 // これが抜けていると作り込んだ画面が 0 軸＝素通り判定になっていた。
-const GATE_TILES = new Set(['!', 'T', '(', ')', 'D', 'x', 'v', TILE.TIDE_GATE]);
+// 10c-2: 手すりを手で決める橋 8種も「水を渡る手段」＝'v' と同じ障害軸を与える
+// （BRIDGE_KIN は 'v' を含む∴ここに展開すれば 'v' の重複は Set が吸収する）。
+const GATE_TILES = new Set(['!', 'T', '(', ')', 'D', 'x', 'v', TILE.TIDE_GATE, ...BRIDGE_KIN]);
 // Explicit landmark markers: altar / stone-floor plaza / buildings. Bare '#'
 // (generic wall) is deliberately NOT here — a wall is just an obstacle border,
 // not a memorable place. Ruins register as landmarks via their 'o' stone floor.

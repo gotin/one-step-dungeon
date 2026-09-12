@@ -109,6 +109,16 @@ export const TILE_SPRITE_MAP = {
 	[TILE.ISLAND_CORNER_NE]: { spr: 'islandCornerNe', pal: 'islandCorner' },
 	[TILE.ISLAND_CORNER_SW]: { spr: 'islandCornerSw', pal: 'islandCorner' },
 	[TILE.ISLAND_CORNER_SE]: { spr: 'islandCornerSe', pal: 'islandCorner' },
+	// キュー10番・10c-2：手すりを手で決める橋。連結タイルなので実際の絵は
+	// tile-connect.js が組む（この表は「連結を考えない基本の1枚」＝板の向きだけ）。
+	[TILE.BRIDGE_V_BOTH]: { spr: 'bridgeDeckH', pal: 'bridge' },
+	[TILE.BRIDGE_V_W]:    { spr: 'bridgeDeckH', pal: 'bridge' },
+	[TILE.BRIDGE_V_E]:    { spr: 'bridgeDeckH', pal: 'bridge' },
+	[TILE.BRIDGE_V_NONE]: { spr: 'bridgeDeckH', pal: 'bridge' },
+	[TILE.BRIDGE_H_BOTH]: { spr: 'bridgeDeckV', pal: 'bridge' },
+	[TILE.BRIDGE_H_N]:    { spr: 'bridgeDeckV', pal: 'bridge' },
+	[TILE.BRIDGE_H_S]:    { spr: 'bridgeDeckV', pal: 'bridge' },
+	[TILE.BRIDGE_H_NONE]: { spr: 'bridgeDeckV', pal: 'bridge' },
 	// Phase 5-1: 色スイッチ・色ゲート（基本スプライト。状態依存描画はゲーム側）
 	[TILE.SWITCH_RED]:  { spr: 'switchRed', pal: 'switchRed' },
 	[TILE.SWITCH_BLUE]: { spr: 'switchBlu', pal: 'switchBlu' },

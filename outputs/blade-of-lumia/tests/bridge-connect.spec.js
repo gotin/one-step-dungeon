@@ -29,7 +29,7 @@ import { fileURLToPath } from 'url';
 import { TILE } from '../shared/tiles.js';
 import { SPRITES } from '../shared/sprites.js';
 import { BR_VAR_ROWS, BR_VAR_COLS, connectVariantName } from '../shared/sprites-tiles.js';
-import { connectedTileParts, isConnectTile, connectTileAt } from '../shared/tile-connect.js';
+import { connectedTileParts, isConnectTile, connectTileAt, connectTileIconSprites } from '../shared/tile-connect.js';
 import { waitForBoard } from './helpers.js';
 
 const GAME = '/blade-of-lumia/game/';
@@ -575,6 +575,195 @@ test.describe('連結タイル – 実エンジンの描画', () => {
 
 		expect(dots.dot0).toBe('#5a3a18');   // 手すりの輪郭（デッキ単体なら #3a2010）
 		expect(dots.dot1).toBe('#d0a070');   // 手すりの笠木（デッキ単体なら #8a6030）
+	});
+
+});
+
+// ══════════════════════════════════════════════════════════════════
+// キュー10番 10c-2（2026-09-12）
+//   ⓐ 導出の橋 'v'：手すりは水際で切らず、渡る軸の側面を成分の端まで通す。
+//      「陸から踏み出した所に手すりが無い＝落ちる」構造に見えるのを直すため
+//      （ユーザー指摘）。木口は踏み降りる辺だけに残す。
+//   ⓑ 手すりを手で決める橋 8種：導出できない意図（水の上で手すり無し／2枚並べた
+//      橋の内側だけ手すりを消す）を文字で指定する。
+// ══════════════════════════════════════════════════════════════════
+
+test.describe('連結タイル – 手すりを陸まで通す（10c-2 ⓐ）', () => {
+
+	test('⑱ 南北に渡る腕の側面は、陸に接していても手すり（水際で切れない）', () => {
+		// 中央列だけが橋・両側は草（南北に3セル＝渡る軸が南北と分かる）。
+		const st = stage(['gvg', 'gvg', 'gvg'], {
+			'0,0': TILE.GRASS, '0,2': TILE.GRASS, '1,0': TILE.GRASS,
+			'1,2': TILE.GRASS, '2,0': TILE.GRASS, '2,2': TILE.GRASS,
+		});
+		const p = connectedTileParts(st, 1, 1, V);
+		expect(p.base).toBe('bridgeDeckH');       // 南北に渡る＝板は東西
+		expect(p.edges.W).toBe('rail');
+		expect(p.edges.E).toBe('rail');
+		expect(p.sprs).toContain('bridgeRailW');
+	});
+
+	test('⑱b 水際から陸に乗った端のセルも側面は手すり・踏み降りる辺だけ木口', () => {
+		// row0,1 の東西が水／row2 の東西が草＝橋が陸に乗り上げる形。row3 は草（降り口）。
+		const st = stage(['~v~', '~v~', 'gvg', 'ggg']);
+		const land = connectedTileParts(st, 2, 1, V);
+		expect(land.edges.W).toBe('rail');        // 陸に接していても手すりが続く
+		expect(land.edges.E).toBe('rail');
+		expect(land.edges.S).toBe('trim');        // 踏み降りる辺だけ木口
+		expect(land.sprs).not.toContain('bridgeTrimW');
+		const water = connectedTileParts(st, 0, 1, V);
+		expect(water.edges.W).toBe('rail');       // 水際も同じ手すり＝段が付かない
+	});
+
+	test('⑱c 塊のデッキは対象外＝陸に面した辺は木口のまま（広い床に柵が回らない）', () => {
+		const st = stage(['gvvvg', 'gvvvg', 'gvvvg']);
+		const p = connectedTileParts(st, 1, 1, V);
+		expect(p.edges.W).toBe('trim');
+		expect(connectedTileParts(FIELD['8,9'], 4, 4, V).edges.E).toBe('trim');
+	});
+
+	test('⑱d 単独の渡し（1×1・2×1）は対象外＝板が「囲われた箱」にならない', () => {
+		const one = connectedTileParts(stage(['ggg', 'gvg', 'ggg']), 1, 1, V);
+		expect(one.edges.N).toBe('trim');
+		expect(one.edges.W).toBe('trim');
+		// ダンジョンの落とし穴に架かる 1×1 の板（実マップ）
+		const dt = connectedTileParts(MAP.layers.dark_tower.stages['3,1'], 6, 3, V);
+		expect(Object.values(dt.edges).some(e => e === 'rail')).toBe(false);
+	});
+
+	test('⑱e 2×2 の小さな渡しは画面端に接する軸で向きを決める（島の角に騙されない）', () => {
+		// field/10,11 東の腕＝rows4-5 × cols10-11。北に島の角 'j' があるため
+		// axisCrosses だけでは「南北も渡っている」と誤答し、西の腕と向きが食い違った。
+		const st = FIELD['10,11'];
+		for (const [r, c] of [[4, 10], [4, 11], [5, 10], [5, 11]]) {
+			expect(connectedTileParts(st, r, c, V).base).toBe('bridgeDeckV');
+		}
+		// 西の腕（rows4-5 × cols0-1）と同じ向き＝左右対称
+		expect(connectedTileParts(st, 4, 0, V).base).toBe('bridgeDeckV');
+	});
+
+});
+
+test.describe('連結タイル – 手すりを手で決める橋 8種（10c-2 ⓑ）', () => {
+
+	const MANUAL = [
+		[TILE.BRIDGE_V_BOTH, 'bridgeDeckH', ['W', 'E']],
+		[TILE.BRIDGE_V_W,    'bridgeDeckH', ['W']],
+		[TILE.BRIDGE_V_E,    'bridgeDeckH', ['E']],
+		[TILE.BRIDGE_V_NONE, 'bridgeDeckH', []],
+		[TILE.BRIDGE_H_BOTH, 'bridgeDeckV', ['N', 'S']],
+		[TILE.BRIDGE_H_N,    'bridgeDeckV', ['N']],
+		[TILE.BRIDGE_H_S,    'bridgeDeckV', ['S']],
+		[TILE.BRIDGE_H_NONE, 'bridgeDeckV', []],
+	];
+
+	test('⑲ 8種すべて連結タイルで、文字が重複していない', () => {
+		const chars = MANUAL.map(([t]) => t);
+		expect(new Set([...chars, V]).size).toBe(9);
+		for (const t of chars) expect(isConnectTile(t)).toBe(true);
+	});
+
+	test('⑳ 板の向きは文字で決まる（隣接に左右されない）', () => {
+		for (const [t, base] of MANUAL) {
+			// 周りを全部水にしても、逆に全部陸にしても向きは同じ
+			const wet = connectedTileParts(stage(['~~~', `~${t}~`, '~~~']), 1, 1, t);
+			const dry = connectedTileParts(stage(['ggg', `g${t}g`, 'ggg']), 1, 1, t);
+			expect(wet.base).toBe(base);
+			expect(dry.base).toBe(base);
+		}
+	});
+
+	test('㉑ 手すりは名指しした辺だけ・水の上でも増えない（手すり無しは本当に無し）', () => {
+		for (const [t, , rails] of MANUAL) {
+			const p = connectedTileParts(stage(['~~~', `~${t}~`, '~~~']), 1, 1, t);
+			const got = ['N', 'E', 'S', 'W'].filter(d => p.edges[d] === 'rail');
+			expect(got.sort()).toEqual([...rails].sort());
+		}
+	});
+
+	test('㉒ 手すりを立てない辺は木口（隣が橋族・画面外なら縁なし）', () => {
+		const t = TILE.BRIDGE_V_NONE;
+		const p = connectedTileParts(stage(['ggg', `g${t}g`, 'ggg']), 1, 1, t);
+		expect(p.edges.N).toBe('trim');
+		expect(p.edges.W).toBe('trim');
+		// 同種が続く辺・画面外は縁なし
+		const kin = connectedTileParts(stage([`${t}${t}${t}`]), 0, 1, t);
+		expect(kin.edgeCode).toBe('');
+	});
+
+	test('㉓ 導出の橋 v と手動の橋の間には木口を描かない（1枚のデッキとして繋がる）', () => {
+		const t = TILE.BRIDGE_V_BOTH;
+		const st = stage(['~v~', `~${t}~`, '~v~']);
+		expect(connectedTileParts(st, 0, 1, V).edges.S).toBeNull();
+		expect(connectedTileParts(st, 1, 1, t).edges.N).toBeNull();
+		expect(connectedTileParts(st, 2, 1, V).edges.N).toBeNull();
+	});
+
+	test('㉔ 2枚並べて1本の橋＝内側に手すりが立たない（╟＋╢）', () => {
+		const [wSide, eSide] = [TILE.BRIDGE_V_W, TILE.BRIDGE_V_E];
+		const st = stage([`~${wSide}${eSide}~`, `~${wSide}${eSide}~`]);
+		const left = connectedTileParts(st, 0, 1, wSide);
+		const right = connectedTileParts(st, 0, 2, eSide);
+		expect(left.edges.W).toBe('rail');
+		expect(left.edges.E).toBeNull();     // 内側＝手すりも木口も無い
+		expect(right.edges.E).toBe('rail');
+		expect(right.edges.W).toBeNull();
+	});
+
+	test('㉕ 8種すべて地形（bgTiles 層に置ける）・通行可・エディタのパレットに載っている', async () => {
+		const { BG_TILES, TILE_META, MANUAL_BRIDGE_SPEC } = await import('../shared/tiles.js');
+		// パレットは定数名で参照されるのでソースを読んで登録漏れを見る（敵タイルが
+		// 2種漏れていた前例と同じ穴＝ここに無いタイルはエディタで置けない）。
+		const palette = readFileSync(fileURLToPath(new URL('../editor/editor-palette.js', import.meta.url)), 'utf8');
+		const names = Object.keys(TILE).filter(k => MANUAL_BRIDGE_SPEC[TILE[k]]);
+		expect(names.length).toBe(8);
+		for (const name of names) expect(palette).toContain(`TILE.${name}`);
+		for (const [t] of MANUAL) {
+			expect(BG_TILES.has(t)).toBe(true);
+			expect(TILE_META[t]?.passable).toBe(true);
+			expect(TILE_META[t]?.label).toBeTruthy();
+		}
+	});
+
+	test('㉖ 8種すべて障害軸を与える（水を渡る手段として数える）', async () => {
+		const { BRIDGE_KIN } = await import('../shared/tiles.js');
+		const { screenAxes } = await import('../scripts/lib/field-quality.mjs');
+		expect(BRIDGE_KIN.has(V)).toBe(true);
+		for (const [t] of MANUAL) expect(BRIDGE_KIN.has(t)).toBe(true);
+		// 水で分断された画面に手動の橋を1枚置くだけで障害軸が立つ
+		const t = TILE.BRIDGE_H_BOTH;
+		const rows = ['gggggg', '~~~~~~', 'gggggg'];
+		const before = screenAxes({ rows: 3, cols: 6, tiles: rows.map(r => r.split('')), bgTiles: {} });
+		const after = screenAxes({
+			rows: 3, cols: 6,
+			tiles: ['gggggg', `~~${t}${t}~~`, 'gggggg'].map(r => r.split('')), bgTiles: {},
+		});
+		expect(before.has('obstacle')).toBe(false);
+		expect(after.has('obstacle')).toBe(true);
+	});
+
+	test('㉗ パレットのアイコンに手すりが出る＝8種を見た目で見分けられる', () => {
+		const railSprites = { N: 'bridgeRailN', E: 'bridgeRailE', S: 'bridgeRailS', W: 'bridgeRailW' };
+		for (const [t, deck, rails] of MANUAL) {
+			const icon = connectTileIconSprites(t);
+			expect(icon, `${t} のアイコン部品`).toBeTruthy();
+			expect(icon.pal).toBe('bridge');
+			// 本体は板の向きどおり／手すりは名指しした辺と完全一致（過不足なし）
+			expect(icon.sprs[0]).toBe(deck);
+			expect(icon.sprs.slice(1).sort()).toEqual(rails.map(d => railSprites[d]).sort());
+			// 木口は隣接で決まる＝アイコンには出さない。全部の絵が実在すること。
+			for (const s of icon.sprs) {
+				expect(s.startsWith('bridgeTrim')).toBe(false);
+				expect(SPRITES[s], `${s} の絵`).toBeTruthy();
+			}
+		}
+		// 手すりの辺が違うタイル同士は必ず違う絵の組み合わせになる（8種が同じ絵に見えない）
+		const keys = MANUAL.map(([t]) => connectTileIconSprites(t).sprs.join('+'));
+		expect(new Set(keys).size).toBe(8);
+		// 隣接から導く連結タイルは null＝呼び出し側は従来の1枚絵に落ちる
+		for (const t of [TILE.BRIDGE, TILE.HOUSE_WALL, TILE.HOUSE_ROOF, TILE.HOUSE_DOOR, TILE.FENCE]) {
+			expect(connectTileIconSprites(t)).toBeNull();
+		}
 	});
 
 });

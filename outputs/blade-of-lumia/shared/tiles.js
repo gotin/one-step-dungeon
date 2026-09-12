@@ -147,6 +147,25 @@ export const TILE = {
 	ISLAND_CORNER_NE: 'j',
 	ISLAND_CORNER_SW: 'y',
 	ISLAND_CORNER_SE: 'z',
+
+	// ── キュー10番・10c-2（2026-09-12）：手すりを手で決める橋 ────────────
+	// `BRIDGE`（'v'）は「板の向きも手すりの位置も隣接から導出する」橋。ほとんどの
+	// 場面はこれで足りるが、導出できない意図が2つある：
+	//   ① 水の上なのに手すりが無い板（桟橋・飛び石のような細い渡し）
+	//   ② 2枚並べて1本の橋にするときの「内側には手すりを立てない」
+	// ∴「板の向き＋手すりを立てる辺」を文字で固定する橋を8種持つ。
+	// 命名は BRIDGE_<板の向き>_<手すりの辺>：
+	//   V（vertical crossing）＝南北に渡る橋＝板は東西（deckH）・手すりは西/東の側面
+	//   H（horizontal crossing）＝東西に渡る橋＝板は南北（deckV）・手すりは北/南の側面
+	// 文字は罫線素片で「手すりがどこに立つか」を象る（'╫' は既に別タイルで使用済み）。
+	BRIDGE_V_BOTH: '║',  // 南北に渡る・両側に手すり
+	BRIDGE_V_W:    '╟',  // 南北に渡る・西だけ手すり
+	BRIDGE_V_E:    '╢',  // 南北に渡る・東だけ手すり
+	BRIDGE_V_NONE: '┆',  // 南北に渡る・手すり無し
+	BRIDGE_H_BOTH: '═',  // 東西に渡る・両側に手すり
+	BRIDGE_H_N:    '╤',  // 東西に渡る・北だけ手すり
+	BRIDGE_H_S:    '╧',  // 東西に渡る・南だけ手すり
+	BRIDGE_H_NONE: '┄',  // 東西に渡る・手すり無し
 };
 
 // タイルのメタ情報
@@ -259,7 +278,33 @@ export const TILE_META = {
 	[TILE.ISLAND_CORNER_NE]: { label: '島の角（北東）', color: '#3a6e28', passable: true, icon: '◝' },
 	[TILE.ISLAND_CORNER_SW]: { label: '島の角（南西）', color: '#3a6e28', passable: true, icon: '◟' },
 	[TILE.ISLAND_CORNER_SE]: { label: '島の角（南東）', color: '#3a6e28', passable: true, icon: '◞' },
+	// キュー10番・10c-2：手すりを手で決める橋（8種・板の向きも文字で固定）
+	[TILE.BRIDGE_V_BOTH]: { label: '橋・南北（手すり両側）', color: '#8a6030', passable: true, icon: '║' },
+	[TILE.BRIDGE_V_W]:    { label: '橋・南北（手すり西）',   color: '#8a6030', passable: true, icon: '╟' },
+	[TILE.BRIDGE_V_E]:    { label: '橋・南北（手すり東）',   color: '#8a6030', passable: true, icon: '╢' },
+	[TILE.BRIDGE_V_NONE]: { label: '橋・南北（手すり無し）', color: '#8a6030', passable: true, icon: '┆' },
+	[TILE.BRIDGE_H_BOTH]: { label: '橋・東西（手すり両側）', color: '#8a6030', passable: true, icon: '═' },
+	[TILE.BRIDGE_H_N]:    { label: '橋・東西（手すり北）',   color: '#8a6030', passable: true, icon: '╤' },
+	[TILE.BRIDGE_H_S]:    { label: '橋・東西（手すり南）',   color: '#8a6030', passable: true, icon: '╧' },
+	[TILE.BRIDGE_H_NONE]: { label: '橋・東西（手すり無し）', color: '#8a6030', passable: true, icon: '┄' },
 };
+
+// 手すりを手で決める橋 8種の仕様表（tile-connect.js が部品表を組み立てるのに使う）。
+// deck = 板の向き／rails = 手すりを立てる辺。ends（渡る軸の側）は木口で切る。
+export const MANUAL_BRIDGE_SPEC = {
+	[TILE.BRIDGE_V_BOTH]: { deck: 'H', rails: ['W', 'E'] },
+	[TILE.BRIDGE_V_W]:    { deck: 'H', rails: ['W'] },
+	[TILE.BRIDGE_V_E]:    { deck: 'H', rails: ['E'] },
+	[TILE.BRIDGE_V_NONE]: { deck: 'H', rails: [] },
+	[TILE.BRIDGE_H_BOTH]: { deck: 'V', rails: ['N', 'S'] },
+	[TILE.BRIDGE_H_N]:    { deck: 'V', rails: ['N'] },
+	[TILE.BRIDGE_H_S]:    { deck: 'V', rails: ['S'] },
+	[TILE.BRIDGE_H_NONE]: { deck: 'V', rails: [] },
+};
+
+// 「同じ1枚のデッキ」とみなす橋タイル＝この間には木口を描かない（継ぎ目を作らない）。
+// 導出の橋 'v' と手動の8種を混ぜて置いても板が段付きに見えないようにするための集合。
+export const BRIDGE_KIN = new Set([TILE.BRIDGE, ...Object.keys(MANUAL_BRIDGE_SPEC)]);
 
 // タイルの一覧（パレット表示用）
 export const TILE_LIST = Object.keys(TILE_META);
@@ -278,6 +323,8 @@ export const BG_TILES = new Set([
 	TILE.WATER,
 	// キュー10番・10c 追い作業：島の角（草地の変種・通行可）
 	TILE.ISLAND_CORNER_NW, TILE.ISLAND_CORNER_NE, TILE.ISLAND_CORNER_SW, TILE.ISLAND_CORNER_SE,
+	// キュー10番・10c-2：手すりを手で決める橋（'v' と同じく地形＝bgTiles 層に置く）
+	...Object.keys(MANUAL_BRIDGE_SPEC),
 ]);
 
 // 空のステージデータを生成する

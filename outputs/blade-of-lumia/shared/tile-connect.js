@@ -11,11 +11,19 @@
 // 縁の種類は「そのタイルが何なのか」で違う∴部品表がタイルごとに `edge(dir, nb)` を
 // 持ち、隣の状況（nb）から縁の種類を返す。共通の機構はここまで＝どの方向を見るか・
 // 画面外や層をまたぐ隣の解決・部品名の組み立て。
-//   橋   rail（手すり）… 隣が水/溶岩＝落ちる側。柵を立てるのが自然。
-//        trim（木口）  … 隣が陸＝乗り降りできる側。手すりを立てると「渡れない縁」に
+//   橋   rail（手すり）… 落ちる側＝隣が水/溶岩。加えて「渡る軸が分かっている橋」の
+//                        側面（軸に平行な辺）は陸に接していても手すりを通す。
+//                        ⚠ 手すりを水際で切ると、陸から踏み出した所に手すりが無い
+//                        ＝構造として危険に見える（2026-09-12 ユーザー指摘）。手すりは
+//                        成分の端まで通し、木口は「踏み降りる辺」だけに残す。
+//        trim（木口）  … 乗り降りできる側＝渡る軸の端。手すりを立てると「渡れない縁」に
 //                        見えてしまうので、板の端の陰だけを描く。
 //        画面外＝隣画面へデッキが続くとみなす（縁なし）。ここで縁を描くと、辺
 //        スクロールで繋がっている通路が塞がって見える。
+//        導出できない意図（水の上なのに手すり無し／2枚並べた橋の内側に手すりを立てない）
+//        のために「板の向きと手すりの辺を文字で固定する橋」を8種持つ
+//        （tiles.js の MANUAL_BRIDGE_SPEC）。手動の橋は名指しした辺に必ず手すりを立て、
+//        それ以外の辺は木口（隣が橋族・画面外なら縁なし）。
 //   家   軒の影／笠石／土台／隅石（外壁）・棟／軒／破風（屋根）。
 //        画面外は**縁を描く**＝家は跨いで続かない（実測：境界に接する家は単独の1セル
 //        だけで、隣画面に続く棟は無い）。橋と逆なので方向ごとの規則をタイルに持たせる。
@@ -27,7 +35,7 @@
 //        （bgTiles）が見える絵。描画側（render-board.js）はこのフラグを見て、
 //        橋・家のように下地を消して単色で塗りつぶす処理を skip する。
 
-import { TILE } from './tiles.js';
+import { TILE, MANUAL_BRIDGE_SPEC, BRIDGE_KIN } from './tiles.js';
 import { connectVariantName, tileHash } from './sprites-tiles.js';
 
 // 「落ちる」隣＝手すりを立てる相手。tiles 層と bgTiles 層のどちらで水でも同じ。
@@ -46,7 +54,18 @@ export const CONNECT_TILE_PARTS = {
 		// 進行方向と板を直交させると「渡る板」に見える。塊（両軸が繋がる）は deckH。
 		baseH: 'bridgeDeckH',
 		baseV: 'bridgeDeckV',
-		edge: (dir, nb, tile) => (nb.offscreen || nb.tile === tile ? null : nb.falls ? 'rail' : 'trim'),
+		// ctx.span＝この成分が渡っている軸（'NS'|'EW'）。分かっているときは軸に平行な
+		// 側面には陸でも手すりを通す（水際で手すりが切れないように）。塊のデッキは
+		// span が無い＝陸に面した辺は木口のまま（広い床の周りに柵が回らない）。
+		edge: (dir, nb, tile, nbAll, ctx) => {
+			if (nb.offscreen || BRIDGE_KIN.has(nb.tile)) return null;
+			if (nb.falls) return 'rail';
+			if (ctx?.span) {
+				const isEnd = ctx.span === 'NS' ? (dir === 'N' || dir === 'S') : (dir === 'E' || dir === 'W');
+				if (!isEnd) return 'rail';
+			}
+			return 'trim';
+		},
 		rail: { N: 'bridgeRailN', E: 'bridgeRailE', S: 'bridgeRailS', W: 'bridgeRailW' },
 		trim: { N: 'bridgeTrimN', E: 'bridgeTrimE', S: 'bridgeTrimS', W: 'bridgeTrimW' },
 		layer: ['N', 'S', 'E', 'W'],   // 角は縦（東西）の手すりが手前
@@ -132,6 +151,47 @@ export const CONNECT_TILE_PARTS = {
 	},
 };
 
+// 手すりを手で決める橋 8種。導出（'v'）と違い、板の向きも手すりの辺も文字で決まる
+// ＝作者が意図した通りに出る（＝逆に、置き間違えると手すりが途切れて見える）。
+// 新しい絵は要らない：本体は 'v' と同じ bridgeDeckH/V、縁も同じ rail/trim を組み替えるだけ。
+for (const [tile, spec] of Object.entries(MANUAL_BRIDGE_SPEC)) {
+	const rails = new Set(spec.rails);
+	CONNECT_TILE_PARTS[tile] = {
+		pal: 'bridge',
+		base: spec.deck === 'H' ? 'bridgeDeckH' : 'bridgeDeckV',
+		// 名指しした辺は隣が何であれ手すり（画面外・隣の橋でも立てる＝2枚並べた橋の
+		// 内側だけ手すりを消す、といった指定が効く）。それ以外の辺は木口で切る。
+		edge: (dir, nb) => {
+			if (rails.has(dir)) return 'rail';
+			if (nb.offscreen || BRIDGE_KIN.has(nb.tile)) return null;
+			return 'trim';
+		},
+		rail: { N: 'bridgeRailN', E: 'bridgeRailE', S: 'bridgeRailS', W: 'bridgeRailW' },
+		trim: { N: 'bridgeTrimN', E: 'bridgeTrimE', S: 'bridgeTrimS', W: 'bridgeTrimW' },
+		layer: ['N', 'S', 'E', 'W'],
+	};
+}
+
+/**
+ * パレットのボタンなど「隣が無い場所」で1枚絵として見せるときの部品。
+ * 隣接から導かれる縁（木口・落ちる側の手すり）は描かず、**そのタイル文字が固定で
+ * 持っている意図だけ**を描く＝手動の橋は名指しした手すりを含める。
+ * ⚠ これが無いと8種すべて同じ板の絵になり、パレットで見分けが付かない
+ *   （2026-09-12 ユーザー指摘＝「パッと見で判断つかなくて操作しづらい」）。
+ * @returns {{pal:string, sprs:string[]}|null} 固定の意図を持たないタイルは null
+ *   （呼び出し側は従来どおり TILE_SPRITE_MAP の1枚絵にフォールバックする）
+ */
+export function connectTileIconSprites(tile) {
+	const spec = MANUAL_BRIDGE_SPEC[tile];
+	if (!spec) return null;
+	const parts = CONNECT_TILE_PARTS[tile];
+	const rails = new Set(spec.rails);
+	return {
+		pal: parts.pal,
+		sprs: [parts.base, ...layerOrder(parts).filter(d => rails.has(d)).map(d => parts.rail[d])],
+	};
+}
+
 const DIRS = { N: [-1, 0], E: [0, 1], S: [1, 0], W: [0, -1] };
 const DIR_ORDER = ['N', 'E', 'S', 'W'];   // 辺を見る順＝edgeCode の並び（時計回り）
 // 縁を重ねる順は辺を見る順とは別物。DIR_ORDER のまま重ねると N,E,S,W ＝ 東の縁だけが
@@ -186,7 +246,16 @@ function component(stageData, r, c, tile) {
 		const [rr, cc] = k.split(',').map(Number);
 		if (!rep || rr < rep[0] || (rr === rep[0] && cc < rep[1])) rep = [rr, cc];
 	}
-	return { size: seen.size, h: maxR - minR + 1, w: maxC - minC + 1, rep };
+	const rows = stageData.rows ?? stageData.tiles.length;
+	const cols = stageData.cols ?? stageData.tiles[0].length;
+	return {
+		size: seen.size, h: maxR - minR + 1, w: maxC - minC + 1, rep,
+		// 画面端に接しているか＝その方向へデッキが隣画面へ続く＝渡る軸の手がかり。
+		// 2×2 以下では形から軸が読めないので、これで決める（軸の端を辿る axisCrosses は
+		// 島の角タイル 'q/j/y/z' を陸と読んで「両軸とも渡っている」と誤答した）。
+		touchV: minR === 0 || maxR === rows - 1,
+		touchH: minC === 0 || maxC === cols - 1,
+	};
 }
 
 /**
@@ -256,15 +325,6 @@ export function connectedTileParts(stageData, r, c, tile) {
 	const nbAll = {};
 	for (const dir of DIR_ORDER) nbAll[dir] = neighborInfo(stageData, r, c, dir);
 
-	// 縁の種類はタイルごとの規則（parts.edge）に任せる＝橋の rail/trim と家の
-	// 軒/笠石/隅石を同じ機構で扱う。画面外の扱いも規則の中で決まる。
-	// 4引目に nbAll を渡す＝柵のように「4方向の続き具合」で自分の縁を決めるタイル用
-	// （橋・家は隣接1方向だけで決まるので使わない＝既存の呼び方のまま動く）。
-	const edges = {};
-	for (const dir of DIR_ORDER) {
-		edges[dir] = parts.edge(dir, nbAll[dir], tile, nbAll) ?? null;
-	}
-
 	// 本体の向き。家のように向きが1つしかない部品表は `base` をそのまま使う。
 	// 橋は「連結成分ごと」に1つ決める。柵は `baseFrom`＝セルごとに4方向の隣接だけで決める
 	// （橋の「成分の外接矩形」は柵の L字の角では機能しない∴別の方式を持つ）。
@@ -274,6 +334,9 @@ export function connectedTileParts(stageData, r, c, tile) {
 	//   細長い成分＝橋の腕だけ渡る方向と直交させ、それ以外（塊・L字など）は
 	//   deckH＝1枚の広い床として揃える。
 	let base = parts.base;
+	// span＝この成分が渡っている軸。手すりを「陸に乗ったセルまで」通すかの判断に使う
+	// （腕＝渡る軸がある成分だけ。塊は null＝広い床の周りに柵を回さない）。
+	let span = null;
 	if (!base && parts.baseFrom) {
 		base = parts.baseFrom(nbAll, tile);
 	} else if (!base) {
@@ -282,13 +345,37 @@ export function connectedTileParts(stageData, r, c, tile) {
 		if (comp.h <= 2 && comp.w >= 3)      base = parts.baseV;  // 東西に細長い腕 → 板は南北
 		else if (comp.w <= 2 && comp.h >= 3) base = parts.baseH;  // 南北に細長い腕 → 板は東西
 		else if (comp.h <= 2 && comp.w <= 2) {
-			// 2×2 以下の小さな渡しは形では判別できない＝端を見て渡る軸を決める。
-			const [rr, cc] = comp.rep;
-			if (axisCrosses(stageData, rr, cc, tile, 0, 1) && !axisCrosses(stageData, rr, cc, tile, 1, 0)) {
-				base = parts.baseV;
+			// 2×2 以下の小さな渡しは形では判別できない＝まず画面端に接する軸を見る
+			// （その方向へデッキが隣画面へ続く）。どちらでもなければ軸の端を辿る。
+			if (comp.touchH && !comp.touchV) base = parts.baseV;
+			else if (comp.touchV && !comp.touchH) base = parts.baseH;
+			else {
+				const [rr, cc] = comp.rep;
+				if (axisCrosses(stageData, rr, cc, tile, 0, 1) && !axisCrosses(stageData, rr, cc, tile, 1, 0)) {
+					base = parts.baseV;
+				}
 			}
 		}
+		// 渡る軸として扱うのは「腕」だけ＝両軸とも3以上の塊は除く。さらに軸方向に
+		// 3セル以上あるか画面端に達しているものに限る（1×1・2×1 の単独の渡しに柵を
+		// 回すと落とし穴の上の板が「囲われた箱」になる＝ダンジョンの板が別物に見える）。
+		if (!(comp.h >= 3 && comp.w >= 3)) {
+			const crossLen = base === parts.baseH ? comp.h : comp.w;
+			const touchCross = base === parts.baseH ? comp.touchV : comp.touchH;
+			if (crossLen >= 3 || touchCross) span = base === parts.baseH ? 'NS' : 'EW';
+		}
 	}
+
+	// 縁の種類はタイルごとの規則（parts.edge）に任せる＝橋の rail/trim と家の
+	// 軒/笠石/隅石を同じ機構で扱う。画面外の扱いも規則の中で決まる。
+	// 4引目に nbAll を渡す＝柵のように「4方向の続き具合」で自分の縁を決めるタイル用。
+	// 5引目 ctx は幾何から分かった文脈（橋の渡る軸 span）＝本体の向きより後に決まるので
+	// base の決定より後で呼ぶ。
+	const edges = {};
+	for (const dir of DIR_ORDER) {
+		edges[dir] = parts.edge(dir, nbAll[dir], tile, nbAll, { span }) ?? null;
+	}
+
 	// 本体はセル座標で変種を選ぶ（板の木口・石の風化が隣のセルと違う＝模様の周期が
 	// 目に見えない）。向きの判定（base）と変種の選択は別物∴向きは base として別に返す
 	// ＝テストや呼び出し側は「どっち向きのデッキか」を変種名から剥がして読める。

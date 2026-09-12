@@ -1,7 +1,8 @@
 // ── editor-palette.js ── タイルパレット・スプライト描画 ────────
 import { TILE, TILE_META } from '../shared/tiles.js';
-import { SPRITES, PAL, animFrame } from '../shared/sprites.js';
+import { SPRITES, PAL, animFrame, drawSpriteLayers } from '../shared/sprites.js';
 import { TILE_SPRITE_MAP } from '../shared/tile-sprites.js';
+import { connectTileIconSprites } from '../shared/tile-connect.js';
 import { state, tilePaletteEl } from './editor-state.js';
 
 // タイル → スプライト対応は shared/tile-sprites.js（単一の真実）を再エクスポート。
@@ -39,6 +40,11 @@ export function drawSpriteAt(ctx, spriteName, palName, dx, dy, dw, dh) {
 // カテゴリ分け
 const PALETTE_CATEGORIES = [
 	{ label: '地形（背景）', tiles: [TILE.FLOOR, TILE.GRASS, TILE.SAND, TILE.STONE_FLOOR, TILE.BRIDGE, TILE.SNOW, TILE.ASH, TILE.MUD, TILE.ISLAND_CORNER_NW, TILE.ISLAND_CORNER_NE, TILE.ISLAND_CORNER_SW, TILE.ISLAND_CORNER_SE] },
+	// 10c-2：手すりを手で決める橋（'v' は自動導出・こちらは板の向きと手すりの辺を固定）
+	{ label: '橋（手すり指定）', tiles: [
+		TILE.BRIDGE_V_BOTH, TILE.BRIDGE_V_W, TILE.BRIDGE_V_E, TILE.BRIDGE_V_NONE,
+		TILE.BRIDGE_H_BOTH, TILE.BRIDGE_H_N, TILE.BRIDGE_H_S, TILE.BRIDGE_H_NONE,
+	] },
 	{ label: '障害物・建物', tiles: [TILE.WALL, TILE.WATER, TILE.LAVA, TILE.BREAKABLE_WALL, TILE.TREE, TILE.MOUNTAIN, TILE.BUSH, TILE.FENCE, TILE.HOUSE_WALL, TILE.HOUSE_DOOR, TILE.HOUSE_ROOF, TILE.SIGN] },
 	{ label: 'プレイヤー', tiles: [TILE.PLAYER] },
 	// ⚠️ 新しい敵タイルを shared/tiles.js に足したらここにも足す（ここに無い敵は
@@ -84,8 +90,23 @@ export function buildTilePalette(updateToolButtons) {
 			btn.className = 'tile-btn' + (tileChar === state.selectedTile ? ' selected' : '');
 			btn.title = meta.label;
 
+			// 連結タイルのうち「文字で固定の意図を持つ」もの（手すりを名指しした橋）は
+			// 本体＋手すりを重ねた絵をボタンに描く＝パレットで8種を見分けられる。
+			const icon = connectTileIconSprites(tileChar);
 			const si = TILE_SPRITE_MAP[tileChar];
-			if (si && SPRITES[si.spr]) {
+			if (icon) {
+				const cv = document.createElement('canvas');
+				cv.width = 28; cv.height = 28;
+				cv.style.imageRendering = 'pixelated';
+				cv.style.display = 'block';
+				const tmp = document.createElement('canvas');
+				if (drawSpriteLayers(tmp, icon.sprs, PAL[icon.pal] ?? PAL.hero)) {
+					const ctx = cv.getContext('2d');
+					ctx.imageSmoothingEnabled = false;
+					ctx.drawImage(tmp, 0, 0, 28, 28);
+				}
+				btn.appendChild(cv);
+			} else if (si && SPRITES[si.spr]) {
 				const cv = document.createElement('canvas');
 				cv.width = 28; cv.height = 28;
 				cv.style.imageRendering = 'pixelated';
