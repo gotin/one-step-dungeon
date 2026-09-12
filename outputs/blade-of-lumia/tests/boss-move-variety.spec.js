@@ -71,7 +71,18 @@ function previewUrl(stage, row, col, extra) {
 
 // 実時間ループを開く前に無効化する（GUIDE §4-2・facing-block-enemies.spec.js と同じ型）
 const frozen = new WeakSet();
-async function gotoFrozen(page, url) {
+//
+// ⚠️ `seed`（キュー11・2026-09-12）＝この本の測定は実時間待ちを一切使わず `g.step(1)` の
+//    同期ループだけで進む（上のコメントのとおり）＝flaky の原因は CPU 負荷ではなく
+//    `game/enemy-ai.js pickApproachMode` 等の **unseeded `Math.random()`** そのもの
+//    （実測＝`--repeat-each=150` で 4/150＝2.7% が「150 tick 経っても最接近が閾値を
+//    割らない」で落ちた＝統計的なテイルリスク・機構の穴ではない）。∴この不確定性を
+//    テストの外に置く＝`seed` を渡した呼び出しだけ、ナビゲーションごとに再実行される
+//    `addInitScript` で `Math.random` を固定シードの PRNG（mulberry32）に差し替える。
+//    ゲームのコード（`game/enemy-ai.js` 等）は1バイトも変えない＝本物の乱数選択ロジックを
+//    決定的な入力列で実行するだけ（AIの動き自体を測る本の意図は保たれる）。
+//    `seed` を渡さない呼び出し（他の全ボスの本）は従来どおり素の `Math.random`。
+async function gotoFrozen(page, url, seed) {
   if (!frozen.has(page)) {
     await page.addInitScript(() => {
       const native = window.setInterval;
@@ -82,6 +93,19 @@ async function gotoFrozen(page, url) {
       };
     });
     frozen.add(page);
+  }
+  if (seed !== undefined) {
+    // addInitScript はナビゲーションごとに再実行される＝毎回同じシードから始まる
+    // （＝`trackDarkLord`/`trackZarnel` を同じ page で複数回呼んでも決定的）。
+    await page.addInitScript((sd) => {
+      let s = sd >>> 0;
+      Math.random = function () {
+        s |= 0; s = (s + 0x6D2B79F5) | 0;
+        let t = Math.imul(s ^ (s >>> 15), 1 | s);
+        t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+        return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+      };
+    }, seed);
   }
   await page.goto(url);
   await waitForBoard(page);
@@ -98,7 +122,7 @@ async function gotoFrozen(page, url) {
  * @param {number} [o.dmg]    そのダメージ量
  */
 async function trackMonster(page, o) {
-  await gotoFrozen(page, previewUrl('bal_monster', PL_ROW, PL_COL));
+  await gotoFrozen(page, previewUrl('bal_monster', PL_ROW, PL_COL), o.seed);
   return page.evaluate((a) => {
     const g = window.__game;
     const pl = g.getPlayer();
@@ -254,7 +278,13 @@ test('④ HP 半分で二相をやめ、回り込みの張り付き型に変わ�
   const m = ENEMY_META['W'];
   // ⚠️ `dealDamage` は防御を通る（combat.js＝`max(1, dmg - e.def)`）∴HP の半分ぴったりを
   //    渡すと `def` ぶん足りずに閾値を割らない（実測でここに落ちた）。def を足して渡す。
-  const r = await trackMonster(page, { ticks: 200, dropAt: 20, dmg: Math.ceil(m.hp / 2) + m.def });
+  // 🔴（キュー11・2026-09-12）末尾の `minAfter <= SWORD_RANGE_W` は X-② と同型の
+  //    unseeded Math.random（`bossTickHitAndAway` の寄り方抽選）に依存する統計的な
+  //    テイルリスク（フル実行でこのサブテストが一度落ちた記録あり）。同じ `seed:1` で
+  //    固定＝1〜40 の候補を実測し全部で minAfter<=1.5 を満たすことを確認済み。
+  const r = await trackMonster(page, {
+    ticks: 200, dropAt: 20, dmg: Math.ceil(m.hp / 2) + m.def, seed: 1,
+  });
   expect(r.error).toBeUndefined();
   expect(r.end.hp / r.end.maxHp, '与えたダメージで HP が半分を割っていない＝相の前提が崩れた')
     .toBeLessThanOrEqual(0.5);
@@ -6581,7 +6611,7 @@ const nDlTicks = (ms) => Math.ceil(ms / TICK_MS);
 async function trackDarkLord(page, o) {
   await installToneRec(page);
   const sp = o.spawn ?? DL_FAR;
-  await gotoFrozen(page, previewUrl('bal_dark_lord', sp.row, sp.col, { ...DL_OBS, ...(o.extra ?? {}) }));
+  await gotoFrozen(page, previewUrl('bal_dark_lord', sp.row, sp.col, { ...DL_OBS, ...(o.extra ?? {}) }), o.seed);
   if (o.debugOff) await page.keyboard.press('g');
   return page.evaluate((a) => {
     const g = window.__game;
@@ -6810,7 +6840,14 @@ test('X-② 移動＝プレイヤーが止まっていても魔将と同じ速�
     //    flank/strafe/wander の均等抽選（魔将と同じ既定の重み）が**たまたま**遠回りだけを
     //    引く確率が無視できない（実測でも 3.04 セルまで詰め切れない回が出た＝閾値の
     //    すぐ外＝空振り）。150 tick（複数周）に伸ばして「引きの悪さ」を均す。
-    const still = await trackDarkLord(page, { ticks: 150, spawn: DL_FAR });
+    // 🔴（キュー11・2026-09-12）150 tick に伸ばしても引きの悪さは 0 にならない＝実測で
+    //    `--repeat-each=150` を回すと 4/150（2.7%）が「最接近 2.0615〜3.04」で落ちた
+    //    （`pickApproachMode` の unseeded Math.random が真因＝機構の穴ではない統計的
+    //    テイルリスク）。∴この tick 数のあいだの「引きの悪さ」を均す判定そのものは
+    //    乱数任せから**固定シード**へ移す＝`seed:1` は 151 個の候補（1〜40・1000〜1150）を
+    //    実測し全部で closest<2.0 かつ casts>=2 を満たすことを確認済み（`.scratch/`
+    //    の使い捨てスクリプトで検証・AIロジックは無改修）。
+    const still = await trackDarkLord(page, { ticks: 150, spawn: DL_FAR, seed: 1 });
     expect(still.error).toBeUndefined();
     const dist = (x) => Math.hypot(x.y - x.py, x.x - x.px);
     const start = dist(still.samples[0]);
@@ -7293,7 +7330,7 @@ const inEdgeRadius = (cr, cc, r, c, radius) => Math.hypot(
 async function trackZarnel(page, o) {
   await installToneRec(page);
   const sp = o.spawn ?? Z_FAR;
-  await gotoFrozen(page, previewUrl('bal_zarnel', sp.row, sp.col, { ...Z_OBS, ...(o.extra ?? {}) }));
+  await gotoFrozen(page, previewUrl('bal_zarnel', sp.row, sp.col, { ...Z_OBS, ...(o.extra ?? {}) }), o.seed);
   if (o.debugOff) await page.keyboard.press('g');
   return page.evaluate((a) => {
     const g = window.__game;
@@ -7654,7 +7691,11 @@ test('Z-③ 像は本体と同じ見た目・同じ速さで**歩いて**寄る�
   async ({ page }) => {
     const m = ENEMY_META[Z];
     // 相2 の live のあいだだけを見る（収束は Z-⑤ 以降で測る）。プレイヤーは隅で動かない。
-    const r = await trackZarnel(page, { ticks: 40, drop: Z_P2_DMG });
+    // 🔴（キュー11・2026-09-12）像の歩行も `bossTickHitAndAway` 系の unseeded Math.random
+    //    を経由する＝X-② と同じ統計的テイルリスクの系列（フル実行でだけ稀に「像が寄って
+    //    いない」で落ちた報告と一致）。X-② と同じ `seed:1` で固定＝40 個の候補（1〜40）を
+    //    実測し全部で「40 tick 以内に少なくとも1セル寄る」を満たすことを確認済み。
+    const r = await trackZarnel(page, { ticks: 40, drop: Z_P2_DMG, seed: 1 });
     const s = r.samples;
     expect(r.error).toBeUndefined();
     const live = s.filter(x => x.phase === 'live' && x.mirages.length > 0);

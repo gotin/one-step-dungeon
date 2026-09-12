@@ -72,7 +72,13 @@ async function walkAcross(page, name, dir) {
     .toBe(ARENA_DOOR_ROWS[0] + 0.5);
 
   // 端まで歩く。遷移は setTimeout(…,100) 越しに確定する∴1手ごとに待つ。
+  // 🔴（キュー11・2026-09-12）400ms の `waitForFunction` が稀に間に合わない（CPU 競合で
+  //    `setTimeout(…,100)` の発火が遅れる）と、次の周でまた movePlayer を呼ぶ＝その
+  //    直後に前の遷移がようやく確定すると、**新しい部屋の中で**もう半セル進んでしまう
+  //    （boss-door-entry.spec.js で実測した同型の競合＝「動かす→確認」の順が空ける隙）。
+  //    ∴ここでも「確認→まだなら動かす」の順にする＝一度でも遷移していたら二度と動かさない。
   for (let k = 0; k < 8; k++) {
+    if ((await page.evaluate(s => window.__game.getState().stageKey !== s, from))) break;
     await page.evaluate(d => window.__game.movePlayer(d), dir);
     try {
       await page.waitForFunction(s => window.__game.getState().stageKey !== s, from, { timeout: 400 });
@@ -112,7 +118,16 @@ test.describe('敵アリーナ間の通路（rows 7/8）', () => {
 
   // ② 実機で歩いて抜ける。隣り合うペア×東西の2方向を、いちばん厳しい y=7.5 で測る
   //   （鎖は DOOR_ARENAS から導く＝アリーナを挿し込んでもこの本を直さない）。
+  // 🔴（キュー11・2026-09-12）実測＝`--workers=1`（負荷なし）でも **25.8 秒**＝既定タイム
+  //    アウト30秒のすぐ内側。11枚×2方向＝20回の横断（goto＋歩行＋遷移待ち）を1本の
+  //    テストで直列にやる構造そのものが重い＝フル並列実行のわずかな遅延（CPU競合で
+  //    `page.goto`/`setTimeout` が実時間で遅れる）だけで30秒を超え、Playwright が
+  //    テストを強制終了してページを破棄する（`Target page, context or browser has been
+  //    closed` の実体はこれ＝原因はテストの重さそのもの・機構の穴ではない）。
+  //    ⑨（tests/field-corridor-o.spec.js・PLAN 実行キュー1）と同じ「既定タイムアウトに
+  //    近接した重いE2E」＝同じ対処＝`test.slow()`（90秒に緩和・計算量は変えない）。
   test('② 隣り合うアリーナへ歩いて抜けられる（東西両方向・半セル位置 y=7.5）', async ({ page }) => {
+    test.slow();
     const errors = [];
     page.on('pageerror', e => errors.push(e.message));
     const keys = DOOR_ARENAS.map(stageKey);

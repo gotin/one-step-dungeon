@@ -109,6 +109,14 @@ test.describe('ボス部屋の入室ロック ② エンジン：入った途端
 
   for (const cs of uniq) {
     test(`${cs.layer} [${cs.from}] → [${cs.bossStage}]：扉(${cs.door})に着地しても内側へ歩ける`, async ({ page }) => {
+      // 🔴（キュー11・2026-09-12）単独では 2.5 秒で済む軽いテストだが、フル並列実行時に
+      //    数回「Target page, context or browser has been closed」で落ちた記録がある。
+      //    この本は `game.js` の実時間ループ（setInterval）＋固定 `waitForTimeout`
+      //    （80ms/1200ms）で実際の遷移・ロックの発火を待つ＝CPU競合でタイマーが実時間で
+      //    遅延すると、既定30秒タイムアウトを超えてページが破棄されうる（test-arena-doors
+      //    ②と同じ「重い並列実行下でだけ既定タイムアウトに触れる」系列）。同じ対処＝
+      //    `test.slow()`（90秒に緩和・待ち方や計算量は変えない）。
+      test.slow();
       const errors = [];
       page.on('pageerror', (e) => errors.push(e.message));
 
@@ -122,9 +130,18 @@ test.describe('ボス部屋の入室ロック ② エンジン：入った途端
       await page.waitForFunction(() => !!window.__game?.getState);
 
       // 手前の部屋の境界セルからボス部屋へ入る
+      // 🔴（キュー11・2026-09-12）旧実装は「動かす→確認」の順＝遷移は `setTimeout(…,100)`
+      //    越しに確定するため、80ms の固定待ちの直後（まだ確定前）は「動かして良い」と
+      //    誤判定し、次のループで movePlayer を1回よけいに呼んでいた。通常は次の no-op
+      //    （`isTransitioning` ガード）が吸収するが、フル並列実行の CPU 競合でタイマーが
+      //    実時間で遅れると、その「よけいな1回」が確定**後**（新しい部屋の中）で発火し
+      //    半セル分だけ奥へ進んでしまう（実測＝着地列が 0.5 ずれて `Math.round` で1に
+      //    切り上がり "4,1" になった＝機構の穴ではなくテストの動かし方の競合）。
+      //    ∴「確認→まだなら動かす」の順に変える＝既に着地した回では二度と movePlayer を
+      //    呼ばない（状態待ちへの置き換え・待ち時間そのものは変えない）。
       for (let i = 0; i < 6; i++) {
-        await step(page, cs.dir);
         if ((await st(page)).room === cs.bossStage) break;
+        await step(page, cs.dir);
       }
       const landed = await st(page);
       expect(landed.room, 'ボス部屋へ入れていない＝この経路の前提が崩れている').toBe(cs.bossStage);
