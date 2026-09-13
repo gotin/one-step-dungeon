@@ -63,6 +63,9 @@ export function initInput(deps) {
 		shopBuy,
 		pauseSelectPrev,
 		pauseSelectNext,
+		pauseToggleFocus,
+		pauseMarkPrev,
+		pauseMarkNext,
 		hasCleared,
 		updateShieldHud,
 	} = deps;
@@ -96,6 +99,11 @@ export function initInput(deps) {
 			if (e.key === 'Escape' || e.key === 'Enter') { e.preventDefault(); if (!e.repeat) togglePause(); return; }
 			if (e.key === 'ArrowLeft')  { e.preventDefault(); pauseSelectPrev(); return; }
 			if (e.key === 'ArrowRight') { e.preventDefault(); pauseSelectNext(); return; }
+			// キュー16: ←→ はサブアイテム選択で埋まっている∴マーク一覧は Tab で
+			// フォーカスを移して ↑↓ で選ぶ。Tab は既定動作（枠外へフォーカス移動）を止める。
+			if (e.key === 'Tab')        { e.preventDefault(); if (!e.repeat) pauseToggleFocus?.(); return; }
+			if (e.key === 'ArrowUp')    { e.preventDefault(); pauseMarkPrev?.(); return; }
+			if (e.key === 'ArrowDown')  { e.preventDefault(); pauseMarkNext?.(); return; }
 			return;
 		}
 		// 方向キーは heldKeys で管理（gameTick で処理）

@@ -183,6 +183,14 @@
     letter-spacing: 1px;
 }
 
+/* 地図＋マーク一覧の横並び（キュー16）。一覧は地図の右に置く＝枠の高さを増やさない。 */
+#pause-map-body {
+    display: flex;
+    align-items: flex-start;
+    justify-content: center;
+    gap: 12px;
+}
+
 #pause-map-wrap {
     position: relative;
     width: fit-content;
@@ -219,6 +227,82 @@
 @keyframes pause-map-here-blink {
     0%, 49.99%   { opacity: 1; }
     50%, 100%    { opacity: 0.15; }
+}
+
+/* 選択中マーク（キュー16）＝黄枠＋点滅。現在地（白枠）と色で区別する。 */
+#pause-map-marksel {
+    position: absolute;
+    box-sizing: border-box;
+    border: 2px solid #ffe060;
+    pointer-events: none;
+    animation: pause-map-here-blink 0.6s steps(1, end) infinite;
+}
+
+#pause-map-marksel.hidden {
+    display: none;
+}
+
+/* ── ポーズ画面：マーク一覧（キュー16）───────────────────────── */
+#pause-mark-list {
+    width: 160px;
+    flex: 0 0 160px;
+    max-height: 400px;
+    overflow-y: auto;
+    border: 1px solid #2a4a6a;
+    border-radius: 4px;
+    padding: 4px;
+}
+
+#pause-mark-list.hidden {
+    display: none;
+}
+
+/* フォーカスが一覧に来ていることを枠の色で示す（Tab で往復する＝キュー16） */
+#pause-mark-list.focused {
+    border-color: #80c0f0;
+}
+
+.pause-mark-row {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 11px;
+    color: #8a9aaa;
+    padding: 3px 4px;
+    border-radius: 3px;
+    cursor: pointer;
+}
+
+.pause-mark-row.selected {
+    background: #80c0f0;
+    color: #0a1418;
+}
+
+.pause-mark-dot {
+    flex: 0 0 8px;
+    width: 8px;
+    height: 8px;
+    border: 1px solid #0a1418;
+}
+
+.pause-mark-name {
+    flex: 1 1 auto;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.pause-mark-dist {
+    flex: 0 0 auto;
+    font-size: 10px;
+    opacity: 0.8;
+}
+
+#pause-mark-empty {
+    font-size: 11px;
+    color: #4a6a8a;
+    padding: 4px;
+    line-height: 1.5;
 }
 
 #pause-map-hint {

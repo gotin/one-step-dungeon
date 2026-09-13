@@ -182,6 +182,9 @@ function cleanTileMetaData(sd, r, c) {
 		delete sd.chestContents?.[posKey];
 	} else if (tile === TILE.NPC_A || tile === TILE.NPC_B || tile === TILE.PRINCESS || tile === TILE.SIGN) {
 		delete sd.npcData?.[posKey];
+		// 看板の本文は signData にも置ける（ゲームはこちらを先に読む）∴両方消す
+		// ＝片方だけだと、タイルを消したのに本文（と教える目的地）が残る。
+		delete sd.signData?.[posKey];
 	} else if (tile === TILE.NPC_SHOP) {
 		delete sd.shopData?.[posKey];
 	} else if (tile === TILE.BREAKABLE_WALL) {

@@ -4,6 +4,7 @@ import { ITEM_META } from '../shared/items.js';
 import { getCurrentStage, findTilePositions, state, stageKey } from './editor-state.js';
 import { buildExitRegistry, resolveExit, reverseRefs, resolveFluteWarp } from '../shared/exits.js';
 import { mountIconEls, iconText } from '../shared/ui-icons.js';
+import { MARK_KINDS, DEFAULT_MARK_KIND, isStageKey } from '../shared/marks.js';
 
 // ── 右パネル統合呼び出し ──────────────────────────────────────
 export function renderSidePanel() {
@@ -196,6 +197,25 @@ function renderChests(sd) {
 }
 
 // ── NPC 会話設定（SIGN含む） ───────────────────────────────────
+// ⚠️ 看板の本文の置き場所は2つある（実測 2026-09-13）＝`sd.signData[key]` と
+//    `sd.npcData[key]`。ゲーム（combat.js）は **signData を先に見る**∴signData に
+//    本文がある看板を npcData 側で直しても画面は変わらない（黙って無視される）。
+//    ∴このパネルは「その看板の本文が今ある場所」を読み書きする（新規は signData）。
+// ⚠️ signData は文字列だけの古い形式も混じる（[[blade-sign-two-formats]]）∴読むときに
+//    { name, lines } へ直してから並べる（＝編集すると新しい形式に揃う）。
+function npcDataHome(sd, key, tile) {
+	if (tile !== TILE.SIGN) return 'npcData';
+	if (sd.signData?.[key] !== undefined) return 'signData';
+	if (sd.npcData?.[key]  !== undefined) return 'npcData';
+	return 'signData';
+}
+
+function readNpcEntry(sd, key, tile) {
+	const raw = sd[npcDataHome(sd, key, tile)]?.[key];
+	if (typeof raw === 'string') return { name: tile === TILE.SIGN ? '看板' : '', lines: [raw] };
+	return raw ?? { name: '', lines: [] };
+}
+
 function renderNPCs(sd) {
 	const el = document.getElementById('npc-list');
 	el.innerHTML = '';
@@ -204,11 +224,15 @@ function renderNPCs(sd) {
 	if (!npcs.length) { el.innerHTML = '<div class="hint">NPC・看板なし</div>'; return; }
 	for (const { r, c, tile } of npcs) {
 		const key  = `${r},${c}`;
-		const data = sd.npcData?.[key] ?? { name: '', lines: [] };
+		const home = npcDataHome(sd, key, tile);
+		const data = readNpcEntry(sd, key, tile);
+		const mark = data.mark ?? {};
 		const item = document.createElement('div');
 		item.className = 'link-item';
+		const kindOpts = Object.entries(MARK_KINDS).map(([k, v]) =>
+			`<option value="${k}" ${(mark.kind ?? DEFAULT_MARK_KIND) === k ? 'selected' : ''}>${v.label}</option>`).join('');
 		item.innerHTML = `
-			<div class="link-item-header"><span>NPC (${r},${c}) ${TILE_META[tile]?.icon??''}</span></div>
+			<div class="link-item-header"><span>NPC (${r},${c}) ${TILE_META[tile]?.icon??''}</span><span class="hint">${home}</span></div>
 			<label>キャラ名 <input type="text" value="${data.name??''}" data-key="${key}" data-f="name" placeholder="例: 村人 タロ"></label>
 			<label>スプライト
 				<select data-key="${key}" data-f="sprite">
@@ -220,18 +244,58 @@ function renderNPCs(sd) {
 			<label>セリフ（1行=1ページ）
 				<textarea data-key="${key}" data-f="lines" rows="4">${(data.lines??[]).join('\n')}</textarea>
 			</label>
+			<div class="hint">教える目的地（話を聞き終えると地図に印が付く。画面を空にすると印なし）</div>
+			<label>画面（x,y） <input type="text" value="${mark.stage??''}" data-key="${key}" data-f="markStage" placeholder="例: 6,13"></label>
+			<label>印の名前 <input type="text" value="${mark.label??''}" data-key="${key}" data-f="markLabel" placeholder="例: 草原の洞窟"></label>
+			<label>種類 <select data-key="${key}" data-f="markKind">${kindOpts}</select></label>
+			<label>層（空ならこの会話がある層） <input type="text" value="${mark.layer??''}" data-key="${key}" data-f="markLayer" placeholder="例: field"></label>
 		`;
+		// 保存先の実体を用意する（文字列形式の看板は、いま画面に出している形へ置き換える）。
+		const entry = () => {
+			if (!sd[home]) sd[home] = {};
+			const cur = sd[home][key];
+			// 無い／文字列形式のときだけ、いま画面に出している形（{name, lines}）で作り直す。
+			if (!cur || typeof cur === 'string') sd[home][key] = { name: data.name ?? '', lines: data.lines ?? [] };
+			return sd[home][key];
+		};
+		const writeMark = () => {
+			const e = entry();
+			const get = f => item.querySelector(`[data-f="${f}"]`).value.trim();
+			const stage = get('markStage');
+			// 画面が空＝印なし（欄を消せば取り消せる＝入力の取り消し手段を1つにする）。
+			if (!stage) { delete e.mark; return; }
+			e.mark = { stage, label: get('markLabel') || '目的地', kind: item.querySelector('[data-f="markKind"]').value };
+			const layer = get('markLayer');
+			if (layer) e.mark.layer = layer;
+		};
+		// 印が付かない入力は赤くする＝ゲーム側で黙って捨てられる前に気づける
+		// （検査は tests 側にもあるが、書いた瞬間に分かるのが一番安い）。赤くする条件は3つ：
+		//   ①画面の形が違う（`6,13` でない） ②存在しない層 ③その層にその画面が無い。
+		const markStageEl = item.querySelector('[data-f="markStage"]');
+		const markLayerEl = item.querySelector('[data-f="markLayer"]');
+		const paintMark = () => {
+			const sv     = markStageEl.value.trim();
+			const lv     = markLayerEl.value.trim();
+			const layers = state.mapData?.layers ?? {};
+			const lk     = lv || state.currentLayer;      // 空欄＝この会話がある層
+			const layerOk = !lv || lv in layers;
+			// 層が既に赤いときは画面まで赤くしない（原因が1つに見えるようにする）。
+			const stageOk = !sv || (isStageKey(sv) && (!layerOk || sv in (layers[lk]?.stages ?? {})));
+			markStageEl.style.borderColor = stageOk  ? '' : '#f08080';
+			markLayerEl.style.borderColor = layerOk  ? '' : '#f08080';
+		};
+		paintMark();
 		item.querySelectorAll('[data-key]').forEach(inp => {
-			inp.addEventListener('input', () => {
-				if (!sd.npcData) sd.npcData = {};
-				if (!sd.npcData[key]) sd.npcData[key] = { name: '', lines: [] };
+			const handler = () => {
 				const f = inp.dataset.f;
-				if (f === 'lines') {
-					sd.npcData[key].lines = inp.value.split('\n').filter(l => l.trim());
-				} else {
-					sd.npcData[key][f] = inp.value;
-				}
-			});
+				if (f.startsWith('mark')) { writeMark(); paintMark(); return; }
+				const e = entry();
+				if (f === 'lines') e.lines = inp.value.split('\n').filter(l => l.trim());
+				else e[f] = inp.value;
+			};
+			inp.addEventListener('input', handler);
+			// select は input を出さないブラウザもある∴change も拾う。
+			if (inp.tagName === 'SELECT') inp.addEventListener('change', handler);
 		});
 		el.appendChild(item);
 	}

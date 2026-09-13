@@ -18,6 +18,14 @@
         <span id="hud-dungeon-name"></span>
         <span id="hud-dungeon-items"></span>
       </div>
+      <!-- 選択中の目的地マーク（キュー16）＝方向（8方向の矢印）と距離（画面数）。
+           マークを選んでいないときは出さない＝画面を狭くしない。 -->
+      <div id="hud-mark-guide" class="hidden">
+        <span id="hud-mark-dot"></span>
+        <span id="hud-mark-label"></span>
+        <span id="hud-mark-arrow"></span>
+        <span id="hud-mark-dist"></span>
+      </div>
     </div>
     <div id="hud-right">
       <div id="hud-equip">
@@ -75,11 +83,19 @@
            canvas へ差し替わる＝textContent で上書きすると絵が消える）。 -->
       <div id="pause-dungeon-map" class="hidden">
         <div id="pause-map-title"><span data-icon="map" data-icon-px="18">🗺</span> <span id="pause-map-label">ダンジョンマップ</span></div>
-        <div id="pause-map-wrap">
-          <canvas id="pause-map-canvas"></canvas>
-          <!-- 現在地（field の見取り図用）＝白枠＋点滅。塗り潰しにしないのは
-               画面の中身が絵で埋まっていて塗ると絵が消えるため。 -->
-          <div id="pause-map-here" class="hidden"></div>
+        <!-- 地図とマーク一覧を横並びにする（キュー16）＝一覧を下に置くと枠の高さが
+             伸びて窓に収まらなくなる（地図だけで既に約650px）。 -->
+        <div id="pause-map-body">
+          <div id="pause-map-wrap">
+            <canvas id="pause-map-canvas"></canvas>
+            <!-- 現在地（field の見取り図用）＝白枠＋点滅。塗り潰しにしないのは
+                 画面の中身が絵で埋まっていて塗ると絵が消えるため。 -->
+            <div id="pause-map-here" class="hidden"></div>
+            <!-- 選択中マーク（キュー16）＝黄枠＋点滅。現在地は白枠∴色で区別できる。
+                 他のマークは canvas に静止で描く（点滅するのは選択中の1つだけ）。 -->
+            <div id="pause-map-marksel" class="hidden"></div>
+          </div>
+          <div id="pause-mark-list" class="hidden"></div>
         </div>
         <div id="pause-map-hint" class="hidden"><span data-icon="compass" data-icon-px="16">🧭</span> ボス部屋あり</div>
       </div>

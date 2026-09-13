@@ -33,6 +33,8 @@ import { playSound } from '../shared/sounds.js';
 // field の地図（キュー15）の色。エディタのワールドマップのサムネと**同じ関数**を呼ぶ
 // ＝ユーザー判定済み（キュー11c）の見え方がそのまま出て、絵の食い違いが構造的に起きない。
 import { cellGlanceColor } from '../shared/cell-appearance.js';
+// 目的地マーク（キュー16）＝会話が教えた場所を地図に残し、選択中の1つを HUD で指す。
+import { markId, markColor, markGuide, addMark, normalizeDialogMarks, normalizeSavedMarks } from '../shared/marks.js';
 
 // HUD のハート（heart/heartEmpty/heartHalf）の表示サイズ。Phase 10d-3 で
 // 絵を32ドット化した際、絵の中の透明余白が増えた分だけ見かけが縮むのを補う
@@ -117,6 +119,13 @@ export function createUi(deps) {
 	let shopIdx       = 0;
 	let msgTimer      = null;
 	let pendingPulse  = null; // オーバーレイ表示中に来た pulse() は閉じるまで保留
+	// キュー16：ポーズのフォーカス（'items'＝サブアイテム欄／'marks'＝マーク一覧）。
+	// ←→ は既にサブアイテム選択で埋まっている∴Tab で往復し、一覧では ↑↓ で選ぶ。
+	let pauseFocus    = 'items';
+	let pauseMarkIds  = [];   // 一覧の並び（先頭は '' ＝選択なし＝矢印を消す行）
+	// 会話が教えるマークは**読み終えたとき**に足す（開いた瞬間だと読み飛ばしても
+	// 手に入る＝「教わった」感が無い）∴会話中は保留しておく。
+	let pendingDialogMarks = [];
 
 	// ── DOM 参照 ──────────────────────────────────────────────
 	const heartsEl         = document.getElementById('hud-hearts');
@@ -140,6 +149,13 @@ export function createUi(deps) {
 	const pauseMapHintEl   = document.getElementById('pause-map-hint');
 	const pauseMapLabelEl  = document.getElementById('pause-map-label');
 	const pauseMapHereEl   = document.getElementById('pause-map-here');
+	const pauseMapMarkSelEl= document.getElementById('pause-map-marksel');
+	const pauseMarkListEl  = document.getElementById('pause-mark-list');
+	const markGuideEl      = document.getElementById('hud-mark-guide');
+	const markGuideDotEl   = document.getElementById('hud-mark-dot');
+	const markGuideLabelEl = document.getElementById('hud-mark-label');
+	const markGuideArrowEl = document.getElementById('hud-mark-arrow');
+	const markGuideDistEl  = document.getElementById('hud-mark-dist');
 	const shopOverlayEl    = document.getElementById('shop-overlay');
 	const shopItemsEl      = document.getElementById('shop-items');
 	const shopResultEl     = document.getElementById('shop-result');
@@ -185,6 +201,9 @@ export function createUi(deps) {
 			subIconEl.title        = '';
 			subCountEl.textContent = '';
 		}
+		// 画面が変われば方向と残り画面数も変わる∴HUD の更新に相乗りする（キュー16）。
+		// enterStage() は updateHud() を必ず通る＝遷移のたびに呼び直される。
+		updateMarkGuide();
 	}
 
 	function pulse(text, duration = 2000) {
@@ -237,6 +256,115 @@ export function createUi(deps) {
 		document.getElementById('btn-shield')?.classList.toggle('defending', getIsShielding());
 	}
 
+	// ── 目的地マーク（キュー16）────────────────────────────────
+	// 「今どこ」はキュー15 の地図が解いた。ここが解くのは「次どこ」。
+	// 置き場所＝`player.mapMarks`（配列）＋`player.selectedMarkId`（層:画面）。
+	// ⚠️ Set ではなく配列とプレーン文字列にする＝game.js saveGame() は player を
+	//    `{ ...player }` で丸ごと直列化する∴Set を持たせると保存で {} に潰れる
+	//    （defeatedBosses が専用の変換を持っているのはそのため）。
+
+	// 地図を持っている層だけがマークを見せる（地図が無いのに矢印だけ出るのは変）。
+	function hasLayerMap(lk) { return !!getPlayer().dungeonItems?.[lk]?.hasMap; }
+
+	function getMarks() {
+		const player = getPlayer();
+		// 壊れたセーブ（旧形式・手で書いた値）はここで一度だけ掃除する。
+		if (!Array.isArray(player.mapMarks)) player.mapMarks = [];
+		return player.mapMarks;
+	}
+
+	/** 今いる層のマークだけを並べる（層をまたいだ矢印は方向が意味を持たない） */
+	function marksInLayer(lk) {
+		return getMarks().filter(m => m.layer === lk);
+	}
+
+	function getSelectedMark() {
+		const player = getPlayer();
+		const id = player.selectedMarkId ?? '';
+		if (!id) return null;
+		return getMarks().find(m => markId(m.layer, m.stage) === id) ?? null;
+	}
+
+	/**
+	 * HUD の方向表示を描き直す（選択中マークが今いる層に無いときは出さない）。
+	 * 呼ばれ方＝updateHud()（画面遷移でも必ず通る）＋マーク選択の変更時。
+	 */
+	function updateMarkGuide() {
+		if (!markGuideEl) return;
+		const lk   = getCurrentLayer();
+		const mark = getSelectedMark();
+		const guide = (mark && mark.layer === lk && hasLayerMap(lk))
+			? markGuide(getStageKey(), mark.stage)
+			: null;
+		if (!guide) { markGuideEl.classList.add('hidden'); return; }
+		markGuideDotEl.style.background = markColor(mark.kind);
+		markGuideLabelEl.textContent    = mark.label;
+		markGuideArrowEl.textContent    = guide.arrow;
+		markGuideDistEl.textContent     = guide.here ? 'この画面' : `あと ${guide.screens} 画面`;
+		markGuideEl.classList.remove('hidden');
+	}
+
+	/**
+	 * 会話が教えたマークを player に足す（会話を読み終えた時に呼ぶ）。
+	 * 行き先が実在しない画面ならデータの書き間違い∴警告して捨てる（無言で消さない）。
+	 * @returns {number} 新しく足した件数
+	 */
+	function commitDialogMarks() {
+		const list = pendingDialogMarks;
+		pendingDialogMarks = [];
+		if (!list.length) return 0;
+		const player  = getPlayer();
+		const mapData = getMapData();
+		const marks   = getMarks();
+		let added = 0;
+		let lastLabel = '';
+		for (const m of list) {
+			if (!mapData?.layers?.[m.layer]?.stages?.[m.stage]) {
+				console.warn(`[marks] 行き先が実在しない: ${m.layer}/${m.stage}（${m.label}）`);
+				continue;
+			}
+			if (addMark(marks, m)) { added++; lastLabel = m.label; }
+			// 初めてのマークは自動で選択する（1つしか無いのに選ばせる意味が無い）
+			if (!player.selectedMarkId) player.selectedMarkId = markId(m.layer, m.stage);
+		}
+		if (added) {
+			// 地図を持っていないときは黙る＝「地図に記した」が嘘になる（記録自体は残す
+			// ∴後で地図を拾えばちゃんと出る）。
+			if (hasLayerMap(getCurrentLayer())) {
+				pulse(added === 1 ? `{{map}} 地図に「${lastLabel}」を記した！` : `{{map}} 地図に ${added} か所を記した！`);
+			}
+			updateMarkGuide();
+			saveGame();
+		}
+		return added;
+	}
+
+	/** ポーズのフォーカスを Tab で往復させる（マーク一覧が無い層・0件では動かさない） */
+	function pauseToggleFocus() {
+		const lk = getCurrentLayer();
+		if (!GLANCE_MAP_LAYERS.has(lk) || !hasLayerMap(lk)) return;
+		// 0件のときに移すと「フォーカスはあるが選べる行が無い」状態になる（↑↓ が無反応）。
+		if (!marksInLayer(lk).length) return;
+		pauseFocus = pauseFocus === 'items' ? 'marks' : 'items';
+		playSound('switch');
+		renderPauseMenu();
+	}
+
+	function pauseMarkStep(delta) {
+		if (pauseFocus !== 'marks' || pauseMarkIds.length <= 1) return;
+		const player = getPlayer();
+		const cur = pauseMarkIds.indexOf(player.selectedMarkId ?? '');
+		const idx = ((cur < 0 ? 0 : cur) + delta + pauseMarkIds.length) % pauseMarkIds.length;
+		player.selectedMarkId = pauseMarkIds[idx];
+		playSound('switch');
+		updateMarkGuide();
+		saveGame();
+		renderPauseMenu();
+	}
+
+	function pauseMarkPrev() { pauseMarkStep(-1); }
+	function pauseMarkNext() { pauseMarkStep(1); }
+
 	// ── ダイアログ ────────────────────────────────────────────
 	function startDialog(r, c, tileChar, stageData, npcDefaultDialog, player) {
 		const posKey = `${r},${c}`;
@@ -258,6 +386,10 @@ export function createUi(deps) {
 		}
 		dialogLines = lines;
 		dialogLineIdx = 0;
+		// キュー16: 会話データの `mark` が教える目的地。ここでは保留するだけで、
+		// 記すのは読み終えた時（advanceDialog の閉じる枝）＝話の途中で
+		// 「記した！」が会話の後ろに隠れて出てしまうのを避ける。
+		pendingDialogMarks = normalizeDialogMarks(data.mark, getCurrentLayer());
 		setIsDialog(true); stopGameLoop();
 		dialogNameEl.textContent = data.name ?? '';
 		showDialogLine();
@@ -278,13 +410,17 @@ export function createUi(deps) {
 		if (dialogLineIdx >= dialogLines.length) {
 			setIsDialog(false); dialogOverlayEl.classList.add('hidden'); startGameLoop();
 			flushPendingPulse();
+			// 閉じた後に呼ぶ＝pulse がそのまま画面に出る（会話中は保留されてしまう）。
+			commitDialogMarks();
 		} else { showDialogLine(); playSound('talk'); }
 	}
 
 	// ダイアログを外部から開く（ヒント・サブアイテム説明など）
-	function openDialog(name, lines) {
+	// `mark`＝看板の「教える目的地」（看板は startDialog を通らず game.js から開く）。
+	function openDialog(name, lines, mark = null) {
 		dialogLines   = lines;
 		dialogLineIdx = 0;
+		pendingDialogMarks = normalizeDialogMarks(mark, getCurrentLayer());
 		setIsDialog(true); stopGameLoop();
 		dialogNameEl.textContent = name;
 		showDialogLine();
@@ -382,6 +518,23 @@ export function createUi(deps) {
 		}
 		pauseStatsEl.appendChild(statsLine);
 		renderPauseDungeonMap();
+		updatePauseHint();
+	}
+
+	// 操作の案内はフォーカスで変える（キュー16）＝Tab で往復することが分かる唯一の場所。
+	function updatePauseHint() {
+		const hintEl = document.getElementById('pause-hint');
+		if (!hintEl) return;
+		const canFocusMarks = GLANCE_MAP_LAYERS.has(getCurrentLayer())
+			&& hasLayerMap(getCurrentLayer())
+			&& marksInLayer(getCurrentLayer()).length > 0;
+		if (!canFocusMarks) {
+			hintEl.textContent = '← → で選択　Escape で決定・再開';
+			return;
+		}
+		hintEl.textContent = pauseFocus === 'marks'
+			? '↑ ↓ でマーク選択　Tab でアイテム欄へ　Escape で再開'
+			: '← → で選択　Tab でマーク一覧へ　Escape で決定・再開';
 	}
 
 	// ── ポーズ画面の地図 ──────────────────────────────────────────
@@ -413,6 +566,8 @@ export function createUi(deps) {
 		const hide = () => {
 			pauseDungeonMapEl.classList.add('hidden');
 			pauseMapHereEl.classList.add('hidden');
+			pauseMapMarkSelEl?.classList.add('hidden');
+			pauseMarkListEl?.classList.add('hidden');
 		};
 		if (!dm?.hasMap) { hide(); return; }
 		const ld = mapData.layers[lk];
@@ -487,9 +642,94 @@ export function createUi(deps) {
 		pauseMapHereEl.style.borderWidth = scale >= 2 ? '2px' : '1px';
 		pauseMapHereEl.classList.remove('hidden');
 
+		// 目的地マーク（キュー16）＝記号は表示キャンバスへ**上描き**する。
+		// ⚠️ オフスクリーン（地形キャッシュ）には描かない＝キャッシュは「実行時に
+		//    変わらない地形」だけを持つ約束∴マークを混ぜると消せなくなる。
+		drawGlanceMarks(ctx, lk, minX, minY, cols, rows);
+		placeSelectedMarkBox(lk, minX, minY, cols, rows, scale);
+		renderMarkList(lk);
+
 		if (pauseMapLabelEl) pauseMapLabelEl.textContent = 'ルミア地方の地図';
 		// コンパス（ボス部屋あり）は field には無い＝field に bossStage は無い（実測）。
 		pauseMapHintEl.classList.add('hidden');
+	}
+
+	// 見取り図に描くマークの大きさ（画素＝1セル1px の座標系）。1画面 12×10 に収める。
+	const MARK_DOT = 5;
+
+	// マークの記号＝画面の中央に MARK_DOT 角の四角＋暗い縁取り（絵の上でも読める）。
+	// ⚠️ 未訪問（真っ黒）の画面にも描く＝行ったことのない場所に印が付くから足が向く
+	//    ＝これが「次どこ」への答えの本体（IDEA.md ③）。
+	function drawGlanceMarks(ctx, lk, minX, minY, cols, rows) {
+		for (const m of marksInLayer(lk)) {
+			const [mx, my] = m.stage.split(',').map(Number);
+			const cx = (mx - minX) * cols + Math.floor(cols / 2) - Math.floor(MARK_DOT / 2);
+			const cy = (my - minY) * rows + Math.floor(rows / 2) - Math.floor(MARK_DOT / 2);
+			ctx.fillStyle = '#0a1418';
+			ctx.fillRect(cx - 1, cy - 1, MARK_DOT + 2, MARK_DOT + 2);
+			ctx.fillStyle = markColor(m.kind);
+			ctx.fillRect(cx, cy, MARK_DOT, MARK_DOT);
+		}
+	}
+
+	// 選択中マークは点滅させる（他は静止）＝現在地と同じ作法で div を重ねる。
+	function placeSelectedMarkBox(lk, minX, minY, cols, rows, scale) {
+		if (!pauseMapMarkSelEl) return;
+		const mark = getSelectedMark();
+		if (!mark || mark.layer !== lk) { pauseMapMarkSelEl.classList.add('hidden'); return; }
+		const [mx, my] = mark.stage.split(',').map(Number);
+		pauseMapMarkSelEl.style.left   = `${GLANCE_CANVAS_BORDER + (mx - minX) * cols * scale}px`;
+		pauseMapMarkSelEl.style.top    = `${GLANCE_CANVAS_BORDER + (my - minY) * rows * scale}px`;
+		pauseMapMarkSelEl.style.width  = `${cols * scale}px`;
+		pauseMapMarkSelEl.style.height = `${rows * scale}px`;
+		pauseMapMarkSelEl.style.borderWidth = scale >= 2 ? '2px' : '1px';
+		pauseMapMarkSelEl.classList.remove('hidden');
+	}
+
+	// マーク一覧（地図の右）。先頭は「（選択なし）」＝矢印を消す行＝**解除の手段**。
+	function renderMarkList(lk) {
+		if (!pauseMarkListEl) return;
+		const player = getPlayer();
+		const marks  = marksInLayer(lk);
+		pauseMarkListEl.classList.remove('hidden');
+		pauseMarkListEl.classList.toggle('focused', pauseFocus === 'marks');
+		pauseMarkListEl.innerHTML = '';
+		pauseMarkIds = ['', ...marks.map(m => markId(m.layer, m.stage))];
+		if (!marks.length) {
+			pauseFocus = 'items';
+			pauseMarkIds = [];
+			const empty = document.createElement('div');
+			empty.id = 'pause-mark-empty';
+			empty.textContent = 'マークなし。NPC や看板の話を聞くと目的地が記される。';
+			pauseMarkListEl.appendChild(empty);
+			return;
+		}
+		const selId = player.selectedMarkId ?? '';
+		const rows = [{ id: '', label: '（選択なし）', kind: null, stage: null }, ...marks.map(m => ({
+			id: markId(m.layer, m.stage), label: m.label, kind: m.kind, stage: m.stage,
+		}))];
+		for (const row of rows) {
+			const div = document.createElement('div');
+			div.className = `pause-mark-row${row.id === selId ? ' selected' : ''}`;
+			const dot = document.createElement('span');
+			dot.className = 'pause-mark-dot';
+			dot.style.background = row.kind ? markColor(row.kind) : 'transparent';
+			if (!row.kind) dot.style.borderColor = 'transparent';
+			const name = document.createElement('span');
+			name.className = 'pause-mark-name';
+			name.textContent = row.label;
+			const dist = document.createElement('span');
+			dist.className = 'pause-mark-dist';
+			const g = row.stage ? markGuide(getStageKey(), row.stage) : null;
+			dist.textContent = g ? (g.here ? '◎' : `${g.arrow}${g.screens}`) : '';
+			div.append(dot, name, dist);
+			div.addEventListener('click', () => {
+				player.selectedMarkId = row.id;
+				pauseFocus = 'marks';
+				updateMarkGuide(); saveGame(); renderPauseMenu();
+			});
+			pauseMarkListEl.appendChild(div);
+		}
 	}
 
 	// 見取り図の拡大率（整数倍・既定2倍）。窓が低い/狭いときだけ下げる＝ドットが滲まない。
@@ -508,6 +748,10 @@ export function createUi(deps) {
 	function renderPauseRoomMap(lk, ld, stages, dm) {
 		const stageKey = getStageKey();
 		pauseMapHereEl.classList.add('hidden');
+		// マークは見取り図（field）だけの機構＝部屋グリッドには 12×10 ドットの面が無い
+		// ∴一覧も選択枠も出さない（キュー16）。
+		pauseMapMarkSelEl?.classList.add('hidden');
+		pauseMarkListEl?.classList.add('hidden');
 		if (pauseMapLabelEl) pauseMapLabelEl.textContent = 'ダンジョンマップ';
 		const hasCompass   = !!dm.hasCompass;
 		const bossStageKey = ld?.bossStage ?? null;
@@ -757,6 +1001,11 @@ export function createUi(deps) {
 		renderPauseDungeonMap,
 		pauseSelectPrev,
 		pauseSelectNext,
+		// 目的地マーク（キュー16）
+		pauseToggleFocus,
+		pauseMarkPrev,
+		pauseMarkNext,
+		updateMarkGuide,
 		// ショップ
 		openShop,
 		closeShop,

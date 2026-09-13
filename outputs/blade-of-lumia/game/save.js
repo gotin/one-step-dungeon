@@ -9,6 +9,8 @@
 //  - localStorage への read/write や状態の再代入は game.js 側で行う
 //    （SAVE_KEY を使った保存・player 等への代入は呼び出し側の責務）。
 
+import { normalizeSavedMarks, markId } from '../shared/marks.js';
+
 // 新規ステージ状態エントリを生成する（getSS が未登録キーで使う初期値）。
 export function createStageState() {
 	return {
@@ -119,6 +121,15 @@ export function sanitizeLoadedPlayer(player, itemMeta) {
 	if (player.boomerangTier == null) {
 		player.boomerangTier = player.subItems?.boomerang ? 0 : -1;
 	}
+	// キュー16: 目的地マーク。壊れた要素（座標の形が違う・層が無い・重複）を落とす。
+	// ⚠️ セーブ由来のゴミは**データを直しても既存セーブに残る**∴受け口で必ず掃除する
+	//    （[[blade-bad-data-fix-five-layers]] の「セーブ」層）。
+	player.mapMarks = normalizeSavedMarks(player.mapMarks);
+	// 選択中の id が掃除で消えた／もともと存在しないなら外す（HUD が幽霊を指さない）。
+	if (player.selectedMarkId && !player.mapMarks.some(m => markId(m.layer, m.stage) === player.selectedMarkId)) {
+		player.selectedMarkId = null;
+	}
+	if (player.selectedMarkId === undefined) player.selectedMarkId = null;
 	// Phase 5.5k k-7: 一時デバフ窓（剣封じ・毒）はセーブに持ち越さない。
 	// game.js saveGame() は player を丸ごと直列化する（`{ ...player }`）ので
 	// `_sealUntil` のような論理時刻もそのまま保存されるが、**ロード後の gameTime は

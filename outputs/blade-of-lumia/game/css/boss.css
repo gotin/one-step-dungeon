@@ -57,11 +57,14 @@
 }
 
 /* ── ダンジョン HUD（中央） ────────────────────────────────── */
+/* 層の名前と目的地マーク（キュー16）を縦に積む＝横並びにすると長い名前で押し合う。 */
 #hud-center {
     flex: 1;
     display: flex;
+    flex-direction: column;
     justify-content: center;
     align-items: center;
+    gap: 2px;
 }
 
 #hud-dungeon-info {
@@ -81,6 +84,48 @@
     font-size: 12px;
     color: #c0d0e0;
     letter-spacing: 2px;
+}
+
+/* ── 選択中の目的地マーク（キュー16）────────────────────────── */
+/* 方向（8方向の矢印）と距離（画面数）だけを出す＝道案内はしない（割り切り）。 */
+#hud-mark-guide {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 11px;
+    color: #e0e8f0;
+    background: rgba(10, 20, 24, 0.7);
+    border: 1px solid #2a4a6a;
+    border-radius: 4px;
+    padding: 1px 6px;
+    max-width: 40vw;
+}
+
+#hud-mark-guide.hidden {
+    display: none;
+}
+
+#hud-mark-dot {
+    width: 8px;
+    height: 8px;
+    border: 1px solid #0a1418;
+    flex: 0 0 8px;
+}
+
+#hud-mark-label {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+#hud-mark-arrow {
+    font-size: 14px;
+    color: #ffe060;
+    line-height: 1;
+}
+
+#hud-mark-dist {
+    color: #8ab0d0;
 }
 
 /* ── ボス部屋ロック演出（暗転オーバーレイ） ────────────────── */
