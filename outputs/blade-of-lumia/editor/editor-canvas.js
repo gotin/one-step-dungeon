@@ -6,72 +6,66 @@ import {
 	state, stageKey, getCurrentStage, getCurrentStages,
 	stageLabelEl, stageInfoEl, borderWarnEl, cellInfoEl, countTile,
 } from './editor-state.js';
-import { TILE_SPRITE_MAP, drawSpriteAt } from './editor-palette.js';
-import { connectedTileParts, connectTileAt } from '../shared/tile-connect.js';
-import { skinnedSprite } from '../shared/tile-skins.js';
-import { objVariantName } from '../shared/sprites-tiles.js';
+import { drawSpriteAt } from './editor-palette.js';
+import { describeCell, makeDrawLog } from '../shared/cell-appearance.js';
 
 export const canvas    = document.getElementById('stage-canvas');
 export const canvasCtx = canvas.getContext('2d');
 export const CELL_SIZE = 40;
 
-// bgTile → エディタ上での背景色（TILE_META.color を使う）
-function bgTileColor(tileChar) {
-	return TILE_META[tileChar]?.color ?? TILE_META[TILE.FLOOR].color;
-}
+// 11b：このキャンバスが実際に何を描いたかの記録（`"r,c"` → { base, sprs, icon }）。
+// tests/editor-game-parity.spec.js が実ゲーム・ワールドプレビューと突き合わせて読む。
+// 描画手順の中で押す＝describeCell の答えの写しではない（写すと食い違いを検出できない）。
+export const editorDrawLog = new Map();
+if (typeof window !== 'undefined') window.__editorDrawLog = editorDrawLog;
 
 export function drawCell(c, r, tileChar) {
 	const sd = getCurrentStage();
-	const posKey = `${r},${c}`;
-	const bgTile = sd?.bgTiles?.[posKey] ?? TILE.FLOOR;
 	const x = c * CELL_SIZE, y = r * CELL_SIZE;
 
-	let bgColor;
-	if (tileChar === TILE.WALL || tileChar === TILE.WATER || tileChar === TILE.LAVA) {
-		bgColor = (TILE_META[tileChar] ?? TILE_META[TILE.FLOOR]).color;
-	} else {
-		bgColor = bgTileColor(bgTile);
-	}
-	canvasCtx.fillStyle = bgColor;
+	// 🔴 「このセルに何を描くか」は shared/cell-appearance.js だけが決める（11b）。
+	//    エディタ・ワールドプレビュー・実ゲームの3系が同じ記述を読み、それぞれの画材で
+	//    描く＝「エディタでは緑の四角なのにゲームでは島の角」のような食い違いを構造で消す。
+	//    ここに独自の判断（下地の色・肌・変種・連結・扉の連なり）を書き足してはいけない。
+	// ⚠ 隣画面の帯（drawNeighborEdges）は r/c が半端な値＝そのセルのタイル文字を明示的に渡す。
+	const d = describeCell(sd, r, c, tileChar);
+	const log = makeDrawLog();
+
+	canvasCtx.fillStyle = d.baseColor;
 	canvasCtx.fillRect(x, y, CELL_SIZE, CELL_SIZE);
 	canvasCtx.strokeStyle = 'rgba(0,0,0,0.3)';
 	canvasCtx.lineWidth = 0.5;
 	canvasCtx.strokeRect(x + 0.5, y + 0.5, CELL_SIZE - 1, CELL_SIZE - 1);
 
-	// 連結タイル（橋のデッキ）＝ゲームと同じ shared/tile-connect.js で部品を選ぶ。
-	// ここを TILE_SPRITE_MAP の代表1枚で描くと、エディタでは柱つきの橋が並ぶのに
-	// ゲームでは繋がったデッキが出る＝見た目が食い違う。
-	// ⚠ タイルパレットの「橋」は地形（BG_TILES）なので bgTiles 層に書かれる。
-	//    tileChar だけを見ると連結タイルと気づけない＝connectTileAt で両層から解決する。
-	const cTile  = connectTileAt(sd, r, c);
-	const cparts = cTile ? connectedTileParts(sd, r, c, cTile) : null;
-	if (cparts) {
-		for (const spr of cparts.sprs) drawSpriteAt(canvasCtx, spr, cparts.pal, x, y, CELL_SIZE, CELL_SIZE);
-		// 下地が橋で tiles 層に別の物が乗っている場合は、デッキの上にその物を描く。
-		if (cTile !== tileChar) {
-			const siOn = TILE_SPRITE_MAP[tileChar];
-			if (siOn) drawSpriteAt(canvasCtx, siOn.spr, siOn.pal, x, y, CELL_SIZE, CELL_SIZE);
-		}
-		return;
-	}
+	const paint = (spr, pal, flipX = false) => {
+		if (!drawSpriteAt(canvasCtx, spr, pal, x, y, CELL_SIZE, CELL_SIZE, flipX)) return false;
+		log.sprs.push(`${spr}${flipX ? '!' : ''}@${pal}`);
+		return true;
+	};
 
-	// 山 'M'・木 't'・茂み 'u' は同じタイルでも下地から肌を選ぶ（10a-1d／10a-5）
-	// ＝ゲームと同じ shared/tile-skins.js の skinnedSprite() 1本で解決する。
-	// ここを基本の1枚で描くと、エディタでは砂漠にも雪冠の山・火山灰の上に緑の木が立って
-	// ゲームと食い違う（橋のデッキで同じ食い違いを踏んでいる＝この段の上のコメント）。
-	const siSkin = skinnedSprite(sd, r, c, tileChar, TILE_SPRITE_MAP[tileChar]);
-	// 木・山・茂みはセルごとに違う絵（10a-4）＝ゲームと同じ shared/sprites-tiles.js で選ぶ。
-	// ここを代表1枚のままにすると、エディタでは同じ木が並ぶのにゲームでは違う木が出る
-	// （橋のデッキ・山の肌で2度踏んだ食い違い＝この段の上のコメント）。
-	const si = siSkin ? { ...siSkin, spr: objVariantName(siSkin.spr, r, c) } : siSkin;
-	if (si && drawSpriteAt(canvasCtx, si.spr, si.pal, x, y, CELL_SIZE, CELL_SIZE)) {
-		// drawn
-	} else if (tileChar !== TILE.FLOOR && tileChar !== TILE.WALL) {
-		const m = TILE_META[tileChar];
+	// ① 下地（bgTiles）。橋のように連結する下地は部品で、地面は変種＋継ぎ目を解決した1枚で。
+	if (d.groundConnect) for (const spr of d.groundConnect.sprs) paint(spr, d.groundConnect.pal);
+	else if (d.ground)   paint(d.ground.spr, d.ground.pal);
+
+	// ② tiles 層。連結タイル（橋・家・柵）は部品を重ね、それ以外は物の絵を1枚。
+	if (d.objConnect) {
+		for (const spr of d.objConnect.sprs) paint(spr, d.objConnect.pal);
+	} else if (d.obj) {
+		// 敵・プレイヤー（role='entity'）もここで描く＝配置が見えないと編集できない。
+		// ゲームは実体として動かす（render-chars.js）＝盤面には描かない＝意図した差。
+		paint(d.obj.spr, d.obj.pal, d.obj.flipX);
+	} else if (d.icon) {
+		// 絵を持たないタイルは文字で示す（エディタだけの目印＝ゲームは CSS の色だけ）
 		canvasCtx.font = `${CELL_SIZE * 0.5}px sans-serif`;
 		canvasCtx.textAlign = 'center'; canvasCtx.textBaseline = 'middle';
 		canvasCtx.fillStyle = '#fff';
-		canvasCtx.fillText(m?.icon ?? '?', x + CELL_SIZE / 2, y + CELL_SIZE / 2);
+		canvasCtx.fillText(d.icon, x + CELL_SIZE / 2, y + CELL_SIZE / 2);
+		log.icon = d.icon;
+	}
+
+	// 隣画面の帯（drawNeighborEdges）は r/c が半端＝このステージのセルではない∴記録しない。
+	if (Number.isInteger(r) && Number.isInteger(c)) {
+		editorDrawLog.set(`${r},${c}`, { base: d.baseColor, sprs: log.sprs, icon: log.icon });
 	}
 }
 
@@ -145,6 +139,7 @@ export function renderStageCanvas(renderSidePanel) {
 	const { cols, rows } = sd;
 	canvas.width  = cols * CELL_SIZE;
 	canvas.height = rows * CELL_SIZE;
+	editorDrawLog.clear();   // 前の（大きい）ステージの記録が残らないように
 
 	if (document.getElementById('show-neighbors').checked) {
 		drawNeighborEdges(sd);

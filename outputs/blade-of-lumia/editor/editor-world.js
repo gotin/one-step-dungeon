@@ -1,5 +1,5 @@
 // ── editor-world.js ── ワールドグリッド・ミニマップ・プレビュー ─
-import { TILE, TILE_META, makeEmptyStage, DEFAULT_COLS, DEFAULT_ROWS } from '../shared/tiles.js';
+import { TILE, makeEmptyStage, DEFAULT_COLS, DEFAULT_ROWS } from '../shared/tiles.js';
 import { countTriforces, listTriforceEntries } from '../shared/triforce.js';
 import { ENEMY_TILES } from '../shared/enemies.js';
 import {
@@ -7,11 +7,14 @@ import {
 	worldGridEl, worldStageInfoEl, worldActionsEl, worldPreviewWrap, worldPreviewCv,
 	worldShardSummaryEl,
 } from './editor-state.js';
-import { TILE_SPRITE_MAP, drawSpriteAt } from './editor-palette.js';
+import { drawSpriteAt } from './editor-palette.js';
 import { mountIconEls } from '../shared/ui-icons.js';
+import { describeCell, cellBaseColor, makeDrawLog } from '../shared/cell-appearance.js';
 
+// ミニマップ（1セル=1px の見取り図）の下地の色。色の出所は実ゲームの CSS を写した
+// shared/cell-appearance.js に統一する（11b：以前は TILE_META.color ＝4つ目の出所だった）。
 function minimapBgColor(tileChar) {
-	return TILE_META[tileChar]?.color ?? TILE_META[TILE.FLOOR].color;
+	return cellBaseColor(TILE.FLOOR, tileChar);
 }
 
 const MINIMAP_COLORS = {
@@ -28,12 +31,11 @@ const MINIMAP_COLORS = {
 };
 
 const PREVIEW_CELL = 40;
-const PREVIEW_BG = {
-	[TILE.WALL]: '#3a4448', [TILE.FLOOR]: '#1a2228', [TILE.WATER]: '#0e2040', [TILE.LAVA]: '#5a1408',
-	[TILE.PLAYER]: '#2a5020',
-	[TILE.PATROL]: '#1a3060', [TILE.CHASER]: '#3a0808', [TILE.SENTRY]: '#2a0840',
-	[TILE.BOSS]: '#1a1a0a', [TILE.MONSTER]: '#180830', [TILE.DARK_LORD]: '#0a0a18',
-};
+
+// 11b：このプレビューが実際に何を描いたかの記録（`"r,c"` → { base, sprs, icon }）。
+// tests/editor-game-parity.spec.js が実ゲーム・ステージキャンバスと突き合わせて読む。
+export const previewDrawLog = new Map();
+if (typeof window !== 'undefined') window.__previewDrawLog = previewDrawLog;
 
 export function drawMinimap(sd) {
 	const cv = document.createElement('canvas');
@@ -85,33 +87,47 @@ export function drawWorldPreview(sd) {
 		worldPreviewCv.style.height = `${ph}px`;
 	}
 	const ctx = worldPreviewCv.getContext('2d');
+	previewDrawLog.clear();
 	for (let r = 0; r < rows; r++) {
 		for (let c = 0; c < cols; c++) {
-			const t = tiles[r][c];
-			const posKey = `${r},${c}`;
-			const bgTile = sd.bgTiles?.[posKey];
 			const x = c * PREVIEW_CELL, y = r * PREVIEW_CELL;
-			let bgColor;
-			if (t === TILE.WALL || t === TILE.WATER || t === TILE.LAVA) {
-				bgColor = PREVIEW_BG[t] ?? '#1a2228';
-			} else {
-				bgColor = bgTile ? minimapBgColor(bgTile) : (PREVIEW_BG[t] ?? '#1a2228');
-			}
-			ctx.fillStyle = bgColor;
+			// 🔴 描く物の判断は shared/cell-appearance.js だけが持つ（11b）＝ステージ
+			//    キャンバス・実ゲームと同じ記述を読む。ここは長らく3つ目の描画系で、
+			//    下地の地面を敷かない・連結タイル（橋/家/柵）を代表1枚で描く・山や木の
+			//    肌と変種を選ばない、という3種類の食い違いを同時に抱えていた。
+			// ⚠ 以前あった PREVIEW_BG（敵・プレイヤーのセルを暗く染める）は廃止した＝
+			//    実ゲームに無い色。敵とプレイヤーはスプライトで描くので配置は分かる。
+			const d = describeCell(sd, r, c, tiles[r][c]);
+			const log = makeDrawLog();
+
+			ctx.fillStyle = d.baseColor;
 			ctx.fillRect(x, y, PREVIEW_CELL, PREVIEW_CELL);
 			ctx.strokeStyle = 'rgba(255,255,255,0.04)';
 			ctx.lineWidth = 0.5;
 			ctx.strokeRect(x + 0.5, y + 0.5, PREVIEW_CELL - 1, PREVIEW_CELL - 1);
-			const si = TILE_SPRITE_MAP[t];
-			if (si) {
-				drawSpriteAt(ctx, si.spr, si.pal, x, y, PREVIEW_CELL, PREVIEW_CELL);
-			} else if (t !== TILE.FLOOR && t !== TILE.WALL) {
-				const meta = TILE_META[t];
+
+			const paint = (spr, pal, flipX = false) => {
+				if (!drawSpriteAt(ctx, spr, pal, x, y, PREVIEW_CELL, PREVIEW_CELL, flipX)) return false;
+				log.sprs.push(`${spr}${flipX ? '!' : ''}@${pal}`);
+				return true;
+			};
+
+			if (d.groundConnect) for (const spr of d.groundConnect.sprs) paint(spr, d.groundConnect.pal);
+			else if (d.ground)   paint(d.ground.spr, d.ground.pal);
+
+			if (d.objConnect) {
+				for (const spr of d.objConnect.sprs) paint(spr, d.objConnect.pal);
+			} else if (d.obj) {
+				paint(d.obj.spr, d.obj.pal, d.obj.flipX);
+			} else if (d.icon) {
 				ctx.font = `${PREVIEW_CELL * 0.5}px sans-serif`;
 				ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
 				ctx.fillStyle = '#fff';
-				ctx.fillText(meta?.icon ?? '?', x + PREVIEW_CELL / 2, y + PREVIEW_CELL / 2);
+				ctx.fillText(d.icon, x + PREVIEW_CELL / 2, y + PREVIEW_CELL / 2);
+				log.icon = d.icon;
 			}
+
+			previewDrawLog.set(`${r},${c}`, { base: d.baseColor, sprs: log.sprs, icon: log.icon });
 		}
 	}
 }

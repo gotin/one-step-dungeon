@@ -19,34 +19,9 @@
 import { TILE } from '../shared/tiles.js';
 import { SPRITES, PAL, drawSprite, drawSpriteFrame, drawSpriteLayers, makeSprite, applyBgSpriteToCell } from '../shared/sprites.js';
 import { TILE_SPRITE_MAP } from '../shared/tile-sprites.js';
-import { objVariantName } from '../shared/sprites-tiles.js';
-import { groundSpriteName } from '../shared/ground-seams.js';
-import { connectedTileParts, isConnectTile } from '../shared/tile-connect.js';
-import { skinnedSprite } from '../shared/tile-skins.js';
+import { isConnectTile } from '../shared/tile-connect.js';
+import { describeCell, BG_TILE_STYLE } from '../shared/cell-appearance.js';
 import { NPC_SPRITE_MAP } from '../shared/npcs.js';
-
-// bgTile の背景色クラスマップ（renderBoard 内でのみ使う定数）
-const BG_TILE_COLOR_CLASS = {
-	[TILE.FLOOR]:       '',
-	[TILE.GRASS]:       'bg-grass',
-	[TILE.SAND]:        'bg-sand',
-	[TILE.STONE_FLOOR]: 'bg-stonefloor',
-	[TILE.BRIDGE]:      'bg-bridge',
-	// 10c-2：手すりを手で決める橋も下地の色は橋と同じ（板が透ける隙間は無い）
-	[TILE.BRIDGE_V_BOTH]: 'bg-bridge',
-	[TILE.BRIDGE_V_W]:    'bg-bridge',
-	[TILE.BRIDGE_V_E]:    'bg-bridge',
-	[TILE.BRIDGE_V_NONE]: 'bg-bridge',
-	[TILE.BRIDGE_H_BOTH]: 'bg-bridge',
-	[TILE.BRIDGE_H_N]:    'bg-bridge',
-	[TILE.BRIDGE_H_S]:    'bg-bridge',
-	[TILE.BRIDGE_H_NONE]: 'bg-bridge',
-	[TILE.SNOW]:        'bg-snow',
-	[TILE.ASH]:         'bg-ash',
-	[TILE.MUD]:         'bg-mud',
-	// Phase 9-6 深洋O: 水下地（bgTiles 層の水）。tiles 層の水と同じ 'water' クラスで青く描く。
-	[TILE.WATER]:       'water',
-};
 
 // 末尾の共通スプライト fallback で「静的に描いてよい落ちアイテム」タイルの集合。
 // 敵・プレイヤー・NPC は実体として render-chars が描くので含めない（重複描画防止）。
@@ -64,7 +39,10 @@ const ITEM_FALLBACK_TILES = new Set([
 //    一覧には入れない。ここに残すと、連結タイルの描画が何かの理由で落ちたときに
 //    32 ドットの本体が obj-sprite（0.7 セル）で描かれ、1ドット 2.36px＝キャラより
 //    細かい絵になる。
-const FIELD_SPRITE_TILES = new Set([
+// export する理由＝tests/editor-game-parity.spec.js が「ゲームがどのセルで絵の選択を
+// dataset に残すか」をこの集合から導く（11b）。手書きの写しを持つと、フィールドタイルを
+// 足したときにテストの網から漏れる。
+export const FIELD_SPRITE_TILES = new Set([
 	TILE.GRASS, TILE.SAND, TILE.STONE_FLOOR, TILE.SNOW, TILE.ASH, TILE.MUD,
 	TILE.TREE, TILE.MOUNTAIN, TILE.SIGN,
 ]);
@@ -121,9 +99,8 @@ export function createRenderBoard(deps) {
 	// 連結タイル（橋のデッキ）を1セル分描く（内部用）。tiles 層／bgTiles 層のどちらに
 	// 置かれていても同じ部品表（shared/tile-connect.js）で描く＝置いた層で見た目が変わらない。
 	// セル全体を埋める（0.7倍の中央寄せだと連続配置で隙間が空き「畑」に見える＝キュー10番）。
-	function drawConnectTile(cellEl, posKey, tile) {
-		const [cr, cc] = posKey.split(',').map(Number);
-		const parts = connectedTileParts(getStageData(), cr, cc, tile);
+	// 部品の選択は shared/cell-appearance.js が済ませている（11b）∴ここは描くだけ。
+	function drawConnectTile(cellEl, parts) {
 		if (!parts) return false;
 		// 下地（bgTiles のスプライト）を消し、セル背景をデッキの色にする。
 		// デッキは不透明なので下地は見えない…はずだが、8ドットの絵を 75px 等の
@@ -141,38 +118,35 @@ export function createRenderBoard(deps) {
 		cv.className = 'sprite tile-sprite';
 		cv.dataset.tileEdges   = parts.edgeCode;   // テストが縁の選択を観測できるようにする
 		cv.dataset.tileVariant = parts.sprs[0];    // 同じく本体の変種（千鳥）を観測できるように
+		cv.dataset.tileSprs    = parts.sprs.join(' ');   // 11b：重ねた部品すべて（3系の比較用）
+		cv.dataset.tilePal     = parts.pal;
 		drawSpriteLayers(cv, parts.sprs, PAL[parts.pal]);
 		cellEl.appendChild(cv);
 		return true;
 	}
 
 	// bgTile 背景クラス＋スプライトを cellEl に適用するヘルパー（内部用）
-	function applyBgTileClass(cellEl, posKey) {
-		const stageData = getStageData();
-		const bgTile = stageData.bgTiles?.[posKey] ?? TILE.FLOOR;
+	// 何を敷くかは shared/cell-appearance.js の記述（desc）が決める＝エディタ・
+	// ワールドプレビューと同じ設計図（11b）。ここは DOM／CSS への当て方だけを持つ。
+	function applyBgTileClass(cellEl, desc) {
 		// 下地に置かれた連結タイル（エディタのタイルパレットの「橋」は BG_TILES ＝ bgTiles 層へ
 		// 書かれる）は、CSS 背景タイル敷きではなく tiles 層の橋と同じ部品で描く。
 		// ここを下の背景敷きに任せると、同じ「橋」なのに置いた層で見た目が変わる。
-		if (isConnectTile(bgTile) && drawConnectTile(cellEl, posKey, bgTile)) return;
-		const cls = BG_TILE_COLOR_CLASS[bgTile];
+		if (desc.groundConnect && drawConnectTile(cellEl, desc.groundConnect)) return;
+		const cls = BG_TILE_STYLE[desc.bgTile]?.cls;
 		if (cls) cellEl.classList.add(cls);
 		// bgTile のスプライトを CSS background-image でセルに敷く（地面は 32×32 を1枚だけ）。
 		// 絵はセルごとの変種を選ぶ（草地は房の位置が違う4種）＝隣のセルと同じ絵が
 		// 並ばない＝「地面の模様がパターン化されすぎ」を減らす（bgVariantName）。
 		// さらに隣のセルの地面が違う辺では、その色を自分の絵の縁へ食い込ませる
 		// （10b・`shared/ground-seams.js`）＝地面の境界が定規で切ったように見えない。
-		if (bgTile !== TILE.FLOOR) {
-			const si = TILE_SPRITE_MAP[bgTile];
-			if (si) {
-				const [br, bc] = posKey.split(',').map(Number);
-				const spr = groundSpriteName(stageData, si.spr, br, bc);
-				if (SPRITES[spr]) applyBgSpriteToCell(cellEl, spr, si.pal);
-			}
-		}
+		if (desc.ground) applyBgSpriteToCell(cellEl, desc.ground.spr, desc.ground.pal);
 	}
 
-	function setCellClass(cellEl, tile, posKey, ss) {
+	function setCellClass(cellEl, tile, posKey, ss, desc) {
 		const stageData = getStageData();
+		const dsc = desc ?? describeCell(stageData, ...posKey.split(',').map(Number), tile);
+		const applyBg = () => applyBgTileClass(cellEl, dsc);
 		switch (tile) {
 			case TILE.WALL:           cellEl.classList.add('wall'); return;
 			case TILE.WATER:          cellEl.classList.add('water'); return;
@@ -182,59 +156,60 @@ export function createRenderBoard(deps) {
 				// ※ 以前は開時に switch-on を付けていたが、これはスイッチ ON の緑色で
 				//    「ゲート跡が草地っぽく緑になる」誤表示の原因だった。
 				if (!ss.openGates.has(posKey)) cellEl.classList.add('gate');
-				applyBgTileClass(cellEl, posKey); return;
+				applyBg(); return;
 			case TILE.TIDE_GATE:
 				// Phase 9-6 深洋O: 潮ゲート。閉（満潮）＝水の背景／開（引き潮）＝床。
 				// 実際の水スプライトは addCellSprite が閉時のみ描く（GATE と同じ構造）。
 				if (!ss.openGates.has(posKey)) cellEl.classList.add('water');
-				applyBgTileClass(cellEl, posKey); return;
+				applyBg(); return;
 			case TILE.DOOR:
 				cellEl.classList.add('door');
-				applyBgTileClass(cellEl, posKey); return;
+				applyBg(); return;
 			case TILE.SWITCH_RED:
 			case TILE.SWITCH_BLUE:
 			case TILE.GATE_RED:
 			case TILE.GATE_BLUE:
 				// Phase 5-1: 色ゲート・色スイッチの背景は床に任せる
-				applyBgTileClass(cellEl, posKey); return;
+				applyBg(); return;
 			case TILE.BUTTON:
 			case TILE.SWITCH:
 				// 背景は床（bgTile）に任せる。ON/OFF・押下の見た目はスプライト側の
 				// クラス（button-pressed / switch-toggle-on）で表現する。
 				// ※ 以前はセルに switch-on/off（緑）を付けていたが、これが床を緑に
 				//    上書きし「床のはずが草地に見える」＋エディタとの不一致の原因だった。
-				applyBgTileClass(cellEl, posKey); return;
+				applyBg(); return;
 			case TILE.BREAKABLE_WALL:
 				cellEl.classList.add(ss.brokenWalls.has(posKey) ? 'floor' : 'breakable-wall');
-				applyBgTileClass(cellEl, posKey); return;
+				applyBg(); return;
 			case TILE.MAP_ENTER:
 				cellEl.classList.add('map-enter');
-				applyBgTileClass(cellEl, posKey); return;
+				applyBg(); return;
 			case TILE.SKY:
 				cellEl.classList.add('sky'); return;
 			case TILE.PIT:
 				cellEl.classList.add('pit'); return;
 			case TILE.DOORWAY:
 				cellEl.classList.add('doorway');
-				applyBgTileClass(cellEl, posKey); return;
+				applyBg(); return;
 			case TILE.DOORWAY_BOSS: {
 				const dwState = getDoorwayState(posKey);
 				cellEl.classList.add(dwState === 'boss_closed' ? 'doorway-boss-closed' : 'doorway-boss');
-				applyBgTileClass(cellEl, posKey); return;
+				applyBg(); return;
 			}
 			case TILE.DOORWAY_LOCKED: {
 				const dwState2 = getDoorwayState(posKey);
 				cellEl.classList.add(dwState2 === 'open' ? 'doorway-locked-open' : 'doorway-locked');
-				applyBgTileClass(cellEl, posKey); return;
+				applyBg(); return;
 			}
 		}
-		applyBgTileClass(cellEl, posKey);
+		applyBg();
 	}
 
-	function addCellSprite(cellEl, tile, posKey, ss) {
+	function addCellSprite(cellEl, tile, posKey, ss, desc) {
 		const stageData    = getStageData();
 		const currentLayer = getCurrentLayer();
 		const stageKey     = getStageKey();
+		const dsc = desc ?? describeCell(stageData, ...posKey.split(',').map(Number), tile);
 
 		if (tile === TILE.WALL || tile === TILE.FLOOR || tile === TILE.PLAYER) return;
 
@@ -325,23 +300,17 @@ export function createRenderBoard(deps) {
 			return;
 		}
 		if (tile === TILE.DOOR) {
-			const isOpen = ss.openedDoors?.has(posKey);
 			// 横に連なった扉は「1枚の大きな門」に見せる：左セルは doorL、右セルは
 			// それを左右反転して描く（外枠が両端だけ・中央は合わせ目で繋がる）。
 			// 単独の扉は従来の door スプライト。縦連結は今は単独扱い（横並びのみ対応）。
-			const [r, c] = posKey.split(',').map(Number);
-			const leftIsDoor  = stageData.tiles[r]?.[c - 1] === TILE.DOOR;
-			const rightIsDoor = stageData.tiles[r]?.[c + 1] === TILE.DOOR;
-			let sprName = isOpen ? 'doorOpen' : 'door';
-			let flipX = false;
-			if (rightIsDoor && !leftIsDoor) {            // 連結の左端 → 左半分
-				sprName = isOpen ? 'doorLopen' : 'doorL';
-			} else if (leftIsDoor && !rightIsDoor) {     // 連結の右端 → 左半分を反転
-				sprName = isOpen ? 'doorLopen' : 'doorL';
-				flipX = true;
-			} else if (leftIsDoor && rightIsDoor) {       // 3枚以上の中間 → 縁なしの中身
-				sprName = isOpen ? 'doorLopen' : 'doorL';  // 中間も左半分流用（枠は両端のみ見える）
-			}
+			// どの絵を選ぶか（連なりと反転）は shared/cell-appearance.js が持つ＝エディタ・
+			// プレビューも同じ選択をする（11b：以前はここだけが連なりを見ていた）。
+			const isOpen = ss.openedDoors?.has(posKey);
+			const flipX   = !!dsc.obj?.flipX;
+			const isHalf  = dsc.obj?.spr === 'doorL';
+			const sprName = isOpen ? (isHalf ? 'doorLopen' : 'doorOpen') : (isHalf ? 'doorL' : 'door');
+			cellEl.dataset.objSprite = `${sprName}${flipX ? '!' : ''}`;   // 11b：3系の比較用
+			cellEl.dataset.objPal    = 'door';
 			const cv = makeSprite(sprName, 'door', false, flipX);
 			putCellSprite(cellEl, cv, 'door-sprite');
 			return;
@@ -472,50 +441,29 @@ export function createRenderBoard(deps) {
 			return;
 		}
 		// 連結タイル（橋のデッキ）＝隣接状況で部品を重ねる。
-		if (isConnectTile(tile) && drawConnectTile(cellEl, posKey, tile)) return;
-		// フィールドタイルのスプライト描画
-		// 🔴 スプライトとパレットの対応は shared/tile-sprites.js の TILE_SPRITE_MAP だけが正
-		//    （[[blade-tile-sprite-single-source]]）。ここに表を書き写していたら雪が草の形の
-		//    まま取り残されていた（灰/泥を専用の形にした 2026-09-06 に発覚）∴タイルの一覧だけ
-		//    持ち、形と色は共通表から引く。
-		if (FIELD_SPRITE_TILES.has(tile) && TILE_SPRITE_MAP[tile]) {
-			const [mr, mc] = posKey.split(',').map(Number);
-			// 山 'M'・木 't'・茂み 'u' は同じタイルでも「下地から導いた肌」で描き分ける
-			// （10a-1d／10a-5）。どのタイルが肌を持つか・山は塊で植生はセルか、の判断は
-			// shared/tile-skins.js の skinnedSprite() だけが持つ＝エディタも同じ関数を読む。
-			let { spr, pal, skin } = skinnedSprite(stageData, mr, mc, tile, TILE_SPRITE_MAP[tile]);
+		if (isConnectTile(tile) && drawConnectTile(cellEl, dsc.objConnect)) return;
+		// フィールドタイル・茂みのスプライト描画。
+		// 🔴 どの絵を選ぶか（肌 → 変種）は shared/cell-appearance.js だけが決める（11b）。
+		//    形と色の対応は TILE_SPRITE_MAP、肌は tile-skins.js、変種は sprites-tiles.js ＝
+		//    その組み立て順まで含めて共通化した∴ここに書き写さない
+		//    （[[blade-tile-sprite-single-source]]。以前はエディタ・プレビューが別々に
+		//     組み立てていて、プレビューだけ肌も変種も選ばず「同じセルが違う絵」だった）。
+		// ⚠ 茂みだけは切り倒し状態（ss.cutBushes）を見る＝状態はゲーム側にしかない。
+		if ((FIELD_SPRITE_TILES.has(tile) || tile === TILE.BUSH) && dsc.obj) {
+			if (tile === TILE.BUSH && ss.cutBushes?.has(posKey)) return;
+			const { spr, pal, skin } = dsc.obj;
 			if (skin) {
 				cellEl.dataset.artSkin = skin;        // どの肌を選んだかテストから見える
 				if (tile === TILE.MOUNTAIN) cellEl.dataset.mountainSkin = skin;
 			}
-			// 木・山・茂みはセルごとに違う絵にする（10a-4）＝肌を解決した後に変種を選ぶ
-			// （名前の順序は必ず 肌 → 変種＝`mountain@mesa#2`）。パレットは変えない。
-			spr = objVariantName(spr, mr, mc);
 			cellEl.dataset.artSprite = spr;           // どの絵を選んだかテストから見える
-			if (SPRITES[spr]) {
-				const ANIMATED_FIELD = new Set([TILE.GRASS, TILE.SAND, TILE.SNOW, TILE.ASH, TILE.MUD, TILE.TREE, TILE.BUSH]);
-				const cv = makeSprite(spr, pal, ANIMATED_FIELD.has(tile));
-				if (cv) { cv.classList.add(fieldSpriteClass(tile)); cellEl.appendChild(cv); }
-			}
+			cellEl.dataset.artPal    = pal;           // 11b：3系の比較用（色まで一致させる）
+			const ANIMATED_FIELD = new Set([TILE.GRASS, TILE.SAND, TILE.SNOW, TILE.ASH, TILE.MUD, TILE.TREE, TILE.BUSH]);
+			const cv = makeSprite(spr, pal, ANIMATED_FIELD.has(tile));
+			if (cv) { cv.classList.add(fieldSpriteClass(tile)); cellEl.appendChild(cv); }
 			return;
 		}
-		// 茂み
-		if (tile === TILE.BUSH) {
-			if (!ss.cutBushes?.has(posKey)) {
-				// 茂みもセルごとに違う絵（10a-4）＝木・山と同じ `objVariantName` を通す。
-				// ⚠ 茂みは FIELD_SPRITE_TILES に載っていない（この枝で描く）∴ここも直す
-				//    ＝片方だけ直すと「木は違う絵・茂みは同じ絵」になる。
-				// 肌（10a-5）も同じ理由でこの枝に要る＝上の枝だけ直すと茂みだけ緑のまま残る。
-				const [br, bc] = posKey.split(',').map(Number);
-				const si = skinnedSprite(stageData, br, bc, tile, TILE_SPRITE_MAP[tile]);
-				if (si.skin) cellEl.dataset.artSkin = si.skin;
-				const spr = objVariantName(si.spr, br, bc);
-				cellEl.dataset.artSprite = spr;
-				const cv = makeSprite(spr, si.pal, true);
-				if (cv) { cv.classList.add(fieldSpriteClass(tile)); cellEl.appendChild(cv); }
-			}
-			return;
-		}
+		if (tile === TILE.BUSH) return;   // 絵が引けない茂み（＝作りかけ）は何も描かない
 		// 残りの「落ちているアイテム」だけを共通表 TILE_SPRITE_MAP から描く
 		// （よろい・爆弾・弓矢・回復薬・地図・コンパス・ハートの器）。
 		// ※ 敵（W/E/C/F/ボス）・プレイヤー・NPC も共通表に載っているが、それらは
@@ -563,8 +511,11 @@ export function createRenderBoard(deps) {
 				cellEl.dataset.row  = r;
 				cellEl.dataset.col  = c;
 
-				setCellClass(cellEl, tile, posKey, ss);
-				addCellSprite(cellEl, tile, posKey, ss);
+				// 1セルの「状態に依らない見た目」は1回だけ引く（11b）＝下地と物で2度
+				// 同じ計算をしない∴セルあたりの仕事は共通化前より増えない。
+				const desc = describeCell(stageData, r, c, tile);
+				setCellClass(cellEl, tile, posKey, ss, desc);
+				addCellSprite(cellEl, tile, posKey, ss, desc);
 				boardEl.appendChild(cellEl);
 			}
 		}

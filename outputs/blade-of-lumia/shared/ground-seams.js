@@ -20,9 +20,11 @@
 //   ③ 斜めだけが高い地形のときは角に小さな食い込みを足す（岬の角が欠けて見えるのを防ぐ）。
 //      印は 3 ドット以上＝`GROUND_MARK_MIN` と同じ理由（1ドットはノイズに見える）。
 //
-// 読み手は `game/render-board.js` の1か所だけ（エディタは `bgTiles` を**平らな色**で
-// 描いていてスプライトを敷かない＝`editor/editor-canvas.js` の `bgTileColor`）∴
-// 「読み手が2つあるなら検査も2つ」（DECISIONS 2026-09-06 決定3）はここでは片方だけ。
+// 読み手（11b で更新）：`groundSpriteName` を呼ぶのは `shared/cell-appearance.js`
+// `describeCell` の1か所だけになった。実ゲームの盤面・エディタのステージキャンバス・
+// ワールドプレビューの3系はいずれもその記述を読んで描く∴継ぎ目の絵はどの系でも同じ。
+// （10b 当時の「エディタは bgTiles を平らな色で描く＝読み手は1つ」という記述は失効。
+//  食い違いは 2026-09-13 にユーザーが指摘し 11b で構造的に解消した。）
 
 import { TILE } from './tiles.js';
 import { TILE_SPRITE_MAP } from './tile-sprites.js';

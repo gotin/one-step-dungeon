@@ -311,7 +311,10 @@ test.describe('連結タイル（柵）– 実エンジンの描画', () => {
 				open:  at(40 + 2,  40 + 2),     // (1,1) の北西＝開いた側は柱の絵が無く床色のまま
 			};
 		});
-		const FLOOR_COLOR = '#2a3540';   // TILE_META[TILE.FLOOR].color
+		// 11b：エディタの平色は実ゲームの CSS を写した shared/cell-appearance.js が出所
+		// （BG_TILE_STYLE[TILE.FLOOR].color ＝ --floor-color）。以前は TILE_META.color の
+		// '#2a3540' で、ゲームと違う色をエディタだけが使っていた。
+		const FLOOR_COLOR = '#1a2228';
 		expect(dots.post).not.toBe(FLOOR_COLOR);
 		expect(dots.open).toBe(FLOOR_COLOR);
 	});

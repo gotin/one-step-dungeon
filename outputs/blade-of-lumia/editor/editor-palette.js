@@ -14,7 +14,8 @@ export { TILE_SPRITE_MAP };
 // 勝手に押された/ON 状態にチラついて紛らわしいため。
 const STATIC_FRAME0 = new Set(['button', 'lever']);
 
-export function drawSpriteAt(ctx, spriteName, palName, dx, dy, dw, dh) {
+// flipX＝左右反転して描く（横に連なった扉の右半分など。ゲーム側の makeSprite と同じ引数）
+export function drawSpriteAt(ctx, spriteName, palName, dx, dy, dw, dh, flipX = false) {
 	const frames = SPRITES[spriteName];
 	if (!frames) return false;
 	const palette = PAL[palName] ?? PAL.hero;
@@ -33,7 +34,15 @@ export function drawSpriteAt(ctx, spriteName, palName, dx, dy, dw, dh) {
 		}
 	}
 	ctx.imageSmoothingEnabled = false;
-	ctx.drawImage(tmp, dx, dy, dw, dh);
+	if (flipX) {
+		ctx.save();
+		ctx.translate(dx + dw, dy);
+		ctx.scale(-1, 1);
+		ctx.drawImage(tmp, 0, 0, dw, dh);
+		ctx.restore();
+	} else {
+		ctx.drawImage(tmp, dx, dy, dw, dh);
+	}
 	return true;
 }
 
