@@ -30,7 +30,7 @@
 
 import { TILE, TILE_META } from './tiles.js';
 import { TILE_SPRITE_MAP } from './tile-sprites.js';
-import { SPRITES } from './sprites.js';
+import { SPRITES, PAL } from './sprites.js';
 import { groundSpriteName } from './ground-seams.js';
 import { connectedTileParts, isConnectTile } from './tile-connect.js';
 import { skinnedSprite } from './tile-skins.js';
@@ -226,6 +226,166 @@ export function makeDrawLog() {
  * 状態で変わる絵・盤面に描かれない実体・文字アイコンは含めない
  * ＝「3つの描画系が一致していなければおかしい部分」だけを並べる。
  */
+// ── 1セル＝1ドットの見取り図の色（ワールドマップのサムネ）── キュー11c ─────────
+//
+// 何を直すか：エディタのワールドマップに並ぶステージのサムネ（`drawMinimap`）が
+// 手書きの色表（旧 `MINIMAP_COLORS`）にある文字にだけ前景ドットを打っていたので、
+// **表に載っていない物が地面と同じ色で消えていた**（2026-09-13 ユーザー指摘＝
+// 「橋、障害物・建物もあるなら表示した方がいい。ぱっと見でどういうステージなのか
+// 把握しづらい」）。実データで数えた消えていたセル＝7,078
+//   木 3,147／山 2,394／橋 503／茂み 226／看板 184／石床 114／家 106＋52／柵 48／
+//   墓 47／敵 20種ほか（表に載っていない敵タイルも全部消えていた）。
+//
+// 🔴 方針＝**色も絵から導く**（[[blade-tile-sprite-single-source]]／
+//    [[blade-enemy-tables-derive-from-meta]]＝手書きの表は必ず取りこぼす）。
+//    導き方＝「その絵で**面積が一番広い明るい色**」＝`spriteGlanceColor`。
+//    暗い輪郭・影を混ぜた平均は濁って地面と見分けが付かなくなる∴明度が下位
+//    `GLANCE_DARK_QUANTILE` の色（輪郭・影）を捨ててから最頻色を採る。
+//    ⚠ この導出は旧 `MINIMAP_COLORS` の手書きの色を**ほぼ再現する**（実測＝
+//      パトロール #4888c0・追跡 #c03030・門番 #9040c0・ボス #f0c040 は完全一致、
+//      鍵・宝箱・扉・入口は同系）＝手書きの表は「絵の一番目立つ色」を人が目で
+//      拾ったものだった∴機械的に導ける。
+//
+// 決め事：
+//   ① 変種（`sprites-tiles.js` の `#0`〜`#7`）は**解決しない**＝形だけが違って色は
+//      同じ。肌（`tile-skins.js`）は解決する＝山の色が地域で変わる（灰／黒／橙／白）。
+//   ② 地面の継ぎ目（`ground-seams.js`）も解決しない。1ドットには効かないのに、
+//      ワールドマップは全ステージ（実測 522 画面 62,640 セル）を一度に描く∴
+//      セルごとに継ぎ目の絵を作ると重い。下地は平色（`cellBaseColor`）で足りる。
+//   ③ **地面と見分けが付くことを保証する**＝導いた色が下地に近すぎる場合は明暗方向へ
+//      押しのける（`GLANCE_MIN_SEPARATION`）。茂みが草地に、墓が石畳に埋もれるのを防ぐ
+//      （見取り図＝記号なので実際の絵より強く出て良い）。
+//   ④ 明るい色が無い絵（真っ黒＝魔王・レバー）は「その絵で一番鮮やかな色」に切り替える。
+//   ⑤ 下地も同じやり方で色を導く＝`BG_TILE_STYLE`（実ゲームの CSS の写し）に色が無い
+//      地面（島の角 q/j/y/z＝実測 53 セル）は床の暗色ではなくその地面の絵の色にする。
+//      ＝拡大して見たら島の角だけ穴のように黒く抜けていた（[[judge-obvious-visual-defects-yourself]]）。
+
+export const GLANCE_MIN_SEPARATION = 48;   // 下地との RGB 距離の下限
+export const GLANCE_DARK_QUANTILE  = 0.25; // 輪郭・影として捨てる明度の下位割合
+// 「1ドットの記号として読めない色」の判定＝暗く（明度が低く）色味も無い。
+// この2つを両方満たす色に落ちたら、その絵で一番鮮やかな色に切り替える。
+export const GLANCE_DARK_LUM = 70;
+export const GLANCE_DULL_SAT = 24;
+
+const hexRgb = (col) => {
+	const m = /^#?([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(col ?? '');
+	return m ? [parseInt(m[1], 16), parseInt(m[2], 16), parseInt(m[3], 16)] : null;
+};
+const toHex = ([r, g, b]) => `#${[r, g, b].map(v => Math.round(v).toString(16).padStart(2, '0')).join('')}`;
+const rgbLum = (v) => 0.2126 * v[0] + 0.7152 * v[1] + 0.0722 * v[2];
+const rgbSat = (v) => Math.max(...v) - Math.min(...v);
+
+/** 2色の隔たり（RGB 空間の距離）。1ドットで見分けが付くかの目安。 */
+export function colorDistance(a, b) {
+	const x = hexRgb(a), y = hexRgb(b);
+	return x && y ? Math.hypot(x[0] - y[0], x[1] - y[1], x[2] - y[2]) : 0;
+}
+
+const glanceCache = new Map();
+
+/**
+ * スプライト1枚を「見取り図の1ドット」に潰した色。
+ * 面積が一番広い明るい色（輪郭・影を捨てた最頻色）。明るい色を持たない絵は
+ * 一番鮮やかな色に切り替える（真っ黒なドットは記号にならない）。
+ * @returns {string|null} `#rrggbb`（絵かパレットが無ければ null）
+ */
+export function spriteGlanceColor(spr, palName) {
+	const key = `${spr}|${palName}`;
+	if (glanceCache.has(key)) return glanceCache.get(key);
+	const grid = SPRITES[spr]?.[0];
+	const pal  = PAL[palName];
+	let result = null;
+	if (grid && pal) {
+		const count = new Map();
+		for (const row of grid) {
+			for (const idx of row) {
+				if (idx === 0) continue;                      // 透明
+				const v = hexRgb(pal[idx]);
+				if (!v) continue;
+				const k = toHex(v);
+				count.set(k, (count.get(k) ?? 0) + 1);
+			}
+		}
+		if (count.size) {
+			const colors = [...count.keys()];
+			const lums = colors.map(c => rgbLum(hexRgb(c))).sort((a, b) => a - b);
+			const cut = lums[Math.floor(lums.length * GLANCE_DARK_QUANTILE)];
+			const bright = colors.filter(c => rgbLum(hexRgb(c)) > cut);
+			const pool = bright.length ? bright : colors;
+			result = pool.sort((a, b) => count.get(b) - count.get(a))[0];
+			// 暗くて色味も無い＝記号にならない（魔王・レバー）∴一番鮮やかな色に替える
+			const v = hexRgb(result);
+			if (rgbLum(v) < GLANCE_DARK_LUM && rgbSat(v) < GLANCE_DULL_SAT) {
+				result = colors.sort((a, b) =>
+					(rgbSat(hexRgb(b)) + rgbLum(hexRgb(b)) * 0.5) - (rgbSat(hexRgb(a)) + rgbLum(hexRgb(a)) * 0.5))[0];
+			}
+		}
+	}
+	glanceCache.set(key, result);
+	return result;
+}
+
+/** 下地に近すぎる前景色を明暗方向へ押しのける（見分けが付くことの保証）。 */
+export function separateFromBase(fg, base) {
+	const b = hexRgb(base);
+	let v = hexRgb(fg);
+	if (!b || !v) return fg;
+	// 下地の方が明るければ前景を暗く、暗ければ明るくする（色味は保つ）
+	const target = rgbLum(b) > rgbLum(v) ? 0 : 255;
+	for (let i = 0; i < 16 && Math.hypot(v[0] - b[0], v[1] - b[1], v[2] - b[2]) < GLANCE_MIN_SEPARATION; i++) {
+		v = v.map(x => x + (target - x) * 0.12);
+	}
+	return toHex(v);
+}
+
+/**
+ * そのセルのタイル文字を「1枚の絵」に落とす（見取り図用）。
+ * 連結タイル（橋・家・柵）は部品の1枚目で代表する＝1ドットには十分。
+ * @returns {{spr:string,pal:string}|null}
+ */
+function glanceSprite(stageData, r, c, tile) {
+	if (isConnectTile(tile)) {
+		const parts = connectedTileParts(stageData, r, c, tile);
+		return parts ? { spr: parts.sprs[0], pal: parts.pal } : null;
+	}
+	const si = TILE_SPRITE_MAP[tile];
+	if (!si) return null;
+	const skinned = skinnedSprite(stageData, r, c, tile, si);
+	// 変種は色が同じ∴解決しない。ただし肌付きの名前そのものが絵として
+	// 登録されていない場合があるので、その時だけ変種 #0 を借りる。
+	return { spr: SPRITES[skinned.spr] ? skinned.spr : objVariantName(skinned.spr, 0, 0), pal: skinned.pal };
+}
+
+/**
+ * 1セルを見取り図の色に潰す。ワールドマップのサムネ（1セル=1px）だけが使う。
+ * @returns {{base:string, fg:string|null, spr:string|null}}
+ *   base … 下地の色（`cellBaseColor`＝実ゲームの CSS の写し。CSS に色が無い下地は
+ *          その地面の絵から導く）
+ *   fg   … そのセルに乗っている「物」の色（何も乗っていなければ null）
+ *   spr  … fg の出所のスプライト名（テスト・調査用）
+ */
+export function cellGlanceColor(stageData, r, c, tile) {
+	const t  = tile ?? stageData?.tiles?.[r]?.[c] ?? TILE.FLOOR;
+	const bg = stageData?.bgTiles?.[`${r},${c}`] ?? TILE.FLOOR;
+	let base = cellBaseColor(t, bg);
+	// 下地に絵はあるが CSS に色が無いもの（島の角 q/j/y/z＝実測 53 セル）は
+	// `cellBaseColor` が床の暗色に落ちる＝サムネでは島に穴が空いて見えた
+	// （拡大して自分で見て気付いた defect）∴その地面の絵から色を導く。
+	if (!HIDE_GROUND_TILES.has(t) && bg !== TILE.FLOOR && !BG_TILE_STYLE[bg]?.cls) {
+		const gs = glanceSprite(stageData, r, c, bg);
+		const col = gs && spriteGlanceColor(gs.spr, gs.pal);
+		if (col) base = col;
+	}
+
+	const os = glanceSprite(stageData, r, c, t);
+	if (!os) return { base, fg: null, spr: null };
+	const { spr, pal } = os;
+
+	const raw = spriteGlanceColor(spr, pal);
+	if (!raw) return { base, fg: null, spr: null };
+	return { base, fg: separateFromBase(raw, base), spr };
+}
+
 export function cellAppearanceKey(d) {
 	const parts = [`base=${d.baseColor}`];
 	if (d.ground)        parts.push(`ground=${d.ground.spr}@${d.ground.pal}`);

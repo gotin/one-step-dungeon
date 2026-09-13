@@ -9,26 +9,7 @@ import {
 } from './editor-state.js';
 import { drawSpriteAt } from './editor-palette.js';
 import { mountIconEls } from '../shared/ui-icons.js';
-import { describeCell, cellBaseColor, makeDrawLog } from '../shared/cell-appearance.js';
-
-// ミニマップ（1セル=1px の見取り図）の下地の色。色の出所は実ゲームの CSS を写した
-// shared/cell-appearance.js に統一する（11b：以前は TILE_META.color ＝4つ目の出所だった）。
-function minimapBgColor(tileChar) {
-	return cellBaseColor(TILE.FLOOR, tileChar);
-}
-
-const MINIMAP_COLORS = {
-	[TILE.WALL]: '#3a4448', [TILE.FLOOR]: '#1a2228', [TILE.WATER]: '#0e2040', [TILE.LAVA]: '#8a2a10',
-	[TILE.PLAYER]: '#4cd964',
-	[TILE.PATROL]: '#4888c0', [TILE.CHASER]: '#c03030', [TILE.SENTRY]: '#9040c0',
-	[TILE.BOSS]: '#f0c040', [TILE.MONSTER]: '#9060d0', [TILE.DARK_LORD]: '#8800ff',
-	[TILE.NPC_A]: '#44aa44', [TILE.NPC_B]: '#aa8844', [TILE.NPC_SHOP]: '#aaaa00',
-	[TILE.PRINCESS]: '#ff66aa',
-	[TILE.GATE]: '#1a2c40', [TILE.BUTTON]: '#5a9a40', [TILE.SWITCH]: '#9a5aa0', [TILE.DOOR]: '#9b7048',
-	[TILE.KEY]: '#f2c14e', [TILE.CHEST]: '#c09060', [TILE.STONE]: '#6a7470',
-	[TILE.MAP_ENTER]: '#2040a0', [TILE.BREAKABLE_WALL]: '#6a5040',
-	[TILE.DOORWAY]: '#204040', [TILE.DOORWAY_BOSS]: '#601020', [TILE.DOORWAY_LOCKED]: '#203060',
-};
+import { describeCell, cellGlanceColor, makeDrawLog } from '../shared/cell-appearance.js';
 
 const PREVIEW_CELL = 40;
 
@@ -37,6 +18,12 @@ const PREVIEW_CELL = 40;
 export const previewDrawLog = new Map();
 if (typeof window !== 'undefined') window.__previewDrawLog = previewDrawLog;
 
+// ワールドマップに並ぶステージのサムネ（1セル=1px の見取り図）。
+// 🔴 色の判断は shared/cell-appearance.js だけが持つ（11c）＝下地は実ゲームの CSS の
+//    写し（`cellBaseColor`）、物の色はその絵から導く（`spriteGlanceColor`）。
+//    以前はここに手書きの色表（`MINIMAP_COLORS`）があり、表に載っていない物
+//    （橋・木・山・茂み・家・柵・看板・多くの敵＝実測 7,078 セル）が地面と同じ色で
+//    消えていた＝「ぱっと見でどういうステージなのか把握しづらい」（ユーザー指摘）。
 export function drawMinimap(sd) {
 	const cv = document.createElement('canvas');
 	cv.width = sd.cols; cv.height = sd.rows;
@@ -44,28 +31,9 @@ export function drawMinimap(sd) {
 	const ctx = cv.getContext('2d');
 	for (let r = 0; r < sd.rows; r++) {
 		for (let c = 0; c < sd.cols; c++) {
-			const t = sd.tiles[r][c];
-			const posKey = `${r},${c}`;
-			const bgTile = sd.bgTiles?.[posKey];
-
-			let bgColor;
-			if (t === TILE.WALL || t === TILE.WATER || t === TILE.LAVA) {
-				bgColor = MINIMAP_COLORS[t] ?? '#1a2228';
-			} else if (bgTile) {
-				bgColor = minimapBgColor(bgTile);
-			} else {
-				bgColor = MINIMAP_COLORS[TILE.FLOOR] ?? '#1a2228';
-			}
-			ctx.fillStyle = bgColor;
+			const { base, fg } = cellGlanceColor(sd, r, c, sd.tiles[r][c]);
+			ctx.fillStyle = fg ?? base;
 			ctx.fillRect(c, r, 1, 1);
-
-			if (t !== TILE.FLOOR && t !== TILE.WALL && t !== TILE.WATER && t !== TILE.LAVA) {
-				const fgColor = MINIMAP_COLORS[t];
-				if (fgColor) {
-					ctx.fillStyle = fgColor;
-					ctx.fillRect(c, r, 1, 1);
-				}
-			}
 		}
 	}
 	return cv;
