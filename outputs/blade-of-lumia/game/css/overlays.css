@@ -98,6 +98,11 @@
     padding: 20px 28px;
     min-width: 320px;
     max-width: 90vw;
+    /* field の地図（既定 CSS2倍＝384×400px）を足すと枠は約 650px になる＝窓 800 には
+       収まるが、それより低い窓では拡大率を下げてもはみ出し得る∴最後の受け皿として
+       スクロールできるようにする（キュー15）。 */
+    max-height: 96vh;
+    overflow-y: auto;
 }
 
 #pause-title {
@@ -178,12 +183,42 @@
     letter-spacing: 1px;
 }
 
+#pause-map-wrap {
+    position: relative;
+    width: fit-content;
+    margin: 0 auto;
+}
+
 #pause-map-canvas {
     display: block;
     margin: 0 auto;
     image-rendering: pixelated;
     border: 1px solid #2a4a6a;
     border-radius: 4px;
+    /* base.css の `* { box-sizing: border-box }` のままだと style.width に指定した
+       「画素数×拡大率」から枠の 2px が引かれる＝拡大率が整数でなくなり（384→382）
+       1ドットの大きさが不均一になる（見取り図は1セル1px∴そのまま歪む）。
+       ∴このキャンバスだけ content-box に戻して、枠は外側に置く（キュー15）。 */
+    box-sizing: content-box;
+}
+
+/* 現在地マーカー（field の見取り図）＝白枠＋点滅。
+   left/top/width/height と枠の太さは ui.js が拡大率から決める。 */
+#pause-map-here {
+    position: absolute;
+    box-sizing: border-box;
+    border: 2px solid #ffffff;
+    pointer-events: none;
+    animation: pause-map-here-blink 0.9s steps(1, end) infinite;
+}
+
+#pause-map-here.hidden {
+    display: none;
+}
+
+@keyframes pause-map-here-blink {
+    0%, 49.99%   { opacity: 1; }
+    50%, 100%    { opacity: 0.15; }
 }
 
 #pause-map-hint {

@@ -822,7 +822,11 @@ export function createPlayer(deps) {
 		}
 		if (tile === TILE.ITEM_DUNGEON_MAP) {
 			player.dungeonItems[getCurrentLayer()].hasMap = true;
-			playSound('item'); pulse('{{map}} ダンジョンの地図を手に入れた！');
+			// field で拾ったときは「ダンジョンの地図」ではない＝ポーズ画面に出るのは
+			// ルミア地方の見取り図（キュー15）∴文もそれに合わせる。
+			const isField = getCurrentLayer() === 'field';
+			playSound('item');
+			pulse(isField ? '{{map}} ルミア地方の地図を手に入れた！' : '{{map}} ダンジョンの地図を手に入れた！');
 		} else if (tile === TILE.ITEM_COMPASS) {
 			player.dungeonItems[getCurrentLayer()].hasCompass = true;
 			playSound('item'); pulse('{{compass}} コンパスを手に入れた！');

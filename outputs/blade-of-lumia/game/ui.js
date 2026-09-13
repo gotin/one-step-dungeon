@@ -30,6 +30,9 @@ import { SPRITES, PAL, makeSprite } from '../shared/sprites.js';
 import { ITEM_META, EQUIP_META, BOOMERANG_TIERS, SWORD_TIERS, SHIELD_TIERS, ARMOR_TIERS } from '../shared/items.js';
 import { iconCanvas, iconText, iconPxOf } from '../shared/ui-icons.js';
 import { playSound } from '../shared/sounds.js';
+// field の地図（キュー15）の色。エディタのワールドマップのサムネと**同じ関数**を呼ぶ
+// ＝ユーザー判定済み（キュー11c）の見え方がそのまま出て、絵の食い違いが構造的に起きない。
+import { cellGlanceColor } from '../shared/cell-appearance.js';
 
 // HUD のハート（heart/heartEmpty/heartHalf）の表示サイズ。Phase 10d-3 で
 // 絵を32ドット化した際、絵の中の透明余白が増えた分だけ見かけが縮むのを補う
@@ -135,6 +138,8 @@ export function createUi(deps) {
 	const pauseDungeonMapEl= document.getElementById('pause-dungeon-map');
 	const pauseMapCanvasEl = document.getElementById('pause-map-canvas');
 	const pauseMapHintEl   = document.getElementById('pause-map-hint');
+	const pauseMapLabelEl  = document.getElementById('pause-map-label');
+	const pauseMapHereEl   = document.getElementById('pause-map-here');
 	const shopOverlayEl    = document.getElementById('shop-overlay');
 	const shopItemsEl      = document.getElementById('shop-items');
 	const shopResultEl     = document.getElementById('shop-result');
@@ -379,22 +384,133 @@ export function createUi(deps) {
 		renderPauseDungeonMap();
 	}
 
+	// ── ポーズ画面の地図 ──────────────────────────────────────────
+	// 地図は2系統ある（キュー15・2026-09-13）：
+	//   ① 部屋グリッド（ダンジョン）＝1部屋を 24px の四角で描き、通路の点とボスの '!' を足す。
+	//   ② 見取り図（field）＝1セル 1px。field は 320画面（16×20）∴①の寸法（1部屋 24+3px）を
+	//      掛けると 435×543px・CSS2倍で 870×1086px＝ポーズ枠に収まらない（実測 2026-09-13）。
+	//      1画面を 12×10 ドットで描けば全体 192×200px・CSS2倍 384×400px で収まり、
+	//      1画面の縦横比は自動的にゲーム画面と同じ 12:10 になる。
+	// ⚠️ ②を使うのは field だけ＝**画面が連続した1つの世界を敷き詰めている唯一のレイヤー**。
+	//    ダンジョンは部屋が離れていて通路で繋がる∴①の「四角＋通路の点」が情報になる（かつ
+	//    ユーザー判定済みの見え方）。ここを「画面数が多いレイヤー」等の条件にすると
+	//    test_mechanics（43×2 の検証ステージ置き場）まで巻き込む＝意図しない。
+	const GLANCE_MAP_LAYERS = new Set(['field']);
+	// 未訪問の画面の色（真っ黒＝行っていない場所は見せない＝探索感を殺さない）。
+	const GLANCE_UNVISITED = '#000000';
+	// #pause-map-canvas の枠線（overlays.css）の太さ＝現在地マーカーの原点をずらす分。
+	const GLANCE_CANVAS_BORDER = 1;
+
+	// 見取り図のオフスクリーン（訪問済みの画面を描き足して持ち回る）。
+	// { lk, w, h, canvas, drawn:Set<stageKey> }
+	let glanceMapCache = null;
+
 	function renderPauseDungeonMap() {
-		const player    = getPlayer();
-		const mapData   = getMapData();
-		const currentLayer = getCurrentLayer();
-		const stageKey     = getStageKey();
-
-		const lk = currentLayer;
+		const player  = getPlayer();
+		const mapData = getMapData();
+		const lk = getCurrentLayer();
 		const dm = player.dungeonItems?.[lk];
-		if (!dm?.hasMap) { pauseDungeonMapEl.classList.add('hidden'); return; }
-		pauseDungeonMapEl.classList.remove('hidden');
-
+		const hide = () => {
+			pauseDungeonMapEl.classList.add('hidden');
+			pauseMapHereEl.classList.add('hidden');
+		};
+		if (!dm?.hasMap) { hide(); return; }
 		const ld = mapData.layers[lk];
-		const hasCompass  = !!dm.hasCompass;
+		const stages = Object.keys(ld?.stages ?? {});
+		if (stages.length === 0) { hide(); return; }
+		pauseDungeonMapEl.classList.remove('hidden');
+		if (GLANCE_MAP_LAYERS.has(lk)) renderPauseGlanceMap(lk, ld, stages);
+		else renderPauseRoomMap(lk, ld, stages, dm);
+	}
+
+	// ── ② 見取り図（field）─────────────────────────────────────
+	function renderPauseGlanceMap(lk, ld, stages) {
+		const stageKey = getStageKey();
+		const coords = stages.map(k => k.split(',').map(Number));
+		const minX = Math.min(...coords.map(c => c[0]));
+		const maxX = Math.max(...coords.map(c => c[0]));
+		const minY = Math.min(...coords.map(c => c[1]));
+		const maxY = Math.max(...coords.map(c => c[1]));
+		const cols = ld.stages[stages[0]].cols;
+		const rows = ld.stages[stages[0]].rows;
+		const w = (maxX - minX + 1) * cols;
+		const h = (maxY - minY + 1) * rows;
+
+		// ⚠️ 全画面ぶんを毎回描き直すと 320画面 × 120セル＝38,400 セルの色決定になり
+		//    ポーズを開くたびに詰まる。見取り図が写すのは**実行時に変わらない地形**
+		//    （茂みを刈る・扉を開ける等の変化はステージ状態が持つ）∴一度描いた画面は
+		//    描き直さない＝訪問が増えたぶんだけ描き足す。
+		if (!glanceMapCache || glanceMapCache.lk !== lk || glanceMapCache.w !== w || glanceMapCache.h !== h) {
+			const cv = document.createElement('canvas');
+			cv.width = w; cv.height = h;
+			const c2 = cv.getContext('2d');
+			c2.fillStyle = GLANCE_UNVISITED;
+			c2.fillRect(0, 0, w, h);
+			glanceMapCache = { lk, w, h, canvas: cv, drawn: new Set() };
+		}
+		const off = glanceMapCache.canvas.getContext('2d');
+		for (const sk of stages) {
+			if (glanceMapCache.drawn.has(sk)) continue;
+			// 未訪問は真っ黒のまま（ダンジョンの地図と同じ作法＝getSS().visited）。
+			if (!getSS(lk, sk).visited && sk !== stageKey) continue;
+			const sd = ld.stages[sk];
+			const [sx, sy] = sk.split(',').map(Number);
+			const ox = (sx - minX) * cols, oy = (sy - minY) * rows;
+			for (let r = 0; r < sd.rows; r++) {
+				for (let c = 0; c < sd.cols; c++) {
+					const { base, fg } = cellGlanceColor(sd, r, c, sd.tiles[r][c]);
+					off.fillStyle = fg ?? base;
+					off.fillRect(ox + c, oy + r, 1, 1);
+				}
+			}
+			glanceMapCache.drawn.add(sk);
+		}
+
+		pauseMapCanvasEl.width  = w;
+		pauseMapCanvasEl.height = h;
+		const ctx = pauseMapCanvasEl.getContext('2d');
+		ctx.clearRect(0, 0, w, h);
+		ctx.drawImage(glanceMapCache.canvas, 0, 0);
+
+		const scale = glanceMapScale(w, h);
+		pauseMapCanvasEl.style.width  = `${w * scale}px`;
+		pauseMapCanvasEl.style.height = `${h * scale}px`;
+
+		// 現在地＝白枠＋点滅（点滅は CSS のアニメーション∴ここで時計を回さない）。
+		// ⚠️ ダンジョン地図の「現在地を塗り潰す」は流用できない＝field は画面の中身が
+		//    絵で埋まっていて、塗ると今いる画面の地形が消える。
+		const [curX, curY] = stageKey.split(',').map(Number);
+		pauseMapHereEl.style.left   = `${GLANCE_CANVAS_BORDER + (curX - minX) * cols * scale}px`;
+		pauseMapHereEl.style.top    = `${GLANCE_CANVAS_BORDER + (curY - minY) * rows * scale}px`;
+		pauseMapHereEl.style.width  = `${cols * scale}px`;
+		pauseMapHereEl.style.height = `${rows * scale}px`;
+		pauseMapHereEl.style.borderWidth = scale >= 2 ? '2px' : '1px';
+		pauseMapHereEl.classList.remove('hidden');
+
+		if (pauseMapLabelEl) pauseMapLabelEl.textContent = 'ルミア地方の地図';
+		// コンパス（ボス部屋あり）は field には無い＝field に bossStage は無い（実測）。
+		pauseMapHintEl.classList.add('hidden');
+	}
+
+	// 見取り図の拡大率（整数倍・既定2倍）。窓が低い/狭いときだけ下げる＝ドットが滲まない。
+	// 予約分 260px の内訳（実測 2026-09-13・地図なしのポーズ枠は 320×198）＝
+	// 見出し 23／アイテム欄 20／ヒント 17／ステータス 56／地図の見出しと余白と枠の padding。
+	function glanceMapScale(w, h) {
+		const RESERVED_H = 260;
+		const availH = (window.innerHeight || 800) - RESERVED_H;
+		const availW = (window.innerWidth  || 1280) * 0.9 - 60;
+		let s = 2;
+		while (s > 1 && (h * s > availH || w * s > availW)) s--;
+		return s;
+	}
+
+	// ── ① 部屋グリッド（ダンジョン）───────────────────────────────
+	function renderPauseRoomMap(lk, ld, stages, dm) {
+		const stageKey = getStageKey();
+		pauseMapHereEl.classList.add('hidden');
+		if (pauseMapLabelEl) pauseMapLabelEl.textContent = 'ダンジョンマップ';
+		const hasCompass   = !!dm.hasCompass;
 		const bossStageKey = ld?.bossStage ?? null;
-		const stages = Object.keys(ld.stages ?? {});
-		if (stages.length === 0) { pauseDungeonMapEl.classList.add('hidden'); return; }
 
 		const coords = stages.map(k => k.split(',').map(Number));
 		const minX = Math.min(...coords.map(c => c[0]));

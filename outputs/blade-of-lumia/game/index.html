@@ -69,10 +69,18 @@
       <div id="pause-items"></div>
       <div id="pause-hint">← → で選択　Escape で決定・再開</div>
       <div id="pause-stats"></div>
-      <!-- ダンジョンマップ（地図入手済みのときのみ表示） -->
+      <!-- 地図（その層の地図を入手済みのときのみ表示）
+           ダンジョン＝部屋グリッド／field＝1セル1px の見取り図（キュー15）。
+           見出しの文字は層によって変わる∴文字だけ別の span に分ける（絵は起動時に
+           canvas へ差し替わる＝textContent で上書きすると絵が消える）。 -->
       <div id="pause-dungeon-map" class="hidden">
-        <div id="pause-map-title"><span data-icon="map" data-icon-px="18">🗺</span> ダンジョンマップ</div>
-        <canvas id="pause-map-canvas"></canvas>
+        <div id="pause-map-title"><span data-icon="map" data-icon-px="18">🗺</span> <span id="pause-map-label">ダンジョンマップ</span></div>
+        <div id="pause-map-wrap">
+          <canvas id="pause-map-canvas"></canvas>
+          <!-- 現在地（field の見取り図用）＝白枠＋点滅。塗り潰しにしないのは
+               画面の中身が絵で埋まっていて塗ると絵が消えるため。 -->
+          <div id="pause-map-here" class="hidden"></div>
+        </div>
         <div id="pause-map-hint" class="hidden"><span data-icon="compass" data-icon-px="16">🧭</span> ボス部屋あり</div>
       </div>
     </div>
