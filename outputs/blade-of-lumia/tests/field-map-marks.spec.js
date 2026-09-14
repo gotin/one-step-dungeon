@@ -395,21 +395,32 @@ test.describe('目的地マーク（一覧・選択・方向表示）', () => {
 		await expect(page.locator('#hud-mark-guide')).toBeHidden();
 	});
 
-	test('⑧ マップの mark はすべて実在する画面を指している', () => {
+	// キュー17-2: 進行で切り替わる印（`markAfterBoss`）も同じ検査に入れる＝進行の後ろの
+	// 分岐は「ボスを倒すまで誰も見ない」∴データの書き間違いが一番残りやすい場所。
+	test('⑧ マップの mark はすべて実在する画面を指している（markAfterBoss も含む）', () => {
 		const bad = [];
-		let total = 0;
+		let total = 0, afterBossTotal = 0;
 		for (const [lk, ld] of Object.entries(MAP.layers)) {
 			for (const [sk, sd] of Object.entries(ld.stages ?? {})) {
 				for (const home of ['npcData', 'signData']) {
 					for (const [pk, entry] of Object.entries(sd[home] ?? {})) {
-						if (!entry || typeof entry !== 'object' || entry.mark === undefined) continue;
-						const norm = normalizeDialogMarks(entry.mark, lk);
-						// 正規化で全部落ちた＝座標の形が壊れている
-						if (!norm.length) { bad.push(`${lk}/${sk} ${home}[${pk}] mark の形が不正`); continue; }
-						for (const m of norm) {
-							total++;
-							if (!MAP.layers[m.layer]?.stages?.[m.stage]) {
-								bad.push(`${lk}/${sk} ${home}[${pk}] → ${m.layer}/${m.stage} が実在しない`);
+						if (!entry || typeof entry !== 'object') continue;
+						// 「基本の1組」＋進行ごとの版を、どれも同じ形で見る。
+						const sources = [];
+						if (entry.mark !== undefined) sources.push(['mark', entry.mark]);
+						for (const [bossKey, mk] of Object.entries(entry.markAfterBoss ?? {})) {
+							sources.push([`markAfterBoss[${bossKey}]`, mk]);
+							afterBossTotal++;
+						}
+						for (const [label, raw] of sources) {
+							const norm = normalizeDialogMarks(raw, lk);
+							// 正規化で全部落ちた＝座標の形が壊れている
+							if (!norm.length) { bad.push(`${lk}/${sk} ${home}[${pk}] ${label} の形が不正`); continue; }
+							for (const m of norm) {
+								total++;
+								if (!MAP.layers[m.layer]?.stages?.[m.stage]) {
+									bad.push(`${lk}/${sk} ${home}[${pk}] ${label} → ${m.layer}/${m.stage} が実在しない`);
+								}
 							}
 						}
 					}
@@ -418,6 +429,7 @@ test.describe('目的地マーク（一覧・選択・方向表示）', () => {
 		}
 		expect(bad, '行き先が実在しない mark がある').toEqual([]);
 		expect(total, 'mark が1件も無い＝この検査は空振りしている').toBeGreaterThan(0);
+		expect(afterBossTotal, 'markAfterBoss が1件も無い＝進行追従の検査は空振りしている').toBeGreaterThan(0);
 	});
 
 	// ── エディタの入口（[[blade-bad-data-fix-five-layers]] の4層目）──────────
@@ -501,6 +513,77 @@ test.describe('目的地マーク（一覧・選択・方向表示）', () => {
 		expect(after.signData[SIGN_POS].lines, '本文が失われた').toEqual(before.signData[SIGN_POS].lines);
 		// 層を書かなければ「この会話がある層」＝ゲーム側の既定で解決される
 		expect(normalizeDialogMarks(after.signData[SIGN_POS].mark, SIGN_LAYER)[0].layer).toBe(SIGN_LAYER);
+	});
+
+	// ── 進行に追従する印（キュー17-2 の `markAfterBoss`）────────────────────
+	// 不変条件：**語り手が「次はここ」と言ったら、地図の印もそこを指す**。本文だけが進んで
+	// 印が最初の1件で止まると、「次どこ」の本体（キュー17 ⑦）が村を出た時点で死ぬ。
+	// 🔴 当て所：①印が進行で切り替わらない ②「最初にヒットしたキー」で固定される
+	//            ③プレイヤーが選んでいる印を勝手に奪う（ユーザー決定 2026-09-14＝
+	//            「地図上のマークリストの選択状態はプレイヤーに操作させる」）
+
+	test('⑪ 老賢者の印は「最も後に倒したボス」に追従する', async ({ page }) => {
+		const sage = MAP.layers.field.stages[SAGE_STAGE].npcData[SAGE_RC.join(',')];
+		expect(sage.markAfterBoss, '老賢者に markAfterBoss が無い＝migrate-dialog-band-1.mjs が未実行').toBeTruthy();
+		const afterG = sage.markAfterBoss.G, afterN = sage.markAfterBoss.N;
+		expect([afterG, afterN], '踏破後の印が2件そろっていない').not.toContain(undefined);
+
+		await gotoFreshGame(page);
+		await grantMap(page, 'field');
+		// 撃破前＝基本の印（草原の洞窟）
+		await talkToSage(page);
+		await finishDialog(page);
+		expect(await page.evaluate(() => window.__game.getPlayer().mapMarks))
+			.toEqual([{ layer: 'field', stage: DEST_STAGE, label: DEST_LABEL, kind: 'dungeon' }]);
+
+		// G（D1 のボス）を倒した後＝本文が名指しする次の地が印になる
+		await page.evaluate(() => window.__game.addDefeatedBoss('G'));
+		await talkToSage(page);
+		await finishDialog(page);
+		let marks = await page.evaluate(() => window.__game.getPlayer().mapMarks);
+		expect(marks, 'G の後に印が増えない＝印が進行に追従していない').toHaveLength(2);
+		expect(marks[1]).toEqual({ layer: 'field', stage: afterG.stage, label: afterG.label, kind: afterG.kind });
+
+		// さらに N も倒す＝進行順で「最も後」の N の印になる（G で固定されない）
+		await page.evaluate(() => window.__game.addDefeatedBoss('N'));
+		await talkToSage(page);
+		await finishDialog(page);
+		marks = await page.evaluate(() => window.__game.getPlayer().mapMarks);
+		expect(marks, 'N の後に印が増えない＝G で固定されている').toHaveLength(3);
+		expect(marks[2]).toEqual({ layer: 'field', stage: afterN.stage, label: afterN.label, kind: afterN.kind });
+		// 保存にも残る（配列のまま＝Set にすると {} に潰れる）
+		const save = await readSave(page);
+		expect(save.player.mapMarks).toEqual(marks);
+	});
+
+	test('⑫ 新しく教わった印は、選んでいる印を奪わない', async ({ page }) => {
+		await gotoFreshGame(page);
+		await grantMap(page, 'field');
+		await talkToSage(page);
+		await finishDialog(page);
+		// 1件目は選択が空∴自動で選ばれる（選ばせる相手が1つも無い状態を作らないため）
+		expect(await page.evaluate(() => window.__game.getPlayer().selectedMarkId)).toBe(`field:${DEST_STAGE}`);
+
+		await page.evaluate(() => window.__game.addDefeatedBoss('G'));
+		await talkToSage(page);
+		await finishDialog(page);
+		const after = await page.evaluate(() => {
+			const p = window.__game.getPlayer();
+			return { sel: p.selectedMarkId, n: p.mapMarks.length };
+		});
+		expect(after.n, '2件目の印が付いていない＝この検査は空振り').toBe(2);
+		expect(after.sel, '教わった印が選択を奪った（プレイヤーが選んだ印が勝手に変わる）').toBe(`field:${DEST_STAGE}`);
+		// HUD も選んでいる印を指し続ける
+		await expect(page.locator('#hud-mark-label')).toHaveText(DEST_LABEL);
+
+		// 自分で解除してから聞けば、次の印が自動で選ばれる（＝①の枝が生きていることの裏取り）
+		await page.evaluate(() => { window.__game.getPlayer().selectedMarkId = ''; });
+		await page.evaluate(() => window.__game.addDefeatedBoss('N'));
+		await talkToSage(page);
+		await finishDialog(page);
+		const sel = await page.evaluate(() => window.__game.getPlayer().selectedMarkId);
+		expect(sel, '選択を空にしても自動で選ばれない').not.toBe('');
+		expect(sel).not.toBe(`field:${DEST_STAGE}`);
 	});
 
 });

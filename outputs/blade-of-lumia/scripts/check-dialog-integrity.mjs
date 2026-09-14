@@ -13,6 +13,8 @@
 //           （入口はあるのに名前を聞いたことがない＝「次どこ」が生まれない）
 //   [warn]  禁止語（操作説明）が帯1（村 field 7,14／草原 field 6,13／hidden_cave／
 //           dungeon_1）の外で使われている（「キー」「ボタン」）
+//   [error] 印の行き先が実在しない＝会話の `mark` / `markAfterBoss`（キュー17-2）が
+//           無い層・無い画面を指している（ゲーム側は警告して捨てる＝黙って消えたように見える）
 //
 // ⚠️ `test_mechanics` レイヤーは検証専用ステージ＝対象外（PLAN.md 17 ②）。
 //
@@ -23,6 +25,7 @@ import { readFileSync } from 'fs';
 import { TILE } from '../shared/tiles.js';
 import { NPC_SPRITE_MAP } from '../shared/npcs.js';
 import { ORDER, labelOf } from '../shared/progression.js';
+import { normalizeDialogMarks } from '../shared/marks.js';
 
 const MAP_PATH = process.env.BLADE_MAP_PATH
   ? new URL(`file://${process.env.BLADE_MAP_PATH}`)
@@ -110,6 +113,39 @@ for (const [layerName, layer] of Object.entries(d.layers)) {
   }
 }
 
+// ── 4. 印の行き先の実在（キュー17-2）────────────────────────────────────
+// `mark` は静的な1組、`markAfterBoss[ボス種別]` は進行で切り替わる版。後者は
+// 「そのボスを倒すまで誰も見ない」∴書き間違いが一番長く残る場所＝機械で見る。
+let markCount = 0;
+for (const [layerName, layer] of Object.entries(d.layers)) {
+  if (EXCLUDED_LAYERS.has(layerName)) continue;
+  for (const [stageKey, stage] of Object.entries(layer.stages ?? {})) {
+    for (const store of ['signData', 'npcData']) {
+      for (const [posKey, entry] of Object.entries(stage[store] ?? {})) {
+        if (!entry || typeof entry !== 'object') continue;
+        const sources = [];
+        if (entry.mark !== undefined) sources.push(['mark', entry.mark]);
+        for (const [boss, mk] of Object.entries(entry.markAfterBoss ?? {})) {
+          sources.push([`markAfterBoss[${boss}]`, mk]);
+        }
+        for (const [label, raw] of sources) {
+          const norm = normalizeDialogMarks(raw, layerName);
+          if (!norm.length) {
+            err(`[${layerName} ${stageKey}] (${posKey}) の ${label} の形が不正：${JSON.stringify(raw)}`);
+            continue;
+          }
+          for (const m of norm) {
+            markCount++;
+            if (!d.layers[m.layer]?.stages?.[m.stage]) {
+              err(`[${layerName} ${stageKey}] (${posKey}) の ${label} が実在しない画面を指す：${m.layer}/${m.stage}（${m.label}）`);
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
 // ── CLI ──────────────────────────────────────────────────────────────────
 const errors = issues.filter(i => i.level === 'error');
 const warns  = issues.filter(i => i.level === 'warn');
@@ -120,5 +156,5 @@ for (const e of errors) console.log(`   ❌ ${e.msg}`);
 for (const w of warns)  console.log(`   ⚠️  ${w.msg}`);
 if (!issues.length) console.log('   すべてのチェックに合格');
 
-console.log(`\n── 合計: ❌ ${errors.length} エラー / ⚠️  ${warns.length} 警告 ──`);
+console.log(`\n── 合計: ❌ ${errors.length} エラー / ⚠️  ${warns.length} 警告（見た印 ${markCount} 件）──`);
 process.exit(errors.length > 0 ? 1 : 0);

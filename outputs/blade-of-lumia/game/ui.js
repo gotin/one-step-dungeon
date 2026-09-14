@@ -370,34 +370,55 @@ export function createUi(deps) {
 	// ── ダイアログ ────────────────────────────────────────────
 	// 台詞の選択規則（Phase 6-1b→17-0で選択規則を修正）＝
 	// linesAfterBoss[「最も後に倒したボス」] → linesAfterBoss.default → linesAfter → lines。
+	// 目的地マークの選択規則（キュー17-2で追加）＝
+	// markAfterBoss[「最も後に倒したボス」] → markAfterBoss.default → mark。
+	// 台詞とマークは同じ「最も後に倒したボス」から選ぶ＝本文が次の行き先を名指しするとき、
+	// 記されるマークがその行き先とズレない（片方だけ進行に追従すると必ずズレる）。
 	// NPC タイル（startDialog）・看板タイル（game.js の openSignDialog）の両方から呼ぶ
 	// ＝看板タイルは startDialog を通らないため、ここでは呼ばず game.js 側が直接呼ぶ。
-	function pickDialogLines(data, player, map) {
-		const defeated = player?.defeatedBosses;
+	function pickDialogVariant(data, player, map) {
+		const defeated   = player?.defeatedBosses;
+		// 「最も後に倒したボス」は台詞とマークで1回だけ求める（別々に求めると食い違い得る）。
+		const latestType = (defeated && (data.linesAfterBoss || data.markAfterBoss))
+			? latestDefeatedBossType(map, defeated) : null;
+		const hasDefeated = (defeated?.size ?? 0) > 0;
+
 		let lines = null;
 		if (defeated && data.linesAfterBoss) {
-			const latestType = latestDefeatedBossType(map, defeated);
 			if (latestType && data.linesAfterBoss[latestType]) lines = data.linesAfterBoss[latestType];
-			if (!lines && defeated.size > 0 && data.linesAfterBoss.default) {
-				lines = data.linesAfterBoss.default;
-			}
+			if (!lines && hasDefeated && data.linesAfterBoss.default) lines = data.linesAfterBoss.default;
 		}
 		if (!lines) {
 			const hasSeenBoss = (player?.triforceCount ?? 0) > 0;
 			lines = (hasSeenBoss && data.linesAfter) ? data.linesAfter : (data.lines ?? ['…']);
 		}
-		return lines;
+
+		let mark = null;
+		if (defeated && data.markAfterBoss) {
+			if (latestType && data.markAfterBoss[latestType]) mark = data.markAfterBoss[latestType];
+			if (!mark && hasDefeated && data.markAfterBoss.default) mark = data.markAfterBoss.default;
+		}
+		if (!mark) mark = data.mark ?? null;
+
+		return { lines, mark };
+	}
+
+	/** 台詞だけが要るとき用の薄い包み（既存の呼び出し元・テストのため残す） */
+	function pickDialogLines(data, player, map) {
+		return pickDialogVariant(data, player, map).lines;
 	}
 
 	function startDialog(r, c, tileChar, stageData, npcDefaultDialog, player) {
 		const posKey = `${r},${c}`;
 		const data   = stageData.npcData?.[posKey] ?? npcDefaultDialog[tileChar] ?? { name: 'NPC', lines: ['…'] };
-		dialogLines = pickDialogLines(data, player, getMapData());
+		const variant = pickDialogVariant(data, player, getMapData());
+		dialogLines = variant.lines;
 		dialogLineIdx = 0;
 		// キュー16: 会話データの `mark` が教える目的地。ここでは保留するだけで、
 		// 記すのは読み終えた時（advanceDialog の閉じる枝）＝話の途中で
 		// 「記した！」が会話の後ろに隠れて出てしまうのを避ける。
-		pendingDialogMarks = normalizeDialogMarks(data.mark, getCurrentLayer());
+		// キュー17-2: 進行で本文が変わる相手は `markAfterBoss` でマークも変わる（variant 側で解決済み）。
+		pendingDialogMarks = normalizeDialogMarks(variant.mark, getCurrentLayer());
 		setIsDialog(true); stopGameLoop();
 		dialogNameEl.textContent = data.name ?? '';
 		showDialogLine();
@@ -1004,6 +1025,7 @@ export function createUi(deps) {
 		advanceDialog,
 		openDialog,
 		pickDialogLines,
+		pickDialogVariant,
 		// ポーズ
 		togglePause,
 		renderPauseMenu,

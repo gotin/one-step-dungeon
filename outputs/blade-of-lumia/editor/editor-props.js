@@ -227,6 +227,15 @@ function renderNPCs(sd) {
 		const home = npcDataHome(sd, key, tile);
 		const data = readNpcEntry(sd, key, tile);
 		const mark = data.mark ?? {};
+		// 進行で切り替わる版（`linesAfterBoss` / `markAfterBoss`＝キュー17）はこのパネルでは
+		// 編集しない。欄に出しているのは「基本の1組」だけ∴持っている相手はそう明示する
+		// （欄を触ってもこれらは消えないが、見えないと「消えた」と誤解する）。
+		const variants = [];
+		if (data.linesAfterBoss) variants.push(`セリフ ${Object.keys(data.linesAfterBoss).join('/')}`);
+		if (data.markAfterBoss)  variants.push(`目的地 ${Object.keys(data.markAfterBoss).join('/')}`);
+		const variantHint = variants.length
+			? `<div class="hint">進行で切り替わる版あり（${variants.join('・')}）＝この欄では編集しない（触っても消えない）</div>`
+			: '';
 		const item = document.createElement('div');
 		item.className = 'link-item';
 		const kindOpts = Object.entries(MARK_KINDS).map(([k, v]) =>
@@ -249,6 +258,7 @@ function renderNPCs(sd) {
 			<label>印の名前 <input type="text" value="${mark.label??''}" data-key="${key}" data-f="markLabel" placeholder="例: 草原の洞窟"></label>
 			<label>種類 <select data-key="${key}" data-f="markKind">${kindOpts}</select></label>
 			<label>層（空ならこの会話がある層） <input type="text" value="${mark.layer??''}" data-key="${key}" data-f="markLayer" placeholder="例: field"></label>
+			${variantHint}
 		`;
 		// 保存先の実体を用意する（文字列形式の看板は、いま画面に出している形へ置き換える）。
 		const entry = () => {
