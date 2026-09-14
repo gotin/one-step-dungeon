@@ -35,6 +35,8 @@ import { playSound } from '../shared/sounds.js';
 import { cellGlanceColor } from '../shared/cell-appearance.js';
 // 目的地マーク（キュー16）＝会話が教えた場所を地図に残し、選択中の1つを HUD で指す。
 import { markId, markColor, markGuide, addMark, normalizeDialogMarks, normalizeSavedMarks } from '../shared/marks.js';
+// Dn 踏破後台詞の選択規則（17-0）＝「最も後に倒したボス」を実マップから導出する。
+import { latestDefeatedBossType } from '../shared/progression.js';
 
 // HUD のハート（heart/heartEmpty/heartHalf）の表示サイズ。Phase 10d-3 で
 // 絵を32ドット化した際、絵の中の透明余白が増えた分だけ見かけが縮むのを補う
@@ -366,16 +368,16 @@ export function createUi(deps) {
 	function pauseMarkNext() { pauseMarkStep(1); }
 
 	// ── ダイアログ ────────────────────────────────────────────
-	function startDialog(r, c, tileChar, stageData, npcDefaultDialog, player) {
-		const posKey = `${r},${c}`;
-		const data   = stageData.npcData?.[posKey] ?? npcDefaultDialog[tileChar] ?? { name: 'NPC', lines: ['…'] };
-		// Phase 6-1b: 個別ボス撃破台詞 linesAfterBoss[type] → default → linesAfter → lines
+	// 台詞の選択規則（Phase 6-1b→17-0で選択規則を修正）＝
+	// linesAfterBoss[「最も後に倒したボス」] → linesAfterBoss.default → linesAfter → lines。
+	// NPC タイル（startDialog）・看板タイル（game.js の openSignDialog）の両方から呼ぶ
+	// ＝看板タイルは startDialog を通らないため、ここでは呼ばず game.js 側が直接呼ぶ。
+	function pickDialogLines(data, player, map) {
 		const defeated = player?.defeatedBosses;
 		let lines = null;
 		if (defeated && data.linesAfterBoss) {
-			for (const [bossType, bossLines] of Object.entries(data.linesAfterBoss)) {
-				if (bossType !== 'default' && defeated.has(bossType)) { lines = bossLines; break; }
-			}
+			const latestType = latestDefeatedBossType(map, defeated);
+			if (latestType && data.linesAfterBoss[latestType]) lines = data.linesAfterBoss[latestType];
 			if (!lines && defeated.size > 0 && data.linesAfterBoss.default) {
 				lines = data.linesAfterBoss.default;
 			}
@@ -384,7 +386,13 @@ export function createUi(deps) {
 			const hasSeenBoss = (player?.triforceCount ?? 0) > 0;
 			lines = (hasSeenBoss && data.linesAfter) ? data.linesAfter : (data.lines ?? ['…']);
 		}
-		dialogLines = lines;
+		return lines;
+	}
+
+	function startDialog(r, c, tileChar, stageData, npcDefaultDialog, player) {
+		const posKey = `${r},${c}`;
+		const data   = stageData.npcData?.[posKey] ?? npcDefaultDialog[tileChar] ?? { name: 'NPC', lines: ['…'] };
+		dialogLines = pickDialogLines(data, player, getMapData());
 		dialogLineIdx = 0;
 		// キュー16: 会話データの `mark` が教える目的地。ここでは保留するだけで、
 		// 記すのは読み終えた時（advanceDialog の閉じる枝）＝話の途中で
@@ -995,6 +1003,7 @@ export function createUi(deps) {
 		showDialogLine,
 		advanceDialog,
 		openDialog,
+		pickDialogLines,
 		// ポーズ
 		togglePause,
 		renderPauseMenu,

@@ -20,6 +20,7 @@
 //    手書きの表は消した（`scripts/lib/progression.mjs` 自体を削除）＝2通りの言い方を残さない。
 
 import { listTriforceEntries } from './triforce.js';
+import { ENEMY_META, isEnemyTile } from './enemies.js';
 
 // ── 進行順（PLAN 9-1）＝報酬が手に入る順序の単一の真実 ────────────────
 // 本編：D1→D2→D3→D4→D6→D5→D8→D7→（祭壇）→dark_tower
@@ -132,6 +133,42 @@ export function bossRoomLayersOf(map) {
 	const layers = new Set();
 	for (const key of bossRoomKeysOf(map)) layers.add(key.slice(0, key.indexOf('|')));
 	return layers;
+}
+
+// ── レイヤー→ボスのタイル文字（17-0・「Dn 踏破で台詞が変わる」の選択規則）─────────
+// 手書きの層→ボス対応表は作らない（[[blade-enemy-tables-derive-from-meta]]）＝
+// `bossRoomKeysOf` と同じやり方でボス部屋の中を実際に走査し、`ENEMY_META[c].isBoss`
+// を満たすタイル文字を拾う（中ボス `W` はボス部屋フラグの立った stage には出現しない∴
+// 自然に除外される＝実マップ全走査で確認済み）。
+export function bossTileOfLayer(map, layerName) {
+	const layer = map?.layers?.[layerName];
+	if (!layer) return null;
+	for (const [sk, st] of Object.entries(layer.stages ?? {})) {
+		if (!st?.isBossRoom) continue;
+		for (const row of st.tiles ?? []) {
+			for (const c of row) {
+				if (isEnemyTile(c) && ENEMY_META[c].isBoss) return c;
+			}
+		}
+	}
+	return null;
+}
+
+// `defeatedBosses`（タイル文字の Set）から「進行順で最も後に倒したボス」を選ぶ。
+// 会話の `linesAfterBoss[type]` はボス種別ごとのタイル文字がキー∴`ORDER` を逆順（進行の
+// 最後から先頭へ）に見て、そのレイヤーのボスが `defeatedBosses` に居る最初のヒットを採る。
+// 旧実装（`Object.entries(linesAfterBoss)` を回して最初にヒットしたキーで確定）は
+// キーの登録順＝進行順のことが多く、**最初に倒したボスで台詞が固定**されるバグだった
+// （D1 のゴーレムを倒した時点で以降ずっと「次は砂漠」と言い続ける）。
+export function latestDefeatedBossType(map, defeatedBosses) {
+	if (!defeatedBosses || !defeatedBosses.size) return null;
+	for (let i = ORDER.length - 1; i >= 0; i--) {
+		const layer = ORDER[i].layer;
+		if (!layer) continue;
+		const tile = bossTileOfLayer(map, layer);
+		if (tile && defeatedBosses.has(tile)) return tile;
+	}
+	return null;
 }
 
 // ── 実マップから報酬を集める（レイヤー単位）────────────────────────

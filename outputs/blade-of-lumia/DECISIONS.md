@@ -28,6 +28,16 @@
 
 ---
 
+### 2026-09-14（2） — **「Dn 踏破で台詞が変わる」の選択規則は `ORDER` を逆から見て決める（層→ボスの対応も手書きせず実マップから導出する）。**（⚡ Sonnet 実装／PLAN 実行キュー 17-0）
+
+- **決定＝** `shared/progression.js` に `bossTileOfLayer(map, layerName)`（`bossRoomKeysOf()` と同じ走査＝`isBossRoom` な stage のタイルから `ENEMY_META[c].isBoss` を満たす文字を1つ拾う）と `latestDefeatedBossType(map, defeatedBosses)`（`ORDER` を末尾から先頭へ見て最初にヒットしたボス種別を返す）を追加。選択規則は `game/ui.js` の `pickDialogLines(data, player, map)` に1本化し、NPC タイル（`startDialog`）・看板タイル（`game.js openSignDialog`）の両方から呼ぶ。
+- **理由＝手書きの層→ボス対応表を作ると腐る前例が既にある**（[[blade-enemy-tables-derive-from-meta]]＝敵タイル一覧の手書きで13タイル漏れが実害になった）。`bossRoomKeysOf()` が既に「ボス部屋の所在」を実マップ走査で導出しているので、その中のタイルを読むだけで「そのレイヤーのボス種別」まで導出できる＝新しい表を持たずに済んだ。中ボス `W` は `isBossRoom` の stage には出現しないため対応表を作らなくても自然に除外される（実マップ全走査で確認）。
+- **代替案＝** (a) `linesAfterBoss` のキー順（登録順）をそのまま「進行順」とみなす → 却下（データ側の書く順に選択規則が依存する＝データを書く人が順序を意識しなければならない脆い前提。実際に旧実装がこれで壊れていた）。(b) 層とボス種別の対応を新規の手書き定数として持つ → 却下（[[blade-enemy-tables-derive-from-meta]] の教訓に反する）。
+- **🔴 ハマり＝`_ui`（`createUi()` の戻り値）はモジュール scope から見えない。** `game.js` の `openSignDialog` は `createCombat()` の deps クロージャ内にあり、`_ui`（別の init 関数内の `const`）のスコープの外＝`_ui.pickDialogLines(...)` を直接書くと実行時に `ReferenceError: _ui is not defined`（型チェックの無い JS では書いた時点でエラーに気づかない）。既存の `startDialog`／`openDialog` と同じ「モジュール scope の `let` に `_ui.xxx` を後で代入する」パターンに合わせて直した＝**`_ui` を新しい場所から呼びたくなったら、まずこのパターンに合わせる**（直接参照しない）。
+- **結果／影響＝** `shared/progression.js`／`game/ui.js`／`game/game.js` の3ファイル＋`tests/defeated-bosses.spec.js` に2本追加。フル 1392 passed / 2 failed（`ui-icons` ①③＝既知・無関係）。次（17-1〜）が本文を書く前提＝踏破後台詞は今後読める状態になった。
+
+---
+
 ### 2026-09-13（8） — **目的地マークは「素の配列＋座標から作る id」で持ち、印が付くのは会話を閉じた瞬間。距離はマンハッタンの画面数・矢印は方向だけ（道案内はしない）。解除は「（選択なし）」の行1つに寄せ、削除機構は作らない。**（🧠 Opus／PLAN 実行キュー 16）
 
 - **決定＝** (1) 単一の真実は新規 **`shared/marks.js`**（色表 `MARK_KINDS`／id `markId(layer,stage)`／正規化 `normalizeDialogMarks`・`normalizeSavedMarks`／追加 `addMark`／方向と距離 `markGuide`）。(2) 保存は **`player.mapMarks`（素の配列）＋`player.selectedMarkId`（文字列 or `null`）**。(3) 印の確定は **会話を閉じた瞬間**（`advanceDialog()` の閉じる分岐で `commitDialogMarks()`）。(4) ゲーム画面は `#hud-mark-guide`＝**8方向の矢印＋「あと N 画面」**（マンハッタン）。(5) ポーズは地図の右 160px に一覧（`Tab` で往復・`↑↓` で選択）。**先頭「（選択なし）」＝解除で削除は作らない。** (6) エディタの NPC・看板パネルに「教える目的地」欄を足し、**本文が今ある場所（`signData`／`npcData`）を読み書きする**。

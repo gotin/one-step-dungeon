@@ -505,6 +505,7 @@ let shopSelectPrev   = () => {};
 let shopSelectNext   = () => {};
 let shopBuy          = () => {};
 let openDialog       = () => {};
+let pickDialogLines  = () => ['…'];
 let maybeShowSubItemHint = () => {};
 // updateDungeonHud は上で let 宣言済み（旧実装の複製を 10e で削除した）
 // ── projectile.js / enemy-ai.js ──
@@ -723,6 +724,7 @@ const { checkStoneOnSwitch, evaluateConditions, refreshGates } = createCondition
 	shopBuy          = () => _ui.shopBuy(giveSubItem, updateHud, grantReward, () => currentLayer, () => stageKey);
 	// 第3引数＝看板が教える目的地（キュー16）。呼び元が渡さなければ null＝従来どおり。
 	openDialog       = (name, lines, mark) => _ui.openDialog(name, lines, mark);
+	pickDialogLines  = (data, p, map) => _ui.pickDialogLines(data, p, map);
 
 	// maybeShowSubItemHint は ui.js の openDialog を通して開く
 	maybeShowSubItemHint = () => {
@@ -1030,7 +1032,8 @@ const { checkStoneOnSwitch, evaluateConditions, refreshGates } = createCondition
 		// Phase 5.5k k-7: 剣封じ（#13 呪い火）＝剣だけが振れない（会話/看板は通る）
 		isSwordSealed:    () => isSwordSealed(),
 		// 看板は startDialog を通らない∴「教える目的地」（sd.mark）を第3引数で渡す（キュー16）。
-		openSignDialog: (sd) => openDialog(sd.name ?? '看板', sd.lines ?? ['（何も書かれていない）'], sd.mark),
+		// 17-0: 踏破後台詞（linesAfterBoss）は看板タイル（石碑）にも付く∴ NPC と同じ選択規則を通す。
+		openSignDialog: (sd) => openDialog(sd.name ?? '看板', pickDialogLines(sd, player, mapData), sd.mark),
 		renderBoard:  () => renderBoard(),
 		renderChars:  () => renderChars(),
 	});
