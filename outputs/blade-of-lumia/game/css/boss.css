@@ -86,8 +86,8 @@
     letter-spacing: 2px;
 }
 
-/* ── 選択中の目的地マーク（キュー16）────────────────────────── */
-/* 方向（8方向の矢印）と距離（画面数）だけを出す＝道案内はしない（割り切り）。 */
+/* ── 選択中の目的地マーク（キュー16／距離の見せ方はキュー22 で作り直した）── */
+/* 方向（8方向の矢印）と距離（4段）だけを出す＝道案内はしない（割り切り）。 */
 #hud-mark-guide {
     display: flex;
     align-items: center;
@@ -118,10 +118,66 @@
     white-space: nowrap;
 }
 
+/* 距離の段（キュー22）＝**この4組だけが見た目の真実**。段の切り方は shared/marks.js。
+ * 3つの channel（大きさ・太さ・明るさ）を**同じ向きに同時に**動かす＝近い方が大きく・太く・明るい。
+ * 1つ見落としても残り2つで伝わる（redundant coding）。
+ * ⚠️ 色相は距離に使わない＝`markColor(kind)`（種類の色＝隣の点）と意味が衝突する∴動かすのは明度だけ。
+ * ⚠️ 太さは `-webkit-text-stroke`（文字のまま太らせる）＝矢印を絵（canvas/SVG）にしない
+ *    （キュー22 の ⛔ 止まる条件を踏まない／[[blade-fixed-box-sprite-scale]] の固定箱の話にも接続しない）。 */
+.mark-dist-near {
+    --mark-arrow-size: 22px;
+    --mark-arrow-stroke: 1.1px;
+    --mark-arrow-color: #fff6c0;
+    --mark-arrow-glow: 0 0 7px rgba(255, 232, 140, 0.85);
+    --mark-arrow-dim: 1;
+}
+
+.mark-dist-mid {
+    --mark-arrow-size: 18px;
+    --mark-arrow-stroke: 0.7px;
+    --mark-arrow-color: #ffe060;
+    --mark-arrow-glow: 0 0 4px rgba(255, 224, 96, 0.45);
+    --mark-arrow-dim: 0.85;
+}
+
+.mark-dist-far {
+    --mark-arrow-size: 14px;
+    --mark-arrow-stroke: 0.3px;
+    --mark-arrow-color: #c8a848;
+    --mark-arrow-glow: none;
+    --mark-arrow-dim: 0.6;
+}
+
+.mark-dist-distant {
+    --mark-arrow-size: 11px;
+    --mark-arrow-stroke: 0;
+    --mark-arrow-color: #8a7a52;
+    --mark-arrow-glow: none;
+    --mark-arrow-dim: 0.45;
+}
+
+/* 同じ画面（◎）は距離ではない＝段の一番明るい側に揃えるが太らせない（矢印と見分ける） */
+.mark-dist-here {
+    --mark-arrow-size: 18px;
+    --mark-arrow-stroke: 0;
+    --mark-arrow-color: #fff6c0;
+    --mark-arrow-glow: 0 0 6px rgba(255, 232, 140, 0.8);
+    --mark-arrow-dim: 1;
+}
+
+/* 🔴 箱は固定＝矢印の字が 11〜22px で変わっても HUD の高さが揺れない
+ *    （歩くたびに下の行がガタつくのを防ぐ）。 */
 #hud-mark-arrow {
-    font-size: 14px;
-    color: #ffe060;
+    flex: 0 0 24px;
+    height: 22px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
     line-height: 1;
+    font-size: var(--mark-arrow-size, 14px);
+    color: var(--mark-arrow-color, #ffe060);
+    -webkit-text-stroke: var(--mark-arrow-stroke, 0) var(--mark-arrow-color, #ffe060);
+    text-shadow: var(--mark-arrow-glow, none);
 }
 
 #hud-mark-dist {

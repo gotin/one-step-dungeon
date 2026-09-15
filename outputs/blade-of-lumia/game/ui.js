@@ -121,10 +121,10 @@ export function createUi(deps) {
 	let shopIdx       = 0;
 	let msgTimer      = null;
 	let pendingPulse  = null; // オーバーレイ表示中に来た pulse() は閉じるまで保留
-	// キュー16：ポーズのフォーカス（'items'＝サブアイテム欄／'marks'＝マーク一覧）。
-	// ←→ は既にサブアイテム選択で埋まっている∴Tab で往復し、一覧では ↑↓ で選ぶ。
-	let pauseFocus    = 'items';
-	let pauseMarkIds  = [];   // 一覧の並び（先頭は '' ＝選択なし＝矢印を消す行）
+	// ポーズのマーク一覧の並び（先頭は '' ＝選択なし＝矢印を消す行）。↑↓ がこの並びを回す。
+	// ⚠️ **一覧を描いたときだけ入り、隠したら空にする**（2026-09-15 にモードを廃止した＝
+	// ↑↓ が常に生きている∴並びが残っていると、一覧が出ていない層で裏の印が動く）。
+	let pauseMarkIds  = [];
 	// 会話が教えるマークは**読み終えたとき**に足す（開いた瞬間だと読み飛ばしても
 	// 手に入る＝「教わった」感が無い）∴会話中は保留しておく。
 	let pendingDialogMarks = [];
@@ -302,7 +302,10 @@ export function createUi(deps) {
 		markGuideDotEl.style.background = markColor(mark.kind);
 		markGuideLabelEl.textContent    = mark.label;
 		markGuideArrowEl.textContent    = guide.arrow;
-		markGuideDistEl.textContent     = guide.here ? 'この画面' : `あと ${guide.screens} 画面`;
+		// ⚠️ 距離は**数字で出さない**（キュー22）＝矢印の大きさ・太さ・明るさが段を表す。
+		// 段の切り方は shared/marks.js・見た目の値は CSS の `.mark-dist-*` が持つ。
+		markGuideArrowEl.className      = `mark-dist-${guide.band}`;
+		markGuideDistEl.textContent     = guide.here ? 'この画面' : '';
 		markGuideEl.classList.remove('hidden');
 	}
 
@@ -341,19 +344,13 @@ export function createUi(deps) {
 		return added;
 	}
 
-	/** ポーズのフォーカスを Tab で往復させる（マーク一覧が無い層・0件では動かさない） */
-	function pauseToggleFocus() {
-		const lk = getCurrentLayer();
-		if (!GLANCE_MAP_LAYERS.has(lk) || !hasLayerMap(lk)) return;
-		// 0件のときに移すと「フォーカスはあるが選べる行が無い」状態になる（↑↓ が無反応）。
-		if (!marksInLayer(lk).length) return;
-		pauseFocus = pauseFocus === 'items' ? 'marks' : 'items';
-		playSound('switch');
-		renderPauseMenu();
-	}
-
+	// ⚠️ モード（Tab でアイテム欄と一覧を往復するフォーカス）は廃止した（2026-09-15 ユーザー決定）。
+	// ←→＝アイテム／↑↓＝目的地マークで**常に両方が生きている**＝「今どっちのモードか」が
+	// 存在しない∴迷わない。旧 `pauseToggleFocus()` と `pauseFocus` は削除。
 	function pauseMarkStep(delta) {
-		if (pauseFocus !== 'marks' || pauseMarkIds.length <= 1) return;
+		// 一覧が出ていない層（ダンジョン＝部屋グリッド）では ↑↓ を無反応にする。
+		// pauseMarkIds は一覧を描いたときだけ入る＝隠したら空にする（別の層の印を裏で動かさない）。
+		if (pauseMarkIds.length <= 1) return;
 		const player = getPlayer();
 		const cur = pauseMarkIds.indexOf(player.selectedMarkId ?? '');
 		const idx = ((cur < 0 ? 0 : cur) + delta + pauseMarkIds.length) % pauseMarkIds.length;
@@ -550,20 +547,17 @@ export function createUi(deps) {
 		updatePauseHint();
 	}
 
-	// 操作の案内はフォーカスで変える（キュー16）＝Tab で往復することが分かる唯一の場所。
+	// 操作の案内＝**キーと対象の対応をそのまま書く**（2026-09-15 ユーザー決定でモードを廃止）。
+	// 一覧が出ていない／印が0件のときだけ ↑↓ の行を出さない（押しても何も起きないキーを案内しない）。
 	function updatePauseHint() {
 		const hintEl = document.getElementById('pause-hint');
 		if (!hintEl) return;
-		const canFocusMarks = GLANCE_MAP_LAYERS.has(getCurrentLayer())
+		const hasMarkRows = GLANCE_MAP_LAYERS.has(getCurrentLayer())
 			&& hasLayerMap(getCurrentLayer())
 			&& marksInLayer(getCurrentLayer()).length > 0;
-		if (!canFocusMarks) {
-			hintEl.textContent = '← → で選択　Escape で決定・再開';
-			return;
-		}
-		hintEl.textContent = pauseFocus === 'marks'
-			? '↑ ↓ でマーク選択　Tab でアイテム欄へ　Escape で再開'
-			: '← → で選択　Tab でマーク一覧へ　Escape で決定・再開';
+		hintEl.textContent = hasMarkRows
+			? '← → でアイテム　↑ ↓ で目的地　Escape で決定・再開'
+			: '← → でアイテム　Escape で決定・再開';
 	}
 
 	// ── ポーズ画面の地図 ──────────────────────────────────────────
@@ -597,6 +591,9 @@ export function createUi(deps) {
 			pauseMapHereEl.classList.add('hidden');
 			pauseMapMarkSelEl?.classList.add('hidden');
 			pauseMarkListEl?.classList.add('hidden');
+			// ⚠️ 一覧を隠したら並びも空にする＝↑↓ が**常に生きている**（モード廃止）ので、
+			// 消えた一覧の並びが残っていると裏で別の層の印が動く。
+			pauseMarkIds = [];
 		};
 		if (!dm?.hasMap) { hide(); return; }
 		const ld = mapData.layers[lk];
@@ -721,11 +718,9 @@ export function createUi(deps) {
 		const player = getPlayer();
 		const marks  = marksInLayer(lk);
 		pauseMarkListEl.classList.remove('hidden');
-		pauseMarkListEl.classList.toggle('focused', pauseFocus === 'marks');
 		pauseMarkListEl.innerHTML = '';
 		pauseMarkIds = ['', ...marks.map(m => markId(m.layer, m.stage))];
 		if (!marks.length) {
-			pauseFocus = 'items';
 			pauseMarkIds = [];
 			const empty = document.createElement('div');
 			empty.id = 'pause-mark-empty';
@@ -748,13 +743,14 @@ export function createUi(deps) {
 			name.className = 'pause-mark-name';
 			name.textContent = row.label;
 			const dist = document.createElement('span');
-			dist.className = 'pause-mark-dist';
 			const g = row.stage ? markGuide(getStageKey(), row.stage) : null;
-			dist.textContent = g ? (g.here ? '◎' : `${g.arrow}${g.screens}`) : '';
+			// HUD と同じ段の見た目にする（キュー22）＝一覧に数字を残すと、HUD で隠した
+			// 「あと N 画面」がポーズを開くだけで読めてしまう（見取り図の点で位置は分かる∴数字は不要）。
+			dist.className = g ? `pause-mark-dist mark-dist-${g.band}` : 'pause-mark-dist';
+			dist.textContent = g ? g.arrow : '';
 			div.append(dot, name, dist);
 			div.addEventListener('click', () => {
 				player.selectedMarkId = row.id;
-				pauseFocus = 'marks';
 				updateMarkGuide(); saveGame(); renderPauseMenu();
 			});
 			pauseMarkListEl.appendChild(div);
@@ -781,6 +777,7 @@ export function createUi(deps) {
 		// ∴一覧も選択枠も出さない（キュー16）。
 		pauseMapMarkSelEl?.classList.add('hidden');
 		pauseMarkListEl?.classList.add('hidden');
+		pauseMarkIds = [];
 		if (pauseMapLabelEl) pauseMapLabelEl.textContent = 'ダンジョンマップ';
 		const hasCompass   = !!dm.hasCompass;
 		const bossStageKey = ld?.bossStage ?? null;
@@ -1033,7 +1030,6 @@ export function createUi(deps) {
 		pauseSelectPrev,
 		pauseSelectNext,
 		// 目的地マーク（キュー16）
-		pauseToggleFocus,
 		pauseMarkPrev,
 		pauseMarkNext,
 		updateMarkGuide,

@@ -257,10 +257,8 @@
     display: none;
 }
 
-/* フォーカスが一覧に来ていることを枠の色で示す（Tab で往復する＝キュー16） */
-#pause-mark-list.focused {
-    border-color: #80c0f0;
-}
+/* ⚠️ 旧 `.focused`（Tab で一覧へフォーカスを移した印）は廃止した（2026-09-15）。
+   ←→＝アイテム／↑↓＝マークが常に同時に生きている∴「今どっちか」を示す印が要らない。 */
 
 .pause-mark-row {
     display: flex;
@@ -292,10 +290,24 @@
     white-space: nowrap;
 }
 
+/* 一覧の矢印も HUD と同じ段（`.mark-dist-*` は game/css/boss.css が持つ・キュー22）。
+ * ⚠️ **大きさの channel はここでは使わない**＝11px の行に 22px の矢印を入れると行から
+ *    はみ出し、段ごとに行の高さが不揃いになる（実測して直した）。一覧で動かすのは
+ *    明るさ（opacity）と太さ（半分に薄めた text-stroke）＝正確な距離は見取り図の点が示す。
+ * ⚠️ 色は行の色を継ぐ（`currentColor`）＝選択中の行は背景が明るく反転する∴段の
+ *    明るさをそのまま使うと選択中に読めなくなる。
+ * 🔴 箱は固定＝行の高さが段で揺れない。 */
 .pause-mark-dist {
-    flex: 0 0 auto;
-    font-size: 10px;
-    opacity: 0.8;
+    flex: 0 0 16px;
+    height: 14px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    line-height: 1;
+    font-size: 12px;
+    color: inherit;
+    -webkit-text-stroke: calc(var(--mark-arrow-stroke, 0) * 0.5) currentColor;
+    opacity: var(--mark-arrow-dim, 0.8);
 }
 
 #pause-mark-empty {

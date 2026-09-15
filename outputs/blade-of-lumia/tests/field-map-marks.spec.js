@@ -1,6 +1,8 @@
-// ── tests/field-map-marks.spec.js ── 実行キュー16 ───────────────────────────
+// ── tests/field-map-marks.spec.js ── 実行キュー16（距離の見せ方はキュー22）──────
 // 不変条件：**「次どこ」が分かる**。NPC・看板の話を聞くと地図に印が残り、印は一覧から
-// 選べて、選んだ印の方向と残り画面数がゲーム画面に出続ける。
+// 選べて、選んだ印の方向と距離感がゲーム画面に出続ける。
+// ⚠️ 距離は**数字で出さない**（キュー22・2026-09-14）＝矢印の大きさ・太さ・明るさの4段で伝える。
+//    ❌ 旧記述「残り画面数を出す」は失効（数える計算は `markGuide().screens` に残る＝表示だけやめた）。
 // ユーザーの言葉（2026-09-13）＝「マークはマークのリストも表示して選択中のマークという
 // 概念も追加して、選択してるマークは目立たせる表示ができるといいかも？ あとゲーム画面に
 // 選択してるマークがどちらの方向にあるのかを常に表示とかあるといいかも？」
@@ -8,10 +10,11 @@
 // 🔴 当て所（何を壊したら赤くなるべきか）：
 //   ① 地図を持っていないのに矢印や一覧が出る（キュー15 と同じ層別のゲート）
 //   ② 会話が印を残さない／読み終える前に「記した！」が出る／行き先が実在しないのに黙って通る
-//   ③ 一覧が出ない・選択が動かない（Tab で往復・↑↓ で選ぶ・先頭は「（選択なし）」＝解除）
+//   ③ 一覧が出ない・選択が動かない（↑↓ で選ぶ・先頭は「（選択なし）」＝解除）／
+//      ←→ と ↑↓ が互いを奪う（モードは廃止した＝2026-09-15。Tab は無効）
 //   ④ 見取り図に印が出ない／**未訪問の画面には出ない**（＝行っていない場所へ足を向ける本体）
 //   ⑤ 選択中の印の枠が別の画面にずれる（1画面ずれても絵は自然に見える∴数で押さえる）
-//   ⑥ HUD の方向・残り画面数が間違う（8方向・マンハッタンの画面数＝shared/marks.js と一致）
+//   ⑥ HUD の方向が間違う（8方向）／距離の段が間違う／**数字が画面に出てしまう**（キュー22）
 //   ⑦ セーブで壊れる（Set にすると保存で {} に潰れる／壊れたセーブを読んで幽霊が残る）
 //   ⑧ データ側の行き先が実在しない画面を指している（マップ全走査）
 //
@@ -91,11 +94,17 @@ async function reloadWithSave(page, save) {
 	await page.waitForFunction(() => !!document.getElementById('board')?.children.length);
 }
 
-/** フォーカスを一覧に合わせる（保たれる値∴押す前に今の状態を見る） */
-async function ensureMarkFocus(page) {
-	const focused = await page.locator('#pause-mark-list').evaluate(el => el.classList.contains('focused'));
-	if (!focused) await page.keyboard.press('Tab');
-	await expect(page.locator('#pause-mark-list')).toHaveClass(/focused/);
+/**
+ * サブアイテムを2つ持たせる（←→ の対象が2つ以上ないと切替を測れない）。
+ * ⚠️ ポーズを **開く前** に呼ぶ＝欄は開いたときに作り直される（描画の口はテストに出ていない）。
+ */
+async function grantTwoSubItems(page) {
+	await page.evaluate(() => {
+		const p = window.__game.getPlayer();
+		p.subItems.bomb      = { count: 3 };
+		p.subItems.boomerang = { count: Infinity };
+		p.activeSubItem = 'bomb';
+	});
 }
 
 const EDITOR_URL = '/blade-of-lumia/editor/';
@@ -194,13 +203,15 @@ test.describe('目的地マーク（一覧・選択・方向表示）', () => {
 		expect(after.sel, '最初の印は自動で選ばれる').toBe(`field:${DEST_STAGE}`);
 		await expect(page.locator('#msg-bar')).toContainText(DEST_LABEL);
 
-		// HUD＝老賢者の画面(7,14) から 6,13 は北西・2画面
+		// HUD＝老賢者の画面(7,14) から 6,13 は北西・2画面（＝段は near）
 		const g = markGuide(SAGE_STAGE, DEST_STAGE);
 		expect([g.arrow, g.screens], 'テスト側の期待値の作り直し（shared/marks.js が真実）').toEqual(['↖', 2]);
 		await expect(page.locator('#hud-mark-guide')).toBeVisible();
 		await expect(page.locator('#hud-mark-label')).toHaveText(DEST_LABEL);
 		await expect(page.locator('#hud-mark-arrow')).toHaveText('↖');
-		await expect(page.locator('#hud-mark-dist')).toHaveText('あと 2 画面');
+		await expect(page.locator('#hud-mark-arrow')).toHaveClass('mark-dist-near');
+		// ⚠️ キュー22＝距離は数字で出さない（`この画面` 以外は空）
+		await expect(page.locator('#hud-mark-dist')).toHaveText('');
 
 		// ⚠️ 保存は player を丸ごと直列化する∴Set にすると {} に潰れる＝素の配列であること
 		const save = await readSave(page);
@@ -213,7 +224,7 @@ test.describe('目的地マーク（一覧・選択・方向表示）', () => {
 		expect(await page.evaluate(() => window.__game.getPlayer().mapMarks.length)).toBe(1);
 	});
 
-	test('③ 一覧が地図の右に出て、Tab と ↑↓ で選べる（先頭＝選択なし）', async ({ page }) => {
+	test('③ 一覧が地図の右に出て、↑↓ で選べる（モード無し＝←→ はアイテムのまま生きている）', async ({ page }) => {
 		await gotoFreshGame(page);
 		await grantMap(page, 'field');
 		await talkToSage(page);
@@ -234,16 +245,19 @@ test.describe('目的地マーク（一覧・選択・方向表示）', () => {
 		await expect(rows).toHaveCount(2);
 		await expect(rows.nth(0)).toContainText('（選択なし）');
 		await expect(rows.nth(1)).toContainText(DEST_LABEL);
-		await expect(rows.nth(1)).toContainText('↖2');
+		await expect(rows.nth(1)).toContainText('↖');
 		await expect(rows.nth(1)).toHaveClass(/selected/);
+		// キュー22＝一覧にも数字を出さない（HUD で隠した距離がポーズを開くだけで読めてしまう）
+		expect(await rows.nth(1).textContent(), '一覧の行に数字が出ている').not.toMatch(/\d/);
+		await expect(rows.nth(1).locator('.pause-mark-dist'), '一覧の矢印に段が当たっていない')
+			.toHaveClass(/mark-dist-near/);
 
-		// Tab でフォーカスが一覧へ（案内文も変わる＝往復できることが分かる唯一の場所）
-		await expect(page.locator('#pause-mark-list')).not.toHaveClass(/focused/);
-		await page.keyboard.press('Tab');
-		await expect(page.locator('#pause-mark-list')).toHaveClass(/focused/);
-		await expect(page.locator('#pause-hint')).toContainText('↑ ↓ でマーク選択');
+		// 案内文はキーと対象の対応をそのまま出す（モードが無い＝切替の案内も無い）
+		await expect(page.locator('#pause-hint')).toContainText('← → でアイテム');
+		await expect(page.locator('#pause-hint')).toContainText('↑ ↓ で目的地');
 
-		// ↓ で「（選択なし）」へ回る＝選択の解除（削除は用意しない）
+		// ↓ で「（選択なし）」へ回る＝選択の解除（削除は用意しない）。
+		// **Tab を押さずに** 効くこと＝モード廃止の核心（2026-09-15 ユーザー決定）。
 		await page.keyboard.press('ArrowDown');
 		await expect(page.locator('.pause-mark-row').nth(0)).toHaveClass(/selected/);
 		expect(await page.evaluate(() => window.__game.getPlayer().selectedMarkId)).toBe('');
@@ -251,22 +265,82 @@ test.describe('目的地マーク（一覧・選択・方向表示）', () => {
 		await page.keyboard.press('Escape');
 		await expect(page.locator('#hud-mark-guide'), '解除しても矢印が残っている').toBeHidden();
 
-		// ↑ で戻る
-		// ⚠️ フォーカスはポーズを閉じても保たれる（開き直すたびにアイテム欄へ戻らない）∴
-		//    ここで Tab を押すと逆にアイテム欄へ移ってしまう＝状態を見てから合わせる。
+		// ↑ で戻る（開き直しても ↑↓ はそのまま効く＝合わせる操作が要らない）
 		await openPause(page);
-		await ensureMarkFocus(page);
 		await page.keyboard.press('ArrowUp');
 		expect(await page.evaluate(() => window.__game.getPlayer().selectedMarkId)).toBe(`field:${DEST_STAGE}`);
 		await page.keyboard.press('Escape');
 		await expect(page.locator('#hud-mark-guide')).toBeVisible();
 
-		// Tab はアイテム欄へ戻る（往復する）
+		// ←→＝アイテム／↑↓＝目的地が **同じ画面で同時に生きている**（互いを奪わない）
+		await grantTwoSubItems(page);
 		await openPause(page);
-		await ensureMarkFocus(page);
+		const activeItem = () => page.evaluate(() => window.__game.getPlayer().activeSubItem);
+		const selMark    = () => page.evaluate(() => window.__game.getPlayer().selectedMarkId);
+		await page.keyboard.press('ArrowRight');
+		expect(await activeItem(), '←→ がアイテムを変えていない').not.toBe('bomb');
+		expect(await selMark(), '←→ が目的地まで動かしている').toBe(`field:${DEST_STAGE}`);
+		const itemAfter = await activeItem();
+		await page.keyboard.press('ArrowDown');
+		expect(await selMark(), '↑↓ が目的地を変えていない').toBe('');
+		expect(await activeItem(), '↑↓ がアイテムまで動かしている').toBe(itemAfter);
+
+		// Tab はもう何の意味も持たない（モードが無い＝フォーカスの印も付かない）。
+		// ⚠️ **フォーカスを1歩も動かさない**ことまで見る（2026-09-15 ユーザー報告）＝
+		//    既定動作を通すとフォーカスがボタンへ、やがてブラウザ側へ抜け、カーソルキーが
+		//    ゲームに届かなくなる（キーボードだけでは戻れない）。
 		await page.keyboard.press('Tab');
 		await expect(page.locator('#pause-mark-list')).not.toHaveClass(/focused/);
-		await expect(page.locator('#pause-hint')).toContainText('Tab でマーク一覧へ');
+		expect(await selMark(), 'Tab が選択を動かしている').toBe('');
+		expect(await activeItem(), 'Tab が選択を動かしている').toBe(itemAfter);
+		expect(
+			await page.evaluate(() => document.activeElement?.tagName ?? ''),
+			'Tab でフォーカスが body から動いた＝この先カーソルキーが効かなくなる',
+		).toBe('BODY');
+		// フォーカスが動いていない＝Tab の後もカーソルキーが両方とも効く
+		await page.keyboard.press('ArrowUp');
+		expect(await selMark(), 'Tab の後に ↑ が効かない').toBe(`field:${DEST_STAGE}`);
+		await page.keyboard.press('ArrowLeft');
+		expect(await activeItem(), 'Tab の後に ← が効かない').not.toBe(itemAfter);
+	});
+
+	test('⑭ 遊んでいる間の Tab はフォーカスを動かさない（ボタンの枠が出ている間だけ通す）', async ({ page }) => {
+		await gotoFreshGame(page);
+		// ① 通常プレイ中＝飲む。⚠️ デスクトップの窓ではモバイル操作ボタンが display:none で
+		//    フォーカスの行き先が無い＝素で押しても body のまま∴**行き先を1つ置いて測る**
+		//    （置かずに書いた形は、門を外しても緑だった）。
+		await page.evaluate(() => {
+			const b = document.createElement('button');
+			b.id = 'probe-focusable';
+			b.textContent = 'probe';
+			document.body.appendChild(b);
+		});
+		for (let i = 0; i < 3; i++) await page.keyboard.press('Tab');
+		expect(
+			// ⚠️ body の id は空文字＝`??` では tagName に落ちない∴`||` で繋ぐ
+			await page.evaluate(() => document.activeElement?.id || document.activeElement?.tagName || ''),
+			'プレイ中の Tab でフォーカスが動いた＝この先カーソルキーで歩けなくなる',
+		).toBe('BODY');
+
+		// ② 会話中でも飲む（同じ枠に見えても入力の枝が別∴別に測る）
+		await talkToSage(page);
+		await page.keyboard.press('Tab');
+		expect(
+			// ⚠️ body の id は空文字＝`??` では tagName に落ちない∴`||` で繋ぐ
+			await page.evaluate(() => document.activeElement?.id || document.activeElement?.tagName || ''),
+			'会話中の Tab でフォーカスが動いた',
+		).toBe('BODY');
+		await finishDialog(page);
+
+		// ③ ボタンを選ぶ枠（ゲームオーバー）が出ている間は通す＝マウス無しでボタンへ届く道を残す
+		await page.evaluate(() => {
+			document.getElementById('gameover-overlay')?.classList.remove('hidden');
+		});
+		await page.keyboard.press('Tab');
+		expect(
+			await page.evaluate(() => document.activeElement?.id ?? ''),
+			'ボタンの枠が出ているのに Tab を飲んでいる＝キーボードでボタンへ届かない',
+		).toBe('gameover-retry');
 	});
 
 	test('④ 見取り図に印のドットが出る（未訪問の画面にも）', async ({ page }) => {
@@ -329,34 +403,64 @@ test.describe('目的地マーク（一覧・選択・方向表示）', () => {
 		expect(here.y, '現在地と選択枠が同じ位置＝どちらかが間違い').not.toBeCloseTo(box.sel.y, 1);
 	});
 
-	test('⑥ HUD の方向と残り画面数が画面ごとに正しい（8方向・マンハッタン）', async ({ page }) => {
+	test('⑥ HUD の方向と距離の段が画面ごとに正しい（8方向・4段・数字は出ない）', async ({ page }) => {
 		await gotoFreshGame(page);
 		await grantMap(page, 'field');
 		await talkToSage(page);
 		await finishDialog(page);
 
-		// 行き先 6,13 に対して四方と斜めを混ぜる。
+		// 行き先 6,13 に対して四方と斜めを混ぜ、**4段すべてを1度は通す**。
 		// ⚠️ 期待値は**手で書く**（markGuide の戻り値をそのまま期待値にすると、矢印の並びが
 		//    逆さになっても両側が同じだけ狂って緑のまま＝歯が無い）。
 		//    y は下向きが正＝画面グリッドと同じ向き∴「行き先が上にある」なら ↑。
+		//    段の境界（キュー22）も手で書く＝near 1〜2／mid 3〜6／far 7〜13／distant 14〜。
 		const probes = [
-			['6,14', '↑', 1],   // 真上
-			['7,13', '←', 1],   // 真左
-			['5,13', '→', 1],   // 真右
-			['6,12', '↓', 1],   // 真下
-			['9,15', '↖', 5],   // 左上へ 3+2 画面
-			[DEST_STAGE, '◎', 0],
+			['6,14', '↑', 1,  'near'],     // 真上
+			['7,13', '←', 1,  'near'],     // 真左
+			['5,13', '→', 1,  'near'],     // 真右
+			['6,12', '↓', 1,  'near'],     // 真下
+			['9,15', '↖', 5,  'mid'],      // 左上へ 3+2 画面
+			['6,5',  '↓', 8,  'far'],      // 真下へ 8 画面
+			['0,0',  '↘', 19, 'distant'],  // 世界の反対側から 6+13 画面
+			[DEST_STAGE, '◎', 0, 'here'],
 		];
-		for (const [sk, arrow, screens] of probes) {
+		const seen = new Map();  // 段 → 矢印の実寸（px）
+		for (const [sk, arrow, screens, band] of probes) {
 			expect(MAP.layers.field.stages[sk], `field/${sk} が実マップに無い`).toBeTruthy();
 			// 共有モジュールと手書きの期待値が食い違ったら、どちらが壊れたのか先に分かる
-			expect([markGuide(sk, DEST_STAGE).arrow, markGuide(sk, DEST_STAGE).screens],
-				`shared/marks.js の markGuide(${sk})`).toEqual([arrow, screens]);
+			const g = markGuide(sk, DEST_STAGE);
+			expect([g.arrow, g.screens, g.band], `shared/marks.js の markGuide(${sk})`)
+				.toEqual([arrow, screens, band]);
 			await page.evaluate((s) => window.__game.enterStage('field', s, 4, 1), sk);
 			await expect(page.locator('#hud-mark-arrow'), `field/${sk} の矢印`).toHaveText(arrow);
-			await expect(page.locator('#hud-mark-dist'), `field/${sk} の距離`)
-				.toHaveText(screens === 0 ? 'この画面' : `あと ${screens} 画面`);
+			await expect(page.locator('#hud-mark-arrow'), `field/${sk} の段`)
+				.toHaveClass(`mark-dist-${band}`);
+			// キュー22＝数字はどこにも出ない（`この画面` だけ許す）
+			const dist = await page.locator('#hud-mark-dist').textContent();
+			expect(dist, `field/${sk} の距離欄に数字が出ている`).not.toMatch(/\d/);
+			expect(dist, `field/${sk} の距離欄`).toBe(screens === 0 ? 'この画面' : '');
+			// 実際に効いている見た目（CSS が当たっていないと段は伝わらない）
+			seen.set(band, await page.locator('#hud-mark-arrow').evaluate(el => {
+				const cs = getComputedStyle(el);
+				return { size: parseFloat(cs.fontSize), stroke: parseFloat(cs.webkitTextStrokeWidth) || 0 };
+			}));
 		}
+		// 近いほど大きく・太い（段が見た目に出ていない＝距離が伝わらない）
+		const order = ['near', 'mid', 'far', 'distant'];
+		for (let i = 1; i < order.length; i++) {
+			const a = seen.get(order[i - 1]), b = seen.get(order[i]);
+			expect(a.size, `${order[i - 1]} が ${order[i]} より大きくない`).toBeGreaterThan(b.size);
+			expect(a.stroke, `${order[i - 1]} が ${order[i]} より太くない`).toBeGreaterThanOrEqual(b.stroke);
+		}
+		expect(seen.get('near').stroke, '一番近い段が太くなっていない').toBeGreaterThan(0);
+		// 箱は固定＝矢印の大きさが変わっても HUD の高さが揺れない（歩くたびにガタつく）
+		const heights = new Set();
+		for (const sk of ['6,14', '0,0']) {
+			await page.evaluate((s) => window.__game.enterStage('field', s, 4, 1), sk);
+			heights.add(Math.round(await page.locator('#hud-mark-guide').evaluate(el => el.getBoundingClientRect().height)));
+		}
+		expect(heights.size, 'HUD の高さが段で変わる＝歩くと画面がガタつく').toBe(1);
+
 		// 別の層に入ったら出さない（層をまたいだ矢印は方向が意味を持たない）
 		await page.evaluate(() => window.__game.enterStage('dungeon_1', '2,2', 5, 5));
 		await expect(page.locator('#hud-mark-guide')).toBeHidden();
@@ -584,6 +688,41 @@ test.describe('目的地マーク（一覧・選択・方向表示）', () => {
 		const sel = await page.evaluate(() => window.__game.getPlayer().selectedMarkId);
 		expect(sel, '選択を空にしても自動で選ばれない').not.toBe('');
 		expect(sel).not.toBe(`field:${DEST_STAGE}`);
+	});
+
+	test('⑬ ダンジョンでは ↑↓ が field の印を動かさない（一覧が消えたら並びも消える）', async ({ page }) => {
+		await gotoFreshGame(page);
+		await grantMap(page, 'field');
+		await talkToSage(page);
+		await finishDialog(page);
+		expect(await page.evaluate(() => window.__game.getPlayer().selectedMarkId)).toBe(`field:${DEST_STAGE}`);
+
+		// ダンジョンへ入ると一覧は消える（部屋グリッドに印の機構が無い）。
+		// ⚠️ モード廃止で ↑↓ は常に生きている∴**並びを空にしていないと裏で field の印が動く**。
+		// 地図なし（枠ごと隠す枝）と地図あり（部屋グリッドを描く枝）で消す場所が別∴両方測る。
+		// ⚠️ 毎回 field で一覧を描き直してから入る＝並びが入った状態を作らないと空振りする
+		//    （前の周回で空になったままだと、消し忘れても赤くならない）。
+		for (const withMap of [false, true]) {
+			await page.evaluate(({ sk, r, c }) => window.__game.enterStage('field', sk, r, c),
+				{ sk: SAGE_STAGE, r: SAGE_RC[0], c: SAGE_RC[1] + 1 });
+			await openPause(page);
+			await expect(page.locator('#pause-mark-list')).toBeVisible();
+			await page.keyboard.press('Escape');
+
+			if (withMap) await grantMap(page, 'dungeon_1');
+			await page.evaluate(() => window.__game.enterStage('dungeon_1', '0,0', 1, 1));
+			await openPause(page);
+			await expect(page.locator('#pause-mark-list')).toBeHidden();
+			// ⚠️ ↓と↑を続けて押すと元へ戻る＝動いても気づかない∴**1回ずつ**測る
+			for (const key of ['ArrowDown', 'ArrowUp']) {
+				await page.keyboard.press(key);
+				expect(
+					await page.evaluate(() => window.__game.getPlayer().selectedMarkId),
+					`ダンジョン（地図${withMap ? 'あり' : 'なし'}）で ${key} が field の印を動かした`,
+				).toBe(`field:${DEST_STAGE}`);
+			}
+			await page.keyboard.press('Escape');
+		}
 	});
 
 });

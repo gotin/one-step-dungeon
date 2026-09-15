@@ -495,7 +495,6 @@ let renderPauseMenu  = () => {};
 let renderPauseDungeonMap = () => {};
 let pauseSelectPrev  = () => {};
 let pauseSelectNext  = () => {};
-let pauseToggleFocus = () => {};
 let pauseMarkPrev    = () => {};
 let pauseMarkNext    = () => {};
 let openShop         = () => {};
@@ -713,7 +712,6 @@ const { checkStoneOnSwitch, evaluateConditions, refreshGates } = createCondition
 	renderPauseDungeonMap = _ui.renderPauseDungeonMap;
 	pauseSelectPrev  = _ui.pauseSelectPrev;
 	pauseSelectNext  = _ui.pauseSelectNext;
-	pauseToggleFocus = _ui.pauseToggleFocus;
 	pauseMarkPrev    = _ui.pauseMarkPrev;
 	pauseMarkNext    = _ui.pauseMarkNext;
 	openShop         = _ui.openShop;
@@ -765,7 +763,6 @@ const { checkStoneOnSwitch, evaluateConditions, refreshGates } = createCondition
 		shopBuy,
 		pauseSelectPrev,
 		pauseSelectNext,
-		pauseToggleFocus,
 		pauseMarkPrev,
 		pauseMarkNext,
 		hasCleared,

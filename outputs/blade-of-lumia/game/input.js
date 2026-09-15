@@ -63,7 +63,6 @@ export function initInput(deps) {
 		shopBuy,
 		pauseSelectPrev,
 		pauseSelectNext,
-		pauseToggleFocus,
 		pauseMarkPrev,
 		pauseMarkNext,
 		hasCleared,
@@ -81,8 +80,21 @@ export function initInput(deps) {
 	// ∴ここで飲む。押しっぱなしも捨てる（演出明けに勝手に歩き出さない）。
 	const inCutscene = () => !!getIsCutscene?.();
 
+	// ボタンを選ぶ枠（タイトル・削除確認・ゲームオーバー・エンディング）が出ているか。
+	// この間だけ Tab の既定動作（次の要素へフォーカス）を通す＝マウスを使わずボタンへ届く道を残す。
+	const BUTTON_OVERLAYS = ['title-overlay', 'confirm-overlay', 'gameover-overlay', 'ending-overlay'];
+	const buttonOverlayOpen = () => BUTTON_OVERLAYS.some(id => {
+		const el = document.getElementById(id);
+		return !!el && !el.classList.contains('hidden');
+	});
+
 	document.addEventListener('keydown', e => {
 		resumeAudio();
+		// ⚠️ Tab は遊んでいる間ずっと飲む（2026-09-15 ユーザー報告）。
+		// 既定動作はフォーカスを次の要素へ送る＝送り先が尽きるとブラウザ側（アドレス欄など）へ抜け、
+		// **カーソルキーがゲームに届かなくなる**＝キーボードだけでは戻れない。
+		// ポーズの Tab（旧モード切替）を消したことで「何も起きないキー」になった∴ここで塞ぐ。
+		if (e.key === 'Tab' && !buttonOverlayOpen()) { e.preventDefault(); return; }
 		if (inCutscene()) { e.preventDefault(); heldKeys.clear(); return; }
 		if (getIsDialog()) {
 			if ([' ','Enter','z','Z'].includes(e.key)) { e.preventDefault(); advanceDialog(); }
@@ -99,9 +111,9 @@ export function initInput(deps) {
 			if (e.key === 'Escape' || e.key === 'Enter') { e.preventDefault(); if (!e.repeat) togglePause(); return; }
 			if (e.key === 'ArrowLeft')  { e.preventDefault(); pauseSelectPrev(); return; }
 			if (e.key === 'ArrowRight') { e.preventDefault(); pauseSelectNext(); return; }
-			// キュー16: ←→ はサブアイテム選択で埋まっている∴マーク一覧は Tab で
-			// フォーカスを移して ↑↓ で選ぶ。Tab は既定動作（枠外へフォーカス移動）を止める。
-			if (e.key === 'Tab')        { e.preventDefault(); if (!e.repeat) pauseToggleFocus?.(); return; }
+			// ↑↓＝目的地マーク。**モードは無い**（2026-09-15 ユーザー決定で Tab の
+			// フォーカス切替を廃止）＝←→＝アイテム／↑↓＝マークが常に同時に生きている。
+			// ∴「今どっちのモードか」を画面で示す必要が無い。
 			if (e.key === 'ArrowUp')    { e.preventDefault(); pauseMarkPrev?.(); return; }
 			if (e.key === 'ArrowDown')  { e.preventDefault(); pauseMarkNext?.(); return; }
 			return;
