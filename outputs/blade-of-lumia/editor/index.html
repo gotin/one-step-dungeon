@@ -33,6 +33,16 @@
     </div>
   </header>
 
+  <!-- 実行キュー24：控え（localStorage）と work/blade-of-lumia.json の食い違いを見せる帯。
+       なぜ要るか＝エディタは localStorage からしか復元しない∴移行スクリプトや git pull で
+       ファイルだけが新しくなると、そのまま保存すると**ファイル側の変更が黙って巻き戻る**
+       （2026-09-10 に実際に起きた＝`{{key}}` マーカー75件が消えた）。既定は非表示。 -->
+  <div id="stale-file-banner" class="stale-banner hidden">
+    <span id="stale-file-msg"></span>
+    <button id="btn-stale-load"   class="btn btn-sm btn-primary">ファイルを読み込む</button>
+    <button id="btn-stale-ignore" class="btn btn-sm">このまま編集する</button>
+  </div>
+
   <!-- メインコンテンツ -->
   <main class="main">
 

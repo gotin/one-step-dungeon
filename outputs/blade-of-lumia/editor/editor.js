@@ -9,7 +9,7 @@ import { buildTilePalette, TILE_SPRITE_MAP } from './editor-palette.js';
 import { canvas, renderStageCanvas, initCanvasEvents, initToolButtons } from './editor-canvas.js';
 import { renderSidePanel, initLinksEvents, initConditionEvents, initDoorwayEvents } from './editor-props.js';
 import {
-	tryRestoreFromStorage, initIOEvents,
+	tryRestoreFromStorage, initIOEvents, initFileFreshnessCheck,
 	getPreviewPending, setPreviewPending, openPreview,
 } from './editor-io.js';
 import { initSpriteEditor, onLeaveSpriteEditor } from './editor-sprite.js';
@@ -211,6 +211,14 @@ function init() {
 	renderDungeonMeta();
 	renderWorldGrid();
 	showView('world');
+	// 実行キュー24：控え（localStorage）とファイルの食い違いを起動時に見せる。
+	// ⚠️ ここは `tryRestoreFromStorage` の**後**でなければならない＝復元前に比べると
+	//    「まだ空の盤面」とファイルを比べて必ず食い違う（帯が毎回出る）。
+	initFileFreshnessCheck(
+		() => renderLayerTabs(() => renderWorldGrid(), () => renderDungeonMeta()),
+		() => renderDungeonMeta(),
+		() => renderWorldGrid()
+	);
 }
 
 init();

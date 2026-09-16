@@ -836,7 +836,7 @@
                 "【閉ざされた扉】",
                 "鍵が要るが…",
                 "手が届かぬ場所に転がっている。",
-                "🪃 ブーメランなら届くかも？"
+                "{{boomerang}} ブーメランなら届くかも？"
               ]
             },
             "1,2": {
@@ -871,7 +871,7 @@
           "showConditions": {
             "6,11": {
               "trigger": "bushBurned",
-              "message": "🔥 草が燃え上がり、隠された入口が現れた！"
+              "message": "{{bush}} 草が燃え上がり、隠された入口が現れた！"
             }
           },
           "breakableWalls": {
@@ -1173,8 +1173,7 @@
               "name": "すみっこずき",
               "lines": [
                 "気味の悪い生き物がうようよしてて怖くてここに隠れてたのです。",
-                "下の方にある三角色の変な物体は拾っておくといいんだと思う。私は拾わないけど。",
-                "あとその数歩左に踊ってる人がいるけど彼は商売人でルピーがあれば何か売ってくれる。",
+                "真ん中あたりに踊ってる人がいるけど彼は商売人でルピーがあれば何か売ってくれる。",
                 "でも正直何も買わなくても普通にこのゲームはクリアできると思う。多分。まだこのゲームはバランスがイマイチなんだよね。",
                 "この辺りに 二つの入口があるみたい。",
                 "すぐ南には 水の迷宮の入口。南西の奥には 笛を吹くと現れる 秘密の洞窟があるらしい。",
@@ -1182,7 +1181,7 @@
               ],
               "linesAfter": [
                 "あなた、もうボス倒したんですね。強いですね。",
-                "倒したボスのいたダンジョン、なんか空気が変わった気がします。",
+                "倒したボスのいたダンジョン、なんか空気が変わった気が。",
                 "他にも色々ダンジョンがあるみたいだけど、行く気はしないです私は。",
                 "あなたならどうせ行くんでしょうけど。なんか気をつけてください。"
               ]
@@ -1310,7 +1309,7 @@
           "isBossRoom": false,
           "fluteEffect": {
             "type": "reveal",
-            "message": "🎵 音色に応えて 隠れた洞窟の入口が現れた！"
+            "message": "{{flute}} 音色に応えて 隠れた洞窟の入口が現れた！"
           }
         },
         "12,2": {
@@ -4888,7 +4887,7 @@
           "showConditions": {
             "4,6": {
               "trigger": "killAll",
-              "message": "⚔ 北原の 守り手を 退けた！宝箱が現れた！"
+              "message": "{{sword}} 北原の 守り手を 退けた！宝箱が現れた！"
             }
           },
           "breakableWalls": {},
@@ -5745,7 +5744,7 @@
           "showConditions": {
             "4,6": {
               "trigger": "killAll",
-              "message": "⚔ 湖畔の守り手を退けた！宝箱が現れた！"
+              "message": "{{sword}} 湖畔の守り手を退けた！宝箱が現れた！"
             }
           },
           "breakableWalls": {},
@@ -6621,7 +6620,7 @@
           "showConditions": {
             "4,7": {
               "trigger": "killAll",
-              "message": "⚔ 岸辺の番兵を退けた！宝箱が現れた！"
+              "message": "{{sword}} 岸辺の番兵を退けた！宝箱が現れた！"
             }
           },
           "breakableWalls": {},
@@ -7478,7 +7477,7 @@
           "showConditions": {
             "4,5": {
               "trigger": "killAll",
-              "message": "⚔ 草原の魔物を一掃した！宝箱が現れた！"
+              "message": "{{sword}} 草原の魔物を一掃した！宝箱が現れた！"
             }
           },
           "breakableWalls": {},
@@ -7769,7 +7768,7 @@
           "showConditions": {
             "4,6": {
               "trigger": "killAll",
-              "message": "⚔ 塔ぎわの 群れを 退けた！宝箱が現れた！"
+              "message": "{{sword}} 塔ぎわの 群れを 退けた！宝箱が現れた！"
             }
           },
           "breakableWalls": {},
@@ -8340,7 +8339,7 @@
           "showConditions": {
             "4,6": {
               "trigger": "torchesLit",
-              "message": "🔥 かがり火が 全て 灯り、宝箱が 現れた！"
+              "message": "{{torch}} かがり火が 全て 灯り、宝箱が 現れた！"
             }
           },
           "breakableWalls": {},
@@ -8639,7 +8638,7 @@
           "showConditions": {
             "4,7": {
               "trigger": "torchesLit",
-              "message": "🔥 かがり火が 応え、燃え残りの 封印が 崩れた！"
+              "message": "{{torch}} かがり火が 応え、燃え残りの 封印が 崩れた！"
             }
           },
           "breakableWalls": {},
@@ -11529,7 +11528,7 @@
           "showConditions": {
             "4,8": {
               "trigger": "killAll",
-              "message": "⚔ 見張りを倒すと宝箱が現れた！"
+              "message": "{{sword}} 見張りを倒すと宝箱が現れた！"
             }
           },
           "breakableWalls": {},
@@ -12954,7 +12953,7 @@
           "showConditions": {
             "4,7": {
               "trigger": "killAll",
-              "message": "⚔ 守りの兵を全て退けた！宝箱が現れた！"
+              "message": "{{sword}} 守りの兵を全て退けた！宝箱が現れた！"
             }
           },
           "breakableWalls": {},
@@ -14379,7 +14378,7 @@
           "showConditions": {
             "4,6": {
               "trigger": "killAll",
-              "message": "⚔ 北原の 魔物を 一掃した！宝箱が現れた！"
+              "message": "{{sword}} 北原の 魔物を 一掃した！宝箱が現れた！"
             }
           },
           "breakableWalls": {},
@@ -16097,7 +16096,7 @@
           "showConditions": {
             "5,6": {
               "trigger": "killAll",
-              "message": "⚔ 峠の 精鋭を 退けた！宝箱が現れた！"
+              "message": "{{sword}} 峠の 精鋭を 退けた！宝箱が現れた！"
             }
           },
           "breakableWalls": {},
@@ -16668,7 +16667,7 @@
           "showConditions": {
             "4,5": {
               "trigger": "killAll",
-              "message": "⚔ 北原の 群れを 一掃した！宝箱が現れた！"
+              "message": "{{sword}} 北原の 群れを 一掃した！宝箱が現れた！"
             }
           },
           "breakableWalls": {},
@@ -18654,7 +18653,7 @@
           "showConditions": {
             "4,7": {
               "trigger": "killAll",
-              "message": "⚔ 草原の魔物を一掃した！宝箱が現れた！"
+              "message": "{{sword}} 草原の魔物を一掃した！宝箱が現れた！"
             }
           },
           "breakableWalls": {},
@@ -19233,7 +19232,7 @@
           "showConditions": {
             "4,8": {
               "trigger": "killAll",
-              "message": "⚔ 岸辺の精鋭を倒した！宝箱が現れた！"
+              "message": "{{sword}} 岸辺の精鋭を倒した！宝箱が現れた！"
             }
           },
           "breakableWalls": {},
@@ -20936,7 +20935,7 @@
           "showConditions": {
             "4,6": {
               "trigger": "killAll",
-              "message": "⚔ 草原の群れを退けた！宝箱が現れた！"
+              "message": "{{sword}} 草原の群れを退けた！宝箱が現れた！"
             }
           },
           "breakableWalls": {},
@@ -25474,7 +25473,7 @@
           "showConditions": {
             "4,7": {
               "trigger": "killAll",
-              "message": "⚔ 騎士を討ち取ると宝箱が現れた！"
+              "message": "{{sword}} 騎士を討ち取ると宝箱が現れた！"
             }
           },
           "breakableWalls": {},
@@ -26340,7 +26339,7 @@
           "showConditions": {
             "4,7": {
               "trigger": "killAll",
-              "message": "⚔ 遺跡の守り手を倒した！宝箱が現れた！"
+              "message": "{{sword}} 遺跡の守り手を倒した！宝箱が現れた！"
             }
           },
           "breakableWalls": {},
@@ -27200,7 +27199,7 @@
           "showConditions": {
             "4,5": {
               "trigger": "killAll",
-              "message": "🛡 精鋭を全て退けた！宝箱が現れた！"
+              "message": "{{shield}} 精鋭を全て退けた！宝箱が現れた！"
             }
           },
           "breakableWalls": {},
@@ -27790,7 +27789,7 @@
           "showConditions": {
             "5,7": {
               "trigger": "killAll",
-              "message": "⚔ 砂漠の主を退けた！宝箱が現れた！"
+              "message": "{{sword}} 砂漠の主を退けた！宝箱が現れた！"
             }
           },
           "breakableWalls": {},
@@ -28081,7 +28080,7 @@
           "showConditions": {
             "5,4": {
               "trigger": "killAll",
-              "message": "⚔ 縁の守り手を退けた！宝箱が現れた！"
+              "message": "{{sword}} 縁の守り手を退けた！宝箱が現れた！"
             }
           },
           "breakableWalls": {},
@@ -29220,7 +29219,7 @@
           "showConditions": {
             "3,6": {
               "trigger": "killAll",
-              "message": "⚔ 湖心の 番人を 退けた！宝箱が現れた！"
+              "message": "{{sword}} 湖心の 番人を 退けた！宝箱が現れた！"
             }
           },
           "breakableWalls": {},
@@ -30370,7 +30369,7 @@
           "showConditions": {
             "6,5": {
               "trigger": "killAll",
-              "message": "⚔ 南湖の 群れを 一掃した！宝箱が現れた！"
+              "message": "{{sword}} 南湖の 群れを 一掃した！宝箱が現れた！"
             }
           },
           "breakableWalls": {},
@@ -31539,7 +31538,7 @@
           "showConditions": {
             "4,6": {
               "trigger": "killAll",
-              "message": "⚔ 火口を 守る 精鋭を 退けた！宝箱が現れた！"
+              "message": "{{sword}} 火口を 守る 精鋭を 退けた！宝箱が現れた！"
             }
           },
           "breakableWalls": {},
@@ -32968,7 +32967,7 @@
           "showConditions": {
             "4,6": {
               "trigger": "killAll",
-              "message": "⚔ 神殿を 守る 精鋭を 退けた！宝箱が現れた！"
+              "message": "{{sword}} 神殿を 守る 精鋭を 退けた！宝箱が現れた！"
             }
           },
           "breakableWalls": {},
@@ -33539,7 +33538,7 @@
           "showConditions": {
             "4,7": {
               "trigger": "torchesLit",
-              "message": "🔥 かがり火が 灯り、雪の 封印が 解けた！"
+              "message": "{{torch}} かがり火が 灯り、雪の 封印が 解けた！"
             }
           },
           "breakableWalls": {},
@@ -34129,7 +34128,7 @@
           "showConditions": {
             "5,6": {
               "trigger": "killAll",
-              "message": "⚔ 峠の 精鋭を 退けた！宝箱が現れた！"
+              "message": "{{sword}} 峠の 精鋭を 退けた！宝箱が現れた！"
             }
           },
           "breakableWalls": {},
@@ -35558,7 +35557,7 @@
           "showConditions": {
             "4,6": {
               "trigger": "killAll",
-              "message": "⚔ 沼路の 番人を 退けた！宝箱が現れた！"
+              "message": "{{sword}} 沼路の 番人を 退けた！宝箱が現れた！"
             }
           },
           "breakableWalls": {},
@@ -37014,7 +37013,7 @@
           "showConditions": {
             "7,10": {
               "trigger": "killAll",
-              "message": "⚔ 淵の 守りを 退けた！封じの 宝箱が 現れた！"
+              "message": "{{sword}} 淵の 守りを 退けた！封じの 宝箱が 現れた！"
             }
           },
           "breakableWalls": {},
@@ -38940,7 +38939,7 @@
           "showConditions": {
             "4,8": {
               "trigger": "killAll",
-              "message": "⚔ 峰への 見張りを 退けた！宝箱が現れた！"
+              "message": "{{sword}} 峰への 見張りを 退けた！宝箱が現れた！"
             }
           },
           "breakableWalls": {},
@@ -40070,7 +40069,7 @@
           "showConditions": {
             "1,9": {
               "trigger": "torchesLit",
-              "message": "🔥 かがり火が全て灯り、宝箱が現れた！"
+              "message": "{{torch}} かがり火が全て灯り、宝箱が現れた！"
             }
           },
           "breakableWalls": {},
@@ -45182,7 +45181,7 @@
           "showConditions": {
             "5,5": {
               "trigger": "killAll",
-              "message": "🌿 森影の見張りを退けた！宝箱が現れた！"
+              "message": "{{bush}} 森影の見張りを退けた！宝箱が現れた！"
             }
           },
           "breakableWalls": {},
@@ -45473,7 +45472,7 @@
           "showConditions": {
             "4,6": {
               "trigger": "killAll",
-              "message": "⚔ 草原の魔物を一掃した！宝箱が現れた！"
+              "message": "{{sword}} 草原の魔物を一掃した！宝箱が現れた！"
             }
           },
           "breakableWalls": {},
@@ -47469,7 +47468,7 @@
           "showConditions": {
             "4,6": {
               "trigger": "killAll",
-              "message": "⚔ 草原の魔物を一掃した！宝箱が現れた！"
+              "message": "{{sword}} 草原の魔物を一掃した！宝箱が現れた！"
             }
           },
           "breakableWalls": {},
@@ -48886,7 +48885,7 @@
           "showConditions": {
             "4,5": {
               "trigger": "killAll",
-              "message": "⚔ 草原の群れを退けた！宝箱が現れた！"
+              "message": "{{sword}} 草原の群れを退けた！宝箱が現れた！"
             }
           },
           "breakableWalls": {},
@@ -50038,7 +50037,7 @@
           "showConditions": {
             "4,5": {
               "trigger": "killAll",
-              "message": "⚔ 草原の群れを一掃した！宝箱が現れた！"
+              "message": "{{sword}} 草原の群れを一掃した！宝箱が現れた！"
             }
           },
           "breakableWalls": {},
@@ -51480,7 +51479,7 @@
           "showConditions": {
             "4,6": {
               "trigger": "killAll",
-              "message": "⚔ 草原の魔物を退けた！宝箱が現れた！"
+              "message": "{{sword}} 草原の魔物を退けた！宝箱が現れた！"
             }
           },
           "breakableWalls": {},
@@ -52617,7 +52616,7 @@
           "showConditions": {
             "4,6": {
               "trigger": "killAll",
-              "message": "⚔ 精鋭を退けた！宝箱が現れた！"
+              "message": "{{sword}} 精鋭を退けた！宝箱が現れた！"
             }
           },
           "breakableWalls": {},
@@ -53188,7 +53187,7 @@
           "showConditions": {
             "4,7": {
               "trigger": "killAll",
-              "message": "⚔ 岸辺の精鋭を倒した！宝箱が現れた！"
+              "message": "{{sword}} 岸辺の精鋭を倒した！宝箱が現れた！"
             }
           },
           "breakableWalls": {},
@@ -53479,7 +53478,7 @@
           "showConditions": {
             "5,6": {
               "trigger": "killAll",
-              "message": "⚔ 峠の精鋭を退けた！宝箱が現れた！"
+              "message": "{{sword}} 峠の精鋭を退けた！宝箱が現れた！"
             }
           },
           "breakableWalls": {},
@@ -54362,7 +54361,7 @@
           "showConditions": {
             "5,6": {
               "trigger": "killAll",
-              "message": "🌿 草原の見張りを退けた！宝箱が現れた！"
+              "message": "{{bush}} 草原の見張りを退けた！宝箱が現れた！"
             }
           },
           "breakableWalls": {},
@@ -58653,7 +58652,7 @@
           "showConditions": {
             "5,6": {
               "trigger": "killAll",
-              "message": "⚔ 峠の 精鋭を 退けた！宝箱が現れた！"
+              "message": "{{sword}} 峠の 精鋭を 退けた！宝箱が現れた！"
             }
           },
           "breakableWalls": {},
@@ -58944,7 +58943,7 @@
           "showConditions": {
             "6,4": {
               "trigger": "killAll",
-              "message": "🛡 湿地の守り手を退けた！宝箱が現れた！"
+              "message": "{{shield}} 湿地の守り手を退けた！宝箱が現れた！"
             }
           },
           "breakableWalls": {},
@@ -60666,7 +60665,7 @@
           "showConditions": {
             "5,6": {
               "trigger": "killAll",
-              "message": "⚔ 岸の精鋭を倒した！宝箱が現れた！"
+              "message": "{{sword}} 岸の精鋭を倒した！宝箱が現れた！"
             }
           },
           "breakableWalls": {},
@@ -61562,7 +61561,7 @@
           },
           "fluteEffect": {
             "type": "reveal",
-            "message": "🎵 風が渦を巻き 空へ続く石の門が現れた！"
+            "message": "{{flute}} 風が渦を巻き 空へ続く石の門が現れた！"
           }
         },
         "3,0": {
@@ -62716,7 +62715,7 @@
           "showConditions": {
             "7,8": {
               "trigger": "torchesLit",
-              "message": "🔥 狼煙が 上がり、封じの 岩が 崩れた！"
+              "message": "{{torch}} 狼煙が 上がり、封じの 岩が 崩れた！"
             }
           },
           "breakableWalls": {},
@@ -66241,7 +66240,7 @@
           "showConditions": {
             "4,6": {
               "trigger": "torchesLit",
-              "message": "🔥 狼煙が上がり、封じの岩が 崩れ落ちた！"
+              "message": "{{torch}} 狼煙が上がり、封じの岩が 崩れ落ちた！"
             }
           },
           "breakableWalls": {},
@@ -68011,7 +68010,7 @@
           "showConditions": {
             "5,5": {
               "trigger": "torchesLit",
-              "message": "🔥 一対の 火が 灯り 供物の 箱が 現れた！"
+              "message": "{{torch}} 一対の 火が 灯り 供物の 箱が 現れた！"
             }
           },
           "breakableWalls": {},
@@ -69489,7 +69488,7 @@
           "showConditions": {
             "5,5": {
               "trigger": "killAll",
-              "message": "⚔ 館を 守る 者を 退けた！奥の間の 積荷が 現れた！"
+              "message": "{{sword}} 館を 守る 者を 退けた！奥の間の 積荷が 現れた！"
             }
           },
           "breakableWalls": {},
@@ -70384,7 +70383,7 @@
           "showConditions": {
             "6,5": {
               "trigger": "flutePlayed",
-              "message": "🎵 氷の 下から 供物の 箱が 浮き上がった！"
+              "message": "{{flute}} 氷の 下から 供物の 箱が 浮き上がった！"
             }
           },
           "breakableWalls": {},
@@ -70982,7 +70981,7 @@
           "showConditions": {
             "5,9": {
               "trigger": "killAll",
-              "message": "⚔ 海の 弓手を 沈めた！宝箱が 現れた！"
+              "message": "{{sword}} 海の 弓手を 沈めた！宝箱が 現れた！"
             }
           },
           "breakableWalls": {},
@@ -71856,7 +71855,7 @@
           "showConditions": {
             "6,4": {
               "trigger": "torchesLit",
-              "message": "🔥 三つの 火が 揃い 塩焼きの 蓄えが 現れた！"
+              "message": "{{torch}} 三つの 火が 揃い 塩焼きの 蓄えが 現れた！"
             }
           },
           "breakableWalls": {},
@@ -72436,7 +72435,7 @@
           "showConditions": {
             "6,8": {
               "trigger": "killAll",
-              "message": "⚔ 波間の 二匹を 退けた！宝箱が 現れた！"
+              "message": "{{sword}} 波間の 二匹を 退けた！宝箱が 現れた！"
             }
           },
           "breakableWalls": {},
@@ -73566,7 +73565,7 @@
           "showConditions": {
             "1,9": {
               "trigger": "killAll",
-              "message": "⚔ 魚群を 散らした！宝箱が 現れた！"
+              "message": "{{sword}} 魚群を 散らした！宝箱が 現れた！"
             }
           },
           "breakableWalls": {},
@@ -73857,7 +73856,7 @@
           "showConditions": {
             "4,3": {
               "trigger": "killAll",
-              "message": "⚔ 廃都の 番いを 沈めた！供物が 現れた！"
+              "message": "{{sword}} 廃都の 番いを 沈めた！供物が 現れた！"
             }
           },
           "breakableWalls": {},
@@ -74148,7 +74147,7 @@
           "showConditions": {
             "3,6": {
               "trigger": "killAll",
-              "message": "⚔ 最果ての 番人を 退けた！宝箱が現れた！"
+              "message": "{{sword}} 最果ての 番人を 退けた！宝箱が現れた！"
             }
           },
           "breakableWalls": {},
@@ -75293,7 +75292,7 @@
           "showConditions": {
             "7,3": {
               "trigger": "killAll",
-              "message": "⚔ 海の 難所を 越えた！宝箱が 現れた！"
+              "message": "{{sword}} 海の 難所を 越えた！宝箱が 現れた！"
             }
           },
           "breakableWalls": {},
@@ -77080,7 +77079,7 @@
           "showConditions": {
             "4,6": {
               "trigger": "killAll",
-              "message": "⚔ 隘路の 番人を 退けた！封じの 宝箱が 現れた！"
+              "message": "{{sword}} 隘路の 番人を 退けた！封じの 宝箱が 現れた！"
             }
           },
           "breakableWalls": {},
@@ -78589,7 +78588,7 @@
           "showConditions": {
             "4,6": {
               "trigger": "torchesLit",
-              "message": "🔥 見張りの 狼煙が 二つ 上がった！封じの 箱が 現れた！"
+              "message": "{{torch}} 見張りの 狼煙が 二つ 上がった！封じの 箱が 現れた！"
             }
           },
           "breakableWalls": {},
@@ -79503,7 +79502,7 @@
           "showConditions": {
             "4,5": {
               "trigger": "flutePlayed",
-              "message": "🎵 祭壇が 笛に 応えた！封じの 箱が 現れた！"
+              "message": "{{flute}} 祭壇が 笛に 応えた！封じの 箱が 現れた！"
             }
           },
           "breakableWalls": {},
@@ -79520,7 +79519,7 @@
           },
           "fluteEffect": {
             "type": "reveal",
-            "message": "🎵 音色に 応えて 石室の 箱が 現れた！"
+            "message": "{{flute}} 音色に 応えて 石室の 箱が 現れた！"
           }
         },
         "14,15": {
@@ -79807,7 +79806,7 @@
           "showConditions": {
             "6,6": {
               "trigger": "killAll",
-              "message": "⚔ 灯台に 巣くう 者を 払った！封じの 箱が 現れた！"
+              "message": "{{sword}} 灯台に 巣くう 者を 払った！封じの 箱が 現れた！"
             }
           },
           "breakableWalls": {},
@@ -80724,7 +80723,7 @@
           "showConditions": {
             "5,5": {
               "trigger": "killAll",
-              "message": "⚔ 廃村に 湧く 者を 払った！封じの 宝箱が 現れた！"
+              "message": "{{sword}} 廃村に 湧く 者を 払った！封じの 宝箱が 現れた！"
             }
           },
           "breakableWalls": {},
@@ -84859,7 +84858,7 @@
           "showConditions": {
             "5,5": {
               "trigger": "killAll",
-              "message": "⚔ 市場を 荒らす 者を 退けた！封じの 宝箱が 現れた！"
+              "message": "{{sword}} 市場を 荒らす 者を 退けた！封じの 宝箱が 現れた！"
             }
           },
           "breakableWalls": {},
@@ -88680,7 +88679,7 @@
           "showConditions": {
             "6,4": {
               "trigger": "torchesLit",
-              "message": "🔥 岬の 狼煙が 二つ 上がった！封じの 箱が 現れた！"
+              "message": "{{torch}} 岬の 狼煙が 二つ 上がった！封じの 箱が 現れた！"
             }
           },
           "breakableWalls": {},
@@ -89272,7 +89271,7 @@
           "showConditions": {
             "5,5": {
               "trigger": "killAll",
-              "message": "⚔ 廃屋に 巣くう 者を 払った！封じの 宝箱が 現れた！"
+              "message": "{{sword}} 廃屋に 巣くう 者を 払った！封じの 宝箱が 現れた！"
             }
           },
           "breakableWalls": {},
@@ -92197,7 +92196,7 @@
           "showConditions": {
             "2,5": {
               "trigger": "bossYielded",
-              "message": "☐ 淵の ほとりに 宝箱が 現れた！"
+              "message": "{{chest}} 淵の ほとりに 宝箱が 現れた！"
             }
           },
           "breakableWalls": {},
@@ -93079,7 +93078,7 @@
           },
           "fluteEffect": {
             "type": "reveal",
-            "message": "🎵 音色に 応えて 宝物庫の 箱が 現れた！"
+            "message": "{{flute}} 音色に 応えて 宝物庫の 箱が 現れた！"
           }
         }
       }
@@ -117505,7 +117504,7 @@
           ],
           "fluteEffect": {
             "type": "reveal",
-            "message": "🎵 音色が石廊に響いた……守護者たちが色めき立つ"
+            "message": "{{flute}} 音色が石廊に響いた……守護者たちが色めき立つ"
           },
           "comment": "[key_gate D7] 戦闘型②（PUZZLE-DESIGN §7-3 A / キュー 5.5h）。魔物(3,5)+センチネル(3,9)(6,3)(7,9)＝脅威度36.0（D1の24.0を上回る）。全滅（killAll）に加え笛（flutePlayed）を吹くことも要求＝既得道具の総合試験を鍵の関門にも通す。"
         },
@@ -121026,7 +121025,7 @@
             "stage": "2,0",
             "row": 8,
             "col": 6,
-            "message": "🎵 竜巻に運ばれ 地上へ戻った！"
+            "message": "{{flute}} 竜巻に運ばれ 地上へ戻った！"
           },
           "mapEnters": {
             "5,2": {
@@ -122278,7 +122277,7 @@
           },
           "fluteEffect": {
             "type": "reveal",
-            "message": "🎵 祭壇に音が響き、隠し通路が現れた！"
+            "message": "{{flute}} 祭壇に音が響き、隠し通路が現れた！"
           }
         },
         "2,1": {
@@ -128752,7 +128751,7 @@
           "showConditions": {
             "2,3": {
               "trigger": "bossYielded",
-              "message": "☐ 主が 沈んだ 淵に 宝箱が 現れた！"
+              "message": "{{chest}} 主が 沈んだ 淵に 宝箱が 現れた！"
             }
           },
           "breakableWalls": {},

@@ -5,6 +5,7 @@ import {
 	SUB_ITEM_KEYS, presetsFrom, bossesDefeatedAt, bossesDefeatedUpTo,
 } from '../shared/progression.js';
 import { bossVariantOptions } from '../shared/dialog-variants.js';
+import { normalizeMapIconMarkers } from '../shared/map-texts.js';
 
 // ── 保存データ構築 ────────────────────────────────────────────
 export function buildSaveData() {
@@ -33,7 +34,17 @@ let _TILE = null;
 function await_TILE_import() { return _TILE; }
 export function setTILE(t) { _TILE = t; }
 
+// 実行キュー24：保存の直前に本文の絵文字を `{{key}}` マーカーへ直した件数（保存の報告に出す）。
+let _lastIconFixes = [];
+export function getLastIconFixes() { return _lastIconFixes; }
+
 export function buildSaveDataSync(TILE) {
+	// 実行キュー24（エディタの入口の層＝[[blade-bad-data-fix-five-layers]]）＝
+	// **書き出す前に**本文の「絵がある物の絵文字」を `{{key}}` マーカーへ直す。
+	// なぜここか＝保存・プレビューの3経路が全部この関数を通る∴1箇所で塞げる。
+	// ⚠️ 直すのは絵文字だけ＝日本語の文言は変えない（変わったら `shared/map-texts.js` が例外）。
+	_lastIconFixes = normalizeMapIconMarkers(state.mapData).changes;
+
 	let startPos = { layer: 'field', stage: '0,0', row: 1, col: 1 };
 	outer: for (const [sk, sd] of Object.entries(state.mapData.layers.field?.stages ?? {})) {
 		for (let r = 0; r < sd.rows; r++) {
@@ -94,6 +105,97 @@ async function saveToFile(json) {
 		if (e.name === 'AbortError') return false;
 		return false;
 	}
+}
+
+// ── ファイルの鮮度（実行キュー24・退行の入口を塞ぐ）─────────────────
+// なぜ要るか＝**エディタは localStorage の控えからしか復元しない**（`tryRestoreFromStorage`）。
+// ∴移行スクリプト／git pull／別のセッションでファイルだけが新しくなっても、エディタは
+// 古い盤面を抱えたままで、そのまま保存すると**ファイル側の変更が黙って巻き戻る**。
+// 2026-09-10 に実際にこれが起きた（`3e71a24` が `{{key}}` マーカー75件を巻き戻した）。
+//
+// 方針＝「ファイルが単一の真実」（ゲーム側は既にそう＝`game/game.js` は必ず json を fetch する）。
+//   ① 起動時にファイルを読み、控えと違えば**帯で見せる**（勝手に上書きしない＝未保存の編集を消さない）
+//   ② 保存の直前に「エディタが同期した時点のファイル」と今のファイルを比べ、
+//      変わっていれば**確認してから**書く（＝巻き戻す瞬間に止める）
+// ⚠️ 控えを黙って捨てない・ファイルを黙って捨てない＝どちらも人が選ぶ。
+const MAP_FILE_URL = new URL('../work/blade-of-lumia.json', import.meta.url);
+const FILE_SIG_KEY = 'bladeOfLumiaMapFileSig';
+
+/** 内容の指紋（長さ＋FNV-1a）。中身を持たずに「変わったか」だけを見るため。 */
+export function mapFileSig(text) {
+	let h = 0x811c9dc5;
+	for (let i = 0; i < text.length; i++) {
+		h ^= text.charCodeAt(i);
+		h = Math.imul(h, 0x01000193) >>> 0;
+	}
+	return `${text.length}-${h.toString(16)}`;
+}
+
+/** work/blade-of-lumia.json を読む（読めなければ null＝file:// や配信されていない環境）。 */
+async function readMapFileText() {
+	try {
+		const res = await fetch(`${MAP_FILE_URL.href}?t=${Date.now()}`, { cache: 'no-store' });
+		if (!res.ok) return null;
+		return await res.text();
+	} catch { return null; }
+}
+
+function setBanner(msg) {
+	const el = document.getElementById('stale-file-banner');
+	if (!el) return;
+	if (!msg) { el.classList.add('hidden'); return; }
+	document.getElementById('stale-file-msg').textContent = msg;
+	el.classList.remove('hidden');
+}
+
+/**
+ * 起動時の鮮度チェック。ファイルと控えが違えば帯を出す（読み込むかはユーザーが選ぶ）。
+ * 同じなら「同期済み」として指紋を控える＝以降の保存でファイルの変化を検知できる。
+ */
+export async function initFileFreshnessCheck(renderLayerTabs, renderDungeonMeta, renderWorldGrid) {
+	const text = await readMapFileText();
+	if (!text) return;                       // 配信されていない＝比べる相手が居ない
+	const sig = mapFileSig(text);
+	let fileData = null;
+	try { fileData = JSON.parse(text); } catch { return; }
+
+	// 比べるのは `layers` だけ＝`startPos` はエディタ側がプレイヤータイルから作り直す（違って当然）。
+	// また `version` も保存時に補われる∴盤面と本文の実体だけを見る。
+	if (JSON.stringify(fileData.layers) === JSON.stringify(state.mapData.layers)) {
+		localStorage.setItem(FILE_SIG_KEY, sig);
+		setBanner('');
+		return;
+	}
+
+	const stageCount = (d) => Object.values(d?.layers ?? {})
+		.reduce((n, l) => n + Object.keys(l?.stages ?? {}).length, 0);
+	setBanner(`⚠️ work/blade-of-lumia.json（${stageCount(fileData)} 画面）が、この画面の控え`
+		+ `（${stageCount(state.mapData)} 画面）と違います。`
+		+ `このまま保存するとファイル側の変更が失われます。`);
+
+	document.getElementById('btn-stale-load')?.addEventListener('click', () => {
+		loadMapData(fileData, renderLayerTabs, renderDungeonMeta, renderWorldGrid);
+		localStorage.setItem('bladeOfLumiaMapData', text);
+		localStorage.setItem(FILE_SIG_KEY, sig);
+		setBanner('');
+	}, { once: true });
+	document.getElementById('btn-stale-ignore')?.addEventListener('click', () => setBanner(''), { once: true });
+}
+
+/**
+ * 保存の直前の門＝「エディタが同期した時点のファイル」と今のファイルが違えば確認する。
+ * 指紋が控えられていない（＝一度も同期していない）ときは黙って通す＝起動時の帯が担当。
+ * @returns true なら書いてよい
+ */
+async function confirmOverwriteIfFileChanged() {
+	const known = localStorage.getItem(FILE_SIG_KEY);
+	if (!known) return true;
+	const text = await readMapFileText();
+	if (!text) return true;
+	if (mapFileSig(text) === known) return true;
+	return confirm('⚠️ work/blade-of-lumia.json が、このエディタで読み込んだ後に変わっています'
+		+ '（移行スクリプト・git pull・別のセッションなど）。\n'
+		+ 'このまま保存するとその変更が失われます。上書きしますか？');
 }
 
 // ── プレビュー状態 ────────────────────────────────────────────
@@ -303,10 +405,23 @@ export function initIOEvents(renderLayerTabs, renderDungeonMeta, renderWorldGrid
 	// 保存
 	document.getElementById('btn-save').addEventListener('click', async () => {
 		const json = JSON.stringify(buildSaveDataSync(TILE), null, 2);
+		// localStorage への控えは**常に**書く＝編集を落とさない（門はファイルの書き込みだけに置く）。
 		localStorage.setItem('bladeOfLumiaMapData', json);
+		// 実行キュー24：直した絵文字の件数を報告に足す（黙って直すと気付けない）。
+		const fixes = getLastIconFixes();
+		const fixNote = fixes.length ? `\n（本文の絵文字 ${fixes.length} 件を {{アイコン}} 表記へ直しました）` : '';
+
+		// 実行キュー24：ファイルが読み込み後に変わっていたら書く前に確認する（退行の入口②）。
+		if (!await confirmOverwriteIfFileChanged()) {
+			alert('保存を中止しました。この画面の控えは残っています'
+				+ '（ファイルを取り込むにはページを再読み込みして帯の「ファイルを読み込む」を押してください）。');
+			return;
+		}
+
 		const saved = await saveToFile(json);
 		if (saved) {
-			alert('work/blade-of-lumia.json に保存しました！');
+			localStorage.setItem(FILE_SIG_KEY, mapFileSig(json));
+			alert(`work/blade-of-lumia.json に保存しました！${fixNote}`);
 			return;
 		}
 		const blob = new Blob([json], { type: 'application/json' });
@@ -314,7 +429,7 @@ export function initIOEvents(renderLayerTabs, renderDungeonMeta, renderWorldGrid
 		a.href = URL.createObjectURL(blob);
 		a.download = 'blade-of-lumia.json';
 		a.click();
-		alert('保存しました！（ダウンロードされたファイルを work/ に配置してください）');
+		alert(`保存しました！（ダウンロードされたファイルを work/ に配置してください）${fixNote}`);
 	});
 
 	// 読み込み

@@ -15,8 +15,12 @@
 //           dungeon_1）の外で使われている（「キー」「ボタン」）
 //   [error] 印の行き先が実在しない＝会話の `mark` / `markAfterBoss`（キュー17-2）が
 //           無い層・無い画面を指している（ゲーム側は警告して捨てる＝黙って消えたように見える）
+//   [error] 本文に「絵がある物の絵文字」が生のまま在る＝`{{key}}` マーカーで書くべき所が
+//           絵文字に戻っている（キュー24・2026-09-10 の退行の検知）
 //
 // ⚠️ `test_mechanics` レイヤーは検証専用ステージ＝対象外（PLAN.md 17 ②）。
+//    ただし**絵文字の検査だけは全レイヤーを見る**（`tests/ui-icons.spec.js` ③ が
+//    test_mechanics も見る＝ここで除外すると「この検査は緑なのにテストは赤」になる）。
 //
 // Usage:
 //   node scripts/check-dialog-integrity.mjs
@@ -26,6 +30,7 @@ import { TILE } from '../shared/tiles.js';
 import { NPC_SPRITE_MAP } from '../shared/npcs.js';
 import { ORDER, labelOf } from '../shared/progression.js';
 import { normalizeDialogMarks } from '../shared/marks.js';
+import { findRawIconEmoji, countIconMarkers } from '../shared/map-texts.js';
 
 const MAP_PATH = process.env.BLADE_MAP_PATH
   ? new URL(`file://${process.env.BLADE_MAP_PATH}`)
@@ -167,6 +172,21 @@ for (const [dest, uses] of markDests) {
     + uses.map(u => `${u.at}＝「${u.label}」`).join(' / '));
 }
 
+// ── ⑤ 本文の絵文字（実行キュー24・2026-09-16）─────────────────────────────
+// なぜ検査をここに足すか＝この退行（`{{key}}` マーカー75件が絵文字へ巻き戻った）は
+// `tests/ui-icons.spec.js` ①③ が5日間赤で知らせていたのに、データを触る作業では
+// 速い node の check-* しか回さないので誰も気付かなかった（報告では「既知の失敗」に
+// された）。∴**データを触ったら必ず回す検査**の側にも同じ歯を置く。
+// 対象は全レイヤー（`test_mechanics` も含む）＝上のコメントの理由。
+const rawEmoji = findRawIconEmoji(d);
+for (const f of rawEmoji) {
+  err(`本文に絵文字が残っている（{{${f.key}}} と書く）：${f.at}「${f.text}」`);
+}
+const iconMarkers = countIconMarkers(d);
+for (const u of iconMarkers.unknown) {
+  err(`shared/ui-icons.js UI_ICON に無いマーカー {{${u.key}}}：${u.at}「${u.text}」`);
+}
+
 // ── CLI ──────────────────────────────────────────────────────────────────
 const errors = issues.filter(i => i.level === 'error');
 const warns  = issues.filter(i => i.level === 'warn');
@@ -177,5 +197,6 @@ for (const e of errors) console.log(`   ❌ ${e.msg}`);
 for (const w of warns)  console.log(`   ⚠️  ${w.msg}`);
 if (!issues.length) console.log('   すべてのチェックに合格');
 
-console.log(`\n── 合計: ❌ ${errors.length} エラー / ⚠️  ${warns.length} 警告（見た印 ${markCount} 件）──`);
+console.log(`\n── 合計: ❌ ${errors.length} エラー / ⚠️  ${warns.length} 警告`
+  + `（見た印 ${markCount} 件 / アイコンマーカー ${iconMarkers.total} 個・${iconMarkers.texts} 本文）──`);
 process.exit(errors.length > 0 ? 1 : 0);
