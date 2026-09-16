@@ -17,6 +17,7 @@ import { initCharacterEditor, onLeaveCharacterEditor } from './editor-character.
 import { initItemEditor, onLeaveItemEditor } from './editor-item.js';
 import { initTileEditor, onLeaveTileEditor } from './editor-tile.js';
 import { mountIconEls } from '../shared/ui-icons.js';
+import { bossesDefeatedUpTo } from '../shared/progression.js';
 
 const viewSpriteEl = document.getElementById('view-sprite');
 const tabSpriteEl  = document.getElementById('tab-sprite');
@@ -161,6 +162,9 @@ document.addEventListener('editor:previewClickAt', e => {
 			ladder:    document.getElementById('ps-ladder').checked,
 			wingrobe:  document.getElementById('ps-wingrobe').checked,
 			cleared:   document.getElementById('ps-cleared').checked,
+			// 実行キュー23: 撃破済みボス（会話の「進行で切り替わる版」の確認用）。
+			// editor-io.js の getPreviewSettings にも同じ行がある（両方に足す）。
+			defeated:  bossesDefeatedUpTo(state.mapData, document.getElementById('ps-defeated')?.value || ''),
 		};
 		openPreview(state.currentCoord.x, state.currentCoord.y, row, col, ps, TILE);
 	});

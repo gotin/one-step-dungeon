@@ -154,22 +154,49 @@ export function bossTileOfLayer(map, layerName) {
 	return null;
 }
 
-// `defeatedBosses`（タイル文字の Set）から「進行順で最も後に倒したボス」を選ぶ。
-// 会話の `linesAfterBoss[type]` はボス種別ごとのタイル文字がキー∴`ORDER` を逆順（進行の
-// 最後から先頭へ）に見て、そのレイヤーのボスが `defeatedBosses` に居る最初のヒットを採る。
-// 旧実装（`Object.entries(linesAfterBoss)` を回して最初にヒットしたキーで確定）は
-// キーの登録順＝進行順のことが多く、**最初に倒したボスで台詞が固定**されるバグだった
-// （D1 のゴーレムを倒した時点で以降ずっと「次は砂漠」と言い続ける）。
-export function latestDefeatedBossType(map, defeatedBosses) {
-	if (!defeatedBosses || !defeatedBosses.size) return null;
-	for (let i = ORDER.length - 1; i >= 0; i--) {
-		const layer = ORDER[i].layer;
-		if (!layer) continue;
-		const tile = bossTileOfLayer(map, layer);
-		if (tile && defeatedBosses.has(tile)) return tile;
+// 進行順に並んだボスの一覧（実マップのボス部屋から導出＝手書きの表は作らない）。
+// ボス部屋を持たないレイヤー（`start` と一部の寄道）は落ちる∴`ORDER` より短い。
+// 読み手＝`shared/dialog-variants.js`（版の選択肢）／下の2関数／`editor/editor-io.js`。
+export function bossesInOrder(map) {
+	const out = [];
+	for (const cp of ORDER) {
+		if (!cp.layer) continue;
+		const tile = bossTileOfLayer(map, cp.layer);
+		if (!tile) continue;
+		out.push({ id: cp.id, layer: cp.layer, tile, optional: !!cp.optional, cp });
 	}
-	return null;
+	return out;
 }
+
+// 「そのボスまで進めた」状態の撃破済み集合＝進行順でそれより前の**必須**レイヤーの
+// ボス ＋ 自分自身。寄道を数えないのは `profilesAt` の min と同じ約束＝入らなくてもクリアできる
+// ∴「最短で本編をここまで進めた人」の集合になる（寄道の版を試したいときは呼び手が足す）。
+// 一覧に無いタイル（不明なボス）は自分自身だけを返す＝黙って落とさない。
+export function bossesDefeatedUpTo(map, tile) {
+	if (!tile) return [];
+	const list = bossesInOrder(map);
+	const idx  = list.findIndex((b) => b.tile === tile);
+	if (idx < 0) return [tile];
+	const out = list.slice(0, idx).filter((b) => !b.optional).map((b) => b.tile);
+	out.push(tile);
+	return out;
+}
+
+// 進行地点（`ORDER` の id）へ**到達した時点**で倒しているボス＝その地点より前の必須レイヤーの
+// ボス（その地点自身のボスは**まだ倒していない**＝「ボス直前」も同じ集合）。
+export function bossesDefeatedAt(map, cpId) {
+	const i = ORDER.findIndex((cp) => cp.id === cpId);
+	if (i < 0) return [];
+	const ids = new Set(ORDER.slice(0, i).map((cp) => cp.id));
+	return bossesInOrder(map).filter((b) => !b.optional && ids.has(b.id)).map((b) => b.tile);
+}
+
+// ⚠️ かつてここに `latestDefeatedBossType(map, defeatedBosses)`（「進行順で最も後に倒した
+//    ボス」を1体に絞る関数）があった。2026-09-15 に**削除**＝会話の版の選択規則が
+//    「条件がヒットした版のうち `variantOptions()` の並びで一番下を採る」に変わり、
+//    版を1つに絞る段が要らなくなった（絞った先に版が無いと基本の台詞へ落ちる＝
+//    寄道のボスを倒した瞬間に終盤の台詞が序盤へ戻る実害の元だった）。
+//    規則の在処は `shared/dialog-variants.js` ＋ `game/ui.js pickDialogVariant()`。
 
 // ── 実マップから報酬を集める（レイヤー単位）────────────────────────
 // 「どのレイヤーに置いてあるか」だけを見る＝部屋の位置や関門は見ない。

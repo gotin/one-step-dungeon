@@ -35,8 +35,9 @@ import { playSound } from '../shared/sounds.js';
 import { cellGlanceColor } from '../shared/cell-appearance.js';
 // 目的地マーク（キュー16）＝会話が教えた場所を地図に残し、選択中の1つを HUD で指す。
 import { markId, markColor, markGuide, addMark, normalizeDialogMarks, normalizeSavedMarks } from '../shared/marks.js';
-// Dn 踏破後台詞の選択規則（17-0）＝「最も後に倒したボス」を実マップから導出する。
-import { latestDefeatedBossType } from '../shared/progression.js';
+// Dn 踏破後台詞の選択規則（17-0 → 2026-09-15 に改訂）＝版の並びと種類は
+// `shared/dialog-variants.js` が単一の真実。「条件がヒットした版のうち**一番下**を採る」。
+import { variantOptions, readEntryVariants, VARIANT_KIND } from '../shared/dialog-variants.js';
 
 // HUD のハート（heart/heartEmpty/heartHalf）の表示サイズ。Phase 10d-3 で
 // 絵を32ドット化した際、絵の中の透明余白が増えた分だけ見かけが縮むのを補う
@@ -365,37 +366,42 @@ export function createUi(deps) {
 	function pauseMarkNext() { pauseMarkStep(1); }
 
 	// ── ダイアログ ────────────────────────────────────────────
-	// 台詞の選択規則（Phase 6-1b→17-0で選択規則を修正）＝
-	// linesAfterBoss[「最も後に倒したボス」] → linesAfterBoss.default → linesAfter → lines。
-	// 目的地マークの選択規則（キュー17-2で追加）＝
-	// markAfterBoss[「最も後に倒したボス」] → markAfterBoss.default → mark。
-	// 台詞とマークは同じ「最も後に倒したボス」から選ぶ＝本文が次の行き先を名指しするとき、
-	// 記されるマークがその行き先とズレない（片方だけ進行に追従すると必ずズレる）。
+	// 台詞とマークの選択規則（2026-09-15 に1本へ統一＝ユーザー決定「エディタで条件がヒットした
+	// もののうち下にあるものほど優先。そうすればセリフの内容によってどちらを優先したいのか
+	// 設計することができる」）＝
+	//   **その会話が持つ版を上から見て、条件がヒットした版で上書きしていく＝最後に残るのが
+	//     「一番下でヒットした版」。** 並び＝`readEntryVariants()` が返す順（＝データのキーの順
+	//     ＝エディタの版パネルの上下そのまま）∴**並びをここに書き写さない**（2026-09-15＝会話
+	//     ごとに並べ替えられるようにした＝ユーザー指示「エディタの版は上下の順番を変更できる
+	//     UIも必要」）。`variantOptions(map)` は種類（印を持てるか）と表示名を引くために渡す。
+	// 条件のヒットは版ごとに独立＝「その版のボスを倒したか」だけを見る（旧規則は削除済みの
+	// `latestDefeatedBossType()` で**版を1つに絞ってから**探したので、絞った先に版が無いと
+	// 基本の台詞へ落ちた＝本編8体を倒した後に寄道の魔将を倒すと台詞が序盤へ巻き戻る原因。
+	// 新規則では寄道の版を持たない相手では**その上の本編の版が残る**∴巻き戻らない）。
+	// 台詞とマークは同じ並びを同じ順で辿る＝本文が次の行き先を名指しするとき記されるマークが
+	// その行き先とズレない。⚠️ 「版に印が無い」ときは**その上でヒットした印**が残る（最後に
+	// 教わった行き先を保つ）＝印を打ち消す表現はデータの形に無い。
 	// NPC タイル（startDialog）・看板タイル（game.js の openSignDialog）の両方から呼ぶ
 	// ＝看板タイルは startDialog を通らないため、ここでは呼ばず game.js 側が直接呼ぶ。
 	function pickDialogVariant(data, player, map) {
-		const defeated   = player?.defeatedBosses;
-		// 「最も後に倒したボス」は台詞とマークで1回だけ求める（別々に求めると食い違い得る）。
-		const latestType = (defeated && (data.linesAfterBoss || data.markAfterBoss))
-			? latestDefeatedBossType(map, defeated) : null;
+		const defeated    = player?.defeatedBosses;
 		const hasDefeated = (defeated?.size ?? 0) > 0;
+		const hasSeenBoss = (player?.triforceCount ?? 0) > 0;
 
 		let lines = null;
-		if (defeated && data.linesAfterBoss) {
-			if (latestType && data.linesAfterBoss[latestType]) lines = data.linesAfterBoss[latestType];
-			if (!lines && hasDefeated && data.linesAfterBoss.default) lines = data.linesAfterBoss.default;
+		let mark  = null;
+		for (const v of readEntryVariants(data, variantOptions(map))) {
+			let hit;
+			if (v.kind === VARIANT_KIND.AFTER)        hit = hasSeenBoss;
+			else if (v.kind === VARIANT_KIND.DEFAULT) hit = hasDefeated;
+			else                                      hit = !!defeated?.has(v.key);
+			if (!hit) continue;
+			if (v.lines.length) lines = v.lines;
+			// `linesAfter` の版は印を持てない（データに置き場が無い）∴`mark` は最初から null。
+			if (v.mark) mark = v.mark;
 		}
-		if (!lines) {
-			const hasSeenBoss = (player?.triforceCount ?? 0) > 0;
-			lines = (hasSeenBoss && data.linesAfter) ? data.linesAfter : (data.lines ?? ['…']);
-		}
-
-		let mark = null;
-		if (defeated && data.markAfterBoss) {
-			if (latestType && data.markAfterBoss[latestType]) mark = data.markAfterBoss[latestType];
-			if (!mark && hasDefeated && data.markAfterBoss.default) mark = data.markAfterBoss.default;
-		}
-		if (!mark) mark = data.mark ?? null;
+		if (!lines) lines = data.lines ?? ['…'];
+		if (!mark)  mark  = data.mark ?? null;
 
 		return { lines, mark };
 	}

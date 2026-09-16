@@ -117,6 +117,12 @@ for (const [layerName, layer] of Object.entries(d.layers)) {
 // `mark` は静的な1組、`markAfterBoss[ボス種別]` は進行で切り替わる版。後者は
 // 「そのボスを倒すまで誰も見ない」∴書き間違いが一番長く残る場所＝機械で見る。
 let markCount = 0;
+// 行き先（`layer:stage`）→ その印を教える会話とラベルの一覧＝**同じ画面に別のラベルを教える
+// 相手が2人以上いないか**を見る（2026-09-15 に実害＝老賢者が `field 7,1` を「古代の祭壇」、
+// 諦めた老人が同じ画面を「石の台」と教えていた。印は1画面に1つ（`shared/marks.js addMark` が
+// 上書きして false を返す）∴**話した順で地図のラベルが入れ替わり、後から話した方では
+// 「地図に記した！」も出ない**＝プレイヤーから見ると教えたのに何も起きない）。
+const markDests = new Map();
 for (const [layerName, layer] of Object.entries(d.layers)) {
   if (EXCLUDED_LAYERS.has(layerName)) continue;
   for (const [stageKey, stage] of Object.entries(layer.stages ?? {})) {
@@ -139,11 +145,26 @@ for (const [layerName, layer] of Object.entries(d.layers)) {
             if (!d.layers[m.layer]?.stages?.[m.stage]) {
               err(`[${layerName} ${stageKey}] (${posKey}) の ${label} が実在しない画面を指す：${m.layer}/${m.stage}（${m.label}）`);
             }
+            const dest = `${m.layer}:${m.stage}`;
+            if (!markDests.has(dest)) markDests.set(dest, []);
+            markDests.get(dest).push({ at: `${layerName} ${stageKey} (${posKey}) ${label}`, label: m.label });
           }
         }
       }
     }
   }
+}
+
+// 同じ行き先を**別の会話が別のラベルで**教えていないか（上記の実害の再発検知）。
+// 1つの会話の中で版ごとにラベルが違うのは正当＝進行で言い方が変わる（同時には出ない）∴
+// 「会話の位置が2つ以上」かつ「ラベルが2種類以上」のときだけ言う。
+for (const [dest, uses] of markDests) {
+  const labels = new Set(uses.map(u => u.label));
+  const speakers = new Set(uses.map(u => u.at.replace(/ (mark|markAfterBoss\[.+\])$/, '')));
+  if (labels.size < 2 || speakers.size < 2) continue;
+  warn(`印の行き先 ${dest} を別のラベルで教える会話が ${speakers.size} つある`
+    + `（地図のラベルは話した順で入れ替わり、後の相手では「地図に記した！」が出ない）：`
+    + uses.map(u => `${u.at}＝「${u.label}」`).join(' / '));
 }
 
 // ── CLI ──────────────────────────────────────────────────────────────────

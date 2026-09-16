@@ -2030,6 +2030,7 @@ async function init() {
 		const psCleared  = params.get('ps_cleared');
 		const psWingRobe = params.get('ps_wingrobe');
 		const psLadder   = params.get('ps_ladder');
+		const psDefeated = params.get('ps_defeated');  // 実行キュー23: 撃破済みボス（タイル文字のカンマ区切り）
 
 		if (psAtk      !== null) player.atk    = parseInt(psAtk,  10) || 2;
 		if (psDef      !== null) player.def    = parseInt(psDef,  10) || 0;
@@ -2072,6 +2073,14 @@ async function init() {
 		if (psBomb     === '1') { player.subItems.bomb      = { count: 10 };        if (!player.activeSubItem) player.activeSubItem = 'bomb'; }
 		if (psFlute    === '1') { player.subItems.flute     = { count: Infinity };  if (!player.activeSubItem) player.activeSubItem = 'flute'; }
 		if (psCandle   === '1') { player.subItems.candle    = { count: Infinity };  if (!player.activeSubItem) player.activeSubItem = 'candle'; }
+		// 撃破済みボス（実行キュー23）＝会話の「進行で切り替わる版」（`linesAfterBoss` /
+		// `markAfterBoss`）と目的地の矢印がこれで切り替わる。エディタで版を書いたあと
+		// **実ゲームでその版が出るところ**まで確認できるようにするための口
+		// （それまでは `window.__game.addDefeatedBoss()` を手で叩く必要があった＝テスト専用の道）。
+		// ⚠️ `defeatedBosses` は Set（保存時だけ配列に変換される）∴ここも Set で入れる。
+		if (psDefeated !== null) {
+			player.defeatedBosses = new Set(psDefeated.split(',').map((s) => s.trim()).filter(Boolean));
+		}
 		// 姫状態（クリア済みフラグ）の設定
 		if (psCleared === '1') {
 			localStorage.setItem(CLEARED_KEY, '1');
@@ -2085,6 +2094,7 @@ async function init() {
 			weapon: player.weapon, shield: player.shield, armor: player.armor,
 			subItems: player.subItems, activeSubItem: player.activeSubItem,
 			triforceCount: player.triforceCount,
+			defeatedBosses: [...(player.defeatedBosses ?? [])],
 		}));
 
 		// デバッグモード ON（エディタプレビューは常に無敵）

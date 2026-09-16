@@ -521,6 +521,15 @@
         <label style="grid-column:1/-1">🚩進行地点<select id="ps-progress" style="width:280px">
           <option value="">指定なし（下の値をそのまま使う）</option>
         </select></label>
+        <!-- 2026-09-15（実行キュー23）: 撃破済みボス。会話の「進行で切り替わる版」
+             （`linesAfterBoss` / `markAfterBoss`）はこれで切り替わる∴エディタで版を書いたあと
+             実ゲームでその版が出るところまで見るために要る（`window.__game.addDefeatedBoss()` を
+             手で叩かせない）。選ぶと「そのボスを**最も後に**倒した」状態＝進行順でそれより前の
+             必須ダンジョンのボスも撃破済みにする（shared/progression.js bossesDefeatedUpTo）。
+             ⚠️ 選択肢は JS が実マップのボス部屋から組み立てる（editor-io.js buildDefeatedOptions）。 -->
+        <label style="grid-column:1/-1">☠撃破済み<select id="ps-defeated" style="width:280px">
+          <option value="">なし（1体も倒していない）</option>
+        </select></label>
         <label>ATK<input id="ps-atk"  type="number" value="10" min="1" max="99" style="width:54px"></label>
         <label>DEF<input id="ps-def"  type="number" value="10" min="0" max="99" style="width:54px"></label>
         <label><span data-icon="heart" data-icon-px="14">❤</span>ハート<input id="ps-hearts" type="number" value="3" min="1" max="30" style="width:54px"></label>

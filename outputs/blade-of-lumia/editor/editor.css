@@ -787,6 +787,43 @@ html, body {
     font-weight: 600;
 }
 
+/* 会話の「進行で切り替わる版」（実行キュー23）＝基本の欄と区別できるよう左に帯を出す。
+   並びは優先順（上が先に選ばれる）∴入れ子であることが見て分かる必要がある。 */
+.dialog-variant-list {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.dialog-variant {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    padding: 4px 6px;
+    border-left: 3px solid var(--accent);
+    border-radius: 3px;
+    background: var(--bg);
+}
+
+.btn-add-variant {
+    align-self: flex-start;
+    margin-top: 3px;
+}
+
+/* 版の並べ替え（▲▼）＋削除＝見出しの右端にまとめる。
+   ⚠️ 動かせない版（星の欠片＝順に位置を持てない）は disabled で薄く出す＝ボタンを消すと
+   ボタンの数が版ごとに変わり、押す位置がずれる。 */
+.variant-order {
+    display: flex;
+    gap: 3px;
+    align-items: center;
+}
+
+.variant-order .btn:disabled {
+    opacity: 0.35;
+    cursor: default;
+}
+
 /* 条件付きオブジェクト: 未設定は薄く表示 */
 .cond-badge {
     display: inline-block;

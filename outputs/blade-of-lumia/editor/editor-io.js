@@ -1,7 +1,10 @@
 // ── editor-io.js ── 保存・読み込み・プレビュー ─────────────────
 import { state, cellInfoEl, getCurrentStages, getCurrentStage } from './editor-state.js';
 import { canvas } from './editor-canvas.js';
-import { SUB_ITEM_KEYS, presetsFrom } from '../shared/progression.js';
+import {
+	SUB_ITEM_KEYS, presetsFrom, bossesDefeatedAt, bossesDefeatedUpTo,
+} from '../shared/progression.js';
+import { bossVariantOptions } from '../shared/dialog-variants.js';
 
 // ── 保存データ構築 ────────────────────────────────────────────
 export function buildSaveData() {
@@ -63,6 +66,8 @@ export function loadMapData(data, renderLayerTabs, renderDungeonMeta, renderWorl
 	// 進行地点プリセットの選択肢を組み立て直す＝「ボス直前」はマップの isBossRoom を見て
 	// 出す／出さないが決まる∴読み込み前に作った選択肢では足りない（0d-2.8）。
 	buildPreviewPresetOptions();
+	// 撃破済みボスの選択肢も同じ理由で組み立て直す（ボスは実マップのボス部屋から導出する）。
+	buildDefeatedOptions();
 	// showView は editor.js 側で注入する
 	document.dispatchEvent(new CustomEvent('editor:showWorld'));
 }
@@ -127,10 +132,33 @@ const PROGRESS_VARIANTS = [
 ];
 
 export function initPreviewPresetSelect() {
+	buildDefeatedOptions();
 	const sel = document.getElementById('ps-progress');
 	if (!sel) return;
 	buildPreviewPresetOptions();
 	sel.addEventListener('change', () => applyProgressPreset(sel.value));
+}
+
+// ── 撃破済みボスの選択肢（実行キュー23・2026-09-15）─────────────────
+// 会話の「進行で切り替わる版」を実ゲームで見るための口。選ぶのは「**そこまで進めた**1点」で、
+// `bossesDefeatedUpTo()` が「それより前の必須ボス＋自分自身」へ展開する∴一覧は1つ選ぶ形にする
+// （チェックボックスの束にすると倒す組み合わせを手で作らせることになる）。
+// ラベルは会話パネルの版と同じ導出（`shared/dialog-variants.js`）＝2通りの言い方を残さない。
+export function buildDefeatedOptions() {
+	const sel = document.getElementById('ps-defeated');
+	if (!sel) return;
+	const keep = sel.value;
+	for (const opt of [...sel.querySelectorAll('option[data-generated]')]) opt.remove();
+	for (const b of bossVariantOptions(state.mapData)) {
+		const opt = document.createElement('option');
+		opt.value = b.key;
+		// 寄道のボス（魔将 V・魔王 X）も会話の版を持てる（2026-09-15）∴ここで選べば
+		// 「寄道の版が出る」「寄道の版が無い相手では本編の版が残る」の両方を実機で確かめられる。
+		opt.textContent = `${b.label} まで撃破${b.optional ? '（寄道）' : ''}`;
+		opt.dataset.generated = '1';
+		sel.appendChild(opt);
+	}
+	sel.value = [...sel.options].some((o) => o.value === keep) ? keep : '';
 }
 
 // 選択肢を組み立て直す（先頭の「指定なし」は index.html 側の静的 option＝残す）。
@@ -169,6 +197,11 @@ function applyProgressPreset(value) {
 
 	setVal('ps-hearts',   p.hearts);
 	setVal('ps-triforce', p.triforce);
+	// 撃破済みボス＝その地点へ**到達した時点**（自分のボスはまだ倒していない）。
+	// 実行キュー23：これが埋まらないと「D5 まで進んだ装備なのに1体も倒していない」＝
+	// 会話が序盤の版に戻る（進行で切り替わる台詞の確認にならない）。
+	const defeated = bossesDefeatedAt(state.mapData, cpId);
+	setVal('ps-defeated', defeated.length ? defeated[defeated.length - 1] : '');
 	// ティア番号をそのまま入れる（ATK/DEF はゲーム側が装備から導出する∴ここでは触らない）。
 	setVal('ps-sword',  p.sword);
 	setVal('ps-shield', p.shield);
@@ -226,6 +259,9 @@ function getPreviewSettings() {
 		ladder:    document.getElementById('ps-ladder').checked,
 		wingrobe:  document.getElementById('ps-wingrobe').checked,
 		cleared:   document.getElementById('ps-cleared').checked,
+		// 実行キュー23: 撃破済みボス（タイル文字の配列）。選ぶのは「最も後に倒した1体」で、
+		// そこまでの必須ダンジョンのボスは導出して足す。editor.js の ps 定義にも同じ行がある。
+		defeated:  bossesDefeatedUpTo(state.mapData, document.getElementById('ps-defeated')?.value || ''),
 	};
 }
 
@@ -249,6 +285,8 @@ export function openPreview(stX, stY, row, col, ps, TILE) {
 		url += `&ps_ladder=${ps.ladder?1:0}&ps_wingrobe=${ps.wingrobe?1:0}&ps_flute=${ps.flute?1:0}`;
 		url += `&ps_candle=${ps.candle?1:0}`;
 		url += `&ps_silverboomerang=${ps.silverboomerang?1:0}`;
+		// 撃破済みボス＝タイル文字をカンマで並べる（空なら付けない＝1体も倒していない）。
+		if (ps.defeated?.length) url += `&ps_defeated=${encodeURIComponent(ps.defeated.join(','))}`;
 	}
 	frameEl.src = 'about:blank';
 	requestAnimationFrame(() => {

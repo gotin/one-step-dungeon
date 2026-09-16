@@ -5,6 +5,7 @@ import { getCurrentStage, findTilePositions, state, stageKey } from './editor-st
 import { buildExitRegistry, resolveExit, reverseRefs, resolveFluteWarp } from '../shared/exits.js';
 import { mountIconEls, iconText } from '../shared/ui-icons.js';
 import { MARK_KINDS, DEFAULT_MARK_KIND, isStageKey } from '../shared/marks.js';
+import { variantOptions, readEntryVariants, applyEntryVariants, AFTER_KEY } from '../shared/dialog-variants.js';
 
 // ── 右パネル統合呼び出し ──────────────────────────────────────
 export function renderSidePanel() {
@@ -216,6 +217,141 @@ function readNpcEntry(sd, key, tile) {
 	return raw ?? { name: '', lines: [] };
 }
 
+// ── 印の入力欄（基本の `mark` と、進行で切り替わる版の `markAfterBoss[…]` で同じ形）────
+// 属性名だけを差し替えて使い回す＝基本は `data-f`（既存のまま）・版は `data-vf`
+// （同じ `data-f` を版にも使うと、基本の欄を指す既存の探索が版の欄まで拾う）。
+const escAttr = (s) => String(s ?? '')
+	.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+
+function markFieldsHtml(attr, extra, mark) {
+	const kindOpts = Object.entries(MARK_KINDS).map(([k, v]) =>
+		`<option value="${k}" ${(mark.kind ?? DEFAULT_MARK_KIND) === k ? 'selected' : ''}>${v.label}</option>`).join('');
+	return `
+		<label>画面（x,y） <input type="text" value="${escAttr(mark.stage ?? '')}"${extra} ${attr}="markStage" placeholder="例: 6,13"></label>
+		<label>印の名前 <input type="text" value="${escAttr(mark.label ?? '')}"${extra} ${attr}="markLabel" placeholder="例: 草原の洞窟"></label>
+		<label>種類 <select${extra} ${attr}="markKind">${kindOpts}</select></label>
+		<label>層（空ならこの会話がある層） <input type="text" value="${escAttr(mark.layer ?? '')}"${extra} ${attr}="markLayer" placeholder="例: field"></label>
+	`;
+}
+
+/** 入力欄から印1件を作る。画面が空＝印なし（`null`）＝取り消しの手段を1つに寄せる。 */
+function readMarkFields(scope, attr) {
+	const get = (f) => scope.querySelector(`[${attr}="${f}"]`).value.trim();
+	const stage = get('markStage');
+	if (!stage) return null;
+	const mark = { stage, label: get('markLabel') || '目的地', kind: get('markKind') };
+	const layer = get('markLayer');
+	if (layer) mark.layer = layer;
+	return mark;
+}
+
+// 印が付かない入力は赤くする＝ゲーム側で黙って捨てられる前に気づける
+// （検査は tests 側にもあるが、書いた瞬間に分かるのが一番安い）。赤くする条件は3つ：
+//   ①画面の形が違う（`6,13` でない） ②存在しない層 ③その層にその画面が無い。
+function paintMarkFields(scope, attr) {
+	const stageEl = scope.querySelector(`[${attr}="markStage"]`);
+	const layerEl = scope.querySelector(`[${attr}="markLayer"]`);
+	if (!stageEl || !layerEl) return;
+	const sv     = stageEl.value.trim();
+	const lv     = layerEl.value.trim();
+	const layers = state.mapData?.layers ?? {};
+	const lk     = lv || state.currentLayer;      // 空欄＝この会話がある層
+	const layerOk = !lv || lv in layers;
+	// 層が既に赤いときは画面まで赤くしない（原因が1つに見えるようにする）。
+	const stageOk = !sv || (isStageKey(sv) && (!layerOk || sv in (layers[lk]?.stages ?? {})));
+	stageEl.style.borderColor = stageOk ? '' : '#f08080';
+	layerEl.style.borderColor = layerOk ? '' : '#f08080';
+}
+
+// ── 進行で切り替わる版（実行キュー23）──────────────────────────────
+// 版の一覧・条件の選択肢・ボスの表示名は `shared/dialog-variants.js` が導出する（手書きしない）。
+// ⚠️ **並びは勝手に整えない**＝この画面の上下がそのまま実ゲームの優先順（下ほど強い）で、
+//    データのキーの順として保存される（2026-09-15＝▲▼で組み替えられるようにした）。
+//    ∴ここで `sort()` を掛け直すと、ユーザーが組んだ優先順を黙って壊す。
+//    `linesAfter`（星の欠片）だけは単独のキー＝順に位置を持てない∴常に先頭で動かせない。
+function renderDialogVariants(host, entryOf, variants, options) {
+	host.innerHTML = '';
+	if (!variants.length) {
+		host.innerHTML = '<div class="hint">版なし（基本のセリフだけが出る）</div>';
+		return;
+	}
+	variants.forEach((v, i) => {
+		const box = document.createElement('div');
+		box.className = 'dialog-variant';
+		// 同じ条件を2つの版に持たせられないようにする（同じキーへ二重に書けば片方が消える）。
+		const used = new Set(variants.filter((_, j) => j !== i).map((o) => o.key));
+		const opts = options.filter((o) => !used.has(o.key) || o.key === v.key);
+		const known = opts.some((o) => o.key === v.key);
+		// 動かせるか＝星の欠片の版は常に先頭（データに位置を持てない）∴自分も動かず、
+		// 他の版もその上へは行けない。
+		const fixed  = v.key === AFTER_KEY;
+		const upOk   = !fixed && i > 0 && variants[i - 1].key !== AFTER_KEY;
+		const downOk = !fixed && i < variants.length - 1;
+		box.innerHTML = `
+			<div class="link-item-header">
+				<!-- ⚠️ 見出しに説明を足さない＝サイドバーの幅（約200px）で折り返し、削除ボタンが
+				     縦2行に潰れて版ごとに行の高さが不揃いになる（実測で直した）。優先の向きは
+				     一覧の上のヒント1箇所で言う。 -->
+				<span>版 #${i + 1}</span>
+				<span class="variant-order">
+					<button class="btn btn-sm" data-vf="up" title="1つ上へ（優先を下げる）" ${upOk ? '' : 'disabled'}>▲</button>
+					<button class="btn btn-sm" data-vf="down" title="1つ下へ（優先を上げる）" ${downOk ? '' : 'disabled'}>▼</button>
+					<button class="btn btn-sm btn-danger" data-vf="del">削除</button>
+				</span>
+			</div>
+			<label>条件
+				<select data-vf="cond">
+					${known ? '' : `<option value="${escAttr(v.key)}" selected>${escAttr(v.label)}</option>`}
+					${opts.map((o) => `<option value="${o.key}" ${o.key === v.key ? 'selected' : ''}>${o.label}</option>`).join('')}
+				</select>
+			</label>
+			<label>セリフ（1行=1ページ）
+				<textarea data-vf="lines" rows="3">${escAttr(v.lines.join('\n'))}</textarea>
+			</label>
+			${v.supportsMark
+				? `<div class="hint">この版のときに教える目的地（画面を空にすると印なし）</div>${markFieldsHtml('data-vf', '', v.mark ?? {})}`
+				: '<div class="hint">この条件は目的地を持てない（データの形に印の置き場が無い）</div>'}
+		`;
+		const commit = () => applyEntryVariants(entryOf(), variants);
+		box.querySelector('[data-vf="del"]').addEventListener('click', () => {
+			variants.splice(i, 1);
+			commit();
+			renderDialogVariants(host, entryOf, variants, options);
+		});
+		// 並べ替え＝隣と入れ替えるだけ（並びがそのまま優先順＝保存されるキーの順）。
+		const move = (to) => {
+			if (to < 0 || to >= variants.length || variants[to].key === AFTER_KEY) return;
+			[variants[i], variants[to]] = [variants[to], variants[i]];
+			commit();
+			renderDialogVariants(host, entryOf, variants, options);
+		};
+		box.querySelector('[data-vf="up"]').addEventListener('click', () => move(i - 1));
+		box.querySelector('[data-vf="down"]').addEventListener('click', () => move(i + 1));
+		box.querySelector('[data-vf="cond"]').addEventListener('change', (e) => {
+			const opt = options.find((o) => o.key === e.target.value);
+			// 選択肢に無いキー（不明なボス）はそのまま持ち続ける＝勝手に別のボスへ移さない。
+			v.key = e.target.value;
+			if (opt) { v.kind = opt.kind; v.label = opt.label; v.supportsMark = opt.supportsMark; }
+			if (!v.supportsMark) v.mark = null;
+			commit();
+			renderDialogVariants(host, entryOf, variants, options);   // 印の欄が出る/消える
+		});
+		box.querySelectorAll('[data-vf]').forEach((inp) => {
+			const f = inp.dataset.vf;
+			if (f === 'del' || f === 'cond' || f === 'up' || f === 'down') return;
+			const handler = () => {
+				if (f === 'lines') v.lines = inp.value.split('\n').filter((l) => l.trim());
+				else { v.mark = readMarkFields(box, 'data-vf'); paintMarkFields(box, 'data-vf'); }
+				commit();
+			};
+			inp.addEventListener('input', handler);
+			if (inp.tagName === 'SELECT') inp.addEventListener('change', handler);
+		});
+		paintMarkFields(box, 'data-vf');
+		host.appendChild(box);
+	});
+}
+
 function renderNPCs(sd) {
 	const el = document.getElementById('npc-list');
 	el.innerHTML = '';
@@ -227,19 +363,11 @@ function renderNPCs(sd) {
 		const home = npcDataHome(sd, key, tile);
 		const data = readNpcEntry(sd, key, tile);
 		const mark = data.mark ?? {};
-		// 進行で切り替わる版（`linesAfterBoss` / `markAfterBoss`＝キュー17）はこのパネルでは
-		// 編集しない。欄に出しているのは「基本の1組」だけ∴持っている相手はそう明示する
-		// （欄を触ってもこれらは消えないが、見えないと「消えた」と誤解する）。
-		const variants = [];
-		if (data.linesAfterBoss) variants.push(`セリフ ${Object.keys(data.linesAfterBoss).join('/')}`);
-		if (data.markAfterBoss)  variants.push(`目的地 ${Object.keys(data.markAfterBoss).join('/')}`);
-		const variantHint = variants.length
-			? `<div class="hint">進行で切り替わる版あり（${variants.join('・')}）＝この欄では編集しない（触っても消えない）</div>`
-			: '';
+		// キュー23: 進行で切り替わる版（`linesAfterBoss` / `markAfterBoss` / `linesAfter`）も
+		// この下の「進行で切り替わる版」で編集する（旧実装は「持っている」ことを告げるだけで
+		// 編集する道が無く、17番の帯作業で直したい1行のために移行スクリプトを書く羽目になっていた）。
 		const item = document.createElement('div');
 		item.className = 'link-item';
-		const kindOpts = Object.entries(MARK_KINDS).map(([k, v]) =>
-			`<option value="${k}" ${(mark.kind ?? DEFAULT_MARK_KIND) === k ? 'selected' : ''}>${v.label}</option>`).join('');
 		item.innerHTML = `
 			<div class="link-item-header"><span>NPC (${r},${c}) ${TILE_META[tile]?.icon??''}</span><span class="hint">${home}</span></div>
 			<label>キャラ名 <input type="text" value="${data.name??''}" data-key="${key}" data-f="name" placeholder="例: 村人 タロ"></label>
@@ -254,11 +382,10 @@ function renderNPCs(sd) {
 				<textarea data-key="${key}" data-f="lines" rows="4">${(data.lines??[]).join('\n')}</textarea>
 			</label>
 			<div class="hint">教える目的地（話を聞き終えると地図に印が付く。画面を空にすると印なし）</div>
-			<label>画面（x,y） <input type="text" value="${mark.stage??''}" data-key="${key}" data-f="markStage" placeholder="例: 6,13"></label>
-			<label>印の名前 <input type="text" value="${mark.label??''}" data-key="${key}" data-f="markLabel" placeholder="例: 草原の洞窟"></label>
-			<label>種類 <select data-key="${key}" data-f="markKind">${kindOpts}</select></label>
-			<label>層（空ならこの会話がある層） <input type="text" value="${mark.layer??''}" data-key="${key}" data-f="markLayer" placeholder="例: field"></label>
-			${variantHint}
+			${markFieldsHtml('data-f', ` data-key="${key}"`, mark)}
+			<div class="hint">進行で切り替わる版（▲▼で並べ替え＝条件が両方合うときは<b>下にある版が勝つ</b>）</div>
+			<div class="dialog-variant-list"></div>
+			<button class="btn btn-sm btn-add-variant">＋版を追加</button>
 		`;
 		// 保存先の実体を用意する（文字列形式の看板は、いま画面に出している形へ置き換える）。
 		const entry = () => {
@@ -270,35 +397,15 @@ function renderNPCs(sd) {
 		};
 		const writeMark = () => {
 			const e = entry();
-			const get = f => item.querySelector(`[data-f="${f}"]`).value.trim();
-			const stage = get('markStage');
+			const m = readMarkFields(item, 'data-f');
 			// 画面が空＝印なし（欄を消せば取り消せる＝入力の取り消し手段を1つにする）。
-			if (!stage) { delete e.mark; return; }
-			e.mark = { stage, label: get('markLabel') || '目的地', kind: item.querySelector('[data-f="markKind"]').value };
-			const layer = get('markLayer');
-			if (layer) e.mark.layer = layer;
+			if (!m) delete e.mark; else e.mark = m;
 		};
-		// 印が付かない入力は赤くする＝ゲーム側で黙って捨てられる前に気づける
-		// （検査は tests 側にもあるが、書いた瞬間に分かるのが一番安い）。赤くする条件は3つ：
-		//   ①画面の形が違う（`6,13` でない） ②存在しない層 ③その層にその画面が無い。
-		const markStageEl = item.querySelector('[data-f="markStage"]');
-		const markLayerEl = item.querySelector('[data-f="markLayer"]');
-		const paintMark = () => {
-			const sv     = markStageEl.value.trim();
-			const lv     = markLayerEl.value.trim();
-			const layers = state.mapData?.layers ?? {};
-			const lk     = lv || state.currentLayer;      // 空欄＝この会話がある層
-			const layerOk = !lv || lv in layers;
-			// 層が既に赤いときは画面まで赤くしない（原因が1つに見えるようにする）。
-			const stageOk = !sv || (isStageKey(sv) && (!layerOk || sv in (layers[lk]?.stages ?? {})));
-			markStageEl.style.borderColor = stageOk  ? '' : '#f08080';
-			markLayerEl.style.borderColor = layerOk  ? '' : '#f08080';
-		};
-		paintMark();
+		paintMarkFields(item, 'data-f');
 		item.querySelectorAll('[data-key]').forEach(inp => {
 			const handler = () => {
 				const f = inp.dataset.f;
-				if (f.startsWith('mark')) { writeMark(); paintMark(); return; }
+				if (f.startsWith('mark')) { writeMark(); paintMarkFields(item, 'data-f'); return; }
 				const e = entry();
 				if (f === 'lines') e.lines = inp.value.split('\n').filter(l => l.trim());
 				else e[f] = inp.value;
@@ -306,6 +413,23 @@ function renderNPCs(sd) {
 			inp.addEventListener('input', handler);
 			// select は input を出さないブラウザもある∴change も拾う。
 			if (inp.tagName === 'SELECT') inp.addEventListener('change', handler);
+		});
+		// 進行で切り替わる版（キュー23）。読むのは実データ・書くのは `applyEntryVariants`
+		// ＝空の版（`{}` / `[""]`）を作らない・親キーが空になったら消す。
+		const vOptions  = variantOptions(state.mapData);
+		const vList     = readEntryVariants(data, vOptions);
+		const vHost     = item.querySelector('.dialog-variant-list');
+		renderDialogVariants(vHost, entry, vList, vOptions);
+		item.querySelector('.btn-add-variant').addEventListener('click', () => {
+			// 空いている条件のうち選択肢の一番上を既定にする（あとは▲▼で好きな位置へ動かす）。
+			// ⚠️ 足す位置は**末尾**＝押した場所に出る（並びを整え直すと、組んだ優先順が壊れる）。
+			const used = new Set(vList.map((v) => v.key));
+			const opt  = vOptions.find((o) => !used.has(o.key));
+			if (!opt) return;                       // 全条件が埋まっている
+			// 星の欠片の版だけは位置を持てない＝常に先頭へ。
+			if (opt.key === AFTER_KEY) vList.unshift({ ...opt, lines: [], mark: null });
+			else vList.push({ ...opt, lines: [], mark: null });
+			renderDialogVariants(vHost, entry, vList, vOptions);
 		});
 		el.appendChild(item);
 	}
