@@ -1,9 +1,13 @@
 // Phase 4-2: 笛（フルート）のスモークテスト
 //
-// デモ配置（work/blade-of-lumia.json）：
-//   field 9,9 …… fluteEffect={type:'reveal'}。(5,3) に flutePlayed で gate された
-//                  隠しダンジョン入口 '>' （destId='secret_grotto'）。
-//   secret_grotto 0,0 …… fluteEffect={type:'warp', destId:'field_secret_back'}。
+// 配置（work/blade-of-lumia.json）：
+//   field 8,9 …… fluteEffect={type:'reveal'}。(1,10) に flutePlayed で gate された
+//                  秘密の洞窟の入口 '>' （id='field_secret_entrance' / destId='secret_grotto'）。
+//                  ⚠️ 2026-09-17（キュー17-4）にこの入口を field 9,9 (5,3) から移した＝9,9 は
+//                  D3「水の迷宮」の入口と同居していて、印が1画面1つ（markId(layer,stage)）
+//                  ∴秘密の洞窟が印を持てなかった。移設で 8,9 に印を立てられるようになった。
+//   secret_grotto 0,0 …… fluteEffect={type:'warp', layer:'field', stage:'2,0', row:8, col:6}
+//                  ＝片道（入ってきた岸には戻らない・風の環状列石＝D7 の入口画面へ出る）。
 //
 // 検証：
 //  1) ps_flute=1 で笛を所持してプレビューを開始できる
@@ -15,7 +19,7 @@ import { waitForBoard } from './helpers.js';
 
 const GAME = '/blade-of-lumia/game/';
 
-function previewUrl({ layer = 'field', stage = '9,9', row, col, flute = true }) {
+function previewUrl({ layer = 'field', stage = '8,9', row, col, flute = true }) {
 	const p = new URLSearchParams({
 		fromEditor: '1', layer, stage,
 		row: String(row), col: String(col),
@@ -35,7 +39,7 @@ test.describe('Blade of Lumia – 笛', () => {
 	test('ps_flute=1 で笛を所持しアクティブになる', async ({ page }) => {
 		const errors = [];
 		page.on('pageerror', e => errors.push(e.message));
-		await page.goto(previewUrl({ row: 4, col: 4, flute: true }));
+		await page.goto(previewUrl({ row: 1, col: 8, flute: true }));
 		await waitForBoard(page);
 
 		const st = await page.evaluate(() => window.__game.getState());
@@ -45,34 +49,32 @@ test.describe('Blade of Lumia – 笛', () => {
 	});
 
 	test('隠し入口は笛を吹くまで遷移しない', async ({ page }) => {
-		// (4,4) スポーン → 隠し入口 (5,3) の上に乗る（down 2 で y=5・left 2 で x=3）。
+		// (1,8) スポーン → 隠し入口 (1,10) の上に乗る（right 4 ＝ MOVE_STEP 0.5 ×4 で 2 セル東）。
 		// 笛を吹いていないので showConditions が未達＝遷移しない。
-		await page.goto(previewUrl({ row: 4, col: 4, flute: true }));
+		await page.goto(previewUrl({ row: 1, col: 8, flute: true }));
 		await waitForBoard(page);
 
-		await walk(page, 'down', 2);
-		await walk(page, 'left', 2);
+		await walk(page, 'right', 4);
 		// 遷移 setTimeout（100ms）が起きないことを確かめるため少し実時間を待つ
 		await page.waitForTimeout(300);
 		const st = await page.evaluate(() => window.__game.getState());
-		// field 9,9 に留まったまま（secret_grotto に飛んでいない）
+		// field 8,9 に留まったまま（secret_grotto に飛んでいない）
 		expect(st.currentLayer).toBe('field');
-		expect(st.stageKey).toBe('9,9');
+		expect(st.stageKey).toBe('8,9');
 	});
 
 	test('笛を吹く（reveal）と隠し入口が出現し secret_grotto へ入れる', async ({ page }) => {
 		const errors = [];
 		page.on('pageerror', e => errors.push(e.message));
-		await page.goto(previewUrl({ row: 4, col: 4, flute: true }));
+		await page.goto(previewUrl({ row: 1, col: 8, flute: true }));
 		await waitForBoard(page);
 
 		// 笛を吹く → reveal
 		await page.evaluate(() => window.__game.useSubItem());
 		await page.evaluate(() => window.__game.step(1));
 
-		// 隠し入口 (5,3) に乗る（down 2 で y=5・left 2 で x=3）
-		await walk(page, 'down', 2);
-		await walk(page, 'left', 2);
+		// 隠し入口 (1,10) に乗る（right 4 ＝ 2 セル東）
+		await walk(page, 'right', 4);
 		await page.waitForFunction(() => {
 			const s = window.__game.getState();
 			return s.currentLayer === 'secret_grotto';
