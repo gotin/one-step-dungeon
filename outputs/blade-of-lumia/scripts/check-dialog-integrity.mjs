@@ -17,6 +17,9 @@
 //           無い層・無い画面を指している（ゲーム側は警告して捨てる＝黙って消えたように見える）
 //   [error] 本文に「絵がある物の絵文字」が生のまま在る＝`{{key}}` マーカーで書くべき所が
 //           絵文字に戻っている（キュー24・2026-09-10 の退行の検知）
+//   [error] 旧形式の `linesAfter` が残っている＝キュー25 で `linesAfterBoss.after` へ畳んだ
+//           単独キー。ゲームはもう読まない∴放置すると本文が黙って出なくなる
+//           （直し方＝`node scripts/migrate-dialog-after-key.mjs`）
 //
 // ⚠️ `test_mechanics` レイヤーは検証専用ステージ＝対象外（PLAN.md 17 ②）。
 //    ただし**絵文字の検査だけは全レイヤーを見る**（`tests/ui-icons.spec.js` ③ が
@@ -185,6 +188,32 @@ for (const f of rawEmoji) {
 const iconMarkers = countIconMarkers(d);
 for (const u of iconMarkers.unknown) {
   err(`shared/ui-icons.js UI_ICON に無いマーカー {{${u.key}}}：${u.at}「${u.text}」`);
+}
+
+// ── ⑥ 旧形式の版キー（実行キュー25・2026-09-16）──────────────────────────
+// `linesAfter`（エントリ直下の単独キー）は `linesAfterBoss.after` へ畳んだ＝**読み手を1本に
+// した**（`shared/dialog-variants.js`）∴取り残しは「本文があるのに誰も読まない」死データになる。
+// 移行は1度きり（`scripts/migrate-dialog-after-key.mjs`）∴ここは**再発の検知**が仕事。
+// 形の検査＝レイヤーを問わず見る（`test_mechanics` も含む＝絵文字の検査と同じ理由）。
+let legacyAfter = 0;
+for (const [layerName, layer] of Object.entries(d.layers)) {
+  for (const [stageKey, stage] of Object.entries(layer.stages ?? {})) {
+    for (const store of ['signData', 'npcData']) {
+      for (const [posKey, entry] of Object.entries(stage[store] ?? {})) {
+        if (!entry || typeof entry !== 'object' || Array.isArray(entry)) continue;
+        if (entry.linesAfter !== undefined) {
+          legacyAfter++;
+          err(`[${layerName} ${stageKey}] (${posKey}) に旧形式の linesAfter が残っている`
+            + `（linesAfterBoss.after へ移す＝node scripts/migrate-dialog-after-key.mjs）`);
+        }
+        // 印を持てない版に印が付いている＝エディタでは書けない形（手書き／古い道具の痕跡）。
+        if (entry.markAfterBoss?.after !== undefined) {
+          err(`[${layerName} ${stageKey}] (${posKey}) の markAfterBoss.after は無効`
+            + `（星の欠片の版は印を持てない＝ゲームは無視する）`);
+        }
+      }
+    }
+  }
 }
 
 // ── CLI ──────────────────────────────────────────────────────────────────

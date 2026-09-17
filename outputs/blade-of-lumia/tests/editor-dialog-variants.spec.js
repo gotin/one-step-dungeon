@@ -7,6 +7,8 @@
 //      （並び＝**会話1件ごとのキーの順**＝`readEntryVariants()` が読み、`game/ui.js
 //       pickDialogVariant` が同じ順で解く。∴画面で▲▼で組んだ順が保存される＝⑬⑬-2⑭）
 //   ⑬⑬-2⑭ 版を並べ替えられない／並べ替えても保存されない／読み戻しで勝手に整えられる
+//      （⑬-2＝星の欠片の版 `after` も動かせる＝キュー25 で `linesAfterBoss` の予約キーへ畳んだ）
+//   ⑮ 撃破と欠片の2条件が独立に効かない（欠片の版が常に一番弱い位置へ戻る）
 //   ② 版のセリフ／目的地を直しても `linesAfterBoss` / `markAfterBoss` に入らない
 //      （入る場所を間違える＝`signData` と `npcData` の取り違えも含む）
 //   ③ 空の版で `{}` や `[""]` を作る／版を消しても親キーが残る（データの形が壊れる＝⛔）
@@ -37,6 +39,9 @@ const RED = 'rgb(240, 128, 128)';
 const SAGE  = { stage: '7,14', pos: '3,3', rc: [3, 3] };
 const STELE = { stage: '6,13', pos: '7,8' };
 const TARO  = { stage: '7,14', pos: '3,5' };
+// 村人ハナ＝**欠片の版がボスの版の下**に居る唯一の相手（キュー25 (2) で実データに1件作った）。
+// 「倒したが欠片は未回収」と「回収済み」を書き分けている＝2つの条件が独立に効く証拠になる。
+const HANA  = { stage: '6,13', pos: '5,7', rc: [5, 6] };
 
 const entryOf = (stage, pos) => MAP.layers.field.stages[stage].npcData[pos];
 
@@ -112,13 +117,13 @@ test.describe('会話の「進行で切り替わる版」をエディタで編�
 		await expect(variantBlock(item, gIdx).locator('[data-vf="markLabel"]'))
 			.toHaveValue(entry.markAfterBoss.G.label);
 
-		// `default` の版は印を持てる／`linesAfter` の版は持てない（データの形に置き場が無い）
+		// `default` の版は印を持てる／星の欠片の版（`after`）は持てない（欄を出さない＝キュー25 (2)）
 		const defIdx = expected.findIndex((v) => v.key === 'default');
 		await expect(variantBlock(item, defIdx).locator('[data-vf="markStage"]')).toHaveCount(1);
 		const taro = npcItem(page, TARO.pos);
 		const taroVars = readEntryVariants(entryOf(TARO.stage, TARO.pos), OPTIONS);
 		const afterIdx = taroVars.findIndex((v) => v.key === 'after');
-		expect(afterIdx, 'タロの `linesAfter` が消えた＝別の相手で測り直す').toBeGreaterThanOrEqual(0);
+		expect(afterIdx, 'タロの `after` の版が消えた＝別の相手で測り直す').toBeGreaterThanOrEqual(0);
 		await expect(variantBlock(taro, afterIdx).locator('[data-vf="markStage"]')).toHaveCount(0);
 	});
 
@@ -222,7 +227,9 @@ test.describe('会話の「進行で切り替わる版」をエディタで編�
 				for (const src of ['signData', 'npcData']) {
 					for (const [pos, v] of Object.entries(st[src] ?? {})) {
 						if (!v || typeof v !== 'object') continue;
-						if (v.linesAfter === undefined && !v.linesAfterBoss && !v.markAfterBoss) continue;
+						// 版の在り処は `linesAfterBoss` / `markAfterBoss` の2つだけ（キュー25 で
+						// 旧 `linesAfter` を畳んだ＝取り残しの検知は check-dialog-integrity ⑥ の仕事）。
+						if (!v.linesAfterBoss && !v.markAfterBoss) continue;
 						targets.push({ where: `${ln}/${sk}/${src}/${pos}`, entry: v });
 					}
 				}
@@ -273,9 +280,14 @@ test.describe('会話の「進行で切り替わる版」をエディタで編�
 		}
 	});
 
-	test('⑧ ボスの版は「星の欠片を得た後」の版より先に選ばれる', async ({ page }) => {
-		// タロは `linesAfter`（欠片1つ以上）と `linesAfterBoss.G` の両方を持つ＝優先順が出る相手。
+	test('⑧ タロは欠片の版が上・G の版が下＝並びのとおり G が勝つ', async ({ page }) => {
+		// タロは `linesAfterBoss.after`（欠片1つ以上）と `linesAfterBoss.G` の両方を持つ相手。
+		// キュー25 で `after` も同じキーの列に住む∴**勝つのは下にある版**＝実データの並び
+		// （`after` → `default` → `G` …）から期待値を導く（並びを手書きしない）。
 		const taro = entryOf(TARO.stage, TARO.pos);
+		const taroKeys = Object.keys(taro.linesAfterBoss);
+		expect(taroKeys.indexOf('after'), 'タロの `after` が `G` より下にある＝期待値が逆になる')
+			.toBeLessThan(taroKeys.indexOf('G'));
 		const talkToTaro = async (defeated, triforce) => {
 			const p = new URLSearchParams({
 				fromEditor: '1', layer: 'field', stage: TARO.stage, row: '3', col: '4',
@@ -289,9 +301,9 @@ test.describe('会話の「進行で切り替わる版」をエディタで編�
 			await expect(page.locator('#dialog-overlay')).toBeVisible();
 		};
 
-		// 欠片だけ＝`linesAfter`
+		// 欠片だけ＝`linesAfterBoss.after`
 		await talkToTaro([], 1);
-		await expect(page.locator('#dialog-text')).toContainText(taro.linesAfter[0]);
+		await expect(page.locator('#dialog-text')).toContainText(taro.linesAfterBoss.after[0]);
 		// 欠片＋ゴーレム撃破＝`linesAfterBoss.G` が勝つ
 		await talkToTaro(['G'], 1);
 		await expect(page.locator('#dialog-text')).toContainText(taro.linesAfterBoss.G[0]);
@@ -448,21 +460,41 @@ test.describe('会話の「進行で切り替わる版」をエディタで編�
 		expect(Object.keys(saved2.layers.field.stages[SAGE.stage].npcData[SAGE.pos].linesAfterBoss)).toEqual(before);
 	});
 
-	test('⑬-2 星の欠片の版は動かせない（データのキーの順に位置を持てない）', async ({ page }) => {
+	test('⑬-2 星の欠片の版も他の版と同じように動かせる（キュー25）', async ({ page }) => {
+		// 2026-09-16（キュー25）＝`after` は `linesAfterBoss` の予約キーになった∴**位置を持つ**。
+		// 🔴 当て所＝旧実装の「`after` は動かせない（▲▼を殺す・常に先頭）」が戻ったら赤くなる。
+		page.on('dialog', (d) => d.dismiss());
 		await gotoEditorWithMap(page);
 		await openStageInEditor(page, TARO.stage);
-		const item = npcItem(page, TARO.pos);
-		const vars = readEntryVariants(entryOf(TARO.stage, TARO.pos), OPTIONS);
-		expect(vars[0]?.key, 'タロの先頭が `after` でない＝別の相手で測り直す').toBe('after');
+		const item   = npcItem(page, TARO.pos);
+		const before = Object.keys(entryOf(TARO.stage, TARO.pos).linesAfterBoss);
+		expect(before[0], 'タロの先頭が `after` でない＝別の相手で測り直す').toBe('after');
+		expect(before.length, 'タロの版が減った＝別の相手で測り直す').toBeGreaterThan(2);
 
-		// `after` の版＝▲▼ともに押せない
+		// 先頭＝▲だけが押せない（`after` だからではなく**先頭だから**）／▼は押せる
 		await expect(variantBlock(item, 0).locator('[data-vf="up"]')).toBeDisabled();
-		await expect(variantBlock(item, 0).locator('[data-vf="down"]')).toBeDisabled();
-		// その直下の版＝`after` の上へは行けない（▲は押せない）／下へは動ける
-		await expect(variantBlock(item, 1).locator('[data-vf="up"]')).toBeDisabled();
-		await expect(variantBlock(item, 1).locator('[data-vf="down"]')).toBeEnabled();
+		await expect(variantBlock(item, 0).locator('[data-vf="down"]'), '`after` の▼が殺されている').toBeEnabled();
+		// その直下の版＝`after` の上へ行ける（▲が押せる）
+		await expect(variantBlock(item, 1).locator('[data-vf="up"]'), '`after` の上へ行けない').toBeEnabled();
 		// 一番下の版＝▼は押せない
-		await expect(variantBlock(item, vars.length - 1).locator('[data-vf="down"]')).toBeDisabled();
+		await expect(variantBlock(item, before.length - 1).locator('[data-vf="down"]')).toBeDisabled();
+
+		// `after` を1つ下へ＝画面の並びが入れ替わり、キーの順として保存される
+		await variantBlock(item, 0).locator('[data-vf="down"]').click();
+		const want  = [before[1], before[0], ...before.slice(2)];
+		const conds = await item.locator('[data-vf="cond"]').evaluateAll((els) => els.map((e) => e.value));
+		expect(conds, '画面の並びが入れ替わっていない（描き直しで元に戻った）').toEqual(want);
+		const saved = await savedMapData(page);
+		const after = saved.layers.field.stages[TARO.stage].npcData[TARO.pos];
+		expect(Object.keys(after.linesAfterBoss), '`after` を動かした順が保存されない').toEqual(want);
+		expect(after.linesAfterBoss.after, '`after` の本文が入れ替わった')
+			.toEqual(entryOf(TARO.stage, TARO.pos).linesAfterBoss.after);
+		expect(after.linesAfter, '旧形式の linesAfter を書き戻した').toBeUndefined();
+
+		// 戻すと元のキーの順に戻る（往復で差分が残らない）
+		await variantBlock(item, 1).locator('[data-vf="up"]').click();
+		const saved2 = await savedMapData(page);
+		expect(Object.keys(saved2.layers.field.stages[TARO.stage].npcData[TARO.pos].linesAfterBoss)).toEqual(before);
 	});
 
 	test('⑭ 版の並びはエントリのキーの順そのもの（並べ替えない・印だけの版も位置を保つ）', () => {
@@ -470,13 +502,14 @@ test.describe('会話の「進行で切り替わる版」をエディタで編�
 		// （実データは全16エントリが進行順∴実ゲームでは差が出ない＝ここが並びの番人になる）
 		const entry = {
 			lines: ['基本'],
-			linesAfter: ['欠片'],
-			linesAfterBoss: { U: ['U の版'], default: ['default の版'], G: ['G の版'] },
+			// `after`（星の欠片）を**先頭でない位置**に置く＝キュー25 で予約キーになった∴位置を持つ。
+			linesAfterBoss: { U: ['U の版'], after: ['欠片'], default: ['default の版'], G: ['G の版'] },
 			markAfterBoss:  { U: { stage: '9,9', label: '印', kind: 'cave', layer: 'field' } },
 		};
 		const got = readEntryVariants(entry, OPTIONS).map((v) => v.key);
-		// `after` は単独キー＝位置を持てない∴常に先頭。あとはキーの順のまま（進行順に直さない）
-		expect(got, 'キーの順を並べ替えた（進行順に直してしまった）').toEqual(['after', 'U', 'default', 'G']);
+		// キーの順のまま（進行順に直さない・`after` を先頭へ引き上げない）
+		expect(got, 'キーの順を並べ替えた（進行順に直した／`after` を先頭へ動かした）')
+			.toEqual(['U', 'after', 'default', 'G']);
 
 		// 印だけを持つ版（本文が無い）も自分の位置に戻る＝末尾へ追い出さない
 		const markOnly = {
@@ -487,11 +520,60 @@ test.describe('会話の「進行で切り替わる版」をエディタで編�
 			.toEqual(['G', 'N', 'U']);
 
 		// 書き戻しは渡した順でキーを書く＝画面の並びがそのまま保存される
+		// （`after` も同じ列に書く＝旧 `linesAfter` を復活させない＝キュー25 の ⛔）
 		const out = {};
 		applyEntryVariants(out, [
-			{ key: 'U', lines: ['U'] }, { key: 'default', lines: ['d'] }, { key: 'G', lines: ['G'] },
+			{ key: 'U', lines: ['U'] }, { key: 'after', lines: ['欠片'] },
+			{ key: 'default', lines: ['d'] }, { key: 'G', lines: ['G'] },
 		]);
-		expect(Object.keys(out.linesAfterBoss), '書き戻しがキーの順を勝手に整えた').toEqual(['U', 'default', 'G']);
+		expect(Object.keys(out.linesAfterBoss), '書き戻しがキーの順を勝手に整えた')
+			.toEqual(['U', 'after', 'default', 'G']);
+		expect(out.linesAfter, '書き戻しが旧形式の linesAfter を作った').toBeUndefined();
+		// 星の欠片の版は印を持てない＝渡しても `markAfterBoss.after` を作らない
+		const out2 = {};
+		applyEntryVariants(out2, [{ key: 'after', lines: ['欠片'], mark: { stage: '9,9', layer: 'field' } }]);
+		expect(out2.markAfterBoss, '`markAfterBoss.after` を作った（印を持てない版）').toBeUndefined();
+	});
+
+	test('⑮ 撃破と欠片は独立に効く（ハナ＝欠片の版がボスの版の下に居る実データ）', async ({ page }) => {
+		// キュー25 が生まれた場面そのもの（ユーザー指摘 2026-09-15）＝ボスを倒しても欠片は
+		// その場に落ちるだけ（`game/boss.js`＝拾うまで `triforceCount` は増えない）∴
+		// 「倒した直後」と「拾った後」で別の台詞を書ける必要がある。
+		// 🔴 当て所＝`after` が常に一番上（一番弱い）に戻ると、`ps_triforce=1` でも G の版に
+		//    負けて欠片の台詞が出なくなる＝ここが赤くなる。
+		const hana = entryOf(HANA.stage, HANA.pos);
+		const keys = Object.keys(hana.linesAfterBoss ?? {});
+		// 期待値は実データの並びから導く（並びを手書きしない）＝`after` が `G` の**下**に居ること。
+		expect(keys.indexOf('G'), 'ハナが G の版を持っていない＝別の相手で測り直す').toBeGreaterThanOrEqual(0);
+		expect(keys.indexOf('G'), 'ハナの `after` が `G` の上に居る＝この検査は空振りする')
+			.toBeLessThan(keys.indexOf('after'));
+		expect(hana.linesAfterBoss.G[0], '2つの版の1行目が同じ＝切り替わりを測れない')
+			.not.toBe(hana.linesAfterBoss.after[0]);
+
+		const talkToHana = async (defeated, triforce) => {
+			const p = new URLSearchParams({
+				fromEditor: '1', layer: 'field', stage: HANA.stage,
+				row: String(HANA.rc[0]), col: String(HANA.rc[1]), ps_triforce: String(triforce),
+			});
+			if (defeated.length) p.set('ps_defeated', defeated.join(','));
+			await page.goto(`${GAME_URL}?${p.toString()}`);
+			await waitForBoard(page);
+			await page.evaluate(() => window.__game.setHeroDir('right'));
+			await page.evaluate(() => window.__game.swordAttack());
+			await expect(page.locator('#dialog-overlay')).toBeVisible();
+		};
+
+		// ① 何も倒していない＝基本のセリフ
+		await talkToHana([], 0);
+		await expect(page.locator('#dialog-text')).toContainText(hana.lines[0]);
+		// ② 倒したが欠片は未回収＝ボスの版（奥に光が残っていると教える）
+		await talkToHana(['G'], 0);
+		await expect(page.locator('#dialog-text'), '撃破直後にボスの版が出ない')
+			.toContainText(hana.linesAfterBoss.G[0]);
+		// ③ 欠片を回収済み＝下に居る欠片の版が勝つ
+		await talkToHana(['G'], 1);
+		await expect(page.locator('#dialog-text'), '欠片を拾っても版が切り替わらない（`after` が上に戻った？）')
+			.toContainText(hana.linesAfterBoss.after[0]);
 	});
 
 	test('⑩ ps_defeated は2つのプレビュー経路とゲーム側に揃っている（静的検査）', () => {

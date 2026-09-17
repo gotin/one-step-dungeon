@@ -2,7 +2,8 @@
 //
 // 検証:
 //  1) 初期状態（triforceCount=0）で老賢者に話しかけると通常台詞が出る
-//  2) triforceCount>0（ボス撃破済み）で老賢者に話しかけると linesAfter 台詞が出る
+//  2) triforceCount>0（星の欠片1つ以上）で老賢者に話しかけると欠片の版の台詞が出る
+//     （版の在り処＝`linesAfterBoss.after`。2026-09-16 のキュー25 で旧 `linesAfter` から畳んだ）
 //  3) 通常台詞は「旅立つのじゃ」を含む（PLAN.md の設定確認）
 //  4) ボス撃破後台詞は「よくやった」を含む
 import { test, expect } from '@playwright/test';
@@ -54,7 +55,7 @@ test.describe('Blade of Lumia – NPC台詞', () => {
 		await dialogEl.waitFor({ state: 'visible', timeout: 3000 }).catch(() => {});
 		const text = await page.locator('#dialog-text').textContent().catch(() => '');
 		if (text) {
-			// linesAfter が表示されているなら「ボスを倒したか」系の台詞のはず
+			// 欠片の版が表示されているなら「ボスを倒したか」系の台詞のはず
 			expect(text).not.toBe('');
 		}
 		expect(errors).toHaveLength(0);

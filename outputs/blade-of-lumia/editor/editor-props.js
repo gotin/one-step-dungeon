@@ -5,7 +5,7 @@ import { getCurrentStage, findTilePositions, state, stageKey } from './editor-st
 import { buildExitRegistry, resolveExit, reverseRefs, resolveFluteWarp } from '../shared/exits.js';
 import { mountIconEls, iconText } from '../shared/ui-icons.js';
 import { MARK_KINDS, DEFAULT_MARK_KIND, isStageKey } from '../shared/marks.js';
-import { variantOptions, readEntryVariants, applyEntryVariants, AFTER_KEY } from '../shared/dialog-variants.js';
+import { variantOptions, readEntryVariants, applyEntryVariants } from '../shared/dialog-variants.js';
 
 // ── 右パネル統合呼び出し ──────────────────────────────────────
 export function renderSidePanel() {
@@ -268,7 +268,8 @@ function paintMarkFields(scope, attr) {
 // ⚠️ **並びは勝手に整えない**＝この画面の上下がそのまま実ゲームの優先順（下ほど強い）で、
 //    データのキーの順として保存される（2026-09-15＝▲▼で組み替えられるようにした）。
 //    ∴ここで `sort()` を掛け直すと、ユーザーが組んだ優先順を黙って壊す。
-//    `linesAfter`（星の欠片）だけは単独のキー＝順に位置を持てない∴常に先頭で動かせない。
+//    2026-09-16（キュー25）＝星の欠片の版（`after`）も `linesAfterBoss` の予約キーへ畳んだ∴
+//    **他の版と同じように▲▼で動かせる**（ボスの版より下に置けば「欠片を拾った後」が勝つ）。
 function renderDialogVariants(host, entryOf, variants, options) {
 	host.innerHTML = '';
 	if (!variants.length) {
@@ -282,11 +283,9 @@ function renderDialogVariants(host, entryOf, variants, options) {
 		const used = new Set(variants.filter((_, j) => j !== i).map((o) => o.key));
 		const opts = options.filter((o) => !used.has(o.key) || o.key === v.key);
 		const known = opts.some((o) => o.key === v.key);
-		// 動かせるか＝星の欠片の版は常に先頭（データに位置を持てない）∴自分も動かず、
-		// 他の版もその上へは行けない。
-		const fixed  = v.key === AFTER_KEY;
-		const upOk   = !fixed && i > 0 && variants[i - 1].key !== AFTER_KEY;
-		const downOk = !fixed && i < variants.length - 1;
+		// 動かせるか＝端でないかだけ（どの版も同じキーの列に住む＝位置を持てない版はもう無い）。
+		const upOk   = i > 0;
+		const downOk = i < variants.length - 1;
 		box.innerHTML = `
 			<div class="link-item-header">
 				<!-- ⚠️ 見出しに説明を足さない＝サイドバーの幅（約200px）で折り返し、削除ボタンが
@@ -310,7 +309,7 @@ function renderDialogVariants(host, entryOf, variants, options) {
 			</label>
 			${v.supportsMark
 				? `<div class="hint">この版のときに教える目的地（画面を空にすると印なし）</div>${markFieldsHtml('data-vf', '', v.mark ?? {})}`
-				: '<div class="hint">この条件は目的地を持てない（データの形に印の置き場が無い）</div>'}
+				: '<div class="hint">この条件は目的地を持てない（星の欠片の版は印を持たないと決めた＝ゲームは無視する）</div>'}
 		`;
 		const commit = () => applyEntryVariants(entryOf(), variants);
 		box.querySelector('[data-vf="del"]').addEventListener('click', () => {
@@ -320,7 +319,7 @@ function renderDialogVariants(host, entryOf, variants, options) {
 		});
 		// 並べ替え＝隣と入れ替えるだけ（並びがそのまま優先順＝保存されるキーの順）。
 		const move = (to) => {
-			if (to < 0 || to >= variants.length || variants[to].key === AFTER_KEY) return;
+			if (to < 0 || to >= variants.length) return;
 			[variants[i], variants[to]] = [variants[to], variants[i]];
 			commit();
 			renderDialogVariants(host, entryOf, variants, options);
@@ -384,6 +383,10 @@ function renderNPCs(sd) {
 			<div class="hint">教える目的地（話を聞き終えると地図に印が付く。画面を空にすると印なし）</div>
 			${markFieldsHtml('data-f', ` data-key="${key}"`, mark)}
 			<div class="hint">進行で切り替わる版（▲▼で並べ替え＝条件が両方合うときは<b>下にある版が勝つ</b>）</div>
+			${data.linesAfter !== undefined
+				? '<div class="hint" style="color:#f08080">⚠️ 旧形式の <code>linesAfter</code> が残っている＝この本文はゲームに出ない。'
+					+ '<code>node scripts/migrate-dialog-after-key.mjs</code> を実行して「星の欠片…」の版へ移す。</div>'
+				: ''}
 			<div class="dialog-variant-list"></div>
 			<button class="btn btn-sm btn-add-variant">＋版を追加</button>
 		`;
@@ -426,9 +429,7 @@ function renderNPCs(sd) {
 			const used = new Set(vList.map((v) => v.key));
 			const opt  = vOptions.find((o) => !used.has(o.key));
 			if (!opt) return;                       // 全条件が埋まっている
-			// 星の欠片の版だけは位置を持てない＝常に先頭へ。
-			if (opt.key === AFTER_KEY) vList.unshift({ ...opt, lines: [], mark: null });
-			else vList.push({ ...opt, lines: [], mark: null });
+			vList.push({ ...opt, lines: [], mark: null });
 			renderDialogVariants(vHost, entry, vList, vOptions);
 		});
 		el.appendChild(item);

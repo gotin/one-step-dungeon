@@ -39,6 +39,9 @@ export function forEachMapText(map, visit) {
 		if (Array.isArray(entry)) { linesAt(entry, at); return; }
 		if (!entry || typeof entry !== 'object') return;
 		linesAt(entry.lines, `${at}.lines`);
+		// 旧 `linesAfter`（キュー25 で `linesAfterBoss.after` へ畳んだ）も**歩き続ける**＝
+		// 取り残しがあっても本文が絵文字の検査から隠れないようにする（形の是非は
+		// `scripts/check-dialog-integrity.mjs` の❌検査が言う＝役割を分ける）。
 		linesAt(entry.linesAfter, `${at}.linesAfter`);
 		for (const [boss, arr] of Object.entries(entry.linesAfterBoss ?? {})) {
 			linesAt(arr, `${at}.linesAfterBoss[${boss}]`);

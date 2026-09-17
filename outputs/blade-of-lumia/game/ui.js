@@ -397,7 +397,7 @@ export function createUi(deps) {
 			else                                      hit = !!defeated?.has(v.key);
 			if (!hit) continue;
 			if (v.lines.length) lines = v.lines;
-			// `linesAfter` の版は印を持てない（データに置き場が無い）∴`mark` は最初から null。
+			// 星の欠片の版（`after`）は印を持てない（欄を出していない）∴`mark` は最初から null。
 			if (v.mark) mark = v.mark;
 		}
 		if (!lines) lines = data.lines ?? ['…'];

@@ -2,9 +2,18 @@
 //
 // 会話データ（`signData` / `npcData` の1エントリ）は本文とマークを**版**で持てる：
 //   ・`lines` / `mark`                       … 基本（版ではない＝いつでも出る土台）
-//   ・`linesAfter`                           … 星の欠片を1つ以上見た後（マークは持てない）
-//   ・`linesAfterBoss[タイル文字]` / `markAfterBoss[タイル文字]` … そのボスが「最も後に倒した」とき
+//   ・`linesAfterBoss[タイル文字]` / `markAfterBoss[タイル文字]` … そのボスを倒した後
 //   ・`linesAfterBoss.default`   / `markAfterBoss.default`      … 1体でも倒していれば
+//   ・`linesAfterBoss.after`（予約キー）      … 星の欠片を1つ以上手にした後（印は持てない）
+//
+// ⚠️ **旧 `linesAfter`（エントリ直下の単独キー）は 2026-09-16 に `linesAfterBoss.after` へ畳んだ**
+//    （実行キュー25・ユーザー指摘「星のカケラを一つ以上手にした後を二つめ以降におけるように
+//    しておく意味はある」＝単独キーだと優先順（キーの順）の中に位置を持てず、常に一番弱い側に
+//    固定されていた）。**旧キーはもう読まない＝二重化を作らない**（キュー25 の ⛔）。
+//    実データ6件は `scripts/migrate-dialog-after-key.mjs` で移行済みで、取り残しは
+//    `scripts/check-dialog-integrity.mjs` の❌検査が鳴る（黙って本文が消える形にしない）。
+//    ボス撃破と欠片の所持は**独立した状態**（`game/boss.js` は欠片をその場に落とすだけ＝拾うまで
+//    `triforceCount` は増えない）∴「倒したが未回収」と「回収済み」を版で書き分けられる。
 //
 // ここに置く理由＝**読み手が2つ以上ある**（エディタの版パネル／今後の移行スクリプト／検査）∴
 // 「どんな版があるか」「どのボスが選べるか」「その表示名」を各所に手書きしない
@@ -24,8 +33,8 @@
 //    ブロックの順でキーを書く＝エディタの▲▼がそのままデータの順になる。
 //    ⚠️ JSON のキーの順が意味を持つ＝**会話データを書き換える道具はキーの順を保つこと**
 //    （エディタは往復で1バイトも変えない＝`tests/editor-dialog-variants.spec.js` ⑥が縛る）。
-//    ただし `linesAfter`（星の欠片）は**単独のキー＝順の中に位置を持てない**∴常に一番上
-//    （＝一番弱い）として扱う。
+//    星の欠片の版（`after`）も 2026-09-16 以降は**同じキーの列に住む**∴他の版と同じように
+//    ▲▼で動かせる（＝ボスの版より下に置けば「拾った後」の方が勝つ）。
 //
 // 読み手：
 //   ・`editor/editor-props.js`（NPC・看板パネルの「進行で切り替わる版」）
@@ -52,7 +61,11 @@ export function bossVariantOptions(map) {
 /** 版の種類＝マークを持てるか／条件文の書き方が違う3種 */
 export const VARIANT_KIND = { BOSS: 'boss', DEFAULT: 'default', AFTER: 'after' };
 
-/** `linesAfter`（マークを持てない版）のキー。データ側にキーが無い＝欄も出さない。 */
+/**
+ * 星の欠片を1つ以上手にした後の版のキー（`linesAfterBoss` の予約キー＝`default` と同じ住み方）。
+ * ⚠️ 印は持てない（`markAfterBoss.after` は書かない＝キュー25 の決定 (2)＝構造上は置けるが、
+ * 「欠片を拾ったら行き先が変わる」という表現が要るまで欄を増やさない）。
+ */
 export const AFTER_KEY = 'after';
 
 /**
@@ -118,8 +131,8 @@ function mergeKeyOrder(a, b) {
  *    そのまま実ゲームの優先順になる。`variantOptions()` の並びは表示名と種類を引くためだけに使う。
  * `options` に無いキー（消えたボス・打ち間違い）も落とさず**その位置のまま**出す
  * ＝エディタで開いた瞬間に黙って消えるのを防ぐ（往復で1バイトも変えないため）。
- * `linesAfter`（星の欠片）は単独のキー＝順に位置を持てない∴常に先頭（一番弱い）。
- * @param {object} entry 会話データ1件（`{name, lines, mark, linesAfter, linesAfterBoss, markAfterBoss}`）
+ * ⚠️ 旧 `linesAfter`（単独キー）は**読まない**＝`linesAfterBoss.after` へ移行済み（キュー25）。
+ * @param {object} entry 会話データ1件（`{name, lines, mark, linesAfterBoss, markAfterBoss}`）
  * @param {{key:string, kind:string, label:string, supportsMark:boolean}[]} options
  * @returns {{key:string, kind:string, label:string, supportsMark:boolean, lines:string[], mark:object|null}[]}
  */
@@ -129,11 +142,6 @@ export function readEntryVariants(entry, options) {
 	const byKey = new Map((options ?? []).map((o) => [o.key, o]));
 
 	const out = [];
-	if (entry?.linesAfter !== undefined) {
-		const opt = byKey.get(AFTER_KEY)
-			?? { key: AFTER_KEY, kind: VARIANT_KIND.AFTER, label: AFTER_KEY, supportsMark: false };
-		out.push({ ...opt, lines: asLines(entry.linesAfter), mark: null });
-	}
 	for (const key of mergeKeyOrder(Object.keys(lab), Object.keys(mab))) {
 		// 選択肢に無いキー（不明なボス）＝形は boss として扱い、名前が引けないことを明示する。
 		const opt = byKey.get(key)
@@ -148,7 +156,7 @@ export function readEntryVariants(entry, options) {
 }
 
 /**
- * 版の一覧を会話エントリへ書き戻す（`linesAfter` / `linesAfterBoss` / `markAfterBoss` を作り直す）。
+ * 版の一覧を会話エントリへ書き戻す（`linesAfterBoss` / `markAfterBoss` を作り直す）。
  * ⚠️ **キーは渡された順で書く＝その順が優先順**（`readEntryVariants()` が読み返す並び）∴
  *    ブロックを入れ替えたら入れ替わった順で保存される（エディタの▲▼の実体）。
  * ⚠️ **空の版は書かない**＝`{}` や `[""]` が残るとゲーム側が「本文がある」と誤判定し得る。
@@ -159,19 +167,13 @@ export function readEntryVariants(entry, options) {
 export function applyEntryVariants(entry, blocks) {
 	const lab = {};
 	const mab = {};
-	let after = null;
 	for (const b of blocks ?? []) {
 		const lines = (b.lines ?? []).map((s) => String(s)).filter((s) => s.trim());
-		const isAfter = b.key === AFTER_KEY;
-		if (isAfter) {
-			if (lines.length) after = lines;
-			continue;                                  // `linesAfter` はマークを持てない
-		}
 		if (!b.key) continue;
 		if (lines.length) lab[b.key] = lines;
-		if (b.mark) mab[b.key] = b.mark;
+		// 星の欠片の版は印を持てない＝`markAfterBoss.after` を作らない（欄も出していない）。
+		if (b.mark && b.key !== AFTER_KEY) mab[b.key] = b.mark;
 	}
-	if (after) entry.linesAfter = after; else delete entry.linesAfter;
 	if (Object.keys(lab).length) entry.linesAfterBoss = lab; else delete entry.linesAfterBoss;
 	if (Object.keys(mab).length) entry.markAfterBoss = mab; else delete entry.markAfterBoss;
 }
