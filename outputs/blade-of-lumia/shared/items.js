@@ -193,6 +193,31 @@ export const ITEM_META = {
 	},
 };
 
+// ── 「その道具を持っているか」の単一の真実（実行キュー26）──────────────────
+// なぜ1本にするか＝**所持の置き場が道具によって違う**（2026-09-17 に実装を読んで確認）：
+//   ・`player.subItems[id]`  … ブーメラン／爆弾／弓矢／笛／ロウソク（`giveSubItem` の既定の道）
+//   ・`player.hasLadder`     … はしご（`type:'passive'` ∴サブアイテム欄に入らない）
+// ∴読み手（会話の版の判定・今後の看板や検査）が各々 `subItems` を見ると、はしごだけ
+// 常に「未所持」になる。判定はここだけに書く（[[blade-tile-sprite-single-source]] と同じ作法）。
+//
+// ⚠️ **数（`count`）は見ない＝「手に入れたか」で判定する。** 爆弾を撃ち切って `count:0` に
+//    なっても「火薬は手に入れている」は真∴看板の文（「硬い砂岩は火薬でしか崩れぬ」→
+//    「今の荷なら砕けよう」）が残弾で行き来しない。残弾で分けたい表現が出てきたら別に足す。
+export const ITEM_OWNED_FLAG = { ladder: 'hasLadder' };
+
+/**
+ * プレイヤーがその道具を手に入れているか。
+ * @param {object} player `game/game.js` の player（`subItems` と `has*` フラグを持つ）
+ * @param {string} id `ITEM_META` の id（`shared/progression.js` の `SUB_ITEM_KEYS` が候補）
+ * @returns {boolean}
+ */
+export function ownsItem(player, id) {
+	if (!player || !id) return false;
+	const flag = ITEM_OWNED_FLAG[id];
+	if (flag) return !!player[flag];
+	return !!player.subItems?.[id];
+}
+
 // ── 各攻撃の breakPower ────────────────────────────────────────
 export const ATTACK_BREAK_POWER = {
 	sword:     0,  // 剣では壊せない

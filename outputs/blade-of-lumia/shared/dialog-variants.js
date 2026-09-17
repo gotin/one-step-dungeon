@@ -5,6 +5,8 @@
 //   ・`linesAfterBoss[タイル文字]` / `markAfterBoss[タイル文字]` … そのボスを倒した後
 //   ・`linesAfterBoss.default`   / `markAfterBoss.default`      … 1体でも倒していれば
 //   ・`linesAfterBoss.after`（予約キー）      … 星の欠片を1つ以上手にした後（印は持てない）
+//   ・`linesAfterBoss['item:<道具id>']` / `markAfterBoss['item:<道具id>']`
+//                                            … その道具を手にした後（実行キュー26・印を持てる）
 //
 // ⚠️ **旧 `linesAfter`（エントリ直下の単独キー）は 2026-09-16 に `linesAfterBoss.after` へ畳んだ**
 //    （実行キュー25・ユーザー指摘「星のカケラを一つ以上手にした後を二つめ以降におけるように
@@ -40,8 +42,9 @@
 //   ・`editor/editor-props.js`（NPC・看板パネルの「進行で切り替わる版」）
 //   ・`tests/editor-dialog-variants.spec.js`
 
-import { labelOf, bossesInOrder } from './progression.js';
+import { labelOf, bossesInOrder, SUB_ITEM_KEYS } from './progression.js';
 import { ENEMY_META } from './enemies.js';
+import { ITEM_META } from './items.js';
 
 /**
  * 選べるボスの一覧（進行順）＝実マップのボス部屋から導出する。手書きの表は作らない。
@@ -58,8 +61,40 @@ export function bossVariantOptions(map) {
 	}));
 }
 
-/** 版の種類＝マークを持てるか／条件文の書き方が違う3種 */
-export const VARIANT_KIND = { BOSS: 'boss', DEFAULT: 'default', AFTER: 'after' };
+/** 版の種類＝マークを持てるか／条件文の書き方が違う4種 */
+export const VARIANT_KIND = { BOSS: 'boss', DEFAULT: 'default', AFTER: 'after', ITEM: 'item' };
+
+/**
+ * 道具の所持を条件にする版のキーの接頭辞（実行キュー26）＝`item:<ITEM_META の id>`。
+ * ボスの版のキーは**ボスのタイル文字1字**・予約キーは `default` と `after`∴接頭辞で衝突を避ける。
+ * ⚠️ **住まわせる先は `linesAfterBoss` / `markAfterBoss` のまま**（名前はボス由来だが、
+ *    優先順は「1本のキーの列の下ほど強い」1本の規則で解く∴列を分けない＝キュー26 の ⛔）。
+ */
+export const ITEM_KEY_PREFIX = 'item:';
+
+/** 道具 id → 版のキー */
+export function itemVariantKey(id) { return `${ITEM_KEY_PREFIX}${id}`; }
+
+/** 版のキー → 道具 id（道具の版でなければ null） */
+export function itemIdOfVariantKey(key) {
+	return typeof key === 'string' && key.startsWith(ITEM_KEY_PREFIX)
+		? key.slice(ITEM_KEY_PREFIX.length)
+		: null;
+}
+
+/**
+ * 選べる道具の一覧＝`shared/progression.js` の `SUB_ITEM_KEYS`（プレビュー設定のチェックボックスと
+ * 1対1の「拾える道具」）から導出する。**手書きの表を作らない**
+ * （[[blade-enemy-tables-derive-from-meta]]）∴道具が増えたらここも自動で増える。
+ * @returns {{key:string, itemId:string, label:string}[]}
+ */
+export function itemVariantOptions() {
+	return SUB_ITEM_KEYS.map((id) => ({
+		key: itemVariantKey(id),
+		itemId: id,
+		label: `${ITEM_META[id]?.name ?? id} を手にした後`,
+	}));
+}
 
 /**
  * 星の欠片を1つ以上手にした後の版のキー（`linesAfterBoss` の予約キー＝`default` と同じ住み方）。
@@ -94,6 +129,16 @@ export function variantOptions(map) {
 		opts.push({
 			key: o.key, kind: VARIANT_KIND.BOSS, label: `${o.label} を倒した後`,
 			supportsMark: true, optional: o.optional,
+		});
+	}
+	// 道具の版（キュー26）＝**既定ではボスの版より下**＝新しく足したとき既定で強い側に入る。
+	// 理由＝「その道具を持っている」は踏破より具体的な条件で使う（例＝爆弾を手にしたら
+	// 「今の荷なら砕けよう」＋壊せる岩の印）。会話ごとに▲▼で組み替えられる∴既定でしかない。
+	// **印を持てる**＝道具を手にしたら行き先を教える表現（岩の奥・水路の先）に使う。
+	for (const o of itemVariantOptions()) {
+		opts.push({
+			key: o.key, kind: VARIANT_KIND.ITEM, label: o.label,
+			supportsMark: true, itemId: o.itemId,
 		});
 	}
 	return opts;
@@ -143,9 +188,13 @@ export function readEntryVariants(entry, options) {
 
 	const out = [];
 	for (const key of mergeKeyOrder(Object.keys(lab), Object.keys(mab))) {
-		// 選択肢に無いキー（不明なボス）＝形は boss として扱い、名前が引けないことを明示する。
+		// 選択肢に無いキー（不明なボス・不明な道具）＝名前が引けないことを明示して**そのまま持つ**
+		// （黙って別の条件へ移さない・エディタで開いただけで消えない）。
+		const unknownItem = itemIdOfVariantKey(key);
 		const opt = byKey.get(key)
-			?? { key, kind: VARIANT_KIND.BOSS, label: `${key}（不明なボス）`, supportsMark: true };
+			?? (unknownItem !== null
+				? { key, kind: VARIANT_KIND.ITEM, label: `${unknownItem}（不明な道具）`, supportsMark: true }
+				: { key, kind: VARIANT_KIND.BOSS, label: `${key}（不明なボス）`, supportsMark: true });
 		out.push({
 			...opt,
 			lines: asLines(lab[key]),

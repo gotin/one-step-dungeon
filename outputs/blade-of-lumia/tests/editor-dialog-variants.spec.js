@@ -22,9 +22,13 @@
 import { test, expect } from '@playwright/test';
 import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { variantOptions, bossVariantOptions, readEntryVariants, applyEntryVariants } from '../shared/dialog-variants.js';
+import {
+	variantOptions, bossVariantOptions, readEntryVariants, applyEntryVariants,
+	itemVariantOptions, itemVariantKey, itemIdOfVariantKey, VARIANT_KIND,
+} from '../shared/dialog-variants.js';
 import { ENEMY_META } from '../shared/enemies.js';
-import { bossesDefeatedUpTo } from '../shared/progression.js';
+import { ITEM_META, ownsItem } from '../shared/items.js';
+import { bossesDefeatedUpTo, SUB_ITEM_KEYS } from '../shared/progression.js';
 import { waitForBoard } from './helpers.js';
 
 const MAP_PATH = fileURLToPath(new URL('../work/blade-of-lumia.json', import.meta.url));
@@ -574,6 +578,143 @@ test.describe('会話の「進行で切り替わる版」をエディタで編�
 		await talkToHana(['G'], 1);
 		await expect(page.locator('#dialog-text'), '欠片を拾っても版が切り替わらない（`after` が上に戻った？）')
 			.toContainText(hana.linesAfterBoss.after[0]);
+	});
+
+	// ── 道具の所持を条件にする版（実行キュー26・2026-09-17 ユーザー指示）────────
+	// 🔴 当て所＝**「その道具を手にした後」でセリフ／印を切り替えられる**。優先順の規則は
+	//    ボスの版とまったく同じ（1本のキーの列・下ほど勝つ）∴規則を別に足していないことも見る。
+	//    ⑱は**2状態**で測る（持たない／持つ）＝片方だけだと「常にその版が出る」実装でも緑になる。
+	test('⑯ 道具の版は SUB_ITEM_KEYS から導出され、ボスの版より下・印を持てる', () => {
+		const items = itemVariantOptions();
+		expect(items.map((o) => o.itemId), '道具の一覧が SUB_ITEM_KEYS と違う（手書きの表を作った？）')
+			.toEqual([...SUB_ITEM_KEYS]);
+		for (const o of items) {
+			expect(o.key).toBe(`item:${o.itemId}`);
+			expect(itemIdOfVariantKey(o.key), 'キー→道具 id の読み戻しが合わない').toBe(o.itemId);
+			expect(o.label, '表示名に道具の名前が入っていない').toContain(ITEM_META[o.itemId].name);
+		}
+		// キーの名前空間＝ボスのタイル文字1字・予約キーと衝突しない
+		expect(itemIdOfVariantKey('G'), 'ボスのタイル文字を道具のキーと読んだ').toBeNull();
+		expect(itemIdOfVariantKey('after')).toBeNull();
+		expect(itemIdOfVariantKey('default')).toBeNull();
+
+		// 選択肢の並び＝道具の版は**ボスの版より下**（新しく足したとき既定で強い側に入る）
+		const keys      = OPTIONS.map((o) => o.key);
+		const lastBoss  = Math.max(...OPTIONS.filter((o) => o.kind === VARIANT_KIND.BOSS).map((o) => keys.indexOf(o.key)));
+		const firstItem = keys.indexOf(itemVariantKey(SUB_ITEM_KEYS[0]));
+		expect(firstItem, '道具の版が選択肢に無い').toBeGreaterThan(-1);
+		expect(firstItem, '道具の版がボスの版より上に並んだ（既定の強さが逆）').toBeGreaterThan(lastBoss);
+		// 印を持てる（道具を手にしたら行き先を教える表現に使う）
+		for (const o of OPTIONS.filter((o) => o.kind === VARIANT_KIND.ITEM)) {
+			expect(o.supportsMark, '道具の版が印を持てない').toBe(true);
+		}
+
+		// 読み戻しは**位置を保つ**＝道具の版もキーの順そのまま（進行順に直さない）
+		const entry = {
+			linesAfterBoss: { [itemVariantKey('bomb')]: ['爆弾'], G: ['G'], 'item:hammer': ['未知'] },
+		};
+		const got = readEntryVariants(entry, OPTIONS);
+		expect(got.map((v) => v.key)).toEqual(['item:bomb', 'G', 'item:hammer']);
+		// 選択肢に無い道具（打ち間違い・改名）も落とさず「不明な道具」として持つ
+		expect(got[2].kind, '未知の道具のキーをボスの版として読んだ').toBe(VARIANT_KIND.ITEM);
+		expect(got[2].label).toContain('不明な道具');
+	});
+
+	test('⑯-2 所持の判定は道具ごとの置き場を吸収する（はしごは subItems に入らない）', () => {
+		// `giveSubItem` の `type:'passive'` ∴はしごは `player.hasLadder`＝`subItems` だけ見る
+		// 実装だと**はしごの版が永久にヒットしない**（この行が歯）。
+		expect(ownsItem({ subItems: { bomb: { count: 3 } } }, 'bomb')).toBe(true);
+		expect(ownsItem({ subItems: {} }, 'bomb')).toBe(false);
+		expect(ownsItem({ hasLadder: true, subItems: {} }, 'ladder'), 'はしごの所持を見ていない').toBe(true);
+		expect(ownsItem({ hasLadder: false, subItems: {} }, 'ladder')).toBe(false);
+		// 数は見ない＝撃ち切っても「手に入れた」は真（看板の文が残弾で行き来しない）
+		expect(ownsItem({ subItems: { bomb: { count: 0 } } }, 'bomb'), '残弾 0 で未所持に落ちた').toBe(true);
+		expect(ownsItem(null, 'bomb')).toBe(false);
+		expect(ownsItem({ subItems: {} }, '')).toBe(false);
+	});
+
+	test('⑰ エディタで道具の版を足すと linesAfterBoss["item:bomb"] に入る（往復も不変）', async ({ page }) => {
+		page.on('dialog', (d) => d.dismiss());
+		const KEY = itemVariantKey('bomb');
+		await gotoEditorWithMap(page);
+		await openStageInEditor(page, STELE.stage);
+		const item   = npcItem(page, STELE.pos);
+		const before = entryOf(STELE.stage, STELE.pos);
+
+		await item.locator('.btn-add-variant').click();
+		// 足した版を掴む＝元から在るキー以外の条件（並びに挿し込まれる∴番号で掴まない）
+		const conds0 = await item.locator('[data-vf="cond"]').evaluateAll((els) => els.map((e) => e.value));
+		const addKey = conds0.find((k) => !readEntryVariants(before, OPTIONS).some((v) => v.key === k));
+		const added  = variantBlock(item, conds0.indexOf(addKey));
+
+		// 条件の選択肢に道具の版が並んでいる（無ければ選べない＝エディタから書けない）
+		const optValues = await added.locator('[data-vf="cond"] option').evaluateAll((els) => els.map((e) => e.value));
+		expect(optValues, '条件の選択肢に道具の版が無い').toContain(KEY);
+		await added.locator('[data-vf="cond"]').selectOption(KEY);
+		await added.locator('[data-vf="lines"]').fill('今の荷なら砕けよう。');
+		await added.locator('[data-vf="markStage"]').fill('9,9');
+		await added.locator('[data-vf="markLabel"]').fill('崩せる岩');
+		await added.locator('[data-vf="markKind"]').selectOption('cave');
+		await added.locator('[data-vf="markLayer"]').fill('field');   // 空欄＝その会話の層（既定）
+
+		const saved = await savedMapData(page);
+		const after = saved.layers.field.stages[STELE.stage].npcData[STELE.pos];
+		expect(after.linesAfterBoss[KEY], '道具の版の本文が入らない').toEqual(['今の荷なら砕けよう。']);
+		expect(after.markAfterBoss[KEY], '道具の版の印が入らない')
+			.toEqual({ stage: '9,9', label: '崩せる岩', kind: 'cave', layer: 'field' });
+		expect(after.lines, '基本のセリフまで変わった').toEqual(before.lines);
+
+		// 読み書きの往復で1バイトも変わらない（ボスの版と同じ扱い＝⑥と同じ不変条件）
+		const clone = JSON.parse(JSON.stringify(after));
+		applyEntryVariants(clone, readEntryVariants(clone, OPTIONS));
+		expect(JSON.stringify(clone), '道具の版が往復で変わった').toBe(JSON.stringify(after));
+	});
+
+	// 実ゲームでの2状態＋優先順＝実データにまだ道具の版が1件も無い（帯2＝キュー17-3 で入る）∴
+	// **マップ応答を差し替えて**測る（`fromEditor=1` は常に実ファイルを取る＝localStorage では効かない）。
+	async function routeSageVariants(page, lab) {
+		await page.route('**/work/blade-of-lumia.json', async (route) => {
+			const json = await (await route.fetch()).json();
+			const e = json.layers.field.stages[SAGE.stage].npcData[SAGE.pos];
+			e.linesAfterBoss = lab;
+			delete e.markAfterBoss;
+			await route.fulfill({ json });
+		});
+	}
+
+	test('⑱ 実ゲームで「持たない」と「持つ」で本文が変わり、優先順はボスの版と同じ規則', async ({ page }) => {
+		const base   = entryOf(SAGE.stage, SAGE.pos).lines[0];
+		const BOMB   = itemVariantKey('bomb');
+		const LADDER = itemVariantKey('ladder');
+		const T = { bomb: '火薬の版', ladder: 'はしごの版', g: 'ゴーレムの版' };
+
+		// ① 道具の版がボスの版より**下**（＝強い）
+		await routeSageVariants(page, { G: [T.g], [BOMB]: [T.bomb], [LADDER]: [T.ladder] });
+		// 持たない＝基本のセリフ（ここが緑のままでないと②は「常に出る」実装でも通る）
+		await talkToSage(page, []);
+		await expect(page.locator('#dialog-text'), '道具を持たないのに道具の版が出た').toContainText(base);
+		// 持つ＝道具の版
+		await talkToSage(page, [], { ps_bomb: '1' });
+		await expect(page.locator('#dialog-text'), '爆弾を手にしても版が切り替わらない').toContainText(T.bomb);
+		// はしご＝`player.hasLadder`（`subItems` に入らない道具）でも同じように効く
+		await talkToSage(page, [], { ps_ladder: '1' });
+		await expect(page.locator('#dialog-text'), 'はしごの所持で版が切り替わらない（subItems だけ見ている？）')
+			.toContainText(T.ladder);
+		// 撃破と所持は独立＝両方ヒットしたら**下にある道具の版**が勝つ
+		await talkToSage(page, ['G'], { ps_bomb: '1' });
+		await expect(page.locator('#dialog-text'), '下にある道具の版が勝たない').toContainText(T.bomb);
+		// 倒しただけ＝ボスの版（道具の版が常に勝つ実装なら赤）
+		await talkToSage(page, ['G']);
+		await expect(page.locator('#dialog-text'), '道具を持たないのに道具の版が勝った').toContainText(T.g);
+
+		// ② 並びを逆に組む＝道具の版が**上**なら、両方ヒットしてもボスの版が勝つ
+		await page.unrouteAll();
+		await routeSageVariants(page, { [BOMB]: [T.bomb], G: [T.g] });
+		await talkToSage(page, ['G'], { ps_bomb: '1' });
+		await expect(page.locator('#dialog-text'), '上に置いた道具の版が勝った（優先順の規則が別になっている）')
+			.toContainText(T.g);
+		await talkToSage(page, [], { ps_bomb: '1' });
+		await expect(page.locator('#dialog-text')).toContainText(T.bomb);
 	});
 
 	test('⑩ ps_defeated は2つのプレビュー経路とゲーム側に揃っている（静的検査）', () => {

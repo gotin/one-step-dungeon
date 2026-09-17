@@ -27,7 +27,7 @@
 
 import { HP_PER_HEART } from './constants.js';
 import { SPRITES, PAL, makeSprite } from '../shared/sprites.js';
-import { ITEM_META, EQUIP_META, BOOMERANG_TIERS, SWORD_TIERS, SHIELD_TIERS, ARMOR_TIERS } from '../shared/items.js';
+import { ITEM_META, EQUIP_META, BOOMERANG_TIERS, SWORD_TIERS, SHIELD_TIERS, ARMOR_TIERS, ownsItem } from '../shared/items.js';
 import { iconCanvas, iconText, iconPxOf } from '../shared/ui-icons.js';
 import { playSound } from '../shared/sounds.js';
 // field の地図（キュー15）の色。エディタのワールドマップのサムネと**同じ関数**を呼ぶ
@@ -37,7 +37,7 @@ import { cellGlanceColor } from '../shared/cell-appearance.js';
 import { markId, markColor, markGuide, addMark, normalizeDialogMarks, normalizeSavedMarks } from '../shared/marks.js';
 // Dn 踏破後台詞の選択規則（17-0 → 2026-09-15 に改訂）＝版の並びと種類は
 // `shared/dialog-variants.js` が単一の真実。「条件がヒットした版のうち**一番下**を採る」。
-import { variantOptions, readEntryVariants, VARIANT_KIND } from '../shared/dialog-variants.js';
+import { variantOptions, readEntryVariants, VARIANT_KIND, itemIdOfVariantKey } from '../shared/dialog-variants.js';
 
 // HUD のハート（heart/heartEmpty/heartHalf）の表示サイズ。Phase 10d-3 で
 // 絵を32ドット化した際、絵の中の透明余白が増えた分だけ見かけが縮むのを補う
@@ -394,6 +394,9 @@ export function createUi(deps) {
 			let hit;
 			if (v.kind === VARIANT_KIND.AFTER)        hit = hasSeenBoss;
 			else if (v.kind === VARIANT_KIND.DEFAULT) hit = hasDefeated;
+			// 道具の版（キュー26）＝所持の置き場は道具ごとに違う∴`ownsItem` に任せる
+			// （はしごは `player.hasLadder`＝`subItems` を直接見るとここだけ常に未所持になる）。
+			else if (v.kind === VARIANT_KIND.ITEM)   hit = ownsItem(player, v.itemId ?? itemIdOfVariantKey(v.key));
 			else                                      hit = !!defeated?.has(v.key);
 			if (!hit) continue;
 			if (v.lines.length) lines = v.lines;

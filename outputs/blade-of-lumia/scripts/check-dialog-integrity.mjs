@@ -20,6 +20,9 @@
 //   [error] 旧形式の `linesAfter` が残っている＝キュー25 で `linesAfterBoss.after` へ畳んだ
 //           単独キー。ゲームはもう読まない∴放置すると本文が黙って出なくなる
 //           （直し方＝`node scripts/migrate-dialog-after-key.mjs`）
+//   [error] 版のキーが実在しない条件を指す＝`linesAfterBoss` / `markAfterBoss` のキーが
+//           予約キー（default / after）でもボスのタイル文字でも `item:<道具id>` でもない
+//           （キュー26・条件が永久にヒットしない＝本文があるのに誰も読まない）
 //
 // ⚠️ `test_mechanics` レイヤーは検証専用ステージ＝対象外（PLAN.md 17 ②）。
 //    ただし**絵文字の検査だけは全レイヤーを見る**（`tests/ui-icons.spec.js` ③ が
@@ -31,7 +34,8 @@
 import { readFileSync } from 'fs';
 import { TILE } from '../shared/tiles.js';
 import { NPC_SPRITE_MAP } from '../shared/npcs.js';
-import { ORDER, labelOf } from '../shared/progression.js';
+import { ORDER, labelOf, bossesInOrder, SUB_ITEM_KEYS } from '../shared/progression.js';
+import { AFTER_KEY, itemIdOfVariantKey } from '../shared/dialog-variants.js';
 import { normalizeDialogMarks } from '../shared/marks.js';
 import { findRawIconEmoji, countIconMarkers } from '../shared/map-texts.js';
 
@@ -210,6 +214,47 @@ for (const [layerName, layer] of Object.entries(d.layers)) {
         if (entry.markAfterBoss?.after !== undefined) {
           err(`[${layerName} ${stageKey}] (${posKey}) の markAfterBoss.after は無効`
             + `（星の欠片の版は印を持てない＝ゲームは無視する）`);
+        }
+      }
+    }
+  }
+}
+
+// ── ⑦ 版のキーの実在（実行キュー26・2026-09-17）────────────────────────────
+// 版のキーは3種類しか正しくない：予約キー（`default` / `after`）・ボスのタイル文字1字・
+// `item:<道具id>`（`shared/progression.js` の `SUB_ITEM_KEYS`）。それ以外は
+// **条件が永久にヒットしない＝本文があるのに誰も読まない死データ**になる
+// （`game/ui.js pickDialogVariant()` は知らない種類の版を hit させない）。
+// エディタは選択肢からしか書けない∴入るのは手書き・移行スクリプト・道具/ボスの改名
+// （例＝`item:hammer` と書いたが `SUB_ITEM_KEYS` に無い／ボスのタイル文字を変えた）。
+// ∴ここが「5層のうち検査の層」（[[blade-bad-data-fix-five-layers]]）。
+const VALID_BOSS_KEYS = new Set(bossesInOrder(d).map(b => b.tile));
+const VALID_ITEM_IDS  = new Set(SUB_ITEM_KEYS);
+let variantKeyCount = 0;
+for (const [layerName, layer] of Object.entries(d.layers)) {
+  for (const [stageKey, stage] of Object.entries(layer.stages ?? {})) {
+    for (const store of ['signData', 'npcData']) {
+      for (const [posKey, entry] of Object.entries(stage[store] ?? {})) {
+        if (!entry || typeof entry !== 'object' || Array.isArray(entry)) continue;
+        const keys = new Set([
+          ...Object.keys(entry.linesAfterBoss ?? {}),
+          ...Object.keys(entry.markAfterBoss ?? {}),
+        ]);
+        for (const key of keys) {
+          variantKeyCount++;
+          if (key === 'default' || key === AFTER_KEY) continue;
+          const itemId = itemIdOfVariantKey(key);
+          if (itemId !== null) {
+            if (!VALID_ITEM_IDS.has(itemId)) {
+              err(`[${layerName} ${stageKey}] (${posKey}) の版 "${key}" が実在しない道具を指す`
+                + `（選べるのは ${[...VALID_ITEM_IDS].map(i => `item:${i}`).join(' / ')}）`);
+            }
+            continue;
+          }
+          if (!VALID_BOSS_KEYS.has(key)) {
+            err(`[${layerName} ${stageKey}] (${posKey}) の版 "${key}" が実在しないボスを指す`
+              + `（選べるのは ${[...VALID_BOSS_KEYS].join(' / ')} と default / after / item:<道具id>）`);
+          }
         }
       }
     }
