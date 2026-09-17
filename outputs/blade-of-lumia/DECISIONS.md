@@ -8,6 +8,12 @@
 
 ---
 
+### 2026-09-17（3） — **ハマりどころ＝`signData`/`npcData` の `pos` キーは "row,col"（行,列）であって、ステージキーの "x,y"（南正の座標）とは別の convention。**（⚡ Sonnet／PLAN 実行キュー 17-3）
+
+- **事実＝** field `0,13` signData の pos `"2,9"` は `tiles[2][9]`（行2・列9）を指す（実測して確認）。field/dungeon のステージキー自体（例 `"2,15"`）は `shared/marks.js` が使う "x,y"（南正の y）で別の軸∴**同じ「数字,数字」の見た目でも、ステージキーと会話の pos キーで行と列の意味が逆になる**。
+- **理由＝新設の会話（field `2,15` の石碑）を1マスずれた位置に置きかけた**＝最初 `(x,y)` 前提で `tileAt` を書いたら、既存データの `pos` と実タイルが一致しなかった（signData の位置に `'.'` が出るはずが `'i'` が出た等）。全既存 pos を row,col 前提で当て直すと全件一致＝これが正しい convention。
+- **対応＝** 新規スクリプト（`migrate-dialog-band-2.mjs`）内のコメントに convention を明記＝今後の帯（17-4〜17-9）の移行スクリプトを書くときに同じ事故を防ぐ。着手時に必ず「既存 pos で実タイルが期待どおりか」を1件 assert してから新設分を書く（今回もこの手順で気付いた）。
+
 ### 2026-09-17（2） — **「その道具を手にした後」の版は `item:<道具id>` というキーでボスの版と同じ1本の列に住ませる（優先順の規則を増やさない＝下ほど勝つ）。所持の判定は `shared/items.js ownsItem()` 1本に集め、数（残弾）は見ない。道具の版は印を持てる。**（🧠 Opus／PLAN 実行キュー 26・ユーザー指示）
 
 - **決定＝** (1) **キーは `item:<道具id>`**（`shared/dialog-variants.js` の `ITEM_KEY_PREFIX`／`itemVariantKey()`／`itemIdOfVariantKey()`）。住む先は `linesAfterBoss` / `markAfterBoss` のまま＝**列を分けない**。(2) **選べる道具は `shared/progression.js` の `SUB_ITEM_KEYS` から導出**（`itemVariantOptions()`＝表示名は `ITEM_META[id].name`）＝手書きの表を作らない。(3) **所持判定は `shared/items.js` の `ownsItem(player, id)` に1本化**（`ITEM_OWNED_FLAG = { ladder: 'hasLadder' }` の例外表を同じ場所に持つ）。(4) **数（`count`）は見ない＝「手に入れたか」で判定する。** (5) **道具の版は印を持てる**（`supportsMark: true`）。(6) **既定の並びはボスの版より下**（＝新しく足したとき既定で強い側）。優先順の規則は「ヒットした版のうち一番下」1本のまま＝`game/ui.js pickDialogVariant()` に hit 判定を1行足すだけ。(7) **検査（`check-dialog-integrity.mjs` ⑦）は「版のキーが実在しない条件を指す」を❌**＝未知の道具 id と未知のボスのタイル文字を同じ検査で見る。

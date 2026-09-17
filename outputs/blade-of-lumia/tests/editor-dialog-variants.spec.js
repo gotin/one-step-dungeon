@@ -222,7 +222,7 @@ test.describe('会話の「進行で切り替わる版」をエディタで編�
 		expect(after.mark, '基本の印まで消えた').toEqual(before.mark);
 	});
 
-	test('⑥ 版を持つ16エントリは、無編集の往復で1バイトも変わらない', () => {
+	test('⑥ 版を持つ21エントリは、無編集の往復で1バイトも変わらない', () => {
 		// エディタの読み書きは `readEntryVariants` → `applyEntryVariants` の往復∴
 		// 実データ全件でこの往復が恒等写像であることを押さえる（キーの並びまで含めて比べる）。
 		const targets = [];
@@ -240,9 +240,12 @@ test.describe('会話の「進行で切り替わる版」をエディタで編�
 			}
 		}
 		// 13 → 14（2026-09-15＝エディタで「諦めた老人」に U 撃破後の版を1件足した）
-		// → 16（同日＝寄道の踏破で語りが変わる看板2枚＝淵の伝承碑 V／湖の岩の標 X）。
+		// → 16（同日＝寄道の踏破で語りが変わる看板2枚＝淵の伝承碑 V／湖の岩の標 X）
+		// → 21（2026-09-17・実行キュー17-3＝帯2の流し込み＝新設「砂漠の神殿の石碑」1件＋
+		//   道具の版（item:bomb/item:ladder）を足した4件＝爆ぜた岩の跡・塩の池の石碑・
+		//   石切場の石碑・陥没の砂原の石碑）。
 		// この数は「増えたことに気づくため」の目印∴増やすときは PLAN の記述も一緒に直す。
-		expect(targets.length, '版を持つエントリの数が変わった（PLAN の記述も直す）').toBe(16);
+		expect(targets.length, '版を持つエントリの数が変わった（PLAN の記述も直す）').toBe(21);
 		for (const t of targets) {
 			const clone = JSON.parse(JSON.stringify(t.entry));
 			applyEntryVariants(clone, readEntryVariants(clone, OPTIONS));
