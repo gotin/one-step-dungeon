@@ -247,8 +247,13 @@ test.describe('会話の「進行で切り替わる版」をエディタで編�
 		// → 25（2026-09-17・実行キュー17-4＝帯3の流し込み＝道具の版（item:bow/item:boomerang×2/
 		//   item:ladder）を足した4件＝湖畔の的・草原の小池の立札・湖渡りの橋の立札・湖の 飛び石。
 		//   「水の迷宮の石碑」は元から linesAfterBoss.J を持つ∴markAfterBoss.J を足しても数は増えない）。
+		// → 32（2026-09-17・実行キュー17-5＝帯4の流し込み＝新設2件（灰の 落とし穴 item:ladder／
+		//   石送りの間の 書き置き item:flute）＋道具の版を足した4件（消えた かがり火 item:candle・
+		//   溶岩の 手向け item:bomb・岩棚の石碑 item:bomb・狼煙台の石碑 item:candle）＋
+		//   markAfterBoss.A を新たに持った「炎の神殿の入口」1件。
+		//   「石碑」（field 12,2）と「ピンクあたま」は元から linesAfterBoss を持つ∴数は増えない）。
 		// この数は「増えたことに気づくため」の目印∴増やすときは PLAN の記述も一緒に直す。
-		expect(targets.length, '版を持つエントリの数が変わった（PLAN の記述も直す）').toBe(25);
+		expect(targets.length, '版を持つエントリの数が変わった（PLAN の記述も直す）').toBe(32);
 		for (const t of targets) {
 			const clone = JSON.parse(JSON.stringify(t.entry));
 			applyEntryVariants(clone, readEntryVariants(clone, OPTIONS));
