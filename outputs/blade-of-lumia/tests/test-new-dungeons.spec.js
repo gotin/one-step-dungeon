@@ -24,25 +24,31 @@ test.describe('Blade of Lumia – 新規ダンジョン接続', () => {
     expect(errors).toHaveLength(0);
   });
 
-  test('dungeon_5 入口（field 13,5）からダンジョンに入れる', async ({ page }) => {
+  test('dungeon_5 入口（field 15,4 の氷の鐘楼）からダンジョンに入れる', async ({ page }) => {
     const errors = [];
     page.on('pageerror', e => errors.push(e.message));
 
-    // field 13,5 row3 col9（鍵 4,9 の真上）に '>', col8 からスポーン。
-    // 2026-09-07 に 8,5 から移設した＝8,5 は家のドア前の袋小路 7,5 の唯一の出口で、
-    // 家から出るだけでダンジョンに落ちていた（ユーザー報告）。
-    const url = `${GAME}?fromEditor=1&layer=field&stage=13%2C5&row=3&col=8`;
+    // field 15,4 row4 col6（鐘楼の外壁を口に置き換えたセル・かがり火 4,4 と 4,7 の間）に
+    // '>', 南の石畳 5,6 からスポーン。
+    // 2026-09-19 に 13,5 (3,9) から移設した＝入口が石畳の町と同じ画面にあって近すぎた
+    // （ユーザー指摘）。2026-09-07 の 8,5 → 3,9 の移設も同じ入口。
+    const url = `${GAME}?fromEditor=1&layer=field&stage=15%2C4&row=5&col=6`;
     await page.goto(url);
     await waitForBoard(page);
 
-    await expect(page.locator('#hud-stage-label')).toContainText('13,5');
+    await expect(page.locator('#hud-stage-label')).toContainText('15,4');
 
-    await page.evaluate(() => window.__game.movePlayer('right'));
-    await page.evaluate(() => window.__game.step(8));
-    await page.evaluate(() => window.__game.step(20));
-    await page.waitForTimeout(300);
+    // movePlayer 1回では半マス（y=5→4.5）しか進まず口に乗らない∴繰り返し上を押す
+    // （dungeon_3 のテストと同じ作法）。
+    for (let i = 0; i < 6; i++) {
+      await page.evaluate(() => { window.__game.movePlayer('up'); window.__game.step(6); });
+    }
 
-    await expect(page.locator('#hud-stage-label')).toContainText('dungeon_5', { timeout: 3000 });
+    await page.waitForFunction(
+      () => window.__game.getState().currentLayer === 'dungeon_5',
+      null, { timeout: 3000 }
+    );
+    await expect(page.locator('#hud-stage-label')).toContainText('dungeon_5');
     expect(errors).toHaveLength(0);
   });
 

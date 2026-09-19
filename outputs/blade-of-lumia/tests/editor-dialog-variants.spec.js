@@ -256,8 +256,11 @@ test.describe('会話の「進行で切り替わる版」をエディタで編�
 		//   道具の版を足した3件（崖の道標 item:bomb・古びた立て札 item:candle・森の道標 item:ladder）＋
 		//   markAfterBoss.O を新たに持った「森の聖域・入口の石碑」1件。
 		//   「森の聖域の石碑」（field 2,4）は元から linesAfterBoss.O を持つ∴数は増えない）。
+		// → 36（2026-09-19・17-7 の後追い＝D5 入口を 15,4 へ移した番で、版（linesAfterBoss.L ＋
+		//   markAfterBoss.L）を持っていた「氷の廃墟の石碑」（field 13,5 (7,6)）を削除した＝−1。
+		//   受け皿の賢者エルン（field 13,5 (4,5)）は元から linesAfterBoss.after を持つ∴増えない）。
 		// この数は「増えたことに気づくため」の目印∴増やすときは PLAN の記述も一緒に直す。
-		expect(targets.length, '版を持つエントリの数が変わった（PLAN の記述も直す）').toBe(37);
+		expect(targets.length, '版を持つエントリの数が変わった（PLAN の記述も直す）').toBe(36);
 		for (const t of targets) {
 			const clone = JSON.parse(JSON.stringify(t.entry));
 			applyEntryVariants(clone, readEntryVariants(clone, OPTIONS));
