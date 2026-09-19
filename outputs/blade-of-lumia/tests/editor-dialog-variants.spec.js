@@ -262,8 +262,12 @@ test.describe('会話の「進行で切り替わる版」をエディタで編�
 		// → 39（2026-09-19・実行キュー17-8a＝帯7前半（沼）の流し込み＝道具の版を足した3件
 		//   （沼の 祭壇跡 item:flute・潮の祭壇の石碑 item:flute・沼の 飛び石 item:ladder）。
 		//   「崩れた門柱」に足したのは静的な mark ∴版の数は増えない）。
+		// → 44（2026-09-19・実行キュー17-8b＝帯7後半（沈んだ都・潮）の流し込み＝道具の版を足した
+		//   5件（風穴の崖の石碑 item:bomb・水路の分かれの石碑 item:ladder・滝裏の祭壇の石碑
+		//   item:flute・都の墓所の石碑 item:candle・沈んだ都の門の石碑 item:bomb）。
+		//   同じ番で消した「隘路の石碑」（field 13,13）は版を持っていなかった∴減らない）。
 		// この数は「増えたことに気づくため」の目印∴増やすときは PLAN の記述も一緒に直す。
-		expect(targets.length, '版を持つエントリの数が変わった（PLAN の記述も直す）').toBe(39);
+		expect(targets.length, '版を持つエントリの数が変わった（PLAN の記述も直す）').toBe(44);
 		for (const t of targets) {
 			const clone = JSON.parse(JSON.stringify(t.entry));
 			applyEntryVariants(clone, readEntryVariants(clone, OPTIONS));
