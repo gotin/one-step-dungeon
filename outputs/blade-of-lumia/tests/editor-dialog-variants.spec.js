@@ -259,8 +259,11 @@ test.describe('会話の「進行で切り替わる版」をエディタで編�
 		// → 36（2026-09-19・17-7 の後追い＝D5 入口を 15,4 へ移した番で、版（linesAfterBoss.L ＋
 		//   markAfterBoss.L）を持っていた「氷の廃墟の石碑」（field 13,5 (7,6)）を削除した＝−1。
 		//   受け皿の賢者エルン（field 13,5 (4,5)）は元から linesAfterBoss.after を持つ∴増えない）。
+		// → 39（2026-09-19・実行キュー17-8a＝帯7前半（沼）の流し込み＝道具の版を足した3件
+		//   （沼の 祭壇跡 item:flute・潮の祭壇の石碑 item:flute・沼の 飛び石 item:ladder）。
+		//   「崩れた門柱」に足したのは静的な mark ∴版の数は増えない）。
 		// この数は「増えたことに気づくため」の目印∴増やすときは PLAN の記述も一緒に直す。
-		expect(targets.length, '版を持つエントリの数が変わった（PLAN の記述も直す）').toBe(36);
+		expect(targets.length, '版を持つエントリの数が変わった（PLAN の記述も直す）').toBe(39);
 		for (const t of targets) {
 			const clone = JSON.parse(JSON.stringify(t.entry));
 			applyEntryVariants(clone, readEntryVariants(clone, OPTIONS));
