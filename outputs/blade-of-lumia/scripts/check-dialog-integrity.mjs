@@ -15,6 +15,9 @@
 //           dungeon_1）の外で使われている（「キー」「ボタン」）
 //   [error] 印の行き先が実在しない＝会話の `mark` / `markAfterBoss`（キュー17-2）が
 //           無い層・無い画面を指している（ゲーム側は警告して捨てる＝黙って消えたように見える）
+//   [error] 印が自分の画面を指している＝会話が置かれている画面と同じ行き先（2026-09-19
+//           ユーザー決定＝印は「どこへ向かえばいいか」を教える手段∴目の前の物は指さない。
+//           直し方＝`node scripts/migrate-remove-self-marks.mjs`）
 //   [error] 本文に「絵がある物の絵文字」が生のまま在る＝`{{key}}` マーカーで書くべき所が
 //           絵文字に戻っている（キュー24・2026-09-10 の退行の検知）
 //   [error] 旧形式の `linesAfter` が残っている＝キュー25 で `linesAfterBoss.after` へ畳んだ
@@ -156,6 +159,14 @@ for (const [layerName, layer] of Object.entries(d.layers)) {
             markCount++;
             if (!d.layers[m.layer]?.stages?.[m.stage]) {
               err(`[${layerName} ${stageKey}] (${posKey}) の ${label} が実在しない画面を指す：${m.layer}/${m.stage}（${m.label}）`);
+            }
+            // 自分が置かれている画面を指す印は作らない（2026-09-19 ユーザー決定）＝印の役目は
+            // **遠くの行き先を教えること**。目の前の物を指しても HUD は `◎ この画面` を出すだけで
+            // 情報が増えない（到達済み地点を自分で記録する機能は「プレイヤーが付ける印」として
+            // 別に設計する）。`scripts/migrate-remove-self-marks.mjs` で9件消した分の再発検知。
+            if (m.layer === layerName && m.stage === stageKey) {
+              err(`[${layerName} ${stageKey}] (${posKey}) の ${label} が自分の画面を指す：${m.label}`
+                + '（印は遠くの行き先を教えるためのもの＝目の前の物は指さない）');
             }
             const dest = `${m.layer}:${m.stage}`;
             if (!markDests.has(dest)) markDests.set(dest, []);

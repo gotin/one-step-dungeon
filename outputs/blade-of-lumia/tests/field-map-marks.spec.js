@@ -24,7 +24,7 @@ import { test, expect } from '@playwright/test';
 import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { markGuide, normalizeDialogMarks, MARK_KINDS } from '../shared/marks.js';
-import { gotoFreshGame, readSave, SAVE_KEY, GAME_URL } from './helpers.js';
+import { gotoFreshGame, readSave, SAVE_KEY, GAME_URL, waitForBoard } from './helpers.js';
 
 const MAP_PATH = fileURLToPath(new URL('../work/blade-of-lumia.json', import.meta.url));
 const MAP = JSON.parse(fs.readFileSync(MAP_PATH, 'utf8'));
@@ -723,6 +723,82 @@ test.describe('目的地マーク（一覧・選択・方向表示）', () => {
 			}
 			await page.keyboard.press('Escape');
 		}
+	});
+
+	// ⑮ プレビュー設定の地図（2026-09-19）＝エディタのプレビューを「地図を持った状態」で始められる。
+	// ユーザーの言葉＝「field 0,0 の印の見え方をチェックしたいけど、プレビューの設定でルミアの
+	// 地図を持った状態を設定できるようにしてくれない？じゃないと簡単にテストできない。」
+	// 🔴 当て所：`ps_map` を取りこぼす／1層だけに立てる（層ごとの持ち物）／`enterStage` の後に
+	//    立てて最初の HUD が地図なしのまま／`ps_map=0` でも地図を持ってしまう。
+	test('⑮ プレビューの ps_map=1 は地図を持った状態で始まる（印がその場で見える）', async ({ page }) => {
+		// 読む相手＝`field 0,2`「古道の道標」（行き先は `field 0,0` 樹海の岩室＝**北へ2画面**）。
+		// ⚠️ 2026-09-19 のユーザー決定で「自分の画面を指す印」を全部消した∴**遠くを指す印**で
+		//    測る（矢印が出るのが本体＝`◎ この画面` では地図を持った甲斐が見えない）。
+		const stage = '0,2';
+		const st = MAP.layers.field.stages[stage];
+		const found = Object.entries(st.signData ?? {}).find(([, e]) => e && !Array.isArray(e) && e.mark);
+		expect(found, 'field 0,2 に印を教える看板が無い').toBeTruthy();
+		const [pos, sign] = found;
+		const [sr, sc] = pos.split(',').map(Number);
+		expect(sign.mark.stage, '行き先が自分の画面＝印の作法に反する').not.toBe(stage);
+		// 看板の左隣に立って右を向く（実際の読み方と同じ経路で開く）
+		expect(st.tiles[sr][sc - 1], '看板の左隣が床でない').toBe('.');
+		const url = (on) => `${GAME_URL}?fromEditor=1&layer=field&stage=${stage}&row=${sr}&col=${sc - 1}&ps_map=${on ? 1 : 0}`;
+
+		// `ps_map=0`＝従来どおり地図なし（この口を足したせいで常に持つようになっていないこと）
+		await page.goto(url(false));
+		await waitForBoard(page);
+		expect(await page.evaluate(() => !!window.__game.getPlayer().dungeonItems?.field?.hasMap)).toBe(false);
+
+		await page.goto(url(true));
+		await waitForBoard(page);
+		// 地図は**層ごと**の持ち物∴マップに在る全層に立てる（ダンジョンから field の印を
+		// 確かめる／逆もある＝1層だけだと「見るにはその層に居ろ」という別の壁が残る）。
+		const withMap = await page.evaluate(() => {
+			const dm = window.__game.getPlayer().dungeonItems ?? {};
+			return Object.keys(dm).filter((k) => dm[k]?.hasMap);
+		});
+		expect(withMap).toContain('field');
+		expect(withMap.length).toBe(Object.keys(MAP.layers).length);
+
+		// 看板を読み終えた瞬間に矢印が出る（①の裏返し＝地図が無ければ出ない）
+		await expect(page.locator('#hud-mark-guide')).toBeHidden();
+		await page.evaluate(() => { window.__game.setHeroDir('right'); window.__game.swordAttack(); });
+		await expect(page.locator('#dialog-overlay')).toBeVisible();
+		await finishDialog(page);
+		await expect(page.locator('#hud-mark-guide')).toBeVisible();
+		await expect(page.locator('#hud-mark-label')).toHaveText(sign.mark.label);
+		// 行き先は北へ2画面＝矢印は ↑・「この画面」とは出ない（遠くを指しているから見て意味がある）
+		await expect(page.locator('#hud-mark-arrow')).toHaveText(markGuide(stage, sign.mark.stage).arrow);
+		await expect(page.locator('#hud-mark-dist')).toHaveText('');
+	});
+
+	// ⑯ 印の役目（2026-09-19 ユーザー決定）＝**どこへ向かえばいいかを教えること**。
+	// ユーザーの言葉＝「まぁまぁ広いマップだから、どこに向かえばいいのか全然わからずにマップを
+	// 闇雲に移動せざるをえないのは辛すぎるだろうから、ヒントとしてどこに向かえばいいのかを示して
+	// あげたい、っていう目的なんだよ。／もう目的地についた状態でそれを記録しておきたい、みたいな
+	// ものは別のユーザマーク機能、みたいなものとしてならあってもいいけど、ゲーム側が自ら現場で
+	// マークさせる機能なんていらない。」
+	// 🔴 当て所＝帯1〜5 で作った「入口の画面のしおりが自分の画面を記す」型（9件＝
+	//    `scripts/migrate-remove-self-marks.mjs` で削除）が、帯6以降や旧スクリプトの
+	//    再実行でまた入ってくること。検査は `scripts/check-dialog-integrity.mjs` にもある。
+	test('⑯ 印はすべて別の画面を指す（自分の画面を指す印は作らない）', () => {
+		const selfMarks = [];
+		for (const [ln, ld] of Object.entries(MAP.layers)) {
+			for (const [sk, st] of Object.entries(ld.stages ?? {})) {
+				for (const home of ['signData', 'npcData']) {
+					for (const [pos, en] of Object.entries(st[home] ?? {})) {
+						if (!en || Array.isArray(en) || typeof en !== 'object') continue;
+						for (const raw of [en.mark, ...Object.values(en.markAfterBoss ?? {})].filter(Boolean)) {
+							for (const m of normalizeDialogMarks(raw, ln)) {
+								if (m.layer === ln && m.stage === sk) selfMarks.push(`${ln} ${sk} (${pos}) ${en.name}＝「${m.label}」`);
+							}
+						}
+					}
+				}
+			}
+		}
+		expect(selfMarks, '自分の画面を指す印がある＝node scripts/migrate-remove-self-marks.mjs').toEqual([]);
 	});
 
 });

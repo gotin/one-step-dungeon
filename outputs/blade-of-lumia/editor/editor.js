@@ -161,6 +161,9 @@ document.addEventListener('editor:previewClickAt', e => {
 			candle:    document.getElementById('ps-candle').checked,
 			ladder:    document.getElementById('ps-ladder').checked,
 			wingrobe:  document.getElementById('ps-wingrobe').checked,
+			// 2026-09-19：地図（目的地マークの見え方の確認用）。editor-io.js の
+			// getPreviewSettings にも同じ行がある（両方に足す）。
+			map:       document.getElementById('ps-map')?.checked ?? true,
 			cleared:   document.getElementById('ps-cleared').checked,
 			// 実行キュー23: 撃破済みボス（会話の「進行で切り替わる版」の確認用）。
 			// editor-io.js の getPreviewSettings にも同じ行がある（両方に足す）。

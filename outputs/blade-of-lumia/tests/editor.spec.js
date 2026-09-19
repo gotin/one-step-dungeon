@@ -167,6 +167,9 @@ test('editor: ps-ladder checkbox reaches preview iframe as ps_ladder=1', async (
 
 	// はしごチェック（デフォルト ON だが明示的に確認）→ 開始
 	await page.locator('#ps-ladder').check();
+	// 地図（2026-09-19 に追加）＝ps_ 系は editor.js と editor-io.js の2箇所に定義がある∴
+	// 片方に足し忘れると同じ取りこぼしが再発する。このクリック経路は editor.js 側を通る。
+	await page.locator('#ps-map').check();
 	await page.locator('#ps-btn-start').click();
 
 	// iframe の src に ps_ladder=1 が含まれる
@@ -175,6 +178,7 @@ test('editor: ps-ladder checkbox reaches preview iframe as ps_ladder=1', async (
 		() => page.locator('#preview-frame').getAttribute('src'),
 		{ timeout: 3000 },
 	).toContain('ps_ladder=1');
+	expect(await page.locator('#preview-frame').getAttribute('src')).toContain('ps_map=1');
 });
 
 // ─── ⑨ 敵カウントは ENEMY_META 全種を数える（2026-07-25 の数え落とし回帰）──

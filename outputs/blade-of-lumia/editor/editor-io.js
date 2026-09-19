@@ -313,6 +313,8 @@ function applyProgressPreset(value) {
 	// 銀のブーメランはティア（別軸）／翼の羽衣は宝箱に無く祭壇で授かる＝欠片の数から導出済み。
 	setCheck('ps-silverboomerang', p.boomerang >= 1);
 	setCheck('ps-wingrobe', p.wingrobe);
+	// `ps-map`（地図）はプリセットで動かさない＝地図は層ごとの拾い物で進行の段と1対1にならず、
+	// かつ「印が見えるか」を確かめるための確認用の口∴ユーザーの指定をそのまま残す。
 }
 
 // ── プレビュー設定ダイアログ ──────────────────────────────────
@@ -360,6 +362,8 @@ function getPreviewSettings() {
 		candle:    document.getElementById('ps-candle').checked,
 		ladder:    document.getElementById('ps-ladder').checked,
 		wingrobe:  document.getElementById('ps-wingrobe').checked,
+		// 2026-09-19：地図（目的地マークの見え方の確認用）。editor.js の ps 定義にも同じ行がある。
+		map:       document.getElementById('ps-map')?.checked ?? true,
 		cleared:   document.getElementById('ps-cleared').checked,
 		// 実行キュー23: 撃破済みボス（タイル文字の配列）。選ぶのは「最も後に倒した1体」で、
 		// そこまでの必須ダンジョンのボスは導出して足す。editor.js の ps 定義にも同じ行がある。
@@ -386,6 +390,7 @@ export function openPreview(stX, stY, row, col, ps, TILE) {
 		url += `&ps_bow=${ps.bow?1:0}&ps_boomerang=${ps.boomerang?1:0}&ps_bomb=${ps.bomb?1:0}&ps_cleared=${ps.cleared?1:0}`;
 		url += `&ps_ladder=${ps.ladder?1:0}&ps_wingrobe=${ps.wingrobe?1:0}&ps_flute=${ps.flute?1:0}`;
 		url += `&ps_candle=${ps.candle?1:0}`;
+		url += `&ps_map=${ps.map?1:0}`;
 		url += `&ps_silverboomerang=${ps.silverboomerang?1:0}`;
 		// 撃破済みボス＝タイル文字をカンマで並べる（空なら付けない＝1体も倒していない）。
 		if (ps.defeated?.length) url += `&ps_defeated=${encodeURIComponent(ps.defeated.join(','))}`;

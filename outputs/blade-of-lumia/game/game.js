@@ -2031,6 +2031,7 @@ async function init() {
 		const psWingRobe = params.get('ps_wingrobe');
 		const psLadder   = params.get('ps_ladder');
 		const psDefeated = params.get('ps_defeated');  // 実行キュー23: 撃破済みボス（タイル文字のカンマ区切り）
+		const psMap      = params.get('ps_map');       // 2026-09-19: 地図の所持（目的地マークの見え方の確認用）
 
 		if (psAtk      !== null) player.atk    = parseInt(psAtk,  10) || 2;
 		if (psDef      !== null) player.def    = parseInt(psDef,  10) || 0;
@@ -2073,6 +2074,18 @@ async function init() {
 		if (psBomb     === '1') { player.subItems.bomb      = { count: 10 };        if (!player.activeSubItem) player.activeSubItem = 'bomb'; }
 		if (psFlute    === '1') { player.subItems.flute     = { count: Infinity };  if (!player.activeSubItem) player.activeSubItem = 'flute'; }
 		if (psCandle   === '1') { player.subItems.candle    = { count: Infinity };  if (!player.activeSubItem) player.activeSubItem = 'candle'; }
+		// 地図の所持（2026-09-19）＝**目的地マーク（キュー16）は地図を持つ層でしか見えない**
+		// （`ui.js hasLayerMap()` が HUD の矢印・ポーズ画面の地図と一覧・「地図に「X」を記した！」の
+		// 3箇所を塞ぐ）∴地図を拾う道を歩かないプレビューでは、会話に書いた印を確かめられなかった。
+		// ⚠️ `dungeonItems` は**層ごと**（`{ [層キー]: { hasMap, hasCompass } }`）∴1層だけ立てると
+		//    「field の印を見るには field に居なければならない」という別の壁が残る。プレビューは
+		//    確認の道具＝マップに在る全層へ立てる（コンパスは別物∴触らない＝ボス部屋は伏せたまま）。
+		if (psMap === '1') {
+			player.dungeonItems ??= {};
+			for (const layerKey of Object.keys(mapData?.layers ?? {})) {
+				(player.dungeonItems[layerKey] ??= { hasMap: false, hasCompass: false }).hasMap = true;
+			}
+		}
 		// 撃破済みボス（実行キュー23）＝会話の「進行で切り替わる版」（`linesAfterBoss` /
 		// `markAfterBoss`）と目的地の矢印がこれで切り替わる。エディタで版を書いたあと
 		// **実ゲームでその版が出るところ**まで確認できるようにするための口
@@ -2095,6 +2108,8 @@ async function init() {
 			subItems: player.subItems, activeSubItem: player.activeSubItem,
 			triforceCount: player.triforceCount,
 			defeatedBosses: [...(player.defeatedBosses ?? [])],
+			// 地図は層ごと∴数だけ出す（全層ぶんの中身を並べると読めない）。
+			layersWithMap: Object.keys(player.dungeonItems ?? {}).filter((k) => player.dungeonItems[k]?.hasMap).length,
 		}));
 
 		// デバッグモード ON（エディタプレビューは常に無敵）
