@@ -827,6 +827,9 @@ export function createPlayer(deps) {
 			const isField = getCurrentLayer() === 'field';
 			playSound('item');
 			pulse(isField ? '{{map}} ルミア地方の地図を手に入れた！' : '{{map}} ダンジョンの地図を手に入れた！');
+			// キュー17-10b＝町は目的地マークを持たない＝地図を拾った時点で村の印を直接立てる
+			// （会話を介さない＝commitDialogMarks とは別経路。deps.grantMark は shared/marks.js addMark の薄い包み）。
+			if (isField) deps.grantMark?.({ layer: 'field', stage: '7,14', label: 'はじまりの村', kind: 'town' });
 		} else if (tile === TILE.ITEM_COMPASS) {
 			player.dungeonItems[getCurrentLayer()].hasCompass = true;
 			playSound('item'); pulse('{{compass}} コンパスを手に入れた！');

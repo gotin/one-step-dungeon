@@ -39,8 +39,12 @@ const EDITOR_URL = '/blade-of-lumia/editor/';
 const GAME_URL   = '/blade-of-lumia/game/';
 const RED = 'rgb(240, 128, 128)';
 
-// 老賢者＝版が一番多い相手（8ボス＋default・印つき）。石碑＝版が1件だけ（親キーごと消えるかを見る）。
+// 老賢者＝版が一番多い相手（8ボス＋default）。石碑＝版が1件だけ（親キーごと消えるかを見る）。
+// ⚠️ 実行キュー17-10b＝老賢者の markAfterBoss は「1目的地1提供元」の掃除で全部削った
+//    （本文＝linesAfterBoss は残る∴版の数・並び・ラベルの検査は引き続き老賢者を使える）。
+//    印の欄が実データから読めることを見る検査だけは、印を残した唯一の相手＝賢者エルンを使う。
 const SAGE  = { stage: '7,14', pos: '3,3', rc: [3, 3] };
+const ELUN  = { stage: '13,5', pos: '4,5', rc: [4, 5] };
 const STELE = { stage: '6,13', pos: '7,8' };
 const TARO  = { stage: '7,14', pos: '3,5' };
 // 村人ハナ＝**欠片の版がボスの版の下**に居る唯一の相手（キュー25 (2) で実データに1件作った）。
@@ -56,6 +60,14 @@ const SAGE_VARS = readEntryVariants(entryOf(SAGE.stage, SAGE.pos), OPTIONS);
 const sageIdx = (key) => {
 	const i = SAGE_VARS.findIndex((v) => v.key === key);
 	if (i < 0) throw new Error(`老賢者が版 "${key}" を持っていない＝別の相手で測り直す`);
+	return i;
+};
+
+// エルンが持つ版の並び（after／O／L）＝印つきの版を読む検査の唯一の相手。
+const ELUN_VARS = readEntryVariants(entryOf(ELUN.stage, ELUN.pos), OPTIONS);
+const elunIdx = (key) => {
+	const i = ELUN_VARS.findIndex((v) => v.key === key);
+	if (i < 0) throw new Error(`エルンが版 "${key}" を持っていない＝別の相手で測り直す`);
 	return i;
 };
 
@@ -113,13 +125,23 @@ test.describe('会話の「進行で切り替わる版」をエディタで編�
 		expect(gLabel).toContain(ENEMY_META.G.name);
 		expect(gLabel).toContain(MAP.layers.dungeon_1.name);
 
-		// セリフと目的地が欄に出る（読めていない＝空欄なら赤くなる）
+		// セリフが欄に出る（読めていない＝空欄なら赤くなる）
 		await expect(variantBlock(item, gIdx).locator('[data-vf="lines"]'))
 			.toHaveValue(entry.linesAfterBoss.G.join('\n'));
-		await expect(variantBlock(item, gIdx).locator('[data-vf="markStage"]'))
-			.toHaveValue(entry.markAfterBoss.G.stage);
-		await expect(variantBlock(item, gIdx).locator('[data-vf="markLabel"]'))
-			.toHaveValue(entry.markAfterBoss.G.label);
+
+		// 印の欄が実データから読めることは、印を残した唯一の相手＝賢者エルン（L）で見る
+		// （老賢者の markAfterBoss は17-10bの掃除で全部削った＝本文だけの版になった）。
+		const elunEntry = entryOf(ELUN.stage, ELUN.pos);
+		await page.locator('#tab-world').click();   // ステージ表示からワールドマップへ戻る
+		await openStageInEditor(page, ELUN.stage);
+		const elunItem = npcItem(page, ELUN.pos);
+		const lIdx = elunIdx('L');
+		await expect(variantBlock(elunItem, lIdx).locator('[data-vf="markStage"]'))
+			.toHaveValue(elunEntry.markAfterBoss.L.stage);
+		await expect(variantBlock(elunItem, lIdx).locator('[data-vf="markLabel"]'))
+			.toHaveValue(elunEntry.markAfterBoss.L.label);
+		await page.locator('#tab-world').click();
+		await openStageInEditor(page, SAGE.stage);
 
 		// `default` の版は印を持てる／星の欠片の版（`after`）は持てない（欄を出さない＝キュー25 (2)）
 		const defIdx = expected.findIndex((v) => v.key === 'default');
@@ -131,12 +153,14 @@ test.describe('会話の「進行で切り替わる版」をエディタで編�
 		await expect(variantBlock(taro, afterIdx).locator('[data-vf="markStage"]')).toHaveCount(0);
 	});
 
+	// ⚠️ 実行キュー17-10b＝老賢者の markAfterBoss は掃除で全部削った∴印つきの版を
+	//    編集する検査は、印を残した唯一の相手＝賢者エルン（L）に差し替える。
 	test('② 版のセリフと目的地を直すと linesAfterBoss / markAfterBoss に入る', async ({ page }) => {
 		page.on('dialog', (d) => d.dismiss());   // 保存はダイアログを出す
 		await gotoEditorWithMap(page);
-		await openStageInEditor(page, SAGE.stage);
-		const item  = npcItem(page, SAGE.pos);
-		const block = variantBlock(item, sageIdx('G'));   // G（ゴーレム）の版
+		await openStageInEditor(page, ELUN.stage);
+		const item  = npcItem(page, ELUN.pos);
+		const block = variantBlock(item, elunIdx('L'));   // L（氷のリヴァイアサン）の版
 
 		await block.locator('[data-vf="lines"]').fill('書き換えた1行目\n2行目');
 		await block.locator('[data-vf="markStage"]').fill('9,9');
@@ -144,14 +168,14 @@ test.describe('会話の「進行で切り替わる版」をエディタで編�
 		await block.locator('[data-vf="markKind"]').selectOption('cave');
 
 		const saved = await savedMapData(page);
-		const after = saved.layers.field.stages[SAGE.stage].npcData[SAGE.pos];
-		expect(after.linesAfterBoss.G).toEqual(['書き換えた1行目', '2行目']);
-		expect(after.markAfterBoss.G).toEqual({ stage: '9,9', label: '書き換えた印', kind: 'cave', layer: 'field' });
+		const after = saved.layers.field.stages[ELUN.stage].npcData[ELUN.pos];
+		expect(after.linesAfterBoss.L).toEqual(['書き換えた1行目', '2行目']);
+		expect(after.markAfterBoss.L).toEqual({ stage: '9,9', label: '書き換えた印', kind: 'cave', layer: 'field' });
 		// 基本のセリフ・印には触らない（版の編集が土台を壊さない）
-		expect(after.lines).toEqual(entryOf(SAGE.stage, SAGE.pos).lines);
-		expect(after.mark).toEqual(entryOf(SAGE.stage, SAGE.pos).mark);
+		expect(after.lines).toEqual(entryOf(ELUN.stage, ELUN.pos).lines);
+		expect(after.mark).toEqual(entryOf(ELUN.stage, ELUN.pos).mark);
 		// 他の版も巻き込まない
-		expect(after.linesAfterBoss.N).toEqual(entryOf(SAGE.stage, SAGE.pos).linesAfterBoss.N);
+		expect(after.linesAfterBoss.O).toEqual(entryOf(ELUN.stage, ELUN.pos).linesAfterBoss.O);
 	});
 
 	test('③ 印にならない入力は版の欄でもその場で赤くなる', async ({ page }) => {
@@ -266,8 +290,14 @@ test.describe('会話の「進行で切り替わる版」をエディタで編�
 		//   5件（風穴の崖の石碑 item:bomb・水路の分かれの石碑 item:ladder・滝裏の祭壇の石碑
 		//   item:flute・都の墓所の石碑 item:candle・沈んだ都の門の石碑 item:bomb）。
 		//   同じ番で消した「隘路の石碑」（field 13,13）は版を持っていなかった∴減らない）。
+		// → 43（2026-09-20・実行キュー17-10b＝印の重複掃除。版の「持ち主」の増減は差分のみ＝
+		//   +1（`field 0,2` 古道の道標＝新設 item:flute 版＝秘密の洞窟の遠くの噂）
+		//   −1（`dungeon_4 1,3` 炎の神殿の入口＝markAfterBoss.A だけを持っていたので削除で0件に）
+		//   −1（`dungeon_6 1,3` 森の聖域・入口の石碑＝markAfterBoss.O だけを持っていたので同上）。
+		//   老賢者・水の迷宮の石碑・森の聖域の石碑は markAfterBoss を削っても linesAfterBoss が
+		//   残るので数は動かない。賢者エルンは元から版持ちなので O を足しても数は動かない。
 		// この数は「増えたことに気づくため」の目印∴増やすときは PLAN の記述も一緒に直す。
-		expect(targets.length, '版を持つエントリの数が変わった（PLAN の記述も直す）').toBe(44);
+		expect(targets.length, '版を持つエントリの数が変わった（PLAN の記述も直す）').toBe(43);
 		for (const t of targets) {
 			const clone = JSON.parse(JSON.stringify(t.entry));
 			applyEntryVariants(clone, readEntryVariants(clone, OPTIONS));

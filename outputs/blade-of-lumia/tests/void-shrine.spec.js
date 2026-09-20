@@ -194,7 +194,7 @@ test.describe('Blade of Lumia – 虚空の祠（聖剣）', () => {
     // 入口：東台地の '>'（虚空の向こう＝飛ばないと立てない）と、石碑への追記。
     expect(tileAt(FIELD['8,1'], 6, 9), '祠の扉が置かれていない').toBe('>');
     expect(rowStr(FIELD['8,1'], 6).slice(4, 8), '虚空 SKY が埋まっている').toBe('%%%%');
-    expect(FIELD['8,1'].signData['7,2'].lines.join('\n'), '石碑に祠の案内が無い').toContain('もう一つの扉');
+    expect(FIELD['8,1'].signData['7,2'].lines.join('\n'), '石碑に祠の案内が無い').toContain('もう 一つの 扉');
     // 修理①：古代の祭壇（'o' に潰れていた＝翼の羽衣を授かれなかった）。
     expect(tileAt(FIELD['7,1'], 3, 6), '祭壇 ^ が復活していない').toBe('^');
     let altars = 0;

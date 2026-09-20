@@ -345,6 +345,24 @@ export function createUi(deps) {
 		return added;
 	}
 
+	/**
+	 * 会話を介さずマークを直接足す（キュー17-10b＝地図を拾った瞬間に村の印を立てる）。
+	 * 行き先が実在しない画面なら書き間違い∴警告して捨てる（commitDialogMarks と同じ作法）。
+	 * @returns {boolean} 新しく足したか
+	 */
+	function grantMark(m) {
+		const mapData = getMapData();
+		if (!mapData?.layers?.[m.layer]?.stages?.[m.stage]) {
+			console.warn(`[marks] 行き先が実在しない: ${m.layer}/${m.stage}（${m.label}）`);
+			return false;
+		}
+		const player = getPlayer();
+		const added  = addMark(getMarks(), m);
+		if (!player.selectedMarkId) player.selectedMarkId = markId(m.layer, m.stage);
+		if (added) updateMarkGuide();
+		return added;
+	}
+
 	// ⚠️ モード（Tab でアイテム欄と一覧を往復するフォーカス）は廃止した（2026-09-15 ユーザー決定）。
 	// ←→＝アイテム／↑↓＝目的地マークで**常に両方が生きている**＝「今どっちのモードか」が
 	// 存在しない∴迷わない。旧 `pauseToggleFocus()` と `pauseFocus` は削除。
@@ -1042,6 +1060,7 @@ export function createUi(deps) {
 		pauseMarkPrev,
 		pauseMarkNext,
 		updateMarkGuide,
+		grantMark,
 		// ショップ
 		openShop,
 		closeShop,

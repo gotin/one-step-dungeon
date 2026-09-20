@@ -601,7 +601,7 @@ test.describe('Blade of Lumia – 魔王の岩牢（X 魔王）', () => {
     expect(stele.join('\n'), '空島の石碑に魔王の案内が残っている（入口は南湖へ移した）')
       .not.toContain('魔王');
     // 既存の案内（虚空の祠の spec が参照している行）を壊していない。
-    expect(stele.join('\n'), '祠の案内を上書きしている').toContain('もう一つの扉');
+    expect(stele.join('\n'), '祠の案内を上書きしている').toContain('もう 一つの 扉');
   });
 
   test('② 錠の間：石を押さないと届かず・貪欲では解けず・順序が一意（状態空間）', () => {

@@ -417,6 +417,7 @@ function enterStage(lk, sk, pRow, pCol) {
 // ここに残っていた旧実装＝絵文字の 🗺🧭 を出す死んだ複製を削除した。
 // モジュール読み込み時に上書きされる∴呼ばれることは無かった）。
 let updateDungeonHud = () => {};
+let grantMark = () => {};
 
 // ── 敵生成 ────────────────────────────────────────────────────
 function buildEnemies(sd, lk, sk) {
@@ -704,6 +705,7 @@ const { checkStoneOnSwitch, evaluateConditions, refreshGates } = createCondition
 	pulse            = _ui.pulse;
 	updateDungeonHud = _ui.updateDungeonHud;
 	updateShieldHud  = _ui.updateShieldHud;
+	grantMark        = _ui.grantMark;
 	startDialog      = (r, c, tileChar) => _ui.startDialog(r, c, tileChar, stageData, NPC_DEFAULT_DIALOG, player);
 	showDialogLine   = _ui.showDialogLine;
 	advanceDialog    = _ui.advanceDialog;
@@ -1083,6 +1085,7 @@ const { checkStoneOnSwitch, evaluateConditions, refreshGates } = createCondition
 		hasCleared,
 		updateDungeonHud: (lk) => updateDungeonHud(lk),
 		pickupFloorDropAt: (r, c) => pickupFloorDropAt(r, c),
+		grantMark: (m) => grantMark(m),
 	});
 
 	// factory が生成した関数で旧インライン実装を上書き

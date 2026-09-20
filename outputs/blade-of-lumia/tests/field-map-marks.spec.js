@@ -36,6 +36,16 @@ const DEST_STAGE = '6,13';
 const DEST_LABEL = '草原の洞窟';
 const DEST_COLOR = MARK_KINDS.dungeon.color;
 
+// 実行キュー17-10b＝老賢者の重複する markAfterBoss（G/N/J/A/O/I）は削って本文だけ残した
+// ∴「最も後に倒したボスの印に追従する」検査は、markAfterBoss を2キー以上持つ唯一の相手＝
+// 賢者エルン（O＝D6・L＝D5、進行順は D6→D5 ∴ O→L の順で倒す）へ差し替える。
+const ELUN_STAGE = '13,5';
+const ELUN_RC    = [4, 5];
+// 「新しく教わった印は選択を奪わない」検査＝老賢者（1件目・静的）→ 諦めた老人（2件目・U＝
+// D7 嵐の鷲王＝最後の1体を倒した後）は同じ画面（field 7,14）内で書ける（PLAN 17-10b 参照）。
+const OLDMAN_STAGE = '7,14';
+const OLDMAN_RC    = [7, 3];
+
 function fieldGeometry() {
 	const ld = MAP.layers.field;
 	const keys = Object.keys(ld.stages);
@@ -79,6 +89,26 @@ async function talkToSage(page) {
 	const [sr, sc] = SAGE_RC;
 	await page.evaluate(({ sk, r, c }) => window.__game.enterStage('field', sk, r, c),
 		{ sk: SAGE_STAGE, r: sr, c: sc + 1 });
+	await page.evaluate(() => window.__game.setHeroDir('left'));
+	await page.evaluate(() => window.__game.swordAttack());
+	await expect(page.locator('#dialog-overlay')).toBeVisible();
+}
+
+/** 賢者エルンに話しかける（隣に立って向きを合わせ、実際の会話の口＝攻撃ボタンで開く） */
+async function talkToElun(page) {
+	const [sr, sc] = ELUN_RC;
+	await page.evaluate(({ sk, r, c }) => window.__game.enterStage('field', sk, r, c),
+		{ sk: ELUN_STAGE, r: sr, c: sc + 1 });
+	await page.evaluate(() => window.__game.setHeroDir('left'));
+	await page.evaluate(() => window.__game.swordAttack());
+	await expect(page.locator('#dialog-overlay')).toBeVisible();
+}
+
+/** 諦めた老人に話しかける */
+async function talkToOldMan(page) {
+	const [sr, sc] = OLDMAN_RC;
+	await page.evaluate(({ sk, r, c }) => window.__game.enterStage('field', sk, r, c),
+		{ sk: OLDMAN_STAGE, r: sr, c: sc + 1 });
 	await page.evaluate(() => window.__game.setHeroDir('left'));
 	await page.evaluate(() => window.__game.swordAttack());
 	await expect(page.locator('#dialog-overlay')).toBeVisible();
@@ -626,40 +656,40 @@ test.describe('目的地マーク（一覧・選択・方向表示）', () => {
 	//            ③プレイヤーが選んでいる印を勝手に奪う（ユーザー決定 2026-09-14＝
 	//            「地図上のマークリストの選択状態はプレイヤーに操作させる」）
 
-	test('⑪ 老賢者の印は「最も後に倒したボス」に追従する', async ({ page }) => {
-		const sage = MAP.layers.field.stages[SAGE_STAGE].npcData[SAGE_RC.join(',')];
-		expect(sage.markAfterBoss, '老賢者に markAfterBoss が無い＝migrate-dialog-band-1.mjs が未実行').toBeTruthy();
-		const afterG = sage.markAfterBoss.G, afterN = sage.markAfterBoss.N;
-		expect([afterG, afterN], '踏破後の印が2件そろっていない').not.toContain(undefined);
+	// 実行キュー17-10b＝老賢者の markAfterBoss は「1目的地1提供元」の掃除で全部削った
+	// （本文＝linesAfterBoss の G/N/J/A/O/I はそのまま残る＝markAfterBoss だけを落とした）。
+	// markAfterBoss を2キー以上持つのは賢者エルン（O/L）だけになった∴この検査の相手を差し替える。
+	test('⑪ エルンの印は「最も後に倒したボス」に追従する（O→L）', async ({ page }) => {
+		const elun = MAP.layers.field.stages[ELUN_STAGE].npcData[ELUN_RC.join(',')];
+		expect(elun.markAfterBoss, 'エルンに markAfterBoss が無い＝17-10b が未実行').toBeTruthy();
+		const afterO = elun.markAfterBoss.O, afterL = elun.markAfterBoss.L;
+		expect([afterO, afterL], '踏破後の印が2件そろっていない').not.toContain(undefined);
 
 		await gotoFreshGame(page);
 		await grantMap(page, 'field');
-		// 撃破前＝基本の印（草原の洞窟）
-		await talkToSage(page);
-		await finishDialog(page);
-		expect(await page.evaluate(() => window.__game.getPlayer().mapMarks))
-			.toEqual([{ layer: 'field', stage: DEST_STAGE, label: DEST_LABEL, kind: 'dungeon' }]);
 
-		// G（D1 のボス）を倒した後＝本文が名指しする次の地が印になる
-		await page.evaluate(() => window.__game.addDefeatedBoss('G'));
-		await talkToSage(page);
+		// O（D6 のボス・進行順で L より先）を倒した後＝O の印
+		await page.evaluate(() => window.__game.addDefeatedBoss('O'));
+		await talkToElun(page);
 		await finishDialog(page);
 		let marks = await page.evaluate(() => window.__game.getPlayer().mapMarks);
-		expect(marks, 'G の後に印が増えない＝印が進行に追従していない').toHaveLength(2);
-		expect(marks[1]).toEqual({ layer: 'field', stage: afterG.stage, label: afterG.label, kind: afterG.kind });
+		expect(marks, 'O の後に印が付かない＝印が進行に追従していない').toHaveLength(1);
+		expect(marks[0]).toEqual({ layer: 'field', stage: afterO.stage, label: afterO.label, kind: afterO.kind });
 
-		// さらに N も倒す＝進行順で「最も後」の N の印になる（G で固定されない）
-		await page.evaluate(() => window.__game.addDefeatedBoss('N'));
-		await talkToSage(page);
+		// さらに L（D5 のボス）も倒す＝進行順で「最も後」の L の印になる（O で固定されない）
+		await page.evaluate(() => window.__game.addDefeatedBoss('L'));
+		await talkToElun(page);
 		await finishDialog(page);
 		marks = await page.evaluate(() => window.__game.getPlayer().mapMarks);
-		expect(marks, 'N の後に印が増えない＝G で固定されている').toHaveLength(3);
-		expect(marks[2]).toEqual({ layer: 'field', stage: afterN.stage, label: afterN.label, kind: afterN.kind });
+		expect(marks, 'L の後に印が増えない＝O で固定されている').toHaveLength(2);
+		expect(marks[1]).toEqual({ layer: 'field', stage: afterL.stage, label: afterL.label, kind: afterL.kind });
 		// 保存にも残る（配列のまま＝Set にすると {} に潰れる）
 		const save = await readSave(page);
 		expect(save.player.mapMarks).toEqual(marks);
 	});
 
+	// 実行キュー17-10b＝老賢者の2件目の印（G 等）が消えた∴「奪わない」検査は同じ村の中の
+	// 別の相手＝老賢者（1件目・静的）→ 諦めた老人（2件目・U＝嵐の鷲王＝最後の1体）に差し替える。
 	test('⑫ 新しく教わった印は、選んでいる印を奪わない', async ({ page }) => {
 		await gotoFreshGame(page);
 		await grantMap(page, 'field');
@@ -668,8 +698,8 @@ test.describe('目的地マーク（一覧・選択・方向表示）', () => {
 		// 1件目は選択が空∴自動で選ばれる（選ばせる相手が1つも無い状態を作らないため）
 		expect(await page.evaluate(() => window.__game.getPlayer().selectedMarkId)).toBe(`field:${DEST_STAGE}`);
 
-		await page.evaluate(() => window.__game.addDefeatedBoss('G'));
-		await talkToSage(page);
+		await page.evaluate(() => window.__game.addDefeatedBoss('U'));
+		await talkToOldMan(page);
 		await finishDialog(page);
 		const after = await page.evaluate(() => {
 			const p = window.__game.getPlayer();
@@ -682,8 +712,7 @@ test.describe('目的地マーク（一覧・選択・方向表示）', () => {
 
 		// 自分で解除してから聞けば、次の印が自動で選ばれる（＝①の枝が生きていることの裏取り）
 		await page.evaluate(() => { window.__game.getPlayer().selectedMarkId = ''; });
-		await page.evaluate(() => window.__game.addDefeatedBoss('N'));
-		await talkToSage(page);
+		await talkToOldMan(page);
 		await finishDialog(page);
 		const sel = await page.evaluate(() => window.__game.getPlayer().selectedMarkId);
 		expect(sel, '選択を空にしても自動で選ばれない').not.toBe('');
@@ -731,13 +760,17 @@ test.describe('目的地マーク（一覧・選択・方向表示）', () => {
 	// 🔴 当て所：`ps_map` を取りこぼす／1層だけに立てる（層ごとの持ち物）／`enterStage` の後に
 	//    立てて最初の HUD が地図なしのまま／`ps_map=0` でも地図を持ってしまう。
 	test('⑮ プレビューの ps_map=1 は地図を持った状態で始まる（印がその場で見える）', async ({ page }) => {
-		// 読む相手＝`field 0,2`「古道の道標」（行き先は `field 0,0` 樹海の岩室＝**北へ2画面**）。
+		// 読む相手＝`field 15,5`「裂け目の石碑」（行き先は `field 0,0` 樹海の岩室＝**西20画面**）。
 		// ⚠️ 2026-09-19 のユーザー決定で「自分の画面を指す印」を全部消した∴**遠くを指す印**で
 		//    測る（矢印が出るのが本体＝`◎ この画面` では地図を持った甲斐が見えない）。
-		const stage = '0,2';
+		// ⚠️ 実行キュー17-10b／17-10c＝`field 0,2` は秘密の洞窟の item:flute 版（道具を持たないと
+		//    出ない）、`field 6,14` は「村から1画面で読めてしまう」ためユーザー指摘で撤回した
+		//    （17-10c）∴この検査には**無条件で出て、かつ村から深い**静的な印が要る＝新設した
+		//    `field 15,5`（村から17画面）の印に差し替えた。
+		const stage = '15,5';
 		const st = MAP.layers.field.stages[stage];
 		const found = Object.entries(st.signData ?? {}).find(([, e]) => e && !Array.isArray(e) && e.mark);
-		expect(found, 'field 0,2 に印を教える看板が無い').toBeTruthy();
+		expect(found, 'field 15,5 に印を教える看板が無い').toBeTruthy();
 		const [pos, sign] = found;
 		const [sr, sc] = pos.split(',').map(Number);
 		expect(sign.mark.stage, '行き先が自分の画面＝印の作法に反する').not.toBe(stage);
@@ -768,7 +801,7 @@ test.describe('目的地マーク（一覧・選択・方向表示）', () => {
 		await finishDialog(page);
 		await expect(page.locator('#hud-mark-guide')).toBeVisible();
 		await expect(page.locator('#hud-mark-label')).toHaveText(sign.mark.label);
-		// 行き先は北へ2画面＝矢印は ↑・「この画面」とは出ない（遠くを指しているから見て意味がある）
+		// 行き先は西20画面＝矢印は「この画面」とは出ない（遠くを指しているから見て意味がある）
 		await expect(page.locator('#hud-mark-arrow')).toHaveText(markGuide(stage, sign.mark.stage).arrow);
 		await expect(page.locator('#hud-mark-dist')).toHaveText('');
 	});
