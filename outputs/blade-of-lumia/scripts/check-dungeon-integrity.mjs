@@ -18,6 +18,13 @@
 //   [MUST] 各鍵が「その鍵で開ける扉を通らずに」到達できること（順序＝鍵が自分の扉の奥にない）
 //   [MUST] 各鍵の関門トリガーの対象が部屋に実在し、その時点の所持アイテムで成立し得ること
 //          （例: torchesLit なのに 'H' が無い部屋＝鍵が永久に出現しない）
+//   [MUST] すべての showConditions が `trigger` を持つこと（`type:` などの書式ミスは
+//          evaluateConditions に読まれず、条件が永久に成立しない）
+//   [MUST] trigger:'flutePlayed'/'killAllAndFlute' はそのステージに
+//          fluteEffect:{type:'reveal'} が要る（playFlute() が ss.flutePlayed を
+//          立てる唯一の経路。無いと笛を吹いても条件が永久に成立しない）
+//   [MUST] '>' タイルと mapEnters が 1:1（未登録の '>' ＝飾りの入口／destId 付きなのに
+//          タイルが無い登録 ＝永久に使えない出入口。id だけの着地専用エントリは除く）
 //
 // ⚠️ 2026-08-05（キュー5番）に上4件を追加した経緯：それまで本チェッカーは
 //    鍵の収支も links の形式も見ておらず、**dungeon_5 と dungeon_8 は入室した瞬間に
@@ -591,6 +598,75 @@ function checkDungeon(layerName) {
 
       default:
         err(`${where}：未知のトリガー（game/conditions.js に無い＝永久に成立しない）`);
+    }
+  }
+
+  // ── 10. showConditions は必ず `trigger` を持つ ───────────────────────────
+  // 検査(9) は**鍵に付いた関門だけ**を見る∴鍵以外（mapEnters・宝箱・タイル出現）に
+  // 付いた関門の書式ミスを取りこぼしていた。
+  // 2026-09-19 に実害を確認：dark_tower 2,2 / 3,2 の隠し門が `type: 'torchesLit'`
+  // `type: 'flutePlayed'` と書かれており、game/conditions.js evaluateConditions は
+  // `cond.trigger` しか読まない∴条件が永久に成立しない（かがり火と笛が無意味）。
+  // 生成スクリプト（e98217b の migrate-dark-tower.mjs）由来で、既存の全検査が緑だった。
+  for (const [stageKey, stage] of Object.entries(stages)) {
+    for (const [posKey, cond] of Object.entries(stage.showConditions ?? {})) {
+      if (!cond || typeof cond !== 'object') {
+        err(`ステージ [${stageKey}] (${posKey}) の showConditions が object でない (${JSON.stringify(cond)})`);
+      } else if (!cond.trigger) {
+        err(`ステージ [${stageKey}] (${posKey}) の showConditions に trigger が無い (${JSON.stringify(cond)})`
+          + ` ← evaluateConditions は cond.trigger しか読まない＝この条件は永久に成立しない`);
+      }
+    }
+  }
+
+  // ── 11b. flutePlayed / killAllAndFlute は fluteEffect:{type:'reveal'} が要る ──
+  // 検査(9) は**鍵に付いた関門だけ**を見る＝MAP_ENTER に付いた関門（隠し門）は
+  // 通らない。game.js playFlute() は `stageData.fluteEffect.type === 'reveal'` の
+  // ときだけ `ss.flutePlayed = true` を立てる（evaluateConditions が読むのはこの
+  // フラグだけ）∴fluteEffect が無いステージで trigger:'flutePlayed' を使うと、
+  // 笛を吹いても「特に何も起きない」で条件が永久に成立しない。
+  // 2026-09-19 に dark_tower 3,2 の隠し門で実害を確認（同じ e98217b の生成スクリプト
+  // 由来。他の全 flutePlayed/killAllAndFlute ゲート7件は fluteEffect.reveal を持っていた
+  // ＝この検査で初めて可視化した「たった1件だけ違う」異常）。
+  for (const [stageKey, stage] of Object.entries(stages)) {
+    for (const [posKey, cond] of Object.entries(stage.showConditions ?? {})) {
+      if (cond?.trigger !== 'flutePlayed' && cond?.trigger !== 'killAllAndFlute') continue;
+      if (stage.fluteEffect?.type !== 'reveal') {
+        err(`ステージ [${stageKey}] (${posKey}) の関門 '${cond.trigger}' は`
+          + ` fluteEffect:{type:'reveal'} が無い ← playFlute() が ss.flutePlayed を`
+          + ` 立てられず、笛を吹いても永久に条件が成立しない`);
+      }
+    }
+  }
+
+  // ── 11. '>' タイルと mapEnters の 1:1 ──────────────────────────────────
+  // game/game.js checkStageTransition は `tiles[r][c] === '>'` と
+  // `mapEnters[posKey].destId` の**両方**を要求する∴片側だけのものは必ず死んでいる。
+  //   ・登録の無い '>' ＝踏んでも何も起きない飾り（プレイヤーは入口だと思って踏む）。
+  //   ・destId があるのにタイルが無い登録 ＝その出入口は永久に使えない。
+  // 2026-09-19 に dark_tower で実害を確認（どちらも e98217b の生成スクリプト由来）：
+  //   未登録の '>' が 12 枚（行の文字列に書いた '>' と tiles[r][4]='>' の列ズレ）、
+  //   隠し門 2 件がタイル無し、さらに着地セル 0,1 (5,5) にタイルが無く**塔から歩いて
+  //   出られなかった**。他の全レイヤーは 1:1 だったので、この検査は当時も落ちた。
+  // ※ `destId` を持たない「着地専用」エントリ（id だけ＝他所の '>' の行き先）は対象外。
+  //   例: secret_grotto 0,0 (5,2) は笛で現れる寄道の着地点で、出口は別セルにある。
+  for (const [stageKey, stage] of Object.entries(stages)) {
+    const arrows = [];
+    for (let r = 0; r < stage.rows; r++) {
+      for (let c = 0; c < stage.cols; c++) if (tileAt(stage, r, c) === '>') arrows.push(`${r},${c}`);
+    }
+    for (const posKey of arrows) {
+      if (!stage.mapEnters?.[posKey]) {
+        err(`ステージ [${stageKey}] (${posKey}) の '>' が mapEnters に無い`
+          + ` ← 踏んでも何も起きない飾りの入口（'.' に戻すか行き先を登録する）`);
+      }
+    }
+    for (const [posKey, ent] of Object.entries(stage.mapEnters ?? {})) {
+      if (!ent?.destId) continue;                // 着地専用エントリ（id だけ）は '>' 不要
+      if (!arrows.includes(posKey)) {
+        err(`ステージ [${stageKey}] (${posKey}) は destId "${ent.destId}" を持つのに '>' タイルが無い`
+          + ` ← この出入口は永久に使えない`);
+      }
     }
   }
 

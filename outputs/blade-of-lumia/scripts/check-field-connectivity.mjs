@@ -66,6 +66,37 @@ console.log(`  duplicate-layout groups (→0): ${dups.length}  (incl. all-water/
 if (dups.length)
   console.log('    ' + dups.map((g) => g.join(',')).join('  |  '));
 
+// ── '>' タイルと mapEnters の 1:1（field 版）────────────────────────────────
+// game.js checkStageTransition は '>' タイルと mapEnters[pos].destId の両方を要求する。
+// 片側だけのものは必ず死んでいる（未登録の '>' ＝踏んでも何も起きない飾りの入口／
+// destId があるのにタイルが無い登録 ＝永久に使えない出入口）。
+// 2026-09-19 に dark_tower で未登録 '>' 12枚・タイル無し登録3件の実害を確認したので、
+// ダンジョン側（check-dungeon-integrity.mjs 検査11）と対になる検査を field にも置く。
+// `id` だけのエントリ（他所の '>' の行き先＝着地専用）はタイル不要なので対象外。
+{
+  const bad = [];
+  for (const sk of Object.keys(stages)) {
+    const st = stages[sk];
+    const arrows = [];
+    for (let r = 0; r < st.tiles.length; r++) {
+      const row = Array.isArray(st.tiles[r]) ? st.tiles[r] : String(st.tiles[r]).split('');
+      for (let c = 0; c < row.length; c++) if (row[c] === '>') arrows.push(`${r},${c}`);
+    }
+    for (const pos of arrows)
+      if (!st.mapEnters?.[pos]) bad.push(`field ${sk} @ ${pos}: '>' が mapEnters に無い（飾りの入口）`);
+    for (const [pos, ent] of Object.entries(st.mapEnters || {}))
+      if (ent?.destId && !arrows.includes(pos))
+        bad.push(`field ${sk} @ ${pos}: destId "${ent.destId}" があるのに '>' タイルが無い（使えない出入口）`);
+  }
+  console.log('\n── map enters ↔ \'>\' tiles (1:1) ──');
+  if (bad.length) {
+    console.log(`  ❌ ${bad.length} 件`);
+    for (const b of bad) console.log(`    ${b}`);
+  } else {
+    console.log('  ✅ all 1:1');
+  }
+}
+
 console.log('\nDungeon entrances (✓ reachable on foot from start):');
 for (const sk of Object.keys(stages).sort()) {
   const me = stages[sk].mapEnters || {};
