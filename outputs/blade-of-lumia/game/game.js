@@ -142,6 +142,12 @@ const FLOOR_DROP_SPRITES = {
 	bomb:  ['bombItem', 'bombItem'],
 	arrow: ['arrow', 'arrow'],
 };
+// dot32（32ドット絵）はセル全面に貼るのが既定（10d）＝rupee/heart/bombItem は
+// 絵の側の透明余白で正しい大きさに見える。だが arrow の絵（shared/sprites-obj32.js
+// arrowGrid()）は余白なしでセルいっぱいの縦向き矢＝全面貼りだと撃った矢
+// （game/projectile.js PROJ_SPRITE_SCALE 基準の cellPx*0.35）の約2.9倍になる。
+// 絵（3箇所で共有）を描き直さず、落ちアイテムの箱だけ縮める。
+const FLOOR_DROP_SPRITE_SCALE = { arrow: 0.35 };
 let activeFloorDrops = [];
 
 let gameTimer       = null;
@@ -1453,6 +1459,14 @@ function spawnFloorDrop(r, c, type) {
 		// ＝32 ドットに描き直したアイテムはセル全面に貼られる（10d）。ここに 'item-sprite'
 		// だけを付けていると、同じアイテムが「落ちている間だけ小さい」ことになる。
 		putCellSprite(el, cv, 'item-sprite');
+		// ⚠ 種別ごとの縮小（キュー18）＝dot32 のセル全面貼りをインライン style で上書き。
+		// style 属性は CSS クラスより詳細度が高いので dot32 クラスの上からでも効く。
+		const scale = FLOOR_DROP_SPRITE_SCALE[type];
+		if (scale) {
+			const sz = Math.round(cellPx * scale) + 'px';
+			cv.style.width = sz;
+			cv.style.height = sz;
+		}
 	} else {
 		// スプライト未定義の型は従来どおり絵文字でフォールバック
 		el.style.fontSize = `${Math.round(cellPx * 0.55)}px`;
