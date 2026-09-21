@@ -296,8 +296,12 @@ test.describe('会話の「進行で切り替わる版」をエディタで編�
 		//   −1（`dungeon_6 1,3` 森の聖域・入口の石碑＝markAfterBoss.O だけを持っていたので同上）。
 		//   老賢者・水の迷宮の石碑・森の聖域の石碑は markAfterBoss を削っても linesAfterBoss が
 		//   残るので数は動かない。賢者エルンは元から版持ちなので O を足しても数は動かない。
+		// → 50（2026-09-20・実行キュー17-9b＝帯8後半（中原・連絡路）の流し込み＝道具の版を足した
+		//   7件（見台の石碑 item:ladder・四つ辻の道標 item:bow・苔むした罅割れ壁 item:bomb・
+		//   砦跡の崩れ壁 item:bomb・罅割れた岩棚 item:bomb・火口を望む的 item:bow・
+		//   火の山の麓の篝火跡 item:candle）。印は1件も増減していない∴版の持ち主は +7 だけ）。
 		// この数は「増えたことに気づくため」の目印∴増やすときは PLAN の記述も一緒に直す。
-		expect(targets.length, '版を持つエントリの数が変わった（PLAN の記述も直す）').toBe(43);
+		expect(targets.length, '版を持つエントリの数が変わった（PLAN の記述も直す）').toBe(50);
 		for (const t of targets) {
 			const clone = JSON.parse(JSON.stringify(t.entry));
 			applyEntryVariants(clone, readEntryVariants(clone, OPTIONS));
