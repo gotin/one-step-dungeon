@@ -491,10 +491,14 @@ export function createProjectile(deps) {
 			// Phase 4-6: キャッチ成立＝運搬アイテムをここで確定加算する。
 			removeProjEl(proj);
 			_projectiles = _projectiles.filter(p => p !== proj);
-			// Phase 5.5k k-6: 敵が受け取るときは音もメッセージも出さない
-			// （「キャッチした！」はプレイヤーの手応えの表示＝敵の手元では嘘になる）。
+			// Phase 5.5k k-6: 敵が受け取るときは音も入手も起こさない
+			// （キャッチの手応えはプレイヤーのもの＝敵の手元では嘘になる）。
 			if (proj.owner === 'player') {
-				playSound('item'); pulse('{{boomerang}} ブーメランをキャッチした！');
+				// ⚠️ **キャッチそのものは文を出さない**（2026-09-21 ユーザー決定）。毎投ごとに
+				//    必ず起きる出来事＝帯が点きっぱなしになる。手応えは音（`item`）と、絵が
+				//    手元へ戻る動きが担う。運搬していた物の文（鍵/ルピー＝`carried.apply()` の
+				//    `pulse`）は残る＝**何かを得たときだけ帯が点く**。
+				playSound('item');
 				if (finalizeCarried) for (const c of (proj.carried || [])) finalizeCarried(c);
 			}
 			return;
@@ -844,10 +848,9 @@ export function createProjectile(deps) {
 		const r = toTileRow(player.y);
 		const c = toTileCol(player.x);
 		si.count--;
-		if (si.count <= 0) {
-			delete player.subItems[id];
-			player.activeSubItem = Object.keys(player.subItems)[0] ?? null;
-		}
+		// ⚠️ 置き切ってもスロットは消さない（弓と同じ・items.js の 🔴 注記）。消すと
+		//    `ownsItem(player,'bomb')` が偽に戻り、爆弾を床から拾えなくなる／看板の文が
+		//    「火薬を持っていない」側に戻る。
 		updateHud();
 
 		const charLayerEl = getCharLayerEl();

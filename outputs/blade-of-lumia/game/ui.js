@@ -27,7 +27,7 @@
 
 import { HP_PER_HEART } from './constants.js';
 import { SPRITES, PAL, makeSprite } from '../shared/sprites.js';
-import { ITEM_META, EQUIP_META, BOOMERANG_TIERS, SWORD_TIERS, SHIELD_TIERS, ARMOR_TIERS, ownsItem } from '../shared/items.js';
+import { ITEM_META, EQUIP_META, BOOMERANG_TIERS, SWORD_TIERS, SHIELD_TIERS, ARMOR_TIERS, ownsItem, addStack } from '../shared/items.js';
 import { iconCanvas, iconText, iconPxOf } from '../shared/ui-icons.js';
 import { playSound } from '../shared/sounds.js';
 // field の地図（キュー15）の色。エディタのワールドマップのサムネと**同じ関数**を呼ぶ
@@ -198,7 +198,10 @@ export function createUi(deps) {
 			// Phase 9-6: ブーメランはティア名（木／銀）を表示名にする
 			subIconEl.title        = subItemDisplayName(ai, player);
 			const cnt = player.subItems[ai].count;
-			subCountEl.textContent = (cnt && cnt !== Infinity) ? `×${cnt}` : '';
+			// ⚠️ `×0` も出す（2026-09-21）。空でもスロットは残る決まり（items.js の 🔴 注記）∴
+			//    0 を空欄にすると「弓は持っているが矢が無い」が**笛やブーメラン（数を持たない道具）と
+			//    同じ見た目**になり、撃てない理由が画面から読めない。
+			subCountEl.textContent = (typeof cnt === 'number' && cnt !== Infinity) ? `×${cnt}` : '';
 		} else {
 			subIconEl.textContent  = '—';
 			subIconEl.title        = '';
@@ -502,9 +505,13 @@ export function createUi(deps) {
 
 		pauseItemKeys = Object.keys(player.subItems).filter(k => {
 			const s = player.subItems[k];
-			if (!s || (s.count !== Infinity && s.count <= 0)) return false;
+			if (!s) return false;
 			const meta = ITEM_META[k];
 			if (meta?.type === 'passive') return false;
+			// ⚠️ 空（`count:0`）でも並べる（2026-09-21）。空でもスロットは残る決まり
+			//    （items.js の 🔴 注記）∴ここで弾くと「弓は持っているのに持ち物欄から消える」
+			//    ＝矢を拾えない理由も、持ち替えの道も画面から消える。使い切る品（薬）は
+			//    0 でスロットごと消える∴ここには出てこない。
 			return true;
 		});
 		if (pauseItemIdx >= pauseItemKeys.length) pauseItemIdx = 0;
@@ -1012,7 +1019,7 @@ export function createUi(deps) {
 		const meta = ITEM_META[g.id];
 		if (g.id === 'bomb') {
 			if (!player.subItems.bomb) player.subItems.bomb = { count: 0 };
-			player.subItems.bomb.count = Math.min(player.subItems.bomb.count + (g.count ?? 1), player.maxBombs ?? 8);
+			player.subItems.bomb.count = addStack(player.subItems.bomb.count, g.count ?? 1, player.maxBombs ?? 8);
 			if (!player.activeSubItem) player.activeSubItem = 'bomb';
 		} else if (g.id === 'healPotion' || g.id === 'bigHealPotion') {
 			if (giveSubItemFn) giveSubItemFn(g.id);

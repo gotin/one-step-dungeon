@@ -18,7 +18,7 @@
 
 import { TILE } from '../shared/tiles.js';
 import { SPRITES, PAL, drawSprite, drawSpriteFrame, drawSpriteLayers, makeSprite, applyBgSpriteToCell } from '../shared/sprites.js';
-import { TILE_SPRITE_MAP } from '../shared/tile-sprites.js';
+import { TILE_SPRITE_MAP, TILE_SPRITE_SCALE } from '../shared/tile-sprites.js';
 import { isConnectTile } from '../shared/tile-connect.js';
 import { describeCell, BG_TILE_STYLE } from '../shared/cell-appearance.js';
 import { NPC_SPRITE_MAP } from '../shared/npcs.js';
@@ -27,7 +27,7 @@ import { NPC_SPRITE_MAP } from '../shared/npcs.js';
 // 敵・プレイヤー・NPC は実体として render-chars が描くので含めない（重複描画防止）。
 // 専用分岐を持つアイテム（剣/盾/ブーメラン/鍵/ルピー/星の欠片）も含めない。
 const ITEM_FALLBACK_TILES = new Set([
-	TILE.ITEM_ARMOR, TILE.ITEM_BOMB, TILE.ITEM_BOW,
+	TILE.ITEM_ARMOR, TILE.ITEM_BOMB, TILE.ITEM_ARROWS,
 	TILE.ITEM_HEAL_POTION, TILE.ITEM_BIG_HEAL_POTION,
 	TILE.ITEM_HEART_CONTAINER, TILE.ITEM_DUNGEON_MAP, TILE.ITEM_COMPASS,
 ]);
@@ -476,6 +476,15 @@ export function createRenderBoard(deps) {
 				if (itemCond && !ss.conditionsMet.has(posKey)) return;
 				const cv = makeSprite(si.spr, si.pal, false);
 				putCellSprite(cellEl, cv, 'item-sprite');
+				// ⚠ セル全面より小さく貼る例外（矢束・キュー19）＝dot32 のセル全面貼りを
+				//    インライン style で上書きする（style 属性は CSS クラスより詳細度が
+				//    高い∴dot32 の上からでも効く／キュー18 の落ちアイテムと同じ手）。
+				//    どのタイルをどれだけ縮めるかは shared/tile-sprites.js が単一の真実。
+				const scale = TILE_SPRITE_SCALE[tile];
+				if (cv && scale) {
+					cv.style.width  = `calc(var(--cell) * ${scale})`;
+					cv.style.height = `calc(var(--cell) * ${scale})`;
+				}
 			}
 		}
 	}

@@ -58,6 +58,9 @@ const KINDS = [
 	// ⚠️ 弓本体（弧）と弦で「D」字に閉じる＝中は意図的な空洞（鍵の輪と同型）＝holes:true。
 	{ spr: 'bow',      pal: 'bow',      label: '弓',       frames: 1, ink: { w: 15, h: 28 }, was: { w: 15/32, h: 28/32 }, tol: 0.01, holes: true },
 	{ spr: 'bombItem', pal: 'bombItem', label: '爆弾',     frames: 1, ink: { w: 13, h: 18 }, was: { w: 0.447, h: 0.55  }, tol: 0.06, holes: false },
+	// ⚠️ 床タイル '6'（矢束）はここに無い＝専用の絵を持たず、飛翔中の矢 `arrow` の絵を
+	// 縮めて貼る（キュー19・TILE_SPRITE_SCALE）。絵の ink ではなく貼る箱の大きさで
+	// 見かけを作る唯一の例外∴大きさの歯は tests/arrow-floor-item.spec.js ⑩ が持つ。
 	{ spr: 'key',      pal: 'key',      label: '鍵',       frames: 2, ink: { w: 11, h: 16 }, was: { w: 0.367, h: 0.378 }, tol: 0.15, holes: true  },
 	{ spr: 'rupee',    pal: 'rupee',    label: 'ルピー',   frames: 1, ink: { w: 15, h: 18 }, was: { w: 0.481, h: 0.481 }, tol: 0.09, holes: false },
 	// ⚠️ 10g（2026-09-09）で金の三角形→青い結晶（菱形）へ描き直し＝形が別物になった
@@ -230,7 +233,10 @@ test.describe('落ちアイテム – 32 ドットの絵', () => {
 test.describe('落ちアイテム – 実エンジンのドット密度', () => {
 
 	const CHAR_BY_LABEL = {
-		剣: '1', 盾: '2', ブーメラン: '4', 爆弾: '5', 弓: '6', 鍵: 'K',
+		// ⚠️ '6'（キュー19 で「弓」→**矢束**に改名）はここに入れない＝矢束だけは
+		//    セル全面ではなく TILE_SPRITE_SCALE で縮めて貼る唯一の例外（飛翔中の矢の絵の
+		//    流用＝余白が無い）∴大きさは tests/arrow-floor-item.spec.js ⑩ が数える。
+		剣: '1', 盾: '2', ブーメラン: '4', 爆弾: '5', 鍵: 'K',
 		ルピー: 'r', ハートの器: '9', 地図: 'm', コンパス: 'n',
 	};
 	const SPOTS = {};

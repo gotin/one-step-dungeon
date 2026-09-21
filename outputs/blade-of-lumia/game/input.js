@@ -75,7 +75,7 @@ export function initInput(deps) {
 	// ボス終幕（boss.js の onBossDefeated / onBossYielded）の間は演出だけを見せる。
 	// ⚠️ ゲームループを止めても入力ハンドラは生きている＝連打すると swordAttack /
 	// useSubItem が走り、その失敗メッセージ（「剣を持っていない！」「アイテムがない！」
-	// 「ブーメランが戻ってくる！」…）が **共有バー1本の #msg-bar** へ割り込んで
+	// 「矢がない！」…）が **共有バー1本の #msg-bar** へ割り込んで
 	// 終幕の台詞を消してしまう（2026-08-20 実測で再現＝ユーザー報告の実因）。
 	// ∴ここで飲む。押しっぱなしも捨てる（演出明けに勝手に歩き出さない）。
 	const inCutscene = () => !!getIsCutscene?.();

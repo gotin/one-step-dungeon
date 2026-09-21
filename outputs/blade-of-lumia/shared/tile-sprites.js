@@ -78,7 +78,9 @@ export const TILE_SPRITE_MAP = {
 	[TILE.ITEM_HEART_CONTAINER]: { spr: 'heart',     pal: 'heart'     },
 	[TILE.ITEM_ARMOR]:           { spr: 'armor',     pal: 'armor'     },
 	[TILE.ITEM_BOMB]:            { spr: 'bombItem',  pal: 'bombItem'  },
-	[TILE.ITEM_BOW]:             { spr: 'bow',       pal: 'bow'       },
+	// 実行キュー19: '6' は矢束＝弓の絵ではなく**矢**を描く（床に弓は落ちていない）。
+	// 大きさだけは例外扱い＝下の TILE_SPRITE_SCALE を見ること。
+	[TILE.ITEM_ARROWS]:          { spr: 'arrow',     pal: 'arrow'     },
 	[TILE.ITEM_HEAL_POTION]:     { spr: 'potion',    pal: 'potion'    },
 	[TILE.ITEM_BIG_HEAL_POTION]: { spr: 'bigHealPotion', pal: 'potionBig' },
 	[TILE.ITEM_DUNGEON_MAP]:     { spr: 'dmap',      pal: 'dmap'      },
@@ -124,4 +126,22 @@ export const TILE_SPRITE_MAP = {
 	[TILE.SWITCH_BLUE]: { spr: 'switchBlu', pal: 'switchBlu' },
 	[TILE.GATE_RED]:    { spr: 'gateRed',   pal: 'gateRed'   },
 	[TILE.GATE_BLUE]:   { spr: 'gateBlu',   pal: 'gateBlu'   },
+};
+
+// 「セル全面より小さく貼る」床タイルの例外表（単一の真実・キュー19）。
+//
+// 既定は 32 ドットの絵をセル全面に貼る（game/css/board.css の .dot32）＝見かけの
+// 大きさは絵の中の透明な余白で作る（shared/sprites-obj32.js の方針）。矢だけはこの
+// 方針に乗れない：`arrow` の絵は余白なしの横向き（ink 27×15）で、飛翔中の矢・敵の
+// ドロップ・床タイルの3か所が同じ絵を共有している。全面に貼ると「撃たれた矢が床を
+// 横切っている」ように見え、同じ部屋の爆弾より大きくなる（キュー19 の自己レビュー）。
+//
+// ⚠️ 矢束のための専用の絵は試して捨てた（3案とも柵・鉢植え・マッチ棒に見えた）。
+//    見本は**キュー18 でユーザー判定 OK になった敵ドロップの矢**＝同じ 0.35 に揃える
+//    ∴game/game.js の FLOOR_DROP_SPRITE_SCALE.arrow はこの値を import して使う
+//    （2か所に数字を書くと片方だけ直して食い違う）。
+export const ARROW_CELL_SCALE = 0.35;
+
+export const TILE_SPRITE_SCALE = {
+	[TILE.ITEM_ARROWS]: ARROW_CELL_SCALE,
 };

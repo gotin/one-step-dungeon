@@ -3,8 +3,9 @@
 import { TILE, BG_TILES } from '../shared/tiles.js';
 import { buildExitRegistry as buildExitRegistryShared } from '../shared/exits.js';
 import { ENEMY_META, ENEMY_SPEED_NORMAL } from '../shared/enemies.js';
-import { ITEM_META, EQUIP_META, BOOMERANG_TIERS } from '../shared/items.js';
+import { ITEM_META, EQUIP_META, BOOMERANG_TIERS, ownsItem, addStack } from '../shared/items.js';
 import { NPC_SPRITE_MAP, NPC_DEFAULT_DIALOG } from '../shared/npcs.js';
+import { ARROW_CELL_SCALE } from '../shared/tile-sprites.js';
 import {
 	SPRITES, PAL, drawSpriteFrame,
 	makeSprite, startAnimLoop, redrawAnimSprites,
@@ -147,7 +148,10 @@ const FLOOR_DROP_SPRITES = {
 // arrowGrid()）は余白なしでセルいっぱいの縦向き矢＝全面貼りだと撃った矢
 // （game/projectile.js PROJ_SPRITE_SCALE 基準の cellPx*0.35）の約2.9倍になる。
 // 絵（3箇所で共有）を描き直さず、落ちアイテムの箱だけ縮める。
-const FLOOR_DROP_SPRITE_SCALE = { arrow: 0.35 };
+// ⚠ 床タイルの矢束（'6'・キュー19）も同じ見かけに揃える＝値は
+//   shared/tile-sprites.js の ARROW_CELL_SCALE 1か所だけに置く（2か所に数字を
+//   書くと片方だけ直して「落ちている矢と床の矢の大きさが違う」に戻る）。
+const FLOOR_DROP_SPRITE_SCALE = { arrow: ARROW_CELL_SCALE };
 let activeFloorDrops = [];
 
 let gameTimer       = null;
@@ -1494,14 +1498,17 @@ function applyFloorDropEffect(type) {
 	if (type === 'bomb') {
 		if (!player.subItems.bomb) player.subItems.bomb = { count: 0 };
 		const prev = player.subItems.bomb.count;
-		player.subItems.bomb.count = Math.min(prev + 3, maxB);
+		player.subItems.bomb.count = addStack(prev, 3, maxB);
 		if (player.subItems.bomb.count > prev) {
 			playSound('item'); pulse('{{bomb}} ×3'); updateHud(); saveGame();
 		}
 	} else if (type === 'arrow') {
-		if (!player.subItems.bow) player.subItems.bow = { count: 0 };
+		// 実行キュー19: 弓を手にしていない間は矢を渡さない（渡すと `subItems.bow` が
+		// 生えて `ownsItem(player,'bow')` が真になり、弓入手前に弓が撃てる）。
+		// 出る側（combat.js のドロップ重み）でも 0 にしてあり、ここは二重の関門。
+		if (!ownsItem(player, 'bow')) return;
 		const prev = player.subItems.bow.count;
-		player.subItems.bow.count = Math.min(prev + 3, maxA);
+		player.subItems.bow.count = addStack(prev, 3, maxA);
 		if (player.subItems.bow.count > prev) {
 			playSound('item'); pulse('{{arrow}} ×3'); updateHud(); saveGame();
 		}
@@ -1823,8 +1830,13 @@ function useSubItem() {
 	if (!id) { pulse('サブアイテムがない！'); return; }
 	const meta = ITEM_META[id];
 	const si   = player.subItems[id];
-	if (!si || (!si.count && si.count !== Infinity)) { pulse('アイテムがない！'); return; }
+	// ⚠️ ここで残弾 0 を弾かない＝**残弾切れは道具ごとの言い方で断る**（矢なら「矢がない！」・
+	//    爆弾なら「爆弾がない！」）。空でもスロットは残る決まりになった（items.js の 🔴 注記）
+	//    ∴ここで一括して「アイテムがない！」と言うと、弓を持っているのに持っていないような
+	//    文が出る。スロットそのものが無い場合だけがここ。
+	if (!si) { pulse('アイテムがない！'); return; }
 	if (meta?.type === 'consumable') {
+		if (!si.count) { pulse(`${meta?.name ?? id}がない！`); return; }
 		if (player.hp >= player.maxHp) { pulse('HP は満タン！'); return; }
 		player.hp = Math.min(player.maxHp, player.hp + (meta.healAmount ?? 5));
 		if (si.count !== Infinity) si.count--;
@@ -1833,10 +1845,10 @@ function useSubItem() {
 		updateHud(); saveGame(); return;
 	}
 	if (id === 'boomerang') {
-		// 飛翔中ならキャッチ待ち
-		if (getProjectiles().some(p => p.type === 'boomerang' && p.owner === 'player')) {
-			pulse('ブーメランが戻ってくる！'); return;
-		}
+		// 飛翔中ならキャッチ待ち（**黙って断る**＝2026-09-21 ユーザー決定。矢の同時2本と同じ
+		// 理由で、飛んでいる間に押すのは普通の撃ち方∴文を出すと帯が点きっぱなしになる。
+		// 告知は「ブーメランが画面に見えている」こと自体。爆弾＝上限も断り文も無い）。
+		if (getProjectiles().some(p => p.type === 'boomerang' && p.owner === 'player')) return;
 		const [dy, dx] = DIR_DELTA[heroDir];
 		const ndx = dx / MOVE_STEP;
 		const ndy = dy / MOVE_STEP;
@@ -1874,11 +1886,17 @@ function useSubItem() {
 		// ブーメラン（同時1本＝上の分岐）と同じ作法＝新しい絵/文なしで「画面に見えている」
 		// こと自体が告知になる。矢は貫通のため必ず壁か画面外まで飛んで消える＝謎は詰まらない。
 		if (getProjectiles().filter(p => p.type === 'arrow' && p.owner === 'player').length >= 2) {
-			pulse('矢が飛んでいる！'); return;
+			// ⚠️ **上限に当たったときは黙って断る**（2026-09-21 ユーザー報告＝「矢が飛んでいる！」は
+			//    要らない）。連打が普通の撃ち方＝3本目は戦闘中ずっと来る∴文を出すと帯が点きっぱなし
+			//    になる。上の設計どおり告知は「矢が2本飛んでいる画面」そのもの＝爆弾（上限なし∴
+			//    断り文も無い）と同じ静けさに揃える。
+			return;
 		}
 		if (si.count <= 0) { pulse('矢がない！'); return; }
 		si.count--;
-		if (si.count <= 0) { delete player.subItems[id]; player.activeSubItem = Object.keys(player.subItems)[0] ?? null; }
+		// ⚠️ 撃ち切ってもスロットは消さない（2026-09-21 ユーザー報告の直し）。消すと
+		//    `ownsItem(player,'bow')` が偽に戻り、矢束を踏んでも「弓矢が無いと持っていけない」
+		//    と拒まれる＝二度と矢を補充できない詰みになる（items.js の 🔴 注記）。
 		const [dy, dx] = DIR_DELTA[heroDir];
 		const ndx = dx / MOVE_STEP;
 		const ndy = dy / MOVE_STEP;
@@ -2084,11 +2102,13 @@ async function init() {
 		if (psArmor    !== null) { const t = parseInt(psArmor,  10); if (t >= 0) equipArmorTier(t); }
 		if (psWingRobe === '1') player.hasWingRobe = true;
 		if (psLadder   === '1') player.hasLadder = true;
-		if (psBow      === '1') { player.subItems.bow       = { count: 10 };       if (!player.activeSubItem) player.activeSubItem = 'bow'; }
+		// ⚠️ 本数は**上限（`maxArrows`/`maxBombs`）ちょうど＝満タン**で渡す。上限を超える
+		//    本数を直接入れると「矢束を踏んだら減る」状態を作ってしまう（2026-09-21）。
+		if (psBow      === '1') { player.subItems.bow       = { count: player.maxArrows ?? 8 };  if (!player.activeSubItem) player.activeSubItem = 'bow'; }
 		if (psBoomerang=== '1') equipBoomerangTier(0);   // 木のブーメラン（所持＋ティア0）
 		// Phase 9-6: 銀のブーメラン。ps_boomerang が無くても単独で所持状態になる。
 		if (psSilverBoomerang === '1') equipBoomerangTier(1);
-		if (psBomb     === '1') { player.subItems.bomb      = { count: 10 };        if (!player.activeSubItem) player.activeSubItem = 'bomb'; }
+		if (psBomb     === '1') { player.subItems.bomb      = { count: player.maxBombs ?? 8 };   if (!player.activeSubItem) player.activeSubItem = 'bomb'; }
 		if (psFlute    === '1') { player.subItems.flute     = { count: Infinity };  if (!player.activeSubItem) player.activeSubItem = 'flute'; }
 		if (psCandle   === '1') { player.subItems.candle    = { count: Infinity };  if (!player.activeSubItem) player.activeSubItem = 'candle'; }
 		// 地図の所持（2026-09-19）＝**目的地マーク（キュー16）は地図を持つ層でしか見えない**
@@ -2247,6 +2267,10 @@ export function getStageStateSnapshot() {
 		stonePositions: { ...(ss.stonePositions ?? {}) },  // Phase 5-3: 敵が押した石の確認用
 		stonesLocked:  !!ss.stonesLocked,  // Phase 4.56
 		flutePlayed:   !!ss.flutePlayed,   // Phase 5.5h: killAllAndFlute の検証用
+		// 実行キュー19: 拾った床アイテムのセル＝「踏んだのに拾えなかった矢束が残るか」の
+		// 観測用。⚠️ このスナップショットはホワイトリスト∴ここに足さない欄はテストから
+		// 常に undefined／空になる（[[blade-snapshot-api-names]]）。
+		pickedKeys:    [...(ss.pickedKeys ?? [])],
 	};
 }
 

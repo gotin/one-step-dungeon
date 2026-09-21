@@ -7,7 +7,7 @@ import { ENEMY_META } from '../shared/enemies.js';
 import { NPC_SPRITE_MAP } from '../shared/npcs.js';
 import { playSound, resumeAudio, stopBgm } from '../shared/sounds.js';
 import { makeSprite } from '../shared/sprites.js';
-import { SWORD_TIERS } from '../shared/items.js';
+import { SWORD_TIERS, ownsItem } from '../shared/items.js';
 import {
 	MOVE_STEP, DIR_DELTA, SWORD_REACH, SWORD_COOLDOWN_MS, INVINCIBLE_MS,
 	ATTACK_POSE_MS,
@@ -293,7 +293,11 @@ export function createCombat(deps) {
 			const arrowCount = player.subItems?.bow?.count  ?? 0;
 			// 所持数に応じた重み（満タンなら0）
 			const wBomb  = bombCount  >= maxB ? 0 : bombCount  < maxB / 2 ? 4 : 2;
-			const wArrow = arrowCount >= maxA ? 0 : arrowCount < maxA / 2 ? 4 : 2;
+			// 実行キュー19: 弓を手にしていない間は矢を落とさせない（矢の残弾は
+			// `subItems.bow` に載る∴弓入手前に渡すと弓が撃てるようになる）。爆弾は
+			// 単体で使える道具∴この関門は要らない（弾＝能力）。
+			const wArrow = !ownsItem(player, 'bow') ? 0
+				: arrowCount >= maxA ? 0 : arrowCount < maxA / 2 ? 4 : 2;
 			const wHeart  = 2;
 			const wRupee  = 2;
 			const total = wBomb + wArrow + wHeart + wRupee;

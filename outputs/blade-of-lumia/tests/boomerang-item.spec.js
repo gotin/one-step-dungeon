@@ -152,6 +152,49 @@ test.describe('Blade of Lumia – ブーメランでアイテム回収（Phase 4
     expect(result.gone).toBe(false);  // キャッチしてブーメランは消えている
   });
 
+  // 🔴 2026-09-21 ユーザー報告＝「矢が飛んでいる！」のような**毎回必ず出る文**は帯が
+  //    点きっぱなしになる∴廃止した。ブーメランも同じ型の文を2つ持っていた（投擲中に押した
+  //    ときの断り／キャッチの通知）＝どちらも黙らせた。**帯が点くのは「何かを得たとき」だけ**
+  //    ∴運搬していた物の文（鍵・ルピー）は残る＝この本が両方を同時に縛る。
+  test('⑤ 投擲中の押し直しとキャッチは黙る（運搬していた物の文だけ出る）', async ({ page }) => {
+    await seedBoomerang(page, '6,13', 6, 2);
+
+    const bar = () => page.evaluate(() => {
+      const el = document.getElementById('msg-bar');
+      return el.classList.contains('hidden') ? '' : el.textContent;
+    });
+
+    // (a) 何も運ばない投擲（上＝素の床しかない向き）＝投げても・押し直しても・戻っても無言
+    const empty = await page.evaluate(() => {
+      const g = window.__game;
+      g.setHeroDir('up');
+      g.useSubItem(); g.step(1);
+      const flying = g.getProjectiles().filter(p => p.type === 'boomerang').length;
+      g.useSubItem();                       // 飛んでいる間の押し直し＝黙って断る
+      const afterMash = g.getProjectiles().filter(p => p.type === 'boomerang').length;
+      return { flying, afterMash };
+    });
+    expect(empty.flying, '1枚目が飛んでいない').toBe(1);
+    expect(empty.afterMash, '飛んでいる間の押し直しで2枚目が出た＝同時1枚の上限が効いていない').toBe(1);
+    expect(await bar(), '投擲中に押し直したら帯が点いた（黙って断るべき）').not.toMatch(/戻ってくる/);
+
+    await page.evaluate(() => window.__game.step(30));   // 戻ってキャッチ
+    expect(await page.evaluate(() => window.__game.getProjectiles().length),
+      '前提：キャッチが成立していない').toBe(0);
+    expect(await bar(), '何も運んでいないキャッチで帯が点いた（毎投ごとに点く）').not.toMatch(/キャッチ/);
+
+    // (b) 鍵を運んだキャッチ＝**得た物の文は出る**（沈黙が行き過ぎていないことの歯）
+    await page.evaluate(() => {
+      const g = window.__game;
+      g.setHeroDir('right');   // (2,8) の鍵へ向ける
+      g.useSubItem();
+      g.step(30);
+    });
+    expect(await page.evaluate(() => window.__game.getState().player.keys),
+      '前提：鍵を運び帰っていない').toBe(1);
+    expect(await bar(), '運んで帰った鍵の文が出ない（沈黙が行き過ぎた）').toMatch(/鍵/);
+  });
+
   test('④取り逃し（キャッチ前にステージ遷移）＝入手されず、アイテムはその場に残る', async ({ page }) => {
     await seedBoomerang(page, '6,13', 6, 2);
 

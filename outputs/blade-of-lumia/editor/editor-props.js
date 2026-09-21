@@ -1,5 +1,5 @@
 // ── editor-props.js ── 右パネル（ゲート・宝箱・NPC・条件等） ──
-import { TILE, TILE_META } from '../shared/tiles.js';
+import { TILE, TILE_META, FLOOR_STACK_TILES } from '../shared/tiles.js';
 import { ITEM_META } from '../shared/items.js';
 import { getCurrentStage, findTilePositions, state, stageKey } from './editor-state.js';
 import { buildExitRegistry, resolveExit, reverseRefs, resolveFluteWarp } from '../shared/exits.js';
@@ -55,40 +55,51 @@ export function initLinksEvents() {
 	});
 }
 
-// ── 剣・防具のフロアアイテム設定 ────────────────────────────
+// ── 床置きアイテムの個別設定（剣・防具・盾のティア／矢束・爆弾の本数）────────
+// Phase 7-2: 剣・防具・盾はティア番号で段階を指定する（SWORD/ARMOR/SHIELD_TIERS）。
+// 実行キュー19（2026-09-21）: 矢束・爆弾は「本数」を持つ（`floorItems[key].count`）＝
+// ティアと同じ枠で編集する。どのタイルが本数を持つかは `FLOOR_STACK_TILES` が単一の
+// 真実＝ここに手書きの一覧を作らない。
+// 10e: 見出しの絵は `data-icon`（shared/ui-icons.js が絵に差し替える）。中の
+// 絵文字は絵が引けなかった時の保険として残す。
+const TIER_FIELD = {
+	[TILE.ITEM_SWORD]:  { f: 'swordTier',  names: ['木の剣','銅の剣','銀の剣','聖剣'],          iconKey: 'sword',  emoji: '⚔', label: '剣' },
+	[TILE.ITEM_ARMOR]:  { f: 'armorTier',  names: ['布の服','青銅の鎧','伝説の鎧'],            iconKey: 'armor',  emoji: '⚚', label: '防具' },
+	[TILE.ITEM_SHIELD]: { f: 'shieldTier', names: ['木の盾','鉄の盾','ミラーシールド'],          iconKey: 'shield', emoji: '🛡', label: '盾' },
+};
 function renderEquipItems(sd) {
 	const el = document.getElementById('equip-flooritems-list');
 	if (!el) return;
 	el.innerHTML = '';
-	const swordItems  = findTilePositions(sd, TILE.ITEM_SWORD).map(p => ({ ...p, tile: TILE.ITEM_SWORD }));
-	const armorItems  = findTilePositions(sd, TILE.ITEM_ARMOR).map(p => ({ ...p, tile: TILE.ITEM_ARMOR }));
-	const shieldItems = findTilePositions(sd, TILE.ITEM_SHIELD).map(p => ({ ...p, tile: TILE.ITEM_SHIELD }));
-	const allItems    = [...swordItems, ...armorItems, ...shieldItems];
-	if (!allItems.length) { el.innerHTML = '<div class="hint">剣・防具・盾なし</div>'; return; }
-	// Phase 7-2: 剣・防具・盾はティア番号で段階を指定する（SWORD/ARMOR/SHIELD_TIERS）
-	// 10e: 見出しの絵は `data-icon`（shared/ui-icons.js が絵に差し替える）。中の
-	// 絵文字は絵が引けなかった時の保険として残す。
-	const TIER_FIELD = {
-		[TILE.ITEM_SWORD]:  { f: 'swordTier',  names: ['木の剣','銅の剣','銀の剣','聖剣'],          iconKey: 'sword',  emoji: '⚔', label: '剣' },
-		[TILE.ITEM_ARMOR]:  { f: 'armorTier',  names: ['布の服','青銅の鎧','伝説の鎧'],            iconKey: 'armor',  emoji: '⚚', label: '防具' },
-		[TILE.ITEM_SHIELD]: { f: 'shieldTier', names: ['木の盾','鉄の盾','ミラーシールド'],          iconKey: 'shield', emoji: '🛡', label: '盾' },
-	};
+	const tiles    = [...Object.keys(TIER_FIELD), ...Object.keys(FLOOR_STACK_TILES)];
+	const allItems = tiles.flatMap(t => findTilePositions(sd, t).map(p => ({ ...p, tile: t })));
+	if (!allItems.length) { el.innerHTML = '<div class="hint">剣・防具・盾・矢束・爆弾なし</div>'; return; }
 	for (const { r, c, tile } of allItems) {
-		const key  = `${r},${c}`;
-		const data = sd.floorItems?.[key] ?? {};
-		const spec = TIER_FIELD[tile];
+		const key   = `${r},${c}`;
+		const data  = sd.floorItems?.[key] ?? {};
+		const stack = FLOOR_STACK_TILES[tile];
+		const spec  = TIER_FIELD[tile] ?? {
+			f: 'count', iconKey: stack.icon, emoji: TILE_META[tile]?.icon ?? '',
+			label: TILE_META[tile]?.label ?? tile,
+		};
 		const field = spec.f;
-		const tierVal = data[field] ?? 0;
 		const item = document.createElement('div');
 		item.className = 'link-item';
+		// 本数は空欄可＝そのとき既定（ITEM_META[item].defaultStack）で拾える。
+		const valueRow = stack
+			? `<label>本数
+					<input type="number" min="1" value="${data.count ?? ''}" data-key="${key}" data-f="count"
+						placeholder="既定 ${ITEM_META[stack.item]?.defaultStack ?? 1}">
+				</label>`
+			: `<label>ティア
+					<select data-key="${key}" data-f="${field}">
+						${spec.names.map((n, i) => `<option value="${i}"${(data[field] ?? 0)===i?' selected':''}>${i}: ${n}</option>`).join('')}
+					</select>
+				</label>`;
 		item.innerHTML = `
 			<div class="link-item-header"><span><span data-icon="${spec.iconKey}" data-icon-px="16">${spec.emoji}</span> ${spec.label} (${r},${c})</span></div>
 			<label>名前 <input type="text" value="${data.name ?? ''}" data-key="${key}" data-f="name" placeholder="（省略可）"></label>
-			<label>ティア
-				<select data-key="${key}" data-f="${field}">
-					${spec.names.map((n, i) => `<option value="${i}"${tierVal===i?' selected':''}>${i}: ${n}</option>`).join('')}
-				</select>
-			</label>
+			${valueRow}
 		`;
 		mountIconEls(item);
 		item.querySelectorAll('input,select').forEach(inp => {
@@ -96,7 +107,10 @@ function renderEquipItems(sd) {
 				if (!sd.floorItems) sd.floorItems = {};
 				if (!sd.floorItems[key]) sd.floorItems[key] = {};
 				const f = inp.dataset.f;
-				sd.floorItems[key][f] = (f === field) ? (parseInt(inp.value, 10) || 0) : inp.value;
+				if (f !== field) { sd.floorItems[key][f] = inp.value; return; }
+				// 本数は空欄で「既定に戻す」＝欄を消す（0 を書いて拾えないタイルを作らない）。
+				if (f === 'count' && inp.value === '') { delete sd.floorItems[key].count; return; }
+				sd.floorItems[key][f] = parseInt(inp.value, 10) || 0;
 			});
 		});
 		el.appendChild(item);

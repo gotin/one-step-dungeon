@@ -102,7 +102,10 @@ export const TILE = {
 	ITEM_ARMOR:          '3',  // 防具
 	ITEM_BOOMERANG:      '4',  // ブーメラン
 	ITEM_BOMB:           '5',  // 爆弾
-	ITEM_BOW:            '6',  // 弓矢（将来拡張）
+	// 実行キュー19（2026-09-21）：'6' は「弓＋矢N本」ではなく**矢束（矢だけ）**。
+	// 弓そのものは宝箱/報酬（`giveSubItem('bow')`）でしか手に入らない＝床には置けない。
+	// 数は `floorItems[key].count`（既定は FLOOR_STACK_TILES を見る）。
+	ITEM_ARROWS:         '6',  // 矢束（矢だけ。弓は含まない）
 	ITEM_HEAL_POTION:    '7',  // 回復薬（小）
 	ITEM_BIG_HEAL_POTION:'8',  // 回復薬（大）
 	ITEM_HEART_CONTAINER:'9',  // ハートの器
@@ -243,7 +246,7 @@ export const TILE_META = {
 	[TILE.ITEM_ARMOR]:           { label: '防具',         color: '#607080', passable: true, icon: '⚚' },
 	[TILE.ITEM_BOOMERANG]:       { label: 'ブーメラン',   color: '#806040', passable: true, icon: '🪃' },
 	[TILE.ITEM_BOMB]:            { label: '爆弾',         color: '#404040', passable: true, icon: '💣' },
-	[TILE.ITEM_BOW]:             { label: '弓矢',         color: '#605040', passable: true, icon: '🏹' },
+	[TILE.ITEM_ARROWS]:          { label: '矢束',         color: '#605040', passable: true, icon: '🏹' },
 	[TILE.ITEM_HEAL_POTION]:     { label: '回復薬（小）', color: '#206020', passable: true, icon: '🧪' },
 	[TILE.ITEM_BIG_HEAL_POTION]: { label: '回復薬（大）', color: '#208020', passable: true, icon: '💊' },
 	[TILE.ITEM_HEART_CONTAINER]: { label: 'ハートの器',color: '#c02040', passable: true, icon: '❤' },
@@ -305,6 +308,28 @@ export const MANUAL_BRIDGE_SPEC = {
 // 「同じ1枚のデッキ」とみなす橋タイル＝この間には木口を描かない（継ぎ目を作らない）。
 // 導出の橋 'v' と手動の8種を混ぜて置いても板が段付きに見えないようにするための集合。
 export const BRIDGE_KIN = new Set([TILE.BRIDGE, ...Object.keys(MANUAL_BRIDGE_SPEC)]);
+
+// ── 床置きの「数を持つ」アイテムタイルの単一の真実（実行キュー19・2026-09-21）──
+// 矢束と爆弾は「拾うと所持数が N 増える」タイル＝剣/盾/防具の「ティア」とは別の軸。
+// ここに書く3つの意味：
+//   item     … 増やすサブアイテム id（`player.subItems[item].count`）
+//   requires … 拾うのに**手に入れている必要がある道具** id（null＝誰でも拾える）
+//   icon     … メッセージに出す絵の鍵（`shared/ui-icons.js` の `{{…}}`）
+//   cap      … 上限が載っている player の欄（矢筒/爆弾袋で増える）
+// 名前は `TILE_META[tile].label`（矢束／爆弾）・既定本数は `ITEM_META[item].defaultStack`
+// を使う＝表を二重に持たない（tiles.js は items.js を読まない＝依存を増やさないため、
+// 数の引き当ては読み手側で行う）。
+// ⚠️ `requires` がある理由＝矢の残弾は `subItems.bow` に載る∴弓を持たない者に矢を
+//    渡すとスロットが生えて `ownsItem(player,'bow')` が真になり、弓を手にする前に
+//    弓が撃てる／会話の `item:bow` 版が先に出る（実行キュー26 の判定が壊れる）。
+//    ∴弓が無い間は**タイルを消さずに残す**（後で取りに来られる）。
+// 読み手＝`game/player.js`（床タイル）と `editor/editor-props.js`（本数の編集欄）。
+// 敵ドロップの矢は別口（`game/combat.js` の重み＋`game/game.js applyFloorDropEffect`）
+// で、そちらも同じ「弓を持っているか」で塞いである。
+export const FLOOR_STACK_TILES = {
+	[TILE.ITEM_ARROWS]: { item: 'bow',  requires: 'bow', icon: 'arrow', cap: 'maxArrows' },
+	[TILE.ITEM_BOMB]:   { item: 'bomb', requires: null,  icon: 'bomb',  cap: 'maxBombs'  },
+};
 
 // タイルの一覧（パレット表示用）
 export const TILE_LIST = Object.keys(TILE_META);

@@ -104,6 +104,7 @@ export const ITEM_META = {
 		aoeRadius: 2,      // 爆風半径（セル）
 		damage: 20,
 		uses: null,        // スタック数で管理
+		defaultStack: 3,   // 「1セット」の本数（下の注記）
 	},
 	bow: {
 		name: '弓矢', icon: '🏹', sprite: 'bow', pal: 'bow',
@@ -111,6 +112,7 @@ export const ITEM_META = {
 		breakPower: 0,
 		piercing: true,    // 貫通
 		uses: null,
+		defaultStack: 10,  // 「1セット」の本数（下の注記）
 	},
 	healPotion: {
 		name: '回復薬（小）', icon: '🧪', sprite: 'potion', pal: 'potion',
@@ -193,6 +195,14 @@ export const ITEM_META = {
 	},
 };
 
+// ── `defaultStack`：数で持つ道具の「1セット」の本数（実行キュー19・2026-09-21）──
+// 3つの読み手が同じ数を使う＝表を分けない：
+//   ・床タイル（矢束 '6' / 爆弾 '5'）で `floorItems[key].count` が無いときの既定本数
+//   ・エディタの本数欄のプレースホルダ（`editor/editor-props.js`）
+//   ・**初めて手に入れたとき**に付く本数（`giveSubItem` のスロット作成時）
+// ⚠️ 3つ目が無いと宝箱の「弓矢」が矢1本で出てくる（2026-09-21 まではそうだった＝
+//    D3 の弓を開けても1射しかできず、矢は敵ドロップ頼りだった）。既にスロットを
+//    持っている場合の加算は従来どおり +1 のまま（上限 `maxArrows`/`maxBombs` でクランプ）。
 // ── 「その道具を持っているか」の単一の真実（実行キュー26）──────────────────
 // なぜ1本にするか＝**所持の置き場が道具によって違う**（2026-09-17 に実装を読んで確認）：
 //   ・`player.subItems[id]`  … ブーメラン／爆弾／弓矢／笛／ロウソク（`giveSubItem` の既定の道）
@@ -203,7 +213,28 @@ export const ITEM_META = {
 // ⚠️ **数（`count`）は見ない＝「手に入れたか」で判定する。** 爆弾を撃ち切って `count:0` に
 //    なっても「火薬は手に入れている」は真∴看板の文（「硬い砂岩は火薬でしか崩れぬ」→
 //    「今の荷なら砕けよう」）が残弾で行き来しない。残弾で分けたい表現が出てきたら別に足す。
+//
+// 🔴 **空になってもスロットを消してはいけない**（2026-09-21 ユーザー報告の原因）。
+//    `count:0` で `delete player.subItems[id]` すると上の判定が偽に戻る＝矢を撃ち切った
+//    瞬間に「弓を持っていない」ことになり、矢束を踏んでも「弓矢が無いと持っていけない」
+//    と拒まれる（＝二度と矢を補充できない詰み。爆弾も同じ）。スロットを消していいのは
+//    `type:'consumable'`（薬）だけ＝あれは「手に入れた道具」ではなく使い切る品。
 export const ITEM_OWNED_FLAG = { ladder: 'hasLadder' };
+
+/**
+ * 数で持つ道具（矢・爆弾）を増やしたあとの本数。上限でクランプするが**減らさない**。
+ *
+ * ⚠️ `Math.min(prev + add, cap)` だけだと `prev > cap` のとき**拾っただけで減る**。
+ *    エディタのプレビュー設定は上限（既定8）を超える本数を直接渡せる∴矢10本の状態で
+ *    矢束を踏むと 10 → 8 になっていた（2026-09-21 に自分の再現で発見）。
+ * @param {number} prev 今持っている数
+ * @param {number} add 増やす数
+ * @param {number} cap 上限（`maxArrows` / `maxBombs`）
+ * @returns {number} 新しい本数（`<= prev` なら「もう持てない」）
+ */
+export function addStack(prev, add, cap) {
+	return Math.max(prev, Math.min(prev + add, cap));
+}
 
 /**
  * プレイヤーがその道具を手に入れているか。

@@ -2,9 +2,9 @@
 // createPlayer(deps) factory で生成する。
 // movePlayer / handleTileEvent を提供。
 
-import { TILE } from '../shared/tiles.js';
+import { TILE, TILE_META, FLOOR_STACK_TILES } from '../shared/tiles.js';
 import { statefulTileClosed } from './passable.js';
-import { ITEM_META, EQUIP_META, SWORD_TIERS, BASE_ATK, ARMOR_TIERS, BASE_DEF, SHIELD_TIERS, BOOMERANG_TIERS } from '../shared/items.js';
+import { ITEM_META, EQUIP_META, SWORD_TIERS, BASE_ATK, ARMOR_TIERS, BASE_DEF, SHIELD_TIERS, BOOMERANG_TIERS, ownsItem, addStack } from '../shared/items.js';
 import { NPC_SPRITE_MAP } from '../shared/npcs.js';
 import { SPRITES, PAL, makeSprite } from '../shared/sprites.js';
 import { iconCanvas } from '../shared/ui-icons.js';
@@ -725,11 +725,20 @@ export function createPlayer(deps) {
 			else if (id === 'bombBag')   player.maxBombs   = (player.maxBombs   ?? 8) + 8;
 			return true;
 		}
-		if (!player.subItems[id]) player.subItems[id] = { count: meta?.uses === Infinity ? Infinity : 1 };
-		else if (meta?.uses !== Infinity) player.subItems[id].count++;
-		// 矢/爆弾は上限でクランプ（quiver/bombBag 拡充後の新上限も反映）
-		if (id === 'bomb') player.subItems.bomb.count = Math.min(player.subItems.bomb.count, player.maxBombs ?? 8);
-		if (id === 'bow')  player.subItems.bow.count  = Math.min(player.subItems.bow.count,  player.maxArrows ?? 8);
+		// 矢/爆弾は上限でクランプ（quiver/bombBag 拡充後の新上限も反映）。
+		const cap = id === 'bomb' ? (player.maxBombs ?? 8)
+		          : id === 'bow'  ? (player.maxArrows ?? 8)
+		          : Infinity;
+		// 初回取得は `defaultStack`（1セット分）＝弓矢なら10本・爆弾なら3個。
+		// 無い道具は1個（笛・ロウソクは uses:Infinity ∴数を持たない）。
+		if (!player.subItems[id]) {
+			const first = meta?.uses === Infinity ? Infinity : (meta?.defaultStack ?? 1);
+			player.subItems[id] = { count: first === Infinity ? Infinity : Math.min(first, cap) };
+		} else if (meta?.uses !== Infinity) {
+			// `addStack` ＝上限でクランプしつつ、上限を超えて持っている分は**減らさない**
+			// （items.js の注記＝拾った・貰ったのに減るのを禁ずる）。
+			player.subItems[id].count = addStack(player.subItems[id].count, 1, cap);
+		}
 		if (!player.activeSubItem) player.activeSubItem = id;
 		maybeShowSubItemHint();
 		return true;
@@ -922,33 +931,31 @@ export function createPlayer(deps) {
 			renderBoard(); renderChars(); updateHud(); saveGame();
 			return;
 		}
-		if (tile === TILE.ITEM_BOMB && !ss.pickedKeys.has(posKey)) {
-			ss.pickedKeys.add(posKey);
-			const bombCount = stageData.floorItems?.[posKey]?.count ?? 3;
-			if (!player.subItems.bomb) player.subItems.bomb = { count: 0 };
-			const maxB = player.maxBombs ?? 8;
-			const prevB = player.subItems.bomb.count;
-			player.subItems.bomb.count = Math.min(prevB + bombCount, maxB);
-			if (player.subItems.bomb.count <= prevB) {
-				pulse('{{bomb}} もう持てない！'); renderBoard(); renderChars(); updateHud(); saveGame(); return;
+		// ── 数を持つ床アイテム（矢束 '6' / 爆弾 '5'）─ 実行キュー19（2026-09-21）──
+		// 仕様表は `shared/tiles.js FLOOR_STACK_TILES`（増やす道具・既定本数・必要な道具・
+		// 上限欄）。**得る物が無いときはタイルを消さない**＝満タンで踏んだ矢束や、弓を
+		// 持たずに踏んだ矢束が永久に失われない（拾えた時だけ `pickedKeys` に入れる）。
+		if (FLOOR_STACK_TILES[tile] && !ss.pickedKeys.has(posKey)) {
+			const spec  = FLOOR_STACK_TILES[tile];
+			const label = TILE_META[tile]?.label ?? spec.item;
+			// 弓を手にする前の矢束は拾えない（`requires`＝矢の残弾が弓スロットに載る都合。
+			// 詳細は FLOOR_STACK_TILES の注記）。タイルは残る＝弓を得てから取りに来られる。
+			if (spec.requires && !ownsItem(player, spec.requires)) {
+				const reqName = ITEM_META[spec.requires]?.name ?? spec.requires;
+				pulse(`{{${spec.icon}}} ${label}だ……${reqName}が無いと持っていけない`);
+				return;
 			}
-			if (!player.activeSubItem) player.activeSubItem = 'bomb';
-			playSound('item'); maybeShowSubItemHint(); pulse(`{{bomb}} 爆弾 ×${bombCount} を手に入れた！`);
-			renderBoard(); renderChars(); updateHud(); saveGame();
-			return;
-		}
-		if (tile === TILE.ITEM_BOW && !ss.pickedKeys.has(posKey)) {
-			ss.pickedKeys.add(posKey);
-			const arrowCount = stageData.floorItems?.[posKey]?.count ?? 10;
-			if (!player.subItems.bow) player.subItems.bow = { count: 0 };
-			const maxA = player.maxArrows ?? 8;
-			const prevA = player.subItems.bow.count;
-			player.subItems.bow.count = Math.min(prevA + arrowCount, maxA);
-			if (player.subItems.bow.count <= prevA) {
-				pulse('{{bow}} もう持てない！'); renderBoard(); renderChars(); updateHud(); saveGame(); return;
+			const addCount = stageData.floorItems?.[posKey]?.count ?? (ITEM_META[spec.item]?.defaultStack ?? 1);
+			if (!player.subItems[spec.item]) player.subItems[spec.item] = { count: 0 };
+			const cap  = player[spec.cap] ?? 8;
+			const prev = player.subItems[spec.item].count;
+			player.subItems[spec.item].count = addStack(prev, addCount, cap);
+			if (player.subItems[spec.item].count <= prev) {
+				pulse(`{{${spec.icon}}} もう持てない！`); return;
 			}
-			if (!player.activeSubItem) player.activeSubItem = 'bow';
-			playSound('item'); maybeShowSubItemHint(); pulse(`{{bow}} 弓矢 ×${arrowCount} を手に入れた！`);
+			ss.pickedKeys.add(posKey);
+			if (!player.activeSubItem) player.activeSubItem = spec.item;
+			playSound('item'); maybeShowSubItemHint(); pulse(`{{${spec.icon}}} ${label} ×${addCount} を手に入れた！`);
 			renderBoard(); renderChars(); updateHud(); saveGame();
 			return;
 		}

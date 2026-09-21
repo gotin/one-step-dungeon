@@ -3078,10 +3078,13 @@ test('㊽ 弓は画面内2本まで（3本目は1本目が消えてから）', a
     const countAfterFirst = g.getPlayer().subItems.bow.count;
     g.useSubItem(); g.step(1);           // 2本目
     const afterSecond = arrows().length;
+    const msgEl = document.getElementById('msg-bar');
+    const msgBefore = { text: msgEl.textContent, hidden: msgEl.classList.contains('hidden') };
     g.useSubItem(); g.step(1);           // 3本目（拒否されるはず＝矢を消費しない）
     const afterThird = arrows().length;
     const countAfterThird = g.getPlayer().subItems.bow.count;
-    return { afterFirst, afterSecond, afterThird, countAfterFirst, countAfterThird };
+    const msgAfter = { text: msgEl.textContent, hidden: msgEl.classList.contains('hidden') };
+    return { afterFirst, afterSecond, afterThird, countAfterFirst, countAfterThird, msgBefore, msgAfter };
   });
   expect(errors).toEqual([]);
   expect(out.afterFirst, '1本目が飛んでいない').toBe(1);
@@ -3089,6 +3092,13 @@ test('㊽ 弓は画面内2本まで（3本目は1本目が消えてから）', a
   expect(out.afterThird, '3本目が出た＝同時2本の上限が効いていない').toBe(2);
   // 拒否された3本目は矢を消費していない（残数が減っていない）
   expect(out.countAfterThird, '拒否された3本目で矢を消費した').toBe(out.countAfterFirst - 1);
+  // 🔴 2026-09-21 ユーザー報告＝上限に当たったときの断り文（旧「矢が飛んでいる！」）は出さない。
+  //    連打が普通の撃ち方＝3本目は戦闘中ずっと来る∴文を出すと帯が点きっぱなしになる（爆弾は
+  //    上限も断り文も無い）。告知は「矢が2本飛んでいる画面」そのもの＝設計の記録どおり文は不要。
+  //    ⚠️ この本は `gotoFrozen`（`setInterval` を潰すだけ）∴ポーズ扱いではない＝`pulse()` は
+  //    保留されず `#msg-bar` に直に出る（保留されるのは会話／店／ポーズ中だけ）。
+  expect(out.msgAfter.hidden, '上限で断るときに帯が点いた（黙って断るべき）').toBe(true);
+  expect(out.msgAfter.text, '上限で断るときに文が出た').toBe(out.msgBefore.text);
 
   // 1本が画面外まで飛んで消えるのを待ってから3本目を撃つ→今度は通る
   const out2 = await page.evaluate(() => {
