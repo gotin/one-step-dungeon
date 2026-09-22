@@ -99535,7 +99535,7 @@
               ".",
               ".",
               ".",
-              ">",
+              "B",
               ".",
               ".",
               ".",
@@ -99603,16 +99603,17 @@
           "bgTiles": {},
           "links": [],
           "enemyDirs": {},
-          "chestContents": {},
+          "chestContents": {
+            "5,5": {
+              "type": "item",
+              "item": "quiver",
+              "name": "矢筒"
+            }
+          },
           "objects": {},
           "npcData": {},
           "shopData": {},
-          "mapEnters": {
-            "5,5": {
-              "id": "3fFluteGate",
-              "destId": "3fMidBoss"
-            }
-          },
+          "mapEnters": {},
           "showConditions": {
             "5,5": {
               "trigger": "flutePlayed"
@@ -99623,17 +99624,19 @@
           "floorItems": {},
           "signData": {
             "2,2": {
-              "name": "三層の刻み文",
+              "name": "三層の刻み文 ―笛―",
               "lines": [
                 "【三層の刻み文】",
-                "この石の 前で 笛を 吹けば、隣の 大広間への 近道が 開く。"
+                "この石の 前で 笛を 吹けば 封が 解ける。",
+                "吹かずとも 廊は 先へ 続く。"
               ]
             }
           },
           "fluteEffect": {
             "type": "reveal",
-            "message": "{{flute}} 音色に 応えて、隠し 扉が 開いた！"
-          }
+            "message": "{{flute}} 音色に 応えて、封印が 崩れた！"
+          },
+          "comment": "[dark_tower 3,2] 笛の間（キュー20b ④・2026-09-22）。石碑 i(2,2) の案内どおり笛を吹くと、封印の宝箱 B(5,5) が現れる（fluteEffect reveal → ss.flutePlayed → showConditions flutePlayed＝game/conditions.js:141）。中身は矢筒（矢の上限 +8）＝世界で唯一の配置（shared/items.js に実装済みで 9-5a 以来どこにも置かれていなかった）。寄道∴本道（南の 3,3 へ抜けて 4F の階段に乗る）には一切必要ない。旧構成は同じセルが flutePlayed で開く「近道ワープ」で、行き先 3,3 は歩いて素通しの隣室だった＝笛を吹く報酬が「1マス早く着く」だけで実質ゼロだった。⚠️ 開封の文は fluteEffect.message に書く＝showConditions[cell].message は bossYielded（game/boss.js:477）しか読まない。部屋の作り込み（空室の薄さ）はキュー20b ⑤。"
         },
         "3,3": {
           "cols": 12,
@@ -99714,7 +99717,7 @@
               ".",
               ".",
               ".",
-              ">",
+              ".",
               ".",
               ".",
               ".",
@@ -99792,10 +99795,6 @@
           "npcData": {},
           "shopData": {},
           "mapEnters": {
-            "5,4": {
-              "id": "3fMidBoss",
-              "destId": "3fFluteGate"
-            },
             "8,4": {
               "id": "3fStairsUp",
               "destId": "4fEntrance"
@@ -99806,7 +99805,7 @@
           "isBossRoom": false,
           "floorItems": {},
           "signData": {},
-          "comment": "[dark_tower 3,3] 3F の大広間＝2F と同じ形の中継室。0h（2026-09-05）で魔将 V ×2 を抜き、剣獣 μ ×2 ＋ ブーメラン鬼 π（脅威度 112.5）を置いた＝2F（72.0）より重く最終関門 dark_tower 1,2（225.0）より軽い。π は row6 を横切る投擲線を張る＝中ボスの扉 (5,4) から階段 (8,4) へ渡る動線に重なる。"
+          "comment": "[dark_tower 3,3] 3F の大広間＝剣獣 μ×2 ＋ ブーメラン鬼 π（脅威度 112.5）が守る中継室。上階（4F）への階段は (8,4)。キュー20b ④（2026-09-22）で笛の近道ワープ (5,4) を撤去した＝北の 3,2 へは歩いて素通しで、往復する意味が無かった（同時に棚卸しの⑪「敵の部屋に mapEnters が2つ」の半分を解消＝戦闘中に押し負けて別の階へ飛ばされる口が1つ減った）。残る「階段を強敵と同室に置いている」件はキュー20b ⑤で直す。"
         },
         "3,4": {
           "cols": 12,

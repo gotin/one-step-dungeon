@@ -752,7 +752,13 @@ export function createPlayer(deps) {
 		if (content.type === 'item') {
 			// 渡せない id（未定義／床タイル専用）は「手に入れた！」と嘘をつかない＝空文字。
 			if (!giveSubItem(content.item)) return '';
-			return `${content.name ?? content.item} を手に入れた！`;
+			// ⚠️ 上限を広げる passive（矢筒・爆弾袋）は**サブアイテム欄に並ばない**
+			// （`giveSubItem` の passive 分岐は早期 return ∴ヒントも出ない）＝名前だけでは
+			// 何が増えたのか分からない。下の 'ladder' 分岐と同じ作法で効果を文に足す。
+			const note = content.item === 'quiver'  ? `（矢を ${player.maxArrows} 本まで 持てる）`
+			           : content.item === 'bombBag' ? `（爆弾を ${player.maxBombs} 個まで 持てる）`
+			           : '';
+			return `${content.name ?? content.item} を手に入れた！${note}`;
 		} else if (content.type === 'weapon') {
 			const tierIndex = content.swordTier ?? 0;
 			const tier = SWORD_TIERS[tierIndex];
