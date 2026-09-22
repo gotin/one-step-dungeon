@@ -40,7 +40,7 @@
 //   node scripts/check-dungeon-integrity.mjs [dungeon_1|all]
 //
 import { readFileSync } from 'fs';
-import { bfsLayer, SOLVABLE_GATES, findEntryRoom, firstWalkable } from './lib/connectivity.mjs';
+import { bfsLayer, SOLVABLE_GATES, findEntryRoom, firstWalkable, isHardBlocked } from './lib/connectivity.mjs';
 import { isEnemyTile } from '../shared/enemies.js';
 import { toolsUsableIn } from '../shared/progression.js';
 
@@ -666,6 +666,130 @@ function checkDungeon(layerName) {
       if (!arrows.includes(posKey)) {
         err(`ステージ [${stageKey}] (${posKey}) は destId "${ent.destId}" を持つのに '>' タイルが無い`
           + ` ← この出入口は永久に使えない`);
+      }
+    }
+  }
+
+  // ── 12. 見せかけ開口（歩いて渡れそうに見える境界の先に行き先が無い）────────
+  // なぜ静的に見るのか＝`check-dungeon-connectivity.mjs` の歩行BFSでは**到達しない
+  // 部屋の境界は永久に検出されない**。dark_tower は階と階が階段ワープでしか繋がらない
+  // ∴歩行BFSは B1F の4室しか歩かず「✅ no dead edges」と出ていたのに、実際は
+  //   ・`1,0` の row0 が10セル素通しなのに真上の階が存在しない
+  //   ・`5,2 (8,11)` の東に部屋が無い
+  //   ・`1,1 (4,11)(5,11)` の東は `2,1` の col0 が全行 '#' ＝到着セルが壁
+  // という見せかけ開口が3箇所あった（2026-09-21・キュー20b の棚卸し）。
+  // プレイヤーには「行けそうなのに押し戻される」（`game/game.js checkStageTransition`
+  // の隣接ステージ無し＝画面内クランプ／到着セルが壁＝取り消し＋押し戻し）としか見えない。
+  //
+  // 判定＝境界セル（row0／最終row／col0／最終col）が **hard-blocked でない**なら
+  // 「開いた口」とみなし、(a) グリッド隣接ステージが存在し (b) 到着セル（対辺の同一座標）も
+  // hard-blocked でないことを要求する。ゲート・扉・壊せる壁（SOLVABLE_GATES）は
+  // 「いずれ開く口」∴開いた口として数える（閉じた関門の先が虚無でも欠陥）。
+  for (const [stageKey, stage] of Object.entries(stages)) {
+    const [sx, sy] = stageKey.split(',').map(Number);
+    const R = stage.rows, C = stage.cols;
+    const sides = [
+      ['上', `${sx},${sy - 1}`, Array.from({ length: C }, (_, c) => [0, c]),      (r, c) => [R - 1, c]],
+      ['下', `${sx},${sy + 1}`, Array.from({ length: C }, (_, c) => [R - 1, c]),  (r, c) => [0, c]],
+      ['左', `${sx - 1},${sy}`, Array.from({ length: R }, (_, r) => [r, 0]),      (r, c) => [r, C - 1]],
+      ['右', `${sx + 1},${sy}`, Array.from({ length: R }, (_, r) => [r, C - 1]),  (r, c) => [r, 0]],
+    ];
+    for (const [label, neighborKey, cells, arrivalOf] of sides) {
+      const neighbor = stages[neighborKey];
+      const openCells = cells.filter(([r, c]) => !isHardBlocked(tileAt(stage, r, c)));
+      if (!openCells.length) continue;
+      if (!neighbor) {
+        err(`ステージ [${stageKey}] の${label}端が ${openCells.length} セル開いているのに`
+          + ` 隣（${neighborKey}）にステージが無い ← 見せかけ開口（歩いて越えようとすると`
+          + ` 画面内クランプで押し戻される）: ${openCells.map(([r, c]) => `${r},${c}`).join(' ')}`);
+        continue;
+      }
+      const stuck = openCells.filter(([r, c]) => {
+        const [ar, ac] = arrivalOf(r, c);
+        if (ar < 0 || ac < 0 || ar >= neighbor.rows || ac >= neighbor.cols) return true;
+        return isHardBlocked(tileAt(neighbor, ar, ac));
+      });
+      if (stuck.length) {
+        err(`ステージ [${stageKey}] の${label}端 ${stuck.map(([r, c]) => `${r},${c}`).join(' ')} が開いているのに`
+          + ` 隣（${neighborKey}）の到着セルが壁 ← 見せかけ開口（踏み出しが取り消される）`);
+      }
+    }
+  }
+
+  // ── 13. 境界セルに置かれた '>'（ワープの絵と通路の絵が同じ位置に見える）────
+  // ユーザー指摘（2026-09-20・dark_tower `0,1`）＝「0,1 の上の方に入り口あるけど、
+  // これ上のステージに行けちゃいそうな位置にあって変じゃん」。境界の `>` は
+  // 「隣の部屋へ歩いて抜ける口」と見分けがつかないのに、踏むと別の階へ飛ぶ。
+  // ⚠️ warn に留める理由＝「境界に着地点を置く」設計自体は壊れていない（他レイヤーに
+  //    既存例があり得る）∴機械的な ❌ にはせず、設計で直す候補として挙げる。
+  for (const [stageKey, stage] of Object.entries(stages)) {
+    for (const posKey of Object.keys(stage.mapEnters ?? {})) {
+      const [r, c] = posKey.split(',').map(Number);
+      if (tileAt(stage, r, c) !== '>') continue;   // 12番とは別件（1:1 は 11番が見る）
+      const onBorder = r === 0 || c === 0 || r === stage.rows - 1 || c === stage.cols - 1;
+      if (onBorder) {
+        warn(`ステージ [${stageKey}] (${posKey}) の '>' が境界セルに乗っている`
+          + ` ← 隣室へ歩いて抜ける口と見分けがつかない（室内へ1マス下げる）`);
+      }
+    }
+  }
+
+  // ── 14. スイッチ 'Y' が配線されていない／ステージに幽霊フィールドが在る ────────
+  // ユーザー指摘（2026-09-21・dark_tower `1,1`）＝「スイッチあってもなんの意味ないよね？」。
+  // 実装の事実：`Y` → `T` の連動を張るのは **`stageData.links` の `{switchId, gateId}` だけ**
+  // （`game/conditions.js` の `refreshGates()`②）。エンジン側の `switchToggles` は
+  // **セーブ状態の実行時 Set**（`ss.switchToggles`／`game/player.js` `toggleSwitch()`）で、
+  // **ステージデータに同名のフィールドを書いても誰も読まない**。
+  // 2026-09-21 に実害を確認＝`dark_tower 1,1` は `switchToggles:{"7,9":["4,5","5,5"]}` という
+  // 「配線に見えるフィールド」を持ちながら `links: []`＝叩いても門は永久に開かない。さらに
+  // 指している `7,9` は空の床（本物の `Y` は `(7,8)`）＝座標まで嘘だった。`4,2` にも同型が在った。
+  //
+  // ⚠️ `Y` の出口は links だけではない：`showConditions` の `{trigger:'switchOn', switchId}`
+  //    （`evaluateConditions()`）も `ss.switchToggles` を見る＝「叩くと宝箱／鍵が出る」型の配線。
+  //    D3 `1,0` の `Y②(8,9)`・D5 `1,0` の `Y②(8,8)` が実例で、links には載らないが生きている。
+  //    ∴ 生きている判定は「links か showConditions(switchOn) のどちらかが指している」。
+  for (const [stageKey, stage] of Object.entries(stages)) {
+    if (stage.switchToggles !== undefined) {
+      err(`ステージ [${stageKey}] に幽霊フィールド 'switchToggles' がある`
+        + ` ← エンジンはステージの switchToggles を読まない（実行時は ss.switchToggles）。`
+        + `'Y'→'T' の連動は links の {switchId,gateId} で張る: ${JSON.stringify(stage.switchToggles)}`);
+    }
+    const links = Array.isArray(stage.links) ? stage.links : [];
+    const wired = new Set(links.map((l) => l.switchId));
+    for (const cond of Object.values(stage.showConditions ?? {})) {
+      if (cond?.trigger === 'switchOn' && cond.switchId) wired.add(String(cond.switchId));
+    }
+    const switches = [];
+    for (let r = 0; r < stage.rows; r++) {
+      for (let c = 0; c < stage.cols; c++) if (tileAt(stage, r, c) === 'Y') switches.push(`${r},${c}`);
+    }
+    for (const pos of switches) {
+      if (!wired.has(pos)) {
+        err(`ステージ [${stageKey}] の 'Y'(${pos}) が links にも showConditions(switchOn) にも載っていない`
+          + ` ← 叩いても何も起きない飾りのスイッチ`);
+      }
+    }
+    // showConditions(switchOn) が指す先が本当にスイッチか（座標の嘘を防ぐ）
+    for (const [posKey, cond] of Object.entries(stage.showConditions ?? {})) {
+      if (cond?.trigger !== 'switchOn' || !cond.switchId) continue;
+      const [sr, sc] = String(cond.switchId).split(',').map(Number);
+      const st = tileAt(stage, sr, sc);
+      if (st !== 'Y' && st !== 'S') {
+        err(`ステージ [${stageKey}] の showConditions[${posKey}] の switchId(${cond.switchId})`
+          + ` が 'Y' でも 'S' でもない: '${st}' ← 永久に成立しない条件`);
+      }
+    }
+    // 逆向き＝links が指す switchId / gateId が実際のタイルと合っているか（座標の嘘を防ぐ）
+    for (const l of links) {
+      const [sr, sc] = String(l.switchId).split(',').map(Number);
+      const st = tileAt(stage, sr, sc);
+      if (st !== 'Y' && st !== 'S') {
+        err(`ステージ [${stageKey}] の links の switchId(${l.switchId}) が 'Y' でも 'S' でもない: '${st}'`);
+      }
+      const [gr, gc] = String(l.gateId).split(',').map(Number);
+      const gt = tileAt(stage, gr, gc);
+      if (gt !== 'T' && gt !== '=') {
+        err(`ステージ [${stageKey}] の links の gateId(${l.gateId}) が 'T' でも '=' でもない: '${gt}'`);
       }
     }
   }

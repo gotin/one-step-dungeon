@@ -7280,7 +7280,8 @@ test('X-⑪ 角に追い詰められても退避（retreat）で固まらない�
 //    ∴収束が「盾を無視する唯一の打点」＝この機構の存在理由（§7-16）。対価は
 //    予告 `convergeWarnMs 720` を**相3 でも縮めない**・床に描いた危険域が当たり判定と同じ集合・
 //    像を斬れば打点が減る（＝逃げる以外の答えがある）の3つ。
-// ⚠️ 本番＝`dark_tower 0,0`（玉座の間・床 78・完全な空箱）／闘技場＝`test_mechanics 33,1`
+// ⚠️ 本番＝`dark_tower 5,3`（玉座の間・床 79・完全な空箱。キュー20b・2026-09-21 に `0,0` から
+//    移設＝ボス部屋の中のマップ入口 `>` を撤去した分だけ床が 78 → 79 に増えた）／闘技場＝`test_mechanics 33,1`
 //    （`bal_zarnel`・床 82）＝ほぼ同型∴`{`／L が踏んだ「闘技場で測って本番で壊れる」幾何差は
 //    無いが、幾何の本（Z-⑪）は**両方**を測る。
 const Z = TILE.ZARNEL;
@@ -8042,7 +8043,7 @@ test('Z-⑩ 幻影（mirage）の使い手は Z だけ・Z は他の11体の移�
   }
 });
 
-test('Z-⑪ 幾何（GUIDE §4-3）＝闘技場（床 82）と本番 dark_tower 0,0（床 78・空箱）の両方で'
+test('Z-⑪ 幾何（GUIDE §4-3）＝闘技場（床 82）と本番 dark_tower 5,3（床 79・空箱）の両方で'
   + '収束の円が部屋を覆わない', () => {
   const MAP = JSON.parse(readFileSync(
     fileURLToPath(new URL('../work/blade-of-lumia.json', import.meta.url)), 'utf8'));
@@ -8051,8 +8052,10 @@ test('Z-⑪ 幾何（GUIDE §4-3）＝闘技場（床 82）と本番 dark_tower 
   const rooms = [
     { label: '闘技場 test_mechanics 33,1', layer: TEST_LAYER, key: stageKey('bal_zarnel'),
       floors: 82, at: [Z_ROW, Z_COL] },
-    { label: '本番 dark_tower 0,0（玉座の間）', layer: 'dark_tower', key: '0,0',
-      floors: 78, at: [1, 5] },
+    // キュー20b（2026-09-21）で玉座を `0,0` → `5,3` に移設。ボス扉 `:` が北端に来た＝
+    // Z は入ってくる向きと向かい合う (8,5) に立ち、部屋の中に `>` が無くなった分 床が 79。
+    { label: '本番 dark_tower 5,3（玉座の間）', layer: 'dark_tower', key: '5,3',
+      floors: 79, at: [8, 5] },
   ];
   for (const room of rooms) {
     const sd = MAP.layers[room.layer]?.stages[room.key];
