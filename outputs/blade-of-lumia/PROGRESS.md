@@ -17,7 +17,9 @@
 
 - **▶ 次にやること＝`PLAN.md` 冒頭の「🎯 実行キュー」の先頭（未完＝`[ ]` のうち**一番上**・番号順ではない）だけを見る。** このファイルには実行順序を書かない（2026-07-28 ユーザー指摘＝実行順序の単一の真実は PLAN.md の実行キュー1箇所）。以下は各タスクの**参考メモ**であって順序の宣言ではない。
 
-- **🧠 実行キュー20b ④の 2F 分 完了（2026-09-22・Opus）＝`dark_tower 2,1` を「爆弾の関門」にし、`2,2` の飾りの近道ワープを封印報酬（塔で唯一のハートの器）に差し替えた。** 成果物＝`scripts/migrate-dark-tower-2f-bomb-gate.mjs`（自己検証20項目・冪等）／`tests/dark-tower-2f-bomb-gate.spec.js`（8件）／`check-dungeon-integrity.mjs` の**検査15**（`breakableWalls` の鍵が `'!'` を指すか・値が `{breakDef}` の形か）。盤面＝`4 #####!!#####`（本道 col5/col6 の2枚だけ破壊壁・1個で2枚とも砕ける）＋**床の爆弾の山 `'5'`(2,5)**＋刻み文 `i(1,1)`。**山が要る理由＝世界で爆弾が手に入るのは `dungeon_6 1,2` の宝箱1個（3個）だけ＝使い切っていたら関門が永久に開かずクリア不能になる**（「歩いて塔を出られるから詰まない」は移動の詰みしか見ていない誤り）。数＝`noTools` 対照実験で解なし／`bfsLayer` で爆弾なしでは関門の先18室すべて未到達・爆弾ありで30/30。フル **1466 passed**・整合性 ❌0／⚠️1・`connectivity dark_tower` PASS。**学び3つ**＝(1) 持ち物は `getPlayer()`（`getState().player` に `subItems` は無い）。(2) 初めての道具で `maybeShowSubItemHint()` が開き**閉じるまで `movePlayer` が全無視**＝拾った直後に歩けないのを「壁に阻まれた」と誤読する。(3) `measure-puzzle.mjs` の4軸は関門室の判定器ではない（L=0・貪欲YES で正しい＝問うのは道具の必須性）。**残り＝④の 4F はしご＋爆弾（`4,2`）／封印報酬の残り2つ（`flutePlayed`＝`3,2`／`switchOn`）／3F `3,1` の橋→穴、⑤薄い・重複室の作り替えと脅威度の再配分。** 併せて **`field 6,13` に同型の `breakableWalls` 欠陥（強度2が捨てられている）＝キュー29 を新設**（`field` は整合性検査の対象外）。
+- **🧠 実行キュー20b ④の 3F 分（必須ゲート）完了（2026-09-22・Sonnet／設計は Opus が確定済み）＝`dark_tower 3,1` の飾りの橋を撤去し、はしごの関門にした。** 成果物＝`scripts/migrate-dark-tower-3f-ladder-gate.mjs`（自己検証・冪等）／`tests/dark-tower-3f-ladder-gate.spec.js`（4件）。盤面＝row6 の穴 `x`×10（旧・(6,3) の橋 `v` を撤去）＋刻み文 `i(1,1)`（湖/沼/雪原の「飛び石」看板と同文法）。**橋1枚が抜け道の全部だった**＝周囲（row5/row7）は既に全幅の床で `isLadderBridgeCell` が自動的に成立∴他の再設計は不要（DECISIONS 2026-09-22（4））。数＝`bfsLayer` ではしご無し＝B1F+1F+2F+3,0 の17室止まり／はしごあり＝30室全部。**巻き込み＝`tests/bridge-connect.spec.js`⑱d が実マップ例に使っていたこの橋を撤去したため `field 6,0(6,5)` に差し替え。** フル **1470 passed**（前番1466+新設4本）・整合性 ❌0／⚠️1（既存注記のみ）・`connectivity dark_tower` PASS。**残り＝④の 4F はしご＋爆弾（`4,2`）／封印報酬の残り2つ（`flutePlayed`＝`3,2`／`switchOn`＝`1,4`/`1,5`）／3F `3,4`・`3,5`（穴の島の寄道への作り替え）、⑤薄い・重複室の作り替えと脅威度の再配分。**
+
+- **🧠 実行キュー20b ④の 2F 分 完了（2026-09-22・Opus）＝`dark_tower 2,1` を「爆弾の関門」にし、`2,2` の飾りの近道ワープを封印報酬（塔で唯一のハートの器）に差し替えた。** 成果物＝`scripts/migrate-dark-tower-2f-bomb-gate.mjs`（自己検証20項目・冪等）／`tests/dark-tower-2f-bomb-gate.spec.js`（8件）／`check-dungeon-integrity.mjs` の**検査15**（`breakableWalls` の鍵が `'!'` を指すか・値が `{breakDef}` の形か）。盤面＝`4 #####!!#####`（本道 col5/col6 の2枚だけ破壊壁・1個で2枚とも砕ける）＋**床の爆弾の山 `'5'`(2,5)**＋刻み文 `i(1,1)`。**山が要る理由＝世界で爆弾が手に入るのは `dungeon_6 1,2` の宝箱1個（3個）だけ＝使い切っていたら関門が永久に開かずクリア不能になる**（「歩いて塔を出られるから詰まない」は移動の詰みしか見ていない誤り）。数＝`noTools` 対照実験で解なし／`bfsLayer` で爆弾なしでは関門の先18室すべて未到達・爆弾ありで30/30。フル **1466 passed**・整合性 ❌0／⚠️1・`connectivity dark_tower` PASS。**学び3つ**＝(1) 持ち物は `getPlayer()`（`getState().player` に `subItems` は無い）。(2) 初めての道具で `maybeShowSubItemHint()` が開き**閉じるまで `movePlayer` が全無視**＝拾った直後に歩けないのを「壁に阻まれた」と誤読する。(3) `measure-puzzle.mjs` の4軸は関門室の判定器ではない（L=0・貪欲YES で正しい＝問うのは道具の必須性）。 併せて **`field 6,13` に同型の `breakableWalls` 欠陥（強度2が捨てられている）＝キュー29 を新設**（`field` は整合性検査の対象外）。
 
 - **🧠 実行キュー20b ④の 1F 分 完了（2026-09-21・Opus／設計はユーザー）＝`dark_tower 1,1` の飾りスイッチを「遠隔攻撃の関門」に作り直した。** ユーザー指摘＝「1,1 は中央のゲートにまるで意味がないっていう問題だったと思うけど、どうなの？ スイッチあってもなんの意味ないよね？」→ 設計もユーザー＝「縦に並んでるゲートを横に並べてそのままだと下にいけないようにして、左右に走る真ん中の壁の代わりに穴にして、スイッチを矢か剣ビームでうって通れるようにする」。成果物＝`check-dungeon-integrity.mjs` の**検査14**（配線されていない `Y`／ステージの幽霊フィールド `switchToggles`）／`scripts/migrate-dark-tower-1f-beam-gate.mjs`（自己検証13項目・冪等）／`tests/dark-tower-1f-beam-gate.spec.js`（6件）。盤面＝`4 #xxxxTTxxxx#`・`5 #xxxx..xxxx#`＝門を横並びにして本道 col5/col6 を塞ぎ、左右の壁を穴の帯（幅2）に置換・`links` は座1つ→門2枚。数＝ソルバー（はしご込み）で L=13・貪欲NO・詰み0／遠隔攻撃封じで**解なし**／座を潰して**解なし**／無関係な床を潰すと解あり。実機（セーブ経由＝debugMode OFF）で矢・剣ビームの両方で開くことと、はしごでも幅2の穴は渡れないことを確認。`check-dungeon-integrity.mjs all` ❌0、`connectivity dark_tower` PASS、`npx playwright test` **1458 passed**。**学び3つ**＝(1) `Y` の配線口は `links` だけではない＝`showConditions` の `{trigger:'switchOn', switchId}` も生きた配線（検査14 の初版はこれを知らず D3/D5 の「叩くと鍵が出る」型を誤検出した）。(2) 「弓の関門」は成立しない＝`projectile.js:637` は `arrow` と `beam` の**両方**で `Y` をトグルし、塔では剣を必ず持っている∴不変条件は「遠隔攻撃が必須」。ついでに剣ビームは弾切れしない＝矢切れ詰みも無い。(3) `connectivity.mjs` は `'Y'` を壁扱い・エンジンは素通し＝lib の方が厳しい∴`Y` セル自体を到達性の測定対象に混ぜると「門を開けても未到達」で閉状態の検査が無条件に緑＝歯なし検査になる（実際に一度踏んだ）。**残り＝④の 2F 爆弾／4F はしご＋爆弾／封印報酬3つ／3F `3,1` の橋→穴、⑤薄い・重複室の作り替えと脅威度の再配分。**
 
@@ -104,6 +106,24 @@
 <!-- 新しいエントリを上に追加していく（最新が一番上） -->
 
 > **⚠️ 過去エントリの「▶ 次やること」は書かれた当時の記録＝すべて失効している。** 実行順序は `PLAN.md` 冒頭「🎯 実行キュー」だけを見る（2026-07-28 集約）。新しいエントリには「▶ 次やること」を書かない。
+
+### 2026-09-22 — 実行キュー20b ④の 3F 分（はしごの関門・必須ゲート）
+
+**やったこと：**
+- `dark_tower 3,1` の row6（穴 `x`×10 の一本帯）に残っていた飾りの橋 `v`(6,3) を穴に戻し、はしごの関門にした。刻み文 `i(1,1)` を追加。
+- `scripts/migrate-dark-tower-3f-ladder-gate.mjs` を新設（自己検証つき・冪等）。
+- `tests/dark-tower-3f-ladder-gate.spec.js` を新設（4件＝盤面／対照実験／境界不変／実機）。
+- `tests/bridge-connect.spec.js` ⑱d の実マップ参照（撤去した橋）を `field 6,0(6,5)` へ差し替え。
+- `PLAN.md` 20b ④・`DECISIONS.md` に記録。
+
+**学び・気づき：**
+- DECISIONS 2026-09-21（8）の対照実験で「橋1枚が抜け道の全部」まで検算済みだったので、盤面の再設計は不要＝最小差分（1文字）で関門が成立した。関門を作るたびに壁の再配置をするのは過剰。
+- 実マップの特定タイルを「実例」としてテストが直接参照していると、そのタイルを撤去する変更が思わぬ既存テストを壊す（`bridge-connect.spec.js`⑱d）。この種の参照は `grep -rn "<layer名>" tests/*.spec.js` で先に洗える。
+- はしごの所持は `subItems` ではなく `player.hasLadder`（bool フラグ）で見る＝`shared/items.js ITEM_OWNED_FLAG` を確認せずに書くと実機テストが `undefined` で落ちる。
+
+**確認：** `npx playwright test` 1470 passed / 0 failed（前番1466 + 新設4本）。`check-dungeon-integrity.mjs all` ❌0／⚠️1（既存の dungeon_3 注記のみ）。`check-dungeon-connectivity.mjs dark_tower` PASS。歯の確認＝row6(6,3) を 'v' に戻すと対照実験が赤（L=12 で届く）→戻して緑。
+
+---
 
 ### 2026-09-22（1）（🧠 Opus・実行キュー20b ④の 2F 分）**`dark_tower` 2F を「爆弾の関門」にし、飾りだった近道ワープを封印報酬へ差し替えた**（新規 `scripts/migrate-dark-tower-2f-bomb-gate.mjs`／新規 `tests/dark-tower-2f-bomb-gate.spec.js`／`scripts/check-dungeon-integrity.mjs`（検査15 追加）／`scripts/migrate-dark-tower.mjs`（2F 節に失効マーク）／`work/blade-of-lumia.json`）。
 

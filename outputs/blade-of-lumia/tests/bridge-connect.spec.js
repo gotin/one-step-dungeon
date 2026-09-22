@@ -671,8 +671,10 @@ test.describe('連結タイル – 手すりを陸まで通す（10c-2 ⓐ）', 
 		const one = connectedTileParts(stage(['ggg', 'gvg', 'ggg']), 1, 1, V);
 		expect(one.edges.N).toBe('trim');
 		expect(one.edges.W).toBe('trim');
-		// ダンジョンの落とし穴に架かる 1×1 の板（実マップ）
-		const dt = connectedTileParts(MAP.layers.dark_tower.stages['3,1'], 6, 3, V);
+		// 落とし穴に架かる 1×1 の板（実マップ・field 6,0）
+		// ⚠️ dark_tower 3,1 (6,3) は旧例＝キュー20b ④の3F分（2026-09-22）で穴に戻して
+		//    はしごの関門にしたためこの板は無くなった。
+		const dt = connectedTileParts(MAP.layers.field.stages['6,0'], 6, 5, V);
 		expect(Object.values(dt.edges).some(e => e === 'rail')).toBe(false);
 	});
 
