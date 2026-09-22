@@ -794,6 +794,33 @@ function checkDungeon(layerName) {
     }
   }
 
+  // ── 15. breakableWalls が壊せる壁を指しているか／形が {breakDef} か ────────────
+  // 実装の事実：破壊強度を読むのは `game/projectile.js:942` の
+  //   `sd.breakableWalls?.[posKey]?.breakDef ?? 1`
+  // ∴ ① 鍵が `!` 以外を指していても ② 値が `true` のような非オブジェクトでも
+  // **例外は出ず、黙って breakDef 1 に落ちる**＝「定義した破壊強度が捨てられている」ことに
+  // 誰も気づけない（爆弾の breakPower は 3 ∴ 1 でも 2 でも壊れる＝挙動の差が出ない）。
+  // 2026-09-22 に実害を確認（キュー20b ④ 2F）：`dark_tower 2,1` は `6,11`/`7,11`＝
+  // **外壁 '#' を 1 マスずれて指し**、値も `true` だった（本物の `!` は col10）。`4,2` の
+  // `2,4` も `true`。どちらも e98217b の生成スクリプト由来で、既存の全検査が緑だった。
+  // ※ 逆向き（`!` なのに breakableWalls に定義が無い）は既定 breakDef 1 で正しく動く
+  //   ∴ 欠陥ではない（多くの部屋がそうなっている）。
+  for (const [stageKey, stage] of Object.entries(stages)) {
+    for (const [posKey, def] of Object.entries(stage.breakableWalls ?? {})) {
+      const [r, c] = posKey.split(',').map(Number);
+      const tile = tileAt(stage, r, c);
+      if (tile !== '!') {
+        err(`ステージ [${stageKey}] の breakableWalls[${posKey}] が壊せる壁 '!' を`
+          + ` 指していない: '${tile}' ← 座標の嘘（定義した破壊強度が誰にも読まれない）`);
+      }
+      if (typeof def !== 'object' || def === null) {
+        err(`ステージ [${stageKey}] の breakableWalls[${posKey}] の値が`
+          + ` {breakDef} の形でない: ${JSON.stringify(def)}`
+          + ` ← projectile.js は \`?.breakDef ?? 1\` で読む＝黙って既定 1 に落ちる`);
+      }
+    }
+  }
+
   return issues;
 }
 
