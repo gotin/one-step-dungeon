@@ -484,9 +484,12 @@ function reach(patch = {}, { withLadder = true } = {}) {
 		hearts += items.filter((cc) => cc?.type === 'heartContainer' || cc?.item === 'heartContainer').length;
 	}
 	check(`世界の爆弾袋がちょうど1個（実測 ${bombBags}）`, bombBags === 1);
-	check(`世界の矢筒が1個のまま（実測 ${quivers}）`, quivers === 1);
-	check(`塔の回復薬（大）が5室（6室から1つ減らした・実測 ${bigPotionRooms}・残りはキュー20b ⑤）`,
-		bigPotionRooms === 5);
+	// ⚠️ 矢筒と回復薬（大）は**総数の等号で測らない**（3F 淵の火渡りが2つめの矢筒を置き、
+	//    回復薬（大）をもう1室減らした時点で等号は赤くなる＝2026-09-23 に 2F/3F の
+	//    スクリプトで実際に踏んだ）。爆弾袋はこのスクリプトが置いた物∴等号で見張る。
+	check(`世界に矢筒が在る（実測 ${quivers}個・この番で増えるのは 3F 側）`, quivers >= 1);
+	check(`塔の回復薬（大）が増えていない（実測 ${bigPotionRooms} ≤ 5・目標は3室以下＝キュー20b ⑤）`,
+		bigPotionRooms <= 5);
 	check(`塔のハートの器が 2,2 の1個のまま（実測 ${hearts}）`, hearts === 1);
 }
 

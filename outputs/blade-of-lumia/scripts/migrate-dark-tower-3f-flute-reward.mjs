@@ -305,10 +305,17 @@ for (const k of [FLUTE_ROOM, HALL_ROOM]) {
 			if (cc?.item === 'bigHealPotion') bigPotions++;
 		}
 	}
-	check(`世界の矢筒がちょうど1個（実測 ${quivers}）`, quivers === 1);
-	check(`爆弾袋は未配置のまま（実測 ${bombBags}・置くならキュー20b ⑤で設計する）`, bombBags === 0);
+	// ⚠️ 世界の総数を等号で測ってはいけない（この番の後続＝1F 小島の射手が爆弾袋を、
+	//    3F 淵の火渡りが2つめの矢筒を置いた時点で、このスクリプトが赤くなった＝2026-09-23 に
+	//    実際に踏んだ）。このスクリプトが守るべきは**この部屋の宝が矢筒であること**と、
+	//    世界に矢筒が在ること。総数の上限はそれを置いた側のスクリプトが見張る。
+	check(`${FLUTE_ROOM} の宝が矢筒で、世界に矢筒が在る（実測 ${quivers}個）`,
+		quivers >= 1 && stages[FLUTE_ROOM].chestContents?.[CHEST]?.item === 'quiver');
+	check(`この部屋の宝は爆弾袋ではない（世界の爆弾袋 ${bombBags}個は 1F 側が見張る）`,
+		stages[FLUTE_ROOM].chestContents?.[CHEST]?.item !== 'bombBag');
 	check(`塔のハートの器が 2,2 の1個のまま（実測 ${hearts}）`, hearts === 1);
-	check(`塔の回復薬（大）が6個のまま（実測 ${bigPotions}・削減はキュー20b ⑤）`, bigPotions === 6);
+	check(`塔の回復薬（大）が増えていない（実測 ${bigPotions} ≤ 6・目標は3室以下＝キュー20b ⑤）`,
+		bigPotions <= 6);
 }
 
 // ──────────────────────────────────────────────────────────────────────

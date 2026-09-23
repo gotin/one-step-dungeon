@@ -223,7 +223,9 @@ test.describe('Blade of Lumia – dark_tower 1F 小島の射手（キュー20b �
 			}
 		}
 		expect(bombBags, '爆弾袋は dark_tower 1,5 の1個だけ').toBe(1);
-		expect(quivers, '矢筒は dark_tower 3,2 の1個だけ').toBe(1);
+		// 矢筒は2個＝3F `3,2`（笛の封印）と `3,5`（淵の火渡りの封印）。
+		// 配置そのものは tests/dark-tower-3f-fire-relay-reward.spec.js が座標つきで見張る。
+		expect(quivers, '矢筒は dark_tower 3,2 と 3,5 の2個').toBe(2);
 	});
 
 	// ── ② データ（到達と射線）──────────────────────────────────────────

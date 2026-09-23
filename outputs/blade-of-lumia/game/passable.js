@@ -262,6 +262,18 @@ export function createPassable(d) {
 		if (tile === TILE.HOUSE_WALL)  return false;
 		if (tile === TILE.HOUSE_ROOF)  return false;
 		if (tile === TILE.SIGN)        return false; // 看板は通行不可（隣接して剣で読む）
+		// かがり火は通行不可（隣接してロウソクで点ける）。
+		// ⚠️ 2026-09-23 まで**ここだけが 'H' を落としていた**＝プレイヤーと敵がかがり火の上を
+		// 歩けた。他の判定はすべて「かがり火＝固い」で書かれていた：
+		//   ・着地判定 `ARRIVAL_WALL_TILES`（game.js:1217）に TILE.TORCH が入っている
+		//     ＝境界を跨いだ着地では壁なのに、同じセルへ歩いては入れる（⑥-landing と同型の食い違い）
+		//   ・`scripts/lib/connectivity.mjs` の HARD_BLOCKED は `TILE.TORCH,  // 'H' (passable:false)`
+		//     ＝接続検査・dead-edge・ソルバー（blade-solver.mjs）はすべて壁として測っていた
+		// ∴パズルの「隣に立てない＝ロウソクでは点けられない」という測定が静かに嘘になっていた
+		// （dark_tower 3,5「淵の火渡り」の実機テストで発覚＝穴に囲ったかがり火の上を歩いて渡れた）。
+		// 塞ぐ側の修正で安全＝検査は既に壁として測って全 PASS ∴ここを固くして閉じる経路は無い
+		// （実測：全レイヤー 53枚の 'H' に画面端・入口の着地セルは1つも無い）。
+		if (tile === TILE.TORCH)       return false;
 		// Phase 6.5: ドアウェイの通行判定（'|' は STATEFUL_TILES 側で判定済み）。
 		// DOORWAY_BOSS: boss_closed 状態は通れない（着地判定では常に通す＝逃走後の再入場を塞がない）
 		if (tile === TILE.DOORWAY_BOSS && ss.doorwayStates?.[posKey] === 'boss_closed') return false;

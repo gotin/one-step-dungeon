@@ -218,7 +218,13 @@ test.describe('Phase 9-6-BASE ⑨ – 雪原S 東の縁 14画面', () => {
 		expect(boot.litTorches ?? [], 'initLitTorches なしのはずが点いている').toEqual([]);
 		expect(boot.conditionsMet ?? [], '点ける前に宝箱の封印が解けている').not.toContain('5,5');
 
-		// 西のかがり火 (4,4)。⚠ 上を1回だけ押す＝半歩は同じタイルに留まり前方が 'H' になる。
+		// 西のかがり火 (4,4)。上を押しても**かがり火が通行不可**で1歩も動かない＝
+		// 立ち位置 (5,4) に留まったまま向きだけ north になり、前方が 'H' になる。
+		// ⚠️ 2026-09-23 まで 'H' は `game/passable.js tilePassable()` が塞いでおらず
+		//    （着地判定 ARRIVAL_WALL_TILES と接続検査 HARD_BLOCKED は元から壁扱い＝食い違い）、
+		//    ここで半歩（y=4.5）踏み込めた∴`face('down')` で半歩を戻す細工が要った。
+		//    通行判定を直した今は細工が**過剰補正**になる（y=5.5 へずれて東の看板 (6,5) で
+		//    詰まり (6,4) に居残る＝実測の赤）∴細工を外した。
 		await face(page, 'up');
 		await page.evaluate(() => window.__game.useSubItem());
 		await step(page, 3);
@@ -226,15 +232,8 @@ test.describe('Phase 9-6-BASE ⑨ – 雪原S 東の縁 14画面', () => {
 		expect(cur.litTorches, '西のかがり火 (4,4) が点かない').toContain('4,4');
 		expect(cur.conditionsMet ?? [], '片方だけで封印が解けている').not.toContain('5,5');
 
-		// ⚠️ ここで **半歩を戻す**（実エンジンで踏んだ罠）：かがり火 'H' は
-		// `game/passable.js` の `tilePassable()` が塞いでいない＝**プレイヤーは踏んで通れる**
-		// （塞いでいるのは editor 用の `TILE_META.passable` と接続検査だけ）。
-		// ∴ face('up') の半歩（y=4.5）を残したまま歩き、次に up を1回押すと
-		// y=4.0＝かがり火の行に乗ってしまい、ロウソクは1つ上の 'h'（屋根）を狙う。
-		// down を1回押して y を 5.0 に揃え直すと、以後 up 1回＝必ず前方が 'H' になる。
-		await face(page, 'down');
-
 		// 封印中の宝箱 (5,5) は踏んでも開かない＝東のかがり火の下 (5,7) まで通れる。
+		// （かがり火が通行不可になった今、y は 5.0 のまま＝軸合わせは要らない）
 		await walkTiles(page, 'right', 3);
 		expect(await at(page), '東のかがり火の真下 (5,7) に立てない').toMatchObject({ r: 5, c: 7 });
 		expect((await ss(page)).openedChests ?? [], '封印中の宝箱が踏んだだけで開いた').not.toContain('5,5');
@@ -246,8 +245,7 @@ test.describe('Phase 9-6-BASE ⑨ – 雪原S 東の縁 14画面', () => {
 		expect(cur.litTorches, '東のかがり火 (4,7) が点かない').toContain('4,7');
 		expect(cur.conditionsMet, '両方点いても torchesLit で宝箱 (5,5) が現れない').toContain('5,5');
 
-		// 現れた宝箱 (5,5) を開ける（ここも半歩を戻してから横へ歩く）。
-		await face(page, 'down');
+		// 現れた宝箱 (5,5) を開ける（row5 を西へ2タイル＝半歩のずれは無い）。
 		await walkTiles(page, 'left', 2);
 		expect(await at(page), '現れた宝箱 (5,5) に届かない').toMatchObject({ r: 5, c: 5 });
 		expect((await ss(page)).openedChests, '宝箱 (5,5) が開封されない').toContain('5,5');
