@@ -39,6 +39,7 @@ export const UI_ICON = {
 	// サブアイテム
 	boomerang:  { spr: 'boomerang',  pal: 'boomerang'  },
 	boomerangSilver: { spr: 'boomerang', pal: 'boomerangSilver' },  // 銀（形は同じ・色だけ違う）
+	boomerangStar:   { spr: 'boomerang', pal: 'boomerangStar'   },  // 星（同上・キュー20b ⑤-b）
 	bomb:       { spr: 'bombItem',   pal: 'bombItem'   },
 	bow:        { spr: 'bow',        pal: 'bow'        },
 	arrow:      { spr: 'arrow',      pal: 'arrow'      },

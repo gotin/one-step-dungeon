@@ -8,7 +8,16 @@
 //   BOOMERANG_TIERS[1] silver … atk6 / speed5.0 / maxRange6（海の主の報酬）
 //     speed 5.0 ＝ 20.8セル/秒＝**弓矢（4.5＝18.8）より速い**（ユーザー指摘
 //     2026-07-26「もっと速くてよさそう」＝当初の 3.0 では上位品なのに矢より鈍かった）。
-//   player.boomerangTier (-1=未所持, 0..1) で管理し equipBoomerangTier(i) が下位を拒否する。
+//   BOOMERANG_TIERS[2] star   … atk12 / speed5.0 / maxRange8（魔の塔 2,5 の宝箱・
+//     キュー20b ⑤-b・2026-09-24）。⚠️ **speed は銀と同じ 5.0 据え置き**＝ここだけ
+//     「上位ティアは全パラメータで上位」が崩れる。理由＝投擲物の速度を上げると当たり判定の
+//     補間とセットで直す必要があり（[[blade-speed-up-needs-interpolation]]）、銀の 5.0 は
+//     既に 1tick 2.5セル＝トンネリング防止の補間に乗っている上限∴伸ばすなら別タスク。
+//     伸ばしたのは atk（銀の倍）と maxRange（+2）。⚠️ **実効差は atk だけ**＝
+//     maxRange 8 は部屋幅 12 マスに阻まれて銀（6）と同じ距離しか飛べない（⑤d の解説に
+//     実測あり）。値としては残す（将来の仕掛け・広い画面のため）が、「射程が伸びた」と
+//     プレイヤーに見せる設計にはしない。
+//   player.boomerangTier (-1=未所持, 0..2) で管理し equipBoomerangTier(i) が下位を拒否する。
 //
 // 🔑 boomerangStep は既に proj.maxRange / proj.speed を参照する（projectile.js）∴
 //   発射ブロックがティアの値を渡すだけでロジック改変は不要。
@@ -20,9 +29,13 @@
 //   ② equipBoomerangTier は上位のみ受け付け、下位は拒否する（剣/防具/盾と同型）
 //   ③ 木ティアの発射値（既存挙動の回帰＝atk3 / speed2.0 / maxRange3）
 //   ④ 銀ティアの発射値（atk6 / speed5.0 / maxRange6）
+//   ④c 星ティアの発射値（atk12 / speed5.0 / maxRange8）＝キュー20b ⑤-b
 //   ⑤ 銀は木では届かない距離（7マス先）の敵に届く＝maxRange が実効
 //   ⑤b/⑤c 銀（1tick 2.5セル）が敵・アイテムをすり抜けない（トンネリング防止の回帰）
+//   ⑤d 星は銀と同じ距離まで届き、同じ敵に倍のダメージを出す（atk12 が実効。
+//       ⚠️ maxRange 8 は部屋幅 12 に阻まれて銀との差が出ない＝下の解説）
 //   ⑥ grantReward({type:'boomerang', boomerangTier}) でティアが上がる（報酬経路）
+//   ⑥b 星の報酬は**未所持からも銀からも**星になる＝塔 2,5 の宝箱が絶対値でティアを渡す
 //   ⑦ 旧セーブデータの補完（boomerangTier 未定義＝所持なら wood / 未所持なら -1）
 //   ⑧ HUD/ポーズのアイテム名がティア名になる（銀を持っていると「銀のブーメラン」）
 
@@ -47,6 +60,7 @@ function previewUrl(opts = {}) {
     ps_weapon: '1', ps_boomerang: '1',
   });
   if (opts.silver) p.set('ps_silverboomerang', '1');
+  if (opts.star) p.set('ps_starboomerang', '1');
   if (opts.cleared) p.set('ps_cleared', '1');
   return `${GAME}?${p.toString()}`;
 }
@@ -64,19 +78,31 @@ async function throwAndSnapshot(page, dir = 'right') {
 
 test.describe('Phase 9-6 – 銀のブーメラン（ティア方式）', () => {
 
-  test('① BOOMERANG_TIERS の定義（wood / silver）', () => {
+  test('① BOOMERANG_TIERS の定義（wood / silver / star）', () => {
     expect(Array.isArray(BOOMERANG_TIERS)).toBe(true);
-    expect(BOOMERANG_TIERS.length).toBe(2);
+    expect(BOOMERANG_TIERS.length).toBe(3);
     expect(BOOMERANG_TIERS[0]).toMatchObject({
       key: 'wood', name: 'ブーメラン', atk: 3, speed: 2.0, maxRange: 3,
     });
     expect(BOOMERANG_TIERS[1]).toMatchObject({
       key: 'silver', name: '銀のブーメラン', atk: 6, speed: 5.0, maxRange: 6,
     });
-    // 上位ティアは全パラメータで上位（「強くなった」が体感できる）
+    expect(BOOMERANG_TIERS[2]).toMatchObject({
+      key: 'star', name: '星のブーメラン', atk: 12, speed: 5.0, maxRange: 8,
+    });
+    // 木 → 銀は全パラメータで上位（「強くなった」が体感できる）
     expect(BOOMERANG_TIERS[1].atk).toBeGreaterThan(BOOMERANG_TIERS[0].atk);
     expect(BOOMERANG_TIERS[1].speed).toBeGreaterThan(BOOMERANG_TIERS[0].speed);
     expect(BOOMERANG_TIERS[1].maxRange).toBeGreaterThan(BOOMERANG_TIERS[0].maxRange);
+    // 銀 → 星は atk と射程だけ上位＝**speed は据え置き**（上を参照＝当たり判定の補間と
+    // セットで直すべき値∴ここで勝手に伸ばさない）。等しいことを固定して「気付かず
+    // 速くした」を赤にする。
+    expect(BOOMERANG_TIERS[2].atk).toBeGreaterThan(BOOMERANG_TIERS[1].atk);
+    expect(BOOMERANG_TIERS[2].maxRange).toBeGreaterThan(BOOMERANG_TIERS[1].maxRange);
+    expect(BOOMERANG_TIERS[2].speed).toBe(BOOMERANG_TIERS[1].speed);
+    // ティアはパレットで見分ける＝形は共通（⑨/⑨b が実ピクセルで確認する）
+    const pals = BOOMERANG_TIERS.map((t) => t.pal);
+    expect(new Set(pals).size).toBe(BOOMERANG_TIERS.length);
   });
 
   test('② equipBoomerangTier は上位のみ・下位は拒否（剣/防具/盾と同型）', async ({ page }) => {
@@ -119,6 +145,18 @@ test.describe('Phase 9-6 – 銀のブーメラン（ティア方式）', () => 
     const proj = await throwAndSnapshot(page);
     expect(proj.speed).toBe(10.0);     // 5.0 × 2
     expect(proj.maxRange).toBe(6);     // 射程は二周目でも変わらない
+  });
+
+  // ── キュー20b ⑤-b: 星のブーメラン（魔の塔 2,5 の宝箱）──────────────────
+  test('④c 星ティアの発射値（atk12 / speed5.0 / maxRange8）', async ({ page }) => {
+    await page.goto(previewUrl({ star: true }));
+    await waitForBoard(page);
+    const tier = await page.evaluate(() => window.__game.getState().player.boomerangTier);
+    expect(tier, 'ps_starboomerang でティア2になる').toBe(2);
+    const proj = await throwAndSnapshot(page);
+    // ⚠️ speed は銀と同じ 5.0（上の解説を参照）＝ここが 5.0 でなくなったら
+    //    当たり判定の補間を見直したかを疑う。
+    expect(proj).toEqual({ atk: 12, speed: 5.0, maxRange: 8 });
   });
 
   test('⑤ 銀は7マス先の敵に届く・木は届かない（maxRange が実効）', async ({ page }) => {
@@ -187,6 +225,41 @@ test.describe('Phase 9-6 – 銀のブーメラン（ティア方式）', () => 
     expect(carried, '通過セルのアイテムを拾い落とした').toBe(2);
   });
 
+  // ⚠️ **星の maxRange 8 は画面の中では効かない**（2026-09-24 に実測＝
+  //    `.scratch/5b-range-probe.spec.js`）。部屋は 12 マス幅＝左端 col1 から投げても
+  //    折り返し位置は壁で x=9.5 止まり。speed5.0 は 1tick 2.5セル刻み∴折り返し判定は
+  //    「進んだ距離 > maxRange」を 2.5 刻みで見る＝銀（6）は 7.5 進んだ時点で返る＝
+  //    **その 7.5 が既に部屋幅の上限**。星（8）は 10.0 まで進めるが壁がそれを許さない。
+  //    ∴星と銀の実効到達距離は同じ（どちらも右端 col10 の敵に当たる）。
+  //    ⑤ が「木 vs 銀」を距離で見分けられたのは木の maxRange 3（到達 4.5）が部屋幅より
+  //    ずっと短いから。星で同じ形の対照実験は**部屋の幅に阻まれて作れない**。
+  //    ∴ここで固定するのは「銀と同じ距離まで届き、同じ位置で倍のダメージを出す」
+  //    ＝プレイヤーが実際に得るもの（atk12）。maxRange 8 の値そのものは ④c が固定する。
+  test('⑤d 星は銀と同じ距離まで届き、同じ敵に倍のダメージを出す（atk12 が実効）', async ({ page }) => {
+    // row 7 を使う＝rows 7/8 だけ左右の端まで床（row 2 では col 11 が壁）。
+    async function dmgAt(opts) {
+      await page.goto(previewUrl({ ...opts, row: 7, col: 1 }));
+      await waitForBoard(page);
+      return page.evaluate(() => {
+        const pl = window.__game.getPlayer();
+        // 右 9 マス＝部屋の右端の1つ内側（この画面で投げて届く最遠の敵）
+        const id = window.__game.injectEnemy(pl.x + 9, pl.y, 200, 1, 1);
+        window.__game.movePlayer('right');
+        window.__game.step(1);
+        const before = window.__game.getEnemies().find(e => e.id === id).hp;
+        window.__game.useSubItem();
+        window.__game.step(40);          // 往路＋復路
+        const after = window.__game.getEnemies().find(e => e.id === id)?.hp ?? 0;
+        return before - after;
+      });
+    }
+    const silver = await dmgAt({ silver: true });
+    const star   = await dmgAt({ star: true });
+    expect(silver, '銀が部屋の端の敵に届かない（配置の前提が崩れた）').toBeGreaterThan(0);
+    expect(star,   '星が銀の届く敵に届かない（射程が縮んだ）').toBeGreaterThan(0);
+    expect(star).toBe(silver * 2);   // atk 6 → 12（def 0 の注入敵）
+  });
+
   test('⑥ grantReward({type:"boomerang"}) でティアが上がる（報酬経路）', async ({ page }) => {
     await page.goto(previewUrl());
     await waitForBoard(page);
@@ -201,6 +274,36 @@ test.describe('Phase 9-6 – 銀のブーメラン（ティア方式）', () => 
     expect(res.msg).toContain('銀のブーメラン');
     // 未所持から報酬で貰った場合もサブアイテムとして使える状態になる
     expect(res.active).toBeTruthy();
+  });
+
+  // 塔 2,5 の宝箱は**絶対値**でティアを渡す（`boomerangTier: 2`）＝相対指定（「今の1段上」）に
+  // しない。理由＝`giveSubItem('boomerang')`（D2 の初回入手）は `boomerangTier` を触らない∴
+  // 木を持っていてもティアは -1 のまま（補完はセーブの読み込み時だけ）＝「1段上」だと
+  // 木を2本目として渡すだけになる（キュー20b ⑤-b / DECISIONS 2026-09-24）。
+  // ∴どの状態から来ても星になることを両側から固定する。
+  test('⑥b 星の報酬は未所持からも銀からも星になる（絶対値の報酬）', async ({ page }) => {
+    await page.goto(previewUrl());
+    await waitForBoard(page);
+    const fromNone = await page.evaluate(() => {
+      const msg = window.__game.grantReward({
+        type: 'boomerang', boomerangTier: 2, name: '星のブーメラン',
+      });
+      return { msg, tier: window.__game.getState().player.boomerangTier };
+    });
+    expect(fromNone.tier).toBe(2);
+    expect(fromNone.msg).toContain('星のブーメラン');
+
+    await page.goto(previewUrl({ silver: true }));
+    await waitForBoard(page);
+    const fromSilver = await page.evaluate(() => {
+      const before = window.__game.getState().player.boomerangTier;
+      window.__game.grantReward({ type: 'boomerang', boomerangTier: 2, name: '星のブーメラン' });
+      const st = window.__game.getState().player;
+      return { before, tier: st.boomerangTier, active: st.activeSubItem };
+    });
+    expect(fromSilver.before).toBe(1);
+    expect(fromSilver.tier).toBe(2);
+    expect(fromSilver.active).toBeTruthy();
   });
 
   test('⑦ 旧セーブデータの補完（所持=wood / 未所持=-1）', () => {
@@ -223,6 +326,15 @@ test.describe('Phase 9-6 – 銀のブーメラン（ティア方式）', () => 
     const name = await page.evaluate(
       () => document.querySelector('#pause-items .pause-item-name')?.textContent ?? '');
     expect(name).toBe('銀のブーメラン');
+
+    // 星も同じ経路でティア名になる（キュー20b ⑤-b）
+    await page.goto(previewUrl({ star: true }));
+    await waitForBoard(page);
+    await page.keyboard.press('Escape');
+    await page.locator('#pause-items .pause-item-name').first().waitFor({ timeout: 5000 });
+    const starName = await page.evaluate(
+      () => document.querySelector('#pause-items .pause-item-name')?.textContent ?? '');
+    expect(starName).toBe('星のブーメラン');
   });
 
   // ── Phase 10d-6b: ユーザー指摘「銀のブーメランの場合は銀色にしてほしい」 ──
@@ -231,7 +343,7 @@ test.describe('Phase 9-6 – 銀のブーメラン（ティア方式）', () => 
   // 付かない（makeSprite の animated=false 分岐）ので、canvas の実ピクセル色を
   // getImageData で読んで確認する（[[judge-obvious-visual-defects-yourself]]と同じ
   // 「表示名の一致だけでは絵の色まで保証しない」への対処）。
-  test('⑨ 銀ブーメランは飛翔中の色が銀パレットになる（木は木のまま・形は共通）', async ({ page }) => {
+  test('⑨ 飛翔中の色がティアのパレットになる（木/銀/星・形は共通）', async ({ page }) => {
     // boomerangGrid() の i=0 ドット：grid[9][21]=中心(色3)/grid[9][20]=色4/grid[9][22]=色2
     async function centerColor(pageArg) {
       return pageArg.evaluate(() => {
@@ -258,5 +370,14 @@ test.describe('Phase 9-6 – 銀のブーメラン（ティア方式）', () => 
     const silver = await centerColor(page);
     expect(silver).toBe('rgb(154, 172, 182)'); // boomerangSilver[3] = #9aacb6
     expect(silver).not.toBe(wood);
+
+    // 星（キュー20b ⑤-b）＝金〜白の光るパレット。⚠️ 淡い水色にしない＝敵の投擲物
+    // （水弾 #65d4ea・水刃 #7ce4f4）と飛翔中に見分けが付かなくなる。
+    await page.goto(previewUrl({ star: true }));
+    await waitForBoard(page);
+    const star = await centerColor(page);
+    expect(star).toBe('rgb(255, 210, 60)');    // boomerangStar[3] = #ffd23c
+    expect(star).not.toBe(silver);
+    expect(star).not.toBe(wood);
   });
 });

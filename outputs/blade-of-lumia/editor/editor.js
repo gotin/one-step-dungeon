@@ -153,6 +153,9 @@ document.addEventListener('editor:previewClickAt', e => {
 			boomerang: document.getElementById('ps-boomerang').checked,
 			// Phase 9-6: 銀のブーメラン（ティア1）。editor-io.js の getPreviewSettings にも同じ定義がある。
 			silverboomerang: document.getElementById('ps-silverboomerang').checked,
+			// キュー20b ⑤-b: 星のブーメラン（ティア2＝塔 2,5 の報酬）。editor-io.js の
+			// getPreviewSettings にも同じ定義がある（[[blade-preview-settings-duplicated]]＝両方に足す）。
+			starboomerang: document.getElementById('ps-starboomerang').checked,
 			bomb:      document.getElementById('ps-bomb').checked,
 			// Phase 4-1c 修正：はしご・翼の羽衣が欠落していたため openPreview で
 			// ps_ladder=0/ps_wingrobe=0 になっていた（プレビュー設定が効かない原因）。

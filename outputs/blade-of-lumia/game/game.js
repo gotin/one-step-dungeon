@@ -2059,6 +2059,7 @@ async function init() {
 		const psBow      = params.get('ps_bow');
 		const psBoomerang= params.get('ps_boomerang');
 		const psSilverBoomerang = params.get('ps_silverboomerang');  // Phase 9-6: 銀ティア
+		const psStarBoomerang   = params.get('ps_starboomerang');    // キュー20b ⑤-b: 星ティア（塔 2,5 の報酬）
 		const psBomb     = params.get('ps_bomb');
 		const psFlute    = params.get('ps_flute');
 		const psCandle   = params.get('ps_candle');
@@ -2108,6 +2109,9 @@ async function init() {
 		if (psBoomerang=== '1') equipBoomerangTier(0);   // 木のブーメラン（所持＋ティア0）
 		// Phase 9-6: 銀のブーメラン。ps_boomerang が無くても単独で所持状態になる。
 		if (psSilverBoomerang === '1') equipBoomerangTier(1);
+		// キュー20b ⑤-b: 星のブーメラン（ティア2）。銀と同じく単独で所持状態になる
+		// （`equipBoomerangTier` は下位を拒否するだけ＝銀と両方 1 でも星が残る）。
+		if (psStarBoomerang === '1') equipBoomerangTier(2);
 		if (psBomb     === '1') { player.subItems.bomb      = { count: player.maxBombs ?? 8 };   if (!player.activeSubItem) player.activeSubItem = 'bomb'; }
 		if (psFlute    === '1') { player.subItems.flute     = { count: Infinity };  if (!player.activeSubItem) player.activeSubItem = 'flute'; }
 		if (psCandle   === '1') { player.subItems.candle    = { count: Infinity };  if (!player.activeSubItem) player.activeSubItem = 'candle'; }

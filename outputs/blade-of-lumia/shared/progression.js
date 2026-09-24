@@ -106,8 +106,15 @@ export function toolsUsableIn(map) {
 // はしごは `player.hasLadder`（subItems ではない）だが、プレビューでは同じ扱いで足りる。
 // ⚠️ 翼の羽衣（wingrobe）はここに入れない＝**宝箱に無い**。古代の祭壇で星の欠片を
 //    全部捧げて授かる（`game/boss.js offerAtAltar()`）∴欠片の数から導出する（下記）。
-// ⚠️ 銀のブーメラン（boomerangTier 1）は道具名ではなくティア番号で持つ＝`boomerang` の
-//    所持とは別軸（`game/player.js equipBoomerangTier()` はティアを上げると所持もさせる）。
+// ⚠️ 銀のブーメラン（boomerangTier 1）・星のブーメラン（同 2＝塔 2,5 の宝箱）は道具名ではなく
+//    ティア番号で持つ＝`boomerang` の所持とは別軸（`game/player.js equipBoomerangTier()` は
+//    ティアを上げると所持もさせる）。
+// ⚠️ 逆向き（所持 → ティア）は繋がっていない＝`giveSubItem('boomerang')`（dungeon_2 1,1 の
+//    初回入手＝`type:'item'`）は `boomerangTier` を触らない∴**木を持っていてもティアは -1**
+//    （`game/save.js sanitizeLoadedPlayer` がセーブの読み込み時にだけ 0 へ補完する）。
+//    ∴ここが返す `boomerangMax` は「ティア番号で置かれた報酬」の最大でしかない＝
+//    「ブーメランを持っているか」は `items` に 'boomerang' が在るかで見る（キュー20b ⑤-b で
+//    実データを読んで確認＝ティアの相対指定「今の1段上」は成り立たない根拠）。
 export const SUB_ITEM_KEYS = ['bow', 'boomerang', 'bomb', 'candle', 'ladder', 'flute'];
 
 // ── ボス部屋の所在（0d-2.8・2026-08-25）──────────────────────────

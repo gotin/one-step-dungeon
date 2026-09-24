@@ -62,7 +62,7 @@ export const SHIELD_TIERS = [
 ];
 
 // ── ブーメランティア定義（Phase 9-6 深洋O）── ブーメランの段階の単一の真実 ──
-// player.boomerangTier (-1=未所持, 0..1=ティア) で管理する。
+// player.boomerangTier (-1=未所持, 0..2=ティア) で管理する。
 // 「銀のブーメラン」を別サブアイテムにせず**木のブーメランを置き換える**（ユーザー確定
 // 2026-07-26）。理由＝サブアイテム枠を2つ使うと「木と銀を持ち替える」無意味な選択が
 // 生まれる。剣/防具/盾（SWORD_TIERS 等）と同じティア方式に揃える＝下位は拾っても無視。
@@ -81,6 +81,16 @@ export const BOOMERANG_TIERS = [
 	// 「もっと速くてよさそう」＝3.0 では上位品なのに矢より鈍かった）。
 	// pal='boomerangSilver'（ユーザー指摘 2026-09-09＝「銀のブーメランの場合は銀色にしてほしい」）。
 	{ key: 'silver', name: '銀のブーメラン', atk: 6, speed: 5.0, maxRange: 6, pal: 'boomerangSilver' },
+	// index 2: 星のブーメラン（暗黒の塔 2,5 の報酬＝塔固有の道具の上積み。キュー20b ⑤-b・2026-09-24）
+	// atk 12（銀の倍）・maxRange 8。**speed は銀と同じ 5.0 で据え置く**＝上位ティアなのに
+	// 速度だけ据え置きなのは意図（[[blade-speed-up-needs-interpolation]]）＝速度を上げるなら
+	// 折り返し／キャッチの判定が tick 境界にある `boomerangStep` の当たり判定補間とセットで
+	// 直す必要がある∴この段では射程と火力だけ上げる。
+	// ⚠️ ∴「上位ティアは全パラメータで上位」は木→銀だけの性質＝銀→星は speed が等しい
+	//    （`tests/boomerang-tiers.spec.js` ① がこの形で固定している）。
+	// pal='boomerangStar'（星の光＝金白）＝木（茶）・銀（鋼銀）のどちらとも違う色相にする
+	// （swordLumia で踏んだ「最上位が既存の色と見分けが付かない」の再発防止）。
+	{ key: 'star',   name: '星のブーメラン', atk: 12, speed: 5.0, maxRange: 8, pal: 'boomerangStar' },
 ];
 
 // ── ITEM_META: サブアイテム定義 ───────────────────────────────

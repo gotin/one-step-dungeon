@@ -24,6 +24,13 @@ export const ITEM_PAL = {
 	// 銀のブーメラン（形は共通・色だけ茶→鋼銀に差し替え＝BOOMERANG_TIERS[1].pal）。
 	// ユーザー指摘（2026-09-09）「銀のブーメランの場合は銀色にしてほしい」。
 	boomerangSilver:['transparent','#12161c','#5a6a76','#9aacb6','#dcebf2','#ffffff'],
+	// 星のブーメラン（BOOMERANG_TIERS[2].pal・キュー20b ⑤-b・2026-09-24）＝形は共通で色だけ
+	// 「星の光」に差し替える（木＝茶／銀＝鋼銀のどちらとも別の色相）。
+	// ⚠️ 淡青や白水色にはしない＝**飛翔中に敵の投擲物と見分けが付かなくなる**
+	//    （`waterShot` #65d4ea・`waterBlade` #7ce4f4 は射水魚／潜み鮫の遠隔）。
+	//    金白なら塔の暗い床でも浮き、`magicBolt`（藍＋金の縁）とも芯の色で違う。
+	// 1=焦茶金(影) 2=金 3=明金(芯) 4=淡金 5=白(輝き)
+	boomerangStar:['transparent','#4a3200','#c08a10','#ffd23c','#fff0a0','#ffffff'],
 	// やり（鉄・灰）
 	spear:    ['transparent','#1a1a20','#506070','#8090a0','#c0d0e0','#ffffff'],
 	// 石つぶて（灰）

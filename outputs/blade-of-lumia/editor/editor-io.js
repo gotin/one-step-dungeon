@@ -311,7 +311,10 @@ function applyProgressPreset(value) {
 	setCheck('ps-weapon', p.sword >= 0);
 	for (const k of SUB_ITEM_KEYS) setCheck(`ps-${k}`, p.items.includes(k));
 	// 銀のブーメランはティア（別軸）／翼の羽衣は宝箱に無く祭壇で授かる＝欠片の数から導出済み。
+	// 星のブーメラン（ティア2）は塔 2,5 の宝箱＝`dark_tower:boss`（そのレイヤーのボス部屋の外の
+	// 報酬を足す地点）でだけ立つ＝min/max には載らない（max は「その地点より前の層」までしか数えない）。
 	setCheck('ps-silverboomerang', p.boomerang >= 1);
+	setCheck('ps-starboomerang',   p.boomerang >= 2);
 	setCheck('ps-wingrobe', p.wingrobe);
 	// `ps-map`（地図）はプリセットで動かさない＝地図は層ごとの拾い物で進行の段と1対1にならず、
 	// かつ「印が見えるか」を確かめるための確認用の口∴ユーザーの指定をそのまま残す。
@@ -357,6 +360,8 @@ function getPreviewSettings() {
 		boomerang: document.getElementById('ps-boomerang').checked,
 		// Phase 9-6: 銀のブーメラン（ティア1）。editor.js の ps 定義にも必ず追加する。
 		silverboomerang: document.getElementById('ps-silverboomerang').checked,
+		// キュー20b ⑤-b: 星のブーメラン（ティア2＝塔 2,5 の報酬）。editor.js の ps 定義にも必ず追加する。
+		starboomerang: document.getElementById('ps-starboomerang').checked,
 		bomb:      document.getElementById('ps-bomb').checked,
 		flute:     document.getElementById('ps-flute').checked,
 		candle:    document.getElementById('ps-candle').checked,
@@ -392,6 +397,7 @@ export function openPreview(stX, stY, row, col, ps, TILE) {
 		url += `&ps_candle=${ps.candle?1:0}`;
 		url += `&ps_map=${ps.map?1:0}`;
 		url += `&ps_silverboomerang=${ps.silverboomerang?1:0}`;
+		url += `&ps_starboomerang=${ps.starboomerang?1:0}`;
 		// 撃破済みボス＝タイル文字をカンマで並べる（空なら付けない＝1体も倒していない）。
 		if (ps.defeated?.length) url += `&ps_defeated=${encodeURIComponent(ps.defeated.join(','))}`;
 	}
