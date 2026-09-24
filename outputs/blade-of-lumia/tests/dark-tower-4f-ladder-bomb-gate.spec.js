@@ -36,7 +36,7 @@ const EDGES = 'N[5,6] S[5,6] W[] E[]';
 
 const GATE_ROWS = [
 	'#####..#####',
-	'#i.........#',
+	'#..........#',
 	'#..........#',
 	'#..........#',
 	'#..........#',
@@ -108,12 +108,15 @@ test.describe('Blade of Lumia – dark_tower 4F のはしご＋爆弾の複合�
 		}
 		expect(torches, '配線の無いかがり火は撤去済み').toBe(0);
 
-		expect(st.tiles[1][1], '(1,1) は刻み文 i').toBe(TILE.SIGN);
-		expect(st.signData?.['1,1']?.lines?.length ?? 0, '刻み文の本文').toBeGreaterThanOrEqual(2);
-
-		// 2026-09-23 に `4,1` から移設した2枚目（石の間の予告＋詰み回復の笛）。
+		// ⚠️ 関門の案内だった (1,1) はキュー20c（ユーザー判定 2026-09-24）で外した＝穴も
+		// 罅割れ壁も画面に見えており、はしご（dungeon_5 1,1／field）も爆弾（dungeon_6 1,2）も
+		// 入手地点で教えている。残すのは (7,1) の1枚だけ＝次の間の予告と詰み回復（笛）の案内
+		// （2026-09-23 に `4,1` から移設。これは絵から読めない規則∴本編で唯一の教え）。
+		expect(st.tiles[1][1], '(1,1) は素の床（関門の案内を外した跡）').toBe(TILE.FLOOR);
 		expect(st.tiles[7][1], '(7,1) は移設した刻み文 i').toBe(TILE.SIGN);
 		expect(st.signData?.['7,1']?.lines?.length ?? 0, '移設した刻み文の本文').toBeGreaterThanOrEqual(2);
+		expect(Object.keys(st.signData ?? {}), "signData は (7,1) の1枚だけ＝死にデータを残さない")
+			.toEqual(['7,1']);
 	});
 
 	test(`データ：${LAYER} ${GATE_ROOM} の境界の開きは不変（部屋間の接続を動かさない）`, () => {

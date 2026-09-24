@@ -34,7 +34,7 @@ const MAP_PATH = fileURLToPath(new URL('../work/blade-of-lumia.json', import.met
 const map = JSON.parse(readFileSync(MAP_PATH, 'utf8'));
 
 const LAYER = 'dark_tower';
-const FLUTE_ROOM = '3,2';   // 石碑＋封印の宝箱
+const FLUTE_ROOM = '3,2';   // 封印の宝箱（案内の石碑はキュー20c で外した）
 const HALL_ROOM  = '3,3';   // 中ボスの大広間（階段 8,4 だけが残る）
 const CHEST  = '5,5';
 const SIGN   = '2,2';
@@ -70,12 +70,14 @@ test.describe('Blade of Lumia – dark_tower 3F の封印の宝（キュー20b �
 		expect(st.showConditions?.[CHEST]?.message,
 			'showConditions.message は表示されない死んだデータ∴書かない').toBeUndefined();
 
-		// 石碑は 'i' タイルと同じ座標に本文つき（[[blade-sign-two-formats]]＝本文が無いと無言看板）
+		// ⚠️ 案内の石碑は置かない（キュー20c・ユーザー判定 2026-09-24＝「dark_tower はもう
+		// 最終盤だからそんなヒントなくてもいい」）。「笛で封が解ける」は入手地点 dungeon_8
+		// 1,1／1,2 で既に教えており、笛は塔に入る時点で必携（石の間 4,3 の詰み回復に要る）
+		// ∴吹く動機は残る。'i' タイルと signData の**両方**が無いことを見張る。
 		const [sr, sc] = SIGN.split(',').map(Number);
-		expect(st.tiles[sr][sc], `(${SIGN}) は石碑 i`).toBe(TILE.SIGN);
-		expect(st.signData?.[SIGN]?.lines?.length ?? 0, '石碑の本文').toBeGreaterThanOrEqual(2);
-		expect(JSON.stringify(st.signData?.[SIGN]?.lines ?? []),
-			'石碑が廃止した近道を案内している').not.toContain('近道');
+		expect(st.tiles[sr][sc], `(${SIGN}) は素の床（石碑を外した跡）`).toBe(TILE.FLOOR);
+		expect(rowsOf(st).some((row) => row.includes(TILE.SIGN)), "看板タイル 'i' が1枚も無い").toBe(false);
+		expect(Object.keys(st.signData ?? {}), 'signData も空（死にデータを残さない）').toEqual([]);
 
 		// 反対側（3,3）＝上階の階段だけが残っている
 		const hall = map.layers[LAYER].stages[HALL_ROOM];

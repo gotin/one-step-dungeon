@@ -7,7 +7,8 @@
 //
 // 新しい機構：
 //    6 #xxxxxxxxxx#   ← 橋を撤去した穴の一本帯（row5/row7 が全幅の床＝isLadderBridgeCell 成立）
-//   刻み文 (1,1) に湖/沼/雪原の「飛び石」看板と同じ文法の案内文を置いた。
+//   案内の刻み文は置かない（(1,1) に置いていたが、キュー20c＝ユーザー判定 2026-09-24 で
+//   外した。穴の帯は画面に見えており、はしごで渡る作法は dungeon_5 1,1 と field で既習）。
 //
 // 守るものは2つ。
 // ① データ（状態空間）：**はしごが無いと南（3,2 以降）へ抜けられない**。歩いて行けるかの
@@ -33,7 +34,7 @@ const EDGES = 'N[5,6] S[5,6] W[] E[]';
 
 const GATE_ROWS = [
 	'#####..#####',
-	'#i.........#',
+	'#..........#',
 	'#..........#',
 	'#..........#',
 	'#..........#',
@@ -102,9 +103,13 @@ test.describe('Blade of Lumia – dark_tower 3F のはしごの関門（キュ�
 		}
 		expect(bridges, '橋は1枚も残っていない').toEqual([]);
 
-		// 刻み文は 'i' タイルと同じ座標に本文つき（[[blade-sign-two-formats]]＝本文が無いと無言看板）
-		expect(st.tiles[1][1], '(1,1) は刻み文 i').toBe(TILE.SIGN);
-		expect(st.signData?.['1,1']?.lines?.length ?? 0, '刻み文の本文').toBeGreaterThanOrEqual(2);
+		// ⚠️ 案内の刻み文は置かない（キュー20c・ユーザー判定 2026-09-24＝「dark_tower は
+		// もう最終盤だからそんなヒントなくてもいい」）。穴の帯は画面に見えており、
+		// はしごで渡る作法は dungeon_5 1,1 と field 3,4／2,18 で既に教えている。
+		// 'i' タイルと signData の**両方**が無いことを見張る（片方だけ残すと無言看板／死にデータ）。
+		expect(st.tiles[1][1], '(1,1) は素の床（刻み文を外した跡）').toBe(TILE.FLOOR);
+		expect(rowsOf(st).some((row) => row.includes(TILE.SIGN)), "看板タイル 'i' が1枚も無い").toBe(false);
+		expect(Object.keys(st.signData ?? {}), 'signData も空（死にデータを残さない）').toEqual([]);
 	});
 
 	test(`データ：${LAYER} ${GATE_ROOM} ははしごが無いと南へ抜けられない`, () => {

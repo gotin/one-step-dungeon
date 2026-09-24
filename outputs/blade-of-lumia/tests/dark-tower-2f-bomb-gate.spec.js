@@ -10,10 +10,11 @@
 //   ∴ 2F はどの道具も要らない通路で、20b の「階＝道具の卒業試験」に反していた。
 //
 // 新しい機構：
-//    1 #i.........#   ← 刻み文（罅割れた壁と火薬の作法）
 //    2 #....5.....#   ← 爆弾の山（本道 col5 の上）
 //    4 #####!!#####   ← 破壊壁2枚＝2F の関門（爆弾が無いと南へ抜けられない）
 //   `2,2` は同じセルを封印の宝箱にして、かがり火3本でハートの器（塔で唯一）が出る。
+//   案内の刻み文は2室とも置かない（(1,1) に置いていたが、キュー20c＝ユーザー判定
+//   2026-09-24 で外した。罅割れ壁は専用の絵・爆弾の作法は dungeon_6 1,2 で既習）。
 //
 // 守るものは4つ。
 //
@@ -53,7 +54,7 @@ const EDGES = 'N[5,6] S[5,6] W[] E[]';
 
 const GATE_ROWS = [
 	'#####..#####',
-	'#i.........#',
+	'#..........#',
 	'#....5.....#',
 	'#..........#',
 	'#####!!#####',
@@ -131,9 +132,13 @@ test.describe('Blade of Lumia – dark_tower 2F の爆弾の関門（キュー20
 		expect(st.breakableWalls, 'breakableWalls が破壊壁2枚を {breakDef} で指す')
 			.toEqual({ '4,5': { breakDef: 1 }, '4,6': { breakDef: 1 } });
 
-		// 刻み文は 'i' タイルと同じ座標に本文つき（[[blade-sign-two-formats]]＝本文が無いと無言看板）
-		expect(st.tiles[1][1], '(1,1) は刻み文 i').toBe(TILE.SIGN);
-		expect(st.signData?.['1,1']?.lines?.length ?? 0, '刻み文の本文').toBeGreaterThanOrEqual(2);
+		// ⚠️ 案内の刻み文は置かない（キュー20c・ユーザー判定 2026-09-24）。罅割れ壁 '!' は
+		// 専用の絵（sprite breakableWall）で壁と見分けられ、爆弾で崩す作法は入手地点
+		// dungeon_6 1,2 の「二枚の 岩壁は それでしか 崩れぬ」で既に教えている。
+		// 'i' タイルと signData の**両方**が無いことを見張る（片方だけ残すと無言看板／死にデータ）。
+		expect(st.tiles[1][1], '(1,1) は素の床（刻み文を外した跡）').toBe(TILE.FLOOR);
+		expect(rowsOf(st).some((row) => row.includes(TILE.SIGN)), "看板タイル 'i' が1枚も無い").toBe(false);
+		expect(Object.keys(st.signData ?? {}), 'signData も空（死にデータを残さない）').toEqual([]);
 	});
 
 	test(`データ：${LAYER} ${GATE_ROOM} は爆弾が無いと南へ抜けられない`, () => {
