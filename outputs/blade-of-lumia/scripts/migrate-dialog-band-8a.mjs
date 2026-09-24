@@ -366,6 +366,12 @@ addSign('dark_tower', '2,2', '1,1', {
 	],
 });
 // 4,1＝4F の入口部屋。倉庫番の盤（4,3）は 1 升も触らない∴手前の部屋で予告する。
+// ❌ 失効（2026-09-23・ユーザー指摘）＝この刻み文は `4,2` (7,1) へ移設した
+//    （`scripts/migrate-dark-tower-4f-stone-room-sign.mjs`）。理由＝①4F の進行方向は
+//    `4,1`→南→`4,2`→南→`4,3`（石の間）∴「この上は 石の 間」は向きが逆。②石の間の
+//    詰み回復は `4,3` の `fluteEffect {resetStones}` ＝その部屋で吹かないと効かないのに、
+//    案内が2室手前（間に `4,2` のはしご＋爆弾の関門）にあった。
+//    ⚠️ この移行を再実行すると移設した看板が `4,1` に復活する＝再実行しない。
 addSign('dark_tower', '4,1', '1,1', {
 	label: 'DT 4,1 四層の刻み文',
 	name: '四層の刻み文',
@@ -579,8 +585,11 @@ console.log(`\n書き出し: ${MAP_PATH}`);
 	if (variantOwners !== 44) problems.push(`版を持つエントリが 44 件でない（${variantOwners} 件）`);
 
 	// (7) 新設した看板が読めるタイルに乗っていること
+	// ⚠️ `dark_tower 4,1 (1,1)` は 2026-09-23 に `4,2` (7,1) へ移設した∴このリストから外した
+	//    （上の addSign の失効注記を参照。移設先の検査は
+	//    `scripts/migrate-dark-tower-4f-stone-room-sign.mjs` が持つ）。
 	for (const [ln, sk, pos] of [['field', '8,0', '2,1'], ['dark_tower', '1,1', '2,1'],
-		['dark_tower', '2,2', '1,1'], ['dark_tower', '4,1', '1,1']]) {
+		['dark_tower', '2,2', '1,1']]) {
 		const st = after.layers[ln].stages[sk];
 		const [r, c] = pos.split(',').map(Number);
 		const ch = (Array.isArray(st.tiles[r]) ? st.tiles[r] : String(st.tiles[r]).split(''))[c];

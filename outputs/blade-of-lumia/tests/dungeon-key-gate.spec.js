@@ -1719,4 +1719,120 @@ test.describe('Blade of Lumia – ダンジョンの鍵（進行の背骨）', (
     expect(errors).toEqual([]);
   });
 
+  // ── ⑩ dark_tower：階ごとの実戦（実行キュー20b ⑤・2026-09-23）──────────────
+  // 棚卸し⑲＝階ごとの脅威度が B1F 134 / 1F 249 / 2F 80 / 3F 197 / **4F 8 / 5F 0** で
+  // 「登るほど楽になる」状態だった（4F は実質無人・`5,2` はタイルが1つも無い空室）。
+  // ⑤-a で `4,1`（81.0）と `5,2`（117.0）に実戦を戻した＝ここはその回帰テスト。
+  // ⚠️ 不変条件は 2026-09-23 に改訂した（旧 (d)「階合計の単調増加＋合計 ≤709.8」は
+  //    **実現不可能だと数で確定して失効**＝DECISIONS 2026-09-23（12））∴縛るのは
+  //    (d1) どの階にも実戦室が1室以上／(d2) 最後に会う群れ `5,2` ≥ 3F の大広間 `3,3`／
+  //    (d3) 1室 ≤ 162（`1,2` の 225 は PINNED の既存例外）／(d4) 塔の非ボス合計 ≤ 900。
+  const DT_THREAT_CAP = 900;
+  const dtStages = () => map.layers.dark_tower.stages;
+  const dtFloors = () => {
+    const byFloor = {};
+    for (const [key, st] of Object.entries(dtStages())) {
+      if (st.isBossRoom) continue;
+      const f = key.split(',')[0];
+      (byFloor[f] ??= []).push({ key, threat: threatOfStage(st) });
+    }
+    return byFloor;
+  };
+
+  test('⑩ dark_tower：どの階にも「実戦室」が1室以上ある（登るほど楽にならない）', () => {
+    const byFloor = dtFloors();
+    expect(Object.keys(byFloor).sort(), '6層（B1F〜5F）ぶん在る').toEqual(['0', '1', '2', '3', '4', '5']);
+    for (const [f, rooms] of Object.entries(byFloor)) {
+      const fights = rooms.filter(r => r.threat > 0);
+      expect(fights.length, `${f === '0' ? 'B1' : f}F に実戦室（脅威度 > 0）が在る`).toBeGreaterThan(0);
+    }
+  });
+
+  test('⑩ dark_tower：最後に会う群れ（5,2 の門番）が 3F の大広間以上・1室 162 以下', () => {
+    const st = dtStages();
+    const guardian = threatOfStage(st['5,2']);
+    const hall3f = threatOfStage(st['3,3']);
+    expect(guardian, '5,2 は玉座の直前の門番＝3F の大広間を下回らない').toBeGreaterThanOrEqual(hall3f);
+    // 1室の詰め込み禁止。`1,2`（剣獣の巣・225.0）は PINNED_STAGES の既存例外∴除く。
+    for (const [key, s] of Object.entries(st)) {
+      if (s.isBossRoom || key === '1,2') continue;
+      expect(threatOfStage(s), `${key} の脅威度は 162 以下（詰め込み禁止）`).toBeLessThanOrEqual(162);
+    }
+  });
+
+  test('⑩ dark_tower：塔の非ボス脅威度の合計が上限（900）を超えない', () => {
+    const total = Object.values(dtStages())
+      .filter(s => !s.isBossRoom)
+      .reduce((sum, s) => sum + threatOfStage(s), 0);
+    expect(total, `塔の非ボス合計（実測 ${total}）`).toBeLessThanOrEqual(DT_THREAT_CAP);
+    // 4F/5F が無人に戻っていないことを合計でも押さえる（⑲の回帰）。
+    expect(total, '20b ⑤ 着手前（668.0）より軽くしない').toBeGreaterThanOrEqual(668);
+  });
+
+  test('⑩ dark_tower[4,1]：階段の着地セルが安全（周囲±2に敵なし・剣ビームの射線なし）', () => {
+    const st = map.layers.dark_tower.stages['4,1'];
+    const landing = Object.keys(st.mapEnters ?? {}).find(k => st.mapEnters[k]?.id === '4fEntrance');
+    expect(landing, '階段の着地セルが登録されている').toBe('6,4');
+    const [lr, lc] = landing.split(',').map(Number);
+    expect(st.tiles[lr][lc], '着地セルは階段タイル').toBe('>');
+
+    const near = [];
+    for (let r = lr - 2; r <= lr + 2; r++) {
+      for (let c = lc - 2; c <= lc + 2; c++) {
+        if (st.tiles[r]?.[c] && THREAT[st.tiles[r][c]] != null) near.push(`${r},${c}`);
+      }
+    }
+    expect(near, '着地直後に囲まれない（±2に敵を置かない＝棚卸し⑪）').toEqual([]);
+
+    // 剣獣は離れると剣ビームを撃つ＝着地セルと同じ行/列に遮蔽なしで居ると入室即被弾する
+    // （`1,2` に課しているのと同じ縛り）。
+    const beamers = [];
+    st.tiles.forEach((row, r) => row.forEach((t, c) => {
+      if (THREAT[t] != null && (ENEMY_META[t].attacks ?? []).some(a => a.type === 'swordBeam')) beamers.push({ r, c, t });
+    }));
+    for (const e of beamers) {
+      expect(e.r === lr || e.c === lc, `${e.t}(${e.r},${e.c}) は着地セルと同じ行/列に居ない`).toBe(false);
+    }
+  });
+
+  // 2026-09-23 ユーザー指摘＝`4,1` の刻み文が「この上は 石の 間」と書いていたが、4F の
+  // 進行方向は `4,1`→南→`4,2`→南→`4,3`（石の間）∴向きが逆だった。さらに石の間の詰み
+  // 回復（`4,3` の fluteEffect resetStones）は**その部屋で吹かないと効かない**のに、案内が
+  // 2室手前（間に `4,2` のはしご＋爆弾の関門）にあった∴`4,2` の南端へ移設した。
+  test('⑩ dark_tower 4F：石の間の案内が1室手前（4,2 の南端）にあり、向きが「この先」', () => {
+    const st = map.layers.dark_tower.stages;
+    const row = (s, r) => (Array.isArray(s.tiles[r]) ? s.tiles[r] : String(s.tiles[r]).split(''));
+
+    // 移設元には看板タイルも signData も残さない（片方だけ残すと無言看板／死にデータ）
+    expect(st['4,1'].tiles.some(r => r.includes('i')), '4,1 に看板タイルを残さない').toBe(false);
+    expect(Object.keys(st['4,1'].signData ?? {}), '4,1 の signData を残さない').toEqual([]);
+
+    // 移設先＝石の間 `4,3` の1室手前 `4,2` の南端
+    expect(row(st['4,2'], 7)[1], '4,2 (7,1) が看板タイル').toBe('i');
+    const sign = st['4,2'].signData?.['7,1'];
+    expect(sign?.lines?.length ?? 0, '移設した刻み文に本文がある').toBeGreaterThanOrEqual(2);
+    const body = sign.lines.join('');
+    expect(body, '進む向きは南＝「この先」').toContain('この先');
+    expect(body, '「この上」は向きが逆').not.toContain('この上');
+    expect(body, '詰み回復（笛）の案内を落とさない').toContain('笛');
+
+    // 案内が指す機構が実在すること（`4,3` の中で吹く前提）
+    expect(st['4,3'].fluteEffect?.type, '石の間に resetStones が在る').toBe('resetStones');
+
+    // 看板は通行不可（game/passable.js）∴廊下の途中に置くと row7 の東西が分断される。
+    // 端 (7,1) に置いていること＝(7,2) 以降に看板が無いことで押さえる。
+    expect(row(st['4,2'], 7).slice(2).includes('i'), '廊下 row7 の途中に看板を置かない').toBe(false);
+
+    // 塔全体で無言看板・死にデータが0（[[blade-sign-two-formats]]）
+    const bad = [];
+    for (const [key, s] of Object.entries(st)) {
+      const cells = [];
+      s.tiles.forEach((r, ri) => (Array.isArray(r) ? r : String(r).split(''))
+        .forEach((ch, ci) => { if (ch === 'i') cells.push(`${ri},${ci}`); }));
+      for (const c of cells) if (!(s.signData?.[c]?.lines?.length)) bad.push(`${key}(${c}) 無言看板`);
+      for (const k of Object.keys(s.signData ?? {})) if (!cells.includes(k)) bad.push(`${key}(${k}) 死にデータ`);
+    }
+    expect(bad, '塔に無言看板・死にデータが無い').toEqual([]);
+  });
+
 });

@@ -42,7 +42,10 @@ const GATE_ROWS = [
 	'#..........#',
 	'#..........#',
 	'#xxxxxxxxxx#',
-	'#....5.....#',
+	// (7,1) の刻み文＝2026-09-23 に `4,1` から移設した「この先は 石の 間」（石の間 `4,3` の
+	// 1室手前で読ませる＝詰み回復の笛は `4,3` の中で吹かないと効かない）。廊下の端に置いて
+	// いるのは 'i' が通行不可で、途中に置くと row7 の東西が分断されるため。
+	'#i...5.....#',
 	'#####!!#####',
 	'#####..#####',
 ];
@@ -107,6 +110,10 @@ test.describe('Blade of Lumia – dark_tower 4F のはしご＋爆弾の複合�
 
 		expect(st.tiles[1][1], '(1,1) は刻み文 i').toBe(TILE.SIGN);
 		expect(st.signData?.['1,1']?.lines?.length ?? 0, '刻み文の本文').toBeGreaterThanOrEqual(2);
+
+		// 2026-09-23 に `4,1` から移設した2枚目（石の間の予告＋詰み回復の笛）。
+		expect(st.tiles[7][1], '(7,1) は移設した刻み文 i').toBe(TILE.SIGN);
+		expect(st.signData?.['7,1']?.lines?.length ?? 0, '移設した刻み文の本文').toBeGreaterThanOrEqual(2);
 	});
 
 	test(`データ：${LAYER} ${GATE_ROOM} の境界の開きは不変（部屋間の接続を動かさない）`, () => {
