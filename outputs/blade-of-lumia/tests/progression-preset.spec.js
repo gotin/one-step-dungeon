@@ -92,7 +92,12 @@ test.describe('進行地点プリセット', () => {
     // DT（最終地点）は判定③でユーザーが実プレイした諸元＝ここが動いたら過去の判定が無効になる
     const dt = report.checkpoints.at(-1);
     expect(dt.id).toBe('dark_tower');
-    expect(dt.min.hearts, 'DT min のハート数（2026-08-24 の実プレイは 15）').toBe(15);
+    // ⚠️ 旧値は 15（2026-08-24 にユーザーが実プレイした諸元）。2026-09-25（実行キュー30）に
+    //    `dungeon_7 1,2` を「はしご＋石＋弓」の宝の間へ作り替え、ハートの器を1つ足した∴
+    //    DT に入る時点の下限は 16 になった。過去の判定（「ハート15・木の剣でDTが成立する」）は
+    //    無効にならない＝器が増える方向の変化はプレイヤーを**楽にする**だけ（15 で成立するなら
+    //    16 でも成立する）。逆にここが 15 未満へ落ちたら過去の判定はやり直しが要る。
+    expect(dt.min.hearts, 'DT min のハート数（器の総数から導出・キュー30 で 15→16）').toBe(16);
     // 下限は木の剣のまま＝寄道の剣（聖剣・ルミアの剣）が min へ漏れていないことの歯。
     expect(dt.min.sword,  'DT min の剣ティア（木の剣＝寄道の剣が下限へ漏れている）').toBe(0);
     expect(dt.min.shield, 'DT min の盾ティア（盾は3つとも必須ダンジョン産＝ティア2）').toBe(2);
@@ -223,8 +228,9 @@ test.describe('進行地点プリセット', () => {
         bow: c('ps-bow'), flute: c('ps-flute'), silver: c('ps-silverboomerang'),
       };
     });
-    // DT min＝ハート15・木の剣（ティア0）・盾ティア2・防具ティア0・全欠片・翼の羽衣
-    expect(filled.hearts).toBe('15');
+    // DT min＝ハート16・木の剣（ティア0）・盾ティア2・防具ティア0・全欠片・翼の羽衣
+    // （ハートは実マップの器の総数から導出＝キュー30 で dungeon_7 1,2 に 1 つ増えて 15→16）
+    expect(filled.hearts).toBe('16');
     expect(filled.sword).toBe('0');
     expect(filled.shield).toBe('2');
     expect(filled.armor).toBe('0');
@@ -242,7 +248,7 @@ test.describe('進行地点プリセット', () => {
       return !!f && f.src.includes('ps_hearts=');
     });
     const src = await page.$eval('#preview-frame', el => el.src);
-    expect(src).toContain('ps_hearts=15');
+    expect(src).toContain('ps_hearts=16');
     expect(src).toContain('ps_sword=0');
     expect(src).toContain('ps_shield=2');   // ← ティア番号でそのまま載る（旧実装は 1/0 の真偽値）
     expect(src).toContain('ps_armor=0');

@@ -30,10 +30,17 @@ import { waitForBoard } from './helpers.js';
 
 const GAME = '/blade-of-lumia/game/';
 
-// dungeon_7 の縦3連（1,0 → 1,1 → 1,2）。1,1 と 1,2 の上端 col5/col6 は 'T'（閉じた門）で、
-// links で同ステージ内の Y スイッチ (3,9) に配線されている＝「閉じた門の境界」の実データ。
+// dungeon_7 の縦3連（1,0 → 1,1 → 1,2）。1,1 の上端 col5/col6 が 'T'（閉じた門）で、
+// links で同ステージ内の Y スイッチ (1,1) に配線されている＝「閉じた門の境界」の実データ。
 // 1,0 の下端 row9 col5/col6 は床なので、そこから南へ歩くと 1,1 の (0,5)='T' に着地する。
-const D7 = { layer: 'dungeon_7', from: '1,0', to: '1,1', gate: '0,5' };
+// ⚠️ 2026-09-25（実行キュー 30）に 1,1 を作り替えた＝Y は (3,9) から (1,1) へ移り、
+//    池の向こう＝**矢でしか叩けない**（剣では届かない）。門の手前 (1,5)(1,6) は爆弾で
+//    壊す '!' ∴この境界を「開けて通る」には弓と爆弾の両方が要る（⑥ がそれを歩く）。
+//    `1,2` の上端にあった門は同じ作業で撤去した＝迂回できる飾りだった（実測で確認）。
+const D7 = {
+  layer: 'dungeon_7', from: '1,0', to: '1,1', gate: '0,5',
+  toggle: '1,1', walls: ['1,5', '1,6'], shootFrom: { row: 1, col: 4 },
+};
 
 function previewUrl({ layer, stage, row, col, extra = {} }) {
   const p = new URLSearchParams({
@@ -228,34 +235,54 @@ test.describe('⑥-landing ③ 実エンジン：閉じた門の境界は越え�
     expect(await posOf(page)).toEqual({ x: 5, y: 9 });
   });
 
-  // ④ だけでは「常に拒否する実装」でも緑になる（vacuous pass）。∴ 同じ辺を「開けてから」
-  // 歩いて入れることまで通す。1,2 の Y スイッチ (3,9) は 1,2 自身の (0,5)/(0,6) の 'T' に
-  // 配線されているので、1,2 で門を開けてから 1,1 へ出て、戻ってくる＝往復で両方向を測る。
+  // ④ だけでは「常に拒否する実装」でも緑になる（vacuous pass）。∴ **同じ境界**を
+  // 「開けてから」歩いて越えられることまで通す（1,1 側から北へ出て 1,0 へ、そして戻る）。
+  // 1,1 の Y(1,1) は池の向こう＝矢で叩き、門の手前の '!' は爆弾で砕く＝実データそのままの
+  // 弓＋爆弾の関門を歩く（2026-09-25 にこの部屋を作り替えた＝旧版は 1,2 の飾りの門を使っていた）。
   test('⑥ 門を開けてから同じ辺を歩くと遷移できる（vacuous pass 防止）', async ({ page }) => {
     const errors = [];
     page.on('pageerror', (e) => errors.push(e.message));
-    await boot(page, previewUrl({ layer: D7.layer, stage: '1,2', row: 4, col: 9 }));
+    await boot(page, previewUrl({
+      layer: D7.layer, stage: D7.to, row: 3, col: 4, extra: { ps_bow: '1' },
+    }));
 
-    // (4,9) から上へ1操作＝y=3.5、前方タイルが (3,9)＝Y スイッチ。叩いて門を開ける。
-    // ⚠️ スイッチセルの上には立てない（当たり箱が 'Y' に跨って横移動が塞がる）ので、
-    //   叩いたら row4 に戻してから横へ動く。
-    await page.evaluate(() => window.__game.movePlayer('up'));
+    // (3,4) から北へ2セル上がって射座 (1,4) に立つ（1操作 = 0.5セル）。
+    await walk(page, 'up', 4);
+    expect(await posOf(page), '射座 (1,4) に立てない').toEqual({ x: 4, y: 1 });
+
+    // 西を向いて矢を放つ＝池 (1,3)(1,2) の上を飛んで Y(1,1) に当たる（剣は届かない距離）。
+    // 西は水で塞がっているので movePlayer('left') では動かない＝向きだけが変わる。
+    await page.evaluate(() => window.__game.movePlayer('left'));
     await page.evaluate(() => window.__game.step(1));
-    await page.evaluate(() => window.__game.swordAttack());
-    await page.evaluate(() => window.__game.step(3));
-    await page.evaluate(() => window.__game.movePlayer('down'));
-    await page.evaluate(() => window.__game.step(1));
+    expect(await posOf(page), '水の上へ歩けてしまった').toEqual({ x: 4, y: 1 });
+    await page.evaluate(() => window.__game.useSubItem());
+    await page.evaluate(() => window.__game.step(30));
     const ss = await page.evaluate(() => window.__game.getStageState());
-    expect(ss.openGates, 'Y スイッチで 1,2 の門 (0,5) が開いていない').toContain(D7.gate);
+    expect(ss.switchToggles, `矢が Y(${D7.toggle}) に当たっていない`).toContain(D7.toggle);
+    expect(ss.openGates, `Y スイッチで 1,1 の門 (${D7.gate}) が開いていない`).toContain(D7.gate);
 
-    // 開いた門の列（col5）へ寄って北へ抜ける → 1,1 の row9（床）に着地。
-    await walk(page, 'left', 8);
-    expect(await walkUntilStage(page, 'up', D7.to, 12), '開いた門を通って北へ抜けられない').toBe(true);
-    expect(await posOf(page), '1,1 側の着地が境界セルの整数でない').toEqual({ x: 5, y: 9 });
+    // 門の手前 (1,5)(1,6) は '!'＝爆弾で砕かないと門まで歩けない（弓だけでは越えられない）。
+    await page.evaluate(() => {
+      const p = window.__game.getPlayer();
+      p.subItems.bomb = { count: 3 };
+      p.activeSubItem = 'bomb';
+    });
+    await page.evaluate(() => {
+      window.__game.step(2);        // クールダウン解消
+      window.__game.useSubItem();   // 足元 (1,4) に設置＝爆風半径2の円で '!' 2枚を砕く
+      window.__game.step(30);       // 爆発まで待つ
+    });
+    const broken = (await page.evaluate(() => window.__game.getStageState())).brokenWalls ?? [];
+    for (const w of D7.walls) expect(broken, `爆弾で ${w} が砕けていない`).toContain(w);
+
+    // 砕けた壁を通って col5 へ寄り、開いた門から北へ抜ける → 1,0 の row9（床）に着地。
+    await walk(page, 'right', 2);
+    expect(await walkUntilStage(page, 'up', D7.from, 12), '開いた門を通って北へ抜けられない').toBe(true);
+    expect(await posOf(page), '1,0 側の着地が境界セルの整数でない').toEqual({ x: 5, y: 9 });
 
     // そのまま南へ戻る → 今度は「開いた門セルへの着地」＝許可される（④ の裏返し）。
-    expect(await walkUntilStage(page, 'down', '1,2', 4), '開いた門セルへは着地できるはず').toBe(true);
-    expect(await posOf(page), '開いた門セル (0,5) に整数で着地していない').toEqual({ x: 5, y: 0 });
+    expect(await walkUntilStage(page, 'down', D7.to, 4), '開いた門セルへは着地できるはず').toBe(true);
+    expect(await posOf(page), `開いた門セル (${D7.gate}) に整数で着地していない`).toEqual({ x: 5, y: 0 });
     expect(errors).toEqual([]);
   });
 });
