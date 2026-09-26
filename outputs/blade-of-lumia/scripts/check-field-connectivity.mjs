@@ -97,6 +97,34 @@ if (dups.length)
   }
 }
 
+// ── breakableWalls が壊せる壁を指しているか／形が {breakDef} か（field 版）────
+// check-dungeon-integrity.mjs 検査15と同じ実装事実を検査する（field は同スクリプトの
+// `all` 対象に入れていない＝checks 1-14 が field で既存の見せかけ開口を100件超検出し
+// 本題〈breakableWalls の座標の嘘〉が埋もれるため。field 用にはこの検査だけ単独で置く）。
+{
+  const bad = [];
+  for (const [sk, st] of Object.entries(stages)) {
+    for (const [posKey, def] of Object.entries(st.breakableWalls ?? {})) {
+      const [r, c] = posKey.split(',').map(Number);
+      const row = Array.isArray(st.tiles[r]) ? st.tiles[r] : String(st.tiles[r] ?? '').split('');
+      const tile = row[c];
+      if (tile !== '!') {
+        bad.push(`field ${sk} の breakableWalls[${posKey}] が壊せる壁 '!' を指していない: '${tile}'`);
+      }
+      if (typeof def !== 'object' || def === null) {
+        bad.push(`field ${sk} の breakableWalls[${posKey}] の値が {breakDef} の形でない: ${JSON.stringify(def)}`);
+      }
+    }
+  }
+  console.log('\n── breakableWalls 座標の妥当性 ──');
+  if (bad.length) {
+    console.log(`  ❌ ${bad.length} 件`);
+    for (const b of bad) console.log(`    ${b}`);
+  } else {
+    console.log('  ✅ all breakableWalls point at real \'!\' tiles with {breakDef}');
+  }
+}
+
 console.log('\nDungeon entrances (✓ reachable on foot from start):');
 for (const sk of Object.keys(stages).sort()) {
   const me = stages[sk].mapEnters || {};
