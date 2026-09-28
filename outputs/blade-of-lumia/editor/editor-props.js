@@ -6,6 +6,7 @@ import { buildExitRegistry, resolveExit, reverseRefs, resolveFluteWarp } from '.
 import { mountIconEls, iconText } from '../shared/ui-icons.js';
 import { MARK_KINDS, DEFAULT_MARK_KIND, isStageKey } from '../shared/marks.js';
 import { variantOptions, readEntryVariants, applyEntryVariants } from '../shared/dialog-variants.js';
+import { CONDITION_TRIGGERS, KNOWN_TRIGGERS } from '../shared/triggers.js';
 
 // ── 右パネル統合呼び出し ──────────────────────────────────────
 export function renderSidePanel() {
@@ -619,17 +620,17 @@ function renderMapEnters(sd) {
 }
 
 // ── 表示条件（showConditions）設定 ───────────────────────────
-const TRIGGER_OPTIONS = [
-	{ value: 'killAll',     label: '敵全滅（killAll）' },
-	{ value: 'flutePlayed', label: '笛を吹いた（flutePlayed）' },
-	{ value: 'bushBurned',  label: 'ロウソクで茂みを燃やした（bushBurned）' },
-	{ value: 'killGroup',   label: '指定グループ全滅（killGroup）' },
-	{ value: 'switchOn',    label: 'ボタンON（switchOn）' },
-	{ value: 'allSwitchesOn', label: '全ボタンON（allSwitchesOn）' },
-	{ value: 'torchesLit',  label: '全かがり火点灯（torchesLit）' },
-	{ value: 'wallBroken',  label: '壁破壊（wallBroken）' },
-	{ value: 'hasItem',     label: 'アイテム所持（hasItem）' },
-];
+// 選択肢は shared/triggers.js（エンジンが評価できる名前の単一ソース）から導く。
+// ⚠️ 2026-09-28 まで手書きの表で、エンジンに無い `killGroup` が選べ、逆に
+//    killAllAndFlute / bossYielded / stonesPlaced は選べなかった。
+const TRIGGER_OPTIONS = CONDITION_TRIGGERS;
+
+// データの trigger が未知の名前だと、<select> は先頭（killAll）を選んだように見える＝
+// 壊れた関門がエディタ上では正常に見える。未知の名前は「⚠️ 未知」として選択肢に足して見せる。
+function triggerOptionsFor(cond) {
+	if (!cond.trigger || KNOWN_TRIGGERS.has(cond.trigger)) return TRIGGER_OPTIONS;
+	return [{ value: cond.trigger, label: `⚠️ 未知（${cond.trigger}）＝永久に成立しない` }, ...TRIGGER_OPTIONS];
+}
 
 function renderConditions(sd) {
 	const el = document.getElementById('condition-list');
@@ -647,7 +648,7 @@ function renderConditions(sd) {
 			<label>対象座標（行,列）<input type="text" value="${posKey}" data-f="posKey" readonly></label>
 			<label>トリガー
 				<select data-f="trigger">
-					${TRIGGER_OPTIONS.map(o => `<option value="${o.value}"${cond.trigger===o.value?' selected':''}>${o.label}</option>`).join('')}
+					${triggerOptionsFor(cond).map(o => `<option value="${o.value}"${cond.trigger===o.value?' selected':''}>${o.label}</option>`).join('')}
 				</select>
 			</label>
 			<label class="extra-param">追加パラメータ（JSON）

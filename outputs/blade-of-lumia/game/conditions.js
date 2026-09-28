@@ -7,6 +7,7 @@
 //  関数も注入で受け取り、呼び出し側（game.js）の改修を不要にする。
 import { TILE } from '../shared/tiles.js';
 import { playSound } from '../shared/sounds.js';
+import { KNOWN_TRIGGERS } from '../shared/triggers.js';
 
 /**
  * 条件評価関数群を生成する。
@@ -128,6 +129,7 @@ export function createConditions(d) {
 	}
 
 	// ── 条件評価 ──────────────────────────────────────────────────
+	const warnedUnknownTriggers = new Set();
 	function evaluateConditions() {
 		const stageData = getStageData();
 		if (!stageData?.showConditions) return;
@@ -190,6 +192,16 @@ export function createConditions(d) {
 					}
 				}
 				met = allTorches.length > 0 && allTorches.every(pk => ss.litTorches?.has(pk));
+			}
+			// 未知の trigger 名は永久に成立しない＝データの誤り。黙って読み飛ばすと気づけない
+			// （dungeon_8 3,3 の `stonesPushed` がそうだった）∴1関門につき1回だけ警告する。
+			// 名前の一覧は shared/triggers.js（ここに分岐を足したらあちらにも足す）。
+			else if (!KNOWN_TRIGGERS.has(cond.trigger)) {
+				const wk = `${getCurrentLayer()}|${getStageKey()}|${posKey}`;
+				if (!warnedUnknownTriggers.has(wk)) {
+					warnedUnknownTriggers.add(wk);
+					console.warn(`[conditions] 未知の trigger '${cond.trigger}'（${wk}）＝この関門は永久に成立しない`);
+				}
 			}
 			if (met) {
 				ss.conditionsMet.add(posKey);

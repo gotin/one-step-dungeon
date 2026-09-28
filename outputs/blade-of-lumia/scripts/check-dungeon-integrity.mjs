@@ -20,6 +20,8 @@
 //          （例: torchesLit なのに 'H' が無い部屋＝鍵が永久に出現しない）
 //   [MUST] すべての showConditions が `trigger` を持つこと（`type:` などの書式ミスは
 //          evaluateConditions に読まれず、条件が永久に成立しない）
+//   [MUST] すべての showConditions の trigger 名が shared/triggers.js に載っていること
+//          （鍵以外＝宝箱・隠し門の関門も対象。未知の名前は永久に成立しない）
 //   [MUST] trigger:'flutePlayed'/'killAllAndFlute' はそのステージに
 //          fluteEffect:{type:'reveal'} が要る（playFlute() が ss.flutePlayed を
 //          立てる唯一の経路。無いと笛を吹いても条件が永久に成立しない）
@@ -43,6 +45,7 @@ import { readFileSync } from 'fs';
 import { bfsLayer, SOLVABLE_GATES, findEntryRoom, firstWalkable, isHardBlocked } from './lib/connectivity.mjs';
 import { isEnemyTile } from '../shared/enemies.js';
 import { toolsUsableIn } from '../shared/progression.js';
+import { KNOWN_TRIGGERS } from '../shared/triggers.js';
 
 // BLADE_MAP_PATH で読むマップを差し替えられる（既定は実マップ）。
 // 用途＝「わざと壊したコピー」を食わせて検査そのものが本当に落ちるかを確かめる
@@ -608,6 +611,12 @@ function checkDungeon(layerName) {
   // `type: 'flutePlayed'` と書かれており、game/conditions.js evaluateConditions は
   // `cond.trigger` しか読まない∴条件が永久に成立しない（かがり火と笛が無意味）。
   // 生成スクリプト（e98217b の migrate-dark-tower.mjs）由来で、既存の全検査が緑だった。
+  //
+  // さらに trigger の**名前**も検査する（2026-09-28 追加）。検査(9) の default 節は未知の名前を
+  // 拾うが、鍵に付いた関門だけ＝宝箱の関門は素通りだった。実害＝dungeon_8 3,3 の宝箱が
+  // `trigger:'stonesPushed'`（エンジンに無い名前）で、一度も出現できなかった（d93638e の
+  // 手書きデータ由来・全検査が緑）。名前の一覧は shared/triggers.js＝エンジン・エディタと共有の
+  // 単一ソース（ここに手書きの表を持たない）。
   for (const [stageKey, stage] of Object.entries(stages)) {
     for (const [posKey, cond] of Object.entries(stage.showConditions ?? {})) {
       if (!cond || typeof cond !== 'object') {
@@ -615,6 +624,9 @@ function checkDungeon(layerName) {
       } else if (!cond.trigger) {
         err(`ステージ [${stageKey}] (${posKey}) の showConditions に trigger が無い (${JSON.stringify(cond)})`
           + ` ← evaluateConditions は cond.trigger しか読まない＝この条件は永久に成立しない`);
+      } else if (!KNOWN_TRIGGERS.has(cond.trigger)) {
+        err(`ステージ [${stageKey}] (${posKey}) の showConditions の trigger '${cond.trigger}' は未知`
+          + ` ← shared/triggers.js に無い＝evaluateConditions が評価しない＝この条件は永久に成立しない`);
       }
     }
   }
