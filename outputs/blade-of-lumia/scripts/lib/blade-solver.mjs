@@ -101,9 +101,11 @@ export function makeSolver(tiles, bg, linkSpec, breakDefs, litInit,
   // ∴開いたゲートに乗った石を残したまま反対色へ切り替えると、その石は閉じるゲートの中に
   // 埋まる＝この切替を**不発**にする（実エンジン game/player.js setActiveColor と同じ規則）。
   // これで「押し込みの直線を幾何で禁止する」旧 I1/I1' は不要になる（ユーザー指摘で撤回）。
-  const colorSwitchBlocked = (toColor, stones) => {
+  // 2026-09-28：プレイヤー自身が閉じる側のゲートに立っていても不発（実エンジンと同じ。
+  // ソルバーのプレイヤーは整数セル＝立っているセル1つだけを見れば足りる）。
+  const colorSwitchBlocked = (toColor, stones, playerCell) => {
     const closing = toColor === 1 ? blueGateCells : redGateCells;
-    return closing.some((g) => stones.includes(g));
+    return closing.some((g) => g === playerCell || stones.includes(g));
   };
   if (toggleCells.length > 6) throw new Error('Y が多すぎる（ビットマスクの上限）');
 
@@ -254,7 +256,7 @@ export function makeSolver(tiles, bg, linkSpec, breakDefs, litInit,
     // 閉じる側のゲートに石が乗っていたら不発（colorSwitchBlocked＝§3-2e 再設計）。
     for (const [dr, dc] of DIRS) {
       const hit = colorCells.find(([cell]) => cell === `${pr + dr},${pc + dc}`);
-      if (hit && hit[1] !== color && !colorSwitchBlocked(hit[1], stones)) out.push(enc(pr, pc, stones, mask, broken, lit, hit[1]));
+      if (hit && hit[1] !== color && !colorSwitchBlocked(hit[1], stones, `${pr},${pc}`)) out.push(enc(pr, pc, stones, mask, broken, lit, hit[1]));
     }
 
     // 弓: 4方向へ矢を飛ばす。WALL/未破壊'!'で止まる。途中の 'Y' に当たるとトグル。
@@ -268,7 +270,7 @@ export function makeSolver(tiles, bg, linkSpec, breakDefs, litInit,
         if (yi >= 0) { out.push(enc(pr, pc, stones, mask ^ (1 << yi), broken, lit)); break; }
         const ci = colorCells.find(([cell]) => cell === `${rr},${cc}`);
         if (ci) {
-          if (ci[1] !== color && !colorSwitchBlocked(ci[1], stones)) out.push(enc(pr, pc, stones, mask, broken, lit, ci[1]));
+          if (ci[1] !== color && !colorSwitchBlocked(ci[1], stones, `${pr},${pc}`)) out.push(enc(pr, pc, stones, mask, broken, lit, ci[1]));
           break;   // 矢は色スイッチに当たって消える（貫通しない）
         }
         if (ch === TILE.WALL) break;

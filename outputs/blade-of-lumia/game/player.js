@@ -331,6 +331,10 @@ export function createPlayer(deps) {
 	// 中に埋まってしまう＝この切替を**不発**にする（石を先に動かさないと色を変えられない）。
 	// これで「押し込みの直線を幾何で禁止する」旧規則（I1/I1'）が丸ごと不要になる
 	// （旧規則は§3-2eの曲がり角強制が設計の自由度を奪っていたため撤回・ユーザー指摘）。
+	//
+	// 2026-09-28（ユーザー報告・D8 3,0）：石と同じ理屈で**プレイヤー自身**が閉じる側のゲートに
+	// 重なっていても不発にする（開いた青門の上から赤の鐘を叩くと、閉じた門の中に埋まっていた）。
+	// プレイヤーは半マス単位で動く＝2セルにまたがる∴floor/ceil の全セルを見る（半分でも重なれば不発）。
 	function setActiveColor(r, c) {
 		const stageData = getStageData();
 		const tile = stageData?.tiles[r]?.[c];
@@ -344,6 +348,13 @@ export function createPlayer(deps) {
 				playSound('switchDenied');
 				return false;   // 閉じる側のゲートに石がある∴切替不発（石を退避させてから再挑戦）
 			}
+		}
+		const player = getPlayer();
+		const rows = [...new Set([Math.floor(player.y), Math.ceil(player.y)])];
+		const cols = [...new Set([Math.floor(player.x), Math.ceil(player.x)])];
+		if (rows.some(pr => cols.some(pc => stageData.tiles[pr]?.[pc] === closingGateTile))) {
+			playSound('switchDenied');
+			return false;   // 閉じる側のゲートにプレイヤーが重なっている∴切替不発（門から降りてから再挑戦）
 		}
 		ss.activeColor = color;
 		playSound('switch');
