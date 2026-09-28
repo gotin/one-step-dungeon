@@ -332,6 +332,9 @@ function enterStage(lk, sk, pRow, pCol) {
 					// 未解決：通常リセット（スナップショットも消す）
 					prevSS.stonePositions = {};
 					prevSS.solvedStonePositions = null;
+					// 石で押されていたボタンも戻す。戻さないと再入室後、最初の一歩（player.js
+					// checkSwitchOff）まで「押された」ままになる（石2個の部屋で1個だけ乗せて出たとき）。
+					for (const pk of buttons) if (prevSS.switchStates?.[pk]) prevSS.switchStates[pk] = false;
 				}
 			}
 		}
