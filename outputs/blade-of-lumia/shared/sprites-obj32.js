@@ -1558,6 +1558,44 @@ const CANDLE_32 = [
 	[0,0,0,0,0,0,0,0,0,0,0,0,1,1,1,1,1,1,1,1,0,0,0,0,0,0,0,0,0,0,0,0],
 ];
 
+// 疾風の靴（ITEM_META.swiftBoots・キュー13）── ink 29×25。右向きの長靴＋踵の白い翼。
+// swiftBoots パレット：1輪郭 2革(暗) 3革 4革(明) 5靴底 6金の留め具 7羽(白) 8羽(陰)。
+// ⚠️ 経緯（`.scratch/q13-boots-draw.mjs`）＝①羽根を水平の棒で並べたら櫛に見えた
+//    → 列ごとに先ほど高くなる斜めにした ②筒を前へ倒すと縁が段々に崩れた → 真っ直ぐに戻した
+//    ③筒の明るい縦筋が金の帯の下まで伸びて帯が切れて見えた → 帯より上だけにした。
+function swiftBootsGrid() {
+	const g = blank();
+	// 筒（脛）＝ cols 11..19・rows 4..19
+	for (let y = 4; y <= 19; y++) {
+		rect(g, y, 11, y, 19, 3);
+		if (y <= 14) { put(g, y, 12, 4); put(g, y, 13, 4); }   // 左の明（帯の上だけ）
+		put(g, y, 19, 2);                                     // 右の陰
+	}
+	rect(g, 4, 10, 5, 20, 4);                                  // 口の折り返し
+	// 足（甲〜爪先）＝行ごとの右端。爪先は丸く。
+	const toe = { 18: 21, 19: 23, 20: 25, 21: 26, 22: 27, 23: 27, 24: 27 };
+	for (const [ys, xe] of Object.entries(toe)) {
+		const y = +ys;
+		rect(g, y, 11, y, xe, y >= 23 ? 2 : 3);               // 下2行は陰
+	}
+	put(g, 20, 24, 4); put(g, 21, 24, 4); put(g, 21, 25, 4);   // 爪先の光
+	// 靴底（踵は少し厚い）
+	rect(g, 25, 11, 25, 28, 5);
+	rect(g, 26, 11, 26, 15, 5);
+	rect(g, 15, 11, 16, 19, 6);                                // 金の留め具（足首の帯）
+	// 翼＝踵の後ろ（左）へ3枚。上ほど長い。
+	const feathers = [{ base: 9, tip: 2 }, { base: 12, tip: 3 }, { base: 15, tip: 5 }];
+	for (const f of feathers) {
+		for (let x = f.tip; x <= 10; x++) {
+			const y = f.base - Math.round((10 - x) * 0.4);
+			put(g, y, x, 7);
+			if (x >= f.tip + 1) put(g, y + 1, x, 8);
+		}
+	}
+	strokeOutside(g);
+	return g;
+}
+
 // 布の服（ARMOR_TIERS[0]）── ink 24×30。
 // armorCloth パレット：1輪郭 2影 3布の地 4布の明部 5縁取り（生成りのクリーム）。
 // なぜ armor（胸当て）と別の絵か＝ティア0は「布の服」なのに金属の胸当てを色替えで
@@ -1757,6 +1795,7 @@ export const OBJ32_SPRITES = {
 	flute:         [panFluteGrid()],
 	dice:          [diceGrid()],
 	candle:        [CANDLE_32],
+	swiftBoots:    [swiftBootsGrid()],     // キュー13：疾風の靴
 	// ── 10d-4 ──
 	arrow:         [arrowGrid()],
 	shieldSide:    [shieldSideGrid()],

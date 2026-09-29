@@ -748,6 +748,7 @@ export function createPlayer(deps) {
 			else if (id === 'ladder')    player.hasLadder  = true;
 			else if (id === 'quiver')    player.maxArrows  = (player.maxArrows  ?? 8) + 8;
 			else if (id === 'bombBag')   player.maxBombs   = (player.maxBombs   ?? 8) + 8;
+			else if (id === 'swiftBoots') player.hasSwiftBoots = true;
 			return true;
 		}
 		// 矢/爆弾は上限でクランプ（quiver/bombBag 拡充後の新上限も反映）。
@@ -789,8 +790,10 @@ export function createPlayer(deps) {
 			// ⚠️ 上限を広げる passive（矢筒・爆弾袋）は**サブアイテム欄に並ばない**
 			// （`giveSubItem` の passive 分岐は早期 return ∴ヒントも出ない）＝名前だけでは
 			// 何が増えたのか分からない。下の 'ladder' 分岐と同じ作法で効果を文に足す。
+			// 疾風の靴は**使い方**を言う＝欄に並ばない∴ここで言わないと Shift に気づく道が無い。
 			const note = content.item === 'quiver'  ? `（矢を ${player.maxArrows} 本まで 持てる）`
 			           : content.item === 'bombBag' ? `（爆弾を ${player.maxBombs} 個まで 持てる）`
+			           : content.item === 'swiftBoots' ? '（Shift を 押している間 速く 走れる）'
 			           : '';
 			return `${content.name ?? content.item} を手に入れた！${note}`;
 		} else if (content.type === 'weapon') {
@@ -855,7 +858,10 @@ export function createPlayer(deps) {
 			const msg = grantReward(content);
 			// 渡せない指定（未知の type／渡せない item）は空文字が返る＝宝箱の絵だけの
 			// 無言の泡を出さず、空箱と同じ文にする（指定の間違いはテストで赤くする側）。
-			pulse(msg ? `{{chest}} ${msg}` : '{{chest}} 宝箱は空だった…');
+			// 出している長さは文の長さに合わせる（1文字 100ms・最短は従来の 2 秒）。
+			// 効果や使い方を括弧で足した文（矢筒・疾風の靴）は 2 秒では読み切れない。
+			const ms = Math.max(2000, [...msg].length * 100);
+			pulse(msg ? `{{chest}} ${msg}` : '{{chest}} 宝箱は空だった…', ms);
 		} else { pulse('{{chest}} 宝箱は空だった…'); }
 		renderBoard(); renderChars(); updateHud(); saveGame();
 	}

@@ -114,6 +114,8 @@ export const ITEM_PAL = {
 	candle:     ['transparent','#a43e24','#f07126','#ffa718','#e7a85d','#ecbf8c','#fcecd0'],
 	// サイコロ（ガチャ。1=輪郭/稜線 2=右面 3=左面 4=上面 5=目）
 	dice:       ['transparent','#3a332c','#8e8a7e','#c2beb0','#f6f2e6','#b02828'],
+	// 疾風の靴（キュー13。1=輪郭 2=革暗 3=革 4=革明 5=靴底 6=金の留め具 7=羽白 8=羽陰）
+	swiftBoots: ['transparent','#1e1a24','#1f5a5a','#2f8a84','#5cc0b0','#3a2a1c','#e0a828','#ffffff','#b8d0e0'],
 };
 
 export const ITEM_SPRITES = {};

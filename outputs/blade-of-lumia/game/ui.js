@@ -589,6 +589,27 @@ export function createUi(deps) {
 			putText(`${label}　`);
 		}
 		pauseStatsEl.appendChild(statsLine);
+
+		// キュー13: だいじなもの＝持っているだけで効く道具（`type:'passive'` ∴上のサブアイテム欄に
+		// 並ばない）。疾風の靴は使い方（Shift）が画面のどこにも無い∴ここに書く。
+		// 1つも持っていなければ行ごと出さない。
+		const keyItems = [
+			[player.hasLadder,     'ladder',     'はしご'],
+			[player.hasWingRobe,   'wingRobe',   '翼の羽衣'],
+			[player.hasSwiftBoots, 'swiftBoots', '疾風の靴(Shift で走る)'],
+		].filter(([owned]) => owned);
+		if (keyItems.length > 0) {
+			const keyLine = document.createElement('div');
+			keyLine.id = 'pause-key-items';
+			keyLine.style.cssText = 'display:flex;align-items:center;gap:2px;flex-wrap:wrap;margin-top:4px;';
+			keyLine.appendChild(document.createTextNode('だいじなもの：'));
+			for (const [, icon, label] of keyItems) {
+				const cv = iconCanvas(icon, 16);
+				if (cv) keyLine.appendChild(cv);
+				keyLine.appendChild(document.createTextNode(`${label}　`));
+			}
+			pauseStatsEl.appendChild(keyLine);
+		}
 		renderPauseDungeonMap();
 		updatePauseHint();
 	}

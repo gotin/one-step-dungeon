@@ -13,8 +13,20 @@
 //   ⑤ 入力の後始末＝Shift を先に離してから文字キーを離しても歩き続けない／フォーカスが外れたら止まる
 //   ⑥ 見た目＝走っている間だけ #char-player に .dashing（補間を tick の長さに伸ばす）
 //   ⑦ 画面の端を走って越えても、着いた先の位置が半マス格子の上
+// 本実装（道具として手に入れる）：
+//   ⑧ 置き場所＝field 15,19 の宝箱 (6,7) だけ・道具の定義と所持の判定
+//   ⑨ 実プレイ：爆弾＋笛で宝箱を開けると靴が手に入り、文に Shift の使い方が出て 2 秒後も読める。
+//      サブアイテム欄には並ばない・その場から走れる・セーブに残る
+//   ⑩ ロード：靴を持ったセーブは走れる／靴の無い旧セーブは走れない
+//   ⑪ ポーズ画面の「だいじなもの」に靴と使い方が出る（持っていなければ行ごと出ない）
 import { test, expect } from '@playwright/test';
-import { GAME_URL, waitForBoard } from './helpers.js';
+import { readFileSync } from 'node:fs';
+import { GAME_URL, SAVE_KEY, waitForBoard, gotoFreshGame } from './helpers.js';
+import { ITEM_META, ITEM_OWNED_FLAG, ownsItem } from '../shared/items.js';
+import { SUB_ITEM_KEYS } from '../shared/progression.js';
+import { SPRITES } from '../shared/sprites.js';
+
+const MAP = JSON.parse(readFileSync(new URL('../work/blade-of-lumia.json', import.meta.url), 'utf8'));
 
 // dungeon_7 4,2 は敵も仕掛けも無い広間（行2は列1〜10が床・列11が壁／行4・5は左端が開いている）。
 const ROOM = `${GAME_URL}?fromEditor=1&layer=dungeon_7&stage=4,2`;
@@ -37,6 +49,33 @@ async function stepXs(page, n) {
     for (let i = 0; i < n; i++) { window.__game.step(1); xs.push(window.__game.getPlayer().x); }
     return xs;
   }, n);
+}
+
+// セーブ（ROOM と同じ広間の 2,1）を「つづきから」で開き、Shift＋→ で 2 tick 進めた x を返す。
+async function continueAndRun(page, extraPlayer) {
+  const save = JSON.stringify({
+    player: {
+      x: 1, y: 2, hp: 6, maxHp: 6, maxHearts: 3, atk: 2, def: 0, keys: 0,
+      weapon: null, shield: null, armor: null,
+      subItems: {}, activeSubItem: null, rupees: 0, triforceCount: 0,
+      ...extraPlayer,
+    },
+    stageState: {}, currentLayer: 'dungeon_7', stageKey: '4,2', heroDir: 'right',
+  });
+  await page.addInitScript(({ key, value }) => {
+    try { localStorage.setItem(key, value); } catch { /* noop */ }
+  }, { key: SAVE_KEY, value: save });
+  await page.goto(GAME_URL);
+  await page.locator('#btn-continue').click();
+  await waitForBoard(page);
+  await page.evaluate(() => window.__game.pause());
+  expect(await page.evaluate(() => window.__game.getPlayer().x)).toBe(1);
+  await page.keyboard.down('Shift');
+  await page.keyboard.down('ArrowRight');
+  const xs = await stepXs(page, 2);
+  await page.keyboard.up('ArrowRight');
+  await page.keyboard.up('Shift');
+  return { xs, has: await page.evaluate(() => window.__game.getPlayer().hasSwiftBoots) };
 }
 
 test.describe('Blade of Lumia – 疾風の靴（Shift で走る）', () => {
@@ -141,5 +180,123 @@ test.describe('Blade of Lumia – 疾風の靴（Shift で走る）', () => {
     await page.waitForTimeout(600);
     const p = await page.evaluate(() => window.__game.getPlayer());
     expect(onGrid(p.x) && onGrid(p.y), `着地 ${p.x},${p.y}`).toBe(true);
+  });
+
+  test('⑧ 置き場所は field 15,19 の宝箱 (6,7) だけ・道具の定義と所持の判定', () => {
+    const where = [];
+    for (const [ln, ld] of Object.entries(MAP.layers)) {
+      for (const [sk, sd] of Object.entries(ld.stages ?? {})) {
+        for (const [pos, ct] of Object.entries(sd.chestContents ?? {})) {
+          if (ct?.item === 'swiftBoots') where.push(`${ln} ${sk} ${pos} ${ct.type}`);
+        }
+      }
+    }
+    expect(where).toEqual(['field 15,19 6,7 item']);
+
+    const meta = ITEM_META.swiftBoots;
+    expect(meta?.type, '持っているだけで効く道具＝サブアイテム欄に並べない').toBe('passive');
+    expect(meta.grantable, '宝箱から渡せない').not.toBe(false);
+    expect(Array.isArray(SPRITES[meta.sprite]?.[0]), `SPRITES['${meta.sprite}'] が無い`).toBe(true);
+    // 進行の鍵にしない（隠し報酬の決まり）
+    expect(SUB_ITEM_KEYS).not.toContain('swiftBoots');
+    // 所持の判定は ownsItem の1本（フラグの置き場所は ITEM_OWNED_FLAG）
+    expect(ITEM_OWNED_FLAG.swiftBoots).toBe('hasSwiftBoots');
+    expect(ownsItem({ subItems: {}, hasSwiftBoots: true }, 'swiftBoots')).toBe(true);
+    expect(ownsItem({ subItems: {}, hasSwiftBoots: false }, 'swiftBoots')).toBe(false);
+  });
+
+  test('⑨ 実プレイ：15,19 の宝箱で靴が手に入り、Shift の使い方が読めて、その場から走れて、セーブに残る', async ({ page }) => {
+    const errors = [];
+    page.on('pageerror', (e) => errors.push(e.message));
+    const q = new URLSearchParams({
+      fromEditor: '1', layer: 'field', stage: '15,19', row: '4', col: '7',
+      ps_weapon: '1', ps_bomb: '1', ps_flute: '1',
+    });
+    await page.goto(`${GAME_URL}?${q}`);
+    await waitForBoard(page);
+    const walk = (d, tiles) => page.evaluate(({ d, n }) => {
+      for (let i = 0; i < n * 2; i++) { window.__game.movePlayer(d); window.__game.step(1); }
+    }, { d, n: tiles });
+    const use = (id, ticks) => page.evaluate(({ id, n }) => {
+      window.__game.getPlayer().activeSubItem = id;
+      window.__game.useSubItem();
+      for (let i = 0; i < n; i++) window.__game.step(1);
+    }, { id, n: ticks });
+
+    expect(await page.evaluate(() => window.__game.getState().player.hasSwiftBoots)).toBe(false);
+    // 爆弾で壁 (5,7) を壊し、笛で宝箱の封印を解く（field-delta-o-lower.spec.js ⑨ と同じ手順）
+    await walk('down', 2);
+    await use('bomb', 40);
+    await use('flute', 10);
+    await walk('down', 2);
+    const got = await page.evaluate(() => {
+      const p = window.__game.getPlayer();
+      return {
+        r: Math.floor(p.y + 0.5), c: Math.floor(p.x + 0.5),
+        has: p.hasSwiftBoots, slots: Object.keys(p.subItems),
+        opened: [...window.__game.getStageState().openedChests],
+        msg: document.getElementById('msg-bar').textContent,
+      };
+    });
+    expect({ r: got.r, c: got.c }, '宝箱のセルに立てていない').toEqual({ r: 6, c: 7 });
+    expect(got.opened).toContain('6,7');
+    expect(got.has, '宝箱を開けても靴を持っていない').toBe(true);
+    expect(got.slots, '靴がサブアイテム欄に入った').not.toContain('swiftBoots');
+    expect(got.msg).toContain('疾風の靴');
+    expect(got.msg, '使い方（Shift）が文に無い').toContain('Shift');
+
+    // 2 秒（従来の既定）を過ぎても使い方の文が消えていない＝読み切れる長さで出す
+    await page.waitForTimeout(2500);
+    expect(await page.evaluate(() => {
+      const el = document.getElementById('msg-bar');
+      return !el.classList.contains('hidden') && el.textContent.includes('Shift');
+    }), '2.5 秒で使い方の文が消えた').toBe(true);
+
+    // その場から走れる（壊した壁 (5,7) を通って北へ）
+    await page.evaluate(() => window.__game.pause());
+    await page.keyboard.down('Shift');
+    await page.keyboard.down('ArrowUp');
+    const ys = await page.evaluate(() => {
+      const out = [];
+      for (let i = 0; i < 2; i++) { window.__game.step(1); out.push(window.__game.getPlayer().y); }
+      return out;
+    });
+    await page.keyboard.up('ArrowUp');
+    await page.keyboard.up('Shift');
+    expect(ys, '靴を手に入れたのに走れない').toEqual([5, 4]);
+
+    // 宝箱を開けた時点でセーブに書かれている
+    const saved = await page.evaluate((key) => JSON.parse(localStorage.getItem(key) ?? 'null')?.player?.hasSwiftBoots, SAVE_KEY);
+    expect(saved, 'セーブに靴が残っていない').toBe(true);
+    expect(errors).toEqual([]);
+  });
+
+  test('⑩ ロード：靴を持ったセーブは走れる', async ({ page }) => {
+    const r = await continueAndRun(page, { hasSwiftBoots: true });
+    expect(r.has).toBe(true);
+    expect(r.xs, '靴のセーブをロードしたのに走れない').toEqual([2, 3]);
+  });
+
+  test('⑩-2 ロード：靴の項目が無い旧セーブは走れない（既定 false で補う）', async ({ page }) => {
+    const r = await continueAndRun(page, {});
+    expect(r.has).toBe(false);
+    expect(r.xs).toEqual([1.5, 2]);
+  });
+
+  test('⑪ ポーズ画面の「だいじなもの」に靴と使い方が出る（持っていなければ行ごと出ない）', async ({ page }) => {
+    await gotoFreshGame(page);
+    await page.keyboard.press('Escape');
+    await page.waitForFunction(() => window.__game.getState().isPaused === true, null, { timeout: 3000 });
+    expect(await page.locator('#pause-key-items').count(), '何も持っていないのに行が出た').toBe(0);
+    await page.keyboard.press('Escape');
+    await page.waitForFunction(() => window.__game.getState().isPaused === false, null, { timeout: 3000 });
+
+    await page.evaluate(() => window.__game.grantReward({ type: 'item', item: 'swiftBoots', name: '疾風の靴' }));
+    await page.keyboard.press('Escape');
+    await page.waitForFunction(() => window.__game.getState().isPaused === true, null, { timeout: 3000 });
+    const row = page.locator('#pause-key-items');
+    await expect(row).toContainText('疾風の靴');
+    await expect(row).toContainText('Shift');
+    expect(await row.locator('canvas').count(), '靴の絵が出ていない').toBe(1);
   });
 });

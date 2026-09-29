@@ -93337,9 +93337,9 @@
           "enemyDirs": {},
           "chestContents": {
             "6,7": {
-              "type": "rupee",
-              "value": 100,
-              "name": "ルピー×100"
+              "type": "item",
+              "item": "swiftBoots",
+              "name": "疾風の靴"
             }
           },
           "floorItems": {},

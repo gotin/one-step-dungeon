@@ -214,6 +214,16 @@ export const ITEM_META = {
 		type: 'passive',
 		uses: null,
 	},
+	swiftBoots: {
+		// 実行キュー13（2026-09-29）：疾風の靴。持っている間は Shift を押しっぱなしで
+		// 移動が速くなる（`player.hasSwiftBoots`・速さは `DASH_SPEED`＝`game/input.js processHeldKeys`）。
+		// 🔴 止まれる位置は変えない＝マスの中心と半マスだけ。靴が変えるのは半マス進む時間だけ。
+		// ⚠️ 進行の鍵にしない（隠し報酬の決まり＝`SUB_ITEM_KEYS` に入れない）。
+		//    速さで解けるギミックを作ると、靴の無いルートで詰む。
+		name: '疾風の靴', icon: '👢', sprite: 'swiftBoots', pal: 'swiftBoots',
+		type: 'passive',
+		uses: null,
+	},
 };
 
 // ── `defaultStack`：数で持つ道具の「1セット」の本数（実行キュー19・2026-09-21）──
@@ -228,6 +238,7 @@ export const ITEM_META = {
 // なぜ1本にするか＝**所持の置き場が道具によって違う**（2026-09-17 に実装を読んで確認）：
 //   ・`player.subItems[id]`  … ブーメラン／爆弾／弓矢／笛／ロウソク（`giveSubItem` の既定の道）
 //   ・`player.hasLadder`     … はしご（`type:'passive'` ∴サブアイテム欄に入らない）
+//   ・`player.hasSwiftBoots` … 疾風の靴（同上・キュー13）
 // ∴読み手（会話の版の判定・今後の看板や検査）が各々 `subItems` を見ると、はしごだけ
 // 常に「未所持」になる。判定はここだけに書く（[[blade-tile-sprite-single-source]] と同じ作法）。
 //
@@ -240,7 +251,7 @@ export const ITEM_META = {
 //    瞬間に「弓を持っていない」ことになり、矢束を踏んでも「弓矢が無いと持っていけない」
 //    と拒まれる（＝二度と矢を補充できない詰み。爆弾も同じ）。スロットを消していいのは
 //    `type:'consumable'`（薬）だけ＝あれは「手に入れた道具」ではなく使い切る品。
-export const ITEM_OWNED_FLAG = { ladder: 'hasLadder' };
+export const ITEM_OWNED_FLAG = { ladder: 'hasLadder', swiftBoots: 'hasSwiftBoots' };
 
 /**
  * 数で持つ道具（矢・爆弾）を増やしたあとの本数。上限でクランプするが**減らさない**。
