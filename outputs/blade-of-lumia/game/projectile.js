@@ -739,8 +739,52 @@ export function createProjectile(deps) {
 
 	// ── 爆弾 ──────────────────────────────────────────────────
 	function clearBombs() {
-		for (const b of _placedBombs) b.el?.remove();
+		for (const b of _placedBombs) { b.el?.remove(); b.rangeEl?.remove(); }
 		_placedBombs = [];
+	}
+
+	// 爆風が届くセル＝中心からのユークリッド距離が radius 以下（盤の外は除く）。壁も水も見ない。
+	// ⚠️ **単一の真実**＝explodeAt が壊す/傷めるセルと、置いた爆弾の予告・爆発の絵は全部ここから引く
+	//    （キュー35・2026-09-28＝絵が効果より狭く「爆風は隣の1セル」と読まれていた。形を似せて
+	//    描くのではなく同じ配列を描く＝詔の円・幻影の収束と同じ規約）。
+	//    プレイヤーの爆弾（半径 2）＝上下左右は2セル先・斜めは (±1,±1) まで（(±2,±1) は √5 で外）。
+	function blastCells(r, c, radius, rows, cols) {
+		const out = [];
+		const R = Math.ceil(radius);
+		for (let dr = -R; dr <= R; dr++) {
+			for (let dc = -R; dc <= R; dc++) {
+				const d = Math.sqrt(dr * dr + dc * dc);
+				if (d > radius) continue;
+				const tr = r + dr, tc = c + dc;
+				if (tr < 0 || tr >= rows || tc < 0 || tc >= cols) continue;
+				out.push({ r: tr, c: tc, d });
+			}
+		}
+		return out;
+	}
+
+	// セルの集合を1枚ずつの div で描く（位置と寸法は px）。outline＝集合の外周の辺にだけ枠を付ける
+	// （隣が集合の内側なら枠を付けない＝セルの格子ではなく**範囲の形**が1本の線で読める）。
+	function buildCellsEl(cells, className, { outline = false, delayPerCell = 0 } = {}) {
+		const cellPx = getCellPx();
+		const wrap = document.createElement('div');
+		wrap.style.cssText = 'position:absolute;left:0;top:0;width:0;height:0;pointer-events:none;';
+		const inSet = new Set(cells.map(q => `${q.r},${q.c}`));
+		for (const q of cells) {
+			const el = document.createElement('div');
+			el.className = className;
+			el.dataset.r = q.r;
+			el.dataset.c = q.c;
+			let css = `position:absolute;left:${q.c * cellPx}px;top:${q.r * cellPx}px;width:${cellPx}px;height:${cellPx}px;`;
+			if (outline) {
+				const w = (dr, dc) => (inSet.has(`${q.r + dr},${q.c + dc}`) ? 0 : 3);
+				css += `border-width:${w(-1, 0)}px ${w(0, 1)}px ${w(1, 0)}px ${w(0, -1)}px;`;
+			}
+			if (delayPerCell) css += `animation-delay:${Math.round(q.d * delayPerCell)}ms;`;
+			el.style.cssText = css;
+			wrap.appendChild(el);
+		}
+		return wrap;
 	}
 
 	// ── 置いた炎（ロウソク・2026-08-31）──────────────────────────────
@@ -875,23 +919,42 @@ export function createProjectile(deps) {
 			el.style.lineHeight = `${cellPx}px`;
 			el.style.textAlign = 'center';
 		}
+		// キュー35: 導火線の間、爆風が届く範囲の外形を床に出す＝置いた瞬間に「壁や水を1枚挟んだ
+		// 向こうまで届く」が読める（爆発の絵を見てからでは狙いを立てられない）。点滅は爆弾本体と
+		// 同じ 0.4s＝「この爆弾の範囲」と結び付けて読ませる。
+		const sd = getStageData();
+		const rangeEl = sd
+			? buildCellsEl(blastCells(r, c, ITEM_META.bomb?.aoeRadius ?? 2, sd.rows, sd.cols), 'bomb-range-cell', { outline: true })
+			: null;
+		if (rangeEl) charLayerEl?.appendChild(rangeEl);
 		charLayerEl?.appendChild(el);
 
 		playSound('item');
-		const bomb = { id: _nextProjId++, r, c, fuseEnd: gameNow() + 2000, el };
+		const bomb = { id: _nextProjId++, r, c, fuseEnd: gameNow() + 2000, el, rangeEl };
 		_placedBombs.push(bomb);
 	}
 
 	function bombTick() {
 		const now = gameNow();
 		for (const bomb of [..._placedBombs]) {
-			if (now < bomb.fuseEnd) continue;
+			if (now < bomb.fuseEnd) { ensureBombEls(bomb); continue; }
 			explodeBomb(bomb);
 		}
 	}
 
+	// ⚠️ renderChars() は char-layer を innerHTML='' で作り直す（置いた炎の ensureFlameEl と同じ罠）∴
+	//    導火線の途中で別の爆弾が壁を崩す・スイッチを叩く等で再描画が走ると、爆弾の絵も予告も消えて
+	//    「見えない爆弾」になる。要素そのものは生きている∴外れていたら今の char-layer へ付け直す。
+	function ensureBombEls(bomb) {
+		const layer = getCharLayerEl();
+		if (!layer) return;
+		if (bomb.rangeEl && !bomb.rangeEl.isConnected) layer.appendChild(bomb.rangeEl);
+		if (bomb.el && !bomb.el.isConnected) layer.appendChild(bomb.el);
+	}
+
 	function explodeBomb(bomb) {
 		bomb.el?.remove();
+		bomb.rangeEl?.remove();
 		_placedBombs = _placedBombs.filter(b => b !== bomb);
 		explodeAt(bomb.r, bomb.c);
 	}
@@ -927,33 +990,27 @@ export function createProjectile(deps) {
 		const ss = getSS(getCurrentLayer(), getStageKey());
 
 		let needRenderBoard = false;
-		const AOE = Math.ceil(radius);
-		for (let dr = -AOE; dr <= AOE; dr++) {
-			for (let dc = -AOE; dc <= AOE; dc++) {
-				if (Math.sqrt(dr * dr + dc * dc) > radius) continue;
-				const tr = r + dr;
-				const tc = c + dc;
-				if (tr < 0 || tr >= sd.rows || tc < 0 || tc >= sd.cols) continue;
-				const posKey = `${tr},${tc}`;
-				const tile   = sd.tiles[tr][tc];
+		const cells = blastCells(r, c, radius, sd.rows, sd.cols);
+		for (const { r: tr, c: tc } of cells) {
+			const posKey = `${tr},${tc}`;
+			const tile   = sd.tiles[tr][tc];
 
-				// 壊せる壁の破壊
-				if (tile === TILE.BREAKABLE_WALL && !ss.brokenWalls.has(posKey)) {
-					const bwDef = sd.breakableWalls?.[posKey]?.breakDef ?? 1;
-					if (breakPower >= bwDef) {
-						ss.brokenWalls.add(posKey);
-						evaluateConditions();
-						needRenderBoard = true;
-					}
+			// 壊せる壁の破壊
+			if (tile === TILE.BREAKABLE_WALL && !ss.brokenWalls.has(posKey)) {
+				const bwDef = sd.breakableWalls?.[posKey]?.breakDef ?? 1;
+				if (breakPower >= bwDef) {
+					ss.brokenWalls.add(posKey);
+					evaluateConditions();
+					needRenderBoard = true;
 				}
+			}
 
-				// 敵ダメージ（隠れ中の敵は爆風の対象外＝地中/滞空の敵に爆風は届かない）
-				if (enemyDamage > 0) {
-					for (const e of [...getEnemies()]) {
-						if (e.hidden) continue;
-						if (toTileRow(e.y) === tr && toTileCol(e.x) === tc) {
-							dealDamageToEnemy(e, enemyDamage, 'bomb');
-						}
+			// 敵ダメージ（隠れ中の敵は爆風の対象外＝地中/滞空の敵に爆風は届かない）
+			if (enemyDamage > 0) {
+				for (const e of [...getEnemies()]) {
+					if (e.hidden) continue;
+					if (toTileRow(e.y) === tr && toTileCol(e.x) === tc) {
+						dealDamageToEnemy(e, enemyDamage, 'bomb');
 					}
 				}
 			}
@@ -972,9 +1029,23 @@ export function createProjectile(deps) {
 		// 絵はダメージ範囲の**上位集合**にする（GUIDE §7-6）＝「何も描かれていない床で殴られた」を
 		// 作らない。既定の 3 セル（＝半径 1.5 まで）で足りるのは爆弾と爆弾鬼だけ∴**プレイヤーが
 		// 傷む爆風のときだけ**半径から直径を出す（O 古森の巨人の後半の岩は半径 1.6 ＝縁の被弾が
-		// 3 セルの円の外に出る）。爆弾の見た目は 1 ドットも変わらない（playerDamage 0）。
+		// 3 セルの円の外に出る）。プレイヤーの爆弾の円は 3 のまま（playerDamage 0）＝範囲は下の
+		// セル塗りが示す（円を直径 5 に広げると (±2,±1) まで覆い、逆に「効かないセルに効く」嘘になる）。
 		showExplosionEffect(r, c, effect, playerDamage > 0 ? Math.max(3, radius * 2 + 1) : 3);
+		// キュー35: 円は芯（閃光）にすぎない＝**効いたセルは1枚ずつ塗る**（上の cells と同じ配列）。
+		// 円だけでは半径 2 の爆弾が「隣の1セル」に見えていた（外周の 2 セル先は円の外）。
+		// 中心から外へ順に灯す＝「広がった」と読める。敵の爆風（爆弾鬼・O の岩）も同じ規則で描く
+		// ＝範囲の絵の約束を1つに保つ（爆弾鬼の爆風はプレイヤーの爆弾から学べる、の裏返し）。
+		showBlastCells(cells, effect);
 		saveGame();
+	}
+
+	function showBlastCells(cells, kind = 'blast') {
+		const layer = getCharLayerEl();
+		if (!layer || !cells.length) return;
+		const wrap = buildCellsEl(cells, `blast-cell${kind !== 'blast' ? ` blast-cell-${kind}` : ''}`, { delayPerCell: 60 });
+		layer.appendChild(wrap);
+		setTimeout(() => wrap.remove(), 700);
 	}
 
 	// 爆発の見た目。kind で色を差し替える（形・アニメは共通＝

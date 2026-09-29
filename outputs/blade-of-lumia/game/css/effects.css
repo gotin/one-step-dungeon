@@ -464,6 +464,51 @@
     }
 }
 
+/* キュー35（2026-09-28）: 爆風が効いたセル＝explodeAt が壊す/傷めるセルと同じ配列を1枚ずつ塗る。
+   中心から外へ順に灯す（animation-delay は JS が距離から入れる）＝円の閃光より外まで「広がった」と読める。
+   fill-mode both＝灯る前は見えない。 */
+.blast-cell {
+    box-sizing: border-box;
+    z-index: 19;
+    background: radial-gradient(circle,
+        rgba(255, 232, 130, 0.85) 0%,
+        rgba(255, 130, 30, 0.72) 55%,
+        rgba(215, 50, 10, 0.5) 100%);
+    animation: blast-cell-anim 0.42s ease-out both;
+}
+.blast-cell-rock {
+    background: radial-gradient(circle,
+        rgba(235, 228, 214, 0.85) 0%,
+        rgba(150, 132, 108, 0.7) 55%,
+        rgba(96, 82, 64, 0.5) 100%);
+}
+@keyframes blast-cell-anim {
+    0%   { opacity: 0;    transform: scale(0.55); }
+    30%  { opacity: 0.95; transform: scale(1); }
+    100% { opacity: 0;    transform: scale(1); }
+}
+
+/* キュー35（2026-09-28）: 置いた爆弾の予告＝導火線の間、爆風が届く範囲の**外形**を床に出す。
+   枠は範囲の外周の辺にだけ付く（辺の太さは JS）＝格子ではなく形が1本の線で読める。
+   点滅は爆弾本体（bomb-fuse）と同じ 0.4s＝「この爆弾の範囲」と結び付く。
+   ⚠️ 敵の床の告知と**形・色・変化の3つで区別する**（GUIDE §6-1）：
+     ・形＝セルの外形をなぞる階段状の線（詔＝閉じる四角／輪と印＝円／幻影＝破線の菱形）
+     ・色＝導火線の橙（詔＝魔王の金／印＝土→赤）
+     ・変化＝爆弾と同じ拍で明滅するだけ（縮む・閉じるといった進捗を持たない）
+   プレイヤー自身は傷まない爆風∴濃くしない（床の上の敵や壁の絵を隠さない）。 */
+.bomb-range-cell {
+    box-sizing: border-box;
+    z-index: 7;
+    border-style: solid;
+    border-color: hsl(24 100% 60% / 0.95);
+    background: hsl(20 95% 55% / 0.14);
+    animation: bomb-range-pulse 0.4s ease-in-out infinite;
+}
+@keyframes bomb-range-pulse {
+    0%, 100% { opacity: 0.55; }
+    50%      { opacity: 1; }
+}
+
 /* 爆弾カウントダウン（設置中の点滅） */
 .bomb-placed {
     animation: bomb-fuse 0.4s ease-in-out infinite;

@@ -181,7 +181,13 @@ test('D6 檻の番人 ② エンジン：爆風は壁で遮られず距離 2 以
 	const body = proj.slice(proj.indexOf('function explodeAt('), proj.indexOf('// プレイヤーダメージは'));
 	expect(body, 'explodeAt が見つからない').not.toBe('');
 	// 「> radius で除外」＝距離ちょうど 2 は当たる。檻の壁を二重にした理由。
-	expect(body).toContain('if (Math.sqrt(dr * dr + dc * dc) > radius) continue;');
+	// 2026-09-29（キュー35）から効くセルは blastCells() が1本で作る（効果・予告・絵が同じ集合を読む）
+	expect(body, 'explodeAt が blastCells() からセルを受け取っていない').toContain('blastCells(r, c, radius, sd.rows, sd.cols)');
+	const cellsFn = proj.slice(proj.indexOf('function blastCells('), proj.indexOf('function buildCellsEl('));
+	expect(cellsFn, 'blastCells が見つからない').not.toBe('');
+	expect(cellsFn).toContain('const d = Math.sqrt(dr * dr + dc * dc);');
+	expect(cellsFn).toContain('if (d > radius) continue;');
+	expect(cellsFn, 'blastCells が地形を見るようになった').not.toMatch(/TILE\.|tiles\[/);
 	// 壁の有無を見ずに敵へ当てている（遮蔽の判定が入ったら、この部屋の壁の厚みを見直してよい）
 	expect(body.slice(body.indexOf('// 敵ダメージ'))).not.toMatch(/TILE\.WALL/);
 	// 復活は field だけ（倒された番人は二度と湧かない＝倒せない配置が必須）
