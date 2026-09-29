@@ -31319,8 +31319,8 @@
           "chestContents": {
             "3,7": {
               "type": "rupee",
-              "value": 25,
-              "name": "ルピー×25"
+              "value": 50,
+              "name": "ルピー×50"
             }
           },
           "floorItems": {},
@@ -33925,8 +33925,8 @@
           "chestContents": {
             "3,7": {
               "type": "rupee",
-              "value": 25,
-              "name": "ルピー×25"
+              "value": 50,
+              "name": "ルピー×50"
             }
           },
           "floorItems": {},
@@ -62287,9 +62287,9 @@
           "enemyDirs": {},
           "chestContents": {
             "1,5": {
-              "type": "rupee",
-              "value": 50,
-              "name": "ルピー×50"
+              "type": "item",
+              "item": "heartPiece",
+              "name": "ハートのかけら"
             }
           },
           "floorItems": {},
@@ -64385,8 +64385,8 @@
           "chestContents": {
             "3,5": {
               "type": "item",
-              "item": "healPotion",
-              "name": "回復薬（小）"
+              "item": "heartPiece",
+              "name": "ハートのかけら"
             }
           },
           "floorItems": {},
@@ -68535,9 +68535,9 @@
           "enemyDirs": {},
           "chestContents": {
             "3,4": {
-              "type": "rupee",
-              "value": 75,
-              "name": "ルピー×75"
+              "type": "item",
+              "item": "bombBag",
+              "name": "爆弾袋"
             }
           },
           "floorItems": {},
@@ -70016,9 +70016,9 @@
           "enemyDirs": {},
           "chestContents": {
             "7,5": {
-              "type": "rupee",
-              "value": 45,
-              "name": "ルピー×45"
+              "type": "item",
+              "item": "quiver",
+              "name": "矢筒"
             }
           },
           "floorItems": {},
@@ -70607,8 +70607,8 @@
           "chestContents": {
             "6,5": {
               "type": "item",
-              "item": "bigHealPotion",
-              "name": "回復薬（大）"
+              "item": "heartPiece",
+              "name": "ハートのかけら"
             }
           },
           "floorItems": {},
@@ -83331,9 +83331,9 @@
           "enemyDirs": {},
           "chestContents": {
             "7,8": {
-              "type": "rupee",
-              "value": 80,
-              "name": "ルピー×80"
+              "type": "item",
+              "item": "bombBag",
+              "name": "爆弾袋"
             }
           },
           "floorItems": {},
@@ -83631,8 +83631,8 @@
           "chestContents": {
             "6,5": {
               "type": "rupee",
-              "value": 80,
-              "name": "ルピー×80"
+              "value": 150,
+              "name": "ルピー×150"
             }
           },
           "floorItems": {},
@@ -89842,9 +89842,9 @@
           "enemyDirs": {},
           "chestContents": {
             "4,5": {
-              "type": "rupee",
-              "value": 80,
-              "name": "ルピー×80"
+              "type": "item",
+              "item": "heartPiece",
+              "name": "ハートのかけら"
             }
           },
           "floorItems": {},
@@ -91279,8 +91279,8 @@
           "chestContents": {
             "5,5": {
               "type": "rupee",
-              "value": 70,
-              "name": "ルピー×70"
+              "value": 150,
+              "name": "ルピー×150"
             }
           },
           "floorItems": {},

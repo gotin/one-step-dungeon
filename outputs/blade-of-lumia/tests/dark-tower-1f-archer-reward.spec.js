@@ -212,7 +212,7 @@ test.describe('Blade of Lumia – dark_tower 1F 小島の射手（キュー20b �
 		expect(edgeSig(rowsOf(st)), '境界の開きは不変（南は行き止まり）').toBe('N[5,6] S[] W[] E[]');
 	});
 
-	test('データ：爆弾袋は世界でこの1個だけ（報酬の希少さ）', () => {
+	test('データ：爆弾袋・矢筒は世界で各3個＝上限どおり（報酬の希少さ）', () => {
 		let bombBags = 0, quivers = 0;
 		for (const lay of Object.values(map.layers ?? {})) {
 			for (const s of Object.values(lay.stages ?? {})) {
@@ -222,10 +222,12 @@ test.describe('Blade of Lumia – dark_tower 1F 小島の射手（キュー20b �
 				}
 			}
 		}
-		expect(bombBags, '爆弾袋は dark_tower 1,5 の1個だけ').toBe(1);
-		// 矢筒は2個＝3F `3,2`（笛の封印）と `3,5`（淵の火渡りの封印）。
+		// 世界の合計は3個＝dark_tower 1,5 ＋ field 11,17・15,5（キュー13・2026-09-29）。
+		// 座標つきの配置は tests/field-q13-rewards.spec.js ② が見張る。
+		expect(bombBags, '爆弾袋は dark_tower 1,5 と field 2個の3個').toBe(3);
+		// 矢筒は3個＝3F `3,2`（笛の封印）と `3,5`（淵の火渡りの封印）＋ field 15,7（キュー13）。
 		// 配置そのものは tests/dark-tower-3f-fire-relay-reward.spec.js が座標つきで見張る。
-		expect(quivers, '矢筒は dark_tower 3,2 と 3,5 の2個').toBe(2);
+		expect(quivers, '矢筒は dark_tower 3,2 と 3,5 と field 15,7 の3個').toBe(3);
 	});
 
 	// ── ② データ（到達と射線）──────────────────────────────────────────

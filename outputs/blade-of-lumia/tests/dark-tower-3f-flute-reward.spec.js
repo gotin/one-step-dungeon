@@ -120,7 +120,7 @@ test.describe('Blade of Lumia – dark_tower 3F の封印の宝（キュー20b �
 		expect(res.reachedCells.has(`${FLUTE_ROOM}:${CHEST}`), '宝箱のセルを踏めない').toBe(true);
 	});
 
-	test('データ：矢筒はこの部屋と 3,5（淵の火渡り）の2個だけ（キュー20b ⑳）', () => {
+	test('データ：矢筒はこの部屋と 3,5（淵の火渡り）と field 15,7 の3個だけ（キュー20b ⑳・キュー13）', () => {
 		const found = [];
 		for (const [lk, lay] of Object.entries(map.layers)) {
 			for (const [k, s] of Object.entries(lay.stages ?? {})) {
@@ -129,8 +129,9 @@ test.describe('Blade of Lumia – dark_tower 3F の封印の宝（キュー20b �
 				}
 			}
 		}
-		expect(found.sort(), '矢筒の配置（3つめを増やすならここが赤くなる）')
-			.toEqual([`${LAYER}/${FLUTE_ROOM}(${CHEST})`, `${LAYER}/3,5(4,3)`].sort());
+		// 3つめ＝field 15,7（キュー13・2026-09-29）で「最大3個配置」の上限に達した＝4つめを増やすならここが赤くなる
+		expect(found.sort(), '矢筒の配置')
+			.toEqual([`${LAYER}/${FLUTE_ROOM}(${CHEST})`, `${LAYER}/3,5(4,3)`, 'field/15,7(7,5)'].sort());
 	});
 });
 

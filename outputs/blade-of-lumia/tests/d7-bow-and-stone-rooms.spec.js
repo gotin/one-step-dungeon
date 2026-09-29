@@ -169,7 +169,7 @@ test.describe('D7 弓の関門と宝の間 ① データ（盤面と隔離）', 
 		}
 	});
 
-	test(`${HOARD} の報酬はハートの器／矢筒は世界に 2 個のまま（キュー20b ⑳）`, () => {
+	test(`${HOARD} の報酬はハートの器／矢筒は dark_tower 2 個＋field 1 個のまま（キュー20b ⑳・キュー13）`, () => {
 		expect(stages[HOARD].chestContents?.[H_CHEST])
 			.toEqual({ type: 'heartContainer', name: 'ハートの器' });
 		const quivers = [];
@@ -180,8 +180,9 @@ test.describe('D7 弓の関門と宝の間 ① データ（盤面と隔離）', 
 				}
 			}
 		}
-		expect(quivers.sort(), '矢筒は dark_tower の 2 個だけ')
-			.toEqual(['dark_tower/3,2(5,5)', 'dark_tower/3,5(4,3)'].sort());
+		// 3個目はキュー13（2026-09-29）で field 15,7 に置いた＝items.js の「最大3個配置」の上限
+		expect(quivers.sort(), '矢筒は dark_tower の 2 個と field 15,7 だけ')
+			.toEqual(['dark_tower/3,2(5,5)', 'dark_tower/3,5(4,3)', 'field/15,7(7,5)'].sort());
 	});
 });
 

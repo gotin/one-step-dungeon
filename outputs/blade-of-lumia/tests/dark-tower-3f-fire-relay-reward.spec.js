@@ -193,7 +193,7 @@ test.describe('Blade of Lumia – dark_tower 3F 淵の環／淵の火渡り（�
 		expect(edgeSig(rowsOf(st)), '境界の開きは不変（南は行き止まり）').toBe('N[5,6] S[] W[] E[]');
 	});
 
-	test('データ：矢筒の配置は 3,2 と 3,5 の2個だけ', () => {
+	test('データ：矢筒の配置は 3,2 と 3,5 と field 15,7 の3個だけ', () => {
 		const found = [];
 		for (const [lk, lay] of Object.entries(map.layers ?? {})) {
 			for (const [k, s] of Object.entries(lay.stages ?? {})) {
@@ -202,7 +202,8 @@ test.describe('Blade of Lumia – dark_tower 3F 淵の環／淵の火渡り（�
 				}
 			}
 		}
-		expect(found.sort()).toEqual([`${LAYER}/3,2(5,5)`, `${LAYER}/${RELAY}(${RELAY_CHEST})`].sort());
+		// field 15,7 はキュー13（2026-09-29）で置いた3個目＝items.js の「最大3個配置」の上限
+		expect(found.sort()).toEqual([`${LAYER}/3,2(5,5)`, `${LAYER}/${RELAY}(${RELAY_CHEST})`, 'field/15,7(7,5)'].sort());
 	});
 
 	// ── ② データ（ほかの手が通らない）──────────────────────────────────
