@@ -367,6 +367,8 @@ function getPreviewSettings() {
 		candle:    document.getElementById('ps-candle').checked,
 		ladder:    document.getElementById('ps-ladder').checked,
 		wingrobe:  document.getElementById('ps-wingrobe').checked,
+		// 実行キュー13（試作）：疾風の靴。editor.js の ps 定義にも同じ行がある（両方に足す）。
+		swiftboots: document.getElementById('ps-swiftboots')?.checked ?? false,
 		// 2026-09-19：地図（目的地マークの見え方の確認用）。editor.js の ps 定義にも同じ行がある。
 		map:       document.getElementById('ps-map')?.checked ?? true,
 		cleared:   document.getElementById('ps-cleared').checked,
@@ -398,6 +400,7 @@ export function openPreview(stX, stY, row, col, ps, TILE) {
 		url += `&ps_map=${ps.map?1:0}`;
 		url += `&ps_silverboomerang=${ps.silverboomerang?1:0}`;
 		url += `&ps_starboomerang=${ps.starboomerang?1:0}`;
+		url += `&ps_swiftboots=${ps.swiftboots?1:0}`;
 		// 撃破済みボス＝タイル文字をカンマで並べる（空なら付けない＝1体も倒していない）。
 		if (ps.defeated?.length) url += `&ps_defeated=${encodeURIComponent(ps.defeated.join(','))}`;
 	}

@@ -21,6 +21,7 @@
 
 import { listTriforceEntries } from './triforce.js';
 import { ENEMY_META, isEnemyTile } from './enemies.js';
+import { HEART_PIECES_PER_HEART } from './items.js';
 
 // ── 進行順（PLAN 9-1）＝報酬が手に入る順序の単一の真実 ────────────────
 // 本編：D1→D2→D3→D4→D6→D5→D8→D7→（祭壇）→dark_tower
@@ -211,10 +212,10 @@ export function bossesDefeatedAt(map, cpId) {
 // `excludeBossRooms: true` のときだけ部屋の位置を1点だけ見る＝ボス部屋の中身を落とす。
 export function collectRewards(map, { excludeBossRooms = false } = {}) {
 	const skip = excludeBossRooms ? bossRoomKeysOf(map) : null;
-	const perLayer = new Map();   // layer → { sword:[], armor:[], shield:[], boomerang:[], items:[], hearts:n, triforce:n }
+	const perLayer = new Map();   // layer → { sword:[], armor:[], shield:[], boomerang:[], items:[], hearts:n, heartPieces:n, triforce:n }
 	const bump = (layer) => {
 		if (!perLayer.has(layer)) {
-			perLayer.set(layer, { sword: [], armor: [], shield: [], boomerang: [], items: [], hearts: 0, triforce: 0 });
+			perLayer.set(layer, { sword: [], armor: [], shield: [], boomerang: [], items: [], hearts: 0, heartPieces: 0, triforce: 0 });
 		}
 		return perLayer.get(layer);
 	};
@@ -234,6 +235,10 @@ export function collectRewards(map, { excludeBossRooms = false } = {}) {
 					}
 					if (SUB_ITEM_KEYS.includes(v.item) && !bucket.items.includes(v.item)) bucket.items.push(v.item);
 					if (v.type === 'heartContainer' || v.item === 'heartContainer') bucket.hearts += 1;
+					// キュー13: ハートのかけら＝ここでは**個数のまま**数える。器への換算は
+					// 足し合わせた後（`profilesAt`）＝レイヤーごとに切り捨てると、4つが2レイヤーに
+					// 散ったとき器0個と数えてしまう。
+					if (v.type === 'heartPiece' || v.item === 'heartPiece') bucket.heartPieces += 1;
 				}
 			}
 		}
@@ -250,7 +255,7 @@ export function collectRewards(map, { excludeBossRooms = false } = {}) {
 // フィールドの報酬＝「寄道もフィールドも全部拾った」上限側にだけ数える（下限には数えない）。
 export function fieldRewardsOf(perLayer) {
 	const fr = perLayer.get('field')
-		?? { sword: [], armor: [], shield: [], boomerang: [], items: [], hearts: 0, triforce: 0 };
+		?? { sword: [], armor: [], shield: [], boomerang: [], items: [], hearts: 0, heartPieces: 0, triforce: 0 };
 	return {
 		swordMax:     Math.max(-1, ...fr.sword),
 		armorMax:     Math.max(-1, ...fr.armor),
@@ -258,6 +263,7 @@ export function fieldRewardsOf(perLayer) {
 		boomerangMax: Math.max(-1, ...fr.boomerang),
 		items:        [...fr.items],
 		hearts:       fr.hearts,
+		heartPieces:  fr.heartPieces ?? 0,
 	};
 }
 
@@ -283,7 +289,9 @@ export function fieldRewardsOf(perLayer) {
 // 第4引数 `preBossHere`＝**この地点のレイヤーの**「ボス部屋の外」の報酬バケツ（`null` で boss なし）。
 // どのレイヤーがボス部屋を持つかの判断は呼び手（`presetsFrom`）に置く＝ここは足し算だけ。
 export function profilesAt(index, perLayer, fieldRewards, preBossHere = null) {
-	const blank = () => ({ sword: -1, armor: -1, shield: -1, boomerang: -1, hearts: 3, triforce: 0, items: [] });
+	// `pieces` はハートのかけらの個数（途中計算用）＝返す諸元には残さず、最後に `withPieces` で
+	// 器に換算して `hearts` へ畳む（返り値の形はかけら導入前と同じ）。
+	const blank = () => ({ sword: -1, armor: -1, shield: -1, boomerang: -1, hearts: 3, pieces: 0, triforce: 0, items: [] });
 	const addTo = (acc, r) => {
 		for (const t of r.sword)     acc.sword     = Math.max(acc.sword, t);
 		for (const t of r.armor)     acc.armor     = Math.max(acc.armor, t);
@@ -291,8 +299,10 @@ export function profilesAt(index, perLayer, fieldRewards, preBossHere = null) {
 		for (const t of r.boomerang) acc.boomerang = Math.max(acc.boomerang, t);
 		for (const k of r.items) if (!acc.items.includes(k)) acc.items.push(k);
 		acc.hearts   += r.hearts;
+		acc.pieces   += r.heartPieces ?? 0;
 		acc.triforce += r.triforce;
 	};
+	const withPieces = ({ pieces, ...p }) => ({ ...p, hearts: p.hearts + Math.floor(pieces / HEART_PIECES_PER_HEART) });
 	const need = blank();   // 必須レイヤーだけ
 	const all  = blank();   // 寄道も含む
 	for (let i = 0; i < index; i++) {
@@ -303,22 +313,23 @@ export function profilesAt(index, perLayer, fieldRewards, preBossHere = null) {
 		for (const acc of ORDER[i].optional ? [all] : [need, all]) addTo(acc, r);
 	}
 	// 木の剣（swordTier 0）は必携＝min にも入れる（無いと剣が振れない）。
-	const min = { ...need, sword: Math.max(need.sword, 0), items: sortItems(need.items) };
-	const max = {
+	const min = withPieces({ ...need, sword: Math.max(need.sword, 0), items: sortItems(need.items) });
+	const max = withPieces({
 		sword:     Math.max(all.sword,     fieldRewards.swordMax),
 		armor:     Math.max(all.armor,     fieldRewards.armorMax),
 		shield:    Math.max(all.shield,    fieldRewards.shieldMax),
 		boomerang: Math.max(all.boomerang, fieldRewards.boomerangMax),
 		hearts:    all.hearts + fieldRewards.hearts,
+		pieces:    all.pieces + (fieldRewards.heartPieces ?? 0),
 		triforce:  all.triforce,
 		items:     sortItems([...new Set([...all.items, ...fieldRewards.items])]),
-	};
+	});
 	// ボス直前＝min にそのレイヤーの「ボス部屋の外」の報酬を足す（無ければ null）。
 	let boss = null;
 	if (preBossHere) {
 		const acc = { ...need, items: [...need.items] };
 		addTo(acc, preBossHere);
-		boss = { ...acc, sword: Math.max(acc.sword, 0), items: sortItems(acc.items) };
+		boss = withPieces({ ...acc, sword: Math.max(acc.sword, 0), items: sortItems(acc.items) });
 	}
 	// 翼の羽衣＝古代の祭壇で星の欠片を全部捧げて授かる∴「その地点までに全欠片が揃うか」で導出する
 	// （宝箱から拾える道具ではない＝SUB_ITEM_KEYS に入れられない例外）。
@@ -346,7 +357,7 @@ export function presetsFrom(map) {
 	const preBoss      = collectRewards(map, { excludeBossRooms: true });
 	const bossLayers   = bossRoomLayersOf(map);
 	const fieldRewards = fieldRewardsOf(perLayer);
-	const empty = { sword: [], armor: [], shield: [], boomerang: [], items: [], hearts: 0, triforce: 0 };
+	const empty = { sword: [], armor: [], shield: [], boomerang: [], items: [], hearts: 0, heartPieces: 0, triforce: 0 };
 	return ORDER.map((cp, i) => {
 		// ボス部屋が無いレイヤーは「ボス直前」を作らない（報酬が有っても選択肢にしない）。
 		const preBossHere = cp.layer && bossLayers.has(cp.layer) ? (preBoss.get(cp.layer) ?? empty) : null;

@@ -4,7 +4,7 @@
 
 import { TILE, TILE_META, FLOOR_STACK_TILES } from '../shared/tiles.js';
 import { statefulTileClosed } from './passable.js';
-import { ITEM_META, EQUIP_META, SWORD_TIERS, BASE_ATK, ARMOR_TIERS, BASE_DEF, SHIELD_TIERS, BOOMERANG_TIERS, ownsItem, addStack } from '../shared/items.js';
+import { ITEM_META, EQUIP_META, SWORD_TIERS, BASE_ATK, ARMOR_TIERS, BASE_DEF, SHIELD_TIERS, BOOMERANG_TIERS, HEART_PIECES_PER_HEART, ownsItem, addStack } from '../shared/items.js';
 import { NPC_SPRITE_MAP } from '../shared/npcs.js';
 import { SPRITES, PAL, makeSprite } from '../shared/sprites.js';
 import { iconCanvas } from '../shared/ui-icons.js';
@@ -716,6 +716,19 @@ export function createPlayer(deps) {
 		player.maxHearts++; player.maxHp += HP_PER_HEART; player.hp = player.maxHp;
 	}
 
+	// ── ハートのかけらを得る（実行キュー13）────────────────────
+	// 端数は `player.heartPieces`（0〜HEART_PIECES_PER_HEART-1）に持つ。揃った瞬間に
+	// 器1個へ換える＝器と同じ3点セット（maxHearts/maxHp/hp）は `gainHeartContainer` に任せる。
+	// 戻り値＝器になったか（文言を分けるため）。
+	function gainHeartPiece() {
+		const player = getPlayer();
+		player.heartPieces = (Number.isFinite(player.heartPieces) ? player.heartPieces : 0) + 1;
+		if (player.heartPieces < HEART_PIECES_PER_HEART) return false;
+		player.heartPieces -= HEART_PIECES_PER_HEART;
+		gainHeartContainer();
+		return true;
+	}
+
 	// ── サブアイテムを与える ──────────────────────────────
 	function giveSubItem(id) {
 		const player = getPlayer();
@@ -731,6 +744,7 @@ export function createPlayer(deps) {
 		}
 		if (meta?.type === 'passive') {
 			if (id === 'heartContainer') gainHeartContainer();
+			else if (id === 'heartPiece') gainHeartPiece();
 			else if (id === 'ladder')    player.hasLadder  = true;
 			else if (id === 'quiver')    player.maxArrows  = (player.maxArrows  ?? 8) + 8;
 			else if (id === 'bombBag')   player.maxBombs   = (player.maxBombs   ?? 8) + 8;
@@ -761,6 +775,15 @@ export function createPlayer(deps) {
 	function grantReward(content) {
 		const player = getPlayer();
 		if (content.type === 'item') {
+			// ハートのかけら＝「あと何個で器か」を文に出す（何個集めたかは画面の他の場所に
+			// 出ていない∴拾った瞬間に知らせる）。4つ目は器になったことを言う。
+			if (content.item === 'heartPiece') {
+				const became = gainHeartPiece();
+				const left = HEART_PIECES_PER_HEART - player.heartPieces;
+				return became
+					? `ハートのかけら が ${HEART_PIECES_PER_HEART}つ そろった！ ハートの器 になった！`
+					: `ハートのかけら を手に入れた！（あと ${left} つで ハートの器）`;
+			}
 			// 渡せない id（未定義／床タイル専用）は「手に入れた！」と嘘をつかない＝空文字。
 			if (!giveSubItem(content.item)) return '';
 			// ⚠️ 上限を広げる passive（矢筒・爆弾袋）は**サブアイテム欄に並ばない**

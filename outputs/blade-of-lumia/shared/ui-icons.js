@@ -28,6 +28,10 @@ export const UI_ICON = {
 	heart:      { spr: 'heart',      pal: 'heart'      },
 	heartHalf:  { spr: 'heartHalf',  pal: 'heartHalf'  },
 	heartEmpty: { spr: 'heartEmpty', pal: 'heartEmpty' },
+	heartPiece: { spr: 'heartPiece', pal: 'heart'      },   // ハートのかけら（キュー13）
+	heartQ1:    { spr: 'heartQ1',    pal: 'heartHalf'  },   // かけらの集まり具合 1/4〜3/4
+	heartQ2:    { spr: 'heartQ2',    pal: 'heartHalf'  },
+	heartQ3:    { spr: 'heartQ3',    pal: 'heartHalf'  },
 	rupee:      { spr: 'rupee',      pal: 'rupee'      },
 	rupeeBlue:  { spr: 'rupee',      pal: 'rupeeBlue'  },   // 5ルピー（形は同じ・色だけ違う）
 	triforce:   { spr: 'triforce',   pal: 'triforce'   },

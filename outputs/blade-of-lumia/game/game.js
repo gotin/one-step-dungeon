@@ -95,6 +95,8 @@ let exitRegistry = {};
 let player = {
 	x: 1, y: 1,          // float 座標（セル）
 	hp: 6, maxHp: 6, maxHearts: 3,
+	// キュー13: ハートのかけらの端数（0〜3・4つで器1個＝`player.js gainHeartPiece`）。
+	heartPieces: 0,
 	atk: 2, def: 0, keys: 0,
 	weapon: null, shield: null, armor: null,
 	subItems: {}, activeSubItem: null,
@@ -109,6 +111,9 @@ let player = {
 	flying: false,
 	// Phase 4-1: はしご所持フラグ。両隣が地上の水/穴を1セルだけ自動で渡れる。
 	hasLadder: false,
+	// 実行キュー13（2026-09-29 試作）：疾風の靴。持っていると Shift を押している間だけ速く歩ける
+	// （input.js processHeldKeys・DASH_SPEED）。関門の鍵にはしない（IDEA 鉄則）。
+	hasSwiftBoots: false,
 	// Phase 6-1b: 撃破済みボスのタイル文字を記録する Set。NPC 台詞の切り替えに使用。
 	defeatedBosses: new Set(),
 	// Phase 7-1: 剣ティア（-1=剣なし, 0=木, 1=銅, 2=銀, 3=聖）。
@@ -177,6 +182,9 @@ let pauseItemKeys   = [];
 let pauseItemIdx    = 0;
 let msgTimer        = null;
 let isShielding     = false;
+// 疾風の靴＋Shift で走っている最中か（input.js processHeldKeys が毎 tick 立てる）。
+// player に持たせない＝セーブに載る必要が無い一時状態（読み手は描画の transition だけ）。
+let isDashing       = false;
 
 // ── デバッグモード ────────────────────────────────────────────
 // Gキーで切り替え。無敵 + 敵すり抜け + 全アイテム即取得可能
@@ -680,6 +688,7 @@ const { checkStoneOnSwitch, evaluateConditions, refreshGates } = createCondition
 		getHeroSpriteName: () => getHeroSpriteName(),
 		getHeroPalName:    () => getHeroPalName(),
 		getGameNow:        () => gameNow(),
+		getIsDashing:      () => isDashing,
 		ladderOrientationAt,
 	});
 
@@ -781,6 +790,8 @@ const { checkStoneOnSwitch, evaluateConditions, refreshGates } = createCondition
 		pauseMarkPrev,
 		pauseMarkNext,
 		hasCleared,
+		canDash:    () => !!player.hasSwiftBoots,
+		setDashing: (v) => { isDashing = !!v; },
 		updateShieldHud,
 	});
 
@@ -1960,6 +1971,7 @@ function startNewGame() {
 	player = {
 		x: startCol, y: startRow,
 		hp: 6, maxHp: 6, maxHearts: 3,
+		heartPieces: 0,
 		atk: 2, def: 0, keys: 0,
 		weapon: null, shield: null, armor: null,
 		subItems: {}, activeSubItem: null,
@@ -1968,6 +1980,7 @@ function startNewGame() {
 		hasWingRobe: false,
 		flying: false,
 		hasLadder: false,
+		hasSwiftBoots: false,
 		defeatedBosses: new Set(),
 		swordTier: -1,
 		armorTier: -1,
@@ -2069,6 +2082,7 @@ async function init() {
 		const psCleared  = params.get('ps_cleared');
 		const psWingRobe = params.get('ps_wingrobe');
 		const psLadder   = params.get('ps_ladder');
+		const psSwiftBoots = params.get('ps_swiftboots');  // 実行キュー13: 疾風の靴
 		const psDefeated = params.get('ps_defeated');  // 実行キュー23: 撃破済みボス（タイル文字のカンマ区切り）
 		const psMap      = params.get('ps_map');       // 2026-09-19: 地図の所持（目的地マークの見え方の確認用）
 
@@ -2106,6 +2120,7 @@ async function init() {
 		if (psArmor    !== null) { const t = parseInt(psArmor,  10); if (t >= 0) equipArmorTier(t); }
 		if (psWingRobe === '1') player.hasWingRobe = true;
 		if (psLadder   === '1') player.hasLadder = true;
+		if (psSwiftBoots === '1') player.hasSwiftBoots = true;
 		// ⚠️ 本数は**上限（`maxArrows`/`maxBombs`）ちょうど＝満タン**で渡す。上限を超える
 		//    本数を直接入れると「矢束を踏んだら減る」状態を作ってしまう（2026-09-21）。
 		if (psBow      === '1') { player.subItems.bow       = { count: player.maxArrows ?? 8 };  if (!player.activeSubItem) player.activeSubItem = 'bow'; }
@@ -2211,8 +2226,10 @@ export function getGameState() {
 		player: {
 			x: player.x, y: player.y, hp: player.hp, maxHp: player.maxHp,
 			maxHearts: player.maxHearts ?? 3,
+			heartPieces: player.heartPieces ?? 0,
 			hasWingRobe: !!player.hasWingRobe, flying: !!player.flying,
 			hasLadder: !!player.hasLadder,
+			hasSwiftBoots: !!player.hasSwiftBoots, dashing: isDashing,
 			defeatedBosses: [...(player.defeatedBosses ?? [])],
 			hasFlute: !!player.subItems?.flute,
 			hasCandle: !!player.subItems?.candle,

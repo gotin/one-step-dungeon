@@ -53,6 +53,7 @@ export function createRenderChars(deps) {
 		getHeroSpriteName,
 		getHeroPalName,
 		getGameNow,
+		getIsDashing,
 		ladderOrientationAt,
 	} = deps;
 
@@ -284,6 +285,9 @@ export function createRenderChars(deps) {
 		const el = document.getElementById('char-player');
 		if (!el) return;
 		el.classList.toggle('flying', !!getPlayer().flying);
+		// 疾風の靴で走っている間は位置の補間を tick の長さに伸ばす（board.css `#char-player.dashing`）
+		// ＝毎 tick 1マス進む動きが「動いて止まる」でなく流れて見える。見た目だけ＝判定は触らない。
+		el.classList.toggle('dashing', !!getIsDashing?.());
 		// Phase 5.5k k-7: 一時デバフ（剣封じ・毒）を画面に出す（GUIDE §6-1＝
 		// 絵は機構を読ませるためにある。「剣が出ない」だけではバグに見える）。
 		// 窓は論理時間∴gameNow と比べる（addShieldOverlay の _atkUntil と同じ作法）。

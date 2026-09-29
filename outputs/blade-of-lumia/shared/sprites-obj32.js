@@ -1386,6 +1386,37 @@ function heartHalfGrid() {
 	strokeOutside(g);
 	return g;
 }
+// ハートのかけら（実行キュー13）＝ハートの左上の4分の1。4つ集めると器1個。
+// 同じ輪郭（heartMask）から切り出す＝HUD の器と並べても房の丸みが揃う。
+// 切り口は1ドットずつ互い違いにして「割れた欠片」に見せる（まっすぐ切ると
+// 四分円の図形に見えて欠片に見えない）。heart パレット：1輪郭 3赤 4明赤。
+function heartPieceGrid() {
+	const mask = heartMask();
+	const g = blank();
+	for (let r = 0; r < N; r++) for (let c = 0; c < N; c++) {
+		if (!mask[r][c]) continue;
+		if (r <= 15 + (c % 2) && c <= 16 + (r % 2)) put(g, r, c, 3);
+	}
+	disc(g, 11, 12, 1, 4);
+	strokeOutside(g);
+	return g;
+}
+// かけらの集まり具合（ポーズ画面の表示・1〜3個）＝器の輪郭を4つに割り、
+// 集めた分だけ赤・残りは灰。並びは左上→右上→右下→左下（時計回り）。
+// heartHalf パレット：1黒 3赤 4明赤 6中灰（半ハートと同じ色の組）。
+function heartQuarterGrid(n) {
+	const mask = heartMask();
+	const g = blank();
+	for (let r = 0; r < N; r++) for (let c = 0; c < N; c++) {
+		if (!mask[r][c]) continue;
+		const top = r <= 15, left = c <= 16;
+		const q = top ? (left ? 0 : 1) : (left ? 3 : 2);
+		put(g, r, c, q < n ? 3 : 6);
+	}
+	disc(g, 11, 12, 1, 4);
+	strokeOutside(g);
+	return g;
+}
 
 // ── UI アイコン（10e）── 絵文字を自前スプライトに置き換えるために新規に描いた4種 ──
 // これまで絵が無かった物（🪽 翼の羽衣／🎵 笛／🕯 ロウソク／🎲 ガチャ）。
@@ -1717,6 +1748,10 @@ export const OBJ32_SPRITES = {
 	heart:         [heartGrid()],
 	heartEmpty:    [heartEmptyGrid()],
 	heartHalf:     [heartHalfGrid()],
+	heartPiece:    [heartPieceGrid()],     // キュー13：ハートのかけら
+	heartQ1:       [heartQuarterGrid(1)],  // かけら 1/4
+	heartQ2:       [heartQuarterGrid(2)],  // かけら 2/4
+	heartQ3:       [heartQuarterGrid(3)],  // かけら 3/4
 	// ── 10e（UI アイコン・盤面タイルは持たない）──
 	wingRobe:      [wingRobeGrid()],
 	flute:         [panFluteGrid()],

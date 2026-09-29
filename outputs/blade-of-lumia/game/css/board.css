@@ -50,6 +50,15 @@
     transition: left 0.08s linear, top 0.08s linear;
 }
 
+/* 疾風の靴で走っている間（実行キュー13）。毎 tick（120ms）1マス進む∴補間を tick と同じ長さに
+   する＝止まらずに流れて見える（通常の 80ms のままだと「動いて 40ms 止まる」が2倍の幅で目立つ）。
+   実測（.scratch/q13-boots-motion.mjs）＝止まって見えるフレームが 歩く 30% → 走る 6%。
+   残る 6% は tick ごとの1フレーム（補間の掛け直し）で、0.14s に伸ばしても変わらなかった。
+   ⚠️ 位置そのものは半マス格子の上のまま＝ここは見た目の補間だけ。 */
+#char-player.dashing {
+    transition: left 0.12s linear, top 0.12s linear;
+}
+
 /* Phase 1-5: 飛行中のプレイヤー（翼の羽衣）。淡い浮遊感と光のオーラ。 */
 .char-abs.flying {
     z-index: 30;

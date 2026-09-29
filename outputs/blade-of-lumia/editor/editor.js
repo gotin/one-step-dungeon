@@ -164,6 +164,8 @@ document.addEventListener('editor:previewClickAt', e => {
 			candle:    document.getElementById('ps-candle').checked,
 			ladder:    document.getElementById('ps-ladder').checked,
 			wingrobe:  document.getElementById('ps-wingrobe').checked,
+			// 実行キュー13（試作）：疾風の靴。editor-io.js の getPreviewSettings にも同じ行がある。
+			swiftboots: document.getElementById('ps-swiftboots')?.checked ?? false,
 			// 2026-09-19：地図（目的地マークの見え方の確認用）。editor-io.js の
 			// getPreviewSettings にも同じ行がある（両方に足す）。
 			map:       document.getElementById('ps-map')?.checked ?? true,

@@ -116,6 +116,13 @@ export function sanitizeLoadedPlayer(player, itemMeta) {
 	if (player.maxBombs  == null) player.maxBombs  = 8;
 	// Phase 9-5b: 旧セーブデータへのデフォルト補完
 	if (player.stageMoves == null) player.stageMoves = 0;
+	// キュー13: ハートのかけらの端数。かけら導入前のセーブは 0。壊れた値（数でない・
+	// 負・小数）は 0〜3 の整数に丸める＝HUD やポーズ画面の4分割の絵が範囲外を引かない。
+	// 4 以上は起こらない（揃った瞬間に器へ換える）∴上限で切る。
+	{
+		const n = Math.floor(Number(player.heartPieces));
+		player.heartPieces = Number.isFinite(n) ? Math.min(3, Math.max(0, n)) : 0;
+	}
 	// Phase 9-6: ブーメランティアの補完。ティア導入前のセーブは
 	// 「ブーメランを持っている＝木ティア(0)」「持っていない＝未所持(-1)」。
 	if (player.boomerangTier == null) {

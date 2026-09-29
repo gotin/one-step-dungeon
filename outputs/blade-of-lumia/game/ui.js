@@ -27,7 +27,7 @@
 
 import { HP_PER_HEART } from './constants.js';
 import { SPRITES, PAL, makeSprite } from '../shared/sprites.js';
-import { ITEM_META, EQUIP_META, BOOMERANG_TIERS, SWORD_TIERS, SHIELD_TIERS, ARMOR_TIERS, ownsItem, addStack } from '../shared/items.js';
+import { ITEM_META, EQUIP_META, BOOMERANG_TIERS, SWORD_TIERS, SHIELD_TIERS, ARMOR_TIERS, HEART_PIECES_PER_HEART, ownsItem, addStack } from '../shared/items.js';
 import { iconCanvas, iconText, iconPxOf } from '../shared/ui-icons.js';
 import { playSound } from '../shared/sounds.js';
 // field の地図（キュー15）の色。エディタのワールドマップのサムネと**同じ関数**を呼ぶ
@@ -553,6 +553,18 @@ export function createUi(deps) {
 		for (let i = 0; i < player.maxHearts; i++) {
 			const cv = heartIconCanvas(player.hp - i * HP_PER_HEART);
 			if (cv) heartRow.appendChild(cv);
+		}
+		// キュー13: ハートのかけらの集まり具合（端数が1つ以上のときだけ）。
+		// 4分割の絵（heartQ1〜Q3）＋「n/4」＝あといくつで器になるかがポーズで分かる。
+		const pieces = player.heartPieces ?? 0;
+		if (pieces > 0) {
+			const wrap = document.createElement('span');
+			wrap.id = 'pause-heart-pieces';
+			wrap.style.cssText = 'display:inline-flex;align-items:center;gap:2px;margin-left:8px;font-size:12px;color:#c9a0a0;';
+			const cv = iconCanvas(`heartQ${Math.min(3, pieces)}`, HEART_ICON_PX, { fit: 'box' });
+			if (cv) wrap.appendChild(cv);
+			wrap.appendChild(document.createTextNode(`かけら ${pieces}/${HEART_PIECES_PER_HEART}`));
+			heartRow.appendChild(wrap);
 		}
 		pauseStatsEl.appendChild(heartRow);
 

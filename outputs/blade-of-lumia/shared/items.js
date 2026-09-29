@@ -159,6 +159,17 @@ export const ITEM_META = {
 		type: 'passive',
 		uses: null,
 	},
+	heartPiece: {
+		// 実行キュー13（2026-09-29）：ハートのかけら。`HEART_PIECES_PER_HEART` 個で
+		// ハートの器1個になる（`player.heartPieces` に端数を持つ・`game/player.js gainHeartPiece`）。
+		// 宝箱には `{ type:'item', item:'heartPiece' }` で書く。
+		// ⚠️ 配置総数は `HEART_PIECES_PER_HEART` の倍数にする＝余ったかけらは器にならない
+		//    （`tests/heart-piece.spec.js` が数える）。最大ハート数への寄与は
+		//    `shared/progression.js` がかけらの総数から器に換算して数える。
+		name: 'ハートのかけら', icon: '❤', sprite: 'heartPiece', pal: 'heart',
+		type: 'passive',
+		uses: null,
+	},
 	flute: {
 		// Phase 4-2: 笛。active サブアイテム（使うと魔法の音色を奏でる）。
 		// 効果はステージ単位の stageData.fluteEffect で決まる：
@@ -286,6 +297,11 @@ export const EQUIP_META = {
 		defBonus: 2,
 	},
 };
+
+// ── ハートのかけら（実行キュー13）──────────────────────────────────
+// この数だけ集めるとハートの器1個になる。ゲーム（`game/player.js`）・監査
+// （`shared/progression.js`）・ポーズ画面の表示（4分割の絵）が同じ数を読む。
+export const HEART_PIECES_PER_HEART = 4;
 
 // ── ルピー額面 ───────────────────────────────────────────────────
 export const RUPEE_VALUE = {

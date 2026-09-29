@@ -13,6 +13,12 @@ export const MOVE_STEP     = 0.5;   // 1 操作 = 0.5 セル
 export const TICK_MS       = 120;   // 敵行動 tick 間隔（ms）
 export const INVINCIBLE_MS = 1500;  // 無敵時間（ms）
 export const HP_PER_HEART  = 2;
+// 疾風の靴（実行キュー13・2026-09-29 試作）：Shift を押している間の歩く速さ（1 tick あたりの
+// 半マス移動の回数）。🔴 ユーザー確定の不変条件＝**居られる位置はセルの中央か半セルの位置だけ**
+// ∴変えるのは「半マス進むのにかかる時間」だけで、1回の移動量（MOVE_STEP）は変えない。
+// 整数にする理由＝1.5 だと tick ごとに 1歩・2歩 が交互になり足取りが不揃いに見える
+// （位置は格子の上のままだが見た目がびっこになる）。
+export const DASH_SPEED    = 2;
 export const MAP_JSON_URL  = '../work/blade-of-lumia.json';
 export const SAVE_KEY      = 'blade-of-lumia-save';
 export const CLEARED_KEY   = 'blade-of-lumia-cleared';

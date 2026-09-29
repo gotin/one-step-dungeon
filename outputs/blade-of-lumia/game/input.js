@@ -33,7 +33,7 @@
 //
 // MOVE_STEP / DIR_DELTA は直接 import する。
 
-import { MOVE_STEP } from './constants.js';
+import { MOVE_STEP, DASH_SPEED } from './constants.js';
 import { resumeAudio } from '../shared/sounds.js';
 
 /**
@@ -66,6 +66,8 @@ export function initInput(deps) {
 		pauseMarkPrev,
 		pauseMarkNext,
 		hasCleared,
+		canDash,
+		setDashing,
 		updateShieldHud,
 	} = deps;
 
@@ -124,6 +126,9 @@ export function initInput(deps) {
 			heldKeys.add(e.key);
 			return;
 		}
+		// 疾風の靴（実行キュー13）：Shift は押しっぱなしの間だけ効く＝方向キーと同じ heldKeys で持つ。
+		// 靴を持っていなくても記録だけはする（判定は processHeldKeys の canDash が見る）。
+		if (e.key === 'Shift') { heldKeys.add('Shift'); return; }
 		// 攻撃キー：押した瞬間に剣を振り、押しっぱなしでチャージ開始（Phase 3-1）。
 		// キーリピート（e.repeat）では再発火させず、チャージ開始も一度だけにする。
 		if ([' ','z','Z'].includes(e.key)) {
@@ -150,11 +155,18 @@ export function initInput(deps) {
 
 	document.addEventListener('keyup', e => {
 		heldKeys.delete(e.key);
+		// ⚠️ 文字キーは大文字・小文字の両方を消す（実行キュー13）。Shift を押したまま W を押すと
+		// keydown は 'W'、先に Shift を離してから W を離すと keyup は 'w' で届く＝'W' が
+		// heldKeys に残り、**指を離しても歩き続ける**。Shift で走る操作を足したので必ず踏む。
+		if (e.key.length === 1) { heldKeys.delete(e.key.toLowerCase()); heldKeys.delete(e.key.toUpperCase()); }
 		// 終幕中は離しても溜めを解放しない（演出の途中でビームが飛ぶのを防ぐ）
 		if (inCutscene()) return;
 		// 攻撃キーを離したらチャージ解放（剣ビーム発射判定）（Phase 3-1）
 		if ([' ','z','Z'].includes(e.key)) releaseCharge?.();
 	});
+	// ウィンドウからフォーカスが外れると keyup が届かない（Cmd+Shift+4 のスクリーンショット・
+	// アプリ切り替えなど）＝押しっぱなしが残って勝手に歩き／走り続ける∴全部離したことにする。
+	window.addEventListener('blur', () => heldKeys.clear());
 
 	// ── モバイル ──────────────────────────────────────────────
 	// ⚠️ 終幕の入力封じはキーボードだけでは足りない（同じ操作が別の経路で来る）。
@@ -224,12 +236,17 @@ export function initInput(deps) {
 		else if (heldKeys.has('ArrowDown')  || heldKeys.has('s') || heldKeys.has('S')) dir = 'down';
 		else if (heldKeys.has('ArrowLeft')  || heldKeys.has('a') || heldKeys.has('A')) dir = 'left';
 		else if (heldKeys.has('ArrowRight') || heldKeys.has('d') || heldKeys.has('D')) dir = 'right';
-		if (!dir) { _moveSpeedAccum = 0; return; }
+		if (!dir) { _moveSpeedAccum = 0; setDashing?.(false); return; }
 
 		// 二周目（姫パレット）は移動速度1.2倍
 		// チャージ中の半速は撤去した（Phase 5.5g5）＝溜め中は movePlayer 側で
 		// 足が止まる∴ここで係数を掛ける意味が無い（規則を2箇所に置かない）。
-		const speed = hasCleared() ? 1.2 : 1.0;
+		// 疾風の靴＋Shift は DASH_SPEED（二周目の 1.2 倍とは掛け合わせない＝整数のまま保つ
+		// ＝毎 tick 同じ歩数で足取りが揃う）。速くなるのは movePlayer（半マス）を呼ぶ回数だけ
+		// ＝1歩ずつ壁・床・入口を判定する∴位置は常にセルの中央か半セルの位置に乗る。
+		const dashing = !!canDash?.() && heldKeys.has('Shift');
+		setDashing?.(dashing);
+		const speed = dashing ? DASH_SPEED : (hasCleared() ? 1.2 : 1.0);
 		_moveSpeedAccum += speed;
 		const times = Math.floor(_moveSpeedAccum);
 		_moveSpeedAccum -= times;
