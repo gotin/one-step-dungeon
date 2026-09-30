@@ -1621,6 +1621,76 @@ function fairyBottleGrid() {
 	return g;
 }
 
+// 矢筒（ITEM_META.quiver・キュー37）── 革の筒＋口から覗く矢羽根3本＋金の帯＋肩紐。
+// quiver パレット：1輪郭 2革(暗) 3革 4革(明) 5金の帯 6矢の軸 7矢羽根(赤) 8矢羽根(白)。
+// ⚠️ 矢束の絵（arrowBundleGrid）は「柵・マッチ棒」に見えて捨てた（上の arrowGrid の注記）
+//    ∴主役は**筒の塊**にして、矢は口から羽根だけを出す（棒を何本も並べない）。
+function quiverGrid() {
+	const g = blank();
+	// 矢（口より上だけ見える）＝軸＋V字の羽根。左右は赤・中央は白で本数を見分けさせる。
+	const arrows = [{ c: 12, top: 4, v: 7 }, { c: 16, top: 2, v: 8 }, { c: 20, top: 5, v: 7 }];
+	for (const a of arrows) {
+		rect(g, a.top + 4, a.c, 11, a.c, 6);                          // 軸
+		for (let i = 0; i < 4; i++) {                                 // 羽根（下ほど軸に寄る）
+			put(g, a.top + i, a.c - 1, a.v); put(g, a.top + i, a.c + 1, a.v);
+			if (i >= 1) put(g, a.top + i, a.c, a.v);
+		}
+	}
+	// 筒＝ rows 11..28・cols 10..22（底は丸く）
+	rrect(g, 11, 10, 28, 22, 3, 3);
+	for (let r = 11; r <= 28; r++) {
+		if (g[r][11]) put(g, r, 11, 4);                               // 左の明
+		if (g[r][12]) put(g, r, 12, 4);
+		if (g[r][21]) put(g, r, 21, 2);                               // 右の陰
+		if (g[r][22]) put(g, r, 22, 2);
+	}
+	rect(g, 11, 10, 12, 22, 4);                                       // 口の折り返し
+	rect(g, 13, 10, 13, 22, 2);                                       // 口の下の影（筒の中の暗さ）
+	rect(g, 17, 10, 18, 22, 5);                                       // 金の帯（上）
+	rect(g, 24, 11, 25, 21, 5);                                       // 金の帯（下）
+	// 肩紐＝帯の右端から右上へ（筒の外に出して「背負う物」に読ませる）
+	line(g, 17, 23, 10, 26, 2, 1);
+	line(g, 10, 26, 7, 25, 2, 1);
+	strokeOutside(g);
+	return g;
+}
+
+// 爆弾袋（ITEM_META.bombBag・キュー37）── 口を紐で絞った布袋＋前に爆弾の印。
+// bombBag パレット：1輪郭 2布(暗) 3布 4布(明) 5紐(赤) 6爆弾(黒) 7爆弾(照り) 8火花(黄)。
+// 爆弾（bombItem）と並んで「爆弾そのもの」に見えないよう、主役は**袋の塊**にして
+// 爆弾は袋の前の小さな印に留める。
+function bombBagGrid() {
+	const g = blank();
+	rrect(g, 4, 11, 8, 20, 1, 4);                  // 口のフリル（絞った上の布）
+	rect(g, 9, 13, 10, 18, 3);                     // 首
+	rect(g, 10, 12, 11, 19, 5);                    // 絞り紐
+	put(g, 12, 19, 5); put(g, 13, 20, 5); put(g, 14, 20, 5);   // 紐の垂れ
+	// 胴＝下ほど広い（行ごとの半幅）。中心は col 15.5。
+	const half = { 12: 6, 13: 8, 14: 9, 15: 10, 16: 10, 17: 11, 18: 11, 19: 11, 20: 11,
+		21: 11, 22: 11, 23: 11, 24: 10, 25: 10, 26: 9, 27: 7 };
+	for (const [rs, h] of Object.entries(half)) {
+		const r = +rs;
+		for (let c = Math.ceil(15.5 - h + 0.5); c <= Math.floor(15.5 + h - 0.5); c++) {
+			if (!g[r][c]) put(g, r, c, 3);
+		}
+	}
+	for (let r = 13; r <= 27; r++) {               // 左の明・右の陰（胴の縁に沿って）
+		let c0 = -1, c1 = -1;
+		for (let c = 0; c < N; c++) if (g[r][c] === 3) { if (c0 < 0) c0 = c; c1 = c; }
+		if (c0 < 0) continue;
+		put(g, r, c0 + 1, 4);
+		put(g, r, c1, 2); put(g, r, c1 - 1, 2);
+	}
+	rect(g, 26, 9, 27, 22, 2);                      // 底の陰
+	put(g, 5, 12, 3); put(g, 5, 19, 3);             // フリルの襞
+	// 爆弾の印（袋の前・中央やや下）
+	disc(g, 20, 15, 3, 6);
+	put(g, 19, 14, 7); put(g, 18, 15, 7);
+	put(g, 16, 16, 8); put(g, 16, 17, 8);          // 導火線の火花
+	strokeOutside(g);
+	return g;
+}
+
 // 布の服（ARMOR_TIERS[0]）── ink 24×30。
 // armorCloth パレット：1輪郭 2影 3布の地 4布の明部 5縁取り（生成りのクリーム）。
 // なぜ armor（胸当て）と別の絵か＝ティア0は「布の服」なのに金属の胸当てを色替えで
@@ -1822,6 +1892,8 @@ export const OBJ32_SPRITES = {
 	candle:        [CANDLE_32],
 	swiftBoots:    [swiftBootsGrid()],     // キュー13：疾風の靴
 	fairyBottle:   [fairyBottleGrid()],    // キュー13 ③：妖精の瓶
+	quiver:        [quiverGrid()],         // キュー37：矢筒（宝箱の文の頭に出す）
+	bombBag:       [bombBagGrid()],        // キュー37：爆弾袋（同上）
 	// ── 10d-4 ──
 	arrow:         [arrowGrid()],
 	shieldSide:    [shieldSideGrid()],

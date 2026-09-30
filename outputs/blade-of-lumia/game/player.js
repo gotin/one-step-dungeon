@@ -7,7 +7,7 @@ import { statefulTileClosed } from './passable.js';
 import { ITEM_META, EQUIP_META, SWORD_TIERS, BASE_ATK, ARMOR_TIERS, BASE_DEF, SHIELD_TIERS, BOOMERANG_TIERS, HEART_PIECES_PER_HEART, ITEM_STACK_MAX, ownsItem, addStack, stackCount, isStackFull } from '../shared/items.js';
 import { NPC_SPRITE_MAP } from '../shared/npcs.js';
 import { SPRITES, PAL, makeSprite } from '../shared/sprites.js';
-import { iconCanvas } from '../shared/ui-icons.js';
+import { iconCanvas, rewardIconKey } from '../shared/ui-icons.js';
 import { playSound, resumeAudio } from '../shared/sounds.js';
 import {
 	MOVE_STEP, DIR_DELTA, STONE_PUSH_COOLDOWN_MS, SWORD_COOLDOWN_MS, HP_PER_HEART,
@@ -877,8 +877,10 @@ export function createPlayer(deps) {
 			// 無言の泡を出さず、空箱と同じ文にする（指定の間違いはテストで赤くする側）。
 			// 出している長さは文の長さに合わせる（1文字 100ms・最短は従来の 2 秒）。
 			// 効果や使い方を括弧で足した文（矢筒・疾風の靴）は 2 秒では読み切れない。
+			// 文の頭の絵は**取った物の絵**（キュー37・ユーザー指摘「ゲットしたのは宝箱じゃない」）。
+			// 宝箱の絵のままなのは「何も取っていない」2つ＝空箱と、上の「もう持てない」（開けない）。
 			const ms = Math.max(2000, [...msg].length * 100);
-			pulse(msg ? `{{chest}} ${msg}` : '{{chest}} 宝箱は空だった…', ms);
+			pulse(msg ? `{{${rewardIconKey(content)}}} ${msg}` : '{{chest}} 宝箱は空だった…', ms);
 		} else { pulse('{{chest}} 宝箱は空だった…'); }
 		renderBoard(); renderChars(); updateHud(); saveGame();
 	}

@@ -20,6 +20,7 @@
 //    描画は既定で ink を切り出す＝**長辺が px** になる∴絵ごとの補正値は要らない。
 
 import { SPRITES, PAL } from './sprites.js';
+import { ITEM_META, EQUIP_META, SWORD_TIERS, ARMOR_TIERS, SHIELD_TIERS, BOOMERANG_TIERS } from './items.js';
 
 // ── 表：UI のキー → スプライト名／パレット名 ────────────────────
 // キーはメッセージ中の `{{key}}` とも共通（∴短く・物の名前で書く）。
@@ -57,6 +58,8 @@ export const UI_ICON = {
 	wingRobe:   { spr: 'wingRobe',   pal: 'wingRobe'   },
 	swiftBoots: { spr: 'swiftBoots', pal: 'swiftBoots' },   // 疾風の靴（キュー13）
 	fairy:      { spr: 'fairyBottle', pal: 'fairyBottle' }, // 妖精の瓶（キュー13 ③）
+	quiver:     { spr: 'quiver',     pal: 'quiver'     },   // 矢筒（キュー37）
+	bombBag:    { spr: 'bombBag',    pal: 'bombBag'    },   // 爆弾袋（キュー37）
 	// その他
 	princess:   { spr: 'princess',   pal: 'princess'   },   // エディタの「姫状態」
 	altar:      { spr: 'altar',      pal: 'altar'      },
@@ -68,6 +71,89 @@ export const UI_ICON = {
 	chest:      { spr: 'chest',      pal: 'chest'      },
 	doorOpen:   { spr: 'doorOpen',   pal: 'door'       },
 };
+
+// ── 装備のティアの絵（キュー37）──────────────────────────────────
+// ティアで色（と形）が変わる物＝剣・防具・盾・ブーメラン。絵は SWORD_TIERS 等の
+// `sprite` / `pal` が単一の真実∴ここでは**表から引くだけ**（HUD・ポーズの装備欄
+// `game/ui.js` も同じ関数を使う）。
+// ⚠️ ティア表の `sprite` に絵の無い名前が書かれていたら（盾の shieldWood 等＝盾は形が共通で
+//    色だけ違う）元の絵（EQUIP_META / ITEM_META）に落ちる＝表の嘘で無言の空欄にしない。
+const TIER_TABLES = { sword: SWORD_TIERS, armor: ARMOR_TIERS, shield: SHIELD_TIERS, boomerang: BOOMERANG_TIERS };
+
+/**
+ * 装備の種類とティア番号から絵を引く。ティアが無い（-1・未定義）なら既定の絵。
+ * @param {'sword'|'armor'|'shield'|'boomerang'} kind
+ * @param {number} tierIdx
+ * @returns {{spr:string, pal:string}|null}
+ */
+export function tierIconSpec(kind, tierIdx) {
+	const base = EQUIP_META[kind] ?? ITEM_META[kind];
+	if (!base?.sprite) return null;
+	const tier = TIER_TABLES[kind]?.[tierIdx];
+	if (!tier) return { spr: base.sprite, pal: base.pal ?? base.sprite };
+	return {
+		spr: tier.sprite && SPRITES[tier.sprite] ? tier.sprite : base.sprite,
+		pal: tier.pal ?? base.pal ?? base.sprite,
+	};
+}
+
+// 同じ絵（spr と pal が一致）を持つ既存のキー。
+function keyOfSpec(spec) {
+	if (!spec) return null;
+	for (const [key, it] of Object.entries(UI_ICON)) {
+		if (it.spr === spec.spr && it.pal === spec.pal) return key;
+	}
+	return null;
+}
+
+// 表に無い絵のキーを導出して足す（名前の表を手で増やさずに済ませる）：
+//   ・ティア＝ `sword` + `Bronze` → `swordBronze`（キーは英字だけ＝`{{key}}` の正規表現に乗る）
+//   ・道具＝ ITEM_META の id そのもの
+// ⚠️ 手で書いた表が先＝同じ絵が表に在ればそのキーを使う（木の剣→`sword`・銀のブーメラン→`boomerangSilver`）。
+const TIER_KEY = {};
+for (const [kind, tiers] of Object.entries(TIER_TABLES)) {
+	TIER_KEY[kind] = tiers.map((tier, i) => {
+		const spec = tierIconSpec(kind, i);
+		const have = keyOfSpec(spec);
+		if (have) return have;
+		const key = kind + tier.key[0].toUpperCase() + tier.key.slice(1);
+		UI_ICON[key] = spec;
+		return key;
+	});
+}
+const ITEM_KEY = {};
+for (const [id, meta] of Object.entries(ITEM_META)) {
+	if (!meta.sprite) continue;
+	const spec = { spr: meta.sprite, pal: meta.pal ?? meta.sprite };
+	ITEM_KEY[id] = keyOfSpec(spec) ?? (UI_ICON[id] = spec, id);
+}
+
+// grantReward の content.type（装備系）→ ティア表の種類と tier の欄。
+const REWARD_TIER = {
+	weapon:    { kind: 'sword',     field: 'swordTier'     },
+	armor:     { kind: 'armor',     field: 'armorTier'     },
+	shield:    { kind: 'shield',    field: 'shieldTier'    },
+	boomerang: { kind: 'boomerang', field: 'boomerangTier' },
+};
+
+/**
+ * 報酬（宝箱の中身＝`game/player.js grantReward` の content）の絵のキー。
+ * 宝箱の文の頭に出す＝**取った物の絵**（キュー37・ユーザー指摘「ゲットしたのは宝箱じゃない」）。
+ * ⚠️ tier の既定は grantReward と同じ 0（`content.swordTier ?? 0`）。
+ * 絵が引けない中身は 'chest'（宝箱の絵）に落ちる＝文の頭が空欄にも `{{…}}` の生文字にもならない。
+ * @param {object} content
+ * @returns {string} UI_ICON のキー
+ */
+export function rewardIconKey(content) {
+	const t = content?.type;
+	if (t === 'item') return ITEM_KEY[content.item] ?? 'chest';
+	const tier = REWARD_TIER[t];
+	if (tier) return TIER_KEY[tier.kind][content[tier.field] ?? 0] ?? 'chest';
+	if (t === 'rupee') return 'rupee';
+	if (t === 'heartContainer') return ITEM_KEY.heartContainer ?? 'chest';
+	if (t === 'ladder') return ITEM_KEY.ladder ?? 'chest';
+	return 'chest';
+}
 
 // 絵文字 → このキー（既存の文字列を機械的に置き換える時の対応表）。
 // ⚠️ 「同じ絵文字が別の意味で使われている」ものは入れない（例：🏹 は弓と矢筒の両方）＝

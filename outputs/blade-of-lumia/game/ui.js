@@ -27,9 +27,9 @@
 // SPRITES / PAL / ITEM_META / HP_PER_HEART / makeSprite は直接 import
 
 import { HP_PER_HEART } from './constants.js';
-import { SPRITES, PAL, makeSprite } from '../shared/sprites.js';
-import { ITEM_META, EQUIP_META, BOOMERANG_TIERS, SWORD_TIERS, SHIELD_TIERS, ARMOR_TIERS, HEART_PIECES_PER_HEART, ownsItem, addStack, isStackFull } from '../shared/items.js';
-import { iconCanvas, iconText, iconPxOf } from '../shared/ui-icons.js';
+import { PAL, makeSprite } from '../shared/sprites.js';
+import { ITEM_META, BOOMERANG_TIERS, HEART_PIECES_PER_HEART, ownsItem, addStack, isStackFull } from '../shared/items.js';
+import { iconCanvas, iconText, iconPxOf, tierIconSpec } from '../shared/ui-icons.js';
 import { playSound } from '../shared/sounds.js';
 // field の地図（キュー15）の色。エディタのワールドマップのサムネと**同じ関数**を呼ぶ
 // ＝ユーザー判定済み（キュー11c）の見え方がそのまま出て、絵の食い違いが構造的に起きない。
@@ -60,27 +60,21 @@ function heartIconCanvas(hpForThis) {
 
 // サブアイテム・装備の絵（ポーズ／HUD で共用）。ティアで色が変わる物は
 // SWORD_TIERS 等の `pal` を優先する（形は共通・色だけ違う＝shared/items.js の作法）。
-// ⚠️ 形も違うティアがある（布の服＝armorCloth）∴`sprite` も表から引く。絵が無い名前が
-//    書かれていたら EQUIP_META の絵に落ちる＝ティア表に嘘を書いても無言の空欄にならない。
+// ⚠️ 形も違うティアがある（布の服＝armorCloth）∴`sprite` も表から引く。
+// ティアから絵を引くのは `shared/ui-icons.js tierIconSpec` の1本だけ（宝箱の文の頭＝
+// キュー37 と同じ関数）＝装備欄と宝箱の文で同じ物が別の絵にならない。
 function equipIconCanvas(kind, player, px) {
-	const meta = EQUIP_META[kind];
-	if (!meta?.sprite) return null;
-	const tiers = kind === 'sword' ? SWORD_TIERS : (kind === 'shield' ? SHIELD_TIERS : ARMOR_TIERS);
 	const tierIdx = kind === 'sword' ? player?.swordTier : (kind === 'shield' ? player?.shieldTier : player?.armorTier);
-	const tier = tiers?.[tierIdx];
-	const pal = tier?.pal ?? meta.pal;
-	const spr = tier?.sprite && SPRITES[tier.sprite] ? tier.sprite : meta.sprite;
-	return iconCanvas({ spr, pal }, px);
+	const spec = tierIconSpec(kind, tierIdx);
+	return spec ? iconCanvas(spec, px) : null;
 }
 
 function subItemIconCanvas(id, player, px) {
 	const meta = ITEM_META[id];
 	if (!meta?.sprite) return null;
 	// ブーメランはティアで色が変わる（木＝茶／銀＝銀）
-	const pal = id === 'boomerang'
-		? (BOOMERANG_TIERS[player?.boomerangTier ?? 0]?.pal ?? meta.pal)
-		: (meta.pal ?? meta.sprite);
-	return iconCanvas({ spr: meta.sprite, pal }, px);
+	if (id === 'boomerang') return iconCanvas(tierIconSpec('boomerang', player?.boomerangTier ?? 0), px);
+	return iconCanvas({ spr: meta.sprite, pal: meta.pal ?? meta.sprite }, px);
 }
 
 // ── サブアイテムの表示名（Phase 9-6）───────────────────────────
