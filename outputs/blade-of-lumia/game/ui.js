@@ -28,7 +28,7 @@
 
 import { HP_PER_HEART } from './constants.js';
 import { PAL, makeSprite } from '../shared/sprites.js';
-import { ITEM_META, BOOMERANG_TIERS, HEART_PIECES_PER_HEART, ownsItem, addStack, isStackFull } from '../shared/items.js';
+import { ITEM_META, BOOMERANG_TIERS, HEART_PIECES_PER_HEART, ownsItem, addStack, isStackFull, isMaxHpReward } from '../shared/items.js';
 import { iconCanvas, iconText, iconPxOf, tierIconSpec } from '../shared/ui-icons.js';
 import { playSound } from '../shared/sounds.js';
 // field の地図（キュー15）の色。エディタのワールドマップのサムネと**同じ関数**を呼ぶ
@@ -1002,6 +1002,16 @@ export function createUi(deps) {
 		return '';
 	}
 
+	// くじ1台の識別子（`player.gachaPulls` / `player.gachaPrizeTaken` のキー）。
+	function gachaKeyOf(g) {
+		return `${getCurrentLayer()}:${getStageKey()}:${g._posKey ?? ''}`;
+	}
+	// キュー36: 器が出た後は景品が変わる∴行の名前も変える（「器があたる！」と言い続けない）。
+	function gachaNameOf(g) {
+		const taken = getPlayer().gachaPrizeTaken?.[gachaKeyOf(g)];
+		return (taken && g.gacha.afterOnce?.name) || g.name;
+	}
+
 	function renderShop() {
 		const player = getPlayer();
 		shopRupeesEl.textContent = player.rupees;
@@ -1009,7 +1019,7 @@ export function createUi(deps) {
 		shopGoods.forEach((g, i) => {
 			const meta = ITEM_META[g.id];
 			const price = g.gacha ? g.gacha.price : g.price;
-			const name = g.name ?? meta?.name ?? g.id;
+			const name = (g.gacha ? gachaNameOf(g) : g.name) ?? meta?.name ?? g.id;
 			const row  = document.createElement('div');
 			const block = shopGoodBlock(g);
 			const canBuy = player.rupees >= price && !block;
@@ -1067,36 +1077,48 @@ export function createUi(deps) {
 		if (g.gacha) {
 			const gacha = g.gacha;
 			if (player.rupees < gacha.price) { shopSay('ルピーが足りない！', true); return; }
-			player.rupees -= gacha.price;
-			const layer = getCurrentLayer();
-			const stageKey = getStageKey();
-			const posKey = g._posKey ?? '';
-			const gachaKey = `${layer}:${stageKey}:${posKey}`;
+			const gachaKey = gachaKeyOf(g);
 			if (!player.gachaPulls) player.gachaPulls = {};
-			player.gachaPulls[gachaKey] = (player.gachaPulls[gachaKey] ?? 0) + 1;
-			const pulls = player.gachaPulls[gachaKey];
-			let reward;
-			if (pulls >= gacha.pityCount) {
-				reward = gacha.pityReward;
-				player.gachaPulls[gachaKey] = 0;
+			if (!player.gachaPrizeTaken) player.gachaPrizeTaken = {};
+			const pulls = (player.gachaPulls[gachaKey] ?? 0) + 1;
+			const isPity = pulls >= gacha.pityCount;
+			let picked, pickedEntry = null;
+			if (isPity) {
+				picked = gacha.pityReward;
 			} else {
 				// 重み付き抽選
 				const random = gacha._random ?? Math.random;
 				const totalWeight = gacha.pool.reduce((s, e) => s + e.weight, 0);
 				let roll = random() * totalWeight;
-				reward = gacha.pool[gacha.pool.length - 1].reward;
+				pickedEntry = gacha.pool[gacha.pool.length - 1];
 				for (const entry of gacha.pool) {
 					roll -= entry.weight;
-					if (roll <= 0) { reward = entry.reward; break; }
+					if (roll <= 0) { pickedEntry = entry; break; }
 				}
+				picked = pickedEntry.reward;
 			}
-			// 当たった品が上限つきで満杯（キュー13 ③）＝ルピーは払った後∴はずれ扱いで
-			// 「もう持てない」と言う（払い戻しはしない＝くじの賭けの側に入れる。PLAN キュー36）。
-			const full = reward.type === 'item' && isStackFull(player, reward.item);
+			// 当たった品が上限つきで満杯（キュー13 ③）＝払い戻す＝**引かなかったことにする**
+			// （キュー36・2026-09-30 ユーザー確定。それまでは「はずれ」で払い戻さなかった）。
+			// ルピーを取らないのと同じ＝代金も天井の回数も動かさない（回数を進めると、薬を1本
+			// 持っておくだけで天井へタダで近づける）。
+			if (picked.type === 'item' && isStackFull(player, picked.item)) {
+				const itemName = picked.name ?? ITEM_META[picked.item]?.name ?? picked.item;
+				shopSay(`${itemName} は もう持てない… ${gacha.price} ルピーを返した`, true);
+				return;
+			}
+			player.rupees -= gacha.price;
+			player.gachaPulls[gachaKey] = isPity ? 0 : pulls;
+			// キュー36: 最大ハートを増やす景品はくじ1台につき1回限り（`isMaxHpReward`）。
+			// 2個目以降は `afterOnce.reward` に差し替える＝5% の枠も天井も同じ扱い。
+			// `afterOnce` の無いデータでも無制限に戻さない＝代金と同じルピーにする。
+			let reward = picked;
+			if (isMaxHpReward(picked)) {
+				if (player.gachaPrizeTaken[gachaKey]) reward = gacha.afterOnce?.reward ?? { type: 'rupee', value: gacha.price };
+				else player.gachaPrizeTaken[gachaKey] = true;
+			}
 			const msg = grantReward ? grantReward(reward) : '';
-			const matchedEntry = gacha.pool.find(e => e.reward === reward);
-			const isRare = !full && (reward === gacha.pityReward || (matchedEntry?.weight ?? 100) <= 10);
-			const isMiss = full || (reward.type === 'rupee' && (reward.value ?? 0) < gacha.price);
+			const isRare = isPity || (pickedEntry?.weight ?? 100) <= 10;
+			const isMiss = reward.type === 'rupee' && (reward.value ?? 0) < gacha.price;
 			playSound(isRare ? 'appear' : 'item');
 			if (isMiss) {
 				shopResultEl.className = 'miss';

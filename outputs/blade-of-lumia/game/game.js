@@ -127,6 +127,8 @@ let player = {
 	boomerangTier: -1,
 	// Phase 7-4: ガチャ天井カウンタ。キー="layer:stageKey:posKey"→引いた回数。プレーンオブジェクトなので saveGame で自動保持。
 	gachaPulls: {},
+	// キュー36: 最大ハートの景品をもう出したくじ（キーは gachaPulls と同じ→true）。1台1回限り。
+	gachaPrizeTaken: {},
 	// キュー16: 目的地マーク。NPC・看板が教えた場所を地図に残す。
 	// { layer, stage:"x,y", label, kind } の配列＋選択中の id（"layer:x,y"）。
 	// ⚠️ 素の配列・文字列にする＝saveGame は player を展開して JSON にする∴
@@ -1034,7 +1036,10 @@ const { checkStoneOnSwitch, evaluateConditions, refreshGates } = createCondition
 		onBossYielded:   (b) => _boss.onBossYielded(b),
 		updateBossHpBar: (b) => _boss.updateBossHpBar(b),
 		checkBossPhase:  (b) => _boss.checkBossPhase(b),
-		openShop:    (sd) => openShop(sd),
+		// ⚠️ posKey も渡す＝くじの天井・1回限りのキー（`layer:stageKey:posKey`）の一部。
+		//    キュー36（2026-09-30）まで `(sd) => openShop(sd)` で落としていた＝キーが
+		//    `field:9,9:` になり、同じ画面のくじが全部1つの天井を共有する形だった。
+		openShop:    (sd, posKey) => openShop(sd, posKey),
 		startDialog: (r, c, t) => startDialog(r, c, t),
 		hasCleared,
 		isShieldBlockingDir:   (dx, dy) => isShieldBlockingDir(dx, dy),
@@ -1994,6 +1999,7 @@ function startNewGame() {
 		shieldTier: -1,
 		boomerangTier: -1,
 		gachaPulls: {},
+		gachaPrizeTaken: {},
 		mapMarks: [],
 		selectedMarkId: null,
 	};

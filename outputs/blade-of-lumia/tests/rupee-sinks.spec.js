@@ -15,7 +15,8 @@
 //   ⑩ 情報屋が専用の絵にならない／他の店まで変わる／エディタとゲームで絵が違う
 //   ⑪ 店が進行の道具（ブーメランなど SUB_ITEM_KEYS）を売る／うわさの値段がユーザー判定と違う
 //
-// 意図した差：くじで満杯の薬が当たったときは払い戻さない＝はずれ扱い（PLAN キュー36）。
+// くじで満杯の薬が当たったときは払い戻す（キュー36・2026-09-30 ユーザー確定。それまでは
+// 「はずれ・払い戻さない」だった）。
 
 import { test, expect } from '@playwright/test';
 import fs from 'node:fs';
@@ -179,7 +180,9 @@ test.describe('ルピーの使い道（キュー13 ③）', () => {
 			expect(r.count).toBe(1);
 		});
 
-		test('くじ：満杯の薬が当たったら「はずれ」＋もう持てない（払い戻さない）', async ({ page }) => {
+		// キュー36（2026-09-30 ユーザー確定）で「はずれ・払い戻さない」→「払い戻す」に変えた。
+		// 天井の回数が動かないことは `tests/gacha-once.spec.js` ④ が見る。
+		test('くじ：満杯の薬が当たったら払い戻す（持てない薬は来ない・ルピーは減らない）', async ({ page }) => {
 			await seed(page, { player: { rupees: 100, subItems: { healPotion: { count: 1 } } } });
 			// 重み 50/30/15/5 ＝ 0.85×100＝85 は3枠目（回復薬）
 			await page.evaluate(() => { Math.random = () => 0.85; });
@@ -187,11 +190,11 @@ test.describe('ルピーの使い道（キュー13 ③）', () => {
 			expect(MAP.layers.field.stages[HUB].shopData[gachaCell].items[0].gacha.pool[2].reward.item).toBe('healPotion');
 			await openShopAt(page, gachaCell.split(',').map(Number), 'down');
 			await page.keyboard.press(' ');
-			await expect(result(page)).toContainText('はずれ');
 			await expect(result(page)).toContainText('もう持てない');
+			await expect(result(page)).toContainText('ルピーを返した');
 			await expect(result(page)).toHaveClass('miss');
 			const p = await player(page);
-			expect(p.rupees).toBe(70);
+			expect(p.rupees).toBe(100);
 			expect(p.subItems.healPotion.count).toBe(1);
 		});
 

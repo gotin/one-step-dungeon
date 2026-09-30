@@ -326,6 +326,17 @@ export const EQUIP_META = {
 // （`shared/progression.js`）・ポーズ画面の表示（4分割の絵）が同じ数を読む。
 export const HEART_PIECES_PER_HEART = 4;
 
+// ── くじの景品のうち最大ハートを増やすもの（実行キュー36・2026-09-30 ユーザー確定）──
+// くじ1台につき**1回限り**＝5% の枠か天井のどちらかで1個出たら終わり。以降は
+// `gacha.afterOnce.reward`（大当たりのルピー）に差し替える（`game/ui.js shopBuy`）。
+// 限る・限らないをデータの旗に書かせない＝エンジンが景品の種類で決める
+// （旗の付け忘れ1つで器が無制限に戻る＝キュー36 の元の不具合）。
+// 監査（`shared/progression.js collectRewards`）も同じ判定で「くじ1台＝1個」と数える。
+export function isMaxHpReward(reward) {
+	return reward?.type === 'heartContainer' || reward?.item === 'heartContainer'
+		|| reward?.type === 'heartPiece'     || reward?.item === 'heartPiece';
+}
+
 // ── ルピー額面 ───────────────────────────────────────────────────
 export const RUPEE_VALUE = {
 	rupee:      1,

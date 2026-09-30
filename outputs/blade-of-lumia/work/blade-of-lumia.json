@@ -1238,7 +1238,14 @@
                           "type": "heartContainer"
                         }
                       }
-                    ]
+                    ],
+                    "afterOnce": {
+                      "name": "くじを引く（大当たり 100 ルピー！）",
+                      "reward": {
+                        "type": "rupee",
+                        "value": 100
+                      }
+                    }
                   }
                 }
               ]

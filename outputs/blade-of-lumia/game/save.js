@@ -116,6 +116,11 @@ export function sanitizeLoadedPlayer(player, itemMeta) {
 	if (player.maxBombs  == null) player.maxBombs  = 8;
 	// Phase 9-5b: 旧セーブデータへのデフォルト補完
 	if (player.stageMoves == null) player.stageMoves = 0;
+	// キュー36: 最大ハートの景品をもう出したくじ。導入前のセーブ・壊れた値は {}（＝まだ出ていない）。
+	// ⚠️ 導入前に同じくじで器を何個取っていても分からない＝もう1個だけ出る（減らしはしない）。
+	if (!player.gachaPrizeTaken || typeof player.gachaPrizeTaken !== 'object' || Array.isArray(player.gachaPrizeTaken)) {
+		player.gachaPrizeTaken = {};
+	}
 	// キュー13: ハートのかけらの端数。かけら導入前のセーブは 0。壊れた値（数でない・
 	// 負・小数）は 0〜3 の整数に丸める＝HUD やポーズ画面の4分割の絵が範囲外を引かない。
 	// 4 以上は起こらない（揃った瞬間に器へ換える）∴上限で切る。

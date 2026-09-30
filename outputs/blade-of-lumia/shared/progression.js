@@ -21,7 +21,7 @@
 
 import { listTriforceEntries } from './triforce.js';
 import { ENEMY_META, isEnemyTile } from './enemies.js';
-import { HEART_PIECES_PER_HEART } from './items.js';
+import { HEART_PIECES_PER_HEART, isMaxHpReward } from './items.js';
 
 // ── 進行順（PLAN 9-1）＝報酬が手に入る順序の単一の真実 ────────────────
 // 本編：D1→D2→D3→D4→D6→D5→D8→D7→（祭壇）→dark_tower
@@ -239,6 +239,20 @@ export function collectRewards(map, { excludeBossRooms = false } = {}) {
 					// 足し合わせた後（`profilesAt`）＝レイヤーごとに切り捨てると、4つが2レイヤーに
 					// 散ったとき器0個と数えてしまう。
 					if (v.type === 'heartPiece' || v.item === 'heartPiece') bucket.heartPieces += 1;
+				}
+			}
+			// キュー36: くじの壺（店の品 `gacha`）＝最大ハートの景品は1台につき1回限り
+			// （`isMaxHpReward`・`game/ui.js shopBuy`）∴1台＝1個と数える。器とかけらの両方を
+			// 景品に持つくじは器1個として数える（どちらか1つしか出ない∴大きい方）。
+			for (const shop of Object.values(st.shopData ?? {})) {
+				for (const good of shop?.items ?? []) {
+					const gacha = good?.gacha;
+					if (!gacha) continue;
+					const prizes = [gacha.pityReward, ...(gacha.pool ?? []).map(e => e?.reward)].filter(isMaxHpReward);
+					if (!prizes.length) continue;
+					const bucket = bump(layerName);
+					if (prizes.some(p => p.type === 'heartContainer' || p.item === 'heartContainer')) bucket.hearts += 1;
+					else bucket.heartPieces += 1;
 				}
 			}
 		}
