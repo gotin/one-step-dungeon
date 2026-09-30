@@ -4,7 +4,7 @@
 
 import { TILE, TILE_META, FLOOR_STACK_TILES } from '../shared/tiles.js';
 import { statefulTileClosed } from './passable.js';
-import { ITEM_META, EQUIP_META, SWORD_TIERS, BASE_ATK, ARMOR_TIERS, BASE_DEF, SHIELD_TIERS, BOOMERANG_TIERS, HEART_PIECES_PER_HEART, ownsItem, addStack } from '../shared/items.js';
+import { ITEM_META, EQUIP_META, SWORD_TIERS, BASE_ATK, ARMOR_TIERS, BASE_DEF, SHIELD_TIERS, BOOMERANG_TIERS, HEART_PIECES_PER_HEART, ITEM_STACK_MAX, ownsItem, addStack, stackCount, isStackFull } from '../shared/items.js';
 import { NPC_SPRITE_MAP } from '../shared/npcs.js';
 import { SPRITES, PAL, makeSprite } from '../shared/sprites.js';
 import { iconCanvas } from '../shared/ui-icons.js';
@@ -742,6 +742,10 @@ export function createPlayer(deps) {
 			console.warn(`[item] 渡せないサブアイテム id: ${id}`);
 			return false;
 		}
+		// キュー13 ③：上限つきの道具（回復薬・妖精の瓶＝各1本）は満杯なら渡さない＝false。
+		// ⚠️ 呼び手（床の薬・宝箱・店・くじ）は**先に `isStackFull` で確かめて**、取らずに
+		//    残す／代金を取らない。ここは最後の砦（素通りで数を増やさない）。
+		if (isStackFull(player, id)) return false;
 		if (meta?.type === 'passive') {
 			if (id === 'heartContainer') gainHeartContainer();
 			else if (id === 'heartPiece') gainHeartPiece();
@@ -749,12 +753,13 @@ export function createPlayer(deps) {
 			else if (id === 'quiver')    player.maxArrows  = (player.maxArrows  ?? 8) + 8;
 			else if (id === 'bombBag')   player.maxBombs   = (player.maxBombs   ?? 8) + 8;
 			else if (id === 'swiftBoots') player.hasSwiftBoots = true;
+			else if (id === 'fairy')     player.fairies = stackCount(player, 'fairy') + 1;
 			return true;
 		}
-		// 矢/爆弾は上限でクランプ（quiver/bombBag 拡充後の新上限も反映）。
+		// 矢/爆弾は上限でクランプ（quiver/bombBag 拡充後の新上限も反映）。回復薬は ITEM_STACK_MAX。
 		const cap = id === 'bomb' ? (player.maxBombs ?? 8)
 		          : id === 'bow'  ? (player.maxArrows ?? 8)
-		          : Infinity;
+		          : (ITEM_STACK_MAX[id] ?? Infinity);
 		// 初回取得は `defaultStack`（1セット分）＝弓矢なら10本・爆弾なら3個。
 		// 無い道具は1個（笛・ロウソクは uses:Infinity ∴数を持たない）。
 		if (!player.subItems[id]) {
@@ -785,6 +790,11 @@ export function createPlayer(deps) {
 					? `ハートのかけら が ${HEART_PIECES_PER_HEART}つ そろった！ ハートの器 になった！`
 					: `ハートのかけら を手に入れた！（あと ${left} つで ハートの器）`;
 			}
+			// 上限つきの道具が満杯（キュー13 ③）＝渡さず、そう言う。宝箱と店は先に確かめて
+			// 開けない／売らない∴ここに来るのはくじ・ボス報酬だけ。
+			if (isStackFull(player, content.item)) {
+				return `${content.name ?? ITEM_META[content.item]?.name ?? content.item} は もう持てない…`;
+			}
 			// 渡せない id（未定義／床タイル専用）は「手に入れた！」と嘘をつかない＝空文字。
 			if (!giveSubItem(content.item)) return '';
 			// ⚠️ 上限を広げる passive（矢筒・爆弾袋）は**サブアイテム欄に並ばない**
@@ -794,6 +804,7 @@ export function createPlayer(deps) {
 			const note = content.item === 'quiver'  ? `（矢を ${player.maxArrows} 本まで 持てる）`
 			           : content.item === 'bombBag' ? `（爆弾を ${player.maxBombs} 個まで 持てる）`
 			           : content.item === 'swiftBoots' ? '（Shift を 押している間 速く 走れる）'
+			           : content.item === 'fairy' ? '（倒れても 一度だけ よみがえる）'
 			           : '';
 			return `${content.name ?? content.item} を手に入れた！${note}`;
 		} else if (content.type === 'weapon') {
@@ -852,8 +863,14 @@ export function createPlayer(deps) {
 	// ── 宝箱を開ける ──────────────────────────────────────
 	function openChest(posKey, ss) {
 		const stageData = getStageData();
-		ss.openedChests.add(posKey); playSound('chest');
 		const content = stageData.chestContents?.[posKey];
+		// キュー13 ③：中身が上限つきの道具で満杯なら**開けない**＝宝箱はそのまま残り、
+		// 薬を使ってから取りに来られる（床の矢束と同じ「持てないなら取らない」）。
+		if (content?.type === 'item' && isStackFull(getPlayer(), content.item)) {
+			pulse(`{{chest}} ${content.name ?? ITEM_META[content.item]?.name ?? content.item} が入っている……もう持てない！`, 2400);
+			return;
+		}
+		ss.openedChests.add(posKey); playSound('chest');
 		if (content) {
 			const msg = grantReward(content);
 			// 渡せない指定（未知の type／渡せない item）は空文字が返る＝宝箱の絵だけの
@@ -1005,13 +1022,16 @@ export function createPlayer(deps) {
 			renderBoard(); renderChars(); updateHud(); saveGame();
 			return;
 		}
+		// 回復薬は小・大とも1本まで（キュー13 ③）＝満杯なら拾わずに床に残す（矢束と同じ）。
 		if (tile === TILE.ITEM_HEAL_POTION && !ss.pickedKeys.has(posKey)) {
+			if (isStackFull(player, 'healPotion')) { pulse('{{potion}} 回復薬（小）は もう持てない！'); return; }
 			ss.pickedKeys.add(posKey);
 			giveSubItem('healPotion');
 			playSound('item'); pulse('{{potion}} 回復薬（小）を手に入れた！');
 			renderBoard(); renderChars(); updateHud(); saveGame(); return;
 		}
 		if (tile === TILE.ITEM_BIG_HEAL_POTION && !ss.pickedKeys.has(posKey)) {
+			if (isStackFull(player, 'bigHealPotion')) { pulse('{{potionBig}} 回復薬（大）は もう持てない！'); return; }
 			ss.pickedKeys.add(posKey);
 			giveSubItem('bigHealPotion');
 			playSound('item'); pulse('{{potionBig}} 回復薬（大）を手に入れた！');

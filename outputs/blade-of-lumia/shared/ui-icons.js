@@ -56,6 +56,7 @@ export const UI_ICON = {
 	ladder:     { spr: 'ladderV',    pal: 'ladder'     },
 	wingRobe:   { spr: 'wingRobe',   pal: 'wingRobe'   },
 	swiftBoots: { spr: 'swiftBoots', pal: 'swiftBoots' },   // 疾風の靴（キュー13）
+	fairy:      { spr: 'fairyBottle', pal: 'fairyBottle' }, // 妖精の瓶（キュー13 ③）
 	// その他
 	princess:   { spr: 'princess',   pal: 'princess'   },   // エディタの「姫状態」
 	altar:      { spr: 'altar',      pal: 'altar'      },
@@ -78,7 +79,7 @@ export const EMOJI_TO_ICON = {
 	'⚔': 'sword', '🛡': 'shield', '⚚': 'armor',
 	'🪃': 'boomerang', '💣': 'bomb', '🧪': 'potion', '💊': 'potionBig',
 	'🗺': 'map', '🧭': 'compass', '🎵': 'flute', '🕯': 'candle', '🪜': 'ladder',
-	'🪽': 'wingRobe', '👢': 'swiftBoots', '⛩': 'altar', '🎲': 'dice',
+	'🪽': 'wingRobe', '👢': 'swiftBoots', '🧚': 'fairy', '⛩': 'altar', '🎲': 'dice',
 	'🌿': 'bush', '🔥': 'torch', '☐': 'chest', '🔓': 'doorOpen',
 	'◆': 'rupee', '◇': 'rupeeBlue',
 };

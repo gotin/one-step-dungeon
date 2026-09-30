@@ -23,11 +23,12 @@
 //   getIsShop()    / setIsShop(v)
 //   getIsPaused()  / setIsPaused(v)
 //   getIsShielding() / setIsShielding(v)
+//   giveSubItem(id) / grantReward(content)  … 店で渡す道具・くじの景品（player.js）
 // SPRITES / PAL / ITEM_META / HP_PER_HEART / makeSprite は直接 import
 
 import { HP_PER_HEART } from './constants.js';
 import { SPRITES, PAL, makeSprite } from '../shared/sprites.js';
-import { ITEM_META, EQUIP_META, BOOMERANG_TIERS, SWORD_TIERS, SHIELD_TIERS, ARMOR_TIERS, HEART_PIECES_PER_HEART, ownsItem, addStack } from '../shared/items.js';
+import { ITEM_META, EQUIP_META, BOOMERANG_TIERS, SWORD_TIERS, SHIELD_TIERS, ARMOR_TIERS, HEART_PIECES_PER_HEART, ownsItem, addStack, isStackFull } from '../shared/items.js';
 import { iconCanvas, iconText, iconPxOf } from '../shared/ui-icons.js';
 import { playSound } from '../shared/sounds.js';
 // field の地図（キュー15）の色。エディタのワールドマップのサムネと**同じ関数**を呼ぶ
@@ -111,6 +112,8 @@ export function createUi(deps) {
 		getIsShop,    setIsShop,
 		getIsPaused,  setIsPaused,
 		getIsShielding, setIsShielding,
+		// 店で渡す道具・報酬（player.js の関数＝game.js が後で代入するので薄い包みで受ける）
+		giveSubItem, grantReward,
 	} = deps;
 
 	// ── ui.js ローカル状態（game.js 側フラグには影響しない） ──
@@ -122,6 +125,7 @@ export function createUi(deps) {
 	let shopIdx       = 0;
 	let msgTimer      = null;
 	let pendingPulse  = null; // オーバーレイ表示中に来た pulse() は閉じるまで保留
+	let pendingDialog = null; // 店を開いている間に来た openDialog() は店を閉じるまで保留
 	// ポーズのマーク一覧の並び（先頭は '' ＝選択なし＝矢印を消す行）。↑↓ がこの並びを回す。
 	// ⚠️ **一覧を描いたときだけ入り、隠したら空にする**（2026-09-15 にモードを廃止した＝
 	// ↑↓ が常に生きている∴並びが残っていると、一覧が出ていない層で裏の印が動く）。
@@ -160,6 +164,7 @@ export function createUi(deps) {
 	const markGuideArrowEl = document.getElementById('hud-mark-arrow');
 	const markGuideDistEl  = document.getElementById('hud-mark-dist');
 	const shopOverlayEl    = document.getElementById('shop-overlay');
+	const shopTitleEl      = document.getElementById('shop-title');
 	const shopItemsEl      = document.getElementById('shop-items');
 	const shopResultEl     = document.getElementById('shop-result');
 	const shopRupeesEl     = document.getElementById('shop-rupees');
@@ -474,6 +479,10 @@ export function createUi(deps) {
 	// ダイアログを外部から開く（ヒント・サブアイテム説明など）
 	// `mark`＝看板の「教える目的地」（看板は startDialog を通らず game.js から開く）。
 	function openDialog(name, lines, mark = null) {
+		// 店を開いている間に来たダイアログ（店で初めてサブアイテムを買ったときのヒント）は
+		// 店を閉じてから開く。⚠️ そのまま開くと店の窓の裏に隠れたダイアログがキー入力を奪い、
+		// ↑↓・Escape が効かなくなる（2026-09-30 ユーザー報告＝クリックだけ効く状態）。
+		if (getIsShop()) { pendingDialog = { name, lines, mark }; return; }
 		dialogLines   = lines;
 		dialogLineIdx = 0;
 		pendingDialogMarks = normalizeDialogMarks(mark, getCurrentLayer());
@@ -597,6 +606,8 @@ export function createUi(deps) {
 			[player.hasLadder,     'ladder',     'はしご'],
 			[player.hasWingRobe,   'wingRobe',   '翼の羽衣'],
 			[player.hasSwiftBoots, 'swiftBoots', '疾風の靴(Shift で走る)'],
+			// キュー13 ③：妖精の瓶は使うと減る＝本数も出す（空になったら行から消える）。
+			[player.fairies > 0,   'fairy',      `妖精の瓶 ×${player.fairies}(倒れたら よみがえる)`],
 		].filter(([owned]) => owned);
 		if (keyItems.length > 0) {
 			const keyLine = document.createElement('div');
@@ -938,6 +949,8 @@ export function createUi(deps) {
 		shopGoods = shopData.items.map(g => g.gacha ? { ...g, _posKey: posKey ?? '' } : g);
 		shopIdx   = 0;
 		shopResultEl.className = 'hidden';
+		// 店の名前を出す（キュー13 ③＝field 9,9 に商人・くじ・情報屋が並ぶ∴誰の店か分かるように）
+		if (shopTitleEl) shopTitleEl.textContent = `🏪 ${shopData.name ?? 'みせ'}`;
 		stopGameLoop();
 		renderShop();
 		shopOverlayEl.classList.remove('hidden');
@@ -949,7 +962,50 @@ export function createUi(deps) {
 		shopResultEl.className = 'hidden';
 		shopOverlayEl.classList.add('hidden');
 		startGameLoop();
+		// 保留したダイアログを先に開く＝続く pulse はダイアログを閉じるまで保留される
+		if (pendingDialog) {
+			const d = pendingDialog;
+			pendingDialog = null;
+			openDialog(d.name, d.lines, d.mark);
+		}
 		flushPendingPulse();
+	}
+
+	// 店の中の知らせは `#shop-result` に出す。⚠️ `pulse()` は店を開いている間は保留されて
+	// 閉じた後に出る（pendingPulse）∴「足りない」「持てない」を pulse で出すと、押した瞬間には
+	// 何も起きず、閉じてから文が出る（キュー13 ③まではそうだった）。
+	function shopSay(text, miss = false) {
+		shopResultEl.className = miss ? 'miss' : '';
+		shopResultEl.textContent = text;
+	}
+
+	// ── 情報屋のうわさ（キュー13 ③・2026-09-29 ユーザー確定）──
+	// 品＝`{ id:'rumor', name, price, rumor:{ layer?, stage, cell, label, hint? } }`。
+	// 買うと `rumor.stage` に目的地マーク（kind 'item'）が立つ。`rumor.cell` はその画面の宝箱。
+	// 状態＝'found'（その宝箱をもう開けた＝教える意味が無い）／'sold'（その印をもう持っている）／''。
+	// ⚠️ 「売り切れ」を別の旗で持たない＝印そのものが売った記録（旗を足すと印を消す操作が
+	//    入ったときに食い違う）。印は画面単位（`markId(layer, stage)`）∴同じ画面に別の用で
+	//    立った印があっても「もう教えた」になる＝今の8件は印の無い画面だけ（データ検査で守る）。
+	function rumorLayer(r) { return r.layer ?? 'field'; }
+	function rumorState(r) {
+		const layer = rumorLayer(r);
+		if (getSS(layer, r.stage)?.openedChests?.has(r.cell)) return 'found';
+		const id = markId(layer, r.stage);
+		if (getMarks().some(m => markId(m.layer, m.stage) === id)) return 'sold';
+		return '';
+	}
+
+	// 買えない理由（行の表示と購入の拒否で同じ判定を使う）。'' なら売れる。
+	function shopGoodBlock(g) {
+		const player = getPlayer();
+		if (g.rumor) {
+			const st = rumorState(g.rumor);
+			if (st === 'found') return '見つけた';
+			if (st === 'sold')  return '地図に記した';
+			return '';
+		}
+		if (!g.gacha && isStackFull(player, g.id)) return 'もう持てない';
+		return '';
 	}
 
 	function renderShop() {
@@ -961,18 +1017,21 @@ export function createUi(deps) {
 			const price = g.gacha ? g.gacha.price : g.price;
 			const name = g.name ?? meta?.name ?? g.id;
 			const row  = document.createElement('div');
-			const canBuy = player.rupees >= price;
+			const block = shopGoodBlock(g);
+			const canBuy = player.rupees >= price && !block;
 			row.className = `shop-item-row${i === shopIdx ? ' selected' : ''}${canBuy ? '' : ' cannot-afford'}`;
 			// 10e: 絵文字ではなく絵（canvas）を並べる。innerHTML では canvas を差せない∴
 			// DOM を組む（品名は `g.name` にステージ由来の文字列が入る∴HTML 埋め込みも避けたい）。
 			const iconSpan = document.createElement('span');
 			iconSpan.className = 'shop-item-icon';
-			const iconCv = g.gacha ? iconCanvas('dice', 22) : subItemIconCanvas(g.id, player, 22);
+			const iconCv = g.gacha ? iconCanvas('dice', 22)
+				: g.rumor ? iconCanvas('map', 22)
+				: subItemIconCanvas(g.id, player, 22);
 			if (iconCv) iconSpan.appendChild(iconCv);
 			else iconSpan.textContent = meta?.icon ?? (g.gacha ? '🎲' : g.id);
 			const nameSpan = document.createElement('span');
 			nameSpan.className = 'shop-item-name';
-			nameSpan.textContent = `${name}${g.count ? ` ×${g.count}` : ''}`;
+			nameSpan.textContent = `${name}${g.count ? ` ×${g.count}` : ''}${block ? `（${block}）` : ''}`;
 			const priceSpan = document.createElement('span');
 			priceSpan.className = 'shop-item-price';
 			const priceCv = iconCanvas('rupee', 16);
@@ -982,6 +1041,7 @@ export function createUi(deps) {
 			row.append(iconSpan, nameSpan, priceSpan);
 			row.addEventListener('click', () => { shopIdx = i; renderShop(); shopBuy(); });
 			shopItemsEl.appendChild(row);
+			if (i === shopIdx) row.scrollIntoView?.({ block: 'nearest' });
 		});
 	}
 
@@ -997,18 +1057,25 @@ export function createUi(deps) {
 		renderShop();
 	}
 
-	function shopBuy(giveSubItemFn, updateHudFn, grantRewardFn, getLayerFn, getStageFn) {
+	// ⚠️ 引数を取らない＝渡す道具・報酬は deps（`giveSubItem` / `grantReward`）から引く。
+	//    キュー13 ③まではキー操作（game.js のラッパー）だけが関数を引数で渡し、**行のクリック**
+	//    （`renderShop` の click → `shopBuy()`）は何も渡していなかった＝クリックで買うと
+	//    ルピーだけ減って薬が来なかった。入口が2つある関数に依存を引数で渡さない。
+	function shopBuy() {
 		const player = getPlayer();
 		const g = shopGoods[shopIdx];
 		if (!g) return;
 
+		// 情報屋のうわさ（キュー13 ③）
+		if (g.rumor) { buyRumor(g); return; }
+
 		// ガチャ分岐（good に gacha プロパティがある場合）
 		if (g.gacha) {
 			const gacha = g.gacha;
-			if (player.rupees < gacha.price) { pulse('ルピーが足りない！', 1500); return; }
+			if (player.rupees < gacha.price) { shopSay('ルピーが足りない！', true); return; }
 			player.rupees -= gacha.price;
-			const layer = getLayerFn ? getLayerFn() : '';
-			const stageKey = getStageFn ? getStageFn() : '';
+			const layer = getCurrentLayer();
+			const stageKey = getStageKey();
 			const posKey = g._posKey ?? '';
 			const gachaKey = `${layer}:${stageKey}:${posKey}`;
 			if (!player.gachaPulls) player.gachaPulls = {};
@@ -1029,10 +1096,13 @@ export function createUi(deps) {
 					if (roll <= 0) { reward = entry.reward; break; }
 				}
 			}
-			const msg = grantRewardFn ? grantRewardFn(reward) : '';
+			// 当たった品が上限つきで満杯（キュー13 ③）＝ルピーは払った後∴はずれ扱いで
+			// 「もう持てない」と言う（払い戻しはしない＝くじの賭けの側に入れる。PLAN キュー36）。
+			const full = reward.type === 'item' && isStackFull(player, reward.item);
+			const msg = grantReward ? grantReward(reward) : '';
 			const matchedEntry = gacha.pool.find(e => e.reward === reward);
-			const isRare = reward === gacha.pityReward || (matchedEntry?.weight ?? 100) <= 10;
-			const isMiss = reward.type === 'rupee' && (reward.value ?? 0) < gacha.price;
+			const isRare = !full && (reward === gacha.pityReward || (matchedEntry?.weight ?? 100) <= 10);
+			const isMiss = full || (reward.type === 'rupee' && (reward.value ?? 0) < gacha.price);
 			playSound(isRare ? 'appear' : 'item');
 			if (isMiss) {
 				shopResultEl.className = 'miss';
@@ -1041,32 +1111,61 @@ export function createUi(deps) {
 				shopResultEl.className = '';
 				shopResultEl.textContent = `✨ あたり！ ${msg || '何かを手に入れた！'}`;
 			}
-			if (updateHudFn) updateHudFn(); else updateHud();
+			updateHud();
 			saveGame();
 			renderShop();
 			return;
 		}
 
-		if (player.rupees < g.price) { pulse('ルピーが足りない！', 1500); return; }
-		player.rupees -= g.price;
 		const meta = ITEM_META[g.id];
+		const name = meta?.name ?? g.id;
+		// 持てないなら売らない＝ルピーを取らない（床の薬・宝箱の「その場に残す」と同じ作法）。
+		if (isStackFull(player, g.id)) { shopSay(`${name} は もう持てない！`, true); return; }
+		if (player.rupees < g.price) { shopSay('ルピーが足りない！', true); return; }
+		player.rupees -= g.price;
 		if (g.id === 'bomb') {
 			if (!player.subItems.bomb) player.subItems.bomb = { count: 0 };
 			player.subItems.bomb.count = addStack(player.subItems.bomb.count, g.count ?? 1, player.maxBombs ?? 8);
 			if (!player.activeSubItem) player.activeSubItem = 'bomb';
-		} else if (g.id === 'healPotion' || g.id === 'bigHealPotion') {
-			if (giveSubItemFn) giveSubItemFn(g.id);
-		} else if (g.id === 'boomerang') {
-			if (!player.subItems.boomerang) player.subItems.boomerang = { count: Infinity };
-			if (!player.activeSubItem) player.activeSubItem = 'boomerang';
-			// Phase 9-6: 店売りは木ティア。既に銀を持っていれば下げない。
-			if ((player.boomerangTier ?? -1) < 0) player.boomerangTier = 0;
 		} else {
-			if (giveSubItemFn) giveSubItemFn(g.id);
+			// ブーメランなど進行の道具（SUB_ITEM_KEYS）は店で売らない（2026-09-30 ユーザー判定）
+			// ＝専用の分岐は持たない。データの番人＝tests/rupee-sinks.spec.js ⑪。
+			giveSubItem?.(g.id);
 		}
 		playSound('item');
-		pulse(`${meta?.name ?? g.id} を購入した！`, 1500);
-		if (updateHudFn) updateHudFn(); else updateHud();
+		shopSay(g.id === 'fairy' ? `${name} を購入した！（倒れても 一度だけ よみがえる）` : `${name} を購入した！`);
+		updateHud();
+		saveGame();
+		renderShop();
+	}
+
+	// うわさを買う＝その画面に目的地マークを立てる。教える意味が無いとき（もう見つけた／
+	// もう教えた／地図が無い）は**ルピーを取らない**。
+	function buyRumor(g) {
+		const player = getPlayer();
+		const r = g.rumor;
+		const layer = rumorLayer(r);
+		const st = rumorState(r);
+		if (st === 'found') { shopSay('そこの宝なら もう 見つけたようだね。', true); return; }
+		if (st === 'sold')  { shopSay('その場所なら もう 地図に 記してあるよ。', true); return; }
+		// 印は地図が無いと見えない（`updateMarkGuide` が地図の有無で隠す）＝売ると
+		// 「払ったのに何も起きない」になる∴地図を持つまで売らない。
+		if (!hasLayerMap(layer)) { shopSay('地図を 持っていないと 場所を 教えられないな。', true); return; }
+		if (player.rupees < g.price) { shopSay('ルピーが足りない！', true); return; }
+		player.rupees -= g.price;
+		if (!grantMark({ layer, stage: r.stage, label: r.label, kind: 'item' })) {
+			// 行き先が実在しない（データの書き間違い）＝払い戻す（`grantMark` が警告を出す）
+			player.rupees += g.price;
+			shopSay('……いや、その話は 忘れてしまった。', true);
+			renderShop();
+			return;
+		}
+		// 買った印を選ぶ＝店を出た瞬間に HUD の矢印がそこを指す（買った直後に探しに行く）。
+		player.selectedMarkId = markId(layer, r.stage);
+		updateMarkGuide();
+		playSound('item');
+		shopSay(`地図に「${r.label}」を記した！${r.hint ? ` ${r.hint}` : ''}`);
+		updateHud();
 		saveGame();
 		renderShop();
 	}

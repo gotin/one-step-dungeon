@@ -116,6 +116,8 @@ export const ITEM_PAL = {
 	dice:       ['transparent','#3a332c','#8e8a7e','#c2beb0','#f6f2e6','#b02828'],
 	// 疾風の靴（キュー13。1=輪郭 2=革暗 3=革 4=革明 5=靴底 6=金の留め具 7=羽白 8=羽陰）
 	swiftBoots: ['transparent','#1e1a24','#1f5a5a','#2f8a84','#5cc0b0','#3a2a1c','#e0a828','#ffffff','#b8d0e0'],
+	// 妖精の瓶（キュー13 ③。1=輪郭 2=ガラス陰 3=ガラス 4=ガラス明 5=コルク 6=白 7=妖精(桃) 8=光(金)）
+	fairyBottle: ['transparent','#141a26','#3a6a8a','#7fb8d8','#c8ecf8','#9a6a38','#ffffff','#ff70b0','#ffe070'],
 };
 
 export const ITEM_SPRITES = {};

@@ -35,9 +35,14 @@
     flex-direction: column;
     gap: 8px;
     margin-bottom: 14px;
+    /* 情報屋は品が8行ある（キュー13 ③）＝画面の低い窓では枠からはみ出す∴中だけ流す。
+       選択行は ui.js renderShop が scrollIntoView で見える位置に寄せる。 */
+    max-height: 56vh;
+    overflow-y: auto;
 }
 
 .shop-item-row {
+    flex-shrink: 0;
     display: flex;
     align-items: center;
     gap: 10px;

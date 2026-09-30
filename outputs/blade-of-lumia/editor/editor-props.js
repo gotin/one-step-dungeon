@@ -7,6 +7,7 @@ import { mountIconEls, iconText } from '../shared/ui-icons.js';
 import { MARK_KINDS, DEFAULT_MARK_KIND, isStageKey } from '../shared/marks.js';
 import { variantOptions, readEntryVariants, applyEntryVariants } from '../shared/dialog-variants.js';
 import { CONDITION_TRIGGERS, KNOWN_TRIGGERS } from '../shared/triggers.js';
+import { SHOP_NPC_SPRITES } from '../shared/npcs.js';
 
 // ── 右パネル統合呼び出し ──────────────────────────────────────
 export function renderSidePanel() {
@@ -463,20 +464,31 @@ function renderShops(sd) {
 		const item = document.createElement('div');
 		item.className = 'link-item';
 		const itemsJson = JSON.stringify(data.items ?? [], null, 2);
+		// 見た目の差し替え（shopData.sprite）。候補は shared/npcs.js SHOP_NPC_SPRITES から導く＝手書きしない。
+		// 表に無い名前が入っていたら「（不明）」として残す＝黙って既定に戻さない。
+		const spriteOpts = [['', '既定（商人の絵）'], ...Object.entries(SHOP_NPC_SPRITES).map(([k, v]) => [k, v.label])];
+		if (data.sprite && !SHOP_NPC_SPRITES[data.sprite]) spriteOpts.push([data.sprite, `（不明：${data.sprite}＝既定で描く）`]);
+		const spriteSel = spriteOpts.map(([k, lb]) => `<option value="${k}"${(data.sprite ?? '') === k ? ' selected' : ''}>${lb}</option>`).join('');
 		item.innerHTML = `
 			<div class="link-item-header"><span>ショップ (${r},${c})</span></div>
 			<label>店名 <input type="text" value="${data.name??''}" data-key="${key}" data-f="name"></label>
+			<label>見た目 <select data-key="${key}" data-f="sprite">${spriteSel}</select></label>
 			<label>商品リスト（JSON）
 				<textarea data-key="${key}" data-f="items" rows="6" style="font-family:monospace;font-size:0.65rem">${itemsJson}</textarea>
 			</label>
 		`;
 		item.querySelectorAll('[data-key]').forEach(inp => {
-			inp.addEventListener('input', () => {
+			inp.addEventListener(inp.tagName === 'SELECT' ? 'change' : 'input', () => {
 				if (!sd.shopData) sd.shopData = {};
 				if (!sd.shopData[key]) sd.shopData[key] = { name: '', items: [] };
 				const f = inp.dataset.f;
 				if (f === 'items') {
 					try { sd.shopData[key].items = JSON.parse(inp.value); } catch { /* invalid JSON */ }
+				} else if (f === 'sprite') {
+					// 既定＝キーごと消す（空文字を残さない）。盤面はアニメーションループ（400ms ごとの
+					// renderStageCanvas）が描き直す＝ここで個別に描かなくても選んだ絵がすぐ出る。
+					if (inp.value) sd.shopData[key].sprite = inp.value;
+					else delete sd.shopData[key].sprite;
 				} else {
 					sd.shopData[key][f] = inp.value;
 				}

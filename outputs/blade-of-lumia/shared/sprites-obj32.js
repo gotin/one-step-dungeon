@@ -1596,6 +1596,31 @@ function swiftBootsGrid() {
 	return g;
 }
 
+// 妖精の瓶（ITEM_META.fairy・キュー13 ③）── ink 16×21。丸いガラス瓶＋コルク栓＋中で光る妖精。
+// fairyBottle パレット：1輪郭 2ガラス(陰) 3ガラス 4ガラス(明) 5コルク 6白(羽・光) 7妖精(桃) 8光(金)。
+// 回復薬（細長い瓶・液体入り）と並んでも別物に読めるよう、瓶は丸く・中身は液体でなく光にする。
+function fairyBottleGrid() {
+	const g = blank();
+	rect(g, 5, 14, 7, 17, 5);                  // コルク栓
+	rect(g, 8, 14, 10, 17, 4);                 // 首
+	rrect(g, 11, 9, 24, 22, 4, 3);             // 胴（丸み）
+	// 右の陰・底の陰は胴の内側だけ塗る（丸めた角に塗ると輪郭が段々に飛び出す）
+	for (let r = 11; r <= 24; r++) for (let c = 20; c <= 21; c++) if (g[r][c]) put(g, r, c, 2);
+	for (let c = 9; c <= 22; c++) if (g[24][c]) put(g, 24, c, 2);
+	put(g, 16, 10, 6); put(g, 17, 10, 6); put(g, 18, 10, 6);   // ガラスの照り（羽と離す）
+	// 妖精＝桃色の体に白い羽（上の羽は斜め上へ大きく・下の羽は小さく＝蝶の形）＋金の粉。
+	// ⚠️ 経緯（`.scratch/q13-fairy-draw.mjs`）＝①細い十字の体に短い羽だと十字架に見えた
+	//    ②金の光の四角の上に白い羽を置くと、白と金が近くて羽が消えた → 光をやめて粉にした。
+	rect(g, 14, 15, 15, 16, 7);                 // 頭
+	rect(g, 16, 15, 19, 16, 7);                 // 胴
+	const wing = [[13, 12], [13, 13], [14, 11], [14, 12], [14, 13], [15, 12], [15, 13], [15, 14], [16, 14],
+		[17, 14], [18, 13], [18, 14], [19, 13]];
+	for (const [r, c] of wing) { put(g, r, c, 6); put(g, r, 31 - c, 6); }   // 左右対称（中心は 15.5 列）
+	for (const [r, c] of [[12, 16], [20, 11], [21, 19], [17, 20]]) put(g, r, c, 8);   // 金の粉
+	strokeOutside(g);
+	return g;
+}
+
 // 布の服（ARMOR_TIERS[0]）── ink 24×30。
 // armorCloth パレット：1輪郭 2影 3布の地 4布の明部 5縁取り（生成りのクリーム）。
 // なぜ armor（胸当て）と別の絵か＝ティア0は「布の服」なのに金属の胸当てを色替えで
@@ -1796,6 +1821,7 @@ export const OBJ32_SPRITES = {
 	dice:          [diceGrid()],
 	candle:        [CANDLE_32],
 	swiftBoots:    [swiftBootsGrid()],     // キュー13：疾風の靴
+	fairyBottle:   [fairyBottleGrid()],    // キュー13 ③：妖精の瓶
 	// ── 10d-4 ──
 	arrow:         [arrowGrid()],
 	shieldSide:    [shieldSideGrid()],

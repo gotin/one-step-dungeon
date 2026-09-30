@@ -224,6 +224,15 @@ export const ITEM_META = {
 		type: 'passive',
 		uses: null,
 	},
+	fairy: {
+		// 実行キュー13 ③（2026-09-29 ユーザー確定）：妖精の瓶。持っている間に HP が 0 になると
+		// 1本使ってその場で HP 全快でよみがえる（`game/combat.js takeDamage`）。
+		// 数は `player.fairies`（サブアイテム欄に並ばない＝使う操作が無い∴passive）。
+		// 上限は `ITEM_STACK_MAX.fairy`＝1本。売るのは field 9,9 の旅の商人だけ。
+		name: '妖精の瓶', icon: '🧚', sprite: 'fairyBottle', pal: 'fairyBottle',
+		type: 'passive',
+		uses: null,
+	},
 };
 
 // ── `defaultStack`：数で持つ道具の「1セット」の本数（実行キュー19・2026-09-21）──
@@ -320,10 +329,42 @@ export const RUPEE_VALUE = {
 	rupeeBlue:  5,
 };
 
-// ── スタック上限 ─────────────────────────────────────────────────
+// ── 持てる数の上限（実行キュー13 ③・2026-09-29 ユーザー確定）───────────────
+// 回復薬は小・大とも1本まで・妖精の瓶も1本まで。
+// 理由＝回復薬が安く何本でも持てると、妖精の瓶（よみがえり）を買う理由が無い
+// （薬を9本抱えれば死なない）。上限を1本にして「どれを持って行くか」を選ばせる。
+// ⚠️ 矢と爆弾はここに書かない＝上限は `player.maxArrows` / `player.maxBombs`
+//    （矢筒・爆弾袋で伸びる）。2026-09-29 まではここに bomb:10 / bow:30 / 薬 9・3 が
+//    書かれていたが**どこからも読まれていない死んだ数**だった。
+// ⚠️ 上限を超えて持っているセーブ（上限導入前に薬を何本も持った）は**減らさない**
+//    （`addStack` と同じ作法）＝使って1本を切るまで新しく持てないだけ。
+// 読み手は `isStackFull` の1本だけ（床の薬・宝箱・店・くじ・`giveSubItem`）。
 export const ITEM_STACK_MAX = {
-	bomb:          10,
-	bow:           30,   // 矢の本数
-	healPotion:    9,
-	bigHealPotion: 3,
+	healPotion:    1,
+	bigHealPotion: 1,
+	fairy:         1,
 };
+
+/**
+ * 上限つきの道具を今いくつ持っているか。妖精の瓶だけ置き場が違う（`player.fairies`）。
+ * @param {object} player
+ * @param {string} id `ITEM_STACK_MAX` のキー
+ * @returns {number}
+ */
+export function stackCount(player, id) {
+	if (id === 'fairy') return Number.isFinite(player?.fairies) ? player.fairies : 0;
+	const n = player?.subItems?.[id]?.count;
+	return Number.isFinite(n) ? n : 0;
+}
+
+/**
+ * もう持てないか（上限の無い道具は常に false）。
+ * @param {object} player
+ * @param {string} id
+ * @returns {boolean}
+ */
+export function isStackFull(player, id) {
+	const cap = ITEM_STACK_MAX[id];
+	if (cap == null) return false;
+	return stackCount(player, id) >= cap;
+}

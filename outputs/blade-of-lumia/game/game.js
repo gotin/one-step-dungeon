@@ -97,6 +97,8 @@ let player = {
 	hp: 6, maxHp: 6, maxHearts: 3,
 	// キュー13: ハートのかけらの端数（0〜3・4つで器1個＝`player.js gainHeartPiece`）。
 	heartPieces: 0,
+	// キュー13 ③: 妖精の瓶の本数（上限1＝items.js ITEM_STACK_MAX・倒れたとき combat.js が使う）。
+	fairies: 0,
 	atk: 2, def: 0, keys: 0,
 	weapon: null, shield: null, armor: null,
 	subItems: {}, activeSubItem: null,
@@ -720,6 +722,10 @@ const { checkStoneOnSwitch, evaluateConditions, refreshGates } = createCondition
 		getIsShop,    setIsShop,
 		getIsPaused,  setIsPaused,
 		getIsShielding, setIsShielding,
+		// 店が渡す道具・報酬（キュー13 ③）。⚠️ 矢印で包む＝この2つは下の player 生成
+		// （`_player`）で後から差し替わる∴関数そのものを渡すと空の初期値を掴んだままになる。
+		giveSubItem:       (id) => giveSubItem(id),
+		grantReward:       (content) => grantReward(content),
 	});
 
 	// factory が生成した関数で旧実装を上書き
@@ -743,7 +749,7 @@ const { checkStoneOnSwitch, evaluateConditions, refreshGates } = createCondition
 	renderShop       = _ui.renderShop;
 	shopSelectPrev   = _ui.shopSelectPrev;
 	shopSelectNext   = _ui.shopSelectNext;
-	shopBuy          = () => _ui.shopBuy(giveSubItem, updateHud, grantReward, () => currentLayer, () => stageKey);
+	shopBuy          = _ui.shopBuy;
 	// 第3引数＝看板が教える目的地（キュー16）。呼び元が渡さなければ null＝従来どおり。
 	openDialog       = (name, lines, mark) => _ui.openDialog(name, lines, mark);
 	// 台詞と目的地マークを同じ進行状態から解決する（キュー17-2）。
@@ -1972,6 +1978,7 @@ function startNewGame() {
 		x: startCol, y: startRow,
 		hp: 6, maxHp: 6, maxHearts: 3,
 		heartPieces: 0,
+		fairies: 0,
 		atk: 2, def: 0, keys: 0,
 		weapon: null, shield: null, armor: null,
 		subItems: {}, activeSubItem: null,
@@ -2227,6 +2234,7 @@ export function getGameState() {
 			x: player.x, y: player.y, hp: player.hp, maxHp: player.maxHp,
 			maxHearts: player.maxHearts ?? 3,
 			heartPieces: player.heartPieces ?? 0,
+			fairies: player.fairies ?? 0,
 			hasWingRobe: !!player.hasWingRobe, flying: !!player.flying,
 			hasLadder: !!player.hasLadder,
 			hasSwiftBoots: !!player.hasSwiftBoots, dashing: isDashing,

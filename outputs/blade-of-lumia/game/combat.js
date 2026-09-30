@@ -608,7 +608,28 @@ export function createCombat(deps) {
 		playSound('playerHit');
 		showPlayerBlink();
 		updateHud();
-		if (player.hp <= 0) gameOver();
+		if (player.hp <= 0) {
+			if (reviveByFairy(player)) return;
+			gameOver();
+		}
+	}
+
+	// ── 妖精の瓶（キュー13 ③・2026-09-29 ユーザー確定）──────────
+	// HP が 0 になった瞬間に1本使い、その場で HP 全快でよみがえる（部屋のやり直しではない）。
+	// ここは `takeDamage` の中＝HP を失う唯一の入口∴体当たり・投擲物・炎・毒のどれで
+	// 倒れても同じく効く。よみがえった直後は無敵窓を張る＝重なった敵に同じ tick で
+	// もう一度倒されない（毒は `ignoreInvincible` で通るが HP 全快から1ずつ＝すぐには倒れない）。
+	const FAIRY_INVINCIBLE_MS = 2000;
+	function reviveByFairy(player) {
+		if (!(player.fairies > 0)) return false;
+		player.fairies -= 1;
+		player.hp = player.maxHp;
+		setInvincibleUntil(gameNow() + FAIRY_INVINCIBLE_MS);
+		playSound('appear');
+		pulse('{{fairy}} 妖精が 飛び出して 傷を いやしてくれた！', 2600);
+		updateHud();
+		saveGame();
+		return true;
 	}
 
 	// ── 剣攻撃 ───────────────────────────────────────────

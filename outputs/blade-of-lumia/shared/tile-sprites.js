@@ -66,6 +66,8 @@ export const TILE_SPRITE_MAP = {
 	[TILE.PLAYER]:    { spr: 'heroD',    pal: 'hero'     },
 	[TILE.NPC_A]:     { spr: 'npcA',     pal: 'npcA'     },
 	[TILE.NPC_B]:     { spr: 'npcB',     pal: 'npcB'     },
+	// 店。店ごとの差し替え（shopData.sprite）は shared/npcs.js npcSpriteOf が引く＝ここは既定の絵
+	[TILE.NPC_SHOP]:  { spr: 'npcShop',  pal: 'npcB'     },
 	[TILE.ITEM_SWORD]:           { spr: 'sword',    pal: 'sword'    },
 	[TILE.ITEM_SHIELD]:          { spr: 'shield',   pal: 'shield'   },
 	[TILE.ITEM_BOOMERANG]:       { spr: 'boomerang',pal: 'boomerang'},

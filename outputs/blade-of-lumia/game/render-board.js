@@ -13,7 +13,7 @@
 //   getCharLayerElRef() → { value } ラッパー（charLayerEl への書き込み）
 //   getDoorwayState(posKey) → ドアウェイ開閉状態
 //
-// shared モジュール（TILE / SPRITES / PAL / NPC_SPRITE_MAP / drawSpriteFrame / makeSprite）
+// shared モジュール（TILE / SPRITES / PAL / npcSpriteOf / drawSpriteFrame / makeSprite）
 // は直接 import する（game.js スコープ外・再代入なし）。
 
 import { TILE } from '../shared/tiles.js';
@@ -21,7 +21,7 @@ import { SPRITES, PAL, drawSprite, drawSpriteFrame, drawSpriteLayers, makeSprite
 import { TILE_SPRITE_MAP, TILE_SPRITE_SCALE } from '../shared/tile-sprites.js';
 import { isConnectTile } from '../shared/tile-connect.js';
 import { describeCell, BG_TILE_STYLE } from '../shared/cell-appearance.js';
-import { NPC_SPRITE_MAP } from '../shared/npcs.js';
+import { npcSpriteOf } from '../shared/npcs.js';
 
 // 末尾の共通スプライト fallback で「静的に描いてよい落ちアイテム」タイルの集合。
 // 敵・プレイヤー・NPC は実体として render-chars が描くので含めない（重複描画防止）。
@@ -417,7 +417,7 @@ export function createRenderBoard(deps) {
 			return;
 		}
 		// NPC
-		const npcMeta = NPC_SPRITE_MAP[tile];
+		const npcMeta = npcSpriteOf(stageData, posKey, tile);   // 店ごとの見た目（shopData.sprite）もここで引く
 		if (npcMeta) {
 			const cv = makeSprite(npcMeta.sprite, npcMeta.pal, true);
 			if (cv) { cv.classList.add('char-sprite'); cellEl.appendChild(cv); }

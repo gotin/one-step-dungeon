@@ -36,6 +36,7 @@ import { connectedTileParts, isConnectTile } from './tile-connect.js';
 import { skinnedSprite } from './tile-skins.js';
 import { objVariantName } from './sprites-tiles.js';
 import { ENEMY_TILES } from './enemies.js';
+import { npcSpriteOf } from './npcs.js';
 
 // tiles 層に置かれると下地（bgTiles）が見えなくなるタイル。
 // ＝render-board.js setCellClass がここで return して applyBgTileClass を呼ばないセル。
@@ -195,6 +196,12 @@ export function describeCell(stageData, r, c, tile) {
 	if (t === TILE.DOOR) {
 		const { spr, flipX } = doorSprite(stageData, r, c);
 		d.obj = { spr, pal: si.pal, flipX, role, skin: null };
+		return d;
+	}
+	// 店は店ごとに見た目を差し替えられる（shopData.sprite＝情報屋）。ゲームと同じ npcSpriteOf で引く。
+	if (t === TILE.NPC_SHOP) {
+		const m = npcSpriteOf(stageData, `${r},${c}`, t);
+		d.obj = { spr: m.sprite, pal: m.pal, flipX: false, role, skin: null };
 		return d;
 	}
 	// 山・木・茂みは下地から肌を選び（tile-skins.js）、さらにセル座標で変種を選ぶ

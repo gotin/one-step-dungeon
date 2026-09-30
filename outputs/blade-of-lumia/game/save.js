@@ -123,6 +123,13 @@ export function sanitizeLoadedPlayer(player, itemMeta) {
 		const n = Math.floor(Number(player.heartPieces));
 		player.heartPieces = Number.isFinite(n) ? Math.min(3, Math.max(0, n)) : 0;
 	}
+	// キュー13 ③: 妖精の瓶の本数。瓶の導入前のセーブは 0。壊れた値（数でない・負・小数）は
+	// 0 以上の整数に丸める＝`takeDamage` の `fairies > 0` が文字列や NaN で化けない。
+	// 上限（1本）を超えていても**減らさない**（回復薬と同じ作法＝items.js ITEM_STACK_MAX）。
+	{
+		const n = Math.floor(Number(player.fairies));
+		player.fairies = Number.isFinite(n) ? Math.max(0, n) : 0;
+	}
 	// Phase 9-6: ブーメランティアの補完。ティア導入前のセーブは
 	// 「ブーメランを持っている＝木ティア(0)」「持っていない＝未所持(-1)」。
 	if (player.boomerangTier == null) {
