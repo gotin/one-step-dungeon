@@ -234,7 +234,13 @@ export function createRenderBoard(deps) {
 		const stageKey     = getStageKey();
 		const dsc = desc ?? describeCell(stageData, ...posKey.split(',').map(Number), tile);
 
-		if (tile === TILE.WALL || tile === TILE.FLOOR || tile === TILE.PLAYER) return;
+		if (tile === TILE.FLOOR || tile === TILE.PLAYER) return;
+		if (tile === TILE.WALL) {
+			// キュー23：壁＝天端＋南の前面＋縁。部品の選択は shared/cell-appearance.js の
+			// wallParts() が持つ＝エディタと同じ絵。
+			drawConnectTile(cellEl, dsc.objConnect);
+			return;
+		}
 
 		if (tile === TILE.CHEST) {
 			// 未開封のときだけ宝箱を描く（開封済みは床）。必ず return すること

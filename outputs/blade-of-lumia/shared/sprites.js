@@ -9,6 +9,7 @@ import { TILE_PAL, TILE_SPRITES }     from './sprites-tiles.js';
 import { OBJ32_SPRITES }              from './sprites-obj32.js';
 import { SKY_PAL, SKY_SPRITES }       from './sprites-sky.js';
 import { PIT_PAL, PIT_SPRITES }       from './sprites-pit.js';
+import { WALL_PAL, WALL_SPRITES }     from './sprites-wall.js';
 
 // ── パレット（全カテゴリをマージ）────────────────────────────
 export const PAL = {
@@ -18,6 +19,7 @@ export const PAL = {
 	...TILE_PAL,
 	...SKY_PAL,
 	...PIT_PAL,
+	...WALL_PAL,
 };
 
 // ── スプライトデータ（全カテゴリをマージ）────────────────────
@@ -34,6 +36,8 @@ export const SPRITES = {
 	...SKY_SPRITES,
 	// 穴（PIT・`x`）＝底＋縁の部品。色は地形ごとの肌のパレット `pit@grass` 等（キュー22）
 	...PIT_SPRITES,
+	// 壁（WALL・`#`）＝天端＋南の前面＋縁の部品（キュー23）
+	...WALL_SPRITES,
 };
 
 // ── 遅延登録 ───────────────────────────────────────────────────

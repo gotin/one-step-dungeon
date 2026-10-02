@@ -54,7 +54,7 @@ function pickScreens() {
 	for (const [lk, ld] of gameLayerEntries(MAP)) {
 		for (const [sk, sd] of Object.entries(ld.stages ?? {})) {
 			if (!sd?.tiles) continue;
-			const n = { ground: 0, connect: 0, skin: 0, door: 0, sky: 0, pit: 0, pitGround: 0 };
+			const n = { ground: 0, connect: 0, skin: 0, door: 0, sky: 0, pit: 0, pitGround: 0, wallFace: 0 };
 			for (let r = 0; r < sd.rows; r++) {
 				for (let c = 0; c < sd.cols; c++) {
 					const d = describeCell(sd, r, c);
@@ -65,13 +65,14 @@ function pickScreens() {
 					if (d.tile === TILE.SKY) n.sky++;   // キュー38：空の切り身＋崖の縁
 					if (d.tile === TILE.PIT) n.pit++;   // キュー22：穴の底＋縁（肌は下地から）
 					if (d.tile === TILE.PIT && d.objConnect?.skin !== 'floor') n.pitGround++;   // 地面の肌の穴（field）
+					if (d.tile === TILE.WALL && d.objConnect?.edgeCode.includes('S')) n.wallFace++;   // キュー23：前面の立つ壁
 				}
 			}
 			rows.push({ lk, sk, sd, ...n });
 		}
 	}
 	const chosen = new Map();
-	for (const cat of ['ground', 'connect', 'skin', 'door', 'sky', 'pit', 'pitGround']) {
+	for (const cat of ['ground', 'connect', 'skin', 'door', 'sky', 'pit', 'pitGround', 'wallFace']) {
 		for (const s of [...rows].sort((a, b) => b[cat] - a[cat]).slice(0, 2)) {
 			if (s[cat] > 0) chosen.set(`${s.lk}/${s.sk}`, s);
 		}
@@ -187,7 +188,7 @@ test.describe('11b：エディタ・プレビュー・ゲームで同じセル�
 
 		// ── 突き合わせ ──
 		const bad = [];
-		const seen = { ground: 0, connect: 0, skin: 0, door: 0, sky: 0, skyEdge: 0, pit: 0, pitEdge: 0, cells: 0, base: 0 };
+		const seen = { ground: 0, connect: 0, skin: 0, door: 0, sky: 0, skyEdge: 0, pit: 0, pitEdge: 0, wall: 0, wallFace: 0, wallSide: 0, cells: 0, base: 0 };
 		const pitSkins = new Set();
 		for (const s of SCREENS) {
 			const key = `${s.lk}/${s.sk}`;
@@ -211,6 +212,11 @@ test.describe('11b：エディタ・プレビュー・ゲームで同じセル�
 						seen.pit++;
 						if (d.objConnect?.edgeCode !== '-') seen.pitEdge++;
 						pitSkins.add(d.objConnect?.skin);
+					}
+					if (d.tile === TILE.WALL) {
+						seen.wall++;
+						if (d.objConnect?.edgeCode.includes('S')) seen.wallFace++;
+						if (/[WE]/.test(d.objConnect?.edgeCode ?? '')) seen.wallSide++;
 					}
 
 					// ② エディタとプレビューは全部（敵・状態つきの物・文字アイコンまで）一致する
@@ -254,6 +260,10 @@ test.describe('11b：エディタ・プレビュー・ゲームで同じセル�
 		expect(seen.pitEdge).toBeGreaterThan(5);
 		expect(pitSkins.has('floor'), `見た穴の肌 ${[...pitSkins]}`).toBe(true);
 		expect(pitSkins.size, `見た穴の肌 ${[...pitSkins]}`).toBeGreaterThan(1);
+		// キュー23：壁（天端＋前面＋縁）も3系で同じ部品を重ねる。前面と東西の縁の両方を見る
+		expect(seen.wall).toBeGreaterThan(100);
+		expect(seen.wallFace).toBeGreaterThan(10);
+		expect(seen.wallSide).toBeGreaterThan(10);
 	});
 
 	test('② 平色の表（cell-appearance.js）が実ゲームの CSS と一致する', async ({ page }) => {

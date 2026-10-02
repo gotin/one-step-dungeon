@@ -3,13 +3,16 @@ import { TILE, TILE_META } from '../shared/tiles.js';
 import { SPRITES, PAL, animFrame, drawSpriteLayers } from '../shared/sprites.js';
 import { TILE_SPRITE_MAP } from '../shared/tile-sprites.js';
 import { connectTileIconSprites } from '../shared/tile-connect.js';
-import { pitParts } from '../shared/cell-appearance.js';
+import { pitParts, wallParts } from '../shared/cell-appearance.js';
 
 // 穴のボタンの絵＝草地に1マスだけ開いた穴（盤面と同じ pitParts の部品）。
 // 実際の肌は置いた場所の下地で決まる＝ボタンは代表の1つ。
 const PIT_ICON_STAGE = { tiles: [['.', '.', '.'], ['.', TILE.PIT, '.'], ['.', '.', '.']], bgTiles: { '1,1': TILE.GRASS } };
+// 壁のボタンの絵＝床の中に1マスだけ立つ壁（盤面と同じ wallParts の部品＝天端＋前面＋縁）。
+const WALL_ICON_STAGE = { tiles: [['.', '.', '.'], ['.', TILE.WALL, '.'], ['.', '.', '.']] };
 const tileIconSprites = (tileChar) => connectTileIconSprites(tileChar)
-	?? (tileChar === TILE.PIT ? pitParts(PIT_ICON_STAGE, 1, 1) : null);
+	?? (tileChar === TILE.PIT ? pitParts(PIT_ICON_STAGE, 1, 1)
+		: tileChar === TILE.WALL ? wallParts(WALL_ICON_STAGE, 1, 1) : null);
 import { state, tilePaletteEl } from './editor-state.js';
 
 // タイル → スプライト対応は shared/tile-sprites.js（単一の真実）を再エクスポート。

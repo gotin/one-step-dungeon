@@ -39,6 +39,7 @@ import { objVariantName } from './sprites-tiles.js';
 import { ENEMY_TILES } from './enemies.js';
 import { npcSpriteOf } from './npcs.js';
 import { SKY_TILE_N } from './sprites-sky.js';
+import { WALL_CAP_N } from './sprites-wall.js';
 
 // tiles 層に置かれると下地（bgTiles）が見えなくなるタイル。
 // ＝render-board.js setCellClass がここで return して applyBgTileClass を呼ばないセル。
@@ -93,6 +94,7 @@ export const BG_TILE_STYLE = {
 
 // tiles 層のタイル自身がセルに付ける色（状態を持つものは「基本形＝閉じている姿」）。
 export const TILE_CELL_STYLE = {
+	// 壁＝天端＋前面＋縁の絵（`wallParts`）を重ねる。平色は見取り図（サムネ）の色＝絵の下に隠れる
 	[TILE.WALL]:            { cls: 'wall',                 color: '#3a4448' },   // --wall-color
 	[TILE.WATER]:           { cls: 'water',                color: '#0e2040' },
 	[TILE.LAVA]:            { cls: 'lava',                 color: '#5a1408' },
@@ -198,6 +200,35 @@ export function pitParts(stageData, r, c) {
 }
 
 /**
+ * 壁（WALL）のセルに重ねる部品（キュー23）。穴・空と同じ「本体＋開いた辺の縁」の形。
+ * ① 天端 `wallCap@k`（k はセル座標＝隣の壁と小石の模様が繋がる）。
+ * ② 隣が壁でない辺にだけ縁＝南は立ち上がりの前面 `wallFaceS@(c%4)`、北は輪郭、
+ *    東西は輪郭＋面取り（南も開いていれば前面の端まで輪郭を引く `.s` 版）。
+ *    斜め見下ろし＝南を向いた面だけが見える（穴の北の縁・空の崖の面と同じ視点）。
+ *    盤面の外は壁が続くとみなす（部屋の外枠の外側に輪郭を出さない）。
+ * 重ね順＝天端 → 前面 → 北 → 東西（東西の輪郭が前面の端も締める）。
+ * @returns {{sprs:string[], pal:string, opaque:boolean, edgeCode:string}}
+ *   edgeCode … 縁を描いた向き（'S'＝前面・'N'・'W'・'E' の並び・無ければ '-'）＝テストが観測する
+ */
+export function wallParts(stageData, r, c) {
+	const tiles = stageData?.tiles;
+	const open = (rr, cc) => {
+		const t = tiles?.[rr]?.[cc];
+		return t !== undefined && t !== TILE.WALL;
+	};
+	const n = WALL_CAP_N;
+	const rr = ((r % n) + n) % n, cc = ((c % n) + n) % n;
+	const sprs = [`wallCap@${rr * n + cc}`];
+	let edgeCode = '';
+	const s = open(r + 1, c);
+	if (s) { sprs.push(`wallFaceS@${cc}`); edgeCode += 'S'; }
+	if (open(r - 1, c)) { sprs.push('wallEdgeN'); edgeCode += 'N'; }
+	if (open(r, c - 1)) { sprs.push(s ? 'wallEdgeW.s' : 'wallEdgeW'); edgeCode += 'W'; }
+	if (open(r, c + 1)) { sprs.push(s ? 'wallEdgeE.s' : 'wallEdgeE'); edgeCode += 'E'; }
+	return { sprs, pal: 'wall', opaque: true, edgeCode: edgeCode || '-' };
+}
+
+/**
  * 1セルの「状態に依らない見た目」を返す。3つの描画系（ゲーム／エディタのステージ
  * キャンバス／ワールドプレビュー）はこれを共通の設計図として使う。
  *
@@ -257,6 +288,11 @@ export function describeCell(stageData, r, c, tile) {
 	// ①c 穴（キュー22）＝底＋縁の部品。空と同じ形＝エディタ・プレビュー・ゲームが同じ道で描く。
 	if (t === TILE.PIT) {
 		d.objConnect = pitParts(stageData, r, c);
+		return d;
+	}
+	// ①d 壁（キュー23）＝天端＋前面＋縁の部品。空・穴と同じ形。
+	if (t === TILE.WALL) {
+		d.objConnect = wallParts(stageData, r, c);
 		return d;
 	}
 
