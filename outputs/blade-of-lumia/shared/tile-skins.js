@@ -167,6 +167,50 @@ export function vegSkinAt(sd, r, c) {
 	return GROUND_TO_VEG_SKIN[majorityGroundTile(sd)] ?? VEG_SKIN_DEFAULT;
 }
 
+// ── 穴（`'x'`）の肌（キュー22）─────────────────────────────────
+// 🔴 導出の単位は**セル**（植生と同じ）。穴は裂け目として繋がっていることが多いが
+//    （実測 309 マス中 269）、縁に見えるのはそのセルの周りの地面＝自分の下地で決めるのが正しい。
+// 🔴 山・植生と違い**床も肌に入れる**＝穴はダンジョンの床（下地なし＝FLOOR）にも石畳にも開く。
+//    山や木は屋外にしか立たないので床の肌が無かった。
+export const GROUND_TO_PIT_SKIN = {
+	[TILE.GRASS]:       'grass',   // 草地＝土の壁・緑の縁
+	[TILE.SAND]:        'sand',    // 砂地＝砂岩の地層
+	[TILE.SNOW]:        'snow',    // 雪原＝雪の縁・氷の壁
+	[TILE.ASH]:         'ash',     // 火山灰＝玄武岩の壁
+	[TILE.MUD]:         'mud',     // 泥／沼＝泥炭の壁
+	[TILE.STONE_FLOOR]: 'stone',   // 石畳＝石積みの壁
+};
+// 下地も周りも地面でない（ダンジョンの床）＝床の肌
+export const PIT_SKIN_DEFAULT = 'floor';
+
+/**
+ * 穴 1セルぶんの肌（キュー22）。
+ *   ① 自分のセルの下地が表にある → その肌（エディタで穴を置いても下地は残る＝ふつうはここで決まる）
+ *   ② 無い（スクリプトで下地ごと置いた・ダンジョン）→ 周り8マスの「穴でない」セルの下地の最多
+ *   ③ それも無い → 床
+ * ⚠ 画面ごとの最多には落とさない＝ダンジョンの床に開いた穴が、画面の端の草地に引きずられて
+ *   草の縁になるのを防ぐ（穴の縁に見えるのはすぐ隣の地面だけ）。
+ */
+export function pitSkinAt(sd, r, c) {
+	const own = GROUND_TO_PIT_SKIN[sd?.bgTiles?.[posKey(r, c)]];
+	if (own) return own;
+	const votes = new Map();
+	for (let dr = -1; dr <= 1; dr++) for (let dc = -1; dc <= 1; dc++) {
+		if (!dr && !dc) continue;
+		const t = sd?.tiles?.[r + dr]?.[c + dc];
+		if (t === undefined || t === TILE.PIT) continue;
+		const g = sd?.bgTiles?.[posKey(r + dr, c + dc)] ?? TILE.FLOOR;
+		votes.set(g, (votes.get(g) ?? 0) + 1);
+	}
+	// 床も1票として数える（床に囲まれた穴が、斜めに1枚だけある草で草の縁にならない）
+	let best = null, bestN = 0;
+	for (const g of [TILE.FLOOR, ...Object.keys(GROUND_TO_PIT_SKIN)]) {
+		const n = votes.get(g) ?? 0;
+		if (n > bestN) { best = g; bestN = n; }
+	}
+	return GROUND_TO_PIT_SKIN[best] ?? PIT_SKIN_DEFAULT;
+}
+
 /**
  * タイル1枚の「絵と色の名前」に肌を織り込む（肌を持たないタイルは素通し）。
  *

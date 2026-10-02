@@ -20,7 +20,7 @@
 // 意図した差（比較から外すもの＝shared/cell-appearance.js の決め事と対応）：
 //   ・敵とプレイヤー … 盤面には描かれない（render-chars.js が実体として描く）
 //   ・状態で絵が変わる物（宝箱・鍵・トーチ・水・アイテム…） … ゲームは実行時の状態で描く
-//   ・絵が無いタイルの文字アイコン（空・穴など） … エディタ／プレビューだけの目印
+//   ・絵が無いタイルの文字アイコン … エディタ／プレビューだけの目印（空・穴は今は絵を持つ＝比較する）
 //   ⚠ 扉は「横の連なり（doorL＋左右反転）」がまさに食い違っていた現物∴ゲーム側も選択を
 //     `dataset.objSprite` に残していて比較できる。
 //   ・連結タイル（橋・家）のセルの平色と、その下の地面スプライト … ゲームはデッキ色を
@@ -54,7 +54,7 @@ function pickScreens() {
 	for (const [lk, ld] of gameLayerEntries(MAP)) {
 		for (const [sk, sd] of Object.entries(ld.stages ?? {})) {
 			if (!sd?.tiles) continue;
-			const n = { ground: 0, connect: 0, skin: 0, door: 0, sky: 0 };
+			const n = { ground: 0, connect: 0, skin: 0, door: 0, sky: 0, pit: 0, pitGround: 0 };
 			for (let r = 0; r < sd.rows; r++) {
 				for (let c = 0; c < sd.cols; c++) {
 					const d = describeCell(sd, r, c);
@@ -63,13 +63,15 @@ function pickScreens() {
 					if (d.obj?.skin) n.skin++;
 					if (d.tile === TILE.DOOR) n.door++;
 					if (d.tile === TILE.SKY) n.sky++;   // キュー38：空の切り身＋崖の縁
+					if (d.tile === TILE.PIT) n.pit++;   // キュー22：穴の底＋縁（肌は下地から）
+					if (d.tile === TILE.PIT && d.objConnect?.skin !== 'floor') n.pitGround++;   // 地面の肌の穴（field）
 				}
 			}
 			rows.push({ lk, sk, sd, ...n });
 		}
 	}
 	const chosen = new Map();
-	for (const cat of ['ground', 'connect', 'skin', 'door', 'sky']) {
+	for (const cat of ['ground', 'connect', 'skin', 'door', 'sky', 'pit', 'pitGround']) {
 		for (const s of [...rows].sort((a, b) => b[cat] - a[cat]).slice(0, 2)) {
 			if (s[cat] > 0) chosen.set(`${s.lk}/${s.sk}`, s);
 		}
@@ -185,7 +187,8 @@ test.describe('11b：エディタ・プレビュー・ゲームで同じセル�
 
 		// ── 突き合わせ ──
 		const bad = [];
-		const seen = { ground: 0, connect: 0, skin: 0, door: 0, sky: 0, skyEdge: 0, cells: 0, base: 0 };
+		const seen = { ground: 0, connect: 0, skin: 0, door: 0, sky: 0, skyEdge: 0, pit: 0, pitEdge: 0, cells: 0, base: 0 };
+		const pitSkins = new Set();
 		for (const s of SCREENS) {
 			const key = `${s.lk}/${s.sk}`;
 			const ed = editorSide[key].editor, pv = editorSide[key].preview, gm = gameSide[key];
@@ -203,6 +206,11 @@ test.describe('11b：エディタ・プレビュー・ゲームで同じセル�
 					if (d.tile === TILE.SKY) {
 						seen.sky++;
 						if (d.objConnect?.edgeCode !== '-') seen.skyEdge++;
+					}
+					if (d.tile === TILE.PIT) {
+						seen.pit++;
+						if (d.objConnect?.edgeCode !== '-') seen.pitEdge++;
+						pitSkins.add(d.objConnect?.skin);
 					}
 
 					// ② エディタとプレビューは全部（敵・状態つきの物・文字アイコンまで）一致する
@@ -241,6 +249,11 @@ test.describe('11b：エディタ・プレビュー・ゲームで同じセル�
 		// キュー38：空（海と雲の切り身＋崖の縁と影）も3系で同じ部品を重ねる
 		expect(seen.sky).toBeGreaterThan(20);
 		expect(seen.skyEdge).toBeGreaterThan(5);
+		// キュー22：穴（底＋縁・肌は下地から）も3系で同じ部品を重ねる。床の肌と地面の肌の両方を見る
+		expect(seen.pit).toBeGreaterThan(20);
+		expect(seen.pitEdge).toBeGreaterThan(5);
+		expect(pitSkins.has('floor'), `見た穴の肌 ${[...pitSkins]}`).toBe(true);
+		expect(pitSkins.size, `見た穴の肌 ${[...pitSkins]}`).toBeGreaterThan(1);
 	});
 
 	test('② 平色の表（cell-appearance.js）が実ゲームの CSS と一致する', async ({ page }) => {

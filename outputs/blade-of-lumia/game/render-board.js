@@ -126,6 +126,28 @@ export function createRenderBoard(deps) {
 		return true;
 	}
 
+	// 穴のセルの下地（キュー22 追補・2026-10-02 ユーザー指摘「うっすら上と左に枠線が入る」）。
+	// セル位置が端数ピクセルのとき、拡大した canvas の縁の1デバイスピクセルが半透明になり、
+	// 下のセル背景（底の黒）と `.cell.pit` の内側の影が細い線として透ける。
+	// ∴影を消し、セルの四辺の帯だけを「その辺の canvas の縁と同じ色」で塗る
+	// ＝隣が穴でない辺は地面の色・穴に続く辺は底の色（裂け目の中に明るい線を出さない）。
+	const PIT_EDGE_PX = 2;
+	function paintPitBackdrop(cellEl, parts) {
+		const pal = PAL[parts?.pal];
+		if (!pal) return;
+		const base = pal[2], ground = pal[4];
+		const open = (d) => parts.edgeCode.includes(d);   // 'N'/'S'/'W'/'E'＝大文字は辺の縁だけ
+		const band = (d, pos, size) => `linear-gradient(${open(d) ? ground : base}, ${open(d) ? ground : base}) ${pos} / ${size} no-repeat`;
+		cellEl.style.boxShadow = 'none';
+		cellEl.style.background = [
+			band('N', 'top left', `100% ${PIT_EDGE_PX}px`),
+			band('S', 'bottom left', `100% ${PIT_EDGE_PX}px`),
+			band('W', 'top left', `${PIT_EDGE_PX}px 100%`),
+			band('E', 'top right', `${PIT_EDGE_PX}px 100%`),
+			base,
+		].join(', ');
+	}
+
 	// bgTile 背景クラス＋スプライトを cellEl に適用するヘルパー（内部用）
 	// 何を敷くかは shared/cell-appearance.js の記述（desc）が決める＝エディタ・
 	// ワールドプレビューと同じ設計図（11b）。ここは DOM／CSS への当て方だけを持つ。
@@ -322,6 +344,13 @@ export function createRenderBoard(deps) {
 			const [r, c] = posKey.split(',').map(Number);
 			paintSkyCell(cellEl, dsc.objConnect, r, c);
 			startSkyDrift();
+			return;
+		}
+		if (tile === TILE.PIT) {
+			// キュー22：穴＝底＋隣が穴でない辺の縁。肌（草・砂・雪・床…）と部品の選択は
+			// shared/cell-appearance.js の pitParts() が持つ＝エディタと同じ絵。
+			drawConnectTile(cellEl, dsc.objConnect);
+			paintPitBackdrop(cellEl, dsc.objConnect);
 			return;
 		}
 		if (tile === TILE.WATER) {

@@ -33,7 +33,8 @@ import { TILE_SPRITE_MAP } from './tile-sprites.js';
 import { SPRITES, PAL } from './sprites.js';
 import { groundSpriteName } from './ground-seams.js';
 import { connectedTileParts, isConnectTile } from './tile-connect.js';
-import { skinnedSprite } from './tile-skins.js';
+import { skinnedSprite, skinName, pitSkinAt } from './tile-skins.js';
+import { PIT_SKIN_STYLE, PIT_BODY_N } from './sprites-pit.js';
 import { objVariantName } from './sprites-tiles.js';
 import { ENEMY_TILES } from './enemies.js';
 import { npcSpriteOf } from './npcs.js';
@@ -102,7 +103,8 @@ export const TILE_CELL_STYLE = {
 	[TILE.DOORWAY_BOSS]:    { cls: 'doorway-boss',         color: '#1a0c10' },
 	[TILE.DOORWAY_LOCKED]:  { cls: 'doorway-locked',       color: '#121830' },
 	// 空＝はるか下の海と雲の絵（`skyParts`）を重ねる。平色はその海の色（見取り図もこれ）。
-	// 穴はグラデーション（底の見えない穴）＝キャンバスでは平色で近似する
+	// 穴＝底と縁の絵（`pitParts`・肌は下地から）を重ねる。平色は絵の下・見取り図の色。
+	// CSS は旧来のグラデーション（絵が全面を覆うので画面には出ない）＝キャンバスでは平色で近似する
 	[TILE.SKY]:             { cls: 'sky', color: '#0455ae' },
 	[TILE.PIT]:             { cls: 'pit', color: '#050608', approx: true },
 };
@@ -155,6 +157,44 @@ export function skyParts(stageData, r, c) {
 	if (ground(r, c - 1)) { sprs.push('skyShadeW'); edgeCode += 'W'; }
 	if (ground(r, c + 1)) { sprs.push('skyShadeE'); edgeCode += 'E'; }
 	return { sprs, pal: 'sky', opaque: true, edgeCode: edgeCode || '-' };
+}
+
+/**
+ * 穴（PIT）のセルに重ねる部品（キュー22）。空（`skyParts`）と同じ「底＋縁」の形。
+ * ① 底 `pitBody@k`（k はセル座標で4種）。
+ * ② 隣が穴でない辺にだけ縁＝北は向こう側の壁の面 `pitLipN.<質>@(c%2)`、南は手前の縁、
+ *    東西は地面の縁＋落ち影。縦横が穴で斜めだけ穴でない角には地面の欠片 `pitNub..`。
+ *    ＝繋がった穴は1つの裂け目に見える。盤面の外は穴が続くとみなす（画面の境目に縁を出さない）。
+ * ③ 色は肌（`pitSkinAt`＝下地から導く）のパレット `pit@<肌>`。絵は肌に依らず共通
+ *    （北の縁だけ肌の「質」＝地層／石積み／氷で絵を選ぶ）。
+ * 重ね順＝底 → 東西 → 南 → 北 → 角（北の縁の地面が東西の縁の上端を覆う）。
+ * @returns {{sprs:string[], pal:string, opaque:boolean, edgeCode:string, skin:string}}
+ *   edgeCode … 縁を描いた向き（'W'/'E'/'S'/'N'＋角の欠け 'nw' 等＋外角の丸め '(nw)' 等・無ければ '-'）＝テストが観測する
+ */
+export function pitParts(stageData, r, c) {
+	const tiles = stageData?.tiles;
+	const open = (rr, cc) => {
+		const t = tiles?.[rr]?.[cc];
+		return t !== undefined && t !== TILE.PIT;
+	};
+	const skin = pitSkinAt(stageData, r, c);
+	const sprs = [`pitBody@${(((r * 3 + c) % PIT_BODY_N) + PIT_BODY_N) % PIT_BODY_N}`];
+	let edgeCode = '';
+	const n = open(r - 1, c), s = open(r + 1, c), w = open(r, c - 1), e = open(r, c + 1);
+	if (w) { sprs.push('pitRimW'); edgeCode += 'W'; }
+	if (e) { sprs.push('pitRimE'); edgeCode += 'E'; }
+	if (s) { sprs.push('pitRimS'); edgeCode += 'S'; }
+	if (n) { sprs.push(`pitLipN.${PIT_SKIN_STYLE[skin]}@${((c % 2) + 2) % 2}`); edgeCode += 'N'; }
+	if (!n && !w && open(r - 1, c - 1)) { sprs.push('pitNubNW'); edgeCode += 'nw'; }
+	if (!n && !e && open(r - 1, c + 1)) { sprs.push('pitNubNE'); edgeCode += 'ne'; }
+	if (!s && !w && open(r + 1, c - 1)) { sprs.push('pitNubSW'); edgeCode += 'sw'; }
+	if (!s && !e && open(r + 1, c + 1)) { sprs.push('pitNubSE'); edgeCode += 'se'; }
+	// 外角（2辺とも穴でない）は地面で丸く削る＝孤立した穴が四角に見えない
+	if (n && w) { sprs.push('pitCornerNW'); edgeCode += '(nw)'; }
+	if (n && e) { sprs.push('pitCornerNE'); edgeCode += '(ne)'; }
+	if (s && w) { sprs.push('pitCornerSW'); edgeCode += '(sw)'; }
+	if (s && e) { sprs.push('pitCornerSE'); edgeCode += '(se)'; }
+	return { sprs, pal: skinName('pit', skin), opaque: true, edgeCode: edgeCode || '-', skin };
 }
 
 /**
@@ -212,6 +252,11 @@ export function describeCell(stageData, r, c, tile) {
 	//    2層を大きな背景として敷き、縁の部品だけを canvas に描く（どの部品かはここの答えに従う）。
 	if (t === TILE.SKY) {
 		d.objConnect = skyParts(stageData, r, c);
+		return d;
+	}
+	// ①c 穴（キュー22）＝底＋縁の部品。空と同じ形＝エディタ・プレビュー・ゲームが同じ道で描く。
+	if (t === TILE.PIT) {
+		d.objConnect = pitParts(stageData, r, c);
 		return d;
 	}
 

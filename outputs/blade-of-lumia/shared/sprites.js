@@ -8,6 +8,7 @@ import { ITEM_PAL, ITEM_SPRITES }     from './sprites-items.js';
 import { TILE_PAL, TILE_SPRITES }     from './sprites-tiles.js';
 import { OBJ32_SPRITES }              from './sprites-obj32.js';
 import { SKY_PAL, SKY_SPRITES }       from './sprites-sky.js';
+import { PIT_PAL, PIT_SPRITES }       from './sprites-pit.js';
 
 // ── パレット（全カテゴリをマージ）────────────────────────────
 export const PAL = {
@@ -16,6 +17,7 @@ export const PAL = {
 	...ITEM_PAL,
 	...TILE_PAL,
 	...SKY_PAL,
+	...PIT_PAL,
 };
 
 // ── スプライトデータ（全カテゴリをマージ）────────────────────
@@ -30,6 +32,8 @@ export const SPRITES = {
 	...OBJ32_SPRITES,
 	// 空（SKY・`%`）＝はるか下の海と雲を 32×32×16 枚に分けた絵＋崖の縁と影（キュー38）
 	...SKY_SPRITES,
+	// 穴（PIT・`x`）＝底＋縁の部品。色は地形ごとの肌のパレット `pit@grass` 等（キュー22）
+	...PIT_SPRITES,
 };
 
 // ── 遅延登録 ───────────────────────────────────────────────────
