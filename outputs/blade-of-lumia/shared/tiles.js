@@ -230,7 +230,7 @@ export const TILE_META = {
 	[TILE.BREAKABLE_WALL]: { label: '壊せる壁',    color: '#3a3028', passable: false, icon: '✦' },
 	[TILE.MAP_ENTER]:      { label: 'マップ入り口', color: '#202840', passable: true,  icon: '◎' },
 	[TILE.ALTAR]:          { label: '古代の祭壇',  color: '#4a3a6a', passable: true,  icon: '⛩' },
-	[TILE.SKY]:            { label: '空（飛行）',  color: '#0a0a20', passable: false, icon: '☁' },
+	[TILE.SKY]:            { label: '空（飛行）',  color: '#0455ae', passable: false, icon: '☁' },   // キュー38＝はるか下の海の色
 	[TILE.PIT]:            { label: '穴（はしご）', color: '#050608', passable: false, icon: '□' },
 	[TILE.TORCH]:          { label: 'かがり火',    color: '#6a3010', passable: false, icon: '🔥' },
 	// Phase 5-1

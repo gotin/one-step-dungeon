@@ -37,6 +37,7 @@ import { skinnedSprite } from './tile-skins.js';
 import { objVariantName } from './sprites-tiles.js';
 import { ENEMY_TILES } from './enemies.js';
 import { npcSpriteOf } from './npcs.js';
+import { SKY_TILE_N } from './sprites-sky.js';
 
 // tiles 層に置かれると下地（bgTiles）が見えなくなるタイル。
 // ＝render-board.js setCellClass がここで return して applyBgTileClass を呼ばないセル。
@@ -100,8 +101,9 @@ export const TILE_CELL_STYLE = {
 	[TILE.DOORWAY]:         { cls: 'doorway',              color: '#0e1a20' },
 	[TILE.DOORWAY_BOSS]:    { cls: 'doorway-boss',         color: '#1a0c10' },
 	[TILE.DOORWAY_LOCKED]:  { cls: 'doorway-locked',       color: '#121830' },
-	// 空・穴はグラデーション（星空／底の見えない穴）＝キャンバスでは平色で近似する
-	[TILE.SKY]:             { cls: 'sky', color: '#120f2c', approx: true },
+	// 空＝はるか下の海と雲の絵（`skyParts`）を重ねる。平色はその海の色（見取り図もこれ）。
+	// 穴はグラデーション（底の見えない穴）＝キャンバスでは平色で近似する
+	[TILE.SKY]:             { cls: 'sky', color: '#0455ae' },
 	[TILE.PIT]:             { cls: 'pit', color: '#050608', approx: true },
 };
 
@@ -128,6 +130,31 @@ function doorSprite(stageData, r, c) {
 	if (left && !right) return { spr: 'doorL', flipX: true };
 	if (left && right)  return { spr: 'doorL', flipX: false };
 	return { spr: 'door', flipX: false };
+}
+
+/**
+ * 空（SKY）のセルに重ねる部品（キュー38）。
+ * ① 海と雲の絵＝128×128 の切り身 `skySea@k`＋`skyCloud@k`（k はセル座標で決まる＝隣の空と
+ *    絵が繋がる）。ゲームは雲の層だけを流す（game/sky-drift.js）＝ここが返すのは流れる前の姿。
+ * ② 北が空でない（地面・壁など）なら崖の面 `skyLipN`、東西が空でないなら影
+ *    ＝穴（黒）と違い「はるか下」に見せる。画面の外（盤面の端）は空が続くとみなして描かない。
+ * @returns {{sprs:string[], pal:string, opaque:boolean, edgeCode:string}}
+ *   edgeCode … 縁を描いた向き（'N'/'W'/'E' の並び・無ければ '-'）＝テストが観測する
+ */
+export function skyParts(stageData, r, c) {
+	const n = SKY_TILE_N;
+	const k = (((r % n) + n) % n) * n + (((c % n) + n) % n);
+	const sprs = [`skySea@${k}`, `skyCloud@${k}`];
+	const tiles = stageData?.tiles;
+	const ground = (rr, cc) => {
+		const t = tiles?.[rr]?.[cc];
+		return t !== undefined && t !== TILE.SKY;
+	};
+	let edgeCode = '';
+	if (ground(r - 1, c)) { sprs.push('skyLipN');   edgeCode += 'N'; }
+	if (ground(r, c - 1)) { sprs.push('skyShadeW'); edgeCode += 'W'; }
+	if (ground(r, c + 1)) { sprs.push('skyShadeE'); edgeCode += 'E'; }
+	return { sprs, pal: 'sky', opaque: true, edgeCode: edgeCode || '-' };
 }
 
 /**
@@ -178,6 +205,14 @@ export function describeCell(stageData, r, c, tile) {
 				if (SPRITES[spr]) d.ground = { spr, pal: si.pal };
 			}
 		}
+	}
+
+	// ①b 空（キュー38）＝海と雲の2層の切り身＋崖の縁と影。連結タイルと同じ「部品を重ねる」形で返す
+	//    ＝エディタ・プレビューは橋と同じ道で描ける。ゲームだけは雲を流すため game/sky-drift.js が
+	//    2層を大きな背景として敷き、縁の部品だけを canvas に描く（どの部品かはここの答えに従う）。
+	if (t === TILE.SKY) {
+		d.objConnect = skyParts(stageData, r, c);
+		return d;
 	}
 
 	// ② tiles 層の連結タイル（橋・家・柵）。下地の上に重ねる。

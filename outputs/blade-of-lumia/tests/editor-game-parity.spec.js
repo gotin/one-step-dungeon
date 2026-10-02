@@ -54,7 +54,7 @@ function pickScreens() {
 	for (const [lk, ld] of gameLayerEntries(MAP)) {
 		for (const [sk, sd] of Object.entries(ld.stages ?? {})) {
 			if (!sd?.tiles) continue;
-			const n = { ground: 0, connect: 0, skin: 0, door: 0 };
+			const n = { ground: 0, connect: 0, skin: 0, door: 0, sky: 0 };
 			for (let r = 0; r < sd.rows; r++) {
 				for (let c = 0; c < sd.cols; c++) {
 					const d = describeCell(sd, r, c);
@@ -62,13 +62,14 @@ function pickScreens() {
 					if (d.groundConnect || d.objConnect) n.connect++;
 					if (d.obj?.skin) n.skin++;
 					if (d.tile === TILE.DOOR) n.door++;
+					if (d.tile === TILE.SKY) n.sky++;   // キュー38：空の切り身＋崖の縁
 				}
 			}
 			rows.push({ lk, sk, sd, ...n });
 		}
 	}
 	const chosen = new Map();
-	for (const cat of ['ground', 'connect', 'skin', 'door']) {
+	for (const cat of ['ground', 'connect', 'skin', 'door', 'sky']) {
 		for (const s of [...rows].sort((a, b) => b[cat] - a[cat]).slice(0, 2)) {
 			if (s[cat] > 0) chosen.set(`${s.lk}/${s.sk}`, s);
 		}
@@ -184,7 +185,7 @@ test.describe('11b：エディタ・プレビュー・ゲームで同じセル�
 
 		// ── 突き合わせ ──
 		const bad = [];
-		const seen = { ground: 0, connect: 0, skin: 0, door: 0, cells: 0, base: 0 };
+		const seen = { ground: 0, connect: 0, skin: 0, door: 0, sky: 0, skyEdge: 0, cells: 0, base: 0 };
 		for (const s of SCREENS) {
 			const key = `${s.lk}/${s.sk}`;
 			const ed = editorSide[key].editor, pv = editorSide[key].preview, gm = gameSide[key];
@@ -199,6 +200,10 @@ test.describe('11b：エディタ・プレビュー・ゲームで同じセル�
 					if (d.groundConnect || d.objConnect) seen.connect++;
 					if (d.obj?.skin) seen.skin++;
 					if (d.tile === TILE.DOOR) seen.door++;
+					if (d.tile === TILE.SKY) {
+						seen.sky++;
+						if (d.objConnect?.edgeCode !== '-') seen.skyEdge++;
+					}
 
 					// ② エディタとプレビューは全部（敵・状態つきの物・文字アイコンまで）一致する
 					if (e.sprs.join(',') !== p.sprs.join(',') || e.base !== p.base || e.icon !== p.icon) {
@@ -233,6 +238,9 @@ test.describe('11b：エディタ・プレビュー・ゲームで同じセル�
 		expect(seen.connect).toBeGreaterThan(10);
 		expect(seen.skin).toBeGreaterThan(5);
 		expect(seen.door).toBeGreaterThan(0);
+		// キュー38：空（海と雲の切り身＋崖の縁と影）も3系で同じ部品を重ねる
+		expect(seen.sky).toBeGreaterThan(20);
+		expect(seen.skyEdge).toBeGreaterThan(5);
 	});
 
 	test('② 平色の表（cell-appearance.js）が実ゲームの CSS と一致する', async ({ page }) => {

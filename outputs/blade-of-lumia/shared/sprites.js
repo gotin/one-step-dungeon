@@ -7,6 +7,7 @@ import { ENEMY_PAL, ENEMY_SPRITES }   from './sprites-enemies.js';
 import { ITEM_PAL, ITEM_SPRITES }     from './sprites-items.js';
 import { TILE_PAL, TILE_SPRITES }     from './sprites-tiles.js';
 import { OBJ32_SPRITES }              from './sprites-obj32.js';
+import { SKY_PAL, SKY_SPRITES }       from './sprites-sky.js';
 
 // ── パレット（全カテゴリをマージ）────────────────────────────
 export const PAL = {
@@ -14,6 +15,7 @@ export const PAL = {
 	...ENEMY_PAL,
 	...ITEM_PAL,
 	...TILE_PAL,
+	...SKY_PAL,
 };
 
 // ── スプライトデータ（全カテゴリをマージ）────────────────────
@@ -26,6 +28,8 @@ export const SPRITES = {
 	// 名前は従来と同じ＝呼び出し側（makeSprite('chest', …) 等）は変わらない。
 	// パレットは ITEM_PAL / TILE_PAL のまま＝色は変えずドットの粗さだけ揃える。
 	...OBJ32_SPRITES,
+	// 空（SKY・`%`）＝はるか下の海と雲を 32×32×16 枚に分けた絵＋崖の縁と影（キュー38）
+	...SKY_SPRITES,
 };
 
 // ── 遅延登録 ───────────────────────────────────────────────────

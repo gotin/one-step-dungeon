@@ -1,10 +1,9 @@
-/* ── Phase 1-5: 空（虚空）タイル。翼の羽衣の飛行中のみ越えられる */
+/* ── Phase 1-5: 空（虚空）タイル。翼の羽衣の飛行中のみ越えられる
+   キュー38：絵（はるか下の海と雲＋崖の縁）は render-board.js がスプライトで重ねる。
+   ここは絵の下の平色＝海の色（旧＝星空のグラデーションは「下に星空は変」で廃止）。
+   値は shared/cell-appearance.js の TILE_CELL_STYLE と揃える。 */
 .cell.sky {
-    background:
-        radial-gradient(1px 1px at 20% 30%, rgba(255,255,255,0.9), transparent),
-        radial-gradient(1px 1px at 70% 60%, rgba(200,220,255,0.8), transparent),
-        radial-gradient(1px 1px at 45% 80%, rgba(255,255,255,0.7), transparent),
-        linear-gradient(180deg, #1a1438 0%, #0a0a20 100%);
+    background: #0455ae;
 }
 
 /* ── Phase 4-1: 穴（落とし穴）タイル。はしごで両隣が地上の1セルだけ渡れる */

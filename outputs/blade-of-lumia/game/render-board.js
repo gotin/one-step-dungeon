@@ -22,6 +22,7 @@ import { TILE_SPRITE_MAP, TILE_SPRITE_SCALE } from '../shared/tile-sprites.js';
 import { isConnectTile } from '../shared/tile-connect.js';
 import { describeCell, BG_TILE_STYLE } from '../shared/cell-appearance.js';
 import { npcSpriteOf } from '../shared/npcs.js';
+import { paintSkyCell, startSkyDrift } from './sky-drift.js';
 
 // 末尾の共通スプライト fallback で「静的に描いてよい落ちアイテム」タイルの集合。
 // 敵・プレイヤー・NPC は実体として render-chars が描くので含めない（重複描画防止）。
@@ -313,6 +314,14 @@ export function createRenderBoard(deps) {
 			cellEl.dataset.objPal    = 'door';
 			const cv = makeSprite(sprName, 'door', false, flipX);
 			putCellSprite(cellEl, cv, 'door-sprite');
+			return;
+		}
+		if (tile === TILE.SKY) {
+			// キュー38：空＝はるか下の海（止まる）と流れる雲＋崖の縁と影。部品の選択は
+			// shared/cell-appearance.js の skyParts() が持つ。雲を流すのは game/sky-drift.js。
+			const [r, c] = posKey.split(',').map(Number);
+			paintSkyCell(cellEl, dsc.objConnect, r, c);
+			startSkyDrift();
 			return;
 		}
 		if (tile === TILE.WATER) {
