@@ -383,16 +383,19 @@ function renderNPCs(sd) {
 		// 編集する道が無く、17番の帯作業で直したい1行のために移行スクリプトを書く羽目になっていた）。
 		const item = document.createElement('div');
 		item.className = 'link-item';
+		// 看板・石碑・転移の石碑にはスプライト欄を出さない（2026-10-03 ユーザー指摘「スプライトが
+		// npcA に設定されているけどこれは問題ない？」）＝絵はタイル文字で決まり、`data.sprite` は
+		// ゲームのどこからも読まれない（shared/npcs.js npcSpriteOf が見るのは店の shopData.sprite だけ）。
 		item.innerHTML = `
 			<div class="link-item-header"><span>NPC (${r},${c}) ${TILE_META[tile]?.icon??''}</span><span class="hint">${home}</span></div>
 			<label>キャラ名 <input type="text" value="${data.name??''}" data-key="${key}" data-f="name" placeholder="例: 村人 タロ"></label>
-			<label>スプライト
+			${READABLE_SIGN_TILES.has(tile) ? '' : `<label>スプライト
 				<select data-key="${key}" data-f="sprite">
 					<option value="npcA" ${(data.sprite??'npcA')==='npcA'?'selected':''}>npcA（村人）</option>
 					<option value="npcB" ${(data.sprite??'')==='npcB'?'selected':''}>npcB（商人）</option>
 					<option value="princess" ${(data.sprite??'')==='princess'?'selected':''}>princess（姫）</option>
 				</select>
-			</label>
+			</label>`}
 			<label>セリフ（1行=1ページ）
 				<textarea data-key="${key}" data-f="lines" rows="4">${(data.lines??[]).join('\n')}</textarea>
 			</label>

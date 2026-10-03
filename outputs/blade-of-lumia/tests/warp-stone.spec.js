@@ -218,4 +218,23 @@ test.describe('石碑 ⑦ エディタ', () => {
 			await expect(btn.locator('canvas'), `${label} のボタンに絵が無い`).toHaveCount(1);
 		}
 	});
+
+	// 2026-10-03 ユーザー指摘「スプライトが npcA に設定されているけどこれは問題ない？」＝絵はタイル文字で
+	// 決まり `data.sprite` はゲームが読まない∴看板・石碑にはスプライト欄を出さない（村人には残す）。
+	test('⑧ 会話パネル＝看板・石碑にスプライト欄が無い・村人にはある', async ({ page }) => {
+		await page.goto('/blade-of-lumia/editor/');
+		await page.evaluate((json) => localStorage.setItem('bladeOfLumiaMapData', json), JSON.stringify(map));
+		await page.reload();
+		await page.waitForSelector('#world-grid .world-cell.has-stage', { state: 'visible' });
+		// field 6,13＝看板 i(1,2)・村人 a(3,2)・石碑 †(4,8)
+		const sd = map.layers.field.stages['6,13'];
+		expect([sd.tiles[1][2], sd.tiles[3][2], sd.tiles[4][8]]).toEqual([TILE.SIGN, 'a', TILE.MONUMENT]);
+		await page.locator('#world-grid .world-cell').filter({ has: page.locator('.cell-coord', { hasText: '(6,13)' }) }).first().click();
+		await page.locator('#btn-edit-stage').click();
+		const item = (pk) => page.locator('#npc-list .link-item').filter({ has: page.locator('.link-item-header', { hasText: `NPC (${pk})` }) });
+		await expect(item('3,2').locator('select[data-f="sprite"]'), '村人のスプライト欄が消えた').toHaveCount(1);
+		await expect(item('1,2').locator('select[data-f="sprite"]'), '看板にスプライト欄').toHaveCount(0);
+		await expect(item('4,8').locator('select[data-f="sprite"]'), '石碑にスプライト欄').toHaveCount(0);
+		await expect(item('4,8').locator('textarea[data-f="lines"]'), '石碑の本文欄が無い').toHaveCount(1);
+	});
 });
