@@ -43,11 +43,13 @@ test.describe('D7 1,3 崩れた着地台 ① データ', () => {
 		expect(st.tiles.every((row) => Array.isArray(row) && row.length === 12), 'tiles が文字の配列の配列でない').toBe(true);
 		expect(cellsOf(TILE.TREE), '木が戻っている').toEqual([]);
 		expect(cellsOf(TILE.BUSH), '茂みが戻っている').toEqual([]);
-		expect(cellsOf(TILE.SIGN), '看板は石碑 (3,5) と入口の看板 (8,1) の2枚').toEqual(['3,5', '8,1']);
+		// キュー27：石碑 (3,5) は石碑タイル '†'・入口の看板 (8,1) は看板 'i' のまま
+		expect(cellsOf(TILE.MONUMENT), '石碑は (3,5) の1枚').toEqual(['3,5']);
+		expect(cellsOf(TILE.SIGN), '看板は入口の看板 (8,1) の1枚').toEqual(['8,1']);
 		expect(st.signData['3,5']?.lines?.[0]).toBe('【空中の遺跡】');
 		expect(st.npcData['8,1']?.lines?.[0], '入口の看板の本文が (8,1) に無い').toBe('ここは 道具の 試しの 場。');
 		const stray = Object.keys({ ...st.signData, ...st.npcData })
-			.filter((k) => { const [r, c] = k.split(',').map(Number); return st.tiles[r]?.[c] !== TILE.SIGN; });
+			.filter((k) => { const [r, c] = k.split(',').map(Number); return st.tiles[r]?.[c] !== TILE.SIGN && st.tiles[r]?.[c] !== TILE.MONUMENT; });
 		expect(stray, '看板でないセルに本文が取り残されている').toEqual([]);
 		expect(cellsOf(TILE.MAP_ENTER)).toEqual([`${LANDING.r},${LANDING.c}`]);
 		expect(st.mapEnters[`${LANDING.r},${LANDING.c}`]).toEqual({ id: 'dungeon_7', destId: 'field_dungeon7' });
@@ -56,7 +58,7 @@ test.describe('D7 1,3 崩れた着地台 ① データ', () => {
 		// 橋は南北に 3 マス。裂け目は列ごとに幅が違う（ユーザー判定の「広い所・狭い所」）。
 		expect(cellsOf(TILE.BRIDGE), '橋が 3 マスでない').toEqual(['4,3', '5,3', '6,3']);
 		expect(st.tiles.slice(3, 9).map((row) => row.join('')), '裂け目の形が変わった').toEqual([
-			'#...xi.....#',
+			'#...x†.....#',   // 空中の遺跡の石碑＝石碑タイル（キュー27）
 			'..xvxxx.x...',
 			'..xvxxxxx...',
 			'#xxvxxxxxxx#',

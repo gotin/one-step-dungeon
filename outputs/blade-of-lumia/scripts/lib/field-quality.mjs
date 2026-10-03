@@ -20,7 +20,7 @@ import {
 } from './connectivity.mjs';
 import { gameLayerEntries } from '../../shared/layers.js';
 import { ENEMY_META, ENEMY_TILES as ENEMY_TILE_CHARS } from '../../shared/enemies.js';
-import { TILE, BRIDGE_KIN } from '../../shared/tiles.js';
+import { TILE, BRIDGE_KIN, READABLE_SIGN_TILES } from '../../shared/tiles.js';
 
 // ── Region label map (叩き台 ZONE_MAP from analyze-zone-rebalance.mjs) ────────
 // Rows = sy (0=north), cols = sx (0=west). Key format: "sx,sy" = stageKey.
@@ -733,9 +733,10 @@ const _PUZZLE_TILES = new Set(['!', 'T', '(', ')', '*', 'v', 'x', 'H', 'Y', '[',
 // 手書きの表だった頃、海の主 '{' が漏れてボス部屋が戦闘画面に数えられなかった。
 const _COMBAT_SHOWPIECE = ELITE_TILES;
 // Tiles that signal a "one-off" unique element (C-axis).
-const _UNIQUE_TILES = new Set(['^', 'o', 'h', 'p', 'i']);
+// 看板 'i' と石碑・転移の石碑（キュー27＝看板から分けた読める碑）は同じ扱い。
+const _UNIQUE_TILES = new Set(['^', 'o', 'h', 'p', ...READABLE_SIGN_TILES]);
 // Tiles that are a "story anchor" (A-axis).
-const _ANCHOR_TILES = new Set(['^', 'o', 'p', 'i']);
+const _ANCHOR_TILES = new Set(['^', 'o', 'p', ...READABLE_SIGN_TILES]);
 
 function _classifyScreen(s) {
   const flat = s.tiles.flat();
@@ -831,7 +832,7 @@ export function structuralSimilarityWarnings(mapData, opts = {}) {
     ['bridge',  (ch) => ch==='v'],
     ['switch',  (ch) => ['S','Y','H','[',']'].includes(ch)],
     ['enter',   (ch) => ch==='>'],
-    ['npc',     (ch) => ch==='n'||ch==='i'],
+    ['npc',     (ch) => ch==='n'||READABLE_SIGN_TILES.has(ch)],
     ['landmark',(ch) => ['o','h','^','p'].includes(ch)],
     ['stone',   (ch) => ch==='*'],
   ];

@@ -54,6 +54,8 @@ export const HARD_BLOCKED = new Set([
   TILE.HOUSE_WALL,      // 'h'
   TILE.HOUSE_ROOF,      // 'p'
   TILE.SIGN,            // 'i' (passable:false in passable.js — read, don't stand)
+  TILE.MONUMENT,        // '†' (キュー27・石碑＝看板と同じ扱い＝READABLE_SIGN_TILES)
+  TILE.WARP_STONE,      // '‡' (キュー27・転移の石碑)
   TILE.TORCH,           // 'H' (passable:false)
 ]);
 

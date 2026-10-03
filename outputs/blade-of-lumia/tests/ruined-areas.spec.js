@@ -83,9 +83,9 @@ test.describe('Blade of Lumia – 廃城・廃村エリア（Phase 6-3）', () =
 		expect(villageSign.name, '廃村の石碑に名前が必要').toBeTruthy();
 		expect(villageSign.name).toContain('廃村');
 
-		// タイルも SIGN 'i' であることを確認
-		expect(rowArr(st.tiles, 3)[3], '(3,3) は SIGN タイル').toBe('i');
-		expect(rowArr(st.tiles, 8)[3], '(8,3) は SIGN タイル').toBe('i');
+		// タイルも石碑 '†' であることを確認（キュー27 で看板 'i' から分けた）
+		expect(rowArr(st.tiles, 3)[3], '(3,3) は石碑タイル').toBe('†');
+		expect(rowArr(st.tiles, 8)[3], '(8,3) は石碑タイル').toBe('†');
 	});
 
 	test('各石碑に隣接して立てる床がある（読みに行ける）', () => {

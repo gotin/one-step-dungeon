@@ -27,6 +27,9 @@ import { makeSolver } from '../scripts/lib/blade-solver.mjs';
 // 敵タイル一覧・脅威度は ENEMY_META から導出する（手書き表は新しい敵を足したときに
 // 静かに漏れる＝過去に13タイル漏れの実害があった。5.5k で敵を15種足すので特に危険）。
 import { ENEMY_META, ENEMY_TILES } from '../shared/enemies.js';
+import { READABLE_SIGN_TILES } from '../shared/tiles.js';
+// 看板 'i'・石碑 '†'・転移の石碑 '‡'（キュー27 で看板から石碑を分けた）＝どれも読めて通れない
+const isReadable = (ch) => READABLE_SIGN_TILES.has(ch);
 
 const MAP_PATH   = fileURLToPath(new URL('../work/blade-of-lumia.json', import.meta.url));
 const CHECKER    = fileURLToPath(new URL('../scripts/check-dungeon-integrity.mjs', import.meta.url));
@@ -1804,11 +1807,11 @@ test.describe('Blade of Lumia – ダンジョンの鍵（進行の背骨）', (
     const row = (s, r) => (Array.isArray(s.tiles[r]) ? s.tiles[r] : String(s.tiles[r]).split(''));
 
     // 移設元には看板タイルも signData も残さない（片方だけ残すと無言看板／死にデータ）
-    expect(st['4,1'].tiles.some(r => r.includes('i')), '4,1 に看板タイルを残さない').toBe(false);
+    expect(st['4,1'].tiles.some(r => [...r].some(isReadable)), '4,1 に看板タイルを残さない').toBe(false);
     expect(Object.keys(st['4,1'].signData ?? {}), '4,1 の signData を残さない').toEqual([]);
 
     // 移設先＝石の間 `4,3` の1室手前 `4,2` の南端
-    expect(row(st['4,2'], 7)[1], '4,2 (7,1) が看板タイル').toBe('i');
+    expect(row(st['4,2'], 7)[1], '4,2 (7,1) が刻み文＝石碑タイル（キュー27）').toBe('†');
     const sign = st['4,2'].signData?.['7,1'];
     expect(sign?.lines?.length ?? 0, '移設した刻み文に本文がある').toBeGreaterThanOrEqual(2);
     const body = sign.lines.join('');
@@ -1821,14 +1824,14 @@ test.describe('Blade of Lumia – ダンジョンの鍵（進行の背骨）', (
 
     // 看板は通行不可（game/passable.js）∴廊下の途中に置くと row7 の東西が分断される。
     // 端 (7,1) に置いていること＝(7,2) 以降に看板が無いことで押さえる。
-    expect(row(st['4,2'], 7).slice(2).includes('i'), '廊下 row7 の途中に看板を置かない').toBe(false);
+    expect(row(st['4,2'], 7).slice(2).some(isReadable), '廊下 row7 の途中に看板を置かない').toBe(false);
 
     // 塔全体で無言看板・死にデータが0（[[blade-sign-two-formats]]）
     const bad = [];
     for (const [key, s] of Object.entries(st)) {
       const cells = [];
       s.tiles.forEach((r, ri) => (Array.isArray(r) ? r : String(r).split(''))
-        .forEach((ch, ci) => { if (ch === 'i') cells.push(`${ri},${ci}`); }));
+        .forEach((ch, ci) => { if (isReadable(ch)) cells.push(`${ri},${ci}`); }));
       for (const c of cells) if (!(s.signData?.[c]?.lines?.length)) bad.push(`${key}(${c}) 無言看板`);
       for (const k of Object.keys(s.signData ?? {})) if (!cells.includes(k)) bad.push(`${key}(${k}) 死にデータ`);
     }

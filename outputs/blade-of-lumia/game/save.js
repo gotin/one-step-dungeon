@@ -121,6 +121,11 @@ export function sanitizeLoadedPlayer(player, itemMeta) {
 	if (!player.gachaPrizeTaken || typeof player.gachaPrizeTaken !== 'object' || Array.isArray(player.gachaPrizeTaken)) {
 		player.gachaPrizeTaken = {};
 	}
+	// キュー27: 灯った転移の石碑。導入前のセーブ・壊れた値は []（＝まだどれも灯っていない）。
+	// 文字列でない要素と重複は落とす（一覧に同じ行が2つ出ない）。
+	player.litWarpStones = Array.isArray(player.litWarpStones)
+		? [...new Set(player.litWarpStones.filter((x) => typeof x === 'string'))]
+		: [];
 	// キュー13: ハートのかけらの端数。かけら導入前のセーブは 0。壊れた値（数でない・
 	// 負・小数）は 0〜3 の整数に丸める＝HUD やポーズ画面の4分割の絵が範囲外を引かない。
 	// 4 以上は起こらない（揃った瞬間に器へ換える）∴上限で切る。

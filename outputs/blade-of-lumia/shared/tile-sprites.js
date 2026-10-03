@@ -99,6 +99,10 @@ export const TILE_SPRITE_MAP = {
 	[TILE.HOUSE_DOOR]:  { spr: 'houseDoor', pal: 'houseDoor' },
 	[TILE.HOUSE_ROOF]:  { spr: 'houseRoof', pal: 'houseRoof' },
 	[TILE.SIGN]:        { spr: 'sign',      pal: 'sign'      },
+	// キュー27：石碑・転移の石碑（絵は shared/sprites-monument.js）。転移碑の「灯った」絵
+	// （warpStoneLit）は状態で決まる∴ゲーム側（render-board.js）が灯った碑だけ差し替える。
+	[TILE.MONUMENT]:    { spr: 'monument',  pal: 'monument'  },
+	[TILE.WARP_STONE]:  { spr: 'warpStone', pal: 'warpStone' },
 	[TILE.GRASS]:       { spr: 'grass',     pal: 'grass'     },
 	[TILE.SAND]:        { spr: 'sand',      pal: 'sand'      },
 	[TILE.STONE_FLOOR]: { spr: 'stoneFloor',pal: 'stoneFloor'},

@@ -1,5 +1,5 @@
 // ── editor-props.js ── 右パネル（ゲート・宝箱・NPC・条件等） ──
-import { TILE, TILE_META, FLOOR_STACK_TILES } from '../shared/tiles.js';
+import { TILE, TILE_META, FLOOR_STACK_TILES, READABLE_SIGN_TILES } from '../shared/tiles.js';
 import { ITEM_META } from '../shared/items.js';
 import { getCurrentStage, findTilePositions, state, stageKey } from './editor-state.js';
 import { buildExitRegistry, resolveExit, reverseRefs, resolveFluteWarp } from '../shared/exits.js';
@@ -221,7 +221,7 @@ function renderChests(sd) {
 // ⚠️ signData は文字列だけの古い形式も混じる（[[blade-sign-two-formats]]）∴読むときに
 //    { name, lines } へ直してから並べる（＝編集すると新しい形式に揃う）。
 function npcDataHome(sd, key, tile) {
-	if (tile !== TILE.SIGN) return 'npcData';
+	if (!READABLE_SIGN_TILES.has(tile)) return 'npcData';
 	if (sd.signData?.[key] !== undefined) return 'signData';
 	if (sd.npcData?.[key]  !== undefined) return 'npcData';
 	return 'signData';
@@ -229,7 +229,7 @@ function npcDataHome(sd, key, tile) {
 
 function readNpcEntry(sd, key, tile) {
 	const raw = sd[npcDataHome(sd, key, tile)]?.[key];
-	if (typeof raw === 'string') return { name: tile === TILE.SIGN ? '看板' : '', lines: [raw] };
+	if (typeof raw === 'string') return { name: READABLE_SIGN_TILES.has(tile) ? TILE_META[tile].label : '', lines: [raw] };
 	return raw ?? { name: '', lines: [] };
 }
 
@@ -370,7 +370,7 @@ function renderDialogVariants(host, entryOf, variants, options) {
 function renderNPCs(sd) {
 	const el = document.getElementById('npc-list');
 	el.innerHTML = '';
-	const npcTiles = [TILE.NPC_A, TILE.NPC_B, TILE.PRINCESS, TILE.SIGN];
+	const npcTiles = [TILE.NPC_A, TILE.NPC_B, TILE.PRINCESS, ...READABLE_SIGN_TILES];
 	const npcs = npcTiles.flatMap(t => findTilePositions(sd, t).map(p => ({ ...p, tile: t })));
 	if (!npcs.length) { el.innerHTML = '<div class="hint">NPC・看板なし</div>'; return; }
 	for (const { r, c, tile } of npcs) {

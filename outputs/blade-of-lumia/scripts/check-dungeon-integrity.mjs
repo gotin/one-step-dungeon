@@ -214,8 +214,8 @@ function lockedExitsInRoom(stage, lockedTileSet) {
     // never stand on); 'T'/'D'/'('/')' are solvable gates → passable for this
     // exit-reachability flood.
     const HARD = new Set(['#', 'M', 'P', 'W', 'w', 'p', 'V', 'X', 'Z',
-      'A', 'L', 'N', 'J', 'O', 'U', 'G', 'i', '$', 'q', 'f', 'H', 'u',
-      '[', ']', 'Y']);
+      'A', 'L', 'N', 'J', 'O', 'U', 'G', 'i', '†', '‡', '$', 'q', 'f', 'H', 'u',
+      '[', ']', 'Y']);   // '†'/'‡'＝石碑・転移の石碑（キュー27・看板 'i' と同じく通れない）
     return HARD.has(t);
   };
 

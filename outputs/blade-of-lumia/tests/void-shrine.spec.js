@@ -112,7 +112,7 @@ test.describe('Blade of Lumia – 虚空の祠（聖剣）', () => {
     const hall = STAGES['0,0'];
     expect(hall.tiles.map((_, r) => rowStr(hall, r))).toEqual([
       '############',
-      '#>.i########',
+      '#>.†########',   // 石車堂の碑＝石碑（キュー27 で看板 'i' から分けた）
       '##.#########',
       '#S.*.....S##',
       '#.#.#.#*#.##',

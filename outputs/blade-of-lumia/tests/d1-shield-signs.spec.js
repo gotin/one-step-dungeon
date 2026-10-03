@@ -2,6 +2,7 @@ import { test, expect } from '@playwright/test';
 import { readFileSync } from 'fs';
 import { bfsLayer, findEntrances, firstWalkable } from '../scripts/lib/connectivity.mjs';
 import { ENEMY_META } from '../shared/enemies.js';
+import { READABLE_SIGN_TILES } from '../shared/tiles.js';
 
 // 2026-08-26：W 魔物の実プレイ判定で挙がった「盾がない状態はかなりきつい」への対処＝
 // 【A 配置は動かさず、立札で盾の在処と「先に取れ」を示す】（PLAN 8-4 (4) の W の記録）。
@@ -61,10 +62,10 @@ test.describe('Blade of Lumia – D1 木の盾の道しるべ（W 戦の前に�
       const signs = Object.entries(s.signData || {});
       const bodies = signs.filter(([, sd]) => Array.isArray(sd?.lines) && sd.lines.length > 0);
       expect(bodies.length, `${k} に本文つきの立札が無い`).toBeGreaterThan(0);
-      // 本文つきなら 'i' タイルとして実際に読める位置にあること
+      // 本文つきなら読める立て物（看板 'i'・石碑 '†'・転移の石碑 '‡'＝キュー27）の上にあること
       for (const [pk] of bodies) {
         const [r, c] = pk.split(',').map(Number);
-        expect(s.tiles[r][c], `${k} @${pk} が 'i' でない`).toBe('i');
+        expect(READABLE_SIGN_TILES.has(s.tiles[r][c]), `${k} @${pk} が読める立て物でない（${s.tiles[r][c]}）`).toBe(true);
       }
     }
   });

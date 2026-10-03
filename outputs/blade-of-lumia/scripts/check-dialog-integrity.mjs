@@ -35,7 +35,7 @@
 //   node scripts/check-dialog-integrity.mjs
 //
 import { readFileSync } from 'fs';
-import { TILE } from '../shared/tiles.js';
+import { TILE, READABLE_SIGN_TILES } from '../shared/tiles.js';
 import { NPC_SPRITE_MAP } from '../shared/npcs.js';
 import { ORDER, labelOf, bossesInOrder, SUB_ITEM_KEYS } from '../shared/progression.js';
 import { AFTER_KEY, itemIdOfVariantKey } from '../shared/dialog-variants.js';
@@ -49,8 +49,8 @@ const d = JSON.parse(readFileSync(MAP_PATH, 'utf8'));
 
 const EXCLUDED_LAYERS = new Set(['test_mechanics']);
 
-// combat.js が会話を開くタイルはこの5文字だけ（swordAttack: NPC_SHOP → NPC_SPRITE_MAP → SIGN）。
-const READABLE_TILES = new Set([TILE.SIGN, ...Object.keys(NPC_SPRITE_MAP)]);
+// combat.js が会話を開くタイル（swordAttack: NPC_SHOP → NPC_SPRITE_MAP → 看板・石碑・転移の石碑）。
+const READABLE_TILES = new Set([...READABLE_SIGN_TILES, ...Object.keys(NPC_SPRITE_MAP)]);
 
 // 帯1（PLAN.md 17-⑤ 1番）＝操作説明を許す唯一の帯。
 const BAND1_FIELD_STAGES = new Set(['7,14', '6,13']);

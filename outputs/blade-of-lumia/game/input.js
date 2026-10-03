@@ -65,6 +65,12 @@ export function initInput(deps) {
 		pauseSelectNext,
 		pauseMarkPrev,
 		pauseMarkNext,
+		getIsWarpMenu,
+		getIsWarping,
+		warpMenuPrev,
+		warpMenuNext,
+		warpMenuChoose,
+		warpMenuClose,
 		hasCleared,
 		canDash,
 		setDashing,
@@ -100,6 +106,16 @@ export function initInput(deps) {
 		if (inCutscene()) { e.preventDefault(); heldKeys.clear(); return; }
 		if (getIsDialog()) {
 			if ([' ','Enter','z','Z'].includes(e.key)) { e.preventDefault(); advanceDialog(); }
+			return;
+		}
+		// キュー27: 転移の石碑の行き先一覧（店と同じキー）。転移の演出中は何も受けない
+		// （出発から到着まで約1.3秒＝その間に歩く・剣を振ると演出の途中で動いてしまう）。
+		if (getIsWarping?.()) { e.preventDefault(); heldKeys.clear(); return; }
+		if (getIsWarpMenu?.()) {
+			if (e.key === 'Escape') { e.preventDefault(); warpMenuClose(); return; }
+			if (e.key === 'ArrowUp'   || e.key === 'w' || e.key === 'W') { e.preventDefault(); warpMenuPrev(); return; }
+			if (e.key === 'ArrowDown' || e.key === 's' || e.key === 'S') { e.preventDefault(); warpMenuNext(); return; }
+			if ([' ','Enter','z','Z'].includes(e.key)) { e.preventDefault(); if (!e.repeat) warpMenuChoose(); return; }
 			return;
 		}
 		if (getIsShop()) {

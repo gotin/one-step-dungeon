@@ -1,5 +1,5 @@
 // ── editor-canvas.js ── ステージキャンバス描画・マウス操作 ────
-import { TILE, TILE_META, BG_TILES, makeEmptyStage } from '../shared/tiles.js';
+import { TILE, TILE_META, BG_TILES, makeEmptyStage, READABLE_SIGN_TILES } from '../shared/tiles.js';
 import { ENEMY_TILES } from '../shared/enemies.js';
 import { isTestLayer, gameLayerEntries } from '../shared/layers.js';
 import {
@@ -180,7 +180,7 @@ function cleanTileMetaData(sd, r, c) {
 		delete sd.mapEnters?.[posKey];
 	} else if (tile === TILE.CHEST) {
 		delete sd.chestContents?.[posKey];
-	} else if (tile === TILE.NPC_A || tile === TILE.NPC_B || tile === TILE.PRINCESS || tile === TILE.SIGN) {
+	} else if (tile === TILE.NPC_A || tile === TILE.NPC_B || tile === TILE.PRINCESS || READABLE_SIGN_TILES.has(tile)) {
 		delete sd.npcData?.[posKey];
 		// 看板の本文は signData にも置ける（ゲームはこちらを先に読む）∴両方消す
 		// ＝片方だけだと、タイルを消したのに本文（と教える目的地）が残る。

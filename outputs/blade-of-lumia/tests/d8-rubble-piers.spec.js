@@ -91,7 +91,7 @@ test.describe('D8 崩れ壁の橋脚 ① データ', () => {
 		expect(st.showConditions, '宝箱に出現条件がある').toEqual({});
 		expect(st.chestContents).toEqual({ [CHEST]: { type: 'rupee', value: 20, name: 'ルピー×20' } });
 		for (const k of CRACKS) expect(st.breakableWalls?.[k]?.breakDef, `崩れ壁 ${k} の breakDef`).toBe(1);
-		expect(t[8][1]).toBe(TILE.SIGN);
+		expect(t[8][1], '崩れた砦の石碑＝石碑タイル（キュー27）').toBe(TILE.MONUMENT);
 		expect(st.signData['8,1']?.lines?.length, '石碑に本文が無い').toBeGreaterThan(0);
 	});
 

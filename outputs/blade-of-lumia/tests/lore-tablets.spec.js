@@ -1,7 +1,7 @@
 // Phase 6-2: 世界の歴史を語る石碑（ザーネルの記憶）テスト
 //
 // 検証:
-//  1) 8つの「ザーネルの記憶」石碑が想定どおりのレイヤー/座標に SIGN タイル('i')
+//  1) 8つの「ザーネルの記憶」石碑が想定どおりのレイヤー/座標に石碑タイル('†'＝キュー27 で看板 'i' から分けた)
 //     として存在し、signData に台詞が紐づいている（データレベル・決定論的）
 //  2) 各石碑のセルに隣接して立てる床('.')が存在する（読みに行ける配置か）
 //  3) 8断片が「其の一〜七＋終章」の順で揃っている（物語の連続性）
@@ -45,7 +45,8 @@ test.describe('Blade of Lumia – ザーネルの記憶 石碑（Phase 6-2）', 
 		for (const t of TABLETS) {
 			const st = layers[t.layer].stages[t.stage];
 			const [r, c] = t.key.split(',').map(Number);
-			expect(rowArr(st.tiles, r)[c], `${t.layer}/${t.stage} @${t.key} は SIGN タイルであるべき`).toBe('i');
+			// キュー27（2026-10-03）で石碑は看板 'i' から石碑 '†' に分けた
+			expect(rowArr(st.tiles, r)[c], `${t.layer}/${t.stage} @${t.key} は石碑タイルであるべき`).toBe('†');
 			const data = st.signData?.[t.key];
 			expect(data, `${t.layer}/${t.stage} @${t.key} に signData があるべき`).toBeTruthy();
 			expect(data.name).toContain('ザーネルの記憶');

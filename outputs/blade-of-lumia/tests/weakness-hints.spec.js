@@ -2,6 +2,7 @@ import { test, expect } from '@playwright/test';
 import { readFileSync } from 'fs';
 import { bfsLayer, findEntrances, firstWalkable, SOLVABLE_GATES } from '../scripts/lib/connectivity.mjs';
 import { ENEMY_META } from '../shared/enemies.js';
+import { READABLE_SIGN_TILES } from '../shared/tiles.js';
 import { SWORD_TIERS } from '../shared/items.js';
 import { ORDER, presetsFrom } from '../shared/progression.js';
 import { WEAKNESS_ITEM } from '../scripts/lib/enemy-placement.mjs';
@@ -120,10 +121,10 @@ test.describe('Blade of Lumia – ボスの弱点は本編で知れる（0d-2.11
       expect(hit, `${label}：強制経路 [${route.join(' ')}] に「${segs.join('/')}」と ` +
         `${w.type} の行いを同じ行に書いた立札が無い\n読める行:\n` +
         lines.map(({ k, pk, t }) => `  ${k}@${pk} ${t}`).join('\n')).toBeTruthy();
-      // 本文つきの立札は 'i' タイルの上＝実際に読める位置にあること。
+      // 本文つきの立札は読める立て物（看板 'i'・石碑 '†'・転移の石碑 '‡'＝キュー27）の上＝実際に読める位置にあること。
       const s = MAP.layers[target.layer].stages[hit.k];
       const [r, c] = hit.pk.split(',').map(Number);
-      expect(s.tiles[r][c], `${hit.k}@${hit.pk} が 'i' でない＝本文が読めない`).toBe('i');
+      expect(READABLE_SIGN_TILES.has(s.tiles[r][c]), `${hit.k}@${hit.pk} が読める立て物でない＝本文が読めない`).toBe(true);
     });
   }
 });

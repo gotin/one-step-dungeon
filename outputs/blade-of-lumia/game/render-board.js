@@ -47,7 +47,7 @@ const ITEM_FALLBACK_TILES = new Set([
 //    地面を「物」として 0.7 セル（obj-sprite）で描いていたのが「石畳が小さく表示される」の
 //    原因。地面はマップを読んだ時点で下地へ移る（shared/ground-layer.js）∴tiles 層には来ない。
 export const FIELD_SPRITE_TILES = new Set([
-	TILE.TREE, TILE.MOUNTAIN, TILE.SIGN,
+	TILE.TREE, TILE.MOUNTAIN, TILE.SIGN, TILE.MONUMENT, TILE.WARP_STONE,
 ]);
 
 // 32ドットで描き直した「セルを埋めない絵」（キュー10番 10a-1c）。
@@ -56,7 +56,7 @@ export const FIELD_SPRITE_TILES = new Set([
 // 余白で決まる（22/32 ≒ 0.69 セル＝従来の obj-sprite 0.7 倍と同じ）。
 // 🔴 逆に obj-sprite（0.7 倍＋中央寄せ）へ 32 ドットの絵を入れると 1ドット 2.36px
 //    ＝キャラより細かくなる∴この4種は必ず全面で貼る。
-const FIELD_ART_32_TILES = new Set([TILE.TREE, TILE.MOUNTAIN, TILE.BUSH, TILE.SIGN]);
+const FIELD_ART_32_TILES = new Set([TILE.TREE, TILE.MOUNTAIN, TILE.BUSH, TILE.SIGN, TILE.MONUMENT, TILE.WARP_STONE]);
 const fieldSpriteClass = (tile) => (FIELD_ART_32_TILES.has(tile) ? 'field-sprite' : 'obj-sprite');
 
 // 盤面の「物」の canvas をセルに貼る唯一の入口（キュー10番 10d）。
@@ -97,6 +97,8 @@ export function createRenderBoard(deps) {
 		getStageLabelEl,
 		charLayerElRef,
 		getDoorwayState,
+		// キュー27：その転移の石碑が灯っているか（posKey は今の画面のセル）。状態は player にある∴注入
+		isWarpStoneLit = () => false,
 	} = deps;
 
 	// 連結タイル（橋のデッキ）を1セル分描く（内部用）。tiles 層／bgTiles 層のどちらに
@@ -497,7 +499,9 @@ export function createRenderBoard(deps) {
 		// ⚠ 茂みだけは切り倒し状態（ss.cutBushes）を見る＝状態はゲーム側にしかない。
 		if ((FIELD_SPRITE_TILES.has(tile) || tile === TILE.BUSH) && dsc.obj) {
 			if (tile === TILE.BUSH && ss.cutBushes?.has(posKey)) return;
-			const { spr, pal, skin } = dsc.obj;
+			let { spr, pal, skin } = dsc.obj;
+			// キュー27：灯った転移の石碑だけ紋が水色の絵（状態はゲーム側にしかない＝茂みと同じ扱い）
+			if (tile === TILE.WARP_STONE && isWarpStoneLit(posKey)) { spr = 'warpStoneLit'; pal = 'warpStoneLit'; }
 			if (skin) {
 				cellEl.dataset.artSkin = skin;        // どの肌を選んだかテストから見える
 				if (tile === TILE.MOUNTAIN) cellEl.dataset.mountainSkin = skin;

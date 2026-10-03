@@ -154,7 +154,7 @@ test.describe('Blade of Lumia – 魔将の巣（伝説の鎧）', () => {
     const gate = STAGES['0,0'];
     expect(gate.tiles.map((_, r) => rowStr(gate, r))).toEqual([
       '############',
-      '#>.i.......#',
+      '#>.†.......#',   // 岩窟の刻み文＝石碑（キュー27 で看板 'i' から分けた）
       '#..........#',
       '#..######..#',
       '#..######...',
@@ -180,7 +180,7 @@ test.describe('Blade of Lumia – 魔将の巣（伝説の鎧）', () => {
     const lair = STAGES['1,0'];
     expect(lair.tiles.map((_, r) => rowStr(lair, r))).toEqual([
       '############',
-      '#....i....B#',
+      '#....†....B#',   // 魔将の碑＝石碑（キュー27）
       '#..........#',
       '#..........#',
       ':.......V..#',

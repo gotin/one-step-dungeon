@@ -2,7 +2,7 @@
 // createCombat(deps) factory で生成する。
 // swordAttack / dealDamageToEnemy / takeDamage を提供。
 
-import { TILE } from '../shared/tiles.js';
+import { TILE, READABLE_SIGN_TILES } from '../shared/tiles.js';
 import { ENEMY_META } from '../shared/enemies.js';
 import { NPC_SPRITE_MAP } from '../shared/npcs.js';
 import { playSound, resumeAudio, stopBgm } from '../shared/sounds.js';
@@ -656,10 +656,10 @@ export function createCombat(deps) {
 		}
 		if (tile && NPC_SPRITE_MAP[tile]) { startDialog(tr, tc, tile); return; }
 
-		// 看板を読む
-		if (tile === TILE.SIGN) {
+		// 看板・石碑・転移の石碑を読む（キュー27＝集合で見る。転移碑の扱いは game.js 側）
+		if (READABLE_SIGN_TILES.has(tile)) {
 			const signData = stageData.signData?.[posKey3] ?? stageData.npcData?.[posKey3] ?? { name: '看板', lines: ['（何も書かれていない）'] };
-			deps.openSignDialog(signData);
+			deps.openSignDialog(signData, tr, tc, tile);
 			return;
 		}
 

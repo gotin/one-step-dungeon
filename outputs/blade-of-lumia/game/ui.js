@@ -113,6 +113,7 @@ export function createUi(deps) {
 	// ── ui.js ローカル状態（game.js 側フラグには影響しない） ──
 	let dialogLines   = [];
 	let dialogLineIdx = 0;
+	let dialogOnClose = null;   // キュー27: openDialog の onClose（閉じた直後に1回）
 	let pauseItemKeys = [];
 	let pauseItemIdx  = 0;
 	let shopGoods     = [];
@@ -440,6 +441,7 @@ export function createUi(deps) {
 		const variant = pickDialogVariant(data, player, getMapData());
 		dialogLines = variant.lines;
 		dialogLineIdx = 0;
+		dialogOnClose = null;
 		// キュー16: 会話データの `mark` が教える目的地。ここでは保留するだけで、
 		// 記すのは読み終えた時（advanceDialog の閉じる枝）＝話の途中で
 		// 「記した！」が会話の後ろに隠れて出てしまうのを避ける。
@@ -467,16 +469,21 @@ export function createUi(deps) {
 			flushPendingPulse();
 			// 閉じた後に呼ぶ＝pulse がそのまま画面に出る（会話中は保留されてしまう）。
 			commitDialogMarks();
+			const after = dialogOnClose;
+			dialogOnClose = null;
+			after?.();
 		} else { showDialogLine(); playSound('talk'); }
 	}
 
 	// ダイアログを外部から開く（ヒント・サブアイテム説明など）
 	// `mark`＝看板の「教える目的地」（看板は startDialog を通らず game.js から開く）。
-	function openDialog(name, lines, mark = null) {
+	// onClose＝読み終えて閉じた直後に1回呼ぶ（キュー27＝転移の石碑が灯り、行き先の一覧を開く）。
+	function openDialog(name, lines, mark = null, onClose = null) {
 		// 店を開いている間に来たダイアログ（店で初めてサブアイテムを買ったときのヒント）は
 		// 店を閉じてから開く。⚠️ そのまま開くと店の窓の裏に隠れたダイアログがキー入力を奪い、
 		// ↑↓・Escape が効かなくなる（2026-09-30 ユーザー報告＝クリックだけ効く状態）。
 		if (getIsShop()) { pendingDialog = { name, lines, mark }; return; }
+		dialogOnClose = onClose;
 		dialogLines   = lines;
 		dialogLineIdx = 0;
 		pendingDialogMarks = normalizeDialogMarks(mark, getCurrentLayer());

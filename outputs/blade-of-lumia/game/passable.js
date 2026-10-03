@@ -7,7 +7,7 @@
 //  そこで「状態 getter と依存関数を注入する factory」形式にし、game.js が
 //  起動時に一度だけ createPassable(deps) を呼んで関数群を生成する。
 //  getter 経由で常に最新状態を読むので、呼び出し側の改修は不要。
-import { TILE } from '../shared/tiles.js';
+import { TILE, READABLE_SIGN_TILES } from '../shared/tiles.js';
 import { NPC_SPRITE_MAP } from '../shared/npcs.js';
 
 // Phase 1-5: 翼の羽衣で飛行中に「上を飛び越えられる」障害物タイル。
@@ -261,7 +261,8 @@ export function createPassable(d) {
 		if (tile === TILE.FENCE)       return false;
 		if (tile === TILE.HOUSE_WALL)  return false;
 		if (tile === TILE.HOUSE_ROOF)  return false;
-		if (tile === TILE.SIGN)        return false; // 看板は通行不可（隣接して剣で読む）
+		// 看板・石碑・転移の石碑は通行不可（隣接して剣で読む）。キュー27＝集合で見る
+		if (READABLE_SIGN_TILES.has(tile)) return false;
 		// かがり火は通行不可（隣接してロウソクで点ける）。
 		// ⚠️ 2026-09-23 まで**ここだけが 'H' を落としていた**＝プレイヤーと敵がかがり火の上を
 		// 歩けた。他の判定はすべて「かがり火＝固い」で書かれていた：

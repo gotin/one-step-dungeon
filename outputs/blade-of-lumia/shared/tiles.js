@@ -140,6 +140,12 @@ export const TILE = {
 	HOUSE_DOOR:  'e',  // 家のドア（通行可）
 	HOUSE_ROOF:  'p',  // 家の屋根（通行不可）
 	SIGN:        'i',  // 看板（通行可・近づいて読める）
+	// キュー27（2026-10-03）：看板とは別の「碑」。読み方は看板と同じ（signData の本文）。
+	//   MONUMENT   … 石碑＝絵が碑になるだけ（〜の石碑・碑・石標・刻み文・ザーネルの記憶）
+	//   WARP_STONE … 転移の石碑＝初めて読むと灯り、灯った転移碑どうしを行き来できる
+	//               （選んだ8枚だけ＝ユーザー判定「全部がワープできるのはやりすぎ」）
+	MONUMENT:    '†',
+	WARP_STONE:  '‡',
 
 	// ── キュー10番・10c 追い作業（2026-09-11）：小さな島の丸い角 ──────────
 	// 草地の隅を丸く見せる手配置の bgTile（`shared/sprites-tiles.js` の
@@ -272,6 +278,10 @@ export const TILE_META = {
 	[TILE.HOUSE_DOOR]:  { label: '家のドア',   color: '#8a4020', passable: true,  icon: '⊟' },
 	[TILE.HOUSE_ROOF]:  { label: '家の屋根',   color: '#c03020', passable: false, icon: '△' },
 	[TILE.SIGN]:        { label: '看板',       color: '#b08040', passable: true,  icon: '📋' },
+	// 石碑・転移碑はゲームの通行判定（game/passable.js）どおり通れない＝看板の passable:true は
+	// 旧来の食い違い（看板もゲームでは通れない）。新しい2つは最初から実際の挙動に合わせる。
+	[TILE.MONUMENT]:    { label: '石碑',       color: '#9a958a', passable: false, icon: '碑' },
+	[TILE.WARP_STONE]:  { label: '転移の石碑', color: '#5a8aa0', passable: false, icon: '転' },
 	// Phase 9-4a: テーマ地形タイル
 	[TILE.SNOW]:        { label: '雪原',       color: '#c8dce8', passable: true,  icon: '❄' },
 	[TILE.ASH]:         { label: '火山灰',     color: '#4a3028', passable: true,  icon: '▪' },
@@ -330,6 +340,13 @@ export const FLOOR_STACK_TILES = {
 	[TILE.ITEM_ARROWS]: { item: 'bow',  requires: 'bow', icon: 'arrow', cap: 'maxArrows' },
 	[TILE.ITEM_BOMB]:   { item: 'bomb', requires: null,  icon: 'bomb',  cap: 'maxBombs'  },
 };
+
+// ── 「本文を読める立て物」の単一の真実（キュー27・2026-10-03）──
+// 看板・石碑・転移の石碑は読み方が同じ＝隣で剣のキーを押すと `signData[r,c]`（無ければ
+// `npcData`）の本文が出る・通れない・着地できない。読み手（ゲームの読み取り／通行／着地／
+// 接続の検査／会話の検査／エディタの本文欄）はこの集合を見る＝`=== TILE.SIGN` を書かない
+// （書くと石碑だけ読めない・すり抜けられる、が起きる）。
+export const READABLE_SIGN_TILES = new Set([TILE.SIGN, TILE.MONUMENT, TILE.WARP_STONE]);
 
 // タイルの一覧（パレット表示用）
 export const TILE_LIST = Object.keys(TILE_META);

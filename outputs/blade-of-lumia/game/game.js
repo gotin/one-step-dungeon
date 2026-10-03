@@ -1,6 +1,6 @@
 // ── Blade of Lumia – game.js ──────────────────────────────────
 // Phase 1: マップ読み込み・プレイヤー移動（半セル）・ステージ遷移
-import { TILE, BG_TILES } from '../shared/tiles.js';
+import { TILE, BG_TILES, READABLE_SIGN_TILES } from '../shared/tiles.js';
 import { buildExitRegistry as buildExitRegistryShared } from '../shared/exits.js';
 import { liftGroundTiles } from '../shared/ground-layer.js';
 import { ENEMY_META, ENEMY_SPEED_NORMAL } from '../shared/enemies.js';
@@ -38,6 +38,9 @@ import { createRenderChars } from './render-chars.js';
 // ── 入力・UI（Phase 0-2 Step 4: input.js / ui.js へ切り出し）──────────────────
 import { initInput } from './input.js';
 import { createUi } from './ui.js';
+// ── 転移の石碑（キュー27）─────────────────────────────────────────
+import { createWarpMenu } from './warp-menu.js';
+import { warpStoneId, warpLandingCandidates } from '../shared/warp-stones.js';
 // ── 投擲物・爆弾（Phase 0-2 Step 5: projectile.js へ切り出し）───────────────
 import { createProjectile } from './projectile.js';
 // ── 敵AI（Phase 0-2 Step 5: enemy-ai.js へ切り出し）──────────────────────────
@@ -130,6 +133,8 @@ let player = {
 	gachaPulls: {},
 	// キュー36: 最大ハートの景品をもう出したくじ（キーは gachaPulls と同じ→true）。1台1回限り。
 	gachaPrizeTaken: {},
+	// キュー27: 灯った転移の石碑の id（"layer:stage:r,c"）。素の配列＝JSON でそのまま保存できる。
+	litWarpStones: [],
 	// キュー16: 目的地マーク。NPC・看板が教えた場所を地図に残す。
 	// { layer, stage:"x,y", label, kind } の配列＋選択中の id（"layer:x,y"）。
 	// ⚠️ 素の配列・文字列にする＝saveGame は player を展開して JSON にする∴
@@ -177,6 +182,7 @@ let isPaused        = false;
 let isDialog        = false;
 let isGameover      = false;
 let isTransitioning = false;
+let warpMenu = null;   // キュー27: 転移の石碑の行き先一覧（createWarpMenu）
 let invincibleUntil = 0;
 // MAP_ENTER 遷移直後クールダウン：遷移先に着いた直後は同じ入り口に乗っても再遷移しない
 let mapEnterCooldownUntil = 0;
@@ -679,6 +685,7 @@ const { checkStoneOnSwitch, evaluateConditions, refreshGates } = createCondition
 		getStageLabelEl: () => stageLabelEl,
 		charLayerElRef,
 		getDoorwayState,
+		isWarpStoneLit: (posKey) => (player.litWarpStones ?? []).includes(warpStoneId(currentLayer, stageKey, posKey)),
 	});
 
 	const _rc = createRenderChars({
@@ -755,7 +762,7 @@ const { checkStoneOnSwitch, evaluateConditions, refreshGates } = createCondition
 	shopSelectNext   = _ui.shopSelectNext;
 	shopBuy          = _ui.shopBuy;
 	// 第3引数＝看板が教える目的地（キュー16）。呼び元が渡さなければ null＝従来どおり。
-	openDialog       = (name, lines, mark) => _ui.openDialog(name, lines, mark);
+	openDialog       = (name, lines, mark, onClose) => _ui.openDialog(name, lines, mark, onClose);
 	// 台詞と目的地マークを同じ進行状態から解決する（キュー17-2）。
 	pickDialogVariant = (data, p, map) => _ui.pickDialogVariant(data, p, map);
 
@@ -770,10 +777,49 @@ const { checkStoneOnSwitch, evaluateConditions, refreshGates } = createCondition
 		]);
 	};
 
+	// キュー27: 転移の石碑の行き先一覧と転移の演出（game/warp-menu.js）
+	warpMenu = createWarpMenu({
+		getMapData:   () => mapData,
+		getPlayer:    () => player,
+		stopGameLoop, startGameLoop,
+		setIsTransitioning: (v) => { isTransitioning = !!v; },
+		playSound, saveGame,
+		pulse:        (t, ms) => pulse(t, ms),
+		readLines:    (ws) => {
+			const sd = mapData?.layers?.[ws.layer]?.stages?.[ws.stage]?.signData?.[`${ws.r},${ws.c}`] ?? {};
+			const v = pickDialogVariant(sd, player, mapData);
+			openDialog(sd.name ?? '転移の石碑', v.lines, v.mark);
+		},
+		travelTo:     (ws) => {
+			const dest = getStageData(ws.layer, ws.stage);
+			if (!dest) return false;
+			const destSS = getSS(ws.layer, ws.stage);
+			const cell = warpLandingCandidates(ws).find(([r, c]) =>
+				r >= 0 && c >= 0 && r < (dest.rows ?? dest.tiles.length) && c < (dest.cols ?? dest.tiles[0].length)
+				&& !arrivalIsWall(dest, r, c, destSS));
+			if (!cell) return false;
+			enterStage(ws.layer, ws.stage, cell[0], cell[1]);
+			heroDir = cell[0] > ws.r ? 'up' : cell[0] < ws.r ? 'down' : cell[1] > ws.c ? 'left' : 'right';   // 碑の方を向いて立つ
+			mapEnterCooldownUntil = gameNow() + 1500;
+			return true;
+		},
+		renderBoard:  () => renderBoard(),
+		renderChars:  () => renderChars(),
+		getCharLayerEl: () => charLayerEl,
+		getCellPx,
+	});
+
 	const _in = initInput({
 		getIsDialog:     () => getIsDialog(),
 		getIsShop:       () => getIsShop(),
 		getIsPaused:     () => getIsPaused(),
+		// キュー27: 転移の石碑の行き先一覧（店と同じく ↑↓／決定／Escape だけを受ける）
+		getIsWarpMenu:   () => !!warpMenu?.isOpen(),
+		warpMenuPrev:    () => warpMenu?.selectPrev(),
+		warpMenuNext:    () => warpMenu?.selectNext(),
+		warpMenuChoose:  () => warpMenu?.choose(),
+		warpMenuClose:   () => warpMenu?.close(),
+		getIsWarping:    () => !!warpMenu?.isWarping(),
 		// ボス終幕（onBossDefeated / onBossYielded）の間は入力を全部飲む。
 		// ループは stopGameLoop で止まっているが**入力ハンドラは生きていた**∴連打すると
 		// 「剣を持っていない！」「◯◯ を使用！」等が共有バー（#msg-bar）へ割り込んで
@@ -1071,9 +1117,16 @@ const { checkStoneOnSwitch, evaluateConditions, refreshGates } = createCondition
 		// 看板は startDialog を通らない∴「教える目的地」（sd.mark）を第3引数で渡す（キュー16）。
 		// 17-0: 踏破後台詞（linesAfterBoss）は看板タイル（石碑）にも付く∴ NPC と同じ選択規則を通す。
 		// 17-2: マークも同じ進行状態から選ぶ（markAfterBoss）∴ sd.mark 直渡しをやめる。
-		openSignDialog: (sd) => {
+		// キュー27: 転移の石碑は (r,c) から碑を引いて warp-menu に渡す（灯す・行き先の一覧）。
+		openSignDialog: (sd, r, c, tile) => {
 			const v = pickDialogVariant(sd, player, mapData);
-			openDialog(sd.name ?? '看板', v.lines, v.mark);
+			const show = (onClose) => openDialog(sd.name ?? '看板', v.lines, v.mark, onClose);
+			if (tile === TILE.WARP_STONE && warpMenu) {
+				const ws = { id: warpStoneId(currentLayer, stageKey, `${r},${c}`), layer: currentLayer, stage: stageKey, r, c, name: sd.name ?? '転移の石碑' };
+				warpMenu.onRead(ws, show);
+				return;
+			}
+			show(null);
 		},
 		renderBoard:  () => renderBoard(),
 		renderChars:  () => renderChars(),
@@ -1242,6 +1295,7 @@ const ARRIVAL_WALL_TILES = new Set([
 	TILE.SWITCH, TILE.SWITCH_RED, TILE.SWITCH_BLUE,
 	TILE.TREE, TILE.MOUNTAIN, TILE.FENCE,
 	TILE.HOUSE_WALL, TILE.HOUSE_ROOF, TILE.SIGN, TILE.TORCH,
+	...READABLE_SIGN_TILES,   // 看板に加えて石碑・転移の石碑（キュー27）
 ]);
 for (const ch of Object.keys(NPC_SPRITE_MAP)) ARRIVAL_WALL_TILES.add(ch);
 
@@ -2002,6 +2056,7 @@ function startNewGame() {
 		boomerangTier: -1,
 		gachaPulls: {},
 		gachaPrizeTaken: {},
+		litWarpStones: [],
 		mapMarks: [],
 		selectedMarkId: null,
 	};
