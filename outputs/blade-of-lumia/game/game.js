@@ -2,6 +2,7 @@
 // Phase 1: マップ読み込み・プレイヤー移動（半セル）・ステージ遷移
 import { TILE, BG_TILES } from '../shared/tiles.js';
 import { buildExitRegistry as buildExitRegistryShared } from '../shared/exits.js';
+import { liftGroundTiles } from '../shared/ground-layer.js';
 import { ENEMY_META, ENEMY_SPEED_NORMAL } from '../shared/enemies.js';
 import { ITEM_META, EQUIP_META, BOOMERANG_TIERS, ownsItem, addStack } from '../shared/items.js';
 import { NPC_SPRITE_MAP, NPC_DEFAULT_DIALOG } from '../shared/npcs.js';
@@ -299,6 +300,7 @@ function loadGame() {
 async function loadMapData() {
 	const res = await fetch(MAP_JSON_URL);
 	mapData   = await res.json();
+	liftGroundTiles(mapData);   // キュー42：tiles 層の地面は下地へ（shared/ground-layer.js）
 	buildExitRegistry();
 }
 
@@ -2067,6 +2069,8 @@ async function init() {
 			const saved = localStorage.getItem('bladeOfLumiaMapData');
 			if (saved) try { mapData = JSON.parse(saved); } catch { /* 無視 */ }
 		}
+		// localStorage の控え（エディタが保存した古いマップ）を読んだ場合もここを通す
+		if (mapData) liftGroundTiles(mapData);
 		buildExitRegistry();
 
 		// 開始位置をパラメータから取得

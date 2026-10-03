@@ -273,6 +273,15 @@ const GATE_TILES = new Set(['!', 'T', '(', ')', 'D', 'x', 'v', TILE.TIDE_GATE, .
 // not a memorable place. Ruins register as landmarks via their 'o' stone floor.
 const LANDMARK_TILES = new Set(['^', 'o', 'h', 'p']);
 
+// 石畳 'o' は地面＝下地（bgTiles）に置く（キュー42・2026-10-03＝tiles 層の 'o' は全部 bgTiles へ
+// 移した・shared/ground-layer.js）。tiles 層だけを見ると広場がランドマークに数えられなくなる∴
+// 石畳だけは両方の層を見る。⚠ 移す前は「下地の舗装」（深洋O の沈んだ都など 49 画面）を数えて
+// いなかった＝tiles と bgTiles の置き分けは作った経緯の違いで、見た目の違いではなかった。
+function hasStoneFloor(s) {
+  return s.tiles.some((row) => row.includes('o'))
+    || Object.values(s.bgTiles || {}).includes('o');
+}
+
 /** Count edge cells that are steppable-off (a proxy for real branch junctions). */
 function openEdgeCount(s) {
   const { rows, cols } = s;
@@ -327,7 +336,7 @@ export function screenAxes(s) {
   }
 
   // ランドマーク (landmark): an explicit landmark marker tile.
-  if ([...LANDMARK_TILES].some(has)) axes.add('landmark');
+  if ([...LANDMARK_TILES].some(has) || hasStoneFloor(s)) axes.add('landmark');
 
   return axes;
 }
@@ -737,8 +746,9 @@ function _classifyScreen(s) {
   return {
     puzzle:   [..._PUZZLE_TILES].some(has),
     combat:   hasEnemy && (killAll || [..._COMBAT_SHOWPIECE].some(has) || has('B')),
-    unique:   [..._UNIQUE_TILES].some(has),
-    anchor:   [..._ANCHOR_TILES].some(has),
+    // 石畳は下地にも見る（hasStoneFloor の注記・キュー42）
+    unique:   [..._UNIQUE_TILES].some(has) || hasStoneFloor(s),
+    anchor:   [..._ANCHOR_TILES].some(has) || hasStoneFloor(s),
   };
 }
 

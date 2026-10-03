@@ -67,6 +67,14 @@ test.describe('field-quality — screenAxes inference', () => {
     expect(screenAxes(screen([{ r: 4, c: 4, ch: '^' }])).has('landmark')).toBe(true);
   });
 
+  // キュー42（2026-10-03）: 石畳 'o' は地面＝下地（bgTiles）に置く。tiles 層の 'o' を全部下地へ
+  // 移したので、下地の石畳も landmark に数えないと広場の画面が素通り判定に落ちる（実測 5 画面）。
+  test('石畳(o)は下地（bgTiles）に置いても landmark 軸', () => {
+    expect(screenAxes(screen([], { bgTiles: { '4,4': 'o' } })).has('landmark')).toBe(true);
+    // 対照＝石畳でない下地（草）では得ない
+    expect(screenAxes(screen([], { bgTiles: { '4,4': 'g' } })).has('landmark')).toBe(false);
+  });
+
   // 2026-07-27 深洋O 廊下: 潮ゲート '=' は「スイッチで開く水の門」＝解ける障害の
   // 代表そのものなのに GATE_TILES に無く、潮ゲートだけの画面が 0 軸＝素通り判定に
   // なっていた（廊下C1〜C4 は戦闘ゼロ・秘密ゼロの設計なので、これを塞がないと

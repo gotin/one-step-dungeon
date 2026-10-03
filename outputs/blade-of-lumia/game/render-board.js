@@ -43,8 +43,10 @@ const ITEM_FALLBACK_TILES = new Set([
 // export する理由＝tests/editor-game-parity.spec.js が「ゲームがどのセルで絵の選択を
 // dataset に残すか」をこの集合から導く（11b）。手書きの写しを持つと、フィールドタイルを
 // 足したときにテストの網から漏れる。
+// ❌ 地面（草・砂・石畳・雪・灰・泥）はここから外した（キュー42・2026-10-03）＝tiles 層の
+//    地面を「物」として 0.7 セル（obj-sprite）で描いていたのが「石畳が小さく表示される」の
+//    原因。地面はマップを読んだ時点で下地へ移る（shared/ground-layer.js）∴tiles 層には来ない。
 export const FIELD_SPRITE_TILES = new Set([
-	TILE.GRASS, TILE.SAND, TILE.STONE_FLOOR, TILE.SNOW, TILE.ASH, TILE.MUD,
 	TILE.TREE, TILE.MOUNTAIN, TILE.SIGN,
 ]);
 
@@ -502,7 +504,7 @@ export function createRenderBoard(deps) {
 			}
 			cellEl.dataset.artSprite = spr;           // どの絵を選んだかテストから見える
 			cellEl.dataset.artPal    = pal;           // 11b：3系の比較用（色まで一致させる）
-			const ANIMATED_FIELD = new Set([TILE.GRASS, TILE.SAND, TILE.SNOW, TILE.ASH, TILE.MUD, TILE.TREE, TILE.BUSH]);
+			const ANIMATED_FIELD = new Set([TILE.TREE, TILE.BUSH]);
 			const cv = makeSprite(spr, pal, ANIMATED_FIELD.has(tile));
 			if (cv) { cv.classList.add(fieldSpriteClass(tile)); cellEl.appendChild(cv); }
 			return;

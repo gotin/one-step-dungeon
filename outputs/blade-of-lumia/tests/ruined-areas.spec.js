@@ -30,11 +30,11 @@ test.describe('Blade of Lumia – 廃城・廃村エリア（Phase 6-3）', () =
 		const st = layers.field.stages['5,3'];
 		expect(st, 'field 5,3 が存在するべき').toBeTruthy();
 
-		// 廃城エリア（rows 0-4）に石畳 'o' が存在する
+		// 廃城エリア（rows 0-4）に石畳 'o' が存在する。
+		// 石畳は地面＝下地（bgTiles）に置く（キュー42・2026-10-03＝tiles 層の 'o' は全部下地へ移した）
 		let stoneFloorCount = 0;
 		for (let r = 0; r <= 4; r++) {
-			const row = rowArr(st.tiles, r);
-			stoneFloorCount += row.filter(c => c === 'o').length;
+			for (let c = 0; c < st.cols; c++) if (st.bgTiles?.[`${r},${c}`] === 'o') stoneFloorCount++;
 		}
 		expect(stoneFloorCount, '廃城に石畳タイルが必要').toBeGreaterThan(0);
 

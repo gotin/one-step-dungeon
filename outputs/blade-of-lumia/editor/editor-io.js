@@ -6,6 +6,7 @@ import {
 } from '../shared/progression.js';
 import { bossVariantOptions } from '../shared/dialog-variants.js';
 import { normalizeMapIconMarkers } from '../shared/map-texts.js';
+import { liftGroundTiles } from '../shared/ground-layer.js';
 
 // ── 保存データ構築 ────────────────────────────────────────────
 export function buildSaveData() {
@@ -44,6 +45,9 @@ export function buildSaveDataSync(TILE) {
 	// なぜここか＝保存・プレビューの3経路が全部この関数を通る∴1箇所で塞げる。
 	// ⚠️ 直すのは絵文字だけ＝日本語の文言は変えない（変わったら `shared/map-texts.js` が例外）。
 	_lastIconFixes = normalizeMapIconMarkers(state.mapData).changes;
+	// キュー42：tiles 層に入った地面（石畳・砂など）を下地へ移してから書き出す。描画ツールは
+	// 最初から下地に書くが、塗りつぶし・貼り付けなど他の書き込み口を1つずつ塞がずに済む。
+	liftGroundTiles(state.mapData);
 
 	let startPos = { layer: 'field', stage: '0,0', row: 1, col: 1 };
 	outer: for (const [sk, sd] of Object.entries(state.mapData.layers.field?.stages ?? {})) {
@@ -67,6 +71,7 @@ export function buildSaveDataSync(TILE) {
 export function loadMapData(data, renderLayerTabs, renderDungeonMeta, renderWorldGrid) {
 	if (!data || !data.layers) { alert('データ形式が無効です'); return; }
 	state.mapData     = { version: data.version ?? 1, layers: data.layers };
+	liftGroundTiles(state.mapData);   // キュー42：古いデータの tiles 層の地面を下地へ（shared/ground-layer.js）
 	state.currentLayer = 'field';
 	state.currentCoord = null;
 	renderLayerTabs();
