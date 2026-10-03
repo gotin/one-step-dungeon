@@ -40,7 +40,7 @@ import { initInput } from './input.js';
 import { createUi } from './ui.js';
 // ── 転移の石碑（キュー27）─────────────────────────────────────────
 import { createWarpMenu } from './warp-menu.js';
-import { warpStoneId, warpLandingCandidates } from '../shared/warp-stones.js';
+import { warpStoneId, warpLandingCandidates, WARP_NO_LANDING_TILES } from '../shared/warp-stones.js';
 // ── 投擲物・爆弾（Phase 0-2 Step 5: projectile.js へ切り出し）───────────────
 import { createProjectile } from './projectile.js';
 // ── 敵AI（Phase 0-2 Step 5: enemy-ai.js へ切り出し）──────────────────────────
@@ -786,7 +786,11 @@ const { checkStoneOnSwitch, evaluateConditions, refreshGates } = createCondition
 		playSound, saveGame,
 		pulse:        (t, ms) => pulse(t, ms),
 		readLines:    (ws) => {
-			const sd = mapData?.layers?.[ws.layer]?.stages?.[ws.stage]?.signData?.[`${ws.r},${ws.c}`] ?? {};
+			// 本文は signData か npcData（読み取りと同じ順＝combat.js）。signData だけ見ると、本文が npcData 側の
+			// 入口の碑（水の迷宮の石碑など）で名前「転移の石碑」・本文「…」になっていた（キュー43）。
+			const st = mapData?.layers?.[ws.layer]?.stages?.[ws.stage];
+			const posKey = `${ws.r},${ws.c}`;
+			const sd = st?.signData?.[posKey] ?? st?.npcData?.[posKey] ?? {};
 			const v = pickDialogVariant(sd, player, mapData);
 			openDialog(sd.name ?? '転移の石碑', v.lines, v.mark);
 		},
@@ -796,6 +800,7 @@ const { checkStoneOnSwitch, evaluateConditions, refreshGates } = createCondition
 			const destSS = getSS(ws.layer, ws.stage);
 			const cell = warpLandingCandidates(ws).find(([r, c]) =>
 				r >= 0 && c >= 0 && r < (dest.rows ?? dest.tiles.length) && c < (dest.cols ?? dest.tiles[0].length)
+				&& !WARP_NO_LANDING_TILES.has(dest.tiles[r]?.[c])   // 入口 `>` に降りない（キュー43）
 				&& !arrivalIsWall(dest, r, c, destSS));
 			if (!cell) return false;
 			enterStage(ws.layer, ws.stage, cell[0], cell[1]);

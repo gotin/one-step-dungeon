@@ -46,6 +46,13 @@ export function listWarpStones(mapData) {
 	return out;
 }
 
+/**
+ * 転移の着地に使わないタイル（壁などの「通れない」とは別）。
+ * 入口 `>` に降りると、再遷移止め（1.5 秒）が切れた次の一歩でダンジョンに入ってしまう
+ * （キュー43・D4 の碑 field 12,2 は真南が入口）。
+ */
+export const WARP_NO_LANDING_TILES = new Set([TILE.MAP_ENTER]);
+
 /** 着地の候補セル（碑の 南 → 東 → 西 → 北）。どれが空いているかは呼び手（ゲームの着地判定）が決める。 */
 export function warpLandingCandidates(ws) {
 	return [[ws.r + 1, ws.c], [ws.r, ws.c + 1], [ws.r, ws.c - 1], [ws.r - 1, ws.c]];

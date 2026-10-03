@@ -16,12 +16,15 @@
 //   ⑤ セーブ＝壊れた litWarpStones を直す
 //   ⑥ 石碑 `†` は看板と同じく読めて・通れない
 //   ⑦ エディタ＝パレットに石碑・転移の石碑のボタン（絵つき）
+//   ⑨ 一覧の「碑文を読む」も本文を npcData 側から引く（キュー43 で見つけた既存バグ＝field 9,9 で
+//      名前「転移の石碑」・本文「…」が出ていた）
+//   ⑩ 碑の真下が入口 `>` の D4（field 12,2）へ飛んでも入口には降りない（降りるとダンジョンに入る）
 import { test, expect } from '@playwright/test';
 import { readFileSync } from 'fs';
 import { fileURLToPath } from 'url';
 import { GAME_URL, waitForBoard } from './helpers.js';
 import { TILE, READABLE_SIGN_TILES } from '../shared/tiles.js';
-import { listWarpStones, warpLandingCandidates } from '../shared/warp-stones.js';
+import { listWarpStones, warpLandingCandidates, WARP_NO_LANDING_TILES } from '../shared/warp-stones.js';
 import { HARD_BLOCKED } from '../scripts/lib/connectivity.mjs';
 import { sanitizeLoadedPlayer } from '../game/save.js';
 import { ITEM_META } from '../shared/items.js';
@@ -49,11 +52,12 @@ test.describe('石碑・転移の石碑 ①②⑤（データ）', () => {
 	test('① 転移碑は8枚・碑を名指しする看板は残っていない・木の看板は看板のまま', () => {
 		const ws = listWarpStones(map).map((w) => `${w.layer} ${w.stage} ${w.r},${w.c} ${w.name}`);
 		expect(ws.sort()).toEqual([
-			'field 10,13 2,3 沼の 関の 石標',
-			'field 12,0 6,6 火口の 石碑',
+			// キュー43（2026-10-03）＝D4・D6・D8 は入口の画面そのものの碑に入れ替えた（名前が「石碑」だけの2枚に名前を付けた）
+			'field 10,14 8,9 沼地の神殿の石碑',
+			'field 12,2 7,5 炎の神殿の石碑',
 			'field 15,4 6,5 鐘楼の石碑',
 			'field 2,15 6,5 砂漠の神殿の石碑',
-			'field 3,5 1,9 苔むした石碑',
+			'field 2,4 4,3 森の聖域の石碑',
 			'field 6,14 4,4 村を見守る碑',
 			'field 8,1 7,2 天空の石碑',
 			'field 9,9 3,9 水の迷宮の石碑',
@@ -73,6 +77,10 @@ test.describe('石碑・転移の石碑 ①②⑤（データ）', () => {
 		expect(signs).toBeGreaterThan(50);
 		// 木の看板の現物は看板のまま
 		expect(map.layers.field.stages['7,2'].tiles[3][6]).toBe(TILE.SIGN);   // 北原の 辻の道標
+		// 行き先の一覧で区別が付くよう、転移碑の名前はかぶらない（汎用の「石碑」だけの名前を付けない）
+		const names = listWarpStones(map).map((w) => w.name);
+		expect(new Set(names).size, `転移碑の名前がかぶっている: ${names}`).toBe(names.length);
+		expect(names).not.toContain('石碑');
 	});
 
 	test('② 8枚とも碑の隣（南→東→西→北）に着地できるセルがある', () => {
@@ -82,6 +90,7 @@ test.describe('石碑・転移の石碑 ①②⑤（データ）', () => {
 			const ok = warpLandingCandidates(w).some(([r, c]) => {
 				const t = sd.tiles[r]?.[c];
 				if (t === undefined) return false;
+				if (WARP_NO_LANDING_TILES.has(t)) return false;   // 入口 `>` に降りるとダンジョンに入ってしまう（キュー43）
 				if (t === TILE.BUSH) return true;
 				if (sd.bgTiles?.[`${r},${c}`] === TILE.WATER) return false;
 				return !HARD_BLOCKED.has(t) && !READABLE_SIGN_TILES.has(t);
@@ -188,6 +197,42 @@ test.describe('転移の石碑 ③④（実ゲーム）', () => {
 		expect(s.menu).toBe(false);
 		expect(s.dialog, '「碑文を読む」で本文が出ない').toBe(true);
 		expect(await page.locator('#dialog-name').textContent()).toBe('村を見守る碑');
+	});
+
+	test('⑨ 本文が npcData 側の碑でも、一覧の「碑文を読む」で本文が出る', async ({ page }) => {
+		// field 9,9 水の迷宮の石碑 (3,9)＝本文は npcData。南 (4,9) に立つ
+		expect(map.layers.field.stages['9,9'].signData?.['3,9']).toBeUndefined();
+		await page.goto(`${GAME_URL}?fromEditor=1&layer=field&stage=9,9&row=4&col=9&ps_weapon=1`);
+		await waitForBoard(page);
+		await page.waitForTimeout(300);
+		await page.evaluate((ids) => { window.__game.getPlayer().litWarpStones = ids; }, [LAKE, VILLAGE]);
+		await readStone(page);
+		expect((await state(page)).rows).toEqual(['村を見守る碑', '碑文を読む']);
+		await page.keyboard.press('ArrowDown');
+		await page.keyboard.press('Space');
+		expect((await state(page)).dialog, '「碑文を読む」で本文が出ない').toBe(true);
+		expect(await page.locator('#dialog-name').textContent()).toBe('水の迷宮の石碑');
+		expect(await page.locator('#dialog-overlay').textContent()).toContain('【水の迷宮】');
+	});
+
+	test('⑩ 碑の真下が入口の D4（field 12,2）へ飛んでも入口には降りない', async ({ page }) => {
+		const D4 = 'field:12,2:7,5';
+		expect(map.layers.field.stages['12,2'].tiles[8][5], '碑の南は入口').toBe(TILE.MAP_ENTER);
+		await gotoVillage(page);
+		await page.evaluate((ids) => { window.__game.getPlayer().litWarpStones = ids; }, [VILLAGE, D4]);
+		await readStone(page);
+		expect((await state(page)).rows).toEqual(['炎の神殿の石碑', '碑文を読む']);
+		await page.keyboard.press('Space');
+		await page.waitForFunction(() => window.__game.getState().stageKey === '12,2', null, { timeout: 3000 });
+		await page.waitForFunction(() => !document.getElementById('char-player')?.classList.contains('warp-in'), null, { timeout: 3000 });
+		let s = await state(page);
+		expect([s.y, s.x], '入口ではなく碑の東に立つ').toEqual([7, 6]);
+		// 入口の再遷移止め（1.5 秒）が切れた後も field に居る＝入口の上に立っていない
+		await page.waitForTimeout(1800);
+		await page.evaluate(() => window.__game.movePlayer('right'));
+		await page.waitForTimeout(300);
+		expect(await page.evaluate(() => window.__game.getState().currentLayer), 'ダンジョンに入ってしまった').toBe('field');
+		expect((await state(page)).stage).toBe('12,2');
 	});
 
 	test('⑥ 石碑は看板と同じく読めて・通れない', async ({ page }) => {
