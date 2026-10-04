@@ -171,7 +171,9 @@ test.describe('Blade of Lumia – 宝箱データの形式（chestContents）', 
 
 // ── エンジン側の受け口（データを直しても、また同じ指定をされたら弾く）─────────
 const GAME = '/blade-of-lumia/game/';
-const D7_RUPEE = { stage: '2,4', chest: { r: 2, c: 5 }, value: 5 };  // ユーザーが報告した部屋そのもの
+// ユーザーが報告した部屋は dungeon_7 2,4 だったが、2026-10-04（キュー39）に「空の術士の浮島」へ作り替えて
+// 宝箱を撤去した∴同じ形（四角い広間・宝箱 (2,5)・ルピー×5・敵なし）の写しの元 dungeon_6 2,4 で測る。
+const RUPEE_ROOM = { layer: 'dungeon_6', stage: '2,4', chest: { r: 2, c: 5 }, value: 5 };
 
 /** n タイル歩く（1 タイル = movePlayer 2回・MOVE_STEP 0.5）。 */
 async function walkTiles(page, dir, tiles = 1) {
@@ -184,8 +186,8 @@ test.describe('Blade of Lumia – 宝箱の報酬（エンジン）', () => {
 
   test('ルピーの宝箱は所持金だけを増やし、サブアイテム欄を1つも増やさない（報告バグの本体）', async ({ page }) => {
     const p = new URLSearchParams({
-      fromEditor: '1', layer: 'dungeon_7', stage: D7_RUPEE.stage,
-      row: String(D7_RUPEE.chest.r + 2), col: String(D7_RUPEE.chest.c),
+      fromEditor: '1', layer: RUPEE_ROOM.layer, stage: RUPEE_ROOM.stage,
+      row: String(RUPEE_ROOM.chest.r + 2), col: String(RUPEE_ROOM.chest.c),
     });
     await page.goto(`${GAME}?${p.toString()}`);
     await waitForBoard(page);
@@ -199,13 +201,13 @@ test.describe('Blade of Lumia – 宝箱の報酬（エンジン）', () => {
     expect(await page.evaluate(() => {
       const pl = window.__game.getState().player;
       return { r: Math.floor(pl.y + 0.5), c: Math.floor(pl.x + 0.5) };
-    }), '宝箱のセルに立てていない').toEqual({ r: D7_RUPEE.chest.r, c: D7_RUPEE.chest.c });
+    }), '宝箱のセルに立てていない').toEqual({ r: RUPEE_ROOM.chest.r, c: RUPEE_ROOM.chest.c });
 
     const after = await page.evaluate(() => ({
       rupees: window.__game.getPlayer().rupees,
       slots:  Object.keys(window.__game.getPlayer().subItems),
     }));
-    expect(after.rupees - before.rupees, 'ルピーが額面どおり増えていない').toBe(D7_RUPEE.value);
+    expect(after.rupees - before.rupees, 'ルピーが額面どおり増えていない').toBe(RUPEE_ROOM.value);
     expect(after.slots.length, 'ルピーでサブアイテム欄が増えた').toBe(before.slots);
     expect(after.slots, 'rupee がサブアイテムとして登録された').not.toContain('rupee');
 
@@ -217,7 +219,7 @@ test.describe('Blade of Lumia – 宝箱の報酬（エンジン）', () => {
   });
 
   test('ITEM_META に無い id／渡せない id の宝箱はスロットを作らず「手に入れた！」とも言わない', async ({ page }) => {
-    await page.goto(`${GAME}?fromEditor=1&layer=dungeon_7&stage=${D7_RUPEE.stage}&row=5&col=5`);
+    await page.goto(`${GAME}?fromEditor=1&layer=${RUPEE_ROOM.layer}&stage=${RUPEE_ROOM.stage}&row=5&col=5`);
     await waitForBoard(page);
     const res = await page.evaluate(() => {
       const out = [];
@@ -234,7 +236,7 @@ test.describe('Blade of Lumia – 宝箱の報酬（エンジン）', () => {
   });
 
   test('数でないルピー額面でも所持金は数のまま（文字列連結で HUD とセーブを壊さない）', async ({ page }) => {
-    await page.goto(`${GAME}?fromEditor=1&layer=dungeon_7&stage=${D7_RUPEE.stage}&row=5&col=5`);
+    await page.goto(`${GAME}?fromEditor=1&layer=${RUPEE_ROOM.layer}&stage=${RUPEE_ROOM.stage}&row=5&col=5`);
     await waitForBoard(page);
     const after = await page.evaluate(() => {
       const before = window.__game.getPlayer().rupees;
@@ -246,7 +248,7 @@ test.describe('Blade of Lumia – 宝箱の報酬（エンジン）', () => {
   });
 
   test('既に汚染されたセーブはロード時に自己修復する（sanitizeLoadedPlayer が未知 id を落とす）', async ({ page }) => {
-    await page.goto(`${GAME}?fromEditor=1&layer=dungeon_7&stage=${D7_RUPEE.stage}&row=5&col=5`);
+    await page.goto(`${GAME}?fromEditor=1&layer=${RUPEE_ROOM.layer}&stage=${RUPEE_ROOM.stage}&row=5&col=5`);
     await waitForBoard(page);
     const out = await page.evaluate(async () => {
       const { sanitizeLoadedPlayer } = await import('/blade-of-lumia/game/save.js');

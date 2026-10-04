@@ -98,10 +98,11 @@ test.describe('Blade of Lumia – 宝箱の文の頭の絵（データ）', () =
 });
 
 // ── 実機：宝箱を実際に開けてメッセージバーの頭の絵を見る ─────────────────
-// 部屋は chest-content-shape.spec.js と同じ dungeon_7 2,4 の宝箱 (2,5)。
+// 部屋は chest-content-shape.spec.js と同じ dungeon_6 2,4 の宝箱 (2,5)（旧 dungeon_7 2,4 は
+// 2026-10-04 キュー39 で宝箱を撤去した）。
 // 中身だけ `page.route` でマップ応答へ差し込む（マップデータは1バイトも変えない）。
 const GAME = '/blade-of-lumia/game/';
-const ROOM = { layer: 'dungeon_7', stage: '2,4', chest: '2,5', r: 2, c: 5 };
+const ROOM = { layer: 'dungeon_6', stage: '2,4', chest: '2,5', r: 2, c: 5 };
 
 async function openWith(page, content, before) {
   // ⚠️ `route.fetch()` で取りに行かない＝全体実行の負荷下で巨大な JSON の取得が
