@@ -33,6 +33,7 @@ import { createPassable } from '../game/passable.js';
 import { waitForBoard } from './helpers.js';
 import { TEST_LAYER, stageKey } from './test-stage-keys.js';
 import { gameLayerEntries } from '../shared/layers.js';
+import { EXTRA_ENEMY_ROOMS } from '../scripts/lib/enemy-placement.mjs';
 
 const GAME = '/blade-of-lumia/game/';
 function fishSwimUrl(stage = 'fish_swim') {
@@ -281,8 +282,12 @@ test.describe('Phase 9-6 深洋O – aquatic enemy movement + 魚群', () => {
       }
     }
     expect(placed.length, '魚群が本編レイヤーに1体もいない').toBeGreaterThan(0);
-    const ARM = new Set(['15,8', '14,9', '15,9', '14,10', '15,10', '14,11', '15,11']
-      .map(k => `field/${k}`));
+    // 初配置は深洋O アーム7。それ以外は EXTRA_ENEMY_ROOMS に宣言した一点物の部屋だけ
+    // （2026-10-05 キュー40＝dungeon_5 1,1 の凍れる湖の浮氷）。
+    const ARM = new Set([
+      ...['15,8', '14,9', '15,9', '14,10', '15,10', '14,11', '15,11'].map(k => `field/${k}`),
+      ...EXTRA_ENEMY_ROOMS.map(e => `${e.layer}/${e.stage}`),
+    ]);
     for (const key of placed) {
       expect(ARM.has(key), `'&' がアーム7外の ${key} にいる（配置範囲の想定外）`).toBe(true);
     }
