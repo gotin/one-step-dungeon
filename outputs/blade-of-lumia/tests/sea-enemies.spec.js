@@ -55,6 +55,7 @@ import { TILE_SPRITE_MAP } from '../shared/tile-sprites.js';
 import { waitForBoard } from './helpers.js';
 import { TEST_LAYER, stageKey } from './test-stage-keys.js';
 import { gameLayerEntries } from '../shared/layers.js';
+import { EXTRA_ENEMY_ROOMS } from '../scripts/lib/enemy-placement.mjs';
 
 const GAME = '/blade-of-lumia/game/';
 
@@ -399,9 +400,12 @@ test.describe('Phase 9-6 深洋O – 海棲雑魚②接近型・③遠隔型', (
     }
     expect(placed[TILE.LURK_SHARK].length, '潜み鮫が本編レイヤーに1体もいない').toBeGreaterThan(0);
     expect(placed[TILE.ARCHER_FISH].length, '射水魚が本編レイヤーに1体もいない').toBeGreaterThan(0);
-    // 初配置は深洋O アーム7（field 15,8〜15,11 / 14,9〜14,11）に限る。
-    const ARM = new Set(['15,8', '14,9', '15,9', '14,10', '15,10', '14,11', '15,11']
-      .map(k => `field/${k}`));
+    // 初配置は深洋O アーム7（field 15,8〜15,11 / 14,9〜14,11）。それ以外は
+    // EXTRA_ENEMY_ROOMS に宣言した一点物の部屋だけ（2026-10-05 キュー40＝dungeon_5 1,2 の水路の番兵）。
+    const ARM = new Set([
+      ...['15,8', '14,9', '15,9', '14,10', '15,10', '14,11', '15,11'].map(k => `field/${k}`),
+      ...EXTRA_ENEMY_ROOMS.map(e => `${e.layer}/${e.stage}`),
+    ]);
     for (const [ch, keys] of Object.entries(placed)) {
       for (const key of keys) {
         expect(ARM.has(key), `'${ch}' がアーム7外の ${key} にいる（配置範囲の想定外）`).toBe(true);
