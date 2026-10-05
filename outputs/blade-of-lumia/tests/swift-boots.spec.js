@@ -28,8 +28,12 @@ import { SPRITES } from '../shared/sprites.js';
 
 const MAP = JSON.parse(readFileSync(new URL('../work/blade-of-lumia.json', import.meta.url), 'utf8'));
 
-// dungeon_7 4,2 は敵も仕掛けも無い広間（行2は列1〜10が床・列11が壁／行4・5は左端が開いている）。
-const ROOM = `${GAME_URL}?fromEditor=1&layer=dungeon_7&stage=4,2`;
+// dungeon_5 2,2 は敵も仕掛けも無い広間（行2は列1〜10が床・列11が壁／行4・5は左端が開いている）。
+// ⚠️ 2026-10-05 に作業台を dungeon_7 4,2 から移した（キュー39 で D7 4,2 を「空の骸骨の並走岸」に作り替えた）。
+//    D5 も実行キュー40（D4↔D5 の写しを独立させる）で作り替える可能性がある∴前提を ⓪ で固定する。
+const WORK_LAYER = 'dungeon_5';
+const WORK_STAGE = '2,2';
+const ROOM = `${GAME_URL}?fromEditor=1&layer=${WORK_LAYER}&stage=${WORK_STAGE}`;
 const url = (row, col, extra = '') => `${ROOM}&row=${row}&col=${col}${extra}`;
 const BOOTS = '&ps_swiftboots=1';
 
@@ -60,7 +64,7 @@ async function continueAndRun(page, extraPlayer) {
       subItems: {}, activeSubItem: null, rupees: 0, triforceCount: 0,
       ...extraPlayer,
     },
-    stageState: {}, currentLayer: 'dungeon_7', stageKey: '4,2', heroDir: 'right',
+    stageState: {}, currentLayer: WORK_LAYER, stageKey: WORK_STAGE, heroDir: 'right',
   });
   await page.addInitScript(({ key, value }) => {
     try { localStorage.setItem(key, value); } catch { /* noop */ }
@@ -79,6 +83,13 @@ async function continueAndRun(page, extraPlayer) {
 }
 
 test.describe('Blade of Lumia – 疾風の靴（Shift で走る）', () => {
+
+  test('⓪ 作業台の前提（行2は列1〜10が床・列11が壁／行4の左端が開いている／敵がいない）', () => {
+    const t = MAP.layers[WORK_LAYER].stages[WORK_STAGE].tiles.map((r) => (Array.isArray(r) ? r.join('') : r));
+    expect(t[2], `${WORK_LAYER} ${WORK_STAGE} が作り替えられた＝別の空の広間へ作業台を移す`).toBe('#..........#');
+    expect(t[4].slice(0, 3), '行4の左端が開いていない').toBe('...');
+    expect(t.join('').replace(/[#.]/g, ''), '床と壁以外の物がある').toBe('');
+  });
 
   test('① 靴＋Shift で 1 tick に 1マス進み、位置は毎 tick 半マス格子の上', async ({ page }) => {
     await open(page, 2, 1, BOOTS);
