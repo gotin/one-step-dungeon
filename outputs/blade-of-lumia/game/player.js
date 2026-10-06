@@ -520,16 +520,30 @@ export function createPlayer(deps) {
 				updatePlayerCharEl();
 				return;
 			}
-			const stoneDestR = nextR + pdr;
-			const stoneDestC = nextC + pdc;
-			const stoneDestTile = stageData.tiles[stoneDestR]?.[stoneDestC];
 			// 2026-08-04（再設計・PLAN 4.7）：色スイッチは石を通さない（プレイヤーは踏めるが石は
 			// 押し込めない＝恒久的な地形制約。ゲートの開閉状態とは無関係）。押し込み経路の一部に
 			// せず「叩くための的」のまま保つ＝旧 I1'（幾何での押し込み禁止）が丸ごと不要になる。
-			const stoneDestOk = stoneDestTile != null
-				&& stoneDestTile !== TILE.SWITCH_RED && stoneDestTile !== TILE.SWITCH_BLUE
-				&& tilePassable(stoneDestR, stoneDestC)
-				&& !Object.values(ss.stonePositions ?? {}).some(st => st.r === stoneDestR && st.c === stoneDestC);
+			const stoneCanEnter = (r, c) => {
+				const t = stageData.tiles[r]?.[c];
+				return t != null
+					&& t !== TILE.SWITCH_RED && t !== TILE.SWITCH_BLUE
+					&& tilePassable(r, c)
+					&& !Object.values(ss.stonePositions ?? {}).some(st => st.r === r && st.c === c);
+			};
+			let stoneDestR = nextR + pdr;
+			let stoneDestC = nextC + pdc;
+			const stoneDestOk = stoneCanEnter(stoneDestR, stoneDestC);
+			// キュー40（2026-10-06）：氷の床（bgTiles の TILE.ICE）の上にいる間、石は止まるまで滑る。
+			// 止まるのは「次のセルへ入れない（壁・水・石・閉じた門…）」か「氷でないセルに乗った」とき
+			// ＝ボタンを氷でない床に置けば、滑ってきた石はボタンの上で止まる。プレイヤーは滑らない
+			// （押した後に石の元セルへ1歩入るだけ）。ソルバー（blade-solver.mjs）と同じ規則。
+			if (stoneDestOk) {
+				while (stageData.bgTiles?.[`${stoneDestR},${stoneDestC}`] === TILE.ICE
+					&& stoneCanEnter(stoneDestR + pdr, stoneDestC + pdc)) {
+					stoneDestR += pdr;
+					stoneDestC += pdc;
+				}
+			}
 			// プレイヤーは押した後「石が居たセル」へ入る（下の player.x/y 代入）∴そこの**下地**が
 			// 閉じていたら押せない。石そのものは今から動くので無視して下のタイルだけを見る
 			// （tiles が '*' の未移動石＝下は床／移動済みの石が乗っているセル＝下は本来のタイル）。
@@ -639,12 +653,16 @@ export function createPlayer(deps) {
 				charLayerEl.appendChild(_animStDiv);
 
 				const _animDuration = STONE_PUSH_COOLDOWN_MS - 60;
+				// 氷の上を滑った分（2セル目以降）は1セルあたり 90ms 足す＝押しより速く滑って見える
+				const _slideCells = Math.abs(stoneDestR - stoneFromR) + Math.abs(stoneDestC - stoneFromC);
+				const _stoneDuration = _animDuration + Math.max(0, _slideCells - 1) * 90;
 				requestAnimationFrame(() => {
 					void _animStDiv.offsetLeft;
 					void _animPlayerDiv.offsetLeft;
 					requestAnimationFrame(() => {
 						const _t = `left ${_animDuration}ms linear, top ${_animDuration}ms linear`;
-						_animStDiv.style.transition = _t;
+						_animStDiv.style.transition = _slideCells > 1
+							? `left ${_stoneDuration}ms ease-out, top ${_stoneDuration}ms ease-out` : _t;
 						_animStDiv.style.left = `${stoneDestC * _animCellPx}px`;
 						_animStDiv.style.top  = `${stoneDestR * _animCellPx}px`;
 						_animPlayerDiv.style.transition = _t;
@@ -665,7 +683,7 @@ export function createPlayer(deps) {
 					handleTileEvent();
 					checkSwitchOff();
 					checkStageTransition();
-				}, _animDuration + 10);
+				}, _stoneDuration + 10);
 				return;
 			}
 			updatePlayerCharEl();

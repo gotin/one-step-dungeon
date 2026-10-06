@@ -112,6 +112,8 @@ export const TILE_SPRITE_MAP = {
 	// 火山灰は角のある岩、泥はドロドロの溜まりに見せるため（同じ形＋色替えでは素材が違って見えない）
 	[TILE.ASH]:         { spr: 'ash',       pal: 'ash'       },
 	[TILE.MUD]:         { spr: 'mud',       pal: 'mud'       },
+	// キュー40（2026-10-06）：氷の床＝押した石が滑る（絵は shared/sprites-tiles.js の iceFloor）
+	[TILE.ICE]:         { spr: 'iceFloor',  pal: 'ice'       },
 	// キュー10番・10c 追い作業：小さな島の丸い角（草地＋本物の水模様・手配置）
 	[TILE.ISLAND_CORNER_NW]: { spr: 'islandCornerNw', pal: 'islandCorner' },
 	[TILE.ISLAND_CORNER_NE]: { spr: 'islandCornerNe', pal: 'islandCorner' },

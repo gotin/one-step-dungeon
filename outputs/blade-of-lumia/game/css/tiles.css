@@ -53,6 +53,11 @@ canvas.sprite.ladder-sprite {
     background: #3a4a28;
 }
 
+/* キュー40（2026-10-06）：氷の床＝押した石が滑る */
+.cell.bg-ice {
+    background: #6fa8c4;
+}
+
 /* ── Phase 8: フィールドタイル背景色（tiles[r][c] がそれ自体の場合） */
 .cell[data-tile-type="grass"],
 .cell.tile-grass {

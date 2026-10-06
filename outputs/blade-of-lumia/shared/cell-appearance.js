@@ -78,7 +78,8 @@ export const BG_TILE_STYLE = {
 	[TILE.SNOW]:        { cls: 'bg-snow',        color: '#c8dce8' },
 	[TILE.ASH]:         { cls: 'bg-ash',         color: '#4a3028' },
 	[TILE.MUD]:         { cls: 'bg-mud',         color: '#3a4a28' },
-	[TILE.BRIDGE]:      { cls: 'bg-bridge',      color: '#8a6030' },
+	[TILE.ICE]:         { cls: 'bg-ice',         color: '#6fa8c4' },
+	[TILE.BRIDGE]:     { cls: 'bg-bridge',      color: '#8a6030' },
 	// 10c-2：手すりを手で決める橋も下地の色は橋と同じ（板が透ける隙間は無い）
 	[TILE.BRIDGE_V_BOTH]: { cls: 'bg-bridge',    color: '#8a6030' },
 	[TILE.BRIDGE_V_W]:    { cls: 'bg-bridge',    color: '#8a6030' },

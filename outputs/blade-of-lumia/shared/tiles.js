@@ -130,6 +130,10 @@ export const TILE = {
 	SNOW:        's',  // 雪原（通行可・白系）
 	ASH:         'c',  // 火山灰/岩肌（通行可・黒赤系）
 	MUD:         'w',  // 泥/沼床（通行可・暗緑褐色）
+	// キュー40 第2陣 5室目（2026-10-06）：氷の床。人は普通に歩けるが、押した石は
+	// 氷の上にいる間は止まるまで滑る（game/player.js の石押し・scripts/lib/blade-solver.mjs）。
+	// 地面なので bgTiles 層に置く（雪・泥と同じ）。凍った水（キュー44）とは別物＝こちらは歩ける。
+	ICE:         'k',
 	// 地形（通行不可）
 	TREE:        't',  // 木（通行不可）
 	MOUNTAIN:    'M',  // 山（通行不可）
@@ -286,6 +290,7 @@ export const TILE_META = {
 	[TILE.SNOW]:        { label: '雪原',       color: '#c8dce8', passable: true,  icon: '❄' },
 	[TILE.ASH]:         { label: '火山灰',     color: '#4a3028', passable: true,  icon: '▪' },
 	[TILE.MUD]:         { label: '泥/沼床',   color: '#3a4a28', passable: true,  icon: '∿' },
+	[TILE.ICE]:         { label: '氷の床（石が滑る）', color: '#6fa8c4', passable: true, icon: '⧄' },
 	// キュー10番・10c 追い作業：小さな島の丸い角（草地・通行可）
 	[TILE.ISLAND_CORNER_NW]: { label: '島の角（北西）', color: '#3a6e28', passable: true, icon: '◜' },
 	[TILE.ISLAND_CORNER_NE]: { label: '島の角（北東）', color: '#3a6e28', passable: true, icon: '◝' },
@@ -358,7 +363,7 @@ export const DEFAULT_ROWS = 10;
 // フィールド地形タイル（bgTiles に書き込む通行可タイル）
 export const BG_TILES = new Set([
 	TILE.FLOOR, TILE.GRASS, TILE.SAND, TILE.STONE_FLOOR, TILE.BRIDGE,
-	TILE.SNOW, TILE.ASH, TILE.MUD,
+	TILE.SNOW, TILE.ASH, TILE.MUD, TILE.ICE,
 	// Phase 9-6 深洋O: 水は「地形」なので bgTiles 層に置ける（下地）。これにより
 	// 敵（tiles 層）と水（bgTiles 層）が同一セルに共存できる＝水棲敵を水上に立たせられる。
 	// tilePassable は bgTiles 水も不通と判定する（passable.js の isWaterAt）。

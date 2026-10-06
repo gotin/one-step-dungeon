@@ -338,9 +338,16 @@ export function makeSolver(tiles, bg, linkSpec, breakDefs, litInit,
       if (si >= 0) {
         if (noPush) continue;   // 対照実験＝石は壁のまま
         if (locked) continue;   // ロック後は石を押せない（石は壁と同じ通行不可のまま）
-        const sr = nr + dr, sc = nc + dc;
+        let sr = nr + dr, sc = nc + dc;
         if (!passableFor(sr, sc, stones, open, broken, { forStone: true }, color)) continue;
         if (stones.includes(`${sr},${sc}`)) continue;
+        // キュー40（2026-10-06）：氷の床（bg が TILE.ICE）の上にいる間、石は止まるまで滑る
+        // （game/player.js の石押しと同じ規則＝次へ入れないか、氷でないセルに乗ったら止まる）。
+        while (bg[sr]?.[sc] === TILE.ICE
+          && passableFor(sr + dr, sc + dc, stones, open, broken, { forStone: true }, color)
+          && !stones.includes(`${sr + dr},${sc + dc}`)) {
+          sr += dr; sc += dc;
+        }
         // 2026-08-02: 実エンジンと同じ規則＝押した後にプレイヤーが入る「石の元セル」の
         // 下地が閉じていたら押せない。これが無いと「閉じた門の中に立って石を押し出す」
         // 実エンジンのバグ挙動を前提に L を測ってしまう（Phase 5-1 の色ゲート合成盤面が

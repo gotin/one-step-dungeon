@@ -365,6 +365,7 @@ const BG_TILE_TARGETS = [
 	{ tile: TILE.SNOW,        label: '雪地'    },
 	{ tile: TILE.ASH,         label: '灰地'    },
 	{ tile: TILE.MUD,         label: '泥地'    },
+	{ tile: TILE.ICE,         label: '氷の床'  },
 	{ tile: TILE.BRIDGE,      label: '橋'      },
 	{ tile: TILE.TREE,        label: '木'      },
 	{ tile: TILE.MOUNTAIN,    label: '山'      },
