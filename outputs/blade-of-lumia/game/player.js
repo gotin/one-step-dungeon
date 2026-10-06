@@ -305,6 +305,29 @@ export function createPlayer(deps) {
 	// 攻撃するまで状態を維持する（プレイヤーが乗っても何も起きない）。
 	// 状態は ss.switchToggles（ON のものだけを保持する Set）で管理し、連動ゲートは
 	// links（switchId→gateId）で openGates を開閉する＝ボタンの状態と混ざらない。
+	//
+	// 2026-10-06（D5 `4,0`）：OFF にすると閉じる門（潮ゲート = ／links の T）に石かプレイヤーが
+	// 乗っていたら**不発**にする＝色スイッチ（setActiveColor）と同じ規則。これが無いと、干した水門の
+	// 上に石を置いたまま鐘を射ると、石が水の上に浮いた絵になる（閉じた潮ゲートは水の絵）。
+	// 開く側（ON）は何も埋めないので見ない。同じ門を他の link が ON で押さえていれば閉じない
+	// （refreshGates ② の「どれか1つ ON で開く」と同じ）。
+	function gatesClosedByToggleOff(pk, ss, stageData) {
+		const links = Array.isArray(stageData.links) ? stageData.links : [];
+		const hasButtons = stageData.tiles.some(row => row.includes(TILE.BUTTON));
+		const out = [];
+		for (const l of links) {
+			if (l.switchId !== pk) continue;
+			const [gr, gc] = l.gateId.split(',').map(Number);
+			const t = stageData.tiles[gr]?.[gc];
+			if (t !== TILE.TIDE_GATE && t !== TILE.GATE) continue;
+			if (hasButtons && t === TILE.GATE) continue;   // ボタンのある盤面の T は refreshGates ① が担う
+			const heldByOther = links.some(o => o.gateId === l.gateId && o.switchId !== pk
+				&& (ss.switchToggles?.has(o.switchId) || ss.switchStates?.[o.switchId] === true));
+			if (!heldByOther) out.push(`${gr},${gc}`);
+		}
+		return out;
+	}
+
 	function toggleSwitch(r, c) {
 		const stageData = getStageData();
 		if (stageData?.tiles[r]?.[c] !== TILE.SWITCH) return false;
@@ -312,6 +335,21 @@ export function createPlayer(deps) {
 		if (!ss.switchToggles) ss.switchToggles = new Set();
 		const pk = `${r},${c}`;
 		const nowOn = !ss.switchToggles.has(pk);
+		if (!nowOn) {
+			const closing = gatesClosedByToggleOff(pk, ss, stageData);
+			if (closing.length) {
+				const stones = Object.values(ss.stonePositions ?? {});
+				const player = getPlayer();
+				const rows = [...new Set([Math.floor(player.y), Math.ceil(player.y)])];
+				const cols = [...new Set([Math.floor(player.x), Math.ceil(player.x)])];
+				const occupied = closing.some(g => stones.some(st => `${st.r},${st.c}` === g)
+					|| rows.some(pr => cols.some(pc => `${pr},${pc}` === g)));
+				if (occupied) {
+					playSound('switchDenied');
+					return false;   // 閉じる門に石か自分が乗っている∴不発（どかしてから射り直す）
+				}
+			}
+		}
 		if (nowOn) ss.switchToggles.add(pk);
 		else       ss.switchToggles.delete(pk);
 		playSound('switch');
