@@ -68,10 +68,15 @@ export const isRing = (r, c) => r === 0 || r === ROWS - 1 || c === 0 || c === CO
  *   **既定 off**（connectivity.mjs の HARD_BLOCKED は 'u' を壁扱い＝field 指標のベースラインに
  *   合わせた保守側）。刈るのは不可逆なので状態を持たず「常に通れる」で上界として安全。
  *   ⚠️ 石は刈った跡（草地）へ押せるが、ここでは保守側に振って石には通さない。
+ * @param {boolean} [opt.openTideBanks=false] 開いた（干上がった）潮ゲート '=' を、はしごの橋脚に数えるか。
+ *   実エンジンの `isLadderBank` は `tilePassable` で決まる∴開いた '=' は床と同じく橋脚になる
+ *   （game/passable.js）。**既定 off**＝下の isBank の保守側（ゲートは橋脚にしない）のまま、
+ *   既存の呼び出し側の測定値を動かさない。D5 `0,2`（干した水門を湖の中の足場にする部屋・
+ *   2026-10-05）で初めて要った。閉じた '=' は水ではない（はしごで渡れない）ことも同じ規則の裏面。
  */
 export function makeSolver(tiles, bg, linkSpec, breakDefs, litInit,
   { hasLadder = true, noTools = false, hasCandle = false, bushCuttable = false, noPush = false,
-    pitCrossable = false } = {}) {
+    pitCrossable = false, openTideBanks = false } = {}) {
   const linksBySwitch = new Map();
   for (const [sw, gates] of linkSpec ?? []) linksBySwitch.set(sw, gates);
   const toggleCells = [];   // Y の位置
@@ -199,12 +204,14 @@ export function makeSolver(tiles, bg, linkSpec, breakDefs, litInit,
   };
 
   // はしご渡り: 進入軸 axis（'v'/'h'）の幅1水（両隣が陸）を渡れるか。
-  const isBank = (r, c, stones, broken) => {
+  const isBank = (r, c, stones, broken, open) => {
     if (r < 0 || r >= ROWS || c < 0 || c >= COLS) return false;
     if (bg[r][c] === W) return false;
     const ch = tiles[r][c];
     if (ch === TILE.BUSH) return bushCuttable;   // 刈れば立てる＝橋脚になる（isHardBlocked より先に見る）
     if (isHardBlocked(ch)) return false;
+    // 開いた潮ゲート＝床（実エンジンの isLadderBank）。石が乗っていれば下の保守側と同じく不可。
+    if (openTideBanks && ch === TILE.TIDE_GATE) return !!open?.has(`${r},${c}`) && !stones.includes(`${r},${c}`);
     // ゲート（T/=/色）は橋脚にならない（保守側）
     if (ch === TILE.GATE || ch === TILE.TIDE_GATE
       || ch === TILE.GATE_RED || ch === TILE.GATE_BLUE) return false;
@@ -218,11 +225,11 @@ export function makeSolver(tiles, bg, linkSpec, breakDefs, litInit,
   // はしごで渡れる「隙間」＝bgTiles 水（沈んだ都）と、pitCrossable なら tiles 層の穴 'x'。
   // 実エンジン LADDER_OVER = {WATER, PIT}（game/passable.js:30）と同じ集合を指す。
   const isGap = (r, c) => bg[r]?.[c] === W || (pitCrossable && tiles[r]?.[c] === TILE.PIT);
-  const canLadderCross = (r, c, axis, stones, broken) => {
+  const canLadderCross = (r, c, axis, stones, broken, open) => {
     if (!hasLadder) return false;
     if (!isGap(r, c)) return false;
-    if (axis === 'v') return isBank(r - 1, c, stones, broken) && isBank(r + 1, c, stones, broken);
-    return isBank(r, c - 1, stones, broken) && isBank(r, c + 1, stones, broken);
+    if (axis === 'v') return isBank(r - 1, c, stones, broken, open) && isBank(r + 1, c, stones, broken, open);
+    return isBank(r, c - 1, stones, broken, open) && isBank(r, c + 1, stones, broken, open);
   };
 
   const DIRS = [[-1, 0, 'v'], [1, 0, 'v'], [0, -1, 'h'], [0, 1, 'h']];
@@ -346,7 +353,7 @@ export function makeSolver(tiles, bg, linkSpec, breakDefs, litInit,
         continue;
       }
       if (isGap(nr, nc)) {
-        if (canLadderCross(nr, nc, axis, stones, broken))
+        if (canLadderCross(nr, nc, axis, stones, broken, open))
           out.push(enc(nr, nc, stones, mask, broken, lit));
         continue;
       }

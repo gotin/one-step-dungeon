@@ -94,12 +94,20 @@ export function createConditions(d) {
 		//    実際に全部屋が `links:{}` で、refreshGates が enterStage から必ず呼ばれるため
 		//    **入室した瞬間に board も描画されずゲームが死んでいた**（キュー5番で発覚）。
 		//    データ側は `[]` に正したうえで、ここでも形式を問わず落ちないようにする。
+		// ⚠️ 1つのゲートを複数のスイッチが指すときは「どれか1つでも ON なら開く」（2026-10-06）。
+		//    旧実装は link ごとに add/delete していた＝**配列の最後の link が勝つ**∴先の link の
+		//    ボタンを押しても後の link（OFF）が閉じ直していた（D5 `0,2` のおとりのボタンで発覚・
+		//    ソルバー `blade-solver.mjs openGatesOf` は元から「どれか1つ」で測っていた＝食い違い）。
+		const linkedOn = new Map();   // gateId → どれかの link が ON か
 		for (const link of (Array.isArray(stageData.links) ? stageData.links : [])) {
 			const [gr, gc] = link.gateId.split(',').map(Number);
 			if (hasButtons && stageData.tiles[gr]?.[gc] === TILE.GATE) continue;
 			const on = ss.switchToggles?.has(link.switchId) || ss.switchStates?.[link.switchId] === true;
-			if (on) ss.openGates.add(link.gateId);
-			else    ss.openGates.delete(link.gateId);
+			linkedOn.set(link.gateId, (linkedOn.get(link.gateId) ?? false) || on);
+		}
+		for (const [gateId, on] of linkedOn) {
+			if (on) ss.openGates.add(gateId);
+			else    ss.openGates.delete(gateId);
 		}
 
 		// 新規に開いたゲートがあれば音を鳴らす
