@@ -25,14 +25,17 @@ import { GAME_URL, SAVE_KEY, waitForBoard, gotoFreshGame } from './helpers.js';
 import { ITEM_META, ITEM_OWNED_FLAG, ownsItem } from '../shared/items.js';
 import { SUB_ITEM_KEYS } from '../shared/progression.js';
 import { SPRITES } from '../shared/sprites.js';
+import { ENEMY_META } from '../shared/enemies.js';
 
 const MAP = JSON.parse(readFileSync(new URL('../work/blade-of-lumia.json', import.meta.url), 'utf8'));
 
-// dungeon_5 2,2 は敵も仕掛けも無い広間（行2は列1〜10が床・列11が壁／行4・5は左端が開いている）。
-// ⚠️ 2026-10-05 に作業台を dungeon_7 4,2 から移した（キュー39 で D7 4,2 を「空の骸骨の並走岸」に作り替えた）。
-//    D5 も実行キュー40（D4↔D5 の写しを独立させる）で作り替える可能性がある∴前提を ⓪ で固定する。
-const WORK_LAYER = 'dungeon_5';
-const WORK_STAGE = '2,2';
+// dungeon_4 3,3 は北半分（行1〜5）が敵も仕掛けも無い床の広間（行2は列1〜10が床・列11が壁／行4・5は左端が開いている）。
+// 南半分（行6〜8）には溶岩とかがり火の謎があるが、走るのは行2 と行4 だけ＝触れない。
+// ⚠️ 作業台の移設の履歴＝dungeon_7 4,2（2026-10-05 にキュー39 で「空の骸骨の並走岸」へ）→ dungeon_5 2,2
+//    （2026-10-08 にキュー40 で「凍れる湖の一周道」へ）→ ここ。D4 は「写しのまま薄く残す」と決めた側
+//    （PLAN キュー40 の ✅ ユーザー判定 2026-10-05）＝作り替わりにくい。それでも前提は ⓪ で固定する。
+const WORK_LAYER = 'dungeon_4';
+const WORK_STAGE = '3,3';
 const ROOM = `${GAME_URL}?fromEditor=1&layer=${WORK_LAYER}&stage=${WORK_STAGE}`;
 const url = (row, col, extra = '') => `${ROOM}&row=${row}&col=${col}${extra}`;
 const BOOTS = '&ps_swiftboots=1';
@@ -84,11 +87,15 @@ async function continueAndRun(page, extraPlayer) {
 
 test.describe('Blade of Lumia – 疾風の靴（Shift で走る）', () => {
 
-  test('⓪ 作業台の前提（行2は列1〜10が床・列11が壁／行4の左端が開いている／敵がいない）', () => {
-    const t = MAP.layers[WORK_LAYER].stages[WORK_STAGE].tiles.map((r) => (Array.isArray(r) ? r.join('') : r));
+  test('⓪ 作業台の前提（行2は列1〜10が床・列11が壁／行4の左端が開いている／行1〜5に物も下地も無い／敵がいない）', () => {
+    const stage = MAP.layers[WORK_LAYER].stages[WORK_STAGE];
+    const t = stage.tiles.map((r) => (Array.isArray(r) ? r.join('') : r));
     expect(t[2], `${WORK_LAYER} ${WORK_STAGE} が作り替えられた＝別の空の広間へ作業台を移す`).toBe('#..........#');
     expect(t[4].slice(0, 3), '行4の左端が開いていない').toBe('...');
-    expect(t.join('').replace(/[#.]/g, ''), '床と壁以外の物がある').toBe('');
+    expect(t.slice(1, 6).join('').replace(/[#.]/g, ''), '行1〜5に床と壁以外の物がある').toBe('');
+    const bgTop = Object.keys(stage.bgTiles ?? {}).filter((k) => Number(k.split(',')[0]) <= 5);
+    expect(bgTop, '行1〜5に下地（水・氷など）がある').toEqual([]);
+    expect(Object.keys(ENEMY_META).filter((ch) => t.join('').includes(ch)), '敵がいる').toEqual([]);
   });
 
   test('① 靴＋Shift で 1 tick に 1マス進み、位置は毎 tick 半マス格子の上', async ({ page }) => {
