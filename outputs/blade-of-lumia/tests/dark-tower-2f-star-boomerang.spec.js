@@ -221,7 +221,7 @@ test.describe('Blade of Lumia – dark_tower 2F 代償の廊／星の間（キ�
 				}
 			}
 		}
-		expect(wood, "木のブーメランは D2 1,1 の宝箱（type:'item'）だけ").toEqual(['dungeon_2/1,1(3,5)']);
+		expect(wood, "木のブーメランは D2 1,1 の宝箱（type:'item'）だけ").toEqual(['dungeon_2/1,1(7,4)']);
 	});
 });
 
