@@ -170,6 +170,37 @@ test.describe('Phase 9-5c – 雑魚ドロップ（フロアドロップ方式�
     expect(hasAmmo).toBe(false);
   });
 
+  // キュー41（2026-10-10 ユーザー指示）：爆弾も弓矢も、置かれた物を拾う前は落とし物で出さない。
+  // 爆弾は弾＝能力∴先に配ると爆弾の報酬（D6）より前に壊せる壁が開く（D2 `2,2` のひびの祠で判明）。
+  test('爆弾も弓も持たない間は、倒しても爆弾・矢は落ちない（ハート・ルピーは落ちる）', async ({ page }) => {
+    // 35% × 50回＝ドロップ自体は事実上必ず出る（出なければ測定が空虚）
+    await boot(page, makeSave({ subItems: {} }));
+    const r = await page.evaluate(() => {
+      const seen = new Set();
+      for (let i = 0; i < 50; i++) {
+        const id = window.__game.injectEnemy(8, 3, 1);
+        window.__game.dealDamage(id, 1, 'sword');
+        for (const d of window.__game.getFloorDrops()) seen.add(d.type);
+      }
+      return [...seen].sort();
+    });
+    expect(r.length, 'ドロップが1つも出ていない＝測定が空虚').toBeGreaterThan(0);
+    expect(r, '爆弾を拾う前なのに爆弾が落ちた').not.toContain('bomb');
+    expect(r, '弓を拾う前なのに矢が落ちた').not.toContain('arrow');
+  });
+
+  test('爆弾を持たない間は、落とし物の爆弾を拾ってもスロットが生えない（持っていれば +3）', async ({ page }) => {
+    await boot(page, makeSave({ subItems: {} }));
+    const bombSlot = () => page.evaluate(() => window.__game.getPlayer().subItems?.bomb ?? null);
+    await page.evaluate(() => { window.__game.spawnFloorDrop(4, 2, 'bomb'); window.__game.pickupFloorDrop(4, 2); });
+    expect(await bombSlot(), '爆弾を持たないのに落とし物の爆弾が入った').toBeNull();
+
+    await page.evaluate(() => window.__game.giveSubItem('bomb'));
+    const before = (await bombSlot()).count;
+    await page.evaluate(() => { window.__game.spawnFloorDrop(4, 2, 'bomb'); window.__game.pickupFloorDrop(4, 2); });
+    expect((await bombSlot()).count).toBe(before + 3);
+  });
+
   test('ボスを倒してもフロアドロップは出ない', async ({ page }) => {
     await boot(page, makeSave({ defeatedBosses: ['A', 'N', 'G', 'B', 'M', 'O', 'L', 'I', 'U'] }));
     await page.evaluate(() => {

@@ -292,10 +292,14 @@ export function createCombat(deps) {
 			const bombCount  = player.subItems?.bomb?.count ?? 0;
 			const arrowCount = player.subItems?.bow?.count  ?? 0;
 			// 所持数に応じた重み（満タンなら0）
-			const wBomb  = bombCount  >= maxB ? 0 : bombCount  < maxB / 2 ? 4 : 2;
+			// キュー41（2026-10-10 ユーザー指示）: 爆弾も、置かれた爆弾（D6 の宝箱など）を
+			// 拾うまでは落とさせない。爆弾は弾＝能力∴落とし物で先に配ると、爆弾の報酬より
+			// 前に壊せる壁（`!`）が開いてしまう（D2 `2,2` のひびの祠で判明）。
+			// ❌ 旧注記「爆弾は単体で使える道具∴この関門は要らない」は失効。
+			const wBomb  = !ownsItem(player, 'bomb') ? 0
+				: bombCount  >= maxB ? 0 : bombCount  < maxB / 2 ? 4 : 2;
 			// 実行キュー19: 弓を手にしていない間は矢を落とさせない（矢の残弾は
-			// `subItems.bow` に載る∴弓入手前に渡すと弓が撃てるようになる）。爆弾は
-			// 単体で使える道具∴この関門は要らない（弾＝能力）。
+			// `subItems.bow` に載る∴弓入手前に渡すと弓が撃てるようになる）。
 			const wArrow = !ownsItem(player, 'bow') ? 0
 				: arrowCount >= maxA ? 0 : arrowCount < maxA / 2 ? 4 : 2;
 			const wHeart  = 2;

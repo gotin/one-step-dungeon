@@ -73,7 +73,8 @@ test.describe('石碑・転移の石碑 ①②⑤（データ）', () => {
 				expect(isStoneName(name), `碑でない名前の石碑: ${at}`).toBe(true);
 			}
 		}
-		expect(monuments, '石碑の数（2026-10-03 の移行で 96）').toBe(96);
+		// 2026-10-03 の移行で 96 → 2026-10-10 キュー41 で D2 `2,2`「対の祠の碑」を足して 97。
+		expect(monuments, '石碑の数（2026-10-03 の移行で 96・D2 2,2 対の祠で 97）').toBe(97);
 		expect(signs).toBeGreaterThan(50);
 		// 木の看板の現物は看板のまま
 		expect(map.layers.field.stages['7,2'].tiles[3][6]).toBe(TILE.SIGN);   // 北原の 辻の道標

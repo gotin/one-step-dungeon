@@ -1582,7 +1582,9 @@ function applyFloorDropEffect(type) {
 	const maxB = player.maxBombs ?? 8;
 	const maxA = player.maxArrows ?? 8;
 	if (type === 'bomb') {
-		if (!player.subItems.bomb) player.subItems.bomb = { count: 0 };
+		// キュー41: 爆弾を拾う前は落とし物の爆弾を渡さない（出る側＝combat.js の重みも 0＝二重の関門）。
+		// 渡すとスロットが生えて `ownsItem(player,'bomb')` が真になり、爆弾の報酬より前に置ける。
+		if (!ownsItem(player, 'bomb')) return;
 		const prev = player.subItems.bomb.count;
 		player.subItems.bomb.count = addStack(prev, 3, maxB);
 		if (player.subItems.bomb.count > prev) {
