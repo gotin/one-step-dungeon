@@ -54,10 +54,10 @@ function pickScreens() {
 	for (const [lk, ld] of gameLayerEntries(MAP)) {
 		for (const [sk, sd] of Object.entries(ld.stages ?? {})) {
 			if (!sd?.tiles) continue;
-			const n = { ground: 0, connect: 0, skin: 0, door: 0, sky: 0, pit: 0, pitGround: 0, wallFace: 0 };
+			const n = { ground: 0, connect: 0, skin: 0, door: 0, sky: 0, pit: 0, pitGround: 0, wallFace: 0, frozen: 0 };
 			for (let r = 0; r < sd.rows; r++) {
 				for (let c = 0; c < sd.cols; c++) {
-					const d = describeCell(sd, r, c);
+					const d = describeCell(sd, r, c, undefined, lk);
 					if (d.ground) n.ground++;
 					if (d.groundConnect || d.objConnect) n.connect++;
 					if (d.obj?.skin) n.skin++;
@@ -66,13 +66,14 @@ function pickScreens() {
 					if (d.tile === TILE.PIT) n.pit++;   // キュー22：穴の底＋縁（肌は下地から）
 					if (d.tile === TILE.PIT && d.objConnect?.skin !== 'floor') n.pitGround++;   // 地面の肌の穴（field）
 					if (d.tile === TILE.WALL && d.objConnect?.edgeCode.includes('S')) n.wallFace++;   // キュー23：前面の立つ壁
+					if (d.ground?.spr.startsWith('frozenWater') || d.obj?.skin === 'frozen') n.frozen++;   // キュー44：D5 の凍った水（層で選ぶ肌）
 				}
 			}
 			rows.push({ lk, sk, sd, ...n });
 		}
 	}
 	const chosen = new Map();
-	for (const cat of ['ground', 'connect', 'skin', 'door', 'sky', 'pit', 'pitGround', 'wallFace']) {
+	for (const cat of ['ground', 'connect', 'skin', 'door', 'sky', 'pit', 'pitGround', 'wallFace', 'frozen']) {
 		for (const s of [...rows].sort((a, b) => b[cat] - a[cat]).slice(0, 2)) {
 			if (s[cat] > 0) chosen.set(`${s.lk}/${s.sk}`, s);
 		}
@@ -188,7 +189,7 @@ test.describe('11b：エディタ・プレビュー・ゲームで同じセル�
 
 		// ── 突き合わせ ──
 		const bad = [];
-		const seen = { ground: 0, connect: 0, skin: 0, door: 0, sky: 0, skyEdge: 0, pit: 0, pitEdge: 0, wall: 0, wallFace: 0, wallSide: 0, cells: 0, base: 0 };
+		const seen = { ground: 0, connect: 0, skin: 0, door: 0, sky: 0, skyEdge: 0, pit: 0, pitEdge: 0, wall: 0, wallFace: 0, wallSide: 0, cells: 0, base: 0, frozen: 0 };
 		const pitSkins = new Set();
 		for (const s of SCREENS) {
 			const key = `${s.lk}/${s.sk}`;
@@ -196,7 +197,7 @@ test.describe('11b：エディタ・プレビュー・ゲームで同じセル�
 			for (let r = 0; r < s.sd.rows; r++) {
 				for (let c = 0; c < s.sd.cols; c++) {
 					const pos = `${r},${c}`;
-					const d = describeCell(s.sd, r, c);
+					const d = describeCell(s.sd, r, c, undefined, s.lk);
 					const e = ed[pos], p = pv[pos], g = gm[pos];
 					if (!e || !p || !g) { bad.push(`${key} (${pos}) 記録が無い`); continue; }
 					seen.cells++;
@@ -204,6 +205,7 @@ test.describe('11b：エディタ・プレビュー・ゲームで同じセル�
 					if (d.groundConnect || d.objConnect) seen.connect++;
 					if (d.obj?.skin) seen.skin++;
 					if (d.tile === TILE.DOOR) seen.door++;
+					if (d.ground?.spr.startsWith('frozenWater') || d.obj?.skin === 'frozen') seen.frozen++;
 					if (d.tile === TILE.SKY) {
 						seen.sky++;
 						if (d.objConnect?.edgeCode !== '-') seen.skyEdge++;
@@ -252,6 +254,8 @@ test.describe('11b：エディタ・プレビュー・ゲームで同じセル�
 		expect(seen.connect).toBeGreaterThan(10);
 		expect(seen.skin).toBeGreaterThan(5);
 		expect(seen.door).toBeGreaterThan(0);
+		// キュー44：凍った水（層で選ぶ肌）も3系で同じ絵＝層の名前の渡し忘れを見張る
+		expect(seen.frozen).toBeGreaterThan(20);
 		// キュー38：空（海と雲の切り身＋崖の縁と影）も3系で同じ部品を重ねる
 		expect(seen.sky).toBeGreaterThan(20);
 		expect(seen.skyEdge).toBeGreaterThan(5);

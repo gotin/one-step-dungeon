@@ -31,7 +31,7 @@ export function drawMinimap(sd) {
 	const ctx = cv.getContext('2d');
 	for (let r = 0; r < sd.rows; r++) {
 		for (let c = 0; c < sd.cols; c++) {
-			const { base, fg } = cellGlanceColor(sd, r, c, sd.tiles[r][c]);
+			const { base, fg } = cellGlanceColor(sd, r, c, sd.tiles[r][c], state.currentLayer);   // 層＝水の肌（キュー44）
 			ctx.fillStyle = fg ?? base;
 			ctx.fillRect(c, r, 1, 1);
 		}
@@ -65,7 +65,7 @@ export function drawWorldPreview(sd) {
 			//    肌と変種を選ばない、という3種類の食い違いを同時に抱えていた。
 			// ⚠ 以前あった PREVIEW_BG（敵・プレイヤーのセルを暗く染める）は廃止した＝
 			//    実ゲームに無い色。敵とプレイヤーはスプライトで描くので配置は分かる。
-			const d = describeCell(sd, r, c, tiles[r][c]);
+			const d = describeCell(sd, r, c, tiles[r][c], state.currentLayer);   // 層＝水の肌（キュー44）
 			const log = makeDrawLog();
 
 			ctx.fillStyle = d.baseColor;

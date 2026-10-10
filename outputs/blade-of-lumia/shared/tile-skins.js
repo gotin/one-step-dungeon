@@ -233,3 +233,42 @@ export function skinnedSprite(sd, r, c, tile, si) {
 	if (!skin) return si;
 	return { ...si, spr: skinName(si.spr, skin), pal: skinName(si.pal, skin), skin };
 }
+
+// ── 水の肌（キュー44 2026-10-10）＝層で決める ─────────────────────────────
+// D5「氷の廃墟」の水は凍った湖面の絵（ユーザー選択＝案B）。🔴 **見た目だけ**＝タイルは
+// `~`／`=` のまま∴はしご・水棲の敵・投擲物・飛行・接続指標は1つも変わらない
+// （[[blade-water-single-source-readers]]＝水の読み手を直す移行にはしない）。
+// 🔴 山・植生と違い下地からは導かない＝D5 の水は field の湖と同じ `~` の下地で、
+//    違いは「どの層にあるか」だけ∴層の名前の明示リストにする（`GLANCE_MAP_LAYERS` と同じ型）。
+//    ⚠ 層を描く側（ゲーム・エディタ・プレビュー・サムネ）は `describeCell` / `cellGlanceColor` に
+//    層の名前を渡す。渡し忘れると黙って普通の水になる（tests/frozen-water.spec.js が見張る）。
+export const WATER_SKIN_BY_LAYER = {
+	dungeon_5: 'frozen',
+};
+export const waterSkinOf = (layerKey) => WATER_SKIN_BY_LAYER[layerKey] ?? null;
+
+// 凍った水の絵は部屋1枚ぶん（12×10 セル）の模様をセルごとに切り分けた 120 枚
+// （絵は shared/sprites-tiles.js）。名前＝`frozenWater@<行>.<列>`（部屋の中の位置を割った余り）。
+export const FROZEN_WATER_ROWS = 10;
+export const FROZEN_WATER_COLS = 12;
+export function frozenWaterSpriteName(r, c) {
+	const rr = ((r % FROZEN_WATER_ROWS) + FROZEN_WATER_ROWS) % FROZEN_WATER_ROWS;
+	const cc = ((c % FROZEN_WATER_COLS) + FROZEN_WATER_COLS) % FROZEN_WATER_COLS;
+	return `frozenWater@${rr}.${cc}`;
+}
+// 水門（潮ゲート・閉）＝同じ切り身を明るい青緑で描き、石の枠を焼き込んだ 120 枚
+export function frozenSluiceSpriteName(r, c) {
+	return frozenWaterSpriteName(r, c).replace('frozenWater@', 'frozenSluice@');
+}
+
+/**
+ * 水の絵を層の肌で差し替える（水 `~`＝tiles 層でも bgTiles 層でも／潮ゲート `=` の閉じた姿）。
+ * 肌の無い層・水でないタイルは null（＝呼び手は従来どおりの絵を使う）。溶岩は対象外。
+ * @returns {{spr:string,pal:string,skin:string}|null}
+ */
+export function waterSkinnedSprite(layerKey, r, c, tile) {
+	if (waterSkinOf(layerKey) !== 'frozen') return null;
+	if (tile === TILE.WATER)     return { spr: frozenWaterSpriteName(r, c), pal: 'frozenWater', skin: 'frozen' };
+	if (tile === TILE.TIDE_GATE) return { spr: frozenSluiceSpriteName(r, c), pal: 'frozenTide',  skin: 'frozen' };
+	return null;
+}

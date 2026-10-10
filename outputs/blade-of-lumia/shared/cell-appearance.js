@@ -33,7 +33,7 @@ import { TILE_SPRITE_MAP } from './tile-sprites.js';
 import { SPRITES, PAL } from './sprites.js';
 import { groundSpriteName } from './ground-seams.js';
 import { connectedTileParts, isConnectTile } from './tile-connect.js';
-import { skinnedSprite, skinName, pitSkinAt } from './tile-skins.js';
+import { skinnedSprite, skinName, pitSkinAt, waterSkinnedSprite } from './tile-skins.js';
 import { PIT_SKIN_STYLE, PIT_BODY_N } from './sprites-pit.js';
 import { objVariantName } from './sprites-tiles.js';
 import { ENEMY_TILES } from './enemies.js';
@@ -238,6 +238,8 @@ export function wallParts(stageData, r, c) {
  * @param {number} c 列
  * @param {string} [tile] そのセルのタイル文字（省略時は stageData から読む。
  *   エディタの「隣画面の帯」は r/c が半端な値になる∴明示的に渡せるようにしている）
+ * @param {string} [layerKey] その画面が属する層の名前（キュー44＝水の肌を層で選ぶ。
+ *   省略すると普通の水＝D5 を描く呼び手は必ず渡す）
  * @returns {{
  *   tile:string, bgTile:string, baseColor:string, hideGround:boolean,
  *   ground:{spr:string,pal:string}|null,
@@ -253,7 +255,7 @@ export function wallParts(stageData, r, c) {
  *                   'entity'（盤面には描かない＝敵・プレイヤー）
  *   icon          … 絵を持たないタイルの文字（エディタ／プレビューだけが描く）
  */
-export function describeCell(stageData, r, c, tile) {
+export function describeCell(stageData, r, c, tile, layerKey) {
 	const posKey = `${r},${c}`;
 	const t  = tile ?? stageData?.tiles?.[r]?.[c] ?? TILE.FLOOR;
 	const bg = stageData?.bgTiles?.[posKey] ?? TILE.FLOOR;
@@ -271,7 +273,10 @@ export function describeCell(stageData, r, c, tile) {
 			d.groundConnect = connectedTileParts(stageData, r, c, bg);
 		} else if (bg !== TILE.FLOOR) {
 			const si = TILE_SPRITE_MAP[bg];
-			if (si) {
+			// キュー44：水の下地は層の肌（D5＝凍った水）で絵を差し替える＝見た目だけ
+			const ws = waterSkinnedSprite(layerKey, r, c, bg);
+			if (ws) d.ground = { spr: ws.spr, pal: ws.pal };
+			else if (si) {
 				// 変種（隣と同じ絵が並ばない）＋継ぎ目（隣の地面の色を自分の絵の縁へ食い込ませる）
 				const spr = groundSpriteName(stageData, si.spr, r, c);
 				if (SPRITES[spr]) d.ground = { spr, pal: si.pal };
@@ -319,6 +324,12 @@ export function describeCell(stageData, r, c, tile) {
 	if (t === TILE.NPC_SHOP) {
 		const m = npcSpriteOf(stageData, `${r},${c}`, t);
 		d.obj = { spr: m.sprite, pal: m.pal, flipX: false, role, skin: null };
+		return d;
+	}
+	// キュー44：水・潮ゲートは層の肌（D5＝凍った水）で絵を差し替える＝見た目だけ
+	const ws = waterSkinnedSprite(layerKey, r, c, t);
+	if (ws) {
+		d.obj = { spr: ws.spr, pal: ws.pal, flipX: false, role, skin: ws.skin };
 		return d;
 	}
 	// 山・木・茂みは下地から肌を選び（tile-skins.js）、さらにセル座標で変種を選ぶ
@@ -467,7 +478,9 @@ export function separateFromBase(fg, base) {
  * 連結タイル（橋・家・柵）は部品の1枚目で代表する＝1ドットには十分。
  * @returns {{spr:string,pal:string}|null}
  */
-function glanceSprite(stageData, r, c, tile) {
+function glanceSprite(stageData, r, c, tile, layerKey) {
+	const ws = waterSkinnedSprite(layerKey, r, c, tile);
+	if (ws) return { spr: ws.spr, pal: ws.pal };
 	if (isConnectTile(tile)) {
 		const parts = connectedTileParts(stageData, r, c, tile);
 		return parts ? { spr: parts.sprs[0], pal: parts.pal } : null;
@@ -488,7 +501,10 @@ function glanceSprite(stageData, r, c, tile) {
  *   fg   … そのセルに乗っている「物」の色（何も乗っていなければ null）
  *   spr  … fg の出所のスプライト名（テスト・調査用）
  */
-export function cellGlanceColor(stageData, r, c, tile) {
+// 凍った水の見取り図の色＝氷の地（パレット 2）。ひび・霜・きらめきは1ドットに潰さない。
+const frozenGlanceColor = (palName) => PAL[palName][2];
+
+export function cellGlanceColor(stageData, r, c, tile, layerKey) {
 	const t  = tile ?? stageData?.tiles?.[r]?.[c] ?? TILE.FLOOR;
 	const bg = stageData?.bgTiles?.[`${r},${c}`] ?? TILE.FLOOR;
 	let base = cellBaseColor(t, bg);
@@ -500,8 +516,20 @@ export function cellGlanceColor(stageData, r, c, tile) {
 		const col = gs && spriteGlanceColor(gs.spr, gs.pal);
 		if (col) base = col;
 	}
+	// キュー44：凍った水の下地は CSS の水の色（暗い青）ではなく氷の地の色にする。
+	// ⚠ `spriteGlanceColor` は使わない＝「明るい色の最多」を選ぶ∴白いひびの色になり、
+	//   湖が真っ白に潰れて魚群（白っぽい）と見分けが付かなくなった（world-minimap ①）。
+	if (!HIDE_GROUND_TILES.has(t) && bg === TILE.WATER) {
+		const ws = waterSkinnedSprite(layerKey, r, c, bg);
+		if (ws) base = frozenGlanceColor(ws.pal);
+	}
+	// tiles 層の水・閉じた潮ゲートも同じ色（物ではなく水面＝前景色として置く）
+	{
+		const ws = waterSkinnedSprite(layerKey, r, c, t);
+		if (ws) return { base, fg: frozenGlanceColor(ws.pal), spr: ws.spr };
+	}
 
-	const os = glanceSprite(stageData, r, c, t);
+	const os = glanceSprite(stageData, r, c, t, layerKey);
 	if (!os) return { base, fg: null, spr: null };
 	const { spr, pal } = os;
 

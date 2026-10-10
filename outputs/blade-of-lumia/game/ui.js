@@ -718,7 +718,7 @@ export function createUi(deps) {
 			const ox = (sx - minX) * cols, oy = (sy - minY) * rows;
 			for (let r = 0; r < sd.rows; r++) {
 				for (let c = 0; c < sd.cols; c++) {
-					const { base, fg } = cellGlanceColor(sd, r, c, sd.tiles[r][c]);
+					const { base, fg } = cellGlanceColor(sd, r, c, sd.tiles[r][c], lk);
 					off.fillStyle = fg ?? base;
 					off.fillRect(ox + c, oy + r, 1, 1);
 				}

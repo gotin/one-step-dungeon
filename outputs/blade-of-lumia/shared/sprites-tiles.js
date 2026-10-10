@@ -2,7 +2,7 @@
 // block・door・switch・gate・water・mapEnter・doorway系
 // フィールドタイル（grass/sand/stoneFloor/bridge/tree/mountain/bush/fence/house/sign）
 // breakableWall
-import { skinName, MOUNTAIN_SKIN_DEFAULT, VEG_SKINS, VEG_SKIN_DEFAULT } from './tile-skins.js';
+import { skinName, MOUNTAIN_SKIN_DEFAULT, VEG_SKINS, VEG_SKIN_DEFAULT, FROZEN_WATER_ROWS, FROZEN_WATER_COLS, frozenWaterSpriteName, frozenSluiceSpriteName } from './tile-skins.js';
 
 export const TILE_PAL = {
 	block:    ['transparent','#0a0a14','#6a7470','#9aa3a0','#b8bfbc','#ffffff'],
@@ -259,6 +259,96 @@ function groundFill2(val, n) { return Array.from({ length: n }, () => Array(n).f
 // 2コマ＝`shift` を半周期ずらして波が流れて見えるアニメにする
 // （`ANIMATED_BG_SPRITES`／`redrawAnimSprites` が `animFrame%2` で切り替える）。
 TILE_SPRITES.water = [waterFrame(0), waterFrame(WATER_LINE_PX / 2)];
+
+// ── FROZEN WATER（凍った水・キュー44 2026-10-10）── 32×32 ×（10行×12列）────
+// D5「氷の廃墟」の水だけをこの絵で描く（どの層がこの肌かは shared/tile-skins.js の
+// WATER_SKIN_BY_LAYER）。**見た目だけ**＝はしご・水棲の敵・投擲物・飛行は水のまま。
+// ユーザー選択＝案B「一面に凍った湖面」（叩き台 2026-10-10）＝透ける暗い氷＋白いひび＋気泡。
+//
+// 🔴 模様は「部屋全体のドット座標」で作る＝セル1枚の絵を全セルに押すと、ひびの網が
+//    32 ドットごとに同じ形で並んで縞に見えた（叩き台 v1 の自己判定 NG）。∴部屋1枚ぶん
+//    （12×10 セル＝384×320 ドット）の模様を作ってセルごとに切り分け、
+//    `frozenWater@<行>.<列>` の 120 枚として登録する（行・列は部屋の中の位置を 10・12 で割った余り）。
+//    ひびの種は 32 ドット・まだらの種は 8 ドットの格子＝どちらも部屋の幅・高さを割り切る
+//    ∴種を周期で折り返す＝部屋より大きい画面でも継ぎ目なく続く。
+// ⚠ 氷の床（`iceFloor`＝歩ける・目地のある明るい板）と取り違えない＝こちらは目地が無く、
+//   板より暗い（透けた水の色）。D5 `4,1` は両方が並ぶ（キュー44 の約束）。
+// ⚠ 2コマ＝きらめき（霜の点）の位置だけが入れ替わる。ひびと気泡は動かない（凍っている）。
+// パレット frozenWater: 1〜3=氷のまだら（暗い透け） 4=霜 5=ひび（白） 6=ひびの縁 7=気泡 8=きらめき
+TILE_PAL.frozenWater = ['transparent', '#2a5a76', '#2f6280', '#26536e', '#cfe8f2', '#e4f4fa', '#7fb0c8', '#9cc8da', '#ffffff'];
+// 水門（潮ゲート `=`）＝**明るい青緑の氷＋石の枠**（2026-10-10 ユーザー選択＝案C）。
+//   最初は同じ氷を少し青緑に寄せただけで、ひびが水門をまたいで続き湖に溶けた
+//   （ユーザー指摘「ボタンで切り替わる水のところがわかりにくい」）。∴色を明るく離し、
+//   石の枠で「造られた水門」と読ませる。枠は開けて干上がった後も残る（`sluiceFrame`）
+//   ＝どこが水門だったか・閉じたら戻る場所だと分かる。
+// パレット 1〜8 は frozenWater と同じ役割（色だけ青緑）・9=枠の石（明） 10=枠の石（暗） 11=枠の縁とビス
+TILE_PAL.frozenTide  = ['transparent', '#2f8f7c', '#36a08a', '#2a8270', '#d8f7ee', '#f0fffb', '#8fd8c4', '#a8e6d6', '#ffffff', '#9a9ea8', '#6b6f7a', '#2a2d35'];
+// 水門の石の枠（32×32・中は透明）。外の縁1＋石3（上と左が明・下と右が暗）＋内の縁1、四隅にビス。
+function sluiceFrameGrid() {
+	const N = 32;
+	const g = Array.from({ length: N }, () => Array(N).fill(0));
+	for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) {
+		const d = Math.min(x, y, N - 1 - x, N - 1 - y);   // 縁からの距離
+		if (d === 0 || d === 4) g[y][x] = 11;
+		else if (d <= 3) g[y][x] = x + y < N - 1 ? 9 : 10;   // 対角線より上左＝明・下右＝暗（面取り）
+	}
+	for (const [cy, cx] of [[2, 2], [2, 29], [29, 2], [29, 29]]) {
+		g[cy - 1][cx - 1] = 11; g[cy - 1][cx] = 11; g[cy][cx - 1] = 11; g[cy][cx] = 11;
+	}
+	return g;
+}
+const SLUICE_FRAME = sluiceFrameGrid();
+TILE_SPRITES.sluiceFrame = [SLUICE_FRAME];
+{
+	const N = 32;
+	const W = FROZEN_WATER_COLS * N, H = FROZEN_WATER_ROWS * N;
+	const hash = (x, y, s) => {
+		let h = (x * 374761393 + y * 668265263 + s * 2147483647) | 0;
+		h = Math.imul(h ^ (h >>> 13), 1274126177);
+		return ((h ^ (h >>> 16)) >>> 0) / 4294967296;
+	};
+	const wrap = (v, n) => ((v % n) + n) % n;
+	// 周期つき Voronoi＝種は G ドットごとの格子に1つ（格子の中で揺らす）。id は折り返した格子番号。
+	function voronoi(X, Y, G, seed) {
+		const nx = W / G, ny = H / G;
+		const gx = Math.floor(X / G), gy = Math.floor(Y / G);
+		let d1 = Infinity, d2 = Infinity, id = null;
+		for (let j = -1; j <= 1; j++) for (let i = -1; i <= 1; i++) {
+			const cx = gx + i, cy = gy + j;
+			const wx = wrap(cx, nx), wy = wrap(cy, ny);
+			const px = (cx + 0.15 + 0.7 * hash(wx, wy, seed)) * G;
+			const py = (cy + 0.15 + 0.7 * hash(wx, wy, seed + 1)) * G;
+			const d = Math.hypot(X - px, Y - py);
+			if (d < d1) { d2 = d1; d1 = d; id = [wx, wy]; } else if (d < d2) d2 = d;
+		}
+		return { gap: d2 - d1, id };
+	}
+	// 部屋1枚ぶんの「動かない」模様（コマに依らない部分）を先に作る
+	const still = Array.from({ length: H }, () => new Uint8Array(W));
+	for (let Y = 0; Y < H; Y++) for (let X = 0; X < W; X++) {
+		const m = voronoi(X, Y, 8, 41);                        // 氷のまだら（透けの濃淡）
+		let v = 1 + Math.floor(hash(m.id[0], m.id[1], 42) * 3);
+		const k = voronoi(X, Y, 32, 21);                       // ひびの網
+		// ひびは途切れる（区間ごとに出す／出さない）＝網目が全部つながると石畳に見える
+		const on = hash(k.id[0] * 7 + wrap(Math.floor(X / 8), W / 8), k.id[1] * 7 + wrap(Math.floor(Y / 8), H / 8), 25) > 0.35;
+		if (on && k.gap < 0.9) v = 5;
+		else if (on && k.gap < 2.0 && hash(X, Y, 23) < 0.35) v = 6;
+		else if (hash(X, Y, 24) < 0.012) v = 4;
+		else if (hash(wrap(Math.floor(X / 2), W / 2), wrap(Math.floor(Y / 2), H / 2), 26) < 0.012) v = 7;
+		still[Y][X] = v;
+	}
+	// きらめき＝コマごとに別の点（ひびの上には出さない）
+	const glint = (X, Y, f) => hash(X, Y, 60 + f) < 0.006;
+	for (let rr = 0; rr < FROZEN_WATER_ROWS; rr++) for (let cc = 0; cc < FROZEN_WATER_COLS; cc++) {
+		const frames = [0, 1].map(f => Array.from({ length: N }, (_, y) => Array.from({ length: N }, (_, x) => {
+			const X = cc * N + x, Y = rr * N + y;
+			const v = still[Y][X];
+			return v <= 3 && glint(X, Y, f) ? 8 : v;
+		})));
+		TILE_SPRITES[frozenWaterSpriteName(rr, cc)] = frames;
+		TILE_SPRITES[frozenSluiceSpriteName(rr, cc)] = frames.map((g) => g.map((row, y) => row.map((v, x) => SLUICE_FRAME[y][x] || v)));
+	}
+}
 
 // ── BREAKABLE WALL / MAP ENTER / DOORWAY 系 ── 10d-2 で 32×32 へ移行＝絵の単一の
 //    真実は shared/sprites-obj32.js（対応する _SRC 定数＋scaleAndCenter）に移した

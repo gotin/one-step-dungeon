@@ -84,6 +84,11 @@ export const WATER_MAP = [
 	'#†.........#',
 	'#####..#####',
 ];
+// キュー44（2026-10-10・ユーザー了承「1,1 も変えてOK」）：湖が凍った湖面の絵になったので、
+// 浮氷（湖の中の床＝はしごの足場）の下地を氷の床 'k' にする＝凍った湖に浮かぶ氷の板に見せる
+// （下地なしの暗い床のままだと湖に開いた穴に見えた）。見た目だけ＝氷の床が効くのは押した石だけで、
+// この部屋に石は無い。北の口の桟橋 (1,5)(1,6)(2,5)・西の口 (4,1)(5,1) は岸の続き＝床のまま。
+export const ICE_FLOES = ['2,7', '4,3', '4,7', '4,9', '5,5', '6,3', '6,9'];
 export const ENEMIES = Object.fromEntries(['2,3', '3,6', '5,8', '6,6', '7,4'].map((k) => [k, TILE.FISH_SCHOOL]));
 export const TARGET = WATER_MAP.map((row, r) => [...row].map((ch, c) => ENEMIES[`${r},${c}`] ?? (ch === '~' ? '.' : ch)).join(''));
 export const WATER = WATER_MAP.flatMap((row, r) => [...row].flatMap((ch, c) => (ch === '~' ? [`${r},${c}`] : [])));
@@ -178,10 +183,14 @@ function main() {
 		room.tiles = TARGET.map((row) => row.split(''));   // [[field-tiles-are-char-arrays]]
 		log.push(`  ${ROOM}: 盤面を差し替えた`);
 	}
-	const wantBg = Object.fromEntries(WATER.map((k) => [k, TILE.WATER]));
-	if (JSON.stringify(room.bgTiles ?? {}) !== JSON.stringify(wantBg)) {
+	const wantBg = Object.fromEntries([
+		...WATER.map((k) => [k, TILE.WATER]),
+		...ICE_FLOES.map((k) => [k, TILE.ICE]),
+	].sort(([a], [b]) => (a < b ? -1 : 1)));
+	const sortedBg = (bg) => JSON.stringify(Object.entries(bg ?? {}).sort(([a], [b]) => (a < b ? -1 : 1)));
+	if (sortedBg(room.bgTiles) !== sortedBg(wantBg)) {
 		room.bgTiles = wantBg;
-		log.push(`  ${ROOM}: bgTiles に水 ${WATER.length} 枚`);
+		log.push(`  ${ROOM}: bgTiles に水 ${WATER.length} 枚・浮氷の氷の床 ${ICE_FLOES.length} 枚`);
 	}
 	if (JSON.stringify(room.signData) !== JSON.stringify({ [MONUMENT]: SIGN })) {
 		room.signData = { [MONUMENT]: { ...SIGN, lines: [...SIGN.lines] } };

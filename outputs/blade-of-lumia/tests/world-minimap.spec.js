@@ -54,7 +54,7 @@ test.describe('ワールドマップのサムネ – 実マップ全走査', () 
 					for (let c = 0; c < sd.cols; c++) {
 						cells++;
 						const t = sd.tiles[r][c];
-						const g = cellGlanceColor(sd, r, c, t);
+						const g = cellGlanceColor(sd, r, c, t, lk);
 						// 絵を持つタイル（TILE_SPRITE_MAP に載っている／連結タイル）は
 						// 必ず色が出る＝「表に無いので描かない」が起きない。
 						if (!TILE_SPRITE_MAP[t]) continue;
@@ -126,7 +126,7 @@ test.describe('ワールドマップのサムネ – 実マップ全走査', () 
 					const t = sd.tiles[r]?.[c];
 					if (t === undefined || HIDE_GROUND_TILES.has(t)) continue;
 					checked++;
-					const g = cellGlanceColor(sd, r, c, t);
+					const g = cellGlanceColor(sd, r, c, t, lk);
 					if (g.base === floor) holes.push(`${lk}/${sk} (${r},${c}) bg='${bg}'`);
 				}
 			}

@@ -28,7 +28,7 @@ export function drawCell(c, r, tileChar) {
 	//    描く＝「エディタでは緑の四角なのにゲームでは島の角」のような食い違いを構造で消す。
 	//    ここに独自の判断（下地の色・肌・変種・連結・扉の連なり）を書き足してはいけない。
 	// ⚠ 隣画面の帯（drawNeighborEdges）は r/c が半端な値＝そのセルのタイル文字を明示的に渡す。
-	const d = describeCell(sd, r, c, tileChar);
+	const d = describeCell(sd, r, c, tileChar, state.currentLayer);   // 層＝水の肌（キュー44）
 	const log = makeDrawLog();
 
 	canvasCtx.fillStyle = d.baseColor;

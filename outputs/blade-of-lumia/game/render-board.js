@@ -172,7 +172,7 @@ export function createRenderBoard(deps) {
 
 	function setCellClass(cellEl, tile, posKey, ss, desc) {
 		const stageData = getStageData();
-		const dsc = desc ?? describeCell(stageData, ...posKey.split(',').map(Number), tile);
+		const dsc = desc ?? describeCell(stageData, ...posKey.split(',').map(Number), tile, getCurrentLayer());
 		const applyBg = () => applyBgTileClass(cellEl, dsc);
 		switch (tile) {
 			case TILE.WALL:           cellEl.classList.add('wall'); return;
@@ -236,7 +236,7 @@ export function createRenderBoard(deps) {
 		const stageData    = getStageData();
 		const currentLayer = getCurrentLayer();
 		const stageKey     = getStageKey();
-		const dsc = desc ?? describeCell(stageData, ...posKey.split(',').map(Number), tile);
+		const dsc = desc ?? describeCell(stageData, ...posKey.split(',').map(Number), tile, getCurrentLayer());
 
 		if (tile === TILE.FLOOR || tile === TILE.PLAYER) return;
 		if (tile === TILE.WALL) {
@@ -364,7 +364,10 @@ export function createRenderBoard(deps) {
 			return;
 		}
 		if (tile === TILE.WATER) {
-			const cv = makeSprite('water', 'water', true);
+			// キュー44：絵は shared/cell-appearance.js の記述から（D5 は凍った水の肌）
+			const spr = dsc.obj?.spr ?? 'water', pal = dsc.obj?.pal ?? 'water';
+			if (dsc.obj?.skin) cellEl.dataset.waterSkin = dsc.obj.skin;
+			const cv = makeSprite(spr, pal, true);
 			putCellSprite(cellEl, cv, 'obj-sprite');
 			return;
 		}
@@ -377,8 +380,17 @@ export function createRenderBoard(deps) {
 			// Phase 9-6 深洋O: 潮ゲート。閉（満潮＝openGates に無い）ときだけ水を描く。
 			// 開（引き潮）なら何も描かない＝床（GATE と同じ「閉時のみ描画」構造。
 			// return を忘れると末尾 fallback が再描画して「引いても水が残る」バグになる）。
+			if (ss.openGates.has(posKey) && dsc.obj?.skin === 'frozen') {
+				// キュー44：D5 の水門は干上がった後も石の枠だけ残す（どこが水門か・閉じたら戻る場所）
+				cellEl.dataset.waterSkin   = dsc.obj.skin;
+				cellEl.dataset.sluiceFrame = '1';   // テストから見える（静止画＝canvas に data-sprite が付かない）
+				putCellSprite(cellEl, makeSprite('sluiceFrame', 'frozenTide', false), 'obj-sprite');
+			}
 			if (!ss.openGates.has(posKey)) {
-				const cv = makeSprite('water', 'tide', true);  // water 形状＋tide 青緑パレット
+				// water 形状＋tide 青緑パレット（D5 は凍った水の肌＝キュー44・記述は cell-appearance.js）
+				const spr = dsc.obj?.skin ? dsc.obj.spr : 'water', pal = dsc.obj?.skin ? dsc.obj.pal : 'tide';
+				if (dsc.obj?.skin) cellEl.dataset.waterSkin = dsc.obj.skin;
+				const cv = makeSprite(spr, pal, true);
 				putCellSprite(cellEl, cv, 'obj-sprite');
 			}
 			return;
@@ -572,7 +584,7 @@ export function createRenderBoard(deps) {
 
 				// 1セルの「状態に依らない見た目」は1回だけ引く（11b）＝下地と物で2度
 				// 同じ計算をしない∴セルあたりの仕事は共通化前より増えない。
-				const desc = describeCell(stageData, r, c, tile);
+				const desc = describeCell(stageData, r, c, tile, currentLayer);
 				setCellClass(cellEl, tile, posKey, ss, desc);
 				addCellSprite(cellEl, tile, posKey, ss, desc);
 				boardEl.appendChild(cellEl);

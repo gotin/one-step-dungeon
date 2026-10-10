@@ -29,7 +29,7 @@ import { TILE } from '../shared/tiles.js';
 import { bfsLayer } from '../scripts/lib/connectivity.mjs';
 import { EXTRA_ENEMY_ROOMS } from '../scripts/lib/enemy-placement.mjs';
 import {
-	TARGET, WATER, ENEMIES, EXITS, MONUMENT, DECOY, NORTH_ROUTE, WEST_ROUTE, effective, reach, floes,
+	TARGET, WATER, ICE_FLOES, ENEMIES, EXITS, MONUMENT, DECOY, NORTH_ROUTE, WEST_ROUTE, effective, reach, floes,
 } from '../scripts/migrate-d5-1-1-frozen-lake-floes.mjs';
 
 const MAP_PATH = fileURLToPath(new URL('../work/blade-of-lumia.json', import.meta.url));
@@ -47,8 +47,12 @@ test.describe('D5 1,1 凍れる湖の浮氷 ① データ', () => {
 		const st = stages[ROOM];
 		expect(rowsOf(st)).toEqual(TARGET);
 		expect(st.tiles.every((r) => Array.isArray(r)), 'tiles は文字の配列の配列').toBe(true);
-		expect(Object.keys(st.bgTiles).sort()).toEqual([...WATER].sort());
-		expect(Object.values(st.bgTiles).every((v) => v === TILE.WATER)).toBe(true);
+		// キュー44：浮氷の下地は氷の床（見た目だけ＝この部屋に石は無い）。それ以外の下地は水
+		const bgWater = Object.keys(st.bgTiles).filter((k) => st.bgTiles[k] === TILE.WATER).sort();
+		const bgIce = Object.keys(st.bgTiles).filter((k) => st.bgTiles[k] === TILE.ICE).sort();
+		expect(bgWater).toEqual([...WATER].sort());
+		expect(bgIce).toEqual([...ICE_FLOES].sort());
+		expect(Object.keys(st.bgTiles).length).toBe(WATER.length + ICE_FLOES.length);
 		expect(st.signData).toEqual({ [MONUMENT]: { name: '氷の廃墟の石碑', lines: ['「凍れる湖に橋を架けよ。はしごを使え。」'] } });
 		for (const [k, ch] of Object.entries(ENEMIES)) {
 			const [r, c] = P(k);
