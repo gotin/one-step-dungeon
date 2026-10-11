@@ -34,6 +34,7 @@ import { playSound } from '../shared/sounds.js';
 // field の地図（キュー15）の色。エディタのワールドマップのサムネと**同じ関数**を呼ぶ
 // ＝ユーザー判定済み（キュー11c）の見え方がそのまま出て、絵の食い違いが構造的に起きない。
 import { cellGlanceColor } from '../shared/cell-appearance.js';
+import { layerEntranceStages } from '../shared/exits.js';
 // 目的地マーク（キュー16）＝会話が教えた場所を地図に残し、選択中の1つを HUD で指す。
 import { markId, markColor, markGuide, addMark, normalizeDialogMarks, normalizeSavedMarks } from '../shared/marks.js';
 // Dn 踏破後台詞の選択規則（17-0 → 2026-09-15 に改訂）＝版の並びと種類は
@@ -680,7 +681,7 @@ export function createUi(deps) {
 		if (stages.length === 0) { hide(); return; }
 		pauseDungeonMapEl.classList.remove('hidden');
 		if (GLANCE_MAP_LAYERS.has(lk)) renderPauseGlanceMap(lk, ld, stages);
-		else renderPauseRoomMap(lk, ld, stages, dm);
+		else renderPauseRoomMap(lk, ld, stages, dm, layerEntranceStages(mapData, lk));
 	}
 
 	// ── ② 見取り図（field）─────────────────────────────────────
@@ -849,7 +850,22 @@ export function createUi(deps) {
 	}
 
 	// ── ① 部屋グリッド（ダンジョン）───────────────────────────────
-	function renderPauseRoomMap(lk, ld, stages, dm) {
+	// 入口の部屋の色と門の絵（実行キュー24）。コンパスは要らない＝自分が入ってきた部屋∴伏せる理由がない。
+	const ROOM_ENTRANCE_COLOR = '#3f7a4a';
+	const ROOM_GATE_COLOR     = '#e8f4e0';
+	const ROOM_GATE_MOUTH     = '#10261a';
+	// 白いアーチ＋暗い口（24px の部屋の中央）。現在地の青の上にも同じ絵を重ねる。
+	function drawRoomGate(ctx, x, y) {
+		ctx.fillStyle = ROOM_GATE_COLOR;
+		ctx.fillRect(x + 7, y + 8, 10, 12);
+		ctx.fillRect(x + 8, y + 6, 8, 2);
+		ctx.fillRect(x + 9, y + 5, 6, 1);
+		ctx.fillStyle = ROOM_GATE_MOUTH;
+		ctx.fillRect(x + 9, y + 10, 6, 10);
+		ctx.fillRect(x + 10, y + 9, 4, 1);
+	}
+
+	function renderPauseRoomMap(lk, ld, stages, dm, entranceStages = new Set()) {
 		const stageKey = getStageKey();
 		pauseMapHereEl.classList.add('hidden');
 		// マークは見取り図（field）だけの機構＝部屋グリッドには 12×10 ドットの面が無い
@@ -890,10 +906,12 @@ export function createUi(deps) {
 			const isCurrent = (sx === curX && sy === curY);
 			const isBoss    = (sk === bossStageKey && hasCompass);
 			const isVisited = getSS(lk, sk).visited || isCurrent;
+			const isEntrance = entranceStages.has(sk);
 
-			if (isCurrent)   ctx.fillStyle = '#80c0f0';
-			else if (isBoss) ctx.fillStyle = '#c04040';
-			else             ctx.fillStyle = isVisited ? '#3a5060' : '#1a2a38';
+			if (isCurrent)       ctx.fillStyle = '#80c0f0';
+			else if (isBoss)     ctx.fillStyle = '#c04040';
+			else if (isEntrance) ctx.fillStyle = ROOM_ENTRANCE_COLOR;
+			else                 ctx.fillStyle = isVisited ? '#3a5060' : '#1a2a38';
 			ctx.fillRect(x, y, CELL, CELL);
 
 			const PASS_W = Math.floor(CELL * 0.4), PASS_H = PAD;
@@ -911,7 +929,8 @@ export function createUi(deps) {
 				ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
 				ctx.fillText('!', x + CELL / 2, y + CELL / 2 + 1);
 			}
-			if (isCurrent) {
+			if (isEntrance && !isBoss) drawRoomGate(ctx, x, y);
+			else if (isCurrent) {
 				ctx.fillStyle = '#0a1418';
 				const s = 4;
 				ctx.fillRect(x + CELL / 2 - s / 2, y + CELL / 2 - s / 2, s, s);

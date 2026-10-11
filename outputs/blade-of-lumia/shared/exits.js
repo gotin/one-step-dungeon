@@ -71,3 +71,18 @@ export function resolveFluteWarp(map, layer, stage, registry = buildExitRegistry
 	}
 	return null;
 }
+
+// その層の「入口の部屋」＝別の層へ出る MAP_ENTER を持つ部屋のキー一覧（実行キュー24）。
+// ポーズ画面のダンジョン地図が入口の印を描くのに使う。手書きの `entranceStage` 欄は
+// 作らない＝出口の結線から導出する（本編ダンジョンはどれもちょうど1部屋）。
+// 戻り値＝Set<stageKey>（解決できない destId・同じ層の中の階段は数えない）。
+export function layerEntranceStages(map, layer, registry = buildExitRegistry(map)) {
+	const out = new Set();
+	for (const [sk, sd] of Object.entries(map?.layers?.[layer]?.stages ?? {})) {
+		for (const enter of Object.values(sd.mapEnters ?? {})) {
+			const dest = enter.destId ? registry[enter.destId] : null;
+			if (dest && dest.layer !== layer) { out.add(sk); break; }
+		}
+	}
+	return out;
+}
