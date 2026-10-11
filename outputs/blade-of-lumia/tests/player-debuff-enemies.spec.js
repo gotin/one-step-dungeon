@@ -1161,11 +1161,13 @@ test.describe('Phase 5.5k k-7 – プレイヤー側の一時デバフ窓（呪�
       // 窓（消える側）
       _sealUntil: 9000, _poisonUntil: 8000, _poisonNextAt: 7000,
       _poisonDmg: 2, _poisonTickMs: 1200, _poisonDecay: 1,
+      // キュー21 F12: 攻撃の構えの窓（残すと続きからで保存時刻に追いつくまで動けない）
+      _atkUntil: 32820,
       // 窓ではない `_` 付きの状態（残る側＝一律で消してはいけない）
       _equip: { swordName: '剣' }, _ladderAxis: 'v', _shownSubItemHint: true,
     }, ITEM_META);
 
-    for (const k of ['_sealUntil', '_poisonUntil', '_poisonNextAt', '_poisonDmg', '_poisonTickMs', '_poisonDecay']) {
+    for (const k of ['_sealUntil', '_poisonUntil', '_poisonNextAt', '_poisonDmg', '_poisonTickMs', '_poisonDecay', '_atkUntil']) {
       expect(loaded[k], `${k} がロード後も残っている＝封じられたまま／毒が刻み続けるセーブになる`)
         .toBeNull();
     }

@@ -174,5 +174,14 @@ export function sanitizeLoadedPlayer(player, itemMeta) {
 	player._poisonDmg    = null;
 	player._poisonTickMs = null;
 	player._poisonDecay  = null;
+	// キュー21 F12: 攻撃の構えの窓（`_atkUntil`）も同じ論理時刻＝消し漏れていた。残すと
+	// ロード後「保存時のゲーム内時刻に追いつくまで」一歩も動けない（movePlayer が構え中は
+	// 足を止める）＝長く遊んだセーブほど長く固まる。剣を振った直後に部屋を出るだけで踏む。
+	player._atkUntil     = null;
+	// キュー21 F1: 拾う前の星の欠片。形が壊れていたら捨てる（旧セーブは欄が無い＝null）。
+	const pt = player.pendingTriforce;
+	const ptOk = pt && typeof pt.layer === 'string' && typeof pt.stage === 'string'
+		&& Number.isFinite(pt.x) && Number.isFinite(pt.y);
+	player.pendingTriforce = ptOk ? { layer: pt.layer, stage: pt.stage, x: pt.x, y: pt.y } : null;
 	return player;
 }

@@ -400,12 +400,15 @@ export function createBoss(deps) {
 		//    判定は `ENEMY_META` の1本に寄せた＝`shared/triforce.js` の数え方と同じ式になる。
 		const dropsTriforce = ENEMY_META[boss.type]?.dropsTriforce;
 		if (dropsTriforce) {
-			spawnTriforcePiece(boss);
+			// キュー21 F1: 欠片の所在を player に持たせる（＝セーブに入る）。DOM と拾う座標だけだと
+			// 部屋を出ると絵が消え、拾う前に再読込すると永久に失われていた。
+			player.pendingTriforce = { layer: getCurrentLayer(), stage: getStageKey(), x: boss.x, y: boss.y };
+			deps.setPendingTriforcePos(null);
+			_triforceArming = true;   // 出現直後の 1.5 秒は拾えない（下の setTimeout で解く）
+			syncPendingTriforce();
 			await sleep(600);
 			pulse('{{triforce}} 星の欠片が 現れた！', 3000);
-			deps.setPendingTriforcePos(null);
-			const tfx = boss.x, tfy = boss.y;
-			setTimeout(() => { deps.setPendingTriforcePos({ x: tfx, y: tfy }); }, 1500);
+			setTimeout(() => { _triforceArming = false; syncPendingTriforce(); }, 1500);
 			saveGame();
 		} else {
 			await sleep(400);
@@ -533,6 +536,10 @@ export function createBoss(deps) {
 			// 部屋を出た（＝入室が成立しなかった）ら閉めない
 			if (getCurrentLayer() !== startLayer || getStageKey() !== startStage) return;
 			if (playerOnBossDoor()) { setTimeout(tick, 100); return; }
+			// キュー21 F7: 扉の上で待っている間にボスが倒された（または終幕の最中）なら閉めない。
+			// 見ずに閉めると、扉から降りた瞬間にボスのいない部屋へ閉じ込められる＝閉状態は
+			// セーブされる∴「続きから」でも出られない恒久詰み（実機で再現：D1 の扉の上で迎え撃つ）。
+			if (getBossDefeating() || !getEnemies().some(e => ENEMY_META[e.type]?.isBoss)) return;
 			run();
 		};
 		setTimeout(tick, delayMs);
@@ -681,6 +688,25 @@ export function createBoss(deps) {
 		setTimeout(() => startEnding(), 2500);
 	}
 
+	// ── 拾う前の星の欠片を今の部屋に合わせる（キュー21 F1）──────────────
+	// renderChars（入室・扉の開閉・描き直しのたび）の直後に game.js から呼ばれる。
+	// 欠片が今の部屋のものなら絵と拾う座標を置き直し、別の部屋なら拾う座標を外す
+	// （外さないと、別の部屋の同じ座標を踏んで見えない欠片を拾えてしまっていた）。
+	let _triforceArming = false;
+	function syncPendingTriforce() {
+		const pt = getPlayer()?.pendingTriforce;
+		const here = !!pt && pt.layer === getCurrentLayer() && pt.stage === getStageKey();
+		if (!here) {
+			deps.setPendingTriforcePos(null);
+			setPendingTriforcePieceEl(null);
+			return;
+		}
+		if (!document.getElementById('pending-triforce-piece')) spawnTriforcePiece(pt);
+		if (!_triforceArming && !deps.getPendingTriforcePos()) {
+			deps.setPendingTriforcePos({ x: pt.x, y: pt.y });
+		}
+	}
+
 	// ── 魔王撃破後・星の欠片収集チェック ──────────────
 	function checkPendingTriforce() {
 		const pendingTriforcePos = deps.getPendingTriforcePos();
@@ -700,6 +726,7 @@ export function createBoss(deps) {
 		document.getElementById('pending-triforce-piece')?.remove();
 
 		player.triforceCount++;
+		player.pendingTriforce = null;
 		console.log(`[TRIFORCE] checkPendingTriforce: collected, triforceCount=${player.triforceCount}`, new Error().stack);
 		playSound('item');
 		pulse('{{triforce}} 星の欠片を 手に入れた！', 4000);
@@ -769,6 +796,7 @@ export function createBoss(deps) {
 		checkBossPhase,
 		checkTriforceClear,
 		checkPendingTriforce,
+		syncPendingTriforce,
 		offerAtAltar,
 		showBossHpBar,
 		hideBossHpBar,

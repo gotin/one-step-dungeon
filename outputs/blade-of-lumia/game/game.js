@@ -144,6 +144,10 @@ let player = {
 	//    Set / Map にすると保存で `{}` に潰れる（defeatedBosses は専用の変換がある）。
 	mapMarks: [],
 	selectedMarkId: null,
+	// キュー21 F1: 倒したボスが落とし、まだ拾っていない星の欠片 { layer, stage, x, y }。
+	// 絵（DOM）と拾う座標（pendingTriforcePos）は部屋を出る／再読込で消えるので、
+	// 所在はここ（＝セーブに入る素のオブジェクト）に持ち、入室・描き直しのたびに置き直す。
+	pendingTriforce: null,
 };
 
 let enemies = [];
@@ -622,7 +626,8 @@ let updateBossHpBar     = () => {};
 let checkBossPhase      = () => {};
 let checkTriforceClear  = () => {};
 let checkPendingTriforce= () => {};
-let showBossHpBar       = () => {};
+let syncPendingTriforce = () => {};
+let showBossHpBar      = () => {};
 let hideBossHpBar       = () => {};
 let showBossRoomLockEffect = () => {};
 // ── 描画系（render-board.js / render-chars.js）──
@@ -711,7 +716,9 @@ const { checkStoneOnSwitch, evaluateConditions, refreshGates } = createCondition
 	// factory が生成した関数で旧実装を上書き
 	// renderBoard は呼び出し後に charLayerEl を同期する（game.js 内の直接参照のため）
 	renderBoard = () => { _rb.renderBoard(); charLayerEl = charLayerElRef.value; };
-	renderChars = _rc.renderChars;
+	// キュー21 F1: renderChars は char-layer を空にして描き直す∴拾う前の星の欠片の絵も
+	// 毎回消える。描き直しの後で「この部屋に拾う前の欠片があれば置き直す」を必ず続ける。
+	renderChars = () => { _rc.renderChars(); syncPendingTriforce(); };
 	addCharEl   = _rc.addCharEl;
 	moveCharEl  = _rc.moveCharEl;
 	removeCharEl= _rc.removeCharEl;
@@ -1238,7 +1245,8 @@ const { checkStoneOnSwitch, evaluateConditions, refreshGates } = createCondition
 	checkBossPhase    = _boss.checkBossPhase;
 	checkTriforceClear= _boss.checkTriforceClear;
 	checkPendingTriforce = _boss.checkPendingTriforce;
-	showBossHpBar     = _boss.showBossHpBar;
+	syncPendingTriforce  = _boss.syncPendingTriforce;
+	showBossHpBar    = _boss.showBossHpBar;
 	hideBossHpBar     = _boss.hideBossHpBar;
 	showBossRoomLockEffect = _boss.showBossRoomLockEffect;
 }
@@ -2085,6 +2093,7 @@ function startNewGame() {
 		litWarpStones: [],
 		mapMarks: [],
 		selectedMarkId: null,
+		pendingTriforce: null,
 	};
 	heroDir = 'down';
 	enterStage(currentLayer, stageKey, player.y, player.x);
@@ -2400,6 +2409,8 @@ export function getStageStateSnapshot() {
 		// 観測用。⚠️ このスナップショットはホワイトリスト∴ここに足さない欄はテストから
 		// 常に undefined／空になる（[[blade-snapshot-api-names]]）。
 		pickedKeys:    [...(ss.pickedKeys ?? [])],
+		// キュー21 F7: ボス扉（':'）の開閉＝'boss_closed'／'open'。撃破後に閉じ込められないかの観測用。
+		doorwayStates: { ...(ss.doorwayStates ?? {}) },
 	};
 }
 
