@@ -675,6 +675,19 @@ export function createCombat(deps) {
 		return true;
 	}
 
+	// 看板より剣を優先する「戦闘中」の判定（キュー21 F4）。隠れ中の敵も数える
+	// （潜った敵が顔を出す前に看板が開くと、出てきた瞬間に会話で手が止まる）。
+	const SIGN_SUPPRESS_RANGE = 2;
+	function enemyNearby(player) {
+		const pcx = player.x + 0.5;
+		const pcy = player.y + 0.5;
+		return getEnemies().some((e) => {
+			const { cx, cy } = enemyCenter(e);
+			const half = (Math.max(enemyW(e), enemyH(e)) - 1) / 2;
+			return Math.hypot(cx - pcx, cy - pcy) - half <= SIGN_SUPPRESS_RANGE;
+		});
+	}
+
 	// ── 剣攻撃 ───────────────────────────────────────────
 	function swordAttack() {
 		if (getIsDialog() || getIsPaused() || getIsGameover()) return;
@@ -700,7 +713,9 @@ export function createCombat(deps) {
 		if (tile && NPC_SPRITE_MAP[tile]) { startDialog(tr, tc, tile); return; }
 
 		// 看板・石碑・転移の石碑を読む（キュー27＝集合で見る。転移碑の扱いは game.js 側）
-		if (READABLE_SIGN_TILES.has(tile)) {
+		// キュー21 F4：戦っている最中（敵が近い）は読まずに剣を振る＝看板の前で戦うと
+		// 振るたびに会話が開いて戦えなかった。人（上の NPC/店）は戦闘の場に置かないので対象外。
+		if (READABLE_SIGN_TILES.has(tile) && !(player.weapon && !isSwordSealed?.() && enemyNearby(player))) {
 			const signData = stageData.signData?.[posKey3] ?? stageData.npcData?.[posKey3] ?? { name: '看板', lines: ['（何も書かれていない）'] };
 			deps.openSignDialog(signData, tr, tc, tile);
 			return;

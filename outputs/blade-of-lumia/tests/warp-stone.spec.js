@@ -242,11 +242,18 @@ test.describe('転移の石碑 ③④（実ゲーム）', () => {
 		await page.goto(`${GAME_URL}?fromEditor=1&layer=dungeon_1&stage=0,0&row=2&col=9&ps_weapon=1`);
 		await waitForBoard(page);
 		await page.waitForTimeout(1500);   // ボス部屋の扉が閉まる演出を待つ
+		// ボスを部屋の反対の隅へ退けて止める。2マス以内に敵が居ると石碑より剣が出る
+		// （キュー21 F4＝戦闘中は看板・石碑を開かない）＝この試験の主題（読める・通れない）と別。
+		await page.evaluate(() => {
+			window.__game.pause();
+			for (const e of window.__game.getEnemies()) window.__game.setEnemyFieldForTest(e.id, { x: 1, y: 7 });
+		});
 		expect(await art(page, 1, 9)).toBe('monument');
 		await readStone(page);
 		expect((await state(page)).dialog).toBe(true);
 		expect(await page.locator('#dialog-name').textContent()).toBe('ザーネルの記憶 其の一');
 		await closeDialog(page);
+		await page.evaluate(() => window.__game.pause());
 		for (let i = 0; i < 6; i++) await page.evaluate(() => window.__game.movePlayer('up'));
 		expect((await state(page)).y, '石碑の上へ入った').toBe(2);
 	});

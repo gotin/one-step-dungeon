@@ -2,7 +2,7 @@
 //
 // 何のためのテストか：`scripts/audit-balance.mjs` は 2026-08-24 まで**すべての敵を `min`
 // （そのレイヤーへ入った瞬間の装備）で判定**していた。ボスにこれを当てるのは
-// 「D1 の革の鎧も木の盾もハートの器も捨ててボス部屋へ直行する」という起こらない下限で、
+// 「D1 の布の服も木の盾もハートの器も捨ててボス部屋へ直行する」という起こらない下限で、
 // ユーザーの実プレイ報告（2026-08-25「実際これどうやって D1 min 装備で倒せばいいと思う？」）の
 // 真因がこの取り違えだった。∴ボスの行は「ボス直前」（min ＋ ボス部屋の外の報酬）で測る。
 //
@@ -12,7 +12,7 @@
 //
 // 検証内容：
 //   ①: 判定プロファイルの割り当て＝ボスだけ「ボス直前」／雑魚・中ボスは min
-//   ②: G 岩のゴーレムが「ボス直前」の諸元（革の鎧・木の盾・器1）で測られている
+//   ②: G 岩のゴーレムが「ボス直前」の諸元（布の服・木の盾・器1）で測られている
 //       （min なら DEF 0・最大HP 6＝過去の誤った下限に戻ったら落ちる）
 //   ③: 中ボスの分類が実マップの `isBossRoom` から導出されている（手書きのタイル文字が無い）
 //   ④: ボス部屋が ORDER の外にあるボス（field の { 海の主）は min に落ちるが**黙って落ちない**
@@ -95,14 +95,14 @@ test.describe('数値監査：ボスは「ボス直前」で測る（0d-2.9）',
     expect(g.at, 'G の初遭遇地点が D1 でない').toBe('dungeon_1');
     expect(g.judgeVariant, 'G が min で判定されている（0d-2.9 で直した取り違え）').toBe('boss');
 
-    // D1 ボス直前＝革の鎧 tier0・木の盾 tier0・ハートの器1（実マップ：ボス部屋 0,0 の外）
+    // D1 ボス直前＝布の服 tier0・木の盾 tier0・ハートの器1（実マップ：ボス部屋 0,0 の外）
     const d1 = REPORT.checkpoints.find((c) => c.id === 'dungeon_1');
-    expect(d1.boss.armor,  'D1 ボス直前で革の鎧を持っていない').toBe(0);
+    expect(d1.boss.armor,  'D1 ボス直前で布の服を持っていない').toBe(0);
     expect(d1.boss.shield, 'D1 ボス直前で木の盾を持っていない').toBe(0);
     expect(d1.boss.hearts, 'D1 ボス直前のハート数（3 ＋ ボス部屋の外の器1）').toBe(4);
 
     // 判定の諸元＝DEF 1 / 最大HP 8（min は DEF 0 / 最大HP 6＝ここが差＝テストの歯）
-    expect(g.def.judge,   'G の判定 DEF が革の鎧ぶん（+1）乗っていない').toBe(BASE_DEF + ARMOR_TIERS[0].def);
+    expect(g.def.judge,   'G の判定 DEF が布の服ぶん（+1）乗っていない').toBe(BASE_DEF + ARMOR_TIERS[0].def);
     expect(g.maxHp.judge, 'G の判定の最大HP がハート4ぶんでない').toBe(4 * HP_PER_HEART);
     expect(d1.min.def,    'D1 min の DEF（判定と同じなら差が無い＝このテストは歯を失う）').toBe(BASE_DEF);
     expect(d1.min.maxHp,  'D1 min の最大HP').toBe(3 * HP_PER_HEART);

@@ -458,3 +458,10 @@
     background: rgba(138, 48, 48, 0.35);
     border-color: #f08080;
 }
+/* キュー21 F3：キーで選んでいるボタン（矢印で移す・Space/Enter で押す）。
+   hover と同じ明るさ＋黄色の枠で、マウスを使わなくても「どれが押されるか」が分かる。 */
+.title-btn:focus,
+#gameover-retry:focus {
+    outline: 3px solid #ffe070;
+    outline-offset: 3px;
+}

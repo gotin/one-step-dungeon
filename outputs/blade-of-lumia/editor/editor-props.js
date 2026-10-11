@@ -399,6 +399,9 @@ function renderNPCs(sd) {
 			<label>セリフ（1行=1ページ）
 				<textarea data-key="${key}" data-f="lines" rows="4">${(data.lines??[]).join('\n')}</textarea>
 			</label>
+			${data.introLines !== undefined ? `<label>「はじめから」の直後だけ足す行（この人が自動で話しかけてくる・全行消すと話しかけなくなる）
+				<textarea data-key="${key}" data-f="introLines" rows="2">${(data.introLines??[]).join('\n')}</textarea>
+			</label>` : ''}
 			<div class="hint">教える目的地（話を聞き終えると地図に印が付く。画面を空にすると印なし）</div>
 			${markFieldsHtml('data-f', ` data-key="${key}"`, mark)}
 			<div class="hint">進行で切り替わる版（▲▼で並べ替え＝条件が両方合うときは<b>下にある版が勝つ</b>）</div>
@@ -430,6 +433,7 @@ function renderNPCs(sd) {
 				if (f.startsWith('mark')) { writeMark(); paintMarkFields(item, 'data-f'); return; }
 				const e = entry();
 				if (f === 'lines') e.lines = inp.value.split('\n').filter(l => l.trim());
+				else if (f === 'introLines') e.introLines = inp.value.split('\n').filter(l => l.trim());
 				else e[f] = inp.value;
 			};
 			inp.addEventListener('input', handler);

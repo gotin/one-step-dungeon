@@ -222,9 +222,14 @@ export function makeSolver(tiles, bg, linkSpec, breakDefs, litInit,
     if (ch === TILE.STONE && stones.includes(`${r},${c}`)) return false;
     return true;
   };
-  // はしごで渡れる「隙間」＝bgTiles 水（沈んだ都）と、pitCrossable なら tiles 層の穴 'x'。
+  // はしごで渡れる「隙間」＝bgTiles 水（沈んだ都）・tiles 層の水 '~'・pitCrossable なら tiles 層の穴 'x'。
   // 実エンジン LADDER_OVER = {WATER, PIT}（game/passable.js:30）と同じ集合を指す。
-  const isGap = (r, c) => bg[r]?.[c] === W || (pitCrossable && tiles[r]?.[c] === TILE.PIT);
+  // ⚠️ tiles 層の '~' は既定で渡す（キュー21 F14）。実エンジンは層を問わず水をはしごで渡すのに、
+  //    旧版は bgTiles の水しか見ておらず、D5 [1,0]（鍵の部屋）を「はしごがあっても解なし」と
+  //    誤判定した（実機では解ける）。穴と違って既定 off にしないのは、off で守るべき既存の
+  //    測定値が無いため（tiles 層の '~' は本編 D3 [1,0]・D5 [1,0]・D5 [1,3] にしか無い）。
+  const isGap = (r, c) => bg[r]?.[c] === W || tiles[r]?.[c] === TILE.WATER
+    || (pitCrossable && tiles[r]?.[c] === TILE.PIT);
   const canLadderCross = (r, c, axis, stones, broken, open) => {
     if (!hasLadder) return false;
     if (!isGap(r, c)) return false;

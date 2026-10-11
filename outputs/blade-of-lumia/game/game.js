@@ -755,7 +755,7 @@ const { checkStoneOnSwitch, evaluateConditions, refreshGates } = createCondition
 	updateDungeonHud = _ui.updateDungeonHud;
 	updateShieldHud  = _ui.updateShieldHud;
 	grantMark        = _ui.grantMark;
-	startDialog      = (r, c, tileChar) => _ui.startDialog(r, c, tileChar, stageData, NPC_DEFAULT_DIALOG, player);
+	startDialog      = (r, c, tileChar, extraLines) => _ui.startDialog(r, c, tileChar, stageData, NPC_DEFAULT_DIALOG, player, extraLines);
 	showDialogLine   = _ui.showDialogLine;
 	advanceDialog    = _ui.advanceDialog;
 	togglePause      = _ui.togglePause;
@@ -2099,6 +2099,25 @@ function startNewGame() {
 	enterStage(currentLayer, stageKey, player.y, player.x);
 	startGameLoop();
 	resumeAudio();
+	openIntroDialog();
+}
+
+// キュー21 F2（2026-10-11 ユーザー案）：「はじめから」の直後、開始画面の人のうち
+// `introLines` を持つ者（老賢者）が向こうから話しかけてくる。旧仕様は向いて攻撃キーで
+// 話しかけないと目的（星の欠片8つ）が出ず、話し方の案内は話しかけた後の村人の台詞にしか無かった。
+// 足す行（introLines）で話し方を教える＝この会話を読めば、次から自分で話しかけられる。
+// 「続きから」では起こさない（ここは startNewGame からしか呼ばない）。
+// 位置は座標で決め打ちせずデータから探す＝エディタで老賢者を動かしても追従する。
+function openIntroDialog() {
+	const sd = getStageData(currentLayer, stageKey);
+	for (const [pk, entry] of Object.entries(sd?.npcData ?? {})) {
+		if (!Array.isArray(entry?.introLines) || !entry.introLines.length) continue;
+		const [r, c] = pk.split(',').map(Number);
+		const tile = sd.tiles[r]?.[c];
+		if (!tile || !NPC_SPRITE_MAP[tile]) continue;   // 人のいないセルの会話データは使わない
+		startDialog(r, c, tile, entry.introLines);
+		return;
+	}
 }
 
 // タイトルダイアログのボタンイベント

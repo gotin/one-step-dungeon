@@ -436,11 +436,12 @@ export function createUi(deps) {
 		return pickDialogVariant(data, player, map).lines;
 	}
 
-	function startDialog(r, c, tileChar, stageData, npcDefaultDialog, player) {
+	// extraLines＝通常の台詞の後に足す行（キュー21 F2＝「はじめから」の老賢者の introLines）。
+	function startDialog(r, c, tileChar, stageData, npcDefaultDialog, player, extraLines = []) {
 		const posKey = `${r},${c}`;
 		const data   = stageData.npcData?.[posKey] ?? npcDefaultDialog[tileChar] ?? { name: 'NPC', lines: ['…'] };
 		const variant = pickDialogVariant(data, player, getMapData());
-		dialogLines = variant.lines;
+		dialogLines = [...variant.lines, ...extraLines];
 		dialogLineIdx = 0;
 		dialogOnClose = null;
 		// キュー16: 会話データの `mark` が教える目的地。ここでは保留するだけで、

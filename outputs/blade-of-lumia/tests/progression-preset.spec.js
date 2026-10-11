@@ -313,12 +313,12 @@ test.describe('進行地点プリセット', () => {
     expect(at('warlord_lair').boss,
       'warlord_lair: 主の間（isBossRoom）を持つ寄道にボス直前の選択肢が無い').not.toBeNull();
 
-    // (b) D1＝実データ（革の鎧 3,0／木の盾 1,1／ハートの器 3,3 がボス部屋 0,0 の外）
+    // (b) D1＝実データ（布の服 3,0／木の盾 1,1／ハートの器 3,3 がボス部屋 0,0 の外）
     const d1 = at('dungeon_1');
     expect(d1.min.armor,  'D1 min は防具なし（鎧は D1 の中にある）').toBe(-1);
     expect(d1.min.shield, 'D1 min は盾なし').toBe(-1);
     expect(d1.min.hearts, 'D1 min のハート数').toBe(3);
-    expect(d1.boss.armor,  'D1 ボス直前で革の鎧（ティア0）を持っていない').toBe(0);
+    expect(d1.boss.armor,  'D1 ボス直前で布の服（ティア0）を持っていない').toBe(0);
     expect(d1.boss.shield, 'D1 ボス直前で木の盾（ティア0）を持っていない').toBe(0);
     expect(d1.boss.hearts, 'D1 ボス直前のハート数（3 ＋ ボス部屋の外の器1）').toBe(4);
     expect(d1.boss.sword,  'D1 ボス直前の剣ティア（木の剣）').toBe(0);
@@ -386,7 +386,7 @@ test.describe('進行地点プリセット', () => {
       [...el.options].find(o => o.value === 'dungeon_1:boss')?.textContent);
     expect(label, 'D1 ボス直前のラベルが読めない').toContain('ボス直前');
 
-    // 選ぶと欄が埋まる＝D1 ボス直前（革の鎧 ティア0・木の盾 ティア0・ハート4・木の剣）
+    // 選ぶと欄が埋まる＝D1 ボス直前（布の服 ティア0・木の盾 ティア0・ハート4・木の剣）
     await page.click('#btn-preview');
     await expect(page.locator('#preview-settings-overlay')).not.toHaveClass(/hidden/);
     await page.selectOption('#ps-progress', 'dungeon_1:boss');
@@ -401,7 +401,7 @@ test.describe('進行地点プリセット', () => {
     expect(filled.hearts).toBe('4');
     expect(filled.sword).toBe('0');
     expect(filled.shield, 'D1 の木の盾が反映されていない').toBe('0');
-    expect(filled.armor,  'D1 の革の鎧が反映されていない').toBe('0');
+    expect(filled.armor,  'D1 の布の服が反映されていない').toBe('0');
     expect(filled.triforce).toBe('0');
     expect(filled.weapon).toBe(true);
     expect(filled.bow, 'D1 では弓を持たない').toBe(false);

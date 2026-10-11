@@ -96,6 +96,27 @@ export function initInput(deps) {
 		return !!el && !el.classList.contains('hidden');
 	});
 
+	// 今出ている枠の、見えているボタン（エンディングは THE END の場面になるまでボタンが隠れている）。
+	const overlayButtons = () => {
+		const ov = BUTTON_OVERLAYS.map(id => document.getElementById(id))
+			.find(el => el && !el.classList.contains('hidden'));
+		if (!ov) return [];
+		return [...ov.querySelectorAll('button')].filter(b => b.offsetParent !== null && b.style.display !== 'none');
+	};
+	// 枠が出た瞬間に1つ目のボタンを選んでおく＝最初の Space がそのまま決定になる。
+	// 削除確認だけは安全側（「戻る」＝危険でない方）を選ぶ。
+	const focusDefaultButton = () => {
+		const btns = overlayButtons();
+		if (!btns.length || btns.includes(document.activeElement)) return;
+		(btns.find(b => !b.classList.contains('title-btn--danger')) ?? btns[0]).focus();
+	};
+	const overlayWatch = new MutationObserver(() => requestAnimationFrame(focusDefaultButton));
+	for (const id of [...BUTTON_OVERLAYS, 'ending-phase2']) {
+		const el = document.getElementById(id);
+		if (el) overlayWatch.observe(el, { attributes: true, attributeFilter: ['class'] });
+	}
+	focusDefaultButton();
+
 	document.addEventListener('keydown', e => {
 		resumeAudio();
 		// ⚠️ Tab は遊んでいる間ずっと飲む（2026-09-15 ユーザー報告）。
@@ -103,6 +124,34 @@ export function initInput(deps) {
 		// **カーソルキーがゲームに届かなくなる**＝キーボードだけでは戻れない。
 		// ポーズの Tab（旧モード切替）を消したことで「何も起きないキー」になった∴ここで塞ぐ。
 		if (e.key === 'Tab' && !buttonOverlayOpen()) { e.preventDefault(); return; }
+		// ボタンを選ぶ枠の間はゲームの操作を一切通さず、枠のボタン選びに使う（キュー21 F3）。
+		// タイトル（続きから／はじめから）はステージを読む前に出る＝Space が swordAttack に届くと
+		// currentStage が null のまま読まれて例外になる。矢印も heldKeys に溜まり、
+		// 「続きから」の直後に勝手に歩き出す。
+		// 矢印＝選ぶボタンを移す／Space・Enter・Z＝選んでいるボタンを押す（ユーザー報告＝
+		// 「タイトル画面で矢印キーを押しても何もうごかない。スペースキーもなにもうごかない」）。
+		if (buttonOverlayOpen()) {
+			heldKeys.clear();
+			if (e.key === 'Tab') return;              // 既定のフォーカス移動を残す
+			const btns = overlayButtons();
+			if (!btns.length) return;
+			const cur = btns.indexOf(document.activeElement);
+			const prev = ['ArrowUp', 'ArrowLeft', 'w', 'W', 'a', 'A'].includes(e.key);
+			const next = ['ArrowDown', 'ArrowRight', 's', 'S', 'd', 'D'].includes(e.key);
+			if (prev || next) {
+				e.preventDefault();
+				const i = cur < 0 ? 0 : (cur + (next ? 1 : -1) + btns.length) % btns.length;
+				btns[i].focus();
+				return;
+			}
+			if ([' ', 'Enter', 'z', 'Z'].includes(e.key)) {
+				e.preventDefault();                      // 既定の押下（Space は keyup で発火）と二重にしない
+				if (e.repeat) return;
+				if (cur < 0) { btns[0].focus(); return; } // 何も選んでいなければ、まず選ぶだけ
+				btns[cur].click();
+			}
+			return;
+		}
 		if (inCutscene()) { e.preventDefault(); heldKeys.clear(); return; }
 		if (getIsDialog()) {
 			if ([' ','Enter','z','Z'].includes(e.key)) { e.preventDefault(); advanceDialog(); }

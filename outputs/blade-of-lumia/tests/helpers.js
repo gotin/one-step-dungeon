@@ -15,6 +15,32 @@ export async function gotoFreshGame(page) {
   }, SAVE_KEY);
   await page.goto(GAME_URL);
   await waitForBoard(page);
+  await dismissIntroDialog(page);
+  // 老賢者の話を読み終えると目的地マーク（草原の洞窟）が付く＝仕様どおり。だがこのヘルパーを使う
+  // テストは「印が1つも無い新規状態」を前提に書かれている∴ここで空に戻す。
+  // 開始の会話で印が付くこと自体は tests/q21-pass2.spec.js ① が縛る。
+  await page.evaluate(() => {
+    const p = window.__game.getPlayer();
+    p.mapMarks = [];
+    p.selectedMarkId = null;
+    window.__game.updateHud();
+  });
+}
+
+/**
+ * 「はじめから」の直後に老賢者が話しかけてくる会話（キュー21 F2）を最後まで送って閉じる。
+ * 会話中はゲームループが止まる＝閉じないと移動・tick を見るテストが進まない。
+ * @param {import('@playwright/test').Page} page
+ */
+export async function dismissIntroDialog(page) {
+  for (let i = 0; i < 30; i++) {
+    const open = await page.evaluate(() => {
+      const el = document.getElementById('dialog-overlay');
+      return !!el && !el.classList.contains('hidden');
+    });
+    if (!open) return;
+    await page.keyboard.press('Space');
+  }
 }
 
 /**
