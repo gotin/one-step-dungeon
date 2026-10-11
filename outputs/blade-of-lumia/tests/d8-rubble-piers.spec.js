@@ -89,7 +89,7 @@ test.describe('D8 崩れ壁の橋脚 ① データ', () => {
 		expect(st.links).toEqual([]);
 		// 旧盤面の `stonesPushed`（エンジンに無い trigger）の再発を止める
 		expect(st.showConditions, '宝箱に出現条件がある').toEqual({});
-		expect(st.chestContents).toEqual({ [CHEST]: { type: 'rupee', value: 20, name: 'ルピー×20' } });
+		expect(st.chestContents).toEqual({ [CHEST]: { type: 'rupee', value: 50, name: 'ルピー×50' } });
 		for (const k of CRACKS) expect(st.breakableWalls?.[k]?.breakDef, `崩れ壁 ${k} の breakDef`).toBe(1);
 		expect(t[8][1], '崩れた砦の石碑＝石碑タイル（キュー27）').toBe(TILE.MONUMENT);
 		expect(st.signData['8,1']?.lines?.length, '石碑に本文が無い').toBeGreaterThan(0);
@@ -227,7 +227,7 @@ test.describe('D8 崩れ壁の橋脚 ④ 実機', () => {
 		expect(await at(page), '幅2の水をはしごで渡った').toBe('8,8');
 	});
 
-	test('通し：水越しの爆弾→はしご→崩れ壁を橋脚に横へ降りる→水越しの爆弾→宝箱で +20→外周へ帰れる', async ({ page }) => {
+	test('通し：水越しの爆弾→はしご→崩れ壁を橋脚に横へ降りる→水越しの爆弾→宝箱で +50→外周へ帰れる', async ({ page }) => {
 		const errors = [];
 		page.on('pageerror', (e) => errors.push(e.message));
 		await boot(page, previewUrl(4, 1, TOOLS));
@@ -260,7 +260,7 @@ test.describe('D8 崩れ壁の橋脚 ④ 実機', () => {
 		await walk(page, 'down', 2);
 		expect(await at(page), '宝箱のセルに立てない').toBe(CHEST);
 		expect((await ss(page)).openedChests, '宝箱が開かない').toContain(CHEST);
-		expect(await rupees(page), 'ルピーが 20 増えない').toBe(r0 + 20);
+		expect(await rupees(page), 'ルピーが 50 増えない').toBe(r0 + 50);
 
 		// ④ 帰り道：北の間から (4,5) へ下り、帰りの橋脚 (6,5) を向こう岸にして水 (5,5) を縦に渡り、横（西）の (5,4) へ
 		await walk(page, 'up', 2);

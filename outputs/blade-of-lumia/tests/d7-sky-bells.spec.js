@@ -105,7 +105,7 @@ test.describe('D7 0,3 空の二色回廊 ① データ', () => {
 		const st = stages[ROOM];
 		expect(rowsOf(st)).toEqual(ROOM_ROWS);
 		expect(st.tiles.every((r) => Array.isArray(r)), 'tiles は文字の配列の配列').toBe(true);
-		expect(st.chestContents).toEqual({ [CHEST]: { type: 'rupee', value: 30, name: 'ルピー×30' } });
+		expect(st.chestContents).toEqual({ [CHEST]: { type: 'rupee', value: 50, name: 'ルピー×50' } });
 		expect(st.floorItems ?? {}, '拾えない床の落とし物が残っている').toEqual({});
 		expect(st.showConditions ?? {}).toEqual({});
 		expect(st.links ?? []).toEqual([]);
@@ -211,7 +211,7 @@ test.describe('D7 0,3 空の二色回廊 ② 実機', () => {
 		expect(errors).toEqual([]);
 	});
 
-	test('通し：青を射る→南を回って西の回廊から赤を射る→宝箱でルピー +30→北の回廊から入口へ戻る', async ({ page }) => {
+	test('通し：青を射る→南を回って西の回廊から赤を射る→宝箱でルピー +50→北の回廊から入口へ戻る', async ({ page }) => {
 		const errors = await boot(page, 6, 10);
 		await shoot(page, 'left');
 		expect(await color(page), '入口の行6 から青の座が鳴らない').toBe('blue');
@@ -228,7 +228,7 @@ test.describe('D7 0,3 空の二色回廊 ② 実機', () => {
 		await walk(page, 'up', 4);
 		expect(await pos(page), '赤門 (4,1) を抜けて宝箱へ届かない').toBe(CHEST);
 		expect((await ss(page)).openedChests, '宝箱が開かない').toContain(CHEST);
-		expect(await rupees(page), 'ルピーが 30 増えない').toBe(r0 + 30);
+		expect(await rupees(page), 'ルピーが 50 増えない').toBe(r0 + 50);
 
 		// 帰り道：北の回廊の赤門 (1,8) を抜けて入口の東の口の手前へ
 		for (const [d, n, want] of [['right', 9, '1,10'], ['down', 3, '4,10']]) {

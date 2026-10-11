@@ -7,9 +7,9 @@ import { ENEMY_META } from '../shared/enemies.js';
 import { NPC_SPRITE_MAP } from '../shared/npcs.js';
 import { playSound, resumeAudio, stopBgm } from '../shared/sounds.js';
 import { makeSprite } from '../shared/sprites.js';
-import { SWORD_TIERS, ownsItem } from '../shared/items.js';
+import { SWORD_TIERS, ownsItem, hasSwordAura } from '../shared/items.js';
 import {
-	MOVE_STEP, DIR_DELTA, SWORD_REACH, SWORD_COOLDOWN_MS, INVINCIBLE_MS,
+	MOVE_STEP, DIR_DELTA, SWORD_REACH, AURA_SWORD_REACH, SWORD_COOLDOWN_MS, INVINCIBLE_MS,
 	ATTACK_POSE_MS,
 } from './constants.js';
 import { enemyW, enemyH, enemyCenter } from './hitbox.js';
@@ -169,13 +169,52 @@ export function createCombat(deps) {
 		if ((player?.swordTier ?? -1) >= 2) {
 			cv.style.filter = `drop-shadow(0 0 ${Math.round(cellPx * 0.12)}px ${tier.key === 'holy' ? '#fff080' : '#c0e8ff'})`;
 		}
+		// キュー45: オーラが宿った剣は剣そのものが青白く光る（ティアの光より強い＝上書き）。
+		if (hasSwordAura(player)) {
+			const g = Math.max(2, Math.round(cellPx * 0.08));
+			cv.style.filter = `drop-shadow(0 0 ${g}px #e8f8ff) drop-shadow(0 0 ${g * 2}px #8fd8ff)`;
+			el.classList.add('aura');
+		}
 		el.appendChild(cv);
+		// キュー45: 光の紋章がそろったら、剣の先に1マス分のオーラを重ねる＝判定
+		// （AURA_SWORD_REACH＝1マス先の敵まで）と見た目を揃える。剣より奥に置く（先に足す）。
+		if (hasSwordAura(player)) charLayerEl.appendChild(swordAuraEl(heroDir, geo, player, cellPx));
 		charLayerEl.appendChild(el);
+	}
+
+	// オーラの帯＝剣の刃の中ほどから、切っ先の1マス先まで。根元の太さは剣より少し太い程度で、
+	// 先へ行くほど細く尖る（形は CSS の clip-path）。色と光り方も CSS（`.sword-aura`・effects.css）。
+	function swordAuraEl(heroDir, geo, player, cellPx) {
+		const EXT = 1.0;                                     // 切っ先から先へ1マス（AURA_SWORD_REACH の伸び）
+		const PAD = SWORD_HELD_THIN * 0.15;                  // 刃の左右に足す幅（剣より少し太い）
+		let x = player.x + geo.ox, y = player.y + geo.oy, w = geo.w, h = geo.h;
+		const half = SWORD_HELD_LONG * 0.5;                  // 柄側の半分は覆わない
+		if (heroDir === 'right') { x += half; w = w - half + EXT; y -= PAD; h += PAD * 2; }
+		if (heroDir === 'left')  { x -= EXT;  w = w - half + EXT; y -= PAD; h += PAD * 2; }
+		if (heroDir === 'down')  { y += half; h = h - half + EXT; x -= PAD; w += PAD * 2; }
+		if (heroDir === 'up')    { y -= EXT;  h = h - half + EXT; x -= PAD; w += PAD * 2; }
+		const aura = document.createElement('div');
+		aura.className = `sword-aura dir-${heroDir}`;
+		aura.style.cssText = `position:absolute;pointer-events:none;z-index:${geo.zi ?? '8'};`
+			+ `left:${Math.round(x * cellPx)}px;top:${Math.round(y * cellPx)}px;`
+			+ `width:${Math.round(w * cellPx)}px;height:${Math.round(h * cellPx)}px;`
+			// 動きは剣が出ている窓（ATTACK_POSE_MS）にぴったり合わせる＝出た瞬間に伸び始め、
+			// 光の筋は消える瞬間に切っ先へ着く（2026-10-11 ユーザー判定＝0.5 秒周期だと
+			// 消える直前に一瞬見えるだけだった）。溜め中に出しっぱなしのときは筋が繰り返し走る。
+			+ `--aura-ms:${ATTACK_POSE_MS}ms;`;
+		// 2層＝外の光の刃（青白・光が根元から先へ走る）＋芯（白い細い刃）。外光のにじみは
+		// 親の drop-shadow＝切り抜いた刃の形に沿って光る（CSS）。
+		for (const part of ['blade', 'core']) {
+			const p = document.createElement('div');
+			p.className = `sword-aura-${part}`;
+			aura.appendChild(p);
+		}
+		return aura;
 	}
 
 	// 構えている剣を消す（攻撃ポーズの窓が切れたときに game.js から呼ぶ）
 	function clearSwordHeld() {
-		document.querySelectorAll('.sword-held').forEach(el => el.remove());
+		document.querySelectorAll('.sword-held, .sword-aura').forEach(el => el.remove());
 	}
 
 	// 出ていなければ描く（チャージ中の「出しっぱなし」維持用。
@@ -724,6 +763,9 @@ export function createCombat(deps) {
 		//    切り出した＝像は敵ではない（`getEnemies()` に居ない）が、剣の間合いだけは
 		//    本体と1文字も違ってはいけない（違うと「像だけ届かない位置」が生まれて
 		//    見分けられる＝機構が死ぬ）。判定を2つ書かないための切り出し。
+		// キュー45: 光の紋章がそろうと敵（と幻影）にだけ1マス先まで届く。スイッチ・茂みは
+		// 上と下の「目の前のマス」で決まる＝ここを通らない∴謎の解き方は変わらない。
+		const reach = hasSwordAura(player) ? AURA_SWORD_REACH : SWORD_REACH;
 		const reachOf = (t) => {
 			const { cx: ecx, cy: ecy } = enemyCenter(t);
 			const relX = ecx - pcx;
@@ -739,7 +781,7 @@ export function createCombat(deps) {
 			const halfSide = Math.abs(ndy) * halfW + Math.abs(ndx) * halfH;
 
 			const projDist = dot;
-			if (projDist - halfFwd > SWORD_REACH) return null;
+			if (projDist - halfFwd > reach) return null;
 
 			const perpX = relX - ndx * projDist;
 			const perpY = relY - ndy * projDist;

@@ -28,7 +28,7 @@
 
 import { HP_PER_HEART } from './constants.js';
 import { PAL, makeSprite } from '../shared/sprites.js';
-import { ITEM_META, BOOMERANG_TIERS, HEART_PIECES_PER_HEART, ownsItem, addStack, isStackFull, isMaxHpReward } from '../shared/items.js';
+import { ITEM_META, BOOMERANG_TIERS, HEART_PIECES_PER_HEART, EMBLEMS_FOR_AURA, hasSwordAura, ownsItem, addStack, isStackFull, isMaxHpReward } from '../shared/items.js';
 import { iconCanvas, iconText, iconPxOf, tierIconSpec } from '../shared/ui-icons.js';
 import { playSound } from '../shared/sounds.js';
 // field の地図（キュー15）の色。エディタのワールドマップのサムネと**同じ関数**を呼ぶ
@@ -610,6 +610,11 @@ export function createUi(deps) {
 			[player.hasSwiftBoots, 'swiftBoots', '疾風の靴(Shift で走る)'],
 			// キュー13 ③：妖精の瓶は使うと減る＝本数も出す（空になったら行から消える）。
 			[player.fairies > 0,   'fairy',      `妖精の瓶 ×${player.fairies}(倒れたら よみがえる)`],
+			// キュー45：光の紋章＝集まり具合（n/8）。そろうまで効果は書かない（ユーザー判定）。
+			// そろったら効果を書く（剣の届く距離は画面に出ない）。
+			[player.emblems > 0,   'emblem',     hasSwordAura(player)
+				? `光の紋章 ${EMBLEMS_FOR_AURA}/${EMBLEMS_FOR_AURA}(剣に オーラ)`
+				: `光の紋章 ${player.emblems}/${EMBLEMS_FOR_AURA}`],
 		].filter(([owned]) => owned);
 		if (keyItems.length > 0) {
 			const keyLine = document.createElement('div');

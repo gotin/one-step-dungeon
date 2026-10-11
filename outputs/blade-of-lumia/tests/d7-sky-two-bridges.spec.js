@@ -103,7 +103,7 @@ test.describe('D7 4,4 空の二つの渡り ① データ', () => {
 		const st = stages[ROOM];
 		expect(rowsOf(st)).toEqual(ROOM_ROWS);
 		expect(st.tiles.every((r) => Array.isArray(r)), 'tiles は文字の配列の配列').toBe(true);
-		expect(st.chestContents).toEqual({ [CHEST]: { type: 'rupee', value: 50, name: 'ルピー×50' } });
+		expect(st.chestContents).toEqual({ [CHEST]: { type: 'item', item: 'emblem', name: '光の紋章' } });
 		expect(st.floorItems ?? {}).toEqual({});
 		expect(st.showConditions ?? {}, '宝箱は封印しない（門 T が関門）').toEqual({});
 		expect(st.links ?? [], 'links は空（T はボタンで開く）').toEqual([]);
@@ -207,6 +207,7 @@ const snap = (page) => page.evaluate(() => {
 		locked: !!ss.stonesLocked,
 		opened: [...(ss.openedChests ?? [])],
 		rupees: p.rupees,
+		emblems: p.emblems,   // キュー45：宝箱は光の紋章
 	};
 });
 
@@ -222,9 +223,9 @@ test.describe('D7 4,4 空の二つの渡り ② 実機', () => {
 		expect(errors).toEqual([]);
 	});
 
-	test('通し：石を下ろす→赤で渡って南の渡りから青→戻って石を南の渡りでボタンへ→赤で渡って宝箱 +50', async ({ page }) => {
+	test('通し：石を下ろす→赤で渡って南の渡りから青→戻って石を南の渡りでボタンへ→赤で渡って宝箱で光の紋章', async ({ page }) => {
 		const errors = await boot(page, 4, 1);
-		const r0 = (await snap(page)).rupees;
+		const e0 = (await snap(page)).emblems;
 		const leg = async (route) => {
 			for (const [kind, d, n, want] of route) {
 				if (kind === 'push') await push(page, d, n); else await walk(page, d, n);
@@ -254,7 +255,7 @@ test.describe('D7 4,4 空の二つの渡り ② 実機', () => {
 		await leg([['walk', 'right', 3, '3,8'], ['walk', 'up', 2, '1,8'], ['walk', 'right', 2, CHEST]]);
 		s = await snap(page);
 		expect(s.opened, '宝箱が開かない').toContain(CHEST);
-		expect(s.rupees, 'ルピーが 50 増えない').toBe(r0 + 50);
+		expect(s.emblems, '光の紋章が 1 つ増えない').toBe(e0 + 1);
 		expect(errors).toEqual([]);
 	});
 });

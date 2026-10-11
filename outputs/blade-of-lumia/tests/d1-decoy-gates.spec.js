@@ -286,7 +286,7 @@ test.describe('Blade of Lumia – D1 の扉は実機で通行を止める（キ�
 		await moveTo(page, '2,10');
 		await moveTo(page, '1,10');         // 宝箱
 		const st = await page.evaluate(() => window.__game.getState());
-		expect(st.player.rupees, 'ルピー×30 を手に入れた').toBe(30);
+		expect(st.player.emblems, '光の紋章を手に入れた（キュー45 でルピー×30 から差し替え）').toBe(1);
 		expect(errors).toEqual([]);
 	});
 });

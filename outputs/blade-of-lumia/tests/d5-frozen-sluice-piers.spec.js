@@ -56,7 +56,7 @@ test.describe('D5 0,2 凍れる湖の水門の足場 ① データ', () => {
 		expect(LINKS.filter((l) => l.switchId === FAR_BUTTON).map((l) => l.gateId)).toEqual(WEST_PIER);
 		expect(LINKS.filter((l) => l.switchId === DECOY_BUTTON).map((l) => l.gateId)).toEqual(WEST_PIER);
 		expect(LINKS.filter((l) => l.switchId === EAST_BUTTON).map((l) => l.gateId)).toEqual(EAST_PIERS);
-		expect(st.chestContents).toEqual({ [CHEST]: { type: 'rupee', value: 20, name: 'ルピー×20' } });
+		expect(st.chestContents).toEqual({ [CHEST]: { type: 'rupee', value: 50, name: 'ルピー×50' } });
 		expect(st.floorItems ?? {}).toEqual({});
 		expect(st.showConditions ?? {}).toEqual({});
 		expect(Object.keys(st.signData ?? {})).toEqual([]);

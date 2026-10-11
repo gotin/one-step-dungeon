@@ -4,7 +4,7 @@ import { TILE, BG_TILES, READABLE_SIGN_TILES } from '../shared/tiles.js';
 import { buildExitRegistry as buildExitRegistryShared } from '../shared/exits.js';
 import { liftGroundTiles } from '../shared/ground-layer.js';
 import { ENEMY_META, ENEMY_SPEED_NORMAL } from '../shared/enemies.js';
-import { ITEM_META, EQUIP_META, BOOMERANG_TIERS, ownsItem, addStack } from '../shared/items.js';
+import { ITEM_META, EQUIP_META, BOOMERANG_TIERS, ownsItem, addStack, EMBLEMS_FOR_AURA } from '../shared/items.js';
 import { NPC_SPRITE_MAP, NPC_DEFAULT_DIALOG } from '../shared/npcs.js';
 import { ARROW_CELL_SCALE } from '../shared/tile-sprites.js';
 import {
@@ -101,6 +101,8 @@ let player = {
 	hp: 6, maxHp: 6, maxHearts: 3,
 	// キュー13: ハートのかけらの端数（0〜3・4つで器1個＝`player.js gainHeartPiece`）。
 	heartPieces: 0,
+	// キュー45: 光の紋章の個数（8つで剣にオーラ＝items.js hasSwordAura）。
+	emblems: 0,
 	// キュー13 ③: 妖精の瓶の本数（上限1＝items.js ITEM_STACK_MAX・倒れたとき combat.js が使う）。
 	fairies: 0,
 	atk: 2, def: 0, keys: 0,
@@ -2046,6 +2048,7 @@ function startNewGame() {
 		x: startCol, y: startRow,
 		hp: 6, maxHp: 6, maxHearts: 3,
 		heartPieces: 0,
+		emblems: 0,
 		fairies: 0,
 		atk: 2, def: 0, keys: 0,
 		weapon: null, shield: null, armor: null,
@@ -2162,6 +2165,7 @@ async function init() {
 		const psWingRobe = params.get('ps_wingrobe');
 		const psLadder   = params.get('ps_ladder');
 		const psSwiftBoots = params.get('ps_swiftboots');  // 実行キュー13: 疾風の靴
+		const psEmblems  = params.get('ps_emblems');   // 実行キュー45: 光の紋章の個数（8＝剣にオーラ）
 		const psDefeated = params.get('ps_defeated');  // 実行キュー23: 撃破済みボス（タイル文字のカンマ区切り）
 		const psMap      = params.get('ps_map');       // 2026-09-19: 地図の所持（目的地マークの見え方の確認用）
 
@@ -2200,6 +2204,10 @@ async function init() {
 		if (psWingRobe === '1') player.hasWingRobe = true;
 		if (psLadder   === '1') player.hasLadder = true;
 		if (psSwiftBoots === '1') player.hasSwiftBoots = true;
+		if (psEmblems !== null) {
+			const n = parseInt(psEmblems, 10);
+			player.emblems = Number.isFinite(n) ? Math.min(EMBLEMS_FOR_AURA, Math.max(0, n)) : 0;
+		}
 		// ⚠️ 本数は**上限（`maxArrows`/`maxBombs`）ちょうど＝満タン**で渡す。上限を超える
 		//    本数を直接入れると「矢束を踏んだら減る」状態を作ってしまう（2026-09-21）。
 		if (psBow      === '1') { player.subItems.bow       = { count: player.maxArrows ?? 8 };  if (!player.activeSubItem) player.activeSubItem = 'bow'; }
@@ -2306,6 +2314,7 @@ export function getGameState() {
 			x: player.x, y: player.y, hp: player.hp, maxHp: player.maxHp,
 			maxHearts: player.maxHearts ?? 3,
 			heartPieces: player.heartPieces ?? 0,
+			emblems: player.emblems ?? 0,
 			fairies: player.fairies ?? 0,
 			hasWingRobe: !!player.hasWingRobe, flying: !!player.flying,
 			hasLadder: !!player.hasLadder,

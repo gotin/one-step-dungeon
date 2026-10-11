@@ -86,7 +86,7 @@ test.describe('D3 潮の引く道 ① データ（盤面とソルバー）', () 
 		expect(walkable(t, bg, new Set(TIDES)).has(CHEST), '潮を引かせても宝箱に届かない').toBe(true);
 		// 潮の下に水を敷くと、潮が引いても水で歩けない（D7 1,2 の潮と同じく下地は床）。
 		expect([...TIDES, CHEST].filter((k) => bg[k] === TILE.WATER), '潮/宝箱の下に水がある').toEqual([]);
-		expect(stages[ROOM].chestContents).toEqual({ [CHEST]: { type: 'rupee', value: 30, name: 'ルピー×30' } });
+		expect(stages[ROOM].chestContents).toEqual({ [CHEST]: { type: 'item', item: 'emblem', name: '光の紋章' } });
 	});
 
 	test('links はボタン S(6,8)→潮 3 枚／門 T・的 Y・看板は置かない', () => {
@@ -195,6 +195,8 @@ const at = (page) => page.evaluate(() => {
 });
 const ss = (page) => page.evaluate(() => window.__game.getStageState());
 const rupees = (page) => page.evaluate(() => window.__game.getState().player.rupees);
+// キュー45：この部屋の宝箱は光の紋章（ルピーから差し替え）＝個数で見る。
+const emblems = (page) => page.evaluate(() => window.__game.getState().player.emblems);
 const stonesOf = (s) => Object.values(s.stonePositions ?? {}).map((p) => `${p.r},${p.c}`);
 
 test.describe('D3 潮の引く道 ③ 実機（石をボタンへ運ぶと潮が引く）', () => {
@@ -219,7 +221,7 @@ test.describe('D3 潮の引く道 ③ 実機（石をボタンへ運ぶと潮が
 		expect(errors).toEqual([]);
 	});
 
-	test('通し：石を小部屋から出してボタンへ→潮が引いたまま→宝箱でルピー +30', async ({ page }) => {
+	test('通し：石を小部屋から出してボタンへ→潮が引いたまま→宝箱で光の紋章', async ({ page }) => {
 		const errors = [];
 		page.on('pageerror', (e) => errors.push(e.message));
 		await boot(page, previewUrl(2, 4));
@@ -244,13 +246,13 @@ test.describe('D3 潮の引く道 ③ 実機（石をボタンへ運ぶと潮が
 		for (const g of TIDES) expect(locked.openGates, `石を乗せても潮 (${g}) が引かない`).toContain(g);
 
 		// ④ ボタンから離れても潮は引いたまま＝潮の道を北へ抜けて宝箱 (1,9) へ
-		const r0 = await rupees(page);
+		const e0 = await emblems(page);
 		await walk(page, 'down', 2);
 		await walk(page, 'right', 4);
 		await walk(page, 'up', 12);
 		expect(await at(page), '宝箱のセルに立てない（潮が満ちた）').toEqual({ r: 1, c: 9 });
 		expect((await ss(page)).openedChests, '宝箱が開かない').toContain(CHEST);
-		expect(await rupees(page), 'ルピーが 30 増えない').toBe(r0 + 30);
+		expect(await emblems(page), '光の紋章が 1 つ増えない').toBe(e0 + 1);
 		expect(errors).toEqual([]);
 	});
 

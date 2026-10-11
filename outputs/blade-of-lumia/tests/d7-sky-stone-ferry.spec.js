@@ -112,7 +112,7 @@ test.describe('D7 1,4 空の石運び ① データ', () => {
 		const st = stages[ROOM];
 		expect(rowsOf(st)).toEqual(ROOM_ROWS);
 		expect(st.tiles.every((r) => Array.isArray(r)), 'tiles は文字の配列の配列').toBe(true);
-		expect(st.chestContents).toEqual({ [CHEST]: { type: 'item', item: 'bigHealPotion', name: '回復薬（大）' } });
+		expect(st.chestContents).toEqual({ [CHEST]: { type: 'rupee', value: 100, name: 'ルピー×100' } });   // キュー45 で回復薬（大）→ルピー×100
 		expect(st.showConditions ?? {}, '宝箱は封印しない（門が関門）').toEqual({});
 		expect(st.links ?? [], 'links は空（T はボタンの全押しで開く）').toEqual([]);
 		expect(Object.keys(st.signData ?? {}), '看板データは空').toEqual([]);

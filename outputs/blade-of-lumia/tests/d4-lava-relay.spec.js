@@ -145,7 +145,7 @@ test.describe('D4 溶岩越しの灯火 ① データ', () => {
 		const st = stages[ROOM];
 		expect(rowsOf(st)).toEqual(ROOM_ROWS);
 		expect(st.tiles.every((r) => Array.isArray(r)), 'tiles は文字の配列の配列').toBe(true);
-		expect(st.chestContents).toEqual({ [CHEST]: { type: 'rupee', value: 20, name: 'ルピー×20' } });
+		expect(st.chestContents).toEqual({ [CHEST]: { type: 'item', item: 'emblem', name: '光の紋章' } });
 		expect(st.showConditions).toEqual({ [CHEST]: { trigger: 'torchesLit' } });
 		expect(st.links ?? [], 'links は空').toEqual([]);
 		expect(Object.keys(st.signData ?? {}), '看板データは空').toEqual([]);
@@ -238,6 +238,8 @@ const pos = (page) => page.evaluate(() => {
 });
 const ss = (page) => page.evaluate(() => window.__game.getStageState());
 const rupees = (page) => page.evaluate(() => window.__game.getState().player.rupees);
+// キュー45：この部屋の宝箱は光の紋章（ルピーから差し替え）＝個数で見る。
+const emblems = (page) => page.evaluate(() => window.__game.getState().player.emblems);
 async function candle(page, dir) {
 	await page.evaluate((d) => {
 		window.__game.setHeroDir(d);
@@ -299,7 +301,7 @@ test.describe('D4 溶岩越しの灯火 ③ 実機', () => {
 		expect(s1.litTorches, '突堤から手前の火が点かない').toEqual([NEAR]);
 		expect(s1.conditionsMet ?? [], '手前だけで封印が解けた').not.toContain(CHEST);
 		// 岸へ回って宝箱を踏む＝封印中は開かない
-		const r0 = await rupees(page);
+		const e0 = await emblems(page);
 		await walk(page, 'up', 2);
 		await walk(page, 'left', 8);
 		await walk(page, 'down', 4);
@@ -307,11 +309,11 @@ test.describe('D4 溶岩越しの灯火 ③ 実機', () => {
 		await walk(page, 'down', 2);
 		expect(await pos(page), '宝箱のセルに立てない').toBe(CHEST);
 		expect((await ss(page)).openedChests ?? [], '封印中の宝箱が開いた').not.toContain(CHEST);
-		expect(await rupees(page), '封印中にルピーが増えた').toBe(r0);
+		expect(await emblems(page), '封印中に光の紋章が増えた').toBe(e0);
 		expect(errors).toEqual([]);
 	});
 
-	test('通し：突堤でロウソク→岸から右へブーメラン＝奥の火が復路で灯り、宝箱でルピー +20', async ({ page }) => {
+	test('通し：突堤でロウソク→岸から右へブーメラン＝奥の火が復路で灯り、宝箱で光の紋章', async ({ page }) => {
 		const errors = [];
 		page.on('pageerror', (e) => errors.push(e.message));
 		await boot(page, previewUrl(5, 5));
@@ -327,10 +329,10 @@ test.describe('D4 溶岩越しの灯火 ③ 実機', () => {
 		expect([...s.litTorches].sort(), '奥の火が灯らない').toEqual([FAR, NEAR].sort());
 		expect(litWhileReturning, '奥の火が往路で灯った（復路で点く設計のはず）').toBe(true);
 		expect(s.conditionsMet, '全点灯で封印が解けない').toContain(CHEST);
-		const r0 = await rupees(page);
+		const e0 = await emblems(page);
 		await walk(page, 'down', 2);
 		expect((await ss(page)).openedChests, '宝箱が開かない').toContain(CHEST);
-		expect(await rupees(page), 'ルピーが 20 増えない').toBe(r0 + 20);
+		expect(await emblems(page), '光の紋章が 1 つ増えない').toBe(e0 + 1);
 		expect(errors).toEqual([]);
 	});
 

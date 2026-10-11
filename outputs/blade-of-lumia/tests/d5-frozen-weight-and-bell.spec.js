@@ -51,7 +51,7 @@ test.describe('D5 4,0 凍れる湖の重しと鐘 ① データ', () => {
 		expect(Object.keys(st.bgTiles).sort()).toEqual([...WATER].sort());
 		expect(Object.values(st.bgTiles).every((v) => v === TILE.WATER)).toBe(true);
 		expect(st.links).toEqual(LINKS);
-		expect(st.chestContents).toEqual({ [CHEST]: { type: 'rupee', value: 30, name: 'ルピー×30' } });
+		expect(st.chestContents).toEqual({ [CHEST]: { type: 'rupee', value: 100, name: 'ルピー×100' } });
 		expect(st.floorItems ?? {}, '床のルピー（5）が残っている').toEqual({});
 		expect(st.showConditions ?? {}).toEqual({});
 		expect(Object.keys(st.signData ?? {})).toEqual([]);
@@ -184,7 +184,7 @@ test.describe('D5 4,0 凍れる湖の重しと鐘 ② 実機', () => {
 		expect(errors).toEqual([]);
 	});
 
-	test('通し：鐘で水門を干し、石を島へ渡して裏から島のボタンへ押し、足場から鐘を射て宝箱（ルピー×30）を開ける', async ({ page }) => {
+	test('通し：鐘で水門を干し、石を島へ渡して裏から島のボタンへ押し、足場から鐘を射て宝箱（ルピー×100）を開ける', async ({ page }) => {
 		const errors = await boot(page, 5, 1);
 		await run(page, RING_FERRY_BELL);
 		await shoot(page, 'right');                                    // 鐘 (3,7) → 水門 (4,4)
@@ -213,7 +213,7 @@ test.describe('D5 4,0 凍れる湖の重しと鐘 ② 実機', () => {
 		await walk(page, 'up', 1);
 		s = await snap(page);
 		expect(s.opened, '宝箱が開かない').toContain(CHEST);
-		expect(s.rupees, 'ルピーが 30 増えない').toBe(before + 30);
+		expect(s.rupees, 'ルピーが 100 増えない').toBe(before + 100);
 		expect(errors).toEqual([]);
 	});
 });

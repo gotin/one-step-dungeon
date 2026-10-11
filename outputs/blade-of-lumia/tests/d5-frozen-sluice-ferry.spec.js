@@ -55,7 +55,7 @@ test.describe('D5 0,3 凍れる水門の石渡し ① データ', () => {
 		expect(st.links).toEqual(LINKS);
 		expect(LINKS.filter((l) => l.switchId === LAKE_BUTTON).map((l) => l.gateId)).toEqual(LAKE_SLUICE);
 		expect(LINKS.filter((l) => l.switchId === VAULT_BUTTON).map((l) => l.gateId)).toEqual(VAULT_SLUICE);
-		expect(st.chestContents).toEqual({ [CHEST]: { type: 'rupee', value: 30, name: 'ルピー×30' } });
+		expect(st.chestContents).toEqual({ [CHEST]: { type: 'rupee', value: 100, name: 'ルピー×100' } });
 		expect(st.floorItems ?? {}, '旧 床のルピーが残っている').toEqual({});
 		expect(st.showConditions ?? {}).toEqual({});
 		expect(Object.keys(st.signData ?? {})).toEqual([]);

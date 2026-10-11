@@ -56,7 +56,7 @@ test.describe('D7 0,1 空の灯籠継ぎ ① データ', () => {
 		const st = stages[ROOM];
 		expect(rowsOf(st)).toEqual(TARGET);
 		expect(st.tiles.every((r) => Array.isArray(r)), 'tiles は文字の配列の配列').toBe(true);
-		expect(st.chestContents).toEqual({ [CHEST]: { type: 'rupee', value: 30, name: 'ルピー×30' } });
+		expect(st.chestContents).toEqual({ [CHEST]: { type: 'rupee', value: 50, name: 'ルピー×50' } });
 		expect(st.showConditions).toEqual({ [CHEST]: { trigger: 'torchesLit' } });
 		expect(st.links ?? [], 'links は空').toEqual([]);
 		expect(st.initLitTorches ?? [], '最初から点いている火は無い（火元はロウソク）').toEqual([]);
@@ -194,7 +194,7 @@ test.describe('D7 0,1 空の灯籠継ぎ ② 実機', () => {
 		expect(errors).toEqual([]);
 	});
 
-	test('通し（木）：ロウソク→本土から西→西の小島から北→北の小島から西＝4つが灯り、宝箱でルピー +30', async ({ page }) => {
+	test('通し（木）：ロウソク→本土から西→西の小島から北→北の小島から西＝4つが灯り、宝箱でルピー +50', async ({ page }) => {
 		const errors = await boot(page, 8, 5, { ps_ladder: '1' });
 		expect(await page.evaluate(() => window.__game.getState().player.boomerangTier)).toBe(0);
 		const r0 = (await snap(page)).rupees;
@@ -215,7 +215,7 @@ test.describe('D7 0,1 空の灯籠継ぎ ② 実機', () => {
 		await route(page, [['up', 1, CHEST]]);
 		s = await snap(page);
 		expect(s.opened, '宝箱が開かない').toContain(CHEST);
-		expect(s.rupees - r0, 'ルピーが 30 増えない').toBe(30);
+		expect(s.rupees - r0, 'ルピーが 50 増えない').toBe(50);
 		expect(errors).toEqual([]);
 	});
 });

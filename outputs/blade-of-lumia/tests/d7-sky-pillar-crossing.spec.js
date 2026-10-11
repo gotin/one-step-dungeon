@@ -60,7 +60,7 @@ test.describe('D7 0,2 空の崩れ柱渡り ① データ', () => {
 		const st = stages[ROOM];
 		expect(rowsOf(st)).toEqual(TARGET);
 		expect(st.tiles.every((r) => Array.isArray(r)), 'tiles は文字の配列の配列').toBe(true);
-		expect(st.chestContents).toEqual({ [CHEST]: { type: 'rupee', value: 30, name: 'ルピー×30' } });
+		expect(st.chestContents).toEqual({ [CHEST]: { type: 'rupee', value: 50, name: 'ルピー×50' } });
 		expect(st.showConditions ?? {}, '宝箱は封印しない（見えているのに届かない）').toEqual({});
 		expect(cellsOf(t, TILE.BREAKABLE_WALL), '柱の位置').toEqual([...PILLARS, DECOY_PILLAR].sort());
 		for (const k of [...PILLARS, DECOY_PILLAR]) {
@@ -186,7 +186,7 @@ test.describe('D7 0,2 空の崩れ柱渡り ② 実機', () => {
 		expect(errors).toEqual([]);
 	});
 
-	test('通し：爆弾を拾い、柱3本を崩して穴5枚を渡り、宝箱でルピー +30', async ({ page }) => {
+	test('通し：爆弾を拾い、柱3本を崩して穴5枚を渡り、宝箱でルピー +50', async ({ page }) => {
 		const errors = await boot(page, 1, 5, { ps_ladder: '1' });
 		// 初めてのサブアイテムで出るヒントの会話を出さない（D7 に来たプレイヤーは必ず見終わっている＝
 		// プレビューではしごだけ持たせた都合で「初めて」になる。会話中は歩けない）。
@@ -209,7 +209,7 @@ test.describe('D7 0,2 空の崩れ柱渡り ② 実機', () => {
 		await route(page, [['right', 2, '8,3'], ['right', 2, '8,5'], ['right', 2, '8,7'], ['right', 1, '8,8'], ['right', 1, CHEST]]);
 		s = await snap(page);
 		expect(s.opened, '宝箱が開かない').toContain(CHEST);
-		expect(s.rupees - r0, 'ルピーが 30 増えない').toBe(30);
+		expect(s.rupees - r0, 'ルピーが 50 増えない').toBe(50);
 		expect(errors).toEqual([]);
 	});
 });

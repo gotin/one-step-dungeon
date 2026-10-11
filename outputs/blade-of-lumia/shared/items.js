@@ -170,6 +170,18 @@ export const ITEM_META = {
 		type: 'passive',
 		uses: null,
 	},
+	emblem: {
+		// 実行キュー45（2026-10-11 ユーザー発案）：光の紋章。D1〜D8 の「いちばん深い謎の部屋」に
+		// 1個ずつ・全 `EMBLEMS_FOR_AURA` 個。そろうと剣にオーラが宿り、剣が敵に届く距離が
+		// `AURA_SWORD_REACH`（1マス先）まで伸びる（`player.emblems` に個数・`hasSwordAura`）。
+		// ⚠️ オーラが伸ばすのは**敵（と幻影）への当たりだけ**。スイッチ・色の紋・茂みは
+		//    今までどおり目の前のマスで決まる（`game/combat.js swordAttack`）＝謎の解き方は変わらない。
+		// ⚠️ 進行の鍵にしない（`SUB_ITEM_KEYS` に入れない＝無くてもクリアできる寄り道の報酬）。
+		// 宝箱には `{ type:'item', item:'emblem', name:'光の紋章' }` で書く。
+		name: '光の紋章', icon: '✦', sprite: 'emblem', pal: 'emblem',
+		type: 'passive',
+		uses: null,
+	},
 	flute: {
 		// Phase 4-2: 笛。active サブアイテム（使うと魔法の音色を奏でる）。
 		// 効果はステージ単位の stageData.fluteEffect で決まる：
@@ -325,6 +337,15 @@ export const EQUIP_META = {
 // この数だけ集めるとハートの器1個になる。ゲーム（`game/player.js`）・監査
 // （`shared/progression.js`）・ポーズ画面の表示（4分割の絵）が同じ数を読む。
 export const HEART_PIECES_PER_HEART = 4;
+
+// ── 光の紋章（実行キュー45）──────────────────────────────────────
+// この数だけ集めると剣にオーラが宿る（世界に置く総数もこの数＝D1〜D8 に1個ずつ）。
+// ゲーム（`game/player.js gainEmblem`・`game/combat.js` の剣の当たり）・ポーズの表示・
+// 監査（`shared/progression.js`）が同じ数を読む。
+export const EMBLEMS_FOR_AURA = 8;
+export function hasSwordAura(player) {
+	return (Number(player?.emblems) || 0) >= EMBLEMS_FOR_AURA;
+}
 
 // ── くじの景品のうち最大ハートを増やすもの（実行キュー36・2026-09-30 ユーザー確定）──
 // くじ1台につき**1回限り**＝5% の枠か天井のどちらかで1個出たら終わり。以降は

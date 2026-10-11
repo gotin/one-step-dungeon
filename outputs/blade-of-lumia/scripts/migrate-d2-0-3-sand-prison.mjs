@@ -38,7 +38,7 @@
 //     `1,0` 裂け目と一本橋・`2,0` 剣を封じる鬼火・`3,0` 潜る敵を止める・`0,1` 炎の2段・`0,2` 穴の小島の回収・
 //     `2,1` 跳躍蜘蛛と地中蟲（看板）。ここは「剣の届かない向こうの敵を格子越しに撃つ」＋「放つか、先に削るか」。
 //     スイッチ Y と門 T は D2 で初めて使う（D1 `2,2` で Y→T を一度見ている）。
-//   ・床のルピー R は宝箱（ルピー×30＝仮・キュー45 で見直す）に替えた。
+//   ・床のルピー R は宝箱（ルピー×30＝キュー45〈2026-10-11〉で光の紋章に差し替え）に替えた。
 //
 // ■ 層への影響（このスクリプトの検証が固定する）
 //   ・徒歩の到達室・門を閉じたままの到達室・dead-edge 0 は書き換え前と同じ（東の口は同じセルで開いたまま）。
@@ -102,7 +102,7 @@ export const CELLS = {                            // 牢の中（内寸 2×2）
 export const INMATES = { '1,2': TILE.LEAP_SPIDER, '7,1': TILE.PATROL, '8,2': TILE.PATROL };
 export const ENTRY = '4,10';                      // 東の口（入口 `1,3` から入った最初のセル）
 export const CHEST = '4,1';
-export const CHEST_CONTENT = { type: 'rupee', value: 30, name: 'ルピー×30' };   // 仮＝キュー45 で見直す
+export const CHEST_CONTENT = { type: 'item', item: 'emblem', name: '光の紋章' };   // キュー45（2026-10-11）で仮のルピー×30 から差し替え＝D2 でいちばん深い謎
 export const BOOMERANG_REACH_WEST = 4;            // 木のブーメランの届き（←↑4／→↓5・DECISIONS 2026-09-26（2））
 
 const P = (k) => k.split(',').map(Number);

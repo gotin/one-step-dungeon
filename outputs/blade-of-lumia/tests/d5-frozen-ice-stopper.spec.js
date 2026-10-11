@@ -64,7 +64,7 @@ test.describe('D5 4,1 凍れる床の石止め ① データ', () => {
 		expect(st.bgTiles[BRAKE], 'ブレーキが石畳でない').toBe(TILE.STONE_FLOOR);
 		for (const k of [...STONES, BUTTON]) expect(st.bgTiles[k], `${k}（石・ボタン）の下が氷でない`).toBe(TILE.ICE);
 		expect(st.showConditions).toEqual(SHOW);
-		expect(st.chestContents).toEqual({ [CHEST]: { type: 'rupee', value: 30, name: 'ルピー×30' } });
+		expect(st.chestContents).toEqual({ [CHEST]: { type: 'rupee', value: 100, name: 'ルピー×100' } });
 		expect(st.floorItems ?? {}, '床の回復薬が残っている').toEqual({});
 		expect(st.links).toEqual([]);
 		expect(Object.keys(st.signData ?? {})).toEqual([]);
@@ -217,7 +217,7 @@ test.describe('D5 4,1 凍れる床の石止め ② 滑り（実機）', () => {
 });
 
 test.describe('D5 4,1 凍れる床の石止め ③ 通し（実機）', () => {
-	test('通し：止め役を置き、ブレーキとレールで石を揃えて押し込む→ボタンの上で止まり、宝箱（ルピー×30）が開く', async ({ page }) => {
+	test('通し：止め役を置き、ブレーキとレールで石を揃えて押し込む→ボタンの上で止まり、宝箱（ルピー×100）が開く', async ({ page }) => {
 		test.setTimeout(90_000);
 		const errors = await boot(page, 4, 1);
 		await run(page, SOLVE);
@@ -230,7 +230,7 @@ test.describe('D5 4,1 凍れる床の石止め ③ 通し（実機）', () => {
 		await walk(page, 'up', 1);
 		s = await snap(page);
 		expect(s.opened, '宝箱が開かない').toContain(CHEST);
-		expect(s.rupees, 'ルピーが 30 増えない').toBe(before + 30);
+		expect(s.rupees, 'ルピーが 100 増えない').toBe(before + 100);
 		expect(errors).toEqual([]);
 	});
 });

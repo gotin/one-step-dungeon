@@ -29,6 +29,59 @@
     transform: translate(-50%, -50%) translateY(30%) scaleX(0.7) scaleY(1.4);
 }
 
+/* キュー45: 光の紋章がそろった剣のオーラ＝「光の刃」（game/combat.js swordAuraEl）。
+   刃の中ほどから切っ先の1マス先まで＝敵に届く距離（AURA_SWORD_REACH）と見た目を揃える。
+   形＝剣と同じ向きの刃。根元は剣より少し太く、先へ行くほど細り、最後に切っ先で鋭く尖る。
+   2層＝外の光の刃（青白・白い光の筋が根元から先へ走る）＋芯（白い細い刃）。根元は透明から
+   立ち上げて剣の刃に溶かす（切ると刃の上に四角い光の塊が乗って見える＝自己レビューで直した）。
+   外光のにじみは親の drop-shadow＝切り抜いた刃の形に沿う（clip-path は子に掛けるので親の影は切られない）。
+   動き＝剣が出ている窓（--aura-ms＝ATTACK_POSE_MS・combat.js が渡す）に合わせる。前半 40% で根元から
+   切っ先へ伸び、光の筋は窓いっぱいで1回走って消える瞬間に切っ先へ着く。溜めで出しっぱなしなら
+   筋は窓の2倍の周期で走り続ける（2026-10-11 ユーザー判定＝0.5 秒周期では消える直前に一瞬見えるだけ）。
+   ❌ 失効（2026-10-11 ユーザー判定「三角形かぁ。もう少しかっこよくできない？」）＝刃全体を
+   一枚の三角形に切った版。剣そのものの光は combat.js が剣の絵に drop-shadow で付ける。 */
+.sword-aura {
+    filter: drop-shadow(0 0 calc(var(--cell) * 0.06) rgba(150, 225, 255, 0.95)) drop-shadow(0 0 calc(var(--cell) * 0.14) rgba(90, 180, 255, 0.6));
+}
+.sword-aura.dir-right { transform-origin: 0 50%;    animation: sword-aura-grow-x calc(var(--aura-ms, 180ms) * 0.4) ease-out both; }
+.sword-aura.dir-left  { transform-origin: 100% 50%; animation: sword-aura-grow-x calc(var(--aura-ms, 180ms) * 0.4) ease-out both; }
+.sword-aura.dir-down  { transform-origin: 50% 0;    animation: sword-aura-grow-y calc(var(--aura-ms, 180ms) * 0.4) ease-out both; }
+.sword-aura.dir-up    { transform-origin: 50% 100%; animation: sword-aura-grow-y calc(var(--aura-ms, 180ms) * 0.4) ease-out both; }
+.sword-aura > div { position: absolute; inset: 0; }
+.sword-aura.dir-right > div { clip-path: polygon(0% 0%, 75% 20%, 100% 50%, 75% 80%, 0% 100%); }
+.sword-aura.dir-left > div { clip-path: polygon(100% 0%, 25% 20%, 0% 50%, 25% 80%, 100% 100%); }
+.sword-aura.dir-down > div { clip-path: polygon(0% 0%, 20% 75%, 50% 100%, 80% 75%, 100% 0%); }
+.sword-aura.dir-up > div { clip-path: polygon(0% 100%, 20% 25%, 50% 0%, 80% 25%, 100% 100%); }
+.sword-aura.dir-right > .sword-aura-blade { background: linear-gradient(to right, rgba(150, 220, 255, 0) 0%, rgba(150, 220, 255, 0.85) 18%, rgba(110, 200, 255, 0.6) 70%, rgba(110, 200, 255, 0.25)), linear-gradient(to right, transparent 0%, rgba(255, 255, 255, 0.9) 12%, transparent 24%); background-size: 100% 100%, 300% 100%; background-repeat: no-repeat; }
+.sword-aura.dir-left > .sword-aura-blade { background: linear-gradient(to left, rgba(150, 220, 255, 0) 0%, rgba(150, 220, 255, 0.85) 18%, rgba(110, 200, 255, 0.6) 70%, rgba(110, 200, 255, 0.25)), linear-gradient(to left, transparent 0%, rgba(255, 255, 255, 0.9) 12%, transparent 24%); background-size: 100% 100%, 300% 100%; background-repeat: no-repeat; }
+.sword-aura.dir-down > .sword-aura-blade { background: linear-gradient(to bottom, rgba(150, 220, 255, 0) 0%, rgba(150, 220, 255, 0.85) 18%, rgba(110, 200, 255, 0.6) 70%, rgba(110, 200, 255, 0.25)), linear-gradient(to bottom, transparent 0%, rgba(255, 255, 255, 0.9) 12%, transparent 24%); background-size: 100% 100%, 100% 300%; background-repeat: no-repeat; }
+.sword-aura.dir-up > .sword-aura-blade { background: linear-gradient(to top, rgba(150, 220, 255, 0) 0%, rgba(150, 220, 255, 0.85) 18%, rgba(110, 200, 255, 0.6) 70%, rgba(110, 200, 255, 0.25)), linear-gradient(to top, transparent 0%, rgba(255, 255, 255, 0.9) 12%, transparent 24%); background-size: 100% 100%, 100% 300%; background-repeat: no-repeat; }
+.sword-aura.dir-right > .sword-aura-core { inset: 34% 4% 34% 0; background: linear-gradient(to right, rgba(255, 255, 255, 0) 0%, #ffffff 22%, rgba(235, 250, 255, 0.95) 75%, rgba(220, 245, 255, 0.6)); }
+.sword-aura.dir-left > .sword-aura-core { inset: 34% 4% 34% 0; background: linear-gradient(to left, rgba(255, 255, 255, 0) 0%, #ffffff 22%, rgba(235, 250, 255, 0.95) 75%, rgba(220, 245, 255, 0.6)); }
+.sword-aura.dir-down > .sword-aura-core { inset: 0 34% 4% 34%; background: linear-gradient(to bottom, rgba(255, 255, 255, 0) 0%, #ffffff 22%, rgba(235, 250, 255, 0.95) 75%, rgba(220, 245, 255, 0.6)); }
+.sword-aura.dir-up > .sword-aura-core { inset: 0 34% 4% 34%; background: linear-gradient(to top, rgba(255, 255, 255, 0) 0%, #ffffff 22%, rgba(235, 250, 255, 0.95) 75%, rgba(220, 245, 255, 0.6)); }
+.sword-aura.dir-up > .sword-aura-core { inset: 4% 34% 0 34%; }
+.sword-aura.dir-left > .sword-aura-core { inset: 34% 0 34% 4%; }
+.sword-aura.dir-right > .sword-aura-blade,
+.sword-aura.dir-down > .sword-aura-blade { animation: sword-aura-run var(--aura-ms, 180ms) linear 1, sword-aura-run calc(var(--aura-ms, 180ms) * 2) linear var(--aura-ms, 180ms) infinite; }
+.sword-aura.dir-left > .sword-aura-blade,
+.sword-aura.dir-up > .sword-aura-blade { animation: sword-aura-run-rev var(--aura-ms, 180ms) linear 1, sword-aura-run-rev calc(var(--aura-ms, 180ms) * 2) linear var(--aura-ms, 180ms) infinite; }
+/* 光の筋（2枚目の背景＝幅3倍の画像の 12% の所の白い帯）を根元→切っ先へ流す。繰り返さない
+   （繰り返すと帯が根元に居座る瞬間ができ、刃の根元が四角く光って見える）。
+   位置 p% の帯の中心 ＝ 0.36W − 2W·p（W＝刃の長さ）∴ 根元(0)→切っ先(W) は p＝18%→−32%。
+   left/up は画像を逆向きに描く（帯は画像の右端から 12%）∴ 82%→132%。 */
+@keyframes sword-aura-run     { from { background-position: 0 0, 18% 18%; } to { background-position: 0 0, -32% -32%; } }
+@keyframes sword-aura-run-rev { from { background-position: 0 0, 82% 82%; } to { background-position: 0 0, 132% 132%; } }
+@keyframes sword-aura-grow-x {
+    from { transform: scaleX(0.15); opacity: 0.6; }
+    to   { transform: scaleX(1);    opacity: 1; }
+}
+@keyframes sword-aura-grow-y {
+    from { transform: scaleY(0.15); opacity: 0.6; }
+    to   { transform: scaleY(1);    opacity: 1; }
+}
+
+
 @keyframes slash-anim {
     0% {
         opacity: 1;

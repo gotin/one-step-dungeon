@@ -80,7 +80,7 @@ test.describe('D6 泉の的 ① データ（盤面と隔離）', () => {
 		const closed = walkable(t, bg);
 		expect(closed.has(CHEST), '門を閉じたまま宝箱に届く＝門が飾り（旧盤面の再発）').toBe(false);
 		expect(walkable(t, bg, new Set([GATE])).has(CHEST), '門を開けても宝箱に届かない').toBe(true);
-		expect(stages[ROOM].chestContents).toEqual({ [CHEST]: { type: 'rupee', value: 20, name: 'ルピー×20' } });
+		expect(stages[ROOM].chestContents).toEqual({ [CHEST]: { type: 'item', item: 'emblem', name: '光の紋章' } });
 	});
 
 	test(`的 Y(${SWITCH}) は泉の小島＝隣に立てず、射線は (${SHOOT.row},${SHOOT.col}) だけ`, () => {
@@ -168,6 +168,8 @@ const at = (page) => page.evaluate(() => {
 });
 const ss = (page) => page.evaluate(() => window.__game.getStageState());
 const rupees = (page) => page.evaluate(() => window.__game.getState().player.rupees);
+// キュー45：この部屋の宝箱は光の紋章（ルピーから差し替え）＝個数で見る。
+const emblems = (page) => page.evaluate(() => window.__game.getState().player.emblems);
 const face = async (page, dir) => {
 	await page.evaluate((d) => window.__game.setHeroDir(d), dir);
 	await step(page, 1);
@@ -202,7 +204,7 @@ test.describe('D6 泉の的 ③ 実機（剣では開かず矢で開く）', () 
 		expect(errors).toEqual([]);
 	});
 
-	test('通し：縁から西へ矢→門 T(3,1) が開く→窪みの宝箱でルピー +20', async ({ page }) => {
+	test('通し：縁から西へ矢→門 T(3,1) が開く→窪みの宝箱で光の紋章', async ({ page }) => {
 		const errors = [];
 		page.on('pageerror', (e) => errors.push(e.message));
 		await boot(page, previewUrl(6, 10, { ps_bow: '1' }));
@@ -225,13 +227,13 @@ test.describe('D6 泉の的 ③ 実機（剣では開かず矢で開く）', () 
 		expect(s.openGates, `門 (${GATE}) が開かない`).toContain(GATE);
 
 		// 門をくぐって宝箱 (1,1) へ
-		const r0 = await rupees(page);
+		const e0 = await emblems(page);
 		await walk(page, 'down', 8);
 		await walk(page, 'left', 18);
 		await walk(page, 'up', 10);
 		expect(await at(page), '宝箱のセルに立てない（門が開いていない）').toEqual({ r: 1, c: 1 });
 		expect((await ss(page)).openedChests, '宝箱が開かない').toContain(CHEST);
-		expect(await rupees(page), 'ルピーが 20 増えない').toBe(r0 + 20);
+		expect(await emblems(page), '光の紋章が 1 つ増えない').toBe(e0 + 1);
 		expect(errors).toEqual([]);
 	});
 });

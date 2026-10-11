@@ -4,7 +4,7 @@
 
 import { TILE, TILE_META, FLOOR_STACK_TILES } from '../shared/tiles.js';
 import { statefulTileClosed } from './passable.js';
-import { ITEM_META, EQUIP_META, SWORD_TIERS, BASE_ATK, ARMOR_TIERS, BASE_DEF, SHIELD_TIERS, BOOMERANG_TIERS, HEART_PIECES_PER_HEART, ITEM_STACK_MAX, ownsItem, addStack, stackCount, isStackFull } from '../shared/items.js';
+import { ITEM_META, EQUIP_META, SWORD_TIERS, BASE_ATK, ARMOR_TIERS, BASE_DEF, SHIELD_TIERS, BOOMERANG_TIERS, HEART_PIECES_PER_HEART, EMBLEMS_FOR_AURA, ITEM_STACK_MAX, ownsItem, addStack, stackCount, isStackFull } from '../shared/items.js';
 import { NPC_SPRITE_MAP } from '../shared/npcs.js';
 import { SPRITES, PAL, makeSprite } from '../shared/sprites.js';
 import { iconCanvas, rewardIconKey } from '../shared/ui-icons.js';
@@ -785,6 +785,15 @@ export function createPlayer(deps) {
 		return true;
 	}
 
+	// ── 光の紋章を得る（実行キュー45）──────────────────────
+	// 個数は `player.emblems`。`EMBLEMS_FOR_AURA` 個で剣にオーラが宿る（効果は
+	// `hasSwordAura(player)` で読む＝別の旗を持たない）。戻り値＝この1個でそろったか。
+	function gainEmblem() {
+		const player = getPlayer();
+		player.emblems = (Number.isFinite(player.emblems) ? player.emblems : 0) + 1;
+		return player.emblems === EMBLEMS_FOR_AURA;
+	}
+
 	// ── サブアイテムを与える ──────────────────────────────
 	function giveSubItem(id) {
 		const player = getPlayer();
@@ -805,6 +814,7 @@ export function createPlayer(deps) {
 		if (meta?.type === 'passive') {
 			if (id === 'heartContainer') gainHeartContainer();
 			else if (id === 'heartPiece') gainHeartPiece();
+			else if (id === 'emblem')    gainEmblem();
 			else if (id === 'ladder')    player.hasLadder  = true;
 			else if (id === 'quiver')    player.maxArrows  = (player.maxArrows  ?? 8) + 8;
 			else if (id === 'bombBag')   player.maxBombs   = (player.maxBombs   ?? 8) + 8;
@@ -845,6 +855,14 @@ export function createPlayer(deps) {
 				return became
 					? `ハートのかけら が ${HEART_PIECES_PER_HEART}つ そろった！ ハートの器 になった！`
 					: `ハートのかけら を手に入れた！（あと ${left} つで ハートの器）`;
+			}
+			// 光の紋章＝集まり具合（n/8）だけを言う。**そろうまで効果（オーラ）は明かさない**
+			// （2026-10-11 ユーザー判定＝そろった瞬間の驚きにする）。そろった1個で効果を言う。
+			if (content.item === 'emblem') {
+				const done = gainEmblem();
+				return done
+					? `光の紋章 が ${EMBLEMS_FOR_AURA}つ そろった！ 剣に 光の オーラ が 宿った！（剣が 1マス 先の 敵まで 届く）`
+					: `光の紋章 を手に入れた！（${player.emblems}/${EMBLEMS_FOR_AURA}）`;
 			}
 			// 上限つきの道具が満杯（キュー13 ③）＝渡さず、そう言う。宝箱と店は先に確かめて
 			// 開けない／売らない∴ここに来るのはくじ・ボス報酬だけ。

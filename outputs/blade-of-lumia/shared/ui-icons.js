@@ -60,6 +60,7 @@ export const UI_ICON = {
 	fairy:      { spr: 'fairyBottle', pal: 'fairyBottle' }, // 妖精の瓶（キュー13 ③）
 	quiver:     { spr: 'quiver',     pal: 'quiver'     },   // 矢筒（キュー37）
 	bombBag:    { spr: 'bombBag',    pal: 'bombBag'    },   // 爆弾袋（キュー37）
+	emblem:     { spr: 'emblem',     pal: 'emblem'     },   // 光の紋章（キュー45）
 	// その他
 	princess:   { spr: 'princess',   pal: 'princess'   },   // エディタの「姫状態」
 	altar:      { spr: 'altar',      pal: 'altar'      },

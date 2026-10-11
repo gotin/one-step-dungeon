@@ -64,7 +64,7 @@ test.describe('D5 4,2 凍れる床の水門 ① データ', () => {
 		expect(st.bgTiles[GATE], '水門の下地が氷でない（開いた水門で石が止まってしまう）').toBe(TILE.ICE);
 		expect(st.links).toEqual(LINKS);
 		expect(st.showConditions).toEqual(SHOW);
-		expect(st.chestContents).toEqual({ [CHEST]: { type: 'rupee', value: 30, name: 'ルピー×30' } });
+		expect(st.chestContents).toEqual({ [CHEST]: { type: 'item', item: 'emblem', name: '光の紋章' } });
 		expect(st.floorItems ?? {}, '床のルピーが残っている').toEqual({});
 		expect(Object.keys(st.signData ?? {})).toEqual([]);
 		const chars = rowsOf(st).join('');
@@ -147,6 +147,7 @@ const snap = (page) => page.evaluate((stones) => {
 		locked: !!ss.stonesLocked,
 		opened: [...(ss.openedChests ?? [])],
 		rupees: window.__game.getState().player.rupees,
+		emblems: window.__game.getState().player.emblems,   // キュー45：宝箱は光の紋章
 	};
 }, STONES);
 // [kind, dir, n, 着いた位置, 押した後の石（押しのときだけ）]
@@ -220,20 +221,20 @@ test.describe('D5 4,2 凍れる床の水門 ② 水門の二つの顔（実機�
 });
 
 test.describe('D5 4,2 凍れる床の水門 ③ 通し（実機）', () => {
-	test('通し：水門を開けて西へ渡し、閉めて @ に止め、ボタンに石を戻す→宝箱（ルピー×30）が開く', async ({ page }) => {
+	test('通し：水門を開けて西へ渡し、閉めて @ に止め、ボタンに石を戻す→宝箱（光の紋章）が開く', async ({ page }) => {
 		test.setTimeout(120_000);
 		const errors = await boot(page, 5, 0);
 		await run(page, SOLVE);
 		let s = await snap(page);
 		expect(s.met, '石が2つのボタンに乗ったのに宝箱が現れない').toContain(CHEST);
 		expect(s.locked, '石がロックされない').toBe(true);
-		const before = s.rupees;
+		const before = s.emblems;
 		// 押した後はブレーキ (4,10) の上。行5 へ降りて西へ戻り、水路と堀をはしごで渡って帯へ。宝箱 (1,1) の真下 (2,1) から北へ
 		await run(page, [['walk', 'down', 1, '5,10'], ['walk', 'left', 9, '5,1'], ['walk', 'up', 3, '2,1']]);
 		await walk(page, 'up', 1);
 		s = await snap(page);
 		expect(s.opened, '宝箱が開かない').toContain(CHEST);
-		expect(s.rupees, 'ルピーが 30 増えない').toBe(before + 30);
+		expect(s.emblems, '光の紋章が 1 つ増えない').toBe(before + 1);
 		expect(errors).toEqual([]);
 	});
 });

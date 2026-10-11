@@ -216,16 +216,17 @@ test.describe('D2 0,3 砂の獄 ② 実機', () => {
 			// 囚われ者を片付けてから中の牢へ歩く（行5 を西へ → 列1 で北へ＝宝箱 (4,1)）
 			for (const e of g.getEnemies()) g.dealDamage(e.id, 99, 'sword', e.x, e.y);
 			g.step(2);
-			const rupees0 = g.getPlayer().rupees;
+			const emblems0 = g.getPlayer().emblems ?? 0;
 			for (let i = 0; i < 40 && g.getPlayer().x > 1.01; i++) { g.movePlayer('left'); g.step(1); }
 			for (let i = 0; i < 6 && g.getPlayer().y > 4.01; i++) { g.movePlayer('up'); g.step(1); }
-			return { gates, out, left: g.getEnemies().length, opened: [...g.getStageState().openedChests], rupees0, rupees1: g.getPlayer().rupees };
+			return { gates, out, left: g.getEnemies().length, opened: [...g.getStageState().openedChests], emblems0, emblems1: g.getPlayer().emblems };
 		});
 		expect(r.gates, '剣で叩いても格子6枚が上がらない').toBe(6);
 		expect(r.out, '格子を上げても囚われ者が牢から出てこない').toBe(true);
 		expect(r.left).toBe(0);
 		expect(r.opened, '中の牢の宝箱が開かない').toContain(CHEST);
-		expect(r.rupees1 - r.rupees0, '宝箱の中身').toBe(CHEST_CONTENT.value);
+		expect(CHEST_CONTENT.item, '宝箱の中身の定義').toBe('emblem');
+		expect(r.emblems1 - r.emblems0, '宝箱の中身（光の紋章）').toBe(1);
 		expect(errors).toEqual([]);
 	});
 });

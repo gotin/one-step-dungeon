@@ -94671,9 +94671,9 @@
           "enemyDirs": {},
           "chestContents": {
             "1,10": {
-              "type": "rupee",
-              "value": 30,
-              "name": "ルピー×30"
+              "type": "item",
+              "item": "emblem",
+              "name": "光の紋章"
             }
           },
           "floorItems": {},
@@ -104080,9 +104080,9 @@
           "enemyDirs": {},
           "chestContents": {
             "4,1": {
-              "type": "rupee",
-              "value": 30,
-              "name": "ルピー×30"
+              "type": "item",
+              "item": "emblem",
+              "name": "光の紋章"
             }
           },
           "floorItems": {},
@@ -106848,9 +106848,9 @@
           "enemyDirs": {},
           "chestContents": {
             "1,9": {
-              "type": "rupee",
-              "value": 30,
-              "name": "ルピー×30"
+              "type": "item",
+              "item": "emblem",
+              "name": "光の紋章"
             }
           },
           "floorItems": {},
@@ -109426,9 +109426,9 @@
           "enemyDirs": {},
           "chestContents": {
             "8,1": {
-              "type": "rupee",
-              "value": 20,
-              "name": "ルピー×20"
+              "type": "item",
+              "item": "emblem",
+              "name": "光の紋章"
             }
           },
           "floorItems": {},
@@ -111832,8 +111832,8 @@
           "chestContents": {
             "8,6": {
               "type": "rupee",
-              "value": 20,
-              "name": "ルピー×20"
+              "value": 50,
+              "name": "ルピー×50"
             }
           },
           "floorItems": {},
@@ -112022,8 +112022,8 @@
           "chestContents": {
             "1,10": {
               "type": "rupee",
-              "value": 30,
-              "name": "ルピー×30"
+              "value": 100,
+              "name": "ルピー×100"
             }
           },
           "floorItems": {},
@@ -113017,8 +113017,8 @@
           "chestContents": {
             "1,1": {
               "type": "rupee",
-              "value": 30,
-              "name": "ルピー×30"
+              "value": 100,
+              "name": "ルピー×100"
             }
           },
           "floorItems": {},
@@ -114832,8 +114832,8 @@
           "chestContents": {
             "1,10": {
               "type": "rupee",
-              "value": 30,
-              "name": "ルピー×30"
+              "value": 100,
+              "name": "ルピー×100"
             }
           },
           "floorItems": {},
@@ -115065,8 +115065,8 @@
           "chestContents": {
             "1,1": {
               "type": "rupee",
-              "value": 30,
-              "name": "ルピー×30"
+              "value": 100,
+              "name": "ルピー×100"
             }
           },
           "floorItems": {},
@@ -115308,9 +115308,9 @@
           "enemyDirs": {},
           "chestContents": {
             "1,1": {
-              "type": "rupee",
-              "value": 30,
-              "name": "ルピー×30"
+              "type": "item",
+              "item": "emblem",
+              "name": "光の紋章"
             }
           },
           "floorItems": {},
@@ -115554,8 +115554,8 @@
           "chestContents": {
             "1,1": {
               "type": "rupee",
-              "value": 30,
-              "name": "ルピー×30"
+              "value": 100,
+              "name": "ルピー×100"
             }
           },
           "floorItems": {},
@@ -119126,9 +119126,9 @@
           "enemyDirs": {},
           "chestContents": {
             "1,1": {
-              "type": "rupee",
-              "value": 20,
-              "name": "ルピー×20"
+              "type": "item",
+              "item": "emblem",
+              "name": "光の紋章"
             }
           },
           "floorItems": {},
@@ -120016,8 +120016,8 @@
           "chestContents": {
             "2,5": {
               "type": "rupee",
-              "value": 30,
-              "name": "ルピー×30"
+              "value": 50,
+              "name": "ルピー×50"
             }
           },
           "floorItems": {},
@@ -120848,8 +120848,8 @@
           "chestContents": {
             "8,9": {
               "type": "rupee",
-              "value": 30,
-              "name": "ルピー×30"
+              "value": 50,
+              "name": "ルピー×50"
             }
           },
           "floorItems": {
@@ -121208,8 +121208,8 @@
           "chestContents": {
             "8,1": {
               "type": "rupee",
-              "value": 20,
-              "name": "ルピー×20"
+              "value": 50,
+              "name": "ルピー×50"
             }
           },
           "floorItems": {},
@@ -121707,8 +121707,8 @@
           "chestContents": {
             "1,1": {
               "type": "rupee",
-              "value": 30,
-              "name": "ルピー×30"
+              "value": 50,
+              "name": "ルピー×50"
             }
           },
           "floorItems": {},
@@ -122390,9 +122390,9 @@
           "enemyDirs": {},
           "chestContents": {
             "1,1": {
-              "type": "item",
-              "item": "bigHealPotion",
-              "name": "回復薬（大）"
+              "type": "rupee",
+              "value": 100,
+              "name": "ルピー×100"
             }
           },
           "floorItems": {},
@@ -122878,9 +122878,9 @@
           "enemyDirs": {},
           "chestContents": {
             "1,10": {
-              "type": "rupee",
-              "value": 50,
-              "name": "ルピー×50"
+              "type": "item",
+              "item": "emblem",
+              "name": "光の紋章"
             }
           },
           "floorItems": {},
@@ -126459,8 +126459,8 @@
           "chestContents": {
             "5,8": {
               "type": "rupee",
-              "value": 20,
-              "name": "ルピー×20"
+              "value": 50,
+              "name": "ルピー×50"
             }
           },
           "floorItems": {},
@@ -127157,9 +127157,9 @@
           "enemyDirs": {},
           "chestContents": {
             "2,2": {
-              "type": "rupee",
-              "value": 20,
-              "name": "ルピー×20"
+              "type": "item",
+              "item": "emblem",
+              "name": "光の紋章"
             }
           },
           "floorItems": {},

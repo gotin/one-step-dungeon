@@ -118,7 +118,7 @@ test.describe('D8 二色の鐘 ① データ（盤面と隔離）', () => {
 		expect(st.links).toEqual([]);
 		// 旧盤面の `stonesPushed`（エンジンに無い trigger）の再発を止める
 		expect(st.showConditions, '宝箱に出現条件がある').toEqual({});
-		expect(st.chestContents).toEqual({ [CHEST]: { type: 'rupee', value: 20, name: 'ルピー×20' } });
+		expect(st.chestContents).toEqual({ [CHEST]: { type: 'item', item: 'emblem', name: '光の紋章' } });
 		expect(t[8][4]).toBe(TILE.SIGN);
 		expect(st.signData['8,4']?.lines?.length, '石碑に本文が無い').toBeGreaterThan(0);
 		// 笛の resetStones は activeColor も null に戻す＝色門の奥で吹くと閉じ込められる（持たせない）
@@ -233,6 +233,8 @@ const at = (page) => page.evaluate(() => {
 const ss = (page) => page.evaluate(() => window.__game.getStageState());
 const color = async (page) => (await ss(page)).activeColor;
 const rupees = (page) => page.evaluate(() => window.__game.getState().player.rupees);
+// キュー45：この部屋の宝箱は光の紋章（ルピーから差し替え）＝個数で見る。
+const emblems = (page) => page.evaluate(() => window.__game.getState().player.emblems);
 const face = async (page, dir) => {
 	await page.evaluate((d) => window.__game.setHeroDir(d), dir);
 	await step(page, 1);
@@ -260,18 +262,18 @@ test.describe('D8 二色の鐘 ③ 実機', () => {
 		expect(errors).toEqual([]);
 	});
 
-	test('通し：池越し→門越し→門越し→池越しに4回色を移して宝箱でルピー +20', async ({ page }) => {
+	test('通し：池越し→門越し→門越し→池越しに4回色を移して宝箱で光の紋章', async ({ page }) => {
 		const errors = [];
 		page.on('pageerror', (e) => errors.push(e.message));
 		await boot(page, previewUrl(8, 5, { ps_bow: '1' }));
 		await toNorthCorridor(page);
 
 		// ⑤ 青門 (2,4) を抜けて宝箱 (2,2) へ
-		const r0 = await rupees(page);
+		const e0 = await emblems(page);
 		await walk(page, 'left', 8);
 		expect(await at(page), '宝箱のセルに立てない（青門が開いていない）').toEqual({ r: 2, c: 2 });
 		expect((await ss(page)).openedChests, '宝箱が開かない').toContain(CHEST);
-		expect(await rupees(page), 'ルピーが 20 増えない').toBe(r0 + 20);
+		expect(await emblems(page), '光の紋章が 1 つ増えない').toBe(e0 + 1);
 		expect(errors).toEqual([]);
 	});
 

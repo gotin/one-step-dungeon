@@ -52,7 +52,7 @@ test.describe('D7 2,2 空の射的場 ① データ', () => {
 		expect(st.tiles.every((row) => Array.isArray(row) && row.length === 12), 'tiles が文字の配列の配列でない').toBe(true);
 		expect(st.tiles.map((row) => row.join('')), '盤面が変わった').toEqual(BOARD);
 		expect(st.links, '座→門の配線').toEqual([{ switchId: SWITCH, gateId: GATE }]);
-		expect(st.chestContents, '宝箱の中身').toEqual({ [CHEST]: { type: 'rupee', value: 20, name: 'ルピー×20' } });
+		expect(st.chestContents, '宝箱の中身').toEqual({ [CHEST]: { type: 'rupee', value: 50, name: 'ルピー×50' } });
 		expect(cellsOf((ch) => !!ENEMY_META[ch]), '謎解きの部屋＝敵は置かない').toEqual([]);
 		expect(cellsOf((ch) => ch === TILE.TREE || ch === TILE.BUSH), '森の木・茂みが残っている').toEqual([]);
 		expect(Object.keys(st.bgTiles ?? {}), '空は tiles の %＝下地は使わない').toEqual([]);
@@ -143,7 +143,7 @@ test.describe('D7 2,2 空の射的場 ③ 通し', () => {
 		expect(errors).toEqual([]);
 	});
 
-	test('③ 北の縁から座を射て、西の縁を回って南西の奥の宝箱（ルピー×20）を開ける', async ({ page }) => {
+	test('③ 北の縁から座を射て、西の縁を回って南西の奥の宝箱（ルピー×50）を開ける', async ({ page }) => {
 		const errors = await boot(page, 1, 7);
 		await face(page, 'down');
 		await shoot(page);
@@ -161,7 +161,7 @@ test.describe('D7 2,2 空の射的場 ③ 通し', () => {
 		await walk(page, 'left', 1);
 		expect(await at(page), '宝箱のセルに立てない').toEqual({ r: 8, c: 1 });
 		expect((await ss(page)).openedChests, '宝箱が開かない').toContain(CHEST);
-		expect(await page.evaluate(() => window.__game.getState().player.rupees), 'ルピーが 20 増えない').toBe(before + 20);
+		expect(await page.evaluate(() => window.__game.getState().player.rupees), 'ルピーが 50 増えない').toBe(before + 50);
 		expect(errors).toEqual([]);
 	});
 });

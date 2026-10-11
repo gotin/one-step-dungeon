@@ -53,7 +53,7 @@ test.describe('D5 2,0 凍れる湖の射ち継ぎ ① データ', () => {
 		expect(st.links).toEqual(LINKS);
 		expect([...new Set(LINKS.map((l) => l.switchId))].sort()).toEqual([...BELLS].sort());
 		expect(LINKS.map((l) => l.gateId).sort()).toEqual([...PIERS].sort());
-		expect(st.chestContents).toEqual({ [CHEST]: { type: 'rupee', value: 30, name: 'ルピー×30' } });
+		expect(st.chestContents).toEqual({ [CHEST]: { type: 'rupee', value: 100, name: 'ルピー×100' } });
 		expect(st.floorItems ?? {}).toEqual({});
 		expect(st.showConditions ?? {}).toEqual({});
 		expect(Object.keys(st.signData ?? {})).toEqual([]);
@@ -197,7 +197,7 @@ test.describe('D5 2,0 凍れる湖の射ち継ぎ ② 実機', () => {
 		expect(errors).toEqual([]);
 	});
 
-	test('通し：スイッチ4つを射て足場5つを渡り、北の岸の宝箱（ルピー×30）を開ける', async ({ page }) => {
+	test('通し：スイッチ4つを射て足場5つを渡り、北の岸の宝箱（ルピー×100）を開ける', async ({ page }) => {
 		const errors = await boot(page, 8, 5);
 		await shoot(page, 'up');                                       // スイッチ (6,5) → 足場 (5,4)
 		await run(page, [['left', 3, '8,2']]);
@@ -219,7 +219,7 @@ test.describe('D5 2,0 凍れる湖の射ち継ぎ ② 実機', () => {
 		await walk(page, 'left', 1);
 		s = await snap(page);
 		expect(s.opened, '宝箱が開かない').toContain(CHEST);
-		expect(s.rupees, 'ルピーが 30 増えない').toBe(before + 30);
+		expect(s.rupees, 'ルピーが 100 増えない').toBe(before + 100);
 		expect(errors).toEqual([]);
 	});
 });

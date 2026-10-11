@@ -1418,6 +1418,32 @@ function heartQuarterGrid(n) {
 	return g;
 }
 
+// 光の紋章（ITEM_META.emblem・キュー45）── 金の縁の円い徽章＋紺の地に光の四芒星。
+// 8つ集めると剣にオーラ＝「光」を星の形で、「紋章」を円い縁で言う。
+// 本体は半径 12（輪郭込みで ink 27×27）。emblem パレット：1輪郭 2金暗 3金 4金明 5白 6紺 7空色。
+function emblemGrid() {
+	const g = blank();
+	const R = 15, C = 15;
+	disc(g, R, C, 12, 2);             // 縁の影
+	disc(g, R, C, 11, 3);             // 金の縁
+	disc(g, R, C, 8, 2);              // 縁と地の境
+	disc(g, R, C, 7, 6);              // 紺の地
+	disc(g, R, C, 4, 7);              // 星のまわりの光
+	// 縁の左上に照り（金明）
+	for (let r = 0; r < N; r++) for (let c = 0; c < N; c++) {
+		const d2 = (r - R) ** 2 + (c - C) ** 2;
+		if (d2 > 8 * 8 + 4 && d2 <= 11 * 11 + 4 && (r - R) + (c - C) < -9) put(g, r, c, 4);
+	}
+	// 四芒星＝縦横に長い光の筋（先端まで1ドット・中ほどで太る）
+	for (let dr = -7; dr <= 7; dr++) for (let dc = -7; dc <= 7; dc++) {
+		const a = Math.abs(dr), b = Math.abs(dc);
+		if (b * 3.5 + a <= 7.5 || a * 3.5 + b <= 7.5) put(g, R + dr, C + dc, 4);
+	}
+	disc(g, R, C, 1, 5);              // 芯の白
+	strokeOutside(g);
+	return g;
+}
+
 // ── UI アイコン（10e）── 絵文字を自前スプライトに置き換えるために新規に描いた4種 ──
 // これまで絵が無かった物（🪽 翼の羽衣／🎵 笛／🕯 ロウソク／🎲 ガチャ）。
 // ⚠️ 盤面タイルは持たない＝HUD・ポーズ・ショップの小さい canvas だけで使う∴他の
@@ -1894,6 +1920,7 @@ export const OBJ32_SPRITES = {
 	fairyBottle:   [fairyBottleGrid()],    // キュー13 ③：妖精の瓶
 	quiver:        [quiverGrid()],         // キュー37：矢筒（宝箱の文の頭に出す）
 	bombBag:       [bombBagGrid()],        // キュー37：爆弾袋（同上）
+	emblem:        [emblemGrid()],         // キュー45：光の紋章
 	// ── 10d-4 ──
 	arrow:         [arrowGrid()],
 	shieldSide:    [shieldSideGrid()],
