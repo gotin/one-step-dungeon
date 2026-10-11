@@ -47,6 +47,7 @@ import { createProjectile } from './projectile.js';
 import { createEnemyAi } from './enemy-ai.js';
 // ── プレイヤー移動・タイルイベント（Phase 0-2 Step 5: player.js へ切り出し）──
 import { createPlayer } from './player.js';
+import { createAuraAwakening } from './aura-awakening.js';
 // ── 剣攻撃・ダメージ（Phase 0-2 Step 5: combat.js へ切り出し）───────────────
 import { createCombat } from './combat.js';
 // ── ボス戦・エンディング（Phase 0-2 Step 5: boss.js へ切り出し）─────────────
@@ -1139,7 +1140,22 @@ const { checkStoneOnSwitch, evaluateConditions, refreshGates } = createCondition
 		renderChars:  () => renderChars(),
 	});
 
+	// キュー 0o: 光の紋章が8つそろった瞬間の演出（世界を止めて紋章を剣へ注ぐ）。
+	const _awakening = createAuraAwakening({
+		getCharLayerEl: () => charLayerEl,
+		getCellPx:      () => getCellPx(),
+		getPlayer:      () => player,
+		setFrozen:      (v) => { isTransitioning = !!v; },
+		setHeroDir:     (v) => { heroDir = v; },
+		refreshPlayer:  () => { player._atkUntil = null; updatePlayerCharEl?.(); },
+		clearSwordHeld: () => document.querySelectorAll('.sword-held, .sword-aura').forEach((el) => el.remove()),
+		playSound,
+	});
 	const _player = createPlayer({
+		// ⚠️ 宝箱から得たときは grantReward の直後に renderBoard() が char-layer を空に作り直す
+		//    （[[blade-renderboard-pairs-renderchars]]）＝その場で絵を足すと消される。世界は今止めて、
+		//    絵は宝箱の描き直しが済んでから出す（実際の宝箱で踏んだ・2026-10-11）。
+		onAuraAwakened: () => { isTransitioning = true; setTimeout(() => _awakening.play(), 0); },
 		getStageData:   () => stageData,
 		getPlayer:      () => player,
 		getEnemies:     () => enemies,

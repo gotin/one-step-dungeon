@@ -860,6 +860,8 @@ export function createPlayer(deps) {
 			// （2026-10-11 ユーザー判定＝そろった瞬間の驚きにする）。そろった1個で効果を言う。
 			if (content.item === 'emblem') {
 				const done = gainEmblem();
+				// キュー 0o: そろった瞬間の演出（紋章が1つに合わさり剣へ光を注ぐ＝game/aura-awakening.js）。
+				if (done) deps.onAuraAwakened?.();
 				return done
 					? `光の紋章 が ${EMBLEMS_FOR_AURA}つ そろった！ 剣に 光の オーラ が 宿った！（剣が 1マス 先の 敵まで 届く）`
 					: `光の紋章 を手に入れた！（${player.emblems}/${EMBLEMS_FOR_AURA}）`;

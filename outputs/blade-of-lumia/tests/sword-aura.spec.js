@@ -16,6 +16,9 @@
 //   ⑥ 表示     … ポーズの「だいじなもの」に n/8（そろうまでオーラは言わない）、そろうと「剣に オーラ」
 //   ⑦ データ   … 紋章は D1〜D8 に1個ずつ・割り当て表（移行スクリプト）どおり・ルピーの差し替えも表どおり
 //   ⑧ 監査     … `collectRewards` が層ごとに紋章を数える
+//   ⑩ 演出     … 8つ目を宝箱で得た瞬間だけ、紋章8つが輪になって1つに合わさり剣へ光を注ぐ演出
+//                 （`game/aura-awakening.js`・キュー 0o）。その間は世界が止まり、終われば片付いて戻る。
+//                 7つ目・プレビュー（ps_emblems）では出ない
 //   ⑨ プレビュー … エディタの「光の紋章8つ」で URL に ps_emblems=8 が載り、ゲームはそれで8つ持って始まる
 //                 （2026-10-11 ユーザー報告＝コンソールで __game を触れなかった∴URL だけで試せるようにした）
 import { test, expect } from '@playwright/test';
@@ -24,6 +27,7 @@ import { fileURLToPath } from 'url';
 import { GAME_URL, waitForBoard } from './helpers.js';
 import { EMBLEMS_FOR_AURA } from '../shared/items.js';
 import { AURA_SWORD_REACH, SWORD_REACH, ATTACK_POSE_MS } from '../game/constants.js';
+import { AURA_AWAKEN_MS } from '../game/aura-awakening.js';
 import { collectRewards } from '../shared/progression.js';
 import { Q45_PLAN } from '../scripts/migrate-q45-dungeon-rewards.mjs';
 
@@ -270,6 +274,80 @@ test.describe('Blade of Lumia – 光の紋章（プレビュー設定）', () =
     expect(r.aura, 'ps_emblems=8 でオーラが出ない').toBe(true);
     await open(page, `${SWITCH_ROOM(2)}&ps_emblems=99`);
     expect(await page.evaluate(() => window.__game.getPlayer().emblems), '上限で丸めない').toBe(EMBLEMS_FOR_AURA);
+  });
+
+});
+
+test.describe('Blade of Lumia – 光の紋章（そろった瞬間の演出・キュー 0o）', () => {
+
+  test('⑩ 8つ目で紋章が輪になって剣へ注ぐ演出が出て、その間は世界が止まり、終われば戻る（7つ目・プレビューでは出ない）', async ({ page }) => {
+    const errors = [];
+    page.on('pageerror', (e) => errors.push(e.message));
+    // プレビューで8つ持たせても演出は出ない（そろえた瞬間ではない）
+    await open(page, `${SWITCH_ROOM(2)}&ps_emblems=8`);
+    expect(await page.locator('.aura-awakening').count(), 'プレビューで演出が出た').toBe(0);
+
+    await open(page, `${SWITCH_ROOM(2)}&ps_emblems=6`);
+    await page.evaluate((e) => window.__game.grantReward(e), EMBLEM);   // 7つ目
+    expect(await page.locator('.aura-awakening').count(), '7つ目で演出が出た').toBe(0);
+
+    const r = await page.evaluate(async (e) => {
+      const g = window.__game;
+      // 一瞬しか出ない部品（光の柱・光の刃）は待ち合わせで取りこぼす∴出た物を記録しておく
+      window.__seenAwaken = new Set();
+      new MutationObserver((ms) => { for (const m of ms) for (const n of m.addedNodes) for (const c of (n.classList ?? [])) window.__seenAwaken.add(c); })
+        .observe(document.body, { childList: true, subtree: true });
+      const msg = g.grantReward(e);   // 8つ目
+      const t0 = g.getState().gameTime;
+      g.step(10);
+      await new Promise((res) => setTimeout(res, 50));   // 絵は次の番で出る（宝箱の描き直しの後）
+      return {
+        msg,
+        root: !!document.querySelector('.aura-awakening'),
+        dim: !!document.querySelector('.aura-awakening-dim'),
+        emblems: document.querySelectorAll('.aura-awakening .aura-awakening-emblem').length,
+        sword: !!document.querySelector('.aura-awakening-sword'),
+        frozen: g.getState().isTransitioning,
+        moved: g.getState().gameTime - t0,
+      };
+    }, EMBLEM);
+    expect(r.msg).toContain('そろった');
+    expect(r.root, '8つ目で演出が出ない').toBe(true);
+    expect(r.dim, '暗転が無い').toBe(true);
+    expect(r.emblems, '輪の紋章が8つでない').toBe(EMBLEMS_FOR_AURA);
+    expect(r.sword, '掲げた剣が無い').toBe(true);
+    expect(r.frozen, '演出の間に世界が止まっていない').toBe(true);
+    expect(r.moved, '演出の間に時間が進んだ').toBe(0);
+    // 終われば片付いて世界が戻る
+    await page.waitForFunction(() => !document.querySelector('.aura-awakening') && !document.querySelector('.aura-awakening-dim'), null, { timeout: AURA_AWAKEN_MS + 3000 });
+    // 途中で光の柱（注ぐ）と光の刃（剣にまとう）が出ていた
+    const seen = await page.evaluate(() => [...window.__seenAwaken]);
+    expect(seen, '光の柱が出なかった').toContain('aura-awakening-column');
+    expect(seen, '剣に光の刃が出なかった').toContain('aura-awakening-blade');
+    expect(await page.evaluate(() => window.__game.getState().isTransitioning), '演出の後も止まったまま').toBe(false);
+    expect(errors).toEqual([]);
+  });
+
+
+  test('⑩ 実際の宝箱で8つ目を開けても演出が消されない（宝箱の描き直しで char-layer が作り直される）', async ({ page }) => {
+    const errors = [];
+    page.on('pageerror', (e) => errors.push(e.message));
+    // D1 2,1 の紋章の宝箱 (1,10) の真下。プレビューで7つ持たせて開ける
+    await open(page, `${GAME_URL}?fromEditor=1&layer=dungeon_1&stage=2,1&row=2&col=10&ps_weapon=1&ps_emblems=7`);
+    const r = await page.evaluate(async () => {
+      const g = window.__game;
+      for (let i = 0; i < 4 && !g.getStageState().openedChests.includes('1,10'); i++) g.movePlayer('up');
+      await new Promise((res) => setTimeout(res, 600));
+      return { n: g.getPlayer().emblems, root: !!document.querySelector('.aura-awakening'),
+        emblems: document.querySelectorAll('.aura-awakening .aura-awakening-emblem').length, frozen: g.getState().isTransitioning };
+    });
+    expect(r.n).toBe(EMBLEMS_FOR_AURA);
+    expect(r.root, '宝箱を開けた後に演出が残っていない（描き直しで消された）').toBe(true);
+    expect(r.emblems).toBe(EMBLEMS_FOR_AURA);
+    expect(r.frozen).toBe(true);
+    await page.waitForFunction(() => !document.querySelector('.aura-awakening'), null, { timeout: AURA_AWAKEN_MS + 3000 });
+    expect(await page.evaluate(() => window.__game.getState().isTransitioning)).toBe(false);
+    expect(errors).toEqual([]);
   });
 
 });
