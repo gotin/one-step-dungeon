@@ -1342,60 +1342,78 @@ test.describe('Blade of Lumia – ダンジョンの鍵（進行の背骨）', (
     expect(errors).toEqual([]);
   });
 
-  // ── ⑧ D8 の鍵部屋＝倉庫番型②「石4・純（関門の上限帯）」（キュー 5.5g） ─────────
+  // ── ⑧ D8 の鍵部屋＝倉庫番型②「沼の浮島」（石4・はしご必須・キュー47 第3陣で作り直し） ─────────
   //
-  // 盤面（dungeon_8 [1,0]・孤島＝ワープ `>`(7,9) で入る）：ボタン S 4個（1,1 / 4,4 / 8,1 / 8,7）
-  // すべてに石 '*' 4個（3,2 / 3,4 / 6,1 / 8,4）を乗せると showConditions(`stonesPlaced`) で
-  // 鍵(5,7) が出現し、西の鍵扉 D(4,0)(5,0) からボス部屋へ進める。
+  // 盤面（dungeon_8 [1,0]・孤島＝ワープ `>`(1,5) で入る）：ボタン S 4個（1,1 / 1,9 / 7,1 / 7,9）
+  // すべてに石 '*' 4個（3,7 / 3,9 / 5,5 / 5,9）を乗せると showConditions(`stonesPlaced`) で
+  // 鍵(2,5) が出現し、西の鍵扉 D(4,0)(5,0) からボス部屋へ進める。
   //
-  // D4（石3・純倉庫番）と同型だが石が4個＝§3-2c の上限。L の帯は §7-4/§7-6手順11 で
-  // D4(20〜35)/D6(34〜39) と重ねない排他帯 **40〜60**（＝§7-3 C の関門の絶対上限そのもの）。
-  // 実測 L=60 は帯の上限に張り付いているが、この盤面は最短解4本（強制手率0.07）で
-  // 帯内の他候補より細い＝§7-6手順11「上限に張り付いたら細い解を優先」で採用した。
+  //      0 ############
+  //      1 #S###>###S##
+  //      2 #.~.~K~.~.##     北＝桟橋の櫛（列1/3/5/7/9 が幅1の陸・列2/4/6/8 が幅1の水路＝bgTiles）
+  //      3 #.~.~.~*~*##
+  //      4 D.~.~~~.~.##     真ん中の桟橋（列5）は根元 (4,5) が水＝ワープと鍵の小島
+  //      5 D....*...*##     南＝石を運ぶ広間
+  //      6 #..#...#..##
+  //      7 #S.......S##
   //
-  // 守るものは D4 の3点（幾何の安全地帯／足踏みでは成立しない／実機再生）と同じ。
-  // 宝箱は無い（この部屋の chestContents は元から空）＝D4 にあった宝箱まわりの検査は無い。
-  const D8 = { layer: 'dungeon_8', room: '1,0', key: { r: 5, c: 7 } };
-  const D8_BUTTONS = ['1,1', '4,4', '8,1', '8,7'];
-  const D8_STONES  = ['3,2', '3,4', '6,1', '8,4'];
-  const D8_WARP = '7,9';
-  const D8_EXPECT_L = 60;   // migrate-key-room-d8.mjs が記録した実測 L（ワープ始点・帯 40〜60）
-  // 実機再生の始点＝ワープの1つ北（前室の中）。D4/D6 と同じ理由（ワープ上から始めると飛ばされる）。
-  const D8_REPLAY_START = '6,9';
-  // 前室（安全地帯）＝石が絶対に入れない区画。generate-key-room-d8.mjs のテンプレの ',' と一致。
-  const D8_SAFE = ['3,8', '3,9', '4,9', '5,9', '6,8', '6,9', '7,9', '8,9'];
+  // 勇者ははしごで水路を渡れるが、石は水に入れない＝桟橋の中の石を外へ出す押しの立ち位置は
+  // 桟橋の奥＝隣の陸から跳ぶしかない（I6＝水路を壁にすると解なし）。小島には石が絶対に入らない
+  // （陸続きでない）＝旧盤面の「前室」の代わり。
+  // ⚠️ 旧盤面（キュー 5.5g）の注記「笛は D8 の報酬＝初回は未所持」は誤り＝笛は `1,2` の宝箱で、
+  //    この部屋へのワープ（`1,1`）は笛で現れる∴入室時は必ず笛を持っている（⑧ の2本目が番人）。
+  const D8 = { layer: 'dungeon_8', room: '1,0', key: { r: 2, c: 5 } };
+  const D8_BUTTONS = ['1,1', '1,9', '7,1', '7,9'];
+  const D8_STONES  = ['3,7', '3,9', '5,5', '5,9'];
+  const D8_WATER = ['2,2', '2,4', '2,6', '2,8', '3,2', '3,4', '3,6', '3,8',
+    '4,2', '4,4', '4,5', '4,6', '4,8'];
+  const D8_ISLE = ['1,5', '2,5', '3,5'];   // ワープの小島（陸の連結成分）
+  const D8_WARP = '1,5';
+  const D8_EXPECT_L = 55;   // migrate-d8-1-0-swamp-isles.mjs が記録した実測 L（ワープ始点・帯 40〜60）
+  // 実機再生の始点＝小島の南端（ワープ上から始めると飛ばされる・鍵セルの上も避ける）。
+  const D8_REPLAY_START = '3,5';
   const D8_KEY_PK = `${D8.key.r},${D8.key.c}`;
 
   const d8Stage = () => map.layers[D8.layer].stages[D8.room];
 
-  /** D8 鍵部屋のタイル。鍵扉 'D' は鍵ゼロでは壁＝ソルバーにも壁として渡す。 */
-  function d8Tiles() {
+  /**
+   * D8 鍵部屋のソルバー問題。鍵扉 'D' は鍵ゼロでは壁。水は bgTiles から読む。
+   * noWarp＝ワープを壁にする（実機再生はワープを踏むと隣室へ飛ぶ＝手順に入れない）。
+   * wallWater＝その水セルを壁にする（I6 の対照実験）。
+   */
+  function d8Solver({ noWarp = false, wallWater = null, hasLadder = true } = {}) {
     const sd = d8Stage();
     expect(Array.isArray(sd.tiles[0]), 'tiles は文字配列の配列').toBe(true);
-    return sd.tiles.map(row => row.map(ch => (ch === 'D' ? '#' : ch)));
+    const tiles = sd.tiles.map((row, r) => row.map((ch, c) => {
+      if (ch === 'D') return '#';
+      if (noWarp && `${r},${c}` === D8_WARP) return '#';
+      if (wallWater?.has(`${r},${c}`)) return '#';
+      return ch;
+    }));
+    const bg = Array.from({ length: 10 }, (_, r) => Array.from({ length: 12 }, (_, c) => {
+      const k = `${r},${c}`;
+      return (sd.bgTiles?.[k] === '~' && !wallWater?.has(k)) ? '~' : 'g';
+    }));
+    return makeSolver(tiles, bg, [], {}, new Set(), { hasLadder });
   }
 
   /**
-   * 石パズルの最短手順を求めて {dir,to,push} 列にする（d4Plan と同じ作法・石4個）。
+   * 最短手順を求めて {dir,to,push} 列にする（d4Plan と同じ作法・はしごの渡りも1セル移動）。
    * goalKind: 'solve' ＝全ボタンに石が乗り鍵セルに立つ／
-   *           'footFake' ＝石3個がボタン上・残る1個のボタンをプレイヤーが踏んでいる（⑧-b用）。
+   *           'footFake' ＝石3個がボタン上・残る1個のボタンをプレイヤーが踏んでいる。
+   * 返り値 null＝そのゴールに到達できない（I6 の「解なし」判定に使う）。
    */
-  function d8Plan(startPk, goalKind) {
-    const tiles = d8Tiles();
-    const bg = Array.from({ length: 10 }, () => Array(12).fill('g'));
-    const S = makeSolver(tiles, bg, [], {}, new Set(), { hasLadder: false });
+  function d8Search(startPk, goalKind, opts = {}) {
+    const S = d8Solver({ noWarp: startPk !== D8_WARP, ...opts });
     const [sr, sc] = startPk.split(',').map(Number);
     const start = S.encode(sr, sc, S.initStones, 0, 0, 0);
-    const onButtons = (stonesField) => {
-      const stones = stonesField ? stonesField.split(';') : [];
-      return stones.filter(s => D8_BUTTONS.includes(s)).length;
-    };
+    const onButtons = (stonesField) =>
+      (stonesField ? stonesField.split(';') : []).filter(s => D8_BUTTONS.includes(s)).length;
     const goalTest = goalKind === 'solve'
       ? (state) => { const f = state.split('|'); return f[0] === D8_KEY_PK && f[5] === '1'; }
       : (state) => {
         const f = state.split('|');
         const stones = f[1] ? f[1].split(';') : [];
-        // 石3個がボタン上・プレイヤーは「石が乗っていない残り1個のボタン」を踏んでいる。
         return f[5] === '0' && onButtons(f[1]) === 3
           && D8_BUTTONS.includes(f[0]) && !stones.includes(f[0]);
       };
@@ -1410,7 +1428,7 @@ test.describe('Blade of Lumia – ダンジョンの鍵（進行の背骨）', (
         q.push(nx);
       }
     }
-    expect(goal, `${goalKind} の手順が見つかる`).toBeTruthy();
+    if (goal === null) return null;
     const chain = [];
     for (let s = goal; s !== null; s = prev.get(s)) chain.push(s);
     chain.reverse();
@@ -1420,7 +1438,7 @@ test.describe('Blade of Lumia – ダンジョンの鍵（進行の背骨）', (
       const [pos1, stones1] = chain[i].split('|');
       const [r0, c0] = pos0.split(',').map(Number);
       const [r1, c1] = pos1.split(',').map(Number);
-      // この部屋には Y/'!'/H が無い＝遷移は必ず「歩き」か「石押し」＝1セル移動。
+      // この部屋には Y/'!'/H が無い＝遷移は必ず「歩き」「はしごの渡り」「石押し」＝1セル移動。
       expect(Math.abs(r1 - r0) + Math.abs(c1 - c0), '1手＝1セル移動').toBe(1);
       const dir = r1 < r0 ? 'up' : r1 > r0 ? 'down' : c1 < c0 ? 'left' : 'right';
       steps.push({ dir, to: { r: r1, c: c1 }, push: stones0 !== stones1 });
@@ -1433,30 +1451,38 @@ test.describe('Blade of Lumia – ダンジョンの鍵（進行の背骨）', (
     return steps;
   }
 
-  /** 手順を実際の入力（movePlayer）で再生する（d4Replay と同じ作法）。 */
+  const d8Plan = (startPk, goalKind) => {
+    const steps = d8Search(startPk, goalKind);
+    expect(steps, `${goalKind} の手順が見つかる`).toBeTruthy();
+    return steps;
+  };
+
+  /** はしご所持で入室する（startAt は subItems しか持たせないので player.hasLadder を後付け）。 */
+  async function startD8(page, { row, col, boomerang = false, dir = 'right' }) {
+    await startAt(page, { row, col, layer: D8.layer, room: D8.room, boomerang, dir });
+    await page.evaluate(() => { window.__game.getPlayer().hasLadder = true; });
+  }
+
+  /** 手順を実際の入力（movePlayer）で再生する（d6Replay と同じ作法＝座標は丸めずに素で比べる）。 */
   async function d8Replay(page, steps) {
+    const at = async () => await page.evaluate(() => {
+      const pl = window.__game.getState().player;
+      return `${pl.y},${pl.x}`;
+    });
     for (let i = 0; i < steps.length; i++) {
       const s = steps[i];
       await page.evaluate(d => window.__game.setHeroDir(d), s.dir);
       for (let guard = 0; guard < 6; guard++) {
-        const p = await page.evaluate(() => {
-          const pl = window.__game.getState().player;
-          return { x: pl.x, y: pl.y };
-        });
-        if (p.x === s.to.c && p.y === s.to.r) break;
+        if (await at() === `${s.to.r},${s.to.c}`) break;
         await page.evaluate(d => window.__game.movePlayer(d), s.dir);
         await page.waitForTimeout(s.push ? 650 : 30);
       }
-      const p = await page.evaluate(() => {
-        const pl = window.__game.getState().player;
-        return { x: pl.x, y: pl.y };
-      });
-      expect(`${p.y},${p.x}`, `手順${i + 1}（${s.dir}${s.push ? '・石押し' : ''}）で ${s.to.r},${s.to.c} へ`)
+      expect(await at(), `手順${i + 1}（${s.dir}${s.push ? '・石押し' : ''}）で ${s.to.r},${s.to.c} へ`)
         .toBe(`${s.to.r},${s.to.c}`);
     }
   }
 
-  test('⑧ D8：盤面が「石4・純倉庫番」の形（ボタン4・石4・敵なし・ゲートなし・宝箱なし）', () => {
+  test('⑧ D8：盤面が「沼の浮島」の形（ボタン4・石4・水路13・敵なし・ゲートなし・宝箱なし）', () => {
     const stage = d8Stage();
     const cells = (ch) => {
       const out = [];
@@ -1467,70 +1493,106 @@ test.describe('Blade of Lumia – ダンジョンの鍵（進行の背骨）', (
     };
     expect(cells('S').sort(), 'ボタン4個').toEqual([...D8_BUTTONS].sort());
     expect(cells('*').sort(), '石4個').toEqual([...D8_STONES].sort());
+    expect(Object.keys(stage.bgTiles ?? {}).sort(), '水路は bgTiles の13枚').toEqual([...D8_WATER].sort());
+    for (const w of D8_WATER) {
+      const [r, c] = w.split(',').map(Number);
+      expect(stage.bgTiles[w], `${w} は水`).toBe('~');
+      expect(stage.tiles[r][c], `${w} の tiles は床（水は bgTiles だけ）`).toBe('.');
+    }
     expect(cells('T'), 'ゲート T は無い（関門は showConditions＝物理ゲートではない）').toEqual([]);
-    expect(cells('B'), '宝箱は無い（この部屋の chestContents は元から空）').toEqual([]);
+    expect(cells('!'), '壊せる壁は無い').toEqual([]);
+    expect(cells('B'), '宝箱は無い').toEqual([]);
     expect(cells('K'), '鍵は1個').toEqual([D8_KEY_PK]);
     expect(cells('>'), 'ワープ（詰み救済の出口）は1個').toEqual([D8_WARP]);
     expect(stage.showConditions[D8_KEY_PK]).toEqual({ trigger: 'stonesPlaced' });
     expect(stage.links, 'links は空配列（{} は refreshGates を殺す）').toEqual([]);
     expect(stage.chestContents ?? {}, '開けられない宝箱の中身が残っていない').toEqual({});
-    expect(stage.floorItems ?? {}, '余剰の床置き鍵(6,5)は削除済み').toEqual({});
-    expect(stage.mapEnters?.[D8_WARP]?.destId, 'ワープは隣室へ抜ける（＝石リセットの救済）').toBeTruthy();
-    expect(stage.fluteEffect, '笛の resetStones（再訪時の保険。D8 は笛の報酬部屋そのもの）').toEqual({ type: 'resetStones' });
+    expect(stage.floorItems ?? {}).toEqual({});
+    expect(stage.mapEnters?.[D8_WARP]?.destId, 'ワープは隣室へ抜ける（＝石リセットの救済）').toBe('d8_gatehall');
+    expect(stage.fluteEffect, '笛の resetStones（入室時に必ず笛を持っている）').toEqual({ type: 'resetStones' });
     // 敵が居てはいけない（enemy-ai.js tryEnemyPushStone が石を押す＝測定した解が崩れる）。
     const flat = stage.tiles.flat().join('');
     expect(ENEMY_TILES.some(t => flat.includes(t)), '倉庫番の部屋に敵を置いていない').toBe(false);
   });
 
-  test('⑧ D8：前室（ワープ）へ石を押し込める向きが1つも無い／口は2つ以上', () => {
-    // ワープはこの孤島で唯一の脱出口＝石で塞がれたら本当のハードロック
-    // （笛の resetStones は D8 そのものの報酬＝初回攻略時は未所持で入室する）。
-    const stage = d8Stage();
-    const isFloor = (pk) => {
-      const [r, c] = pk.split(',').map(Number);
-      const t = stage.tiles[r]?.[c];
-      return t !== undefined && t !== '#' && t !== 'D';
-    };
-    const safe = new Set(D8_SAFE);
-    expect(safe.has(D8_WARP), 'ワープは前室の中').toBe(true);
-    for (const pk of D8_SAFE) expect(isFloor(pk), `前室 ${pk} が床`).toBe(true);
-    for (const s of D8_STONES) expect(safe.has(s), `石 ${s} が前室の外から始まる`).toBe(false);
-
-    for (const x of D8_SAFE) {
-      const [xr, xc] = x.split(',').map(Number);
-      for (const [dr, dc] of [[-1, 0], [1, 0], [0, -1], [0, 1]]) {
-        const src = `${xr - dr},${xc - dc}`;
-        const stand = `${xr - 2 * dr},${xc - 2 * dc}`;
-        if (safe.has(src)) continue;
-        const canPush = isFloor(src) && isFloor(stand);
-        expect(canPush, `前室 ${x} へ外から石を押し込める（石 ${src} をプレイヤー ${stand} から）`).toBe(false);
-      }
-    }
-    const mouths = [];
-    for (const x of D8_SAFE) {
-      const [xr, xc] = x.split(',').map(Number);
-      for (const [dr, dc] of [[-1, 0], [1, 0], [0, -1], [0, 1]]) {
-        const nk = `${xr + dr},${xc + dc}`;
-        if (isFloor(nk) && !safe.has(nk)) mouths.push(`${nk}→${x}`);
-      }
-    }
-    expect(mouths.length, `前室と本体の口（${mouths.join(' ')}）は2つ以上`).toBeGreaterThanOrEqual(2);
+  test('⑧ D8：この部屋へは笛を持って入る（笛は 1,2 の宝箱・1,1 のワープは笛で現れる）', () => {
+    // 旧注記「笛は D8 の報酬＝初回は未所持」を二度と書かないための番人（2026-10-12 の裏取り）。
+    const stages = map.layers[D8.layer].stages;
+    const flute = Object.values(stages['1,2'].chestContents ?? {}).find(v => v.item === 'flute');
+    expect(flute, '笛は D8 1,2 の宝箱').toBeTruthy();
+    const gateEntry = Object.entries(stages['1,1'].mapEnters ?? {})
+      .find(([, e]) => e.id === 'd8_gatehall' && e.destId === 'd8_bosswing');
+    expect(gateEntry, '1,1 にこの部屋へのワープがある').toBeTruthy();
+    expect(stages['1,1'].showConditions?.[gateEntry[0]], 'そのワープは笛を吹くと現れる')
+      .toEqual({ trigger: 'flutePlayed' });
   });
 
-  test('⑧ D8：ソルバーの最短解が記録値 L=60（帯 40〜60・関門の上限）と一致する', () => {
+  test('⑧ D8：ワープの小島に石は入れない（陸続きでない）／渡り口は2か所以上', () => {
+    const stage = d8Stage();
+    const isLand = (pk) => {
+      const [r, c] = pk.split(',').map(Number);
+      const t = stage.tiles[r]?.[c];
+      return t !== undefined && t !== '#' && t !== 'D' && stage.bgTiles?.[pk] !== '~';
+    };
+    // ワープから陸だけを歩いた連結成分＝石が動ける範囲の上界（石は水に入れない）。
+    const isle = new Set([D8_WARP]);
+    const q = [D8_WARP];
+    for (let h = 0; h < q.length; h++) {
+      const [r, c] = q[h].split(',').map(Number);
+      for (const [dr, dc] of [[-1, 0], [1, 0], [0, -1], [0, 1]]) {
+        const nk = `${r + dr},${c + dc}`;
+        if (!isle.has(nk) && isLand(nk)) { isle.add(nk); q.push(nk); }
+      }
+    }
+    expect([...isle].sort(), '小島＝ワープ・鍵・その南の3マス').toEqual([...D8_ISLE].sort());
+    for (const s of D8_STONES) expect(isle.has(s), `石 ${s} は小島の外から始まる`).toBe(false);
+    for (const b of D8_BUTTONS) expect(isle.has(b), `ボタン ${b} は小島の外`).toBe(false);
+    // 渡り口＝小島のセル → 水1枚 → 小島の外の陸。向こう岸に石が居座ると使えない∴別々のセルが2つ以上。
+    const far = new Set();
+    for (const x of isle) {
+      const [r, c] = x.split(',').map(Number);
+      for (const [dr, dc] of [[-1, 0], [1, 0], [0, -1], [0, 1]]) {
+        const w = `${r + dr},${c + dc}`, f = `${r + 2 * dr},${c + 2 * dc}`;
+        if (stage.bgTiles?.[w] === '~' && isLand(f) && !isle.has(f)) far.add(f);
+      }
+    }
+    expect(far.size, `小島から渡れる向こう岸（${[...far].join(' ')}）は2か所以上`).toBeGreaterThanOrEqual(2);
+  });
+
+  test('⑧ D8：ソルバーの最短解が記録値 L=55（帯 40〜60）と一致する', () => {
     test.setTimeout(60_000);
     const steps = d8Plan(D8_WARP, 'solve');
     expect(steps.length, 'ワープ始点の最短手数').toBe(D8_EXPECT_L);
     expect(steps.filter(s => s.push).length, '石を押す手が4個以上ある').toBeGreaterThanOrEqual(4);
+    const onWater = steps.filter(s => d8Stage().bgTiles?.[`${s.to.r},${s.to.c}`] === '~').length;
+    expect(onWater, 'はしごで水の上に立つ手がある').toBeGreaterThan(0);
     const comment = d8Stage().comment ?? '';
     expect(comment, 'comment に実測 L が焼かれている').toContain(`L=${D8_EXPECT_L}`);
+  });
+
+  test('⑧ D8：はしごが要る＝はしご無し／小島の渡り口以外の水路を壁にすると解けない（I6）', () => {
+    test.setTimeout(60_000);
+    expect(d8Search(D8_WARP, 'solve', { hasLadder: false }), 'はしご無しでは解けない').toBeNull();
+    // 小島の渡り口（小島に接する水）だけ残し、ほかの水路を壁にする＝はしごは小島から出るためだけに使える。
+    const keep = new Set();
+    for (const x of D8_ISLE) {
+      const [r, c] = x.split(',').map(Number);
+      for (const [dr, dc] of [[-1, 0], [1, 0], [0, -1], [0, 1]]) {
+        const w = `${r + dr},${c + dc}`;
+        if (D8_WATER.includes(w)) keep.add(w);
+      }
+    }
+    const wallWater = new Set(D8_WATER.filter(w => !keep.has(w)));
+    expect(wallWater.size, '壁にする水路がある').toBeGreaterThan(0);
+    expect(d8Search(D8_WARP, 'solve', { wallWater }),
+      '水路を跳んで石の向こうへ回れないと解けない（はしごは近道ではなく必須）').toBeNull();
   });
 
   test('⑧ D8：入室時は鍵が描画されず、踏んでも拾えない', async ({ page }) => {
     const errors = [];
     page.on('pageerror', e => errors.push(e.message));
-    // (4,7) は鍵の北隣（鍵の西 (5,6) は壁）＝鍵セルへ1歩で踏み込める位置。
-    await startAt(page, { row: 4, col: 7, layer: D8.layer, room: D8.room, dir: 'down' });
+    // (3,5) は鍵の南隣（小島の南端）＝鍵セルへ1歩で踏み込める位置。
+    await startD8(page, { row: 3, col: 5, dir: 'up' });
 
     const ss0 = await page.evaluate(() => window.__game.getStageState());
     expect(ss0.conditionsMet ?? [], '入室時点で関門は成立していない').not.toContain(D8_KEY_PK);
@@ -1539,7 +1601,7 @@ test.describe('Blade of Lumia – ダンジョンの鍵（進行の背骨）', (
       `.cell[data-row="${D8.key.r}"][data-col="${D8.key.c}"] .item-sprite`).count(),
     '鍵は描かれない').toBe(0);
 
-    await walk(page, 'down', 2);   // (4,7) → (5,7)＝鍵セルを踏む
+    await walk(page, 'up', 2);   // (3,5) → (2,5)＝鍵セルを踏む
     const st = await page.evaluate(() => window.__game.getState());
     expect(Math.round(st.player.y), '鍵セルまで歩けている').toBe(D8.key.r);
     expect(st.player.keys, '見えない鍵は踏んでも拾えない').toBe(0);
@@ -1547,11 +1609,11 @@ test.describe('Blade of Lumia – ダンジョンの鍵（進行の背骨）', (
   });
 
   test('⑧ D8：未出現の鍵はブーメランでも運べない', async ({ page }) => {
-    await startAt(page, { row: 4, col: 7, layer: D8.layer, room: D8.room, boomerang: true, dir: 'down' });
+    await startD8(page, { row: 3, col: 5, boomerang: true, dir: 'up' });
     const res = await page.evaluate(() => {
       const before = window.__game.getState().player.keys;
-      window.__game.setHeroDir('down');
-      window.__game.useSubItem();     // (5,7) の鍵の上を通過する
+      window.__game.setHeroDir('up');
+      window.__game.useSubItem();     // (2,5) の鍵の上を通過する
       window.__game.step(12);
       return { before, after: window.__game.getState().player.keys };
     });
@@ -1563,7 +1625,7 @@ test.describe('Blade of Lumia – ダンジョンの鍵（進行の背骨）', (
     const errors = [];
     page.on('pageerror', e => errors.push(e.message));
     const steps = d8Plan(D8_REPLAY_START, 'footFake');
-    await startAt(page, { row: 6, col: 9, layer: D8.layer, room: D8.room });
+    await startD8(page, { row: 3, col: 5 });
     await d8Replay(page, steps);
 
     const ss = await page.evaluate(() => window.__game.getStageState());
@@ -1581,12 +1643,14 @@ test.describe('Blade of Lumia – ダンジョンの鍵（進行の背骨）', (
     expect(errors).toEqual([]);
   });
 
-  test('⑧ D8：ソルバーの最短手順を再生すると鍵が出現し、拾える', async ({ page }) => {
+  test('⑧ D8：ソルバーの最短手順を再生すると（はしごで跳び・桟橋の石を押し出して）鍵が出現し、拾える', async ({ page }) => {
     test.setTimeout(180_000);
     const errors = [];
     page.on('pageerror', e => errors.push(e.message));
     const steps = d8Plan(D8_REPLAY_START, 'solve');
-    await startAt(page, { row: 6, col: 9, layer: D8.layer, room: D8.room });
+    // 実機で「水の上に立ってから石を押す」が通ることも同じ再生で確かめる（はしごの渡りが手順に入っている）。
+    expect(steps.some(s => d8Stage().bgTiles?.[`${s.to.r},${s.to.c}`] === '~'), '手順に水路の渡りがある').toBe(true);
+    await startD8(page, { row: 3, col: 5 });
     await d8Replay(page, steps);
 
     const ss = await page.evaluate(() => window.__game.getStageState());

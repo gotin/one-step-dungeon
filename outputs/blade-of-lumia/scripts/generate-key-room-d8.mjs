@@ -1,85 +1,88 @@
 #!/usr/bin/env node
 /**
- * generate-key-room-d8.mjs — D8 の鍵部屋（dungeon_8 / 1,0）を「石4・純倉庫番」に
- * するための盤面を逆算生成・測定する（PLAN 実行キュー 5.5g・PUZZLE-DESIGN §7-4 #8）。
+ * generate-key-room-d8.mjs — D8 の鍵部屋（dungeon_8 / 1,0）「沼の浮島」の盤面を
+ * 逆算生成・測定する（PLAN 実行キュー 47 第3陣・2026-10-12 作り直し）。
  *
- * D4（石3・純倉庫番＝generate-key-room-d4.mjs）と同じ型だが、
- *   ・石とボタンが **4個**（§3-2c の上限＝石3〜4の「4」側）
- *   ・L の帯が **40〜60**（§7-6 手順11 の排他帯＝D4 20〜35／D6 34〜39 と重ねない。
- *     上限 60 は §7-3 C の「必須進行路の関門」上限そのもの＝23,0 の L=89 は重すぎる）
- *   ・宝箱 'B' を置かない（この部屋には元から宝箱が無い＝chestContents 空。
- *     ∴ engine の stoneDestOk とソルバー passableFor の食い違い §7-6 手順9 は
- *     そもそも現れない＝analyze は 'B' を error にする）
+ * ■ なぜ作り直したか（キュー47）
+ *   旧盤面（キュー 5.5g）は D4 `1,0` の「千鳥の柱＋東列の前室」とほぼ同じ骨組みで、石を
+ *   1個増やしただけだった（内側で一致するセルが D6↔D8 で 27）。ユーザー判定（2026-10-12）＝
+ *   D4 は見本として残し、D8 は別物に作り直す。主題はユーザー選択「沼の浮島」。
  *
- * ⚠️ 石4は状態も候補も桁で増える∴**打ち切りを黙ってやらない**（§7-6 の精神＝
- *    見ていない範囲を「見た」と読ませない）。この生成器は3箇所で打ち切りを明示ログする：
- *      ・pull-BFS の展開状態数（`PULL_CAP`）＝逆算の途中で切ったらその旨と切った深さ
- *      ・候補の等間隔サンプル（`CAND_CAP`）＝全候補を見ていないこと
- *      ・フル測定の間引き（`MAX_MEASURE`）＝軸②通過のうち何件だけ測ったか
- *    さらに状態超過（`GUARD_MAX`）で測れなかった候補も件数を出す。
+ * ■ 沼の浮島（設計の芯）
+ *   ・部屋を幅1の水路（bgTiles の水 '~'）で島に分ける。
+ *   ・勇者は**はしご**で幅1の水路をどこでも渡れる（D5 の道具・`game/passable.js LADDER_OVER`）。
+ *     石は水に入れない＝**石が通れるのは陸の土手道だけ**。
+ *   ∴土手道を石で塞いでも、勇者は水路を渡って石の向こう側へ回れる＝「押す位置は水の向こう」。
+ *     謎の本体は、細い土手道を4つの石がどの順で通るか（石が石の道を塞ぐ）。
+ *   ・入口のワープは水に囲まれた小島＝陸続きでない∴石は絶対に入れない（幾何で自明）。
+ *     小島から出る渡り口は2つ以上（向こう岸に石が居座ると、その渡り口は使えない）。
  *
- * 部屋固有の不変条件（assertGeometry が検査する。D4 と同じ＝孤島・前室の帰納法）：
- *   ① 外周＝リング全壁。ただし西の (4,0)(5,0) は鍵扉 'D'（ボス部屋への出口）。
- *      孤島（ワープ `>`(7,9) で入る）＝辺で隣室と繋がっていない。
- *   ② **安全地帯（前室）へ石が1個も入れない**（ワープ＝詰み救済の唯一の出口）。
- *      テンプレの ',' で宣言し、帰納法で静的に保証する：
- *        ・石の初期配置は前室に置かない（pull-BFS 側で除外）
- *        ・前室のセル X・全方向 d で「押し元 X-d が前室の外なら押し手 X-2d が壁」
- *      ⇒ 外から入る押しが存在しない＋初期に居ない ⇒ 永遠に入れない。
- *      笛（`resetStones`）は **D8 の報酬そのもの**＝この部屋の初回攻略時は未所持
- *      （進行順 D4→D6→D5→D8→D7）∴救済はワープ1本＝前室の保証が要る。
- *   ③ 前室は連結で、本体との口が2つ以上（1つだと口の手前に石が居座った瞬間に脱出不能）。
- *   ④ 鍵扉の手前 (4,1)(5,1) が床。
- *   ⑤ 石ゼロでワープから鍵・ボタン全部・扉の手前へ歩ける（入って詰まない）。
- *   ⑥ 解けた状態（石が全ボタン上＝以後ロックで不動）でもワープから鍵・扉の手前へ歩ける。
- *   ⑦ 各ボタンに石を押し込める向きが1つ以上ある（押し込めないボタン＝解なし）。
- *   ⑧ tiles 層に見た目だけの地面タイルを混ぜていない／敵を置かない／ゲート 'T' も宝箱 'B' も無い
- *      （敵は enemy-ai.js tryEnemyPushStone で石を押す＝測定した倉庫番が別物になる）。
+ * ■ 笛について（2026-10-12 裏取り・旧版の記述の訂正）
+ *   旧版は「笛は D8 の報酬＝この部屋の初回攻略時は未所持」と書いていたが誤り。笛は D8 `1,2` の
+ *   宝箱で、この部屋へのワープ（`1,1` の `>`）は笛を吹くと現れる（flutePlayed）∴**この部屋に
+ *   入るときは必ず笛を持っている**＝`fluteEffect:{type:'resetStones'}` の救済が初回から使える。
+ *   それでも I3（noEscape=0＝どの状態からもワープへ戻れる）は測って守る（笛に頼らずに部屋を
+ *   出られる＝詰みの逃げ道を2本持つ）。
  *
- * 測定（§7-3 C）：4軸下限（L≥6・貪欲NG・deadlock>0・強制手率≤0.7）＋帯 40〜60
- *   ＋ I3（noEscape=0）＝どの到達状態からもワープに戻れる。
+ * この部屋固有の不変条件（assertGeometry が検査する）：
+ *   ① リング（外周）＝孤島なので鍵扉 D(4,0)(5,0) 以外は全壁（ワープ '>' で入る）。
+ *   ② ワープの小島＝ワープを含む陸の連結成分にボタンが無い（石が永遠に入れない区画）。
+ *      小島から出る渡り口（はしごで渡れる水1枚）が2つ以上で、向こう岸のセルが別々。
+ *   ③ 石の無い部屋で、ワープから（はしごを使って）全部の陸へ行ける（入って詰まない）。
+ *   ④ 解けた状態（石が全ボタン上＝以後ロックで不動）でもワープから鍵・鍵扉の手前へ行ける。
+ *   ⑤ 鍵扉の手前 (4,1)(5,1) が陸／各ボタンへ石を押し込める向きが1つ以上ある。
+ *   ⑥ 見た目だけの地面タイル・ゲート・宝箱・敵を置かない
+ *      （敵は enemy-ai.js tryEnemyPushStone で**石を押す**＝測定した倉庫番が壊れる）。
+ *
+ * 測定（PUZZLE-DESIGN §7-3 C）：4軸下限（L≥6・貪欲NG・deadlock>0・強制手率≤0.7）
+ *   ＋§7-4 の D8 の帯 **L 40〜60**（D6 の L=39 より深い＝倉庫番3室の難しさが進行順に上がる）
+ *   ＋I3（noEscape=0）＝どの到達状態からもワープに戻れる
+ *   ＋I6（はしごの必須性）＝小島の渡り口以外の水路を全部「壁」にすると解なし
+ *     （＝はしごは小島から出るためだけでなく、石の向こうへ回るために要る）。
  *
  * ⚠️ 実マップ（work/blade-of-lumia.json）は変更しない（採用盤面をコンソールに出すだけ）。
- *    書き込みは scripts/migrate-key-room-d8.mjs。
+ *    書き込みは scripts/migrate-d8-1-0-swamp-isles.mjs（この生成器の関数をそのまま import する）。
  *
  * 使い方（outputs/blade-of-lumia/ で実行）:
- *   node scripts/generate-key-room-d8.mjs               # 全テンプレ
- *   node scripts/generate-key-room-d8.mjs v1            # 指定テンプレだけ
+ *   node scripts/generate-key-room-d8.mjs            # 全テンプレ
+ *   node scripts/generate-key-room-d8.mjs c3         # 指定テンプレだけ
  *   GEOM_ONLY=1 node scripts/generate-key-room-d8.mjs   # 幾何 assert だけ（設計反復用）
- *   MAX_MEASURE=20 CAND_CAP=2000 node scripts/generate-key-room-d8.mjs
+ *   GUARD_MAX=8000000 MAX_MEASURE=6 node --max-old-space-size=20000 scripts/generate-key-room-d8.mjs
+ *     ＝採用時の実行（状態 200 万級を測るのでヒープを広げる・既定のヒープでは落ちる）
  */
 
-import { ROWS, COLS, makeSolver } from './lib/blade-solver.mjs';
+import { ROWS, COLS, W, makeSolver } from './lib/blade-solver.mjs';
 import { measureMetrics, verdict } from './lib/puzzle-metrics.mjs';
 import { TILE } from '../shared/tiles.js';
 
 // ── 盤面テンプレ ────────────────────────────────────────────────────────────
-//   '#' 壁 / '.' 床 / 'S' ボタン（石の目標）/ 'K' 鍵
+//   '#' 壁 / '.' 陸の床 / '~' 水（書き込み時は tiles '.'＋bgTiles '~'）/ 'S' ボタン / 'K' 鍵
 //   '>' ワープ（入口＝救済の出口）/ 'D' 鍵扉（ボス部屋へ・測定では壁として扱う）
-//   ',' 安全地帯（前室）の床＝石が絶対に入れない区画（不変条件②。書き込み時は '.' に戻す）
 //   石の初期位置は逆算(pull-BFS)で決めるのでテンプレには書かない。
-//
-// 前室（東の col8-9）は D4/D6 で実測 noEscape=0 を取った形をそのまま使う
-//   ＝口は (3,7)→(3,8) と (6,7)→(6,8) の2つで、押し込み位置 (3,6)/(6,6) が壁∴石は入れない。
+// 採らなかった版の教訓（2026-10-12）：
+//   i1＝陸を幅1の帯だけで組み、真ん中にワープの小島。石は帯を真っ直ぐしか動けず、陸が西（ボタン2）と
+//       東（ボタン2）に分かれて石2個ずつの独立した2問になった＝候補 240 通りが全部貪欲で解けた。
+//   c1/c2＝北に桟橋の櫛・南に広い広間。広間が広すぎて状態が 500 万を超え、測れなかった
+//       （はしごで水の上にも立てる分、陸だけの倉庫番より状態が増える）。
+//   c3 の最初の測定＝4軸と帯は通ったが I6 が不合格（水路を壁にしても解ける＝はしごは近道だけ）。
+//       ∴「桟橋の中に石が居る配置」に候補を絞った（STRIP_MIN）。桟橋の石を外へ出す押しの立ち位置は
+//       桟橋の上＝隣の陸から水路を跳ばないと立てない。
 export const TEMPLATES = [
 	{
-		// v1：本体（rows1-8 / cols1-7）を千鳥ピラーで割り、ボタンを4隅寄りに散らした形。
-		//   ・ボタン (1,1) 北西角 / (4,4) 中央 / (8,1) 南西角 / (8,7) 南東
-		//     ＝石4本の搬送路が中央 (4,4) で必ず交差する（独立に運べない＝貪欲が通らない）。
-		//   ・col3 が (2,3)(4,3)(5,3) の壁で3箇所欠けた縦の隔壁＝西区画と中央区画の
-		//     行き来は (1,3)/(3,3)/(6,3)/(7,3) の隙間だけ＝石の搬送路が細い。
-		//   ・(7,2)(7,4) の千鳥で南西角 (8,1) への持ち込みが直線にならない。
-		name: 'v1',
+		// c3（採用）：北に桟橋の櫛（列1/3/7/9＝幅1の陸・間の列2/4/6/8＝水路）。列1・列9 の桟橋の
+		//   先端がボタン、列3・列7 は石の桟橋。真ん中の桟橋（列5）は根元が水 (4,5) で切れた小島＝
+		//   ワープと鍵。南（行5-7）は石を運ぶ広間（柱 (6,3)(6,7)）。陸 42・水 13。
+		name: 'c3',
 		template: [
 			'############',
-			'#S...#..####',
-			'#.#.#...####',
-			'#.....#.,,##',
-			'D..#S...#,##',
-			'D..#.##K#,##',
-			'#.....#.,,##',
-			'#.#.#...#>##',
-			'#S.....S#,##',
+			'#S###>###S##',
+			'#.~.~K~.~.##',
+			'#.~.~.~.~.##',
+			'D.~.~~~.~.##',
+			'D.........##',
+			'#..#...#..##',
+			'#S.......S##',
+			'############',
 			'############',
 		],
 	},
@@ -88,86 +91,95 @@ export const TEMPLATES = [
 const key = (r, c) => `${r},${c}`;
 const parse = (k) => k.split(',').map(Number);
 const DIRS = [[-1, 0], [1, 0], [0, -1], [0, 1]];
-const MAX_MEASURE = Number(process.env.MAX_MEASURE ?? 12);
 const GEOM_ONLY = !!process.env.GEOM_ONLY;
-// 石4は状態が桁で増える∴上限を env で動かせるようにする（超過した候補は件数を出す）。
-const GUARD_MAX = Number(process.env.GUARD_MAX ?? 12000000);
-// 逆算(pull-BFS)の展開上限。切ったら「どこまで見たか」をログに出す（黙って切らない）。
-const PULL_CAP = Number(process.env.PULL_CAP ?? 4000000);
-
-// L の帯（§7-4 の D8）＝40〜60。上限は §7-3 C の関門の上限そのもの。
-const L_MIN = Number(process.env.L_MIN ?? 40);
-const L_MAX = Number(process.env.L_MAX ?? 60);
-
-// §3-2c（ユーザー確定）＝石は3〜4個。D8 は §7-4 で石4。
-const STONE_COUNT = 4;
+const MAX_MEASURE = Number(process.env.MAX_MEASURE ?? 12);
+// L の帯（§7-4 の D8）＝40〜60。下限は D6 の L=39 の1つ上（帯は排他・§7-6 手順11）。
+export const L_MIN = Number(process.env.L_MIN ?? 40);
+export const L_MAX = Number(process.env.L_MAX ?? 60);
+export const STONE_COUNT = 4;
 
 // tiles 層に置いてはいけない「見た目だけの地面タイル」（塗りは bgTiles の仕事）。
 const DECOR_TILES = new Set(['d', 'g', 'o', 's', 'a', 'm']);
 // 敵タイル（この部屋には置かない＝敵が石を押す）。
-const ENEMY_RE = /[WECFVXZALNJOUGI]/;
-
-const DOOR_CELLS = ['4,0', '5,0'];
+const ENEMY_RE = /[WECFVXZALNJOUGIθμαβξζφδσλπηωψΓ]/;
+export const DOOR_CELLS = ['4,0', '5,0'];
 const DOOR_APPROACH = ['4,1', '5,1'];
-// 安全地帯（前室）の床を宣言するテンプレ専用マーク。実タイルには存在しない＝書き込み時に '.' へ。
-const SAFE_MARK = ',';
+const WATER_MARK = '~';
 
 export function analyze(template) {
-	const grid = template.map((row) => row.split(''));
+	const grid = template.map((row) => [...row]);
 	if (grid.length !== ROWS || grid.some((r) => r.length !== COLS))
 		throw new Error(`テンプレは ${ROWS}x${COLS} 必要`);
-	const buttons = [], walls = new Set(), floors = new Set(), safe = new Set();
+	const buttons = [], land = new Set(), water = new Set();
 	let keyCell = null, warp = null;
 	const doors = [];
 	for (let r = 0; r < ROWS; r++) for (let c = 0; c < COLS; c++) {
 		const ch = grid[r][c];
-		if (ch === '#') { walls.add(key(r, c)); continue; }
-		if (ch === 'D') { doors.push(key(r, c)); walls.add(key(r, c)); continue; }  // 鍵未所持＝壁
-		floors.add(key(r, c));
+		if (ch === '#') continue;
+		if (ch === 'D') { doors.push(key(r, c)); continue; }  // 鍵未所持＝壁
+		if (ch === WATER_MARK) { water.add(key(r, c)); continue; }
+		land.add(key(r, c));
 		if (ch === 'S') buttons.push(key(r, c));
-		if (ch === 'K') keyCell = key(r, c);
-		if (ch === TILE.MAP_ENTER) { warp = key(r, c); safe.add(key(r, c)); }
-		if (ch === SAFE_MARK) safe.add(key(r, c));
-		if (DECOR_TILES.has(ch)) throw new Error(`見た目だけの地面タイル '${ch}' が (${r},${c}) にある`);
+		else if (ch === 'K') keyCell = key(r, c);
+		else if (ch === TILE.MAP_ENTER) warp = key(r, c);
+		else if (ch === 'B') throw new Error('この部屋に宝箱 B は置かない（報酬は鍵だけ）');
+		else if (DECOR_TILES.has(ch)) throw new Error(`見た目だけの地面タイル '${ch}' が (${r},${c}) にある`);
+		else if (ch !== '.') throw new Error(`テンプレに想定外の文字 '${ch}' が (${r},${c}) にある`);
 	}
 	if (!keyCell) throw new Error('テンプレに鍵 K が無い');
 	if (!warp) throw new Error('テンプレにワープ > が無い');
-	if (grid.some((row) => row.includes(TILE.GATE)))
-		throw new Error("この型（C 倉庫番・stonesPlaced）にゲート 'T' は置かない");
-	if (grid.some((row) => row.includes('B')))
-		throw new Error("宝箱 'B' は置かない（この部屋の chestContents は空＝開けられない宝箱になる／"
-			+ '石を押せる規則が engine とソルバーで食い違う＝§7-6 手順9）');
 	if (ENEMY_RE.test(template.join('')))
 		throw new Error('敵を置いてはいけない（enemy-ai.js が石を押す＝測定した倉庫番が壊れる）');
-	if (buttons.length !== STONE_COUNT) throw new Error(`ボタンは${STONE_COUNT}個（今 ${buttons.length}）`);
+	if (buttons.length !== STONE_COUNT) throw new Error(`ボタンは ${STONE_COUNT} 個（今 ${buttons.length}）`);
 	if (doors.sort().join(' ') !== DOOR_CELLS.join(' '))
 		throw new Error(`鍵扉は ${DOOR_CELLS.join(' ')} の2枚（今 ${doors.join(' ')}）`);
-	return { grid, buttons, walls, floors, safe, keyCell, warp, doors };
+	return { grid, buttons, land, water, keyCell, warp, doors };
 }
 
-/** 床集合 pass の中を start から歩いた到達集合。 */
-function walkSet(start, pass) {
+/** 陸だけを歩いた連結成分（石の動ける範囲の上界＝石は水に入れない）。 */
+function landComponent(t, start) {
 	const seen = new Set([start]), q = [start];
 	for (let h = 0; h < q.length; h++) {
 		const [r, c] = parse(q[h]);
 		for (const [dr, dc] of DIRS) {
 			const nk = key(r + dr, c + dc);
-			if (seen.has(nk) || !pass(nk)) continue;
+			if (seen.has(nk) || !t.land.has(nk)) continue;
 			seen.add(nk); q.push(nk);
 		}
 	}
 	return seen;
 }
 
-/** セル x へ石を押し込める向きがあるか（押し＝プレイヤー x-2d → 石 x-d → 行き先 x）。 */
-function pushableInto(t, x, { fromOutsideSafeOnly = false } = {}) {
+/**
+ * はしごを使った歩行の到達集合（blade-solver.mjs の移動規則と同じ）：
+ *   ・陸へは（石が無ければ）入れる。
+ *   ・水へは「進入軸の両隣が陸（石なし）」のときだけ1枚入れる。水の上から陸へは軸を問わず出られる。
+ *   ・水から水へは入れない（両隣の片方が水＝橋脚にならない）。
+ */
+function ladderWalk(t, start, blocked = new Set()) {
+	const isBank = (k) => t.land.has(k) && !blocked.has(k);
+	const seen = new Set([start]), q = [start];
+	for (let h = 0; h < q.length; h++) {
+		const [r, c] = parse(q[h]);
+		for (const [dr, dc] of DIRS) {
+			const nr = r + dr, nc = c + dc, nk = key(nr, nc);
+			if (seen.has(nk)) continue;
+			if (t.water.has(nk)) {
+				if (!isBank(key(nr - dr, nc - dc)) || !isBank(key(nr + dr, nc + dc))) continue;
+			} else if (!isBank(nk)) continue;
+			seen.add(nk); q.push(nk);
+		}
+	}
+	return seen;
+}
+
+/** セル x へ石を押し込める向きがあるか（押し＝プレイヤー x-2d（陸）→ 石 x-d（陸）→ 行き先 x）。 */
+function pushableInto(t, x) {
 	const [xr, xc] = parse(x);
 	for (const [dr, dc] of DIRS) {
-		const s = key(xr - dr, xc - dc);          // 石の居るセル
-		const p = key(xr - 2 * dr, xc - 2 * dc);  // プレイヤーの立つセル
-		if (!t.floors.has(s) || !t.floors.has(p)) continue;
-		if (fromOutsideSafeOnly && t.safe.has(s)) continue;   // 安全地帯の中→中は帰納法で除外済み
-		return `${s} の石を ${p} から押す`;
+		const s = key(xr - dr, xc - dc);
+		const p = key(xr - 2 * dr, xc - 2 * dc);
+		if (t.land.has(s) && t.land.has(p)) return `${s} の石を ${p} から押す`;
 	}
 	return null;
 }
@@ -184,94 +196,87 @@ export function assertGeometry(t) {
 		const want = DOOR_CELLS.includes(key(r, 0)) ? 'D' : '#';
 		if (west !== want) throw new Error(`西の外周: (${r},0) は '${want}' でなく '${west}'`);
 	}
-	// ② 安全地帯（前室）へは外から石を押し込めない（＝石は永遠に入れない）
-	if (!t.safe.has(t.warp)) throw new Error(`ワープ ${t.warp} が安全地帯に入っていない`);
-	for (const x of t.safe) {
-		const how = pushableInto(t, x, { fromOutsideSafeOnly: true });
-		if (how) throw new Error(`安全地帯 ${x} へ外から石を押し込める（${how}）`
-			+ '＝詰み救済のワープが塞がれ得る（ハードロック）');
-	}
-	// ③ 安全地帯は連結・本体との口が2つ以上
-	const safeWalk = walkSet(t.warp, (k) => t.safe.has(k));
-	for (const x of t.safe) if (!safeWalk.has(x)) throw new Error(`安全地帯 ${x} がワープから分断されている`);
-	const mouths = [];
-	for (const x of t.safe) {
-		const [xr, xc] = parse(x);
+	// ② ワープの小島＝陸の連結成分にボタンが無い∴石は入れない／渡り口が2つ以上
+	t.isle = landComponent(t, t.warp);
+	for (const b of t.buttons) if (t.isle.has(b)) throw new Error(`ボタン ${b} がワープの小島にある`);
+	const crossings = [];
+	for (const x of t.isle) {
+		const [r, c] = parse(x);
 		for (const [dr, dc] of DIRS) {
-			const nk = key(xr + dr, xc + dc);
-			if (t.floors.has(nk) && !t.safe.has(nk)) mouths.push(`${nk}→${x}`);
+			const w = key(r + dr, c + dc), far = key(r + 2 * dr, c + 2 * dc);
+			if (t.water.has(w) && t.land.has(far) && !t.isle.has(far)) crossings.push({ from: x, water: w, far });
 		}
 	}
-	if (mouths.length < 2) throw new Error(`安全地帯と本体の口が ${mouths.length} 個（2以上必要）`
-		+ '＝口の手前に石が居座った瞬間に脱出できない');
-	// ④ 鍵扉の手前が床
-	for (const a of DOOR_APPROACH) if (!t.floors.has(a)) throw new Error(`鍵扉の手前 ${a} が床でない`);
-	// ⑦ 各ボタンに石を押し込める向きが1つ以上ある
+	const farCells = new Set(crossings.map((x) => x.far));
+	if (farCells.size < 2)
+		throw new Error(`ワープの小島から渡れる向こう岸が ${farCells.size} か所（2以上必要）`
+			+ '＝向こう岸に石が居座った瞬間に小島から出られない');
+	t.crossings = crossings;
+	// ③ 石の無い部屋で、ワープから全部の陸へ行ける
+	const empty = ladderWalk(t, t.warp);
+	for (const f of t.land) if (!empty.has(f)) throw new Error(`石が無くてもワープから ${f} へ行けない`);
+	// ⑤ 鍵扉の手前が陸／各ボタンに押し込める向きがある
+	for (const a of DOOR_APPROACH) if (!t.land.has(a)) throw new Error(`鍵扉の手前 ${a} が陸でない`);
 	for (const b of t.buttons) {
 		if (!pushableInto(t, b)) throw new Error(`ボタン ${b} へ石を押し込める向きが無い＝解なし`);
 	}
-	t.mouths = mouths;
-	// ⑤ 石ゼロでワープから全要所へ歩ける
-	const open = walkSet(t.warp, (k) => t.floors.has(k));
-	for (const [label, cell] of [['鍵', t.keyCell],
-		...t.buttons.map((b) => ['ボタン', b]), ...DOOR_APPROACH.map((a) => ['扉の手前', a])]) {
-		if (!open.has(cell)) throw new Error(`石ゼロでもワープから ${label} ${cell} へ行けない`);
-	}
-	// 孤立した床（どこからも歩いて行けない死んだ区画）を弾く＝盤面の作り間違い検出
-	for (const f of t.floors) if (!open.has(f)) throw new Error(`床 ${f} がワープから到達できない（孤立区画）`);
-	// ⑥ 解けた状態（石が全ボタン上・以後ロックで不動）でも要所へ歩ける
-	const solved = new Set(t.buttons);
-	const afterSolve = walkSet(t.warp, (k) => t.floors.has(k) && !solved.has(k));
+	// ④ 解けた状態（石が全ボタン上・以後ロックで不動）でも要所へ行ける
+	const solved = ladderWalk(t, t.warp, new Set(t.buttons));
 	for (const [label, cell] of [['鍵', t.keyCell], ...DOOR_APPROACH.map((a) => ['扉の手前', a])]) {
-		if (!afterSolve.has(cell)) throw new Error(`解いた後（石がボタン上で固定）にワープから ${label} ${cell} へ行けない`);
+		if (!solved.has(cell)) throw new Error(`解いた後（石がボタン上で固定）にワープから ${label} ${cell} へ行けない`);
 	}
 }
 
 // ── 逆算(pull-BFS)：ゴール（石が全ボタン上）から「引き」で初期配置候補を作る ────────
-// D4 と同じ規則。石を置けない/置きたくないセル（安全地帯の全セル＝ワープ・前室の床、
-// および鍵セル）を除いた床の上だけで引く。安全地帯を除くのは不変条件②の帰納法の前提
-// （「石は初期に安全地帯に居ない」）そのもの。
-// 石4は展開が桁で増える∴`PULL_CAP` で切る。切ったときは「引き距離いくつまで見たか」を返す
-// （＝より深い候補を見ていない可能性を呼び出し側がログに出せる）。
+// 引き＝押しの逆。プレイヤーは陸 P に立ち、石が P-d、プレイヤーが P+d（陸）へ下がると石が P へ来る。
+// プレイヤーの移動ははしごを含む（水の上に立てる）。引いた後のプレイヤーのセルは陸だけに限る
+// （水の上から押す手は数えない＝候補が少し減るだけ。最終判定は順方向のソルバー）。
 function pullBFS(t) {
-	const noStone = new Set([...t.safe, t.keyCell]);
-	const isFloor = (r, c) => t.floors.has(key(r, c)) && !noStone.has(key(r, c));
+	const noStone = new Set([...t.isle, t.keyCell]);
+	const isStoneCell = (k) => t.land.has(k) && !noStone.has(k);
 	const goalStones = [...t.buttons].sort();
 	const encode = (stones, p) => `${stones.join(';')}|${p}`;
-	const stoneSet0 = new Set(goalStones);
 	const start = [];
-	for (const b of goalStones) for (const [dr, dc] of DIRS) {
-		const [br, bc] = parse(b);
-		const pr = br + dr, pc = bc + dc;
-		if (isFloor(pr, pc) && !stoneSet0.has(key(pr, pc))) start.push(encode(goalStones, key(pr, pc)));
+	{
+		const stoneSet0 = new Set(goalStones);
+		for (const b of goalStones) {
+			const [br, bc] = parse(b);
+			for (const [dr, dc] of DIRS) {
+				const pk = key(br + dr, bc + dc);
+				if (t.land.has(pk) && !stoneSet0.has(pk)) start.push(encode(goalStones, pk));
+			}
+		}
 	}
 	const dist = new Map();
 	const q = [];
 	for (const s of new Set(start)) { dist.set(s, 0); q.push(s); }
-	let head = 0, truncatedAt = null;
-	while (head < q.length) {
-		if (dist.size >= PULL_CAP) { truncatedAt = dist.get(q[head]); break; }
-		const st = q[head++];
+	for (let head = 0; head < q.length; head++) {
+		const st = q[head];
 		const [stonesStr, pStr] = st.split('|');
 		const stones = stonesStr.split(';');
 		const stoneSet = new Set(stones);
 		const [pr, pc] = parse(pStr);
 		const d = dist.get(st);
-		for (const [dr, dc] of DIRS) {          // プレイヤーだけ動く（距離据え置き）
-			const nr = pr + dr, nc = pc + dc;
-			if (!isFloor(nr, nc) || stoneSet.has(key(nr, nc))) continue;
-			const ns = encode(stones, key(nr, nc));
+		const isBank = (k) => t.land.has(k) && !stoneSet.has(k);
+		for (const [dr, dc] of DIRS) {          // プレイヤーだけ動く（はしご含む・距離据え置き）
+			const nr = pr + dr, nc = pc + dc, nk = key(nr, nc);
+			if (stoneSet.has(nk)) continue;
+			if (t.water.has(nk)) {
+				if (!isBank(key(nr - dr, nc - dc)) || !isBank(key(nr + dr, nc + dc))) continue;
+			} else if (!t.land.has(nk)) continue;
+			const ns = encode(stones, nk);
 			if (!dist.has(ns)) { dist.set(ns, d); q.push(ns); }
 		}
+		if (!t.land.has(pStr)) continue;        // 水の上からは引かない
 		for (const [dr, dc] of DIRS) {          // 引く（＝押しの逆・距離+1）
-			const sr = pr - dr, sc = pc - dc;
-			if (!stoneSet.has(key(sr, sc))) continue;
-			const nr = pr + dr, nc = pc + dc;
-			if (!isFloor(nr, nc) || stoneSet.has(key(nr, nc))) continue;
-			const ns2 = stones.filter((s) => s !== key(sr, sc));
-			ns2.push(key(pr, pc));
+			const sk = key(pr - dr, pc - dc);
+			if (!stoneSet.has(sk)) continue;
+			const nk = key(pr + dr, pc + dc);
+			if (!t.land.has(nk) || stoneSet.has(nk)) continue;
+			const ns2 = stones.filter((s) => s !== sk);
+			ns2.push(pStr);
 			ns2.sort();
-			const ns = encode(ns2, key(nr, nc));
+			const ns = encode(ns2, nk);
 			if (!dist.has(ns)) { dist.set(ns, d + 1); q.push(ns); }
 		}
 	}
@@ -280,48 +285,44 @@ function pullBFS(t) {
 		const [stonesStr, pStr] = st.split('|');
 		const stones = stonesStr.split(';');
 		if (stones.some((s) => t.buttons.includes(s))) continue;   // 初期から一部解けている配置は除外
+		if (stones.some((s) => !isStoneCell(s))) continue;
 		out.push({ stones, player: pStr, pulls: d });
 	}
-	out.sort((a, b) => a.pulls - b.pulls);
-	return { cands: out, states: dist.size, truncatedAt };
-}
-
-/** 初期配置でワープ（入口）から目標セルへ歩いて行けるか。 */
-function walkReachable(t, stones, target) {
-	const blocked = new Set(stones);
-	if (!t.floors.has(target) || blocked.has(target)) return false;
-	return walkSet(t.warp, (k) => t.floors.has(k) && !blocked.has(k)).has(target);
+	return out.sort((a, b) => a.pulls - b.pulls);
 }
 
 // ── 候補を実ゲーム遷移＋4軸で測る ───────────────────────────────────────────────
 /**
- * 測定用タイル：テンプレそのまま＋石 '*'。
+ * 測定用タイル：テンプレ＋石 '*'。水は tiles '.'＋bg '~'。
  *   ・鍵扉 'D' は鍵未所持＝壁として測る（ソルバーの 'D' は解ける関門扱いで通ってしまう）。
- *   ・安全地帯マーク ',' はテンプレ専用の注釈＝実タイルの床 '.' に戻す。
+ *   ・wallWater=Set を渡すと、その水セルを壁 '#' に差し替える（I6 の対照実験）。
  */
-export function buildTiles(t, stonePlacement) {
+export function buildTiles(t, stonePlacement, wallWater = null) {
 	const stoneSet = new Set(stonePlacement);
 	const tiles = t.grid.map((row) => [...row]);
-	for (let r = 0; r < ROWS; r++) for (let c = 0; c < COLS; c++) {
-		if (tiles[r][c] === 'D') tiles[r][c] = TILE.WALL;
-		else if (tiles[r][c] === SAFE_MARK) tiles[r][c] = TILE.FLOOR;
-		if (stoneSet.has(key(r, c))) tiles[r][c] = TILE.STONE;
-	}
 	const bg = Array.from({ length: ROWS }, () => Array(COLS).fill('g'));
+	for (let r = 0; r < ROWS; r++) for (let c = 0; c < COLS; c++) {
+		const k = key(r, c);
+		if (tiles[r][c] === 'D') tiles[r][c] = TILE.WALL;
+		else if (tiles[r][c] === WATER_MARK) {
+			if (wallWater?.has(k)) tiles[r][c] = TILE.WALL;
+			else { tiles[r][c] = TILE.FLOOR; bg[r][c] = W; }
+		}
+		if (stoneSet.has(k)) tiles[r][c] = TILE.STONE;
+	}
 	return { tiles, bg };
 }
 
 /**
- * 軸②の貪欲モデル（D4/D6 と同じ「押し単位のマクロ貪欲」）。
- * 1手単位のヒルクライムだと石の裏へ回り込む歩行が必ず評価値を悪化させる＝どんな倉庫番でも
- * 詰まって軸②が空虚になる∴歩行は自由・押しは石ポテンシャルを厳密に減らすものだけ許す。
+ * 軸②の貪欲モデル（generate-key-room-d4/d6 と同じ「押し単位のマクロ貪欲」）。
+ * 歩行（はしご含む）は自由・押しは石ポテンシャルを厳密に減らすものだけ許す。
  */
 function makeGreedyPush(t) {
 	const bpos = t.buttons.map(parse);
 	const man = (a, b) => Math.abs(a[0] - b[0]) + Math.abs(a[1] - b[1]);
 	const perms = (xs) => xs.length <= 1 ? [xs]
 		: xs.flatMap((x, i) => perms([...xs.slice(0, i), ...xs.slice(i + 1)]).map((p) => [x, ...p]));
-	const BPERM = perms(bpos.map((_, i) => i));   // 石4＝24通り（ボタンへの割り当ての最小和）
+	const BPERM = perms(bpos.map((_, i) => i));
 	const potential = (stones) => {
 		const sp = stones.map(parse);
 		let best = Infinity;
@@ -333,7 +334,7 @@ function makeGreedyPush(t) {
 		return best;
 	};
 	const stonesOf = (state) => { const f = state.split('|')[1]; return f ? f.split(';') : []; };
-	const macroKey = (state) => state.split('|').slice(0, 2).join('|');
+	const macroKey = (state) => { const f = state.split('|'); return `${f[1]}|${f[3]}`; };
 	return (S, starts, goalTest) => {
 		const q = [...starts];
 		const seen = new Set(q.map(macroKey));
@@ -360,26 +361,24 @@ function makeGreedyPush(t) {
 }
 
 /** 盤面をソルバー問題に組み立てる。ゴール＝石ロック済み かつ 鍵セルに立っている。 */
-function buildProblem(t, stonePlacement) {
-	const { tiles, bg } = buildTiles(t, stonePlacement);
-	const S = makeSolver(tiles, bg, [], {}, new Set(), { hasLadder: false });
-	const start = S.encode(...parse(t.warp), S.initStones, 0, 0, 0);
+export function buildProblem(t, stonePlacement, { wallWater = null, start = t.warp } = {}) {
+	const { tiles, bg } = buildTiles(t, stonePlacement, wallWater);
+	const S = makeSolver(tiles, bg, [], {}, new Set(), { hasLadder: true });
+	const s0 = S.encode(...parse(start), S.initStones, 0, 0, 0);
 	const goalTest = (state) => {
 		const f = state.split('|');
 		return f[0] === t.keyCell && f[5] === '1';
 	};
-	return { S, start, goalTest };
+	return { S, start: s0, goalTest };
 }
 
 export function measurePlacement(t, stonePlacement, guardMax) {
 	const { S, start, goalTest } = buildProblem(t, stonePlacement);
-	// I3＝ワープ（救済の出口）に戻れない到達状態を数える。リングの exitCells ではない
-	// （孤島なのでリングは全部壁／鍵扉は鍵未所持＝壁）∴ワープ1セルだけが脱出口。
+	// I3＝ワープ（救済の出口）に戻れない到達状態を数える（孤島なのでワープ1セルだけが脱出口）。
 	const escapeTest = (state) => state.split('|')[0] === t.warp;
 	const man = (a, b) => Math.abs(a[0] - b[0]) + Math.abs(a[1] - b[1]);
 	const bpos = t.buttons.map(parse);
 	const [gr, gc] = parse(t.keyCell);
-	// 貪欲ヒューリスティックは段階を分ける（石が全部乗るまでは鍵への距離を見ない）。
 	const h = (state) => {
 		const f = state.split('|');
 		const [pr, pc] = parse(f[0]);
@@ -397,10 +396,38 @@ export function measurePlacement(t, stonePlacement, guardMax) {
 		{ guardMax, greedyFn: makeGreedyPush(t), escapeTest });
 }
 
+/** 「解けるか」だけを BFS で見る（I6 の対照実験用）。 */
+export function solvableWith(t, stonePlacement, opts = {}, guardMax = 12000000) {
+	const { S, start, goalTest } = buildProblem(t, stonePlacement, opts);
+	const dist = new Map([[start, 0]]);
+	const q = [start];
+	for (let i = 0; i < q.length; i++) {
+		if (i > guardMax) throw new Error('状態空間が大きすぎる');
+		if (goalTest(q[i])) return { solvable: true, L: dist.get(q[i]), states: dist.size };
+		for (const nx of S.nextStates(q[i])) {
+			if (dist.has(nx)) continue;
+			dist.set(nx, dist.get(q[i]) + 1);
+			q.push(nx);
+		}
+	}
+	return { solvable: false, L: null, states: dist.size };
+}
+
+/**
+ * I6（はしごの必須性）＝小島の渡り口の水だけを残し、ほかの水路を全部壁 '#' にすると解けない。
+ * ＝はしごは「小島から出る」ためだけの道具ではなく、石の向こうへ回るために要る。
+ * migrate 側も同じ関数を使う（規則を2箇所に書かない）。
+ */
+export function assertLadderRequired(t, stonePlacement) {
+	const keep = new Set(t.crossings.map((x) => x.water));
+	const wallWater = new Set([...t.water].filter((w) => !keep.has(w)));
+	const res = solvableWith(t, stonePlacement, { wallWater });
+	if (res.solvable)
+		throw new Error(`小島の渡り口以外の水路を壁にしても解けてしまう（L=${res.L}）＝水路を渡る手が要らない`);
+	return res;
+}
+
 // ── 実行 ────────────────────────────────────────────────────────────────────
-// migrate-key-room-d8.mjs がテンプレ解析・幾何 assert・測定を**そのまま再利用**できるよう
-// （＝2箇所に規則を書いて食い違わせないよう）ライブラリとして import 可能にする。
-// 直接実行のときだけ下の生成ループを回す。
 const IS_MAIN = process.argv[1]?.endsWith('generate-key-room-d8.mjs') ?? false;
 const only = IS_MAIN ? process.argv.slice(2)[0] : undefined;
 const list = IS_MAIN ? (only ? TEMPLATES.filter((x) => x.name === only) : TEMPLATES) : [];
@@ -412,40 +439,42 @@ for (const tpl of list) {
 	console.log(`\n════ ${tpl.name} ════`);
 	tpl.template.forEach((row, r) => console.log('  ', String(r).padStart(2), row));
 	console.log(`  ボタン ${t.buttons.join(' / ')}  鍵 ${t.keyCell}  ワープ(入口) ${t.warp}  扉 ${t.doors.join(' / ')}`);
-	console.log(`  床 ${t.floors.size} セル（うち安全地帯 ${t.safe.size}・測定では鍵扉は壁扱い＝鍵未所持）`);
-	console.log(`  前室の口: ${t.mouths.join(' , ')}`);
+	console.log(`  陸 ${t.land.size} セル・水 ${t.water.size} セル・小島 ${t.isle.size} セル`);
+	console.log(`  小島の渡り口: ${t.crossings.map((x) => `${x.from}→${x.water}→${x.far}`).join(' ')}`);
 	if (GEOM_ONLY) { console.log('  (GEOM_ONLY: assertGeometry を通過)'); continue; }
 
-	// 逆算候補（同じ石配置は最小引き距離の1件に代表させる／逆再生できるものだけ）
-	const pull = pullBFS(t);
 	const seenStones = new Set();
 	const cands = [];
-	for (const c of pull.cands) {
+	for (const c of pullBFS(t)) {
 		const sk = c.stones.join(';');
 		if (seenStones.has(sk)) continue;
-		if (!walkReachable(t, c.stones, c.player)) continue;
+		// 初期配置で、ワープから引き終わりのプレイヤー位置へ行けるもの（逆再生できる）だけ。
+		if (!ladderWalk(t, t.warp, new Set(c.stones)).has(c.player)) continue;
 		seenStones.add(sk);
 		cands.push(c);
 	}
-	console.log(`  逆算(pull-BFS) 展開状態 ${pull.states}`
-		+ (pull.truncatedAt == null ? '（完全展開）'
-			: `  ⚠️ PULL_CAP=${PULL_CAP} で打ち切り＝引き距離 ${pull.truncatedAt} までしか見ていない`
-				+ '（より深い候補を見落としている可能性あり）'));
 	console.log(`  石${STONE_COUNT}配置候補: ${cands.length} 通り（引き距離 ${cands[0]?.pulls}〜${cands[cands.length - 1]?.pulls}）`);
-	if (!cands.length) { console.log(`  ✗ ${tpl.name}：候補ゼロ（ボタンへ石を運べない盤面）`); continue; }
+	if (!cands.length) { console.log(`  ✗ ${tpl.name}：候補ゼロ`); continue; }
 
-	const candCap = Number(process.env.CAND_CAP ?? 1200);
-	let pool = cands;
-	if (cands.length > candCap) {
-		const st = cands.length / candCap;
-		pool = Array.from({ length: candCap }, (_, i) => cands[Math.floor(i * st)]);
-		console.log(`  ⚠️ 候補を ${cands.length} → ${pool.length} に等間隔サンプル（CAND_CAP=${candCap}）`
-			+ `＝全候補は見ていない（${cands.length - pool.length} 通りは未評価＝見落としの可能性を明示）`);
-	} else {
-		console.log(`  候補は全 ${pool.length} 通りを評価（CAND_CAP=${candCap} に未達＝打ち切りなし）`);
+	// 桟橋の石＝左右（または上下）が水の陸に居る石。ここから石を出す押しの立ち位置は桟橋の上＝
+	// 隣の陸から水路を跳ばないと立てない。I6（はしごの必須性）の安い前段として、この石が
+	// STRIP_MIN 個以上ある配置だけを見る（I6 は最後に状態空間で確かめる＝これは篩にすぎない）。
+	const stripMin = Number(process.env.STRIP_MIN ?? 1);
+	const isStrip = (k) => {
+		const [r, c] = parse(k);
+		return (t.water.has(key(r, c - 1)) && t.water.has(key(r, c + 1)))
+			|| (t.water.has(key(r - 1, c)) && t.water.has(key(r + 1, c)));
+	};
+	const stripCands = cands.filter((c) => c.stones.filter(isStrip).length >= stripMin);
+	console.log(`  桟橋の石が ${stripMin} 個以上の配置: ${stripCands.length}/${cands.length} 通り`);
+	const candCap = Number(process.env.CAND_CAP ?? 1500);
+	let pool = stripCands;
+	if (stripCands.length > candCap) {
+		const st = stripCands.length / candCap;
+		pool = Array.from({ length: candCap }, (_, i) => stripCands[Math.floor(i * st)]);
+		console.log(`  ⚠️ 候補を ${stripCands.length} → ${pool.length} に等間隔サンプル（CAND_CAP=${candCap}）＝全候補は見ていない`);
 	}
 
-	// 篩：貪欲（マクロ押し）は状態空間 BFS 不要で安い∴先に軸②で篩う。
 	const greedyFn = makeGreedyPush(t);
 	const insight = [];
 	for (const cand of pool) {
@@ -453,43 +482,48 @@ for (const tpl of list) {
 		if (!greedyFn(p.S, [p.start], p.goalTest)) insight.push(cand);
 	}
 	console.log(`  貪欲で解ける（軸②未達）${pool.length - insight.length} 件 / 軸②クリア ${insight.length} 件`);
-	if (!insight.length) { console.log(`  ✗ ${tpl.name}：軸②（貪欲NG）を通る候補が無い`); continue; }
+	if (!insight.length) continue;
 
-	// L と引き距離は単調対応しない（同じ引き距離でも配置次第で L が数十変わる）∴
-	// 「深い側だけ」ではなく引き距離の分布全体から等間隔サンプルする（帯 40〜60 を見落とさない）。
 	const maxMeasure = Number(process.env.MAX_MEASURE ?? MAX_MEASURE);
-	const byPulls = [...insight].sort((a, b) => a.pulls - b.pulls);
-	const sample = byPulls.length <= maxMeasure ? byPulls
-		: Array.from({ length: maxMeasure },
-			(_, i) => byPulls[Math.floor(i * byPulls.length / maxMeasure)]);
-	if (byPulls.length > sample.length)
-		console.log(`  ⚠️ フル測定は軸②クリア ${insight.length} 件から引き距離で等間隔サンプルした ${sample.length} 件だけ`
-			+ `（MAX_MEASURE=${maxMeasure}）＝残り ${insight.length - sample.length} 件は未測定`);
+	const pullTarget = Number(process.env.PULL_TARGET ?? 22);
+	insight.sort((a, b) => Math.abs(a.pulls - pullTarget) - Math.abs(b.pulls - pullTarget) || b.pulls - a.pulls);
+	// I6 を先に回す：水路なしで解ける配置は BFS が早く解を見つける＝安く落とせる。
+	const sample = [];
+	let i5Fail = 0, i5Big = 0;
+	for (const cand of insight) {
+		if (sample.length >= maxMeasure) break;
+		try { assertLadderRequired(t, cand.stones); }
+		catch (e) { if (/大きすぎる/.test(e.message)) i5Big++; else i5Fail++; continue; }
+		sample.push(cand);
+	}
+	console.log(`  I6 の前段：水路なしで解ける ${i5Fail} 件・測定不能 ${i5Big} 件を落とし、${sample.length} 件をフル測定（MAX_MEASURE=${maxMeasure}）`);
 	const passed = [];
 	let tooBig = 0, escFail = 0, bandFail = 0, axisFail = 0;
 	for (const cand of sample) {
 		let m;
-		try { m = measurePlacement(t, cand.stones, GUARD_MAX); }
-		catch (e) { tooBig++; console.log(`    · 石 ${cand.stones.join(' ')} pull${cand.pulls} → 状態超過/測定不能 (${e.message})`); continue; }
+		try { m = measurePlacement(t, cand.stones, Number(process.env.GUARD_MAX ?? 12000000)); }
+		catch (e) { tooBig++; console.log(`    · 石 ${cand.stones.join(' ')} pull${cand.pulls} → 測定不能 (${e.message})`); continue; }
 		const v = verdict(m);
 		console.log(`    · 石 ${cand.stones.join(' ')} pull${cand.pulls} L=${m.L} dl=${m.deadlocks} fr=${m.forcedRatio} sol=${m.solCount} states=${m.states} noEsc=${m.noEscape} ${v.label}`);
 		if (!v.pass) { axisFail++; continue; }
-		if (m.noEscape) { escFail++; continue; }               // I3＝ワープに戻れない状態がある
-		if (m.L < L_MIN || m.L > L_MAX) { bandFail++; continue; }  // §7-4 の帯 40〜60
+		if (m.noEscape) { escFail++; continue; }
+		if (m.L < L_MIN || m.L > L_MAX) { bandFail++; continue; }
 		passed.push({ cand, m });
 	}
-	console.log(`  フル測定 ${sample.length} 件（状態超過 ${tooBig} / 4軸未達 ${axisFail}`
-		+ ` / I3脱出不能 ${escFail} / 帯外 ${bandFail}）→ 採用可 ${passed.length} 件`);
+	console.log(`  フル測定 ${sample.length} 件（状態超過 ${tooBig} / 4軸未達 ${axisFail} / I3脱出不能 ${escFail}`
+		+ ` / 帯外 ${bandFail} / I6未達 ${i5Fail}）→ 採用可 ${passed.length} 件`);
 	if (!passed.length) { console.log(`  ✗ ${tpl.name}：帯 ${L_MIN}〜${L_MAX} の合格盤面が見つからず（テンプレ調整）`); continue; }
 
-	// 帯の中で最も深く、同じ深さなら最短解が最も細いものを採る。
 	const num = (v) => (typeof v === 'number' ? v : Infinity);
-	passed.sort((a, b) => b.m.L - a.m.L || num(a.m.solCount) - num(b.m.solCount));
+	// 帯の中では最短解が細いものを優先し、同じ細さなら深いものを採る（§7-6 手順11＝帯の上寄りでは
+	// L より細さ。c3 の測定では L=55・最短解1本 が L=57・最短解18本 より良い盤面）。
+	passed.sort((a, b) => num(a.m.solCount) - num(b.m.solCount) || b.m.L - a.m.L);
 	const { cand, m } = passed[0];
-	console.log(`  ✅ 採用 石 ${cand.stones.join(' ')}（引き${cand.pulls}）→ L=${m.L} 貪欲NG deadlock=${m.deadlocks} 強制手率=${m.forcedRatio} 最短解本数=${m.solCount} 状態=${m.states} 脱出不能=${m.noEscape}`);
-	const { tiles } = buildTiles(t, cand.stones);
-	// 表示は実際に書き込む形（鍵扉 'D' は戻す・安全地帯マークは buildTiles で '.' 済み）
-	const shown = tiles.map((row, r) => row.map((ch, c) => (DOOR_CELLS.includes(key(r, c)) ? 'D' : ch)).join(''));
+	console.log(`  ✅ 採用 石 ${cand.stones.join(' ')}（引き${cand.pulls}）→ L=${m.L} 貪欲NG deadlock=${m.deadlocks}`
+		+ ` 強制手率=${m.forcedRatio} 最短解本数=${m.solCount} 状態=${m.states} 脱出不能=${m.noEscape}`);
+	const { tiles, bg } = buildTiles(t, cand.stones);
+	const shown = tiles.map((row, r) => row.map((ch, c) => (DOOR_CELLS.includes(key(r, c)) ? 'D'
+		: bg[r][c] === W ? '~' : ch)).join(''));
 	console.log('  ── 採用盤面 ──');
 	shown.forEach((row, r) => console.log('    ', String(r).padStart(2), row));
 	console.log(`  ── migrate 用 ── STONES=${cand.stones.join(' ')}  ENTRY=${t.warp}  L=${m.L} dl=${m.deadlocks} fr=${m.forcedRatio} sol=${m.solCount}`);
