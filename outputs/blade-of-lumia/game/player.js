@@ -523,10 +523,15 @@ export function createPlayer(deps) {
 			// 2026-08-04（再設計・PLAN 4.7）：色スイッチは石を通さない（プレイヤーは踏めるが石は
 			// 押し込めない＝恒久的な地形制約。ゲートの開閉状態とは無関係）。押し込み経路の一部に
 			// せず「叩くための的」のまま保つ＝旧 I1'（幾何での押し込み禁止）が丸ごと不要になる。
+			// 2026-10-12（キュー47）：宝箱にも石を通さない。宝箱は「踏んで開ける」マス＝tilePassable は
+			// 床と同じく true を返すため、ここで外さないと石が宝箱の上へ乗って宝箱が隠れる
+			// （D1 `0,3` の実機で発覚）。ソルバー（blade-solver.mjs の passableFor）は最初から
+			// 「石は宝箱に入れない」で測っていた＝エンジン側をソルバーに揃えた。
 			const stoneCanEnter = (r, c) => {
 				const t = stageData.tiles[r]?.[c];
 				return t != null
 					&& t !== TILE.SWITCH_RED && t !== TILE.SWITCH_BLUE
+					&& t !== TILE.CHEST
 					&& tilePassable(r, c)
 					&& !Object.values(ss.stonePositions ?? {}).some(st => st.r === r && st.c === c);
 			};
