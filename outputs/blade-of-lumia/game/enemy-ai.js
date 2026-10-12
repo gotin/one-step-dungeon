@@ -5634,7 +5634,11 @@ export function createEnemyAi(deps) {
 			const shelled = (!isGuarding && !frozen && !leaping) ? tickShell(e, meta, now) : false;
 			// Phase 5.5k k-5: 張り付き（ルピー喰い）＝張り付いている間はプレイヤーへ貼り付いて
 			// ルピーを吸うだけ（移動も攻撃もしない）。上と同じ「この tick を専有する」枠。
-			const leeching = (!isGuarding && !frozen && !leaping && !shelled) ? tickLeech(e, meta, now) : false;
+			// ⚠️ 体当たりの予告中（`slamming`）は張り付かない（2026-10-12 キュー47 D1 2,0 で発覚）。
+			//    到達は体当たり 1.5 ＞ 張り付き 1.1 ∴寄ってくる σ は先に予告を始める。予告中に張り付けると、
+			//    張り付いたまま予告が解決して体力を削っていた（「張り付いても体力は削らない」②にも、
+			//    「予告中は他の攻撃をしない」k-7.5 にも反する）。予告を解決してから張り付く。
+			const leeching = (!isGuarding && !frozen && !leaping && !shelled && !slamming) ? tickLeech(e, meta, now) : false;
 			// Phase 5.5k k-9: 直線突進（突進猪）＝溜め〜突進〜硬直の間 移動/攻撃を専有する
 			// （跳躍と同じ枠）。硬直中も idle へ戻る判断はここで行う＝周期が硬直で狂わない。
 			const dashing = (!isGuarding && !frozen && !leaping && !shelled && !leeching)
