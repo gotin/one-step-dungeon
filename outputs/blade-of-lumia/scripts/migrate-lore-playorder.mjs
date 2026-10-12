@@ -1,6 +1,9 @@
 #!/usr/bin/env node
 // Phase 9-3 (story B): Renumber "ザーネルの記憶" tablets to PLAY ORDER.
 //
+// ❌ 失効（2026-10-12・キュー46）: 本文は scripts/migrate-q46-lore.mjs で書き直した。
+// これを流し直すと D8/D7 の本文が古い文（「七つ目の欠片」など）に戻る＝流さないこと。
+//
 // Play order = D1,D2,D3,D4,D6,D5,D8,D7,(塔=終章).
 // Tablets are stored per dungeon layer; D1-D4 + dark_tower already match.
 // Only the last four need renumbering, and D8/D7 bodies are rewritten so the

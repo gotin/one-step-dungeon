@@ -79,6 +79,28 @@ test.describe('Blade of Lumia – ザーネルの記憶 石碑（Phase 6-2）', 
 		}
 	});
 
+	// キュー46（2026-10-12）: ダンジョンは順不同で回れる∴碑と案内役は「何個目の欠片」
+	// 「最後の欠片」「残る欠片は〜」のような攻略順を固定した言い回しをしない（F15 の退行止め）。
+	// 女王の状態は「海の底に沈められ、そこで石になって眠る」に揃える（F9）。
+	test('碑と案内役は攻略順を固定しない・女王の状態が老賢者と碑で揃っている', () => {
+		const { layers } = loadMap();
+		const ORDER_FIXED = /[一二三四五六七八]つ目の\s*欠片|最後の\s*欠片|残る\s*欠片/;
+		const tabletLines = TABLETS.flatMap((t) => layers[t.layer].stages[t.stage].signData[t.key].lines.map((l) => [t.frag, l]));
+		const sage = layers.field.stages['7,14'].npcData['3,3'];
+		const ern = layers.field.stages['13,5'].npcData['4,5'];
+		expect(sage.name).toBe('老賢者');
+		expect(ern.name).toBe('賢者 エルン');
+		const guideLines = [sage, ern].flatMap((n) => Object.entries(n.linesAfterBoss).flatMap(([k, ls]) => ls.map((l) => [`${n.name} ${k}`, l])));
+		for (const [where, line] of [...tabletLines, ...guideLines]) {
+			expect(line, `${where}: 攻略順を固定した言い回し`).not.toMatch(ORDER_FIXED);
+		}
+		const sageStory = sage.lines.join('');
+		expect(sageStory, '老賢者が「海に沈められた」を言っていない').toMatch(/海の底/);
+		expect(sageStory, '老賢者が「石に変えられた」を言っていない').toMatch(/石に変え/);
+		const sono3 = layers.dungeon_3.stages['0,0'].signData['1,9'].lines.join('');
+		expect(sono3, '其の三が「海の底で石になった」を言っていない').toMatch(/海の 底[\s\S]*石と なり/);
+	});
+
 	test('実プレイ: dungeon_1 entry の石碑を読むと「ザーネルの記憶」が出る', async ({ page }) => {
 		const errors = [];
 		page.on('pageerror', (e) => errors.push(e.message));
