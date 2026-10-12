@@ -26,8 +26,8 @@ const STAGES = MAP.layers.field.stages;
 const enemiesOf = (s) => s.tiles.flat().filter(isEnemyTile);
 
 // 敵0体で、KEEP_EMPTY にも載っていない画面の数の上限。地域を1つ埋めるたびに締める。
-// 2026-10-12：キュー49 着手前 211 → ① G0 村まわりで 204。最終目標＝0（空けておく画面は全部 KEEP_EMPTY に理由つきで載せる）。
-const UNFILLED_ZERO_BASELINE = 204;
+// 2026-10-12：キュー49 着手前 211 → ① G0 村まわりで 204 → ② 草原の残り（G1〜G7）で 128。最終目標＝0（空けておく画面は全部 KEEP_EMPTY に理由つきで載せる）。
+const UNFILLED_ZERO_BASELINE = 128;
 
 test.describe('① 強さの段の計算', () => {
 	test('距離の段の境目', () => {
@@ -64,6 +64,13 @@ test.describe('② 段の上限と置ける敵（field 全画面）', () => {
 			for (const ch of enemiesOf(s)) if (!ENEMY_META[ch].isBoss && !allowed.has(ch)) bad.push(`${k}:${ch}`);
 		}
 		expect(bad).toEqual([]);
+	});
+
+	// field は道具なしでほぼ全画面に歩いて届く＝段では弱点道具の入手を保証できない
+	// （enemy-placement.spec.js ④ の不変条件）。段の表が弱点持ちを許すと、表どおりに置いて落ちる。
+	test('どの段でも弱点持ちの雑魚は置けない', () => {
+		const weak = [...enemiesAllowedAt(5)].filter((ch) => ENEMY_META[ch].weakness);
+		expect(weak).toEqual([]);
 	});
 
 	test('KEEP_EMPTY の画面には敵が居ない', () => {
