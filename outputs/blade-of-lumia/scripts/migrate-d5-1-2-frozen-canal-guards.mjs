@@ -37,6 +37,13 @@
 //   ・はしごを持たない到達室から `1,1`・`0,1`（鉄の盾の宝箱）・`0,2` が抜ける（意図した変化）。
 //     `1,0`（鍵の部屋）・ボス `0,0` は元々はしごが要る＝本筋の門が2部屋手前へ来ただけ。
 //
+// ■ 追記（2026-10-12 / キュー48）：南の口の脇 (8,4) に木の看板「凍れる 道しるべ」を置いた
+//   キュー46（`0dcae9a`）で其の六（ボス部屋の碑）から「炎の勇者よ、氷を溶かし」を消したため、
+//   D5 の強制経路からボス L（氷のリヴァイアサン）の弱点＝火の手がかりが無くなった
+//   （`tests/weakness-hints.spec.js` ②）。碑は過去の物語＝戦う前の案内を書かない（キュー46 の決まり）∴
+//   案内役の看板を強制経路の途中＝この部屋に足した（置き場所はユーザー判定＝(b) 途中に看板）。
+//   (8,4) は南の口から入った最初の床 (8,5) の西隣＝入ってすぐ読める・はしごの渡り（列5・6）を塞がない。
+//
 // 使い方:
 //   node scripts/migrate-d5-1-2-frozen-canal-guards.mjs --dry   # 検査と差分のみ
 //   node scripts/migrate-d5-1-2-frozen-canal-guards.mjs         # 書き込み
@@ -82,7 +89,7 @@ export const WATER_MAP = [
 	'#...........',
 	'#..#....#..#',
 	'#..........#',
-	'#..........#',
+	'#...i......#',
 	'#####..#####',
 ];
 export const ENEMIES = { '2,2': TILE.LURK_SHARK, '1,9': TILE.ARCHER_FISH, '4,10': 'θ' };
@@ -94,6 +101,16 @@ export const CROSSINGS = ['2,5', '2,6'];
 export const ENTRY = '8,5';    // 南の口の内側（入口 `1,3` から来たときの最初の床）
 const CHEST_CONTENTS = { [CHEST_CELL]: { type: 'item', item: 'ladder', name: 'はしご' } };
 const SHOW = { [CHEST_CELL]: { trigger: 'killAll' } };
+// キュー48：ボス L の弱点（火）の手がかり。`tests/weakness-hints.spec.js` ②は「敵の名の一部」と
+// 「火の行い」が同じ行にあることを求める＝2行目の「氷」「炎」がそれ。
+export const SIGN_CELL = '8,4';
+export const SIGN = {
+	name: '凍れる 道しるべ',
+	lines: [
+		'北の 奥に 氷のリヴァイアサンが 待つ。',
+		'その 氷の 鱗は 炎で 溶ける。',
+	],
+};
 
 // ── 歩行の到達（番人も import する） ─────────────────────────────────────
 const inside = (r, c) => r >= 0 && r < ROWS && c >= 0 && c < COLS;
@@ -178,6 +195,10 @@ function main() {
 		room.bgTiles = wantBg;
 		log.push(`  ${ROOM}: bgTiles に水 ${WATER.length} 枚`);
 	}
+	if (JSON.stringify(room.signData ?? {}) !== JSON.stringify({ [SIGN_CELL]: SIGN })) {
+		room.signData = { [SIGN_CELL]: JSON.parse(JSON.stringify(SIGN)) };
+		log.push(`  ${ROOM}: 看板 ${SIGN_CELL}「${SIGN.name}」（キュー48）`);
+	}
 	if (JSON.stringify(room.showConditions ?? {}) !== JSON.stringify(SHOW)) {
 		room.showConditions = JSON.parse(JSON.stringify(SHOW));
 		log.push(`  ${ROOM}: 宝箱 ${CHEST_CELL} を敵全滅（killAll）で封印`);
@@ -220,9 +241,12 @@ function main() {
 		check(`脅威度 ${threat.toFixed(1)}＝D5 の看板部屋 ${sig.stage}（${sigThreat.toFixed(1)}）より軽い`, threat === 56.5 && threat < sigThreat);
 		check(`EXTRA_ENEMY_ROOMS に宣言がある`, EXTRA_ENEMY_ROOMS.some((e) => e.layer === LAYER && e.stage === ROOM));
 	}
-	check(`柱の残骸は (6,3)(6,8) の2本だけ・石・門・座・看板が無い`,
+	check(`柱の残骸は (6,3)(6,8) の2本だけ・石・門・座・石碑が無い`,
 		JSON.stringify(cellsOf(tl, (ch) => ch === TILE.WALL).filter((k) => { const [r, c] = P(k); return r > 0 && r < 9 && c > 0 && c < 11; })) === JSON.stringify(['6,3', '6,8'])
-		&& cellsOf(tl, (ch) => [TILE.STONE, TILE.GATE, TILE.SWITCH, TILE.BUTTON, TILE.SIGN, TILE.MONUMENT, TILE.TORCH].includes(ch)).length === 0);
+		&& cellsOf(tl, (ch) => [TILE.STONE, TILE.GATE, TILE.SWITCH, TILE.BUTTON, TILE.MONUMENT, TILE.TORCH].includes(ch)).length === 0);
+	check(`看板は ${SIGN_CELL} の1枚だけ・本文つき（キュー48）`,
+		JSON.stringify(cellsOf(tl, (ch) => ch === TILE.SIGN)) === JSON.stringify([SIGN_CELL])
+		&& JSON.stringify(room.signData) === JSON.stringify({ [SIGN_CELL]: SIGN }));
 
 	// ── ② 水路とはしご ───────────────────────────────────────────────
 	{
@@ -270,7 +294,10 @@ function main() {
 		const lost = sorted(base.foot.reachedRooms).filter((k) => !now.foot.reachedRooms.has(k));
 		const gained = sorted(now.foot.reachedRooms).filter((k) => !base.foot.reachedRooms.has(k));
 		check(`はしご無しの到達室から抜けるのは 1,1 とその先だけ（実測 抜け=[${lost.join(' ')}] 増え=[${gained.join(' ')}]）`,
-			JSON.stringify(lost) === JSON.stringify(['0,1', '0,2', '1,1']) && gained.length === 0);
+			// ❌ 失効（2026-10-12・キュー48）：旧期待値は抜け=[0,1 0,2 1,1] ちょうど。その後の D5 の作り替えで
+			//   `0,1`・`0,2` は書き換え前の盤面でも徒歩では届かなくなった∴抜けは [1,1] だけになりうる。
+			//   守るのは「抜けは 1,1 とその先に限る・1,1 は必ず抜ける・増えない」（番人 spec の「徒歩で入れない」も同じ）。
+			lost.includes('1,1') && lost.every((k) => ['0,1', '0,2', '1,1'].includes(k)) && gained.length === 0);
 		check(`レイヤーの dead-edge が 0（実測 ${now.ladder.deadEdges.length}）`, now.ladder.deadEdges.length === 0);
 	}
 
