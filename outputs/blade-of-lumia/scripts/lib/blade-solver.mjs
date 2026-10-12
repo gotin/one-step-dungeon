@@ -304,13 +304,17 @@ export function makeSolver(tiles, bg, linkSpec, breakDefs, litInit,
       if (nb !== broken) out.push(enc(pr, pc, stones, mask, nb, lit));
     }
 
-    // ブーメラン: 火元があれば、4方向へ飛ばして通過した 'H' を点ける。
-    // 実エンジンは炎を1本運ぶが、ソルバーでは「その方向の直線上の H を全部点ける」＝
-    // プレイヤーが順に投げ分ければ到達できるので、単調増加の上界として安全。
-    const anyLit = torchCells.some((_, i) => lit & (1 << i));
-    if (!noTools && anyLit) {
+    // ブーメラン: 4方向へ飛ばし、通った直線（壁・未破壊 '!' まで）に**点いた 'H' が1本でも
+    // あれば**、その直線上の 'H' を全部点ける。
+    // 実エンジン（projectile.js collectAlongBoomerang）＝往路で点いた火を拾って以後の消えた火に
+    // 点け、復路で同じ直線を戻るので、拾う前に通った消えた火にも点く∴「直線上に火元が在る」
+    // ことが条件の全部。⚠️ 2026-10-12（キュー47・D6 `1,1`）までは「部屋のどこかに火があれば
+    // 直線上を全部点ける」だった＝火元の無い直線でも点いたので、継ぎ渡しの順序（A を点けて
+    // からでないと B へ運べない）を測れなかった。射程は見ない（銀・二周目は部屋の端まで届く
+    // ＝射程を外すのは「点けられる」側の上界として安全）。
+    if (!noTools && lit) {
       for (const [dr, dc] of DIRS) {
-        let rr = pr + dr, cc = pc + dc, nl = lit;
+        let rr = pr + dr, cc = pc + dc, line = 0;
         while (rr >= 0 && rr < ROWS && cc >= 0 && cc < COLS) {
           const ch = tiles[rr][cc];
           if (ch === TILE.WALL) break;
@@ -319,9 +323,10 @@ export function makeSolver(tiles, bg, linkSpec, breakDefs, litInit,
             if (bi < 0 || (broken & (1 << bi)) === 0) break;
           }
           const ti = torchCells.indexOf(`${rr},${cc}`);
-          if (ti >= 0) nl |= (1 << ti);
+          if (ti >= 0) line |= (1 << ti);
           rr += dr; cc += dc;
         }
+        const nl = (line & lit) ? (lit | line) : lit;
         if (nl !== lit) out.push(enc(pr, pc, stones, mask, broken, nl));
       }
     }
