@@ -26,6 +26,8 @@
 //    盤面の敵の並びは1体も動かしていない）。脅威度は敵の数値に比例して膨らんだだけで、
 //    部屋の相対的な重さの順序（＝梯子）は 8-4 前と同じ。
 
+import { FIELD_ENEMY_FILL } from './field-enemy-tiers.mjs';
+
 export const THREAT_OF = (meta) => (meta.hp * meta.atk) / ((meta.def ?? 0) + 1);
 
 // mode: 'replace' … その部屋の既存の雑魚を全部消してから置く（部屋の性格を作り替える）
@@ -857,6 +859,11 @@ export const EXTRA_ENEMY_ROOMS = [
 			+ '箱の壁に阻まれて出てこない（東西の通り抜けは邪魔されない）。裏口の前に立つと出てくる。宝を取りに入ると張り付いてルピーを吸う'
 			+ '＝倒すか、叩いて剥がしながら拾うか。σ は弱点の道具を持たない。',
 	},
+	// 実行キュー49＝field の敵の少ない画面を埋めた配置。意図（why）と段の検査は
+	// `scripts/lib/field-enemy-tiers.mjs` の FIELD_ENEMY_FILL が持つ＝ここでは宣言を合流させるだけ。
+	...FIELD_ENEMY_FILL.map((e) => ({
+		layer: 'field', stage: e.stage, by: 'scripts/migrate-field-enemies-fill.mjs', why: e.why,
+	})),
 ];
 
 // 触ってはいけない部屋（`tests/dungeon-key-gate.spec.js` ⑨ が脅威度を固定している関門）。
