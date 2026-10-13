@@ -73,8 +73,9 @@ test.describe('石碑・転移の石碑 ①②⑤（データ）', () => {
 				expect(isStoneName(name), `碑でない名前の石碑: ${at}`).toBe(true);
 			}
 		}
-		// 2026-10-03 の移行で 96 → 2026-10-10 キュー41 で D2 `2,2`「対の祠の碑」を足して 97 → 2026-10-11 D2 `3,3`「砂門の碑」で 98。
-		expect(monuments, '石碑の数（2026-10-03 の移行で 96・D2 2,2 対の祠で 97・D2 3,3 砂門で 98）').toBe(98);
+		// 2026-10-03 の移行で 96 → 2026-10-10 キュー41 で D2 `2,2`「対の祠の碑」を足して 97 → 2026-10-11 D2 `3,3`「砂門の碑」で 98
+		// → 2026-10-13 キュー56 で field 6,13 の「閉ざされた扉」の碑を扉ごと消して 97。
+		expect(monuments, '石碑の数（2026-10-03 の移行で 96・D2 2,2 対の祠で 97・D2 3,3 砂門で 98・field 6,13 の扉の碑を消して 97）').toBe(97);
 		expect(signs).toBeGreaterThan(50);
 		// 木の看板の現物は看板のまま
 		expect(map.layers.field.stages['7,2'].tiles[3][6]).toBe(TILE.SIGN);   // 北原の 辻の道標
@@ -279,15 +280,22 @@ test.describe('石碑 ⑦ エディタ', () => {
 		await page.evaluate((json) => localStorage.setItem('bladeOfLumiaMapData', json), JSON.stringify(map));
 		await page.reload();
 		await page.waitForSelector('#world-grid .world-cell.has-stage', { state: 'visible' });
-		// field 6,13＝看板 i(1,2)・村人 a(3,2)・石碑 †(4,8)
-		const sd = map.layers.field.stages['6,13'];
-		expect([sd.tiles[1][2], sd.tiles[3][2], sd.tiles[4][8]]).toEqual([TILE.SIGN, 'a', TILE.MONUMENT]);
-		await page.locator('#world-grid .world-cell').filter({ has: page.locator('.cell-coord', { hasText: '(6,13)' }) }).first().click();
-		await page.locator('#btn-edit-stage').click();
+		// field 7,14＝看板 i(6,9)・村人 a(3,5)／field 6,13＝石碑 †(7,8)
+		// （元は 6,13 の1画面で3種そろっていた。2026-10-13 キュー56 で看板・冒険者・扉の碑を消した∴2画面に分けた）
+		const village = map.layers.field.stages['7,14'];
+		const cave = map.layers.field.stages['6,13'];
+		expect([village.tiles[6][9], village.tiles[3][5], cave.tiles[7][8]]).toEqual([TILE.SIGN, 'a', TILE.MONUMENT]);
 		const item = (pk) => page.locator('#npc-list .link-item').filter({ has: page.locator('.link-item-header', { hasText: `NPC (${pk})` }) });
-		await expect(item('3,2').locator('select[data-f="sprite"]'), '村人のスプライト欄が消えた').toHaveCount(1);
-		await expect(item('1,2').locator('select[data-f="sprite"]'), '看板にスプライト欄').toHaveCount(0);
-		await expect(item('4,8').locator('select[data-f="sprite"]'), '石碑にスプライト欄').toHaveCount(0);
-		await expect(item('4,8').locator('textarea[data-f="lines"]'), '石碑の本文欄が無い').toHaveCount(1);
+		const openStage = async (coord) => {
+			await page.locator('#world-grid .world-cell').filter({ has: page.locator('.cell-coord', { hasText: `(${coord})` }) }).first().click();
+			await page.locator('#btn-edit-stage').click();
+		};
+		await openStage('7,14');
+		await expect(item('3,5').locator('select[data-f="sprite"]'), '村人のスプライト欄が消えた').toHaveCount(1);
+		await expect(item('6,9').locator('select[data-f="sprite"]'), '看板にスプライト欄').toHaveCount(0);
+		await page.locator('#tab-world').click();
+		await openStage('6,13');
+		await expect(item('7,8').locator('select[data-f="sprite"]'), '石碑にスプライト欄').toHaveCount(0);
+		await expect(item('7,8').locator('textarea[data-f="lines"]'), '石碑の本文欄が無い').toHaveCount(1);
 	});
 });

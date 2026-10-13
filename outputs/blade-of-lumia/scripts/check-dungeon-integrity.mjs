@@ -84,10 +84,12 @@ const TOOLS_USABLE_IN = toolsUsableIn(d);
 //           secret_grotto … 笛 reveal で現れる寄道（D8 の後）。ミラーシールドを持つ。`bossStage` 無し。
 //           void_shrine  … 羽衣ゲートの2部屋。`isBossRoom` を持たない代わりに脱出ゲート 'T' と
 //                          色門・石車がある。`bossStage` 無し。
+//           hidden_cave  … 草陰の祠（field 6,13 の茂みをロウソクで燃やすと出る）。2026-10-13 キュー56 で
+//                          奥の間（石＋ボタン＋かがり火2本・ハートの器）を足して2部屋になった∴検査に入れた。`bossStage` 無し。
 // 鍵の収支・links・関門・順序（5〜8）は種別に関係なく全レイヤーへ効かせる。
 const LAYER_KIND = {
   dark_tower: 'final', cave_1: 'side', warlord_lair: 'side', darklord_prison: 'side',
-  forest_cave: 'side', secret_grotto: 'side', void_shrine: 'side',
+  forest_cave: 'side', secret_grotto: 'side', void_shrine: 'side', hidden_cave: 'side',
 };
 
 // 鍵扉 D を「物理的な1枚の扉」に畳むための隣接規則。

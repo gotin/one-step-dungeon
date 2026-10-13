@@ -301,10 +301,11 @@ test.describe('構造物 – 実エンジンのドット密度', () => {
 	});
 
 	test('⑪ 扉・連結扉は door-sprite のまま 32 ドットをセル全面に貼る（正方格子）', async ({ page }) => {
-		const doorAt = findTile('field', '6,13', 'D');
-		expect(doorAt, 'field/6,13 に扉が無い').toBeTruthy();
+		// 石畳の町の家の扉（元は field 6,13 の扉＝2026-10-13 キュー56 で消した）
+		const doorAt = findTile('field', '13,5', 'D');
+		expect(doorAt, 'field/13,5 に扉が無い').toBeTruthy();
 		{
-			const p = new URLSearchParams({ fromEditor: '1', layer: 'field', stage: '6,13', row: '1', col: '1' });
+			const p = new URLSearchParams({ fromEditor: '1', layer: 'field', stage: '13,5', row: '1', col: '1' });
 			await page.goto(`${GAME}?${p.toString()}`);
 			await waitForBoard(page);
 			const probe = await readProbe(page, { 扉: doorAt });

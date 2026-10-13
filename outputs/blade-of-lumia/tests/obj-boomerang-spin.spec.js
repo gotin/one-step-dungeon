@@ -71,7 +71,7 @@ async function throwAndReadSpin(page, dir = 'right') {
   }, dir);
 }
 
-async function seedBoomerangSave(page, stageKey_, px, py) {
+async function seedBoomerangSave(page, stageKey_, px, py, layer_ = 'field') {
   const saveData = JSON.stringify({
     player: {
       x: px, y: py,
@@ -83,7 +83,7 @@ async function seedBoomerangSave(page, stageKey_, px, py) {
       rupees: 0, triforceCount: 0,
     },
     stageState: {},
-    currentLayer: 'field',
+    currentLayer: layer_,
     stageKey: stageKey_,
     heroDir: 'right',
   });
@@ -203,7 +203,8 @@ test.describe('Phase 10d-6 – ブーメラン飛翔中の回転アニメーシ�
   });
 
   test('⑥運搬中：ブーメラン本体は回転するが付随アイコン（.boomerang-carry）は回転しない', async ({ page }) => {
-    await seedBoomerangSave(page, '6,13', 6, 2);
+    // 柵の奥の鍵（test_mechanics 3,0 の (2,8)＝field 6,13 から片づけた配置と同じ）
+    await seedBoomerangSave(page, '3,0', 6, 2, 'test_mechanics');
 
     const info = await page.evaluate(() => {
       window.__game.useSubItem();

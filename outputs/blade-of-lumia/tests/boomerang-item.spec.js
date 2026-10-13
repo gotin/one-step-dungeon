@@ -8,10 +8,14 @@
 import { test, expect } from '@playwright/test';
 import { GAME_URL, SAVE_KEY } from './helpers.js';
 
-// field '6,13' に配置されたブーメランパズル：
+// 検証ステージ test_mechanics '3,0' のブーメランパズル：
 //   (2,7)=f (fence)  (2,8)=K (key)  (2,9)=f (fence)
+// （元は field '6,13' の同じ配置を使っていた。field 側は 2026-10-13 キュー56 で片づけた＝
+//  柵と鍵は消えた∴同じ配置を持つ検証ステージへ向け直した）
 // プレイヤーを (2,6) に置いて右向きにブーメランを投げると、
 // fence (passable for projectile) を越えて key K を回収できる。
+
+const KEY_ROOM = '3,0';   // test_mechanics
 
 async function seedBoomerang(page, stageKey, px, py, extraSave = {}) {
   const saveData = JSON.stringify({
@@ -45,9 +49,9 @@ async function seedBoomerang(page, stageKey, px, py, extraSave = {}) {
 test.describe('Blade of Lumia – ブーメランでアイテム回収（Phase 4-4）', () => {
 
   test('ブーメランが K（鍵）を通過すると player.keys が 1 増加する', async ({ page }) => {
-    // field '6,13' (2,6) に立って右向きにブーメランを投げる
+    // test_mechanics '3,0' (2,6) に立って右向きにブーメランを投げる
     // ブーメランは (2,7)=fence を通過し (2,8)=K に到達して回収する
-    await seedBoomerang(page, '6,13', 6, 2);
+    await seedBoomerang(page, KEY_ROOM, 6, 2, { currentLayer: 'test_mechanics' });
 
     const result = await page.evaluate(async () => {
       const before = window.__game.getState().player.keys;
@@ -65,7 +69,7 @@ test.describe('Blade of Lumia – ブーメランでアイテム回収（Phase 4
 
   test('回収済みの鍵はブーメランで再収集されない（pickedKeys ガード）', async ({ page }) => {
     // 同じ鍵を2回投げても keys は 1 のまま
-    await seedBoomerang(page, '6,13', 6, 2);
+    await seedBoomerang(page, KEY_ROOM, 6, 2, { currentLayer: 'test_mechanics' });
 
     const result = await page.evaluate(async () => {
       // 1回目：鍵を回収
@@ -103,7 +107,7 @@ test.describe('Blade of Lumia – ブーメランでアイテム回収（Phase 4
   // ── Phase 4-6: アイテム運搬（初代ゼルダ式）＝拾った瞬間は入手せず、戻ってキャッチで確定 ──
 
   test('①往路でアイテムに触れても即入手しない（ブーメランが運搬中）', async ({ page }) => {
-    await seedBoomerang(page, '6,13', 6, 2);
+    await seedBoomerang(page, KEY_ROOM, 6, 2, { currentLayer: 'test_mechanics' });
 
     const result = await page.evaluate(() => {
       window.__game.useSubItem();
@@ -121,7 +125,7 @@ test.describe('Blade of Lumia – ブーメランでアイテム回収（Phase 4
   });
 
   test('②運搬中はブーメランに付随アイコン（.boomerang-carry）が表示される', async ({ page }) => {
-    await seedBoomerang(page, '6,13', 6, 2);
+    await seedBoomerang(page, KEY_ROOM, 6, 2, { currentLayer: 'test_mechanics' });
 
     const seen = await page.evaluate(() => {
       window.__game.useSubItem();
@@ -136,7 +140,7 @@ test.describe('Blade of Lumia – ブーメランでアイテム回収（Phase 4
   });
 
   test('②戻ってキャッチが成立すると運搬アイテムが確定入手される', async ({ page }) => {
-    await seedBoomerang(page, '6,13', 6, 2);
+    await seedBoomerang(page, KEY_ROOM, 6, 2, { currentLayer: 'test_mechanics' });
 
     const result = await page.evaluate(() => {
       window.__game.useSubItem();
@@ -157,7 +161,7 @@ test.describe('Blade of Lumia – ブーメランでアイテム回収（Phase 4
   //    ときの断り／キャッチの通知）＝どちらも黙らせた。**帯が点くのは「何かを得たとき」だけ**
   //    ∴運搬していた物の文（鍵・ルピー）は残る＝この本が両方を同時に縛る。
   test('⑤ 投擲中の押し直しとキャッチは黙る（運搬していた物の文だけ出る）', async ({ page }) => {
-    await seedBoomerang(page, '6,13', 6, 2);
+    await seedBoomerang(page, KEY_ROOM, 6, 2, { currentLayer: 'test_mechanics' });
 
     const bar = () => page.evaluate(() => {
       const el = document.getElementById('msg-bar');
@@ -196,7 +200,7 @@ test.describe('Blade of Lumia – ブーメランでアイテム回収（Phase 4
   });
 
   test('④取り逃し（キャッチ前にステージ遷移）＝入手されず、アイテムはその場に残る', async ({ page }) => {
-    await seedBoomerang(page, '6,13', 6, 2);
+    await seedBoomerang(page, KEY_ROOM, 6, 2, { currentLayer: 'test_mechanics' });
 
     const result = await page.evaluate(() => {
       // 投げて運搬状態にする
@@ -205,11 +209,11 @@ test.describe('Blade of Lumia – ブーメランでアイテム回収（Phase 4
       const carrying = window.__game.getProjectiles().find(p => p.type === 'boomerang')?.carriedCount ?? 0;
 
       // キャッチ前に別ステージへ遷移＝clearProjectiles で取り逃し
-      window.__game.enterStage('field', '7,14', 1, 1);
+      window.__game.enterStage('test_mechanics', '4,0', 1, 1);
       const afterMiss = window.__game.getState().player.keys;
 
       // 元ステージへ戻って再度投げると、鍵はまだ回収できる（＝その場に残っていた）
-      window.__game.enterStage('field', '6,13', 2, 6);
+      window.__game.enterStage('test_mechanics', '3,0', 2, 6);
       window.__game.useSubItem();
       window.__game.step(20);
       const afterRetry = window.__game.getState().player.keys;
@@ -223,7 +227,7 @@ test.describe('Blade of Lumia – ブーメランでアイテム回収（Phase 4
   test('キャッチ後にブーメランの DOM 要素（.proj-el）が残らない（残骸バグ回帰）', async ({ page }) => {
     // Phase 4-6 の moveProjEl 自己修復が、除去済みブーメランを毎tick末尾で
     // 復活させて画面に残骸が残るバグの回帰テスト。
-    await seedBoomerang(page, '6,13', 6, 2);
+    await seedBoomerang(page, KEY_ROOM, 6, 2, { currentLayer: 'test_mechanics' });
 
     const leftover = await page.evaluate(() => {
       window.__game.useSubItem();
