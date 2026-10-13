@@ -363,14 +363,23 @@ test.describe('目的地マーク（一覧・選択・方向表示）', () => {
 		await finishDialog(page);
 
 		// ③ ボタンを選ぶ枠（ゲームオーバー）が出ている間は通す＝マウス無しでボタンへ届く道を残す
+		// ⚠️ 枠が出ると input.js が MutationObserver → requestAnimationFrame で retry を自動で選ぶ。
+		//    旧形（Tab の後のフォーカス先＝retry を測る）は、この rAF と Tab の競争だった
+		//    （Tab が先＝body から retry へ移って緑／rAF が先＝retry から probe へ移って赤。
+		//    キュー50 で `--repeat-each=10` を5勝5敗で実測）。
+		//    ∴自動の選択が落ち着くのを待ってから、フォーカス先ではなく「Tab を飲んだか」を直に測る。
 		await page.evaluate(() => {
+			window.__tabPrevented = [];
+			// document の listener（ゲーム側）より後に走る window の bubble で読む
+			window.addEventListener('keydown', e => { if (e.key === 'Tab') window.__tabPrevented.push(e.defaultPrevented); });
 			document.getElementById('gameover-overlay')?.classList.remove('hidden');
 		});
+		await page.waitForFunction(() => document.activeElement?.id === 'gameover-retry', null, { timeout: 2000 });
 		await page.keyboard.press('Tab');
 		expect(
-			await page.evaluate(() => document.activeElement?.id ?? ''),
+			await page.evaluate(() => window.__tabPrevented),
 			'ボタンの枠が出ているのに Tab を飲んでいる＝キーボードでボタンへ届かない',
-		).toBe('gameover-retry');
+		).toEqual([false]);
 	});
 
 	test('④ 見取り図に印のドットが出る（未訪問の画面にも）', async ({ page }) => {
