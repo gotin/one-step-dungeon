@@ -8,6 +8,12 @@
 
 ---
 
+### 2026-10-13（13） — **キュー58＝消音は BGM と効果音を別々のゲインで切り替える（ポーズ画面のボタンで片方ずつ・M キーで両方まとめて）。ゲインは `.value` へ直接入れる**（🧠 Opus・実行キュー58・✅ 2026-10-13 ユーザー判定 OK「OK コミットして」）
+- **決定：** 音の出口は `shared/sounds.js` の2か所だけ（効果音＝`tone()`／BGM＝`_getBgmGain()`）∴効果音にもゲインを1つ足し、2つを 0/1 で切り替える。鳴らす処理（BGM の予約・効果音の発火）は止めない。状態は localStorage `bladeOfLumiaSound`。M キーは input.js で場面ごとの分岐より前（会話中・ポーズ中・店でも効く）。プレイメモの入力欄の M は枠が伝播を止めるので届かない。
+- **理由：** ユーザー指定「BGMと効果音別々にスイッチできて、キーバインドは両方いっぺんにon/off」。初案（主ゲイン1つ・まとめてだけ）は失効。
+- **ハマりどころ：** ① `stopBgm()` は AudioContext を閉じて作り直す＝効果音のゲインも文脈ごとに作り直す（`_seGain.context !== ctx` で判定）。② `setValueAtTime(v, currentTime)` は描画の次の区切りまで `gain.value` に出ない＝直後に読むと古い値（10 回反復で 1 割前後赤）→ `cancelScheduledValues`＋`.value` 直入れで 120/120 緑。③ ポーズ中のボタンにフォーカスが残ると Space（ゲーム側で何もしない）がボタンを押し直す＝クリック後に blur（Enter は pause の preventDefault で押し直しが起きない＝歯は Space で測る）。
+- **結果：** 番人 `tests/sound-toggle.spec.js` 4本・歯 5 通り赤（効果音のゲインを通さない／BGM 開始で設定を無視／M が常に消す／blur しない／保存しない）。
+
 ### 2026-10-13（12） — **キュー57＝プレイメモは「開発サーバが work/playtest-notes.json へ直接書く」。File System Access はプレビューの iframe を作り直すたびにフォルダを選び直させる∴使わない。キーは N（プレビューだけ）**（🧠 Opus・実行キュー57・✅ 2026-10-13 ユーザー判定 OK「OKいい感じだね」）
 - **決定：** プレビュー（`fromEditor=1`）で N キー（または左下の「メモ」ボタン）→ ゲームを止めて入力欄。Ctrl/⌘+Enter で保存＝`/__playtest-notes` へ POST → vite のミドルウェア（`scripts/vite-playtest-notes.mjs`・`outputs/vite.config.mjs` で登録）が `work/playtest-notes.json` に `{id, createdAt, layer, stage, row, col, text, preview}` を足す。`preview` は ps_ で始まる URL パラメータ＝Claude が同じ持ち物で再現するため。枠にはその画面の既存メモ（削除つき）も並ぶ。ファイルは git 管理外（手元で Claude が読む入力＝履歴は要らない）。
 - **理由：** PLAN 案は「localStorage＋File System Access で書き出し」だったが、エディタのプレビューは毎回 iframe を作り直す＝フォルダの許可がページごとに消える（エディタの `saveToFile` も `_workDirHandle` をページ内でしか持っていない）。書き出しを手でやる手順が残ると、通しプレイの途中で書いたメモが Claude に届かない。開発サーバは手元のファイルを直接書ける＝書いた瞬間に届く。

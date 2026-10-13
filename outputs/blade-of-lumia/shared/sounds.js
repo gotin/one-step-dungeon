@@ -10,6 +10,73 @@ export function getAudioContext() {
 	return audioContext;
 }
 
+// ── 消音スイッチ（実行キュー58）────────────────────────────────
+// BGM と効果音を別々に切り替える。音の出口は2か所だけ＝効果音は tone()、BGM は
+// _getBgmGain() ∴その2か所のゲインを 0/1 にすれば全部の音に効く。
+// 鳴らす処理（BGM の予約・効果音の発火）は止めない＝戻した瞬間から次の音が鳴る。
+// 状態は localStorage に残す（再読み込み・次回起動でも同じ）。
+const SOUND_SETTINGS_KEY = 'bladeOfLumiaSound';
+const _soundSettings = { bgm: true, se: true };
+try {
+	const saved = JSON.parse(localStorage.getItem(SOUND_SETTINGS_KEY) || 'null');
+	if (saved && typeof saved === 'object') {
+		if (typeof saved.bgm === 'boolean') _soundSettings.bgm = saved.bgm;
+		if (typeof saved.se  === 'boolean') _soundSettings.se  = saved.se;
+	}
+} catch { /* 読めなければ両方 ON */ }
+
+export function getSoundSettings() { return { ..._soundSettings }; }
+
+function _saveSoundSettings() {
+	try { localStorage.setItem(SOUND_SETTINGS_KEY, JSON.stringify(_soundSettings)); } catch { /* 書けなくても続ける */ }
+}
+
+// ⚠️ ゲインは `.value` へ直接入れる。setValueAtTime(v, currentTime) は描画の次の区切りで
+//    初めて反映される＝直後に読むと古い値のまま（テストで 1 割前後ずれた）。
+function _applyGain(node, on) {
+	if (!node) return;
+	try { node.gain.cancelScheduledValues(0); node.gain.value = on ? 1 : 0; } catch (_) {}
+}
+
+export function setBgmEnabled(on) {
+	_soundSettings.bgm = !!on;
+	_saveSoundSettings();
+	_applyGain(_bgmGain, _soundSettings.bgm);
+}
+
+export function setSeEnabled(on) {
+	_soundSettings.se = !!on;
+	_saveSoundSettings();
+	_applyGain(_seGain, _soundSettings.se);
+}
+
+/** M キー：どちらかが鳴っていれば両方消す／両方消えていれば両方鳴らす。 */
+export function toggleAllSound() {
+	const on = !_soundSettings.bgm && !_soundSettings.se;
+	setBgmEnabled(on);
+	setSeEnabled(on);
+	return getSoundSettings();
+}
+
+// 効果音の出口。AudioContext は stopBgm() が閉じて作り直す∴ゲインも文脈ごとに作る。
+let _seGain = null;
+function _getSeGain(ctx) {
+	if (!_seGain || _seGain.context !== ctx) {
+		_seGain = ctx.createGain();
+		_seGain.gain.value = _soundSettings.se ? 1 : 0;
+		_seGain.connect(ctx.destination);
+	}
+	return _seGain;
+}
+
+/** テスト用：今の出口ゲインの値（まだ作られていなければ null）。 */
+export function getSoundGainsForTest() {
+	return {
+		bgm: _bgmGain ? _bgmGain.gain.value : null,
+		se:  _seGain && _seGain.context === audioContext ? _seGain.gain.value : null,
+	};
+}
+
 export function tone(ctx, start, frequency, duration, type, volume) {
 	const osc  = ctx.createOscillator();
 	const gain = ctx.createGain();
@@ -18,7 +85,7 @@ export function tone(ctx, start, frequency, duration, type, volume) {
 	gain.gain.setValueAtTime(volume, start);
 	gain.gain.exponentialRampToValueAtTime(0.001, start + duration);
 	osc.connect(gain);
-	gain.connect(ctx.destination);
+	gain.connect(_getSeGain(ctx));
 	osc.start(start);
 	osc.stop(start + duration + 0.01);
 }
@@ -32,6 +99,7 @@ let _bgmGain    = null;
 function _getBgmGain(ctx) {
 	if (!_bgmGain) {
 		_bgmGain = ctx.createGain();
+		_bgmGain.gain.value = _soundSettings.bgm ? 1 : 0;
 		_bgmGain.connect(ctx.destination);
 	}
 	return _bgmGain;
@@ -264,7 +332,7 @@ export function playBgm(key = 'field') {
 	_bgmPlaying = true;
 	_bgmKey = key;
 	const ctx = getAudioContext();
-	_getBgmGain(ctx).gain.setValueAtTime(1, ctx.currentTime);
+	_applyGain(_getBgmGain(ctx), _soundSettings.bgm);
 	if (key === 'field')        _playFieldBgmLoop(ctx);
 	else if (key === 'dungeon') _playDungeonBgmLoop(ctx);
 	else if (key === 'boss')    _playBossBgmLoop(ctx);

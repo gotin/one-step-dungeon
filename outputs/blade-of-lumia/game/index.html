@@ -77,6 +77,12 @@
       <div id="pause-items"></div>
       <div id="pause-hint">← → でアイテム　Escape で決定・再開</div>
       <div id="pause-stats"></div>
+      <!-- 音の切り替え（実行キュー58）＝クリック／タップで片方ずつ。M キーは両方まとめて -->
+      <div id="pause-sound">
+        <button id="pause-sound-bgm" class="pause-sound-btn" type="button">BGM：ON</button>
+        <button id="pause-sound-se" class="pause-sound-btn" type="button">効果音：ON</button>
+        <span id="pause-sound-hint">M キーで両方まとめて</span>
+      </div>
       <!-- 地図（その層の地図を入手済みのときのみ表示）
            ダンジョン＝部屋グリッド／field＝1セル1px の見取り図（キュー15）。
            見出しの文字は層によって変わる∴文字だけ別の span に分ける（絵は起動時に

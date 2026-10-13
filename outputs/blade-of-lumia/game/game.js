@@ -41,6 +41,7 @@ import { createUi } from './ui.js';
 // ── 転移の石碑（キュー27）─────────────────────────────────────────
 import { createWarpMenu } from './warp-menu.js';
 import { initPlaytestNotes } from './playtest-notes.js';
+import { initSoundToggle } from './sound-toggle.js';
 import { warpStoneId, warpLandingCandidates, WARP_NO_LANDING_TILES } from '../shared/warp-stones.js';
 // ── 投擲物・爆弾（Phase 0-2 Step 5: projectile.js へ切り出し）───────────────
 import { createProjectile } from './projectile.js';
@@ -852,6 +853,8 @@ const { checkStoneOnSwitch, evaluateConditions, refreshGates } = createCondition
 		toggleFlight: () => toggleFlight(),
 		togglePause,
 		toggleDebugMode,
+		// 実行キュー58：M キー＝BGM・効果音をまとめて切り替え（ポーズ画面のボタンは片方ずつ）
+		toggleSound: initSoundToggle({ pulse: (t, ms) => pulse(t, ms) }).toggleAll,
 		advanceDialog,
 		closeShop,
 		shopSelectPrev,

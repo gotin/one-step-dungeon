@@ -6,6 +6,7 @@
 import { applyBgSpriteToCell } from '../shared/sprites.js';
 import { mountIconEls } from '../shared/ui-icons.js';
 import { ENEMY_META } from '../shared/enemies.js';
+import { getSoundSettings, getSoundGainsForTest, playSound, playBgm } from '../shared/sounds.js';
 import {
 	init,
 	updateBoardScale,
@@ -108,6 +109,10 @@ window.__game = {
 		const _inputModule = getInputModule();
 		if (k) (_inputModule ? _inputModule.heldKeys : null)?.delete(k);
 	},
+	// 実行キュー58：消音の状態（設定＋実際の出口ゲインの値）。playSound/playBgm は出口を作らせるため。
+	getSound: () => ({ ...getSoundSettings(), gains: getSoundGainsForTest() }),
+	playSound: (kind) => playSound(kind),
+	playBgm: (key) => playBgm(key),
 	movePlayer: (dir) => movePlayer(dir),
 	// 位置を変えず heroDir だけ向ける（道具の発射方向を確定させる検証用）。
 	setHeroDir: (dir) => callSetHeroDir(dir),

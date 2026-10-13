@@ -20,6 +20,7 @@
 //   useSubItem()       → サブアイテム使用
 //   togglePause()      → ポーズ切り替え
 //   toggleDebugMode()  → デバッグモード切り替え
+//   toggleSound()      → BGM・効果音をまとめて消音／解除（M キー・実行キュー58）
 //   advanceDialog()    → ダイアログ次へ
 //   closeShop()        → ショップを閉じる
 //   shopSelectPrev()   → ショップ選択前へ
@@ -56,6 +57,7 @@ export function initInput(deps) {
 		toggleFlight,
 		togglePause,
 		toggleDebugMode,
+		toggleSound,
 		advanceDialog,
 		closeShop,
 		shopSelectPrev,
@@ -150,6 +152,13 @@ export function initInput(deps) {
 				if (cur < 0) { btns[0].focus(); return; } // 何も選んでいなければ、まず選ぶだけ
 				btns[cur].click();
 			}
+			return;
+		}
+		// 消音（実行キュー58）：M＝BGM・効果音をまとめて切り替え。会話中・ポーズ中・店でも効く
+		// ＝どの場面でも「今すぐ音を消したい」に応える∴場面ごとの分岐より前に置く。
+		if ((e.key === 'm' || e.key === 'M') && !e.ctrlKey && !e.metaKey && !e.altKey) {
+			e.preventDefault();
+			if (!e.repeat) toggleSound?.();
 			return;
 		}
 		if (inCutscene()) { e.preventDefault(); heldKeys.clear(); return; }
