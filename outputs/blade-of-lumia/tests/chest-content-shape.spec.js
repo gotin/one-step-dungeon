@@ -129,6 +129,33 @@ test.describe('Blade of Lumia – 宝箱データの形式（chestContents）', 
       .toEqual(['armor', 'boomerang', 'heartContainer', 'item', 'ladder', 'rupee', 'shield', 'weapon']);
   });
 
+  // 実行キュー51（2026-10-13）：宝箱の描画も開封も `tiles[r][c] === 'B'` のセルでしか起きない
+  // （game/render-board.js・game/player.js）∴B の無いセルを指す chestContents は誰にも見えず開けられない。
+  // field の森の作り直し（2026-07-06）が B だけ消してキーを残した4件を消した。残り2件は
+  // 宝箱の位置ずれ／消し忘れの疑い＝別キューで判断する（直したら下の一覧から外す＝外し忘れも赤になる）。
+  const KNOWN_ORPHANS = new Set([
+    'dungeon_5[1,0](1,9)',      // ハートの器。部屋に B が1つも無い
+    'test_mechanics[1,0](7,9)', // B は (7,10)＝1列ずれ。showConditions も (7,9)
+  ]);
+
+  test('chestContents のキーは宝箱タイル B のセルを指す（B の無いセルの中身は誰にも見えない）', () => {
+    const violations = [];
+    const seen = new Set();
+    for (const [layerName, layer] of ALL_LAYERS) {
+      for (const [room, stage] of Object.entries(layer.stages)) {
+        for (const cell of Object.keys(stage.chestContents ?? {})) {
+          const [r, c] = cell.split(',').map(Number);
+          if (stage.tiles[r]?.[c] === 'B') continue;
+          const where = `${layerName}[${room}](${cell})`;
+          seen.add(where);
+          if (!KNOWN_ORPHANS.has(where)) violations.push(`${where}: タイルが ${JSON.stringify(stage.tiles[r]?.[c])}（B ではない）`);
+        }
+      }
+    }
+    for (const k of KNOWN_ORPHANS) if (!seen.has(k)) violations.push(`${k}: 既知の孤立の一覧に載っているが、もう孤立していない（一覧から外す）`);
+    expect(violations, violations.join('\n')).toEqual([]);
+  });
+
   test("type:'item' の item は ITEM_META に在る id だけ（rupee のような綴りが持ち物欄にゴミを作らない）", () => {
     const violations = [];
     for (const { where, content } of eachChest()) {

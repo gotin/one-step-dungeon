@@ -21958,13 +21958,7 @@
           },
           "links": [],
           "enemyDirs": {},
-          "chestContents": {
-            "6,9": {
-              "type": "item",
-              "item": "bigHealPotion",
-              "name": "回復薬（大）"
-            }
-          },
+          "chestContents": {},
           "floorItems": {},
           "objects": {},
           "npcData": {},
@@ -23929,11 +23923,6 @@
           "links": [],
           "enemyDirs": {},
           "chestContents": {
-            "2,8": {
-              "type": "item",
-              "item": "bigHealPotion",
-              "name": "回復薬（大）"
-            },
             "8,2": {
               "type": "item",
               "item": "healPotion",
@@ -38127,13 +38116,7 @@
           },
           "links": [],
           "enemyDirs": {},
-          "chestContents": {
-            "6,10": {
-              "type": "item",
-              "item": "bigHealPotion",
-              "name": "回復薬（大）"
-            }
-          },
+          "chestContents": {},
           "floorItems": {},
           "objects": {},
           "npcData": {},
@@ -42014,13 +41997,7 @@
           },
           "links": [],
           "enemyDirs": {},
-          "chestContents": {
-            "2,10": {
-              "type": "rupee",
-              "value": 10,
-              "name": "ルピー×10"
-            }
-          },
+          "chestContents": {},
           "floorItems": {},
           "objects": {},
           "npcData": {},
