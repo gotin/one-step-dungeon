@@ -18,7 +18,7 @@
 // ⚠️ 数の出どころはコードとデータだけ（`CANDLE_FIRE_DMG` / `CANDLE_FLAME_*` / `ENEMY_META`）。
 //    期待値をテストに直書きしない＝倍率を調整したときにテストが自動で追随する。
 import { test, expect } from '@playwright/test';
-import { waitForBoard } from './helpers.js';
+import { waitForBoard, freezeGameLoop } from './helpers.js';
 import { ENEMY_META } from '../shared/enemies.js';
 import { CANDLE_FIRE_DMG, CANDLE_FLAME_MS, CANDLE_FLAME_MAX, TICK_MS } from '../game/constants.js';
 import { TEST_LAYER, stageKey } from './test-stage-keys.js';
@@ -50,14 +50,7 @@ function toadUrl(row, col) {
 const frozen = new WeakSet();
 async function gotoFrozen(page, url) {
 	if (!frozen.has(page)) {
-		await page.addInitScript(() => {
-			const native = window.setInterval;
-			window.__loopBlocked = 0;
-			window.setInterval = function (fn, ms, ...rest) {
-				if (/step\s*\(\s*1\s*\)/.test(String(fn))) { window.__loopBlocked++; return 0; }
-				return native.call(window, fn, ms, ...rest);
-			};
-		});
+		await freezeGameLoop(page);
 		frozen.add(page);
 	}
 	await page.goto(url);

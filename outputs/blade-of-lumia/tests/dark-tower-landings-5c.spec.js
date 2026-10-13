@@ -22,7 +22,7 @@
 import { test, expect } from '@playwright/test';
 import { readFileSync } from 'fs';
 import { fileURLToPath } from 'url';
-import { waitForBoard } from './helpers.js';
+import { waitForBoard, freezeGameLoop } from './helpers.js';
 import { TILE } from '../shared/tiles.js';
 import { ENEMY_META } from '../shared/enemies.js';
 import { ROWS, COLS, makeSolver } from '../scripts/lib/blade-solver.mjs';
@@ -258,14 +258,7 @@ test.describe('Blade of Lumia – 踊り場3室は実機でも狙いどおり（
 		const errors = [];
 		page.on('pageerror', (e) => errors.push(e.message));
 		// 実時間ループを止めてから開く＝δ が勝手に動いて間合いが変わるのを防ぐ
-		await page.addInitScript(() => {
-			const native = window.setInterval;
-			window.__loopBlocked = 0;
-			window.setInterval = function (fn, ms, ...rest) {
-				if (/step\s*\(\s*1\s*\)/.test(String(fn))) { window.__loopBlocked++; return 0; }
-				return native.call(window, fn, ms, ...rest);
-			};
-		});
+		await freezeGameLoop(page);
 		// δ(7,7) の西隣 (7,6) に立つ＝距離ちょうど 1.0（剣の間合い SWORD_REACH 1.2 の内側）
 		await page.goto(previewUrl(F2, 7, 6));
 		await waitForBoard(page);

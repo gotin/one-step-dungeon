@@ -59,7 +59,7 @@ import { fileURLToPath } from 'url';
 import { TILE } from '../shared/tiles.js';
 import { ENEMY_META } from '../shared/enemies.js';
 import { ENEMY_SPRITES } from '../shared/sprites-enemies.js';
-import { waitForBoard } from './helpers.js';
+import { waitForBoard, freezeGameLoop } from './helpers.js';
 import { TEST_LAYER, stageKey } from './test-stage-keys.js';
 import { isArenaDoor } from './test-arena-doors.js';
 
@@ -81,14 +81,7 @@ const ARENA = previewUrl('spare_arena', P_ROW, P_COL);
 const frozen = new WeakSet();
 async function gotoFrozen(page, url) {
   if (!frozen.has(page)) {
-    await page.addInitScript(() => {
-      const native = window.setInterval;
-      window.__loopBlocked = 0;
-      window.setInterval = function (fn, ms, ...rest) {
-        if (/step\s*\(\s*1\s*\)/.test(String(fn))) { window.__loopBlocked++; return 0; }
-        return native.call(window, fn, ms, ...rest);
-      };
-    });
+    await freezeGameLoop(page);
     frozen.add(page);
   }
   await page.goto(url);

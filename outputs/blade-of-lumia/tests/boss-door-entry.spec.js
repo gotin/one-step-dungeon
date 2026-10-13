@@ -140,9 +140,18 @@ test.describe('ボス部屋の入室ロック ② エンジン：入った途端
       //    切り上がり "4,1" になった＝機構の穴ではなくテストの動かし方の競合）。
       //    ∴「確認→まだなら動かす」の順に変える＝既に着地した回では二度と movePlayer を
       //    呼ばない（状態待ちへの置き換え・待ち時間そのものは変えない）。
+      // 🔴（キュー54・2026-10-13）それでも並列負荷で揺れた（--workers=12 で 14/380 赤＝着地列が
+      //    0.5 ずれて "4,1"）。「確認」と「動かす」が別々の page.evaluate＝間の往復で
+      //    100ms の遷移が確定すると、確認は旧室・動かすは新室で走り、半セル余分に進む。
+      //    ∴確認と移動を**同じ evaluate の中**で行う（ブラウザの1タスクで割り込まれない）。
       for (let i = 0; i < 6; i++) {
-        if ((await st(page)).room === cs.bossStage) break;
-        await step(page, cs.dir);
+        const moved = await page.evaluate(([d, target]) => {
+          if (window.__game.getState().stageKey === target) return false;
+          window.__game.setHeroDir(d); window.__game.movePlayer(d);
+          return true;
+        }, [cs.dir, cs.bossStage]);
+        if (!moved) break;
+        await page.waitForTimeout(80);
       }
       const landed = await st(page);
       expect(landed.room, 'ボス部屋へ入れていない＝この経路の前提が崩れている').toBe(cs.bossStage);

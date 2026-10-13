@@ -68,7 +68,7 @@ import { SPRITES, PAL } from '../shared/sprites.js';
 import { OBJ32_SPRITES } from '../shared/sprites-obj32.js';
 import { TILE_SPRITE_MAP } from '../shared/tile-sprites.js';
 import { ITEM_META } from '../shared/items.js';
-import { waitForBoard } from './helpers.js';
+import { waitForBoard, freezeGameLoop } from './helpers.js';
 import { TEST_LAYER, stageKey } from './test-stage-keys.js';
 import { isArenaDoor, arenaDoorCells, ARENA_DOOR_ROWS } from './test-arena-doors.js';
 import { placedCells, stageIdOf, PLACEMENT_STAGES } from './enemy-placed.js';
@@ -99,14 +99,7 @@ const BOOM  = (extra) => previewUrl('boomerang_ogre', 4, 6, extra);
 const frozen = new WeakSet();
 async function gotoFrozen(page, url) {
   if (!frozen.has(page)) {
-    await page.addInitScript(() => {
-      const native = window.setInterval;
-      window.__loopBlocked = 0;
-      window.setInterval = function (fn, ms, ...rest) {
-        if (/step\s*\(\s*1\s*\)/.test(String(fn))) { window.__loopBlocked++; return 0; }
-        return native.call(window, fn, ms, ...rest);
-      };
-    });
+    await freezeGameLoop(page);
     frozen.add(page);
   }
   await page.goto(url);

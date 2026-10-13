@@ -38,7 +38,7 @@
 // すべて**置いた炎の初回判定**を見ている（置いた瞬間に重なっている敵へ1回）。
 // 機構そのもの（上限・寿命・後から踏んだ敵・連打の上限）は `tests/candle-flame.spec.js`。
 import { test, expect } from '@playwright/test';
-import { waitForBoard, SAVE_KEY } from './helpers.js';
+import { waitForBoard, SAVE_KEY, freezeGameLoop } from './helpers.js';
 import { ENEMY_META } from '../shared/enemies.js';
 import { CANDLE_FIRE_DMG } from '../game/constants.js';
 import { TEST_LAYER, stageKey } from './test-stage-keys.js';
@@ -235,14 +235,7 @@ test.describe('Blade of Lumia – ロウソク', () => {
 	const frozen = new WeakSet();
 	async function gotoFrozen(page, url) {
 		if (!frozen.has(page)) {
-			await page.addInitScript(() => {
-				const native = window.setInterval;
-				window.__loopBlocked = 0;
-				window.setInterval = function (fn, ms, ...rest) {
-					if (/step\s*\(\s*1\s*\)/.test(String(fn))) { window.__loopBlocked++; return 0; }
-					return native.call(window, fn, ms, ...rest);
-				};
-			});
+			await freezeGameLoop(page);
 			frozen.add(page);
 		}
 		await page.goto(url);

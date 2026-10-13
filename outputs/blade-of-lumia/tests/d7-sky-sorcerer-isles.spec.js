@@ -14,7 +14,7 @@
 import { test, expect } from '@playwright/test';
 import { readFileSync } from 'fs';
 import { fileURLToPath } from 'url';
-import { GAME_URL, waitForBoard } from './helpers.js';
+import { GAME_URL, waitForBoard, freezeGameLoop } from './helpers.js';
 import { TILE } from '../shared/tiles.js';
 import { HARD_BLOCKED } from '../scripts/lib/connectivity.mjs';
 import { EXTRA_ENEMY_ROOMS } from '../scripts/lib/enemy-placement.mjs';
@@ -102,14 +102,7 @@ test.describe('D7 2,4 空の術士の浮島 ② 幾何', () => {
 async function open(page, row, col, extra = {}) {
 	const errors = [];
 	page.on('pageerror', (e) => errors.push(e.message));
-	await page.addInitScript(() => {
-		const native = window.setInterval;
-		window.__loopBlocked = 0;
-		window.setInterval = function (fn, ms, ...rest) {
-			if (/step\s*\(\s*1\s*\)/.test(String(fn))) { window.__loopBlocked++; return 0; }
-			return native.call(window, fn, ms, ...rest);
-		};
-	});
+	await freezeGameLoop(page);
 	const q = new URLSearchParams({ fromEditor: '1', layer: LAYER, stage: ROOM, row: String(row), col: String(col), ...extra });
 	await page.goto(`${GAME_URL}?${q}`);
 	await waitForBoard(page);

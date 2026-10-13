@@ -536,7 +536,9 @@ test.describe('連結タイル（家）– 実エンジンの描画', () => {
 
 		// セル = 40px / スプライト 32 ドット → 1 ドット 1.25px（drawSpriteAt は
 		// imageSmoothingEnabled=false ∴色は混ざらない）。
-		const dots = await page.evaluate(() => {
+		// ⚠️ 塗った直後の canvas はまだ再描画前のことがある（キュー54・並列負荷で #1a2228＝未描画の地を読んだ）
+		//    ∴描き終わるまで読み直す（歯は expect の値そのまま＝連結が効いていなければ赤のまま）。
+		const readDots = () => page.evaluate(() => {
 			const ctx = document.getElementById('stage-canvas').getContext('2d');
 			const at = (x, y) => {
 				const d = ctx.getImageData(x, y, 1, 1).data;
@@ -547,6 +549,8 @@ test.describe('連結タイル（家）– 実エンジンの描画', () => {
 				eave:  at(40 + 11, 80 + 3),      // 壁(2,1) の北＝軒の影の2段目（ドット 8,2）
 			};
 		});
+		await expect.poll(async () => (await readDots()).gable, { timeout: 5000 }).toBe('#e88b6a');
+		const dots = await readDots();
 		// 破風板の明るい面（連結が効いていなければ瓦の地 #b8362a / #d4574a）
 		expect(dots.gable).toBe('#e88b6a');
 		// 軒の影の2段目（連結が効いていなければ石の地 #9c8670 / #bfa88e）

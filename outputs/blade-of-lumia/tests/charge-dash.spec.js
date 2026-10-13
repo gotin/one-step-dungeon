@@ -99,7 +99,7 @@ import { ENEMY_SPRITES, ENEMY_PAL } from '../shared/sprites-enemies.js';
 import { TILE_SPRITE_MAP } from '../shared/tile-sprites.js';
 import { TICK_MS, MOVE_STEP, SLAM_RANGE } from '../game/constants.js';
 import { createEnemyAi } from '../game/enemy-ai.js';
-import { waitForBoard } from './helpers.js';
+import { waitForBoard, freezeGameLoop } from './helpers.js';
 import { TEST_LAYER, stageKey } from './test-stage-keys.js';
 import { isArenaDoor, ARENA_DOOR_ROWS } from './test-arena-doors.js';
 
@@ -122,14 +122,7 @@ const BOAR_URL = (extra) => previewUrl('charge_boar', 4, 1, extra);
 const frozen = new WeakSet();
 async function gotoFrozen(page, url) {
   if (!frozen.has(page)) {
-    await page.addInitScript(() => {
-      const native = window.setInterval;
-      window.__loopBlocked = 0;
-      window.setInterval = function (fn, ms, ...rest) {
-        if (/step\s*\(\s*1\s*\)/.test(String(fn))) { window.__loopBlocked++; return 0; }
-        return native.call(window, fn, ms, ...rest);
-      };
-    });
+    await freezeGameLoop(page);
     frozen.add(page);
   }
   await page.goto(url);

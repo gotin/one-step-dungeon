@@ -8,6 +8,12 @@
 
 ---
 
+### 2026-10-13（8） — **キュー54＝「差し止めの無い `step()` 系 144 ファイルを直す」は不要だった。負荷をかけて赤を拾うと当たりは別の3本で、原因は本ごとに違った**（⚡ Sonnet・実行キュー54）
+- **事実：** フル `--repeat-each=3`（7112 本）で赤は `boss-door-entry` ②・`editor-game-parity` ①・`house-connect` ㉕ の3本。`step()` を使う spec は 0 本。PLAN キュー54 の「144 ファイルが位相に敏感かもしれない」は憶測で、実測は否定（キュー53 の失効の書き方に倣い PLAN 側に ✅/❌ を併記済み）。
+- **決定：** ①boss-door-entry＝確認と移動を同じ `page.evaluate` に入れる（キュー11 の「確認→動かす」の順は、往復の間に遷移が確定する穴が残っていた）。②editor-game-parity＝`test.setTimeout` を画面数に比例。③house-connect ㉕＝`expect.poll`。写経18ファイルは `freezeGameLoop` へ統一。
+- **代替案（採らない）：** 144 ファイルを一律に `freezeGameLoop` へ＝赤になっていない本を触るだけで、実時間の混入に対する保証は増えない。
+- **注意：** 負荷は既定の並列で判定する。`--workers=12` では editor-game-parity ③ が filechooser 待ちで時間切れになる（別の揺れを拾うだけ）。
+
 ### 2026-10-13（7） — **キュー53＝並列負荷でだけ赤になる3本は「測る前に実ループが進んでいた」2本と「時間切れ」1本。tick 番号で測るテストは goto の前に実ループを差し止める（起動後の `pause()` では遅い）**（🧠 Opus・実行キュー53）
 - **原因：** ①`hide-window-enemies` ⑯・`d2-sealfire-crypt` ②＝`game.js startGameLoop` の `setInterval(step(1), 120)` は起動直後から回り、goto → waitForBoard → 最初の evaluate（d2 は敵2体の待ち・'g' キーの後の `pause()`）の間に tick が入る。単独では 0 tick、並列負荷で 1〜5 tick。開始 gameTime をログして確定＝⑯ は 24 回中 3 回が 120 で開始（潜伏周期が1 tick 前にずれる）、d2 は 0〜600ms に散って 120・480 の回だけ封じられた。②`field-corridor-o` ⑥-footprint＝継ぎ目 36 本ぶんのページ読み直しが単独 13.8s、並列で既定 30s を超えた。PLAN の推定（論理 tick に実時間が混ざる）は外れ（PLAN キュー53 に失効を明記）。
 - **決定：** `tests/helpers.js` に `freezeGameLoop`（`addInitScript` で setInterval の `step(1)` を差し止め）と `expectLoopFrozen`（差し止めが効いて gameTime=0 のままかを測定前に確かめる）を置き、2本はこれで開始時刻を固定する。⑥-footprint は継ぎ目の数に比例した `test.setTimeout`。

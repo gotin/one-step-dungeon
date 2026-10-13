@@ -45,7 +45,7 @@ import { ENEMY_META } from '../shared/enemies.js';
 import { ARMOR_TIERS } from '../shared/items.js';
 import { SWORD_REACH, MELEE_WINDUP_MS, MELEE_FREEZE_MS, MOVE_STEP, SWORD_COOLDOWN_MS,
   INVINCIBLE_MS, CANDLE_FIRE_DMG } from '../game/constants.js';
-import { waitForBoard } from './helpers.js';
+import { waitForBoard, freezeGameLoop } from './helpers.js';
 import { TEST_LAYER, stageKey } from './test-stage-keys.js';
 import { isArenaDoor } from './test-arena-doors.js';
 
@@ -84,14 +84,7 @@ const frozen = new WeakSet();
 //    `seed` を渡さない呼び出し（他の全ボスの本）は従来どおり素の `Math.random`。
 async function gotoFrozen(page, url, seed) {
   if (!frozen.has(page)) {
-    await page.addInitScript(() => {
-      const native = window.setInterval;
-      window.__loopBlocked = 0;
-      window.setInterval = function (fn, ms, ...rest) {
-        if (/step\s*\(\s*1\s*\)/.test(String(fn))) { window.__loopBlocked++; return 0; }
-        return native.call(window, fn, ms, ...rest);
-      };
-    });
+    await freezeGameLoop(page);
     frozen.add(page);
   }
   if (seed !== undefined) {

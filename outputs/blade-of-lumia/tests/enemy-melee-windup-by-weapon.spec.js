@@ -37,7 +37,7 @@ import { ENEMY_META } from '../shared/enemies.js';
 import { ENEMY_SPRITES } from '../shared/sprites-enemies.js';
 import { PLAYER_SPRITES } from '../shared/sprites-player.js';
 import { MELEE_WINDUP_MS } from '../game/constants.js';
-import { waitForBoard } from './helpers.js';
+import { waitForBoard, freezeGameLoop } from './helpers.js';
 import { TEST_LAYER, stageKey } from './test-stage-keys.js';
 
 const GAME = '/blade-of-lumia/game/';
@@ -76,14 +76,7 @@ function artHoldsSword(meta, tile) {
 
 // 毎 tick 西隣へ立ち直りながら予告のクラスと CSS 変数を集める。
 async function measureWindup(page, stage, tile) {
-  await page.addInitScript(() => {
-    const native = window.setInterval;
-    window.__loopBlocked = 0;
-    window.setInterval = function (fn, ms, ...rest) {
-      if (/step\s*\(\s*1\s*\)/.test(String(fn))) { window.__loopBlocked++; return 0; }
-      return native.call(window, fn, ms, ...rest);
-    };
-  });
+  await freezeGameLoop(page);
   await page.goto(previewUrl(stage, 4, 2));
   await waitForBoard(page);
   expect(await page.evaluate(() => window.__loopBlocked),

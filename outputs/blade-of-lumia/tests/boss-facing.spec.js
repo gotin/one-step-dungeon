@@ -27,7 +27,7 @@ import { test, expect } from '@playwright/test';
 import { ENEMY_META } from '../shared/enemies.js';
 import { SPRITES } from '../shared/sprites.js';
 import { TILE_SPRITE_MAP } from '../shared/tile-sprites.js';
-import { waitForBoard } from './helpers.js';
+import { waitForBoard, freezeGameLoop } from './helpers.js';
 import { TEST_LAYER, stageKey } from './test-stage-keys.js';
 
 const GAME = '/blade-of-lumia/game/';
@@ -91,14 +91,7 @@ const D1_MIN = { ps_hearts: '3', ps_sword: '0', ps_weapon: '1' };
 const frozen = new WeakSet();
 async function gotoFrozen(page, row, col) {
   if (!frozen.has(page)) {
-    await page.addInitScript(() => {
-      const native = window.setInterval;
-      window.__loopBlocked = 0;
-      window.setInterval = function (fn, ms, ...rest) {
-        if (/step\s*\(\s*1\s*\)/.test(String(fn))) { window.__loopBlocked++; return 0; }
-        return native.call(window, fn, ms, ...rest);
-      };
-    });
+    await freezeGameLoop(page);
     frozen.add(page);
   }
   const p = new URLSearchParams({
