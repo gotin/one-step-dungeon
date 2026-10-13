@@ -1,2 +1,4 @@
 .scratch/
 .secrets/
+# Blade of Lumia のプレイメモ（プレビューで書いた作業メモ＝手元で Claude が読む入力。履歴は要らない）
+outputs/blade-of-lumia/work/playtest-notes.json

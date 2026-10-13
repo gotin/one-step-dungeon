@@ -194,6 +194,23 @@
     </div>
   </div>
 
+  <!-- ── プレイメモ（実行キュー57・プレビュー fromEditor=1 のときだけ出る）── -->
+  <button id="pnote-btn" class="hidden" type="button" title="プレイメモ（N キー）">メモ <span id="pnote-count">0</span></button>
+  <div id="pnote-overlay" class="hidden">
+    <div id="pnote-box">
+      <div id="pnote-title">プレイメモ</div>
+      <div id="pnote-where"></div>
+      <textarea id="pnote-text" rows="4" placeholder="この画面について気づいたこと"></textarea>
+      <div id="pnote-actions">
+        <button id="pnote-save" type="button">保存（Ctrl+Enter）</button>
+        <button id="pnote-close" type="button">閉じる（Esc）</button>
+      </div>
+      <div id="pnote-status"></div>
+      <div id="pnote-list-title"></div>
+      <ul id="pnote-list"></ul>
+    </div>
+  </div>
+
   <script type="module" src="main.js"></script>
 </body>
 </html>

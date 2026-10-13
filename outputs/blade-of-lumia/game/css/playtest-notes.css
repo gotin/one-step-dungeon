@@ -1,0 +1,113 @@
+/* ── プレイメモ（実行キュー57）──────────────────────────────
+   プレビュー（fromEditor=1）だけで出る開発用の枠。ゲームの見た目には混ぜない
+   ＝どの枠より上（エンディングの 90 より上）に重ねる。 */
+/* 左下＝HUD（上の左右）・メッセージ（下の中央）と重ならない隅 */
+#pnote-btn {
+    position: fixed;
+    bottom: 6px;
+    left: 6px;
+    z-index: 94;
+    padding: 3px 8px;
+    font-size: 12px;
+    color: #f2e6b8;
+    background: rgba(40, 32, 12, 0.85);
+    border: 1px solid #b89a3a;
+    border-radius: 4px;
+    cursor: pointer;
+}
+#pnote-btn.hidden { display: none; }
+
+#pnote-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.6);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 95;
+}
+#pnote-overlay.hidden { display: none; }
+
+#pnote-box {
+    background: #17140a;
+    border: 2px solid #b89a3a;
+    border-radius: 8px;
+    padding: 14px 18px;
+    width: min(480px, 92vw);
+    max-height: 88vh;
+    overflow-y: auto;
+    color: #e8dfc0;
+    font-size: 13px;
+}
+#pnote-title {
+    font-size: 16px;
+    color: #f2d870;
+    margin-bottom: 2px;
+}
+#pnote-where {
+    font-size: 12px;
+    color: #a89c70;
+    margin-bottom: 8px;
+}
+#pnote-text {
+    box-sizing: border-box;
+    width: 100%;
+    font: inherit;
+    font-size: 14px;
+    color: #f4efdc;
+    background: #0c0a04;
+    border: 1px solid #6a5a24;
+    border-radius: 4px;
+    padding: 6px;
+    resize: vertical;
+}
+#pnote-actions {
+    display: flex;
+    gap: 8px;
+    margin-top: 8px;
+}
+#pnote-actions button,
+.pnote-del {
+    font: inherit;
+    font-size: 12px;
+    color: #f2e6b8;
+    background: #3a3012;
+    border: 1px solid #8a7430;
+    border-radius: 4px;
+    padding: 4px 10px;
+    cursor: pointer;
+}
+#pnote-status {
+    min-height: 1.4em;
+    margin-top: 6px;
+    font-size: 12px;
+    color: #9fd88a;
+}
+#pnote-status.pnote-status--error { color: #ff9a8a; }
+#pnote-list-title {
+    margin-top: 6px;
+    font-size: 12px;
+    color: #a89c70;
+}
+#pnote-list {
+    list-style: none;
+    margin: 4px 0 0;
+    padding: 0;
+}
+#pnote-list li {
+    display: flex;
+    gap: 8px;
+    align-items: flex-start;
+    padding: 5px 0;
+    border-top: 1px solid #3a3214;
+}
+.pnote-item-text {
+    flex: 1;
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+.pnote-item-where {
+    color: #8a7e58;
+    font-size: 11px;
+}
+.pnote-del { padding: 1px 6px; font-size: 11px; }

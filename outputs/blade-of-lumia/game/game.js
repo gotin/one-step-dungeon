@@ -40,6 +40,7 @@ import { initInput } from './input.js';
 import { createUi } from './ui.js';
 // ── 転移の石碑（キュー27）─────────────────────────────────────────
 import { createWarpMenu } from './warp-menu.js';
+import { initPlaytestNotes } from './playtest-notes.js';
 import { warpStoneId, warpLandingCandidates, WARP_NO_LANDING_TILES } from '../shared/warp-stones.js';
 // ── 投擲物・爆弾（Phase 0-2 Step 5: projectile.js へ切り出し）───────────────
 import { createProjectile } from './projectile.js';
@@ -2306,6 +2307,16 @@ async function init() {
 		debugMode = true;
 		enterStage(lk, sk, pr, pc);
 		startGameLoop();
+		// 実行キュー57：プレイメモ（N キー）＝プレビューだけで使う開発用の道具
+		initPlaytestNotes({
+			getLocation:   () => ({ layer: currentLayer, stage: stageKey, row: Math.round(player.y), col: Math.round(player.x) }),
+			getIsPaused:   () => isPaused,
+			setIsPaused:   (v) => { isPaused = v; },
+			stopGameLoop,
+			startGameLoop,
+			clearHeldKeys: () => _inputModule?.heldKeys?.clear(),
+			pulse:         (t, ms) => pulse(t, ms),
+		});
 		return;
 	}
 
