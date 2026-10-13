@@ -45,6 +45,7 @@ import { isInRecoverWindow, isSoaring } from './enemy-state.js';
  *   fireEnemyProjectile(e, type, ndx, ndy, speed) – 敵の投擲物発射
  *   isShieldBlockingDir(dx, dy)  – 盾ブロック方向判定
  *   showShieldBlockEffect(x, y)  – 盾ブロックエフェクト
+ *   showShieldPierceEffect()     – 盾貫通エフェクト（体当たり系が盾越しに当たった・キュー59）
  *   debugMode                    – デバッグフラグ getter
  *   ── Phase 5-3: 敵が石を押すパズル用 ──
  *   getCurrentLayer()            – 現在レイヤー
@@ -71,6 +72,7 @@ export function createEnemyAi(deps) {
 		isPassable,
 		takeDamage, dealDamageToEnemy,
 		fireEnemyProjectile, isShieldBlockingDir, showShieldBlockEffect,
+		showShieldPierceEffect,
 		getDebugMode,
 		// Phase 5-3: 敵が石を押すパズル
 		getCurrentLayer, getStageKey, getSS, tilePassable,
@@ -261,6 +263,23 @@ export function createEnemyAi(deps) {
 		e._slamWindupMs = atk.windupMs ?? SLAM_WINDUP_MS;
 		e._slamAt  = now + e._slamWindupMs;
 		e._slamIdx = i;
+		// 盾の効かない攻撃の溜め音（キュー59）＝剣を持たない近接の `maulWindup`（盾で防げる）と
+		// 聞き分ける（突進は自分の溜め音 `dashWindup` を既に持つ＝そちらは変えない）。
+		playSound('unblockableWindup');
+	}
+
+	// 体当たり系（slam・突進）が盾越しに当たったことを見せる（キュー59・2026-10-14）。
+	// 盾では防げない（k-7.5 決定④）のは変えない＝**判定には使わない**。盾を攻撃の来る側へ
+	// 向けていたときだけ、被弾に「盾を貫いた」赤い×と音を重ねる＝「待っていれば防げる」と
+	// 誤認したまま被弾し続けるのを、1回目の被弾で正せるようにする（プレイメモ field 8,13）。
+	// 向きは剣の盾判定と同じ `isShieldBlockingDir`（攻撃の進む向き＝敵→プレイヤー）で読む。
+	function noteShieldPierced(e) {
+		const player = getPlayer();
+		if (!player?.shield) return;
+		const { cx, cy } = enemyCellCenter(e);
+		if (!isShieldBlockingDir(player.x - cx, player.y - cy)) return;
+		playSound('shieldPierce');
+		showShieldPierceEffect?.();
 	}
 
 	// 予告の解決。戻り値 true ＝この tick は slam が専有した（移動も他の攻撃もしない）。
@@ -277,6 +296,7 @@ export function createEnemyAi(deps) {
 		const player = getPlayer();
 		if (slamReachHit(e, player, atk.range ?? SLAM_RANGE)) {
 			// e.atk を先に見る＝分裂で生まれた小型（childAtk）は親より弱い（k-5a と同じ作法）
+			noteShieldPierced(e);   // 判定より先＝takeDamage の無敵窓に左右されず毎回見せる
 			takeDamage(e.atk ?? meta?.atk ?? 1);
 			// 一時デバフ（#13 剣封じ・#15 毒）はここで立てる＝触れた事実ではなく攻撃の結果になった
 			// （k-7a は checkEnemyContact で立てていた＝k-7.5 で接触ダメージを廃止したため移設）。
@@ -308,6 +328,17 @@ export function createEnemyAi(deps) {
 			el.style.setProperty('--slam-pulse-ms', `${Math.round(windupMs / 2)}ms`);
 		}
 		el.classList.toggle('slam-windup', on);
+		// 盾の効かない予告（キュー59）＝本物の体当たり（slam）だけ赤く点滅させる。剣を持たない
+		// 敵の近接（swingIsBody）は同じ拡大縮小でも**盾で防げる**∴赤くしない＝色で分ける。
+		syncUnblockable(el, e);
+	}
+
+	// 「盾で止まらない攻撃の溜め」の印＝体当たりの予告と突進の溜めの両方（board.css
+	// `.unblockable-windup`＝体の赤い点滅）。形（拡大縮小／足踏み）は別のまま・色だけ共通
+	// ＝形で「どう来るか」・赤で「盾は効かない」を読む。2つの sync が互いに消し合わないよう
+	// on/off は両方の状態から決める（syncSlamMotion と syncSwingMotion の取り合いと同じ作法）。
+	function syncUnblockable(el, e) {
+		el.classList.toggle('unblockable-windup', e._slamAt != null || e._dashPhase === 'windup');
 	}
 
 	// ── Phase 5.5k: 遠隔／近接の二相（2026-08-12 ユーザー指摘）────────────────
@@ -2613,6 +2644,7 @@ export function createEnemyAi(deps) {
 			if (outcome === 'hit') {
 				// 体当たりと同じダメージ（e.atk を先に見る＝分裂の小型は親より弱い・k-5a の作法）。
 				// 盾では防げない（k-7.5 決定④＝体当たり系の答えは「下がる」だけ）。
+				noteShieldPierced(e);
 				takeDamage(e.atk ?? meta?.atk ?? 1);
 				if (meta?.inflict) inflictDebuff?.(meta);
 				markAttack(e, meta, 0, now);   // クールダウン記録は攻撃の共通後処理に通す
@@ -2699,6 +2731,7 @@ export function createEnemyAi(deps) {
 		const el = document.getElementById(`char-enemy-${e.id}`);
 		if (!el) return;
 		el.classList.toggle('dash-windup', e._dashPhase === 'windup');
+		syncUnblockable(el, e);
 	}
 
 	// 壁に激突した印（⭐）＝ブーメランのスタンと同じ `.stun-burst`（projectile.js showStunEffect

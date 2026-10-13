@@ -168,6 +168,31 @@ export function createProjectile(deps) {
 		setTimeout(() => el.remove(), 380);
 	}
 
+	// 盾貫通エフェクト（キュー59・2026-10-14）：盾を向けたまま体当たり／突進を受けたとき、
+	// 盾の側に**赤い×**を出す＝「盾を構えていたのに通った」を被弾の瞬間に見せる。
+	// 防いだとき（showShieldBlockEffect＝黄色の ✦）と同じ位置・違う色と形にする
+	// ＝並べて覚えられる（✦＝止めた／×＝通った）。×は CSS の2本の棒（絵文字・文字を使わない）。
+	function showShieldPierceEffect() {
+		const charLayerEl = getCharLayerEl();
+		if (!charLayerEl) return;
+		const cellPx  = getCellPx();
+		const player  = getPlayer();
+		const heroDir = getHeroDir();
+		const offset  = 0.6;
+		let fx = player.x + 0.5, fy = player.y + 0.5;
+		if      (heroDir === 'left')  fx -= offset;
+		else if (heroDir === 'right') fx += offset;
+		else if (heroDir === 'up')    fy -= offset;
+		else if (heroDir === 'down')  fy += offset;
+		const el = document.createElement('div');
+		el.className = 'shield-pierce';
+		el.style.left = `${fx * cellPx}px`;
+		el.style.top  = `${fy * cellPx}px`;
+		el.style.setProperty('--pierce-size', `${Math.round(cellPx * 0.6)}px`);
+		charLayerEl.appendChild(el);
+		setTimeout(() => el.remove(), 520);
+	}
+
 	// ブーメランスタンエフェクト：敵中心に ⭐ を浮かばせる
 	function showStunEffect(e) {
 		const charLayerEl = getCharLayerEl();
@@ -1088,6 +1113,7 @@ export function createProjectile(deps) {
 		isShieldBlocking,
 		isShieldBlockingDir,
 		showShieldBlockEffect,
+		showShieldPierceEffect,
 		clearBombs,
 		placeBomb,
 		bombTick,

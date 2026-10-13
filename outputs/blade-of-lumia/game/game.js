@@ -956,6 +956,7 @@ const { checkStoneOnSwitch, evaluateConditions, refreshGates } = createCondition
 		fireEnemyProjectile:   _proj.fireEnemyProjectile,
 		isShieldBlockingDir:   _proj.isShieldBlockingDir,
 		showShieldBlockEffect: _proj.showShieldBlockEffect,
+		showShieldPierceEffect: _proj.showShieldPierceEffect,
 		getDebugMode:          () => debugMode,
 		// Phase 5-3: 敵が石を押すパズル
 		getCurrentLayer:       () => currentLayer,

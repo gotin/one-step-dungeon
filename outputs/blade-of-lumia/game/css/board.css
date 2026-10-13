@@ -220,6 +220,21 @@
     100% { transform: translateX(0)    scaleY(1);    }
 }
 
+/* キュー59（2026-10-14・プレイメモ field 8,13）: **盾の効かない攻撃の溜め**＝体当たり（slam）の
+   予告と突進（dash）の溜めの両方に重ねる。形（拡大縮小／足踏み）はそのまま＝「どう来るか」、
+   **赤い点滅**＝「盾は効かない・下がれ」。剣を持たない敵の近接（同じ拡大縮小だが盾で防げる）には
+   付けない＝色だけで区別できる。
+   ・`.char-abs` 本体に掛ける＝canvas.sprite の transform アニメーション（拡大縮小・足踏み）を
+     奪わない（`.soaring` と同じ親側で重ねる作法）。filter だけを動かす。
+   ・点滅は 2 色の切り替え（steps）＝ゆるい明滅ではなく警告灯として読ませる。 */
+.char-abs.unblockable-windup {
+    animation: enemy-unblockable-flash 160ms steps(1, end) infinite;
+}
+@keyframes enemy-unblockable-flash {
+    0%   { filter: drop-shadow(0 0 4px rgba(255, 40, 40, 0.95)) sepia(1) saturate(6) hue-rotate(-50deg) brightness(1.05); }
+    50%  { filter: drop-shadow(0 0 2px rgba(255, 60, 60, 0.6)); }
+}
+
 /* Phase 8-4 (4) 0d-3（8体目 I 沼地の大蝦蟇）: 舌を打つ前の予告＝**喉が膨らむ**。
    体当たり（`.slam-windup` の拡大縮小2往復）・突進（`.dash-windup` の前後の揺れ）と
    **3つとも別の形**にする（GUIDE §6-1）＝こちらは「一方向に膨らんで止まる」＝
