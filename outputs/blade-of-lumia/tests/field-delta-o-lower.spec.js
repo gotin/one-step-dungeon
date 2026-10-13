@@ -32,14 +32,16 @@ const MAP_PATH = fileURLToPath(new URL('../work/blade-of-lumia.json', import.met
 const MAP = JSON.parse(readFileSync(MAP_PATH, 'utf8'));
 const FIELD = MAP.layers.field.stages;
 
+// 敵数＝7月の作り込みでは闘技場 12,19 だけだったが、キュー49 ⑨（2026-10-13）で沈んだ都にも足した
+// （scripts/lib/field-enemy-tiers.mjs FIELD_ENEMY_FILL）。聖域・石押し・宝物庫は KEEP_EMPTY＝0体のまま。
 const DELTA_LOWER = [
-  { key: '12,18', role: '海の石碑A＋海草の隠し', enemies: 0 },
-  { key: '13,18', role: 'D7 はしごの縦橋', enemies: 0 },
-  { key: '14,18', role: 'D8 弓の縦撃ち', enemies: 0 },
-  { key: '15,18', role: '海の石碑B＋ブーメラン献灯', enemies: 0 },
+  { key: '12,18', role: '海の石碑A＋海草の隠し', enemies: 2 },
+  { key: '13,18', role: 'D7 はしごの縦橋', enemies: 3 },
+  { key: '14,18', role: 'D8 弓の縦撃ち', enemies: 2 },
+  { key: '15,18', role: '海の石碑B＋ブーメラン献灯', enemies: 2 },
   { key: '11,19', role: '聖域（ロウソクの献灯）', enemies: 0 },
   { key: '12,19', role: '海の主の闘技場', enemies: 1 },
-  { key: '13,19', role: 'D10 大通りの跡', enemies: 0 },
+  { key: '13,19', role: 'D10 大通りの跡', enemies: 2 },
   { key: '14,19', role: 'D11 沈没船と石の物置', enemies: 0 },
   { key: '15,19', role: '隠し報酬（爆弾＋笛）', enemies: 0 },
 ];
@@ -151,7 +153,6 @@ test.describe('Phase 9-6 深洋O ④ – デルタ下半9画面 実エンジン�
       }));
       expect(snap.player.y, `${key} のプレイヤー行がずれた`).toBe(row);
       expect(snap.player.x, `${key} のプレイヤー列がずれた`).toBe(col);
-      // 戦闘は闘技場 12,19 だけに閉じる（§19-8 分離原則）。
       expect(snap.enemies, `${key} の敵数が設計と違う`).toBe(enemies);
       expect(errors, `${key} で pageerror`).toEqual([]);
     });

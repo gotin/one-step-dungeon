@@ -34,11 +34,13 @@ const MAP = JSON.parse(readFileSync(MAP_PATH, 'utf8'));
 const FIELD = MAP.layers.field.stages;
 
 const DELTA = [
-  { key: '14,16', role: 'D1 脇（爆弾壁）' },
-  { key: '15,16', role: 'D2 デルタ玄関（はしご水渡り）' },
-  { key: '13,17', role: 'D3（弓ゲート）' },
-  { key: '14,17', role: 'D4 中央（石押し）' },
-  { key: '15,17', role: 'D5（ブーメラン運搬・かがり火）' },
+  // 敵数＝キュー49 ⑨（2026-10-13）で足した数（scripts/lib/field-enemy-tiers.mjs FIELD_ENEMY_FILL）。
+  // 石押しの D4 だけは KEEP_EMPTY＝敵0体のまま。
+  { key: '14,16', role: 'D1 脇（爆弾壁）', enemies: 2 },
+  { key: '15,16', role: 'D2 デルタ玄関（はしご水渡り）', enemies: 2 },
+  { key: '13,17', role: 'D3（弓ゲート）', enemies: 2 },
+  { key: '14,17', role: 'D4 中央（石押し）', enemies: 0 },
+  { key: '15,17', role: 'D5（ブーメラン運搬・かがり火）', enemies: 2 },
 ];
 
 /** 陸で、tiles にコンテンツが無いセル一覧（プレイヤーを置ける場所）。 */
@@ -112,8 +114,8 @@ async function useTool(page, ticks = 30) {
 
 test.describe('Phase 9-6 深洋O ④ – デルタ上半 D1〜D5 実エンジン検証', () => {
 
-  for (const { key, role } of DELTA) {
-    test(`① ${key} (${role}) が起動し陸に立てて、戦闘ゼロ（§19-8 分離原則）`, async ({ page }) => {
+  for (const { key, role, enemies } of DELTA) {
+    test(`① ${key} (${role}) が起動し陸に立てて、敵は ${enemies} 体`, async ({ page }) => {
       const errors = [];
       page.on('pageerror', (e) => errors.push(e.message));
 
@@ -134,7 +136,7 @@ test.describe('Phase 9-6 深洋O ④ – デルタ上半 D1〜D5 実エンジン
       });
       expect(snap.player.y, `${key} のプレイヤー行がずれた`).toBe(row);
       expect(snap.player.x, `${key} のプレイヤー列がずれた`).toBe(col);
-      expect(snap.enemies, `${key} は戦闘ゼロのはずが敵が spawn した`).toBe(0);
+      expect(snap.enemies, `${key} の敵数が配置表と違う`).toBe(enemies);
       expect(errors, `${key} で pageerror`).toEqual([]);
     });
   }

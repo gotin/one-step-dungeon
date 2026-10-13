@@ -26,8 +26,8 @@ const STAGES = MAP.layers.field.stages;
 const enemiesOf = (s) => s.tiles.flat().filter(isEnemyTile);
 
 // 敵0体で、KEEP_EMPTY にも載っていない画面の数の上限。地域を1つ埋めるたびに締める。
-// 2026-10-12：キュー49 着手前 211 → ① G0 村まわりで 204 → ② 草原の残り（G1〜G7）で 128 → ③ D 砂漠で 118 → ④ W 湖で 101 → ⑤ P 沼・M 山地で 76 → 2026-10-13：⑥ F 森で 45 → ⑦ L 火山で 35 → ⑧ S 雪で 18。最終目標＝0（空けておく画面は全部 KEEP_EMPTY に理由つきで載せる）。
-const UNFILLED_ZERO_BASELINE = 18;
+// 2026-10-12：キュー49 着手前 211 → ① G0 村まわりで 204 → ② 草原の残り（G1〜G7）で 128 → ③ D 砂漠で 118 → ④ W 湖で 101 → ⑤ P 沼・M 山地で 76 → 2026-10-13：⑥ F 森で 45 → ⑦ L 火山で 35 → ⑧ S 雪で 18 → ⑨ O 深洋で 1。最終目標＝0（空けておく画面は全部 KEEP_EMPTY に理由つきで載せる）。
+const UNFILLED_ZERO_BASELINE = 1;
 
 test.describe('① 強さの段の計算', () => {
 	test('距離の段の境目', () => {
