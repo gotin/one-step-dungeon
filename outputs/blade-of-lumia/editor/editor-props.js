@@ -7,7 +7,7 @@ import { mountIconEls, iconText } from '../shared/ui-icons.js';
 import { MARK_KINDS, DEFAULT_MARK_KIND, isStageKey } from '../shared/marks.js';
 import { variantOptions, readEntryVariants, applyEntryVariants } from '../shared/dialog-variants.js';
 import { CONDITION_TRIGGERS, KNOWN_TRIGGERS } from '../shared/triggers.js';
-import { SHOP_NPC_SPRITES } from '../shared/npcs.js';
+import { SHOP_NPC_SPRITES, PERSON_NPC_SPRITES } from '../shared/npcs.js';
 
 // ── 右パネル統合呼び出し ──────────────────────────────────────
 export function renderSidePanel() {
@@ -384,17 +384,18 @@ function renderNPCs(sd) {
 		const item = document.createElement('div');
 		item.className = 'link-item';
 		// 看板・石碑・転移の石碑にはスプライト欄を出さない（2026-10-03 ユーザー指摘「スプライトが
-		// npcA に設定されているけどこれは問題ない？」）＝絵はタイル文字で決まり、`data.sprite` は
-		// ゲームのどこからも読まれない（shared/npcs.js npcSpriteOf が見るのは店の shopData.sprite だけ）。
+		// npcA に設定されているけどこれは問題ない？」）＝絵はタイル文字で決まる。
+		// 人物（'a'/'b'）の欄は 2026-10-13（キュー56）から実際に効く＝`data.sprite` が
+		// shared/npcs.js PERSON_NPC_SPRITES のキーなら専用の絵（老賢者など）。候補はその表から導く＝手書きしない
+		// （旧版は npcA/npcB/princess を手書きしていたがゲームはどれも読んでいなかった）。
+		const personOpts = [['', `既定（${TILE_META[tile]?.label ?? 'タイルの絵'}）`], ...Object.entries(PERSON_NPC_SPRITES).map(([k, v]) => [k, v.label])];
+		if (data.sprite && !PERSON_NPC_SPRITES[data.sprite]) personOpts.push([data.sprite, `（不明：${data.sprite}＝既定で描く）`]);
+		const personSel = personOpts.map(([v, l]) => `<option value="${v}" ${(data.sprite ?? '') === v ? 'selected' : ''}>${l}</option>`).join('');
 		item.innerHTML = `
 			<div class="link-item-header"><span>NPC (${r},${c}) ${TILE_META[tile]?.icon??''}</span><span class="hint">${home}</span></div>
 			<label>キャラ名 <input type="text" value="${data.name??''}" data-key="${key}" data-f="name" placeholder="例: 村人 タロ"></label>
 			${READABLE_SIGN_TILES.has(tile) ? '' : `<label>スプライト
-				<select data-key="${key}" data-f="sprite">
-					<option value="npcA" ${(data.sprite??'npcA')==='npcA'?'selected':''}>npcA（村人）</option>
-					<option value="npcB" ${(data.sprite??'')==='npcB'?'selected':''}>npcB（商人）</option>
-					<option value="princess" ${(data.sprite??'')==='princess'?'selected':''}>princess（姫）</option>
-				</select>
+				<select data-key="${key}" data-f="sprite">${personSel}</select>
 			</label>`}
 			<label>セリフ（1行=1ページ）
 				<textarea data-key="${key}" data-f="lines" rows="4">${(data.lines??[]).join('\n')}</textarea>
@@ -434,6 +435,8 @@ function renderNPCs(sd) {
 				const e = entry();
 				if (f === 'lines') e.lines = inp.value.split('\n').filter(l => l.trim());
 				else if (f === 'introLines') e.introLines = inp.value.split('\n').filter(l => l.trim());
+				// 見た目：既定＝キーごと消す（空文字を残さない＝店の shopData.sprite と同じ作法）
+				else if (f === 'sprite') { if (inp.value) e.sprite = inp.value; else delete e.sprite; }
 				else e[f] = inp.value;
 			};
 			inp.addEventListener('input', handler);

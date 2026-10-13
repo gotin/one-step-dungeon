@@ -321,8 +321,9 @@ export function describeCell(stageData, r, c, tile, layerKey) {
 		d.obj = { spr, pal: si.pal, flipX, role, skin: null };
 		return d;
 	}
-	// 店は店ごとに見た目を差し替えられる（shopData.sprite＝情報屋）。ゲームと同じ npcSpriteOf で引く。
-	if (t === TILE.NPC_SHOP) {
+	// 店は店ごとに（shopData.sprite＝情報屋）、人物は人ごとに（npcData.sprite＝老賢者）見た目を
+	// 差し替えられる。ゲームと同じ npcSpriteOf で引く。
+	if (t === TILE.NPC_SHOP || t === TILE.NPC_A || t === TILE.NPC_B) {
 		const m = npcSpriteOf(stageData, `${r},${c}`, t);
 		d.obj = { spr: m.sprite, pal: m.pal, flipX: false, role, skin: null };
 		return d;
