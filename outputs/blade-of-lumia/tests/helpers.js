@@ -44,6 +44,47 @@ export async function dismissIntroDialog(page) {
 }
 
 /**
+ * 実時間ループ（game.js startGameLoop = setInterval(() => step(1), TICK_MS)）を
+ * **ページの評価前に**差し止める。以降の goto すべてに効く（1ページ1回でよい）。
+ *
+ * ⚠ 起動後に `__game.pause()` を呼ぶのでは遅い（キュー53・2026-10-13 実測）：
+ *   goto → waitForBoard → evaluate の間にも実ループは回っており、並列負荷が高いと
+ *   止める前に 1〜5 tick 進む（地中蟲の潜伏周期が1 tick 前にずれる／ψ の位相が変わる）。
+ *   単独では 0 tick で済むので、フルテストでだけ赤になる。
+ *   ∴ step(n) の tick 番号で周期・間合いを測るテストは、これで開始時刻を gameTime=0 に固定する。
+ *
+ * 差し止めが効いたことは `expectLoopFrozen` で確かめる（game.js のループの形が変わったら赤）。
+ * @param {import('@playwright/test').Page} page
+ */
+export async function freezeGameLoop(page) {
+  await page.addInitScript(() => {
+    const native = window.setInterval;
+    window.__loopBlocked = 0;
+    window.setInterval = function (fn, ms, ...rest) {
+      if (/step\s*\(\s*1\s*\)/.test(String(fn))) { window.__loopBlocked++; return 0; }
+      return native.call(window, fn, ms, ...rest);
+    };
+  });
+}
+
+/**
+ * `freezeGameLoop` が効いていて、論理時間が 1 tick も進んでいないことを確かめる。
+ * @param {import('@playwright/test').Page} page
+ */
+export async function expectLoopFrozen(page) {
+  const s = await page.evaluate(() => ({
+    blocked: window.__loopBlocked ?? 0,
+    gameTime: window.__game.getState().gameTime,
+  }));
+  if (!(s.blocked > 0)) {
+    throw new Error('実時間ループの差し止めが効いていない（freezeGameLoop の呼び忘れか、game.js startGameLoop の形が変わった）');
+  }
+  if (s.gameTime !== 0) {
+    throw new Error(`測定の前に論理時間が進んでいる（gameTime=${s.gameTime}）`);
+  }
+}
+
+/**
  * ゲームボードにセルが描画される（=起動成功）まで待つ。
  * @param {import('@playwright/test').Page} page
  */

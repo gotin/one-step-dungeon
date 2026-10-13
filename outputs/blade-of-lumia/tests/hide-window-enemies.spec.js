@@ -33,6 +33,10 @@
 //
 // ⚠ 計測は1回の evaluate 内で完結させる（ゲームループも gameTime を進めるので
 //   await をまたいで tick を数えると実時間ぶんが混ざって数がずれる）。sea-enemies と同じ。
+// ⚠ それだけでは足りない（キュー53・2026-10-13）：goto → waitForBoard → 最初の evaluate の
+//   間にも実ループは回る。単独なら 0 tick だが並列負荷で 1 tick 入り、上の周期が丸ごと
+//   1 tick 前にずれて ⑯「tick14 はまだ潜伏中」が赤になっていた（8並列で 24 回中 3 回）。
+//   ∴ ゲーム画面は必ず openFrozen で開く＝実ループを評価前に差し止め、gameTime=0 から測る。
 
 import { test, expect } from '@playwright/test';
 import { readFileSync } from 'fs';
@@ -41,7 +45,7 @@ import { TILE, TILE_META } from '../shared/tiles.js';
 import { ENEMY_META, ENEMY_SPEED_FAST } from '../shared/enemies.js';
 import { ENEMY_SPRITES, ENEMY_PAL } from '../shared/sprites-enemies.js';
 import { TILE_SPRITE_MAP } from '../shared/tile-sprites.js';
-import { waitForBoard } from './helpers.js';
+import { waitForBoard, freezeGameLoop, expectLoopFrozen } from './helpers.js';
 import { TEST_LAYER, stageKey } from './test-stage-keys.js';
 import { placedCells, stageIdOf, PLACEMENT_STAGES } from './enemy-placed.js';
 
@@ -71,6 +75,18 @@ const BAT_URL    = previewUrl('bat_swarm',   4, 2);
 const ITEMS = { ps_bow: '1', ps_boomerang: '1', ps_bomb: '1' };
 const WORM_ITEMS_URL   = previewUrl('burrow_worm', 4, 10, ITEMS);
 const SPIDER_ITEMS_URL = previewUrl('leap_spider', 4, 5,  ITEMS);
+
+// 実ループを差し止めてから開く（ヘッダの ⚠ 参照）。addInitScript は呼ぶたびに積まれるので1ページ1回。
+const frozenPages = new WeakSet();
+async function openFrozen(page, url) {
+  if (!frozenPages.has(page)) {
+    await freezeGameLoop(page);
+    frozenPages.add(page);
+  }
+  await page.goto(url);
+  await waitForBoard(page);
+  await expectLoopFrozen(page);
+}
 
 const MAP_PATH = fileURLToPath(new URL('../work/blade-of-lumia.json', import.meta.url));
 const MAP = JSON.parse(readFileSync(MAP_PATH, 'utf8'));
@@ -277,8 +293,7 @@ test.describe('Phase 5.5k k-3 – 隠れ↔出現の無敵窓（地中蟲・跳�
   test('④ 地中蟲は潜伏で登場し、潜伏1.6s↔浮上1.0s の周期で切り替わる', async ({ page }) => {
     const errors = [];
     page.on('pageerror', e => errors.push(e.message));
-    await page.goto(WORM_URL);
-    await waitForBoard(page);
+    await openFrozen(page, WORM_URL);
 
     const flips = await page.evaluate(() => {
       const get = () => window.__game.getEnemies().find(e => e.type === 'α');
@@ -307,8 +322,7 @@ test.describe('Phase 5.5k k-3 – 隠れ↔出現の無敵窓（地中蟲・跳�
   test('⑤ 潜伏中は無敵・浮上中はダメージが通る（陸のリズム戦闘）', async ({ page }) => {
     const errors = [];
     page.on('pageerror', e => errors.push(e.message));
-    await page.goto(WORM_URL);
-    await waitForBoard(page);
+    await openFrozen(page, WORM_URL);
 
     const res = await page.evaluate(() => {
       const get = () => window.__game.getEnemies().find(e => e.type === 'α');
@@ -334,8 +348,7 @@ test.describe('Phase 5.5k k-3 – 隠れ↔出現の無敵窓（地中蟲・跳�
   test('⑦ 潜伏中は攻撃しない・浮上中だけ噛みつく', async ({ page }) => {
     const errors = [];
     page.on('pageerror', e => errors.push(e.message));
-    await page.goto(WORM_URL);
-    await waitForBoard(page);
+    await openFrozen(page, WORM_URL);
 
     // 敵の剣エフェクト（.sword-thrust）が増えた tick の潜伏状態を数える。
     // 除去は setTimeout(260ms) なので同期ループ中は消えない。
@@ -361,8 +374,7 @@ test.describe('Phase 5.5k k-3 – 隠れ↔出現の無敵窓（地中蟲・跳�
   test('⑧ 跳躍蜘蛛は 溜め→滞空→着地硬直 の3拍で跳ぶ（滞空中だけ隠れる）', async ({ page }) => {
     const errors = [];
     page.on('pageerror', e => errors.push(e.message));
-    await page.goto(SPIDER_URL);
-    await waitForBoard(page);
+    await openFrozen(page, SPIDER_URL);
 
     const rows = await page.evaluate(() => {
       const out = [];
@@ -397,8 +409,7 @@ test.describe('Phase 5.5k k-3 – 隠れ↔出現の無敵窓（地中蟲・跳�
   test('⑨ 滞空中は攻撃が通らない・着地硬直中は通る（硬直＝反撃の窓）', async ({ page }) => {
     const errors = [];
     page.on('pageerror', e => errors.push(e.message));
-    await page.goto(SPIDER_URL);
-    await waitForBoard(page);
+    await openFrozen(page, SPIDER_URL);
 
     const res = await page.evaluate(() => {
       const get = () => window.__game.getEnemies().find(e => e.type === 'β');
@@ -424,8 +435,7 @@ test.describe('Phase 5.5k k-3 – 隠れ↔出現の無敵窓（地中蟲・跳�
   test('⑩ 密着では跳ばない／間合いへ戻すと跳び直す（minRange とクールダウン）', async ({ page }) => {
     const errors = [];
     page.on('pageerror', e => errors.push(e.message));
-    await page.goto(SPIDER_URL);
-    await waitForBoard(page);
+    await openFrozen(page, SPIDER_URL);
 
     const res = await page.evaluate(() => {
       const get = () => window.__game.getEnemies().find(e => e.type === 'β');
@@ -480,8 +490,7 @@ test.describe('Phase 5.5k k-3 – 隠れ↔出現の無敵窓（地中蟲・跳�
         .toBe(TILE.WATER);
     }
 
-    await page.goto(BAT_URL);
-    await waitForBoard(page);
+    await openFrozen(page, BAT_URL);
     expect(await isolateBat(page), `前提：主役の 'ξ' (${MECH_BAT}) が居ない`).toEqual([MECH_BAT]);
 
     const res = await page.evaluate((keep) => {
@@ -511,8 +520,7 @@ test.describe('Phase 5.5k k-3 – 隠れ↔出現の無敵窓（地中蟲・跳�
     page.on('pageerror', e => errors.push(e.message));
 
     const fly = async () => {
-      await page.goto(BAT_URL);
-      await waitForBoard(page);
+      await openFrozen(page, BAT_URL);
       expect(await isolateBat(page), `前提：主役の 'ξ' (${MECH_BAT}) が居ない`).toEqual([MECH_BAT]);
       return page.evaluate((keep) => {
         const get = () => window.__game.getEnemies().find(e => e.id === keep);
@@ -582,8 +590,7 @@ test.describe('Phase 5.5k k-3 – 隠れ↔出現の無敵窓（地中蟲・跳�
     //   ブーメラン 往路の1体目で折り返す∴同じく次の tick（atk は 2）
     //   爆弾 導火線 17 tick（設置 tick + 17 で爆発・.scratch/check-bomb-fuse.mjs で実測）
     const shoot = async (opt) => {
-      await page.goto(WORM_ITEMS_URL);
-      await waitForBoard(page);
+      await openFrozen(page, WORM_ITEMS_URL);
       return shootAndTrack(page, { type: 'α', dir: 'left', ...opt });
     };
 
@@ -642,8 +649,7 @@ test.describe('Phase 5.5k k-3 – 隠れ↔出現の無敵窓（地中蟲・跳�
     // ⑧で固定した拍＝溜め tick1〜3 / 滞空 tick4〜6 / 着地硬直 tick7〜15。
     // 敵は東（4,9）＝プレイヤー(4,5)から距離4∴dir は right。
     const shoot = async (opt) => {
-      await page.goto(SPIDER_ITEMS_URL);
-      await waitForBoard(page);
+      await openFrozen(page, SPIDER_ITEMS_URL);
       return shootAndTrack(page, { type: 'β', dir: 'right', ...opt });
     };
 
@@ -683,8 +689,7 @@ test.describe('Phase 5.5k k-3 – 隠れ↔出現の無敵窓（地中蟲・跳�
     page.on('pageerror', e => errors.push(e.message));
 
     const probe = async (opt) => {
-      await page.goto(WORM_ITEMS_URL);
-      await waitForBoard(page);
+      await openFrozen(page, WORM_ITEMS_URL);
       return probeContact(page, { type: 'α', dir: 'left', off: 3, span: 16, ...opt });
     };
 
@@ -716,8 +721,7 @@ test.describe('Phase 5.5k k-3 – 隠れ↔出現の無敵窓（地中蟲・跳�
     page.on('pageerror', e => errors.push(e.message));
 
     const probe = async (opt) => {
-      await page.goto(SPIDER_ITEMS_URL);
-      await waitForBoard(page);
+      await openFrozen(page, SPIDER_ITEMS_URL);
       return probeContact(page, { type: 'β', dir: 'right', off: 4, span: 8, ...opt });
     };
 
@@ -749,8 +753,7 @@ test.describe('Phase 5.5k k-3 – 隠れ↔出現の無敵窓（地中蟲・跳�
   test('⑱ 跳躍蜘蛛：溜め（windup）の間だけスプライトが差し替わる（e.sprite と DOM 両方）', async ({ page }) => {
     const errors = [];
     page.on('pageerror', e => errors.push(e.message));
-    await page.goto(SPIDER_URL);
-    await waitForBoard(page);
+    await openFrozen(page, SPIDER_URL);
 
     const rows = await page.evaluate(() => {
       const out = [];

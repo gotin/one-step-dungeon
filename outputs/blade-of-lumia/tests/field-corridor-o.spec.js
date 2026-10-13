@@ -655,6 +655,7 @@ test.describe('Phase 9-6 深洋O ⑤ – 廊下C1〜C4 実エンジン検証', (
     // 廊下は C1 の北で腕の最終画面 15,11 とつながり、C4 の南でデルタ 15,16 へ抜ける。
     const CHAIN = ['15,11', '15,12', '15,13', '15,14', '15,15', '15,16'];
     const walls = [];
+    const allCrossings = [];
     for (let i = 0; i < CHAIN.length - 1; i++) {
       const [aKey, bKey] = [CHAIN[i], CHAIN[i + 1]];
       const [a, b] = [FIELD[aKey], FIELD[bKey]];
@@ -668,25 +669,33 @@ test.describe('Phase 9-6 深洋O ⑤ – 廊下C1〜C4 実エンジン検証', (
         if (isOpen(b, 0, c)) crossings.push({ from: bKey, to: aKey, dir: 'up', r: 0, c });
       }
       expect(crossings.length, `${aKey}↔${bKey} に開いた継ぎ目が1つも無い`).toBeGreaterThan(0);
+      allCrossings.push(...crossings);
+    }
 
-      for (const x of crossings) {
-        // ⚠ 開始位置は継ぎ目セルの **真上**（1タイル内側）ではなく **継ぎ目セル自身**。
-        //   内側には潮ゲート帯が来る（C3/C4 の row7-8）ので、内側から歩き始めると
-        //   「未解決のパズルで止まった」のを「見えない壁」と誤報する。ここで見たいのは
-        //   到着側の footprint だけ。継ぎ目まで歩いて行けるかは ⑨ が担当する。
-        await page.goto(previewUrl(x.from, x.r, x.c));
-        await waitForBoard(page);
-        await walkTiles(page, x.dir, 1);
-        const moved = await page
-          .waitForFunction((want) => window.__game.getState().stageKey === want, x.to, { timeout: 1500 })
-          .then(() => true).catch(() => false);
-        if (!moved) {
-          const now = await page.evaluate(() => {
-            const s = window.__game.getState();
-            return `${s.stageKey} @${s.player.y},${s.player.x}`;
-          });
-          walls.push(`${x.from} (${x.r},${x.c}) --${x.dir}--> ${x.to} で弾き返された（現在 ${now}）`);
-        }
+    // ⚠ 時間予算は継ぎ目の数に比例させる（キュー53・2026-10-13）。継ぎ目は 36 本＝ページを
+    //   36 回開き直す。単独で 13.8s かかり、既定の 30s ではフルテストの並列負荷で
+    //   page.goto の途中に時間切れになっていた（10並列で 16 回中 10 回赤）。歩けないのではない。
+    //   1本あたり 6s＝下の遷移待ち 5s を全部の継ぎ目で使い切っても（＝全部が見えない壁でも）
+    //   時間切れでなく walls の一覧で赤になる。
+    test.setTimeout(30_000 + allCrossings.length * 6_000);
+    for (const x of allCrossings) {
+      // ⚠ 開始位置は継ぎ目セルの **真上**（1タイル内側）ではなく **継ぎ目セル自身**。
+      //   内側には潮ゲート帯が来る（C3/C4 の row7-8）ので、内側から歩き始めると
+      //   「未解決のパズルで止まった」のを「見えない壁」と誤報する。ここで見たいのは
+      //   到着側の footprint だけ。継ぎ目まで歩いて行けるかは ⑨ が担当する。
+      await page.goto(previewUrl(x.from, x.r, x.c));
+      await waitForBoard(page);
+      await walkTiles(page, x.dir, 1);
+      // 遷移の setTimeout(100) は負荷で遅れる＝待ちは長めに取る（通れた回は即座に返る）。
+      const moved = await page
+        .waitForFunction((want) => window.__game.getState().stageKey === want, x.to, { timeout: 5000 })
+        .then(() => true).catch(() => false);
+      if (!moved) {
+        const now = await page.evaluate(() => {
+          const s = window.__game.getState();
+          return `${s.stageKey} @${s.player.y},${s.player.x}`;
+        });
+        walls.push(`${x.from} (${x.r},${x.c}) --${x.dir}--> ${x.to} で弾き返された（現在 ${now}）`);
       }
     }
 

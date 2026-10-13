@@ -8,6 +8,12 @@
 
 ---
 
+### 2026-10-13（7） — **キュー53＝並列負荷でだけ赤になる3本は「測る前に実ループが進んでいた」2本と「時間切れ」1本。tick 番号で測るテストは goto の前に実ループを差し止める（起動後の `pause()` では遅い）**（🧠 Opus・実行キュー53）
+- **原因：** ①`hide-window-enemies` ⑯・`d2-sealfire-crypt` ②＝`game.js startGameLoop` の `setInterval(step(1), 120)` は起動直後から回り、goto → waitForBoard → 最初の evaluate（d2 は敵2体の待ち・'g' キーの後の `pause()`）の間に tick が入る。単独では 0 tick、並列負荷で 1〜5 tick。開始 gameTime をログして確定＝⑯ は 24 回中 3 回が 120 で開始（潜伏周期が1 tick 前にずれる）、d2 は 0〜600ms に散って 120・480 の回だけ封じられた。②`field-corridor-o` ⑥-footprint＝継ぎ目 36 本ぶんのページ読み直しが単独 13.8s、並列で既定 30s を超えた。PLAN の推定（論理 tick に実時間が混ざる）は外れ（PLAN キュー53 に失効を明記）。
+- **決定：** `tests/helpers.js` に `freezeGameLoop`（`addInitScript` で setInterval の `step(1)` を差し止め）と `expectLoopFrozen`（差し止めが効いて gameTime=0 のままかを測定前に確かめる）を置き、2本はこれで開始時刻を固定する。⑥-footprint は継ぎ目の数に比例した `test.setTimeout`。
+- **代替案（採らない）：** ①起動直後に `pause()`＝d2 がまさにそれで揺れていた（evaluate が届く前に tick が入る）。②期待値を開始 gameTime からの相対で書く＝全部の本を書き直すうえ、ずれを隠すだけ。③`--workers` を減らす＝フル全体が遅くなり、根は残る。
+- **結果：** 3 ファイル `--repeat-each=8 --workers=10` で 296/296 緑。歯＝差し止め無し・測る前に step したの2通りで `expectLoopFrozen` が赤。同じ形の spec は他に 144 ファイル（止めない 61・起動後 pause 83）→ 一律には書き換えず、負荷で赤になった本だけ直す＝キュー54。
+
 ### 2026-10-13（6） — **キュー50＝`field-map-marks` ⑭③の揺れはテストと自動フォーカス（rAF）の競争。「Tab を通したか」はフォーカスの行き先でなく `defaultPrevented` で測る**（🧠 Opus・実行キュー50）
 - **原因：** ゲームオーバーの枠が出ると `game/input.js` が `MutationObserver → requestAnimationFrame(focusDefaultButton)` で retry を選ぶ。旧③は枠を出してすぐ Tab を押し、行き先が retry であることを期待した。Tab が rAF より先なら body→retry（緑）、rAF が先なら retry→次の要素（赤）。`--repeat-each=10` で Tab 直前の `activeElement` をログ＝5勝5敗が二値にきれいに割れた。ゲームの挙動はどちらも正しい。PLAN の推定（Chrome の Tab の起点が残る）は外れ（PLAN キュー50 に失効を明記）。
 - **決定：** ③は window の bubble で `e.defaultPrevented` を記録し、自動選択が retry に落ち着くのを `waitForFunction` で待ってから Tab を押して `[false]` を期待する。待ちは「枠が出たら既定のボタンを選ぶ」の番人も兼ねる。

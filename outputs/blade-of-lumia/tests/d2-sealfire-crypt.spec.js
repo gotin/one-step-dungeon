@@ -21,7 +21,7 @@
 import { test, expect } from '@playwright/test';
 import { readFileSync } from 'fs';
 import { fileURLToPath } from 'url';
-import { waitForBoard } from './helpers.js';
+import { waitForBoard, freezeGameLoop, expectLoopFrozen } from './helpers.js';
 import { TILE } from '../shared/tiles.js';
 import { ENEMY_META } from '../shared/enemies.js';
 import { bfsLayer, BLOCKED } from '../scripts/lib/connectivity.mjs';
@@ -116,12 +116,16 @@ async function boot(page, extra = {}) {
 	page.on('pageerror', (e) => errors.push(e.message));
 	const [row, col] = P(ENTRY);
 	const q = new URLSearchParams({ fromEditor: '1', layer: LAYER, stage: ROOM, row, col, ps_weapon: '1', ps_hearts: '3', ...extra });
+	// ⚠️ 実ループは goto の前に差し止める（キュー53・2026-10-13）。以前は最後に pause() していたが、
+	//   それまでの待ち（盤面・敵2体・'g'）の間に並列負荷で 0〜5 tick 進み、ψ との位相が揺れていた
+	//   ＝開始が 120ms／480ms ずれた回だけ下のブーメランの本が「6回封じられた」で赤になった。
+	await freezeGameLoop(page);
 	await page.goto(`${GAME}?${q}`);
 	await waitForBoard(page);
 	await page.waitForFunction(() => window.__game.getEnemies().length === 2);
 	// ⚠️ プレビューは debugMode:true＝無敵（takeDamage が早期 return）∴HP・封印を測る本は 'g' で切る。
 	await page.keyboard.press('g');
-	await page.evaluate(() => window.__game.pause());
+	await expectLoopFrozen(page);
 	return errors;
 }
 
