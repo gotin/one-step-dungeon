@@ -751,3 +751,34 @@ canvas.sprite.dot32 {
     width: var(--cell);
     height: var(--cell);
 }
+/* ── 未読の目的地の印（キュー61・2026-10-13）──────────────────────
+   目的地マークをくれる台詞をまだ聞いていない相手に付く（付け外しは game/ui.js refreshUnreadMarks）。
+   ユーザー指定＝「石碑ならワープとは違う形で点滅、NPCなら吹き出しマーク」。
+   ・立て物（看板・石碑・転移の石碑）＝絵の輪郭が金に**点滅**する。灯った転移の石碑は
+     紋が水色の**点かない**絵＝色（水色↔金）と動き（静止↔点滅）の両方で別物に見える。
+   ・人＝頭上に金の「！」の吹き出しが2段で上下する（shared/sprites-items.js markBubble 12×14）。
+     1ドット＝セルの 1/32＝32 ドットのセル絵と同じ密度（[[blade-fixed-box-sprite-scale]]）。
+     z-index 4＝上の行のセルより手前・キャラ層（#char-layer＝5）より奥（プレイヤーを隠さない）。 */
+.cell.mark-unread-sign > canvas.sprite {
+    animation: mark-unread-glow 1.2s steps(1) infinite;
+}
+@keyframes mark-unread-glow {
+    /* 縁（2px の金）だけだと細くて見落とす（headless スクショで確認）∴外へ柔らかい光を重ねる */
+    0%   { filter: drop-shadow(2px 0 0 #ffc830) drop-shadow(-2px 0 0 #ffc830) drop-shadow(0 2px 0 #ffc830) drop-shadow(0 -2px 0 #ffc830) drop-shadow(0 0 6px #ffd860); }
+    50%  { filter: none; }
+}
+.cell > canvas.mark-bubble {
+    position: absolute;
+    left: 52%;
+    top: calc(var(--cell) * -0.36);
+    width: calc(var(--cell) * 12 / 32);
+    height: calc(var(--cell) * 14 / 32);
+    image-rendering: pixelated;
+    pointer-events: none;
+    z-index: 4;
+    animation: mark-bubble-bob 0.9s steps(1) infinite;
+}
+@keyframes mark-bubble-bob {
+    0%   { transform: translateY(0); }
+    50%  { transform: translateY(calc(var(--cell) * -1 / 32)); }
+}

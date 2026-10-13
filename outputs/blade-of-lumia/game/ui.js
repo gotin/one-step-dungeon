@@ -40,6 +40,9 @@ import { markId, markColor, markGuide, addMark, normalizeDialogMarks, normalizeS
 // Dn 踏破後台詞の選択規則（17-0 → 2026-09-15 に改訂）＝版の並びと種類は
 // `shared/dialog-variants.js` が単一の真実。「条件がヒットした版のうち**一番下**を採る」。
 import { variantOptions, readEntryVariants, VARIANT_KIND, itemIdOfVariantKey } from '../shared/dialog-variants.js';
+// 未読の目的地の印（キュー61）＝人か読める立て物かで印の形を変える。
+import { NPC_SPRITE_MAP } from '../shared/npcs.js';
+import { READABLE_SIGN_TILES } from '../shared/tiles.js';
 
 // HUD のハート（heart/heartEmpty/heartHalf）の表示サイズ。Phase 10d-3 で
 // 絵を32ドット化した際、絵の中の透明余白が増えた分だけ見かけが縮むのを補う
@@ -211,6 +214,8 @@ export function createUi(deps) {
 		// 画面が変われば方向と残り画面数も変わる∴HUD の更新に相乗りする（キュー16）。
 		// enterStage() は updateHud() を必ず通る＝遷移のたびに呼び直される。
 		updateMarkGuide();
+		// 道具を拾う（道具の版）・画面が変わるで「未読の行き先」も変わる（キュー61）。
+		refreshUnreadMarks();
 	}
 
 	function pulse(text, duration = 2000) {
@@ -344,6 +349,7 @@ export function createUi(deps) {
 				pulse(added === 1 ? `{{map}} 地図に「${lastLabel}」を記した！` : `{{map}} 地図に ${added} か所を記した！`);
 			}
 			updateMarkGuide();
+			refreshUnreadMarks();   // 読み終えた相手の印を消す（キュー61）
 			saveGame();
 		}
 		return added;
@@ -363,7 +369,7 @@ export function createUi(deps) {
 		const player = getPlayer();
 		const added  = addMark(getMarks(), m);
 		if (!player.selectedMarkId) player.selectedMarkId = markId(m.layer, m.stage);
-		if (added) updateMarkGuide();
+		if (added) { updateMarkGuide(); refreshUnreadMarks(); }
 		return added;
 	}
 
@@ -386,6 +392,75 @@ export function createUi(deps) {
 
 	function pauseMarkPrev() { pauseMarkStep(-1); }
 	function pauseMarkNext() { pauseMarkStep(1); }
+
+	// ── 未読の目的地の印（キュー61・2026-10-13）─────────────────────
+	// ユーザーの言葉＝「新たにメッセージが変わったNPC／石碑は何かしらの方法で目立たせる。
+	// 石碑ならワープとは違う形で点滅、NPCなら吹き出しマーク」。印を出すのは**目的地マークを
+	// くれる版をまだ聞いていないとき**だけ（台詞が変わっただけでは出さない＝ボスを倒すたびに
+	// 印だらけになるのを避ける）。自動でマークを付けることはしない＝話しかけるのはプレイヤー。
+	//
+	// 「まだ聞いていない」は**セーブに新しい記録を持たずに導く**＝「今の版が教える行き先の
+	// うち、まだ地図に記されていないものが1つでもある」。読み終えると `commitDialogMarks()`
+	// がその行き先を記す∴印は自然に消える。根拠＝目的地は**1目的地1提供元**
+	// （`check-dialog-integrity.mjs` の❌検査が縛る）∴「その行き先を持っている」＝「その版を
+	// 聞いた」と同じ。この形だと次の2つも追加の決まり無しで正しくなる：
+	//   ・初めから付いているマーク（老賢者の「草原の洞窟」）＝開始の会話で記す∴印は出ない
+	//   ・同じ行き先を別の口（地図を拾った瞬間の村の印・店で買った宝の在処）で持っているなら出ない
+	// 版の選び方は会話と同じ `pickDialogVariant()`＝**選び方を二重に持たない**。
+	// 会話データの引き方も会話の口と同じ優先＝人（`NPC_SPRITE_MAP` のタイル）は `npcData`、
+	// 読める立て物（看板・石碑・転移の石碑）は `signData` → `npcData`
+	// （`game/combat.js swordAttack()` の分岐と同じ・人の既定台詞 NPC_DEFAULT_DIALOG は印を持たない）。
+	function unreadMarkKindAt(stageData, r, c) {
+		const tile   = stageData.tiles?.[r]?.[c];
+		const posKey = `${r},${c}`;
+		let kind, entry;
+		if (tile && NPC_SPRITE_MAP[tile]) {
+			kind = 'npc';  entry = stageData.npcData?.[posKey];
+		} else if (READABLE_SIGN_TILES.has(tile)) {
+			kind = 'sign'; entry = stageData.signData?.[posKey] ?? stageData.npcData?.[posKey];
+		} else {
+			return null;
+		}
+		if (!entry || typeof entry !== 'object') return null;
+		const mapData = getMapData();
+		const { mark } = pickDialogVariant(entry, getPlayer(), mapData);
+		if (!mark) return null;
+		const owned = new Set(getMarks().map(m => markId(m.layer, m.stage)));
+		const unread = normalizeDialogMarks(mark, getCurrentLayer()).some(m =>
+			// 行き先が実在しない印は読んでも記されない＝印が消えなくなる∴数えない
+			// （書き間違いは commitDialogMarks の警告と検査が拾う）。
+			mapData?.layers?.[m.layer]?.stages?.[m.stage] && !owned.has(markId(m.layer, m.stage)));
+		return unread ? kind : null;
+	}
+
+	/**
+	 * 今の画面の人・立て物に「未読の目的地」の印を付け直す。状態から毎回導く＝付けっぱなしの
+	 * 印が残らない。呼ぶ時＝盤面を描いた直後（`render-board.js` の `afterRender`）・HUD の更新
+	 * （道具を拾う・画面が変わる）・会話や店で印が記された直後。
+	 */
+	function refreshUnreadMarks() {
+		const boardEl = document.getElementById('board');
+		if (!boardEl) return;
+		for (const el of boardEl.querySelectorAll('.mark-unread-npc, .mark-unread-sign')) {
+			el.classList.remove('mark-unread-npc', 'mark-unread-sign');
+		}
+		for (const el of boardEl.querySelectorAll('canvas.mark-bubble')) el.remove();
+		const stageData = getMapData()?.layers?.[getCurrentLayer()]?.stages?.[getStageKey()];
+		if (!stageData) return;
+		const posKeys = new Set([...Object.keys(stageData.npcData ?? {}), ...Object.keys(stageData.signData ?? {})]);
+		for (const pk of posKeys) {
+			const [r, c] = pk.split(',').map(Number);
+			const kind = unreadMarkKindAt(stageData, r, c);
+			if (!kind) continue;
+			const cellEl = boardEl.querySelector(`.cell[data-row="${r}"][data-col="${c}"]`);
+			if (!cellEl) continue;
+			cellEl.classList.add(`mark-unread-${kind}`);
+			if (kind === 'npc') {
+				const cv = makeSprite('markBubble', 'markBubble', false);
+				if (cv) { cv.className = 'mark-bubble'; cellEl.appendChild(cv); }
+			}
+		}
+	}
 
 	// ── ダイアログ ────────────────────────────────────────────
 	// 台詞とマークの選択規則（2026-09-15 に1本へ統一＝ユーザー決定「エディタで条件がヒットした
@@ -1237,6 +1312,7 @@ export function createUi(deps) {
 		openDialog,
 		pickDialogLines,
 		pickDialogVariant,
+		refreshUnreadMarks,
 		// ポーズ
 		togglePause,
 		renderPauseMenu,

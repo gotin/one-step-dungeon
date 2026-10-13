@@ -99,6 +99,8 @@ export function createRenderBoard(deps) {
 		getDoorwayState,
 		// キュー27：その転移の石碑が灯っているか（posKey は今の画面のセル）。状態は player にある∴注入
 		isWarpStoneLit = () => false,
+		// キュー61：盤面を作り直すとセルに付けた「未読の目的地」の印も消える∴描き終えたら付け直す。
+		afterRender = () => {},
 	} = deps;
 
 	// 連結タイル（橋のデッキ）を1セル分描く（内部用）。tiles 層／bgTiles 層のどちらに
@@ -479,8 +481,12 @@ export function createRenderBoard(deps) {
 		// NPC
 		const npcMeta = npcSpriteOf(stageData, posKey, tile);   // 店ごとの見た目（shopData.sprite）もここで引く
 		if (npcMeta) {
+			// putCellSprite を通す＝32×32 の絵には dot32（セル全面）が付き、1ドットがプレイヤー・敵
+			// （キャラ層＝セル全面）と同じ大きさになる。❌ 旧＝直に appendChild していた∴10d の
+			// dot32 化から漏れ、`char-sprite` の 0.85 倍のまま＝プレイヤーより約 18% 小さく描かれていた
+			// （2026-10-13 ユーザー指摘「プレーヤーだけサイズが大きすぎない？」）。
 			const cv = makeSprite(npcMeta.sprite, npcMeta.pal, true);
-			if (cv) { cv.classList.add('char-sprite'); cellEl.appendChild(cv); }
+			putCellSprite(cellEl, cv, 'char-sprite');
 			return;
 		}
 		// 落ちているアイテム（スプライトのあるもの）
@@ -594,6 +600,7 @@ export function createRenderBoard(deps) {
 		// char-layer を board の上に重ねる
 		boardEl.appendChild(newCharLayerEl);
 		stageLabelEl.textContent = `[${currentLayer}] ${stageKey}`;
+		afterRender();
 	}
 
 	return { renderBoard, setCellClass, addCellSprite };

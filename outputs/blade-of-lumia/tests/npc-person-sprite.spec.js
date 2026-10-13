@@ -9,6 +9,8 @@
 //   ② データ：老賢者が npcElder・絵は 2 コマ 32×32・パレットがある
 //   ③ ゲームとエディタ（describeCell）が同じ絵を引く／実ゲームの盤面に npcElder が描かれる
 //   ④ エディタ：選択欄の候補は表から導く・「既定」を選ぶとキーごと消える
+//   ⑤ 盤面の NPC（人・店）はプレイヤーと同じ表示寸法＝1ドットが同じ大きさ
+//      （2026-10-13 ユーザー指摘「プレーヤーだけサイズが大きすぎない？」＝NPC だけ dot32 から漏れ 0.85 倍だった）
 import { test, expect } from '@playwright/test';
 import { readFileSync } from 'fs';
 import { npcSpriteOf, PERSON_NPC_SPRITES, NPC_SPRITE_MAP } from '../shared/npcs.js';
@@ -79,4 +81,21 @@ test('④ エディタ：候補は表から導く・既定を選ぶとキーご�
 	const elder = saved.layers.field.stages['7,14'].npcData['3,3'];
 	expect(elder.name).toBe('老賢者');
 	expect('sprite' in elder, '既定を選んでも sprite が残った（空文字も残さない）').toBe(false);
+});
+
+test('⑤ 盤面の NPC（人・店）はプレイヤーと同じ表示寸法', async ({ page }) => {
+	// field 13,5＝人（賢者エルン・村人）／field 9,9＝店主 `$` と人 `a`
+	for (const q of ['stage=13,5&row=8&col=5', 'stage=9,9&row=8&col=1']) {
+		await page.goto(`/blade-of-lumia/game/?fromEditor=1&layer=field&${q}`);
+		await waitForBoard(page);
+		const sizes = await page.evaluate(() => {
+			const wh = (el) => { const r = el.getBoundingClientRect(); return [Math.round(r.width), Math.round(r.height)]; };
+			return {
+				player: wh(document.querySelector('#char-player canvas.sprite')),
+				npcs: [...document.querySelectorAll('#board .cell canvas.char-sprite')].map(wh),
+			};
+		});
+		expect(sizes.npcs.length, `${q}: NPC が描かれていない`).toBeGreaterThanOrEqual(2);
+		for (const n of sizes.npcs) expect(n, `${q}: NPC の表示寸法がプレイヤーと違う`).toEqual(sizes.player);
+	}
 });

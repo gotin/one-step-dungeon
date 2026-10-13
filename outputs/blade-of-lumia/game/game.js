@@ -460,6 +460,8 @@ function enterStage(lk, sk, pRow, pCol) {
 // モジュール読み込み時に上書きされる∴呼ばれることは無かった）。
 let updateDungeonHud = () => {};
 let grantMark = () => {};
+// キュー61：未読の目的地の印を付け直す（ui.js が持つ＝会話の版の選び方と同じ場所）。
+let refreshUnreadMarks = () => {};
 
 // ── 敵生成 ────────────────────────────────────────────────────
 function buildEnemies(sd, lk, sk) {
@@ -696,6 +698,7 @@ const { checkStoneOnSwitch, evaluateConditions, refreshGates } = createCondition
 		charLayerElRef,
 		getDoorwayState,
 		isWarpStoneLit: (posKey) => (player.litWarpStones ?? []).includes(warpStoneId(currentLayer, stageKey, posKey)),
+		afterRender:    () => refreshUnreadMarks(),
 	});
 
 	const _rc = createRenderChars({
@@ -757,6 +760,7 @@ const { checkStoneOnSwitch, evaluateConditions, refreshGates } = createCondition
 	updateDungeonHud = _ui.updateDungeonHud;
 	updateShieldHud  = _ui.updateShieldHud;
 	grantMark        = _ui.grantMark;
+	refreshUnreadMarks = _ui.refreshUnreadMarks;
 	startDialog      = (r, c, tileChar, extraLines) => _ui.startDialog(r, c, tileChar, stageData, NPC_DEFAULT_DIALOG, player, extraLines);
 	showDialogLine   = _ui.showDialogLine;
 	advanceDialog    = _ui.advanceDialog;
