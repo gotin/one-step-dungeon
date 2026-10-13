@@ -31,7 +31,7 @@
 import { TILE, TILE_META } from './tiles.js';
 import { TILE_SPRITE_MAP } from './tile-sprites.js';
 import { SPRITES, PAL } from './sprites.js';
-import { groundSpriteName } from './ground-seams.js';
+import { groundSpriteName, frozenWaterSeamName } from './ground-seams.js';
 import { connectedTileParts, isConnectTile } from './tile-connect.js';
 import { skinnedSprite, skinName, pitSkinAt, waterSkinnedSprite } from './tile-skins.js';
 import { PIT_SKIN_STYLE, PIT_BODY_N } from './sprites-pit.js';
@@ -275,7 +275,8 @@ export function describeCell(stageData, r, c, tile, layerKey) {
 			const si = TILE_SPRITE_MAP[bg];
 			// キュー44：水の下地は層の肌（D5＝凍った水）で絵を差し替える＝見た目だけ
 			const ws = waterSkinnedSprite(layerKey, r, c, bg);
-			if (ws) d.ground = { spr: ws.spr, pal: ws.pal };
+			// キュー52：凍った水は床と接する縁に床を食い込ませる（氷の床と同じ作法）
+			if (ws) d.ground = { spr: ws.skin === 'frozen' && bg === TILE.WATER ? frozenWaterSeamName(stageData, ws.spr, r, c) : ws.spr, pal: ws.pal };
 			else if (si) {
 				// 変種（隣と同じ絵が並ばない）＋継ぎ目（隣の地面の色を自分の絵の縁へ食い込ませる）
 				const spr = groundSpriteName(stageData, si.spr, r, c);
@@ -329,7 +330,8 @@ export function describeCell(stageData, r, c, tile, layerKey) {
 	// キュー44：水・潮ゲートは層の肌（D5＝凍った水）で絵を差し替える＝見た目だけ
 	const ws = waterSkinnedSprite(layerKey, r, c, t);
 	if (ws) {
-		d.obj = { spr: ws.spr, pal: ws.pal, flipX: false, role, skin: ws.skin };
+		const spr = t === TILE.WATER ? frozenWaterSeamName(stageData, ws.spr, r, c) : ws.spr;   // キュー52
+		d.obj = { spr, pal: ws.pal, flipX: false, role, skin: ws.skin };
 		return d;
 	}
 	// 山・木・茂みは下地から肌を選び（tile-skins.js）、さらにセル座標で変種を選ぶ

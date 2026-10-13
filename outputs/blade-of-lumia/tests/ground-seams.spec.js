@@ -15,12 +15,15 @@
 //   ・実エンジン 継ぎ目セルが実際に立つ／絵は 32 ドット1枚のまま／水は継ぎ目機構に
 //              巻き込まれず名前が変わらない（10j で水自身も 32 ドット no-repeat に
 //              なったので「repeat のまま」では見分けられない＝名前で見分ける）
+//   ・氷の床     （キュー52）床が氷・凍った水へ食い込む＝塗るのは氷側のセル・床の見た目は
+//              変えない（見えている氷はいつも滑るマス）。相手は素の床だけ
 
 import { test, expect } from '@playwright/test';
 import { TILE } from '../shared/tiles.js';
 import { SPRITES, PAL, CELL_GROUND_N } from '../shared/sprites.js';
 import { TILE_SPRITE_MAP } from '../shared/tile-sprites.js';
-import { GROUND_VARIANTS, GROUND_N, SEAM_TONE_IDX, bgVariantName } from '../shared/sprites-tiles.js';
+import { GROUND_VARIANTS, GROUND_N, SEAM_TONE_IDX, ICE_FLOOR_TONE_IDX, FROZEN_FLOOR_TONE_IDX, bgVariantName } from '../shared/sprites-tiles.js';
+import { describeCell, BG_TILE_STYLE } from '../shared/cell-appearance.js';
 import { SEAM_PRIORITY, SEAM_DEPTH_MAX, groundSpriteName, visibleGroundSprite } from '../shared/ground-seams.js';
 import { waitForBoard } from './helpers.js';
 
@@ -173,6 +176,112 @@ test.describe('地形の継ぎ目 – 決め事', () => {
 		const changed = new Set();
 		g.forEach((row, r) => row.forEach((v, c) => { if (v !== b[r][c]) changed.add(v); }));
 		expect([...changed], '火山の縁が水の色で塗られた').toEqual([SEAM_TONE_IDX.lava]);
+	});
+
+});
+
+test.describe('氷の床と床の境目（キュー52）', () => {
+
+	test('⑪ 床が氷へ食い込む＝氷のセルだけが塗る・深さの上限・床の色・縁', () => {
+		// (2,*) が床。氷 (1,1) の南が床＝氷の絵に食い込みが立つ
+		const sd = stage(['kkk', 'kkk', '...']);
+		const name = groundSpriteName(sd, 'iceFloor', 1, 1);
+		expect(name, '床に接する氷に継ぎ目が無い').toContain('~s=floor');
+		// 床のセルは絵を持たないまま＝氷の色を床へ塗らない（滑らない所が氷に見えない）
+		expect(describeCell(sd, 2, 1).ground, '床のセルに地面の絵が付いた').toBeNull();
+		// 床の色＝素の床の色そのもの（隣の床と継ぎ目なく繋がる）
+		expect(PAL.ice[ICE_FLOOR_TONE_IDX], '食い込みの色が床の色と違う')
+			.toBe(BG_TILE_STYLE[TILE.FLOOR].color);
+
+		const g = SPRITES[name][0], b = SPRITES.iceFloor[0], N = GROUND_N;
+		expect(SPRITES[name].length, '継ぎ目の絵が複数コマ').toBe(1);
+		// 南の辺は全列で1ドット以上が床の色・深さは SEAM_DEPTH_MAX まで
+		for (let x = 0; x < N; x++) {
+			let d = 0;
+			while (d < N && g[N - 1 - d][x] === ICE_FLOOR_TONE_IDX) d++;
+			expect(d, `列 ${x} で床の食い込みが途切れた`).toBeGreaterThanOrEqual(1);
+			expect(d, `列 ${x} で食い込みが ${SEAM_DEPTH_MAX} ドットを超えた`).toBeLessThanOrEqual(SEAM_DEPTH_MAX);
+			// 床の色の上には氷の明るい縁（1ドット）＝「かじられた穴」に見せない
+			expect(g[N - 1 - d][x], `列 ${x} の食い込みの縁が無い`).toBe(4);
+		}
+		// 縁より奥（北側）は素の氷のまま＝食い込みは南の辺だけ
+		for (let y = 0; y < N - 1 - SEAM_DEPTH_MAX; y++) {
+			expect(g[y], `行 ${y} が素の氷から変わった`).toEqual(b[y]);
+		}
+	});
+
+	test('⑫ 相手は素の床だけ＝凍った水・石畳・壁・画面外・氷どうしでは定規のまま／斜めの床は角', () => {
+		// (1,1) の四方＝氷・石畳、斜め＝水・壁
+		const none = stage(['~k~', 'oko', 'kkk'], ['...', '...', '#.#']);
+		expect(groundSpriteName(none, 'iceFloor', 1, 1), '床でない相手に継ぎ目を作った').toBe('iceFloor');
+		// 画面の角＝外側は隣の画面（継ぎ目を作らない）
+		expect(groundSpriteName(stage(['kk', 'kk']), 'iceFloor', 0, 0)).toBe('iceFloor');
+		// 斜めだけが床＝角の食い込み
+		const corner = stage(['.kk', 'kkk', 'kkk']);
+		expect(groundSpriteName(corner, 'iceFloor', 1, 1), '斜めの床に角の食い込みが無い').toContain('nw=floor');
+		// 床の上に物が乗っていても地面は床（扉の通り道など）＝相手になる
+		const onFloor = stage(['kkk', 'kkk', '...'], ['...', '...', '.S.']);
+		expect(groundSpriteName(onFloor, 'iceFloor', 1, 1)).toContain('s=floor');
+	});
+
+	test('⑭ 凍った水（D5 の肌）も床が食い込む＝2コマとも同じ輪郭・アニメーションの名前のまま・床は無地', () => {
+		// (1,1) が水（D5 では凍った水の肌）。南が床
+		const sd = stage(['~~~', '~~~', '...']);
+		const d = describeCell(sd, 1, 1, undefined, 'dungeon_5');
+		expect(d.ground?.spr, '床に接する凍った水に継ぎ目が無い').toMatch(/^frozenWater@.*~s=floor~1,1$/);
+		expect(d.ground.spr.split('@')[0], '名前の基本形が変わった＝背景のきらめきが止まる').toBe('frozenWater');
+		expect(PAL.frozenWater[FROZEN_FLOOR_TONE_IDX], '食い込みの色が床の色と違う')
+			.toBe(BG_TILE_STYLE[TILE.FLOOR].color);
+		const frames = SPRITES[d.ground.spr];
+		expect(frames.length, 'きらめきのコマが減った').toBe(2);
+		const N = GROUND_N;
+		for (const [f, g] of frames.entries()) {
+			for (let x = 0; x < N; x++) {
+				let k = 0;
+				while (k < N && g[N - 1 - k][x] === FROZEN_FLOOR_TONE_IDX) k++;
+				expect(k, `コマ ${f} 列 ${x} で食い込みが途切れた`).toBeGreaterThanOrEqual(1);
+				expect(k, `コマ ${f} 列 ${x} が深すぎる`).toBeLessThanOrEqual(SEAM_DEPTH_MAX);
+				expect(g[N - 1 - k][x], `コマ ${f} 列 ${x} の縁が無い`).toBe(4);
+			}
+		}
+		// 床のセルは無地のまま／肌の無い層（field）の水は従来どおり（陸側が渚を描く）
+		expect(describeCell(sd, 2, 1, undefined, 'dungeon_5').ground).toBeNull();
+		expect(describeCell(sd, 1, 1, undefined, 'field').ground?.spr ?? 'water').not.toContain('=floor');
+		// 凍った水どうし・氷との境は定規のまま
+		const inner = stage(['~~~', '~~k', '~~~']);
+		expect(describeCell(inner, 1, 1, undefined, 'dungeon_5').ground.spr, '床でない相手に継ぎ目を作った')
+			.not.toContain('~');
+	});
+
+	test('⑮ D5（dungeon_5 1,1）の実画面で、床に接する凍った水にだけ継ぎ目が立つ', async ({ page }) => {
+		const p = new URLSearchParams({
+			fromEditor: '1', layer: 'dungeon_5', stage: '1,1', row: '5', col: '5',
+		});
+		await page.goto(`${GAME}?${p.toString()}`);
+		await waitForBoard(page);
+		const names = await page.evaluate(() =>
+			[...document.querySelectorAll('.cell[data-bg-sprite]')].map(c => c.dataset.bgSprite));
+		const frozen = names.filter(n => n.startsWith('frozenWater@'));
+		expect(frozen.length, '凍った水のセルが無い画面を見ている').toBeGreaterThan(20);
+		expect(frozen.filter(n => n.includes('=floor')).length, '床に接する凍った水に継ぎ目が立っていない').toBeGreaterThan(10);
+		expect(frozen.filter(n => !n.includes('~')).length, '床に接しない凍った水まで継ぎ目が立った').toBeGreaterThan(0);
+	});
+
+	test('⑬ D5（dungeon_5 3,1）の実画面で、床に接する氷にだけ継ぎ目が立つ', async ({ page }) => {
+		const p = new URLSearchParams({
+			fromEditor: '1', layer: 'dungeon_5', stage: '3,1', row: '5', col: '5',
+		});
+		await page.goto(`${GAME}?${p.toString()}`);
+		await waitForBoard(page);
+		const names = await page.evaluate(() =>
+			[...document.querySelectorAll('.cell[data-bg-sprite]')].map(c => c.dataset.bgSprite));
+		const ice = names.filter(n => n.startsWith('iceFloor'));
+		expect(ice.length, '氷のセルが無い画面を見ている').toBeGreaterThan(10);
+		const seamed = ice.filter(n => n.includes('=floor'));
+		expect(seamed.length, '出入口の床に接する氷に継ぎ目が立っていない').toBeGreaterThan(0);
+		expect(ice.filter(n => n === 'iceFloor').length, '床に接しない氷まで継ぎ目が立った').toBeGreaterThan(0);
+		expect(names.filter(n => !n.startsWith('iceFloor') && !n.startsWith('frozenWater@') && n.includes('=floor')),
+			'氷・凍った水でないセルが床の食い込みを受けた').toEqual([]);
 	});
 
 });

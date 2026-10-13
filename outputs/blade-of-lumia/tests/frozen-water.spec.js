@@ -62,14 +62,15 @@ test.describe('凍った水 ① 記述', () => {
 				const at = `${sk} (${r},${c})`;
 				if (t === TILE.WATER) {
 					tileSeen++;
-					expect(d.obj, at).toMatchObject({ spr: frozenWaterSpriteName(r, c), pal: 'frozenWater', skin: 'frozen' });
+					// 床に接する縁は床の食い込み付きの名前（キュー52）＝切り身は `~` より前で見る
+					expect({ ...d.obj, spr: d.obj?.spr?.split('~')[0] }, at).toMatchObject({ spr: frozenWaterSpriteName(r, c), pal: 'frozenWater', skin: 'frozen' });
 					expect(plain.obj, `${at} 層なし`).toMatchObject({ spr: 'water', pal: 'water' });
 				} else if (t === TILE.TIDE_GATE) {
 					tideSeen++;
 					expect(d.obj, at).toMatchObject({ spr: frozenSluiceSpriteName(r, c), pal: 'frozenTide', skin: 'frozen' });
 				} else if (bg === TILE.WATER && !d.hideGround) {
 					bgSeen++;
-					expect(d.ground, at).toEqual({ spr: frozenWaterSpriteName(r, c), pal: 'frozenWater' });
+					expect({ ...d.ground, spr: d.ground?.spr?.split('~')[0] }, at).toEqual({ spr: frozenWaterSpriteName(r, c), pal: 'frozenWater' });
 					expect(plain.ground?.spr, `${at} 層なし`).toBe('water');
 				}
 			}
@@ -142,7 +143,8 @@ test.describe('凍った水 ③ 実ゲーム', () => {
 			[...document.querySelectorAll('#board .cell')].map((el) => [`${el.dataset.row},${el.dataset.col}`, el.dataset.bgSprite ?? null])));
 		for (const k of want) {
 			const [r, c] = k.split(',').map(Number);
-			expect(got[k], `${k} の水`).toBe(frozenWaterSpriteName(r, c));
+			// 床に接する縁は床の食い込みが付く（キュー52＝`~` より後ろ）＝切り身は `~` より前で見る
+			expect(got[k]?.split('~')[0], `${k} の水`).toBe(frozenWaterSpriteName(r, c));
 		}
 		expect(Object.values(got).filter((v) => v === 'water').length, '普通の水が残っている').toBe(0);
 		// アニメーション＝きらめきのコマが切り替わる（400ms ごと）
@@ -173,7 +175,8 @@ test.describe('凍った水 ③ 実ゲーム', () => {
 					spr: el.querySelector('canvas.sprite')?.dataset.sprite ?? null,
 					pal: el.querySelector('canvas.sprite')?.dataset.pal ?? null,
 				}));
-				expect(info, `${stage} (${r},${c})`).toEqual({ skin: 'frozen', spr: nameOf[tile](r, c), pal });
+				// 水は床に接する縁に床の食い込みが付く（キュー52）＝切り身は `~` より前で見る
+				expect({ ...info, spr: info.spr?.split('~')[0] }, `${stage} (${r},${c})`).toEqual({ skin: 'frozen', spr: nameOf[tile](r, c), pal });
 			}
 		}
 	});

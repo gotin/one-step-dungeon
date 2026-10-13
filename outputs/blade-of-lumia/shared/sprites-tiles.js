@@ -275,7 +275,10 @@ TILE_SPRITES.water = [waterFrame(0), waterFrame(WATER_LINE_PX / 2)];
 //   板より暗い（透けた水の色）。D5 `4,1` は両方が並ぶ（キュー44 の約束）。
 // ⚠ 2コマ＝きらめき（霜の点）の位置だけが入れ替わる。ひびと気泡は動かない（凍っている）。
 // パレット frozenWater: 1〜3=氷のまだら（暗い透け） 4=霜 5=ひび（白） 6=ひびの縁 7=気泡 8=きらめき
-TILE_PAL.frozenWater = ['transparent', '#2a5a76', '#2f6280', '#26536e', '#cfe8f2', '#e4f4fa', '#7fb0c8', '#9cc8da', '#ffffff'];
+TILE_PAL.frozenWater = ['transparent', '#2a5a76', '#2f6280', '#26536e', '#cfe8f2', '#e4f4fa', '#7fb0c8', '#9cc8da', '#ffffff', '#1a2228'];
+// 9=床の色（キュー52）＝床が凍った水へ食い込む継ぎ目の色（`shared/ground-seams.js` の氷の節）。
+//   値は素の床の色（ice の 7 番と同じ理由）。
+export const FROZEN_FLOOR_TONE_IDX = 9;
 // 水門（潮ゲート `=`）＝**明るい青緑の氷＋石の枠**（2026-10-10 ユーザー選択＝案C）。
 //   最初は同じ氷を少し青緑に寄せただけで、ひびが水門をまたいで続き湖に溶けた
 //   （ユーザー指摘「ボタンで切り替わる水のところがわかりにくい」）。∴色を明るく離し、
@@ -572,12 +575,17 @@ TILE_SPRITES.grass = [GROUND_GRIDS.grass[0], GROUND_GRIDS.grass[1]];
 //   ・1セル＝氷板1枚（目地 1＝暗を右と下の縁に）＝マスの格子がそのまま見える
 //     ＝石が何マス滑るかを数えやすい（初版の 16 ドット角 2×2 は細かすぎてうるさかった）
 //   ・左上の面取り（3＝明）と、斜めに走る光の筋（4・5）＝磨かれた面の照り返し
-// ⚠ 変種・継ぎ目（GROUND_SHAPES）には入れない＝氷の板の目地は隣の床と揃えて見せたい
-//   （変種で筋の位置が変わると板の格子が崩れる）。
+// ⚠ 変種（GROUND_SHAPES）には入れない＝氷の板の目地は隣の床と揃えて見せたい
+//   （変種で筋の位置が変わると板の格子が崩れる）。継ぎ目は床との境だけ別の枝で付ける
+//   （キュー52・`shared/ground-seams.js` の氷の節＝床が氷へ食い込む）。
 // ⚠ 凍った水（キュー44・歩けない）と取り違えないこと＝こちらは目地のある「板」、
 //   水は目地の無い面にする（キュー44 で絵を作るときの約束）。
 // パレット ice: 1=目地 2=氷の地 3=面取りの明 4=照り 5=照りの芯（白） 6=細いひび
-TILE_PAL.ice = ['transparent', '#3e7896', '#6fa8c4', '#80b4ce', '#a8d4e8', '#dcf0f8', '#5a92b0'];
+TILE_PAL.ice = ['transparent', '#3e7896', '#6fa8c4', '#80b4ce', '#a8d4e8', '#dcf0f8', '#5a92b0', '#1a2228'];
+// 7=床の色（キュー52）＝床が氷へ食い込む継ぎ目の色（`shared/ground-seams.js` の氷の節）。
+//   値は素の床の色（`game/css/base.css` の `--floor-color`・`shared/cell-appearance.js`
+//   の BG_TILE_STYLE[FLOOR]）と同じ＝食い込みが隣の床と継ぎ目なく繋がる。
+export const ICE_FLOOR_TONE_IDX = 7;
 function iceFloorGrid() {
 	const N = GROUND_N;
 	const g = Array.from({ length: N }, () => Array(N).fill(2));

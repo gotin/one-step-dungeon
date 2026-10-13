@@ -29,7 +29,7 @@
 import { TILE } from './tiles.js';
 import { TILE_SPRITE_MAP } from './tile-sprites.js';
 import { SPRITES, registerSprite } from './sprites.js';
-import { GROUND_N, GROUND_VARIANTS, SEAM_TONE_IDX, bgVariantName, tileHash } from './sprites-tiles.js';
+import { GROUND_N, GROUND_VARIANTS, SEAM_TONE_IDX, ICE_FLOOR_TONE_IDX, FROZEN_FLOOR_TONE_IDX, bgVariantName, tileHash } from './sprites-tiles.js';
 
 // 食い込む向き（数字が大きいほど強い＝弱い側の絵に食い込む）。
 // 溶岩・水が一番強い＝渚／熱い縁は必ず陸側のセルに描かれる（水・溶岩はアニメーション
@@ -70,10 +70,10 @@ export function visibleGroundSprite(stageData, r, c) {
 
 // 継ぎ目の「線」ごとの種。同じ線（同じ境界行／列）に並ぶセルは同じ種を引く∴
 // 輪郭がセルをまたいで続く（セル座標を種に混ぜると 32 ドットで仕切り直される）。
-function edgeSeed(dir, u, r, c) {
+function edgeSeed(dir, idx, r, c) {
 	const horiz = dir === 'n' || dir === 's';
 	const line  = dir === 'n' ? r : dir === 's' ? r + 1 : dir === 'w' ? c : c + 1;
-	return tileHash((horiz ? 0 : 7919) + line, SEAM_TONE_IDX[u] * 131 + 17);
+	return tileHash((horiz ? 0 : 7919) + line, idx * 131 + 17);
 }
 
 // 継ぎ目に沿った世界ドット座標 pos での食い込みの深さ（1〜SEAM_DEPTH_MAX）。
@@ -84,10 +84,10 @@ function depthAt(seed, pos) {
 	return step + jit;
 }
 
-function paintEdge(g, dir, u, r, c) {
+// idx＝塗る色番号（自分のパレットの中の「隣の地面の色」）
+function paintEdge(g, dir, idx, r, c) {
 	const N = GROUND_N;
-	const idx = SEAM_TONE_IDX[u];
-	const seed = edgeSeed(dir, u, r, c);
+	const seed = edgeSeed(dir, idx, r, c);
 	const horiz = dir === 'n' || dir === 's';
 	const world = (horiz ? c : r) * N;      // 継ぎ目に沿った世界ドット座標の起点
 	for (let i = 0; i < N; i++) {
@@ -102,22 +102,87 @@ function paintEdge(g, dir, u, r, c) {
 }
 
 // 斜めだけが強い地形のとき＝角に 3〜4 ドットの食い込みを置く（岬の角の欠けを埋める）。
-function paintCorner(g, key, u, r, c) {
+function paintCorner(g, key, idx, r, c) {
 	const N = GROUND_N;
-	const idx = SEAM_TONE_IDX[u];
 	const r0 = key[0] === 'n' ? 0 : N - 1, dr = key[0] === 'n' ? 1 : -1;
 	const c0 = key[1] === 'e' ? N - 1 : 0, dc = key[1] === 'e' ? -1 : 1;
 	const cells = [[0, 0], [0, 1], [1, 0]];
-	if (tileHash(r * 31 + c, SEAM_TONE_IDX[u]) % 2) cells.push([1, 1]);
+	if (tileHash(r * 31 + c, idx) % 2) cells.push([1, 1]);
 	for (const [a, b] of cells) g[r0 + a * dr][c0 + b * dc] = idx;
 }
 
-function seamGrid(baseName, seams, r, c) {
-	const g = SPRITES[baseName][0].map(row => row.slice());
-	for (const dir of Object.keys(DIRS))    if (seams[dir]) paintEdge(g, dir, seams[dir], r, c);
-	for (const key of Object.keys(CORNERS)) if (seams[key]) paintCorner(g, key, seams[key], r, c);
+// toneOf＝継ぎ目の相手の名前 → 自分のパレットの色番号
+function seamGrid(baseName, seams, r, c, toneOf = (u) => SEAM_TONE_IDX[u], frame = 0) {
+	const g = SPRITES[baseName][frame].map(row => row.slice());
+	for (const dir of Object.keys(DIRS))    if (seams[dir]) paintEdge(g, dir, toneOf(seams[dir]), r, c);
+	for (const key of Object.keys(CORNERS)) if (seams[key]) paintCorner(g, key, toneOf(seams[key]), r, c);
 	return g;
 }
+
+// ── 氷の床・凍った水と床の境目（キュー52・2026-10-13）──────────────────
+// ユーザー指摘「氷の床も、水タイルにそうしてるように、床と面してるところの表現を追加」
+// ＋続き「穴（＝D5 の暗い素の床）が凍り床と隣接するときの表示も同じように」。
+// 🔴 決め事＝**床が氷へ食い込む**（塗るのは氷・凍った水のセル・床のセルの見た目は変えない）。
+//    理由＝氷の床は押した石が滑る機構のマス（キュー40）。氷の色を床のセルへ塗ると
+//    「滑らない所が氷に見える」＝石が何マス滑るかを読み違える。逆向きなら**見えている
+//    氷はいつも滑る**（氷の見かけが縁で最大 SEAM_DEPTH_MAX ドット痩せるだけ）。
+//    凍った水（歩けない）も同じ向きに揃える＝D5 の中で「床と氷色の境」は1つの作法。
+//    水の継ぎ目（強い水が陸へ食い込む）と向きが逆なのはこの理由＝見た目の都合より機構が先。
+// 相手は素の床（`bgTiles` が無い＝`TILE.FLOOR`）だけ。氷↔凍った水・石畳・壁との境は定規のまま。
+// 床の色・縁の色はそれぞれのパレットの番号（`shared/sprites-tiles.js` の ice・frozenWater）。
+// ⚠ 氷は変種を持たない（板の目地を隣と揃えるため）／凍った水は層の肌（`waterSkinnedSprite`）
+//   ∴どちらも `GROUND_VARIANTS` の枝に入らない＝ここで別に受ける。輪郭の作り方（線ごとの
+//   種・深さ・角）は地面の継ぎ目と同じ関数。凍った水はきらめきの2コマ＝コマごとに同じ輪郭を塗る
+//   （名前の `@` より前は `frozenWater` のまま∴背景のアニメーションの巡回からも外れない）。
+// ⚠ 潮ゲート（閉じた水門）は開閉で見た目が変わる∴相手にも塗り手にもしない。
+function isPlainFloor(stageData, r, c) {
+	const rows = stageData?.tiles?.length ?? 0;
+	if (r < 0 || c < 0 || r >= rows) return false;         // 画面外＝隣の画面（継ぎ目を作らない）
+	const t = stageData.tiles[r]?.[c];
+	if (t === undefined || t === TILE.WATER || t === TILE.LAVA || t === TILE.TIDE_GATE || HIDE_GROUND.has(t)) return false;
+	return (stageData.bgTiles?.[`${r},${c}`] ?? TILE.FLOOR) === TILE.FLOOR;
+}
+
+// 床が食い込む絵の名前（無ければ base のまま）。floorIdx＝床の色番号・rimIdx＝縁の色番号。
+function floorBiteName(stageData, base, r, c, floorIdx, rimIdx) {
+	const seams = {};
+	for (const [dir, [dr, dc]] of Object.entries(DIRS)) {
+		if (isPlainFloor(stageData, r + dr, c + dc)) seams[dir] = 'floor';
+	}
+	for (const [key, [a, b]] of Object.entries(CORNERS)) {
+		if (seams[a] || seams[b]) continue;
+		if (isPlainFloor(stageData, r + DIRS[a][0], c + DIRS[b][1])) seams[key] = 'floor';
+	}
+	const dirs = [...Object.keys(DIRS), ...Object.keys(CORNERS)].filter(d => seams[d]);
+	if (!dirs.length) return base;
+	const name = `${base}~${dirs.map(d => `${d}=floor`).join('.')}~${r},${c}`;
+	if (!SPRITES[name]) {
+		registerSprite(name, SPRITES[base].map((_, f) =>
+			floorRim(seamGrid(base, seams, r, c, () => floorIdx, f), floorIdx, rimIdx)));
+	}
+	return name;
+}
+
+/** 凍った水の絵（`frozenWater@…`）に床の食い込みを足した名前。D5 の描画の読み手が呼ぶ。 */
+export function frozenWaterSeamName(stageData, base, r, c) {
+	return floorBiteName(stageData, base, r, c, FROZEN_FLOOR_TONE_IDX, FROZEN_RIM_IDX);
+}
+
+// 食い込みの輪郭に沿って、氷の側へ1ドットの明るい縁を引く
+// ＝暗い歯だけだと「かじられた穴」に見える。縁があると厚みのある氷の端に読める。
+function floorRim(g, F, rim) {
+	const N = GROUND_N;
+	const out = g.map(row => row.slice());
+	for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) {
+		if (g[y][x] === F) continue;
+		if (g[y - 1]?.[x] === F || g[y + 1]?.[x] === F || g[y][x - 1] === F || g[y][x + 1] === F) {
+			out[y][x] = rim;
+		}
+	}
+	return out;
+}
+const ICE_RIM_IDX = 4;      // ice の 4＝照り
+const FROZEN_RIM_IDX = 4;   // frozenWater の 4＝霜
 
 // このセルに敷く地面スプライトの名前を返す（変種＋継ぎ目）。継ぎ目がある組み合わせは
 // その場で絵を作って `SPRITES` に登録する（名前が同じなら絵も同じ∴使い回される）。
@@ -125,6 +190,7 @@ function seamGrid(baseName, seams, r, c) {
 // ⚠ セル座標を名前に含める理由＝輪郭が世界ドット座標から決まる（線に沿って続く）∴
 //   同じ隣接でもセルによって絵が違う。座標を落とすと1枚の絵を使い回して輪郭が切れる。
 export function groundSpriteName(stageData, spr, r, c) {
+	if (spr === 'iceFloor') return floorBiteName(stageData, 'iceFloor', r, c, ICE_FLOOR_TONE_IDX, ICE_RIM_IDX);
 	const base = bgVariantName(spr, r, c);
 	const mine = SEAM_PRIORITY[spr];
 	// 変種を持たない地面（水・溶岩＝アニメーションする絵）はこの機構の外側。
