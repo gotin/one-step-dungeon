@@ -639,6 +639,26 @@ test.describe('Blade of Lumia – ダンジョンの鍵（進行の背骨）', (
     expect(errors).toEqual([]);
   });
 
+  // キュー55（2026-10-13）：この部屋のハートの器は D5 新築時から宝箱 B が無く、誰にも取れなかった
+  // （chestContents のキーだけが (2,9)→(1,9) と移っていた）。B (1,10)＝縦穴の入口の右隣に置き直した。
+  // 本道側の床 (1,9) からパズル（はしご）無しで踏んで開けられ、最大ハートが1つ増えることを確かめる。
+  test('⑤ D5：ハートの器の宝箱(1,10) は はしご無しで開けられ、最大ハートが1増える', async ({ page }) => {
+    const errors = [];
+    page.on('pageerror', e => errors.push(e.message));
+    const stage = map.layers[D5.layer].stages[D5.room];
+    expect(stage.tiles[1][10], '(1,10) は宝箱').toBe('B');
+    expect(stage.chestContents['1,10']?.type).toBe('heartContainer');
+
+    await startD5(page, { row: 1, col: 9, ladder: false });
+    const before = await page.evaluate(() => window.__game.getState().player.maxHearts);
+    await walk(page, 'right', 2);   // 半マス×2＝(1,9)→(1,10)
+    const ss = await page.evaluate(() => window.__game.getStageState());
+    expect(ss.openedChests, '宝箱 (1,10) が開いた').toContain('1,10');
+    const after = await page.evaluate(() => window.__game.getState().player.maxHearts);
+    expect(after, '最大ハートが1増える').toBe(before + 1);
+    expect(errors).toEqual([]);
+  });
+
   // ── ⑥ D4 の鍵部屋＝倉庫番型①「石3・純」（キュー 5.5e） ───────────────────
   //
   // 盤面（dungeon_4 [1,0]・孤島＝ワープ `>`(7,9) で入る）：ボタン S 3個（1,1 / 4,4 / 8,7）
