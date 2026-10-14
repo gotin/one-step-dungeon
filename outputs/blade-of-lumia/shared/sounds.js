@@ -221,15 +221,30 @@ function _playDungeonBgmLoop(ctx) {
 }
 
 // ── ボス BGM（激しい）─────────────────────────────────────────────
+// 実行キュー69：ボスが後半の相に入る（boss.js checkBossPhase＝「怒り狂った！」）たびに
+// 1段ずつ速く・半音ずつ高くする。段＝その戦いで効いた相の数（X/Z は2段まで上がる）。
+// 段は playBgm() が曲を切り替えるたびに 0 へ戻る＝次の戦い・リトライは通常の速さから。
+const BOSS_BGM_STAGES = [
+	{ tempo: 1.00, pitch: 1 },
+	{ tempo: 1.25, pitch: Math.pow(2, 1 / 12) },
+	{ tempo: 1.45, pitch: Math.pow(2, 2 / 12) },
+];
+let _bossBgmLevel = 0;
+let _bgmLoopSec   = null;   // 最後に予約したループ1周の長さ（テスト用の観測）
+
 function _playBossBgmLoop(ctx) {
 	if (!_bgmPlaying || _bgmKey !== 'boss') return;
 	const now = ctx.currentTime;
 	const vol = 0.04;
+	const { tempo, pitch } = BOSS_BGM_STAGES[_bossBgmLevel];
+	// 拍の位置と音の長さは 1/tempo 倍、音の高さは pitch 倍（譜面は通常の速さで書く）
+	const T = (sec) => sec / tempo;
+	const tone = (start, f, dur, type, v) => bgmTone(ctx, start, f * pitch, T(dur), type, v);
 
 	const bass = [55, 55, 65.41, 55, 49, 55, 65.41, 73.42];
 	bass.forEach((f, i) => {
-		bgmTone(ctx, now + i * 1.0,       f,       0.9, 'sawtooth', vol);
-		bgmTone(ctx, now + i * 1.0 + 0.4, f * 2,   0.2, 'square',   vol * 0.5);
+		tone(now + T(i * 1.0),       f,       0.9, 'sawtooth', vol);
+		tone(now + T(i * 1.0 + 0.4), f * 2,   0.2, 'square',   vol * 0.5);
 	});
 
 	const mel = [
@@ -238,18 +253,47 @@ function _playBossBgmLoop(ctx) {
 		[130.81, 0.25], [146.83, 0.25], [164.81, 0.5],
 		[146.83, 0.5], [130.81, 1.0],
 	];
-	let t = now + 0.1;
+	let t = 0.1;
 	for (const [freq, dur] of mel) {
-		bgmTone(ctx, t, freq, dur * 0.7, 'sawtooth', vol * 0.6);
+		tone(now + T(t), freq, dur * 0.7, 'sawtooth', vol * 0.6);
 		t += dur;
 	}
 
 	[0, 0.25, 0.5, 1.0, 1.25, 2.0, 2.5, 3.0, 3.5, 4.0, 4.5, 5.0,
 	 5.5, 6.0, 6.5, 7.0, 7.5].forEach(bt => {
-		bgmTone(ctx, now + bt, 55, 0.08, 'square', vol * 0.7);
+		// 打楽器の音の長さは速さに関係なく短いまま
+		bgmTone(ctx, now + T(bt), 55 * pitch, 0.08, 'square', vol * 0.7);
 	});
 
-	_bgmTimer = setTimeout(() => _playBossBgmLoop(ctx), 8000 - 100);
+	_bgmLoopSec = T(8);
+	_bgmTimer = setTimeout(() => _playBossBgmLoop(ctx), T(8) * 1000 - 100);
+}
+
+/**
+ * ボス BGM の段を上げる（実行キュー69）。今ボス BGM が鳴っていなければ何もしない。
+ * 段が変わったら**その場で**新しい速さに切り替える＝予約済みの残りの音は、BGM の出口
+ * ゲインを差し替えて黙らせる（効果音は別の出口＝影響しない）。段は下げない。
+ */
+export function setBossBgmIntensity(level) {
+	if (!_bgmPlaying || _bgmKey !== 'boss') return;
+	const next = Math.max(0, Math.min(BOSS_BGM_STAGES.length - 1, level | 0));
+	if (next <= _bossBgmLevel) return;
+	_bossBgmLevel = next;
+	if (_bgmTimer !== null) { clearTimeout(_bgmTimer); _bgmTimer = null; }
+	const ctx = getAudioContext();
+	if (_bgmGain) {
+		const old = _bgmGain;
+		_bgmGain = null;
+		// 切れ目のプチッを避けて 30ms で落としてから外す
+		try { old.gain.setTargetAtTime(0, ctx.currentTime, 0.01); } catch (_) {}
+		setTimeout(() => { try { old.disconnect(); } catch (_) {} }, 80);
+	}
+	_playBossBgmLoop(ctx);
+}
+
+/** テスト用：今の BGM（曲・ボス BGM の段・最後に予約したループ1周の秒数）。 */
+export function getBgmStateForTest() {
+	return { key: _bgmPlaying ? _bgmKey : null, bossLevel: _bossBgmLevel, loopSec: _bgmLoopSec };
 }
 
 // ── エンディング BGM（ハッピーエンド・明るいCメジャー）────────────
@@ -331,6 +375,8 @@ export function playBgm(key = 'field') {
 	stopBgm();
 	_bgmPlaying = true;
 	_bgmKey = key;
+	_bossBgmLevel = 0;      // 曲が変わったら通常の速さから（実行キュー69）
+	_bgmLoopSec = null;
 	const ctx = getAudioContext();
 	_applyGain(_getBgmGain(ctx), _soundSettings.bgm);
 	if (key === 'field')        _playFieldBgmLoop(ctx);

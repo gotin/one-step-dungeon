@@ -6,7 +6,7 @@
 import { applyBgSpriteToCell } from '../shared/sprites.js';
 import { mountIconEls } from '../shared/ui-icons.js';
 import { ENEMY_META } from '../shared/enemies.js';
-import { getSoundSettings, getSoundGainsForTest, playSound, playBgm } from '../shared/sounds.js';
+import { getSoundSettings, getSoundGainsForTest, getBgmStateForTest, playSound, playBgm } from '../shared/sounds.js';
 import {
 	init,
 	updateBoardScale,
@@ -111,7 +111,7 @@ window.__game = {
 		if (k) (_inputModule ? _inputModule.heldKeys : null)?.delete(k);
 	},
 	// 実行キュー58：消音の状態（設定＋実際の出口ゲインの値）。playSound/playBgm は出口を作らせるため。
-	getSound: () => ({ ...getSoundSettings(), gains: getSoundGainsForTest() }),
+	getSound: () => ({ ...getSoundSettings(), gains: getSoundGainsForTest(), bgmState: getBgmStateForTest() }),
 	playSound: (kind) => playSound(kind),
 	playBgm: (key) => playBgm(key),
 	movePlayer: (dir) => movePlayer(dir),

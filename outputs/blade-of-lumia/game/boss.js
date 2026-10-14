@@ -8,7 +8,7 @@ import { countTriforces } from '../shared/triforce.js';
 import { gameLayerEntries } from '../shared/layers.js';
 import { makeSprite } from '../shared/sprites.js';
 import { mountIconEls } from '../shared/ui-icons.js';
-import { playSound, playBgm, stopBgm } from '../shared/sounds.js';
+import { playSound, playBgm, stopBgm, setBossBgmIntensity } from '../shared/sounds.js';
 import { SAVE_KEY, CLEARED_KEY, BEST_TIME_KEY, ALTAR_EXIT_ID } from './constants.js';
 import { formatPlayTime, recordClearTime } from './play-time.js';
 import { playStatsItems } from './play-stats.js';
@@ -146,6 +146,8 @@ export function createBoss(deps) {
 					}, 120);
 				}
 				pulse(`${meta.name} が 怒り狂った！`, 2500);
+				// 実行キュー69：相に入るたびにボス BGM を1段速く（段＝効いた相の数）
+				setBossBgmIntensity(boss.phasesTriggered.length);
 			}
 		}
 	}
