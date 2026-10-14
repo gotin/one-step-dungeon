@@ -275,7 +275,9 @@ export const ITEM_META = {
 //    瞬間に「弓を持っていない」ことになり、矢束を踏んでも「弓矢が無いと持っていけない」
 //    と拒まれる（＝二度と矢を補充できない詰み。爆弾も同じ）。スロットを消していいのは
 //    `type:'consumable'`（薬）だけ＝あれは「手に入れた道具」ではなく使い切る品。
-export const ITEM_OWNED_FLAG = { ladder: 'hasLadder', swiftBoots: 'hasSwiftBoots' };
+// 盾（キュー63）＝装備∴`player.shield`（`equipShieldTier()` が 'shield' を入れる）。会話の版の条件
+// `item:shield`（`shared/dialog-variants.js VARIANT_EQUIP_IDS`）がここを通って所持を読む。
+export const ITEM_OWNED_FLAG = { ladder: 'hasLadder', swiftBoots: 'hasSwiftBoots', shield: 'shield' };
 
 /**
  * 数で持つ道具（矢・爆弾）を増やしたあとの本数。上限でクランプするが**減らさない**。

@@ -24,10 +24,10 @@ import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import {
 	variantOptions, bossVariantOptions, readEntryVariants, applyEntryVariants,
-	itemVariantOptions, itemVariantKey, itemIdOfVariantKey, VARIANT_KIND,
+	itemVariantOptions, itemVariantKey, itemIdOfVariantKey, VARIANT_KIND, VARIANT_EQUIP_IDS,
 } from '../shared/dialog-variants.js';
 import { ENEMY_META } from '../shared/enemies.js';
-import { ITEM_META, ownsItem } from '../shared/items.js';
+import { ITEM_META, EQUIP_META, ownsItem } from '../shared/items.js';
 import { bossesDefeatedUpTo, SUB_ITEM_KEYS } from '../shared/progression.js';
 import { waitForBoard } from './helpers.js';
 
@@ -300,8 +300,10 @@ test.describe('会話の「進行で切り替わる版」をエディタで編�
 		//   7件（見台の石碑 item:ladder・四つ辻の道標 item:bow・苔むした罅割れ壁 item:bomb・
 		//   砦跡の崩れ壁 item:bomb・罅割れた岩棚 item:bomb・火口を望む的 item:bow・
 		//   火の山の麓の篝火跡 item:candle）。印は1件も増減していない∴版の持ち主は +7 だけ）。
+		// → 51（2026-10-14・実行キュー63＝field 6,13 (8,10) に老兵ガルドを新設＝`item:shield` 版
+		//   （盾を手にした後に盾の使い方を話す）。盾は装備だが `VARIANT_EQUIP_IDS` で版の条件にした）。
 		// この数は「増えたことに気づくため」の目印∴増やすときは PLAN の記述も一緒に直す。
-		expect(targets.length, '版を持つエントリの数が変わった（PLAN の記述も直す）').toBe(50);
+		expect(targets.length, '版を持つエントリの数が変わった（PLAN の記述も直す）').toBe(51);
 		for (const t of targets) {
 			const clone = JSON.parse(JSON.stringify(t.entry));
 			applyEntryVariants(clone, readEntryVariants(clone, OPTIONS));
@@ -643,14 +645,16 @@ test.describe('会話の「進行で切り替わる版」をエディタで編�
 	// 🔴 当て所＝**「その道具を手にした後」でセリフ／印を切り替えられる**。優先順の規則は
 	//    ボスの版とまったく同じ（1本のキーの列・下ほど勝つ）∴規則を別に足していないことも見る。
 	//    ⑱は**2状態**で測る（持たない／持つ）＝片方だけだと「常にその版が出る」実装でも緑になる。
-	test('⑯ 道具の版は SUB_ITEM_KEYS から導出され、ボスの版より下・印を持てる', () => {
+	test('⑯ 道具の版は SUB_ITEM_KEYS（＋版の条件にできる装備）から導出され、ボスの版より下・印を持てる', () => {
 		const items = itemVariantOptions();
-		expect(items.map((o) => o.itemId), '道具の一覧が SUB_ITEM_KEYS と違う（手書きの表を作った？）')
-			.toEqual([...SUB_ITEM_KEYS]);
+		// キュー63＝盾（装備）も版の条件にできる＝`VARIANT_EQUIP_IDS` は道具の後ろに並ぶ。
+		expect(items.map((o) => o.itemId), '道具の一覧が SUB_ITEM_KEYS＋装備と違う（手書きの表を作った？）')
+			.toEqual([...SUB_ITEM_KEYS, ...VARIANT_EQUIP_IDS]);
 		for (const o of items) {
 			expect(o.key).toBe(`item:${o.itemId}`);
 			expect(itemIdOfVariantKey(o.key), 'キー→道具 id の読み戻しが合わない').toBe(o.itemId);
-			expect(o.label, '表示名に道具の名前が入っていない').toContain(ITEM_META[o.itemId].name);
+			expect(o.label, '表示名に道具の名前が入っていない')
+				.toContain((ITEM_META[o.itemId] ?? EQUIP_META[o.itemId]).name);
 		}
 		// キーの名前空間＝ボスのタイル文字1字・予約キーと衝突しない
 		expect(itemIdOfVariantKey('G'), 'ボスのタイル文字を道具のキーと読んだ').toBeNull();

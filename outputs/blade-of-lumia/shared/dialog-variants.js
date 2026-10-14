@@ -44,7 +44,7 @@
 
 import { labelOf, bossesInOrder, SUB_ITEM_KEYS } from './progression.js';
 import { ENEMY_META } from './enemies.js';
-import { ITEM_META } from './items.js';
+import { ITEM_META, EQUIP_META } from './items.js';
 
 /**
  * 選べるボスの一覧（進行順）＝実マップのボス部屋から導出する。手書きの表は作らない。
@@ -83,16 +83,28 @@ export function itemIdOfVariantKey(key) {
 }
 
 /**
+ * 版の条件にできる装備（実行キュー63・2026-10-14）＝`EQUIP_META` のキー。
+ * 盾は道具（`SUB_ITEM_KEYS`）ではなく装備（`player.shield`／`shieldTier`）だが、
+ * 「盾を手にしたら盾の使い方を話す」人物（field 6,13 の老兵）のために版の条件へ入れる。
+ * 所持の判定は `ownsItem()`（`ITEM_OWNED_FLAG.shield`）に任せる＝ここで置き場を見ない。
+ * 剣・防具は今は要らない∴足さない（要る人物が出たらここへ足す）。
+ */
+export const VARIANT_EQUIP_IDS = ['shield'];
+
+/** 版の条件にできる道具・装備の id 全部（検査 `check-dialog-integrity.mjs` も同じ一覧を読む） */
+export const VARIANT_ITEM_IDS = [...SUB_ITEM_KEYS, ...VARIANT_EQUIP_IDS];
+
+/**
  * 選べる道具の一覧＝`shared/progression.js` の `SUB_ITEM_KEYS`（プレビュー設定のチェックボックスと
- * 1対1の「拾える道具」）から導出する。**手書きの表を作らない**
- * （[[blade-enemy-tables-derive-from-meta]]）∴道具が増えたらここも自動で増える。
+ * 1対1の「拾える道具」）＋版の条件にできる装備（`VARIANT_EQUIP_IDS`）から導出する。
+ * **手書きの表を作らない**（[[blade-enemy-tables-derive-from-meta]]）∴道具が増えたらここも自動で増える。
  * @returns {{key:string, itemId:string, label:string}[]}
  */
 export function itemVariantOptions() {
-	return SUB_ITEM_KEYS.map((id) => ({
+	return VARIANT_ITEM_IDS.map((id) => ({
 		key: itemVariantKey(id),
 		itemId: id,
-		label: `${ITEM_META[id]?.name ?? id} を手にした後`,
+		label: `${ITEM_META[id]?.name ?? EQUIP_META[id]?.name ?? id} を手にした後`,
 	}));
 }
 

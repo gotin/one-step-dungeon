@@ -37,8 +37,8 @@
 import { readFileSync } from 'fs';
 import { TILE, READABLE_SIGN_TILES } from '../shared/tiles.js';
 import { NPC_SPRITE_MAP } from '../shared/npcs.js';
-import { ORDER, labelOf, bossesInOrder, SUB_ITEM_KEYS } from '../shared/progression.js';
-import { AFTER_KEY, itemIdOfVariantKey } from '../shared/dialog-variants.js';
+import { ORDER, labelOf, bossesInOrder } from '../shared/progression.js';
+import { AFTER_KEY, itemIdOfVariantKey, VARIANT_ITEM_IDS } from '../shared/dialog-variants.js';
 import { normalizeDialogMarks } from '../shared/marks.js';
 import { findRawIconEmoji, countIconMarkers } from '../shared/map-texts.js';
 
@@ -245,14 +245,14 @@ for (const [layerName, layer] of Object.entries(d.layers)) {
 
 // ── ⑦ 版のキーの実在（実行キュー26・2026-09-17）────────────────────────────
 // 版のキーは3種類しか正しくない：予約キー（`default` / `after`）・ボスのタイル文字1字・
-// `item:<道具id>`（`shared/progression.js` の `SUB_ITEM_KEYS`）。それ以外は
+// `item:<道具id>`（`shared/dialog-variants.js` の `VARIANT_ITEM_IDS`＝`SUB_ITEM_KEYS`＋盾）。それ以外は
 // **条件が永久にヒットしない＝本文があるのに誰も読まない死データ**になる
 // （`game/ui.js pickDialogVariant()` は知らない種類の版を hit させない）。
 // エディタは選択肢からしか書けない∴入るのは手書き・移行スクリプト・道具/ボスの改名
 // （例＝`item:hammer` と書いたが `SUB_ITEM_KEYS` に無い／ボスのタイル文字を変えた）。
 // ∴ここが「5層のうち検査の層」（[[blade-bad-data-fix-five-layers]]）。
 const VALID_BOSS_KEYS = new Set(bossesInOrder(d).map(b => b.tile));
-const VALID_ITEM_IDS  = new Set(SUB_ITEM_KEYS);
+const VALID_ITEM_IDS  = new Set(VARIANT_ITEM_IDS);   // 会話の版の選択肢と同じ一覧（キュー63 で盾が入った）
 let variantKeyCount = 0;
 for (const [layerName, layer] of Object.entries(d.layers)) {
   for (const [stageKey, stage] of Object.entries(layer.stages ?? {})) {
