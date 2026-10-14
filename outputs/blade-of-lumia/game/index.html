@@ -105,6 +105,9 @@
         </div>
         <div id="pause-map-hint" class="hidden"><span data-icon="compass" data-icon-px="16">🧭</span> ボス部屋あり</div>
       </div>
+      <!-- 遊びの記録（実行キュー66）＝ゲームの操作とは関係しない∴枠の一番下に区切り線を挟んで置く
+           （装備の行のすぐ下だと装備が読みにくい＝2026-10-14 ユーザー指摘）。中身は ui.js が描く。 -->
+      <div id="pause-score"></div>
     </div>
   </div>
 
@@ -177,6 +180,7 @@
       <div id="ending-the-end">THE END</div>
       <div id="ending-msg"></div>
       <div id="ending-time"></div>
+      <div id="ending-score"></div>
       <button id="ending-restart" class="title-btn">はじめから</button>
     </div>
   </div>

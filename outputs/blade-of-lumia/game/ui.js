@@ -27,6 +27,7 @@
 // SPRITES / PAL / ITEM_META / HP_PER_HEART / makeSprite は直接 import
 
 import { HP_PER_HEART } from './constants.js';
+import { playStatsItems } from './play-stats.js';
 import { PAL, makeSprite } from '../shared/sprites.js';
 import { ITEM_META, BOOMERANG_TIERS, HEART_PIECES_PER_HEART, EMBLEMS_FOR_AURA, hasSwordAura, ownsItem, addStack, isStackFull, isMaxHpReward } from '../shared/items.js';
 import { iconCanvas, iconText, iconPxOf, tierIconSpec } from '../shared/ui-icons.js';
@@ -99,6 +100,8 @@ export function createUi(deps) {
 	const {
 		getPlayer,
 		getMapData,
+		// キュー66: 遊びの記録（探索率・宝箱・撃破数・倒れた回数）＝game/play-stats.js
+		getPlayStats,
 		getCurrentLayer,
 		getStageKey,
 		getSS,
@@ -730,6 +733,21 @@ export function createUi(deps) {
 				keyLine.appendChild(document.createTextNode(`${label}　`));
 			}
 			pauseStatsEl.appendChild(keyLine);
+		}
+		// キュー66: 遊びの記録（THE END と同じ文言）。枠の一番下の専用欄（index.html #pause-score）に描く。
+		const scoreEl = document.getElementById('pause-score');
+		if (scoreEl && getPlayStats) {
+			scoreEl.innerHTML = '';
+			// 地図データの読み込み前（起動直後にポーズを開いた）は分母が 0＝「宝箱 0/0」と出る∴欄ごと隠す。
+			const stats = getPlayStats();
+			scoreEl.classList.toggle('hidden', !(stats.stages > 0));
+			for (const { key, label, value } of playStatsItems(stats)) {
+				const item = document.createElement('span');
+				item.className = 'pause-score-item';
+				item.dataset.stat = key;
+				item.textContent = `${label} ${value}`;
+				scoreEl.appendChild(item);
+			}
 		}
 		renderPauseDungeonMap();
 		updatePauseHint();

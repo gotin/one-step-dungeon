@@ -11,6 +11,7 @@ import { mountIconEls } from '../shared/ui-icons.js';
 import { playSound, playBgm, stopBgm } from '../shared/sounds.js';
 import { SAVE_KEY, CLEARED_KEY, BEST_TIME_KEY, ALTAR_EXIT_ID } from './constants.js';
 import { formatPlayTime, recordClearTime } from './play-time.js';
+import { playStatsItems } from './play-stats.js';
 
 /**
  * createBoss(deps) – factory
@@ -54,6 +55,7 @@ import { formatPlayTime, recordClearTime } from './play-time.js';
 export function createBoss(deps) {
 	const {
 		getStageData, getPlayer, getEnemies, setEnemies,
+		getPlayStats,
 		getMapData, getCurrentLayer, getStageKey,
 		getCharLayerEl,
 		getBossRoomLocked, setBossRoomLocked,
@@ -754,6 +756,8 @@ export function createBoss(deps) {
 			? { getItem: (k) => localStorage.getItem(k), setItem: () => {} }
 			: localStorage;
 		const clearRecord = recordClearTime(getPlayer()?.playMs, bestStore, BEST_TIME_KEY);
+		// キュー66: 遊びの記録もここで写し取る（スタッフロールの間に状態が変わっても THE END は同じ値）。
+		const statsItems = getPlayStats ? playStatsItems(getPlayStats()) : [];
 
 		endingOverlayEl.classList.remove('hidden');
 		playBgm('ending');
@@ -800,6 +804,11 @@ export function createBoss(deps) {
 				(clearRecord.isNewBest
 					? '<div class="ending-time-best ending-time-new" id="ending-time-best">ベスト更新！</div>'
 					: `<div class="ending-time-best" id="ending-time-best">ベスト ${formatPlayTime(clearRecord.best)}</div>`);
+		}
+		const scoreEl = document.getElementById('ending-score');
+		if (scoreEl) {
+			scoreEl.innerHTML = statsItems.map(({ key, label, value }) =>
+				`<span class="ending-score-item" data-stat="${key}">${label} <b>${value}</b></span>`).join('');
 		}
 	}
 

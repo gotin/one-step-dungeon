@@ -17,6 +17,7 @@ import { enemyW, enemyH, enemyCenter } from './hitbox.js';
 // と共有する（enemy-state.js が単一の真実）。`weakness.window: 'recover'` の弱点で使う。
 // isSoaring も同じ理由でそこから読む（0d-3 6体目 U＝浮いている絵と「矢しか届かない」を一致させる）。
 import { isInRecoverWindow, isSoaring } from './enemy-state.js';
+import { sanitizeCount } from './play-stats.js';
 
 /**
  * createCombat(deps) – factory
@@ -96,6 +97,8 @@ export function createCombat(deps) {
 		spawnDropEffect,
 		getStageMoves,
 		gameoverOverlayEl,
+		// キュー66: ゲームオーバーの回数を足す（game.js＝回数だけセーブへ書き足す）
+		recordDeath,
 		// Phase 5.5k k-7: 剣封じ（#13 呪い火）＝窓の持ち主は game/debuff.js
 		isSwordSealed,
 	} = deps;
@@ -315,6 +318,9 @@ export function createCombat(deps) {
 			return;
 		}
 		playSound('enemyDie');
+		// キュー66: 撃破数＝倒した雑魚の延べ数（復活した敵も・分裂の子も1体ずつ数える）。
+		// ボスは上で onBossDefeated へ分かれる∴数えない。
+		getPlayer().kills = sanitizeCount(getPlayer().kills) + 1;
 		const _ss = getSS(getCurrentLayer(), getStageKey());
 		recordDefeated(_ss, e);
 		// Phase 9-5b: 撃破時点の stageMoves を記録してリスポーンタイマーを開始する。
@@ -634,6 +640,7 @@ export function createCombat(deps) {
 	// ── ゲームオーバー ───────────────────────────────────
 	function gameOver() {
 		setIsGameover(true); stopGameLoop(); stopBgm(); playSound('gameover');
+		recordDeath?.();
 		gameoverOverlayEl.classList.remove('hidden');
 	}
 

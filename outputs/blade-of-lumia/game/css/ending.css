@@ -205,3 +205,20 @@
     color: #f0d050;
     font-weight: bold;
 }
+
+/* 実行キュー66: 遊びの記録（探索率・宝箱・撃破数・倒れた回数） */
+#ending-score {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 4px 16px;
+    max-width: 380px;
+    font-size: 13px;
+    color: #a8b8a8;
+    letter-spacing: 1px;
+}
+
+#ending-score b {
+    color: #e8e0c0;
+    font-variant-numeric: tabular-nums;
+}

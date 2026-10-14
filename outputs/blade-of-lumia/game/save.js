@@ -12,6 +12,7 @@
 import { normalizeSavedMarks, markId } from '../shared/marks.js';
 import { EMBLEMS_FOR_AURA } from '../shared/items.js';
 import { sanitizePlayMs } from './play-time.js';
+import { sanitizeCount } from './play-stats.js';
 
 // 新規ステージ状態エントリを生成する（getSS が未登録キーで使う初期値）。
 export function createStageState() {
@@ -134,6 +135,9 @@ export function sanitizeLoadedPlayer(player, itemMeta) {
 		: [];
 	// キュー65: 遊んでいた時間。導入前のセーブ・壊れた値は 0（クリアタイムが NaN にならない）。
 	player.playMs = sanitizePlayMs(player.playMs);
+	// キュー66: 撃破数・倒れた回数。導入前のセーブ・壊れた値は 0（表示が NaN にならない）。
+	player.kills  = sanitizeCount(player.kills);
+	player.deaths = sanitizeCount(player.deaths);
 	// キュー13: ハートのかけらの端数。かけら導入前のセーブは 0。壊れた値（数でない・
 	// 負・小数）は 0〜3 の整数に丸める＝HUD やポーズ画面の4分割の絵が範囲外を引かない。
 	// 4 以上は起こらない（揃った瞬間に器へ換える）∴上限で切る。

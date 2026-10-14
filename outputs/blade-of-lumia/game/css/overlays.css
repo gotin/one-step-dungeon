@@ -168,6 +168,21 @@
     text-align: center;
 }
 
+/* 実行キュー66: 遊びの記録（探索率・宝箱・撃破数・倒れた回数）
+   ゲームの操作とは関係しない∴枠の一番下に区切り線（上の罫線）を挟んで置く。 */
+#pause-score {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 2px 12px;
+    margin-top: 12px;
+    padding-top: 8px;
+    border-top: 1px solid #1e3044;
+    font-size: 12px;
+    color: #6a8aa8;
+    font-variant-numeric: tabular-nums;
+}
+
 /* ── ポーズ画面：音の切り替え（実行キュー58）── */
 #pause-sound {
     display: flex;

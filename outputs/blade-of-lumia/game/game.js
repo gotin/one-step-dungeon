@@ -59,6 +59,8 @@ import { createBoss } from './boss.js';
 // ── チャージ攻撃・剣ビーム（Phase 3-1: charge.js へ切り出し）──────────────────
 import { createCharge } from './charge.js';
 import { createDebuff } from './debuff.js';
+// ── 遊びの記録（探索率・宝箱・撃破数・倒れた回数＝実行キュー66）──────────────
+import { collectPlayStats, sanitizeCount } from './play-stats.js';
 
 
 // ── DOM ───────────────────────────────────────────────────────
@@ -146,6 +148,9 @@ let player = {
 	readNotices: [],
 	// キュー65: 遊んでいた時間（ミリ秒）＝step() が世界を進めた分だけ足す（game/play-time.js）。
 	playMs: 0,
+	// キュー66: 倒した雑魚の延べ数・ゲームオーバーの回数（game/play-stats.js）。
+	kills: 0,
+	deaths: 0,
 	// キュー16: 目的地マーク。NPC・看板が教えた場所を地図に残す。
 	// { layer, stage:"x,y", label, kind } の配列＋選択中の id（"layer:x,y"）。
 	// ⚠️ 素の配列・文字列にする＝saveGame は player を展開して JSON にする∴
@@ -300,6 +305,27 @@ function saveGame() {
 			currentLayer, stageKey, heroDir,
 		}));
 	} catch (e) { console.warn('saveGame failed:', e); }
+}
+
+// キュー66: ゲームオーバーの回数を足す。
+// ⚠️ ここで saveGame() は呼ばない＝HP 0・倒れた瞬間の部屋の状態をセーブに残さない（リトライは
+// 今までどおりセーブを書かずに続ける）。そのかわり**回数だけ**既存のセーブへ書き足す＝
+// ゲームオーバーの画面でタブを閉じて「続きから」でも回数が消えない。
+function recordDeath() {
+	player.deaths = sanitizeCount(player.deaths) + 1;
+	try {
+		const raw = localStorage.getItem(SAVE_KEY);
+		if (!raw) return;
+		const data = JSON.parse(raw);
+		if (!data?.player) return;
+		data.player.deaths = player.deaths;
+		localStorage.setItem(SAVE_KEY, JSON.stringify(data));
+	} catch (e) { console.warn('recordDeath failed:', e); }
+}
+
+// キュー66: 遊びの記録（ポーズ画面と THE END で読む）。
+function getPlayStats() {
+	return collectPlayStats(mapData, stageState, player);
 }
 
 function loadGame() {
@@ -749,6 +775,7 @@ const { checkStoneOnSwitch, evaluateConditions, refreshGates } = createCondition
 	const _ui = createUi({
 		getPlayer:         () => player,
 		getMapData:        () => mapData,
+		getPlayStats,
 		getCurrentLayer:   () => currentLayer,
 		getStageKey:       () => stageKey,
 		getSS,
@@ -1048,6 +1075,7 @@ const { checkStoneOnSwitch, evaluateConditions, refreshGates } = createCondition
 // 呼び出し時には初期化済みで TDZ にかからない。
 {
 	const _boss = createBoss({
+		getPlayStats,
 		getStageData:   () => stageData,
 		getPlayer:      () => player,
 		getEnemies:     () => enemies,
@@ -1088,6 +1116,7 @@ const { checkStoneOnSwitch, evaluateConditions, refreshGates } = createCondition
 	});
 
 	const _combat = createCombat({
+		recordDeath,
 		getStageData:   () => stageData,
 		getPlayer:      () => player,
 		getEnemies:     () => enemies,
@@ -2123,6 +2152,8 @@ function startNewGame() {
 		litWarpStones: [],
 		readNotices: [],
 		playMs: 0,
+		kills: 0,
+		deaths: 0,
 		mapMarks: [],
 		selectedMarkId: null,
 		pendingTriforce: null,
@@ -2909,6 +2940,7 @@ export function addDefeatedBossForTest(bossType) {
 
 // テスト用：player オブジェクトへの参照を返す（Phase 7-1 剣ティアテスト用）
 export function getPlayerForTest() { return player; }
+export function getPlayStatsForTest() { return getPlayStats(); }
 
 // テスト用：exitRegistry への参照を返す（実行キュー 0w＝shared/exits.js との等価性を測る）
 export function getExitRegistryForTest() { return exitRegistry; }
