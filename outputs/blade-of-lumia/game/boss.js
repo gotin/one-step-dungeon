@@ -9,7 +9,8 @@ import { gameLayerEntries } from '../shared/layers.js';
 import { makeSprite } from '../shared/sprites.js';
 import { mountIconEls } from '../shared/ui-icons.js';
 import { playSound, playBgm, stopBgm } from '../shared/sounds.js';
-import { SAVE_KEY, CLEARED_KEY, ALTAR_EXIT_ID } from './constants.js';
+import { SAVE_KEY, CLEARED_KEY, BEST_TIME_KEY, ALTAR_EXIT_ID } from './constants.js';
+import { formatPlayTime, recordClearTime } from './play-time.js';
 
 /**
  * createBoss(deps) – factory
@@ -744,6 +745,15 @@ export function createBoss(deps) {
 
 		saveCleared();
 		localStorage.removeItem(SAVE_KEY);
+		// キュー65: クリアタイム（遊んでいた時間）を自己ベストと比べて残す。
+		// セーブは上で消える∴値は生きている player から読む。
+		// エディタのプレビュー（途中の部屋から始まる）は比べて見せるだけで書かない
+		// ＝数秒の「クリア」が本番の自己ベストを上書きしない。
+		const isPreview = new URLSearchParams(location.search).get('fromEditor') === '1';
+		const bestStore = isPreview
+			? { getItem: (k) => localStorage.getItem(k), setItem: () => {} }
+			: localStorage;
+		const clearRecord = recordClearTime(getPlayer()?.playMs, bestStore, BEST_TIME_KEY);
 
 		endingOverlayEl.classList.remove('hidden');
 		playBgm('ending');
@@ -782,6 +792,14 @@ export function createBoss(deps) {
 		const msgEl = document.getElementById('ending-msg');
 		if (msgEl) {
 			msgEl.innerHTML = 'ザーネルを倒し、すべての星の欠片を集め、女王ルミアの呪いを解いた。<br>光が世界に戻り、ルミアの地に平和が訪れた……';
+		}
+		const timeEl = document.getElementById('ending-time');
+		if (timeEl) {
+			timeEl.innerHTML =
+				`<div class="ending-time-row">クリアタイム <span id="ending-time-clear">${formatPlayTime(clearRecord.ms)}</span></div>` +
+				(clearRecord.isNewBest
+					? '<div class="ending-time-best ending-time-new" id="ending-time-best">ベスト更新！</div>'
+					: `<div class="ending-time-best" id="ending-time-best">ベスト ${formatPlayTime(clearRecord.best)}</div>`);
 		}
 	}
 

@@ -22,6 +22,8 @@ export const DASH_SPEED    = 2;
 export const MAP_JSON_URL  = '../work/blade-of-lumia.json';
 export const SAVE_KEY      = 'blade-of-lumia-save';
 export const CLEARED_KEY   = 'blade-of-lumia-cleared';
+// 実行キュー65: クリアタイムの自己ベスト（ミリ秒）。CLEARED_KEY と同じく周回をまたいで残す。
+export const BEST_TIME_KEY = 'blade-of-lumia-best-time';
 
 // ── Phase 1-3: 終盤フローの MAP_ENTER 予約 ID ──────────────────
 // 終盤は「星の欠片を全収集 → 古代の祭壇へ誘導 → 翼の羽衣を入手 →

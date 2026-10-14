@@ -181,3 +181,27 @@
     text-align: center;
     max-width: 380px;
 }
+/* 実行キュー65: クリアタイム（遊んでいた時間）と自己ベスト */
+#ending-time {
+    text-align: center;
+    color: #e8e0c0;
+    font-size: 16px;
+    letter-spacing: 2px;
+    line-height: 1.7;
+}
+
+#ending-time-clear {
+    color: #f0d050;
+    font-weight: bold;
+    font-variant-numeric: tabular-nums;
+}
+
+.ending-time-best {
+    font-size: 13px;
+    color: #a8b8a8;
+}
+
+.ending-time-new {
+    color: #f0d050;
+    font-weight: bold;
+}

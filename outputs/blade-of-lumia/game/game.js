@@ -144,6 +144,8 @@ let player = {
 	litWarpStones: [],
 	// キュー64: 読み終えた「印を出す版」の id（`shared/dialog-variants.js noticeId()`）。素の配列＝そのまま保存できる。
 	readNotices: [],
+	// キュー65: 遊んでいた時間（ミリ秒）＝step() が世界を進めた分だけ足す（game/play-time.js）。
+	playMs: 0,
 	// キュー16: 目的地マーク。NPC・看板が教えた場所を地図に残す。
 	// { layer, stage:"x,y", label, kind } の配列＋選択中の id（"layer:x,y"）。
 	// ⚠️ 素の配列・文字列にする＝saveGame は player を展開して JSON にする∴
@@ -1751,6 +1753,11 @@ function step(frames = 1) {
 	for (let i = 0; i < frames; i++) {
 		if (isPaused || isDialog || isGameover || isTransitioning) return;
 		gameTime += TICK_MS;
+		// キュー65: クリアタイム＝遊んでいた時間だけ。世界が止まっている間（上の return）と
+		// タブが隠れている間は数えない。
+		if (typeof document === 'undefined' || document.visibilityState !== 'hidden') {
+			player.playMs = (player.playMs ?? 0) + TICK_MS;
+		}
 		gameTick();
 	}
 }
@@ -2115,6 +2122,7 @@ function startNewGame() {
 		gachaPrizeTaken: {},
 		litWarpStones: [],
 		readNotices: [],
+		playMs: 0,
 		mapMarks: [],
 		selectedMarkId: null,
 		pendingTriforce: null,
