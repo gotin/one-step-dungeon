@@ -99,3 +99,30 @@ test('⑤ 盤面の NPC（人・店）はプレイヤーと同じ表示寸法', 
 		for (const n of sizes.npcs) expect(n, `${q}: NPC の表示寸法がプレイヤーと違う`).toEqual(sizes.player);
 	}
 });
+
+// ⑥ 老兵ガルド（field 6,13 の 8,10・2026-10-14）＝ユーザー指摘「老兵なのに、それっぽく見えない」＋参考画像
+//    refs/老兵1.png・2.png。老賢者と同じ仕組みで専用の絵 npcVeteran に差し替える。
+test('⑥ 老兵ガルドが npcVeteran・2 コマ 32×32・盤面とエディタの両方で描かれる', async ({ page }) => {
+	const cave = map.layers.field.stages['6,13'];
+	expect(cave.npcData['8,10']).toMatchObject({ name: '老兵 ガルド', sprite: 'npcVeteran' });
+	const f = PLAYER_SPRITES.npcVeteran;
+	expect(f).toHaveLength(2);
+	for (const fr of f) {
+		expect(fr).toHaveLength(32);
+		for (const row of fr) expect(row).toHaveLength(32);
+	}
+	expect(PLAYER_PAL.npcVeteran.length, 'パレットが絵の番号に足りない').toBeGreaterThan(Math.max(...f.flat(2)));
+	// 頭（顔）は2コマで同じ＝交互に出しても顔が揺れない（頭は 2〜17 行）
+	expect(f[1].slice(0, 18)).toEqual(f[0].slice(0, 18));
+	expect(f[1], '2コマが同じ＝身ぶりが無い').not.toEqual(f[0]);
+	expect(describeCell(cave, 8, 10, undefined, 'field').obj).toMatchObject({ spr: 'npcVeteran', pal: 'npcVeteran' });
+	expect(describeCell(cave, 5, 7, undefined, 'field').obj, '村人ハナまで変わった').toMatchObject({ spr: 'npcA' });
+
+	await page.goto('/blade-of-lumia/game/?fromEditor=1&layer=field&stage=6,13&row=8&col=9');
+	await waitForBoard(page);
+	const sprites = await page.evaluate(() => {
+		const at = (r, c) => document.querySelector(`#board .cell[data-row="${r}"][data-col="${c}"] canvas.char-sprite`)?.dataset.sprite;
+		return { veteran: at(8, 10), hana: at(5, 7) };
+	});
+	expect(sprites).toEqual({ veteran: 'npcVeteran', hana: 'npcA' });
+});

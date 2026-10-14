@@ -22,6 +22,7 @@ export const SHOP_NPC_SPRITES = {
 // 'npcA'/'npcB' のような値で見た目が変わらない（2026-10-13 時点で実データに sprite 値は0件）。
 export const PERSON_NPC_SPRITES = {
 	npcElder: { sprite: 'npcElder', pal: 'npcElder', label: '老賢者' }, // refs/老賢者1.png・2.png（2026-10-13）
+	npcVeteran: { sprite: 'npcVeteran', pal: 'npcVeteran', label: '老兵' }, // refs/老兵1.png・2.png（2026-10-14）
 };
 
 /** そのセルの NPC を描く絵 {sprite, pal}。NPC でないタイルは null。 */
