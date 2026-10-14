@@ -790,7 +790,10 @@
                   "赤く光ったら、下がるか 横へ よけるのじゃ。"
                 ]
               },
-              "sprite": "npcVeteran"
+              "sprite": "npcVeteran",
+              "notifyAfterBoss": {
+                "item:shield": true
+              }
             }
           },
           "shopData": {},

@@ -259,9 +259,16 @@ for (const [layerName, layer] of Object.entries(d.layers)) {
     for (const store of ['signData', 'npcData']) {
       for (const [posKey, entry] of Object.entries(stage[store] ?? {})) {
         if (!entry || typeof entry !== 'object' || Array.isArray(entry)) continue;
+        // キュー64: 未読の印のフラグは本文のある版だけ＝本文の無い版に付いた印は誰も読めず消えない。
+        for (const nk of Object.keys(entry.notifyAfterBoss ?? {})) {
+          if (!entry.linesAfterBoss?.[nk]?.length) {
+            err(`[${layerName} ${stageKey}] (${posKey}) の notifyAfterBoss "${nk}" に本文（linesAfterBoss）が無い`);
+          }
+        }
         const keys = new Set([
           ...Object.keys(entry.linesAfterBoss ?? {}),
           ...Object.keys(entry.markAfterBoss ?? {}),
+          ...Object.keys(entry.notifyAfterBoss ?? {}),
         ]);
         for (const key of keys) {
           variantKeyCount++;

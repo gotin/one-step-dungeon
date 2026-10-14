@@ -7,6 +7,9 @@
 //   ・`linesAfterBoss.after`（予約キー）      … 星の欠片を1つ以上手にした後（印は持てない）
 //   ・`linesAfterBoss['item:<道具id>']` / `markAfterBoss['item:<道具id>']`
 //                                            … その道具を手にした後（実行キュー26・印を持てる）
+//   ・`notifyAfterBoss[キー] = true`          … その版が出ているあいだ、まだ読んでいなければ
+//                                              未読の吹き出し／点滅を出す（実行キュー64・opt-in）。
+//                                              本文（`linesAfterBoss[キー]`）がある版だけが持てる。
 //
 // ⚠️ **旧 `linesAfter`（エントリ直下の単独キー）は 2026-09-16 に `linesAfterBoss.after` へ畳んだ**
 //    （実行キュー25・ユーザー指摘「星のカケラを一つ以上手にした後を二つめ以降におけるように
@@ -196,6 +199,7 @@ function mergeKeyOrder(a, b) {
 export function readEntryVariants(entry, options) {
 	const lab = entry?.linesAfterBoss ?? {};
 	const mab = entry?.markAfterBoss ?? {};
+	const nab = entry?.notifyAfterBoss ?? {};
 	const byKey = new Map((options ?? []).map((o) => [o.key, o]));
 
 	const out = [];
@@ -211,6 +215,7 @@ export function readEntryVariants(entry, options) {
 			...opt,
 			lines: asLines(lab[key]),
 			mark:  opt.supportsMark ? (mab[key] ?? null) : null,
+			notify: nab[key] === true,
 		});
 	}
 	return out;
@@ -228,13 +233,26 @@ export function readEntryVariants(entry, options) {
 export function applyEntryVariants(entry, blocks) {
 	const lab = {};
 	const mab = {};
+	const nab = {};
 	for (const b of blocks ?? []) {
 		const lines = (b.lines ?? []).map((s) => String(s)).filter((s) => s.trim());
 		if (!b.key) continue;
 		if (lines.length) lab[b.key] = lines;
+		// 未読の印（キュー64）は本文がある版だけ＝本文の無い版に付けても読む物が無い。
+		if (b.notify && lines.length) nab[b.key] = true;
 		// 星の欠片の版は印を持てない＝`markAfterBoss.after` を作らない（欄も出していない）。
 		if (b.mark && b.key !== AFTER_KEY) mab[b.key] = b.mark;
 	}
 	if (Object.keys(lab).length) entry.linesAfterBoss = lab; else delete entry.linesAfterBoss;
 	if (Object.keys(mab).length) entry.markAfterBoss = mab; else delete entry.markAfterBoss;
+	if (Object.keys(nab).length) entry.notifyAfterBoss = nab; else delete entry.notifyAfterBoss;
+}
+
+/**
+ * 「読んだ版」の記録の id（実行キュー64）＝`player.readNotices`（素の配列＝そのまま保存できる）に入れる。
+ * 同じ人でも版ごとに別＝盾の版を読んでも、後で足した別の版は未読として光る。
+ * @param {string} layer @param {string} stage @param {string} posKey "r,c" @param {string} key 版のキー
+ */
+export function noticeId(layer, stage, posKey, key) {
+	return `${layer}:${stage}:${posKey}:${key}`;
 }

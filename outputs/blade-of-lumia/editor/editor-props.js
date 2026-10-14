@@ -323,6 +323,9 @@ function renderDialogVariants(host, entryOf, variants, options) {
 			<label>セリフ（1行=1ページ）
 				<textarea data-vf="lines" rows="3">${escAttr(v.lines.join('\n'))}</textarea>
 			</label>
+			<!-- キュー64: 行き先を持たない版でも、まだ読んでいなければ未読の印（人＝吹き出し・立て物＝点滅）を出す。
+			     印をくれる版は付けなくても光る（キュー61）＝これは「一度は聞いてほしい教え」用。 -->
+			<label style="display:flex;align-items:center;gap:4px;"><input type="checkbox" data-vf="notify" style="width:auto;margin:0;" ${v.notify ? 'checked' : ''}>未読なら印を出す（吹き出し・点滅）</label>
 			${v.supportsMark
 				? `<div class="hint">この版のときに教える目的地（画面を空にすると印なし）</div>${markFieldsHtml('data-vf', '', v.mark ?? {})}`
 				: '<div class="hint">この条件は目的地を持てない（星の欠片の版は印を持たないと決めた＝ゲームは無視する）</div>'}
@@ -356,11 +359,12 @@ function renderDialogVariants(host, entryOf, variants, options) {
 			if (f === 'del' || f === 'cond' || f === 'up' || f === 'down') return;
 			const handler = () => {
 				if (f === 'lines') v.lines = inp.value.split('\n').filter((l) => l.trim());
+				else if (f === 'notify') v.notify = inp.checked;
 				else { v.mark = readMarkFields(box, 'data-vf'); paintMarkFields(box, 'data-vf'); }
 				commit();
 			};
 			inp.addEventListener('input', handler);
-			if (inp.tagName === 'SELECT') inp.addEventListener('change', handler);
+			if (inp.tagName === 'SELECT' || inp.type === 'checkbox') inp.addEventListener('change', handler);
 		});
 		paintMarkFields(box, 'data-vf');
 		host.appendChild(box);

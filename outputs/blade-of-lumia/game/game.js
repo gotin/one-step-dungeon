@@ -43,6 +43,7 @@ import { createWarpMenu } from './warp-menu.js';
 import { initPlaytestNotes } from './playtest-notes.js';
 import { initSoundToggle } from './sound-toggle.js';
 import { warpStoneId, warpLandingCandidates, WARP_NO_LANDING_TILES } from '../shared/warp-stones.js';
+import { noticeId } from '../shared/dialog-variants.js';
 // ── 投擲物・爆弾（Phase 0-2 Step 5: projectile.js へ切り出し）───────────────
 import { createProjectile } from './projectile.js';
 // ── 敵AI（Phase 0-2 Step 5: enemy-ai.js へ切り出し）──────────────────────────
@@ -140,6 +141,8 @@ let player = {
 	gachaPrizeTaken: {},
 	// キュー27: 灯った転移の石碑の id（"layer:stage:r,c"）。素の配列＝JSON でそのまま保存できる。
 	litWarpStones: [],
+	// キュー64: 読み終えた「印を出す版」の id（`shared/dialog-variants.js noticeId()`）。素の配列＝そのまま保存できる。
+	readNotices: [],
 	// キュー16: 目的地マーク。NPC・看板が教えた場所を地図に残す。
 	// { layer, stage:"x,y", label, kind } の配列＋選択中の id（"layer:x,y"）。
 	// ⚠️ 素の配列・文字列にする＝saveGame は player を展開して JSON にする∴
@@ -778,7 +781,7 @@ const { checkStoneOnSwitch, evaluateConditions, refreshGates } = createCondition
 	shopSelectNext   = _ui.shopSelectNext;
 	shopBuy          = _ui.shopBuy;
 	// 第3引数＝看板が教える目的地（キュー16）。呼び元が渡さなければ null＝従来どおり。
-	openDialog       = (name, lines, mark, onClose) => _ui.openDialog(name, lines, mark, onClose);
+	openDialog       = (name, lines, mark, onClose, notice) => _ui.openDialog(name, lines, mark, onClose, notice);
 	// 台詞と目的地マークを同じ進行状態から解決する（キュー17-2）。
 	pickDialogVariant = (data, p, map) => _ui.pickDialogVariant(data, p, map);
 
@@ -808,7 +811,8 @@ const { checkStoneOnSwitch, evaluateConditions, refreshGates } = createCondition
 			const posKey = `${ws.r},${ws.c}`;
 			const sd = st?.signData?.[posKey] ?? st?.npcData?.[posKey] ?? {};
 			const v = pickDialogVariant(sd, player, mapData);
-			openDialog(sd.name ?? '転移の石碑', v.lines, v.mark);
+			openDialog(sd.name ?? '転移の石碑', v.lines, v.mark, null,
+				v.noticeKey ? noticeId(ws.layer, ws.stage, posKey, v.noticeKey) : null);
 		},
 		travelTo:     (ws) => {
 			const dest = getStageData(ws.layer, ws.stage);
@@ -1144,7 +1148,9 @@ const { checkStoneOnSwitch, evaluateConditions, refreshGates } = createCondition
 		// キュー27: 転移の石碑は (r,c) から碑を引いて warp-menu に渡す（灯す・行き先の一覧）。
 		openSignDialog: (sd, r, c, tile) => {
 			const v = pickDialogVariant(sd, player, mapData);
-			const show = (onClose) => openDialog(sd.name ?? '看板', v.lines, v.mark, onClose);
+			// キュー64: 印を出す版なら、読み終えたら「読んだ版」に記す id も渡す。
+			const notice = v.noticeKey ? noticeId(currentLayer, stageKey, `${r},${c}`, v.noticeKey) : null;
+			const show = (onClose) => openDialog(sd.name ?? '看板', v.lines, v.mark, onClose, notice);
 			if (tile === TILE.WARP_STONE && warpMenu) {
 				const ws = { id: warpStoneId(currentLayer, stageKey, `${r},${c}`), layer: currentLayer, stage: stageKey, r, c, name: sd.name ?? '転移の石碑' };
 				warpMenu.onRead(ws, show);
@@ -2100,6 +2106,7 @@ function startNewGame() {
 		gachaPulls: {},
 		gachaPrizeTaken: {},
 		litWarpStones: [],
+		readNotices: [],
 		mapMarks: [],
 		selectedMarkId: null,
 		pendingTriforce: null,

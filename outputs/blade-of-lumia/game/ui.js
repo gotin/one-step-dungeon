@@ -39,7 +39,7 @@ import { layerEntranceStages } from '../shared/exits.js';
 import { markId, markColor, markGuide, addMark, normalizeDialogMarks, normalizeSavedMarks } from '../shared/marks.js';
 // Dn 踏破後台詞の選択規則（17-0 → 2026-09-15 に改訂）＝版の並びと種類は
 // `shared/dialog-variants.js` が単一の真実。「条件がヒットした版のうち**一番下**を採る」。
-import { variantOptions, readEntryVariants, VARIANT_KIND, itemIdOfVariantKey } from '../shared/dialog-variants.js';
+import { variantOptions, readEntryVariants, VARIANT_KIND, itemIdOfVariantKey, noticeId } from '../shared/dialog-variants.js';
 // 未読の目的地の印（キュー61）＝人か読める立て物かで印の形を変える。
 import { NPC_SPRITE_MAP } from '../shared/npcs.js';
 import { READABLE_SIGN_TILES } from '../shared/tiles.js';
@@ -132,6 +132,8 @@ export function createUi(deps) {
 	// 会話が教えるマークは**読み終えたとき**に足す（開いた瞬間だと読み飛ばしても
 	// 手に入る＝「教わった」感が無い）∴会話中は保留しておく。
 	let pendingDialogMarks = [];
+	// キュー64: 読み終えたら「読んだ版」に記す id（`noticeId()`）。印を出す版でなければ null。
+	let pendingNotice = null;
 
 	// ── DOM 参照 ──────────────────────────────────────────────
 	const heartsEl         = document.getElementById('hud-hearts');
@@ -356,6 +358,22 @@ export function createUi(deps) {
 	}
 
 	/**
+	 * 読み終えた版を「読んだ版」に記す（キュー64）。印を出す版のときだけ id が保留されている。
+	 * ⚠️ 素の配列（`player.readNotices`）＝saveGame は player を展開して JSON にする∴Set にしない。
+	 */
+	function commitDialogNotice() {
+		const id = pendingNotice;
+		pendingNotice = null;
+		if (!id) return;
+		const player = getPlayer();
+		if (!Array.isArray(player.readNotices)) player.readNotices = [];
+		if (player.readNotices.includes(id)) return;
+		player.readNotices.push(id);
+		refreshUnreadMarks();
+		saveGame();
+	}
+
+	/**
 	 * 会話を介さずマークを直接足す（キュー17-10b＝地図を拾った瞬間に村の印を立てる）。
 	 * 行き先が実在しない画面なら書き間違い∴警告して捨てる（commitDialogMarks と同じ作法）。
 	 * @returns {boolean} 新しく足したか
@@ -423,7 +441,11 @@ export function createUi(deps) {
 		}
 		if (!entry || typeof entry !== 'object') return null;
 		const mapData = getMapData();
-		const { mark } = pickDialogVariant(entry, getPlayer(), mapData);
+		const { mark, noticeKey } = pickDialogVariant(entry, getPlayer(), mapData);
+		// キュー64: 印を出すと決めた版（`notifyAfterBoss`）＝行き先を持たなくても、まだ読んで
+		// いなければ出す。「読んだ」は地図から導けない∴セーブの `readNotices` で持つ。
+		if (noticeKey && !(getPlayer().readNotices ?? []).includes(
+			noticeId(getCurrentLayer(), getStageKey(), posKey, noticeKey))) return kind;
 		if (!mark) return null;
 		const owned = new Set(getMarks().map(m => markId(m.layer, m.stage)));
 		const unread = normalizeDialogMarks(mark, getCurrentLayer()).some(m =>
@@ -487,6 +509,7 @@ export function createUi(deps) {
 
 		let lines = null;
 		let mark  = null;
+		let noticeKey = null;   // キュー64: 本文を採った版が印を出す版なら、そのキー
 		for (const v of readEntryVariants(data, variantOptions(map))) {
 			let hit;
 			if (v.kind === VARIANT_KIND.AFTER)        hit = hasSeenBoss;
@@ -496,14 +519,14 @@ export function createUi(deps) {
 			else if (v.kind === VARIANT_KIND.ITEM)   hit = ownsItem(player, v.itemId ?? itemIdOfVariantKey(v.key));
 			else                                      hit = !!defeated?.has(v.key);
 			if (!hit) continue;
-			if (v.lines.length) lines = v.lines;
+			if (v.lines.length) { lines = v.lines; noticeKey = v.notify ? v.key : null; }
 			// 星の欠片の版（`after`）は印を持てない（欄を出していない）∴`mark` は最初から null。
 			if (v.mark) mark = v.mark;
 		}
 		if (!lines) lines = data.lines ?? ['…'];
 		if (!mark)  mark  = data.mark ?? null;
 
-		return { lines, mark };
+		return { lines, mark, noticeKey };
 	}
 
 	/** 台詞だけが要るとき用の薄い包み（既存の呼び出し元・テストのため残す） */
@@ -524,6 +547,7 @@ export function createUi(deps) {
 		// 「記した！」が会話の後ろに隠れて出てしまうのを避ける。
 		// キュー17-2: 進行で本文が変わる相手は `markAfterBoss` でマークも変わる（variant 側で解決済み）。
 		pendingDialogMarks = normalizeDialogMarks(variant.mark, getCurrentLayer());
+		pendingNotice = variant.noticeKey ? noticeId(getCurrentLayer(), getStageKey(), posKey, variant.noticeKey) : null;
 		setIsDialog(true); stopGameLoop();
 		dialogNameEl.textContent = data.name ?? '';
 		showDialogLine();
@@ -546,6 +570,7 @@ export function createUi(deps) {
 			flushPendingPulse();
 			// 閉じた後に呼ぶ＝pulse がそのまま画面に出る（会話中は保留されてしまう）。
 			commitDialogMarks();
+			commitDialogNotice();
 			const after = dialogOnClose;
 			dialogOnClose = null;
 			after?.();
@@ -555,15 +580,17 @@ export function createUi(deps) {
 	// ダイアログを外部から開く（ヒント・サブアイテム説明など）
 	// `mark`＝看板の「教える目的地」（看板は startDialog を通らず game.js から開く）。
 	// onClose＝読み終えて閉じた直後に1回呼ぶ（キュー27＝転移の石碑が灯り、行き先の一覧を開く）。
-	function openDialog(name, lines, mark = null, onClose = null) {
+	// notice＝読み終えたら「読んだ版」に記す id（キュー64・看板／石碑の版が印を出す版のとき）。
+	function openDialog(name, lines, mark = null, onClose = null, notice = null) {
 		// 店を開いている間に来たダイアログ（店で初めてサブアイテムを買ったときのヒント）は
 		// 店を閉じてから開く。⚠️ そのまま開くと店の窓の裏に隠れたダイアログがキー入力を奪い、
 		// ↑↓・Escape が効かなくなる（2026-09-30 ユーザー報告＝クリックだけ効く状態）。
-		if (getIsShop()) { pendingDialog = { name, lines, mark }; return; }
+		if (getIsShop()) { pendingDialog = { name, lines, mark, notice }; return; }
 		dialogOnClose = onClose;
 		dialogLines   = lines;
 		dialogLineIdx = 0;
 		pendingDialogMarks = normalizeDialogMarks(mark, getCurrentLayer());
+		pendingNotice = notice;
 		setIsDialog(true); stopGameLoop();
 		dialogNameEl.textContent = name;
 		showDialogLine();
@@ -1067,7 +1094,7 @@ export function createUi(deps) {
 		if (pendingDialog) {
 			const d = pendingDialog;
 			pendingDialog = null;
-			openDialog(d.name, d.lines, d.mark);
+			openDialog(d.name, d.lines, d.mark, null, d.notice);
 		}
 		flushPendingPulse();
 	}

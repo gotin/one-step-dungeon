@@ -127,6 +127,10 @@ export function sanitizeLoadedPlayer(player, itemMeta) {
 	player.litWarpStones = Array.isArray(player.litWarpStones)
 		? [...new Set(player.litWarpStones.filter((x) => typeof x === 'string'))]
 		: [];
+	// キュー64: 読み終えた「印を出す版」。導入前のセーブ・壊れた値は []（＝どれも未読＝印が出る）。
+	player.readNotices = Array.isArray(player.readNotices)
+		? [...new Set(player.readNotices.filter((x) => typeof x === 'string'))]
+		: [];
 	// キュー13: ハートのかけらの端数。かけら導入前のセーブは 0。壊れた値（数でない・
 	// 負・小数）は 0〜3 の整数に丸める＝HUD やポーズ画面の4分割の絵が範囲外を引かない。
 	// 4 以上は起こらない（揃った瞬間に器へ換える）∴上限で切る。

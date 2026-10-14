@@ -780,6 +780,24 @@ test.describe('会話の「進行で切り替わる版」をエディタで編�
 		await expect(page.locator('#dialog-text')).toContainText(T.bomb);
 	});
 
+	// キュー64（2026-10-14）＝版ごとの「未読なら印を出す」。エディタから外せる・付けられる（opt-in の入口）。
+	test('⑲ 版の「未読なら印を出す」は老兵の盾の版で入っていて、外す・付け直すがデータに入る', async ({ page }) => {
+		page.on('dialog', (d) => d.dismiss());
+		await gotoEditorWithMap(page);
+		await openStageInEditor(page, '6,13');
+		const item = npcItem(page, '8,10');
+		const box  = variantBlock(item, 0);
+		const cb   = box.locator('[data-vf="notify"]');
+		await expect(cb, '盾の版の印のチェックが入っていない（データから読めていない）').toBeChecked();
+		await cb.uncheck();
+		let vet = (await savedMapData(page)).layers.field.stages['6,13'].npcData['8,10'];
+		expect(vet.notifyAfterBoss, '外したのにフラグが残った').toBeUndefined();
+		await cb.check();
+		vet = (await savedMapData(page)).layers.field.stages['6,13'].npcData['8,10'];
+		expect(vet.notifyAfterBoss, '付け直したのにフラグが入らない').toEqual({ 'item:shield': true });
+		expect(vet.linesAfterBoss['item:shield'], '本文まで変わった').toEqual(entryOf('6,13', '8,10').linesAfterBoss['item:shield']);
+	});
+
 	test('⑩ ps_defeated は2つのプレビュー経路とゲーム側に揃っている（静的検査）', () => {
 		const read = (rel) => fs.readFileSync(fileURLToPath(new URL(rel, import.meta.url)), 'utf8');
 		// プレビュー設定は2経路で読まれる（[[blade-preview-settings-duplicated]]）＝両方に要る。
