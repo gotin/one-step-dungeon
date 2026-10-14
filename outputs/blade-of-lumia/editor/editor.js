@@ -7,7 +7,7 @@ import { renderLayerTabs, renderDungeonMeta, initLayerEvents } from './editor-la
 import { renderWorldGrid, initWorldEvents } from './editor-world.js';
 import { buildTilePalette, TILE_SPRITE_MAP } from './editor-palette.js';
 import { canvas, renderStageCanvas, initCanvasEvents, initToolButtons } from './editor-canvas.js';
-import { renderSidePanel, initLinksEvents, initConditionEvents, initDoorwayEvents } from './editor-props.js';
+import { renderSidePanel, initLinksEvents, initConditionEvents, initDoorwayEvents, initEnemyAlertEvents } from './editor-props.js';
 import {
 	tryRestoreFromStorage, initIOEvents, initFileFreshnessCheck,
 	getPreviewPending, setPreviewPending, openPreview,
@@ -187,6 +187,7 @@ document.addEventListener('editor:previewClickAt', e => {
 initLinksEvents();
 initConditionEvents();
 initDoorwayEvents();
+initEnemyAlertEvents();
 
 initIOEvents(
 	() => renderLayerTabs(() => renderWorldGrid(), () => renderDungeonMeta()),

@@ -343,6 +343,8 @@ export function initCanvasEvents(renderSidePanel, renderWorldGrid, getPreviewPen
 		sd.breakableWalls = {};
 		sd.isBossRoom = false;
 		sd.bgm = undefined;
+		delete sd.enemiesAlert;   // キュー60: 敵の動きの指定も消す
+		delete sd.enemyChase;
 		renderStageCanvas(renderSidePanel);
 		renderSidePanel();
 	});

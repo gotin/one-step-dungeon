@@ -12,6 +12,16 @@ export const ENEMY_SPEED_SLOW   = 0.25; // 鈍足敵
 export const ENEMY_SPEED_NORMAL = 0.5;  // 通常敵
 export const ENEMY_SPEED_FAST   = 1.0;  // 高速敵
 
+// ── さまよい（キュー60・2026-10-14）────────────────────────────
+// roam を持つ雑魚は、気づくまで出現位置（家）の周りをさまよい、気づいたら追う
+// （game/enemy-ai.js updateRoamAwareness / enemyRoam）。追いかけ専用のチェイサー C と
+// ボス・別の歩き方を持つ敵（combat / zigzag など）には付けない。
+//   notice  … 気づく距離（敵とプレイヤーの中心どうし・セル）
+//   lose    … 見失う距離（notice より大きい＝境目で行ったり来たりしない）
+//   radius  … さまよう範囲（家から縦横それぞれ何マス以内か）
+//   pauseMs … 目的地に着いてから次へ歩き出すまでの休み [最短, 最長]
+export const ROAM_DEFAULT = Object.freeze({ notice: 4, lose: 6, radius: 3, pauseMs: Object.freeze([500, 1500]) });
+
 // ── 敵パラメータ ──────────────────────────────────────────────
 // attack.type: 'charge' | 'spear' | 'stone' | 'sword' | 'swordBeam' | 'waterShot' | 'waterBlade'
 //            | 'bombThrow' | 'boomerangThrow' | 'magicBolt'
@@ -155,6 +165,7 @@ export const ENEMY_SPEED_FAST   = 1.0;  // 高速敵
 //    `tests/dungeon-key-gate.spec.js` ⑨ の関門の期待値が動く（必ず同じ回で直す）。
 export const ENEMY_META = {
 	[TILE.PATROL]: {
+		roam: ROAM_DEFAULT,
 		name: 'パトロール',
 		hp: 4, atk: 1, def: 0, exp: 3,        // 脅威度 4.0（最弱枠＝木の剣1振りで倒せることを教える）
 		speed: ENEMY_SPEED_SLOW,
@@ -173,6 +184,7 @@ export const ENEMY_META = {
 		attack: { type: 'charge' },
 	},
 	[TILE.SENTRY]: {
+		roam: ROAM_DEFAULT,
 		name: 'センチネル',
 		hp: 12, atk: 3, def: 1, exp: 8,       // 脅威度 18.0（木の剣4振り）
 		speed: ENEMY_SPEED_NORMAL,
@@ -187,6 +199,7 @@ export const ENEMY_META = {
 		},
 	},
 	[TILE.SKELETON]: {
+		roam: ROAM_DEFAULT,
 		// 骸骨剣士（陸上通常敵・5.5k 新規）。DECISIONS 2026-08-10「陸上敵の真4方向＋攻撃/ガードポーズ機構」の
 		// 最初の適用対象＝directional:true で resolveEnemySprite() 経由の向き差替・攻撃/ガードポーズに乗る。
 		// スプライトは当面 skeletonD/R/L/U（正面絵のエイリアス）＝機構が先・向き別描画は次段。
@@ -247,6 +260,7 @@ export const ENEMY_META = {
 	//   跳躍蜘蛛 … `leap`（行動駆動。跳躍の滞空中だけ隠れ＝着地の硬直が反撃の窓）
 	//   コウモリ群 … 窓を持たない代わりに `move:'air'` ＋ ジグザグ飛行で狙いを付けにくい
 	[TILE.BURROW_WORM]: {
+		roam: ROAM_DEFAULT,
 		// 地中蟲（陸上通常敵・脅威 低）。潜み鮫の潜行を陸に持ってきた敵＝
 		// 潜伏中は地面の下を進み（無敵・攻撃なし＝体当たりも空振りする）浮上した一瞬だけ
 		// 噛みつく／噛める。逃げる相手ではなく「タイミングを合わせる相手」。
@@ -263,6 +277,7 @@ export const ENEMY_META = {
 		attack: { type: 'sword', range: 1.4, cooldown: 900 },
 	},
 	[TILE.LEAP_SPIDER]: {
+		roam: ROAM_DEFAULT,
 		// 跳躍蜘蛛（陸上通常敵・脅威 低〜中）。地上では鈍いが、間合いに入ると
 		// 溜め（windup）→ 跳躍（滞空＝当たり判定消失）→ 着地硬直 の3拍で詰めてくる。
 		// leap: { windupMs, cells, airSpeed, cooldownMs, minRange, maxRange }
@@ -319,6 +334,7 @@ export const ENEMY_META = {
 	//   盾騎士   … `blockFacing`（向きで決まる。常時ブロック＝側面/背後へ回り込むしかない）
 	//   火吐き亀 … `shell`（時間で決まる。籠もると全方向無効＝開く瞬間を待つしかない）
 	[TILE.SHIELD_KNIGHT]: {
+		roam: ROAM_DEFAULT,
 		// 盾騎士（陸上通常敵・脅威 中〜高）。PLAN 5.5k 名簿 #4。
 		// blockFacing = { turnMs, knockback } ＝**向きを固定して構える**敵。
 		//   ・正面（e.dir と一致する方向）からの攻撃は常に 0 ダメージ＋プレイヤーを弾く
@@ -348,6 +364,7 @@ export const ENEMY_META = {
 		attack: { type: 'sword', range: 1.5, cooldown: 1100 },
 	},
 	[TILE.FIRE_TURTLE]: {
+		roam: ROAM_DEFAULT,
 		// 火吐き亀（陸上通常敵・脅威 中〜高）。PLAN 5.5k 名簿 #12。
 		// shell = { closedMs, openMs, breathCells, breathAtk } ＝**甲羅の開閉**で
 		// 無敵窓が時間で開閉する敵。盾騎士と同じ「殴れない敵」だが崩し方が逆：
@@ -381,6 +398,7 @@ export const ENEMY_META = {
 	//   分裂スライム … `split`（倒した瞬間が引き金。倒れる代わりに小型2体へ分かれる）
 	//   ルピー喰い   … `leech`（被弾が引き金。張り付きが剥がれる＝吸われ続けない）
 	[TILE.SPLIT_SLIME]: {
+		roam: ROAM_DEFAULT,
 		// 分裂スライム（陸上通常敵・脅威 中）。PLAN 5.5k 名簿 #3。
 		// split = { count, childHp, ..., blockedBy } ＝**倒した瞬間に分裂する**敵。
 		//   ・剣（や矢）で HP を 0 にすると killEnemy を通らず、小型 count 体へ置き換わる
@@ -413,6 +431,7 @@ export const ENEMY_META = {
 		attack: { type: 'charge' },     // 体当たりのみ（飛び道具は持たない）
 	},
 	[TILE.RUPEE_EATER]: {
+		roam: ROAM_DEFAULT,
 		// ルピー喰い（陸上通常敵・脅威 中）。PLAN 5.5k 名簿 #11。
 		// 「盾を奪う」は理不尽∴**ルピーを吸う**に変更（ユーザー確定 2026-08-10）。
 		// leech = { attachRange, drainMs, amount, refund, cooldownMs } ＝**張り付いて吸う**敵。
@@ -536,6 +555,7 @@ export const ENEMY_META = {
 	// ⚠️ デバフは**無敵窓では防げない**（無敵は HP を守る窓＝「当てられたら封じられる／
 	//    毒を受ける」は当たった事実に紐づく）。詳細は game/debuff.js の冒頭。
 	[TILE.CURSE_FIRE]: {
+		roam: ROAM_DEFAULT,
 		// 呪い火（バブル型・陸上通常敵・脅威 中(妨害)）。PLAN 5.5k 名簿 #13。
 		// 「触れると数秒剣が使えなくなる（ダメージ小）。妨害特化＝弓/爆弾で処理」を数字にする：
 		//   ・atk 1＝体当たりの痛みは最小（**この敵の攻撃は封印そのもの**）
@@ -560,6 +580,7 @@ export const ENEMY_META = {
 		attack: { type: 'charge' },            // 体当たり（charge）のみ（封印が本体＝遠隔攻撃は持たない）
 	},
 	[TILE.POISON_LEECH]: {
+		roam: ROAM_DEFAULT,
 		// 毒沼ヒル（陸上通常敵・脅威 中）。PLAN 5.5k 名簿 #15。
 		// 「遅延毒(DoT)＝体当たりで継続ダメージの毒を付与（時間で減衰）。鈍足だが後を引く」：
 		//   ・鈍足（SLOW）＝出会った瞬間は無害に見える。近づいて殴るのは安全な相手に見えるが
@@ -624,6 +645,7 @@ export const ENEMY_META = {
 		},
 	},
 	[TILE.CHARGE_BOAR]: {
+		roam: ROAM_DEFAULT,
 		// 突進猪（陸上通常敵・脅威 中〜高）。PLAN 5.5k 名簿 #14。
 		// 「直線突進＋壁ヒット気絶＝プレイヤーの行/列に入ると高速直線突進、壁に当たると気絶
 		//  （そこが好機）」を数字にする：
@@ -1622,6 +1644,7 @@ export const ENEMY_META = {
 	//                        壁・閉じた門など「陸上敵も通れない構造物」だけが障害になる。
 	// moveSpeed: { water, land } … amphibious 専用。地形ごとの速度倍率（省略時は speed）。
 	[TILE.FISH_SCHOOL]: {
+		roam: ROAM_DEFAULT,
 		name: '魚群',
 		hp: 2, atk: 1, def: 0, exp: 4,     // 1体は脆い＝数で包囲する
 		speed: ENEMY_SPEED_FAST,           // 素早く群がる
@@ -1654,6 +1677,7 @@ export const ENEMY_META = {
 	//   代替案（飛びかかって陸に乗る）は却下＝論理座標が陸に出ると move:'water' の通行判定を
 	//   破りスタックする（ユーザー指摘）。∴座標は水から出さず、届く手段を増やす。
 	[TILE.LURK_SHARK]: {
+		roam: ROAM_DEFAULT,
 		name: '潜み鮫',
 		hp: 15, atk: 3, def: 1, exp: 12,   // 浮上の一瞬に殴る＝手数が限られるぶん硬め（脅威度 22.5）
 		speed: ENEMY_SPEED_NORMAL,
@@ -1678,6 +1702,7 @@ export const ENEMY_META = {
 	// 投擲物スプライトは ITEM_SPRITES.waterShot / ITEM_PAL.waterShot（projectile.js の
 	// createProjEl が makeSprite(proj.type, proj.type) を呼ぶ＝type 名がスプライト名も兼ねる）。
 	[TILE.ARCHER_FISH]: {
+		roam: ROAM_DEFAULT,
 		name: '射水魚',
 		hp: 8, atk: 2, def: 0, exp: 8,     // 脆いが遠くから削る＝近づけば早く潰せる（脅威度 16.0・木の剣2振り）
 		speed: ENEMY_SPEED_SLOW,           // 撃つのが仕事＝あまり動かない

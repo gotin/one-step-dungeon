@@ -44,6 +44,7 @@
 import { readFileSync } from 'fs';
 import { bfsLayer, SOLVABLE_GATES, findEntryRoom, firstWalkable, isHardBlocked } from './lib/connectivity.mjs';
 import { isEnemyTile } from '../shared/enemies.js';
+import { canRoam } from '../shared/enemy-alert.js';
 import { toolsUsableIn } from '../shared/progression.js';
 import { KNOWN_TRIGGERS } from '../shared/triggers.js';
 
@@ -832,6 +833,25 @@ function checkDungeon(layerName) {
           + ` {breakDef} の形でない: ${JSON.stringify(def)}`
           + ` ← projectile.js は \`?.breakDef ?? 1\` で読む＝黙って既定 1 に落ちる`);
       }
+    }
+  }
+
+  // ── 16. enemyChase（配置ごとの「追う」）がさまよう敵を指しているか（キュー60）──
+  // `shared/enemy-alert.js startsAlert` は `sd.enemyChase?.[posKey] === true` を読む＝
+  // 敵を動かした/消した後に残った鍵は黙って捨てられる（指定したつもりの敵が追わない）。
+  // さまよわない敵（C・ボス）を指す鍵も無意味（もともと追う）＝同じく座標の嘘として数える。
+  for (const [stageKey, stage] of Object.entries(stages)) {
+    for (const [posKey, v] of Object.entries(stage.enemyChase ?? {})) {
+      const [r, c] = posKey.split(',').map(Number);
+      const tile = tileAt(stage, r, c);
+      if (!canRoam(tile)) {
+        err(`ステージ [${stageKey}] の enemyChase[${posKey}] がさまよう敵を指していない: '${tile}'`
+          + ' ← 敵を動かした後の残り（指定した敵が追わない）か、もともと追う敵');
+      }
+      if (v !== true) err(`ステージ [${stageKey}] の enemyChase[${posKey}] の値が true でない: ${JSON.stringify(v)}`);
+    }
+    if (stage.enemiesAlert !== undefined && stage.enemiesAlert !== true) {
+      err(`ステージ [${stageKey}] の enemiesAlert が true でない: ${JSON.stringify(stage.enemiesAlert)}`);
     }
   }
 

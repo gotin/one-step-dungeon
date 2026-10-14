@@ -512,6 +512,9 @@ export function createCombat(deps) {
 			dir:   e.dir,
 			el:    null,
 			_splitFrom: e.id,
+			// キュー60: 親は斬られた＝気づいている∴子も気づいた状態で湧く。マップの「追う」指定も継ぐ。
+			alwaysAlert: e.alwaysAlert,
+			_noticed: true,
 		}));
 		setEnemies([...rest, ...children]);
 		// 動的に湧いた敵の DOM は renderChars（char-layer を作り直す）でしか生えない。
@@ -539,6 +542,8 @@ export function createCombat(deps) {
 		// 「-0」ポップアップを出すと当たっていないのに当たったように見える
 		// （2026-08-14 ユーザー報告「地中にいる間にブーメランを投げると当たる」の一因）。
 		if (e.hidden) return;
+		// キュー60: 攻撃を受けたさまよう敵は気づく（弾かれた攻撃でも＝殴られたことは分かる）。
+		deps.noticeEnemy?.(e);
 		// meleeOnly: only sword and fire damage goes through; everything else is nullified.
 		if (meta?.meleeOnly && atkType && atkType !== 'sword' && atkType !== 'fire') {
 			showDmgPopupFloat(e.x, e.y, 0, true, false);

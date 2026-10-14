@@ -291,6 +291,13 @@ test.describe('Phase 9-6 深洋O – 海棲雑魚②接近型・③遠隔型', (
   test('⑩ 潜み鮫は遠隔（水刃）も持ち、離れたプレイヤーへ撃つ（浮上中のみ）', async ({ page }) => {
     const errors = [];
     page.on('pageerror', e => errors.push(e.message));
+    // キュー60: 潜み鮫はさまよう＝気づく前に射程の外へ歩いて行くと 30 tick で撃たない回がある
+    // （1割〜2割）。この本が測るのは遠隔の機構∴この検証ステージだけ「最初から気づいている」にする。
+    await page.route('**/work/blade-of-lumia.json', async (route) => {
+      const json = await (await route.fetch()).json();
+      json.layers[TEST_LAYER].stages[stageKey('lurk_shark')].enemiesAlert = true;
+      await route.fulfill({ json });
+    });
     await page.goto(SHARK_FAR_URL);
     await waitForBoard(page);
 

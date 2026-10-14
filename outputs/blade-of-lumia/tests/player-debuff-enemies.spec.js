@@ -357,7 +357,8 @@ test.describe('Phase 5.5k k-7 – プレイヤー側の一時デバフ窓（呪�
   test('⑤ 体当たりの解決で剣封じの窓が立つ（対照＝到達距離に入っただけ・予告中は無傷）＋状態が絵に出る', async ({ page }) => {
     const errors = [];
     page.on('pageerror', e => errors.push(e.message));
-    await gotoFrozen(page, CURSE());
+    // キュー60: 呪い火はさまよう（気づく距離 4）∴寄って来させるには気づく距離の内 (4,5)＝距離 4.0 に立つ。
+    await gotoFrozen(page, previewUrl('curse_fire', 4, 5));
 
     const res = await page.evaluate(() => {
       const g = window.__game;
@@ -393,7 +394,7 @@ test.describe('Phase 5.5k k-7 – プレイヤー側の一時デバフ窓（呪�
     const m = CURSE_M();
     expect(res.enemy.length, '前提：呪い火が1体だけ居る').toBe(1);
     expect(res.enemy[0].type, '前提：置かれた敵が呪い火').toBe(TILE.CURSE_FIRE);
-    expect([res.py, res.px], '前提：プレイヤーは (4,4)').toEqual([4, 4]);
+    expect([res.py, res.px], '前提：プレイヤーは (4,5)').toEqual([4, 5]);
     expect(res.before, '対照：開始時点で既に封じられている').toEqual({ sealUntil: null, sealed: false, cls: false });
 
     const tr = res.trace;
@@ -414,7 +415,10 @@ test.describe('Phase 5.5k k-7 – プレイヤー側の一時デバフ窓（呪�
       .toBe(firstSlam.t + SLAM_WINDUP_MS);
     // ★★ 決定②③の芯＝**隣接しただけ・予告中はまだ封じられていない**
     //    （ここが赤くなる実装＝到達距離に入った瞬間にダメージ＝予告を見て避けられない）
-    const windupTicks = tr.filter(r => r.slamAt != null);
+    // 1回目の予告だけを見る（キュー60 で立ち位置が1マス近くなり、24 tick の窓に2回目の予告が
+    // 入る＝2回目は1回目の封じが残っている間に立つ∴混ぜると誤って赤くなる）。
+    const firstRunEnd = tr.findIndex((r, i) => i >= firstSlam.i && r.slamAt == null);
+    const windupTicks = tr.slice(firstSlam.i - 1, firstRunEnd < 0 ? undefined : firstRunEnd);
     expect(windupTicks.length, '予告中の tick が記録されていない＝予告が一瞬で解決している'
       + `（windup ${SLAM_WINDUP_MS}ms は ${Math.ceil(SLAM_WINDUP_MS / TICK_MS)} tick 分ある）`)
       .toBeGreaterThanOrEqual(2);

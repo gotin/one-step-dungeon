@@ -8,6 +8,8 @@ import { MARK_KINDS, DEFAULT_MARK_KIND, isStageKey } from '../shared/marks.js';
 import { variantOptions, readEntryVariants, applyEntryVariants } from '../shared/dialog-variants.js';
 import { CONDITION_TRIGGERS, KNOWN_TRIGGERS } from '../shared/triggers.js';
 import { SHOP_NPC_SPRITES, PERSON_NPC_SPRITES } from '../shared/npcs.js';
+import { ENEMY_META } from '../shared/enemies.js';
+import { canRoam, isRoomAlert, startsAlert } from '../shared/enemy-alert.js';
 
 // ── 右パネル統合呼び出し ──────────────────────────────────────
 export function renderSidePanel() {
@@ -21,6 +23,7 @@ export function renderSidePanel() {
 	renderMapEnters(sd);
 	renderConditions(sd);
 	renderBreakableWalls(sd);
+	renderEnemyChase(sd);
 	renderTorches(sd);
 	renderDoorways(sd);
 }
@@ -746,6 +749,54 @@ function renderBreakableWalls(sd) {
 		});
 		el.appendChild(item);
 	}
+}
+
+// ── 敵の動き（キュー60：さまよう雑魚を「追う」に切り替える）────────────
+// 部屋まるごと（sd.enemiesAlert）がオンの間は、配置ごとのチェック（sd.enemyChase）を
+// オンのまま灰色にして押せなくする（優先＝部屋 ＞ 配置。判定は shared/enemy-alert.js）。
+// 配置ごとの値は消さない＝部屋をオフに戻すと元の指定が生きる。
+// さまよわない敵（C・ボスなど＝roam を持たない）は一覧に出さない＝指定の意味が無い。
+function renderEnemyChase(sd) {
+	const roomEl = document.getElementById('stage-enemies-alert');
+	const el = document.getElementById('enemy-chase-list');
+	if (!el || !roomEl) return;
+	const room = isRoomAlert(sd);
+	roomEl.checked = room;
+	el.innerHTML = '';
+	const list = [];
+	(sd.tiles ?? []).forEach((row, r) => row.forEach((t, c) => { if (canRoam(t)) list.push({ r, c, t }); }));
+	if (!list.length) { el.innerHTML = '<div class="hint">さまよう敵なし</div>'; return; }
+	for (const { r, c, t } of list) {
+		const key = `${r},${c}`;
+		const item = document.createElement('div');
+		item.className = 'link-item';
+		item.innerHTML = `
+			<label style="display:flex;align-items:center;gap:6px;">
+				<input type="checkbox" data-key="${key}" style="width:auto;margin:0;" ${startsAlert(sd, key, t) ? 'checked' : ''} ${room ? 'disabled' : ''}>
+				(${r},${c}) ${ENEMY_META[t]?.name ?? t}：最初から追う
+			</label>
+		`;
+		item.querySelector('input').addEventListener('change', e => {
+			if (e.target.checked) {
+				if (!sd.enemyChase) sd.enemyChase = {};
+				sd.enemyChase[key] = true;
+			} else if (sd.enemyChase) {
+				delete sd.enemyChase[key];
+				if (!Object.keys(sd.enemyChase).length) delete sd.enemyChase;
+			}
+		});
+		el.appendChild(item);
+	}
+}
+
+export function initEnemyAlertEvents() {
+	document.getElementById('stage-enemies-alert')?.addEventListener('change', e => {
+		const sd = getCurrentStage();
+		if (!sd) return;
+		if (e.target.checked) sd.enemiesAlert = true;
+		else delete sd.enemiesAlert;
+		renderEnemyChase(sd);
+	});
 }
 
 // ── かがり火 初期点灯設定 ──────────────────────────────────────

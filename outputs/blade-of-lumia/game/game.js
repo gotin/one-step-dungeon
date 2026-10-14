@@ -4,6 +4,7 @@ import { TILE, BG_TILES, READABLE_SIGN_TILES } from '../shared/tiles.js';
 import { buildExitRegistry as buildExitRegistryShared } from '../shared/exits.js';
 import { liftGroundTiles } from '../shared/ground-layer.js';
 import { ENEMY_META, ENEMY_SPEED_NORMAL } from '../shared/enemies.js';
+import { startsAlert } from '../shared/enemy-alert.js';
 import { ITEM_META, EQUIP_META, BOOMERANG_TIERS, ownsItem, addStack, EMBLEMS_FOR_AURA } from '../shared/items.js';
 import { NPC_SPRITE_MAP, NPC_DEFAULT_DIALOG } from '../shared/npcs.js';
 import { ARROW_CELL_SCALE } from '../shared/tile-sprites.js';
@@ -497,6 +498,9 @@ function buildEnemies(sd, lk, sk) {
 				h:      m.size?.h ?? 1,
 				accum:  0,
 				dir:    sd.enemyDirs?.[posKey] ?? 'down',
+				// キュー60: マップで「追う」を指定された（部屋まるごと／この配置）さまよう雑魚は
+				// 最初から気づいている＝さまよわない（判定は shared/enemy-alert.js が単一の真実）。
+				alwaysAlert: startsAlert(sd, posKey, tile),
 				el:     null,   // DOM element（後で設定）
 			});
 		});
@@ -568,6 +572,8 @@ let detachLeech         = () => {};
 // Phase 8-4 (4) 0d-3（6体目 U）: 同じ理由でここへ引き出す（矢が滞空に刺さったとき＝
 // combat.js の被弾フックが呼ぶ「射落とす」。状態機械の持ち主は enemy-ai.js）。
 let crashSoar           = () => false;
+// キュー60: 同じ理由でここへ引き出す（攻撃を受けたさまよう敵が気づく＝combat.js の被弾フックが呼ぶ）。
+let noticeEnemy         = () => {};
 // Phase 8-4 (4) 0d-3（12体目 Z）: 幻影＝**敵ではない置き物**（`getEnemies()` に居ない）∴
 // 剣の当たり判定（combat.js）と場面の切り替え（下の reset）から呼ぶために引き出す。
 // 状態機械と器の持ち主は enemy-ai.js（`getMirages()` が唯一の真実）。
@@ -1003,6 +1009,7 @@ const { checkStoneOnSwitch, evaluateConditions, refreshGates } = createCondition
 	enemyAttack          = _ai.enemyAttack;
 	detachLeech          = _ai.detachLeech;
 	crashSoar            = _ai.crashSoar;
+	noticeEnemy          = _ai.noticeEnemy;
 	getMirages           = _ai.getMirages;
 	destroyMirage        = _ai.destroyMirage;
 	clearMirages         = _ai.clearMirages;
@@ -1130,6 +1137,7 @@ const { checkStoneOnSwitch, evaluateConditions, refreshGates } = createCondition
 		detachLeech:      (e) => detachLeech(e),
 		// Phase 8-4 (4) 0d-3（6体目 U）: 矢が刺さったら滞空を墜落へ落とす（＝弱点が機構の解除鍵）。
 		crashSoar:        (e, meta) => crashSoar(e, meta),
+		noticeEnemy:      (e) => noticeEnemy(e),
 		// Phase 8-4 (4) 0d-3（12体目 Z）: 幻影は剣の一撃で消える（HP を持たない置き物）。
 		// 剣の当たり判定は combat.js の1か所だけ＝そこに像の配列を渡す（判定を2つ書かない）。
 		getMirages:       () => getMirages(),
@@ -2826,6 +2834,11 @@ export function getEnemiesSnapshot() {
 		haPhase: e._haPhase ?? null,            // 'approach' | 'retreat'
 		hitAndAway: e._hitAndAway ?? null,      // フェーズで差し替えた移動 AI（null＝META のまま）
 		combat: e._combat ?? null,
+		// キュー60: さまよい（roam を持つ敵だけ意味がある）。noticed＝気づいて追っているか
+		// （未判定の生成直後は null）・roamTarget＝さまよいの目的地 {r,c}・home＝家のセル。
+		noticed: e._noticed ?? null,
+		roamTarget: e._roamTarget ? { ...e._roamTarget } : null,
+		home: e._homeX != null ? { r: e._homeY, c: e._homeX } : null,
 	}));
 }
 

@@ -1949,6 +1949,112 @@ export function createEnemyAi(deps) {
 		moveCharEl(`enemy-${e.id}`, e.x, e.y);
 	}
 
+	// ── キュー60：さまよい（気づくまでは家の周りを歩く）──────────────
+	// meta.roam = { notice, lose, radius, pauseMs:[min,max] }（shared/enemies.js ROAM_DEFAULT）。
+	// 気づいていない間は出現位置（家）から radius マス以内を乱択して歩き、気づいたら
+	// 今までどおり enemyChase で追う。追いかけ専用のチェイサー C は roam を持たない＝常に追う。
+	// 気づく条件＝①中心どうしの距離が notice 以下 ②攻撃を受けた（combat.js が noticeEnemy）
+	// ③自分の攻撃が始まった（跳躍・突進・体当たり・剣の予告・攻撃ポーズ・張り付き）。
+	// 気づいた後は lose を超えるまで追い続ける（境目で行ったり来たりしない幅）。
+	// 戻り値：この tick にさまよい中なら true（呼び出し側は enemyChase の代わりに enemyRoam）。
+	const ROAM_HIT_HOLD_MS = 3000;   // 攻撃を受けてから lose で見失うまでの猶予（遠くから撃たれても追ってくる）
+
+	function noticeEnemy(e, now = gameNow()) {
+		if (!e) return;
+		e._noticed = true;
+		e._noticeHoldUntil = now + ROAM_HIT_HOLD_MS;
+		e._roamTarget = null;
+	}
+
+	function roamAttackBusy(e, now) {
+		return (e._leapPhase != null && e._leapPhase !== 'ground')
+			|| (e._dashPhase != null && e._dashPhase !== 'idle')
+			|| e._slamAt != null || e._swingAt != null
+			|| (e._atkUntil != null && now < e._atkUntil)
+			|| !!e._attached;
+	}
+
+	function updateRoamAwareness(e, meta, now) {
+		const cfg = meta?.roam;
+		if (!cfg) return false;
+		// マップで「追う」を指定された敵（shared/enemy-alert.js startsAlert）は見失わない。
+		if (e.alwaysAlert) { e._noticed = true; return false; }
+		if (e._homeX == null) { e._homeX = Math.round(e.x); e._homeY = Math.round(e.y); e._noticed ??= false; }
+		const player = getPlayer();
+		if (!player) return !e._noticed;
+		const ecx = e.x + (e.w ?? 1) / 2, ecy = e.y + (e.h ?? 1) / 2;
+		const dist = Math.hypot(player.x + 0.5 - ecx, player.y + 0.5 - ecy);
+		const busy = roamAttackBusy(e, now);
+		if (e._noticed) {
+			const held = e._noticeHoldUntil != null && now < e._noticeHoldUntil;
+			if (dist > cfg.lose && !busy && !held) {
+				e._noticed = false;
+				e._roamTarget = null;
+				e._roamPauseUntil = now + roamPauseMs(cfg);
+			}
+		} else if (dist <= cfg.notice || busy) {
+			e._noticed = true;
+			e._roamTarget = null;
+		}
+		return !e._noticed;
+	}
+
+	function roamPauseMs(cfg) {
+		const [lo, hi] = cfg.pauseMs ?? [500, 1500];
+		return lo + Math.random() * (hi - lo);
+	}
+
+	function pickRoamTarget(e, cfg) {
+		const sd = getStageData();
+		const rows = sd?.rows ?? 10, cols = sd?.cols ?? 12;
+		const r0 = Math.round(e.y), c0 = Math.round(e.x);
+		for (let k = 0; k < 12; k++) {
+			const r = e._homeY + Math.round((Math.random() * 2 - 1) * cfg.radius);
+			const c = e._homeX + Math.round((Math.random() * 2 - 1) * cfg.radius);
+			if (r < 0 || c < 0 || r >= rows || c >= cols) continue;
+			if (r === r0 && c === c0) continue;
+			if (!isPassableForEnemy(r, c, e)) continue;
+			return { r, c };
+		}
+		return null;
+	}
+
+	// 歩き方は enemyChase と同じ一歩の選び方（長い軸を先に）。石は押さない
+	// （さまよう敵が石の仕掛けを勝手に崩さない）。着いた／詰まったら休んで次の目的地。
+	function enemyRoam(e, meta, speed, now) {
+		const cfg = meta.roam;
+		if (e._roamPauseUntil != null && now < e._roamPauseUntil) return;
+		if (!e._roamTarget) {
+			e._roamTarget = pickRoamTarget(e, cfg);
+			if (!e._roamTarget) { e._roamPauseUntil = now + roamPauseMs(cfg); return; }
+		}
+		e.accum = (e.accum ?? 0) + speed;
+		if (e.accum < 1.0) return;
+		e.accum -= 1.0;
+
+		const { r, c } = e._roamTarget;
+		const dy = r - e.y, dx = c - e.x;
+		const arrive = () => { e._roamTarget = null; e._roamPauseUntil = now + roamPauseMs(cfg); };
+		if (Math.abs(dy) < 0.01 && Math.abs(dx) < 0.01) { arrive(); return; }
+
+		const step = MOVE_STEP;
+		const candidates = [];
+		const vy = Math.abs(dy) < 0.01 ? null : [Math.sign(dy) * step, 0];
+		const vx = Math.abs(dx) < 0.01 ? null : [0, Math.sign(dx) * step];
+		if (Math.abs(dy) >= Math.abs(dx)) { if (vy) candidates.push(vy); if (vx) candidates.push(vx); }
+		else { if (vx) candidates.push(vx); if (vy) candidates.push(vy); }
+
+		let moved = null;
+		for (const [my, mx] of candidates) {
+			if (isPassableForEnemy(e.y + my, e.x + mx, e)) { e.y += my; e.x += mx; moved = [my, mx]; break; }
+		}
+		if (!moved) { arrive(); return; }
+		const [my, mx] = moved;
+		e.dir = my !== 0 ? (my > 0 ? 'down' : 'up') : (mx > 0 ? 'right' : 'left');
+		moveCharEl(`enemy-${e.id}`, e.x, e.y);
+		if (Math.abs(r - e.y) < 0.01 && Math.abs(c - e.x) < 0.01) arrive();
+	}
+
 	// ── 敵の攻撃処理 ──────────────────────────────────────────
 	function enemyAttack(e, meta) {
 		const attackList = resolveAttackList(e, meta);
@@ -5398,13 +5504,16 @@ export function createEnemyAi(deps) {
 	//    反転が画面に出ず「左へ突進しながら右を向いて溜める」絵になる。猪は sideView と
 	//    ポーズ差替を**同時に持つ最初の敵**＝ここで canvas を作り直して即座に反映する
 	//    （アニメループを待たない＝フレーム数に依らず1経路・400ms の遅れも消える）。
-	function applySideFacing(e, meta) {
+	function applySideFacing(e, meta, roaming = false) {
 		if (!meta?.sideView) return;
 		const layer = getCharLayerEl();
 		const el = layer?.ownerDocument?.getElementById(`char-enemy-${e.id}`);
 		const cv = el?.querySelector?.('canvas.sprite');
 		if (!cv) return;
-		const flip = getPlayer().x < e.x ? '1' : '';
+		// さまよい中は左右に歩いたときだけ向き直る（上下に歩く間は今の向きのまま）。
+		const flip = roaming
+			? (e.dir === 'left' ? '1' : e.dir === 'right' ? '' : (cv.dataset.flipX ?? ''))
+			: (getPlayer().x < e.x ? '1' : '');
 		if (cv.dataset.flipX === flip) return;
 		cv.dataset.flipX = flip;
 		const next = makeSprite(cv.dataset.sprite || e.sprite, cv.dataset.pal || e.pal, true, flip === '1');
@@ -5606,8 +5715,11 @@ export function createEnemyAi(deps) {
 			//    （消えている間の攻撃は `if (!e.hidden) enemyAttack(...)` が独立に止めており
 			//     speed 0 で歩けもしない）＝**二重の守り**。blink を歩く敵に付けたときに効く。
 			const blinking = tickBlink(e, meta, now);
+			// キュー60: さまよい中か（気づく／見失うの判定はここ＝向きと移動の両方が読む）。
+			const roaming = updateRoamAwareness(e, meta, now);
 			// Phase 9-6: 横向き敵の向きをプレイヤーに合わせる（毎 tick・移動しなくても向き直る）
-			applySideFacing(e, meta);
+			// キュー60: さまよい中は歩く向き（e.dir）に合わせる。
+			applySideFacing(e, meta, roaming);
 			// Phase 5.5k: directional な敵はガード判定を移動/攻撃より先に行う＝ガード中は
 			// 両方スキップする（移動しない・攻撃しない・向きはロックされたまま＝ユーザー設計）。
 			const isGuarding = meta.directional ? tickGuard(e, meta, now) : false;
@@ -5734,6 +5846,9 @@ export function createEnemyAi(deps) {
 					enemyGlaciateStride(e, meta, resolveEnemySpeed(e, meta), resolveGlaciate(e, meta));
 				} else if (meta.zigzag) {
 					enemyZigzagFly(e, meta, resolveEnemySpeed(e, meta), meta.zigzag);
+				} else if (roaming) {
+					// キュー60: 気づく前はさまよう（追いかけ専用のチェイサー C は roam を持たない）。
+					enemyRoam(e, meta, resolveEnemySpeed(e, meta), now);
 				} else {
 					enemyChase(e, resolveEnemySpeed(e, meta), dirLocked);
 				}
@@ -5876,6 +5991,7 @@ export function createEnemyAi(deps) {
 		frostHeat,             // Phase 8-4 (4) 0d-3: 氷の進み具合 0〜1（絵と音とテストが読む数）
 		detachLeech,           // Phase 5.5k k-5: 張り付きを剥がす（combat.js の被弾フックが呼ぶ）
 		crashSoar,             // Phase 8-4 (4) 0d-3: 矢で射落とす（combat.js の被弾フックが呼ぶ）
+		noticeEnemy,           // キュー60: 攻撃を受けたら気づく（combat.js の被弾フックが呼ぶ）
 		bossTickHitAndAway,
 		enemyAttack,
 	};

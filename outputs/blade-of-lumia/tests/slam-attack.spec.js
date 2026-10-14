@@ -164,9 +164,10 @@ test.describe('Phase 5.5k k-7.5 – 体当たり攻撃（slam）と重なり禁�
   test('③ 予告→解決の時系列（到達した tick は無傷・予告中も無傷・解決で被弾）', async ({ page }) => {
     const errors = [];
     page.on('pageerror', e => errors.push(e.message));
-    // 敵と同じ行の (4,4)＝dist 5.0 に立って**歩いて来させる**（クールダウンの初期値 0 の
+    // 敵と同じ行の (4,5)＝dist 4.0 に立って**歩いて来させる**（クールダウンの初期値 0 の
     // 影響を避ける＝到達する頃には now が 900 を過ぎている）。HP を測るので debug は切る。
-    await gotoFrozen(page, CURSE(4, 4));
+    // キュー60: 呪い火はさまよう（気づく距離 4）∴旧 (4,4)＝dist 5.0 では寄って来ない。
+    await gotoFrozen(page, CURSE(4, 5));
     await page.keyboard.press('g');
 
     const res = await page.evaluate(({ range }) => {
@@ -553,7 +554,8 @@ test.describe('Phase 5.5k k-7.5 – 体当たり攻撃（slam）と重なり禁�
     page.on('pageerror', e => errors.push(e.message));
     // 決定③の核心＝「予告中に隣接していたら攻撃される」の対偶。予告が立った後に離れれば
     // 解決の tick は空振り（tickSlam が到達判定をやり直す）＝プレイヤーに答えがある攻撃になる。
-    await gotoFrozen(page, CURSE(4, 4));
+    // キュー60: 気づく距離（4）の内に立つ＝(4,5)。
+    await gotoFrozen(page, CURSE(4, 5));
     await page.keyboard.press('g');   // HP を測るので debug OFF
 
     const res = await page.evaluate(() => {
