@@ -212,7 +212,6 @@ let dialogLineIdx   = 0;
 let pauseItemKeys   = [];
 let pauseItemIdx    = 0;
 let msgTimer        = null;
-let isShielding     = false;
 // 疾風の靴＋Shift で走っている最中か（input.js processHeldKeys が毎 tick 立てる）。
 // player に持たせない＝セーブに載る必要が無い一時状態（読み手は描画の transition だけ）。
 let isDashing       = false;
@@ -559,7 +558,6 @@ function getHeroPalName() {
 // ── ui.js / input.js ──
 let updateHud        = () => {};
 let pulse            = (t, d) => {};
-let updateShieldHud  = () => {};
 let processHeldKeys  = () => {};
 // ── charge.js（Phase 3-1）──
 let startCharge        = () => {};
@@ -689,8 +687,6 @@ function getIsShop()      { return isShop; }
 function setIsShop(v)     { isShop = v; }
 function getIsPaused()    { return isPaused; }
 function setIsPaused(v)   { isPaused = v; }
-function getIsShielding() { return isShielding; }
-function setIsShielding(v){ isShielding = v; }
 
 // ── 通行可否・条件評価（Phase 0-2 Step 2: passable.js / conditions.js へ切り出し）──
 // これらの関数は再代入される可変状態を参照するため、状態 getter と依存関数を
@@ -785,7 +781,6 @@ const { checkStoneOnSwitch, evaluateConditions, refreshGates } = createCondition
 		getIsDialog,  setIsDialog,
 		getIsShop,    setIsShop,
 		getIsPaused,  setIsPaused,
-		getIsShielding, setIsShielding,
 		// 店が渡す道具・報酬（キュー13 ③）。⚠️ 矢印で包む＝この2つは下の player 生成
 		// （`_player`）で後から差し替わる∴関数そのものを渡すと空の初期値を掴んだままになる。
 		giveSubItem:       (id) => giveSubItem(id),
@@ -796,7 +791,6 @@ const { checkStoneOnSwitch, evaluateConditions, refreshGates } = createCondition
 	updateHud        = _ui.updateHud;
 	pulse            = _ui.pulse;
 	updateDungeonHud = _ui.updateDungeonHud;
-	updateShieldHud  = _ui.updateShieldHud;
 	grantMark        = _ui.grantMark;
 	refreshUnreadMarks = _ui.refreshUnreadMarks;
 	startDialog      = (r, c, tileChar, extraLines) => _ui.startDialog(r, c, tileChar, stageData, NPC_DEFAULT_DIALOG, player, extraLines);
@@ -886,8 +880,6 @@ const { checkStoneOnSwitch, evaluateConditions, refreshGates } = createCondition
 		// 終幕の台詞を上書きしていた（2026-08-20 ユーザー報告「よくやった、若き剣よ が
 		// 表示されなかった」の実因＝実測で再現した）。
 		getIsCutscene:   () => _bossDefeating,
-		getIsShielding:  () => getIsShielding(),
-		setIsShielding,
 		movePlayer:  (dir) => movePlayer(dir),
 		swordAttack: () => swordAttack(),
 		startCharge:   () => startCharge(),
@@ -910,7 +902,6 @@ const { checkStoneOnSwitch, evaluateConditions, refreshGates } = createCondition
 		hasCleared,
 		canDash:    () => !!player.hasSwiftBoots,
 		setDashing: (v) => { isDashing = !!v; },
-		updateShieldHud,
 	});
 
 	// heldKeys と processHeldKeys を factory 生成版で上書き

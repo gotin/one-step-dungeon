@@ -103,6 +103,24 @@
        スクロールできるようにする（キュー15）。 */
     max-height: 96vh;
     overflow-y: auto;
+    position: relative;
+}
+
+/* 閉じる（実行キュー70）＝タッチで唯一ポーズを解く手段（MENU はこの枠の下に隠れる） */
+#pause-close {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    font: inherit;
+    font-size: 12px;
+    color: #c8dcef;
+    background: #10243a;
+    border: 1px solid #2a4a6a;
+    border-radius: 4px;
+    padding: 4px 10px;
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
 }
 
 #pause-title {

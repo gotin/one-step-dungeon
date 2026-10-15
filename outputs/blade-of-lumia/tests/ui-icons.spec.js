@@ -137,8 +137,8 @@ test.describe('10e: UI アイコンの単一の真実', () => {
 		}
 		expect(await page.locator('#hud-wallet canvas').count()).toBe(2);
 		expect(await page.locator('#hud-hearts canvas').count()).toBeGreaterThan(0);
-		// モバイルボタン（剣・盾）
-		for (const id of ['btn-sword', 'btn-shield']) {
+		// モバイルボタン（剣・走る＝靴を持つまで隠れているが絵は入る）
+		for (const id of ['btn-sword', 'btn-dash']) {
 			await expect(page.locator(`#${id} canvas`), `#${id} に絵が無い`).toHaveCount(1);
 		}
 		// ポーズ画面：持ち物とステータス行（ハート・ルピー・装備）

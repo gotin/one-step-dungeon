@@ -48,7 +48,8 @@
     cursor: default;
 }
 
-.dpad-btn:active {
+.dpad-btn:active,
+.dpad-btn.pressed {
     background: #2a3a44;
 }
 
@@ -81,9 +82,9 @@
     color: #f0d050;
 }
 
-#btn-shield {
-    border-color: #2040a0;
-    color: #6090f0;
+#btn-dash {
+    border-color: #2f8a84;
+    color: #5cc0b0;
 }
 
 #btn-sub {
@@ -95,9 +96,9 @@
     font-size: 11px;
 }
 
-/* 防御中スタイル */
-#btn-shield.defending {
-    background: #1a2860;
-    border-color: #4070d0;
-    box-shadow: 0 0 10px rgba(64, 112, 208, 0.5);
+/* 走っている間 */
+#btn-dash.dashing {
+    background: #12302e;
+    border-color: #5cc0b0;
+    box-shadow: 0 0 10px rgba(92, 192, 176, 0.5);
 }

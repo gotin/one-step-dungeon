@@ -74,6 +74,8 @@
   <div id="pause-overlay" class="hidden">
     <div id="pause-box">
       <div id="pause-title">⏸ PAUSED</div>
+      <!-- 閉じる（実行キュー70）＝タッチでは MENU ボタンがこの枠の下に隠れる∴枠の中に置く -->
+      <button id="pause-close" type="button" aria-label="ゲームに戻る">✕ 戻る</button>
       <div id="pause-items"></div>
       <div id="pause-hint">← → でアイテム　Escape で決定・再開</div>
       <div id="pause-stats"></div>
@@ -199,7 +201,9 @@
     <div id="action-btns">
       <button id="btn-sub" class="action-btn">SUB</button>
       <button id="btn-sword" class="action-btn" data-icon="sword" data-icon-px="26">⚔</button>
-      <button id="btn-shield" class="action-btn shield-btn" data-icon="shield" data-icon-px="26">🛡</button>
+      <!-- 走る（実行キュー70）＝押している間だけ。疾風の靴を持つまで隠す（飛行ボタンと同じ）。
+           旧・盾ボタンの場所＝盾は自動で効く∴構えるボタンは中身が無かった（2026-10-15 撤去）。 -->
+      <button id="btn-dash" class="action-btn hidden" data-icon="swiftBoots" data-icon-px="26">👢</button>
       <button id="btn-fly" class="action-btn hidden" data-icon="wingRobe" data-icon-px="26">🪽</button>
       <button id="btn-menu" class="action-btn">MENU</button>
     </div>

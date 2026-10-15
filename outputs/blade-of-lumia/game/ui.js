@@ -2,11 +2,11 @@
 // Phase 0-2 Step 4: HUD・ポーズ・ダイアログ・ショップを game.js から切り出し
 //
 // export: createUi(deps) → {
-//   updateHud, pulse, updateDungeonHud, updateShieldHud,
+//   updateHud, pulse, updateDungeonHud,
 //   startDialog, showDialogLine, advanceDialog,
 //   togglePause, renderPauseMenu, pauseSelectPrev, pauseSelectNext,
 //   openShop, closeShop, renderShop, shopSelectPrev, shopSelectNext, shopBuy,
-//   getIsDialog, getIsShop, getIsPaused, getIsShielding,
+//   getIsDialog, getIsShop, getIsPaused,
 // }
 //
 // deps は以下の getter・setter・関数を注入する：
@@ -22,7 +22,6 @@
 //   getIsDialog()  / setIsDialog(v)
 //   getIsShop()    / setIsShop(v)
 //   getIsPaused()  / setIsPaused(v)
-//   getIsShielding() / setIsShielding(v)
 //   giveSubItem(id) / grantReward(content)  … 店で渡す道具・くじの景品（player.js）
 // SPRITES / PAL / ITEM_META / HP_PER_HEART / makeSprite は直接 import
 
@@ -112,7 +111,6 @@ export function createUi(deps) {
 		getIsDialog,  setIsDialog,
 		getIsShop,    setIsShop,
 		getIsPaused,  setIsPaused,
-		getIsShielding, setIsShielding,
 		// 店で渡す道具・報酬（player.js の関数＝game.js が後で代入するので薄い包みで受ける）
 		giveSubItem, grantReward,
 	} = deps;
@@ -196,6 +194,8 @@ export function createUi(deps) {
 			flyBtn.classList.toggle('hidden', !player.hasWingRobe);
 			flyBtn.classList.toggle('defending', !!player.flying);
 		}
+		// 実行キュー70：疾風の靴を持ったら走るボタンを表示（タッチの Shift）。
+		document.getElementById('btn-dash')?.classList.toggle('hidden', !player.hasSwiftBoots);
 		document.getElementById('hud-rupees').textContent   = player.rupees;
 		document.getElementById('hud-triforce').textContent = player.triforceCount;
 		const ai = player.activeSubItem;
@@ -267,10 +267,6 @@ export function createUi(deps) {
 		} else {
 			dungeonInfoEl.classList.add('hidden');
 		}
-	}
-
-	function updateShieldHud() {
-		document.getElementById('btn-shield')?.classList.toggle('defending', getIsShielding());
 	}
 
 	// ── 目的地マーク（キュー16）────────────────────────────────
@@ -1343,13 +1339,10 @@ export function createUi(deps) {
 		getIsDialog,
 		getIsShop,
 		getIsPaused,
-		getIsShielding,
-		setIsShielding,
 		// HUD
 		updateHud,
 		pulse,
 		updateDungeonHud,
-		updateShieldHud,
 		// ダイアログ
 		startDialog,
 		showDialogLine,

@@ -2031,8 +2031,14 @@
       - 事実（2026-10-14 一次ソース）＝ボス BGM は全ボス部屋共通の `'boss'` 1曲（`shared/sounds.js _playBossBgmLoop`・8秒ループ・テンポ固定）。13 ボス全部が `phases` を持ち、HP 50%（X＝50/25%・Z＝66/33%）で「◯◯ が 怒り狂った！」＋点滅＋速度・攻撃間隔が上がるが、音は変わっていなかった。
       - **✅ ユーザー決定（2026-10-14・AskUserQuestion）＝やる・「怒り狂った」時（後半の相に入った瞬間）に上げる**（HP に比例して徐々に、は不採用＝変化に気づきにくい）。
       - **✅ 実装（2026-10-14・🧠 Opus）：** `shared/sounds.js setBossBgmIntensity(level)`＝段 0/1/2 → 速さ ×1/×1.25/×1.45・半音 0/+1/+2（`BOSS_BGM_STAGES`）。段＝その戦いで効いた相の数（`boss.js checkBossPhase` が `phasesTriggered.length` を渡す＝X/Z は2段）。段が変わったら**その場で**切り替える（BGM の出口ゲインを差し替えて予約済みの残りの音を黙らせる・効果音は別の出口）。段は下げない。`playBgm()` で曲が変わると 0 に戻る（リトライ＝`enterStage` が層の `'dungeon'` を鳴らす→ボス戦開始で `'boss'`）。ボス BGM 以外が鳴っている間は何もしない。観測＝`__game.getSound().bgmState`（`key`／`bossLevel`／`loopSec`）。番人 `tests/boss-bgm-tempo.spec.js` 7本・歯 7 通り赤（`.scratch/teeth/run-teeth-69-boss-bgm.mjs`）。
-- [ ] **70.（2026-10-14・Phase 8-3）タッチ操作の改善（🧠 Opus）。この位置の理由＝8-3＝69 の後。**
-      - ⛔ 着手の最初＝やるべきかをユーザーと検討（今のタッチ操作の何が困るかを先に聞く＝実機で遊ぶのはユーザー）。
+- [x] **70.（2026-10-15 完了・✅ 2026-10-15 ユーザー判定 OK「OK よさそう。コミットして。」）（2026-10-14・Phase 8-3）タッチ操作の改善（🧠 Opus）。この位置の理由＝8-3＝69 の後。**
+      - ❌ 失効（2026-10-15・下の ✅ で決着）：⛔ 着手の最初＝やるべきかをユーザーと検討（今のタッチ操作の何が困るかを先に聞く＝実機で遊ぶのはユーザー）。
+      - 事実（2026-10-15 一次ソース `game/input.js`）＝十字キーは `touchstart`／`mousedown` で `movePlayer(dir)` を1回呼ぶだけ＝**押しっぱなしで歩けない・1タップ半マス（1マス＝2タップ）**。キーボードは `heldKeys` に入れて `processHeldKeys()` が毎 tick 歩かせる。盾ボタンは `touchcancel` が無く、指が外れると構えたままになり得る。
+      - **✅ ユーザー決定（2026-10-15・AskUserQuestion）＝やる・押しっぱなし歩行を軸に**（ダッシュボタン・ボタンの大きさ等は別途聞く＝今回は入れない）。
+      - **✅ 実装（2026-10-15・🧠 Opus）：** `game/input.js` の `touchDir`＝`processHeldKeys` がキーボードの向きが無いときに読む（速さ・二周目・止まる条件はキーボードと共通）。`#dpad` 全体で `elementFromPoint`＝滑らせると向き変更・中央で停止。最初の tick より前に離したタップは離した時に半マス1歩。押している向きは `.pressed` で光る。盾ボタンに `touchcancel`（❌ 失効・同日：盾ボタンごと撤去＝下の走るボタン）。番人 `tests/touch-dpad-hold.spec.js` 4本・歯 5 通り赤（`.scratch/teeth/run-teeth-70-touch-dpad.mjs`）。フル 2458 passed / 1 failed（`gacha-once` ①＝今回触っていない・単体で再実行 10 passed＝並列負荷の flaky）。DECISIONS 2026-10-15（1）。
+      - **ユーザー指摘で追加（2026-10-15・スマホ表示のスクショ）＝「盾ボタンは何のため？」「ダッシュボタンは？」「pause の解除手段が無さそう」。** 事実（一次ソース）＝①盾は自動（`projectile.js isShieldActive`＝盾を持ち・振り/溜め中でなければ正面を常に防ぐ）。盾ボタンが立てる `isShielding` は自分の光り方にしか使われていない＝**中身の無いボタン**。②ダッシュ＝疾風の靴＋Shift のみ＝**スマホでは走れない**。③ポーズ画面（`#pause-overlay` z-index 60・全画面）が MENU（`#mobile-ctrl` z-index 30）を覆う＝閉じる道はサブアイテムのタップだけ＝**サブアイテムが0個だと閉じられない**。
+      - **✅ ユーザー決定（2026-10-15・AskUserQuestion）＝盾ボタンを消し、同じ場所をダッシュボタンにする**（押している間だけ走る・疾風の靴を持つまで隠す＝🪽 飛行ボタンと同じ扱い）。`isShielding` 一式（game.js／ui.js `updateShieldHud`／input.js）も消す。③はポーズ画面に「閉じる」ボタンを足す（判断不要の直し）。
+      - **✅ 実装（2026-10-15・🧠 Opus）：** `#btn-shield` → `#btn-dash`（`data-icon="swiftBoots"`・`ui.js updateHud` が `hasSwiftBoots` で表示／`input.js` の `touchDash` を `processHeldKeys` の `dashing` 判定に足す＝Shift と同じ1か所・押している間 `.dashing` で光る）。`isShielding`／`updateShieldHud` 一式を撤去（game.js／ui.js／input.js）。ポーズ画面の右上に `#pause-close`「✕ 戻る」。番人 `touch-dpad-hold.spec.js` ⑤（走る）⑥（戻る＝MENU が枠の下に覆われる前提も確かめる）を追加＝計6本・歯 10 通り赤。`ui-icons.spec.js` ④の対象を `btn-dash` に。フル 2460 passed。
 - [ ] **71.（2026-10-14・Phase 8-3）バイブレーション対応（Web Vibration API）（🧠 Opus）。この位置の理由＝8-3＝対応端末が限られる（iOS Safari は未対応）∴最後。**
       - ⛔ 着手の最初＝やるべきかをユーザーと検討（遊ぶ端末で効くか）。
 
@@ -3049,7 +3055,7 @@ input.js     161 / passable.js 161 / conditions.js 117 / save.js 87 / main.js 78
 ### 8-3. UX・操作感　⚡ Sonnet（既存処理への追加が中心）
 - [ ] バイブレーション対応（Web Vibration API）
 - [x] BGM連動：ボス部屋BGMのテンポアップ → キュー69 で「怒り狂った」相に入るたびに1段速く（2026-10-14）
-- [ ] タッチジェスチャーの改善
+- [x] タッチジェスチャーの改善 → キュー70 で十字キーの押しっぱなし歩行（2026-10-15）
 
 ### 8-4. ゲーム全体のバランス調整（プレイヤー強さ vs 敵強さ）　🧠 Opus（数値バランスの全体判断）
 > **📍 実行キューの 9番＝この節（2026-08-18 に明示した。節として存在していても順序はキューにしか無い）。**

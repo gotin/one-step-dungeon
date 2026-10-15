@@ -13,8 +13,6 @@
 //   getIsPaused()      → isPaused
 //   getIsCutscene()    → ボス終幕の演出中（true の間は入力を一切受けない）
 //   getIsGameover()    → isGameover（retryGame 用）
-//   getIsShielding()   → isShielding
-//   setIsShielding(v)  → isShielding = v
 //   movePlayer(dir)    → プレイヤー移動
 //   swordAttack()      → 剣攻撃
 //   useSubItem()       → サブアイテム使用
@@ -47,8 +45,6 @@ export function initInput(deps) {
 		getIsShop,
 		getIsPaused,
 		getIsCutscene,
-		getIsShielding,
-		setIsShielding,
 		movePlayer,
 		swordAttack,
 		startCharge,
@@ -76,7 +72,6 @@ export function initInput(deps) {
 		hasCleared,
 		canDash,
 		setDashing,
-		updateShieldHud,
 	} = deps;
 
 	// 現在押されているキーを管理（押しっぱなし移動用）
@@ -244,12 +239,55 @@ export function initInput(deps) {
 
 	// ── モバイル ──────────────────────────────────────────────
 	// ⚠️ 終幕の入力封じはキーボードだけでは足りない（同じ操作が別の経路で来る）。
-	document.querySelectorAll('.dpad-btn[data-dir]').forEach(btn => {
-		const dir = btn.dataset.dir;
-		if (!dir) return;
-		btn.addEventListener('touchstart', e => { e.preventDefault(); resumeAudio(); if (!inCutscene()) movePlayer(dir); }, { passive: false });
-		btn.addEventListener('mousedown', () => { resumeAudio(); if (!inCutscene()) movePlayer(dir); });
-	});
+	// 十字キー＝押しっぱなしで歩く（実行キュー70）。旧実装は押すたびに movePlayer を1回
+	// （＝半マス）呼ぶだけ＝1マス歩くのに2回タップが要った。今はキーボードと同じく
+	// 「押している向き」を持ち、processHeldKeys が毎 tick 歩かせる。
+	// 指を押したまま別のボタンへ滑らせると向きが変わる（中央・外へ外れたら止まる）。
+	// 短いタップ（最初の tick より前に離した）は離した時に1歩だけ歩く＝タップが無反応にならない。
+	let touchDir = null;        // 十字キーで押している向き（null＝押していない）
+	let touchStepped = false;   // 今の向きで processHeldKeys が1歩でも歩いたか
+	let dpadTouchId = null;     // 十字キーを押している指（2本目の指は無視する）
+	let dpadMouseDown = false;
+	let touchDash = false;      // 走るボタンを押しているか（Shift の代わり）
+	const dpadDirAt = (x, y) => document.elementFromPoint(x, y)?.closest?.('.dpad-btn[data-dir]')?.dataset.dir || null;
+	const setTouchDir = (dir) => {
+		if (inCutscene()) dir = null;
+		if (dir === touchDir) return;
+		if (touchDir && !touchStepped) movePlayer(touchDir);
+		touchDir = dir;
+		touchStepped = false;
+		// 押している向きのボタンを光らせる（滑らせた先は :active にならない）
+		document.querySelectorAll('.dpad-btn[data-dir]').forEach(b => b.classList.toggle('pressed', !!dir && b.dataset.dir === dir));
+	};
+	const dpad = document.getElementById('dpad');
+	if (dpad) {
+		const findTouch = (list) => [...list].find(t => t.identifier === dpadTouchId);
+		dpad.addEventListener('touchstart', e => {
+			e.preventDefault();
+			resumeAudio();
+			if (dpadTouchId !== null) return;
+			const t = e.changedTouches[0];
+			dpadTouchId = t.identifier;
+			setTouchDir(dpadDirAt(t.clientX, t.clientY));
+		}, { passive: false });
+		dpad.addEventListener('touchmove', e => {
+			e.preventDefault();
+			const t = findTouch(e.changedTouches);
+			if (t) setTouchDir(dpadDirAt(t.clientX, t.clientY));
+		}, { passive: false });
+		const endTouch = e => {
+			if (!findTouch(e.changedTouches)) return;
+			dpadTouchId = null;
+			setTouchDir(null);
+		};
+		dpad.addEventListener('touchend', e => { e.preventDefault(); endTouch(e); }, { passive: false });
+		dpad.addEventListener('touchcancel', endTouch);
+		dpad.addEventListener('mousedown', e => { resumeAudio(); dpadMouseDown = true; setTouchDir(dpadDirAt(e.clientX, e.clientY)); });
+		dpad.addEventListener('mousemove', e => { if (dpadMouseDown) setTouchDir(dpadDirAt(e.clientX, e.clientY)); });
+		window.addEventListener('mouseup', () => { if (!dpadMouseDown) return; dpadMouseDown = false; setTouchDir(null); });
+	}
+	// キーボードと同じく、フォーカスが外れたら離したことにする（離した時の1歩は歩かせない）
+	window.addEventListener('blur', () => { dpadTouchId = null; dpadMouseDown = false; touchDash = false; document.getElementById('btn-dash')?.classList.remove('dashing'); touchStepped = true; setTouchDir(null); });
 
 	// 剣ボタン：押した瞬間に剣＋チャージ開始、離してビーム発射（Phase 3-1）。
 	// touch と mouse の両方に対応（click だと押しっぱなしを取れないため使わない）。
@@ -275,14 +313,22 @@ export function initInput(deps) {
 	document.getElementById('btn-sub')?.addEventListener('click',   () => { resumeAudio(); if (!inCutscene()) useSubItem(); });
 	document.getElementById('btn-fly')?.addEventListener('click',   () => { resumeAudio(); if (!inCutscene()) toggleFlight?.(); });
 	document.getElementById('btn-menu')?.addEventListener('click',  () => { resumeAudio(); if (!inCutscene()) togglePause(); });
+	// ポーズ画面の「戻る」（実行キュー70）＝タッチでは MENU がポーズ画面の下に隠れる∴閉じる手段がこれしか無い
+	document.getElementById('pause-close')?.addEventListener('click', () => { if (getIsPaused()) togglePause(); });
 
-	const shieldBtn = document.getElementById('btn-shield');
-	if (shieldBtn) {
-		shieldBtn.addEventListener('touchstart', e => { e.preventDefault(); setIsShielding(true);  updateShieldHud(); }, { passive: false });
-		shieldBtn.addEventListener('touchend',   () => { setIsShielding(false); updateShieldHud(); });
-		shieldBtn.addEventListener('mousedown',  () => { setIsShielding(true);  updateShieldHud(); });
-		shieldBtn.addEventListener('mouseup',    () => { setIsShielding(false); updateShieldHud(); });
+	// 走るボタン（実行キュー70・旧盾ボタンの場所）＝Shift と同じく押している間だけ走る。
+	// 靴を持つまではボタン自体が隠れている（ui.js updateHud）。判定は processHeldKeys の canDash。
+	const dashBtn = document.getElementById('btn-dash');
+	if (dashBtn) {
+		const setDashHeld = (v) => { touchDash = v; dashBtn.classList.toggle('dashing', v); };
+		dashBtn.addEventListener('touchstart',  e => { e.preventDefault(); resumeAudio(); setDashHeld(true); }, { passive: false });
+		dashBtn.addEventListener('touchend',    e => { e.preventDefault(); setDashHeld(false); }, { passive: false });
+		dashBtn.addEventListener('touchcancel', () => setDashHeld(false));
+		dashBtn.addEventListener('mousedown',   () => { resumeAudio(); setDashHeld(true); });
+		dashBtn.addEventListener('mouseup',     () => setDashHeld(false));
+		dashBtn.addEventListener('mouseleave',  () => setDashHeld(false));
 	}
+
 
 	// ── スワイプ ──────────────────────────────────────────────
 	let touchStartX = 0, touchStartY = 0;
@@ -310,6 +356,9 @@ export function initInput(deps) {
 		else if (heldKeys.has('ArrowDown')  || heldKeys.has('s') || heldKeys.has('S')) dir = 'down';
 		else if (heldKeys.has('ArrowLeft')  || heldKeys.has('a') || heldKeys.has('A')) dir = 'left';
 		else if (heldKeys.has('ArrowRight') || heldKeys.has('d') || heldKeys.has('D')) dir = 'right';
+		// キーボードが優先。キーを押していなければ十字キー（タッチ）の向き。
+		const fromTouch = !dir && !!touchDir;
+		if (fromTouch) dir = touchDir;
 		if (!dir) { _moveSpeedAccum = 0; setDashing?.(false); return; }
 
 		// 二周目（姫パレット）は移動速度1.2倍
@@ -318,13 +367,14 @@ export function initInput(deps) {
 		// 疾風の靴＋Shift は DASH_SPEED（二周目の 1.2 倍とは掛け合わせない＝整数のまま保つ
 		// ＝毎 tick 同じ歩数で足取りが揃う）。速くなるのは movePlayer（半マス）を呼ぶ回数だけ
 		// ＝1歩ずつ壁・床・入口を判定する∴位置は常にセルの中央か半セルの位置に乗る。
-		const dashing = !!canDash?.() && heldKeys.has('Shift');
+		const dashing = !!canDash?.() && (heldKeys.has('Shift') || touchDash);
 		setDashing?.(dashing);
 		const speed = dashing ? DASH_SPEED : (hasCleared() ? 1.2 : 1.0);
 		_moveSpeedAccum += speed;
 		const times = Math.floor(_moveSpeedAccum);
 		_moveSpeedAccum -= times;
 		for (let i = 0; i < times; i++) movePlayer(dir);
+		if (fromTouch && times > 0) touchStepped = true;
 	}
 
 	return { heldKeys, processHeldKeys };
