@@ -31,6 +31,10 @@
     z-index: 50;
 }
 
+#dialog-overlay {
+    cursor: pointer;   /* 枠のどこをタップ／クリックしても次へ（会話中は他に押せる物が無い） */
+}
+
 #dialog-overlay.hidden {
     display: none;
 }
@@ -106,8 +110,14 @@
     position: relative;
 }
 
-/* 閉じる（実行キュー70）＝タッチで唯一ポーズを解く手段（MENU はこの枠の下に隠れる） */
-#pause-close {
+#shop-box,
+#warp-box {
+    position: relative;
+}
+
+/* 閉じる（実行キュー70）＝タッチで唯一ポーズ・店・転移の行き先を閉じる手段
+   （MENU はポーズ画面の下に隠れる・タッチには Escape が無い）。親の枠は position: relative。 */
+.overlay-close {
     position: absolute;
     top: 10px;
     right: 10px;

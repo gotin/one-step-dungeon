@@ -747,6 +747,36 @@ export function createUi(deps) {
 		}
 		renderPauseDungeonMap();
 		updatePauseHint();
+		applyPauseTab();
+	}
+
+	// ── スマホ幅のタブ（実行キュー74）────────────────────────────
+	// 幅 599px 以下では「持ち物｜地図」を切り替える（PC は縦1列のまま＝タブは CSS で隠れている）。
+	// 縦1列だと地図が一番下でスクロールしないと見えず、地図とマーク一覧の横並びも幅に入らない
+	// （2026-10-15 iPhone 実機のユーザー指摘「地図がまるで見えない」）。
+	// どちらを出すかは #pause-box の data-tab で CSS が決める。最後に開いたタブを覚える。
+	const PAUSE_TAB_KEY = 'blade-of-lumia-pause-tab';
+	let pauseTab = 'items';
+	try { if (localStorage.getItem(PAUSE_TAB_KEY) === 'map') pauseTab = 'map'; } catch { /* noop */ }
+	const pauseBoxEl = document.getElementById('pause-box');
+	function applyPauseTab() {
+		if (!pauseBoxEl) return;
+		// 地図を持っていない層では地図タブを押せない（押せても空の枠が出るだけ）
+		const hasMap = !pauseDungeonMapEl.classList.contains('hidden');
+		const tab = hasMap ? pauseTab : 'items';
+		pauseBoxEl.dataset.tab = tab;
+		for (const btn of document.querySelectorAll('#pause-tabs [data-tab]')) {
+			btn.classList.toggle('active', btn.dataset.tab === tab);
+			if (btn.dataset.tab === 'map') btn.disabled = !hasMap;
+		}
+	}
+	for (const btn of document.querySelectorAll('#pause-tabs [data-tab]')) {
+		btn.addEventListener('click', () => {
+			pauseTab = btn.dataset.tab;
+			try { localStorage.setItem(PAUSE_TAB_KEY, pauseTab); } catch { /* noop */ }
+			applyPauseTab();
+			btn.blur();
+		});
 	}
 
 	// 操作の案内＝**キーと対象の対応をそのまま書く**（2026-09-15 ユーザー決定でモードを廃止）。
@@ -963,12 +993,23 @@ export function createUi(deps) {
 	// 予約分 260px の内訳（実測 2026-09-13・地図なしのポーズ枠は 320×198）＝
 	// 見出し 23／アイテム欄 20／ヒント 17／ステータス 56／地図の見出しと余白と枠の padding。
 	function glanceMapScale(w, h) {
+		// スマホ幅（実行キュー74）＝地図はタブで1枚だけ出る∴幅いっぱいまで伸ばす（整数倍でなくてよい
+		// ＝1倍では 1マス 1px で小さすぎる。高精細の画面なら端数の滲みはほぼ見えない）。
+		// 高さは下のマーク一覧の分を残す。
+		if (isNarrowPause()) return narrowMapScale(w, h, 3);
 		const RESERVED_H = 260;
 		const availH = (window.innerHeight || 800) - RESERVED_H;
 		const availW = (window.innerWidth  || 1280) * 0.9 - 60;
 		let s = 2;
 		while (s > 1 && (h * s > availH || w * s > availW)) s--;
 		return s;
+	}
+
+	function isNarrowPause() { return !!window.matchMedia?.('(max-width: 599px)').matches; }
+	function narrowMapScale(w, h, max) {
+		const availW = (window.innerWidth  || 375) - 44;          // 枠の padding と罫線
+		const availH = (window.innerHeight || 667) * 0.6 - 60;    // タブ・見出し・一覧の分を残す
+		return Math.max(0.5, Math.min(max, availW / w, availH / h));
 	}
 
 	// ── ① 部屋グリッド（ダンジョン）───────────────────────────────
@@ -1010,8 +1051,10 @@ export function createUi(deps) {
 		const ch = (maxY - minY + 1) * (CELL + PAD) + PAD;
 		pauseMapCanvasEl.width  = cw;
 		pauseMapCanvasEl.height = ch;
-		pauseMapCanvasEl.style.width  = `${cw * 2}px`;
-		pauseMapCanvasEl.style.height = `${ch * 2}px`;
+		// 既定 2 倍。スマホ幅だけ幅に合わせる（実行キュー74）
+		const roomScale = isNarrowPause() ? narrowMapScale(cw, ch, 2) : 2;
+		pauseMapCanvasEl.style.width  = `${cw * roomScale}px`;
+		pauseMapCanvasEl.style.height = `${ch * roomScale}px`;
 
 		const ctx = pauseMapCanvasEl.getContext('2d');
 		ctx.clearRect(0, 0, cw, ch);

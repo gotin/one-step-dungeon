@@ -102,3 +102,119 @@
     border-color: #5cc0b0;
     box-shadow: 0 0 10px rgba(92, 192, 176, 0.5);
 }
+
+/* ── スマホ幅の HUD（2026-10-15 ユーザー指摘・iPhone 実機）──────────────
+   PC と同じ「左（ハート）・中（地域/目的地）・右（装備・SUB・財布）」の3列だと、
+   幅 375〜440px では中央の目的地が数文字で切れ、装備の絵も小さい。
+   一方で盤面の上には黒い余白が大きく空いている（盤面は幅で大きさが決まる）。
+   ∴スマホ幅では HUD を段に積む：
+     1段目＝ハート｜財布　2段目＝装備｜SUB　3段目＝地域・目的地（全幅）
+   列の箱（#hud-left / #hud-right）は display: contents で外し、中身を直接グリッドに置く
+   ＝HTML（PC の並び）は変えない。 */
+@media (max-width: 599px) {
+    #hud {
+        --hud-icon: 22px;
+        --hud-heart: 30px;
+        display: grid;
+        grid-template-columns: 1fr auto;
+        grid-template-areas:
+            "hearts wallet"
+            "stage  stage"
+            "equip  sub"
+            "center center";
+        column-gap: 10px;
+        row-gap: 4px;
+        align-items: center;
+        padding: 6px 12px 8px;
+    }
+    #hud-left, #hud-right { display: contents; }
+    /* ハートの箱は透明な余白込み（見える絵は箱の約0.53倍）＝並べると隙間だらけになる。
+       左右・上下を詰める＝最大26個（初期3＋器22＋かけら1個分・2026-10-15 実数）が
+       幅 375px でも2行に収まる（詰めないと4行＝目的地の段が盤面に重なる）。 */
+    #hud-hearts      { grid-area: hearts; display: flex; flex-wrap: wrap; padding-left: 6px; }
+    #hud-hearts > canvas { margin: -5px -6px; }
+    #hud-stage-label { grid-area: stage; margin-top: -4px; }
+    #hud-wallet      { grid-area: wallet; justify-self: end; align-self: start; margin-top: 4px; font-size: 15px; }
+    #hud-equip       { grid-area: equip; gap: 10px; }
+    #hud-sub-item    { grid-area: sub; justify-self: end; font-size: 15px; gap: 6px; }
+    #hud-sub-count   { font-size: 14px; }
+    #hud-center      { grid-area: center; }
+    #hud-dungeon-name { font-size: 13px; }
+    #hud-mark-guide  { max-width: 100%; font-size: 13px; padding: 2px 8px; }
+}
+
+/* ── ポーズ画面のタブ（実行キュー74）──────────────────────────
+   PC では隠す＝縦1列のまま。スマホ幅だけ「持ち物｜地図」を切り替える。
+   どちらを出すかは ui.js applyPauseTab() が #pause-box に付ける data-tab。 */
+#pause-tabs {
+    display: none;
+}
+
+@media (max-width: 599px) {
+    #pause-box {
+        min-width: 0;
+        width: calc(100vw - 16px);
+        max-width: none;
+        padding: 14px 12px;
+    }
+    #pause-title {
+        margin-bottom: 10px;
+    }
+    #pause-tabs {
+        display: flex;
+        gap: 6px;
+        margin-bottom: 12px;
+    }
+    #pause-tabs button {
+        flex: 1;
+        font: inherit;
+        font-size: 14px;
+        color: #8ab0d0;
+        background: #0a141e;
+        border: 1px solid #2a4a6a;
+        border-radius: 6px;
+        padding: 8px 0;
+        cursor: pointer;
+        -webkit-tap-highlight-color: transparent;
+        touch-action: manipulation;
+    }
+    #pause-tabs button.active {
+        color: #ffffff;
+        background: #1a3450;
+        border-color: #80c0f0;
+    }
+    #pause-tabs button:disabled {
+        color: #3a4a5a;
+        border-color: #1e3044;
+        cursor: default;
+    }
+    /* 持ち物タブ＝地図を隠す／地図タブ＝地図以外を隠す */
+    #pause-box[data-tab="items"] #pause-dungeon-map,
+    #pause-box[data-tab="map"] #pause-items,
+    #pause-box[data-tab="map"] #pause-stats,
+    #pause-box[data-tab="map"] #pause-sound,
+    #pause-box[data-tab="map"] #pause-score {
+        display: none;
+    }
+    /* 地図タブの地図は枠の一番上から（上の罫線と余白は縦1列の区切り用） */
+    #pause-box[data-tab="map"] #pause-dungeon-map {
+        margin-top: 0;
+        border-top: none;
+        padding-top: 0;
+    }
+    /* マーク一覧は地図の下に全幅で（横並びは幅に入らない） */
+    #pause-map-body {
+        flex-direction: column;
+        align-items: stretch;
+    }
+    #pause-mark-list {
+        width: auto;
+        flex: none;
+        max-height: 30vh;
+    }
+    /* キーボード前提の案内はタッチでは意味が無い */
+    #pause-hint,
+    #pause-sound-hint {
+        display: none;
+    }
+}

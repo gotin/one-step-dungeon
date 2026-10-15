@@ -315,6 +315,12 @@ export function initInput(deps) {
 	document.getElementById('btn-menu')?.addEventListener('click',  () => { resumeAudio(); if (!inCutscene()) togglePause(); });
 	// ポーズ画面の「戻る」（実行キュー70）＝タッチでは MENU がポーズ画面の下に隠れる∴閉じる手段がこれしか無い
 	document.getElementById('pause-close')?.addEventListener('click', () => { if (getIsPaused()) togglePause(); });
+	// 店・転移の行き先も Escape でしか閉じられなかった（2026-10-15 iPhone 実機のユーザー報告から全走査）
+	document.getElementById('shop-close')?.addEventListener('click', () => { if (getIsShop()) closeShop(); });
+	document.getElementById('warp-close')?.addEventListener('click', () => { if (getIsWarpMenu?.()) warpMenuClose(); });
+	// 会話＝枠のどこをタップしても次へ（2026-10-15 iPhone 実機のユーザー報告＝Space が無く会話が進められない）。
+	// 会話の枠は画面全体を覆う（z-index 50 > 操作盤 30）＝剣ボタンにも届かない∴枠そのものを押させる。
+	document.getElementById('dialog-overlay')?.addEventListener('click', () => { resumeAudio(); if (getIsDialog()) advanceDialog(); });
 
 	// 走るボタン（実行キュー70・旧盾ボタンの場所）＝Shift と同じく押している間だけ走る。
 	// 靴を持つまではボタン自体が隠れている（ui.js updateHud）。判定は processHeldKeys の canDash。

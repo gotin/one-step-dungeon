@@ -66,7 +66,7 @@
     <div id="dialog-box">
       <div id="dialog-name"></div>
       <div id="dialog-text"></div>
-      <div id="dialog-next">▼ 次へ（Spaceキー）</div>
+      <div id="dialog-next">▼ 次へ（Spaceキー／タップ）</div>
     </div>
   </div>
 
@@ -75,7 +75,12 @@
     <div id="pause-box">
       <div id="pause-title">⏸ PAUSED</div>
       <!-- 閉じる（実行キュー70）＝タッチでは MENU ボタンがこの枠の下に隠れる∴枠の中に置く -->
-      <button id="pause-close" type="button" aria-label="ゲームに戻る">✕ 戻る</button>
+      <button id="pause-close" class="overlay-close" type="button" aria-label="ゲームに戻る">✕ 戻る</button>
+      <!-- スマホ幅のタブ（実行キュー74）＝PC では CSS で隠れて縦1列のまま。中身の出し分けは #pause-box の data-tab -->
+      <div id="pause-tabs">
+        <button type="button" data-tab="items">持ち物</button>
+        <button type="button" data-tab="map">地図</button>
+      </div>
       <div id="pause-items"></div>
       <div id="pause-hint">← → でアイテム　Escape で決定・再開</div>
       <div id="pause-stats"></div>
@@ -138,6 +143,8 @@
   <!-- ── ショップ ── -->
   <div id="shop-overlay" class="hidden">
     <div id="shop-box">
+      <!-- 閉じる（実行キュー70 の続き）＝タッチには Escape が無い∴枠の中に置く -->
+      <button id="shop-close" class="overlay-close" type="button" aria-label="店を出る">✕ 戻る</button>
       <div id="shop-title">🏪 みせ</div>
       <div id="shop-items"></div>
       <div id="shop-result" class="hidden"></div>
@@ -149,6 +156,7 @@
   <!-- ── 転移の石碑の行き先（キュー27）── -->
   <div id="warp-overlay" class="hidden">
     <div id="warp-box">
+      <button id="warp-close" class="overlay-close" type="button" aria-label="転移をやめる">✕ やめる</button>
       <div id="warp-title">転移の石碑</div>
       <div id="warp-sub">どの碑へ 転移する？</div>
       <div id="warp-list"></div>
