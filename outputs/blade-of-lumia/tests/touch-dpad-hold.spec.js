@@ -11,6 +11,7 @@
 //   ④ 滑らせても向きが変わらない／中央で止まらない
 //   ⑤ 走るボタンが効かない／靴なしで出る／離しても走り続ける
 //   ⑥ ポーズ画面を閉じる手段がタッチに無い（MENU は枠の下）
+//   ⑦ 走る・飛行の両方が出るとボタンが3段になり、MENU が操作盤の下に隠れる（2026-10-15 ユーザー指摘）
 
 import { test, expect } from '@playwright/test';
 import { gotoFreshGame, freezeGameLoop, expectLoopFrozen } from './helpers.js';
@@ -137,5 +138,23 @@ test.describe('キュー70 十字キーの押しっぱなし歩行', () => {
 		await page.locator('#pause-close').tap();
 		await expect.poll(() => page.evaluate(() => window.__game.getState().isPaused)).toBe(false);
 		await expect(page.locator('#pause-overlay')).toBeHidden();
+	});
+	test('⑦ 走る・飛行の両方が出ても、右下のボタンは全部画面と操作盤の中に収まる', async ({ page }) => {
+		for (const [w, h] of [[375, 667], [390, 844], [440, 956]]) {
+			await page.setViewportSize({ width: w, height: h });
+			await page.evaluate(() => { const pl = window.__game.getPlayer(); pl.hasSwiftBoots = true; pl.hasWingRobe = true; window.__game.updateHud(); });
+			const out = await page.evaluate(() => {
+				const ctrl = document.getElementById('mobile-ctrl').getBoundingClientRect();
+				const bad = [];
+				for (const b of document.querySelectorAll('#action-btns .action-btn')) {
+					if (b.classList.contains('hidden')) continue;
+					const r = b.getBoundingClientRect();
+					if (r.top < ctrl.top || r.bottom > ctrl.bottom || r.left < 0 || r.right > window.innerWidth) bad.push(`${b.id} ${Math.round(r.top)}-${Math.round(r.bottom)}/${Math.round(ctrl.bottom)}`);
+				}
+				return { shown: [...document.querySelectorAll('#action-btns .action-btn:not(.hidden)')].length, bad };
+			});
+			expect(out.shown, '5個（SUB・剣・走る・飛行・MENU）出ている前提').toBe(5);
+			expect(out.bad, `${w}×${h} ではみ出したボタン`).toEqual([]);
+		}
 	});
 });

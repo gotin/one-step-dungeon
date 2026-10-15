@@ -8,6 +8,7 @@
 //   ③ 最後に開いたタブを覚えない
 //   ④ 地図を持っていないのに地図タブを押せる
 //   ⑤ PC 幅でもタブが出る・地図が隠れる
+//   ⑥ タブを切り替えるとタブの位置が動く（枠を中央寄せにしている＝2026-10-15 ユーザー指摘）
 
 import { test, expect } from '@playwright/test';
 import { GAME_URL, waitForBoard } from './helpers.js';
@@ -45,8 +46,10 @@ test.describe('キュー74 スマホ幅のポーズ画面のタブ', () => {
 		await expect(page.locator('#pause-items')).toBeVisible();
 		await expect(page.locator('#pause-dungeon-map')).toBeHidden();
 
+		const tabTop = (await rect(page, '#pause-tabs')).top;
 		await page.locator('#pause-tabs [data-tab="map"]').tap();
 		await expect(page.locator('#pause-dungeon-map')).toBeVisible();
+		expect((await rect(page, '#pause-tabs')).top, 'タブを切り替えたらタブの位置が動いた（枠の高さで上下する）').toBe(tabTop);
 		await expect(page.locator('#pause-items')).toBeHidden();
 		await expect(page.locator('#pause-stats')).toBeHidden();
 		const box = await rect(page, '#pause-box');

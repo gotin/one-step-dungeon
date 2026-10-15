@@ -54,11 +54,22 @@
 }
 
 /* アクションボタン */
+/* 3列×2段（2026-10-15 ユーザー指摘）＝走る・飛行の両方が出ると5個。旧2列だと3段＝高さ 166px で
+   操作盤（140px）からはみ出し、MENU が下に隠れた。置き場所を固定する＝道具を手に入れても
+   剣や SUB の位置が動かない（指の覚えた位置がずれない）。MENU は押し間違いにくい右上の隅。 */
 #action-btns {
     display: grid;
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: repeat(3, auto);
+    grid-template-areas:
+        "sub  sword menu"
+        "dash fly   .";
     gap: 8px;
 }
+#btn-sub   { grid-area: sub; }
+#btn-sword { grid-area: sword; }
+#btn-menu  { grid-area: menu; }
+#btn-dash  { grid-area: dash; }
+#btn-fly   { grid-area: fly; }
 
 .action-btn {
     width: 58px;
@@ -151,7 +162,14 @@
 }
 
 @media (max-width: 599px) {
+    /* 枠は上端に寄せる（2026-10-15 ユーザー指摘）＝中央寄せだと持ち物⇄地図で枠の高さが変わるたびに
+       タブの位置が上下に動き、続けて押せない。上端に固定すればタブは常に同じ場所。 */
+    #pause-overlay {
+        align-items: flex-start;
+        padding-top: 8px;
+    }
     #pause-box {
+        max-height: calc(100vh - 16px);
         min-width: 0;
         width: calc(100vw - 16px);
         max-width: none;
