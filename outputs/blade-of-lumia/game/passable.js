@@ -16,7 +16,8 @@ import { NPC_SPRITE_MAP } from '../shared/npcs.js';
 // ※ per-instance のデータ追加は不要（タイル種別だけで分類できる）。
 // 飛行で越えられる。溶岩も含む＝溶岩には着地できないので、飛行中に溶岩上へ来たら
 // 飛行を維持する必要がある（水/空と同じ。外すと溶岩に落ちて詰む）。
-const FLYABLE_OVER = new Set([
+// ⚠️ 画面端の遷移（game.js arrivalIsWallFlying）もこの集合を読む＝飛行中に越えられる物の単一の真実。
+export const FLYABLE_OVER = new Set([
 	TILE.SKY, TILE.WATER, TILE.LAVA, TILE.TREE, TILE.BUSH, TILE.FENCE,
 	// Phase 9-6 深洋O: 閉じた潮ゲートは水と同じ＝飛行で越えられる（着地不可で詰むのを防ぐ）。
 	// 開いた潮ゲートは tilePassable が通すのでここには来ない。

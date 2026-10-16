@@ -526,7 +526,9 @@ test.describe('Blade of Lumia – 魔王の岩牢（X 魔王）', () => {
       .toBeGreaterThan(-1);
     expect(ORDER[i].optional, '寄道でない（下限に数えると DT の判定諸元が動く）').toBe(true);
     expect(ids[i - 1], '岩牢の直前が魔将の巣でない（同じ羽衣ゲートの寄道が並ぶ）').toBe('warlord_lair');
-    expect(ids[i + 1], '岩牢の直後が暗黒の塔でない').toBe('dark_tower');
+    // 2026-10-16（キュー76）：同じ羽衣ゲートの寄道「邪竜の巣」が岩牢と塔の間に入った。
+    expect(ids[i + 1], '岩牢の直後が邪竜の巣でない').toBe('dragon_lair');
+    expect(ids[i + 2], '邪竜の巣の直後が暗黒の塔でない').toBe('dark_tower');
     // 羽衣で来る部屋＝全道具所持（弱点判定の基準表）。
     const usable = toolsUsableIn(MAP).darklord_prison;
     for (const item of ['boomerang', 'bow', 'candle', 'ladder', 'bomb', 'flute']) {

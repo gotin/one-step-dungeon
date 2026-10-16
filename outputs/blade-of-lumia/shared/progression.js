@@ -34,6 +34,8 @@ import { HEART_PIECES_PER_HEART, isMaxHpReward } from './items.js';
 //   warlord_lair  … 翼の羽衣（祭壇の後）＝伝説の鎧 armorTier2（0h・2026-09-05）
 //   darklord_prison … 翼の羽衣（祭壇の後）＝ルミアの剣 tier4 ＋ ハートの器×1（0o／0o-2・2026-09-05）
 //                     ＝X 魔王の岩牢（剣は主の間 `0,2` の killAll 封印・器は「二色の錠の間」`0,1`）
+//   dragon_lair   … 翼の羽衣（祭壇の後）＝金翼の邪竜（裏ボス）と金の装束（キュー76・2026-10-16）
+//                     ＝field 10,14 の石の扉の先、10,15 の淵を飛んで渡った島の洞
 //
 // ⚠️ **ダンジョンの名前はここに書かない**＝表示名は実マップの `layers[x].name` から導出する
 //    （`labelOf()`）。理由＝`layer.name` は `game/ui.js` の HUD でプレイヤーに見えている側＝
@@ -60,7 +62,8 @@ export const ORDER = [
 	{ id: 'void_shrine',   prefix: '寄道', layer: 'void_shrine', optional: true },
 	{ id: 'warlord_lair',  prefix: '寄道', layer: 'warlord_lair', optional: true },
 	{ id: 'darklord_prison', prefix: '寄道', layer: 'darklord_prison', optional: true },
-	{ id: 'dark_tower',    prefix: 'DT',   layer: 'dark_tower' },
+	{ id: 'dragon_lair',   prefix: '寄道', layer: 'dragon_lair', optional: true },
+	{ id: 'dark_tower',   prefix: 'DT',   layer: 'dark_tower' },
 ];
 
 // 進行地点の表示名＝`prefix`（進行上の位置）＋ 実マップのレイヤー名。

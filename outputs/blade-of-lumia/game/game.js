@@ -28,7 +28,7 @@ import {
 	createStageState, serializeStageState, deserializeStageState, sanitizeLoadedPlayer,
 } from './save.js';
 // ── 通行可否判定・条件評価（Phase 0-2 Step 2: passable.js / conditions.js へ切り出し）──
-import { createPassable, STATEFUL_TILES, statefulTileClosed } from './passable.js';
+import { createPassable, STATEFUL_TILES, statefulTileClosed, FLYABLE_OVER } from './passable.js';
 import { createConditions } from './conditions.js';
 // 占有範囲（AABB）の当たり判定＝大型敵（2×2）を取りこぼさないための単一の真実。
 // （占有タイルで敵を探す判定は projectile.js の置き炎へ移した＝2026-08-31）
@@ -1431,6 +1431,25 @@ function arrivalIsWall(destStage, nRow, nCol, destSS) {
 	return false;
 }
 
+// 飛行中の着地判定（キュー76・2026-10-16）。飛行中は水/空/溶岩/木/柵などの上に
+// 「浮いたまま」着けるが、**山・壁・家・閉じた門は飛んでも越えられない**（passable.js
+// FLYABLE_OVER の規則）。旧実装は飛行中に着地判定そのものを飛ばしていた∴画面端の山の
+// 中へ遷移でき、そこから隣のセルへ出られた＝山で囲った画面（field 10,15 の金翼の淵）へ
+// 羽衣で横から入れる抜け道になっていた。飛行中も「飛んで越えられない物」への着地だけは拒む。
+function arrivalIsWallFlying(destStage, nRow, nCol, destSS) {
+	const r0 = Math.floor(nRow), r1 = Math.floor(nRow + 0.999);
+	const c0 = Math.floor(nCol), c1 = Math.floor(nCol + 0.999);
+	for (let r = r0; r <= r1; r++) {
+		for (let c = c0; c <= c1; c++) {
+			const tile = effArrivalTile(destStage, r, c);  // tiles 水/bgTiles 水を '~' に畳む
+			if (tile === undefined) continue;
+			if (tile === TILE.WATER || FLYABLE_OVER.has(tile)) continue;
+			if (arrivalTileBlocked(tile, `${r},${c}`, destSS)) return true;
+		}
+	}
+	return false;
+}
+
 // 遷移先の (r,c) が、はしごで渡れる 1セル幅の水/穴橋か（軸不問）。橋脚＝水/穴/
 // 壁でない通行可タイル。passable.js の isLadderBridge と同じ考え方を、まだロード
 // していない遷移先ステージのタイル配列に対して自己完結で判定する。
@@ -1482,12 +1501,15 @@ function checkStageTransition() {
 		// ※ 本来は「端が壁に面したマップを作らない」ことで防ぐべき事象だが、エンジン
 		//   側でも入り込みを起こさない安全網を張る（該当マップの是正は別途）。
 		const destStage = getStageData(newLayer, newKey);
-		// 飛行中は水/空へ着地して留まれる（塔の空島入口など）ので遷移を許す。
-		// 徒歩時のみ、到着 footprint が壁ならブロックする（はしごで渡れる 1セル幅の
+		// 飛行中は水/空へ着地して留まれる（塔の空島入口など）＝飛んで越えられる物の上は通す。
+		// ただし山・壁・閉じた門など「飛んでも越えられない物」への着地は拒む（arrivalIsWallFlying）。
+		// 徒歩時は到着 footprint が壁ならブロックする（はしごで渡れる 1セル幅の
 		// 水/穴橋は正当な渡りなので通す）。着地は float 座標（newRow/newCol）で判定。
 		// 着地先の状態（開閉しうる門/破壊壁/茂み/石が「今」開いているか）を渡す。
 		// getSS は未登録キーなら初期状態を生成して返す＝未訪問ステージでも安全。
-		if (!player.flying && arrivalIsWall(destStage, newRow, newCol, getSS(newLayer, newKey))) {
+		const destSS = getSS(newLayer, newKey);
+		if (player.flying ? arrivalIsWallFlying(destStage, newRow, newCol, destSS)
+		                  : arrivalIsWall(destStage, newRow, newCol, destSS)) {
 			// 押し戻しも整数へ（着地と対称）。出ようとした軸だけを境界セルに戻す＝
 			// プレイヤーが元々居たセルそのものなので、その場で遷移が再トリガーされない。
 			if (y < 0) player.y = 0;
