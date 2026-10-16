@@ -16,7 +16,7 @@ import { enemyW, enemyH, enemyCenter } from './hitbox.js';
 // Phase 8-4 (4) 0d-2.11 (A): 攻撃硬直の窓（＝反撃の窓）の判定＝enemy-ai.js の `.attack-recover`
 // と共有する（enemy-state.js が単一の真実）。`weakness.window: 'recover'` の弱点で使う。
 // isSoaring も同じ理由でそこから読む（0d-3 6体目 U＝浮いている絵と「矢しか届かない」を一致させる）。
-import { isInRecoverWindow, isSoaring } from './enemy-state.js';
+import { isInRecoverWindow, isSoaring, soarConfigOf } from './enemy-state.js';
 import { sanitizeCount } from './play-stats.js';
 
 /**
@@ -417,7 +417,7 @@ export function createCombat(deps) {
 	//     （空振りの音＝「今は無駄・弓を出せ」がプレイヤーへ伝わる。甲羅と同じ考え）
 	function isSoarOutOfReach(e, meta, atkType) {
 		if (!isSoaring(e, meta)) return false;
-		return atkType !== (meta.soar.reachedBy ?? 'arrow');
+		return atkType !== (soarConfigOf(e, meta)?.reachedBy ?? 'arrow');
 	}
 
 	// Phase 5.5k k-4: 正面ブロックの跳ね返し＝**プレイヤーを1歩下がらせる**。
@@ -459,7 +459,8 @@ export function createCombat(deps) {
 		// ここに置く理由＝弱点の倍率を引いた**後**（∴矢の弱点判定と二重にならない）で、かつ
 		// 倒れていないときだけ（`hp > 0`）＝倒した敵を墜落させて気絶を残さない。
 		// 届いた矢だけがここに来る（上の `isSoarOutOfReach` が矢以外を先に弾いている）。
-		if (meta?.soar && e.hp > 0) deps.crashSoar?.(e, meta);
+		// キュー76③-2: 相で生えた滞空（Ω の `phases[].soar`）も同じ（`soarConfigOf`＝相 → META）。
+		if (soarConfigOf(e, meta) && e.hp > 0) deps.crashSoar?.(e, meta);
 		// 分裂スライム：HP が尽きた瞬間だけが引き金。
 		if (e.hp <= 0 && meta?.split) return trySplitEnemy(e, meta, atkType);
 		return false;

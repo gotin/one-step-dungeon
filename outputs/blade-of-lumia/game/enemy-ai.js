@@ -1105,7 +1105,10 @@ export function createEnemyAi(deps) {
 	// ── Phase 8-4 (4) 0d-3（6体目 U 嵐の鷲王）: 滞空と急降下（soar）───────────────
 	// meta.soar = { groundMs, riseMs, airMs, airMaxMs, orbitRange, orbitSpeed, alignTol,
 	//               aimMs, diveSpeed, diveCells, diveHitRange, diveAtk, landFreezeMs,
-	//               crashStunMs, centerFollow, flipLapsMin, flipLapsMax, reachedBy }
+	//               crashStunMs, centerFollow, flipLapsMin, flipLapsMax, reachedBy,
+	//               strike?, breathMs?, breathAtk? }
+	// キュー76③-2（Ω）: `strike: 'breath'` の型は `dive` の代わりに `breath`（空から炎の帯を
+	//   吐く・`breathMs`）を通って**その場に** `land` する＝ground→rise→air→aim→breath→land。
 	// 6拍の状態機械。他の12体と違うのは「近づき方」ではなく **どこに居るか**：
 	//   ground … 地上（`groundMs`）＝歩いて寄り鉤爪を振る＝**プレイヤーが剣を入れられる窓**
 	//   rise   … 舞い上がる溜め（`riseMs`・動かない・攻撃しない・**まだ地上＝殴れる**）
@@ -1165,6 +1168,75 @@ export function createEnemyAi(deps) {
 		return Math.abs(dy) >= Math.abs(dx) ? [Math.sign(dy) || 1, 0] : [0, Math.sign(dx) || 1];
 	}
 
+	// ── キュー76③-2（Ω 金翼の邪竜）: 急降下の代わりに**炎の帯**を吐く型（`strike: 'breath'`）──
+	// 竜は降りて来ない＝空（`aim`→`breath`）から軸に沿って床を焼き、その場に降りる（`land`）。
+	// 帯＝体の幅（3レーン）× 体の前面から壁まで。**表示座標（px 単位＝セル添字の左上基準）の矩形**
+	// ＝床の予告の絵と当たりが同じ矩形を読む（GUIDE §7-16）。
+	// 猶予の算術＝中央レーンから帯の外へ出るのに 2 セル（旋回の後は縁が半端な位置＝歩幅の丸めで
+	// 最大 2.5 セル）＝5 tick＝600ms ＜ 予告 `aimMs` 720ms。
+	// 壁で止まる：芯（中央レーン）のセルが通れなくなった距離で帯を打ち切る（breatheCone と同じ考え）。
+	const SOAR_BAND_MAX = 16;
+	function soarBandRect(e, [sy, sx]) {
+		const ew = e.w ?? 1, eh = e.h ?? 1;
+		const horizontal = sx !== 0;
+		// 芯（中央レーン）の座標＝体の中央の列/行
+		const coreR = toTileRow(e.y + (eh - 1) / 2), coreC = toTileCol(e.x + (ew - 1) / 2);
+		let len = 0;
+		for (let k = 0; k < SOAR_BAND_MAX; k++) {
+			const r = horizontal ? coreR : toTileRow(sy > 0 ? e.y + eh + k : e.y - 1 - k);
+			const c = horizontal ? toTileCol(sx > 0 ? e.x + ew + k : e.x - 1 - k) : coreC;
+			if (!tilePassable(r, c)) break;
+			len++;
+		}
+		if (horizontal) {
+			return { left: sx > 0 ? e.x + ew : e.x - len, top: e.y, w: len, h: eh };
+		}
+		return { left: e.x, top: sy > 0 ? e.y + eh : e.y - len, w: ew, h: len };
+	}
+	function soarBandHitsPlayer(band, player) {
+		return band.w > 0 && band.h > 0
+			&& aabbOverlap(player.x, player.y, 1, 1, band.left, band.top, band.w, band.h);
+	}
+	// 吐いた炎の絵。外枠（`.soar-band-fire`）は帯の矩形そのもの＝予告の床の絵と同じ位置・大きさ
+	// （透明の入れ物）。中身は**セルごとの炎の舌**＝口元から先へ波のように遅れて燃え広がる
+	// （2026-10-16 ユーザー指摘「キレイに長方形すぎてださい。もっと炎感」＝旧版は縞模様の矩形1枚）。
+	// 舌は**常に画面の上へ尖る**＝床が燃えている絵（見下ろし視点では吐く向きに倒すより自然）。
+	// 大きさ・位置のずれ・揺れの位相はセルごとに決定的にばらす（乱数なし・GUIDE §7-3）＝格子に見せない。
+	// 舌は隣と少し重なる＝矩形の縁は炎の輪郭でぼける。当たりは矩形のまま。
+	function showSoarBandFire(band, durMs, vec = [1, 0]) {
+		const charLayerEl = getCharLayerEl();
+		if (!charLayerEl || !band || band.w <= 0 || band.h <= 0) return;
+		const cellPx = getCellPx();
+		const [sy, sx] = vec;
+		const showMs = Math.round(durMs + 160);   // 吐き終わりに少しだけ燃え残りが消えていく
+		const el = document.createElement('div');
+		el.className = 'soar-band-fire';
+		el.style.cssText = `position:absolute;left:${band.left * cellPx}px;top:${band.top * cellPx}px;`
+			+ `width:${band.w * cellPx}px;height:${band.h * cellPx}px;z-index:23;pointer-events:none;`
+			+ `--soar-breath-ms:${showMs}ms;`;
+		const cols = Math.round(band.w), rows = Math.round(band.h);
+		const along = sx !== 0 ? cols : rows;
+		for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) {
+			// 口元からの距離（0＝口元）＝燃え広がる遅れ
+			const k = sx > 0 ? c : sx < 0 ? cols - 1 - c : sy > 0 ? r : rows - 1 - r;
+			const h = ((r * 73856093) ^ (c * 19349663) ^ (k * 83492791)) >>> 0;
+			const jit = (h % 1000) / 1000;            // 0〜1（セルごとに決まる）
+			const size = 1.0 + jit * 0.35;            // 1.0〜1.35 セル（隣と少し重なる）
+			const f = document.createElement('div');
+			f.className = 'soar-flame';
+			const ox = ((h >>> 10) % 100) / 100 * 0.3 - 0.15;   // ±0.15 セル
+			const oy = ((h >>> 17) % 100) / 100 * 0.3 - 0.15;
+			f.style.cssText = `left:${(c + 0.5 + ox - size / 2) * cellPx}px;top:${(r + 0.5 + oy - size / 2) * cellPx}px;`
+				+ `width:${size * cellPx}px;height:${size * cellPx}px;`
+				+ `--flame-delay:${Math.round(k * (durMs * 0.5) / Math.max(1, along))}ms;`
+				+ `--flame-ms:${showMs}ms;--flame-flick:${90 + Math.round(jit * 60)}ms;`
+				+ `--flame-hue:${Math.round(18 + jit * 22)};`;
+			el.appendChild(f);
+		}
+		charLayerEl.appendChild(el);
+		setTimeout(() => el.remove(), showMs);
+	}
+
 	// 着地＝硬直（反撃の窓）へ。硬直はここで直接立てる（`markAttack` は通さない＝急降下は
 	// `attacks[]` の1エントリではなく**滞空の周期そのものの帰結**＝coil の締め上げ・gaze の
 	// 岩投げと同じ作法）。
@@ -1174,6 +1246,7 @@ export function createEnemyAi(deps) {
 		e._freezeUntil = now + freezeMs;
 		e._soarVec  = null;
 		e._soarLeft = 0;
+		e._soarBand = null;
 		e._soarDives = (e._soarDives ?? 0) + 1;
 		// 空振りでも鳴らす＝「落ちた＝今なら殴れる」が画面を見ていなくても分かる。
 		// 予告（soarDive）とは別の音（GUIDE §7-6）。当たった場合はダメージ音が重なる。
@@ -1234,8 +1307,34 @@ export function createEnemyAi(deps) {
 			if (outcome || e._soarLeft <= 0) landSoar(e, cfg, now);
 			return true;
 		}
+		// キュー76③-2（Ω）: 炎の帯を吐いている間（空のまま・この tick を専有）。帯は予告の開始で
+		// 固定した矩形（`_soarBand`）＝予告の床の絵と同じ式。打点は1回の帯につき1回だけ。
+		if (e._soarPhase === 'breath') {
+			if (!e._soarBandHit && player && e._soarBand && soarBandHitsPlayer(e._soarBand, player)) {
+				e._soarBandHit = true;
+				e._soarBandHits = (e._soarBandHits ?? 0) + 1;
+				// **盾は見ない**＝空から吐く炎は防げない（答えは「帯の外へ出る」だけ・GUIDE §7-16）
+				takeDamage(cfg.breathAtk ?? e.atk ?? meta?.atk ?? 1);
+			}
+			if (now >= e._soarAt) landSoar(e, cfg, now);
+			return true;
+		}
 		if (e._soarPhase === 'aim') {
 			if (now < e._soarAt) return true;
+			if (cfg.strike === 'breath') {
+				enterSoarPhase(e, 'breath', now, cfg.breathMs ?? 360);
+				e._soarBandHit = false;
+				e._soarBreaths = (e._soarBreaths ?? 0) + 1;
+				showSoarBandFire(e._soarBand, cfg.breathMs ?? 360, e._soarVec ?? [1, 0]);
+				playSound('fire');   // 吐いた音（予告の breathWindup とは別＝GUIDE §7-6）
+				// 吐き始めた tick から当たる（帯の上に残っていれば焼かれる）
+				if (player && e._soarBand && soarBandHitsPlayer(e._soarBand, player)) {
+					e._soarBandHit = true;
+					e._soarBandHits = (e._soarBandHits ?? 0) + 1;
+					takeDamage(cfg.breathAtk ?? e.atk ?? meta?.atk ?? 1);
+				}
+				return true;
+			}
 			e._soarPhase = 'dive';
 			e._soarSpan  = null;
 			e._soarAt    = null;
@@ -1255,7 +1354,13 @@ export function createEnemyAi(deps) {
 				e._soarVec = vec ?? soarAnyVec(e, player);
 				e.dir = soarVecDir(e._soarVec);
 				enterSoarPhase(e, 'aim', now, cfg.aimMs ?? 600);
-				playSound('soarDive');
+				if (cfg.strike === 'breath') {
+					// 帯は**予告の開始で固定する**＝床に描いた予告と実際に焼く範囲が絶対にずれない。
+					e._soarBand = soarBandRect(e, e._soarVec);
+					playSound('breathWindup');
+				} else {
+					playSound('soarDive');
+				}
 				return true;
 			}
 			return false;
@@ -1341,7 +1446,9 @@ export function createEnemyAi(deps) {
 	//            っぽく）」）。壁に当たって回れない側も同じ「反転」として扱う（coil と同じ）。
 	function enemySoarStride(e, meta, speed, cfg) {
 		if (!cfg) return;
-		if (e._soarPhase == null || e._soarPhase === 'ground') { enemyChase(e, speed); return; }
+		// キュー76③-2（Ω）: 地上は面の技（aspect）の時間＝向きは tickAspect の離散の向き直りだけが
+		// 変える（dirLocked）。追う側に向きを書かせると毎 tick プレイヤーを向き、回り込めなくなる。
+		if (e._soarPhase == null || e._soarPhase === 'ground') { enemyChase(e, speed, !!meta?.aspect); return; }
 		if (e._soarPhase !== 'air') return;
 		const player = getPlayer();
 		if (!player) return;
@@ -1415,6 +1522,10 @@ export function createEnemyAi(deps) {
 		el.classList.toggle('soar-rise', e._soarPhase === 'rise');
 		el.classList.toggle('soar-aim',  e._soarPhase === 'aim');
 		el.classList.toggle('soar-dive', e._soarPhase === 'dive');
+		el.classList.toggle('soar-breath', e._soarPhase === 'breath');
+		// キュー76③-2（Ω）: 炎の帯の予告＝床に帯の矩形（`_soarBand`＝当たりと同じ矩形）。
+		// 予告（aim）のあいだだけ描く。吐いている間（breath）は `showSoarBandFire` の炎が同じ矩形に出る。
+		syncSoarBandZone(e, e._soarPhase === 'aim' ? e._soarBand : null, cfg);
 		// 長さは状態機械が単一の真実（CSS 側に持たせない＝swing/breath/coil/gaze と同じ作法）
 		if (e._soarPhase === 'rise') el.style.setProperty('--soar-rise-ms', `${Math.round(cfg.riseMs ?? 480)}ms`);
 		if (e._soarPhase === 'aim')  el.style.setProperty('--soar-aim-ms',  `${Math.round(cfg.aimMs ?? 600)}ms`);
@@ -1433,6 +1544,24 @@ export function createEnemyAi(deps) {
 		}
 	}
 
+	function syncSoarBandZone(e, band, cfg) {
+		const charLayerEl = getCharLayerEl();
+		if (!charLayerEl) return;
+		const zid = `soar-band-zone-${e.id}`;
+		let zone = document.getElementById(zid);
+		if (!band || band.w <= 0 || band.h <= 0) { zone?.remove(); return; }
+		const cellPx = getCellPx();
+		if (!zone) {
+			zone = document.createElement('div');
+			zone.id = zid;
+			zone.className = 'soar-band-zone';
+			charLayerEl.appendChild(zone);
+		}
+		zone.style.cssText = `position:absolute;left:${band.left * cellPx}px;top:${band.top * cellPx}px;`
+			+ `width:${band.w * cellPx}px;height:${band.h * cellPx}px;z-index:2;pointer-events:none;`
+			+ `--soar-aim-ms:${Math.round(cfg?.aimMs ?? 720)}ms;`;
+	}
+
 	// ── Phase 5.5k: 陸上敵の向き別スプライト名解決（DECISIONS 2026-08-10）─────
 	// プレイヤーの getHeroSpriteName()（game.js）が雛形＝攻撃中/構え中/通常の3段を
 	// 1関数に集約する。directional:true の敵だけがこの関数を通る（フラグ無しの既存敵は
@@ -1445,6 +1574,8 @@ export function createEnemyAi(deps) {
 		// キュー76 ④-2（Ω）: 面の技は予告から当たる瞬間まで、その技の構えの絵（…Bite/Wing/Tail）。
 		// 尾の予告中もプレイヤーに背を向けたまま＝向きは変えず絵だけ替える。
 		if (meta?.aspect) {
+			// キュー76③-2: 空から炎の帯を吐く予告と吐いている間は口を開いた絵（噛みつきの構え）。
+			if (e._soarPhase === 'aim' || e._soarPhase === 'breath') return `${base}${dirSuffix}Bite`;
 			const kind = e._aspPhase === 'windup' ? e._aspKind
 				: (e._atkUntil != null && now < e._atkUntil ? e._aspLastKind : null);
 			if (kind) return `${base}${dirSuffix}${kind[0].toUpperCase()}${kind.slice(1)}`;
@@ -5643,6 +5774,9 @@ export function createEnemyAi(deps) {
 	function tickAspect(e, meta, now) {
 		const cfg = meta?.aspect;
 		if (!cfg) return false;
+		// キュー76③-2: 滞空の周期（相2から生える `soar`）が地上以外の相にある間は面の技を出さない
+		// （空から噛みつかない・着地硬直は soar 側の窓）。予告中に舞い上がることは enemyTick 側で止める。
+		if (e._soarPhase != null && e._soarPhase !== 'ground') return false;
 		if (e._aspPhase === 'windup') {
 			if (now < e._aspAt) return true;
 			resolveAspect(e, meta, cfg, now);
@@ -5832,7 +5966,7 @@ export function createEnemyAi(deps) {
 				// ⚠️ ボスはブーメランでスタンしない（`stunnable ?? !isBoss`）∴今の U で気絶の入口は
 				//    矢で射落とす `crashSoar` だけ＝ここは**二重の守り**（coil/gaze と同じ立場）。
 				if (isSoaring(e, meta)) {
-					e._soarVec = null; e._soarLeft = 0;
+					e._soarVec = null; e._soarLeft = 0; e._soarBand = null;
 					enterSoarPhase(e, 'ground', e.stunUntil, resolveSoar(e, meta)?.groundMs ?? 1560);
 					syncSoarMotion(e, meta);
 				}
@@ -5966,7 +6100,8 @@ export function createEnemyAi(deps) {
 			// ⚠️ 硬直で止めるのは**新しく舞い上がること**だけ（`ground` 相は soarBusy に入れない）
 			//    ＝鉤爪を振った直後にいきなり飛ばない＝殴り返す窓が予告なく消えない。
 			const soarBusy = e._soarPhase != null && e._soarPhase !== 'ground';
-			const soaring = (!isGuarding && !leaping && (soarBusy || (!frozen && !slamming && !swinging && !breathing)))
+			// キュー76③-2（Ω）: 面の技の予告中（`aspecting`）も新しく舞い上がらない＝予告が宙に浮かない。
+			const soaring = (!isGuarding && !leaping && (soarBusy || (!frozen && !slamming && !swinging && !breathing && !aspecting)))
 				? tickSoar(e, meta, now) : false;
 			// Phase 8-4 (4) 0d-3（9体目 {）: 乗り上げ（予告→掃過→陸で停止→這い戻り）も
 			// 跳躍・滞空と同じ枠＝**始まったら硬直では止めない**（`surgeBusy`＝`idle` 以外の相）。
@@ -6028,7 +6163,9 @@ export function createEnemyAi(deps) {
 					// Phase 8-4 (4) 0d-3（5体目 O）: 見据え＝**印**へ寄る（プレイヤーへは寄らない）。
 					// 周期そのものは上の `tickGaze`（行動ゲートの外）が持ち主＝ここは歩くだけ。
 					enemyGazeStride(e, meta, resolveEnemySpeed(e, meta), resolveGaze(e, meta));
-				} else if (meta.soar) {
+				} else if (resolveSoar(e, meta)) {
+					// キュー76③-2: `meta.soar` ではなく `resolveSoar`＝相で滞空が生える Ω もここへ来る
+					// （aspect の分岐より前＝空に居る間は旋回する）。
 					// Phase 8-4 (4) 0d-3（6体目 U）: 滞空＝相で寄り方が変わる（地上は追う・
 					// 空は `orbitRange` を保って軸へ回り込む）。周期そのものは上の tickSoar が持ち主。
 					enemySoarStride(e, meta, resolveEnemySpeed(e, meta), resolveSoar(e, meta));
@@ -6106,7 +6243,7 @@ export function createEnemyAi(deps) {
 			// Phase 8-4 (4) 0d-3（5体目 O）: 見据えの印を床に描く（どこに岩が落ちるかの唯一の告知）。
 			if (meta.gaze) syncGazeMark(e, meta);
 			// Phase 8-4 (4) 0d-3（6体目 U）: 滞空の告知（体が浮いて真下に影＝**今は剣が届かない**）。
-			if (meta.soar) syncSoarMotion(e, meta);
+			if (resolveSoar(e, meta)) syncSoarMotion(e, meta);
 			// Phase 8-4 (4) 0d-2.6（2回目の調整）: 攻撃硬直の絵（前かがみで止まる＝殴り返す窓）。
 			syncRecoverMotion(e, now);
 			// Phase 5.5k k-9: 突進の溜めモーション（前後に細かく揺れる）を状態に合わせる。

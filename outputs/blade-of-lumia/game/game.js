@@ -2700,6 +2700,11 @@ export function getEnemiesSnapshot() {
 		// soar ＝滞空の設定そのもの（フェーズで差し替わる＝`resolveSoar` が読む側）。
 		// **meta.soar とは別物**＝「後半で地上の時間が短く・急降下が速くなった」の観測窓。
 		soar: e._soar ?? null,
+		// キュー76③-2（Ω）: 炎の帯（`strike: 'breath'`）の観測用。soarBand＝予告で固定した帯の矩形
+		// （px 単位・左上基準＝床の絵と当たりが読む矩形）／soarBreaths＝吐いた回数／soarBandHits＝当てた回数。
+		soarBand: e._soarBand ? { ...e._soarBand } : null,
+		soarBreaths: e._soarBreaths ?? null,
+		soarBandHits: e._soarBandHits ?? null,
 		// Phase 8-4 (4) 0d-3（7体目 G）: 慣性（momentum）の観測用。状態は**速度ベクトル1つだけ**
 		// ＝相を持たない（他の6体と違って `*Phase` が無い）∴観測窓もこの3つで足りる：
 		// momVx/momVy ＝今の速度（セル/tick・連続値）／momSpeed ＝その大きさ＝**体当たりの成立・

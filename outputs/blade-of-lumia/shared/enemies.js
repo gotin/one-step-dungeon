@@ -944,7 +944,7 @@ export const ENEMY_META = {
 	// 羽衣の後の寄道の主。欠片は落とさない（dropsTriforce なし）。報酬は金の装束（キュー76⑤）。
 	// 戦い方＝ユーザー決定「A,B,C 全部まぜる・残り HP で相を分ける」（PLAN キュー76②）：
 	//   相1（100〜66%）＝**面で技が変わる**（`aspect`・この節）／相2＝＋滞空と炎の帯／相3＝＋金の棘。
-	//   ⚠️ 2026-10-16 時点で実装したのは相1だけ（相2・相3 はキュー76③の続き）。
+	//   ⚠️ 2026-10-16 時点で実装したのは相1・相2（相3 はキュー76③-3）。
 	// 【aspect＝尾と翼の間合い】竜は向き（`e.dir`）を持ち、**向き直るのは `turnMs` ごとだけ**
 	//   （盾騎士 ζ の `tickFaceLock` と同じ離散の向き直り＝毎 tick 向くと回り込めない）。
 	//   プレイヤーが体のどの面に居るかで技が変わる（判定は enemy-ai.js `aspectFaceOf`）：
@@ -976,6 +976,36 @@ export const ENEMY_META = {
 			tail: { range: 2.0, windupMs: 720, recoverMs: 900, depth: 2 },   // 背後（range＝予告を始める距離）
 		},
 		attacks: [],   // 技は全部 aspect が持つ（enemyAttack の既定の剣/石は使わない）
+		phases: [
+			// 相2（HP 66% 以下）＝**滞空と炎の帯**を足す（キュー76③-2）。U 嵐の鷲王の `soar` の周期を
+			// 借り、急降下の代わりに炎の帯を吐く型（`strike: 'breath'`）：
+			//   ground（地上＝面の技 aspect が働く）→ rise（舞い上がる溜め・まだ殴れる）→
+			//   air（旋回・**矢しか届かない**）→ aim（床に帯の予告・竜は止まる）→
+			//   breath（帯を吐く・**盾で防げない**）→ land（その場に降りる・硬直＝反撃の窓）。
+			// 帯＝体の幅（3レーン）× 前面から壁まで。猶予＝中央レーンから帯の外へ 2 セル（旋回の後は
+			// 縁が半端な位置＝歩幅の丸めで最大 2.5 セル）＝5 tick＝600ms ＜ aimMs 720ms
+			// （後半でも予告は縮めない・GUIDE §7-16）。
+			// 矢を当てると墜落（気絶 `crashStunMs`）＝U と同じ解除鍵（`reachedBy`）。
+			// ⚠️ 相1 の aspect は地上（ground）の間だけ働く（enemy-ai.js tickAspect が soar の相を見る）。
+			{ hpThreshold: 0.66,
+			  soar: {
+				strike: 'breath',
+				groundMs:    4320,  // 36 tick 地上＝面の技が2〜3回出る長さ（相1の戦い方を残す）
+				riseMs:       600,  // 5 tick 舞い上がる溜め（巨体＝U の 480 より長い）
+				airMs:       2400,  // 20 tick 滞空の下限（これより早く予告へは移らない）
+				airMaxMs:    3600,  // 30 tick 保険の上限（軸が揃わなくても必ず吐く＝宙吊り防止）
+				orbitRange:   3.5,  // 旋回の半径（中心から）＝体の端から 2.0＝噛みつきの外
+				orbitSpeed:   0.6,  // プレイヤー（1.0）より必ず遅い（GUIDE §7-2）
+				alignTol:     0.6,  // 軸が揃った＝プレイヤーが帯の幅に入っている
+				aimMs:        720,  // 6 tick 帯の予告＝3 セル歩ける ＞ 帯の外へ出る最大 2.5 セル
+				breathMs:     360,  // 3 tick 帯を吐いている（帯の上に残る・踏み込むと焼かれる）
+				breathAtk:      8,  // ＝atk（新しい最大打点を作らない）
+				landFreezeMs: 840,  // 7 tick 着地の硬直＝殴り返す窓
+				crashStunMs: 1800,  // 15 tick 矢で射落とした墜落の気絶＝大きな反撃の窓
+				reachedBy: 'arrow',
+				centerFollow: 0.12, flipLapsMin: 0.1, flipLapsMax: 0.35,
+			  } },
+		],
 	},
 	[TILE.ZARNEL]: {
 		name: 'ザーネル',

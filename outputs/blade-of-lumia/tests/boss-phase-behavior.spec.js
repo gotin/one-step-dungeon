@@ -442,14 +442,21 @@ test('⑤ ENEMY_META の phases[] は既知のキーだけを持ち、閾値は�
       if (p.soar !== undefined) {
         // 相の soar も meta.soar を**丸ごと差し替える**（`resolveSoar`）∴部分指定は既定値へ
         // 落ちる＝落下速度だけ書いたつもりで予告（aimMs）が既定 600 に戻る等の事故になる。
-        // ⚠️ `reachedBy`（滞空中に届く手段）は**相のキーに入れない**＝combat.js
-        //    `isSoarOutOfReach` が読むのは常に基底の `meta.soar` ∴相に書いても効かない
-        //    （書けてしまうと「後半だけ剣が届く」と読める死んだ指定になる）。
-        const SOAR_KEYS = ['groundMs', 'riseMs', 'airMs', 'airMaxMs', 'orbitRange', 'orbitSpeed',
-                           'alignTol', 'aimMs', 'diveSpeed', 'diveCells', 'diveHitRange', 'diveAtk',
-                           'landFreezeMs', 'crashStunMs', 'centerFollow', 'flipLapsMin', 'flipLapsMax'];
-        expect(Object.keys(p.soar).filter(k => !SOAR_KEYS.includes(k)),
-          `${t} の phases[].soar に未知のキー（reachedBy は相では効かない）`).toEqual([]);
+        // ⚠️ `reachedBy`（滞空中に届く手段）は**基底に `meta.soar` を持つ敵では相のキーに入れない**
+        //    ＝相で鍵が変わるとプレイヤーは学べない（GUIDE §7-8）。例外＝**滞空そのものが相で生える**
+        //    敵（キュー76③-2 Ω＝基底に `meta.soar` が無い）は相の設定が唯一の定義∴そこに書く
+        //    （combat.js `isSoarOutOfReach` は `soarConfigOf`＝相 → META の順で読む）。
+        // `strike: 'breath'`（Ω）は急降下の代わりに炎の帯＝dive* の代わりに breath* を持つ。
+        const breath = p.soar.strike === 'breath';
+        const COMMON = ['groundMs', 'riseMs', 'airMs', 'airMaxMs', 'orbitRange', 'orbitSpeed',
+                        'alignTol', 'aimMs', 'landFreezeMs', 'crashStunMs', 'centerFollow',
+                        'flipLapsMin', 'flipLapsMax'];
+        const SOAR_KEYS = breath ? [...COMMON, 'breathMs', 'breathAtk']
+                                 : [...COMMON, 'diveSpeed', 'diveCells', 'diveHitRange', 'diveAtk'];
+        const EXTRA_KEYS = breath ? ['strike'] : [];
+        if (!m.soar) EXTRA_KEYS.push('reachedBy');
+        expect(Object.keys(p.soar).filter(k => !SOAR_KEYS.includes(k) && !EXTRA_KEYS.includes(k)),
+          `${t} の phases[].soar に未知のキー（基底に soar を持つ敵では reachedBy は相に書かない）`).toEqual([]);
         for (const k of SOAR_KEYS) {
           expect(p.soar[k], `${t} の phases[].soar.${k} が正の数でない（＝部分指定）`)
             .toBeGreaterThan(0);
@@ -459,15 +466,27 @@ test('⑤ ENEMY_META の phases[] は既知のキーだけを持ち、閾値は�
         // airMs は**下限**（DECISIONS 2026-08-30（5）決定5）＝保険（airMaxMs）は必ずそれより長い
         expect(p.soar.airMaxMs, `${t} の phases[].soar.airMaxMs が airMs 以下`)
           .toBeGreaterThan(p.soar.airMs);
-        // 相の予告も**必ず軸から外れられる**（予告の tick 数 × 1歩 > 落ちる軸の半幅）＝
-        // 短くしすぎると「予告を見てから外れられない」＝告知が飾りになる（gaze と同じ作法）。
         const halfOff = ((m.size?.w ?? 1) - 1) / 2;
-        expect(Math.floor(p.soar.aimMs / 120) * 0.5,
-          `${t} の phases[].soar は予告の tick 内に落ちる軸の外へ出られない`)
-          .toBeGreaterThan(p.soar.alignTol + halfOff);
-        // 打点は据え置き（相で最大打点を作らない＝gaze/coil と同じ作法）
-        expect(p.soar.diveAtk, `${t} の phases[].soar.diveAtk が atk より大きい`)
-          .toBeLessThanOrEqual(m.atk);
+        if (breath) {
+          // 炎の帯は体の幅＝中央レーンから帯の外へ出るのに halfOff + 1 セル（旋回の後は帯の縁が
+          // セルの半端な位置＝歩幅 0.5 の丸めで +0.5）。予告の tick 内に歩けること（GUIDE §7-16＝
+          // 盾で防げない一撃は予告で避けられる）。打点は atk 以下。
+          expect(Math.floor(p.soar.aimMs / 120) * 0.5,
+            `${t} の phases[].soar は予告の tick 内に炎の帯の外へ出られない`)
+            .toBeGreaterThan(halfOff + 1 + 0.5);
+          expect(p.soar.breathAtk, `${t} の phases[].soar.breathAtk が atk より大きい`)
+            .toBeLessThanOrEqual(m.atk);
+          expect(p.soar.reachedBy ?? m.soar?.reachedBy, `${t} の滞空に届く手段が無い`).toBe('arrow');
+        } else {
+          // 相の予告も**必ず軸から外れられる**（予告の tick 数 × 1歩 > 落ちる軸の半幅）＝
+          // 短くしすぎると「予告を見てから外れられない」＝告知が飾りになる（gaze と同じ作法）。
+          expect(Math.floor(p.soar.aimMs / 120) * 0.5,
+            `${t} の phases[].soar は予告の tick 内に落ちる軸の外へ出られない`)
+            .toBeGreaterThan(p.soar.alignTol + halfOff);
+          // 打点は据え置き（相で最大打点を作らない＝gaze/coil と同じ作法）
+          expect(p.soar.diveAtk, `${t} の phases[].soar.diveAtk が atk より大きい`)
+            .toBeLessThanOrEqual(m.atk);
+        }
         // 旋回はプレイヤー（1.0）より遅い＝軸から逃げ続けられる（GUIDE §7-2）
         expect(p.soar.orbitSpeed, `${t} の phases[].soar.orbitSpeed がプレイヤー以上に速い`)
           .toBeLessThan(1.0);

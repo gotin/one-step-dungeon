@@ -38,8 +38,15 @@ export function isInRecoverWindow(e, now) {
  *   ・`game/enemy-ai.js` syncSoarMotion  … `.soaring`（体が浮いて真下に影）の on/off
  *   ・`game/enemy-ai.js` enemyAttack     … 滞空中は近接（鉤爪）を出さない
  *   ・`game/combat.js`   dealDamageToEnemy … 矢以外を弾く（＋矢が当たれば墜落）
+ *
+ * キュー76③-2（Ω 金翼の邪竜）: 滞空は**相で生える**こともある（`phases[].soar` → `e._soar`）
+ * ∴設定は `resolveSoar` と同じ順（相の設定 → META）で読む。急降下の代わりに炎の帯を吐く型
+ * （`strike: 'breath'`）は `breath`（空から帯を吐いている間）も空に数える＝降りるのは `land`。
  */
+export function soarConfigOf(e, meta) {
+	return e?._soar !== undefined ? e._soar : meta?.soar;
+}
 export function isSoaring(e, meta) {
-	if (!e || !meta?.soar) return false;
-	return e._soarPhase === 'air' || e._soarPhase === 'aim';
+	if (!e || !soarConfigOf(e, meta)) return false;
+	return e._soarPhase === 'air' || e._soarPhase === 'aim' || e._soarPhase === 'breath';
 }
