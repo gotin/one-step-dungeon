@@ -59,6 +59,57 @@
     transition: left 0.12s linear, top 0.12s linear;
 }
 
+/* 金の装束のきらめき（キュー76⑤）。render-chars.js addGoldShine が置く。
+   ① .gold-shine＝服のドットだけの型抜き（goldShine パレット）を勇者の絵に重ね、斜めの光の帯
+      （マスクのグラデーション）を服の上で流す。帯が通っていない間は見えない＝普段は金の服のまま。
+   ② .gold-sparkles＝服のあたりで小さな星が2つ、ずれた拍でまたたく。
+   位相は要素ごとに負の animation-delay（--gold-phase）で実時間に揃える＝歩いて作り直されても続きから流れる。 */
+.char-abs canvas.sprite.gold-shine {
+    /* `.char-abs canvas.sprite` は static（flex の子）＝そのままだと勇者の隣に並ぶ∴枠いっぱいに重ねる */
+    position: absolute;
+    left: 0;
+    top: 0;
+    -webkit-mask-image: linear-gradient(115deg, transparent 47.5%, #000 49.5%, #000 50.5%, transparent 52.5%);
+            mask-image: linear-gradient(115deg, transparent 47.5%, #000 49.5%, #000 50.5%, transparent 52.5%);
+    -webkit-mask-size: 300% 300%;
+            mask-size: 300% 300%;
+    -webkit-mask-repeat: no-repeat;
+            mask-repeat: no-repeat;
+    animation: gold-shine-sweep 1.8s linear infinite;
+}
+@keyframes gold-shine-sweep {
+    0%        { -webkit-mask-position: 100% 100%; mask-position: 100% 100%; }
+    55%, 100% { -webkit-mask-position: 0% 0%;     mask-position: 0% 0%; }
+}
+.gold-sparkles {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+}
+.gold-sparkles::before,
+.gold-sparkles::after {
+    content: '';
+    position: absolute;
+    width: calc(var(--cell) * 0.16);
+    height: calc(var(--cell) * 0.16);
+    background: #fffbe0;
+    clip-path: polygon(50% 0, 62% 38%, 100% 50%, 62% 62%, 50% 100%, 38% 62%, 0 50%, 38% 38%);
+    filter: drop-shadow(0 0 2px #ffd84a);
+    opacity: 0;
+    animation: gold-sparkle-twinkle 1.8s ease-in-out infinite;
+    animation-delay: var(--gold-phase, 0ms);
+}
+.gold-sparkles::before { left: 58%; top: 60%; }
+.gold-sparkles::after  {
+    left: 30%; top: 74%;
+    animation-delay: calc(var(--gold-phase, 0ms) - 900ms);
+}
+@keyframes gold-sparkle-twinkle {
+    0%, 55%, 100% { opacity: 0; transform: scale(0.3); }
+    68%           { opacity: 1; transform: scale(1); }
+    80%           { opacity: 0; transform: scale(0.5); }
+}
+
 /* Phase 1-5: 飛行中のプレイヤー（翼の羽衣）。淡い浮遊感と光のオーラ。 */
 .char-abs.flying {
     z-index: 30;

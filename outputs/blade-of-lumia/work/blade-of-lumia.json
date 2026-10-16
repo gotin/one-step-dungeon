@@ -142592,7 +142592,7 @@
               ".",
               ".",
               ".",
-              ".",
+              "B",
               "#"
             ],
             [
@@ -142713,17 +142713,27 @@
           "enemyDirs": {
             "3,7": "left"
           },
-          "chestContents": {},
+          "chestContents": {
+            "1,10": {
+              "type": "item",
+              "item": "goldGarb",
+              "name": "金の装束"
+            }
+          },
           "floorItems": {},
           "objects": {},
           "npcData": {},
           "shopData": {},
           "mapEnters": {},
-          "showConditions": {},
+          "showConditions": {
+            "1,10": {
+              "trigger": "killAll"
+            }
+          },
           "breakableWalls": {},
           "isBossRoom": true,
           "signData": {},
-          "comment": "[dragon_lair 1,0] 金翼の邪竜の間（キュー76）。Ω（3×3）を (3,7) に置いた（体は rows 3-5 × cols 7-9・西の扉を向く）。isBossRoom:true ∴入室で `:`（西辺 4,0/5,0）が閉じ HP バーが出る。遮蔽物を置かない＝回り込み（横・背後で技が変わる）の床を塞がない。報酬の宝箱（金の装束・killAll 封印）はキュー76⑤で置く＝**この部屋に雑魚を足してはいけない**（雑魚だけ倒して開く抜け道になる）。"
+          "comment": "[dragon_lair 1,0] 金翼の邪竜の間（キュー76）。Ω（3×3）を (3,7) に置いた（体は rows 3-5 × cols 7-9・西の扉を向く）。isBossRoom:true ∴入室で `:`（西辺 4,0/5,0）が閉じ HP バーが出る。遮蔽物を置かない＝回り込み（横・背後で技が変わる）の床を塞がない。報酬の宝箱 (1,10)＝金の装束・killAll 封印（キュー76⑤）＝**この部屋に雑魚を足してはいけない**（雑魚だけ倒して開く抜け道になる）。"
         }
       }
     }

@@ -57,6 +57,7 @@ export const UI_ICON = {
 	ladder:     { spr: 'ladderV',    pal: 'ladder'     },
 	wingRobe:   { spr: 'wingRobe',   pal: 'wingRobe'   },
 	swiftBoots: { spr: 'swiftBoots', pal: 'swiftBoots' },   // 疾風の靴（キュー13）
+	goldGarb:   { spr: 'heroDGold',  pal: 'heroGold'   },   // 金の装束（キュー76⑤＝金の髪と服の勇者）
 	fairy:      { spr: 'fairyBottle', pal: 'fairyBottle' }, // 妖精の瓶（キュー13 ③）
 	quiver:     { spr: 'quiver',     pal: 'quiver'     },   // 矢筒（キュー37）
 	bombBag:    { spr: 'bombBag',    pal: 'bombBag'    },   // 爆弾袋（キュー37）

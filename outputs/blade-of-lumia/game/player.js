@@ -824,6 +824,7 @@ export function createPlayer(deps) {
 			else if (id === 'quiver')    player.maxArrows  = (player.maxArrows  ?? 8) + 8;
 			else if (id === 'bombBag')   player.maxBombs   = (player.maxBombs   ?? 8) + 8;
 			else if (id === 'swiftBoots') player.hasSwiftBoots = true;
+			else if (id === 'goldGarb')  player.hasGoldGarb = true;  // 見た目は呼び手の renderChars で金に変わる
 			else if (id === 'fairy')     player.fairies = stackCount(player, 'fairy') + 1;
 			return true;
 		}
@@ -886,6 +887,7 @@ export function createPlayer(deps) {
 			           : content.item === 'bombBag' ? `（爆弾を ${player.maxBombs} 個まで 持てる）`
 			           : content.item === 'swiftBoots' ? '（Shift を 押している間 速く 走れる）'
 			           : content.item === 'fairy' ? '（倒れても 一度だけ よみがえる）'
+			           : content.item === 'goldGarb' ? '（剣を 振る 速さと 盾で はね返す 速さが 上がった）'
 			           : '';
 			return `${content.name ?? content.item} を手に入れた！${note}`;
 		} else if (content.type === 'weapon') {

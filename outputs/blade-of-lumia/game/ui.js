@@ -710,6 +710,8 @@ export function createUi(deps) {
 			[player.hasLadder,     'ladder',     'はしご'],
 			[player.hasWingRobe,   'wingRobe',   '翼の羽衣'],
 			[player.hasSwiftBoots, 'swiftBoots', '疾風の靴(Shift で走る)'],
+			// キュー76⑤：金の装束＝効果（剣と跳ね返しが速い）は画面のどこにも出ない∴ここに書く。
+			[player.hasGoldGarb,   'goldGarb',   '金の装束(剣と はね返しが 速い)'],
 			// キュー13 ③：妖精の瓶は使うと減る＝本数も出す（空になったら行から消える）。
 			[player.fairies > 0,   'fairy',      `妖精の瓶 ×${player.fairies}(倒れたら よみがえる)`],
 			// キュー45：光の紋章＝集まり具合（n/8）。そろうまで効果は書かない（ユーザー判定）。

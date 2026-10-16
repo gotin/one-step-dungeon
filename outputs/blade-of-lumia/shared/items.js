@@ -239,6 +239,18 @@ export const ITEM_META = {
 		type: 'passive',
 		uses: null,
 	},
+	goldGarb: {
+		// 実行キュー76⑤（2026-10-16）：金の装束。金翼の邪竜（裏ボス）の討伐報酬
+		// （dragon_lair 1,0 の宝箱・killAll 封印）。持っている間ずっと効く（`player.hasGoldGarb`）：
+		//   ・見た目＝髪が金に輝いて上へ尖り、服が金色になる（`game/game.js getHeroSpriteName()`／`getHeroPalName()`）
+		//   ・剣を振る速さ＝クールダウン 3 tick → 2 tick（`GOLD_GARB_SWORD_COOLDOWN_MS`）
+		//   ・盾で跳ね返した弾が 1.5 倍の速さ（`GOLD_GARB_REFLECT_SPEED_MULT`）
+		// ⚠️ 進行の鍵にしない（`SUB_ITEM_KEYS` に入れない＝裏ボスの報酬）。
+		// 絵＝金の髪と金の服の勇者そのもの（「着たらこうなる」を宝箱の文の頭で見せる）。
+		name: '金の装束', icon: '✨', sprite: 'heroDGold', pal: 'heroGold',
+		type: 'passive',
+		uses: null,
+	},
 	fairy: {
 		// 実行キュー13 ③（2026-09-29 ユーザー確定）：妖精の瓶。持っている間に HP が 0 になると
 		// 1本使ってその場で HP 全快でよみがえる（`game/combat.js takeDamage`）。
@@ -277,7 +289,7 @@ export const ITEM_META = {
 //    `type:'consumable'`（薬）だけ＝あれは「手に入れた道具」ではなく使い切る品。
 // 盾（キュー63）＝装備∴`player.shield`（`equipShieldTier()` が 'shield' を入れる）。会話の版の条件
 // `item:shield`（`shared/dialog-variants.js VARIANT_EQUIP_IDS`）がここを通って所持を読む。
-export const ITEM_OWNED_FLAG = { ladder: 'hasLadder', swiftBoots: 'hasSwiftBoots', shield: 'shield' };
+export const ITEM_OWNED_FLAG = { ladder: 'hasLadder', swiftBoots: 'hasSwiftBoots', goldGarb: 'hasGoldGarb', shield: 'shield' };
 
 /**
  * 数で持つ道具（矢・爆弾）を増やしたあとの本数。上限でクランプするが**減らさない**。

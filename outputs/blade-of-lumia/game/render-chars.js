@@ -13,8 +13,8 @@
 //   getSS(lk, sk)     → ステージ状態オブジェクト
 //   getCellPx()       → セルサイズ (px)
 //   charLayerElRef    → { value: HTMLElement|null } ラッパー（render-board が更新）
-//   getHeroSpriteName() → 'heroD' | 'heroR' | 'heroU'（攻撃中は 'heroDAtk' 等）
-//   getHeroPalName()    → 'hero' | 'princess'
+//   getHeroSpriteName() → 'heroD' | 'heroR' | 'heroU'（攻撃中は 'heroDAtk' 等・金の装束なら末尾に 'Gold'）
+//   getHeroPalName()    → 'hero' | 'princess'（金の装束なら 'heroGold' | 'princessGold'）
 //   getGameNow()        → 論理時間（攻撃ポーズ中は盾を描かない判定に使う）
 //
 // TILE / SPRITES / PAL / ENEMY_META / makeSprite は直接 import する。
@@ -279,6 +279,28 @@ export function createRenderChars(deps) {
 		div.appendChild(cv);
 	}
 
+	// ── 金の装束のきらめき（キュー76⑤・2026-10-16 ユーザー「服の部分がピカピカと輝いてるように」）──
+	// 服（パレット 4/5）と金の髪（2/7/8）のドットだけを白く抜いた絵を勇者の絵にぴったり重ね、
+	// 斜めの光の帯がその上を流れる（board.css `.gold-shine`）＋服のあたりに小さな星がまたたく（`.gold-sparkles`）。
+	// ⚠️ プレイヤーの要素は歩くたびに作り直される＝CSS アニメーションが毎回頭から始まると
+	//    光が「歩くたびに止まる」。∴位相を実時間から決めて負の animation-delay で続きから流す。
+	// 見た目だけ＝判定・パレット（`getHeroPalName`）には触らない。盾より奥（盾を足す前に呼ぶ）。
+	const GOLD_SHINE_MS = 1800;
+	function addGoldShine(div, spr, flipX) {
+		if (!getPlayer().hasGoldGarb) return;
+		const phase = `${-(performance.now() % GOLD_SHINE_MS)}ms`;
+		const cv = makeSprite(spr, 'goldShine', true, flipX);
+		if (cv) {
+			cv.classList.add('gold-shine');
+			cv.style.animationDelay = phase;
+			div.appendChild(cv);
+		}
+		const sp = document.createElement('span');
+		sp.className = 'gold-sparkles';
+		sp.style.setProperty('--gold-phase', phase);
+		div.appendChild(sp);
+	}
+
 	// ── プレイヤースプライト差し替え ─────────────────────────
 	function updatePlayerCharEl() {
 		const heroDir = getHeroDir();
@@ -303,6 +325,7 @@ export function createRenderChars(deps) {
 		const flipX = heroDir === 'left';
 		const cv    = makeSprite(spr, getHeroPalName(), true, flipX);
 		if (cv) el.appendChild(cv);
+		addGoldShine(el, spr, flipX);
 
 		if (heroDir !== 'up') addShieldOverlay(el);
 
@@ -440,6 +463,7 @@ export function createRenderChars(deps) {
 		const heroFlip = heroDir === 'left';
 		const heroCv   = makeSprite(heroSpr, getHeroPalName(), true, heroFlip);
 		if (heroCv) playerDiv.appendChild(heroCv);
+		addGoldShine(playerDiv, heroSpr, heroFlip);
 		if (heroDir !== 'up') addShieldOverlay(playerDiv);
 
 		// Phase 4-1b: 渡っている最中だけ足元の水/穴セルにはしごを敷く（プレイヤー非追従）

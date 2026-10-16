@@ -63,6 +63,16 @@ export const AURA_SWORD_REACH = 2.0;
 // （ATK×3.3/秒）∴溜めと連打のどちらを選んでも良い＝チャージが「弱い選択」にならない。
 // ⚠️ 短縮するときは ENEMY_META の hp（scripts/audit-balance.mjs の目標帯）と必ずセットで見る。
 export const SWORD_COOLDOWN_MS = 300;
+// キュー76⑤：金の装束（金翼の邪竜の討伐報酬）を持っているときの剣のクールダウン。
+// ⚠️ 論理時間は TICK_MS（120ms）刻みでしか進まない∴素の 300ms も実際は 3 tick＝360ms ごと。
+//    当初案の「300 / 1.1 ≒ 273ms」は同じ 3 tick に丸まり**何も変わらない**（2026-10-16 に気づいた）。
+//    ∴ユーザー決定（同日「ためしに2をやってみて、あまりにも強いようなら再検討」）＝2 tick＝240ms。
+//    連打の速さは 1.5 倍。読み手は `game/combat.js swordAttack()` だけ。
+export const GOLD_GARB_SWORD_COOLDOWN_MS = 240;
+// キュー76⑤：金の装束を持っているとき、盾で跳ね返した投擲物の速さの倍率（ユーザー案・同日）。
+// 当たりやすくする（敵が避ける前に届く）。速くなっても `projectileTick` の区間補間が
+// 当たり判定の飛び越しを防ぐ。読み手は `game/projectile.js checkProjHit()` の跳ね返しだけ。
+export const GOLD_GARB_REFLECT_SPEED_MULT = 1.5;
 // 石を押すクールダウン：600ms（重い石はゆっくりしか押せない）
 export const STONE_PUSH_COOLDOWN_MS = 600;
 // Phase 5.5g3: 剣を構えたポーズ＋剣スプライトを出しておく時間（論理時間 ms）。

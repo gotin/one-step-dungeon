@@ -10,7 +10,7 @@ import { makeSprite } from '../shared/sprites.js';
 import { SWORD_TIERS, ownsItem, hasSwordAura } from '../shared/items.js';
 import {
 	MOVE_STEP, DIR_DELTA, SWORD_REACH, AURA_SWORD_REACH, SWORD_COOLDOWN_MS, INVINCIBLE_MS,
-	ATTACK_POSE_MS,
+	ATTACK_POSE_MS, GOLD_GARB_SWORD_COOLDOWN_MS,
 } from './constants.js';
 import { enemyW, enemyH, enemyCenter } from './hitbox.js';
 // Phase 8-4 (4) 0d-2.11 (A): 攻撃硬直の窓（＝反撃の窓）の判定＝enemy-ai.js の `.attack-recover`
@@ -744,9 +744,10 @@ export function createCombat(deps) {
 		// ＝PLAN 5.5k 名簿 #13「妨害特化＝弓/爆弾で処理」。
 		if (isSwordSealed?.()) { pulse('剣が封じられている！'); return; }
 
-		// クールダウンチェック
+		// クールダウンチェック（金の装束を持っていれば 3 tick → 2 tick＝キュー76⑤・constants.js の注記）
 		const now = gameNow();
-		if (now - getLastSwordTime() < SWORD_COOLDOWN_MS) return;
+		const cooldown = player.hasGoldGarb ? GOLD_GARB_SWORD_COOLDOWN_MS : SWORD_COOLDOWN_MS;
+		if (now - getLastSwordTime() < cooldown) return;
 		setLastSwordTime(now);
 		resumeAudio(); playSound('slash');
 

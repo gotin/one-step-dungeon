@@ -10,7 +10,7 @@ import { makeSprite } from '../shared/sprites.js';
 import { playSound } from '../shared/sounds.js';
 import {
 	MOVE_STEP, TICK_MS, BOOMERANG_STUN_MS, ATTACK_POSE_MS,
-	CANDLE_FIRE_DMG, CANDLE_FLAME_MS, CANDLE_FLAME_MAX,
+	CANDLE_FIRE_DMG, CANDLE_FLAME_MS, CANDLE_FLAME_MAX, GOLD_GARB_REFLECT_SPEED_MULT,
 } from './constants.js';
 import { SHIELD_TIERS } from '../shared/items.js';
 import { enemyPointHit, enemyCenter, enemyOccupiesTile } from './hitbox.js';
@@ -439,6 +439,8 @@ export function createProjectile(deps) {
 						proj.dx = -proj.dx;
 						proj.dy = -proj.dy;
 						proj.atk = Math.max(1, Math.round(proj.atk * reflect));
+						// キュー76⑤：金の装束を持っていれば跳ね返した弾が速くなる（当たりやすい）。
+						if (player.hasGoldGarb) proj.speed = (proj.speed ?? 1) * GOLD_GARB_REFLECT_SPEED_MULT;
 						proj._hitIds = new Set();   // 跳ね返し後の二重ヒット防止用に初期化
 						// 跳ね返した投擲物はプレイヤーから少し離して再配置（即自爆防止）
 						proj.x += proj.dx * 0.5;

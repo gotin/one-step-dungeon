@@ -374,6 +374,8 @@ function getPreviewSettings() {
 		wingrobe:  document.getElementById('ps-wingrobe').checked,
 		// 実行キュー13（試作）：疾風の靴。editor.js の ps 定義にも同じ行がある（両方に足す）。
 		swiftboots: document.getElementById('ps-swiftboots')?.checked ?? false,
+		// 実行キュー76⑤：金の装束。editor.js の ps 定義にも同じ行がある（両方に足す）。
+		goldgarb:  document.getElementById('ps-goldgarb')?.checked ?? false,
 		// 実行キュー45：光の紋章8つ（剣にオーラ）。editor.js の ps 定義にも同じ行がある（両方に足す）。
 		emblems:   document.getElementById('ps-emblems')?.checked ?? false,
 		// 2026-09-19：地図（目的地マークの見え方の確認用）。editor.js の ps 定義にも同じ行がある。
@@ -408,6 +410,7 @@ export function openPreview(stX, stY, row, col, ps, TILE) {
 		url += `&ps_silverboomerang=${ps.silverboomerang?1:0}`;
 		url += `&ps_starboomerang=${ps.starboomerang?1:0}`;
 		url += `&ps_swiftboots=${ps.swiftboots?1:0}`;
+		url += `&ps_goldgarb=${ps.goldgarb?1:0}`;
 		url += `&ps_emblems=${ps.emblems?8:0}`;
 		// 撃破済みボス＝タイル文字をカンマで並べる（空なら付けない＝1体も倒していない）。
 		if (ps.defeated?.length) url += `&ps_defeated=${encodeURIComponent(ps.defeated.join(','))}`;

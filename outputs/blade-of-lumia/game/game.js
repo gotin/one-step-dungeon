@@ -129,6 +129,8 @@ let player = {
 	// 実行キュー13（2026-09-29 試作）：疾風の靴。持っていると Shift を押している間だけ速く歩ける
 	// （input.js processHeldKeys・DASH_SPEED）。関門の鍵にはしない（IDEA 鉄則）。
 	hasSwiftBoots: false,
+	// 実行キュー76⑤：金の装束（金翼の邪竜の討伐報酬）。見た目が金・剣が速い・跳ね返しが速い。
+	hasGoldGarb: false,
 	// Phase 6-1b: 撃破済みボスのタイル文字を記録する Set。NPC 台詞の切り替えに使用。
 	defeatedBosses: new Set(),
 	// Phase 7-1: 剣ティア（-1=剣なし, 0=木, 1=銅, 2=銀, 3=聖）。
@@ -542,15 +544,19 @@ function getHeroSpriteName() {
 	// 2レイヤー構成の①）。player._atkUntil は論理時間（combat.js が設定、
 	// tickAttackPose が戻す）＝step() の手動 tick でも実ループでも同じ挙動になる。
 	const atk = player?._atkUntil != null && gameNow() < player._atkUntil;
+	// 金の装束（キュー76⑤）＝尖った金の髪の絵（shared/sprites-player.js `heroDGold` 等）。
+	const gold = player?.hasGoldGarb ? 'Gold' : '';
 	if (atk) {
-		return { down: 'heroDAtk', right: 'heroRAtk', left: 'heroRAtk', up: 'heroUAtk' }[heroDir] ?? 'heroDAtk';
+		return ({ down: 'heroDAtk', right: 'heroRAtk', left: 'heroRAtk', up: 'heroUAtk' }[heroDir] ?? 'heroDAtk') + gold;
 	}
-	return { down: 'heroD', right: 'heroR', left: 'heroR', up: 'heroU' }[heroDir] ?? 'heroD';
+	return ({ down: 'heroD', right: 'heroR', left: 'heroR', up: 'heroU' }[heroDir] ?? 'heroD') + gold;
 }
 
-// クリア済みなら姫パレット、未クリアなら勇者パレットを返す
+// クリア済みなら姫パレット、未クリアなら勇者パレットを返す。
+// 金の装束（キュー76⑤）を持っていれば、それぞれの金版（服と下衣だけ金）。
 function getHeroPalName() {
-	return hasCleared() ? 'princess' : 'hero';
+	const base = hasCleared() ? 'princess' : 'hero';
+	return player.hasGoldGarb ? `${base}Gold` : base;
 }
 
 // ── Phase 0-2 で factory（外部モジュール）に切り出した関数の事前宣言 ────────
@@ -2169,6 +2175,7 @@ function startNewGame() {
 		flying: false,
 		hasLadder: false,
 		hasSwiftBoots: false,
+		hasGoldGarb: false,
 		defeatedBosses: new Set(),
 		swordTier: -1,
 		armorTier: -1,
@@ -2299,6 +2306,7 @@ async function init() {
 		const psWingRobe = params.get('ps_wingrobe');
 		const psLadder   = params.get('ps_ladder');
 		const psSwiftBoots = params.get('ps_swiftboots');  // 実行キュー13: 疾風の靴
+		const psGoldGarb = params.get('ps_goldgarb');  // 実行キュー76⑤: 金の装束
 		const psEmblems  = params.get('ps_emblems');   // 実行キュー45: 光の紋章の個数（8＝剣にオーラ）
 		const psDefeated = params.get('ps_defeated');  // 実行キュー23: 撃破済みボス（タイル文字のカンマ区切り）
 		const psMap      = params.get('ps_map');       // 2026-09-19: 地図の所持（目的地マークの見え方の確認用）
@@ -2338,6 +2346,7 @@ async function init() {
 		if (psWingRobe === '1') player.hasWingRobe = true;
 		if (psLadder   === '1') player.hasLadder = true;
 		if (psSwiftBoots === '1') player.hasSwiftBoots = true;
+		if (psGoldGarb === '1') player.hasGoldGarb = true;
 		if (psEmblems !== null) {
 			const n = parseInt(psEmblems, 10);
 			player.emblems = Number.isFinite(n) ? Math.min(EMBLEMS_FOR_AURA, Math.max(0, n)) : 0;
@@ -2463,6 +2472,7 @@ export function getGameState() {
 			hasWingRobe: !!player.hasWingRobe, flying: !!player.flying,
 			hasLadder: !!player.hasLadder,
 			hasSwiftBoots: !!player.hasSwiftBoots, dashing: isDashing,
+			hasGoldGarb: !!player.hasGoldGarb,
 			defeatedBosses: [...(player.defeatedBosses ?? [])],
 			hasFlute: !!player.subItems?.flute,
 			hasCandle: !!player.subItems?.candle,
