@@ -64,7 +64,10 @@ export function startAnimLoop(onTick) {
 	if (onTick) _tickCallbacks.push(onTick);
 	if (animTimer) return;
 	animTimer = setInterval(() => {
-		animFrame = (animFrame + 1) % 2;
+		// 0〜11 で回す（2・3・4コマの最小公倍数）＝読み手は `animFrame % frames.length` で引く∴
+		// 2コマの絵は今までどおり交互。4コマ＝金翼の邪竜の待機の往復（1→2→3→2・キュー76 ④-2）。
+		// ⚠️ 3コマ以上の絵は松明だけ＝ゲームは frameStart=1 で2コマ巡回／エディタは2拍に据え置き。
+		animFrame = (animFrame + 1) % 12;
 		for (const cb of _tickCallbacks) cb();
 	}, 400);
 }

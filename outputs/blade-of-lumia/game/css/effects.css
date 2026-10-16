@@ -1507,22 +1507,22 @@
     from { transform: translate(-50%, -50%) scale(0.3); opacity: 0.5; }
     to   { transform: translate(-50%, -50%) scale(1.15); opacity: 1; }
 }
-/* 翼の光＝左右の縁（上下を向いているとき）／上下の縁（左右を向いているとき＝asp-lat-h なし） */
-.char-abs.dragon-wing-windup::after {
-    content: '';
-    position: absolute;
-    inset: 0;
-    pointer-events: none;
-    z-index: 8;
-    background: linear-gradient(to bottom, hsl(45 100% 60% / 0.85) 0%, transparent 22%, transparent 78%, hsl(45 100% 60% / 0.85) 100%);
+/* 翼の光＝竜の輪郭に沿う金の光を、翼の側（体の左右）へずらして重ねる。
+   旧版は ::after の矩形グラデーション＝3×3 の箱の縁で四角く切れて見えた（2026-10-16 ユーザー指摘
+   「黄色光が四角に区切れているのがイマイチ」）∴canvas の drop-shadow（絵の不透明部分の形をなぞる）にした。
+   左右を向いているとき（asp-lat-h なし）＝翼は上下／上下を向いているとき（asp-lat-h）＝翼は左右。 */
+.char-abs.dragon-wing-windup canvas.sprite {
+    --wing-a: 0 -5px;
+    --wing-b: 0 5px;
     animation: dragon-wing-windup var(--asp-windup-ms, 600ms) ease-in 1 forwards;
 }
-.char-abs.dragon-wing-windup.asp-lat-h::after {
-    background: linear-gradient(to right, hsl(45 100% 60% / 0.85) 0%, transparent 22%, transparent 78%, hsl(45 100% 60% / 0.85) 100%);
+.char-abs.dragon-wing-windup.asp-lat-h canvas.sprite {
+    --wing-a: -5px 0;
+    --wing-b: 5px 0;
 }
 @keyframes dragon-wing-windup {
-    from { opacity: 0.2; }
-    to   { opacity: 1; }
+    from { filter: drop-shadow(var(--wing-a) 2px hsl(45 100% 60% / 0.2)) drop-shadow(var(--wing-b) 2px hsl(45 100% 60% / 0.2)); }
+    to   { filter: drop-shadow(var(--wing-a) 6px hsl(45 100% 62% / 0.95)) drop-shadow(var(--wing-b) 6px hsl(45 100% 62% / 0.95)) brightness(1.12); }
 }
 /* 尾の危険域（床）＝盾で防げない打点の告知。形は矩形（判定と同じ）・大きさは変えない */
 .dragon-tail-zone {

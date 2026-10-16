@@ -6,6 +6,9 @@
 //   ④ 尾の予告中に危険域の外へ出れば当たらない＋床の危険域の絵が判定と同じ矩形
 //   ⑤ 向き直りは turnMs ごとだけ（毎 tick プレイヤーを向かない＝回り込める）
 //   ⑥ 翼打ちは横へ押し返す
+//   ⑦ 絵のデータ（④-2）：待機は往復4コマ（1→2→3→2）・構え3種×3向き・全部 96×96・パレットの範囲内
+//   ⑨ 盤面の待機の絵が実時間で 1→2→3→2 と往復する（animFrame が 0〜11 で回る＝% 2 に戻すと3コマ目が出ない）
+//   ⑧ 予告から当たる瞬間まで、その技の構えの絵（スナップショットと盤面の canvas の両方）→終われば待機の絵
 //
 // 測り方：竜を (x4,y3) に置き直して右向きに固定し（体は x4-6 × y3-5）、移動を止める（speed 0）。
 // 被弾を測る本は `g` でデバッグ（無敵）を切る（GUIDE §7-16 の罠＝プレビューは takeDamage が素通り）。
@@ -189,6 +192,93 @@ test.describe('金翼の邪竜 Ω：相1 面で技が変わる', () => {
     const p = await page.evaluate(() => { const pl = window.__game.getPlayer(); return { x: pl.x, y: pl.y }; });
     expect(p.x, '押し返しが横（体から離れる向き）でない').toBe(5);
     expect(p.y, '翼打ちで押し返されていない').toBeGreaterThanOrEqual(7.5);
+    expect(errors).toEqual([]);
+  });
+
+  test('⑦ 絵のデータ：待機は往復4コマ・構え3種×3向き・96×96・パレットの範囲内', async () => {
+    const { ENEMY_PAL } = await import('../shared/sprites-enemies.js');
+    const pal = ENEMY_PAL[META.pal];
+    expect(pal?.[0]).toBe('transparent');
+    for (const d of ['D', 'R', 'U']) {
+      const idle = ENEMY_SPRITES[`goldDragon${d}`];
+      expect(idle.length, `goldDragon${d} の待機コマ数`).toBe(4);
+      // 往復＝4コマ目は2コマ目と同じ絵・1〜3コマ目はそれぞれ別の絵
+      expect(idle[3]).toBe(idle[1]);
+      expect(new Set(idle.slice(0, 3).map((g) => JSON.stringify(g))).size, `goldDragon${d} の3コマが別の絵でない`).toBe(3);
+      const names = [`goldDragon${d}`, ...['Bite', 'Wing', 'Tail', 'Atk'].map((k) => `goldDragon${d}${k}`)];
+      for (const n of names) {
+        const fr = ENEMY_SPRITES[n];
+        expect(fr, n).toBeTruthy();
+        for (const g of fr) {
+          expect(g.length, `${n} の行数`).toBe(96);
+          expect(g.every((row) => row.length === 96), `${n} の列数`).toBe(true);
+          expect(g.flat().every((v) => Number.isInteger(v) && v >= 0 && v < pal.length), `${n} がパレットの外を指す`).toBe(true);
+        }
+      }
+      // 構えは待機と見分けられる（差分が小さすぎると予告が読めない＝GUIDE §6-1）
+      for (const k of ['Bite', 'Wing', 'Tail']) {
+        const a = ENEMY_SPRITES[`goldDragon${d}${k}`][0], b = idle[0];
+        let diff = 0;
+        for (let y = 0; y < 96; y++) for (let x = 0; x < 96; x++) if (a[y][x] !== b[y][x]) diff++;
+        expect(diff, `goldDragon${d}${k} と待機の差分ドット`).toBeGreaterThan(400);
+      }
+    }
+  });
+
+  test('⑧ 予告から当たる瞬間まで技の構えの絵→終われば待機の絵', async ({ page }) => {
+    const errors = await setup(page);
+    const want = { bite: 'goldDragonRBite', wing: 'goldDragonRWing', tail: 'goldDragonRTail' };
+    for (const [px, py, kind] of [[7, 4, 'bite'], [5, 6, 'wing'], [3, 4, 'tail']]) {
+      await place(page, px, py);
+      expect(await windupKind(page)).toBe(kind);
+      const seen = await page.evaluate(() => {
+        const g = window.__game;
+        const e = g.getEnemies()[0];
+        const cv = document.getElementById(`char-enemy-${e.id}`)?.querySelector('canvas.sprite');
+        return { snap: e.sprite, dom: cv?.dataset.sprite ?? null, dir: e.dir };
+      });
+      expect(seen.dir, '前提：竜は右向きのまま（尾の予告でも向きを変えない）').toBe('right');
+      expect(seen.snap, `${kind} の予告中の絵（スナップショット）`).toBe(want[kind]);
+      expect(seen.dom, `${kind} の予告中の絵（盤面の canvas）`).toBe(want[kind]);
+      // 解決した tick（当たる瞬間）も構えのまま
+      const atHit = await page.evaluate(() => {
+        const g = window.__game;
+        for (let t = 0; t < 12 && g.getEnemies()[0].aspPhase === 'windup'; t++) g.step(1);
+        return g.getEnemies()[0].sprite;
+      });
+      expect(atHit, `${kind} の当たる瞬間の絵`).toBe(want[kind]);
+      // 攻撃の絵の窓（180ms）が明ければ待機の絵へ戻る
+      const after = await page.evaluate(() => { window.__game.step(3); return window.__game.getEnemies()[0].sprite; });
+      expect(after, `${kind} の後に待機へ戻らない`).toBe('goldDragonR');
+    }
+    expect(errors).toEqual([]);
+  });
+
+  test('⑨ 盤面の待機の絵が実時間で 1→2→3→2 と往復する', async ({ page }) => {
+    const errors = await setup(page);
+    // 遠い背後（技が出ない）に立たせて待機の絵のまま止める。pause 中もコマ送り（400ms）は進む。
+    await place(page, 1, 4);
+    const frames = await page.evaluate(async () => {
+      const id = window.__game.getEnemies()[0].id;
+      const seq = [];
+      for (let i = 0; i < 40; i++) {
+        const cv = document.getElementById(`char-enemy-${id}`)?.querySelector('canvas.sprite');
+        seq.push(cv ? cv.toDataURL() : null);
+        await new Promise((r) => setTimeout(r, 100));
+      }
+      return seq;
+    });
+    expect(frames.every(Boolean), '竜の canvas が消えた').toBe(true);
+    const order = [];
+    for (const f of frames) if (order.at(-1) !== f) order.push(f);
+    const ids = [...new Set(order)];
+    expect(ids.length, '待機で出た絵の種類（3コマ目が出ていない）').toBe(3);
+    // 往復＝3コマ目の前後は必ず2コマ目（1→3／3→1 の飛びが無い）
+    const n = order.map((f) => ids.indexOf(f));
+    const mid = n.find((v, i) => i > 0 && i < n.length - 1 && n[i - 1] !== n[i + 1]);  // 端でない＝2コマ目
+    for (let i = 1; i < n.length; i++) {
+      expect(n[i - 1] === mid || n[i] === mid, `往復になっていない（${n.join(',')}）`).toBe(true);
+    }
     expect(errors).toEqual([]);
   });
 });

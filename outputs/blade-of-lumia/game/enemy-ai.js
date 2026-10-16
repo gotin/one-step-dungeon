@@ -1442,6 +1442,13 @@ export function createEnemyAi(deps) {
 		const baseName = meta?.sprite ?? e.sprite;
 		const base = baseName.replace(/(Atk|Guard)?[DRLU](Atk|Guard)?$/, '');
 		const dirSuffix = { down: 'D', right: 'R', left: 'R', up: 'U' }[e.dir] ?? 'D';
+		// キュー76 ④-2（Ω）: 面の技は予告から当たる瞬間まで、その技の構えの絵（…Bite/Wing/Tail）。
+		// 尾の予告中もプレイヤーに背を向けたまま＝向きは変えず絵だけ替える。
+		if (meta?.aspect) {
+			const kind = e._aspPhase === 'windup' ? e._aspKind
+				: (e._atkUntil != null && now < e._atkUntil ? e._aspLastKind : null);
+			if (kind) return `${base}${dirSuffix}${kind[0].toUpperCase()}${kind.slice(1)}`;
+		}
 		if (e._atkUntil != null && now < e._atkUntil) return `${base}${dirSuffix}Atk`;
 		if (e._guardUntil != null && now < e._guardUntil) return `${base}${dirSuffix}Guard`;
 		return `${base}${dirSuffix}`;
@@ -5673,7 +5680,8 @@ export function createEnemyAi(deps) {
 		const kind = e._aspKind;
 		const k = cfg[kind] ?? {};
 		e._aspPhase = 'idle'; e._aspAt = null;
-		e._atkUntil = now + ATTACK_POSE_MS;              // 攻撃の絵（…Atk）
+		e._aspLastKind = kind;                           // 当たる瞬間も構えの絵を出し続ける（resolveEnemySprite）
+		e._atkUntil = now + ATTACK_POSE_MS;              // 攻撃の絵の窓
 		e._freezeUntil = now + (k.recoverMs ?? 360);     // 硬直＝殴り返す窓
 		e._aspNext = now + (k.recoverMs ?? 360) + (cfg.restMs ?? 0);
 		e._aspCounts = e._aspCounts ?? { bite: 0, wing: 0, tail: 0 };

@@ -29,7 +29,8 @@ export function drawSpriteAt(ctx, spriteName, palName, dx, dy, dw, dh, flipX = f
 	const frames = SPRITES[spriteName];
 	if (!frames) return false;
 	const palette = PAL[palName] ?? PAL.hero;
-	const fi   = STATIC_FRAME0.has(spriteName) ? 0 : (animFrame % frames.length);
+	// 2拍で巡回（animFrame は 0〜11 で回る＝そのまま割ると松明の3コマ目が出る＝従来の見た目を保つ）
+	const fi   = STATIC_FRAME0.has(spriteName) ? 0 : ((animFrame % 2) % frames.length);
 	const grid = frames[fi];
 	const rows = grid.length, cols = grid[0].length;
 	const tmp  = document.createElement('canvas');
