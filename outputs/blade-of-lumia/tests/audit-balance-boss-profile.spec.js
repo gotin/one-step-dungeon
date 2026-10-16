@@ -215,6 +215,24 @@ test.describe('数値監査：ボスは「ボス直前」で測る（0d-2.9）',
     expect(v.flags, 'V に欠陥が出ている').toEqual([]);
   });
 
+  test('⑦: 裏ボス Ω 金翼の邪竜は最強装備（max）で判定し、ボスの帯の中（キュー76③-3）', () => {
+    // ユーザー決定（2026-10-16）「最強装備に合わせる」＝ルミアの剣で挑む前提。ボス直前（木の剣でも
+    // 来られる下限）で測ると最強装備で溶けない hp は必ず BOSS_SLOG になる（火力の幅が4倍）。
+    const m = AUDIT_SRC.match(/bossSwings:\s*\[(\d+),\s*(\d+)\]/);
+    const boss = [Number(m[1]), Number(m[2])];
+    const o = rowOf('Ω');
+    expect(o, 'Ω の行が無い').toBeTruthy();
+    expect(o.kind).toBe('boss');
+    expect(o.judgeVariant, 'Ω が最強装備で判定されていない').toBe('max');
+    expect(o.atk.judge, 'Ω の判定 ATK が max と違う').toBe(o.atk.max);
+    expect(o.judge.swings, `Ω がボスの帯 ${boss.join('〜')} の外（最強装備で溶ける／水増し）`).toBeGreaterThanOrEqual(boss[0]);
+    expect(o.judge.swings).toBeLessThanOrEqual(boss[1]);
+    expect(o.flags, 'Ω に欠陥が出ている').toEqual([]);
+    // 例外は Ω だけ（他のボスを黙って max 判定へ逃がさない）
+    const atMax = REPORT.encounters.filter((r) => r.judgeVariant === 'max').map((r) => r.tile);
+    expect(atMax).toEqual(['Ω']);
+  });
+
   test('⑥: 判定プロファイルでの欠陥は 0 件（数値を戻さずに W の BOSS_MELT が消えた）', () => {
     const listed = REPORT.defects.map((r) => `${r.tile} ${r.name} ${r.flags.join(',')}`);
     expect(listed, `欠陥が残っている: ${listed.join(' / ')}`).toEqual([]);

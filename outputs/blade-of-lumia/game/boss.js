@@ -300,6 +300,10 @@ export function createBoss(deps) {
 		//       ③ 像を畳むと「相が上がる瞬間に斬らずに像が消える」＝像を消す作業（＝打点を
 		//          削る作業）を無効にする抜け道が生える。
 		if (phase.mirage !== undefined) boss._mirage = phase.mirage;
+		// キュー76③-3（Ω 金翼の邪竜）: 金の棘（thorns）＝相3で生える（`resolveThorns` が読む）。
+		// ⚠️ 設定だけを書く＝棘は着地（`landSoar`）のたびに降る∴相が入った瞬間には何も起きない。
+		//    床の棘は持ち主の時計で消える（`tickThorns`）＝ここで触らない。
+		if (phase.thorns !== undefined) boss._thorns = phase.thorns;
 	}
 
 	// ── 星の欠片を生成 ──────────────────────

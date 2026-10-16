@@ -644,6 +644,84 @@
     filter: brightness(1.2) drop-shadow(0 0 8px hsl(30 100% 60% / 0.95));
 }
 
+/* キュー76③-3（Ω 金翼の邪竜）: 金の棘（enemy-ai.js `dropThorns`／`tickThorns`）。
+   予告（.gold-thorn-warn）＝落ちる1セルの床に影が濃く広がり、上から金の光が落ちてくる
+     （長さ＝`--thorn-warn-ms`＝状態機械の予告の長さ＝GUIDE §7-8）。範囲は当たりと同じ1セル。
+   立った棘（.gold-thorn）＝床から突き出た金の棘3本（中央が高い）。剣の1振りで砕ける
+     （.gold-thorn-shatter＝金の破片が散る）。 */
+.gold-thorn-warn {
+    box-sizing: border-box;
+}
+.gold-thorn-warn::before {
+    content: '';
+    position: absolute;
+    left: 10%; top: 55%; width: 80%; height: 36%;
+    border-radius: 50%;
+    /* 落ちる1セルを金の輪で囲む（暗い床でも見える）＋中の影が濃く広がる＝もうすぐ落ちる */
+    border: 2px solid hsl(45 100% 60% / 0.9);
+    background: radial-gradient(ellipse at 50% 50%, rgba(20, 10, 0, 0.8), rgba(40, 20, 0, 0.25) 70%, transparent 72%);
+    box-shadow: 0 0 8px 2px hsl(45 100% 55% / 0.7), inset 0 0 6px 1px hsl(45 100% 60% / 0.6);
+    transform: scale(0.55);
+    animation: gold-thorn-shadow var(--thorn-warn-ms, 720ms) ease-in 1 forwards;
+}
+.gold-thorn-warn::after {
+    content: '';
+    position: absolute;
+    left: 38%; top: 0; width: 24%; height: 70%;
+    clip-path: polygon(50% 100%, 100% 0, 0 0);
+    background: linear-gradient(to bottom, hsl(48 100% 80% / 0), hsl(45 100% 62% / 0.95));
+    filter: drop-shadow(0 0 3px hsl(45 100% 60% / 0.9));
+    transform: translateY(-160%);
+    opacity: 0;
+    animation: gold-thorn-fall var(--thorn-warn-ms, 720ms) ease-in 1 forwards;
+}
+@keyframes gold-thorn-shadow {
+    from { transform: scale(0.55); opacity: 0.75; }
+    to   { transform: scale(1);    opacity: 1; }
+}
+@keyframes gold-thorn-fall {
+    0%   { transform: translateY(-160%); opacity: 0; }
+    30%  { opacity: 1; }
+    100% { transform: translateY(10%);   opacity: 1; }
+}
+.gold-thorn::before {
+    /* 根元の影（床に刺さっている） */
+    content: '';
+    position: absolute;
+    left: 12%; top: 74%; width: 76%; height: 20%;
+    border-radius: 50%;
+    background: rgba(20, 10, 0, 0.55);
+}
+.gold-thorn::after {
+    content: '';
+    position: absolute;
+    left: 10%; top: 6%; width: 80%; height: 82%;
+    /* 3本の棘（左・中央が一番高い・右） */
+    clip-path: polygon(0% 100%, 12% 38%, 24% 100%, 30% 100%, 50% 0%, 70% 100%, 76% 100%, 88% 30%, 100% 100%);
+    background: linear-gradient(100deg,
+        hsl(38 85% 30%) 0%, hsl(45 100% 58%) 30%, hsl(52 100% 86%) 45%,
+        hsl(44 100% 52%) 60%, hsl(34 80% 28%) 100%);
+    filter: drop-shadow(0 0 1px #2a1600) drop-shadow(0 0 3px hsl(45 100% 55% / 0.55));
+    animation: gold-thorn-rise 140ms ease-out 1;
+    transform-origin: 50% 100%;
+}
+@keyframes gold-thorn-rise {
+    from { transform: scaleY(0.2); }
+    to   { transform: scaleY(1); }
+}
+.gold-thorn-shatter {
+    background:
+        radial-gradient(circle at 25% 40%, hsl(48 100% 70%) 0 2px, transparent 3px),
+        radial-gradient(circle at 70% 30%, hsl(45 100% 60%) 0 2px, transparent 3px),
+        radial-gradient(circle at 50% 70%, hsl(52 100% 85%) 0 2px, transparent 3px),
+        radial-gradient(circle at 80% 75%, hsl(40 90% 50%) 0 2px, transparent 3px);
+    animation: gold-thorn-burst 360ms ease-out 1 forwards;
+}
+@keyframes gold-thorn-burst {
+    from { transform: scale(0.6); opacity: 1; }
+    to   { transform: scale(1.6); opacity: 0; }
+}
+
 /* ── Phase 8-4 (4) 0d-3（7体目 G 岩のゴーレム）: 慣性（momentum）が乗った巨体 ──────────
    この敵は予告の窓を持たない（状態機械ではなく速度ベクトル1つ）∴告知は
    **「今この岩は速い＝触れたら痛い／壁へ誘えば崩れる」の1点**だけ。しきい値は

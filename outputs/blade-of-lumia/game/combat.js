@@ -840,6 +840,16 @@ export function createCombat(deps) {
 		}
 		if (hitMirage) { deps.destroyMirage?.(hitMirage.id); return; }
 
+		// キュー76③-3（Ω）: 金の棘＝幻影と同じ「HP を持たない置き物」∴剣の一撃で壊れる。
+		// 同じ距離なら**竜が勝つ**（`<` で比較＝棘の向こうの竜を殴りたいとき棘に吸われない）。
+		let hitThorn = null;
+		for (const t of (deps.getThorns?.() ?? [])) {
+			if (t.phase !== 'up') continue;
+			const d = reachOf(t);
+			if (d != null && d < hitDist) { hitDist = d; hitThorn = t; hitEnemy = null; }
+		}
+		if (hitThorn) { deps.destroyThorn?.(hitThorn.id); return; }
+
 		// 二周目は攻撃力2倍
 		const swordAtk = hasCleared() ? player.atk * 2 : player.atk;
 		if (hitEnemy) { dealDamageToEnemy(hitEnemy, swordAtk, 'sword', player.x, player.y); return; }

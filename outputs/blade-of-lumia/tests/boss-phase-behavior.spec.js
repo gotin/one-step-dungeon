@@ -357,7 +357,11 @@ test('⑤ ENEMY_META の phases[] は既知のキーだけを持ち、閾値は�
                       // ⚠️ 予告（`convergeWarnMs`）・打点（`convergeAtkPerMirage × count ≤ atk`）は
                       // 据え置き（据え置きの番人は boss-move-variety.spec.js の Z-①）＝
                       // 盾を無視する収束の予告が後半でも縮まない（§7-16）。
-                      'mirage'];
+                      'mirage',
+                      // キュー76③-3（Ω 金翼の邪竜）: 金の棘の設定（boss.js が `_thorns` へ書き、
+                      // enemy-ai.js の `resolveThorns` が読む）＝相3で着地のたびに棘を降らせる。
+                      // ⚠️ L の氷柱の数（`_spikes`）と名前がぶつかる∴機構名は `thorns`。
+                      'thorns'];
   const MODE_KEYS = ['flank', 'direct', 'wander', 'strafe'];
   const withPhases = Object.entries(ENEMY_META).filter(([, m]) => m.phases);
   expect(withPhases.length, 'phases を持つ敵が居ない（データが消えた？）').toBeGreaterThanOrEqual(13);

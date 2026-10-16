@@ -231,6 +231,13 @@ const ONE_SWING_OK = {
 	ψ: '呪い火＝剣封じが本体・弓/爆弾で消す前提の低HP（同上）',
 };
 
+// 最強装備（max）で判定する敵＝「最強の剣で挑む」ことが前提の裏ボス（意図をここに明示して例外にする）。
+// ボス直前（木の剣のままでも来られる下限）で測ると、最強装備で溶けない hp は必ず BOSS_SLOG になる
+// （剣の火力は木の剣 4 → ルミアの剣 16 の4倍幅＝両方を帯に入れる hp は無い）。
+const JUDGE_AT_MAX = {
+	Ω: '金翼の邪竜＝裏ボス。ユーザー決定（2026-10-16）「最強装備に合わせる」＝ルミアの剣で 30〜60 振りの帯',
+};
+
 const DEFECTS = {
 	// 雑魚が剣1振りで消える＝戦闘が「歩きながら振る」作業になる（意図的な最弱は除く）
 	ONE_SWING: ({ o, kind }) => kind === 'zako' && o.swings <= 1,
@@ -347,8 +354,10 @@ function main() {
 		const kind = kindOf(tile, meta, enc);
 		const { min, max, boss } = profilesAt(enc.firstIndex, perLayer, fieldRewards, preBossAt(enc.firstIndex));
 		// 判定プロファイル＝ボスだけ「ボス直前」（作れないレイヤーでは min に落ちる＝表に出す）。
-		const judgeStats   = kind === 'boss' ? (boss ?? min) : min;
-		const judgeVariant = kind === 'boss' ? (boss ? 'boss' : 'min') : 'min';
+		// 裏ボス（JUDGE_AT_MAX）は最強装備（max）で測る＝ユーザー決定の挑む前提。
+		const atMax        = !!JUDGE_AT_MAX[tile];
+		const judgeStats   = atMax ? max : kind === 'boss' ? (boss ?? min) : min;
+		const judgeVariant = atMax ? 'max' : kind === 'boss' ? (boss ? 'boss' : 'min') : 'min';
 		const measure = (stats) => {
 			const o = offense(stats, meta), d = defense(stats, meta);
 			return { ...o, ...d, flags: flagsOf({ o, d, meta, tile, kind }) };
@@ -415,7 +424,7 @@ function main() {
 	// ── 遭遇表（1敵1行・測る地点はその敵に初めて会う地点）─────────────
 	// 「判定」列＝どのプロファイルで測ったか（min／ボス直前）。ボス部屋が ORDER の外にある
 	// ボス（field の { 海の主）はボス直前が作れず min に落ちる∴列に出して黙って落とさない。
-	const VARIANT_LABEL = { min: 'min', boss: 'ボス直前' };
+	const VARIANT_LABEL = { min: 'min', boss: 'ボス直前', max: 'max(裏)' };
 	const line = (r) => {
 		const o = r.judge, x = r.max;
 		return `  ${(r.tile + ' ' + r.name).padEnd(20)}`

@@ -132,6 +132,17 @@ export function createPassable(d) {
 		getStageData, getEnemies, getPlayer, getCurrentLayer, getStageKey,
 		getDebugMode, getSS, toTileRow, toTileCol,
 	} = d;
+	// キュー76③-3（Ω 金翼の邪竜）: 立っている金の棘（phase 'up'）のセル。石と同じ「そこに在る物体」
+	// ＝プレイヤーも地上の敵も通れない（デバッグモードでも素通りさせない＝石と同じ位置で見る）。
+	// 予告中（'warn'）はまだ床。持ち主は enemy-ai.js（`getThorns()`）。
+	const getThorns = d.getThorns ?? (() => []);
+	function thornBlocksRange(r0, r1, c0, c1) {
+		for (const t of getThorns()) {
+			if (t.phase !== 'up') continue;
+			if (t.r >= r0 && t.r <= r1 && t.c >= c0 && t.c <= c1) return true;
+		}
+		return false;
+	}
 
 	// キャラは 1×1 セルの大きさ
 	//
@@ -197,6 +208,9 @@ export function createPassable(d) {
 				if (st.r >= r0 && st.r <= r1 && st.c >= c0 && st.c <= c1) return false;
 			}
 		}
+		// キュー76③-3: 金の棘（石と同じ扱い）。棘はプレイヤーの足元には立たない（落ちた瞬間に
+		// 下に居れば砕ける＝enemy-ai.js tickThorns）∴「重なりから抜ける」例外は要らない。
+		if (thornBlocksRange(r0, r1, c0, c1)) return false;
 
 		const debugMode = getDebugMode();
 		// デバッグモード中は敵すり抜け可能
@@ -391,6 +405,10 @@ export function createPassable(d) {
 				if (st.c >= c0 && st.c <= c1 && st.r >= r0 && st.r <= r1) return false;
 			}
 		}
+		// キュー76③-3: 金の棘。空に居る竜（滞空の air/aim/breath）は棘の上を飛べる＝旋回が棘で
+		// 詰まらない（降りた場所の下の棘は着地で潰れる＝enemy-ai.js dropThorns）。
+		const aloft = self?._soarPhase === 'air' || self?._soarPhase === 'aim' || self?._soarPhase === 'breath';
+		if (!aloft && thornBlocksRange(r0, r1, c0, c1)) return false;
 		// 他の敵と占有範囲が重なるなら通れない（AABB 重なり判定）
 		for (const e of getEnemies()) {
 			if (e === self) continue;

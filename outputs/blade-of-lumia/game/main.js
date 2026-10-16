@@ -46,6 +46,7 @@ import {
 	callGiveSubItem,
 	getPlacedFlamesSnapshot,
 	getMiragesSnapshot,
+	getThornsSnapshot,
 	getFloorDropsSnapshot,
 	callPickupFloorDropAt,
 	callSpawnFloorDrop,
@@ -191,6 +192,8 @@ window.__game = {
 	getPlacedFlames: () => getPlacedFlamesSnapshot(),
 	// 2026-09-04（12体目 Z）: 幻影（像）の一覧＝像は敵ではない∴getEnemies では数えられない。
 	getMirages: () => getMiragesSnapshot(),
+	// キュー76③-3（Ω）: 金の棘の一覧＝棘は敵ではない∴getEnemies では数えられない。
+	getThorns: () => getThornsSnapshot(),
 	getFloorDrops: () => getFloorDropsSnapshot(),
 	pickupFloorDrop: (r, c) => callPickupFloorDropAt(r, c),
 	spawnFloorDrop: (r, c, type) => callSpawnFloorDrop(r, c, type),

@@ -1251,6 +1251,9 @@ export function createEnemyAi(deps) {
 		// 空振りでも鳴らす＝「落ちた＝今なら殴れる」が画面を見ていなくても分かる。
 		// 予告（soarDive）とは別の音（GUIDE §7-6）。当たった場合はダメージ音が重なる。
 		playSound('soarLand');
+		// キュー76③-3（Ω）: 相3で生える金の棘＝着地のたびに降らせる（thorns を持たない敵は何もしない）。
+		// ⚠️ 矢で射落とした墜落（crashSoar）では降らせない＝弱点で解いた報酬（棘の無い窓）。
+		dropThorns(e, now);
 	}
 
 	// 矢で射落とす＝滞空が墜落に化ける（combat.js の被弾フックが呼ぶ）。
@@ -1448,7 +1451,12 @@ export function createEnemyAi(deps) {
 		if (!cfg) return;
 		// キュー76③-2（Ω）: 地上は面の技（aspect）の時間＝向きは tickAspect の離散の向き直りだけが
 		// 変える（dirLocked）。追う側に向きを書かせると毎 tick プレイヤーを向き、回り込めなくなる。
-		if (e._soarPhase == null || e._soarPhase === 'ground') { enemyChase(e, speed, !!meta?.aspect); return; }
+		if (e._soarPhase == null || e._soarPhase === 'ground') {
+			// ③-4: 面の技を持つ竜は地上でもプレイヤーの背後へ回り込む（enemyDragonStalk）。
+			if (meta?.aspect?.stalk) enemyDragonStalk(e, speed, meta.aspect.stalk);
+			else enemyChase(e, speed, !!meta?.aspect);
+			return;
+		}
 		if (e._soarPhase !== 'air') return;
 		const player = getPlayer();
 		if (!player) return;
@@ -1578,7 +1586,9 @@ export function createEnemyAi(deps) {
 			if (e._soarPhase === 'aim' || e._soarPhase === 'breath') return `${base}${dirSuffix}Bite`;
 			const kind = e._aspPhase === 'windup' ? e._aspKind
 				: (e._atkUntil != null && now < e._atkUntil ? e._aspLastKind : null);
-			if (kind) return `${base}${dirSuffix}${kind[0].toUpperCase()}${kind.slice(1)}`;
+			// ③-4: ビーム（口から放つ）は噛みつきと同じ口を開いた構えの絵を使う。
+			const pose = kind === 'beam' ? 'bite' : kind;
+			if (pose) return `${base}${dirSuffix}${pose[0].toUpperCase()}${pose.slice(1)}`;
 		}
 		if (e._atkUntil != null && now < e._atkUntil) return `${base}${dirSuffix}Atk`;
 		if (e._guardUntil != null && now < e._guardUntil) return `${base}${dirSuffix}Guard`;
@@ -5768,12 +5778,119 @@ export function createEnemyAi(deps) {
 
 	function cancelAspect(e) {
 		e._aspPhase = 'idle'; e._aspKind = null; e._aspAt = null;
+		e._aspBeamShape = null;   // ③-4: 立っているレーザーの予告も捨てる（発射中の照射は自分の時計で終わる）
+	}
+
+	// ── ③-4 改（2026-10-16 ユーザー指示）: 目から放つレーザー ─────────────────────
+	// 「目から発射・プレイヤーに近づくにつれて太く・最大はプレイヤーの大きさ」「予告が入るなら盾でも
+	// 防げない」「予告と発射の見た目は変えて分かりやすく」。
+	// 形＝予告の開始で固定する折れ線 E（目）→ T（その時のプレイヤーの位置＝レーンの中心線上）→ F（壁）。
+	// 太さは E で `w0`、T で 1 セル（プレイヤーの大きさ）まで直線で太り、T から先は 1 セルのまま。
+	// **当たり＝この形とプレイヤーの箱が重なるか**（予告の輪郭・発射の絵・当たりが同じ形を読む＝GUIDE §7-16）。
+	// レーン（体の幅3のうちプレイヤーの列）は予告の開始で固定＝予告を見てレーンを外せば避けられる。
+	// 目の位置＝絵（96×96）から読んだ定数（`beam.eyes`・左は右の鏡）＝判定の基準点と絵の基準点は別（§7-13）。
+	function laserEyeOf(e, beamCfg) {
+		const eyes = beamCfg?.eyes ?? {};
+		const ew = e.w ?? 1;
+		let ex, ey;
+		if (e.dir === 'left') { const [rx, ry] = eyes.right ?? [ew / 2, 0.5]; ex = ew - rx; ey = ry; }
+		else { [ex, ey] = eyes[e.dir] ?? [ew / 2, (e.h ?? 1) / 2]; }
+		return [e.x + ex, e.y + ey];   // 表示座標（px 単位＝セル）
+	}
+	// 予告の開始で形を決める（プレイヤーの位置 px,py＝左上基準）。
+	function laserShapeFor(e, cfg, px, py) {
+		const fr = aspectFrame(e, px, py);
+		const lane = Math.max(-fr.halfSide, Math.min(fr.halfSide, Math.round(fr.l * 2) / 2));
+		// レーンの最初のセル（体の前面の外）の左上
+		const x0 = fr.cx + fr.fx * (fr.halfFwd + 1) + fr.lx * lane;
+		const y0 = fr.cy + fr.fy * (fr.halfFwd + 1) + fr.ly * lane;
+		const sd = getStageData();
+		let len = 0;
+		for (let k = 0; k < 16; k++) {
+			const r = toTileRow(y0 + fr.fy * k), c = toTileCol(x0 + fr.fx * k);
+			if (!sd || r < 0 || c < 0 || r >= sd.rows || c >= sd.cols || !tilePassable(r, c)) break;
+			len++;
+		}
+		// レーンの中心線（表示座標）：起点＝前面の外の縁・終点＝壁
+		const lcx = x0 + 0.5, lcy = y0 + 0.5;
+		const sx = lcx - fr.fx * 0.5, sy = lcy - fr.fy * 0.5;
+		const F = [sx + fr.fx * len, sy + fr.fy * len];
+		// T＝プレイヤーの中心を中心線へ写した点（前面より手前・壁より奥へは出さない）
+		const along = Math.max(0.5, Math.min(len, (px + 0.5 - sx) * fr.fx + (py + 0.5 - sy) * fr.fy));
+		const T = [sx + fr.fx * along, sy + fr.fy * along];
+		const E = laserEyeOf(e, cfg.beam);
+		return { E, T, F, w0: cfg.beam.w0 ?? 0.15, lane, len };
+	}
+	// 点 P から形までの「重なり」：折れ線の各区間で、P の射影位置の太さの半分＋プレイヤーの半身（0.5）
+	// より中心線に近ければ当たり。区間の端の外は数えない（目より後ろ・壁より先には無い）。
+	function laserHitsBox(shape, bx, by) {
+		const P = [bx + 0.5, by + 0.5];
+		const segs = [[shape.E, shape.T, shape.w0, 1], [shape.T, shape.F, 1, 1]];
+		for (const [A, B, wa, wb] of segs) {
+			const vx = B[0] - A[0], vy = B[1] - A[1];
+			const L2 = vx * vx + vy * vy;
+			if (L2 < 1e-6) continue;
+			const t = ((P[0] - A[0]) * vx + (P[1] - A[1]) * vy) / L2;
+			if (t < 0 || t > 1) continue;
+			const qx = A[0] + vx * t, qy = A[1] + vy * t;
+			const d = Math.hypot(P[0] - qx, P[1] - qy);
+			const hw = (wa + (wb - wa) * t) / 2;
+			// 箱（半辺 0.5）と線の距離＝中心の距離 − 0.5（軸に沿う線なら厳密・斜めの区間は近似）
+			if (d - 0.5 < hw - 1e-6) return true;
+		}
+		return false;
+	}
+	// 形を多角形の頂点（表示座標）にする＝予告の輪郭と発射の絵が同じ式を読む。
+	function laserPolygon(shape) {
+		const perp = (A, B) => { const vx = B[0] - A[0], vy = B[1] - A[1]; const L = Math.hypot(vx, vy) || 1; return [-vy / L, vx / L]; };
+		const p1 = perp(shape.E, shape.T), p2 = perp(shape.T, shape.F);
+		const { E, T, F, w0 } = shape;
+		const at = (P, p, w) => [P[0] + p[0] * w / 2, P[1] + p[1] * w / 2];
+		return [at(E, p1, w0), at(T, p1, 1), at(T, p2, 1), at(F, p2, 1),
+			at(F, p2, -1), at(T, p2, -1), at(T, p1, -1), at(E, p1, -w0)];
+	}
+	// 絵＝SVG の多角形（char-layer 全面）。kind＝'warn'（予告＝細い破線の輪郭と芯の点線）| 'fire'（発射＝白く光る実体）
+	function drawLaserSvg(id, shape, kind, durMs) {
+		const charLayerEl = getCharLayerEl();
+		if (!charLayerEl || !shape) return null;
+		const cellPx = getCellPx();
+		const sd = getStageData();
+		const W = (sd?.cols ?? 12) * cellPx, H = (sd?.rows ?? 10) * cellPx;
+		let svg = document.getElementById(id);
+		if (!svg) {
+			svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+			svg.id = id;
+			charLayerEl.appendChild(svg);
+		}
+		svg.setAttribute('class', kind === 'fire' ? 'dragon-laser-fire' : 'dragon-laser-warn');
+		svg.setAttribute('width', W); svg.setAttribute('height', H);
+		svg.style.cssText = `position:absolute;left:0;top:0;pointer-events:none;z-index:${kind === 'fire' ? 24 : 2};`
+			+ `--asp-windup-ms:${Math.round(durMs)}ms;`;
+		const pts = laserPolygon(shape).map(([x, y]) => `${(x * cellPx).toFixed(1)},${(y * cellPx).toFixed(1)}`).join(' ');
+		const line = [shape.E, shape.T, shape.F].map(([x, y]) => `${(x * cellPx).toFixed(1)},${(y * cellPx).toFixed(1)}`).join(' ');
+		svg.innerHTML = kind === 'fire'
+			? `<polygon class="laser-glow" points="${pts}"/><polygon class="laser-body" points="${pts}"/><polyline class="laser-core" points="${line}"/>`
+			: `<polygon class="laser-outline" points="${pts}"/><polyline class="laser-aim" points="${line}"/>`;
+		return svg;
+	}
+	// 発射中の当たり（1回の発射で1発・盾は見ない）。tickAspect の先頭＝空の相でも時計は進む。
+	function tickLaser(e, now) {
+		if (e._laserUntil == null) return;
+		if (now >= e._laserUntil) { e._laserUntil = null; e._laserShape = null; return; }
+		const player = getPlayer();
+		if (!e._laserHit && player && e._laserShape && laserHitsBox(e._laserShape, player.x, player.y)) {
+			e._laserHit = true;
+			e._aspHits = e._aspHits ?? { bite: 0, wing: 0, tail: 0, beam: 0 };
+			e._aspHits.beam = (e._aspHits.beam ?? 0) + 1;
+			takeDamage(e._laserAtk ?? e.atk ?? 1);
+		}
 	}
 
 	// 戻り値 true ＝この tick は移動も他の攻撃もしない（予告中・解決の tick）。
 	function tickAspect(e, meta, now) {
 		const cfg = meta?.aspect;
 		if (!cfg) return false;
+		tickLaser(e, now);
 		// キュー76③-2: 滞空の周期（相2から生える `soar`）が地上以外の相にある間は面の技を出さない
 		// （空から噛みつかない・着地硬直は soar 側の窓）。予告中に舞い上がることは enemyTick 側で止める。
 		if (e._soarPhase != null && e._soarPhase !== 'ground') return false;
@@ -5799,14 +5916,24 @@ export function createEnemyAi(deps) {
 		}
 		if (e._aspNext != null && now < e._aspNext) return false;
 		const face = aspectFaceOf(e, player.x, player.y);
-		const kind = ASPECT_KIND_OF_FACE[face];
+		let kind = ASPECT_KIND_OF_FACE[face];
+		const reachNow = enemyEdgeDist(e, player.x, player.y);
+		// ③-4: 正面で噛みつきの間合いの外なら**レーザー**（目から・予告の開始で形を固定・盾でも防げない）。
+		if (kind === 'bite' && cfg.beam && reachNow > cfg.bite.range
+			&& reachNow >= (cfg.beam.minRange ?? 0) && reachNow <= cfg.beam.range) {
+			kind = 'beam';
+			e._aspBeamShape = laserShapeFor(e, cfg, player.x, player.y);
+		}
+		// ③-4: 回り込みの途中（目標まで 1 セル超）は翼打ちを始めない＝横をすれ違うたびに足が止まり、
+		// 背後へ回り切れずに斜めで翼打ちを繰り返すだけになる（実測で踏んだ）。
+		if (kind === 'wing' && cfg.stalk && (e._stalkLeft ?? 0) > 1.0) return false;
 		const k = cfg[kind];
-		if (!k || enemyEdgeDist(e, player.x, player.y) > k.range) return false;
+		if (!k || reachNow > k.range) return false;
 		e._aspPhase = 'windup';
 		e._aspKind = kind;
 		e._aspAt = now + k.windupMs;
 		e._aspWindupMs = k.windupMs;   // 絵の長さ（CSS 側に長さを持たせない）
-		playSound({ bite: 'swordWindup', wing: 'maulWindup', tail: 'unblockableWindup' }[kind]);
+		playSound({ bite: 'swordWindup', wing: 'maulWindup', tail: 'unblockableWindup', beam: 'breathWindup' }[kind]);
 		return true;
 	}
 
@@ -5814,11 +5941,12 @@ export function createEnemyAi(deps) {
 		const kind = e._aspKind;
 		const k = cfg[kind] ?? {};
 		e._aspPhase = 'idle'; e._aspAt = null;
+		e._stalkTx = null;                               // ③-4: 技の後は回り込みの目標を決め直す
 		e._aspLastKind = kind;                           // 当たる瞬間も構えの絵を出し続ける（resolveEnemySprite）
 		e._atkUntil = now + ATTACK_POSE_MS;              // 攻撃の絵の窓
 		e._freezeUntil = now + (k.recoverMs ?? 360);     // 硬直＝殴り返す窓
 		e._aspNext = now + (k.recoverMs ?? 360) + (cfg.restMs ?? 0);
-		e._aspCounts = e._aspCounts ?? { bite: 0, wing: 0, tail: 0 };
+		e._aspCounts = e._aspCounts ?? { bite: 0, wing: 0, tail: 0, beam: 0 };
 		e._aspHits = e._aspHits ?? { bite: 0, wing: 0, tail: 0 };
 		e._aspCounts[kind] = (e._aspCounts[kind] ?? 0) + 1;
 		const player = getPlayer();
@@ -5829,6 +5957,22 @@ export function createEnemyAi(deps) {
 			playSound('rockSmash');
 			// **盾は見ない**（isShieldBlockingDir を呼べば正面で盾を構える戦法がそのまま無敵になる）
 			if (playerInTailZone(e, cfg)) { takeDamage(atk); e._aspHits.tail++; }
+			return;
+		}
+		if (kind === 'beam') {
+			// 予告で固定した形のまま `fireMs` のあいだ照射（**盾は見ない**＝予告を見て形の外へ出るのが答え）。
+			const fireMs = k.fireMs ?? 240;
+			e._laserShape = e._aspBeamShape;
+			e._laserUntil = now + fireMs;
+			e._laserHit = false;
+			e._laserAtk = Math.min(atk, k.atk ?? atk);
+			e._lasers = (e._lasers ?? 0) + 1;
+			e._aspBeamShape = null;
+			const id = `dragon-laser-fire-${e.id}`;
+			drawLaserSvg(id, e._laserShape, 'fire', fireMs);
+			setTimeout(() => document.getElementById(id)?.remove(), fireMs + 160);
+			playSound('decreeHit');
+			tickLaser(e, now);   // 照射を始めた tick から当たる
 			return;
 		}
 		const fr = aspectFrame(e, player.x, player.y);
@@ -5881,7 +6025,20 @@ export function createEnemyAi(deps) {
 	// ⚠️ 長さは状態機械（`_aspWindupMs`）が単一の真実＝CSS 変数で渡す（GUIDE §7-8）。
 	function syncAspectMotion(e, meta) {
 		const el = document.getElementById(`char-enemy-${e.id}`);
-		const kind = e._aspPhase === 'windup' ? e._aspKind : null;
+		const rawKind = e._aspPhase === 'windup' ? e._aspKind : null;
+		// ③-4: レーザーの予告は口を開いた構え＋床の形（下の warn）。口元の光（噛みつきの絵）は出さない
+		// ＝噛みつきと見分ける（目からのレーザーは目が光る＝`dragon-laser-eye`）。
+		const kind = rawKind === 'beam' ? null : rawKind;
+		if (el) {
+			el.classList.toggle('dragon-laser-eye', rawKind === 'beam');
+			if (rawKind === 'beam') {
+				// 目の光の位置＝判定の目（laserEyeOf）と同じ点（体の箱に対する割合）
+				const [ex, ey] = laserEyeOf(e, meta.aspect?.beam);
+				el.style.setProperty('--eye-x', `${((ex - e.x) / (e.w ?? 1)) * 100}%`);
+				el.style.setProperty('--eye-y', `${((ey - e.y) / (e.h ?? 1)) * 100}%`);
+				el.style.setProperty('--asp-windup-ms', `${e._aspWindupMs ?? 600}ms`);
+			}
+		}
 		if (el) {
 			for (const k of ['bite', 'wing', 'tail']) {
 				const on = kind === k;
@@ -5915,6 +6072,308 @@ export function createEnemyAi(deps) {
 		} else if (zone) {
 			zone.remove();
 		}
+		// ③-4: レーザーの予告＝固定した形の輪郭（破線）と照準の点線（発射の絵とは別の見た目）。
+		const wid = `dragon-laser-warn-${e.id}`;
+		if (rawKind === 'beam' && e._aspBeamShape) drawLaserSvg(wid, e._aspBeamShape, 'warn', e._aspWindupMs ?? 600);
+		else document.getElementById(wid)?.remove();
+	}
+
+	// ── キュー76③-4（Ω）: 背後を取る歩き（stalk）──────────────────────────
+	// ユーザー判定「ザーネルたちのように、こちらの背後をとってくるような動き」。ザーネルの
+	// `bossTickHitAndAway` は左上基準・毎 tick 向きを書く∴3×3 の面の技とは噛み合わない＝竜専用に書く：
+	//   目標＝プレイヤーの**向きの反対側**に体の中心を `backDist` 離した点。竜がプレイヤーの前側に
+	//   居る間は、まず横の点（`sideDist`・竜に近い側）を経由する＝正面を突っ切らず回り込む。
+	//   向きは書かない（tickAspect の離散の向き直りだけ＝回り込んだ後 turnMs で向き直って噛む）。
+	const STALK_FWD = { down: [0, 1], up: [0, -1], left: [-1, 0], right: [1, 0] };
+	function enemyDragonStalk(e, speed, cfg) {
+		e.accum = (e.accum ?? 0) + speed;
+		if (e.accum < 1.0) return;
+		e.accum -= 1.0;
+		const player = getPlayer();
+		const sd = getStageData();
+		if (!player || !sd) return;
+		const [fx, fy] = STALK_FWD[getHeroDir()] ?? [0, 1];
+		const { cx, cy } = enemyCellCenter(e);
+		const { halfW, halfH } = enemyHalf(e);
+		const back = cfg.backDist ?? 2.5, side = cfg.sideDist ?? 3.5;
+		const rx = cx - player.x, ry = cy - player.y;
+		const ahead = rx * fx + ry * fy;          // >0 ＝プレイヤーの前側に居る
+		// 目標は**一度決めたら着くまで変えない**（ザーネルの flank と同じ）。毎 tick 決め直すと、プレイヤーが
+		// 竜の方へ向き直るたびに「背後」が反転して2点を往復し、その場で止まる（実測で踏んだ）。
+		// 決め直す＝着いた（0.5 以内）／プレイヤーが2セル以上動いた／技を出した（resolveAspect が消す）。
+		const moved = e._stalkBaseX == null
+			|| Math.abs(player.x - e._stalkBaseX) > 2.0 || Math.abs(player.y - e._stalkBaseY) > 2.0;
+		if (e._stalkTx == null || moved) {
+			const clampX = (x) => Math.max(1 + halfW, Math.min(sd.cols - 2 - halfW, x));
+			const clampY = (y) => Math.max(1 + halfH, Math.min(sd.rows - 2 - halfH, y));
+			const lx = -fy, ly = fx;
+			const s = (rx * lx + ry * ly) >= 0 ? 1 : -1;
+			// 背後の点が壁の外（プレイヤーが壁を背にしている）なら、背後は取れない＝プレイヤーの真横
+			// （同じ行/列）に付く。斜めに張り付くと面が「横」のまま翼打ちしか出ない（実測で踏んだ）。
+			const bx = player.x - fx * back, by = player.y - fy * back;
+			const backBlocked = Math.hypot(clampX(bx) - bx, clampY(by) - by) > 1.0;
+			let tx, ty;
+			if (backBlocked) {
+				tx = player.x + lx * s * back; ty = player.y + ly * s * back;
+				e._stalkStep = 'flank';
+			} else if (ahead > -1.0) {
+				// 前側に居る＝横の点（竜に近い側・プレイヤーより少し後ろ）を経由して後ろへ回る。
+				// 後ろへ 1.5 ずらす＝着いた時点で「後ろ側」（ahead < -1）になり、次の目標が背後になる。
+				tx = player.x + lx * s * side - fx * 1.5; ty = player.y + ly * s * side - fy * 1.5;
+				e._stalkStep = 'side';
+			} else {
+				tx = bx; ty = by;
+				e._stalkStep = 'back';
+			}
+			tx = clampX(tx); ty = clampY(ty);
+			e._stalkTx = tx; e._stalkTy = ty;
+			e._stalkBaseX = player.x; e._stalkBaseY = player.y;
+		}
+		const tx = e._stalkTx, ty = e._stalkTy;
+		const dx = tx - cx, dy = ty - cy;
+		// 目標までの残り＝tickAspect が「回り込みの途中は翼打ちを始めない」に使う
+		e._stalkLeft = Math.hypot(dx, dy);
+		if (Math.abs(dx) < 0.25 && Math.abs(dy) < 0.25) { e._stalkTx = null; return; }
+		const step = MOVE_STEP;
+		const cands = [];
+		const ax = Math.abs(dx) >= 0.25 ? [0, Math.sign(dx) * step] : null;
+		const ay = Math.abs(dy) >= 0.25 ? [Math.sign(dy) * step, 0] : null;
+		if (Math.abs(dx) >= Math.abs(dy)) { if (ax) cands.push(ax); if (ay) cands.push(ay); }
+		else { if (ay) cands.push(ay); if (ax) cands.push(ax); }
+		// 両軸とも塞がれたら（プレイヤーの体など）横へ逃がす＝回り込みが詰まらない
+		if (Math.abs(dx) >= Math.abs(dy)) cands.push([step, 0], [-step, 0]);
+		else cands.push([0, step], [0, -step]);
+		for (const [my, mx] of cands) {
+			if (isPassableForEnemy(e.y + my, e.x + mx, e)) {
+				e.y += my; e.x += mx;
+				moveCharEl(`enemy-${e.id}`, e.x, e.y);
+				return;
+			}
+		}
+	}
+
+	// ── キュー76③-3（Ω 金翼の邪竜）: 金の棘（thorns）──────────────────────────
+	// meta.phases[].thorns = { count, ringMin, ringMax, warnMs, lifeMs, maxOnFloor, atk, stunMs,
+	//                          reachRatio }
+	// 相3（HP 33% 以下）で生える。**滞空の周期の着地（`landSoar`）のたびに**、プレイヤーの周りへ
+	// 棘を `count` 本降らせる：
+	//   warn … 落ちる場所に予告の印（`warnMs`）。まだ床ではない＝誰でも通れる。
+	//   up   … 棘が立つ＝**床に残る障害物**（プレイヤーも竜も通れない・寿命 `lifeMs`）。
+	//          **剣の1振りで壊せる**（combat.js の剣の当たり判定＝幻影と同じ1か所）。
+	//   落ちる瞬間にプレイヤーが下に居れば打点（`atk`）＝その棘は砕けて立たない。
+	//   ⚠️ 「触れると打点」（PLAN②の設計）は採らない＝接触だけでは攻撃を受けない（2026-08-17
+	//      ユーザー決定②）。打点は「予告を無視して落ちる場所に立っていた」ときだけ。
+	// **床の棘を剣で全部壊すと竜が怯む**（気絶 `stunMs`）。1本ごとに怯ませると壊し続けるだけで
+	// 竜が止まり続ける（GUIDE §7-14）∴「その竜の棘が床に1本も無くなった瞬間」の1回。寿命で
+	// 消えた棘は数えない（壊したときだけ）。
+	// 置き場所＝プレイヤーの箱から隙間 `ringMin`〜`ringMax` セル（隣接8セルは除く＝足元に
+	// 落とさない）・床の上・竜の体と石と既存の棘に重ならない。**置いた後もプレイヤーが部屋の床の
+	// `reachRatio` 以上へ歩いて行ける**ことを1本ごとに確かめる（閉じ込めない）。
+	// 選び方は決定的（竜の id と着地の回数から作る数で並べる＝乱数なし・テストが安定）。
+	// ⚠️ 棘は敵ではない＝`getEnemies()`／`killAll`／遭遇表／数値監査に影響させない
+	//    （幻影・置き炎と同じ枠＝別配列＋スナップショット API `getThorns()`）。
+	// ⚠️ 空に居る竜（air/aim/breath）は棘の上を飛べる（passable.js の `isPassableForEnemy`）。
+	//    降りた場所の下の棘は着地で潰れる（壊した数には入らない＝怯まない）。
+	function resolveThorns(e, meta) {
+		return e?._thorns !== undefined ? e._thorns : meta?.thorns;
+	}
+
+	const thorns = [];
+	let thornSeq = 0;
+	function getThorns() { return thorns; }
+	function thornsOf(e) { return thorns.filter((t) => t.ownerId === e.id); }
+
+	function ensureThornEl(t) {
+		const cellPx = getCellPx();
+		if (!t.el?.isConnected) {
+			const charLayerEl = getCharLayerEl();
+			if (!charLayerEl) return null;
+			const div = document.createElement('div');
+			div.id = `gold-thorn-${t.id}`;
+			div.dataset.thornOwner = String(t.ownerId);
+			charLayerEl.appendChild(div);
+			t.el = div;
+		}
+		const el = t.el;
+		el.className = t.phase === 'warn' ? 'gold-thorn-warn' : 'gold-thorn';
+		el.style.cssText = `position:absolute;left:${t.c * cellPx}px;top:${t.r * cellPx}px;`
+			+ `width:${cellPx}px;height:${cellPx}px;pointer-events:none;`
+			+ `z-index:${t.phase === 'warn' ? 3 : 8};`
+			+ `--thorn-warn-ms:${Math.round(t.warnMs ?? 720)}ms;`;
+		return el;
+	}
+	function removeThorn(t) {
+		t.el?.remove();
+		document.getElementById(`gold-thorn-${t.id}`)?.remove();
+		t.el = null;
+		const i = thorns.indexOf(t);
+		if (i >= 0) thorns.splice(i, 1);
+	}
+	function showThornShatter(t) {
+		const charLayerEl = getCharLayerEl();
+		if (!charLayerEl) return;
+		const cellPx = getCellPx();
+		const el = document.createElement('div');
+		el.className = 'gold-thorn-shatter';
+		el.style.cssText = `position:absolute;left:${t.c * cellPx}px;top:${t.r * cellPx}px;`
+			+ `width:${cellPx}px;height:${cellPx}px;z-index:24;pointer-events:none;`;
+		charLayerEl.appendChild(el);
+		setTimeout(() => el.remove(), 360);
+	}
+
+	// 全部消す（場面の切り替え＝`clearMirages()` と同じ列で呼ぶ）。
+	function clearThorns() {
+		for (const t of [...thorns]) removeThorn(t);
+	}
+	// 持ち主が居なくなった棘を捨てる（ボスは `onBossDefeated` へ短絡する＝pruneMirages と同じ理由）。
+	function pruneThorns() {
+		if (thorns.length === 0) return;
+		const alive = new Set(getEnemies().map((e) => e.id));
+		for (const t of [...thorns]) if (!alive.has(t.ownerId)) removeThorn(t);
+	}
+
+	// 箱どうしの隙間（セル）＝0 なら接している／重なっている。
+	function boxGap(ax, ay, aw, ah, bx, by, bw, bh) {
+		const gx = Math.max(0, bx - (ax + aw), ax - (bx + bw));
+		const gy = Math.max(0, by - (ay + ah), ay - (by + bh));
+		return Math.max(gx, gy);
+	}
+	// プレイヤーの立つセルから、棘（`blocked`）を避けて歩いて行ける床の枚数。
+	function thornReachCount(blocked) {
+		const sd = getStageData();
+		const player = getPlayer();
+		if (!sd || !player) return 0;
+		const r0 = toTileRow(player.y), c0 = toTileCol(player.x);
+		const seen = new Set([`${r0},${c0}`]);
+		const queue = [[r0, c0]];
+		while (queue.length) {
+			const [r, c] = queue.shift();
+			for (const [dr, dc] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+				const nr = r + dr, nc = c + dc, k = `${nr},${nc}`;
+				if (seen.has(k) || blocked.has(k)) continue;
+				if (nr < 0 || nr >= sd.rows || nc < 0 || nc >= sd.cols || !tilePassable(nr, nc)) continue;
+				seen.add(k);
+				queue.push([nr, nc]);
+			}
+		}
+		return seen.size;
+	}
+	function roomFloorCount() {
+		const sd = getStageData();
+		if (!sd) return 0;
+		let n = 0;
+		for (let r = 0; r < sd.rows; r++) for (let c = 0; c < sd.cols; c++) if (tilePassable(r, c)) n++;
+		return n;
+	}
+
+	// 着地のたびに呼ぶ（landSoar から）。置いた本数を返す。
+	function dropThorns(e, now) {
+		const meta = ENEMY_META[e.type];
+		const cfg = resolveThorns(e, meta);
+		const sd = getStageData();
+		const player = getPlayer();
+		if (!cfg || !sd || !player) return 0;
+		const ew = e.w ?? 1, eh = e.h ?? 1;
+		// 降りた場所の下の棘は潰れる（壊した数には入らない）
+		for (const t of thornsOf(e)) {
+			if (aabbOverlap(t.c, t.r, 1, 1, e.x, e.y, ew, eh)) { showThornShatter(t); removeThorn(t); }
+		}
+		const room = Math.max(0, (cfg.maxOnFloor ?? 6) - thornsOf(e).length);
+		const want = Math.min(cfg.count ?? 3, room);
+		e._thornWaves = (e._thornWaves ?? 0) + 1;
+		if (want <= 0) return 0;
+		const ringMin = cfg.ringMin ?? 1, ringMax = cfg.ringMax ?? 3;
+		const _sst = getSS(getCurrentLayer(), getStageKey());
+		const stones = Object.values(_sst.stonePositions ?? {});
+		const blocked = new Set(thorns.map((t) => `${t.r},${t.c}`));
+		const seed = numericSeedOf(e.id) + e._thornWaves * 7919;
+		const cands = [];
+		for (let r = 0; r < sd.rows; r++) {
+			for (let c = 0; c < sd.cols; c++) {
+				if (!tilePassable(r, c) || blocked.has(`${r},${c}`)) continue;
+				const g = boxGap(c, r, 1, 1, player.x, player.y, 1, 1);
+				if (g < ringMin || g > ringMax) continue;
+				if (aabbOverlap(c, r, 1, 1, e.x, e.y, ew, eh)) continue;
+				if (stones.some((st) => st.r === r && st.c === c)) continue;
+				const h = (((r * 73856093) ^ (c * 19349663) ^ seed) >>> 0) % 1000;
+				cands.push({ r, c, h });
+			}
+		}
+		cands.sort((a, b) => a.h - b.h);
+		const need = Math.ceil(roomFloorCount() * (cfg.reachRatio ?? 0.5));
+		let placed = 0;
+		for (const s of cands) {
+			if (placed >= want) break;
+			// 隣どうしに並べない（壁の列を作らない＝1本ずつ壊せる散らばりにする）
+			if (thornsOf(e).some((t) => Math.abs(t.r - s.r) <= 1 && Math.abs(t.c - s.c) <= 1)) continue;
+			const k = `${s.r},${s.c}`;
+			blocked.add(k);
+			if (thornReachCount(blocked) < need) { blocked.delete(k); continue; }
+			const t = {
+				id: `thorn${++thornSeq}`, ownerId: e.id,
+				r: s.r, c: s.c, x: s.c, y: s.r, w: 1, h: 1,
+				phase: 'warn', at: now + (cfg.warnMs ?? 720), until: null,
+				warnMs: cfg.warnMs ?? 720, el: null,
+			};
+			thorns.push(t);
+			ensureThornEl(t);
+			placed++;
+		}
+		if (placed > 0) playSound('gazeMark');   // 予告の音（落ちる場所を見ろ）＝結果の音とは別（GUIDE §7-6）
+		return placed;
+	}
+
+	// 棘の時計（行動ゲートの外＝竜の硬直・気絶・滞空のどれでも進む＝GUIDE §7-7）。
+	function tickThorns(now) {
+		if (thorns.length === 0) return;
+		const player = getPlayer();
+		for (const t of [...thorns]) {
+			const owner = getEnemies().find((e) => e.id === t.ownerId);
+			const cfg = owner ? resolveThorns(owner, ENEMY_META[owner.type]) : null;
+			if (t.phase === 'warn') {
+				if (now < t.at) { ensureThornEl(t); continue; }
+				// 落ちた：下にプレイヤー → 打点（砕けて立たない）／下に敵の体 → 砕ける
+				if (player && aabbOverlap(player.x, player.y, 1, 1, t.c, t.r, 1, 1)) {
+					takeDamage(cfg?.atk ?? 4);
+					if (owner) owner._thornHits = (owner._thornHits ?? 0) + 1;
+					showThornShatter(t); removeThorn(t);
+					continue;
+				}
+				if (getEnemies().some((o) => aabbOverlap(o.x, o.y, o.w ?? 1, o.h ?? 1, t.c, t.r, 1, 1))) {
+					showThornShatter(t); removeThorn(t);
+					continue;
+				}
+				t.phase = 'up';
+				t.until = now + (cfg?.lifeMs ?? 8000);
+				playSound('iceSpike');   // 棘が立った音（L の氷柱と同じ「床から突き出た」語彙）
+				ensureThornEl(t);
+				continue;
+			}
+			if (now >= t.until) { removeThorn(t); continue; }
+			ensureThornEl(t);
+		}
+	}
+
+	// 剣の一撃で1本壊す（combat.js の剣の当たり判定から）。その竜の棘が床に1本も無くなったら怯む。
+	function destroyThorn(id) {
+		const t = thorns.find((o) => o.id === id && o.phase === 'up');
+		if (!t) return false;
+		showThornShatter(t);
+		removeThorn(t);
+		playSound('rockSmash');
+		const owner = getEnemies().find((e) => e.id === t.ownerId);
+		if (!owner) return true;
+		owner._thornsBroken = (owner._thornsBroken ?? 0) + 1;
+		if (thornsOf(owner).length === 0) {
+			const cfg = resolveThorns(owner, ENEMY_META[owner.type]);
+			const stunMs = cfg?.stunMs ?? 900;
+			const now = gameNow();
+			owner.stunUntil = Math.max(owner.stunUntil ?? 0, now + stunMs);
+			owner._thornStuns = (owner._thornStuns ?? 0) + 1;
+			showDashStun(owner, stunMs);
+			playSound('soarCrash');
+		}
+		return true;
 	}
 
 	function enemyTick() {
@@ -5924,6 +6383,9 @@ export function createEnemyAi(deps) {
 		// `killEnemy` を通らず `onBossDefeated` へ短絡する∴撃破の後始末をそこに頼れない
 		// （倒した後も像が歩き続ける＝実装前に分かっていた唯一の後始末の穴）。
 		pruneMirages();
+		// キュー76③-3（Ω）: 棘も同じ（持ち主の居ない棘を捨てる）＋棘の時計（行動ゲートの外）。
+		pruneThorns();
+		tickThorns(now);
 		for (const e of enemies) {
 			const meta = ENEMY_META[e.type];
 			if (!meta) continue;
@@ -6195,8 +6657,10 @@ export function createEnemyAi(deps) {
 					// `phases[].speedMultiplier`（後半 ×1.3）がそのまま効く。
 					enemyGlaciateStride(e, meta, resolveEnemySpeed(e, meta), resolveGlaciate(e, meta));
 				} else if (meta.aspect) {
-					// キュー76（Ω）: 寄るだけ。向きは tickAspect の離散の向き直りだけが変える（dirLocked）。
-					enemyChase(e, resolveEnemySpeed(e, meta), true);
+					// キュー76（Ω）: 向きは tickAspect の離散の向き直りだけが変える（dirLocked）。
+					// ③-4: `aspect.stalk` を持てば寄るのではなくプレイヤーの背後へ回り込む。
+					if (meta.aspect.stalk) enemyDragonStalk(e, resolveEnemySpeed(e, meta), meta.aspect.stalk);
+					else enemyChase(e, resolveEnemySpeed(e, meta), true);
 				} else if (meta.zigzag) {
 					enemyZigzagFly(e, meta, resolveEnemySpeed(e, meta), meta.zigzag);
 				} else if (roaming) {
@@ -6297,6 +6761,9 @@ export function createEnemyAi(deps) {
 		getMirages,            // Phase 8-4 (4) 0d-3: 像の配列＝**1つの数が真実**（絵/打点/テスト）
 		destroyMirage,         // Phase 8-4 (4) 0d-3: 像を1体消す（剣の一撃＝combat.js から）
 		clearMirages,          // Phase 8-4 (4) 0d-3: 全部消す（場面の切り替え＝clearFlames と同じ列）
+		getThorns,             // キュー76③-3: 金の棘の配列＝**1つの数が真実**（絵/通行/剣/テスト）
+		destroyThorn,          // キュー76③-3: 棘を1本壊す（剣の一撃＝combat.js から）
+		clearThorns,           // キュー76③-3: 全部消す（場面の切り替え＝clearMirages と同じ列）
 		resolveTongue,         // Phase 8-4 (4) 0d-3: 舌の設定（フェーズ差替を含む・テスト用）
 		tickTongue,            // Phase 8-4 (4) 0d-3: 舌の相の時計（5相の1周・テスト用）
 		reelPlayer,            // Phase 8-4 (4) 0d-3: 引き寄せ1 tick（通行判定を通す・テスト用）

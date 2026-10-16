@@ -464,6 +464,7 @@ function enterStage(lk, sk, pRow, pCol) {
 	clearBombs();
 	clearFlames();
 	clearMirages();
+	clearThorns();
 	cancelCharge();   // チャージ中の遷移はキャンセル（Phase 3-1）
 	// ボス部屋ロックをリセット（非ボス部屋に移動したとき）
 	if (!stageData.isBossRoom) bossRoomLocked = false;
@@ -606,6 +607,11 @@ let noticeEnemy         = () => {};
 let getMirages          = () => [];
 let destroyMirage       = () => false;
 let clearMirages        = () => {};
+// キュー76③-3（Ω 金翼の邪竜）: 金の棘＝幻影と同じ「敵ではない置き物」。剣（combat.js）・
+// 通行判定（passable.js）・場面の切り替えから読む。持ち主は enemy-ai.js（`getThorns()`）。
+let getThorns           = () => [];
+let destroyThorn        = () => false;
+let clearThorns         = () => {};
 // Phase 5.5k k-7: プレイヤー側の一時デバフ窓（剣封じ・毒）＝game/debuff.js が持ち主。
 // combat.js（剣の門）・charge.js（溜めの門）・enemy-ai.js（体当たりの解決で立てる）の3経路が
 // 参照するので、factory の生成より先に let を置いて wrapper 経由で読ませる。
@@ -702,6 +708,8 @@ const { isPassable, tilePassable, isPassableForEnemy, ladderOrientationAt, isWat
 	getSS,
 	toTileRow,
 	toTileCol,
+	// キュー76③-3: 立っている金の棘（phase 'up'）＝石と同じ「そこに在る物体」。
+	getThorns:       () => getThorns(),
 });
 
 const { checkStoneOnSwitch, evaluateConditions, refreshGates } = createConditions({
@@ -1033,6 +1041,9 @@ const { checkStoneOnSwitch, evaluateConditions, refreshGates } = createCondition
 	getMirages           = _ai.getMirages;
 	destroyMirage        = _ai.destroyMirage;
 	clearMirages         = _ai.clearMirages;
+	getThorns            = _ai.getThorns;
+	destroyThorn         = _ai.destroyThorn;
+	clearThorns          = _ai.clearThorns;
 }
 
 // ── チャージ攻撃・剣ビーム（Phase 3-1）──────────────────────────
@@ -1164,6 +1175,9 @@ const { checkStoneOnSwitch, evaluateConditions, refreshGates } = createCondition
 		// 剣の当たり判定は combat.js の1か所だけ＝そこに像の配列を渡す（判定を2つ書かない）。
 		getMirages:       () => getMirages(),
 		destroyMirage:    (id) => destroyMirage(id),
+		// キュー76③-3: 金の棘も剣の一撃で壊れる（幻影と同じ当たり判定を通す）。
+		getThorns:        () => getThorns(),
+		destroyThorn:     (id) => destroyThorn(id),
 		spawnDropEffect:  (r, c, icon, color) => spawnDropEffect(r, c, icon, color),
 		spawnFloorDrop:   (r, c, type) => spawnFloorDrop(r, c, type),
 		getStageMoves:    () => player.stageMoves ?? 0,
@@ -2729,6 +2743,20 @@ export function getEnemiesSnapshot() {
 		aspAt: e._aspAt ?? null,
 		aspCounts: e._aspCounts ? { ...e._aspCounts } : null,
 		aspHits: e._aspHits ? { ...e._aspHits } : null,
+		// ③-4: 目からのレーザー。laserWarn＝予告で固定した形（E 目・T プレイヤーの位置・F 壁・w0・lane）／
+		// laserFire＝照射中の形／lasers＝撃った回数（当てた回数は aspHits.beam）。
+		laserWarn: e._aspBeamShape ? JSON.parse(JSON.stringify(e._aspBeamShape)) : null,
+		laserFire: e._laserShape ? JSON.parse(JSON.stringify(e._laserShape)) : null,
+		lasers: e._lasers ?? null,
+		// キュー76③-3（Ω）: 金の棘（thorns）の観測用。thorns＝相3で生えた設定（`resolveThorns` が読む）／
+		// thornWaves＝着地で棘を降らせようとした回数／thornsBroken＝剣で壊した本数／
+		// thornStuns＝全部壊して怯んだ回数／thornHits＝落ちてきた棘が当たった回数。
+		// 棘そのものは敵ではない＝`getThorns()` が唯一の真実。
+		thorns: e._thorns ?? null,
+		thornWaves: e._thornWaves ?? null,
+		thornsBroken: e._thornsBroken ?? null,
+		thornStuns: e._thornStuns ?? null,
+		thornHits: e._thornHits ?? null,
 		// Phase 8-4 (4) 0d-3（8体目 I）: 舌（tongue）の観測用。
 		// tonguePhase ＝'idle'（次を打つまで）| 'cast'（打つ前の予告＝体が膨らむ）|
 		//   'lash'（伸びている）| 'hold'（掴んでいる＝引き寄せ中＝**蝦蟇は静止した的**）|
@@ -3011,6 +3039,14 @@ export function getMiragesSnapshot() {
 		id: m.id, ownerId: m.ownerId, type: m.type,
 		x: m.x, y: m.y, dir: m.dir, sprite: m.sprite, pal: m.pal, flipX: !!m.flipX,
 		speed: m.speed ?? null,
+	}));
+}
+
+// キュー76③-3（Ω）: 金の棘の一覧（テスト用）。棘は敵ではない∴この配列が唯一の真実
+// （絵・通行・剣・テストが同じ配列を読む）。`id` は剣の一撃（`destroyThorn`）の宛先。
+export function getThornsSnapshot() {
+	return getThorns().map((t) => ({
+		id: t.id, ownerId: t.ownerId, r: t.r, c: t.c, phase: t.phase, at: t.at, until: t.until,
 	}));
 }
 
