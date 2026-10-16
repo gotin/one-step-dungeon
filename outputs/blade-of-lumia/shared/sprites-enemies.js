@@ -4748,3 +4748,51 @@ ENEMY_SPRITES.chargeBoarStun = [
 		[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
 	]
 ];
+
+// ── 金翼の邪竜（キュー76・3×3 裏ボス）＝⚠️ 仮の絵（キュー76④で 96×96 の本番の絵に差し替える）──
+// 機構（面で技が変わる）を先に通すための代用。**向きが読めること**だけを満たす：頭（金の角・
+// 赤い眼）を向いている側、尾（金の先端）を反対側、赤い翼膜を左右に置く。攻撃中は口が赤く開く。
+// 48×48 を手続きで組む（CSS が 3 セル四方へ伸ばす＝グリッドの大きさは表示サイズに関係しない）。
+// pal: 1=輪郭 2=暗紫(鱗) 3=紫(体) 4=赤(翼膜) 5=金(角・爪・尾) 6=淡金(腹) 7=赤い眼・口
+ENEMY_PAL.goldDragon = ['transparent','#120818','#3a1a4a','#6a2a7a','#b02030','#d8b048','#f0e0a0','#ff3030'];
+function makeGoldDragonPlaceholder(dir, atk) {
+	const N = 48, g = Array.from({ length: N }, () => new Array(N).fill(0));
+	// 頭が下（DOWN）の絵を描き、向きに合わせて回す。
+	const put = (x, y, v) => { if (x >= 0 && y >= 0 && x < N && y < N) g[y][x] = v; };
+	const ell = (cx, cy, rx, ry, v) => {
+		for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) {
+			if (((x - cx) / rx) ** 2 + ((y - cy) / ry) ** 2 <= 1) put(x, y, v);
+		}
+	};
+	// 翼（左右の三角形の膜）
+	for (let y = 10; y < 34; y++) {
+		const span = Math.round((34 - y) * 0.7);
+		for (let k = 0; k < span; k++) { put(13 - k, y, 4); put(34 + k, y, 4); }
+		put(13 - span, y, 5); put(34 + span, y, 5);
+	}
+	// 尾（上へ細く伸びて金の先端）
+	for (let y = 2; y < 14; y++) { const w = Math.max(1, Math.round((y - 2) / 3)); for (let x = 24 - w; x <= 23 + w; x++) put(x, y, 2); }
+	ell(23.5, 3, 2.5, 2.5, 5);
+	ell(23.5, 22, 10, 12, 3);           // 胴
+	ell(23.5, 25, 5, 8, 6);             // 腹
+	ell(23.5, 38, 7, 6, 3);             // 頭
+	put(19, 33, 5); put(18, 32, 5); put(28, 33, 5); put(29, 32, 5);   // 角
+	put(21, 38, 7); put(22, 38, 7); put(25, 38, 7); put(26, 38, 7);   // 眼
+	if (atk) ell(23.5, 43, 3, 2, 7);    // 開いた口
+	// 輪郭
+	const out = g.map((row) => row.slice());
+	for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) {
+		if (g[y][x] === 0) continue;
+		const edge = [[1, 0], [-1, 0], [0, 1], [0, -1]].some(([dx, dy]) => (g[y + dy]?.[x + dx] ?? 0) === 0);
+		if (edge && g[y][x] !== 5 && g[y][x] !== 7) out[y][x] = 1;
+	}
+	if (dir === 'D') return out;
+	if (dir === 'U') return out.slice().reverse();
+	// R＝DOWN を反時計回りに 90°（頭が右）
+	return Array.from({ length: N }, (_, y) => Array.from({ length: N }, (_, x) => out[x][N - 1 - y]));
+}
+for (const d of ['D', 'R', 'U']) {
+	ENEMY_SPRITES[`goldDragon${d}`] = [makeGoldDragonPlaceholder(d, false)];
+	ENEMY_SPRITES[`goldDragon${d}Atk`] = [makeGoldDragonPlaceholder(d, true)];
+}
+ENEMY_SPRITES.goldDragon = ENEMY_SPRITES.goldDragonD;

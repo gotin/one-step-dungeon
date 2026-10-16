@@ -59,6 +59,8 @@ export const TILE_SPRITE_MAP = {
 	[TILE.BOSS]:      { spr: 'escapeD',   pal: 'escape'   },
 	[TILE.MONSTER]:   { spr: 'monsterD',  pal: 'monster'  },
 	[TILE.DARK_LORD]: { spr: 'darklordD', pal: 'darklord' },
+	// キュー76: 金翼の邪竜（3×3・向き別＝directional）。正面の `…D` を指す（上の3系統と同じ作法）。
+	[TILE.GOLD_DRAGON]: { spr: 'goldDragonD', pal: 'goldDragon' },
 	[TILE.FISH_SCHOOL]:{ spr: 'fishSchool', pal: 'fishSchool' },
 	[TILE.LURK_SHARK]: { spr: 'lurkShark',  pal: 'lurkShark'  },
 	[TILE.ARCHER_FISH]:{ spr: 'archerFish', pal: 'archerFish' },

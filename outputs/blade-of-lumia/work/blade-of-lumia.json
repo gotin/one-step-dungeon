@@ -142617,7 +142617,7 @@
               ".",
               ".",
               ".",
-              ".",
+              "Ω",
               ".",
               ".",
               ".",
@@ -142710,7 +142710,9 @@
           ],
           "bgTiles": {},
           "links": [],
-          "enemyDirs": {},
+          "enemyDirs": {
+            "3,7": "left"
+          },
           "chestContents": {},
           "floorItems": {},
           "objects": {},
@@ -142719,9 +142721,9 @@
           "mapEnters": {},
           "showConditions": {},
           "breakableWalls": {},
-          "isBossRoom": false,
+          "isBossRoom": true,
           "signData": {},
-          "comment": "[dragon_lair 1,0] 金翼の邪竜の間（キュー76）。⚠️ 2026-10-16 時点ではまだ空＝ボス（3×3）と金の装束の宝箱はキュー76 の③・⑤で置き、そのとき isBossRoom を true にする。遮蔽物を置かないのはボス部屋の文法どおり（3×3 の体が動ける広さを残す）。"
+          "comment": "[dragon_lair 1,0] 金翼の邪竜の間（キュー76）。Ω（3×3）を (3,7) に置いた（体は rows 3-5 × cols 7-9・西の扉を向く）。isBossRoom:true ∴入室で `:`（西辺 4,0/5,0）が閉じ HP バーが出る。遮蔽物を置かない＝回り込み（横・背後で技が変わる）の床を塞がない。報酬の宝箱（金の装束・killAll 封印）はキュー76⑤で置く＝**この部屋に雑魚を足してはいけない**（雑魚だけ倒して開く抜け道になる）。"
         }
       }
     }

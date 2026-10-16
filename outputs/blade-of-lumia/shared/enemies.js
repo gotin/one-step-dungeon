@@ -940,6 +940,43 @@ export const ENEMY_META = {
 	// isFinalBoss: true が boss.js のエンディング発火分岐の目印になる。
 	// 専用スプライトは未作成のため当面 darklord を流用（新規スプライトは
 	// Phase 0-4 / スプライトエディタの管轄。最優先5点の1つ）。
+	// ── 金翼の邪竜（キュー76・2026-10-16）：3×3 の裏ボス・寄道 dragon_lair（邪竜の巣）──
+	// 羽衣の後の寄道の主。欠片は落とさない（dropsTriforce なし）。報酬は金の装束（キュー76⑤）。
+	// 戦い方＝ユーザー決定「A,B,C 全部まぜる・残り HP で相を分ける」（PLAN キュー76②）：
+	//   相1（100〜66%）＝**面で技が変わる**（`aspect`・この節）／相2＝＋滞空と炎の帯／相3＝＋金の棘。
+	//   ⚠️ 2026-10-16 時点で実装したのは相1だけ（相2・相3 はキュー76③の続き）。
+	// 【aspect＝尾と翼の間合い】竜は向き（`e.dir`）を持ち、**向き直るのは `turnMs` ごとだけ**
+	//   （盾騎士 ζ の `tickFaceLock` と同じ離散の向き直り＝毎 tick 向くと回り込めない）。
+	//   プレイヤーが体のどの面に居るかで技が変わる（判定は enemy-ai.js `aspectFaceOf`）：
+	//     正面（体の3レーンの前）… 噛みつき `bite`＝盾で防げる
+	//     横（それ以外＝左右と斜めの角）… 翼打ち `wing`＝打点は半分・盾で防いでも押し返される
+	//     背後（体の3レーンの後ろ）… 尾のなぎ払い `tail`＝**盾で防げない**（GUIDE §7-16）・
+	//                                振り終わりの硬直が一番長い＝最大の反撃の窓
+	//   体に接する全ての床（正面3・横6・角4・背後3）がどれかの技に覆われる＝立っているだけで
+	//   無傷の床を作らない（GUIDE §7-17）。正面の角（斜め前）は翼打ちが届くよう到達 1.5（＞√2）。
+	//   猶予の算術（尾）＝予告 720ms ＝6 tick ＝3 セル歩ける ≫ 帯の外へ出る最大距離 2.0（奥行き2）。
+	[TILE.GOLD_DRAGON]: {
+		name: '金翼の邪竜',
+		// 仮の数値（相1だけの段階）。相2・相3 を足すとき `scripts/audit-balance.mjs` の帯で確定する。
+		// 目安＝ラスボス Z（hp120/atk8/def2）より少し重い。どの技も atk を超えない（新しい最大打点を作らない）。
+		hp: 144, atk: 8, def: 2, exp: 0,
+		speed: ENEMY_SPEED_SLOW,   // 3×3 の巨体＝鈍い（回り込む余地を残す・GUIDE §7-2）
+		sprite: 'goldDragonD',
+		pal:    'goldDragon',
+		size:   { w: 3, h: 3 },
+		isBoss: true,
+		directional: true,   // 面で技が変わる＝向きが読める絵が要る（DECISIONS 2026-10-16（3））
+		guards:      false,  // 構えの相を持たない＝Guard の絵は不要
+		hitAndAway: false,   // 明示（書かないと aspect の分岐に来ない＝W/A/N/J の罠と同じ）
+		aspect: {
+			turnMs:        1200,  // 向き直りの間隔（この間に横・背後へ回れる）
+			restMs:         360,  // 技の硬直が明けてから次の予告までの間
+			bite: { range: 1.2, windupMs: 480, recoverMs: 360 },            // 正面
+			wing: { range: 1.5, windupMs: 600, recoverMs: 480, atk: 4, knockback: 2 }, // 横
+			tail: { range: 2.0, windupMs: 720, recoverMs: 900, depth: 2 },   // 背後（range＝予告を始める距離）
+		},
+		attacks: [],   // 技は全部 aspect が持つ（enemyAttack の既定の剣/石は使わない）
+	},
 	[TILE.ZARNEL]: {
 		name: 'ザーネル',
 		// 8-4: def 4 → 2。木の剣（ATK 4）の一撃が max(1, 4-4) = 1 に落ちていた＝

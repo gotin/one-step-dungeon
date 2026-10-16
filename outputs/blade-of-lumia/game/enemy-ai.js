@@ -5574,6 +5574,207 @@ export function createEnemyAi(deps) {
 	// `enemyAttack` → `startSlam` → `tickSlam` の予告→解決で当てる（デバフの発火も tickSlam）。
 
 	// ── 敵ループ（毎 tick 呼ぶ） ──────────────────────────────
+	// ── キュー76（金翼の邪竜 Ω・2026-10-16）: 面で技が変わる（aspect）──────────────
+	// meta.aspect = { turnMs, restMs, bite:{range,windupMs,recoverMs}, wing:{range,windupMs,
+	//                 recoverMs,atk,knockback}, tail:{range,windupMs,recoverMs,depth} }。
+	// 状態機械＝idle →（面と間合い）windup（予告・完全停止）→ 解決（硬直 `recoverMs`）→ idle。
+	//   ・**向き直りは idle のあいだ `turnMs` ごとだけ**（盾騎士 `tickFaceLock` と同じ離散の判断）
+	//     ＝移動は dirLocked で歩く（enemyChase が向きを書き換えない）。
+	//   ・技は**予告の開始時の面**で決まり、**解決の瞬間の位置**で当たりを測る＝予告を見て
+	//     面を変えれば空振りになる（避けたことが画面に出る）。
+	//   ・硬直は `_freezeUntil`（既存の攻撃硬直＝移動ゲートと `.attack-recover` の絵が読む）。
+	// 判定の基準＝体の中心から見た「前後 f／左右 l」の局所座標（向きで回す）。
+	const ASPECT_DIR_VEC = { down: [0, 1], up: [0, -1], left: [-1, 0], right: [1, 0] };
+	function aspectFrame(e, px, py) {
+		const { cx, cy } = enemyCellCenter(e);
+		const { halfW, halfH } = enemyHalf(e);
+		const [fx, fy] = ASPECT_DIR_VEC[e.dir] ?? [0, 1];
+		const lx = -fy, ly = fx;
+		const dx = px - cx, dy = py - cy;
+		return {
+			cx, cy, fx, fy, lx, ly,
+			f: dx * fx + dy * fy, l: dx * lx + dy * ly,
+			halfFwd:  Math.abs(fx) * halfW + Math.abs(fy) * halfH,
+			halfSide: Math.abs(fy) * halfW + Math.abs(fx) * halfH,
+		};
+	}
+	// プレイヤーが体のどの面に居るか。体の幅（3レーン）の前＝front／後ろ＝back／それ以外＝side。
+	function aspectFaceOf(e, px, py) {
+		const { f, l, halfSide } = aspectFrame(e, px, py);
+		if (Math.abs(l) < halfSide + 0.5) return f > 0 ? 'front' : 'back';
+		return 'side';
+	}
+	const ASPECT_KIND_OF_FACE = { front: 'bite', side: 'wing', back: 'tail' };
+	// 尾の危険域＝体の後ろ `depth` セル×（体の幅＋左右の角1レーンずつ）。**表示座標（px 単位＝
+	// セル添字 + 0.5 が中心）の矩形**で返す＝床の絵と当たりが同じ式を読む（GUIDE §7-16）。
+	function aspectTailZone(e, cfg) {
+		const fr = aspectFrame(e, 0, 0);
+		const depth = cfg?.tail?.depth ?? 2;
+		const f0 = -(fr.halfFwd + 0.5), f1 = f0 - depth;
+		const l0 = -(fr.halfSide + 1.5), l1 = fr.halfSide + 1.5;
+		const xs = [], ys = [];
+		for (const f of [f0, f1]) for (const l of [l0, l1]) {
+			xs.push(fr.cx + f * fr.fx + l * fr.lx);
+			ys.push(fr.cy + f * fr.fy + l * fr.ly);
+		}
+		const left = Math.min(...xs) + 0.5, top = Math.min(...ys) + 0.5;
+		return { left, top, w: Math.max(...xs) + 0.5 - left, h: Math.max(...ys) + 0.5 - top };
+	}
+	function playerInTailZone(e, cfg) {
+		const player = getPlayer();
+		if (!player) return false;
+		const z = aspectTailZone(e, cfg);
+		// プレイヤーの箱（px 単位 [x, x+1)）が危険域と少しでも重なれば当たり
+		return aabbOverlap(player.x, player.y, 1, 1, z.left, z.top, z.w, z.h);
+	}
+
+	function cancelAspect(e) {
+		e._aspPhase = 'idle'; e._aspKind = null; e._aspAt = null;
+	}
+
+	// 戻り値 true ＝この tick は移動も他の攻撃もしない（予告中・解決の tick）。
+	function tickAspect(e, meta, now) {
+		const cfg = meta?.aspect;
+		if (!cfg) return false;
+		if (e._aspPhase === 'windup') {
+			if (now < e._aspAt) return true;
+			resolveAspect(e, meta, cfg, now);
+			return true;
+		}
+		// 硬直中は何もしない（移動は下の frozen ゲートが止める）
+		if (e._freezeUntil != null && now < e._freezeUntil) return false;
+		const player = getPlayer();
+		if (!player) return false;
+		// 向き直り（idle のあいだだけ・turnMs ごと）。初回はマップに置かれた向きを尊重する。
+		if (e._aspTurnAt == null) {
+			e._aspTurnAt = now + cfg.turnMs;
+		} else if (now >= e._aspTurnAt) {
+			const { cx, cy } = enemyCellCenter(e);
+			const dx = player.x - cx, dy = player.y - cy;
+			if (Math.abs(dx) >= 0.01 || Math.abs(dy) >= 0.01) {
+				e.dir = Math.abs(dx) >= Math.abs(dy) ? (dx > 0 ? 'right' : 'left') : (dy > 0 ? 'down' : 'up');
+			}
+			e._aspTurnAt = now + cfg.turnMs;
+		}
+		if (e._aspNext != null && now < e._aspNext) return false;
+		const face = aspectFaceOf(e, player.x, player.y);
+		const kind = ASPECT_KIND_OF_FACE[face];
+		const k = cfg[kind];
+		if (!k || enemyEdgeDist(e, player.x, player.y) > k.range) return false;
+		e._aspPhase = 'windup';
+		e._aspKind = kind;
+		e._aspAt = now + k.windupMs;
+		e._aspWindupMs = k.windupMs;   // 絵の長さ（CSS 側に長さを持たせない）
+		playSound({ bite: 'swordWindup', wing: 'maulWindup', tail: 'unblockableWindup' }[kind]);
+		return true;
+	}
+
+	function resolveAspect(e, meta, cfg, now) {
+		const kind = e._aspKind;
+		const k = cfg[kind] ?? {};
+		e._aspPhase = 'idle'; e._aspAt = null;
+		e._atkUntil = now + ATTACK_POSE_MS;              // 攻撃の絵（…Atk）
+		e._freezeUntil = now + (k.recoverMs ?? 360);     // 硬直＝殴り返す窓
+		e._aspNext = now + (k.recoverMs ?? 360) + (cfg.restMs ?? 0);
+		e._aspCounts = e._aspCounts ?? { bite: 0, wing: 0, tail: 0 };
+		e._aspHits = e._aspHits ?? { bite: 0, wing: 0, tail: 0 };
+		e._aspCounts[kind] = (e._aspCounts[kind] ?? 0) + 1;
+		const player = getPlayer();
+		if (!player) return;
+		const atk = e.atk ?? meta?.atk ?? 1;
+		if (kind === 'tail') {
+			showTailSweepEffect(e, cfg);
+			playSound('rockSmash');
+			// **盾は見ない**（isShieldBlockingDir を呼べば正面で盾を構える戦法がそのまま無敵になる）
+			if (playerInTailZone(e, cfg)) { takeDamage(atk); e._aspHits.tail++; }
+			return;
+		}
+		const fr = aspectFrame(e, player.x, player.y);
+		const face = aspectFaceOf(e, player.x, player.y);
+		const reach = enemyEdgeDist(e, player.x, player.y);
+		if (kind === 'bite') {
+			if (face !== 'front' || reach > k.range) return;   // 面を変えた＝空振り
+			if (player.shield && isShieldBlockingDir(fr.fx, fr.fy)) {
+				playSound('shieldBlock'); showShieldBlockEffect(player.x, player.y);
+				return;
+			}
+			takeDamage(atk); e._aspHits.bite++;
+			return;
+		}
+		// wing：打つ向き＝体の横（プレイヤーの居る側）。盾で防いでも押し返しは受ける。
+		if (face !== 'side' || reach > k.range) return;
+		const s = fr.l >= 0 ? 1 : -1;
+		// 斜めの角に居ても押す軸は横だけ（体から離れる側）＝前後へは押さない
+		const vx = fr.lx * s, vy = fr.ly * s;
+		if (player.shield && isShieldBlockingDir(vx, vy)) {
+			playSound('shieldBlock'); showShieldBlockEffect(player.x, player.y);
+		} else {
+			takeDamage(Math.min(atk, k.atk ?? Math.ceil(atk / 2)));
+			e._aspHits.wing++;
+		}
+		const steps = Math.max(1, Math.round((k.knockback ?? 2) / MOVE_STEP));
+		let moved = false;
+		for (let i = 0; i < steps; i++) {
+			const nx = player.x + vx * MOVE_STEP, ny = player.y + vy * MOVE_STEP;
+			if (!isPassable?.(nx, ny, vx !== 0 ? 'h' : 'v')) break;
+			player.x = nx; player.y = ny; moved = true;
+		}
+		if (moved) moveCharEl?.('player', player.x, player.y);
+	}
+
+	function showTailSweepEffect(e, cfg) {
+		const charLayerEl = getCharLayerEl();
+		if (!charLayerEl) return;
+		const cellPx = getCellPx();
+		const z = aspectTailZone(e, cfg);
+		const el = document.createElement('div');
+		el.className = 'dragon-tail-sweep';
+		el.style.cssText = `position:absolute;left:${z.left * cellPx}px;top:${z.top * cellPx}px;`
+			+ `width:${z.w * cellPx}px;height:${z.h * cellPx}px;z-index:23;pointer-events:none;`;
+		charLayerEl.appendChild(el);
+		setTimeout(() => el.remove(), 360);
+	}
+
+	// 予告の絵＝体のクラス（噛みつき＝口元の赤い光／翼打ち＝左右の翼が光る）＋尾は床の危険域。
+	// ⚠️ 長さは状態機械（`_aspWindupMs`）が単一の真実＝CSS 変数で渡す（GUIDE §7-8）。
+	function syncAspectMotion(e, meta) {
+		const el = document.getElementById(`char-enemy-${e.id}`);
+		const kind = e._aspPhase === 'windup' ? e._aspKind : null;
+		if (el) {
+			for (const k of ['bite', 'wing', 'tail']) {
+				const on = kind === k;
+				if (on && !el.classList.contains(`dragon-${k}-windup`)) {
+					el.style.setProperty('--asp-windup-ms', `${e._aspWindupMs ?? 600}ms`);
+					const fr = aspectFrame(e, 0, 0);
+					// 口元＝前面の中央から少し内側（頭の上）。体の外縁に置くと、正面に立つプレイヤーの
+					// 絵（竜より前面）の下に隠れて予告が見えない（実機スクショで踏んだ）。
+					el.style.setProperty('--asp-ox', `${50 + fr.fx * 36}%`);
+					el.style.setProperty('--asp-oy', `${50 + fr.fy * 36}%`);
+					el.classList.toggle('asp-lat-h', fr.lx !== 0);   // 翼が左右（上下向き）か上下（左右向き）か
+				}
+				el.classList.toggle(`dragon-${k}-windup`, on);
+			}
+		}
+		const charLayerEl = getCharLayerEl();
+		if (!charLayerEl) return;
+		const zid = `dragon-tail-zone-${e.id}`;
+		let zone = document.getElementById(zid);
+		if (kind === 'tail') {
+			const cellPx = getCellPx();
+			const z = aspectTailZone(e, meta.aspect);
+			if (!zone) {
+				zone = document.createElement('div');
+				zone.id = zid;
+				zone.className = 'dragon-tail-zone';
+				charLayerEl.appendChild(zone);
+			}
+			zone.style.cssText = `position:absolute;left:${z.left * cellPx}px;top:${z.top * cellPx}px;`
+				+ `width:${z.w * cellPx}px;height:${z.h * cellPx}px;z-index:2;pointer-events:none;`;
+		} else if (zone) {
+			zone.remove();
+		}
+	}
+
 	function enemyTick() {
 		const enemies = getEnemies();
 		const now = gameNow();
@@ -5659,6 +5860,8 @@ export function createEnemyAi(deps) {
 				// 外す＝この分岐は下の同期まで行かず `continue` する∴消し忘れると気絶中も
 				// 危険域が塗られたまま「まだ落ちる」に見える（＝嘘の告知）。
 				if (resolveMirage(e, meta)) { cancelMirage(e); syncMirageMotion(e, meta); }
+				// キュー76（Ω）: 気絶したら面の技の予告も捨てる（ボスは硬直しない＝二重の守り）。
+				if (meta.aspect) { cancelAspect(e); syncAspectMotion(e, meta); }
 				continue;
 			}
 			// Phase 5.5k k-7.5: 立っている予告は**他の専有状態より先に必ず解決する**
@@ -5668,6 +5871,8 @@ export function createEnemyAi(deps) {
 			const swinging = tickSwing(e, meta, now);
 			// Phase 8-4 (4) 0d-3: 炎のブレスの予告も同じ枠（立っている予告は先に解決する）。
 			const breathing = tickBreath(e, meta, now);
+			// キュー76（Ω）: 面の技の予告も同じ枠（立っている予告は先に解決する）。向き直りもここ。
+			const aspecting = tickAspect(e, meta, now);
 			// Phase 8-4 (4) 0d-3（4体目 J）: 締め上げの予告も同じ枠（立っている予告は先に解決する）。
 			// ⚠️ 硬直（`frozen`）より**前**に呼ぶ＝解決が締め上げ自身の硬直を立てる∴後ろに置くと
 			//    2回目以降の締め上げが宙吊りになる（跳躍の 0d-2.7 の罠と同型）。
@@ -5793,7 +5998,7 @@ export function createEnemyAi(deps) {
 			const dirLocked = tickFaceLock(e, meta, now);
 			// ⚠️ `!soaring` ＝`rise`/`aim`/`dive`/`land` の4相はこの tick を専有する。`ground` と
 			//    `air` は tickSoar が false を返す＝ここが開く（地上は歩き＋鉤爪、空は旋回＋雷撃弾）。
-			if (!isGuarding && !frozen && !leaping && !soaring && !shelled && !leeching && !slamming && !swinging && !breathing && !crushing && !blinking && !dashing && !tongueBusy && !surging && !glaciating && !lockstepBusy && !mirageBusy) {
+			if (!isGuarding && !frozen && !leaping && !soaring && !shelled && !leeching && !slamming && !swinging && !breathing && !crushing && !blinking && !dashing && !tongueBusy && !surging && !glaciating && !lockstepBusy && !mirageBusy && !aspecting) {
 				if (resolveHitAndAway(e, meta)) {
 					bossTickHitAndAway(e, meta);
 				} else if (cmode === 'ranged') {
@@ -5844,6 +6049,9 @@ export function createEnemyAi(deps) {
 					// する枠）が持ち主＝ここは道の上を進むだけ。`resolveEnemySpeed` を通す＝
 					// `phases[].speedMultiplier`（後半 ×1.3）がそのまま効く。
 					enemyGlaciateStride(e, meta, resolveEnemySpeed(e, meta), resolveGlaciate(e, meta));
+				} else if (meta.aspect) {
+					// キュー76（Ω）: 寄るだけ。向きは tickAspect の離散の向き直りだけが変える（dirLocked）。
+					enemyChase(e, resolveEnemySpeed(e, meta), true);
 				} else if (meta.zigzag) {
 					enemyZigzagFly(e, meta, resolveEnemySpeed(e, meta), meta.zigzag);
 				} else if (roaming) {
@@ -5918,6 +6126,8 @@ export function createEnemyAi(deps) {
 			// 本体の輪郭＋床の危険域）。⚠️ 最後に置く＝「今どう動いているか」を上書きする順番に
 			// 揃える（G/U/I/`{`/L/X と同じ趣旨）。像の貼り直しはここが唯一の窓口。
 			if (resolveMirage(e, meta)) syncMirageMotion(e, meta);
+			// キュー76（Ω）: 面の技の予告（口元の光・翼の光・床の尾の危険域）。
+			if (meta.aspect) syncAspectMotion(e, meta);
 		}
 	}
 

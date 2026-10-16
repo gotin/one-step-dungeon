@@ -117,8 +117,10 @@ test.describe('Phase 5.5k k-7.5 – 体当たり攻撃（slam）と重なり禁�
   test('① 全ての敵が攻撃手段を持ち、接触専門の10種は charge（無害な置物を作らない）', () => {
     // 決定②で接触ダメージを消した＝「攻撃を持たない敵」を残すと**触っても何も起きない置物**
     // になる（k-7.5 の最大の事故）。名簿の側でそれを禁じる。
+    // 2026-10-16（キュー76）：金翼の邪竜 Ω は技を全部 `aspect`（面で技が変わる）が持つ＝`attacks` は空でも
+    // 置物ではない（噛みつき・翼打ち・尾）∴`aspect` も攻撃手段に数える。
     const noAttack = Object.entries(ENEMY_META)
-      .filter(([, m]) => !(m.attack || (m.attacks?.length ?? 0) > 0))
+      .filter(([, m]) => !(m.attack || (m.attacks?.length ?? 0) > 0 || m.aspect))
       .map(([tile]) => tile);
     expect(noAttack, '攻撃手段を持たない敵がいる＝接触廃止で無害な置物になっている').toEqual([]);
 

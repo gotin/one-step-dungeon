@@ -2716,6 +2716,14 @@ export function getEnemiesSnapshot() {
 		// momentum ＝慣性の設定そのもの（フェーズで差し替わる＝`resolveMomentum` が読む側）。
 		// **meta.momentum とは別物**＝「後半でもっと止まれなくなった」の観測窓。
 		momentum: e._momentum ?? null,
+		// キュー76（Ω 金翼の邪竜）: 面で技が変わる（aspect）の観測用。
+		// aspPhase＝'idle'|'windup'・aspKind＝'bite'|'wing'|'tail'（予告中の技）・aspAt＝解決の論理時刻。
+		// aspCounts/aspHits＝技ごとの解決回数／当てた回数（`?? null`＝テスト側で `?? 0` に正規化）。
+		aspPhase: e._aspPhase ?? null,
+		aspKind: e._aspKind ?? null,
+		aspAt: e._aspAt ?? null,
+		aspCounts: e._aspCounts ? { ...e._aspCounts } : null,
+		aspHits: e._aspHits ? { ...e._aspHits } : null,
 		// Phase 8-4 (4) 0d-3（8体目 I）: 舌（tongue）の観測用。
 		// tonguePhase ＝'idle'（次を打つまで）| 'cast'（打つ前の予告＝体が膨らむ）|
 		//   'lash'（伸びている）| 'hold'（掴んでいる＝引き寄せ中＝**蝦蟇は静止した的**）|

@@ -134,7 +134,8 @@ test.describe('Phase 8-4 (2) – ブーメランの硬直はザコだけ（ボ�
   test('① 導出の形：ボスは全種が硬直しない側・ザコは全種が硬直する側', () => {
     const bosses = ENTRIES.filter(([, m]) => m.isBoss);
     const zako   = ENTRIES.filter(([, m]) => !m.isBoss);
-    expect(bosses.length, 'ボスの種類数（ENEMY_META から導出）').toBe(13);
+    // 2026-10-16（キュー76）：金翼の邪竜 Ω を足して 13 → 14。
+    expect(bosses.length, 'ボスの種類数（ENEMY_META から導出）').toBe(14);
     expect(zako.length, 'ザコの種類数（ENEMY_META から導出）').toBe(21);
     for (const [t, m] of bosses) {
       expect(stunExpected(m), `${t} ${m.name}: ボスが硬直する側に入っている`

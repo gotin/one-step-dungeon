@@ -1482,3 +1482,58 @@
     35%  { transform: scaleY(1.15); opacity: 1;   }
     100% { transform: scaleY(1);    opacity: 0;   }
 }
+
+/* ── キュー76（2026-10-16）: 金翼の邪竜 Ω の「面で技が変わる」予告 ─────────────────────
+   3つの技は避け方が違う∴3つとも別の形で告知する（GUIDE §6-1）：
+     噛みつき（正面・盾で防げる）… 口元に赤い光が膨らむ＝「正面から外れるか盾」
+     翼打ち（横・押し返される）  … 体の左右（翼の側）が金色に光る＝「横から離れる」
+     尾（背後・盾で防げない）    … 床に危険域を描く＝「この矩形の外へ出る」（範囲は判定と同じ式）
+   長さは状態機械の `--asp-windup-ms` が単一の真実（GUIDE §7-8）。 */
+.char-abs.dragon-bite-windup::after {
+    content: '';
+    position: absolute;
+    left: var(--asp-ox, 50%);
+    top:  var(--asp-oy, 100%);
+    width: 40%;
+    height: 40%;
+    transform: translate(-50%, -50%) scale(0.3);
+    border-radius: 50%;
+    background: radial-gradient(circle, hsl(0 100% 75% / 0.95) 0%, hsl(0 90% 50% / 0.7) 55%, hsl(0 90% 40% / 0) 100%);
+    animation: dragon-bite-windup var(--asp-windup-ms, 480ms) ease-out 1 forwards;
+    pointer-events: none;
+    z-index: 8;
+}
+@keyframes dragon-bite-windup {
+    from { transform: translate(-50%, -50%) scale(0.3); opacity: 0.5; }
+    to   { transform: translate(-50%, -50%) scale(1.15); opacity: 1; }
+}
+/* 翼の光＝左右の縁（上下を向いているとき）／上下の縁（左右を向いているとき＝asp-lat-h なし） */
+.char-abs.dragon-wing-windup::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    z-index: 8;
+    background: linear-gradient(to bottom, hsl(45 100% 60% / 0.85) 0%, transparent 22%, transparent 78%, hsl(45 100% 60% / 0.85) 100%);
+    animation: dragon-wing-windup var(--asp-windup-ms, 600ms) ease-in 1 forwards;
+}
+.char-abs.dragon-wing-windup.asp-lat-h::after {
+    background: linear-gradient(to right, hsl(45 100% 60% / 0.85) 0%, transparent 22%, transparent 78%, hsl(45 100% 60% / 0.85) 100%);
+}
+@keyframes dragon-wing-windup {
+    from { opacity: 0.2; }
+    to   { opacity: 1; }
+}
+/* 尾の危険域（床）＝盾で防げない打点の告知。形は矩形（判定と同じ）・大きさは変えない */
+.dragon-tail-zone {
+    box-sizing: border-box;
+    border: 3px dashed hsl(0 85% 60% / 0.8);
+    background: hsl(0 80% 40% / 0.22);
+    animation: toad-pounce-zone-throb 0.3s ease-in-out infinite alternate;
+}
+.dragon-tail-sweep {
+    box-sizing: border-box;
+    border: 4px solid hsl(40 95% 70% / 0.95);
+    background: hsl(20 90% 55% / 0.45);
+    animation: toad-pounce-land-burst 0.36s ease-out forwards;
+}

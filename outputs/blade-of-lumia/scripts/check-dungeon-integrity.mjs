@@ -87,10 +87,13 @@ const TOOLS_USABLE_IN = toolsUsableIn(d);
 //                          色門・石車がある。`bossStage` 無し。
 //           hidden_cave  … 草陰の祠（field 6,13 の茂みをロウソクで燃やすと出る）。2026-10-13 キュー56 で
 //                          奥の間（石＋ボタン＋かがり火2本・ハートの器）を足して2部屋になった∴検査に入れた。`bossStage` 無し。
+//           dragon_lair  … 邪竜の巣（キュー76・2026-10-16）。金翼の邪竜 Ω の一対一。`bossStage` と
+//                          `isBossRoom` を持つが**星の欠片は落とさない**（祭壇より後の寄道）。報酬は金の装束。
 // 鍵の収支・links・関門・順序（5〜8）は種別に関係なく全レイヤーへ効かせる。
 const LAYER_KIND = {
   dark_tower: 'final', cave_1: 'side', warlord_lair: 'side', darklord_prison: 'side',
   forest_cave: 'side', secret_grotto: 'side', void_shrine: 'side', hidden_cave: 'side',
+  dragon_lair: 'side',
 };
 
 // 鍵扉 D を「物理的な1枚の扉」に畳むための隣接規則。
