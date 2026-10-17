@@ -879,6 +879,9 @@ export function createPlayer(deps) {
 			}
 			// 渡せない id（未定義／床タイル専用）は「手に入れた！」と嘘をつかない＝空文字。
 			if (!giveSubItem(content.item)) return '';
+			// 金の装束＝入手の瞬間にオーラの中で姿が変わる演出（game/garb-awakening.js）。効果は文に書かない
+			// （2026-10-17 ユーザー決定「どんな効果があるのかはプレーヤー自身が体感して理解するだけで」）。
+			if (content.item === 'goldGarb') deps.onGoldGarbAwakened?.();
 			// ⚠️ 上限を広げる passive（矢筒・爆弾袋）は**サブアイテム欄に並ばない**
 			// （`giveSubItem` の passive 分岐は早期 return ∴ヒントも出ない）＝名前だけでは
 			// 何が増えたのか分からない。下の 'ladder' 分岐と同じ作法で効果を文に足す。
@@ -887,7 +890,6 @@ export function createPlayer(deps) {
 			           : content.item === 'bombBag' ? `（爆弾を ${player.maxBombs} 個まで 持てる）`
 			           : content.item === 'swiftBoots' ? '（Shift を 押している間 速く 走れる）'
 			           : content.item === 'fairy' ? '（倒れても 一度だけ よみがえる）'
-			           : content.item === 'goldGarb' ? '（剣を 振る 速さと 盾で はね返す 速さが 上がった）'
 			           : '';
 			return `${content.name ?? content.item} を手に入れた！${note}`;
 		} else if (content.type === 'weapon') {

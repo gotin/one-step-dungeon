@@ -5779,6 +5779,7 @@ export function createEnemyAi(deps) {
 	function cancelAspect(e) {
 		e._aspPhase = 'idle'; e._aspKind = null; e._aspAt = null;
 		e._aspBeamShape = null;   // ③-4: 立っているレーザーの予告も捨てる（発射中の照射は自分の時計で終わる）
+		e._aspRetreat = null;     // キュー76⑥: 飛び退きも止める
 	}
 
 	// ── ③-4 改（2026-10-16 ユーザー指示）: 目から放つレーザー ─────────────────────
@@ -5899,6 +5900,8 @@ export function createEnemyAi(deps) {
 			resolveAspect(e, meta, cfg, now);
 			return true;
 		}
+		// キュー76⑥: 飛び退きの最中はこの tick を専有する（自分で下がる・止まったらレーザーへ）。
+		if (e._aspRetreat) return tickAspectRetreat(e, meta, cfg, now);
 		// 硬直中は何もしない（移動は下の frozen ゲートが止める）
 		if (e._freezeUntil != null && now < e._freezeUntil) return false;
 		const player = getPlayer();
@@ -5913,6 +5916,15 @@ export function createEnemyAi(deps) {
 				e.dir = Math.abs(dx) >= Math.abs(dy) ? (dx > 0 ? 'right' : 'left') : (dy > 0 ? 'down' : 'up');
 			}
 			e._aspTurnAt = now + cfg.turnMs;
+			// キュー76⑥（ユーザー「正面になったとき、必ずしも近づかない」）：向き直るたびに、正面で
+			// 噛みつきの外なら `hold.every` 回に1回は寄らずに間合いを保つ（enemyDragonStalk が読む）。
+			// 乱数は使わない（交互＝テストが安定）。
+			if (cfg.hold) {
+				const front = aspectFaceOf(e, player.x, player.y) === 'front'
+					&& enemyEdgeDist(e, player.x, player.y) > cfg.bite.range;
+				e._aspHoldSeq = (e._aspHoldSeq ?? 0) + (front ? 1 : 0);
+				e._aspHold = front && (e._aspHoldSeq % (cfg.hold.every ?? 2) === 1);
+			}
 		}
 		if (e._aspNext != null && now < e._aspNext) return false;
 		const face = aspectFaceOf(e, player.x, player.y);
@@ -5934,6 +5946,96 @@ export function createEnemyAi(deps) {
 		e._aspAt = now + k.windupMs;
 		e._aspWindupMs = k.windupMs;   // 絵の長さ（CSS 側に長さを持たせない）
 		playSound({ bite: 'swordWindup', wing: 'maulWindup', tail: 'unblockableWindup', beam: 'breathWindup' }[kind]);
+		return true;
+	}
+
+	// ── キュー76⑥（Ω）: 飛び退き（retreat）───────────────────────────────
+	// 噛みつきを盾で防がれた瞬間に、プレイヤーから**離れられるだけ離れ**（ユーザー「離れられるだけ離れる」）、
+	// 止まった瞬間にプレイヤーへ向き直ってレーザーの予告へ入る＝「盾で待つ」がいちばん痛い技を呼ぶ。
+	// 逃げ先＝真後ろ・斜め後ろ（左右）・真横（左右）・斜め前（左右）の7方向。斜め前＝壁を背にしているとき、
+	//   プレイヤーの横へ滑り下りて横から撃てる位置へ着くための候補（真横だけではプレイヤーの行へ下りられない）。各方向へ滑った途中の点をすべて比べ、
+	//   ①向き直ったときにプレイヤーが正面のレーザーの射程（minRange〜range）に入る点を優先し、
+	//   ②その中で体の端からプレイヤーまでが一番遠い点を選ぶ（同じ遠さなら先の候補＝真後ろ優先）。
+	//   撃てる点が無ければ単に一番遠い点。
+	// ⚠️ 2026-10-17 ユーザー判定（壁を背にした竜の真下に立つと楽勝）で「真後ろ→塞がっていれば固定の横」
+	//   から作り替えた：横へ下がった後に向き直さずレーザーが出ないまま寄り直していた。
+	// 下がる速さは `cellsPerTick`（プレイヤー MOVE_STEP/tick の倍）＝追いかけても間合いは開く。
+	function retreatScore(e, cfg, x, y, px, py) {
+		const probe = { ...e, x, y };
+		const { cx, cy } = enemyCellCenter(probe);
+		const dx = px - cx, dy = py - cy;
+		probe.dir = Math.abs(dx) >= Math.abs(dy) ? (dx > 0 ? 'right' : 'left') : (dy > 0 ? 'down' : 'up');
+		const reach = enemyEdgeDist(probe, px, py);
+		const beamable = !!cfg.beam && aspectFaceOf(probe, px, py) === 'front'
+			&& reach >= (cfg.beam.minRange ?? 0) && reach <= cfg.beam.range;
+		return { reach, beamable };
+	}
+	function startAspectRetreat(e, fr, now) {
+		const cfg = ENEMY_META[e.type]?.aspect;
+		const player = getPlayer();
+		if (!cfg || !player) return;
+		const bx = -fr.fx, by = -fr.fy;
+		const dirs = [[bx, by], [bx + fr.lx, by + fr.ly], [bx - fr.lx, by - fr.ly], [fr.lx, fr.ly], [-fr.lx, -fr.ly],
+			[fr.fx + fr.lx, fr.fy + fr.ly], [fr.fx - fr.lx, fr.fy - fr.ly]];
+		let best = null;
+		for (const [vx, vy] of dirs) {
+			let x = e.x, y = e.y;
+			for (let i = 0; i < 40; i++) {
+				// 斜めは片方の軸が塞がれたら残りの軸だけで滑る
+				let moved = false;
+				if (vx && isPassableForEnemy(y, x + vx * MOVE_STEP, e)) { x += vx * MOVE_STEP; moved = true; }
+				if (vy && isPassableForEnemy(y + vy * MOVE_STEP, x, e)) { y += vy * MOVE_STEP; moved = true; }
+				if (!moved) break;
+				const sc = retreatScore(e, cfg, x, y, player.x, player.y);
+				if (!best || (sc.beamable && !best.beamable)
+					|| (sc.beamable === best.beamable && sc.reach > best.reach + 1e-6)) {
+					best = { x, y, ...sc };
+				}
+			}
+		}
+		if (!best) return;
+		e._aspRetreat = { tx: best.x, ty: best.y };
+		e._aspRetreats = (e._aspRetreats ?? 0) + 1;
+		e._freezeUntil = null;   // 硬直の代わりに下がる（下がっている間は技を出さない）
+		e._stalkTx = null;
+	}
+	function tickAspectRetreat(e, meta, cfg, now) {
+		const r = e._aspRetreat;
+		const steps = Math.max(1, Math.round((cfg.retreat.cellsPerTick ?? 1) / MOVE_STEP));
+		let moved = 0;
+		for (let i = 0; i < steps; i++) {
+			const sx = Math.sign(r.tx - e.x) * Math.min(MOVE_STEP, Math.abs(r.tx - e.x));
+			const sy = Math.sign(r.ty - e.y) * Math.min(MOVE_STEP, Math.abs(r.ty - e.y));
+			let m = false;
+			if (sx && isPassableForEnemy(e.y, e.x + sx, e)) { e.x += sx; m = true; }
+			if (sy && isPassableForEnemy(e.y + sy, e.x, e)) { e.y += sy; m = true; }
+			if (!m) break;
+			moved++;
+		}
+		// 着いた tick も動いた tick＝向き直りと予告は次の tick（止まった tick）にする
+		if (moved > 0) { moveCharEl(`enemy-${e.id}`, e.x, e.y); return true; }
+		// 止まった＝下がりきった（目的地に着いた／塞がれた）。プレイヤーへ向き直り（turnMs を待たない）、正面の射程内ならそのままレーザーの予告へ。
+		e._aspRetreat = null;
+		e._aspNext = null;
+		const player = getPlayer();
+		if (!player) return true;
+		const { cx, cy } = enemyCellCenter(e);
+		const dx = player.x - cx, dy = player.y - cy;
+		if (Math.abs(dx) >= 0.01 || Math.abs(dy) >= 0.01) {
+			e.dir = Math.abs(dx) >= Math.abs(dy) ? (dx > 0 ? 'right' : 'left') : (dy > 0 ? 'down' : 'up');
+		}
+		e._aspTurnAt = now + cfg.turnMs;
+		if (!cfg.beam) return true;
+		const reach = enemyEdgeDist(e, player.x, player.y);
+		if (aspectFaceOf(e, player.x, player.y) === 'front'
+			&& reach >= (cfg.beam.minRange ?? 0) && reach <= cfg.beam.range) {
+			e._aspBeamShape = laserShapeFor(e, cfg, player.x, player.y);
+			e._aspPhase = 'windup';
+			e._aspKind = 'beam';
+			e._aspAt = now + cfg.beam.windupMs;
+			e._aspWindupMs = cfg.beam.windupMs;
+			playSound('breathWindup');
+		}
 		return true;
 	}
 
@@ -5982,6 +6084,9 @@ export function createEnemyAi(deps) {
 			if (face !== 'front' || reach > k.range) return;   // 面を変えた＝空振り
 			if (player.shield && isShieldBlockingDir(fr.fx, fr.fy)) {
 				playSound('shieldBlock'); showShieldBlockEffect(player.x, player.y);
+				// キュー76⑥（2026-10-17 ユーザー判定「正面にくっついてると盾で守れる攻撃しかしてこない」）：
+				// 盾で防がれたら**離れられるだけ離れる**（飛び退き）→ 止まったらレーザー（tickAspectRetreat）。
+				if (cfg.retreat) startAspectRetreat(e, fr, now);
 				return;
 			}
 			takeDamage(atk); e._aspHits.bite++;
@@ -6129,6 +6234,18 @@ export function createEnemyAi(deps) {
 			e._stalkTx = tx; e._stalkTy = ty;
 			e._stalkBaseX = player.x; e._stalkBaseY = player.y;
 		}
+		// キュー76⑥: 間合いを保つ番（tickAspect が向き直りのたびに決める）。正面に居る間は寄らない：
+		// `hold.keepMin` より近ければ体の後ろへ1歩下がり、そうでなければ立ち止まる（レーザーを待つ）。
+		const hold = ENEMY_META[e.type]?.aspect?.hold;
+		if (hold && e._aspHold && aspectFaceOf(e, player.x, player.y) === 'front') {
+			e._stalkLeft = 0;
+			if (enemyEdgeDist(e, player.x, player.y) < (hold.keepMin ?? 3)) {
+				const fr = aspectFrame(e, player.x, player.y);
+				const ny = e.y - fr.fy * MOVE_STEP, nx = e.x - fr.fx * MOVE_STEP;
+				if (isPassableForEnemy(ny, nx, e)) { e.y = ny; e.x = nx; moveCharEl(`enemy-${e.id}`, e.x, e.y); }
+			}
+			return;
+		}
 		const tx = e._stalkTx, ty = e._stalkTy;
 		const dx = tx - cx, dy = ty - cy;
 		// 目標までの残り＝tickAspect が「回り込みの途中は翼打ちを始めない」に使う
@@ -6176,6 +6293,34 @@ export function createEnemyAi(deps) {
 	//    降りた場所の下の棘は着地で潰れる（壊した数には入らない＝怯まない）。
 	function resolveThorns(e, meta) {
 		return e?._thorns !== undefined ? e._thorns : meta?.thorns;
+	}
+	// キュー76⑥（2026-10-17 ユーザー判定「へばりつき戦法でトゲを一度も見ることなく倒せた」）：
+	// 着地だけでは相3が数秒で終わると一度も降らない∴**相に入った最初の tick に1回**、その後は
+	// **地上にいる間 `groundEveryMs` ごと**にも降らせる（着地の分はそのまま）。
+	function tickThornsTimer(e, meta, now) {
+		// キュー76⑥: 竜の体が重なった自分の棘は砕ける（踏み潰す・壊した数には入れない＝怯まない）。
+		// 相3より前でも見る（相が戻ることは無いが、棘が残っていれば砕く）。
+		const ew = e.w ?? 1, eh = e.h ?? 1;
+		for (const t of thornsOf(e)) {
+			if (t.phase === 'up' && aabbOverlap(t.c, t.r, 1, 1, e.x, e.y, ew, eh)) {
+				showThornShatter(t); removeThorn(t);
+				e._thornsCrushed = (e._thornsCrushed ?? 0) + 1;
+			}
+		}
+		const cfg = resolveThorns(e, meta);
+		if (!cfg) return;
+		// 2撃目（移動先を読む）＝1撃目が落ちる瞬間
+		if (e._thornFollow && now >= e._thornFollow.at) dropThornFollow(e, now);
+		if (!cfg.groundEveryMs) return;
+		if (e._thornTimerAt == null) {
+			e._thornTimerAt = now + cfg.groundEveryMs;
+			dropThorns(e, now);
+			return;
+		}
+		if (now < e._thornTimerAt) return;
+		if (e._soarPhase != null && e._soarPhase !== 'ground') return;   // 空の間は着地の分に任せる
+		e._thornTimerAt = now + cfg.groundEveryMs;
+		dropThorns(e, now);
 	}
 
 	const thorns = [];
@@ -6267,6 +6412,15 @@ export function createEnemyAi(deps) {
 	}
 
 	// 着地のたびに呼ぶ（landSoar から）。置いた本数を返す。
+	// キュー76⑥（2026-10-17 ユーザー判定「プレイヤーが今いる位置から移動しないとダメージを受ける状態を作る。
+	// 周辺3x3の9セル分は棘を落として、2撃目でさらに移動先を読んで落とす」）：
+	//   1撃目＝プレイヤーの立つセルを中心に (2·block+1)² セル（block 1＝3×3）へ予告 → warnMs 後に落ちる。
+	//   2撃目（follow）＝1撃目が落ちた瞬間、プレイヤーが1撃目の時点から動いた向きへ followLead セル先を中心に
+	//   もう一度同じ形（立ち止まっていれば同じ場所）。まっすぐ逃げ続けると当たる＝向きを変えるか引き返す。
+	//   **抜け道の保証**（thornBlockEscapes）＝予告のあいだに歩ける歩数（warnMs/TICK×MOVE_STEP）で、壁・竜の体・
+	//   石・立っている棘を避けて、落ちる場所の外へ出られること。無理なら1方向の列だけ抜いて通路にし、それでも
+	//   無理ならその撃ちは出さない。置いた後も部屋の床の reachRatio 以上へ歩ける（閉じ込めない）。
+	//   旧「隣どうしに並べない」は塊で落とす形と両立しない∴この形では使わない（DECISIONS 2026-10-17（4））。
 	function dropThorns(e, now) {
 		const meta = ENEMY_META[e.type];
 		const cfg = resolveThorns(e, meta);
@@ -6278,40 +6432,106 @@ export function createEnemyAi(deps) {
 		for (const t of thornsOf(e)) {
 			if (aabbOverlap(t.c, t.r, 1, 1, e.x, e.y, ew, eh)) { showThornShatter(t); removeThorn(t); }
 		}
-		const room = Math.max(0, (cfg.maxOnFloor ?? 6) - thornsOf(e).length);
-		const want = Math.min(cfg.count ?? 3, room);
 		e._thornWaves = (e._thornWaves ?? 0) + 1;
-		if (want <= 0) return 0;
-		const ringMin = cfg.ringMin ?? 1, ringMax = cfg.ringMax ?? 3;
+		const r0 = toTileRow(player.y), c0 = toTileCol(player.x);
+		const placed = dropThornBlock(e, now, cfg, r0, c0);
+		// 2撃目の予約（1撃目が落ちる瞬間に、その時のプレイヤーの動きを読んで落とす＝tickThornsTimer）
+		if (cfg.follow && placed > 0) e._thornFollow = { at: now + (cfg.warnMs ?? 720), r0, c0 };
+		return placed;
+	}
+	function dropThornFollow(e, now) {
+		const f = e._thornFollow;
+		e._thornFollow = null;
+		const cfg = resolveThorns(e, ENEMY_META[e.type]);
+		const sd = getStageData();
+		const player = getPlayer();
+		if (!f || !cfg || !sd || !player) return 0;
+		const r1 = toTileRow(player.y), c1 = toTileCol(player.x);
+		// 読みの深さ `followLead`＝予告のあいだにまっすぐ走れば着く辺り（3 セル走る→中心 2 セル先の3×3 にかかる）。
+		// 止まる・向きを変えるのが答え（1セル先だと走り抜けて当たらなかった＝実測）。
+		const lead = cfg.followLead ?? 2;
+		const cr = Math.max(0, Math.min(sd.rows - 1, r1 + Math.sign(r1 - f.r0) * lead));
+		const cc = Math.max(0, Math.min(sd.cols - 1, c1 + Math.sign(c1 - f.c0) * lead));
+		e._thornFollows = (e._thornFollows ?? 0) + 1;
+		return dropThornBlock(e, now, cfg, cr, cc);
+	}
+	// 落ちる場所の外へ、予告のあいだに歩いて出られるか（壁・竜の体・石・立っている棘は通れない／予告中の印は通れる）。
+	function thornBlockEscapes(e, cells, stones) {
+		const sd = getStageData();
+		const player = getPlayer();
+		const cfg = resolveThorns(e, ENEMY_META[e.type]);
+		const budget = Math.floor(Math.floor((cfg?.warnMs ?? 720) / TICK_MS) * MOVE_STEP);
+		const ew = e.w ?? 1, eh = e.h ?? 1;
+		const up = new Set(thorns.filter((t) => t.phase === 'up').map((t) => `${t.r},${t.c}`));
+		const unsafe = new Set([...cells, ...thorns.filter((t) => t.phase === 'warn').map((t) => `${t.r},${t.c}`)]);
+		// 外周（壁の列・閉じた主の間の扉 `:`）は出口に数えない（扉は tilePassable だが戦闘中は閉じている）
+		const walk = (r, c) => r > 0 && r < sd.rows - 1 && c > 0 && c < sd.cols - 1 && tilePassable(r, c)
+			&& !up.has(`${r},${c}`) && !aabbOverlap(c, r, 1, 1, e.x, e.y, ew, eh)
+			&& !stones.some((st) => st.r === r && st.c === c);
+		const r0 = toTileRow(player.y), c0 = toTileCol(player.x);
+		if (!unsafe.has(`${r0},${c0}`)) return true;
+		const seen = new Set([`${r0},${c0}`]);
+		let frontier = [[r0, c0]];
+		for (let d = 1; d <= budget; d++) {
+			const next = [];
+			for (const [r, c] of frontier) {
+				for (const [dr, dc] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+					const nr = r + dr, nc = c + dc, k = `${nr},${nc}`;
+					if (seen.has(k) || !walk(nr, nc)) continue;
+					if (!unsafe.has(k)) return true;
+					seen.add(k);
+					next.push([nr, nc]);
+				}
+			}
+			frontier = next;
+		}
+		return false;
+	}
+	function dropThornBlock(e, now, cfg, cr, cc) {
+		const sd = getStageData();
+		const player = getPlayer();
+		const ew = e.w ?? 1, eh = e.h ?? 1;
+		const room = Math.max(0, (cfg.maxOnFloor ?? 20) - thornsOf(e).length);
+		if (room <= 0) return 0;
 		const _sst = getSS(getCurrentLayer(), getStageKey());
 		const stones = Object.values(_sst.stonePositions ?? {});
-		const blocked = new Set(thorns.map((t) => `${t.r},${t.c}`));
-		const seed = numericSeedOf(e.id) + e._thornWaves * 7919;
-		const cands = [];
-		for (let r = 0; r < sd.rows; r++) {
-			for (let c = 0; c < sd.cols; c++) {
-				if (!tilePassable(r, c) || blocked.has(`${r},${c}`)) continue;
-				const g = boxGap(c, r, 1, 1, player.x, player.y, 1, 1);
-				if (g < ringMin || g > ringMax) continue;
+		const taken = new Set(thorns.map((t) => `${t.r},${t.c}`));
+		const rad = cfg.block ?? 1;
+		let cells = [];
+		for (let r = cr - rad; r <= cr + rad; r++) {
+			for (let c = cc - rad; c <= cc + rad; c++) {
+				// 外周（壁の列）には落とさない＝閉じた主の間の扉 `:` も床扱い（tilePassable）なので外周ごと除く
+				if (r <= 0 || r >= sd.rows - 1 || c <= 0 || c >= sd.cols - 1 || !tilePassable(r, c)) continue;
+				if (taken.has(`${r},${c}`)) continue;
 				if (aabbOverlap(c, r, 1, 1, e.x, e.y, ew, eh)) continue;
 				if (stones.some((st) => st.r === r && st.c === c)) continue;
-				const h = (((r * 73856093) ^ (c * 19349663) ^ seed) >>> 0) % 1000;
-				cands.push({ r, c, h });
+				cells.push(`${r},${c}`);
 			}
 		}
-		cands.sort((a, b) => a.h - b.h);
+		// 抜け道：出られなければ、プレイヤーから1方向の列だけ抜いて通路にする（空いている向きから順に試す）
+		if (!thornBlockEscapes(e, cells, stones)) {
+			const r0 = toTileRow(player.y), c0 = toTileCol(player.x);
+			let ok = false;
+			for (const [dr, dc] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+				const lane = new Set();
+				for (let i = 0; i <= rad * 2 + 1; i++) lane.add(`${r0 + dr * i},${c0 + dc * i}`);
+				const trial = cells.filter((k) => !lane.has(k));
+				if (thornBlockEscapes(e, trial, stones)) { cells = trial; ok = true; break; }
+			}
+			if (!ok) return 0;
+		}
+		// 閉じ込めない：全部立った後も部屋の床の reachRatio 以上へ歩ける（立つ場所を1つずつ足して確かめる）
 		const need = Math.ceil(roomFloorCount() * (cfg.reachRatio ?? 0.5));
+		const blocked = new Set(thorns.map((t) => `${t.r},${t.c}`));
 		let placed = 0;
-		for (const s of cands) {
-			if (placed >= want) break;
-			// 隣どうしに並べない（壁の列を作らない＝1本ずつ壊せる散らばりにする）
-			if (thornsOf(e).some((t) => Math.abs(t.r - s.r) <= 1 && Math.abs(t.c - s.c) <= 1)) continue;
-			const k = `${s.r},${s.c}`;
+		for (const k of cells) {
+			if (placed >= room) break;
 			blocked.add(k);
 			if (thornReachCount(blocked) < need) { blocked.delete(k); continue; }
+			const [r, c] = k.split(',').map(Number);
 			const t = {
 				id: `thorn${++thornSeq}`, ownerId: e.id,
-				r: s.r, c: s.c, x: s.c, y: s.r, w: 1, h: 1,
+				r, c, x: c, y: r, w: 1, h: 1,
 				phase: 'warn', at: now + (cfg.warnMs ?? 720), until: null,
 				warnMs: cfg.warnMs ?? 720, el: null,
 			};
@@ -6323,10 +6543,38 @@ export function createEnemyAi(deps) {
 		return placed;
 	}
 
+	// キュー76⑥（2026-10-17 ユーザー判定「龍本体と棘で身動き取れなくなる」）：プレイヤーの上下左右が
+	// 全部塞がれ（壁・敵の体・石・立っている棘）、そのうち1つでも棘なら、隣の棘を崩す（壊した数には
+	// 入れない＝怯まない）。剣で壊すこともできるが、竜の目の前で1本ずつは実質無理∴閉じ込めは作らない。
+	function releaseEnclosedPlayer() {
+		const sd = getStageData();
+		const player = getPlayer();
+		if (!sd || !player) return;
+		const r0 = toTileRow(player.y), c0 = toTileCol(player.x);
+		const sst = getSS(getCurrentLayer(), getStageKey());
+		const stones = Object.values(sst.stonePositions ?? {});
+		const around = [];
+		for (const [dr, dc] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+			const r = r0 + dr, c = c0 + dc;
+			if (r < 0 || r >= sd.rows || c < 0 || c >= sd.cols || !tilePassable(r, c)) continue;
+			const thorn = thorns.find((t) => t.phase === 'up' && t.r === r && t.c === c);
+			if (thorn) { around.push(thorn); continue; }
+			if (stones.some((st) => st.r === r && st.c === c)) continue;
+			if (getEnemies().some((o) => aabbOverlap(c, r, 1, 1, o.x, o.y, o.w ?? 1, o.h ?? 1))) continue;
+			return;   // 空きがある＝閉じ込められていない
+		}
+		for (const t of around) {
+			showThornShatter(t); removeThorn(t);
+			const owner = getEnemies().find((o) => o.id === t.ownerId);
+			if (owner) owner._thornsReleased = (owner._thornsReleased ?? 0) + 1;
+		}
+	}
+
 	// 棘の時計（行動ゲートの外＝竜の硬直・気絶・滞空のどれでも進む＝GUIDE §7-7）。
 	function tickThorns(now) {
 		if (thorns.length === 0) return;
 		const player = getPlayer();
+		releaseEnclosedPlayer();
 		for (const t of [...thorns]) {
 			const owner = getEnemies().find((e) => e.id === t.ownerId);
 			const cfg = owner ? resolveThorns(owner, ENEMY_META[owner.type]) : null;
@@ -6477,6 +6725,7 @@ export function createEnemyAi(deps) {
 			const breathing = tickBreath(e, meta, now);
 			// キュー76（Ω）: 面の技の予告も同じ枠（立っている予告は先に解決する）。向き直りもここ。
 			const aspecting = tickAspect(e, meta, now);
+			if (meta.aspect) tickThornsTimer(e, meta, now);
 			// Phase 8-4 (4) 0d-3（4体目 J）: 締め上げの予告も同じ枠（立っている予告は先に解決する）。
 			// ⚠️ 硬直（`frozen`）より**前**に呼ぶ＝解決が締め上げ自身の硬直を立てる∴後ろに置くと
 			//    2回目以降の締め上げが宙吊りになる（跳躍の 0d-2.7 の罠と同型）。

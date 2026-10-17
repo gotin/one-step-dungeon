@@ -151,10 +151,32 @@ test.describe('金の装束（キュー76⑤）', () => {
     });
     const pl = await page.evaluate(() => {
       const p = window.__game.getPlayer();
-      return { x: p.x, y: p.y, has: !!p.hasGoldGarb };
+      return { x: p.x, y: p.y };
     });
-    expect(pl).toEqual({ x: 10, y: 1, has: true });
-    expect(await page.locator('#msg-bar').textContent()).toContain('剣を 振る 速さ');
+    // 宝箱（1,10）に触れた瞬間に演出で世界が止まる＝半マス手前（9.5）で止まることがある
+    expect(pl.y).toBe(1);
+    expect(pl.x).toBeGreaterThanOrEqual(9.5);
+    // 文は名前だけ＝効果は書かない（2026-10-17 ユーザー決定「体感して理解するだけで」）
+    const msg = await page.locator('#msg-bar').textContent();
+    expect(msg).toContain('金の装束 を手に入れた');
+    expect(msg, '効果の説明が文に残っている').not.toMatch(/速さ|はね返/);
+
+    // 入手の演出（2026-10-17 ユーザー提案「スーパーサイヤ人みたいに、オーラがついてその間に見た目がかわる」）：
+    // 世界が止まり、勇者の後ろにオーラ・閃光の前は元の姿 → 閃光の後は金の装束 → 片付いて世界が戻る
+    await page.waitForFunction(() => !!document.querySelector('.garb-awakening-aura'), null, { timeout: 3_000 });
+    const early = await page.evaluate(() => ({
+      frozen: window.__game.getState().isTransitioning,
+      has: !!window.__game.getPlayer().hasGoldGarb,
+      auraBehind: getComputedStyle(document.querySelector('.garb-awakening-aura')).zIndex,
+    }));
+    expect(early.frozen, '演出の間も世界が動いている').toBe(true);
+    expect(early.has, '閃光の前から金の姿になっている（変わる瞬間が見えない）').toBe(false);
+    expect(early.auraBehind, 'オーラが勇者の前に出ている').toBe('-1');
+    await page.waitForFunction(() => !!window.__game.getPlayer().hasGoldGarb, null, { timeout: 3_000 });
+    expect(await page.evaluate(() => !!document.querySelector('.garb-awakening')), '姿が変わった時にはまだ演出の途中').toBe(true);
+    await page.waitForFunction(() => !document.querySelector('.garb-awakening, .garb-awakening-aura, .garb-awakening-dim')
+      && !window.__game.getState().isTransitioning, null, { timeout: 4_000 });
+    expect(await page.evaluate(() => !!window.__game.getPlayer().hasGoldGarb), '演出の後に装束が無い').toBe(true);
 
     // 見た目＝プレイヤーの絵が金のパレット（服の色 #f5c542 のドットがある）
     const goldDots = await page.evaluate(() => {

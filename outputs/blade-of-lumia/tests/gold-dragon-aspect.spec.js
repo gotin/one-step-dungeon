@@ -44,10 +44,11 @@ async function place(page, px, py, { turnLock = true } = {}) {
     const g = window.__game;
     const id = g.getEnemies()[0].id;
     const pl = g.getPlayer();
-    g.setEnemyFieldForTest(id, { x: 4, y: 3, dir: 'right', speed: 0, _aspPhase: 'idle', _aspAt: null,
+    g.setEnemyFieldForTest(id, { x: 4, y: 3, dir: 'right', speed: 0, _aspPhase: 'idle', _aspAt: null, _aspRetreat: null,
       ...(turnLock ? { _aspTurnAt: 1e12 } : {}) });
     pl.x = 10; pl.y = 8; g.step(14);   // 遠くで無敵窓（1500ms）を明けさせる
-    g.setEnemyFieldForTest(id, { _aspNext: 0, _freezeUntil: 0, _aspPhase: 'idle' });
+    // キュー76⑥: 盾で防いだ後の飛び退き・間合いを保つ番も前のケースから持ち越さない
+    g.setEnemyFieldForTest(id, { _aspNext: 0, _freezeUntil: 0, _aspPhase: 'idle', _aspRetreat: null, _aspHold: false });
     pl.x = px; pl.y = py; pl.hp = 40;
     const dx = 5 - px, dy = 4 - py;
     g.setHeroDir(Math.abs(dx) >= Math.abs(dy) ? (dx > 0 ? 'right' : 'left') : (dy > 0 ? 'down' : 'up'));

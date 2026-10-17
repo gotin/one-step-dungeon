@@ -52,6 +52,7 @@ import { createEnemyAi } from './enemy-ai.js';
 // ── プレイヤー移動・タイルイベント（Phase 0-2 Step 5: player.js へ切り出し）──
 import { createPlayer } from './player.js';
 import { createAuraAwakening } from './aura-awakening.js';
+import { createGarbAwakening } from './garb-awakening.js';
 // ── 剣攻撃・ダメージ（Phase 0-2 Step 5: combat.js へ切り出し）───────────────
 import { createCombat } from './combat.js';
 // ── ボス戦・エンディング（Phase 0-2 Step 5: boss.js へ切り出し）─────────────
@@ -898,6 +899,7 @@ const { checkStoneOnSwitch, evaluateConditions, refreshGates } = createCondition
 		swordAttack: () => swordAttack(),
 		startCharge:   () => startCharge(),
 		releaseCharge: () => releaseCharge(),
+		cancelCharge:  () => cancelCharge(),
 		useSubItem:  () => useSubItem(),
 		toggleFlight: () => toggleFlight(),
 		togglePause,
@@ -1223,11 +1225,24 @@ const { checkStoneOnSwitch, evaluateConditions, refreshGates } = createCondition
 		clearSwordHeld: () => document.querySelectorAll('.sword-held, .sword-aura').forEach((el) => el.remove()),
 		playSound,
 	});
+	// 金の装束を手に入れた瞬間の演出（オーラの中で姿が変わる＝紋章の演出と同じ部品・2026-10-17）。
+	const _garbAwakening = createGarbAwakening({
+		getCharLayerEl: () => charLayerEl,
+		getCellPx:      () => getCellPx(),
+		getPlayer:      () => player,
+		setFrozen:      (v) => { isTransitioning = !!v; },
+		setHeroDir:     (v) => { heroDir = v; },
+		refreshPlayer:  () => { player._atkUntil = null; updatePlayerCharEl?.(); },
+		clearSwordHeld: () => document.querySelectorAll('.sword-held, .sword-aura').forEach((el) => el.remove()),
+		playSound,
+	});
 	const _player = createPlayer({
 		// ⚠️ 宝箱から得たときは grantReward の直後に renderBoard() が char-layer を空に作り直す
 		//    （[[blade-renderboard-pairs-renderchars]]）＝その場で絵を足すと消される。世界は今止めて、
 		//    絵は宝箱の描き直しが済んでから出す（実際の宝箱で踏んだ・2026-10-11）。
 		onAuraAwakened: () => { isTransitioning = true; setTimeout(() => _awakening.play(), 0); },
+		// 金の装束も同じ理由で、宝箱の描き直しが済んでから出す。
+		onGoldGarbAwakened: () => { isTransitioning = true; setTimeout(() => _garbAwakening.play(), 0); },
 		getStageData:   () => stageData,
 		getPlayer:      () => player,
 		getEnemies:     () => enemies,
@@ -2511,6 +2526,9 @@ export function getGameState() {
 		// Phase 9-6: ボス終幕の演出中（onBossDefeated / onBossYielded が走っている間）。
 		// 終幕は async でメッセージを順に見せる＝「演出が終わったか」をテストが待てるように出す。
 		bossDefeating: _bossDefeating,
+		// 剣ビームの溜め中か（charge.js isCharging）。溜めの光（.charge-aura）は描き直しで DOM が消えることが
+		// あり当てにならない∴状態はこちらで見る（2026-10-17 撃破後に動けないバグの番人用）。
+		charging: getIsCharging(),
 	};
 }
 
@@ -2758,12 +2776,20 @@ export function getEnemiesSnapshot() {
 		laserWarn: e._aspBeamShape ? JSON.parse(JSON.stringify(e._aspBeamShape)) : null,
 		laserFire: e._laserShape ? JSON.parse(JSON.stringify(e._laserShape)) : null,
 		lasers: e._lasers ?? null,
+		// キュー76⑥: 張り付き対策の観測用。aspRetreating＝飛び退きの最中／aspRetreats＝飛び退いた回数／
+		// aspHold＝間合いを保つ番（正面で寄らない）。
+		aspRetreating: !!e._aspRetreat,
+		aspRetreats: e._aspRetreats ?? null,
+		aspHold: !!e._aspHold,
 		// キュー76③-3（Ω）: 金の棘（thorns）の観測用。thorns＝相3で生えた設定（`resolveThorns` が読む）／
 		// thornWaves＝着地で棘を降らせようとした回数／thornsBroken＝剣で壊した本数／
 		// thornStuns＝全部壊して怯んだ回数／thornHits＝落ちてきた棘が当たった回数。
 		// 棘そのものは敵ではない＝`getThorns()` が唯一の真実。
 		thorns: e._thorns ?? null,
 		thornWaves: e._thornWaves ?? null,
+		thornFollows: e._thornFollows ?? null,   // キュー76⑥: 2撃目（移動先を読む）を落とした回数
+		thornsCrushed: e._thornsCrushed ?? null,   // キュー76⑥: 竜が踏み潰した棘の数
+		thornsReleased: e._thornsReleased ?? null, // キュー76⑥: 閉じ込められたプレイヤーの隣で崩れた棘の数
 		thornsBroken: e._thornsBroken ?? null,
 		thornStuns: e._thornStuns ?? null,
 		thornHits: e._thornHits ?? null,

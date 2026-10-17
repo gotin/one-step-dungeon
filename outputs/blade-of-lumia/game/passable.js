@@ -136,9 +136,11 @@ export function createPassable(d) {
 	// ＝プレイヤーも地上の敵も通れない（デバッグモードでも素通りさせない＝石と同じ位置で見る）。
 	// 予告中（'warn'）はまだ床。持ち主は enemy-ai.js（`getThorns()`）。
 	const getThorns = d.getThorns ?? (() => []);
-	function thornBlocksRange(r0, r1, c0, c1) {
+	// `ownerId` を渡すとその敵自身の棘は通れる（キュー76⑥：竜は自分の棘を踏み潰して進む）。
+	function thornBlocksRange(r0, r1, c0, c1, ownerId = null) {
 		for (const t of getThorns()) {
 			if (t.phase !== 'up') continue;
+			if (ownerId != null && t.ownerId === ownerId) continue;
 			if (t.r >= r0 && t.r <= r1 && t.c >= c0 && t.c <= c1) return true;
 		}
 		return false;
@@ -408,7 +410,9 @@ export function createPassable(d) {
 		// キュー76③-3: 金の棘。空に居る竜（滞空の air/aim/breath）は棘の上を飛べる＝旋回が棘で
 		// 詰まらない（降りた場所の下の棘は着地で潰れる＝enemy-ai.js dropThorns）。
 		const aloft = self?._soarPhase === 'air' || self?._soarPhase === 'aim' || self?._soarPhase === 'breath';
-		if (!aloft && thornBlocksRange(r0, r1, c0, c1)) return false;
+		// キュー76⑥（2026-10-17 ユーザー判定「龍本体と棘で身動き取れなくなる」）：地上の竜も自分の棘は
+		// 踏み潰して進む（重なった棘は enemy-ai.js tickThornsTimer が砕く）＝棘が竜の足を止めない。
+		if (!aloft && thornBlocksRange(r0, r1, c0, c1, self?.id ?? null)) return false;
 		// 他の敵と占有範囲が重なるなら通れない（AABB 重なり判定）
 		for (const e of getEnemies()) {
 			if (e === self) continue;

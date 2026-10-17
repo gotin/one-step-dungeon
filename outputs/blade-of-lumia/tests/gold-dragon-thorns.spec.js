@@ -72,13 +72,19 @@ test.describe('金翼の邪竜 Ω：相3 金の棘', () => {
     expect(Math.floor(P3.thorns.warnMs / 120) * 0.5, '予告のあいだに落ちる場所から出られない').toBeGreaterThan(1);
     // 後半でも予告は縮めない（GUIDE §7-16）＝相1の尾の予告以上
     expect(P3.thorns.warnMs).toBeGreaterThanOrEqual(META.aspect.tail.windupMs);
-    expect(P3.thorns.ringMin, '足元（隣接8セル）に落とさない').toBeGreaterThanOrEqual(1);
-    expect(P3.thorns.count).toBeLessThanOrEqual(P3.thorns.maxOnFloor);
+    // キュー76⑥（2026-10-17 ユーザー判定「プレイヤーが今いる位置から移動しないとダメージを受ける状態を作る」）：
+    // 旧「隙間 1〜3 セルに散らす（ringMin/ringMax/count）」は失効＝足元の3×3＋移動先を読む2撃目。
+    expect(P3.thorns.ringMin, '旧の散らす設定が残っている').toBeUndefined();
+    expect(P3.thorns.block, '足元の3×3').toBe(1);
+    expect(P3.thorns.follow, '2撃目（移動先を読む）').toBe(true);
+    // 3×3 の外へ出る歩数（中心から block+1 セル）＜ 予告のあいだに歩ける歩数
+    expect(Math.floor(P3.thorns.warnMs / 120) * 0.5, '予告のあいだに3×3の外へ出られない').toBeGreaterThan(P3.thorns.block + 1 - 1e-9);
+    expect(P3.thorns.maxOnFloor, '2撃ぶん置けない').toBeGreaterThanOrEqual(2 * (2 * P3.thorns.block + 1) ** 2);
     expect(P3.thorns.stunMs).toBeGreaterThan(0);
     expect(P3.thorns.reachRatio).toBeGreaterThanOrEqual(0.5);
   });
 
-  test('② 相の前の着地では降らない／相の後は隣接8セルと竜の体を避けて降り、予告の後に立つ', async ({ page }) => {
+  test('② 相の前の着地では降らない／相の後は足元の3×3（竜の体は除く）に降り、予告の後に立つ', async ({ page }) => {
     const errors = await setup(page, { dmg: PHASE2_DMG });
     const before = await stepUntilWave(page);
     expect(before?.landed, '相2で一度も着地しない').toBe(true);
@@ -91,29 +97,29 @@ test.describe('金翼の邪竜 Ω：相3 金の棘', () => {
     const w = await stepUntilWave(page);
     expect(w?.landed, '相3で着地しない').toBe(true);
     expect(w.thorns.length, '着地で棘が降らない').toBeGreaterThanOrEqual(1);
-    expect(w.thorns.length).toBeLessThanOrEqual(P3.thorns.count);
+    expect(w.thorns.length).toBeLessThanOrEqual((2 * P3.thorns.block + 1) ** 2);
     for (const t of w.thorns) {
       expect(t.phase, '降った直後は予告').toBe('warn');
-      const g = gapOf(t.c, t.r, w.player.x, w.player.y);
-      expect(g, `棘 (${t.r},${t.c}) がプレイヤーの隣接8セルに落ちる`).toBeGreaterThanOrEqual(P3.thorns.ringMin);
-      expect(g).toBeLessThanOrEqual(P3.thorns.ringMax);
+      expect(Math.max(Math.abs(t.r - w.player.y), Math.abs(t.c - w.player.x)), `棘 (${t.r},${t.c}) が足元の3×3の外`).toBeLessThanOrEqual(P3.thorns.block);
       expect(overlaps(t.c, t.r, 1, 1, w.dragon.x, w.dragon.y, 3, 3), '竜の体の下に落ちる').toBe(false);
     }
+    expect(w.thorns.some((t) => t.r === w.player.y && t.c === w.player.x), '足元に落ちない').toBe(true);
     // 予告の長さの後に立つ（予告の1 tick 前はまだ warn）
-    const r = await page.evaluate((warnTicks) => {
+    const r = await page.evaluate(({ warnTicks, ids }) => {
       const g = window.__game;
       const pl = g.getPlayer();
       const seq = [];
       for (let t = 0; t <= warnTicks + 1; t++) {
         pl.x = 2; pl.y = 2; pl.hp = 40;
         g.step(1);
-        seq.push(g.getThorns().map((o) => o.phase).join(','));
+        // 1撃目の棘だけ（2撃目＝移動先を読む波は同じ tick に新しく予告で降る）
+        seq.push(g.getThorns().filter((o) => ids.includes(o.id)).map((o) => o.phase).join(','));
       }
       // 相3 でも炎の帯を吐き続ける（相2の滞空が続く）
       const b0 = g.getEnemies()[0].soarBreaths ?? 0;
       for (let t = 0; t < 300; t++) { pl.x = 2; pl.y = 2; pl.hp = 40; g.step(1); }
       return { seq, breaths: (g.getEnemies()[0].soarBreaths ?? 0) - b0, phases: g.getEnemies()[0].phasesTriggered };
-    }, Math.ceil(P3.thorns.warnMs / 120));
+    }, { warnTicks: Math.ceil(P3.thorns.warnMs / 120), ids: w.thorns.map((t) => t.id) });
     expect(r.seq[0]).toMatch(/warn/);
     expect(r.seq[r.seq.length - 1], '予告の後に立たない').toMatch(/^(up,?)+$/);
     expect(r.phases).toEqual([0.66, 0.33]);
@@ -165,6 +171,8 @@ test.describe('金翼の邪竜 Ω：相3 金の棘', () => {
       const g = window.__game;
       const pl = g.getPlayer();
       const id = g.getEnemies()[0].id;
+      // キュー76⑥: 壊す仕組みだけを測る＝2撃目（移動先を読む）は止める
+      g.setEnemyFieldForTest(id, { _thornFollow: null, _thornTimerAt: 1e12, _thorns: { ...g.getEnemies()[0].thorns, follow: false } });
       for (let t = 0; t < warnTicks + 1; t++) { pl.x = 2; pl.y = 2; g.step(1); }
       // 竜を棘から離れた隅へ置いて止める（剣が竜に吸われない・竜の体で塞がれない）
       const th0 = g.getThorns();
@@ -173,7 +181,17 @@ test.describe('金翼の邪竜 Ω：相3 金の棘', () => {
         .sort((a, b) => b.d - a.d)[0];
       g.setEnemyFieldForTest(id, { x: far.x, y: far.y, _freezeUntil: 1e12, stunUntil: 0 });
       const log = [];
-      for (const t of th0) {
+      // 3×3 の塊＝真ん中の棘は隣が全部棘＝外側から壊していく（毎回「隣に立てる棘」を選び直す）
+      const canReach = (t) => [[-1, 0], [1, 0], [0, -1], [0, 1]].some(([dx, dy]) => {
+        const sx = t.c + dx, sy = t.r + dy;
+        if (sx < floor.x0 || sx > floor.x1 || sy < floor.y0 || sy > floor.y1) return false;
+        if (g.getThorns().some((o) => o.r === sy && o.c === sx)) return false;
+        const d = g.getEnemies()[0];
+        return !(sx < d.x + 3 && d.x < sx + 1 && sy < d.y + 3 && d.y < sy + 1);
+      });
+      for (let n = 0; n < th0.length; n++) {
+        const t = g.getThorns().find(canReach) ?? g.getThorns()[0];
+        if (!t) break;
         const before = g.getThorns().length;
         let swung = false;
         for (const [dx, dy, dir] of [[-1, 0, 'right'], [1, 0, 'left'], [0, -1, 'down'], [0, 1, 'up']]) {
@@ -220,7 +238,8 @@ test.describe('金翼の邪竜 Ω：相3 金の棘', () => {
         waved = (g.getEnemies()[0].thornWaves ?? 0) > w0 && g.getThorns().length > 0;
       }
       // 棘を壊さずに寿命まで待つ（竜は止める＝次の波を降らせない）
-      g.setEnemyFieldForTest(id, { _freezeUntil: 1e12 });
+      // キュー76⑥: 地上の時計（groundEveryMs）も止める
+      g.setEnemyFieldForTest(id, { _freezeUntil: 1e12, _thornTimerAt: 1e12 });
       for (let t = 0; t < warnTicks + lifeTicks + 2; t++) { pl.x = 2; pl.y = 2; pl.hp = 40; g.step(1); }
       return { waved, left: g.getThorns().length, stuns: (g.getEnemies()[0].thornStuns ?? 0) - s0 };
     }, { lifeTicks: Math.ceil(P3.thorns.lifeMs / 120), warnTicks: Math.ceil(P3.thorns.warnMs / 120) });
@@ -290,9 +309,13 @@ test.describe('金翼の邪竜 Ω：相3 金の棘', () => {
       }
       if (!target) return null;
       g.setEnemyFieldForTest(id, { _freezeUntil: 1e12 });
-      // 1 tick だけ印の上・残りは2セル離れた床で待つ
+      // 1 tick だけ印の上・残りはどの印とも重ならない床で待つ（キュー76⑥：足元も狙う＝元の立ち位置も印になる）
+      const marks = g.getThorns().map((o) => `${o.r},${o.c}`);
+      const e0 = g.getEnemies()[0];
+      const safe = [[9, 7], [2, 7], [9, 2], [5, 8], [1, 4], [10, 4], [5, 1]].find(([x, y]) =>
+        !marks.includes(`${y},${x}`) && !(x < e0.x + 3 && e0.x < x + 1 && y < e0.y + 3 && e0.y < y + 1));
       pl.x = target.c; pl.y = target.r; g.step(1);
-      for (let t = 0; t < warnTicks + 1; t++) { pl.x = 2; pl.y = 2; pl.hp = 40; g.step(1); }
+      for (let t = 0; t < warnTicks + 1; t++) { pl.x = safe[0]; pl.y = safe[1]; pl.hp = 40; g.step(1); }
       return { hits: (g.getEnemies()[0].thornHits ?? 0) - h0, stood: g.getThorns().some((o) => o.id === target.id && o.phase === 'up') };
     }, { warnTicks: Math.ceil(P3.thorns.warnMs / 120) });
     expect(r2, '2回目の波が来ない').not.toBeNull();
@@ -301,9 +324,9 @@ test.describe('金翼の邪竜 Ω：相3 金の棘', () => {
     expect(errors).toEqual([]);
   });
 
-  test('⑥ 何回降っても、隣接8セル・竜の体には落ちず、上限を守り、部屋の床の半分以上へ歩いて行ける', async ({ page }) => {
+  test('⑥ 何回降っても、足元を狙いつつ予告のあいだに抜けられる道を残し、竜の体には落ちず、上限を守り、部屋の床の半分以上へ歩いて行ける', async ({ page }) => {
     const errors = await setup(page);
-    const r = await page.evaluate(({ floor, ratio }) => {
+    const r = await page.evaluate(({ floor, ratio, budget }) => {
       const g = window.__game;
       const pl = g.getPlayer();
       const id = g.getEnemies()[0].id;
@@ -312,8 +335,9 @@ test.describe('金翼の邪竜 Ω：相3 金の棘', () => {
       const bad = [];
       const seenIds = new Set();
       // プレイヤーは部屋の中を巡回する（いろいろな場所で棘が降る）
-      const path = [[2, 2], [9, 2], [9, 7], [2, 7], [5, 4]];
-      let worst = Infinity, waves = 0, maxOnFloor = 0;
+      // 扉の隣（西 (1,4)・東 (10,5)）と隅（(1,1)・(10,8)）も通る＝外周と抜け道の確認を試す
+      const path = [[2, 2], [9, 2], [1, 4], [9, 7], [10, 8], [2, 7], [1, 1], [5, 4], [10, 5]];
+      let worst = Infinity, waves = 0, maxOnFloor = 0, footWaves = 0;
       const total = (floor.x1 - floor.x0 + 1) * (floor.y1 - floor.y0 + 1);
       let w0 = g.getEnemies()[0].thornWaves ?? 0;
       for (let t = 0; t < 1500; t++) {
@@ -326,16 +350,35 @@ test.describe('金翼の邪竜 Ω：相3 金の棘', () => {
         maxOnFloor = Math.max(maxOnFloor, g.getThorns().length);
         if ((e.thornWaves ?? 0) > w0) {
           w0 = e.thornWaves; waves++;
-          // 降った直後の棘＝隣接8セル・竜の体の下に落ちていない（波ごとに全部見る）
+          // 降った直後の棘＝竜の体の下に落ちていない（波ごとに全部見る）
           for (const o of g.getThorns()) {
             if (seenIds.has(o.id)) continue;
             seenIds.add(o.id);
-            const gx = Math.max(0, pl.x - (o.c + 1), o.c - (pl.x + 1));
-            const gy = Math.max(0, pl.y - (o.r + 1), o.r - (pl.y + 1));
-            if (Math.max(gx, gy) < 1) bad.push(`隣接 ${o.r},${o.c}`);
+            if (o.r === pl.y && o.c === pl.x) footWaves++;
             if (o.c < e.x + 3 && e.x < o.c + 1 && o.r < e.y + 3 && e.y < o.r + 1) bad.push(`体の下 ${o.r},${o.c}`);
+            // 外周（壁の列・閉じた扉 `:`）に落ちない（キュー76⑥：西の扉に予告が出ていた）
+            if (o.c < floor.x0 || o.c > floor.x1 || o.r < floor.y0 || o.r > floor.y1) bad.push(`外周 ${o.r},${o.c}`);
           }
           const blocked = new Set(g.getThorns().map((o) => `${o.r},${o.c}`));
+          // 抜け道＝予告のあいだに歩ける歩数で、立っている棘・竜の体・壁を避けて、予告の印の外へ出られる
+          const up = new Set(g.getThorns().filter((o) => o.phase === 'up').map((o) => `${o.r},${o.c}`));
+          const warn = new Set(g.getThorns().filter((o) => o.phase === 'warn').map((o) => `${o.r},${o.c}`));
+          if (warn.has(`${pl.y},${pl.x}`)) {
+            let fr = [[pl.y, pl.x]]; const sn = new Set([`${pl.y},${pl.x}`]); let out = false;
+            for (let d = 0; d < budget && !out; d++) {
+              const nx = [];
+              for (const [rr, cc] of fr) for (const [dr, dc] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+                const nr = rr + dr, nc = cc + dc, k = `${nr},${nc}`;
+                if (sn.has(k) || up.has(k)) continue;
+                if (nc < floor.x0 || nc > floor.x1 || nr < floor.y0 || nr > floor.y1) continue;
+                if (nc < e.x + 3 && e.x < nc + 1 && nr < e.y + 3 && e.y < nr + 1) continue;
+                if (!warn.has(k)) { out = true; break; }
+                sn.add(k); nx.push([nr, nc]);
+              }
+              fr = nx;
+            }
+            if (!out) bad.push(`抜け道なし ${pl.y},${pl.x}`);
+          }
           const r0 = Math.floor(pl.y + 0.5), c0 = Math.floor(pl.x + 0.5);
           const seen = new Set([`${r0},${c0}`]);
           const q = [[r0, c0]];
@@ -351,13 +394,111 @@ test.describe('金翼の邪竜 Ω：相3 金の棘', () => {
           worst = Math.min(worst, seen.size / total);
         }
       }
-      return { worst, waves, maxOnFloor, bad, total: seenIds.size };
-    }, { floor: FLOOR, ratio: P3.thorns.reachRatio });
+      return { worst, waves, maxOnFloor, bad, total: seenIds.size, footWaves };
+    }, { floor: FLOOR, ratio: P3.thorns.reachRatio, budget: Math.floor(Math.floor(P3.thorns.warnMs / 120) * 0.5) });
     expect(r.waves, '1500 tick で棘が3回も降らない').toBeGreaterThanOrEqual(3);
     expect(r.maxOnFloor, '床の棘が上限を超えた').toBeLessThanOrEqual(P3.thorns.maxOnFloor);
     expect(r.maxOnFloor, '上限まで積もっていない（上限を測れていない）').toBe(P3.thorns.maxOnFloor);
-    expect(r.bad, '隣接8セル／竜の体の下に棘が落ちた').toEqual([]);
+    expect(r.bad, '抜け道の無い波／竜の体の下に棘が落ちた').toEqual([]);
+    expect(r.footWaves, '足元を一度も狙わない（プレイヤーの周辺を狙っていない）').toBeGreaterThan(0);
     expect(r.worst, '棘で部屋の半分以上へ歩けなくなった').toBeGreaterThanOrEqual(P3.thorns.reachRatio);
+    expect(errors).toEqual([]);
+  });
+
+  test('⑦ 立ち止まると2撃とも当たる／まっすぐ逃げ続けると2撃目（移動先を読む）に当たる／逃げて向きを変えれば無傷', async ({ page }) => {
+    const errors = [];
+    page.on('pageerror', (e) => errors.push(e.message));
+    const run = async (policy) => {
+      await page.goto(URL);
+      await waitForBoard(page);
+      await page.waitForFunction(() => window.__game.getEnemies().length === 1, null, { timeout: 10_000 });
+      return page.evaluate(({ policy, dmg }) => {
+        const g = window.__game;
+        g.pause();
+        const id = g.getEnemies()[0].id;
+        const pl = g.getPlayer();
+        pl.x = 2; pl.y = 7; g.step(1);
+        g.dealDamage(id, dmg, 'arrow', 0, 0);
+        // 竜は右上の隅で止める（体が逃げ道に絡まない・他の技を出さない）
+        g.setEnemyFieldForTest(id, { x: 8, y: 1, speed: 0, _freezeUntil: 1e12, _aspNext: 1e12 });
+        let t0 = null;
+        for (let t = 0; t < 24; t++) {
+          if (t0 == null && g.getThorns().some((o) => o.phase === 'warn')) t0 = t;
+          if (t0 != null) {
+            const k = t - t0;
+            if (policy === 'straight') g.movePlayer('right');
+            if (policy === 'turn') g.movePlayer(k < 4 ? 'right' : 'up');
+          }
+          g.step(1);
+        }
+        const e = g.getEnemies()[0];
+        return { hits: e.thornHits ?? 0, follows: e.thornFollows ?? 0, waves: e.thornWaves ?? 0 };
+      }, { policy, dmg: PHASE3_DMG });
+    };
+    const still = await run('still');
+    expect(still.waves, '前提：相3に入った瞬間に降る').toBe(1);
+    expect(still.follows, '2撃目が降らない').toBe(1);
+    expect(still.hits, '立ち止まったのに2撃とも当たらない').toBe(2);
+    const straight = await run('straight');
+    expect(straight.hits, 'まっすぐ逃げ続けたのに2撃目が当たらない（移動先を読めていない）／1撃目が避けられない').toBe(1);
+    const turn = await run('turn');
+    expect(turn.hits, '逃げて向きを変えたのに当たった（避けようがない）').toBe(0);
+    expect(errors).toEqual([]);
+  });
+
+  test('⑧ 閉じ込めない：四方が塞がれたら隣の棘が崩れる／竜は自分の棘を踏み潰して進む', async ({ page }) => {
+    // (a) 2026-10-17 ユーザーのスクショの形＝西が壁・東が竜の体（西の扉 rows 4-5 は避ける）。足元の3×3が落ちると南北の棘で四方が塞がる
+    //     （壁と棘だけで囲む置き方は既存の「床の半分へ歩ける」確認が弾く＝竜の体が絡んだときだけ起きる）→ 崩れて動ける
+    const errors = await setup(page, { dmg: 0 });
+    const a = await page.evaluate(({ warnTicks, dmg }) => {
+      const g = window.__game;
+      const id = g.getEnemies()[0].id;
+      const pl = g.getPlayer();
+      g.setEnemyFieldForTest(id, { x: 2, y: 1, speed: 0, _freezeUntil: 1e12, _aspNext: 1e12 });
+      pl.x = 1; pl.y = 2; pl.hp = 40;
+      g.dealDamage(id, dmg, 'arrow', 0, 0);
+      g.step(1);   // 相3に入った最初の tick＝足元の3×3
+      g.setEnemyFieldForTest(id, { _thornTimerAt: 1e12, _thornFollow: null });
+      const warned = g.getThorns().filter((t) => t.phase === 'warn').map((t) => `${t.r},${t.c}`).sort();
+      for (let t = 0; t < warnTicks + 2; t++) { pl.x = 1; pl.y = 2; pl.hp = 40; g.step(1); }
+      const left = g.getThorns().filter((t) => t.phase === 'up').map((t) => `${t.r},${t.c}`);
+      const y0 = pl.y;
+      for (let k = 0; k < 2; k++) { g.movePlayer('down'); g.step(1); }
+      return { warned, left, released: g.getEnemies()[0].thornsReleased ?? 0, moved: pl.y - y0 };
+    }, { warnTicks: Math.ceil(P3.thorns.warnMs / 120), dmg: PHASE3_DMG });
+    expect(a.warned, '前提：足元の3×3（竜の体と壁を除く3セル）に予告').toEqual(['1,1', '2,1', '3,1']);
+    expect(a.released, '四方が塞がれたのに棘が崩れない').toBe(2);
+    expect(a.left.filter((k) => k === '1,1' || k === '3,1'), '隣の棘が残っている').toEqual([]);
+    expect(a.moved, '崩れた後も動けない').toBeGreaterThan(0);
+
+    // (b) 竜の進む先に自分の棘 → 止まらず進み、重なった棘は砕ける（怯みの数には入らない）
+    await page.reload();
+    errors.push(...await setup(page, { dmg: 0 }));
+    const b = await page.evaluate(({ warnTicks, dmg }) => {
+      const g = window.__game;
+      const id = g.getEnemies()[0].id;
+      const pl = g.getPlayer();
+      // 竜＝体 (3..5, 3..5)。プレイヤー (7,4) で相3に入る＝3×3 (6..8, 3..5) の西の列 6 が竜の東隣
+      g.setEnemyFieldForTest(id, { x: 3, y: 3, speed: 0, _freezeUntil: 1e12, _aspNext: 1e12 });
+      pl.x = 7; pl.y = 4;
+      g.dealDamage(id, dmg, 'arrow', 0, 0);
+      g.step(1);
+      g.setEnemyFieldForTest(id, { _thornTimerAt: 1e12, _thornFollow: null });
+      for (let t = 0; t < warnTicks + 2; t++) { pl.x = 10; pl.y = 8; pl.hp = 40; g.step(1); }
+      const col6 = () => g.getThorns().filter((t) => t.phase === 'up' && t.c === 6 && t.r >= 3 && t.r <= 5).length;
+      const before = col6();
+      const s0 = g.getEnemies()[0].thornStuns ?? 0;
+      // 飛び退きの仕組みで東へ2セル進ませる（地上の移動は isPassableForEnemy を通る）
+      g.setEnemyFieldForTest(id, { _freezeUntil: 0, _aspRetreat: { tx: 5, ty: 3 } });
+      for (let t = 0; t < 4; t++) { pl.x = 10; pl.y = 8; g.step(1); }
+      const e = g.getEnemies()[0];
+      return { before, x: e.x, crushed: e.thornsCrushed ?? 0, left: col6(), stuns: (e.thornStuns ?? 0) - s0 };
+    }, { warnTicks: Math.ceil(P3.thorns.warnMs / 120), dmg: PHASE3_DMG });
+    expect(b.before, '前提：竜の東隣に棘が立っている').toBe(3);
+    expect(b.x, '自分の棘に足を止められた').toBe(5);
+    expect(b.crushed, '重なった棘が砕けない').toBeGreaterThan(0);
+    expect(b.left, '竜の体の下に棘が残っている').toBe(0);
+    expect(b.stuns, '踏み潰しで怯んだ（壊した数に入っている）').toBe(0);
     expect(errors).toEqual([]);
   });
 });

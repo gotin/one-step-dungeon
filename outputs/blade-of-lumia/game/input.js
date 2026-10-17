@@ -49,6 +49,7 @@ export function initInput(deps) {
 		swordAttack,
 		startCharge,
 		releaseCharge,
+		cancelCharge,
 		useSubItem,
 		toggleFlight,
 		togglePause,
@@ -228,14 +229,20 @@ export function initInput(deps) {
 		// keydown は 'W'、先に Shift を離してから W を離すと keyup は 'w' で届く＝'W' が
 		// heldKeys に残り、**指を離しても歩き続ける**。Shift で走る操作を足したので必ず踏む。
 		if (e.key.length === 1) { heldKeys.delete(e.key.toLowerCase()); heldKeys.delete(e.key.toUpperCase()); }
-		// 終幕中は離しても溜めを解放しない（演出の途中でビームが飛ぶのを防ぐ）
-		if (inCutscene()) return;
-		// 攻撃キーを離したらチャージ解放（剣ビーム発射判定）（Phase 3-1）
-		if ([' ','z','Z'].includes(e.key)) releaseCharge?.();
+		// 攻撃キーを離したらチャージ解放（剣ビーム発射判定）（Phase 3-1）。
+		// 終幕中は解放しない（演出の途中でビームが飛ぶのを防ぐ）が、**離したこと自体は捨てずに溜めを取り消す**。
+		// 旧＝終幕中は return で捨てていた∴演出の後も溜め（_chargeStart）が残り、溜め中の足止め
+		// （player.js movePlayer）で攻撃キーを押し直すまで動けなかった（2026-10-17 バグ報告・全ボス共通）。
+		if ([' ','z','Z'].includes(e.key)) {
+			if (inCutscene()) cancelCharge?.();
+			else releaseCharge?.();
+		}
 	});
 	// ウィンドウからフォーカスが外れると keyup が届かない（Cmd+Shift+4 のスクリーンショット・
 	// アプリ切り替えなど）＝押しっぱなしが残って勝手に歩き／走り続ける∴全部離したことにする。
-	window.addEventListener('blur', () => heldKeys.clear());
+	// 溜めも同じ＝フォーカスが外れている間に攻撃キーを離すと keyup が届かず、溜めが残って動けなくなる
+	// ∴ビームは撃たずに取り消す（2026-10-17・上の終幕中と同じ形の穴）。
+	window.addEventListener('blur', () => { heldKeys.clear(); cancelCharge?.(); });
 
 	// ── モバイル ──────────────────────────────────────────────
 	// ⚠️ 終幕の入力封じはキーボードだけでは足りない（同じ操作が別の経路で来る）。
@@ -300,7 +307,8 @@ export function initInput(deps) {
 		};
 		const releaseSword = () => {
 			if (!_swordHeld) return; _swordHeld = false;
-			if (inCutscene()) return;
+			// 終幕中は撃たずに取り消す（キーボードの keyup と同じ・2026-10-17 バグ報告）
+			if (inCutscene()) { cancelCharge?.(); return; }
 			releaseCharge?.();
 		};
 		swordBtn.addEventListener('touchstart', e => { e.preventDefault(); pressSword(); }, { passive: false });
