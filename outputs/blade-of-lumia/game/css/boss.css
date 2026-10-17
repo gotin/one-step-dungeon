@@ -88,16 +88,24 @@
 
 /* ── 選択中の目的地マーク（キュー16／距離の見せ方はキュー22 で作り直した）── */
 /* 方向（8方向の矢印）と距離（4段）だけを出す＝道案内はしない（割り切り）。 */
+/* 寸法は全部 `--mark-u`（1 単位）の倍数＝大きい画面では responsive.css が単位ごと拡大する
+ * （2026-10-17 ユーザー指摘「目的地表示が小さすぎる。右の SUB: と同じか少し小さいぐらい」）。
+ * 小さい画面は 1px＝今までと同じ寸法。
+ * ⚠️ 既定値は :root に置く＝game.css は boss.css を responsive.css より後に読む∴ここで
+ *    `#hud-mark-guide { --mark-u }` と書くと同じ強さの responsive.css の指定に後勝ちして拡大が効かない（撮って踏んだ）。 */
+:root {
+    --mark-u: 1px;
+}
 #hud-mark-guide {
     display: flex;
     align-items: center;
-    gap: 4px;
-    font-size: 11px;
+    gap: calc(4 * var(--mark-u));
+    font-size: calc(11 * var(--mark-u));
     color: #e0e8f0;
     background: rgba(10, 20, 24, 0.7);
     border: 1px solid #2a4a6a;
-    border-radius: 4px;
-    padding: 1px 6px;
+    border-radius: calc(4 * var(--mark-u));
+    padding: var(--mark-u) calc(6 * var(--mark-u));
     max-width: 40vw;
 }
 
@@ -105,11 +113,37 @@
     display: none;
 }
 
+/* 左のレーンに置くとき（game.js placeMarkGuide が付ける・2026-10-17）＝ハートの下に2段組み：
+ * 1段目＝名前／2段目＝種類の点・矢印・距離。大きさは game.js fitMarkGuide が**実際に測って**
+ * 折り返さない大きさまで `--mark-u` を縮める（名前は6文字以下なら1行・長ければ2行まで）。
+ * ⚠️ 文字数からの見積もり（旧 min(…/82)）は余白と2段目を甘く見て折り返した＝消した（ユーザーのスクショ）。 */
+#hud-mark-guide.in-lane {
+    display: grid;
+    grid-template-columns: auto auto 1fr;
+    grid-template-areas: "label label label" "dot arrow dist";
+    column-gap: calc(6 * var(--mark-u));
+    row-gap: calc(2 * var(--mark-u));
+    align-items: center;
+    justify-items: start;
+    max-width: calc(var(--lane-w, 200px) - 1.5vw - 8px);
+    margin-top: 1vh;
+    padding: calc(4 * var(--mark-u)) calc(8 * var(--mark-u));
+    box-sizing: border-box;
+}
+#hud-mark-guide.in-lane.hidden {
+    display: none;
+}
+/* 名前は最長11文字（「果ての火口跡（かけら）」）＝6文字基準の大きさで折り返して最大2行（… で切らない） */
+#hud-mark-guide.in-lane #hud-mark-label { grid-area: label; max-width: 100%; white-space: normal; overflow: visible; }
+#hud-mark-guide.in-lane #hud-mark-dot   { grid-area: dot; }
+#hud-mark-guide.in-lane #hud-mark-arrow { grid-area: arrow; }
+#hud-mark-guide.in-lane #hud-mark-dist  { grid-area: dist; white-space: nowrap; }
+
 #hud-mark-dot {
-    width: 8px;
-    height: 8px;
+    width: calc(8 * var(--mark-u));
+    height: calc(8 * var(--mark-u));
     border: 1px solid #0a1418;
-    flex: 0 0 8px;
+    flex: 0 0 calc(8 * var(--mark-u));
 }
 
 #hud-mark-label {
@@ -125,7 +159,7 @@
  * ⚠️ 太さは `-webkit-text-stroke`（文字のまま太らせる）＝矢印を絵（canvas/SVG）にしない
  *    （キュー22 の ⛔ 止まる条件を踏まない／[[blade-fixed-box-sprite-scale]] の固定箱の話にも接続しない）。 */
 .mark-dist-near {
-    --mark-arrow-size: 22px;
+    --mark-arrow-size: calc(22 * var(--mark-u));
     --mark-arrow-stroke: 1.1px;
     --mark-arrow-color: #fff6c0;
     --mark-arrow-glow: 0 0 7px rgba(255, 232, 140, 0.85);
@@ -133,7 +167,7 @@
 }
 
 .mark-dist-mid {
-    --mark-arrow-size: 18px;
+    --mark-arrow-size: calc(18 * var(--mark-u));
     --mark-arrow-stroke: 0.7px;
     --mark-arrow-color: #ffe060;
     --mark-arrow-glow: 0 0 4px rgba(255, 224, 96, 0.45);
@@ -141,7 +175,7 @@
 }
 
 .mark-dist-far {
-    --mark-arrow-size: 14px;
+    --mark-arrow-size: calc(14 * var(--mark-u));
     --mark-arrow-stroke: 0.3px;
     --mark-arrow-color: #c8a848;
     --mark-arrow-glow: none;
@@ -149,7 +183,7 @@
 }
 
 .mark-dist-distant {
-    --mark-arrow-size: 11px;
+    --mark-arrow-size: calc(11 * var(--mark-u));
     --mark-arrow-stroke: 0;
     --mark-arrow-color: #8a7a52;
     --mark-arrow-glow: none;
@@ -158,7 +192,7 @@
 
 /* 同じ画面（◎）は距離ではない＝段の一番明るい側に揃えるが太らせない（矢印と見分ける） */
 .mark-dist-here {
-    --mark-arrow-size: 18px;
+    --mark-arrow-size: calc(18 * var(--mark-u));
     --mark-arrow-stroke: 0;
     --mark-arrow-color: #fff6c0;
     --mark-arrow-glow: 0 0 6px rgba(255, 232, 140, 0.8);
@@ -168,13 +202,13 @@
 /* 🔴 箱は固定＝矢印の字が 11〜22px で変わっても HUD の高さが揺れない
  *    （歩くたびに下の行がガタつくのを防ぐ）。 */
 #hud-mark-arrow {
-    flex: 0 0 24px;
-    height: 22px;
+    flex: 0 0 calc(24 * var(--mark-u));
+    height: calc(22 * var(--mark-u));
     display: inline-flex;
     align-items: center;
     justify-content: center;
     line-height: 1;
-    font-size: var(--mark-arrow-size, 14px);
+    font-size: var(--mark-arrow-size, calc(14 * var(--mark-u)));
     color: var(--mark-arrow-color, #ffe060);
     -webkit-text-stroke: var(--mark-arrow-stroke, 0) var(--mark-arrow-color, #ffe060);
     text-shadow: var(--mark-arrow-glow, none);
@@ -182,6 +216,7 @@
 
 #hud-mark-dist {
     color: #8ab0d0;
+    white-space: nowrap;   /* 「この画面」などを途中で折り返さない（2026-10-17 スクショ） */
 }
 
 /* ── ボス部屋ロック演出（暗転オーバーレイ） ────────────────── */

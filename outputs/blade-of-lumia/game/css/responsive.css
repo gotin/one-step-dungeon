@@ -68,4 +68,25 @@
     #hud-stage-label {
         font-size: 1vw;
     }
+
+    /* 目的地表示（2026-10-17 ユーザー指摘「SUB: と同じか少し小さいぐらい」）＝文字は 2vw（SUB: 2.5vw より
+     * 小さめ。漢字は英字より字面が詰まって大きく見える＝2.2vw だと SUB: より大きく見えた・撮って確認）。
+     * 寸法は boss.css が `--mark-u` の倍数で書いている＝単位ごと拡大（11px 基準 → 2vw）＝点・矢印の4段・枠が
+     * 文字と同じ比で大きくなる。 */
+    #hud-mark-guide {
+        --mark-u: calc(2vw / 11);
+        max-width: 45vw;
+    }
+
+    /* HUD を盤面に重ねない（2026-10-17・game.js updateBoardScale が #hud に付ける）：
+     * レーン方式＝左の HUD はレーンの幅に収める（ハートが増えたらレーンの中で折り返す）。
+     * 帯方式＝#board-wrap の top を HUD の高さだけ下げる（game.js が直接書く）。 */
+    /* 8px＝盤面の枠線（2px）にかからない間（撮って 2px 重なっていた） */
+    #hud.hud-lane #hud-left {
+        max-width: calc(var(--lane-w, 200px) - 1.5vw - 8px);
+    }
+    /* 帯方式＝ハートは幅 30% で折り返す（1列に伸びて中央の目的地表示を押しつぶさない） */
+    #hud.hud-band #hud-left {
+        max-width: 30vw;
+    }
 }

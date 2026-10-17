@@ -38,7 +38,9 @@ test.describe('Blade of Lumia – ステージ遷移', () => {
 
     // 初期ステージが "7,14" であることを確認
     const labelEl = page.locator('#hud-stage-label');
-    await expect(labelEl).toBeVisible();
+    // 2026-10-17: 画面の座標はプレビュー（fromEditor=1）だけで見せる＝ゲームモードでは隠れている。
+    // 文字は今までどおり更新される（このテストはそれで遷移を見る）。
+    await expect(labelEl).toBeHidden();
     await expect(labelEl).toContainText('7,14');
 
     // ArrowRight を押し続けて右端を越える。
@@ -52,6 +54,13 @@ test.describe('Blade of Lumia – ステージ遷移', () => {
     const board = page.locator('#board');
     await expect(board).toBeVisible();
     await expect(page.locator('#char-player')).toBeVisible();
+  });
+
+  test('画面の座標の表示はプレビューのときだけ見える（2026-10-17 ユーザー指摘）', async ({ page }) => {
+    await page.goto(`${GAME_URL}?fromEditor=1&layer=field&stage=7,14&row=5&col=5`);
+    await waitForBoard(page);
+    await expect(page.locator('#hud-stage-label')).toBeVisible();
+    await expect(page.locator('#hud-stage-label')).toContainText('[field] 7,14');
   });
 
   // ── 壁すり抜け防止（arrival-wall）────────────────────────────────

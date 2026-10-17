@@ -265,16 +265,111 @@ function getCellPx() {
 
 // セルサイズを整数px に計算して --cell を更新する（格子線防止）
 // transform: scale() を使わず --cell を直接変更することでサブピクセルを完全排除
+//
+// HUD を盤面に重ねない（2026-10-17 ユーザー判定「オーバーレイしてると重なってるところが見づらくて邪魔。
+// 別のレーンとして表示する方がよさそう」→ 決定「画面の形で切り替える。それでも変だったら常に上の帯で」）：
+//   レーン方式（横長）＝盤面の左右の余白に HUD を収める。右の余白に右の HUD（装備・SUB・所持金）の
+//     実際の幅が入り、左にも目的地表示の最低幅（HUD_LANE_MIN_PX）があるときだけ。盤面は画面いっぱい。
+//   帯方式（正方形〜縦長）＝上に HUD 専用の帯を取り、盤面はその下の残りの高さに収める。
+//   スマホ幅（600px 未満）は mobile.css の段組み（今まで）。
+const BASE_CELL = 48;
+const HUD_LANE_MIN_PX = 150;
+function fitCell(w, h) {
+	return Math.max(8, Math.floor(Math.min(w / (stageData.cols * BASE_CELL), h / (stageData.rows * BASE_CELL)) * BASE_CELL));
+}
 function updateBoardScale() {
 	if (!stageData) return;
-	const BASE_CELL = 48;
-	const maxScaleX = window.innerWidth  / (stageData.cols * BASE_CELL);
-	const maxScaleY = window.innerHeight / (stageData.rows * BASE_CELL);
-	const rawScale = Math.min(maxScaleX, maxScaleY);
-	// セルサイズを整数にすることでサブピクセル格子線を完全排除
-	const newCell = Math.max(8, Math.floor(rawScale * BASE_CELL));
-	document.documentElement.style.setProperty('--cell', `${newCell}px`);
+	observeMarkGuide();
+	const W = window.innerWidth, H = window.innerHeight;
+	const hud = document.getElementById('hud');
+	const wrap = document.getElementById('board-wrap');
+	let cell = fitCell(W, H);
+	let mode = 'mobile';
+	if (W >= 600 && hud) {
+		const laneW = (W - stageData.cols * cell) / 2;
+		// 右の HUD の幅は文字の大きさ（vw）で決まり盤面に依らない＝そのまま測れる（padding は #hud の左右 1.5vw）
+		const rightW = (document.getElementById('hud-right')?.offsetWidth ?? 0) + W * 0.015;
+		mode = laneW >= Math.max(rightW, HUD_LANE_MIN_PX) ? 'lane' : 'band';
+		hud.classList.toggle('hud-lane', mode === 'lane');
+		hud.classList.toggle('hud-band', mode === 'band');
+		hud.style.setProperty('--lane-w', `${Math.floor(laneW)}px`);
+		placeMarkGuide(mode === 'lane');
+		if (mode === 'band') {
+			// 帯の高さ＝HUD の実際の高さ（目的地表示を上の中央に置いた後で測る）。HUD の大きさが後から
+			// 変わったら（絵の読み込み・ハートの増減・目的地の表示切替）observeHudSize が測り直す。
+			const bandH = Math.ceil(hud.offsetHeight);
+			_hudBandH = bandH;
+			cell = fitCell(W, H - bandH);
+			// 高さも書く＝responsive.css の `height: 100vh` のままだと、下げた分だけ盤面が画面の下へずれる（撮って踏んだ）
+			if (wrap) { wrap.style.top = `${bandH}px`; wrap.style.height = `${H - bandH}px`; }
+		} else if (wrap) { wrap.style.top = ''; wrap.style.height = ''; }
+	} else {
+		hud?.classList.remove('hud-lane', 'hud-band');
+		placeMarkGuide(false);
+		if (wrap) { wrap.style.top = ''; wrap.style.height = ''; }
+	}
+	document.documentElement.style.setProperty('--cell', `${cell}px`);
 	boardEl.style.transform = ''; // scaleは不使用
+	fitMarkGuide();
+}
+
+// 目的地表示の置き場所。レーン方式ならハートの下（#hud-left）へ移して2段組み（.in-lane）、
+// それ以外は上の中央（#hud-center）。
+function placeMarkGuide(inLane) {
+	const guide  = document.getElementById('hud-mark-guide');
+	const left   = document.getElementById('hud-left');
+	const center = document.getElementById('hud-center');
+	if (!guide || !left || !center) return;
+	const home = inLane ? left : center;
+	if (guide.parentElement !== home) home.appendChild(guide);
+	guide.classList.toggle('in-lane', inLane);
+}
+
+// レーンの中の目的地表示を、折り返さない大きさまで縮める（**実際に測る**＝文字数からの見積もりは
+// 余白と2段目（◎ この画面）を甘く見て折り返した・2026-10-17 ユーザーのスクショ）。
+// 規則＝名前は6文字以下なら1行・それより長ければ2行まで／2段目（点・矢印・距離）は1行。
+// 名前が変わったときも測り直す（MutationObserver・下の observeMarkGuide）。
+function fitMarkGuide() {
+	const guide = document.getElementById('hud-mark-guide');
+	if (!guide) return;
+	guide.style.removeProperty('--mark-u');
+	if (!guide.classList.contains('in-lane') || guide.classList.contains('hidden')) return;
+	const label = document.getElementById('hud-mark-label');
+	const dist  = document.getElementById('hud-mark-dist');
+	const maxLines = (label?.textContent?.length ?? 0) > 6 ? 2 : 1;
+	// 測り始め＝今の文字の大きさ ÷ 11（--mark-u の計算後の値は「calc(…)」の文字のままで数値に読めない）
+	let u = (parseFloat(getComputedStyle(guide).fontSize) || 11) / 11;
+	const fits = () => {
+		const fs = parseFloat(getComputedStyle(guide).fontSize) || 11;
+		const lines = label ? Math.round(label.getBoundingClientRect().height / (fs * 1.25)) : 1;
+		const distOne = !dist || dist.getBoundingClientRect().height < fs * 1.6;
+		// 名前の箱からのはみ出し（2px＝括弧などの字形の張り出しは許す）
+		const labelIn = !label || label.scrollWidth <= label.clientWidth + 2;
+		return lines <= maxLines && distOne && labelIn && guide.scrollWidth <= guide.clientWidth + 1;
+	};
+	for (let i = 0; i < 20 && !fits(); i++) {
+		u *= 0.92;
+		guide.style.setProperty('--mark-u', `${u}px`);
+	}
+}
+let _markGuideObserved = false;
+let _hudBandH = 0;
+function observeMarkGuide() {
+	if (_markGuideObserved) return;
+	const guide = document.getElementById('hud-mark-guide');
+	if (!guide) return;
+	_markGuideObserved = true;
+	// 帯方式の高さは HUD の実際の高さ＝測った後で HUD が縮む／伸びると、帯に空きができたり盤面に
+	// 重なったりする（読み込み直後に測って帯の中に大きな空きが出た・撮って確認）∴変わったら合わせ直す。
+	const hud = document.getElementById('hud');
+	if (hud && typeof ResizeObserver !== 'undefined') {
+		new ResizeObserver(() => {
+			if (hud.classList.contains('hud-band') && Math.abs(Math.ceil(hud.offsetHeight) - _hudBandH) > 1) updateBoardScale();
+		}).observe(hud);
+	}
+	// 名前・距離の文字と表示の切替（hidden）が変わったら測り直す。測り直しは style しか触らない＝自分を呼び直さない。
+	new MutationObserver(() => fitMarkGuide())
+		.observe(guide, { subtree: true, childList: true, characterData: true, attributes: true, attributeFilter: ['class'] });
 }
 
 // ── セーブ・ロード ────────────────────────────────────────────
@@ -2266,6 +2361,10 @@ async function init() {
 	// URL パラメータ解析
 	const params     = new URLSearchParams(location.search);
 	const fromEditor = params.get('fromEditor') === '1';
+	// 画面の座標（[field] 3,0）は作る人のための表示＝プレビューのときだけ見せる（2026-10-17 ユーザー指摘
+	// 「プレビューのときだけ？ gameモードのときは表示されないっけ？」＝実はゲームモードでも出ていた）。
+	// 文字は今までどおり更新する（テストが textContent を読む）＝見た目だけ隠す。
+	if (!fromEditor) stageLabelEl.style.display = 'none';
 	const paramLayer = params.get('layer');
 	const paramStage = params.get('stage');
 	const paramRow   = params.get('row');
