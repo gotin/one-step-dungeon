@@ -6,7 +6,7 @@
 import { applyBgSpriteToCell } from '../shared/sprites.js';
 import { mountIconEls } from '../shared/ui-icons.js';
 import { ENEMY_META } from '../shared/enemies.js';
-import { getSoundSettings, getSoundGainsForTest, getBgmStateForTest, playSound, playBgm } from '../shared/sounds.js';
+import { getSoundSettings, getSoundGainsForTest, getBgmStateForTest, playSound, playBgm, installAudioUnlock, getAudioStateForTest, suspendAudioForTest } from '../shared/sounds.js';
 import {
 	init,
 	updateBoardScale,
@@ -64,6 +64,9 @@ startAnimLoop(() => { redrawAnimSprites(); });
 // 起動時に一度だけ canvas へ差し替える。init() より前でよい＝DOM は既にある。
 mountIconEls(document);
 
+// iPhone で音が鳴らない対策（2026-10-17）＝最初の「離した・クリック・キー」で音を開始する（shared/sounds.js）
+installAudioUnlock();
+
 // ── 起動 ─────────────────────────────────────────────────────
 init().catch(err => {
 	console.error('init failed:', err);
@@ -92,6 +95,8 @@ window._debugEnding = () => startEnding();
 //   __game.getState()     : 現在の主要状態のスナップショット（player 座標・gameTime 等）
 // 本番動作には影響しない（読み取り＋既存関数の呼び出しのみ）。
 window.__game = {
+	getAudioState: () => getAudioStateForTest(),
+	suspendAudio:  () => suspendAudioForTest(),
 	step,
 	// 実時間ループ（setInterval(step,120)）を止める/戻す。
 	// 手動 step(n) 系の検証で実ループの余分な tick が混ざる flaky を避けるため、

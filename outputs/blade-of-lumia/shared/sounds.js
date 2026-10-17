@@ -413,6 +413,41 @@ export function resumeAudio() {
 	}
 }
 
+// ── iPhone（iOS Safari）で音が鳴らない対策（2026-10-17 ユーザー報告「iPhoneだと音がならない」）──
+// iOS は「触れて離した（touchend）／クリック（click）／キーを押した（keydown）」の処理の中でしか
+// AudioContext の開始・再開を許さない。**触れた瞬間（touchstart）は数えない**。
+// 旧＝操作盤（十字キー・剣ボタン）は touchstart で resumeAudio を呼び、しかも preventDefault で click を
+//   止めていた∴遊んでいる間のタッチが一度も許可にならない。さらに AudioContext は最初の音を鳴らす時に
+//   後から作る＝許可の外で作られて suspended のまま、が起き得た（PC は keydown が許可になるので鳴る）。
+// 直し＝ページ全体で、許可になる操作の**たびに**、止まっていればその場で AudioContext を作って
+//   再開し、無音を一瞬鳴らして許可を確定させる。見張りは外さない＝iOS はアプリの切り替え・着信の後に
+//   音が止まる（'interrupted'）∴最初の1回で外すと二度と戻らない（running の間は何もしない＝軽い）。
+// ⚠️ 本体の消音モード（横のスイッチ／アクションボタン）が消音だと、これでも Web Audio は鳴らない（iOS の仕様）。
+const UNLOCK_EVENTS = ['touchend', 'click', 'keydown', 'pointerup'];
+export function installAudioUnlock() {
+	const unlock = () => {
+		let ctx;
+		try { ctx = getAudioContext(); } catch (_) { return; }
+		if (ctx.state !== 'running') {
+			try { ctx.resume(); } catch (_) {}
+			try {
+				const src = ctx.createBufferSource();
+				src.buffer = ctx.createBuffer(1, 1, 22050);
+				src.connect(ctx.destination);
+				src.start(0);
+			} catch (_) {}
+		}
+	};
+	for (const ev of UNLOCK_EVENTS) document.addEventListener(ev, unlock, { capture: true, passive: true });
+}
+// テスト用：AudioContext の状態（作られていなければ 'none'）／止める（iOS の切り替え・着信の後の再現）
+export function getAudioStateForTest() {
+	return audioContext ? audioContext.state : 'none';
+}
+export function suspendAudioForTest() {
+	return audioContext ? audioContext.suspend() : Promise.resolve();
+}
+
 // ── SE オプション ─────────────────────────────────────────────
 // 移動音 ON/OFF フラグ（true で有効）
 export let MOVE_SOUND_ENABLED = false;
