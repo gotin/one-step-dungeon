@@ -40,7 +40,7 @@ import { createRenderChars } from './render-chars.js';
 import { initInput } from './input.js';
 import { createUi, listSubItemKeys, subItemIconCanvas, subItemDisplayName } from './ui.js';
 // ── 道具の早替え（X 長押し・実行キュー84）───────────────────────
-import { createQuickSwap } from './quick-swap.js';
+import { createQuickSwap, QUICK_SWAP_TOUCH_HOLD_MS } from './quick-swap.js';
 // ── 転移の石碑（キュー27）─────────────────────────────────────────
 import { createWarpMenu } from './warp-menu.js';
 import { initPlaytestNotes } from './playtest-notes.js';
@@ -1034,11 +1034,13 @@ const { checkStoneOnSwitch, evaluateConditions, refreshGates } = createCondition
 		useSubItem:  () => useSubItem(),
 		// キュー84: X 長押しの道具の早替え
 		getIsQuickSwap:   () => !!quickSwap?.isOpen(),
-		quickSwapPress:   () => quickSwap?.press(),
+		quickSwapPress:   (ms, touch, x) => quickSwap?.press(ms, touch, x),
 		quickSwapRelease: () => quickSwap?.release(),
 		quickSwapCancel:  () => quickSwap?.cancel(),
 		quickSwapPrev:    () => quickSwap?.selectPrev(),
 		quickSwapNext:    () => quickSwap?.selectNext(),
+		quickSwapPointerMove: (x, y) => quickSwap?.pointerMove(x, y),
+		quickSwapTouchHoldMs: QUICK_SWAP_TOUCH_HOLD_MS,
 		toggleFlight: () => toggleFlight(),
 		togglePause,
 		toggleDebugMode,

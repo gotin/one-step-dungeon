@@ -18,6 +18,13 @@
 //     （テストの step() やループの外から tick が来ても世界が進まない）。
 
 export const QUICK_SWAP_HOLD_MS = 220;
+// スマホ＝SUB ボタンの長押し（2026-10-18 ユーザー「連打のつもりが長押しになって枠が出てうざい、にならないなら」）。
+// SUB ボタンは今も「離したときに使う」（旧 click）∴長押しを足してもタップの感触は変わらない。
+// 連打の1回（100〜150ms）より十分長く、X より長めに取る。
+export const QUICK_SWAP_TOUCH_HOLD_MS = 400;
+// 指で選ぶ：横に動かした距離 STEP_PX ごとに1つ隣へ（枠は画面の中央＝ボタンから遠い∴道具の上まで指を運ばせない）。
+// 指が道具の上にあればそれを選ぶ。
+const TOUCH_STEP_PX = 40;
 
 export function createQuickSwap(deps) {
 	const {
@@ -35,6 +42,9 @@ export function createQuickSwap(deps) {
 	const overlayEl = document.getElementById('quickswap-overlay');
 	const listEl    = document.getElementById('quickswap-items');
 	const nameEl    = document.getElementById('quickswap-name');
+	const hintEl    = document.getElementById('quickswap-hint');
+	const HINT_KEY   = '← → で選ぶ　X を離して持ち替え　Escape でやめる';
+	const HINT_TOUCH = '指を横に滑らせて選ぶ　離して持ち替え';
 
 	let timer = null;   // 長押しを待っている間の setTimeout
 	let open  = false;
@@ -69,6 +79,7 @@ export function createQuickSwap(deps) {
 		if (!items.length) return;
 		const cur = items.indexOf(player.activeSubItem);
 		idx = cur >= 0 ? cur : 0;
+		pointerStart = lastX != null ? { x: lastX, idx } : null;
 		open = true;
 		cancelCharge?.();
 		stopGameLoop();
@@ -84,25 +95,34 @@ export function createQuickSwap(deps) {
 	}
 
 	// X を押した（キーリピートは呼び元が捨てる）
-	function press() {
+	// holdMs＝開くまでの長押し（X＝QUICK_SWAP_HOLD_MS／SUB ボタン＝QUICK_SWAP_TOUCH_HOLD_MS）
+	// touch＝SUB ボタンから開いた（ヒントの文を指の操作に替える）
+	// x＝押した指の位置（開く瞬間までの指の動きは pointerMove が追う）＝開いた瞬間の位置を選びの基点にする
+	function press(holdMs = QUICK_SWAP_HOLD_MS, touch = false, x = null) {
 		if (open || timer) return;
-		timer = setTimeout(openPanel, QUICK_SWAP_HOLD_MS);
+		lastX = x;
+		if (hintEl) hintEl.textContent = touch ? HINT_TOUCH : HINT_KEY;
+		timer = setTimeout(openPanel, holdMs);
 	}
 
 	// X を離した＝開いていれば選んでいる道具に持ち替えて閉じる。開く前なら何もしない。
+	// 戻り値＝枠を閉じたら true（SUB ボタンは false のとき＝タップだったときだけ道具を使う）。
 	function release() {
 		if (timer) { clearTimeout(timer); timer = null; }
-		if (!open) return;
+		pointerStart = null;
+		if (!open) return false;
 		const player = getPlayer();
 		const id = items[idx];
 		if (id) player.activeSubItem = id;
 		updateHud();
 		closePanel();
+		return true;
 	}
 
 	// Escape・フォーカスが外れた＝持ち替えずに閉じる（長押しを待っていたら待つのもやめる）
 	function cancel() {
 		if (timer) { clearTimeout(timer); timer = null; }
+		pointerStart = null;
 		if (open) closePanel();
 	}
 
@@ -113,9 +133,35 @@ export function createQuickSwap(deps) {
 		render();
 	}
 
+	// 指（マウス）で選ぶ。開いた後の最初の位置を基点に、横へ TOUCH_STEP_PX ごとに1つ隣へ。
+	// 指が道具の枠の上にあれば、その道具を選ぶ（枠は pointer-events:none＝座標で引く）。
+	let pointerStart = null;   // { x, idx }
+	let lastX = null;          // 開く前の指の位置（開いた瞬間の基点になる）
+	function pointerMove(x, y) {
+		if (!open) { lastX = x; return; }
+		const slots = [...listEl.querySelectorAll('.quickswap-slot')];
+		const hit = slots.findIndex((el) => {
+			const r = el.getBoundingClientRect();
+			return x >= r.left && x <= r.right && y >= r.top && y <= r.bottom;
+		});
+		let next;
+		if (hit >= 0) {
+			next = hit;
+			pointerStart = { x, idx: hit };
+		} else {
+			if (!pointerStart) pointerStart = { x, idx };
+			const steps = Math.trunc((x - pointerStart.x) / TOUCH_STEP_PX);
+			next = Math.max(0, Math.min(items.length - 1, pointerStart.idx + steps));
+		}
+		if (next === idx) return;
+		idx = next;
+		playSound('switch');
+		render();
+	}
+
 	return {
 		isOpen: () => open,
-		press, release, cancel,
+		press, release, cancel, pointerMove,
 		selectPrev: () => select(-1),
 		selectNext: () => select(1),
 		// テスト用：選んでいる道具

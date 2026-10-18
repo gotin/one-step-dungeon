@@ -129,3 +129,78 @@ test('⑦ 溜めの途中で開いたら溜めを取り消す', async ({ page })
   const beams = await page.evaluate(() => window.__game.getProjectiles().filter((q) => q.owner === 'player').length);
   expect(beams, '閉じた後にビームが飛んだ').toBe(0);
 });
+
+// ── スマホ：SUB ボタンの長押し（2026-10-18 ユーザー「連打のつもりが長押しになって枠が出てうざい、にならないなら」）──
+//   ⑧ タップ（離したとき）で道具を使う・枠は出ない
+//   ⑨ 連打（100ms ずつ）では枠が一度も出ない
+//   ⑩ 長押しで枠 → 指を横に滑らせて選ぶ → 離すと持ち替える（道具は使わない）
+test.describe('スマホ：SUB ボタン', () => {
+  test.use({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
+
+  async function touchSub(page) {
+    const cdp = await page.context().newCDPSession(page);
+    const box = await page.locator('#btn-sub').boundingBox();
+    const at = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
+    const send = (type, p) => cdp.send('Input.dispatchTouchEvent', { type, touchPoints: p ? [{ x: p.x, y: p.y, id: 1 }] : [] });
+    return {
+      down: () => send('touchStart', at),
+      move: (dx) => send('touchMove', { x: at.x + dx, y: at.y }),
+      up: () => send('touchEnd'),
+    };
+  }
+  const bowCount = (page) => page.evaluate(() => window.__game.getPlayer().subItems.bow.count);
+  async function watchOpens(page) {
+    await page.evaluate(() => {
+      window.__qsOpened = 0;
+      const el = document.getElementById('quickswap-overlay');
+      new MutationObserver(() => { if (!el.classList.contains('hidden')) window.__qsOpened++; })
+        .observe(el, { attributes: true, attributeFilter: ['class'] });
+    });
+  }
+
+  test('⑧ タップで道具を使う・枠は出ない', async ({ page }) => {
+    await open(page);
+    await watchOpens(page);
+    const t = await touchSub(page);
+    const before = await bowCount(page);
+    await t.down(); await page.waitForTimeout(80); await t.up();
+    await page.waitForTimeout(500);
+    expect(await bowCount(page), 'タップで矢が減らない').toBe(before - 1);
+    expect(await page.evaluate(() => window.__qsOpened), 'タップで枠が出た').toBe(0);
+  });
+
+  test('⑨ 連打では枠が一度も出ない', async ({ page }) => {
+    await open(page, ROOM + '&ps_bomb=1');
+    await watchOpens(page);
+    const t = await touchSub(page);
+    for (let i = 0; i < 6; i++) { await t.down(); await page.waitForTimeout(150); await t.up(); await page.waitForTimeout(100); }
+    await page.waitForTimeout(500);
+    expect(await page.evaluate(() => window.__qsOpened), '連打で枠が出た').toBe(0);
+  });
+
+  test('⑩ 長押しで枠 → 横に滑らせて選ぶ → 離すと持ち替える（道具は使わない）', async ({ page }) => {
+    await open(page);
+    const t = await touchSub(page);
+    const before = await bowCount(page);
+    const bombCount = () => page.evaluate(() => window.__game.getPlayer().subItems.bomb.count);
+    const bombsBefore = await bombCount();
+    await t.down();
+    await page.waitForFunction(() => window.__game.getState().quickSwapOpen, null, { timeout: 2000 });
+    expect(await page.locator('#quickswap-hint').textContent()).toContain('指');
+    // 基点＝押した指の位置（枠が開いてから最初に動かした位置ではない＝2026-10-18 撮って直した）
+    await t.move(50);    // 右へ 1 つ（40px ごと）
+    expect((await state(page)).quickSwapSelected, '最初の一滑りで選びが動かない').toBe('boomerang');
+    await t.move(-90);   // 左へ 2 つ＝弓 → 端で止まる
+    expect((await state(page)).quickSwapSelected, '左端より先へ行かない').toBe('bow');
+    await t.move(90);    // 基点から右へ 2 つ
+    expect((await state(page)).quickSwapSelected).toBe('bomb');
+    await t.up();
+    const s = await state(page);
+    expect(s.quickSwapOpen).toBe(false);
+    expect(s.player.activeSubItem, '離したのに持ち替わっていない').toBe('bomb');
+    expect(await bowCount(page), '持ち替えで道具を使った').toBe(before);
+    await page.waitForTimeout(200);
+    expect(await bombCount(), '持ち替えた先の爆弾を使った').toBe(bombsBefore);
+    expect(await page.evaluate(() => window.__game.getProjectiles().filter((q) => q.owner === 'player').length)).toBe(0);
+  });
+});
