@@ -1,0 +1,78 @@
+/* ── 道具の早替え（キュー84・X 長押し）──────────────────────────
+   ポーズ画面とは別の小さな枠＝道具の並びと、選んでいる道具の名前だけ。
+   世界は止まっている（game/quick-swap.js）が、盤面が見えるように暗くするのは薄くだけ。
+   大きさは --qs-u（1px 相当）の倍数＝大きい画面では HUD と同じく vw で伸びる。 */
+:root {
+    --qs-u: 1px;
+    --qs-icon: calc(var(--qs-u) * 32);
+}
+@media (min-width: 600px) {
+    /* 1440px 幅で 1.44（絵 46px・名前 22px）。600〜1000px は等倍を下回らない＝狭い画面で潰れない */
+    :root { --qs-u: max(1px, calc(3.2vw / 32)); }
+}
+
+#quickswap-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.28);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 64;
+    pointer-events: none;
+}
+#quickswap-overlay.hidden { display: none; }
+
+#quickswap-box {
+    background: rgba(8, 16, 28, 0.92);
+    border: calc(var(--qs-u) * 2) solid #4a7aa8;
+    border-radius: calc(var(--qs-u) * 10);
+    padding: calc(var(--qs-u) * 12) calc(var(--qs-u) * 16) calc(var(--qs-u) * 10);
+    max-width: 92vw;
+    box-shadow: 0 0 calc(var(--qs-u) * 18) rgba(0, 0, 0, 0.6);
+}
+
+#quickswap-items {
+    display: flex;
+    gap: calc(var(--qs-u) * 8);
+    justify-content: center;
+    flex-wrap: wrap;
+}
+
+.quickswap-slot {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: calc(var(--qs-u) * 2);
+    min-width: calc(var(--qs-u) * 52);
+    min-height: calc(var(--qs-u) * 56);
+    border: calc(var(--qs-u) * 2) solid #22405e;
+    border-radius: calc(var(--qs-u) * 8);
+    color: #c8dce8;
+}
+.quickswap-slot.selected {
+    border-color: #ffe080;
+    background: rgba(255, 224, 128, 0.14);
+    box-shadow: 0 0 calc(var(--qs-u) * 8) rgba(255, 224, 128, 0.45);
+}
+.quickswap-count {
+    font-size: calc(var(--qs-u) * 11);
+    color: #9ab8cc;
+    line-height: 1;
+}
+
+#quickswap-name {
+    margin-top: calc(var(--qs-u) * 8);
+    font-size: calc(var(--qs-u) * 15);
+    color: #ffe9a8;
+    text-align: center;
+    letter-spacing: calc(var(--qs-u) * 1);
+}
+
+#quickswap-hint {
+    margin-top: calc(var(--qs-u) * 4);
+    font-size: calc(var(--qs-u) * 10);
+    color: #5a7c98;
+    text-align: center;
+}

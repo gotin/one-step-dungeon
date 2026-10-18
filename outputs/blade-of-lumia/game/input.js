@@ -16,6 +16,8 @@
 //   movePlayer(dir)    → プレイヤー移動
 //   swordAttack()      → 剣攻撃
 //   useSubItem()       → サブアイテム使用
+//   getIsQuickSwap() / quickSwapPress / quickSwapRelease / quickSwapCancel / quickSwapPrev / quickSwapNext
+//                      → X 長押しの道具の早替え（game/quick-swap.js・実行キュー84）
 //   togglePause()      → ポーズ切り替え
 //   toggleDebugMode()  → デバッグモード切り替え
 //   toggleSound()      → BGM・効果音をまとめて消音／解除（M キー・実行キュー58）
@@ -51,6 +53,12 @@ export function initInput(deps) {
 		releaseCharge,
 		cancelCharge,
 		useSubItem,
+		getIsQuickSwap,
+		quickSwapPress,
+		quickSwapRelease,
+		quickSwapCancel,
+		quickSwapPrev,
+		quickSwapNext,
 		toggleFlight,
 		togglePause,
 		toggleDebugMode,
@@ -158,6 +166,18 @@ export function initInput(deps) {
 			return;
 		}
 		if (inCutscene()) { e.preventDefault(); heldKeys.clear(); return; }
+		// キュー84: 道具の早替えの枠が開いている間＝←→（↑↓ も）で選ぶ・Escape で持ち替えずに閉じる。
+		// X を離すのは keyup 側。それ以外のキーは飲む（剣・B・F・ポーズは世界が止まっている間は効かない）。
+		// 矢印は `!e.repeat`＝歩きながら X を押したとき、押しっぱなしの矢印のキーリピートで選びが流れない。
+		// 押しっぱなしの矢印は heldKeys に残す＝閉じた後もそのまま歩き続ける（keyup が来れば消える）。
+		if (getIsQuickSwap?.()) {
+			e.preventDefault();
+			if (e.key === 'Escape') { quickSwapCancel?.(); return; }
+			if (e.repeat) return;
+			if (['ArrowLeft', 'a', 'A', 'ArrowUp', 'w', 'W'].includes(e.key)) { quickSwapPrev?.(); return; }
+			if (['ArrowRight', 'd', 'D', 'ArrowDown', 's', 'S'].includes(e.key)) { quickSwapNext?.(); return; }
+			return;
+		}
 		if (getIsDialog()) {
 			if ([' ','Enter','z','Z'].includes(e.key)) { e.preventDefault(); advanceDialog(); }
 			return;
@@ -212,19 +232,24 @@ export function initInput(deps) {
 		// になり、上限があっても連打に見える。攻撃キー（上の `swordAttack`）と同じ
 		// press-edge のみ（離して押し直すたびに1本）の作法へ揃えた。
 		if (e.key === 'b' || e.key === 'B') { e.preventDefault(); if (!e.repeat) useSubItem(); return; }
+		// キュー84: X を押し続けると道具の早替えの枠が開く（開くまでの時間は quick-swap.js）。
+		if (e.key === 'x' || e.key === 'X') { e.preventDefault(); if (!e.repeat) quickSwapPress?.(); return; }
 		// ⚠️ トグル系（飛行・ポーズ・デバッグ）は必ず `!e.repeat` で守る。
 		// OS のキーリピートは押しっぱなしで keydown を秒間 30 回前後投げてくる∴
 		// ガードが無いと状態が反転し続ける（2026-08-23 ユーザー報告＝F を押し続けると
 		// 離陸と着陸を繰り返す。副作用として playSound / saveGame も毎リピート走っていた）。
 		if (e.key === 'f' || e.key === 'F') { e.preventDefault(); if (!e.repeat) toggleFlight?.(); return; }
-		// Mac: Commandキー / Windows: Altキー でもサブアイテム使用（同じ理由で `!e.repeat`）
-		if (e.key === 'Meta' || e.key === 'Alt') { e.preventDefault(); if (!e.repeat) useSubItem(); return; }
+		// ❌ 消した（キュー84・2026-10-18 ユーザー決定）：Cmd（Meta）／Alt の単押しで道具を使っていた
+		//    ＝Cmd+R・Cmd+Shift+4 などの前半で矢が飛ぶ・爆弾が置かれた。道具は B だけ。
 		if (e.key === 'Escape') { e.preventDefault(); if (!e.repeat) togglePause(); return; }
 		if (e.key === 'g' || e.key === 'G') { e.preventDefault(); if (!e.repeat) toggleDebugMode(); return; }
 	});
 
 	document.addEventListener('keyup', e => {
 		heldKeys.delete(e.key);
+		// キュー84: X を離した＝早替えの枠が開いていれば持ち替えて閉じる・開く前なら長押しを待つのをやめる。
+		// 場面（会話・ポーズ…）を問わず必ず渡す＝長押しの待ちが残ると、後で勝手に枠が開く。
+		if (e.key === 'x' || e.key === 'X') quickSwapRelease?.();
 		// ⚠️ 文字キーは大文字・小文字の両方を消す（実行キュー13）。Shift を押したまま W を押すと
 		// keydown は 'W'、先に Shift を離してから W を離すと keyup は 'w' で届く＝'W' が
 		// heldKeys に残り、**指を離しても歩き続ける**。Shift で走る操作を足したので必ず踏む。
@@ -242,7 +267,8 @@ export function initInput(deps) {
 	// アプリ切り替えなど）＝押しっぱなしが残って勝手に歩き／走り続ける∴全部離したことにする。
 	// 溜めも同じ＝フォーカスが外れている間に攻撃キーを離すと keyup が届かず、溜めが残って動けなくなる
 	// ∴ビームは撃たずに取り消す（2026-10-17・上の終幕中と同じ形の穴）。
-	window.addEventListener('blur', () => { heldKeys.clear(); cancelCharge?.(); });
+	// 早替えの枠も同じ＝X の keyup が届かない∴持ち替えずに閉じる（キュー84）。
+	window.addEventListener('blur', () => { heldKeys.clear(); cancelCharge?.(); quickSwapCancel?.(); });
 
 	// ── モバイル ──────────────────────────────────────────────
 	// ⚠️ 終幕の入力封じはキーボードだけでは足りない（同じ操作が別の経路で来る）。

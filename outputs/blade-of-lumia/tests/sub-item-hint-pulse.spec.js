@@ -63,9 +63,9 @@ test.describe('Phase 0b: サブアイテム取得メッセージがオーバー�
     await expect.poll(() => page.evaluate(() => document.getElementById('dialog-overlay')?.classList.contains('hidden') === false))
       .toBe(true);
 
-    // ヒント3行を「実際に読む」速度（各行 700ms）で進める＝旧2000msタイマーなら
+    // ヒント4行（キュー84 で X 長押しの1行を足した）を「実際に読む」速度（各行 700ms）で進める＝旧2000msタイマーなら
     // ここで既に消灯している時間帯を作る。
-    for (let i = 0; i < 3; i++) {
+    for (let i = 0; i < 4; i++) {
       await page.waitForTimeout(700);
       await page.keyboard.press(' ');
     }
@@ -91,7 +91,7 @@ test.describe('Phase 0b: サブアイテム取得メッセージがオーバー�
     await expect.poll(() => page.evaluate(() => document.getElementById('dialog-overlay')?.classList.contains('hidden') === false))
       .toBe(true);
 
-    for (let i = 0; i < 3; i++) {
+    for (let i = 0; i < 4; i++) {
       await page.waitForTimeout(700);
       await page.keyboard.press(' ');
     }

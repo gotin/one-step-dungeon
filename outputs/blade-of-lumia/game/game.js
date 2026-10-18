@@ -38,7 +38,9 @@ import { createRenderBoard, putCellSprite } from './render-board.js';
 import { createRenderChars } from './render-chars.js';
 // ── 入力・UI（Phase 0-2 Step 4: input.js / ui.js へ切り出し）──────────────────
 import { initInput } from './input.js';
-import { createUi } from './ui.js';
+import { createUi, listSubItemKeys, subItemIconCanvas, subItemDisplayName } from './ui.js';
+// ── 道具の早替え（X 長押し・実行キュー84）───────────────────────
+import { createQuickSwap } from './quick-swap.js';
 // ── 転移の石碑（キュー27）─────────────────────────────────────────
 import { createWarpMenu } from './warp-menu.js';
 import { initPlaytestNotes } from './playtest-notes.js';
@@ -206,6 +208,7 @@ let isDialog        = false;
 let isGameover      = false;
 let isTransitioning = false;
 let warpMenu = null;   // キュー27: 転移の石碑の行き先一覧（createWarpMenu）
+let quickSwap = null;  // キュー84: X 長押しの道具の早替え（createQuickSwap）
 let invincibleUntil = 0;
 // MAP_ENTER 遷移直後クールダウン：遷移先に着いた直後は同じ入り口に乗っても再遷移しない
 let mapEnterCooldownUntil = 0;
@@ -950,6 +953,7 @@ const { checkStoneOnSwitch, evaluateConditions, refreshGates } = createCondition
 			'サブアイテムを手に入れた！',
 			'Escapeキー（または ≡ボタン）を押すと\nアイテム切り替え画面を開けます。',
 			'左右キーでBボタンに使うアイテムを\n切り替えることができます。',
+			'Xキーを押し続けても、その場で\nすばやく持ち替えられます。',
 		]);
 	};
 
@@ -991,6 +995,20 @@ const { checkStoneOnSwitch, evaluateConditions, refreshGates } = createCondition
 		getCellPx,
 	});
 
+	// キュー84: X 長押しの道具の早替え（game/quick-swap.js）。開けるのは「歩ける」間だけ。
+	quickSwap = createQuickSwap({
+		getPlayer:  () => player,
+		listItems:  (p) => listSubItemKeys(p),
+		iconOf:     (id, p, px) => subItemIconCanvas(id, p, px),
+		nameOf:     (id, p) => subItemDisplayName(id, p),
+		canOpen:    () => !!stageKey && !isPaused && !isDialog && !isGameover && !isTransitioning
+			&& !getIsShop() && !warpMenu?.isOpen() && !warpMenu?.isWarping() && !_bossDefeating,
+		stopGameLoop, startGameLoop,
+		cancelCharge: () => cancelCharge(),
+		updateHud:  () => updateHud(),
+		playSound,
+	});
+
 	const _in = initInput({
 		getIsDialog:     () => getIsDialog(),
 		getIsShop:       () => getIsShop(),
@@ -1014,6 +1032,13 @@ const { checkStoneOnSwitch, evaluateConditions, refreshGates } = createCondition
 		releaseCharge: () => releaseCharge(),
 		cancelCharge:  () => cancelCharge(),
 		useSubItem:  () => useSubItem(),
+		// キュー84: X 長押しの道具の早替え
+		getIsQuickSwap:   () => !!quickSwap?.isOpen(),
+		quickSwapPress:   () => quickSwap?.press(),
+		quickSwapRelease: () => quickSwap?.release(),
+		quickSwapCancel:  () => quickSwap?.cancel(),
+		quickSwapPrev:    () => quickSwap?.selectPrev(),
+		quickSwapNext:    () => quickSwap?.selectNext(),
 		toggleFlight: () => toggleFlight(),
 		togglePause,
 		toggleDebugMode,
@@ -1927,6 +1952,8 @@ function stopGameLoop() {
 // 互換のため関数名は残すが、実体は step(1) と同じ。
 function gameTick() {
 	if (isPaused || isDialog || isGameover || isTransitioning) return;
+	// キュー84: 道具の早替えの枠が開いている間は世界を止める（ループは止めてある＝step() からの tick も進めない）
+	if (quickSwap?.isOpen()) return;
 	processHeldKeys();   // 押しっぱなしキーで毎tick移動
 	// 移動で画面端・入口を越えて遷移が始まったら、この tick の残り（敵・弾・爆弾・炎）は走らせない
 	// ＝盤外座標の勇者が遷移の音の後に被弾しない（キュー82④・Fable 実装レビュー #14）。
@@ -2677,6 +2704,9 @@ export function getGameState() {
 		heroDir,
 		enemyCount: enemies.length,
 		isPaused, isDialog, isGameover, isTransitioning,
+		// キュー84: X 長押しの道具の早替えの枠（開いているか・選んでいる道具）
+		quickSwapOpen: !!quickSwap?.isOpen(),
+		quickSwapSelected: quickSwap?.selected() ?? null,
 		// Phase 9-6: ボス部屋ロック（true の間は全方向の退出を禁止＝checkStageTransition）
 		bossRoomLocked,
 		// Phase 9-6: ボス終幕の演出中（onBossDefeated / onBossYielded が走っている間）。

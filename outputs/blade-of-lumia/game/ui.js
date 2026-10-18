@@ -73,7 +73,7 @@ function equipIconCanvas(kind, player, px) {
 	return spec ? iconCanvas(spec, px) : null;
 }
 
-function subItemIconCanvas(id, player, px) {
+export function subItemIconCanvas(id, player, px) {
 	const meta = ITEM_META[id];
 	if (!meta?.sprite) return null;
 	// ブーメランはティアで色が変わる（木＝茶／銀＝銀）
@@ -84,12 +84,28 @@ function subItemIconCanvas(id, player, px) {
 // ── サブアイテムの表示名（Phase 9-6）───────────────────────────
 // ブーメランはティア（木／銀）で名前が変わる。他のアイテムは ITEM_META の名前。
 // HUD のツールチップとポーズのアイテム一覧で共用する。
-function subItemDisplayName(id, player) {
+export function subItemDisplayName(id, player) {
 	if (id === 'boomerang') {
 		const tier = BOOMERANG_TIERS[player?.boomerangTier ?? 0];
 		if (tier) return tier.name;
 	}
 	return ITEM_META[id]?.name ?? id;
+}
+
+// ── 持ち替えられる道具の並び ───────────────────────────────
+// ポーズの持ち物欄と X 長押しの早替え（quick-swap.js・実行キュー84）で共用＝並びが2つの画面で食い違わない。
+export function listSubItemKeys(player) {
+	return Object.keys(player.subItems).filter(k => {
+		const s = player.subItems[k];
+		if (!s) return false;
+		const meta = ITEM_META[k];
+		if (meta?.type === 'passive') return false;
+		// ⚠️ 空（`count:0`）でも並べる（2026-09-21）。空でもスロットは残る決まり
+		//    （items.js の 🔴 注記）∴ここで弾くと「弓は持っているのに持ち物欄から消える」
+		//    ＝矢を拾えない理由も、持ち替えの道も画面から消える。使い切る品（薬）は
+		//    0 でスロットごと消える∴ここには出てこない。
+		return true;
+	});
 }
 
 /**
@@ -616,17 +632,7 @@ export function createUi(deps) {
 		const currentLayer = getCurrentLayer();
 		const stageKey     = getStageKey();
 
-		pauseItemKeys = Object.keys(player.subItems).filter(k => {
-			const s = player.subItems[k];
-			if (!s) return false;
-			const meta = ITEM_META[k];
-			if (meta?.type === 'passive') return false;
-			// ⚠️ 空（`count:0`）でも並べる（2026-09-21）。空でもスロットは残る決まり
-			//    （items.js の 🔴 注記）∴ここで弾くと「弓は持っているのに持ち物欄から消える」
-			//    ＝矢を拾えない理由も、持ち替えの道も画面から消える。使い切る品（薬）は
-			//    0 でスロットごと消える∴ここには出てこない。
-			return true;
-		});
+		pauseItemKeys = listSubItemKeys(player);
 		if (pauseItemIdx >= pauseItemKeys.length) pauseItemIdx = 0;
 		pauseItemsEl.innerHTML = '';
 		if (pauseItemKeys.length === 0) {
