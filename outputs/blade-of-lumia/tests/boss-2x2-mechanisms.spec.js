@@ -544,37 +544,33 @@ test('⑦ leap/shell/blink/dash を持つ敵は対応するポーズ絵を必ず
   expect(checked, '機構を持つ敵が居ない（データが消えた？）').toBeGreaterThanOrEqual(5);
 });
 
-// ── ⑧ ポーズ差替とヒット＆アウェイが `e.sprite` を取り合う（軽微だが直す）──────────
-// ❌ 「13 ボス全部が `hitAndAway: true`」は失効（2026-08-31・0d-3 で W/A/N/J/O/U/G の7体が
-//    固有の移動機構へ移った＝`hitAndAway: false`）。この本が測るのは**取り合いの規則**
-//    そのもの∴代表の G では patch で `hitAndAway: true` を点けて測る（下記）。
-// 以下は取り合いの説明（規則自体は変わっていない）＝bossTickHitAndAway は向きが変わった tick に
-// `e.sprite = ${base}${D|R|U}` を書く（enemy-ai.js:466-469）。一方ポーズ差替は
-// **接尾辞なしの素の名前**へ戻す（`swapEnemySprite(e, base)`）∴機構を持つボスは
-// 向き接尾辞を失う（次に向きが変わるまで戻らない）。今の 2×2 は D/R/L/U が同じ絵の
-// エイリアス∴見た目は変わらないが、向き別の絵を描いた瞬間に「左へ走りながら正面を向く」になる。
-// ⚠️ 測る立ち位置は**突進の車線の外**にする（0d-2.5 (2) 以降、車線は中心基準の
-//    `alignTol + 半サイズ` ＝真正面の行に置くと 2×2 は必ず走り出す＝idle で測れない）。
-//    左上 (row 6, col 8)＝中心 (6.5, 8.5)・プレイヤー (4,5) に対して
-//    直交ずれ |4 - 6.5| = 2.5 > 0.8 + 0.5 = 1.3 ∴突進しない。向きは横成分が大きい∴'R'。
-test('⑧ dash を足すと向き接尾辞が失われる（ポーズ差替が素の名前へ戻す）', async ({ page }) => {
-  const base = ENEMY_META[BOSS].sprite;
+// ── ⑧ ポーズ差替とヒット＆アウェイが `e.sprite` を取り合わない ─────────────────────────
+// 旧版（2026-08-25〜10-17）はこの本で「取り合い」を固定していた＝bossTickHitAndAway は向きが変わった tick に
+// directional でない敵の `e.sprite` を `${base}${D|R|U}` へ書き、ポーズ差替は素の名前へ戻す∴向き接尾辞を失う。
+// ✅ 2026-10-18（キュー82⑫・Fable 実装レビュー #18）：その差し替えの分岐を消した＝hitAndAway を持つ敵は
+//    全部 `directional: true`（番人 tests/hit-and-away-directional.spec.js）＝実データでは到達しない分岐だった。
+//    今の規則＝bossTickHitAndAway は向き（e.dir）だけを書き、絵は syncDirectionalSprite（directional の敵だけ）が描く
+//    ＝取り合いは構造的に起きない。この本は G（directional でない）に hitAndAway を点けて、
+//    機構の有無どちらでも `e.sprite` が素の名前のまま（書き手が居ない）ことを見る。
+// ⚠️ 測る立ち位置は**突進の車線の外**（中心 (6.5, 8.5)・プレイヤー (4,5)＝直交ずれ 2.5 > 1.3 ∴突進しない）。
+test('⑧ ヒット＆アウェイは e.sprite を書かない＝ポーズ差替と取り合わない', async ({ page }) => {
+  const base = ENEMY_META[BOSS].sprite;   // 消した分岐が書いていた名前の頭（rockGolem＋R）
   const EX = 8, EY = 6;
-  // 機構なし：ヒット＆アウェイの向き接尾辞が残る（プレイヤーは西∴'R' + flipX）
   const plain = await measure2x2(page, {
     ex: EX, ey: EY, hp: 100, ticks: 4, patch: { speed: 0, hitAndAway: true },
   });
-  expect(at(plain.samples, 4).sprite, 'ヒット＆アウェイが向き接尾辞を書いていない（前提が崩れた）')
-    .toBe(`${base}R`);
+  // 注入敵の絵の名前は injectTestEnemy の既定（slime）＝META の名前ではない∴「最初の tick から変わらない」を見る
+  expect(at(plain.samples, 4).sprite, 'ヒット＆アウェイが絵の名前を書き換えた（消した分岐が戻った？）')
+    .toBe(at(plain.samples, 1).sprite);
+  expect(at(plain.samples, 4).sprite.startsWith(base), '向き接尾辞つきの名前が書かれた').toBe(false);
 
-  // 機構あり（突進しない位置＝idle のまま）：素の名前へ戻される
   const withDash = await measure2x2(page, {
     ex: EX, ey: EY, hp: 100, ticks: 4,
     patch: { speed: 0, hitAndAway: true,
       dash: { windupMs: 360, alignTol: 0.8, minRange: 2.0, maxRange: 9.0 } },
   });
   expect(at(withDash.samples, 4).dashPhase, '突進が始まってしまった（この本は idle で測る）').toBe('idle');
-  expect(at(withDash.samples, 4).sprite, 'ポーズ差替が向き接尾辞を残している（実装が直った？）').toBe(base);
+  expect(at(withDash.samples, 4).sprite).toBe(at(withDash.samples, 1).sprite);
 });
 
 // ── ⑨ 実配置の 2×2 ボスの DOM＝そのまま使える（大きさ・隠れの痕跡）────────────────

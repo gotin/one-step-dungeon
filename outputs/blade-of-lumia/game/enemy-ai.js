@@ -1725,40 +1725,13 @@ export function createEnemyAi(deps) {
 			const newDir = Math.abs(dy) >= Math.abs(dx)
 				? (dy > 0 ? 'down' : 'up')
 				: (dx > 0 ? 'right' : 'left');
-			// ⚠️ 2026-08-26: 絵の差替は **directional でない敵だけ**が通る。directional な敵は
-			//    enemyTick 末尾の syncDirectionalSprite が唯一の窓口＝ここで差し替えると
-			//    攻撃ポーズ（`${base}${Dir}Atk`）を素の向き絵で上書きする／同じ tick に
-			//    canvas を2回作り直す。
-			//    ※この差替ブロックそのものが「向きが移動 AI の分岐ごとに書かれていた」名残＝
-			//      魔物 W を combat の二相（hitAndAway: false）へ替えた瞬間に向きが死んだ原因
-			//      （hitAndAway 以外の分岐には同じ処理が無い）。新しい敵は必ず
-			//      `directional: true` を宣言する（ENEMY-DIRECTIONAL-GUIDE §1）。
-			if (e.dir !== newDir && meta?.directional) {
-				e.dir = newDir;
-			} else if (e.dir !== newDir) {
-				e.dir = newDir;
-				const baseName = ENEMY_META[e.type]?.sprite ?? e.sprite;
-				const base = baseName.replace(/[DRLU]$/, '');
-				const dirSuffix = { down:'D', right:'R', left:'R', up:'U' }[newDir] ?? 'D';
-				e.sprite = `${base}${dirSuffix}`;
-				e.flipX  = (newDir === 'left');
-				const el = document.getElementById(`char-enemy-${e.id}`);
-				if (el) {
-					const oldCv = el.querySelector('canvas.sprite');
-					if (oldCv) oldCv.remove();
-					const cv = makeSprite(e.sprite, e.pal, true, e.flipX);
-					if (cv) {
-						// 大型敵（w/h>1）は差し替え後も canvas を wrapper 全面に追従させる
-						// （CSS の 1セル !important を上書き。揺れアニメは wrapper の
-						//  large-enemy クラス経由で canvas に当たり続ける）
-						if ((e.w ?? 1) > 1 || (e.h ?? 1) > 1) {
-							cv.style.setProperty('width',  '100%', 'important');
-							cv.style.setProperty('height', '100%', 'important');
-						}
-						el.insertBefore(cv, el.firstChild);
-					}
-				}
-			}
+			// 向きだけ書く＝絵は enemyTick 末尾の syncDirectionalSprite が唯一の窓口（攻撃ポーズ `${base}${Dir}Atk`
+			// を素の向き絵で上書きしない・同じ tick に canvas を2回作り直さない）。
+			// ⚠️ 2026-10-18（キュー82⑫・Fable 実装レビュー #18）：ここにあった「directional でない敵の絵の差し替え」は
+			//    到達しない分岐だった＝hitAndAway（相の hitAndAway も）を持つ敵は全部 `directional: true`
+			//    （番人＝tests/hit-and-away-directional.spec.js）＝消した。新しい敵は必ず `directional: true` を宣言する
+			//    （ENEMY-DIRECTIONAL-GUIDE §1）。
+			if (e.dir !== newDir) e.dir = newDir;
 		}
 
 		if (e._haPhase === 'approach') {

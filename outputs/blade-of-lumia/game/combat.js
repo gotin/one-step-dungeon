@@ -34,6 +34,7 @@ import { sanitizeCount } from './play-stats.js';
  *   getIsDialog()                – isDialog
  *   getIsPaused()                – isPaused
  *   getIsGameover()              – isGameover
+ *   getIsTransitioning()         – isTransitioning（演出・転移・画面遷移で世界を止めている間）
  *   setIsGameover(v)             – isGameover setter
  *   getInvincibleUntil()         – invincibleUntil
  *   setInvincibleUntil(v)        – setter
@@ -77,7 +78,7 @@ export function createCombat(deps) {
 		getStageData, getPlayer, getEnemies, setEnemies,
 		getCurrentLayer, getStageKey,
 		getHeroDir, getCharLayerEl,
-		getIsDialog, getIsPaused, getIsGameover, setIsGameover,
+		getIsDialog, getIsPaused, getIsGameover, setIsGameover, getIsTransitioning,
 		getInvincibleUntil, setInvincibleUntil,
 		getLastSwordTime, setLastSwordTime,
 		getDebugMode,
@@ -622,8 +623,10 @@ export function createCombat(deps) {
 	}
 
 	// ── プレイヤー点滅 ────────────────────────────────────
+	// 点滅の interval は1本だけ＝連続被弾（毒の刻みは無敵を無視する）で重ねると位相の違う点滅が書き合った
+	// （直す前は関数の中で宣言していた＝前の interval を止める if が常に偽・キュー82⑧・Fable 実装レビュー #12）
+	let blinkTimer = null;
 	function showPlayerBlink() {
-		let blinkTimer = null;
 		if (blinkTimer) clearInterval(blinkTimer);
 		let cnt = 0;
 		blinkTimer = setInterval(() => {
@@ -703,7 +706,9 @@ export function createCombat(deps) {
 
 	// ── 剣攻撃 ───────────────────────────────────────────
 	function swordAttack() {
-		if (getIsDialog() || getIsPaused() || getIsGameover()) return;
+		// 演出で世界を止めている間（isTransitioning）は振らない＝演出の上に剣が描かれ、隣の敵に当たって
+		// killEnemy → saveGame が走っていた（キュー82①・Fable 実装レビュー #1）。charge.js canAct と同じ門。
+		if (getIsDialog() || getIsPaused() || getIsGameover() || getIsTransitioning?.()) return;
 
 		const player    = getPlayer();
 		const stageData = getStageData();

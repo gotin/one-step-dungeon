@@ -92,6 +92,10 @@ export function createCharge(deps) {
 	// 攻撃ボタンを離した時に呼ぶ。チャージ量でビーム発射を判定する。
 	function releaseCharge() {
 		if (_chargeStart === null) return;
+		// 動けない間（ポーズ・会話・演出・剣封じ）に離したら、ビームは撃たずに溜めを取り消す。
+		// 押す（startCharge）と溜める（tickCharge）は canAct を見ていた＝離すだけが抜けていて、
+		// ポーズ中に離すとビームが止まった世界に足され、解いた瞬間に飛んだ（キュー82⑤・Fable 実装レビュー #21）。
+		if (!canAct()) { cancelCharge(); return; }
 		const ratio = getChargeRatio();
 		_chargeStart = null;
 		clearAura();

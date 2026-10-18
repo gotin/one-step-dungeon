@@ -747,7 +747,9 @@ export function createProjectile(deps) {
 			startX: sx, startY: sy,
 			dx: ndx, dy: ndy,
 			speed,
-			atk: ENEMY_META[e.type]?.atk ?? 2,
+			// 個体の攻撃力を先に見る＝近接（enemy-ai.js `e.atk ?? meta.atk`）と同じ規則（分裂した子の childAtk など）。
+			// （キュー82⑩・Fable 実装レビュー #25。今は遠隔を持つ分裂敵が無い＝挙動は変わらない）
+			atk: e.atk ?? ENEMY_META[e.type]?.atk ?? 2,
 			...extra,
 		};
 		_projectiles.push(proj);
@@ -1017,6 +1019,8 @@ export function createProjectile(deps) {
 		const ss = getSS(getCurrentLayer(), getStageKey());
 
 		let needRenderBoard = false;
+		// 爆風に体のどこかが入った敵＝1体1回（2×2 の4セルが全部入っても4倍にしない）
+		const blasted = new Set();
 		const cells = blastCells(r, c, radius, sd.rows, sd.cols);
 		for (const { r: tr, c: tc } of cells) {
 			const posKey = `${tr},${tc}`;
@@ -1033,10 +1037,14 @@ export function createProjectile(deps) {
 			}
 
 			// 敵ダメージ（隠れ中の敵は爆風の対象外＝地中/滞空の敵に爆風は届かない）
+			// ⚠️ 判定は占有セル（enemyOccupiesTile）＝左上タイルだけを見ると 2×2／3×3 のボスは爆風の絵が
+			//    体に重なっていても無傷になり得た（キュー82②・Fable 実装レビュー #6。ロウソクの炎と同じ罠）。
+			//    1×1 は toTileRow/Col と同じ丸め＝従来どおり。
 			if (enemyDamage > 0) {
 				for (const e of [...getEnemies()]) {
-					if (e.hidden) continue;
-					if (toTileRow(e.y) === tr && toTileCol(e.x) === tc) {
+					if (e.hidden || blasted.has(e)) continue;
+					if (enemyOccupiesTile(e, tr, tc)) {
+						blasted.add(e);
 						dealDamageToEnemy(e, enemyDamage, 'bomb');
 					}
 				}

@@ -48,6 +48,8 @@ import {
 	getMiragesSnapshot,
 	getThornsSnapshot,
 	getFloorDropsSnapshot,
+	callRenderChars,
+	getFloorDropViewsSnapshot,
 	callPickupFloorDropAt,
 	callSpawnFloorDrop,
 	getStageMoves,
@@ -76,7 +78,7 @@ init().catch(err => {
 // ── ウィンドウリサイズ ─────────────────────────────────────────
 // updateBoardScale() が --cell を変更した後、既存セルの background-size を再計算する
 window.addEventListener('resize', () => {
-	updateBoardScale();
+	updateBoardScale({ redrawChars: true });
 	document.querySelectorAll('.cell[data-bg-sprite]').forEach(cell => {
 		applyBgSpriteToCell(cell, cell.dataset.bgSprite, cell.dataset.bgPal);
 	});
@@ -200,6 +202,8 @@ window.__game = {
 	// キュー76③-3（Ω）: 金の棘の一覧＝棘は敵ではない∴getEnemies では数えられない。
 	getThorns: () => getThornsSnapshot(),
 	getFloorDrops: () => getFloorDropsSnapshot(),
+	renderChars: () => callRenderChars(),
+	getFloorDropViews: () => getFloorDropViewsSnapshot(),
 	pickupFloorDrop: (r, c) => callPickupFloorDropAt(r, c),
 	spawnFloorDrop: (r, c, type) => callSpawnFloorDrop(r, c, type),
 	// Phase 9-5b: リスポーンテスト用

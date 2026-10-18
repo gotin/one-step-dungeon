@@ -8,6 +8,7 @@
 import { TILE } from '../shared/tiles.js';
 import { playSound } from '../shared/sounds.js';
 import { KNOWN_TRIGGERS } from '../shared/triggers.js';
+import { ownsItem } from '../shared/items.js';
 
 /**
  * 条件評価関数群を生成する。
@@ -167,7 +168,9 @@ export function createConditions(d) {
 				met = ss.switchToggles?.has(cond.switchId) === true || ss.switchStates?.[cond.switchId] === true;
 			}
 			else if (cond.trigger === 'wallBroken') met = ss.brokenWalls?.has(cond.wallId);
-			else if (cond.trigger === 'hasItem') met = !!player.subItems[cond.item] || player.weapon === cond.item;
+			// 所持は単一の真実 ownsItem で見る＝はしご・靴・装束・盾は別の旗で持つ（自前で subItems を見ると
+			// 永遠に「持っていない」になった・キュー82⑩・Fable 実装レビュー #8）。武器は今までどおり。
+			else if (cond.trigger === 'hasItem') met = ownsItem(player, cond.item) || player.weapon === cond.item;
 			else if (cond.trigger === 'allSwitchesOn') {
 				const allSw = [];
 				for (let _r = 0; _r < stageData.rows; _r++) {

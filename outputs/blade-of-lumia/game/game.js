@@ -171,7 +171,7 @@ let heroDir = 'down';
 
 // ── フロアドロップ（Phase 9-5c）──────────────────────────────────
 // 雑魚撃破時にマップ上に一時出現するアイテム。踏むと拾える。
-// { r, c, type, timerId, el } の配列。ステージ遷移で全消去。
+// { r, c, type, until, el, cellPx } の配列（until＝ゲームの時間で消える時刻）。ステージ遷移で全消去。
 const FLOOR_DROP_ICONS = { bomb: '💣', arrow: '🏹', heart: '❤', rupee: '◆' };
 const FLOOR_DROP_COLORS = { bomb: '#ff8c00', arrow: '#c0a000', heart: '#ff4040', rupee: '#20c040' };
 // ドロップ表示用スプライト（[spr, pal]）＝マップ配置アイテムと同じ絵に揃える。
@@ -277,8 +277,12 @@ const HUD_LANE_MIN_PX = 150;
 function fitCell(w, h) {
 	return Math.max(8, Math.floor(Math.min(w / (stageData.cols * BASE_CELL), h / (stageData.rows * BASE_CELL)) * BASE_CELL));
 }
-function updateBoardScale() {
+// redrawChars＝セルの大きさが変わったらキャラ・石・落とし物を描き直す（回転・リサイズ・HUD の帯の高さの変化）。
+// 位置と寸法は px で書いてある＝描き直さないと次の描き直しまで別の場所に見えた（キュー82⑦・Fable 実装レビュー #15）。
+// 画面に入るとき（enterStage）はこの後で renderBoard＋renderChars を呼ぶ＝描き直しは要らない。
+function updateBoardScale({ redrawChars = false } = {}) {
 	if (!stageData) return;
+	const prevCell = getCellPx();
 	observeMarkGuide();
 	const W = window.innerWidth, H = window.innerHeight;
 	const hud = document.getElementById('hud');
@@ -311,6 +315,7 @@ function updateBoardScale() {
 	document.documentElement.style.setProperty('--cell', `${cell}px`);
 	boardEl.style.transform = ''; // scaleは不使用
 	fitMarkGuide();
+	if (redrawChars && cell !== prevCell) renderChars();
 }
 
 // 目的地表示の置き場所。レーン方式ならハートの下（#hud-left）へ移して2段組み（.in-lane）、
@@ -364,7 +369,7 @@ function observeMarkGuide() {
 	const hud = document.getElementById('hud');
 	if (hud && typeof ResizeObserver !== 'undefined') {
 		new ResizeObserver(() => {
-			if (hud.classList.contains('hud-band') && Math.abs(Math.ceil(hud.offsetHeight) - _hudBandH) > 1) updateBoardScale();
+			if (hud.classList.contains('hud-band') && Math.abs(Math.ceil(hud.offsetHeight) - _hudBandH) > 1) updateBoardScale({ redrawChars: true });
 		}).observe(hud);
 	}
 	// 名前・距離の文字と表示の切替（hidden）が変わったら測り直す。測り直しは style しか触らない＝自分を呼び直さない。
@@ -462,6 +467,10 @@ function getStageData(lk, sk) {
 
 // ── ステージ開始 ──────────────────────────────────────────────
 function enterStage(lk, sk, pRow, pCol) {
+	// 行き先が無い（出口・笛の行き先の書き間違い）＝何も変えずに今の画面に留まる。直す前は層と画面の名前だけを
+	// 先に書き換えてから気づいていた＝盤面が null になり次の一歩で例外（キュー82⑩・Fable 実装レビュー #16）。
+	const nextStageData = getStageData(lk, sk);
+	if (!nextStageData) { console.error(`Stage not found: ${lk}/${sk}`); return; }
 	// 別のステージに移動する場合、現在ステージの石を元の位置にリセット
 	// （壁際に挟まって取り出せなくなった石をリセットするため）
 	if (stageKey !== null && (currentLayer !== lk || stageKey !== sk)) {
@@ -526,8 +535,7 @@ function enterStage(lk, sk, pRow, pCol) {
 
 	currentLayer = lk;
 	stageKey     = sk;
-	stageData    = getStageData(lk, sk);
-	if (!stageData) { console.error(`Stage not found: ${lk}/${sk}`); return; }
+	stageData    = nextStageData;
 
 	getSS(lk, sk).visited = true;
 
@@ -550,7 +558,11 @@ function enterStage(lk, sk, pRow, pCol) {
 		const ar = Math.floor((pRow ?? 1) + 0.5), ac = Math.floor((pCol ?? 1) + 0.5);
 		const arrTile = stageData.tiles?.[ar]?.[ac];
 		const arrIsWater = arrTile === TILE.WATER || stageData.bgTiles?.[`${ar},${ac}`] === TILE.WATER;
-		if (arrTile !== TILE.SKY && !arrIsWater && arrTile !== TILE.LAVA) player.flying = false;
+		// 降りるのは歩いて立てるセルだけ＝画面の中で F を押して降りるとき（player.js toggleFlight の
+		// tilePassable）と同じ基準。木・茂み・柵・閉じた潮門（FLYABLE_OVER）の上は飛んだまま留まる
+		// （直す前は「空・水・溶岩以外なら降ろす」＝木の中に立って4方向とも歩けなかった・
+		// キュー82③・Fable 実装レビュー #4）。
+		if (arrTile !== TILE.SKY && !arrIsWater && arrTile !== TILE.LAVA && tilePassable(ar, ac)) player.flying = false;
 	}
 
 	// ステージ遷移時に飛翔物・設置爆弾・置いた炎・幻影をリセット
@@ -866,7 +878,7 @@ const { checkStoneOnSwitch, evaluateConditions, refreshGates } = createCondition
 	renderBoard = () => { _rb.renderBoard(); charLayerEl = charLayerElRef.value; };
 	// キュー21 F1: renderChars は char-layer を空にして描き直す∴拾う前の星の欠片の絵も
 	// 毎回消える。描き直しの後で「この部屋に拾う前の欠片があれば置き直す」を必ず続ける。
-	renderChars = () => { _rc.renderChars(); syncPendingTriforce(); };
+	renderChars = () => { _rc.renderChars(); syncPendingTriforce(); reattachFloorDrops(); };
 	addCharEl   = _rc.addCharEl;
 	moveCharEl  = _rc.moveCharEl;
 	removeCharEl= _rc.removeCharEl;
@@ -1233,6 +1245,7 @@ const { checkStoneOnSwitch, evaluateConditions, refreshGates } = createCondition
 		getIsDialog:    () => isDialog,
 		getIsPaused:    () => isPaused,
 		getIsGameover:  () => isGameover,
+		getIsTransitioning: () => isTransitioning,
 		setIsGameover:  (v) => { isGameover = v; },
 		getInvincibleUntil: () => invincibleUntil,
 		setInvincibleUntil: (v) => { invincibleUntil = v; },
@@ -1654,6 +1667,8 @@ function checkStageTransition() {
 		playSound('stageTransition');
 		saveGame();
 		setTimeout(() => {
+			// 遷移の 100ms の間に倒れた（石押しの後始末など世界の外から）＝ゲームオーバーの裏で画面を変えない
+			if (isGameover) return;
 			enterStage(newLayer, newKey, newRow, newCol);
 			isTransitioning = false;
 		}, 100);
@@ -1695,6 +1710,7 @@ function checkStageTransition() {
 		playSound('stageTransition');
 		saveGame();
 		setTimeout(() => {
+			if (isGameover) return;   // 上の画面端の遷移と同じ（倒れた後に画面を変えない）
 			enterStage(dest.layer, dest.stage, dest.row, dest.col);
 			isTransitioning = false;
 			// 遷移後 1.5 秒間は MAP_ENTER 再遷移を無効化
@@ -1742,17 +1758,9 @@ function saveCleared() {
 }
 
 // ── フロアドロップ管理（Phase 9-5c）──────────────────────────────
-// 重複座標を隣接マスにずらす（最大8方向探索）。
-const DROP_OFFSETS = [[0,0],[0,1],[1,0],[0,-1],[-1,0],[1,1],[-1,-1],[1,-1],[-1,1]];
-function spawnFloorDrop(r, c, type) {
-	// 占有されていない座標を探す
-	let dr = r, dc = c;
-	for (const [or, oc] of DROP_OFFSETS) {
-		const nr = r + or, nc = c + oc;
-		if (!activeFloorDrops.some(d => d.r === nr && d.c === nc)) {
-			dr = nr; dc = nc; break;
-		}
-	}
+// 落とし物の絵（セルの大きさで位置と寸法が決まる）。renderChars は char-layer を空にして作り直す＝
+// 落とし物は自分で付け直す（reattachFloorDrops）。
+function buildFloorDropEl(dr, dc, type) {
 	const cellPx = getCellPx();
 	const el = document.createElement('div');
 	el.style.cssText = `
@@ -1786,18 +1794,53 @@ function spawnFloorDrop(r, c, type) {
 		el.style.color = FLOOR_DROP_COLORS[type] ?? '#fff';
 		el.textContent = FLOOR_DROP_ICONS[type] ?? '?';
 	}
+	return el;
+}
+
+// renderChars（char-layer を空にして作り直す）の後に落とし物の絵を付け直す。セルの大きさが変わっていたら
+// （回転・リサイズ）作り直す。直す前＝スイッチ・宝箱・押した石の描き直しのたびに落とし物の絵だけが消え、
+// 拾えるのに見えなかった（キュー82⑦・Fable 実装レビュー #15 を直す途中で見つけた）。
+function reattachFloorDrops() {
+	if (!charLayerEl) return;
+	const cellPx = getCellPx();
+	for (const d of activeFloorDrops) {
+		if (d.el?.isConnected && d.cellPx === cellPx) continue;
+		d.el?.remove();
+		d.el = buildFloorDropEl(d.r, d.c, d.type);
+		d.cellPx = cellPx;
+		charLayerEl.appendChild(d.el);
+	}
+}
+
+// 重複座標を隣接マスにずらす（最大8方向探索）。
+const DROP_OFFSETS = [[0,0],[0,1],[1,0],[0,-1],[-1,0],[1,1],[-1,-1],[1,-1],[-1,1]];
+function spawnFloorDrop(r, c, type) {
+	// 占有されていない座標を探す
+	let dr = r, dc = c;
+	for (const [or, oc] of DROP_OFFSETS) {
+		const nr = r + or, nc = c + oc;
+		if (!activeFloorDrops.some(d => d.r === nr && d.c === nc)) {
+			dr = nr; dc = nc; break;
+		}
+	}
+	const el = buildFloorDropEl(dr, dc, type);
 	if (charLayerEl) charLayerEl.appendChild(el);
-	const timerId = setTimeout(() => removeFloorDrop(drop), 5000);
-	const drop = { r: dr, c: dc, type, timerId, el };
+	// 寿命 5 秒はゲームの時間で数える（tickFloorDrops）＝ポーズ・会話の間は減らない
+	// （直す前は実時間の setTimeout＝看板を読んでいる間に消えた・キュー82⑨・Fable 実装レビュー #24）
+	const drop = { r: dr, c: dc, type, until: gameNow() + FLOOR_DROP_LIFE_MS, el, cellPx: getCellPx() };
 	activeFloorDrops.push(drop);
 }
+const FLOOR_DROP_LIFE_MS = 5000;
+function tickFloorDrops() {
+	const now = gameNow();
+	for (const d of [...activeFloorDrops]) if (now >= d.until) removeFloorDrop(d);
+}
 function removeFloorDrop(drop) {
-	clearTimeout(drop.timerId);
 	drop.el?.remove();
 	activeFloorDrops = activeFloorDrops.filter(d => d !== drop);
 }
 function clearAllFloorDrops() {
-	for (const d of activeFloorDrops) { clearTimeout(d.timerId); d.el?.remove(); }
+	for (const d of activeFloorDrops) d.el?.remove();
 	activeFloorDrops = [];
 }
 // ドロップ種別の効果を player に適用する（踏んで拾う／ブーメランキャッチ共通）。
@@ -1880,11 +1923,15 @@ function stopGameLoop() {
 function gameTick() {
 	if (isPaused || isDialog || isGameover || isTransitioning) return;
 	processHeldKeys();   // 押しっぱなしキーで毎tick移動
+	// 移動で画面端・入口を越えて遷移が始まったら、この tick の残り（敵・弾・爆弾・炎）は走らせない
+	// ＝盤外座標の勇者が遷移の音の後に被弾しない（キュー82④・Fable 実装レビュー #14）。
+	if (isTransitioning || isGameover) return;
 	tickCharge();        // チャージゲージ更新（剣ビーム・Phase 3-1）
 	enemyTick();
 	projectileTick();
 	bombTick();
 	flameTick();          // 置いた炎の寿命と「踏んだ敵を焼く」判定（2026-08-31）
+	tickFloorDrops();     // 落とし物の寿命（ゲームの時間・キュー82⑨）
 	                      // ＝enemyTick の**後**に置く∴同じ tick で炎に入った敵はその tick で焼ける
 	// Phase 5.5k k-7.5: **接触ダメージは廃止した**（2026-08-17 ユーザー決定②
 	// 「接触だけでは攻撃を受けることはないようにする」）。ここには checkEnemyContact() が
@@ -2141,7 +2188,10 @@ function showCandleFireEffect(cx, cy) {
 
 // ── サブアイテム使用 ─────────────────────────────────────────
 function useSubItem() {
-	if (isDialog || isPaused || isGameover) return;
+	// 演出で世界を止めている間（isTransitioning＝金の装束・光の紋章の演出／転移／画面遷移）も使わない。
+	// 金の装束の演出は閃光まで hasGoldGarb を一時的に下ろす＝ここで撃つと saveGame が「装束なし」で書く
+	// （キュー82①・Fable 実装レビュー #1）。剣の swordAttack と同じ門。
+	if (isDialog || isPaused || isGameover || isTransitioning) return;
 	const id = player.activeSubItem;
 	if (!id) { pulse('サブアイテムがない！'); return; }
 	const meta = ITEM_META[id];
@@ -3189,6 +3239,13 @@ export function getThornsSnapshot() {
 export function getFloorDropsSnapshot() {
 	return activeFloorDrops.map(d => ({ r: d.r, c: d.c, type: d.type }));
 }
+// テスト用：落とし物の絵が盤面に付いているか・置かれた位置（renderChars の作り直しで消えない＝キュー82⑦）
+export function getFloorDropViewsSnapshot() {
+	return activeFloorDrops.map(d => ({ r: d.r, c: d.c, shown: !!d.el?.isConnected, left: parseFloat(d.el?.style.left ?? 'NaN') }));
+}
+
+// テスト用：キャラ層を描き直す（スイッチ・宝箱などの描き直しと同じ入口）
+export function callRenderChars() { renderChars(); }
 
 // Phase 9-5c: プレイヤーをフロアドロップ座標に移動させて拾わせる（テスト用）
 export function callPickupFloorDropAt(r, c) { return pickupFloorDropAt(r, c); }

@@ -564,6 +564,7 @@ export function createPlayer(deps) {
 				ss.stonePositions[stoneKey] = { r: stoneDestR, c: stoneDestC };
 				setLastStonePushTime(nowSt);
 				const _pushGen = ++_stonePushGen;   // この押しの世代（後始末ガード用）
+				const _pushLayer = getCurrentLayer(), _pushStage = getStageKey();   // 押した画面（後始末ガード用）
 				checkStoneOnSwitch();
 				evaluateConditions();
 
@@ -683,6 +684,9 @@ export function createPlayer(deps) {
 					// アニメ要素を stale な後始末が消して「アニメが飛ぶ」のを防ぐ。
 					// 次の押しの後始末が最新状態を描き直す。
 					if (_pushGen !== _stonePushGen) return;
+					// 押しの間に倒れた／別の画面へ移った＝古い画面の後始末を新しい状態に対して走らせない
+					// （倒れた瞬間をセーブしない＝game.js recordDeath の方針・キュー82⑥・Fable 実装レビュー #23）
+					if (getIsGameover() || getCurrentLayer() !== _pushLayer || getStageKey() !== _pushStage) return;
 					renderChars();
 					saveGame();
 					handleTileEvent();
@@ -728,7 +732,9 @@ export function createPlayer(deps) {
 		playSound('move');
 		moveCharEl('player', player.x, player.y);
 		updatePlayerCharEl();
-		updateHud();
+		// HUD は描き直さない＝半歩の移動で変わる物が HUD に無い（目的地表示は画面ごと＝画面遷移の enterStage が描く）。
+		// 拾う・被弾・飛ぶなど HUD が変わる処理はそれぞれ updateHud() を呼ぶ。直す前は半歩ごとにハート・装備・道具の
+		// 絵を全部作り直し、会話の版の走査（refreshUnreadMarks）も走っていた（キュー82⑪・Fable 実装レビュー #7）。
 
 		handleTileEvent();
 		checkSwitchOff();

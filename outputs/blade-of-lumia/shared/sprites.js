@@ -83,6 +83,8 @@ export function stopAnimLoop() {
 export function drawSprite(canvas, frames, palette, flipX = false, frameStart = 0) {
 	const cycle = frames.length - frameStart;
 	const f    = frameStart + (animFrame % cycle);
+	// 何を描いたかを覚える＝redrawAnimSprites が「同じコマ・同じ絵・同じ色・同じ向き」なら描き直さない
+	canvas._drawn = { frames, palette, flipX, f };
 	const grid = frames[f];
 	const rows = grid.length;
 	const cols = grid[0].length;
@@ -165,13 +167,21 @@ export function drawSpriteLayers(canvas, spriteNames, palette) {
 }
 
 // アニメーションスプライトの再描画（アニメループ内から呼ぶ）
+// ⚠️ 描き直すのは「描くコマ・絵・色・向き」のどれかが変わったキャンバスだけ（キュー82⑪・Fable 実装レビュー #3）。
+//    呼び手は2つ＝アニメループ（400ms・animFrame を進める）と gameTick（120ms・dataset の差し替え＝敵の向き・
+//    絵の名前をすぐ絵に出すため）。直す前は毎回すべてを描き直していた＝森の画面（木 77 本）で、
+//    animFrame が変わらない 120ms の呼び出しのたびに同じ絵を 32×32 ドット塗り直していた。
 export function redrawAnimSprites() {
 	document.querySelectorAll('canvas.sprite[data-sprite]').forEach(cv => {
 		const frames = SPRITES[cv.dataset.sprite];
 		const pal    = PAL[cv.dataset.pal] || PAL.hero;
 		const flipX  = cv.dataset.flipX === '1';
 		const frameStart = Number(cv.dataset.frameStart || 0);
-		if (frames && frames.length - frameStart > 1) drawSprite(cv, frames, pal, flipX, frameStart);
+		if (!frames || frames.length - frameStart <= 1) return;
+		const f = frameStart + (animFrame % (frames.length - frameStart));
+		const d = cv._drawn;
+		if (d && d.frames === frames && d.palette === pal && d.flipX === flipX && d.f === f) return;
+		drawSprite(cv, frames, pal, flipX, frameStart);
 	});
 	// bgTile は原則アニメーションしない（草/砂/雪…は静止）。ただし水下地
 	// （bgTiles 層の水 '~'）は tiles 層の水と同じ波アニメで揺らす（Phase 9-6 深洋O・
@@ -180,6 +190,10 @@ export function redrawAnimSprites() {
 	document.querySelectorAll('.cell[data-bg-sprite]').forEach(cell => {
 		const sprName = cell.dataset.bgSprite;
 		if (!ANIMATED_BG_SPRITES.has(sprName.split('@')[0])) return;
+		// 同じコマなら貼り直さない（上のキャンバスと同じ理由）。大きさの変化（リサイズ）は main.js が直接貼り直す。
+		const key = `${sprName}|${cell.dataset.bgPal}|${animFrame % (SPRITES[sprName]?.length || 1)}`;
+		if (cell._bgAnimKey === key) return;
+		cell._bgAnimKey = key;
 		applyBgSpriteToCell(cell, sprName, cell.dataset.bgPal);
 	});
 }
