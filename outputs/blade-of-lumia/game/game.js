@@ -594,6 +594,12 @@ function enterStage(lk, sk, pRow, pCol) {
 	playBgm(bgm);
 	updateDungeonHud(lk);
 	if (stageData.isBossRoom) startBossBattle(lk, sk);
+	// 別の画面へ移ったらここで保存する＝到着した画面・盤の中の座標が残る（画面端・入口・笛・転移の石碑の
+	// どれもここを通る）。直す前は遷移を始めた瞬間に書いていた＝出発側の画面と盤の外にはみ出した座標
+	// （y:-0.5 など）が残り、続きからで入口の外から始まった（キュー83・Fable 実装レビュー #13）。
+	// 同じ画面に入り直す呼び出し（はじめから・続きから・リトライ・プレビューの開始）では書かない＝
+	// リトライは倒れた瞬間の部屋をセーブに残さない（recordDeath の注）。
+	if (isStageChange) saveGame();
 }
 
 // ── レイヤー HUD 更新 ─────────────────────────────────────────
@@ -1665,7 +1671,7 @@ function checkStageTransition() {
 		}
 		isTransitioning = true;
 		playSound('stageTransition');
-		saveGame();
+		// セーブは移った後（enterStage の末尾）＝ここで書くと出発側の画面と盤の外の座標が残る（キュー83）
 		setTimeout(() => {
 			// 遷移の 100ms の間に倒れた（石押しの後始末など世界の外から）＝ゲームオーバーの裏で画面を変えない
 			if (isGameover) return;
@@ -1708,7 +1714,6 @@ function checkStageTransition() {
 		const dest = exitRegistry[enter.destId];
 		isTransitioning = true;
 		playSound('stageTransition');
-		saveGame();
 		setTimeout(() => {
 			if (isGameover) return;   // 上の画面端の遷移と同じ（倒れた後に画面を変えない）
 			enterStage(dest.layer, dest.stage, dest.row, dest.col);
@@ -2059,9 +2064,11 @@ function playFlute() {
 		isTransitioning = true;
 		showFluteWarpEffect();
 		playSound('stageTransition');
-		saveGame();
 		pulse(fx.message ?? '{{flute}} 竜巻が巻き起こり 運ばれていく！', 2000);
 		setTimeout(() => {
+			// 画面端・入口の遷移と同じ門＝倒れた後に画面を変えない（enterStage は移った後に保存する＝
+			// 倒れたまま HP 0 を書かないため。遷移の間は世界が止まる∴今の作りでは倒れる経路は無い・キュー83）
+			if (isGameover) return;
 			enterStage(dest.layer, dest.stage, dest.row, dest.col);
 			isTransitioning = false;
 			mapEnterCooldownUntil = gameNow() + 1500;
