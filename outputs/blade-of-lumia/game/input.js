@@ -59,7 +59,6 @@ export function initInput(deps) {
 		quickSwapCancel,
 		quickSwapPrev,
 		quickSwapNext,
-		quickSwapPointerMove,
 		quickSwapTouchHoldMs,
 		toggleFlight,
 		togglePause,
@@ -347,47 +346,30 @@ export function initInput(deps) {
 		swordBtn.addEventListener('mouseleave', () => releaseSword());
 	}
 	// SUB ボタン＝タップ（離したとき）で道具を使う・長押しで道具の早替えの枠（キュー84 の続き）。
-	// 旧＝click（離したときに発火）＝タップの感触は同じ。長押しで枠が開いたら、指を横に滑らせて選び、
-	// 離すと持ち替える（道具は使わない）。指をボタンの外へ出しても続ける＝枠へ向かって滑らせる操作を切らない。
+	// 旧＝click（離したときに発火）＝タップの感触は同じ。長押しで開いた枠は指を離しても開いたまま
+	// ＝道具をタップで持ち替え・外をタップでやめる（quick-swap.js・2026-10-18 ユーザー決定）。
 	const subBtn = document.getElementById('btn-sub');
 	if (subBtn) {
 		let subHeld = false;
-		let subTouchId = null;
-		const pressSub = (x = null) => {
+		const pressSub = () => {
 			if (subHeld || inCutscene()) return;
 			subHeld = true;
 			resumeAudio();
-			quickSwapPress?.(quickSwapTouchHoldMs, true, x);
+			quickSwapPress?.(quickSwapTouchHoldMs, true);
 		};
-		const releaseSub = (use) => {
+		const releaseSub = () => {
 			if (!subHeld) return;
 			subHeld = false;
-			const swapped = quickSwapRelease?.();
-			if (!swapped && use && !inCutscene()) useSubItem();
+			const opened = quickSwapRelease?.();
+			if (!opened && !inCutscene()) useSubItem();
 		};
-		subBtn.addEventListener('touchstart', e => {
-			e.preventDefault();
-			if (subTouchId !== null) return;
-			subTouchId = e.changedTouches[0].identifier;
-			pressSub(e.changedTouches[0].clientX);
-		}, { passive: false });
-		const subTouch = (list) => [...list].find(t => t.identifier === subTouchId);
-		subBtn.addEventListener('touchmove', e => {
-			e.preventDefault();
-			const t = subTouch(e.changedTouches);
-			if (t) quickSwapPointerMove?.(t.clientX, t.clientY);
-		}, { passive: false });
-		subBtn.addEventListener('touchend', e => {
-			e.preventDefault();
-			if (!subTouch(e.changedTouches)) return;
-			subTouchId = null;
-			releaseSub(true);
-		}, { passive: false });
-		subBtn.addEventListener('touchcancel', () => { subTouchId = null; subHeld = false; quickSwapCancel?.(); });
-		subBtn.addEventListener('mousedown', e => pressSub(e.clientX));
-		window.addEventListener('mousemove', e => { if (subHeld) quickSwapPointerMove?.(e.clientX, e.clientY); });
-		window.addEventListener('mouseup', () => releaseSub(true));
-		window.addEventListener('blur', () => { subTouchId = null; subHeld = false; });
+		// touchend の preventDefault＝合成の click が枠（開いたばかり）へ落ちて即閉じるのを防ぐ
+		subBtn.addEventListener('touchstart',  e => { e.preventDefault(); pressSub(); }, { passive: false });
+		subBtn.addEventListener('touchend',    e => { e.preventDefault(); releaseSub(); }, { passive: false });
+		subBtn.addEventListener('touchcancel', () => { subHeld = false; quickSwapRelease?.(); });
+		subBtn.addEventListener('mousedown', () => pressSub());
+		window.addEventListener('mouseup', () => releaseSub());
+		window.addEventListener('blur', () => { subHeld = false; });
 	}
 	document.getElementById('btn-fly')?.addEventListener('click',   () => { resumeAudio(); if (!inCutscene()) toggleFlight?.(); });
 	document.getElementById('btn-menu')?.addEventListener('click',  () => { resumeAudio(); if (!inCutscene()) togglePause(); });

@@ -22,6 +22,9 @@
     pointer-events: none;
 }
 #quickswap-overlay.hidden { display: none; }
+/* SUB ボタンから開いた＝タップで選ぶ・外をタップでやめる（quick-swap.js）。X のときは押せない＝盤面の操作を邪魔しない */
+#quickswap-overlay.qs-touch { pointer-events: auto; }
+#quickswap-overlay.qs-touch .quickswap-slot { cursor: pointer; }
 
 #quickswap-box {
     background: rgba(8, 16, 28, 0.92);

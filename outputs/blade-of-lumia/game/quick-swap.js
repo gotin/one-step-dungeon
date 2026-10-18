@@ -1,4 +1,4 @@
-// ── Blade of Lumia – 道具の早替え（X 長押し）── 実行キュー84 ──────────────
+// ── Blade of Lumia – 道具の早替え（X 長押し／SUB ボタン長押し）── 実行キュー84 ──────────────
 //
 // ユーザー決定（2026-10-18・ブレスオブワイルド風）：
 //   - X を押し続けると、道具の一覧だけの小さな枠が開く（ポーズ画面とは別）。開いている間は世界を止める。
@@ -9,6 +9,12 @@
 // Cmd／Alt を長押しのキーにしない理由＝Mac は Cmd を押している間ほかのキーの keyup が届かない・
 // Cmd+W／Q／Tab はページが止められない・Option は e.key の文字を変える（PLAN 84）。
 //
+// スマホ＝SUB ボタンの長押し（2026-10-18 ユーザー決定・iPhone 実機で試して）：
+//   「カーソルキーがないから、アイテムを直接タップで選択」「押しっぱなしにする必要はなくて、ダイアログは出しっぱなし、
+//    選択するか、ダイアログ外を押して選択をやめるかで閉じる」
+//   ＝長押しで開いたら指を離しても開いたまま（sticky）。道具をタップ＝持ち替えて閉じる／枠の外をタップ＝持ち替えずに閉じる。
+//   ❌ 失効（2026-10-18）：指を横に滑らせて選び、離して持ち替える版（`76af389`）＝タップで選べるので操作を1つにした。
+//
 // 実装時に決めたこと（2026-10-18）：
 //   - 開くまでの長押し＝HOLD_MS。押した瞬間に開くと、B の隣のキーを触っただけで世界が止まる。
 //   - 道具が0個＝開かない（選ぶ物が無い）。1個＝開く（持ち物が1つだと分かる・押して何も起きないより誤解が無い）。
@@ -18,13 +24,9 @@
 //     （テストの step() やループの外から tick が来ても世界が進まない）。
 
 export const QUICK_SWAP_HOLD_MS = 220;
-// スマホ＝SUB ボタンの長押し（2026-10-18 ユーザー「連打のつもりが長押しになって枠が出てうざい、にならないなら」）。
-// SUB ボタンは今も「離したときに使う」（旧 click）∴長押しを足してもタップの感触は変わらない。
+// SUB ボタンは「離したときに使う」（旧 click）∴長押しを足してもタップの感触は変わらない。
 // 連打の1回（100〜150ms）より十分長く、X より長めに取る。
 export const QUICK_SWAP_TOUCH_HOLD_MS = 400;
-// 指で選ぶ：横に動かした距離 STEP_PX ごとに1つ隣へ（枠は画面の中央＝ボタンから遠い∴道具の上まで指を運ばせない）。
-// 指が道具の上にあればそれを選ぶ。
-const TOUCH_STEP_PX = 40;
 
 export function createQuickSwap(deps) {
 	const {
@@ -40,16 +42,18 @@ export function createQuickSwap(deps) {
 	} = deps;
 
 	const overlayEl = document.getElementById('quickswap-overlay');
+	const boxEl     = document.getElementById('quickswap-box');
 	const listEl    = document.getElementById('quickswap-items');
 	const nameEl    = document.getElementById('quickswap-name');
 	const hintEl    = document.getElementById('quickswap-hint');
 	const HINT_KEY   = '← → で選ぶ　X を離して持ち替え　Escape でやめる';
-	const HINT_TOUCH = '指を横に滑らせて選ぶ　離して持ち替え';
+	const HINT_TOUCH = '道具をタップで持ち替え　外をタップでやめる';
 
-	let timer = null;   // 長押しを待っている間の setTimeout
-	let open  = false;
-	let items = [];
-	let idx   = 0;
+	let timer  = null;    // 長押しを待っている間の setTimeout
+	let open   = false;
+	let sticky = false;   // SUB ボタンから開いた＝指を離しても開いたまま・タップで選ぶ
+	let items  = [];
+	let idx    = 0;
 
 	function render() {
 		const player = getPlayer();
@@ -79,50 +83,53 @@ export function createQuickSwap(deps) {
 		if (!items.length) return;
 		const cur = items.indexOf(player.activeSubItem);
 		idx = cur >= 0 ? cur : 0;
-		pointerStart = lastX != null ? { x: lastX, idx } : null;
 		open = true;
 		cancelCharge?.();
 		stopGameLoop();
 		render();
+		overlayEl.classList.toggle('qs-touch', sticky);
 		overlayEl.classList.remove('hidden');
 		playSound('talk');
 	}
 
 	function closePanel() {
 		open = false;
+		sticky = false;
 		overlayEl.classList.add('hidden');
+		overlayEl.classList.remove('qs-touch');
 		startGameLoop();
 	}
 
-	// X を押した（キーリピートは呼び元が捨てる）
-	// holdMs＝開くまでの長押し（X＝QUICK_SWAP_HOLD_MS／SUB ボタン＝QUICK_SWAP_TOUCH_HOLD_MS）
-	// touch＝SUB ボタンから開いた（ヒントの文を指の操作に替える）
-	// x＝押した指の位置（開く瞬間までの指の動きは pointerMove が追う）＝開いた瞬間の位置を選びの基点にする
-	function press(holdMs = QUICK_SWAP_HOLD_MS, touch = false, x = null) {
+	// 選んでいる道具に持ち替えて閉じる
+	function equipAndClose() {
+		const id = items[idx];
+		if (id) getPlayer().activeSubItem = id;
+		updateHud();
+		closePanel();
+	}
+
+	// 長押しを始めた。holdMs＝開くまでの時間（X＝QUICK_SWAP_HOLD_MS／SUB ボタン＝QUICK_SWAP_TOUCH_HOLD_MS）。
+	// touch＝SUB ボタンから（開いたら開いたまま・タップで選ぶ）。
+	function press(holdMs = QUICK_SWAP_HOLD_MS, touch = false) {
 		if (open || timer) return;
-		lastX = x;
+		sticky = !!touch;
 		if (hintEl) hintEl.textContent = touch ? HINT_TOUCH : HINT_KEY;
 		timer = setTimeout(openPanel, holdMs);
 	}
 
-	// X を離した＝開いていれば選んでいる道具に持ち替えて閉じる。開く前なら何もしない。
-	// 戻り値＝枠を閉じたら true（SUB ボタンは false のとき＝タップだったときだけ道具を使う）。
+	// 長押しをやめた（X／SUB ボタンを離した）。
+	// 開く前なら何もしない。X で開いていたら持ち替えて閉じる。SUB ボタンで開いていたら開いたまま。
+	// 戻り値＝枠が開いていたら true（SUB ボタンは false のとき＝タップだったときだけ道具を使う）。
 	function release() {
 		if (timer) { clearTimeout(timer); timer = null; }
-		pointerStart = null;
 		if (!open) return false;
-		const player = getPlayer();
-		const id = items[idx];
-		if (id) player.activeSubItem = id;
-		updateHud();
-		closePanel();
+		if (!sticky) equipAndClose();
 		return true;
 	}
 
-	// Escape・フォーカスが外れた＝持ち替えずに閉じる（長押しを待っていたら待つのもやめる）
+	// Escape・フォーカスが外れた・枠の外をタップ＝持ち替えずに閉じる（長押しを待っていたら待つのもやめる）
 	function cancel() {
 		if (timer) { clearTimeout(timer); timer = null; }
-		pointerStart = null;
 		if (open) closePanel();
 	}
 
@@ -133,35 +140,24 @@ export function createQuickSwap(deps) {
 		render();
 	}
 
-	// 指（マウス）で選ぶ。開いた後の最初の位置を基点に、横へ TOUCH_STEP_PX ごとに1つ隣へ。
-	// 指が道具の枠の上にあれば、その道具を選ぶ（枠は pointer-events:none＝座標で引く）。
-	let pointerStart = null;   // { x, idx }
-	let lastX = null;          // 開く前の指の位置（開いた瞬間の基点になる）
-	function pointerMove(x, y) {
-		if (!open) { lastX = x; return; }
-		const slots = [...listEl.querySelectorAll('.quickswap-slot')];
-		const hit = slots.findIndex((el) => {
-			const r = el.getBoundingClientRect();
-			return x >= r.left && x <= r.right && y >= r.top && y <= r.bottom;
-		});
-		let next;
-		if (hit >= 0) {
-			next = hit;
-			pointerStart = { x, idx: hit };
-		} else {
-			if (!pointerStart) pointerStart = { x, idx };
-			const steps = Math.trunc((x - pointerStart.x) / TOUCH_STEP_PX);
-			next = Math.max(0, Math.min(items.length - 1, pointerStart.idx + steps));
+	// タップで選ぶ（枠は SUB ボタンから開いたときだけ押せる＝css の .qs-touch）。
+	// 道具＝持ち替えて閉じる／枠の外（暗い所）＝持ち替えずに閉じる／枠の中の道具以外＝何もしない。
+	overlayEl?.addEventListener('click', (e) => {
+		if (!open) return;
+		const slot = e.target.closest?.('.quickswap-slot');
+		if (slot) {
+			const i = items.indexOf(slot.dataset.item);
+			if (i >= 0) idx = i;
+			if (items[idx] !== getPlayer().activeSubItem) playSound('switch');
+			equipAndClose();
+			return;
 		}
-		if (next === idx) return;
-		idx = next;
-		playSound('switch');
-		render();
-	}
+		if (!boxEl?.contains(e.target)) cancel();
+	});
 
 	return {
 		isOpen: () => open,
-		press, release, cancel, pointerMove,
+		press, release, cancel,
 		selectPrev: () => select(-1),
 		selectNext: () => select(1),
 		// テスト用：選んでいる道具

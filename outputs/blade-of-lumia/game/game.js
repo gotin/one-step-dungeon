@@ -1034,12 +1034,11 @@ const { checkStoneOnSwitch, evaluateConditions, refreshGates } = createCondition
 		useSubItem:  () => useSubItem(),
 		// キュー84: X 長押しの道具の早替え
 		getIsQuickSwap:   () => !!quickSwap?.isOpen(),
-		quickSwapPress:   (ms, touch, x) => quickSwap?.press(ms, touch, x),
+		quickSwapPress:   (ms, touch) => quickSwap?.press(ms, touch),
 		quickSwapRelease: () => quickSwap?.release(),
 		quickSwapCancel:  () => quickSwap?.cancel(),
 		quickSwapPrev:    () => quickSwap?.selectPrev(),
 		quickSwapNext:    () => quickSwap?.selectNext(),
-		quickSwapPointerMove: (x, y) => quickSwap?.pointerMove(x, y),
 		quickSwapTouchHoldMs: QUICK_SWAP_TOUCH_HOLD_MS,
 		toggleFlight: () => toggleFlight(),
 		togglePause,
