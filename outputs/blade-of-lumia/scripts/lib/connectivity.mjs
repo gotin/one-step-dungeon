@@ -11,8 +11,7 @@
 // Both check-dungeon-connectivity.mjs and check-field-connectivity.mjs (and the
 // connectivity-tool tests) import from here, so the BLOCKED rule lives in ONE
 // place instead of being hand-copied per script.
-import { TILE } from '../../shared/tiles.js';
-import { NPC_SPRITE_MAP } from '../../shared/npcs.js';
+import { TILE, FOOT_SOLID_TILES } from '../../shared/tiles.js';
 
 // (HARD_BLOCKED / SOLVABLE_GATES / BLOCKED defined below.)
 
@@ -36,31 +35,19 @@ import { NPC_SPRITE_MAP } from '../../shared/npcs.js';
 // Mirrors game/passable.js LADDER_OVER.
 export const LADDER_OVER = new Set([TILE.WATER, TILE.PIT]);  // 溶岩は含めない（はしごで渡れない）
 
+// Foot-solid tiles (walls, water, trees, signs, torches, NPCs …) come from the single
+// source `shared/tiles.js FOOT_SOLID_TILES` — the same set game/passable.js and the
+// arrival check in game.js read (queue 85 #5). Only the extras that are static
+// blockers *for the checker* are listed here.
 export const HARD_BLOCKED = new Set([
-  TILE.WALL,            // '#'
-  TILE.WATER,           // '~'
-  TILE.LAVA,            // 'l' (same as water: blocks foot, flyable/ladder-crossable)
-  TILE.SKY,             // '%' (flight-only)
-  TILE.PIT,             // 'x' (ladder-only)
+  ...FOOT_SOLID_TILES,
   TILE.DOORWAY_LOCKED,  // '|' (dead code — never opens => effectively a wall)
   TILE.SWITCH,          // 'Y' (struck by weapon; blocks the cell)
   TILE.SWITCH_RED,      // '['
   TILE.SWITCH_BLUE,     // ']'
   TILE.STONE,           // '*' (pushable but blocks until pushed)
-  TILE.TREE,            // 't'
-  TILE.MOUNTAIN,        // 'M'
   TILE.BUSH,            // 'u' (until cut)
-  TILE.FENCE,           // 'f'
-  TILE.HOUSE_WALL,      // 'h'
-  TILE.HOUSE_ROOF,      // 'p'
-  TILE.SIGN,            // 'i' (passable:false in passable.js — read, don't stand)
-  TILE.MONUMENT,        // '†' (キュー27・石碑＝看板と同じ扱い＝READABLE_SIGN_TILES)
-  TILE.WARP_STONE,      // '‡' (キュー27・転移の石碑)
-  TILE.TORCH,           // 'H' (passable:false)
 ]);
-
-// NPC tiles (a/b/$ and princess) are not standable in passable.js.
-for (const ch of Object.keys(NPC_SPRITE_MAP)) HARD_BLOCKED.add(ch);
 
 // Closed-but-openable gates / walk-through doorways. Block the walk, not a bug.
 export const SOLVABLE_GATES = new Set([

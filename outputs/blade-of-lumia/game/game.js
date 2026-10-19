@@ -1,6 +1,6 @@
 // ── Blade of Lumia – game.js ──────────────────────────────────
 // Phase 1: マップ読み込み・プレイヤー移動（半セル）・ステージ遷移
-import { TILE, BG_TILES, READABLE_SIGN_TILES } from '../shared/tiles.js';
+import { TILE, BG_TILES, FOOT_SOLID_TILES } from '../shared/tiles.js';
 import { buildExitRegistry as buildExitRegistryShared } from '../shared/exits.js';
 import { liftGroundTiles } from '../shared/ground-layer.js';
 import { ENEMY_META, ENEMY_SPEED_NORMAL } from '../shared/enemies.js';
@@ -1541,14 +1541,11 @@ function unlockLockedDoor(posKey) {
 // として扱っていた＝どちらも「状態を見ていない」1つの判定漏れだった。
 // ⚠️ SWITCH/SWITCH_RED/SWITCH_BLUE/TORCH は tilePassable では通行可だが、着地では
 // 従来どおり常にブロックを維持する（footprintBlocked/traps の既存ベースラインの前提）。
+// 徒歩で常に立てない物は `shared/tiles.js FOOT_SOLID_TILES`（通行・接続の検査と同じ集合・キュー85 #5）。
 const ARRIVAL_WALL_TILES = new Set([
-	TILE.WALL, TILE.WATER, TILE.LAVA, TILE.SKY, TILE.PIT,
+	...FOOT_SOLID_TILES,
 	TILE.SWITCH, TILE.SWITCH_RED, TILE.SWITCH_BLUE,
-	TILE.TREE, TILE.MOUNTAIN, TILE.FENCE,
-	TILE.HOUSE_WALL, TILE.HOUSE_ROOF, TILE.SIGN, TILE.TORCH,
-	...READABLE_SIGN_TILES,   // 看板に加えて石碑・転移の石碑（キュー27）
 ]);
-for (const ch of Object.keys(NPC_SPRITE_MAP)) ARRIVAL_WALL_TILES.add(ch);
 
 // 着地セルが「今」通行不可か（種別で確定する壁 or 状態を見て閉じている開閉タイル）。
 // tilePassable（passable.js）と statefulTileClosed を共有する＝同じ条件を2箇所に

@@ -1,6 +1,9 @@
 // ── Blade of Lumia – Tile Definitions ────────────────────────
 // Dungeon World の全タイルを継承した上で Blade of Lumia 追加分を定義
 
+// FOOT_SOLID_TILES（下）に NPC の文字を足すため。npcs.js は何も import しない＝循環しない。
+import { NPC_SPRITE_MAP } from './npcs.js';
+
 export const TILE = {
 	// 地形
 	FLOOR:   '.',  // 床
@@ -354,6 +357,23 @@ export const FLOOR_STACK_TILES = {
 // 接続の検査／会話の検査／エディタの本文欄）はこの集合を見る＝`=== TILE.SIGN` を書かない
 // （書くと石碑だけ読めない・すり抜けられる、が起きる）。
 export const READABLE_SIGN_TILES = new Set([TILE.SIGN, TILE.MONUMENT, TILE.WARP_STONE]);
+
+// ── 「徒歩では常に立てない」タイルの単一の真実（キュー85 #5・2026-10-19）──
+// 状態に依らず固い物＝壁・水・溶岩・空・穴・木・山・柵・家の壁と屋根・読める立て物・かがり火・NPC。
+// 読み手は3つ＝それぞれこの集合に「自分の事情の分」だけを足す（同じ物を各自で列挙しない）：
+//   ・通行（`game/passable.js tilePassable`）＝この集合だけ（スイッチは踏める・開閉する物は状態で見る）
+//   ・着地（`game/game.js ARRIVAL_WALL_TILES`）＝＋スイッチ3種（境界を跨いだ着地では従来どおり壁）
+//   ・接続の検査（`scripts/lib/connectivity.mjs HARD_BLOCKED`）＝＋スイッチ3種＋閉じたままの戸口・石・茂み
+// 旧＝3か所に別々に列挙していた＝かがり火 'H' を通行だけが落とし、歩いて上に乗れた（2026-09-23 まで）。
+// 水は bgTiles（下地）の水もある＝通行・着地はセルの下地も別に見る（この集合は tiles 層の文字だけ）。
+// NPC の文字は `shared/npcs.js NPC_SPRITE_MAP` から足す（npcs.js は何も import しない＝循環しない）。
+export const FOOT_SOLID_TILES = new Set([
+	TILE.WALL, TILE.WATER, TILE.LAVA, TILE.SKY, TILE.PIT,
+	TILE.TREE, TILE.MOUNTAIN, TILE.FENCE, TILE.HOUSE_WALL, TILE.HOUSE_ROOF,
+	...READABLE_SIGN_TILES,
+	TILE.TORCH,
+	...Object.keys(NPC_SPRITE_MAP),
+]);
 
 // タイルの一覧（パレット表示用）
 export const TILE_LIST = Object.keys(TILE_META);

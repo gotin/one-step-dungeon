@@ -33,10 +33,10 @@ import { test, expect } from '@playwright/test';
 import { readFileSync } from 'fs';
 import { fileURLToPath } from 'url';
 import { GAME_URL, SAVE_KEY } from './helpers.js';
-import { TILE } from '../shared/tiles.js';
+import { TILE, FOOT_SOLID_TILES } from '../shared/tiles.js';
 import { BOOMERANG_TIERS } from '../shared/items.js';
 import { ROWS, COLS, makeSolver } from '../scripts/lib/blade-solver.mjs';
-import { isLadderBridgeCell } from '../scripts/lib/connectivity.mjs';
+import { isLadderBridgeCell, HARD_BLOCKED } from '../scripts/lib/connectivity.mjs';
 
 const MAP_PATH = fileURLToPath(new URL('../work/blade-of-lumia.json', import.meta.url));
 const PASSABLE_PATH = fileURLToPath(new URL('../game/passable.js', import.meta.url));
@@ -267,12 +267,14 @@ test.describe('Blade of Lumia – dark_tower 3F 淵の環／淵の火渡り（�
 		expect(adds(game), 'game.js は2箇所（ロウソク＋initLitTorches の初期化）').toBe(2);
 		expect(game, 'initLitTorches の初期化は getSS の中').toContain('stageState[k].litTorches.add(pk)');
 		// かがり火は通行不可＝隣に立てない∴ロウソク（前方1セル）では点けられない。
-		// ⚠️ ここが抜けていた（2026-09-23 修正）。着地判定 ARRIVAL_WALL_TILES と
-		//    connectivity.mjs の HARD_BLOCKED は元から壁扱い＝通行判定だけが 'H' を落としていた。
-		expect(passable, 'tilePassable がかがり火を通行不可にしている')
-			.toContain('if (tile === TILE.TORCH)       return false;');
-		expect(game, '着地判定 ARRIVAL_WALL_TILES もかがり火を壁扱い（元から）')
-			.toContain('TILE.HOUSE_WALL, TILE.HOUSE_ROOF, TILE.SIGN, TILE.TORCH,');
+		// ⚠️ ここが抜けていた（2026-09-23 修正）＝通行判定だけが 'H' を落としていた。
+		// キュー85 #5（2026-10-19）で通行・着地・接続の検査は `FOOT_SOLID_TILES` 1つを読む形にした
+		// ∴「集合にかがり火がある」＋「3か所がその集合を読んでいる」を見る（踏み込めないことは bomb-torch が実際に歩いて見る）。
+		expect(FOOT_SOLID_TILES.has(TILE.TORCH), 'FOOT_SOLID_TILES にかがり火が無い').toBe(true);
+		expect(passable, 'tilePassable が FOOT_SOLID_TILES を見ていない').toContain('if (FOOT_SOLID_TILES.has(tile)) return false;');
+		expect(game, '着地判定 ARRIVAL_WALL_TILES が FOOT_SOLID_TILES を含んでいない')
+			.toMatch(/const ARRIVAL_WALL_TILES = new Set\(\[\s*\.\.\.FOOT_SOLID_TILES,/);
+		expect(HARD_BLOCKED.has(TILE.TORCH), '接続の検査がかがり火を壁にしていない').toBe(true);
 		// 受け渡しはプレイヤーの投擲に限る＝敵のブーメラン（π）でギミックが解けない
 		expect(proj, "炎の受け渡しは owner==='player' に限る")
 			.toContain("const collects = proj.owner === 'player'");

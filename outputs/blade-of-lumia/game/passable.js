@@ -7,8 +7,7 @@
 //  そこで「状態 getter と依存関数を注入する factory」形式にし、game.js が
 //  起動時に一度だけ createPassable(deps) を呼んで関数群を生成する。
 //  getter 経由で常に最新状態を読むので、呼び出し側の改修は不要。
-import { TILE, READABLE_SIGN_TILES } from '../shared/tiles.js';
-import { NPC_SPRITE_MAP } from '../shared/npcs.js';
+import { TILE, FOOT_SOLID_TILES } from '../shared/tiles.js';
 
 // Phase 1-5: 翼の羽衣で飛行中に「上を飛び越えられる」障害物タイル。
 // ルール：自然物（空・水・木・茂み・柵）は飛び越え可。
@@ -258,12 +257,13 @@ export function createPassable(d) {
 		const posKey = `${r},${c}`;
 		const ss     = getSS(getCurrentLayer(), getStageKey());
 		const debugMode = getDebugMode();
-		if (tile === TILE.WALL) return false;
+		// 徒歩で常に立てない物（壁・水・溶岩・空・穴・木・山・柵・家・読める立て物・かがり火・NPC）は
+		// `shared/tiles.js FOOT_SOLID_TILES` が単一の真実（着地・接続の検査も同じ集合を読む＝キュー85 #5）。
+		// ⚠️ 2026-09-23 まで個別の if の列挙で、ここだけがかがり火 'H' を落としていた＝歩いて上に乗れた
+		// （dark_tower 3,5「淵の火渡り」の実機テストで発覚）。列挙を1か所にしてこの型の食い違いを消した。
+		if (FOOT_SOLID_TILES.has(tile)) return false;
 		// 水は tiles 層でも bgTiles 層（下地）でも不通（はしご/飛行は isPassable で上書き）。
 		if (isWaterAt(r, c)) return false;
-		if (tile === TILE.LAVA) return false;  // 溶岩：地上では通れない（飛行/はしごは isPassable で許可＝水と同じ）
-		if (tile === TILE.SKY) return false;  // 空（虚空）：地上では通れない（飛行は isPassable で許可）
-		if (tile === TILE.PIT) return false;  // 穴：地上では通れない（はしごは isPassable で許可）
 		// Phase 9-6 ⑥-landing: 開閉しうるタイル（'T'/'='/'('/')'/'!'/'|'/'u'/'*'）の
 		// 「今」の状態は statefulTileClosed が単一の判定点（着地判定と共有）。
 		// ⚠️ ここで早期 return しない＝'u'/'*' は「開いている（切られた/押された）」場合に
@@ -271,27 +271,6 @@ export function createPassable(d) {
 		if (STATEFUL_TILES.has(tile) && statefulTileClosed(tile, posKey, ss)) return false;
 		// デバッグモード中はドアを素通り（鍵不要）
 		if (tile === TILE.DOOR   && !ss.openedDoors?.has(posKey) && !debugMode) return false;
-		if (NPC_SPRITE_MAP[tile]) return false;
-		// Phase 8: フィールドタイル通行判定
-		if (tile === TILE.TREE)        return false;
-		if (tile === TILE.MOUNTAIN)    return false;
-		if (tile === TILE.FENCE)       return false;
-		if (tile === TILE.HOUSE_WALL)  return false;
-		if (tile === TILE.HOUSE_ROOF)  return false;
-		// 看板・石碑・転移の石碑は通行不可（隣接して剣で読む）。キュー27＝集合で見る
-		if (READABLE_SIGN_TILES.has(tile)) return false;
-		// かがり火は通行不可（隣接してロウソクで点ける）。
-		// ⚠️ 2026-09-23 まで**ここだけが 'H' を落としていた**＝プレイヤーと敵がかがり火の上を
-		// 歩けた。他の判定はすべて「かがり火＝固い」で書かれていた：
-		//   ・着地判定 `ARRIVAL_WALL_TILES`（game.js:1217）に TILE.TORCH が入っている
-		//     ＝境界を跨いだ着地では壁なのに、同じセルへ歩いては入れる（⑥-landing と同型の食い違い）
-		//   ・`scripts/lib/connectivity.mjs` の HARD_BLOCKED は `TILE.TORCH,  // 'H' (passable:false)`
-		//     ＝接続検査・dead-edge・ソルバー（blade-solver.mjs）はすべて壁として測っていた
-		// ∴パズルの「隣に立てない＝ロウソクでは点けられない」という測定が静かに嘘になっていた
-		// （dark_tower 3,5「淵の火渡り」の実機テストで発覚＝穴に囲ったかがり火の上を歩いて渡れた）。
-		// 塞ぐ側の修正で安全＝検査は既に壁として測って全 PASS ∴ここを固くして閉じる経路は無い
-		// （実測：全レイヤー 53枚の 'H' に画面端・入口の着地セルは1つも無い）。
-		if (tile === TILE.TORCH)       return false;
 		// Phase 6.5: ドアウェイの通行判定（'|' は STATEFUL_TILES 側で判定済み）。
 		// DOORWAY_BOSS: boss_closed 状態は通れない（着地判定では常に通す＝逃走後の再入場を塞がない）
 		if (tile === TILE.DOORWAY_BOSS && ss.doorwayStates?.[posKey] === 'boss_closed') return false;
