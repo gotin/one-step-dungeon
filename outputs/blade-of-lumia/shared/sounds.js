@@ -1001,6 +1001,32 @@ export function playSound(kind) {
 		tone(ctx, now,        990, 0.04, 'sine', 0.05);
 		tone(ctx, now + 0.03, 1320,0.06, 'sine', 0.05);
 	}
+	// キュー90: 敵の落とし物を拾った音（アイテムごとに別・ルピーは上の 'rupee' をそのまま使う）。
+	// ⚠️ 周波数の並びを他の音と同じにしない＝テストは鳴った周波数の列で聞き分ける（tests/floor-drop-sounds.spec.js）。
+	// ハート「ポワン」＝回復薬（heal の3音）より軽い上がり2音。
+	if (kind === 'dropHeart') {
+		tone(ctx, now,        698,  0.06, 'sine', 0.05);   // F5
+		tone(ctx, now + 0.06, 1047, 0.12, 'sine', 0.055);  // C6
+	}
+	// 爆弾「ゴトッ…ジジッ」＝重い玉が手に収まる低音＋導火線の小さな音。
+	if (kind === 'dropBomb') {
+		tone(ctx, now,        123,  0.07, 'square',   0.07);  // 芯（重さ）
+		tone(ctx, now + 0.02, 87,   0.12, 'triangle', 0.06);  // 沈む
+		tone(ctx, now + 0.10, 2960, 0.03, 'sawtooth', 0.012); // 導火線 ジ
+		tone(ctx, now + 0.15, 3140, 0.03, 'sawtooth', 0.010); // 導火線 ジッ
+	}
+	// 矢「カシャッ」＝矢筒に束が収まる乾いた高音2つ＋木の軸の短い響き。
+	if (kind === 'dropArrow') {
+		tone(ctx, now,        1865, 0.025, 'square',   0.03);
+		tone(ctx, now + 0.035, 2489, 0.025, 'square',  0.03);
+		tone(ctx, now + 0.06, 1245, 0.05,  'triangle', 0.035);
+	}
+	// 満タン・上限で増えなかった「ポン↓」＝小さく沈む2音（取ったけど増えなかった）。
+	// ユーザー判定 2026-10-19「Bで。」＝同じ音だと満タンなのに回復したように聞こえる。
+	if (kind === 'dropFull') {
+		tone(ctx, now,        392, 0.05, 'triangle', 0.035); // G4
+		tone(ctx, now + 0.05, 294, 0.09, 'triangle', 0.03);  // D4
+	}
 	// 回復
 	if (kind === 'heal') {
 		tone(ctx, now,        523, 0.07, 'sine', 0.05);

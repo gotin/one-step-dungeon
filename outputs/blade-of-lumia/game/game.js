@@ -47,6 +47,7 @@ import { initPlaytestNotes } from './playtest-notes.js';
 import { initSoundToggle } from './sound-toggle.js';
 import { warpStoneId, warpLandingCandidates, WARP_NO_LANDING_TILES } from '../shared/warp-stones.js';
 import { noticeId } from '../shared/dialog-variants.js';
+import { isTestLayer } from '../shared/layers.js';
 // ── 投擲物・爆弾（Phase 0-2 Step 5: projectile.js へ切り出し）───────────────
 import { createProjectile } from './projectile.js';
 // ── 敵AI（Phase 0-2 Step 5: enemy-ai.js へ切り出し）──────────────────────────
@@ -512,6 +513,7 @@ function enterStage(lk, sk, pRow, pCol) {
 	}
 
 	clearAllFloorDrops();
+	applyTestSetup(lk, nextStageData);
 
 	// Phase 9-5b: 別ステージへの移動時にカウンタを増やし、フィールド雑魚のリスポーンを判定する。
 	const isStageChange = stageKey !== null && (currentLayer !== lk || stageKey !== sk);
@@ -1835,7 +1837,8 @@ function reattachFloorDrops() {
 
 // 重複座標を隣接マスにずらす（最大8方向探索）。
 const DROP_OFFSETS = [[0,0],[0,1],[1,0],[0,-1],[-1,0],[1,1],[-1,-1],[1,-1],[-1,1]];
-function spawnFloorDrop(r, c, type) {
+// lifeMs＝消えるまでの時間（既定 5 秒）。テスト層の置きっぱなし（applyTestSetup）は Infinity。
+function spawnFloorDrop(r, c, type, lifeMs = FLOOR_DROP_LIFE_MS) {
 	// 占有されていない座標を探す
 	let dr = r, dc = c;
 	for (const [or, oc] of DROP_OFFSETS) {
@@ -1848,10 +1851,27 @@ function spawnFloorDrop(r, c, type) {
 	if (charLayerEl) charLayerEl.appendChild(el);
 	// 寿命 5 秒はゲームの時間で数える（tickFloorDrops）＝ポーズ・会話の間は減らない
 	// （直す前は実時間の setTimeout＝看板を読んでいる間に消えた・キュー82⑨・Fable 実装レビュー #24）
-	const drop = { r: dr, c: dc, type, until: gameNow() + FLOOR_DROP_LIFE_MS, el, cellPx: getCellPx() };
+	const drop = { r: dr, c: dc, type, until: gameNow() + lifeMs, el, cellPx: getCellPx() };
 	activeFloorDrops.push(drop);
 }
 const FLOOR_DROP_LIFE_MS = 5000;
+
+// キュー90: テスト層の画面だけ＝入るたびに落とし物を床に置き、プレイヤーの状態を揃える
+// （落とし物を拾った音の試し場＝敵を倒す運と、プレビューは無敵で HP が減らない、を外す）。
+// 画面データの `testSetup: { player: { hp, bombs, arrows }, floorDrops: [{ r, c, type }] }`。
+// ⚠️ ゲームの層では読まない＝本編のマップに書いても効かない（isTestLayer で門をかける）。
+function applyTestSetup(lk, sd) {
+	const ts = sd?.testSetup;
+	if (!ts || !isTestLayer(lk)) return;
+	const p = ts.player;
+	if (p) {
+		if (p.hp != null) player.hp = Math.max(1, Math.min(player.maxHp, p.hp));
+		if (p.bombs != null) player.subItems.bomb = { count: p.bombs };
+		if (p.arrows != null) player.subItems.bow = { count: p.arrows };
+		if (!player.activeSubItem && player.subItems.bow) player.activeSubItem = 'bow';
+	}
+	for (const d of ts.floorDrops ?? []) spawnFloorDrop(d.r, d.c, d.type, Infinity);
+}
 function tickFloorDrops() {
 	const now = gameNow();
 	for (const d of [...activeFloorDrops]) if (now >= d.until) removeFloorDrop(d);
@@ -1875,8 +1895,8 @@ function applyFloorDropEffect(type) {
 		const prev = player.subItems.bomb.count;
 		player.subItems.bomb.count = addStack(prev, 3, maxB);
 		if (player.subItems.bomb.count > prev) {
-			playSound('item'); pulse('{{bomb}} ×3'); updateHud(); saveGame();
-		}
+			playSound('dropBomb'); pulse('{{bomb}} ×3'); updateHud(); saveGame();
+		} else playSound('dropFull');
 	} else if (type === 'arrow') {
 		// 実行キュー19: 弓を手にしていない間は矢を渡さない（渡すと `subItems.bow` が
 		// 生えて `ownsItem(player,'bow')` が真になり、弓入手前に弓が撃てる）。
@@ -1885,17 +1905,18 @@ function applyFloorDropEffect(type) {
 		const prev = player.subItems.bow.count;
 		player.subItems.bow.count = addStack(prev, 3, maxA);
 		if (player.subItems.bow.count > prev) {
-			playSound('item'); pulse('{{arrow}} ×3'); updateHud(); saveGame();
-		}
+			playSound('dropArrow'); pulse('{{arrow}} ×3'); updateHud(); saveGame();
+		} else playSound('dropFull');
 	} else if (type === 'heart') {
 		const prev = player.hp;
 		player.hp = Math.min(player.maxHp, player.hp + 1);
 		if (player.hp > prev) {
-			playSound('item'); pulse('{{heart}} HP+1'); updateHud(); saveGame();
-		}
+			playSound('dropHeart'); pulse('{{heart}} HP+1'); updateHud(); saveGame();
+		} else playSound('dropFull');
 	} else if (type === 'rupee') {
+		// キュー90: マップのルピーと同じ「チャリン」（旧＝共通の 'item'）。
 		player.rupees = (player.rupees ?? 0) + 1;
-		playSound('item'); pulse('{{rupee}} ルピー ×1'); updateHud(); saveGame();
+		playSound('rupee'); pulse('{{rupee}} ルピー ×1'); updateHud(); saveGame();
 	}
 }
 

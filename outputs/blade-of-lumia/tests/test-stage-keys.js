@@ -20,6 +20,7 @@
 //   y=0 … ギミック検証ステージ（0,0〜42,0・x=宣言順）。ステージを足すときは次の x を使う。
 //   y=1 … Phase 8-4 のリバランス実プレイ検証行（0,1〜33,1・敵1種/1ステージ・全34種）。
 //         2026-08-23 に追加。並びは ENEMY_META から導出（下の該当ブロックを見よ）。
+//   y=2 … 道具まわりの試し場（0,2〜・2026-10-19 キュー90 から）。
 
 export const TEST_LAYER = 'test_mechanics';
 
@@ -246,6 +247,11 @@ export const TEST_STAGE_KEYS = {
 	bal_sea_lord:        '32,1',
 	// ラスボス＝この行の終点（倒すとエンディング）。
 	bal_zarnel:          '33,1',
+
+	// ── y=2 … 道具まわりの試し場（キュー90・2026-10-19〜）。x は宣言順。 ──
+	// 落とし物を拾った音（scripts/migrate-test-drop-sounds.mjs）。画面データの testSetup で入るたびに床へ置く。
+	drop_sounds:         '0,2',
+	drop_sounds_full:    '1,2',
 };
 
 /**
