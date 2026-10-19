@@ -58,9 +58,12 @@ test.describe('キュー13 field の報酬の差し替え ① ② データ', ()
 		});
 	}
 
-	test('② かけら4個（器1個ちょうど）・爆弾袋3個・矢筒3個', () => {
+	test('② かけら（キュー13 の4個＋キュー89 のもやの奥4個＝器2つ分）・爆弾袋3個・矢筒3個', () => {
+		// キュー89（2026-10-19・ユーザー判定「かけら4個で器1つ分」）＝もやの奥に4個
+		// ＝置き場は tests/curse-mist-nooks.spec.js が縛る。
 		expect(placements('heartPiece')).toEqual(
-			['field/15,0(3,5)', 'field/4,0(1,5)', 'field/3,19(4,5)', 'field/13,8(6,5)'].sort());
+			['field/15,0(3,5)', 'field/4,0(1,5)', 'field/3,19(4,5)', 'field/13,8(6,5)',
+				'field/7,10(7,10)', 'field/3,16(7,9)', 'field/11,18(4,8)', 'dark_tower/1,4(3,8)'].sort());
 		expect(placements('bombBag'), '爆弾袋＝dark_tower 1,5 ＋ field 2個').toEqual(
 			['dark_tower/1,5(3,2)', 'field/11,17(7,8)', 'field/15,5(3,4)'].sort());
 		expect(placements('quiver'), '矢筒＝dark_tower 3,2・3,5 ＋ field 1個').toEqual(

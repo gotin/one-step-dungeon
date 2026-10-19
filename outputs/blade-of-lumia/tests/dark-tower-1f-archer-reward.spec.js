@@ -63,7 +63,7 @@ const PRE_ROWS = [
 	'#####..#####',
 	'#..........#',
 	'#.##....##.#',
-	'#.#r....r#.#',
+	'#.#r...ΨB#.#',   // キュー89（2026-10-19）：右の壁龕の口を怨念のもや、奥にかけらの宝箱
 	'#.##....##.#',
 	'#..........#',
 	'#....6.....#',
@@ -171,9 +171,13 @@ test.describe('Blade of Lumia – dark_tower 1F 小島の射手（キュー20b �
 		expect(rowsOf(st)).toEqual(PRE_ROWS);
 		expect(at(st, ARROWS), `床の矢束 '6'(${ARROWS})＝寄道の手前で矢を補給できる`)
 			.toBe(TILE.ITEM_ARROWS);
-		// 回復薬（大）の宝箱は撤去した（不変条件(e)＝塔の回復薬（大）は3室以下へ向けた第一歩）
-		expect(rowsOf(st).join('').includes('B'), '宝箱が残っていない').toBe(false);
-		expect(Object.keys(st.chestContents ?? {}), 'chestContents が空').toEqual([]);
+		// 回復薬（大）の宝箱は撤去した（不変条件(e)＝塔の回復薬（大）は3室以下へ向けた第一歩）。
+		// キュー89 で右の壁龕にハートのかけらの宝箱を足した（もやの奥＝tests/curse-mist-nooks.spec.js）
+		// ＝(e) が縛るのは回復薬∴「回復薬の宝箱が無い」を見る。
+		expect(Object.values(st.chestContents ?? {}).filter((v) => /Potion$/.test(v?.item ?? '')),
+			'回復薬の宝箱が戻っている').toEqual([]);
+		expect(st.chestContents, '宝箱はもやの奥のかけらだけ')
+			.toEqual({ '3,8': { type: 'item', item: 'heartPiece', name: 'ハートのかけら' } });
 		expect(edgeSig(rowsOf(st)), '境界の開きは不変').toBe('N[5,6] S[5,6] W[] E[]');
 	});
 
