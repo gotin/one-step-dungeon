@@ -902,7 +902,7 @@ export function createProjectile(deps) {
 		_placedFlames = _placedFlames.filter(f => f !== flame);
 	}
 
-	// テスト観測用スナップショット（敵スナップショットと同じホワイトリスト方式）。
+	// テスト観測用スナップショット（ホワイトリスト方式＝ここに足さない欄はテストから見えない）。
 	function getPlacedFlames() {
 		return _placedFlames.map(f => ({
 			id: f.id, r: f.r, c: f.c,

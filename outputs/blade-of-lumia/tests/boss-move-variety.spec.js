@@ -26,8 +26,7 @@
 // ⚠️ 測り方の前提（GUIDE §4-2 / §7-4 / boss-phase-behavior.spec.js と同じ型）：
 //   ・実時間ループ（`setInterval(() => step(1), TICK_MS)`）は `gotoFrozen()` で**起動させない**
 //     ＝論理 tick だけで測る（pause() だと盤面が出るまでの 1 tick が漏れて拍がずれる）。
-//   ・観測は `__game.getEnemies()`（`getEnemiesSnapshot()`＝**ホワイトリスト**）だけ。
-//     `cmode` / `hitAndAway` / `combat` / `approachMode` は既に口が開いている（層1 で追加）。
+//   ・観測は `__game.getEnemies()`（`getEnemiesSnapshot()`＝実体の全欄の写し・`_` を外した名前）だけ。
 //   ・相の**長さ**は `phaseOffsetMs(e.id, rangedMs+meleeMs)` ぶん敵ごとにずれる（乱数ではなく
 //     id から決まる）∴「何 tick 目が近接相」を算術で書かない＝**観測した `cmode` から導く**。
 //   ・プレビュー（`fromEditor=1`）は `debugMode: true`＝`takeDamage()` が早期 return する
@@ -6621,7 +6620,7 @@ async function trackDarkLord(page, o) {
     if (a.patch) g.setEnemyMetaForTest('X', a.patch);
     const e0 = g.getEnemies().find(x => x.type === 'X');
     if (!e0) return { error: 'X が盤面に居ない' };
-    // ⚠️ `getEnemies()` は**スナップショット**（ホワイトリスト・別オブジェクト）＝ここへの
+    // ⚠️ `getEnemies()` は**スナップショット**（深いコピー・別オブジェクト）＝ここへの
     //    代入は実体に効かない。`speed` はスポーン時に実体へ写された値（`e.speed`）を
     //    `resolveEnemySpeed` が優先して読む（`e.speed ?? meta.speed`）＝META の patch も
     //    間に合わない（実体はもう出来ている）∴実体を直接書く `setEnemyFieldForTest` を使う
