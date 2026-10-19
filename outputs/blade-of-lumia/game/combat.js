@@ -13,6 +13,7 @@ import {
 	ATTACK_POSE_MS, GOLD_GARB_SWORD_COOLDOWN_MS,
 } from './constants.js';
 import { enemyW, enemyH, enemyCenter } from './hitbox.js';
+import { findSwordTarget } from './sword-reach.js';
 // Phase 8-4 (4) 0d-2.11 (A): 攻撃硬直の窓（＝反撃の窓）の判定＝enemy-ai.js の `.attack-recover`
 // と共有する（enemy-state.js が単一の真実）。`weakness.window: 'recover'` の弱点で使う。
 // isSoaring も同じ理由でそこから読む（0d-3 6体目 U＝浮いている絵と「矢しか届かない」を一致させる）。
@@ -705,54 +706,69 @@ export function createCombat(deps) {
 	}
 
 	// ── 剣攻撃 ───────────────────────────────────────────
+	// キュー85 #26：「目の前の物との操作」（人・看板・スイッチ・茂み）と「剣の当たり判定」
+	// （sword-reach.js findSwordTarget）に分けた。**上から順に試して最初に成り立った1つだけをする**＝
+	// 並び順が優先順位（人・看板 → 剣の用意 → スイッチ → 敵・幻影・棘 → 茂み）。並べ替えない。
 	function swordAttack() {
 		// 演出で世界を止めている間（isTransitioning）は振らない＝演出の上に剣が描かれ、隣の敵に当たって
 		// killEnemy → saveGame が走っていた（キュー82①・Fable 実装レビュー #1）。charge.js canAct と同じ門。
 		if (getIsDialog() || getIsPaused() || getIsGameover() || getIsTransitioning?.()) return;
 
+		const f = frontCell();
+		if (talkOrRead(f)) return;          // 剣なしでも可能
+		if (!readySwing(f.player)) return;  // 以降は剣が必要な操作
+		if (hitSwitch(f)) return;
+		if (strikeTarget(f)) return;
+		cutBush(f);
+	}
+
+	// 向いている方向と目の前のマス（1マス先）。剣を振る前の分岐もこれで決まる。
+	function frontCell() {
 		const player    = getPlayer();
 		const stageData = getStageData();
-		const heroDir   = getHeroDir();
-		const [dy, dx]  = DIR_DELTA[heroDir];
+		const [dy, dx]  = DIR_DELTA[getHeroDir()];
 		const ndx = dx / MOVE_STEP;
 		const ndy = dy / MOVE_STEP;
-
-		// NPC・ギミックとのインタラクション（剣なしでも可能）
 		const tr = toTileRow(player.y + ndy);
 		const tc = toTileCol(player.x + ndx);
-		const tile = stageData.tiles[tr]?.[tc];
-		const posKey3 = `${tr},${tc}`;
+		return { player, stageData, ndx, ndy, tr, tc, tile: stageData.tiles[tr]?.[tc], posKey: `${tr},${tc}` };
+	}
 
+	// NPC・店・看板とのやりとり。したら true。
+	function talkOrRead({ player, stageData, tr, tc, tile, posKey }) {
 		if (tile === TILE.NPC_SHOP) {
-			const shopData = stageData.shopData?.[posKey3];
-			if (shopData) { openShop(shopData, posKey3); } else { startDialog(tr, tc, tile); }
-			return;
+			const shopData = stageData.shopData?.[posKey];
+			if (shopData) { openShop(shopData, posKey); } else { startDialog(tr, tc, tile); }
+			return true;
 		}
-		if (tile && NPC_SPRITE_MAP[tile]) { startDialog(tr, tc, tile); return; }
+		if (tile && NPC_SPRITE_MAP[tile]) { startDialog(tr, tc, tile); return true; }
 
 		// 看板・石碑・転移の石碑を読む（キュー27＝集合で見る。転移碑の扱いは game.js 側）
 		// キュー21 F4：戦っている最中（敵が近い）は読まずに剣を振る＝看板の前で戦うと
 		// 振るたびに会話が開いて戦えなかった。人（上の NPC/店）は戦闘の場に置かないので対象外。
 		if (READABLE_SIGN_TILES.has(tile) && !(player.weapon && !isSwordSealed?.() && enemyNearby(player))) {
-			const signData = stageData.signData?.[posKey3] ?? stageData.npcData?.[posKey3] ?? { name: '看板', lines: ['（何も書かれていない）'] };
+			const signData = stageData.signData?.[posKey] ?? stageData.npcData?.[posKey] ?? { name: '看板', lines: ['（何も書かれていない）'] };
 			deps.openSignDialog(signData, tr, tc, tile);
-			return;
+			return true;
 		}
+		return false;
+	}
 
-		// 以降は剣が必要な操作
-		if (!player.weapon) { pulse('剣を持っていない！'); return; }
+	// 剣を振れるか見て、振れるなら振る（音・構えのポーズ・剣の絵）。振ったら true。
+	function readySwing(player) {
+		if (!player.weapon) { pulse('剣を持っていない！'); return false; }
 
 		// Phase 5.5k k-7: 剣封じ（#13 呪い火）。**この位置に置くのが要点**＝上の
 		// NPC/店/看板の分岐より後・剣を振る処理より前。封じられている間も人と話し
 		// 看板は読める（会話が止まると詰みかねない）が、剣だけが振れない。
 		// サブアイテム（弓/爆弾/ブーメラン）は input.js の別経路∴封じの対象外
 		// ＝PLAN 5.5k 名簿 #13「妨害特化＝弓/爆弾で処理」。
-		if (isSwordSealed?.()) { pulse('剣が封じられている！'); return; }
+		if (isSwordSealed?.()) { pulse('剣が封じられている！'); return false; }
 
 		// クールダウンチェック（金の装束を持っていれば 3 tick → 2 tick＝キュー76⑤・constants.js の注記）
 		const now = gameNow();
 		const cooldown = player.hasGoldGarb ? GOLD_GARB_SWORD_COOLDOWN_MS : SWORD_COOLDOWN_MS;
-		if (now - getLastSwordTime() < cooldown) return;
+		if (now - getLastSwordTime() < cooldown) return false;
 		setLastSwordTime(now);
 		resumeAudio(); playSound('slash');
 
@@ -762,13 +778,17 @@ export function createCombat(deps) {
 		player._atkUntil = now + ATTACK_POSE_MS;
 		deps.updatePlayerCharEl?.();
 		drawSwordHeld();
+		return true;
+	}
 
-		// Phase 4-5 ①／5-1：スイッチ判定は「0.5 だけ重なった手前セル」も対象にする。
-		// tr/tc（前方1マス固定オフセット）は、プレイヤーが半セルだけそのセルへ入り込んだ
-		// 状態だと本来のセルを1マス飛び越えてしまう（狭い通路では1歩離れて向きだけ変える
-		// 動きができず、0.5セル重なった位置から叩くしかないケースが実在する＝ユーザー報告）。
-		// 手前（0.5 先＝プレイヤーに近い側）を先に見て、無ければ従来の tr/tc（1マス先）を見る
-		// ＝両方がスイッチのときは近い方を優先する（ユーザー指定の優先順）。
+	// 武器で叩くスイッチ（'Y'・赤／青）。叩いたら true。
+	// Phase 4-5 ①／5-1：スイッチ判定は「0.5 だけ重なった手前セル」も対象にする。
+	// tr/tc（前方1マス固定オフセット）は、プレイヤーが半セルだけそのセルへ入り込んだ
+	// 状態だと本来のセルを1マス飛び越えてしまう（狭い通路では1歩離れて向きだけ変える
+	// 動きができず、0.5セル重なった位置から叩くしかないケースが実在する＝ユーザー報告）。
+	// 手前（0.5 先＝プレイヤーに近い側）を先に見て、無ければ従来の tr/tc（1マス先）を見る
+	// ＝両方がスイッチのときは近い方を優先する（ユーザー指定の優先順）。
+	function hitSwitch({ player, stageData, ndx, ndy, tr, tc, tile }) {
 		const isSwitchTile = (t) => t === TILE.SWITCH || t === TILE.SWITCH_RED || t === TILE.SWITCH_BLUE;
 		const nearR = toTileRow(player.y + ndy * 0.5);
 		const nearC = toTileCol(player.x + ndx * 0.5);
@@ -776,113 +796,57 @@ export function createCombat(deps) {
 		const [swR, swC, swTile] = isSwitchTile(nearTile) ? [nearR, nearC, nearTile] : [tr, tc, tile];
 		if (swTile === TILE.SWITCH && deps.toggleSwitch) {
 			deps.toggleSwitch(swR, swC);
-			return;
+			return true;
 		}
 		if ((swTile === TILE.SWITCH_RED || swTile === TILE.SWITCH_BLUE) && deps.setActiveColor) {
 			deps.setActiveColor(swR, swC);
-			return;
+			return true;
 		}
+		return false;
+	}
 
-		// 当たり判定
-		const enemies = getEnemies();
-		const pcx = player.x + 0.5;
-		const pcy = player.y + 0.5;
-
-		// 剣が届いているか（＝この1か所だけが「剣の当たり判定」の持ち主）。
-		// 戻り値＝振った向きに沿った距離（近い方が優先される）／届かないなら null。
-		// 占有範囲（AABB）対応：大型敵は中心が遠く半身が広いので、
-		// body の半幅ぶんだけ「届く距離」と「横の許容幅」を広げる。
-		// 1×1 敵では halfFwd=halfSide=0 となり従来挙動と一致する。
-		// ⚠️ Phase 8-4 (4) 0d-3（12体目 Z）: **幻影（`mirage`）にも同じ関数を通す**ために
-		//    切り出した＝像は敵ではない（`getEnemies()` に居ない）が、剣の間合いだけは
-		//    本体と1文字も違ってはいけない（違うと「像だけ届かない位置」が生まれて
-		//    見分けられる＝機構が死ぬ）。判定を2つ書かないための切り出し。
-		// キュー45: 光の紋章がそろうと敵（と幻影）にだけ1マス先まで届く。スイッチ・茂みは
-		// 上と下の「目の前のマス」で決まる＝ここを通らない∴謎の解き方は変わらない。
-		const reach = hasSwordAura(player) ? AURA_SWORD_REACH : SWORD_REACH;
-		const reachOf = (t) => {
-			const { cx: ecx, cy: ecy } = enemyCenter(t);
-			const relX = ecx - pcx;
-			const relY = ecy - pcy;
-
-			const dot = relX * ndx + relY * ndy;
-			if (dot < 0) return null;
-
-			// 攻撃方向(ndx,ndy)に沿った body 半サイズ・直交方向の body 半サイズ
-			const halfW = (enemyW(t) - 1) / 2;
-			const halfH = (enemyH(t) - 1) / 2;
-			const halfFwd  = Math.abs(ndx) * halfW + Math.abs(ndy) * halfH;
-			const halfSide = Math.abs(ndy) * halfW + Math.abs(ndx) * halfH;
-
-			const projDist = dot;
-			if (projDist - halfFwd > reach) return null;
-
-			const perpX = relX - ndx * projDist;
-			const perpY = relY - ndy * projDist;
-			const perpDist = Math.sqrt(perpX * perpX + perpY * perpY);
-			if (perpDist > 0.8 + halfSide) return null;
-
-			return projDist;
-		};
-
-		let hitEnemy = null;
-		let hitDist  = Infinity;
-		for (const e of enemies) {
-			// Phase 5.5k k-3: 隠れ中（潜行/地中/滞空）は攻撃対象にしない＝剣は空を切る。
-			// ここで外さないと「無敵の敵が剣を吸う」＝背後の茂み切り（下の return 前）や
-			// 別の敵への攻撃まで潰れる（2026-08-14 ユーザー報告の同型）。
-			if (e.hidden) continue;
-			const d = reachOf(e);
-			if (d != null && d < hitDist) { hitDist = d; hitEnemy = e; }
-		}
-
-		// Phase 8-4 (4) 0d-3（12体目 Z）: 幻影＝**HP を持たない置き物**∴剣の一撃で消える
-		// （ダメージの計算も無敵窓も通らない）。同じ距離なら**本物が勝つ**（`<` で比較＝
-		// 重なって見えるときに剣が像に吸われて本体を殴れない、を作らない）。
-		let hitMirage = null;
-		for (const m of (deps.getMirages?.() ?? [])) {
-			const d = reachOf(m);
-			if (d != null && d < hitDist) { hitDist = d; hitMirage = m; hitEnemy = null; }
-		}
-		if (hitMirage) { deps.destroyMirage?.(hitMirage.id); return; }
-
-		// キュー76③-3（Ω）: 金の棘＝幻影と同じ「HP を持たない置き物」∴剣の一撃で壊れる。
-		// 同じ距離なら**竜が勝つ**（`<` で比較＝棘の向こうの竜を殴りたいとき棘に吸われない）。
-		let hitThorn = null;
-		for (const t of (deps.getThorns?.() ?? [])) {
-			if (t.phase !== 'up') continue;
-			const d = reachOf(t);
-			if (d != null && d < hitDist) { hitDist = d; hitThorn = t; hitEnemy = null; }
-		}
-		if (hitThorn) { deps.destroyThorn?.(hitThorn.id); return; }
-
+	// 剣が届いた相手に当てる。当てたら true。
+	// 幻影・金の棘は HP を持たない＝一撃で消える（ダメージの計算も無敵窓も通らない）。
+	// 当たり判定は sword-reach.js findSwordTarget（純関数＝この1か所だけが持ち主）。
+	// キュー45: 光の紋章がそろうと敵（と幻影）にだけ1マス先まで届く。スイッチ・茂みは
+	// 「目の前のマス」で決まる＝ここを通らない∴謎の解き方は変わらない。
+	function strikeTarget(f) {
+		const { player, ndx, ndy } = f;
+		const hit = findSwordTarget(
+			{ pcx: player.x + 0.5, pcy: player.y + 0.5, ndx, ndy,
+			  reach: hasSwordAura(player) ? AURA_SWORD_REACH : SWORD_REACH },
+			{ enemies: getEnemies(), mirages: deps.getMirages?.() ?? [], thorns: deps.getThorns?.() ?? [] },
+		);
+		if (!hit) return false;
+		if (hit.kind === 'mirage') { deps.destroyMirage?.(hit.target.id); return true; }
+		if (hit.kind === 'thorn')  { deps.destroyThorn?.(hit.target.id); return true; }
 		// 二周目は攻撃力2倍
 		const swordAtk = hasCleared() ? player.atk * 2 : player.atk;
-		if (hitEnemy) { dealDamageToEnemy(hitEnemy, swordAtk, 'sword', player.x, player.y); return; }
+		dealDamageToEnemy(hit.target, swordAtk, 'sword', player.x, player.y);
+		return true;
+	}
 
-		// 茂みを切る
-		if (tile === TILE.BUSH) {
-			const ss = getSS(getCurrentLayer(), getStageKey());
-			if (!ss.cutBushes) ss.cutBushes = new Set();
-			if (!ss.cutBushes.has(posKey3)) {
-				ss.cutBushes.add(posKey3);
-				playSound('slash');
-				const rand = Math.random();
-				if (rand < 0.12) {
-					player.hp = Math.min(player.maxHp, player.hp + 1);
-					updateHud();
-					spawnDropEffect(tr, tc, 'heart', '#ff4040', '❤');
-					pulse('{{bush}} {{heart}} HP+1');
-				} else if (rand < 0.16) {
-					player.rupees += 1;
-					updateHud();
-					spawnDropEffect(tr, tc, 'rupee', '#20c040', '◆');
-					pulse('{{bush}} ルピー ×1');
-				}
-				deps.renderBoard(); deps.renderChars(); saveGame();
-			}
-			return;
+	// 茂みを切る（目の前のマス）。
+	function cutBush({ player, tr, tc, tile, posKey }) {
+		if (tile !== TILE.BUSH) return;
+		const ss = getSS(getCurrentLayer(), getStageKey());
+		if (!ss.cutBushes) ss.cutBushes = new Set();
+		if (ss.cutBushes.has(posKey)) return;
+		ss.cutBushes.add(posKey);
+		playSound('slash');
+		const rand = Math.random();
+		if (rand < 0.12) {
+			player.hp = Math.min(player.maxHp, player.hp + 1);
+			updateHud();
+			spawnDropEffect(tr, tc, 'heart', '#ff4040', '❤');
+			pulse('{{bush}} {{heart}} HP+1');
+		} else if (rand < 0.16) {
+			player.rupees += 1;
+			updateHud();
+			spawnDropEffect(tr, tc, 'rupee', '#20c040', '◆');
+			pulse('{{bush}} ルピー ×1');
 		}
+		deps.renderBoard(); deps.renderChars(); saveGame();
 	}
 
 	return {
