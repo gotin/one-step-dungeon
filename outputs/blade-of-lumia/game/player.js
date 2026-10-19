@@ -4,9 +4,10 @@
 
 import { TILE, TILE_META, FLOOR_STACK_TILES } from '../shared/tiles.js';
 import { statefulTileClosed } from './passable.js';
+import { makeStoneEl } from './render-chars.js';
 import { ITEM_META, EQUIP_META, SWORD_TIERS, BASE_ATK, ARMOR_TIERS, BASE_DEF, SHIELD_TIERS, BOOMERANG_TIERS, HEART_PIECES_PER_HEART, EMBLEMS_FOR_AURA, ITEM_STACK_MAX, ownsItem, addStack, stackCount, isStackFull } from '../shared/items.js';
 import { NPC_SPRITE_MAP } from '../shared/npcs.js';
-import { SPRITES, PAL, makeSprite } from '../shared/sprites.js';
+import { makeSprite } from '../shared/sprites.js';
 import { iconCanvas, rewardIconKey } from '../shared/ui-icons.js';
 import { playSound, resumeAudio } from '../shared/sounds.js';
 import {
@@ -586,76 +587,17 @@ export function createPlayer(deps) {
 				const charLayerEl = getCharLayerEl();
 				charLayerEl.appendChild(_animPlayerDiv);
 
-				// アニメーションしない他の移動済み石を先に描画
-				{
-					const _otherCellPx = getCellPx();
-					// 石は 32 ドット＝canvas はセル全面（10d-1。render-chars.js の
-					// makeStoneCanvas と同じ約束）。0.7 倍にすると盤面の石より小さくなる。
-					const _otherStSize = Math.round(_otherCellPx) + 'px';
-					for (const [otherKey, otherSt] of Object.entries(ss.stonePositions ?? {})) {
-						if (otherKey === stoneKey) continue;
-						const otherDiv = document.createElement('div');
-						otherDiv.className = 'char-abs';
-						otherDiv.id = `char-stone-${otherKey.replace(',', '-')}`;
-						otherDiv.style.left   = `${otherSt.c * _otherCellPx}px`;
-						otherDiv.style.top    = `${otherSt.r * _otherCellPx}px`;
-						otherDiv.style.zIndex = '1';
-						const otherCv = document.createElement('canvas');
-						otherCv.style.cssText = `position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:${_otherStSize};height:${_otherStSize};image-rendering:pixelated;`;
-						const _otherFrames = SPRITES['block'];
-						const _otherPal    = PAL['block'];
-						if (_otherFrames && _otherPal) {
-							const _otherGrid = _otherFrames[0];
-							otherCv.width  = _otherGrid[0].length;
-							otherCv.height = _otherGrid.length;
-							const _otherCtx = otherCv.getContext('2d');
-							for (let _r = 0; _r < _otherGrid.length; _r++) {
-								for (let _c = 0; _c < _otherGrid[_r].length; _c++) {
-									const idx = _otherGrid[_r][_c];
-									if (idx === 0) continue;
-									_otherCtx.fillStyle = _otherPal[idx] ?? 'transparent';
-									_otherCtx.fillRect(_c, _r, 1, 1);
-								}
-							}
-						}
-						otherDiv.appendChild(otherCv);
-						const otherOnSwitch = stageData.tiles[otherSt.r]?.[otherSt.c] === TILE.BUTTON;
-						if (otherOnSwitch) {
-							const glow = document.createElement('div');
-							glow.style.cssText = 'position:absolute;inset:0;background:rgba(80,255,100,0.38);border-radius:3px;box-shadow:0 0 8px 4px rgba(60,255,80,0.6);pointer-events:none;z-index:5;animation:stone-glow 1.2s ease-in-out infinite;';
-							otherDiv.appendChild(glow);
-						}
-						charLayerEl.appendChild(otherDiv);
-					}
+				// アニメーションしない他の移動済み石を先に描画（石は render-chars.js makeStoneEl＝盤面と同じ石・キュー85 #9）。
+				// 押せるのはロック前だけ（上の `!ss.stonesLocked`）∴ロックの印はここでは付かない。
+				for (const [otherKey, otherSt] of Object.entries(ss.stonePositions ?? {})) {
+					if (otherKey === stoneKey) continue;
+					charLayerEl.appendChild(makeStoneEl(otherKey, otherSt.r, otherSt.c, _animCellPx, {
+						onSwitch: stageData.tiles[otherSt.r]?.[otherSt.c] === TILE.BUTTON,
+					}));
 				}
 
 				// 石をアニメーション用要素として古い位置に配置
-				const _animStDiv = document.createElement('div');
-				_animStDiv.className = 'char-abs';
-				_animStDiv.id = `char-stone-${stoneKey.replace(',', '-')}`;
-				_animStDiv.style.zIndex = '1';
-				const _animStSize = Math.round(_animCellPx) + 'px';   // 32 ドット＝セル全面（10d-1）
-				const _animStCv = document.createElement('canvas');
-				_animStCv.style.cssText = `position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:${_animStSize};height:${_animStSize};image-rendering:pixelated;`;
-				const _animFrames = SPRITES['block'];
-				const _animPal    = PAL['block'];
-				if (_animFrames && _animPal) {
-					const _animGrid = _animFrames[0];
-					_animStCv.width  = _animGrid[0].length;
-					_animStCv.height = _animGrid.length;
-					const _animCtx = _animStCv.getContext('2d');
-					for (let _r = 0; _r < _animGrid.length; _r++) {
-						for (let _c = 0; _c < _animGrid[_r].length; _c++) {
-							const idx = _animGrid[_r][_c];
-							if (idx === 0) continue;
-							_animCtx.fillStyle = _animPal[idx] ?? 'transparent';
-							_animCtx.fillRect(_c, _r, 1, 1);
-						}
-					}
-				}
-				_animStDiv.appendChild(_animStCv);
-				_animStDiv.style.left = `${stoneFromC * _animCellPx}px`;
-				_animStDiv.style.top  = `${stoneFromR * _animCellPx}px`;
+				const _animStDiv = makeStoneEl(stoneKey, stoneFromR, stoneFromC, _animCellPx);
 				charLayerEl.appendChild(_animStDiv);
 
 				const _animDuration = STONE_PUSH_COOLDOWN_MS - 60;

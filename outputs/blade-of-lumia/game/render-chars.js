@@ -24,6 +24,67 @@ import { SPRITES, PAL, makeSprite } from '../shared/sprites.js';
 import { ENEMY_META } from '../shared/enemies.js';
 import { SHIELD_TIERS } from '../shared/items.js';
 
+// ── 石のブロック（キュー85 #9・2026-10-19）──────────────────────
+// 盤面の動いた石（renderChars）と押しのアニメ（player.js）はこの関数で石を作る＝絵・大きさ・印が1か所。
+// 旧＝同じ fillRect のループが3か所にあり「大きさは 32 ドット＝セル全面」の約束を言葉で合わせていた（10d-1）。
+// 石は 32 ドットに描き直した（10d-1）＝canvas はセル全面。絵の中に透明の余白が
+// あるので見かけは従来（0.7 セル）のまま。ここを 0.7 倍にすると、盤面に置かれた
+// 石（render-board.js の .dot32）より小さい石が動く＝押した瞬間に石が縮む。
+function makeStoneCanvas(cellPx) {
+	const stSize = Math.round(cellPx) + 'px';
+	const cv = document.createElement('canvas');
+	cv.style.cssText = `position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:${stSize};height:${stSize};image-rendering:pixelated;`;
+	const frames = SPRITES['block'];
+	const pal    = PAL['block'];
+	if (frames && pal) {
+		const grid = frames[0];
+		cv.width   = grid[0].length;
+		cv.height  = grid.length;
+		const ctx  = cv.getContext('2d');
+		for (let r = 0; r < grid.length; r++) {
+			for (let c = 0; c < grid[r].length; c++) {
+				const idx = grid[r][c];
+				if (idx === 0) continue;
+				ctx.fillStyle = pal[idx] ?? 'transparent';
+				ctx.fillRect(c, r, 1, 1);
+			}
+		}
+	}
+	return cv;
+}
+
+// スイッチ（ボタン）の上の石＝押されている光
+function addStoneGlow(div) {
+	const glow = document.createElement('div');
+	glow.style.cssText = 'position:absolute;inset:0;background:rgba(80,255,100,0.38);border-radius:3px;box-shadow:0 0 8px 4px rgba(60,255,80,0.6);pointer-events:none;z-index:5;animation:stone-glow 1.2s ease-in-out infinite;';
+	div.appendChild(glow);
+}
+
+// Phase 4.56: ロック済みの石は「固定された感」を静的に見せる（動かせないことが分かるように）。
+function addStoneLockedMark(div) {
+	div.style.filter = 'brightness(1.15) saturate(0.4)';
+	const mark = document.createElement('div');
+	mark.style.cssText = 'position:absolute;inset:0;border:2px solid rgba(255,230,140,0.8);border-radius:3px;box-shadow:0 0 4px 2px rgba(255,230,140,0.4);pointer-events:none;z-index:5;';
+	div.appendChild(mark);
+}
+
+/**
+ * 石の要素（.char-abs）を作る。origKey＝石の元の位置（id に使う）／r,c＝今の位置。
+ * locked＝ロック済みの印（優先）／onSwitch＝ボタンの上の光。
+ */
+export function makeStoneEl(origKey, r, c, cellPx, { onSwitch = false, locked = false } = {}) {
+	const div = document.createElement('div');
+	div.className = 'char-abs';
+	div.id = `char-stone-${origKey.replace(',', '-')}`;
+	div.style.left   = `${c * cellPx}px`;
+	div.style.top    = `${r * cellPx}px`;
+	div.style.zIndex = '1';
+	div.appendChild(makeStoneCanvas(cellPx));
+	if (locked) addStoneLockedMark(div);
+	else if (onSwitch) addStoneGlow(div);
+	return div;
+}
+
 /**
  * キャラクター描画関数群を生成して返す factory。
  * @param {object} deps
@@ -56,48 +117,6 @@ export function createRenderChars(deps) {
 		getIsDashing,
 		ladderOrientationAt,
 	} = deps;
-
-	// 石の canvas を描画するヘルパー（stoneDiv に追加する）
-	function makeStoneCanvas(cellPx) {
-		// 石は 32 ドットに描き直した（10d-1）＝canvas はセル全面。絵の中に透明の余白が
-		// あるので見かけは従来（0.7 セル）のまま。ここを 0.7 倍にすると、盤面に置かれた
-		// 石（render-board.js の .dot32）より小さい石が動く＝押した瞬間に石が縮む。
-		const stSize = Math.round(cellPx) + 'px';
-		const cv = document.createElement('canvas');
-		cv.style.cssText = `position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:${stSize};height:${stSize};image-rendering:pixelated;`;
-		const frames = SPRITES['block'];
-		const pal    = PAL['block'];
-		if (frames && pal) {
-			const grid = frames[0];
-			cv.width   = grid[0].length;
-			cv.height  = grid.length;
-			const ctx  = cv.getContext('2d');
-			for (let r = 0; r < grid.length; r++) {
-				for (let c = 0; c < grid[r].length; c++) {
-					const idx = grid[r][c];
-					if (idx === 0) continue;
-					ctx.fillStyle = pal[idx] ?? 'transparent';
-					ctx.fillRect(c, r, 1, 1);
-				}
-			}
-		}
-		return cv;
-	}
-
-	// スイッチグローオーバーレイを stoneDiv に追加するヘルパー
-	function addStoneGlow(div) {
-		const glow = document.createElement('div');
-		glow.style.cssText = 'position:absolute;inset:0;background:rgba(80,255,100,0.38);border-radius:3px;box-shadow:0 0 8px 4px rgba(60,255,80,0.6);pointer-events:none;z-index:5;animation:stone-glow 1.2s ease-in-out infinite;';
-		div.appendChild(glow);
-	}
-
-	// Phase 4.56: ロック済みの石は「固定された感」を静的に見せる（動かせないことが分かるように）。
-	function addStoneLockedMark(div) {
-		div.style.filter = 'brightness(1.15) saturate(0.4)';
-		const mark = document.createElement('div');
-		mark.style.cssText = 'position:absolute;inset:0;border:2px solid rgba(255,230,140,0.8);border-radius:3px;box-shadow:0 0 4px 2px rgba(255,230,140,0.4);pointer-events:none;z-index:5;';
-		div.appendChild(mark);
-	}
 
 	// ── 大型敵（w×h）の見た目サイズを適用（Phase 3-2）─────────
 	// wrapper（.char-abs）は既定で 1セル四方。w×h 敵はそれを拡げ、
@@ -474,18 +493,11 @@ export function createRenderChars(deps) {
 			const ss = getSS(currentLayer, stageKey);
 			const cellPxSt = getCellPx();
 			for (const [origKey, st] of Object.entries(ss.stonePositions ?? {})) {
-				const stDiv = document.createElement('div');
-				stDiv.className = 'char-abs';
-				stDiv.id = `char-stone-${origKey.replace(',', '-')}`;
-				stDiv.style.left   = `${st.c * cellPxSt}px`;
-				stDiv.style.top    = `${st.r * cellPxSt}px`;
-				stDiv.style.zIndex = '1';
-				stDiv.appendChild(makeStoneCanvas(cellPxSt));
-				// 石がボタンの上にある場合はグロー追加（押されている演出）
-				const onSwitch = stageData.tiles[st.r]?.[st.c] === TILE.BUTTON;
-				if (ss.stonesLocked) addStoneLockedMark(stDiv);
-				else if (onSwitch) addStoneGlow(stDiv);
-				charLayerEl.appendChild(stDiv);
+				// 石がボタンの上にある場合はグロー（押されている演出）
+				charLayerEl.appendChild(makeStoneEl(origKey, st.r, st.c, cellPxSt, {
+					onSwitch: stageData.tiles[st.r]?.[st.c] === TILE.BUTTON,
+					locked:   !!ss.stonesLocked,
+				}));
 			}
 		}
 
