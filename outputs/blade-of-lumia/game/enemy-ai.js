@@ -6597,6 +6597,212 @@ export function createEnemyAi(deps) {
 		return true;
 	}
 
+	// キュー85 #2: 機構の表＝1行が1つの機構の「気絶したら捨てる（stun）」と「毎 tick 絵を
+	// 状態に揃える（sync）」。enemyTick は気絶中なら全行の stun を、そうでなければ tick の最後に
+	// 全行の sync を、**この並び順で**呼ぶ。新しい機構を足すときはここに1行足す（気絶の取り消し
+	// 忘れ・絵の同期忘れを1か所で防ぐ）。この tick を専有するかどうかは enemyTick の `busy` 側。
+	// ⚠️ 並び順＝呼ぶ順。絵の同期は**後ろの行ほど上書きする**＝「今どう動いているか」を出す機構
+	//    （慣性・舌・打ち寄せ・氷結・歩調・幻影・面の技）を後ろに置く。
+	// ⚠️ stun は気絶中に**毎 tick**呼ばれる∴各 stun は「立っているときだけ捨てる」形にする
+	//    （中で `e.stunUntil` を立て直す関数＝`crashSoar` 等を呼ぶと気絶が永久に明けない）。
+	// ⚠️ 気絶中は下の sync まで行かず `continue` する∴予告や床の告知を持つ機構は stun の中で
+	//    その絵も消す（消し忘れると気絶中も「まだ危ない」に見える＝殴れる窓を絵が否定する）。
+	const ENEMY_MECHANISMS = [
+		{
+			name: 'guard',
+			// Phase 5.5k: スタン中はガードも解除する（ブーメランで動きを止めてガード不能にする、
+			// というユーザー設計の実体＝スタンとガードは同時に成立しない）。
+			stun: (e) => { e._guarding = false; },
+			// Phase 5.5k: directional な敵は毎tick見た目を今の状態（向き/攻撃窓/構え窓）に
+			// 揃える＝enemyAttack が同tickで _atkUntil を立てた場合も即座に反映される
+			// （プレイヤーの tickAttackPose と同じ「論理時間窓→毎tick同期」の作法）。
+			sync: (e, meta) => { if (meta.directional) syncDirectionalSprite(e, meta); },
+		},
+		{
+			name: 'leap',
+			// Phase 5.5k k-3c: 跳躍を持つ敵は windup 相の間だけ見た目を差し替える。
+			sync: (e, meta) => { if (meta.leap) syncLeapSprite(e, meta); },
+		},
+		{
+			name: 'shell',
+			// Phase 5.5k k-4: 甲羅を持つ敵は開/閉で絵を切り替える（無敵の理由を見せる）。
+			sync: (e, meta) => { if (meta.shell) syncShellSprite(e, meta); },
+		},
+		{
+			name: 'blink',
+			// Phase 5.5k k-8b: 瞬間移動を持つ敵は出現直後の詠唱の窓だけ絵を差し替える
+			// （殴れる窓を見せる）。隠れている間は canvas を触らない＝差替は姿がある時だけ。
+			sync: (e, meta) => { if (meta.blink && !e.hidden) syncCastSprite(e, meta); },
+		},
+		{
+			name: 'slam',
+			// Phase 5.5k k-7.5: スタンは体当たりの予告も中断する（ガードと同じ扱い＝
+			// スタン中に攻撃が成立してはいけない）。ブーメランで止めれば体当たりも消える。
+			stun: (e, meta) => {
+				if (e._slamAt != null) { e._slamAt = null; e._slamIdx = null; syncSlamMotion(e, meta); }
+			},
+			// 体当たりの予告モーション（拡大縮小2往復）を状態に合わせる。
+			sync: (e, meta) => { syncSlamMotion(e, meta); },
+		},
+		{
+			name: 'swing',
+			// Phase 8-4 (4) 0d-2.6: 剣の予告（振り上げ）もスタンで中断する＝上と同じ理由
+			// （止めたのに振り下ろされる、を作らない）。
+			stun: (e, meta) => {
+				if (e._swingAt != null) { e._swingAt = null; e._swingIdx = null; syncSwingMotion(e, meta); syncSlamMotion(e, meta); }
+			},
+			// 剣の予告モーション（剣を振り上げる）を状態に合わせる。
+			sync: (e, meta) => { syncSwingMotion(e, meta); },
+		},
+		{
+			name: 'breath',
+			// Phase 8-4 (4) 0d-3: ブレスの予告（膨らむ炎）もスタンで中断する＝上と同じ理由。
+			stun: (e) => {
+				if (e._breathAt != null) { e._breathAt = null; e._breathIdx = null; syncBreathMotion(e); }
+			},
+			// 炎のブレスの予告モーション（口元で炎の玉が膨らむ）。
+			sync: (e) => { syncBreathMotion(e); },
+		},
+		{
+			name: 'coil',
+			// Phase 8-4 (4) 0d-3: 締め上げの予告（縮む水の輪）もスタンで中断する＝上と同じ理由。
+			// 中心も捨てる＝止めたら**輪が解ける**（次の tick から巻き直し）。
+			// ⚠️ ボスはブーメランでスタンしない（`stunnable ?? !isBoss`）∴今の J では観測差が
+			//    出ない**二重の守り**＝`coil` を雑魚に付けたときに効く（tickBlink と同じ立場）。
+			//    中心は `tickCoilCrush` と同じく**両方 null**にする（片方だけ消すと半端な形が
+			//    スナップショットに出る＝2026-08-29 に実測で踏んだ罠）。
+			stun: (e, meta) => {
+				if (e._crushAt != null) {
+					e._crushAt = null; e._coilCx = null; e._coilCy = null; syncCoilRing(e, meta);
+				}
+			},
+			// 巻きつきの輪を床に描く（機構の唯一の告知＝どこが輪の内側か）。
+			sync: (e, meta) => { if (meta.coil) syncCoilRing(e, meta); },
+		},
+		{
+			name: 'gaze',
+			// Phase 8-4 (4) 0d-3（5体目 O）: 見据えの予告（濃くなる床の印）もスタンで中断する
+			// ＝止めたのに岩が落ちてくる、を作らない。**まだ投げていない印だけ**を消す
+			// （'flight' の岩は投擲物側が持ち主＝空中の岩は取り消せない∴印も残す＝嘘にならない）。
+			// ⚠️ ボスはブーメランでスタンしない∴今の O では観測差が出ない**二重の守り**（coil と同じ）。
+			stun: (e, meta) => {
+				if (e._gazePhase === 'mark') {
+					e._gazePhase = null; e._gazeCx = null; e._gazeCy = null;
+					e._gazeAt = null; e._gazeHeat = 0; e._gazePath = null;
+					syncGazeMark(e, meta);
+				}
+			},
+			// 見据えの印を床に描く（どこに岩が落ちるかの唯一の告知）。
+			sync: (e, meta) => { if (meta.gaze) syncGazeMark(e, meta); },
+		},
+		{
+			name: 'soar',
+			// Phase 8-4 (4) 0d-3（6体目 U）: 気絶したら**空には居られない**＝滞空と急降下の予告は
+			// 落として地上へ戻す（`ground` の時計は**気絶が明けてから**数える＝立ち上がった
+			// 瞬間にまた舞い上がらない＝反撃の窓が気絶ぶんで終わらない）。
+			// ⚠️ ここで `crashSoar` を呼んではいけない＝あれは `e.stunUntil` を立て直す∴
+			//    気絶中に毎 tick 呼ばれるこの関数から呼ぶと気絶が延びて永久に明けない。
+			// ⚠️ ボスはブーメランでスタンしない∴今の U で気絶の入口は矢で射落とす `crashSoar`
+			//    だけ＝ここは**二重の守り**（coil/gaze と同じ立場）。
+			stun: (e, meta) => {
+				if (isSoaring(e, meta)) {
+					e._soarVec = null; e._soarLeft = 0; e._soarBand = null;
+					enterSoarPhase(e, 'ground', e.stunUntil, resolveSoar(e, meta)?.groundMs ?? 1560);
+					syncSoarMotion(e, meta);
+				}
+			},
+			// 滞空の告知（体が浮いて真下に影＝**今は剣が届かない**）。
+			sync: (e, meta) => { if (resolveSoar(e, meta)) syncSoarMotion(e, meta); },
+		},
+		{
+			name: 'recover',
+			// Phase 8-4 (4) 0d-2.6（2回目の調整）: 攻撃硬直の絵（前かがみで止まる＝殴り返す窓）。
+			sync: (e, meta, now) => { syncRecoverMotion(e, now); },
+		},
+		{
+			name: 'dash',
+			// Phase 5.5k k-9: 突進もスタンで中断する（溜め中に殴られたら走り出さない・
+			// 走行中に止められたらそこで終わる）。壁への激突で立てた気絶もここを通る＝
+			// 気絶が明けた tick に走行が再開しないための後始末でもある。
+			stun: (e, meta) => {
+				if (resolveDash(e, meta)) { cancelDash(e); syncDashMotion(e); syncDashSprite(e, meta); }
+			},
+			// 突進の溜めモーション（前後に細かく揺れる）＋絵そのものも溜め／気絶へ差し替える
+			// （k-9b＝揺れと ⭐ だけでは状態が読めない）。
+			sync: (e, meta) => { if (resolveDash(e, meta)) { syncDashMotion(e); syncDashSprite(e, meta); } },
+		},
+		{
+			name: 'momentum',
+			// Phase 8-4 (4) 0d-3（7体目 G）: 気絶したら惰性も捨てる＝壁に激突して崩れた巨体が
+			// 滑り続けない（＝反撃の窓では本当に止まっている）。土煙の絵もここで消す。
+			stun: (e, meta) => {
+				if (resolveMomentum(e, meta)) { cancelMomentum(e); syncMomentumMotion(e, meta); }
+			},
+			// 慣性の告知（土煙＝**今この岩は危ない**）。硬直の絵（recover）より後に置く＝
+			// 「今どう動いているか」を最後に上書きする順番に揃える（U の滞空と同じ趣旨）。
+			sync: (e, meta) => { if (meta.momentum) syncMomentumMotion(e, meta); },
+		},
+		{
+			name: 'tongue',
+			// Phase 8-4 (4) 0d-3（8体目 I）: 気絶したら舌も捨てる＝掴まれたままにしない
+			// （止めたのに引き寄せられる、を作らない）。帯の絵もここで消す。
+			stun: (e, meta) => {
+				if (resolveTongue(e, meta)) { cancelTongue(e); syncTongueMotion(e, meta); }
+			},
+			// 舌の告知（口元から伸びる帯＋打つ前に膨らむ体）。
+			sync: (e, meta) => { if (meta.tongue) syncTongueMotion(e, meta); },
+		},
+		{
+			name: 'surge',
+			// Phase 8-4 (4) 0d-3（9体目 {）: 気絶したら乗り上げも捨てる＝止めたのに波が
+			// 打ち寄せる、を作らない。床の危険域もここで消す。
+			stun: (e, meta) => {
+				if (resolveSurge(e, meta)) { cancelSurge(e); syncSurgeMotion(e, meta); }
+			},
+			// 打ち寄せの告知（溜め／掃過／陸で止まった体＋床の帯）。
+			sync: (e, meta) => { if (meta.surge) syncSurgeMotion(e, meta); },
+		},
+		{
+			name: 'glaciate',
+			// Phase 8-4 (4) 0d-3（10体目 L）: 気絶したら氷結も捨てる＝**敷いた氷まで消す**
+			// （止めたのに氷柱が噴く、を作らない）。床の氷は `cancelGlaciate` が div ごと外す。
+			stun: (e, meta) => {
+				if (resolveGlaciate(e, meta)) { cancelGlaciate(e); syncGlaciateMotion(e, meta); }
+			},
+			// 氷結の告知（止まって白く冷える体＋床の氷1枚ずつ）。
+			sync: (e, meta) => { if (meta.glaciate) syncGlaciateMotion(e, meta); },
+		},
+		{
+			name: 'lockstep',
+			// Phase 8-4 (4) 0d-3（11体目 X）: 気絶したら詔も捨てる＝止めたのに円が落ちる、を
+			// 作らない（器も 0 に戻す＝明けた瞬間に唱え直さない）。床の円は `cancelLockstep`
+			// が div ごと外す。
+			stun: (e, meta) => {
+				if (resolveLockstep(e, meta)) { cancelLockstep(e); syncLockstepMotion(e, meta); }
+			},
+			// 歩調の告知（器の満ち＝魔王オーラの色＋唱えている体＋床の円）。
+			sync: (e, meta) => { if (resolveLockstep(e, meta)) syncLockstepMotion(e, meta); },
+		},
+		{
+			name: 'mirage',
+			// Phase 8-4 (4) 0d-3（12体目 Z）: 気絶したら幻術も解ける＝像を全部捨てる
+			// （止めたのに収束が落ちる、を作らない）。床の危険域は `cancelMirage` が div ごと外す。
+			stun: (e, meta) => {
+				if (resolveMirage(e, meta)) { cancelMirage(e); syncMirageMotion(e, meta); }
+			},
+			// 幻影の告知（像の DOM の貼り直し＋収束のあいだの本体の輪郭＋床の危険域）。
+			// 像の貼り直しはここが唯一の窓口。
+			sync: (e, meta) => { if (resolveMirage(e, meta)) syncMirageMotion(e, meta); },
+		},
+		{
+			name: 'aspect',
+			// キュー76（Ω）: 気絶したら面の技の予告も捨てる（ボスは硬直しない＝二重の守り）。
+			stun: (e, meta) => { if (meta.aspect) { cancelAspect(e); syncAspectMotion(e, meta); } },
+			// 面の技の予告（口元の光・翼の光・床の尾の危険域）。
+			sync: (e, meta) => { if (meta.aspect) syncAspectMotion(e, meta); },
+		},
+	];
+
 	function enemyTick() {
 		const enemies = getEnemies();
 		const now = gameNow();
@@ -6610,99 +6816,30 @@ export function createEnemyAi(deps) {
 		for (const e of enemies) {
 			const meta = ENEMY_META[e.type];
 			if (!meta) continue;
-			// Phase 5.5k: スタン中はガードも解除する（ブーメランで動きを止めてガード不能にする、
-			// というユーザー設計の実体＝スタンとガードは同時に成立しない）。
+			// 気絶中は機構の表の `stun` を上から全部呼んで、この tick の行動を丸ごと飛ばす
+			// （予告・専有状態を捨て、その絵もここで消す＝下の同期まで行かないため）。
 			if (e.stunUntil && now < e.stunUntil) {
-				e._guarding = false;
-				// Phase 5.5k k-7.5: スタンは体当たりの予告も中断する（ガードと同じ扱い＝
-				// スタン中に攻撃が成立してはいけない）。ブーメランで止めれば体当たりも消える。
-				if (e._slamAt != null) { e._slamAt = null; e._slamIdx = null; syncSlamMotion(e, meta); }
-				// Phase 8-4 (4) 0d-2.6: 剣の予告（振り上げ）もスタンで中断する＝上と同じ理由
-				// （止めたのに振り下ろされる、を作らない）。
-				if (e._swingAt != null) { e._swingAt = null; e._swingIdx = null; syncSwingMotion(e, meta); syncSlamMotion(e, meta); }
-				// Phase 8-4 (4) 0d-3: ブレスの予告（膨らむ炎）もスタンで中断する＝上と同じ理由。
-				if (e._breathAt != null) { e._breathAt = null; e._breathIdx = null; syncBreathMotion(e); }
-				// Phase 8-4 (4) 0d-3: 締め上げの予告（縮む水の輪）もスタンで中断する＝上と同じ理由。
-				// 中心も捨てる＝止めたら**輪が解ける**（次の tick から巻き直し）。
-				// ⚠️ ボスはブーメランでスタンしない（`stunnable ?? !isBoss`）∴今の J では観測差が
-				//    出ない**二重の守り**＝`coil` を雑魚に付けたときに効く（tickBlink と同じ立場）。
-				//    中心は `tickCoilCrush` と同じく**両方 null**にする（片方だけ消すと半端な形が
-				//    スナップショットに出る＝2026-08-29 に実測で踏んだ罠）。
-				if (e._crushAt != null) {
-					e._crushAt = null; e._coilCx = null; e._coilCy = null; syncCoilRing(e, meta);
-				}
-				// Phase 8-4 (4) 0d-3（5体目 O）: 見据えの予告（濃くなる床の印）もスタンで中断する
-				// ＝止めたのに岩が落ちてくる、を作らない。**まだ投げていない印だけ**を消す
-				// （'flight' の岩は投擲物側が持ち主＝空中の岩は取り消せない∴印も残す＝嘘にならない）。
-				// ⚠️ ボスはブーメランでスタンしない（`stunnable ?? !isBoss`）∴今の O では観測差が
-				//    出ない**二重の守り**＝`gaze` を雑魚に付けたときに効く（coil と同じ立場）。
-				if (e._gazePhase === 'mark') {
-					e._gazePhase = null; e._gazeCx = null; e._gazeCy = null;
-					e._gazeAt = null; e._gazeHeat = 0; e._gazePath = null;
-					syncGazeMark(e, meta);
-				}
-				// Phase 8-4 (4) 0d-3（6体目 U）: 気絶したら**空には居られない**＝滞空と急降下の予告は
-				// 落として地上へ戻す（`ground` の時計は**気絶が明けてから**数える＝立ち上がった
-				// 瞬間にまた舞い上がらない＝反撃の窓が気絶ぶんで終わらない）。
-				// ⚠️ ここで `crashSoar` を呼んではいけない＝あれは `e.stunUntil` を立て直す∴この
-				//    分岐（気絶中）から呼ぶと毎 tick 気絶が延びて永久に明けない。
-				// ⚠️ ボスはブーメランでスタンしない（`stunnable ?? !isBoss`）∴今の U で気絶の入口は
-				//    矢で射落とす `crashSoar` だけ＝ここは**二重の守り**（coil/gaze と同じ立場）。
-				if (isSoaring(e, meta)) {
-					e._soarVec = null; e._soarLeft = 0; e._soarBand = null;
-					enterSoarPhase(e, 'ground', e.stunUntil, resolveSoar(e, meta)?.groundMs ?? 1560);
-					syncSoarMotion(e, meta);
-				}
-				// Phase 5.5k k-9: 突進もスタンで中断する（溜め中に殴られたら走り出さない・
-				// 走行中に止められたらそこで終わる）。壁への激突で立てた気絶もここを通る＝
-				// 気絶が明けた tick に走行が再開しないための後始末でもある。
-				if (resolveDash(e, meta)) { cancelDash(e); syncDashMotion(e); syncDashSprite(e, meta); }
-				// Phase 8-4 (4) 0d-3（7体目 G）: 気絶したら惰性も捨てる＝壁に激突して崩れた巨体が
-				// 滑り続けない（＝反撃の窓では本当に止まっている）。土煙の絵も**ここで**消す
-				// ＝この分岐は下の同期まで行かず `continue` する∴消し忘れると気絶中も土煙が
-				// 出たまま「まだ危ない」に見える（＝殴れる窓を絵が否定する）。
-				if (resolveMomentum(e, meta)) { cancelMomentum(e); syncMomentumMotion(e, meta); }
-				// Phase 8-4 (4) 0d-3（8体目 I）: 気絶したら舌も捨てる＝掴まれたままにしない
-				// （止めたのに引き寄せられる、を作らない）。帯の絵も**ここで**消す＝この分岐は
-				// 下の同期まで行かず `continue` する∴消し忘れると気絶中も舌が伸びたまま残る。
-				if (resolveTongue(e, meta)) { cancelTongue(e); syncTongueMotion(e, meta); }
-				// Phase 8-4 (4) 0d-3（9体目 {）: 気絶したら乗り上げも捨てる＝止めたのに波が
-				// 打ち寄せる、を作らない。床の危険域も**ここで**消す＝この分岐は下の同期まで
-				// 行かず `continue` する∴消し忘れると気絶中も帯が塗られたまま残る（＝嘘の告知）。
-				if (resolveSurge(e, meta)) { cancelSurge(e); syncSurgeMotion(e, meta); }
-				// Phase 8-4 (4) 0d-3（10体目 L）: 気絶したら氷結も捨てる＝**敷いた氷まで消す**
-				// （止めたのに氷柱が噴く、を作らない）。床の氷は `cancelGlaciate` が div ごと外す
-				// ＝この分岐は下の同期まで行かず `continue` する∴消し忘れると気絶中も氷が残った
-				// まま「まだ噴く」に見える（＝嘘の告知）。
-				if (resolveGlaciate(e, meta)) { cancelGlaciate(e); syncGlaciateMotion(e, meta); }
-				// Phase 8-4 (4) 0d-3（11体目 X）: 気絶したら詔も捨てる＝止めたのに円が落ちる、を
-				// 作らない（器も 0 に戻す＝明けた瞬間に唱え直さない）。床の円は `cancelLockstep`
-				// が div ごと外す＝この分岐は下の同期まで行かず `continue` する∴消し忘れると
-				// 気絶中も円が塗られたまま「まだ落ちる」に見える（＝嘘の告知）。
-				if (resolveLockstep(e, meta)) { cancelLockstep(e); syncLockstepMotion(e, meta); }
-				// Phase 8-4 (4) 0d-3（12体目 Z）: 気絶したら幻術も解ける＝像を全部捨てる
-				// （止めたのに収束が落ちる、を作らない）。床の危険域は `cancelMirage` が div ごと
-				// 外す＝この分岐は下の同期まで行かず `continue` する∴消し忘れると気絶中も
-				// 危険域が塗られたまま「まだ落ちる」に見える（＝嘘の告知）。
-				if (resolveMirage(e, meta)) { cancelMirage(e); syncMirageMotion(e, meta); }
-				// キュー76（Ω）: 気絶したら面の技の予告も捨てる（ボスは硬直しない＝二重の守り）。
-				if (meta.aspect) { cancelAspect(e); syncAspectMotion(e, meta); }
+				for (const m of ENEMY_MECHANISMS) m.stun?.(e, meta);
 				continue;
 			}
+			// キュー85 #2: 「この tick を専有した」旗は全部 `busy` に書く＝下の行動ゲートは
+			// `holdsTick(busy)` で全部を見る（旗を足したらゲートにも足す、の書き忘れを無くす）。
+			// ⚠️ ここには**専有した**ことだけを書く（途中の値＝leapBusy 等や cmode は書かない）。
+			const busy = {};
 			// Phase 5.5k k-7.5: 立っている予告は**他の専有状態より先に必ず解決する**
 			// （ガード/硬直/跳躍の判定より前＝予告が宙に浮いて後から不意に当たることがない）。
-			const slamming = tickSlam(e, meta, now);
+			busy.slam = tickSlam(e, meta, now);
 			// Phase 8-4 (4) 0d-2.6: 剣の予告（振り上げ）も同じ枠＝立っている予告は先に解決する。
-			const swinging = tickSwing(e, meta, now);
+			busy.swing = tickSwing(e, meta, now);
 			// Phase 8-4 (4) 0d-3: 炎のブレスの予告も同じ枠（立っている予告は先に解決する）。
-			const breathing = tickBreath(e, meta, now);
+			busy.breath = tickBreath(e, meta, now);
 			// キュー76（Ω）: 面の技の予告も同じ枠（立っている予告は先に解決する）。向き直りもここ。
-			const aspecting = tickAspect(e, meta, now);
+			busy.aspect = tickAspect(e, meta, now);
 			if (meta.aspect) tickThornsTimer(e, meta, now);
 			// Phase 8-4 (4) 0d-3（4体目 J）: 締め上げの予告も同じ枠（立っている予告は先に解決する）。
 			// ⚠️ 硬直（`frozen`）より**前**に呼ぶ＝解決が締め上げ自身の硬直を立てる∴後ろに置くと
 			//    2回目以降の締め上げが宙吊りになる（跳躍の 0d-2.7 の罠と同型）。
-			const crushing = tickCoilCrush(e, meta, now);
+			busy.crush = tickCoilCrush(e, meta, now);
 			// Phase 8-4 (4) 0d-3（4体目 J）: 輪の縮みは**硬直中も進める時計**（tickHide/tickBlink と
 			// 同じ枠）。ここを行動ゲートの中（＝泳ぎと同じ場所）に置くと、攻撃硬直と歩幅の溜めの
 			// あいだ輪が止まって見える＝「ゆっくりでも常に小さくなっていく」が崩れる（実測済み）。
@@ -6715,8 +6852,8 @@ export function createEnemyAi(deps) {
 			// 噛みつきの硬直（attackFreezeMs 480）と毒沫の硬直のあいだに伸びと引き寄せが
 			// 止まると「段階的に引かれる」に見える（J で実測した罠）。
 			// ⚠️ 戻り値 true ＝**この tick は移動も攻撃もしない**（錨で固定＝引かれている時間が
-			//    そのまま殴れる窓になる）∴下の行動ゲートの条件に `!tongueBusy` を入れる。
-			const tongueBusy = meta.tongue ? tickTongue(e, meta, now) : false;
+			//    そのまま殴れる窓になる）∴`busy` に書く。
+			busy.tongue = meta.tongue ? tickTongue(e, meta, now) : false;
 			// Phase 8-4 (4) 0d-3（10体目 L）: 氷の時計も**硬直中も進める時計**（上と同じ枠）。
 			// ここでしか氷柱は噴かない∴咬みつきの硬直・歩幅の溜め・凍結相のどれでも予告は進む
 			// （止めると「赤くなったのに噴かない」＝床の告知が嘘になる＝J/O で実測した罠）。
@@ -6727,25 +6864,24 @@ export function createEnemyAi(deps) {
 			// ここでしか器（`_lsHeat`）は動かない∴剣を振った直後の硬直でも器は満ちる
 			// （止めると「濃くなったのに落ちない」＝オーラの告知が嘘になる＝J/O/L で実測した罠）。
 			// ⚠️ 戻り値 true ＝**この tick は移動も攻撃もしない**（唱えている錨／外した硬直）
-			//    ∴下の行動ゲートの条件に `!lockstepBusy` を入れる。
+			//    ∴`busy` に書く。
 			// ⚠️ 硬直では**何も止めない**＝始まった詔もこれから満ちる器も硬直の外で回る
 			//    （自分で窓を立てる状態機械を硬直で止めると2周目以降が宙吊りになる・0d-2.7）。
-			const lockstepBusy = resolveLockstep(e, meta) ? tickLockstep(e, meta, now) : false;
+			busy.lockstep = resolveLockstep(e, meta) ? tickLockstep(e, meta, now) : false;
 			// Phase 8-4 (4) 0d-3（12体目 Z）: 像の寿命と収束の時計も**硬直中も進める時計**
 			// （上と同じ枠）。ここでしか像は湧かず収束も進まない∴剣を振った直後の硬直でも
 			// 集まってくる（止めると「集まったのに落ちない」＝床の告知が嘘になる）。
-			// ⚠️ 戻り値 true ＝**この tick は移動も攻撃もしない**（収束の予告＝錨）∴下の
-			//    行動ゲートの条件に `!mirageBusy` を入れる。
-			const mirageBusy = resolveMirage(e, meta) ? tickMirage(e, meta, now) : false;
+			// ⚠️ 戻り値 true ＝**この tick は移動も攻撃もしない**（収束の予告＝錨）∴`busy` に書く。
+			busy.mirage = resolveMirage(e, meta) ? tickMirage(e, meta, now) : false;
 			// 隠れ↔出現の周期を更新（hide を持つ敵のみ＝潜み鮫・地中蟲・N 砂嵐の蠍王）
 			tickHide(e, meta, now);
 			// Phase 5.5k k-8: 瞬間移動（術士）＝消えている間と出現した tick を専有する。
 			// tickHide と同じ「タイマー駆動」の枠で呼ぶ＝硬直中も時計は進める
 			//（詠唱の硬直で周期が狂わない＝tickCombatMode と同じ理由）。
-			// ⚠️ 2026-08-18 実測：下の行動ゲートの `&& !blinking` は今の術士では観測差が出ない
+			// ⚠️ 2026-08-18 実測：行動ゲートの `busy.blink` は今の術士では観測差が出ない
 			//    （消えている間の攻撃は `if (!e.hidden) enemyAttack(...)` が独立に止めており
 			//     speed 0 で歩けもしない）＝**二重の守り**。blink を歩く敵に付けたときに効く。
-			const blinking = tickBlink(e, meta, now);
+			busy.blink = tickBlink(e, meta, now);
 			// キュー60: さまよい中か（気づく／見失うの判定はここ＝向きと移動の両方が読む）。
 			const roaming = updateRoamAwareness(e, meta, now);
 			// Phase 9-6: 横向き敵の向きをプレイヤーに合わせる（毎 tick・移動しなくても向き直る）
@@ -6753,15 +6889,17 @@ export function createEnemyAi(deps) {
 			applySideFacing(e, meta, roaming);
 			// Phase 5.5k: directional な敵はガード判定を移動/攻撃より先に行う＝ガード中は
 			// 両方スキップする（移動しない・攻撃しない・向きはロックされたまま＝ユーザー設計）。
-			const isGuarding = meta.directional ? tickGuard(e, meta, now) : false;
+			busy.guard = meta.directional ? tickGuard(e, meta, now) : false;
 			// Phase 5.5k（2026-08-12）: 攻撃硬直＝攻撃を出した直後の窓は移動も攻撃もしない。
 			// プレイヤーの movePlayer が _atkUntil 中に足を止めるのと対称（player.js）。
-			const frozen = e._freezeUntil != null && now < e._freezeUntil;
+			busy.frozen = e._freezeUntil != null && now < e._freezeUntil;
+			// 予告（体当たり・剣・ブレス）が立っている＝下の機構は新しく始めない。
+			const telegraphing = busy.slam || busy.swing || busy.breath;
 			// Phase 8-4 (4) 0d-3（7体目 G）: 慣性は**硬直と構えのあいだ捨てる**＝殴り返す窓では
 			// 体が本当に止まっている（滑りながら硬直すると窓が窓でなくなる＝GUIDE §7-8）。
 			// ⚠️ 下の移動ゲートは硬直中に呼ばれない∴ここで捨てないと「硬直が明けた瞬間に
 			//    さっきの速さで走り出す」＝プレイヤーから見ると硬直が無かったことになる。
-			if ((frozen || isGuarding) && resolveMomentum(e, meta)) cancelMomentum(e);
+			if ((busy.frozen || busy.guard) && resolveMomentum(e, meta)) cancelMomentum(e);
 			// Phase 5.5k（2026-08-12）: 遠隔／近接の二相を持つ敵はどちらのモードかを更新する
 			// （硬直中も時計は進める＝硬直でリズムが狂わない）。
 			const cmode = tickCombatMode(e, meta, now);
@@ -6774,7 +6912,7 @@ export function createEnemyAi(deps) {
 			// ∴硬直で止めるのは「新しく跳び始めること」だけにする（下の shell/leech/dash と
 			// 違い、跳躍は始まると自分の時計だけで完結する状態機械∴宙吊りが観測に出る）。
 			const leapBusy = e._leapPhase != null && e._leapPhase !== 'ground';
-			const leaping = (!isGuarding && (leapBusy || (!frozen && !slamming && !swinging && !breathing)))
+			busy.leap = (!busy.guard && (leapBusy || (!busy.frozen && !telegraphing)))
 				? tickLeap(e, meta, now) : false;
 			// Phase 8-4 (4) 0d-3（6体目 U）: 滞空〜急降下も跳躍と同じ枠＝**始まったら硬直では
 			// 止めない**（`soarBusy`＝地上以外の相）。理由も同じ＝着地硬直（`landFreezeMs`）を
@@ -6784,8 +6922,8 @@ export function createEnemyAi(deps) {
 			// ⚠️ 硬直で止めるのは**新しく舞い上がること**だけ（`ground` 相は soarBusy に入れない）
 			//    ＝鉤爪を振った直後にいきなり飛ばない＝殴り返す窓が予告なく消えない。
 			const soarBusy = e._soarPhase != null && e._soarPhase !== 'ground';
-			// キュー76③-2（Ω）: 面の技の予告中（`aspecting`）も新しく舞い上がらない＝予告が宙に浮かない。
-			const soaring = (!isGuarding && !leaping && (soarBusy || (!frozen && !slamming && !swinging && !breathing && !aspecting)))
+			// キュー76③-2（Ω）: 面の技の予告中（`busy.aspect`）も新しく舞い上がらない＝予告が宙に浮かない。
+			busy.soar = (!busy.guard && !busy.leap && (soarBusy || (!busy.frozen && !telegraphing && !busy.aspect)))
 				? tickSoar(e, meta, now) : false;
 			// Phase 8-4 (4) 0d-3（9体目 {）: 乗り上げ（予告→掃過→陸で停止→這い戻り）も
 			// 跳躍・滞空と同じ枠＝**始まったら硬直では止めない**（`surgeBusy`＝`idle` 以外の相）。
@@ -6793,8 +6931,8 @@ export function createEnemyAi(deps) {
 			// （0d-2.7 の罠）。⚠️ 硬直で止めるのは**新しく乗り上げること**だけ＝水弾や体当たりを
 			// 出した直後にいきなり乗り上げない（＝殴り返す窓が予告なく潰れない）。
 			const surgeBusy = isSurgeBusy(e);
-			const surging = (meta.surge && !isGuarding && !leaping && !soaring
-				&& (surgeBusy || (!frozen && !slamming && !swinging && !breathing)))
+			busy.surge = (meta.surge && !busy.guard && !busy.leap && !busy.soar
+				&& (surgeBusy || (!busy.frozen && !telegraphing)))
 				? tickSurge(e, meta, now) : false;
 			// Phase 8-4 (4) 0d-3（10体目 L）: 氷結（凍結→歩行）も同じ枠＝**始まった凍結は硬直では
 			// 止めない**（`glaciateBusy`＝凍結相）。理由も同じ＝自分で停止の窓を立てる状態機械∴
@@ -6802,30 +6940,30 @@ export function createEnemyAi(deps) {
 			// **新しく凍り始めること**だけ＝咬みついた直後にいきなり足を止めない（＝殴り返す窓が
 			// 予告なく生えない）。歩行相は false を返す＝ここが開く（歩く＋咬みつき／氷礫）。
 			const glaciateBusy = isGlaciateBusy(e);
-			const glaciating = (meta.glaciate && !isGuarding && !leaping && !soaring && !surging
-				&& (glaciateBusy || (!frozen && !slamming && !swinging && !breathing)))
+			busy.glaciate = (meta.glaciate && !busy.guard && !busy.leap && !busy.soar && !busy.surge
+				&& (glaciateBusy || (!busy.frozen && !telegraphing)))
 				? tickGlaciate(e, meta, now) : false;
 			// Phase 5.5k k-4: 甲羅の開閉（火吐き亀）＝籠もっている間は移動も攻撃もしない
 			// （ガード/硬直/跳躍と同じ「この tick は他の行動をしない」枠）。開いた瞬間の炎は
 			// tickShell の中で出る＝籠もりから開く tick だけ攻撃が起きる。
-			const shelled = (!isGuarding && !frozen && !leaping) ? tickShell(e, meta, now) : false;
+			busy.shell = (!busy.guard && !busy.frozen && !busy.leap) ? tickShell(e, meta, now) : false;
 			// Phase 5.5k k-5: 張り付き（ルピー喰い）＝張り付いている間はプレイヤーへ貼り付いて
 			// ルピーを吸うだけ（移動も攻撃もしない）。上と同じ「この tick を専有する」枠。
-			// ⚠️ 体当たりの予告中（`slamming`）は張り付かない（2026-10-12 キュー47 D1 2,0 で発覚）。
+			// ⚠️ 体当たりの予告中（`busy.slam`）は張り付かない（2026-10-12 キュー47 D1 2,0 で発覚）。
 			//    到達は体当たり 1.5 ＞ 張り付き 1.1 ∴寄ってくる σ は先に予告を始める。予告中に張り付けると、
 			//    張り付いたまま予告が解決して体力を削っていた（「張り付いても体力は削らない」②にも、
 			//    「予告中は他の攻撃をしない」k-7.5 にも反する）。予告を解決してから張り付く。
-			const leeching = (!isGuarding && !frozen && !leaping && !shelled && !slamming) ? tickLeech(e, meta, now) : false;
+			busy.leech = (!busy.guard && !busy.frozen && !busy.leap && !busy.shell && !busy.slam) ? tickLeech(e, meta, now) : false;
 			// Phase 5.5k k-9: 直線突進（突進猪）＝溜め〜突進〜硬直の間 移動/攻撃を専有する
 			// （跳躍と同じ枠）。硬直中も idle へ戻る判断はここで行う＝周期が硬直で狂わない。
-			const dashing = (!isGuarding && !frozen && !leaping && !shelled && !leeching)
+			busy.dash = (!busy.guard && !busy.frozen && !busy.leap && !busy.shell && !busy.leech)
 				? tickDash(e, meta, now) : false;
 			// Phase 5.5k k-4: 向き固定（盾騎士）＝turnMs ごとにだけ向き直る。移動より先に
 			// 決める（移動側は向きを触らない＝dirLocked を渡す）。
 			const dirLocked = tickFaceLock(e, meta, now);
-			// ⚠️ `!soaring` ＝`rise`/`aim`/`dive`/`land` の4相はこの tick を専有する。`ground` と
+			// ⚠️ `busy.soar` ＝`rise`/`aim`/`dive`/`land` の4相はこの tick を専有する。`ground` と
 			//    `air` は tickSoar が false を返す＝ここが開く（地上は歩き＋鉤爪、空は旋回＋雷撃弾）。
-			if (!isGuarding && !frozen && !leaping && !soaring && !shelled && !leeching && !slamming && !swinging && !breathing && !crushing && !blinking && !dashing && !tongueBusy && !surging && !glaciating && !lockstepBusy && !mirageBusy && !aspecting) {
+			if (!holdsTick(busy)) {
 				if (resolveHitAndAway(e, meta)) {
 					bossTickHitAndAway(e, meta);
 				} else if (cmode === 'ranged') {
@@ -6906,60 +7044,15 @@ export function createEnemyAi(deps) {
 					: false;
 				if (!e.hidden && !momFast) enemyAttack(e, meta);
 			}
-			// Phase 5.5k: directional な敵は毎tick見た目を今の状態（向き/攻撃窓/構え窓）に
-			// 揃える＝enemyAttack が同tickで _atkUntil を立てた場合も即座に反映される
-			// （プレイヤーの tickAttackPose と同じ「論理時間窓→毎tick同期」の作法）。
-			if (meta.directional) syncDirectionalSprite(e, meta);
-			// Phase 5.5k k-3c: 跳躍を持つ敵は windup 相の間だけ見た目を差し替える
-			// （tickLeap 自体は上で呼んでいる＝ここは絵の同期だけ）。
-			if (meta.leap) syncLeapSprite(e, meta);
-			// Phase 5.5k k-4: 甲羅を持つ敵は開/閉で絵を切り替える（無敵の理由を見せる）。
-			if (meta.shell) syncShellSprite(e, meta);
-			// Phase 5.5k k-8b: 瞬間移動を持つ敵は出現直後の詠唱の窓だけ絵を差し替える
-			// （殴れる窓を見せる）。隠れている間は canvas を触らない＝差替は姿がある時だけ。
-			if (meta.blink && !e.hidden) syncCastSprite(e, meta);
-			// Phase 5.5k k-7.5: 体当たりの予告モーション（拡大縮小2往復）を状態に合わせる。
-			syncSlamMotion(e, meta);
-			// Phase 8-4 (4) 0d-2.6: 剣の予告モーション（剣を振り上げる）を状態に合わせる。
-			syncSwingMotion(e, meta);
-			// Phase 8-4 (4) 0d-3: 炎のブレスの予告モーション（口元で炎の玉が膨らむ）。
-			syncBreathMotion(e);
-			// Phase 8-4 (4) 0d-3: 巻きつきの輪を床に描く（機構の唯一の告知＝どこが輪の内側か）。
-			if (meta.coil) syncCoilRing(e, meta);
-			// Phase 8-4 (4) 0d-3（5体目 O）: 見据えの印を床に描く（どこに岩が落ちるかの唯一の告知）。
-			if (meta.gaze) syncGazeMark(e, meta);
-			// Phase 8-4 (4) 0d-3（6体目 U）: 滞空の告知（体が浮いて真下に影＝**今は剣が届かない**）。
-			if (resolveSoar(e, meta)) syncSoarMotion(e, meta);
-			// Phase 8-4 (4) 0d-2.6（2回目の調整）: 攻撃硬直の絵（前かがみで止まる＝殴り返す窓）。
-			syncRecoverMotion(e, now);
-			// Phase 5.5k k-9: 突進の溜めモーション（前後に細かく揺れる）を状態に合わせる。
-			// k-9b: 絵そのものも溜め／気絶へ差し替える（揺れと ⭐ だけでは状態が読めない）。
-			if (resolveDash(e, meta)) { syncDashMotion(e); syncDashSprite(e, meta); }
-			// Phase 8-4 (4) 0d-3（7体目 G）: 慣性の告知（土煙＝**今この岩は危ない**）。
-			// 硬直の絵（`.attack-recover`）より後に置く＝速さがしきい値を越えている tick には
-			// 硬直は立っていない（硬直中は cancelMomentum で速度 0）∴衝突しないが、
-			// 「今どう動いているか」を最後に上書きする順番に揃える（U の滞空と同じ趣旨）。
-			if (meta.momentum) syncMomentumMotion(e, meta);
-			// Phase 8-4 (4) 0d-3（8体目 I）: 舌の告知（口元から伸びる帯＋打つ前に膨らむ体）。
-			// ⚠️ 最後に置く＝「今どう動いているか」を上書きする順番に揃える（G/U と同じ趣旨）。
-			if (meta.tongue) syncTongueMotion(e, meta);
-			// Phase 8-4 (4) 0d-3（9体目 {）: 打ち寄せの告知（溜め／掃過／陸で止まった体＋床の帯）。
-			// ⚠️ 最後に置く＝「今どう動いているか」を上書きする順番に揃える（G/U/I と同じ趣旨）。
-			if (meta.surge) syncSurgeMotion(e, meta);
-			// Phase 8-4 (4) 0d-3（10体目 L）: 氷結の告知（止まって白く冷える体＋床の氷1枚ずつ）。
-			// ⚠️ 最後に置く＝「今どう動いているか」を上書きする順番に揃える（G/U/I/`{` と同じ趣旨）。
-			if (meta.glaciate) syncGlaciateMotion(e, meta);
-			// Phase 8-4 (4) 0d-3（11体目 X）: 歩調の告知（器の満ち＝魔王オーラの色＋唱えている
-			// 体＋床の円）。⚠️ 最後に置く＝「今どう動いているか」を上書きする順番に揃える
-			// （G/U/I/`{`/L と同じ趣旨）。
-			if (resolveLockstep(e, meta)) syncLockstepMotion(e, meta);
-			// Phase 8-4 (4) 0d-3（12体目 Z）: 幻影の告知（像の DOM の貼り直し＋収束のあいだの
-			// 本体の輪郭＋床の危険域）。⚠️ 最後に置く＝「今どう動いているか」を上書きする順番に
-			// 揃える（G/U/I/`{`/L/X と同じ趣旨）。像の貼り直しはここが唯一の窓口。
-			if (resolveMirage(e, meta)) syncMirageMotion(e, meta);
-			// キュー76（Ω）: 面の技の予告（口元の光・翼の光・床の尾の危険域）。
-			if (meta.aspect) syncAspectMotion(e, meta);
+			// 絵を今の状態に揃える＝機構の表の `sync` を上から全部呼ぶ（後ろの行ほど上書きする）。
+			for (const m of ENEMY_MECHANISMS) m.sync?.(e, meta, now);
 		}
+	}
+
+	// 行動ゲート：`busy` のどれか1つでも立っていれば、この tick は移動も攻撃もしない。
+	function holdsTick(busy) {
+		for (const k in busy) if (busy[k]) return true;
+		return false;
 	}
 
 	return {
