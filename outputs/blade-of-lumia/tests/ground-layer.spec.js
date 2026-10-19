@@ -25,6 +25,10 @@ const freshMap = () => JSON.parse(MAP_TEXT);
 
 // field 5,3 の広場で、移す前は tiles 層の石畳だったセル（移行前の JSON の直読み）
 const FORMER_TILE_STONE = ['1,4', '1,5', '1,6', '2,1', '2,2', '2,3', '2,8', '2,9', '3,2', '3,9'];
+// ③（実ゲームの描画）で見るセル＝上から (2,8)(2,9) を除く。2026-10-19 キュー89 で廃城の祈りの間を作り、
+// (2,8) は壁・(2,9) は怨念のもやになった＝下地の石畳はそのまま（①で見る）だが、上に物が乗るので
+// 「物の絵が無い床」の見本にはならない。
+const FORMER_TILE_STONE_FLOOR = FORMER_TILE_STONE.filter((k) => k !== '2,8' && k !== '2,9');
 // 同じ画面の素の床（tiles も下地も `.`）＝壊れたデータを差し込む先
 const PLAIN = { r: 4, c: 0 };
 
@@ -84,8 +88,8 @@ test.describe('地面の層 ③④（実ゲーム）', () => {
 		await page.goto(`${GAME_URL}?fromEditor=1&layer=field&stage=5,3&row=4&col=0`);
 		await waitForBoard(page);
 		await page.evaluate(() => window.__game.pause());
-		const got = await readCells(page, FORMER_TILE_STONE);
-		for (const k of FORMER_TILE_STONE) {
+		const got = await readCells(page, FORMER_TILE_STONE_FLOOR);
+		for (const k of FORMER_TILE_STONE_FLOOR) {
 			expect(got[k].bg, `${k} が下地の石畳で描かれていない`).toMatch(/^stoneFloor@\d+$/);
 			expect(got[k].obj, `${k} に物の絵が残っている`).toBe(0);
 		}

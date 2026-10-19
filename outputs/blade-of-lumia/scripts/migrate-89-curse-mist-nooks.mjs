@@ -15,7 +15,7 @@
 //   ・宝箱は (7,9) に立って右を向けば開く＝もやを祓った後のマスだけが届く場所。
 //
 // ■ 検証（このスクリプト自身が最後に全部やる）
-//   ・もや無しでは宝箱に届かない／もやを祓うと届く（対照）
+//   ・もや無しでは宝箱（石碑）に届かない／もやを祓うと届く（対照）
 //   ・層の到達室が書き換え前と同じ・dead-edge が増えない
 //   ・tiles が文字の配列の配列
 //   再実行しても同じ結果（冪等）。
@@ -36,7 +36,7 @@ const DRY = process.argv.includes('--dry');
 
 const PIECE = { type: 'item', item: 'heartPiece', name: 'ハートのかけら' };
 
-// 各置き場所＝{ layer, stage, set: [[r, c, ch]...], chest: [cell, content], mist: cell, start }
+// 各置き場所＝{ layer, stage, set: [[r, c, ch]...], chest: [cell, content] か sign: [cell, signData], mist: cell, start }
 const NOOKS = [
 	{
 		name: 'A1 D3 へ向かう道の岩の切れ込み',
@@ -91,6 +91,32 @@ const NOOKS = [
 		mist: '3,7',
 		start: { row: 5, col: 5 },
 	},
+	{
+		// ■ C2＝field `5,3`「廃城」（ユーザー判定 2026-10-19「廃城5,3だけ足す」＝かけら以外の味付け）
+		//   ザーネルが闇に傾く前の館。儀式の夜に崩れた＝怨念の起こりに一番近い場所。
+		//   右上の崩れ壁 (1,8) に続けて小さな祈りの間を作り、口を怨念のもやが塞ぐ。奥はロアの石碑。
+		//      0 tttttoottttt
+		//      1 to#ooooo#†#t     ← 石碑 †(1,9)・壁 (1,10)
+		//      2 tooooEoo#Ψ#t     ← もや Ψ(2,9)（南の (3,9) から祓う）
+		//      3 too†oooBooot
+		//   ・同じ画面にハートの器 (8,10) がある∴ご褒美はかけらにしない（最大 HP の報酬を1画面に並べない）。
+		//   ・石碑は其の四（死を覆す儀式）と其の八（病で失った者）の間を埋める＝「病」の語は出さない（其の八の先走りになる）。
+		//   ・もやを祓った (2,9) に立ち、上を向いて読む。
+		name: 'C2 廃城の祈りの間',
+		layer: 'field', stage: '5,3',
+		set: [[1, 9, TILE.MONUMENT], [1, 10, TILE.WALL], [2, 8, TILE.WALL], [2, 9, TILE.CURSE_MIST], [2, 10, TILE.WALL]],
+		sign: ['1,9', {
+			name: '祈りの間の石碑',
+			lines: [
+				'【崩れた 祈りの間】',
+				'ザーネルは ここで 救えなかった 者たちの 名を 呼び 続けた。',
+				'誰も 帰らなかった。呼ばれた 声だけが 残り、怨念と なって 戸口を 塞いだ。',
+				'聖なる 火に 祓われ、声は ようやく 眠りに ついた。',
+			],
+		}],
+		mist: '2,9',
+		start: { row: 3, col: 9 },
+	},
 ];
 
 const data = JSON.parse(readFileSync(MAP_PATH, 'utf8'));
@@ -121,9 +147,14 @@ for (const n of NOOKS) {
 	const st = data.layers[n.layer].stages[n.stage];
 	const before = st.tiles.map((r) => r.join(''));
 	for (const [r, c, ch] of n.set) st.tiles[r][c] = ch;
-	st.chestContents ??= {};
-	const [cell, content] = n.chest;
-	st.chestContents[cell] = content;
+	const [cell, content] = n.chest ?? n.sign;
+	if (n.chest) {
+		st.chestContents ??= {};
+		st.chestContents[cell] = content;
+	} else {
+		st.signData ??= {};
+		st.signData[cell] = content;
+	}
 	const after = st.tiles.map((r) => r.join(''));
 	if (before.join('|') !== after.join('|')) {
 		log.push(`## ${n.name}（${n.layer} ${n.stage}）`);
@@ -135,8 +166,13 @@ for (const n of NOOKS) {
 	check(`${n.stage}: tiles が文字の配列の配列`, t.every((row) => Array.isArray(row) && row.length === st.cols) && t.length === st.rows);
 	const [mr, mc] = n.mist.split(',').map(Number);
 	const [cr, cc] = cell.split(',').map(Number);
-	check(`${n.stage}: もや ${n.mist}・宝箱 ${cell}（${content.name}）`,
-		t[mr][mc] === TILE.CURSE_MIST && t[cr][cc] === TILE.CHEST && JSON.stringify(st.chestContents[cell]) === JSON.stringify(content));
+	if (n.chest) {
+		check(`${n.stage}: もや ${n.mist}・宝箱 ${cell}（${content.name}）`,
+			t[mr][mc] === TILE.CURSE_MIST && t[cr][cc] === TILE.CHEST && JSON.stringify(st.chestContents[cell]) === JSON.stringify(content));
+	} else {
+		check(`${n.stage}: もや ${n.mist}・石碑 ${cell}（${content.name}）`,
+			t[mr][mc] === TILE.CURSE_MIST && t[cr][cc] === TILE.MONUMENT && JSON.stringify(st.signData[cell]) === JSON.stringify(content));
+	}
 	// 画面の中で歩ける範囲（もやを壁扱い／祓った後＝床扱い）
 	const walk = (grid, cleared) => {
 		const blocked = (r, c) => {
@@ -157,8 +193,9 @@ for (const n of NOOKS) {
 		return seen;
 	};
 	const touches = (w) => [[-1, 0], [1, 0], [0, -1], [0, 1]].some(([dr, dc]) => w.has(`${cr + dr},${cc + dc}`));
-	check(`${n.stage}: もやがあると宝箱に届かない`, !touches(walk(t, false)));
-	check(`${n.stage}: もやを祓うと宝箱に届く`, touches(walk(t, true)));
+	const what = n.chest ? '宝箱' : '石碑';
+	check(`${n.stage}: もやがあると${what}に届かない`, !touches(walk(t, false)));
+	check(`${n.stage}: もやを祓うと${what}に届く`, touches(walk(t, true)));
 	{
 		// 対照＝もやを壁で塗ると、祓った扱いでも届かない（歩行判定が空虚でない）
 		const walled = t.map((row) => [...row]);

@@ -23,6 +23,11 @@ const NOOKS = [
 	['field', '11,18', '4,9', '4,8', PIECE, '8,9'],          // C1 都の墓所の脇の墓
 	['dark_tower', '1,4', '3,7', '3,8', PIECE, '5,5'],       // B1 塔の祠の間の右の壁龕
 ];
+// かけら以外の味付け（ユーザー判定 2026-10-19「廃城5,3だけ足す」）＝奥はロアの石碑
+// [層, 画面, もや, 石碑, 石碑の名前, 画面の中の立ち位置（もやの手前）]
+const SIGN_NOOKS = [
+	['field', '5,3', '2,9', '1,9', '祈りの間の石碑', '3,9'],  // C2 廃城の祈りの間
+];
 // キュー88 の合図のもや（bushBurned で隠し入口を出す）＝この一覧の外で唯一のもや
 const SIGNAL_MIST = [['field', '6,13', '6,10']];
 
@@ -64,6 +69,19 @@ test.describe('キュー89 もやの奥 ① ② データ', () => {
 		});
 	}
 
+	for (const [layer, stage, mist, sign, name, from] of SIGN_NOOKS) {
+		test(`① ${layer} ${stage}：もや ${mist} を祓わないと石碑 ${sign}（${name}）に届かない`, () => {
+			const st = MAP.layers[layer].stages[stage];
+			const at = (k) => { const [r, c] = k.split(',').map(Number); return st.tiles[r][c]; };
+			expect(at(mist), 'もやが無い').toBe(TILE.CURSE_MIST);
+			expect(at(sign), '石碑が無い').toBe(TILE.MONUMENT);
+			expect(st.signData?.[sign]?.name).toBe(name);
+			expect(st.signData[sign].lines?.length, '本文の無い石碑').toBeGreaterThan(0);
+			expect(touches(reach(st, from, mist, false), sign), 'もやを祓わずに読める').toBe(false);
+			expect(touches(reach(st, from, mist, true), sign), 'もやを祓っても読めない').toBe(true);
+		});
+	}
+
 	test('② もやは D1〜D4 の入口への道を塞がない／もやの総数が一覧どおり', () => {
 		const field = MAP.layers.field.stages;
 		const s = MAP.startPos;
@@ -80,7 +98,7 @@ test.describe('キュー89 もやの奥 ① ② データ', () => {
 				st.tiles.forEach((row, r) => row.forEach((ch, c) => { if (ch === TILE.CURSE_MIST) found.push(`${lk} ${sk} ${r},${c}`); }));
 			}
 		}
-		const expected = [...SIGNAL_MIST, ...NOOKS].map(([l, sk, m]) => `${l} ${sk} ${m}`);
+		const expected = [...SIGNAL_MIST, ...NOOKS, ...SIGN_NOOKS].map(([l, sk, m]) => `${l} ${sk} ${m}`);
 		expect(found.sort()).toEqual(expected.sort());
 	});
 });
@@ -114,5 +132,45 @@ test('③ A1 field 7,10：剣はすり抜ける → ロウソクで祓う → �
 	expect(r.xBlocked, 'もやを通り抜けた').toBeLessThanOrEqual(8);
 	expect(r.cleared, 'ロウソクで祓えない').toBe(true);
 	expect(r.after - r.before, '宝箱でかけらが手に入らない').toBe(1);
+	expect(errors).toEqual([]);
+});
+
+test('④ C2 field 5,3：もやの手前では石碑を読めない → ロウソクで祓う → 祈りの間の石碑が読める', async ({ page }) => {
+	const errors = [];
+	page.on('pageerror', (e) => errors.push(e.message));
+	await page.goto(`/blade-of-lumia/game/?${new URLSearchParams({
+		fromEditor: '1', layer: 'field', stage: '5,3', row: '3', col: '9', ps_weapon: '1', ps_candle: '1',
+	})}`);
+	await waitForBoard(page);
+	const dialogName = () => page.locator('#dialog-name').textContent().catch(() => '');
+	// 画面の巡回兵 E（ランダム移動）を先に倒す＝敵が近いと石碑を読まずに剣を振る（キュー21 F4）∴
+	// 残すと「読めたか」が敵の歩き方次第で揺れる（3回に1回ほど読めなかった）。
+	await page.evaluate(() => {
+		const g = window.__game;
+		for (const e of g.getEnemies()) g.dealDamage(e.id, 9999, 'sword');
+		g.step(1);
+	});
+	expect(await page.evaluate(() => window.__game.getEnemies().length), '巡回兵が残っている').toBe(0);
+	// 祓う前：上を向いて剣＝もやをすり抜けるだけ（石碑は2マス先＝読めない）
+	await page.evaluate(() => { const g = window.__game; g.setHeroDir('up'); g.swordAttack(); g.step(1); });
+	await page.waitForTimeout(150);
+	expect(await dialogName(), '祓う前に石碑が読めた').not.toContain('祈りの間');
+	const r = await page.evaluate(() => {
+		const g = window.__game;
+		for (let i = 0; i < 4; i++) g.step(1);
+		g.setHeroDir('up');
+		g.useSubItem(); g.step(1);
+		const cleared = g.getStageState().cutBushes.includes('2,9');
+		for (let i = 0; i < 30; i++) g.step(1);
+		for (let i = 0; i < 4; i++) { g.movePlayer('up'); g.step(1); }
+		g.setHeroDir('up');
+		g.swordAttack();
+		return { cleared, y: g.getPlayer().y };
+	});
+	expect(r.cleared, 'ロウソクで祓えない').toBe(true);
+	expect(r.y, 'もやの跡 (2,9) に立てていない').toBe(2);
+	await page.waitForTimeout(150);
+	expect(await dialogName()).toContain('祈りの間の石碑');
+	expect(await page.locator('#dialog-text').textContent()).toContain('崩れた 祈りの間');
 	expect(errors).toEqual([]);
 });
