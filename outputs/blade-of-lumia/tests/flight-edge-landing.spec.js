@@ -7,7 +7,7 @@
 // 4方向とも歩けなかった（F で飛び直せば抜けられるが、気づかないと詰んだように見える）。
 // 実マップで画面端の木・茂み・柵・潮門は 1,394 セル（2026-10-18 数えた）＝森の帯を飛ぶとよく踏む。
 //   ① 木の上に着いた → 飛んだまま・横の木の上へ動ける
-//   ② 床の上に着いた → 今までどおり自動で降りる
+//   ② 床の上に着いた → 飛んだまま（キュー86・2026-10-19 ユーザー決定＝画面をまたいでも飛行は続く。旧＝自動で降りた）
 import { test, expect } from '@playwright/test';
 import { readFileSync } from 'node:fs';
 import { GAME_URL, waitForBoard } from './helpers.js';
@@ -55,9 +55,11 @@ test('① 木の上に着いたら飛んだまま留まり、横の木の上へ�
   expect(x2, '横の木の上へ動けない').toBe(1);
 });
 
-test('② 床の上に着いたら今までどおり自動で降りる', async ({ page }) => {
+test('② 床の上に着いても飛んだまま・F で降りられる', async ({ page }) => {
   await flyNorthInto(page, 5);
   const at = await page.evaluate(() => ({ y: window.__game.getPlayer().y, flying: window.__game.getPlayer().flying }));
   expect(at.y).toBe(9);
-  expect(at.flying, '床の上なのに降りない').toBe(false);
+  expect(at.flying, '画面をまたいだら降ろされた').toBe(true);
+  expect(await page.evaluate(() => { window.__game.toggleFlight(); return window.__game.getPlayer().flying; }),
+    '床の上なのに降りられない').toBe(false);
 });

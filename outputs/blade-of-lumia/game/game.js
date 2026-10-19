@@ -554,19 +554,9 @@ function enterStage(lk, sk, pRow, pCol) {
 	player.x = pCol ?? 1;
 	player.y = pRow ?? 1;
 
-	// Phase 1-5: ステージ遷移時の着陸処理。到着セルが地上なら自動着陸する。
-	// 到着セルが空・水（塔の空島入口など）なら飛行を維持してその場に留まれる。
-	if (player.flying) {
-		// bgTiles 水下地も「水の上」＝飛行維持（tiles/bgTiles どちらの水でも落ちない）。
-		const ar = Math.floor((pRow ?? 1) + 0.5), ac = Math.floor((pCol ?? 1) + 0.5);
-		const arrTile = stageData.tiles?.[ar]?.[ac];
-		const arrIsWater = arrTile === TILE.WATER || stageData.bgTiles?.[`${ar},${ac}`] === TILE.WATER;
-		// 降りるのは歩いて立てるセルだけ＝画面の中で F を押して降りるとき（player.js toggleFlight の
-		// tilePassable）と同じ基準。木・茂み・柵・閉じた潮門（FLYABLE_OVER）の上は飛んだまま留まる
-		// （直す前は「空・水・溶岩以外なら降ろす」＝木の中に立って4方向とも歩けなかった・
-		// キュー82③・Fable 実装レビュー #4）。
-		if (arrTile !== TILE.SKY && !arrIsWater && arrTile !== TILE.LAVA && tilePassable(ar, ac)) player.flying = false;
-	}
+	// 画面が変わっても飛行は続ける（キュー86・2026-10-19 ユーザー決定＝PLAN 1-5 改善 TODO）。降りるのは F／🪽 だけ。
+	// 旧＝到着セルが歩けるセルなら自動で降ろしていた＝飛んで画面をまたぐたびに飛び直しが要った。
+	// 入口（MAP_ENTER）は飛んでいると入れない∴別のマップへは必ず歩いて着く＝ダンジョンに飛んだまま入ることは無い。
 
 	// ステージ遷移時に飛翔物・設置爆弾・置いた炎・幻影をリセット
 	// （炎は「1画面に3つまで」＝画面をまたいで持ち出せない＝constants.js CANDLE_FLAME_MAX）
@@ -1719,6 +1709,8 @@ function checkStageTransition() {
 	// MAP_ENTER タイル（'>' タイルが実際に置かれている場所のみ発動）
 	// mapEnters のメタデータだけ存在してもタイルが '>' でなければ遷移しない
 	if (gameNow() < mapEnterCooldownUntil) return;
+	// 飛んでいる間は入口に入らない（キュー86・ユーザー決定 2026-10-19）。入口の上で降りれば入る（player.js toggleFlight）。
+	if (player.flying) return;
 	const r = toTileRow(y), c = toTileCol(x);
 	const posKey = `${r},${c}`;
 	const tileAtPos = stageData.tiles[r]?.[c];

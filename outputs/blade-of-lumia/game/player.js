@@ -183,6 +183,8 @@ export function createPlayer(deps) {
 			playSound('item');
 			pulse('{{wingRobe}} 翼の羽衣で 空へ舞い上がった！', 1800);
 			renderChars(); updateHud(); saveGame();
+			// ボタンの上で飛び立った＝足が離れた（飛んでいる間はボタンを押さない・キュー86）
+			checkSwitchOff();
 			return;
 		}
 		// 着陸：現在のタイルが地上（通行可）でなければ降りられない
@@ -195,6 +197,10 @@ export function createPlayer(deps) {
 		playSound('move');
 		pulse('{{wingRobe}} 地上に 降り立った', 1500);
 		renderChars(); updateHud(); saveGame();
+		// 降りた＝そのセルを踏んだ。ボタン・入口は飛んでいる間は反応しない（キュー86）∴降りたここで反応させる
+		// （直上に降りて何も起きず、一度降りて乗り直す、にしない）。ほかのタイルは飛んでいる間も拾う＝降りても二度は呼ばない。
+		const landed = getStageData().tiles[r]?.[c];
+		if (landed === TILE.BUTTON || landed === TILE.MAP_ENTER) handleTileEvent();
 	}
 
 	// ── ドア開扉アニメーション ────────────────────────────────
@@ -416,7 +422,7 @@ export function createPlayer(deps) {
 				if (!ss.switchStates[pk]) continue;
 				const stoneHere = Object.values(ss.stonePositions ?? {}).some(st => st.r === r && st.c === c);
 				if (stoneHere) continue;
-				const playerHere = toTileRow(player.y) === r && toTileCol(player.x) === c;
+				const playerHere = !player.flying && toTileRow(player.y) === r && toTileCol(player.x) === c;
 				if (!playerHere) {
 					ss.switchStates[pk] = false;
 					changed = true;
@@ -970,7 +976,8 @@ export function createPlayer(deps) {
 			renderBoard(); renderChars(); updateHud(); saveGame(); return;
 		}
 		if (tile === TILE.BUTTON) {
-			if (!ss.switchStates[posKey]) {
+			// 飛んでいる間は押さない（キュー86・ユーザー決定 2026-10-19）。石はボタンに乗せられる＝今のまま。
+			if (!player.flying && !ss.switchStates[posKey]) {
 				ss.switchStates[posKey] = true;
 				playSound('switch');
 				refreshGates();
