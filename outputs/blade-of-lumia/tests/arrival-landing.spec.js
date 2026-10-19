@@ -89,7 +89,7 @@ test.describe('⑥-landing ① 状態つきタイルの開閉判定は単一点�
   test('STATEFUL_TILES は開閉しうるタイルだけを持つ（D/: は含まない）', () => {
     expect([...STATEFUL_TILES].sort()).toEqual(
       [TILE.GATE, TILE.TIDE_GATE, TILE.GATE_RED, TILE.GATE_BLUE,
-       TILE.BREAKABLE_WALL, TILE.DOORWAY_LOCKED, TILE.BUSH, TILE.STONE].sort(),
+       TILE.BREAKABLE_WALL, TILE.DOORWAY_LOCKED, TILE.BUSH, TILE.CURSE_MIST, TILE.STONE].sort(),
     );
     // 'D'（鍵扉）と ':'（ボス扉）は意図的に対象外。'D' の通行判定は debugMode 免除を
     // 持つのでこの Set には入れず、着地判定（game.js arrivalTileBlocked）が openedDoors を

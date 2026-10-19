@@ -16,7 +16,7 @@
 // shared モジュール（TILE / SPRITES / PAL / npcSpriteOf / drawSpriteFrame / makeSprite）
 // は直接 import する（game.js スコープ外・再代入なし）。
 
-import { TILE } from '../shared/tiles.js';
+import { TILE, CANDLE_CLEARABLE_TILES } from '../shared/tiles.js';
 import { SPRITES, PAL, drawSprite, drawSpriteFrame, drawSpriteLayers, makeSprite, applyBgSpriteToCell } from '../shared/sprites.js';
 import { TILE_SPRITE_MAP, TILE_SPRITE_SCALE } from '../shared/tile-sprites.js';
 import { isConnectTile } from '../shared/tile-connect.js';
@@ -56,7 +56,7 @@ export const FIELD_SPRITE_TILES = new Set([
 // 余白で決まる（22/32 ≒ 0.69 セル＝従来の obj-sprite 0.7 倍と同じ）。
 // 🔴 逆に obj-sprite（0.7 倍＋中央寄せ）へ 32 ドットの絵を入れると 1ドット 2.36px
 //    ＝キャラより細かくなる∴この4種は必ず全面で貼る。
-const FIELD_ART_32_TILES = new Set([TILE.TREE, TILE.MOUNTAIN, TILE.BUSH, TILE.SIGN, TILE.MONUMENT, TILE.WARP_STONE]);
+const FIELD_ART_32_TILES = new Set([TILE.TREE, TILE.MOUNTAIN, TILE.BUSH, TILE.CURSE_MIST, TILE.SIGN, TILE.MONUMENT, TILE.WARP_STONE]);
 const fieldSpriteClass = (tile) => (FIELD_ART_32_TILES.has(tile) ? 'field-sprite' : 'obj-sprite');
 
 // 盤面の「物」の canvas をセルに貼る唯一の入口（キュー10番 10d）。
@@ -514,9 +514,10 @@ export function createRenderBoard(deps) {
 		//    その組み立て順まで含めて共通化した∴ここに書き写さない
 		//    （[[blade-tile-sprite-single-source]]。以前はエディタ・プレビューが別々に
 		//     組み立てていて、プレビューだけ肌も変種も選ばず「同じセルが違う絵」だった）。
-		// ⚠ 茂みだけは切り倒し状態（ss.cutBushes）を見る＝状態はゲーム側にしかない。
-		if ((FIELD_SPRITE_TILES.has(tile) || tile === TILE.BUSH) && dsc.obj) {
-			if (tile === TILE.BUSH && ss.cutBushes?.has(posKey)) return;
+		// ⚠ 茂み・怨念のもや（炎で消える物）だけは消えた状態（ss.cutBushes）を見る＝状態はゲーム側にしかない。
+		const clearable = CANDLE_CLEARABLE_TILES.has(tile);
+		if ((FIELD_SPRITE_TILES.has(tile) || clearable) && dsc.obj) {
+			if (clearable && ss.cutBushes?.has(posKey)) return;
 			let { spr, pal, skin } = dsc.obj;
 			// キュー27：灯った転移の石碑だけ紋が水色の絵（状態はゲーム側にしかない＝茂みと同じ扱い）
 			if (tile === TILE.WARP_STONE && isWarpStoneLit(posKey)) { spr = 'warpStoneLit'; pal = 'warpStoneLit'; }
@@ -526,12 +527,12 @@ export function createRenderBoard(deps) {
 			}
 			cellEl.dataset.artSprite = spr;           // どの絵を選んだかテストから見える
 			cellEl.dataset.artPal    = pal;           // 11b：3系の比較用（色まで一致させる）
-			const ANIMATED_FIELD = new Set([TILE.TREE, TILE.BUSH]);
+			const ANIMATED_FIELD = new Set([TILE.TREE, TILE.BUSH, TILE.CURSE_MIST]);
 			const cv = makeSprite(spr, pal, ANIMATED_FIELD.has(tile));
 			if (cv) { cv.classList.add(fieldSpriteClass(tile)); cellEl.appendChild(cv); }
 			return;
 		}
-		if (tile === TILE.BUSH) return;   // 絵が引けない茂み（＝作りかけ）は何も描かない
+		if (clearable) return;   // 絵が引けない茂み・もや（＝作りかけ）は何も描かない
 		// 残りの「落ちているアイテム」だけを共通表 TILE_SPRITE_MAP から描く
 		// （よろい・爆弾・弓矢・回復薬・地図・コンパス・ハートの器）。
 		// ※ 敵（W/E/C/F/ボス）・プレイヤー・NPC も共通表に載っているが、それらは

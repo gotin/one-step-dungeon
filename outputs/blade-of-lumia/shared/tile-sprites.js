@@ -96,6 +96,7 @@ export const TILE_SPRITE_MAP = {
 	[TILE.TREE]:        { spr: 'tree',      pal: 'tree'      },
 	[TILE.MOUNTAIN]:    { spr: 'mountain',  pal: 'mountain'  },
 	[TILE.BUSH]:        { spr: 'bush',      pal: 'bush'      },
+	[TILE.CURSE_MIST]:  { spr: 'curseMist', pal: 'curseMist' },
 	[TILE.FENCE]:       { spr: 'fence',     pal: 'fence'     },
 	[TILE.HOUSE_WALL]:  { spr: 'houseWall', pal: 'houseWall' },
 	[TILE.HOUSE_DOOR]:  { spr: 'houseDoor', pal: 'houseDoor' },

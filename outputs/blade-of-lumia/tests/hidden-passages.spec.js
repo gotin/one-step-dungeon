@@ -11,7 +11,7 @@
 //   row1: t.i#!B..f..t  col2=i（「何もない」看板） col3=# col4=!（壊せる壁）
 //
 // ギミック③: ロウソク草燃やし → 隠し入口
-//   row6: !.......B.u>  col10=u（茂み） col11=>（bushBurned で出現する隠し入口）
+//   row6: !.......B.Ψ>  col10=Ψ（怨念のもや・キュー88 で茂み u から替えた） col11=>（bushBurned で出現する隠し入口）
 
 import { test, expect } from '@playwright/test';
 import { waitForBoard } from './helpers.js';

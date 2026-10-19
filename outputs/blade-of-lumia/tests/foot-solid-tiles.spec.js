@@ -25,7 +25,7 @@ test('① FOOT_SOLID_TILES の中身', () => {
 });
 
 test('② 接続の検査＝FOOT_SOLID_TILES ＋ 検査だけの分', () => {
-  const extras = [TILE.DOORWAY_LOCKED, TILE.SWITCH, TILE.SWITCH_RED, TILE.SWITCH_BLUE, TILE.STONE, TILE.BUSH];
+  const extras = [TILE.DOORWAY_LOCKED, TILE.SWITCH, TILE.SWITCH_RED, TILE.SWITCH_BLUE, TILE.STONE, TILE.BUSH, TILE.CURSE_MIST];
   expect(sorted(HARD_BLOCKED)).toEqual(sorted(new Set([...FOOT_SOLID_TILES, ...extras])));
 });
 

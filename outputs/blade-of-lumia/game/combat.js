@@ -708,7 +708,7 @@ export function createCombat(deps) {
 	// ── 剣攻撃 ───────────────────────────────────────────
 	// キュー85 #26：「目の前の物との操作」（人・看板・スイッチ・茂み）と「剣の当たり判定」
 	// （sword-reach.js findSwordTarget）に分けた。**上から順に試して最初に成り立った1つだけをする**＝
-	// 並び順が優先順位（人・看板 → 剣の用意 → スイッチ → 敵・幻影・棘 → 茂み）。並べ替えない。
+	// 並び順が優先順位（人・看板 → 剣の用意 → スイッチ → 敵・幻影・棘 → 茂み・怨念のもや）。並べ替えない。
 	function swordAttack() {
 		// 演出で世界を止めている間（isTransitioning）は振らない＝演出の上に剣が描かれ、隣の敵に当たって
 		// killEnemy → saveGame が走っていた（キュー82①・Fable 実装レビュー #1）。charge.js canAct と同じ門。
@@ -827,11 +827,14 @@ export function createCombat(deps) {
 	}
 
 	// 茂みを切る（目の前のマス）。
+	// キュー88：怨念のもやは剣がすり抜ける＝消さない（ロウソクの聖なる火でだけ祓える）。
+	// 茂みと同じく「振った」後に言う＝敵が居れば敵に当たる（上の strikeTarget が先）。
 	function cutBush({ player, tr, tc, tile, posKey }) {
-		if (tile !== TILE.BUSH) return;
+		if (tile !== TILE.BUSH && tile !== TILE.CURSE_MIST) return;
 		const ss = getSS(getCurrentLayer(), getStageKey());
 		if (!ss.cutBushes) ss.cutBushes = new Set();
 		if (ss.cutBushes.has(posKey)) return;
+		if (tile === TILE.CURSE_MIST) { pulse('{{sword}} 剣が すり抜けた… 実体が ない', 1800); return; }
 		ss.cutBushes.add(posKey);
 		playSound('slash');
 		const rand = Math.random();

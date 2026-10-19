@@ -30,7 +30,7 @@
 import { test, expect } from '@playwright/test';
 import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { TILE } from '../shared/tiles.js';
+import { TILE, CANDLE_CLEARABLE_TILES } from '../shared/tiles.js';
 import { gameLayerEntries } from '../shared/layers.js';
 import { describeCell, BG_TILE_STYLE, TILE_CELL_STYLE } from '../shared/cell-appearance.js';
 import { FIELD_SPRITE_TILES } from '../game/render-board.js';
@@ -46,7 +46,7 @@ const MAP = JSON.parse(fs.readFileSync(MAP_PATH, 'utf8'));
 // 一覧は render-board.js から取る（手書きの写しを持たない）。他のタイル（水・祭壇・
 // ドアウェイ・NPC・アイテム）は状態つきの専用分岐で描かれ選択を残さない∴比較から外す
 // ＝エディタとプレビューの間では全部のセルを丸ごと比べる（下の②）。
-const OBSERVED_OBJ_TILES = new Set([...FIELD_SPRITE_TILES, TILE.BUSH, TILE.DOOR]);
+const OBSERVED_OBJ_TILES = new Set([...FIELD_SPRITE_TILES, ...CANDLE_CLEARABLE_TILES, TILE.DOOR]);   // 茂み・怨念のもや（キュー88）
 
 /** 実マップの画面を、比べたいカテゴリごとに「最も多く含む上位2画面」だけ選ぶ。 */
 function pickScreens() {

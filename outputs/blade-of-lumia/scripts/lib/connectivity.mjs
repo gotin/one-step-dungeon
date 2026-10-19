@@ -47,6 +47,7 @@ export const HARD_BLOCKED = new Set([
   TILE.SWITCH_BLUE,     // ']'
   TILE.STONE,           // '*' (pushable but blocks until pushed)
   TILE.BUSH,            // 'u' (until cut)
+  TILE.CURSE_MIST,      // 'Ψ' (only the candle clears it — queue 88)
 ]);
 
 // Closed-but-openable gates / walk-through doorways. Block the walk, not a bug.

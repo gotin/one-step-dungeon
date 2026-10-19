@@ -17,7 +17,7 @@ import { TILE, FOOT_SOLID_TILES } from '../shared/tiles.js';
 // 飛行を維持する必要がある（水/空と同じ。外すと溶岩に落ちて詰む）。
 // ⚠️ 画面端の遷移（game.js arrivalIsWallFlying）もこの集合を読む＝飛行中に越えられる物の単一の真実。
 export const FLYABLE_OVER = new Set([
-	TILE.SKY, TILE.WATER, TILE.LAVA, TILE.TREE, TILE.BUSH, TILE.FENCE,
+	TILE.SKY, TILE.WATER, TILE.LAVA, TILE.TREE, TILE.BUSH, TILE.CURSE_MIST, TILE.FENCE,
 	// Phase 9-6 深洋O: 閉じた潮ゲートは水と同じ＝飛行で越えられる（着地不可で詰むのを防ぐ）。
 	// 開いた潮ゲートは tilePassable が通すのでここには来ない。
 	TILE.TIDE_GATE,
@@ -44,7 +44,7 @@ const LADDER_OVER = new Set([
 //   - ':' を着地でブロックするとボス戦から逃げた後の再入場が塞がる
 export const STATEFUL_TILES = new Set([
 	TILE.GATE, TILE.TIDE_GATE, TILE.GATE_RED, TILE.GATE_BLUE,
-	TILE.BREAKABLE_WALL, TILE.DOORWAY_LOCKED, TILE.BUSH, TILE.STONE,
+	TILE.BREAKABLE_WALL, TILE.DOORWAY_LOCKED, TILE.BUSH, TILE.CURSE_MIST, TILE.STONE,
 ]);
 
 // 2026-08-02 バグ修正（ユーザー報告「石が閉まってるゲートを通れるし、そのときはプレイヤーも
@@ -85,7 +85,8 @@ export function statefulTileClosed(tile, posKey, ss) {
 		case TILE.GATE_BLUE:      return ss?.activeColor !== 'blue';
 		case TILE.BREAKABLE_WALL: return !ss?.brokenWalls?.has(posKey);
 		case TILE.DOORWAY_LOCKED: return (ss?.doorwayStates?.[posKey] ?? 'closed') !== 'open';
-		case TILE.BUSH:           return !ss?.cutBushes?.has(posKey);
+		case TILE.BUSH:
+		case TILE.CURSE_MIST:     return !ss?.cutBushes?.has(posKey);   // shared/tiles.js CANDLE_CLEARABLE_TILES
 		// 石は stonePositions に登録された時点で「動かされた」＝元のセルは床。
 		case TILE.STONE:          return !ss?.stonePositions?.[posKey];
 		default: return false;

@@ -2086,6 +2086,9 @@ TILE_PAL.torch = [
 	'#f4b820',   // 6 炎明（黄）
 	'#e07018',   // 7 炎中（赤橙）
 ];
+// ── 怨念のもや（キュー88）── 絵は shared/sprites-obj32.js CURSEMIST_32（2コマ）
+// 1＝芯の黒紫 … 9＝明るい紫（触手の縁）・10＝目のハイライト。参考画像から共通パレットで量子化した値。
+TILE_PAL.curseMist = ['transparent','#14061b','#27113e','#3c1a65','#591190','#4c3b88','#6e17b1','#6b5ab7','#8a27cc','#aa3de5','#f4b8ff'];
 // ── TORCH の絵（10d-2 で 32×32 へ移行）＝絵の単一の真実は shared/sprites-obj32.js
 //    （TORCH_SRC＋scaleAndCenter）に移した（[[blade-tile-sprite-single-source]]）。
 //    パレット（TILE_PAL.torch・上）は変更なし＝ここに残す。

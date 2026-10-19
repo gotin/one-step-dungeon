@@ -1,6 +1,6 @@
 // ── Blade of Lumia – game.js ──────────────────────────────────
 // Phase 1: マップ読み込み・プレイヤー移動（半セル）・ステージ遷移
-import { TILE, BG_TILES, FOOT_SOLID_TILES } from '../shared/tiles.js';
+import { TILE, BG_TILES, FOOT_SOLID_TILES, CANDLE_CLEARABLE_TILES } from '../shared/tiles.js';
 import { buildExitRegistry as buildExitRegistryShared } from '../shared/exits.js';
 import { liftGroundTiles } from '../shared/ground-layer.js';
 import { ENEMY_META, ENEMY_SPEED_NORMAL } from '../shared/enemies.js';
@@ -2110,7 +2110,7 @@ function showFluteWarpEffect() {
 // ── ロウソクを使う（Phase 4-3／2026-08-31 で「炎を置く」道具になった）──────────
 // 前方1マスに対して次の順で解決する。**この順番が要点**：
 //   ① かがり火（TORCH）→ 点灯（既存のギミック鍵。置き炎に化けさせない）
-//   ② 未燃の茂み（BUSH）→ 燃やす（cutBushes を再利用して通行可化＋bushBurned を立てる）
+//   ② 未燃の茂み（BUSH）・怨念のもや（CURSE_MIST・キュー88）→ 燃やす／祓う（cutBushes を再利用して通行可化＋bushBurned を立てる）
 //   ③ それ以外（燃え尽きた茂みを含む）→ **その場に炎を置く**（constants.js CANDLE_FLAME_*）
 // ⚠️ ①② では敵にダメージを与えない。以前は「茂みの有無に関わらず前方の敵を焼く」だったが、
 //    それを残すと**かがり火や茂みを向いて連打する**だけで炎の上限を無視して殴り続けられる
@@ -2154,20 +2154,20 @@ function playCandle() {
 	const ss = getSS(currentLayer, stageKey);
 	if (!ss.cutBushes) ss.cutBushes = new Set();
 
-	// 未燃の茂み以外はすべて③「炎を置く」へ流す（燃え尽きた茂みも床と同じ扱い）。
-	if (tile !== TILE.BUSH || ss.cutBushes.has(posKey)) {
+	// 未燃の茂み・怨念のもや以外はすべて③「炎を置く」へ流す（燃え尽きた跡も床と同じ扱い）。
+	if (!CANDLE_CLEARABLE_TILES.has(tile) || ss.cutBushes.has(posKey)) {
 		placeFlameAhead(tr, tc, player.x + ndx, player.y + ndy);
 		return;
 	}
 
-	ss.cutBushes.add(posKey);   // 茂みを燃やす（通行可化・既存パイプライン）
+	ss.cutBushes.add(posKey);   // 茂みを燃やす／もやを祓う（通行可化・既存パイプライン）
 	ss.bushBurned = true;       // ロウソク固有：bushBurned トリガーを立てる
 	evaluateConditions();       // 隠し通路/入口/アイテムを出現させる
 	renderBoard(); renderChars();
 	// 炎演出は renderBoard/renderChars が charLayerEl を作り直した後に出す
 	// （先に出すと再描画で消えてしまうため）。
 	showCandleFireEffect(player.x + ndx, player.y + ndy);
-	pulse('{{bush}} 茂みが燃え上がった！', 1800);
+	pulse(tile === TILE.CURSE_MIST ? '{{candle}} 聖なる炎が 怨念を祓った！' : '{{bush}} 茂みが燃え上がった！', 1800);
 	saveGame();
 }
 
@@ -2735,6 +2735,9 @@ export function getStageStateSnapshot() {
 		pickedKeys:    [...(ss.pickedKeys ?? [])],
 		// キュー21 F7: ボス扉（':'）の開閉＝'boss_closed'／'open'。撃破後に閉じ込められないかの観測用。
 		doorwayStates: { ...(ss.doorwayStates ?? {}) },
+		// キュー88: 茂み・怨念のもやが消えたセル（剣／ロウソク）と、ロウソクの合図。
+		cutBushes:     [...(ss.cutBushes ?? [])],
+		bushBurned:    !!ss.bushBurned,
 	};
 }
 

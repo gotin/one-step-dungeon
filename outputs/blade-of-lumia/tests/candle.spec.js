@@ -1,8 +1,9 @@
 // Phase 4-3: ロウソク（キャンドル）のスモークテスト
 //
 // デモ配置（work/blade-of-lumia.json）：
-//   field 6,13 … (6,10) に茂み 'u'。(6,11) に bushBurned で gate された
-//                隠し入口 '>'（destId='hidden_cave'）。
+//   field 6,13 … (6,10) に怨念のもや 'Ψ'（キュー88・2026-10-19 に茂み 'u' から替えた＝剣で先に
+//                切ると合図が二度と立たなかった）。(6,11) に bushBurned で gate された
+//                隠し入口 '>'（destId='hidden_cave'）。もや固有の決まりは tests/curse-mist.spec.js。
 //   ❌ 失効（2026-08-20・9,9 declutter）＝旧デモ配置は field 9,9 の (4,7)茂み
 //   → (4,8)隠し入口（destId='secret_grotto'）だったが、ユーザー指摘「洞窟の
 //   入口をここに集結させすぎ」でテスト用に作った茂み焼き系入口ごと削除した

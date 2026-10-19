@@ -18,7 +18,7 @@ export const CONDITION_TRIGGERS = [
 	{ value: 'killAll',         label: '敵全滅（killAll）' },
 	{ value: 'flutePlayed',     label: '笛を吹いた（flutePlayed）' },
 	{ value: 'killAllAndFlute', label: '敵全滅＋笛（killAllAndFlute）' },
-	{ value: 'bushBurned',      label: 'ロウソクで茂みを燃やした（bushBurned）' },
+	{ value: 'bushBurned',      label: 'ロウソクで茂み・怨念のもやを燃やした（bushBurned）' },
 	{ value: 'bossYielded',     label: 'ボスに認められた（bossYielded）' },
 	{ value: 'switchOn',        label: 'ボタン/スイッチON（switchOn）' },
 	{ value: 'allSwitchesOn',   label: '全ボタンON（allSwitchesOn）' },

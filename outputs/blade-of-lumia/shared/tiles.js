@@ -142,6 +142,7 @@ export const TILE = {
 	TREE:        't',  // 木（通行不可）
 	MOUNTAIN:    'M',  // 山（通行不可）
 	BUSH:        'u',  // 茂み（剣で切れる → GRASS 化）
+	CURSE_MIST:  'Ψ',  // 怨念のもや（ロウソクの聖なる火でだけ祓える・剣はすり抜ける。キュー88）
 	FENCE:       'f',  // 柵（通行不可）
 	// 建物系
 	HOUSE_WALL:  'h',  // 家の外壁（通行不可）
@@ -282,6 +283,7 @@ export const TILE_META = {
 	[TILE.TREE]:        { label: '木',         color: '#1a4810', passable: false, icon: '🌲' },
 	[TILE.MOUNTAIN]:    { label: '山',         color: '#6a6060', passable: false, icon: '▲' },
 	[TILE.BUSH]:        { label: '茂み',       color: '#2a6018', passable: false, icon: '🌿' },
+	[TILE.CURSE_MIST]:  { label: '怨念のもや', color: '#3c1a65', passable: false, icon: '👻' },
 	[TILE.FENCE]:       { label: '柵',         color: '#8a6830', passable: false, icon: '╫' },
 	[TILE.HOUSE_WALL]:  { label: '家の外壁',   color: '#c09060', passable: false, icon: '⊡' },
 	[TILE.HOUSE_DOOR]:  { label: '家のドア',   color: '#8a4020', passable: true,  icon: '⊟' },
@@ -374,6 +376,13 @@ export const FOOT_SOLID_TILES = new Set([
 	TILE.TORCH,
 	...Object.keys(NPC_SPRITE_MAP),
 ]);
+
+// 炎で消える物（キュー88）。消えた状態は**どれも** `ss.cutBushes`（セル座標の集合・セーブ済み）に入る
+// ＝通行・描画・接続の検査はこの集合で見る。ロウソクで消すと `ss.bushBurned`（隠しを出す合図）が立つ。
+// 違いは剣だけ：茂みは剣でも切れる（合図は立たない）／怨念のもやは剣がすり抜ける（ロウソクでしか消えない）。
+// ⚠️ 合図（bushBurned）で隠しを出す画面には茂みを置かない＝剣で先に切ると合図が二度と立たない
+//    （2026-10-19 field 6,13 で発覚・切った跡はセーブに残る）。そこには怨念のもやを置く。
+export const CANDLE_CLEARABLE_TILES = new Set([TILE.BUSH, TILE.CURSE_MIST]);
 
 // タイルの一覧（パレット表示用）
 export const TILE_LIST = Object.keys(TILE_META);
