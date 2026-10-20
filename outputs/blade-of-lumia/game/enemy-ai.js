@@ -1621,7 +1621,7 @@ export function createEnemyAi(deps) {
 	}
 
 	// ── Phase 5-3: 敵が石を押す ────────────────────────────────
-	// プレイヤーの tryPushStone（player.js）と同じ規則で、敵が移動しようとした
+	// プレイヤーの石押し（player.js movePlayer の石の節）と同じ規則で、敵が移動しようとした
 	// マス (er+ndr, ec+ndc) に石があるとき、その先 (er+2ndr, ec+2ndc) が押し先。
 	// 押し先が通行可（tilePassable）かつ他の石・敵がいなければ石を1マス押し出す。
 	// 押された石がボタンに乗れば既存の checkStoneOnSwitch がゲートを開く。

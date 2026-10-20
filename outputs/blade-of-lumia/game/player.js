@@ -273,39 +273,6 @@ export function createPlayer(deps) {
 		return true;
 	}
 
-	// ── 石を押す ───────────────────────────────────────────
-	function tryPushStone(r, c, dir, origKey) {
-		const [pdy, pdx] = DIR_DELTA[dir];
-		const ndr = Math.sign(pdy);
-		const ndc = Math.sign(pdx);
-		const tr = r + ndr;
-		const tc = c + ndc;
-		const stageData = getStageData();
-		const enemies   = getEnemies();
-		if (tr < 0 || tr >= stageData.rows || tc < 0 || tc >= stageData.cols) return false;
-		const passable = tilePassable(tr, tc);
-		if (!passable) return false;
-		const ss = getSS(getCurrentLayer(), getStageKey());
-		if (!ss.stonePositions) ss.stonePositions = {};
-		for (const st of Object.values(ss.stonePositions)) {
-			if (st.r === tr && st.c === tc) return false;
-		}
-		for (const e of enemies) {
-			if (toTileRow(e.y) === tr && toTileCol(e.x) === tc) return false;
-		}
-
-		const key = origKey ?? `${r},${c}`;
-		ss.stonePositions[key] = { r: tr, c: tc };
-
-		checkStoneOnSwitch();
-		playSound('move');
-		renderBoard();
-		renderChars();
-		evaluateConditions();
-		saveGame();
-		return true;
-	}
-
 	// ── 武器で押すトグルスイッチ（Phase 4-5 ①・SWITCH）────────────
 	// ボタン（BUTTON＝踏みっぱなしで ON のモーメンタリ式）とは別物。
 	// 矢・剣・その他の武器の攻撃が当たるたびに ON↔OFF をトグルする。
@@ -1220,7 +1187,6 @@ export function createPlayer(deps) {
 	return {
 		movePlayer,
 		handleTileEvent,
-		tryPushStone,
 		checkSwitchOff,
 		toggleSwitch,
 		setActiveColor,

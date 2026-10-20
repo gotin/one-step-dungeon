@@ -69,35 +69,17 @@ import { collectPlayStats, sanitizeCount } from './play-stats.js';
 
 
 // ── DOM ───────────────────────────────────────────────────────
+// HUD・ポーズ・会話・ダンジョン HUD の要素は ui.js が自分で引く（ここで引いても使わない）。
 const boardEl          = document.getElementById('board');
-const heartsEl         = document.getElementById('hud-hearts');
 const stageLabelEl     = document.getElementById('hud-stage-label');
-const equipSwordEl     = document.getElementById('hud-equip-sword');
-const equipShieldEl    = document.getElementById('hud-equip-shield');
-const equipArmorEl     = document.getElementById('hud-equip-armor');
-const subIconEl        = document.getElementById('hud-sub-icon');
-const subCountEl       = document.getElementById('hud-sub-count');
-const msgBarEl         = document.getElementById('msg-bar');
-const dialogOverlayEl  = document.getElementById('dialog-overlay');
-const dialogNameEl     = document.getElementById('dialog-name');
-const dialogTextEl     = document.getElementById('dialog-text');
-const pauseOverlayEl   = document.getElementById('pause-overlay');
-const pauseItemsEl     = document.getElementById('pause-items');
-const pauseStatsEl     = document.getElementById('pause-stats');
 const gameoverOverlayEl= document.getElementById('gameover-overlay');
 const gameoverRetryEl  = document.getElementById('gameover-retry');
-// ボス・エンディング・ダンジョン HUD
+// ボス・エンディング
 const bossHpbarEl      = document.getElementById('boss-hpbar');
 const bossNameEl       = document.getElementById('boss-name');
 const bossHpFillEl     = document.getElementById('boss-hp-fill');
 const endingOverlayEl  = document.getElementById('ending-overlay');
 const endingRestartEl  = document.getElementById('ending-restart');
-const dungeonInfoEl    = document.getElementById('hud-dungeon-info');
-const dungeonNameEl    = document.getElementById('hud-dungeon-name');
-const dungeonItemsEl   = document.getElementById('hud-dungeon-items');
-const pauseDungeonMapEl= document.getElementById('pause-dungeon-map');
-const pauseMapCanvasEl = document.getElementById('pause-map-canvas');
-const pauseMapHintEl   = document.getElementById('pause-map-hint');
 
 // ── 状態 ──────────────────────────────────────────────────────
 let mapData      = null;
@@ -176,9 +158,7 @@ let heroDir = 'down';
 // ── フロアドロップ（Phase 9-5c）──────────────────────────────────
 // 雑魚撃破時にマップ上に一時出現するアイテム。踏むと拾える。
 // { r, c, type, until, el, cellPx } の配列（until＝ゲームの時間で消える時刻）。ステージ遷移で全消去。
-const FLOOR_DROP_ICONS = { bomb: '💣', arrow: '🏹', heart: '❤', rupee: '◆' };
-const FLOOR_DROP_COLORS = { bomb: '#ff8c00', arrow: '#c0a000', heart: '#ff4040', rupee: '#20c040' };
-// ドロップ表示用スプライト（[spr, pal]）＝マップ配置アイテムと同じ絵に揃える。
+// ドロップ表示用スプライト（[spr, pal]）＝マップ配置アイテムと同じ絵に揃える（4種とも絵がある）。
 const FLOOR_DROP_SPRITES = {
 	rupee: ['rupee', 'rupee'],
 	heart: ['heart', 'heart'],
@@ -214,12 +194,6 @@ let quickSwap = null;  // キュー84: X 長押しの道具の早替え（create
 let invincibleUntil = 0;
 // MAP_ENTER 遷移直後クールダウン：遷移先に着いた直後は同じ入り口に乗っても再遷移しない
 let mapEnterCooldownUntil = 0;
-let blinkTimer      = null;
-let dialogLines     = [];
-let dialogLineIdx   = 0;
-let pauseItemKeys   = [];
-let pauseItemIdx    = 0;
-let msgTimer        = null;
 // 疾風の靴＋Shift で走っている最中か（input.js processHeldKeys が毎 tick 立てる）。
 // player に持たせない＝セーブに載る必要が無い一時状態（読み手は描画の transition だけ）。
 let isDashing       = false;
@@ -234,9 +208,8 @@ let pendingTriforcePos = null;
 
 // char-layer DOM 要素（キャラクター絶対配置コンテナ）
 // Phase 0-2 Step 3: render-board.js と render-chars.js が共有する参照ラッパー。
-// renderBoard() が新しい charLayerEl を作成したとき .value を更新し、
-// renderChars() 側は .value 経由で常に最新の要素を読む。
-let charLayerEl = null;
+// renderBoard() が新しい char-layer を作成したとき .value を更新し、
+// game.js も含めた読み手は .value 経由で常に最新の要素を読む（別の変数に写して持たない）。
 const charLayerElRef = { value: null };  // ← 両モジュールが共有する参照ラッパー
 
 // ── Phase 0-2 Step 4: input.js factory の戻り値を保持（window.__game から参照）──
@@ -683,18 +656,14 @@ let cancelCharge       = () => {};
 let tickCharge         = () => {};
 let getIsCharging      = () => false;
 let startDialog      = () => {};
-let showDialogLine   = () => {};
 let advanceDialog    = () => {};
 let togglePause      = () => {};
-let renderPauseMenu  = () => {};
-let renderPauseDungeonMap = () => {};
 let pauseSelectPrev  = () => {};
 let pauseSelectNext  = () => {};
 let pauseMarkPrev    = () => {};
 let pauseMarkNext    = () => {};
 let openShop         = () => {};
 let closeShop        = () => {};
-let renderShop       = () => {};
 let shopSelectPrev   = () => {};
 let shopSelectNext   = () => {};
 let shopBuy          = () => {};
@@ -706,9 +675,6 @@ let maybeShowSubItemHint = () => {};
 let addProjectile    = () => {};
 let getProjectiles   = () => [];
 let enemyTick           = () => {};
-let enemyChase          = () => {};
-let bossTickHitAndAway  = () => {};
-let enemyAttack         = () => {};
 // Phase 5.5k k-5: combat.js の被弾フックから呼ぶ（張り付きを剥がす）。enemy-ai.js の
 // factory は別ブロックで生成される＝_ai をそのまま参照できないのでここへ引き出す。
 let detachLeech         = () => {};
@@ -746,14 +712,11 @@ let clearFlames          = () => {};
 let placeCandleFlame     = () => 'placed';
 let flameTick            = () => {};
 let getPlacedFlames      = () => [];
-let isShieldBlocking     = () => false;
 let isShieldBlockingDir  = () => false;
 let showShieldBlockEffect= () => {};
 let showExplosionEffect  = () => {};
 // ── player.js ──
 let movePlayer          = () => {};
-let handleTileEvent     = () => {};
-let tryPushStone        = () => {};
 let checkSwitchOff      = () => {};
 let giveSubItem         = () => {};
 let gainHeartContainer  = () => {};
@@ -776,9 +739,6 @@ let clearSwordHeld      = () => {};
 let ensureSwordHeld     = () => {};
 let dealDamageToEnemy   = () => {};
 let takeDamage          = () => {};
-let gameOver            = () => {};
-let showDmgPopupFloat   = () => {};
-let killEnemy           = () => {};
 // ── boss.js ──
 let onBossDefeated      = () => {};
 let startBossBattle     = () => {};
@@ -788,16 +748,11 @@ let checkBossPhase      = () => {};
 let checkTriforceClear  = () => {};
 let checkPendingTriforce= () => {};
 let syncPendingTriforce = () => {};
-let showBossHpBar      = () => {};
-let hideBossHpBar       = () => {};
-let showBossRoomLockEffect = () => {};
 // ── 描画系（render-board.js / render-chars.js）──
 let renderBoard;
 let renderChars;
-let addCharEl;
 let moveCharEl;
 let removeCharEl;
-let addShieldOverlay;
 let updatePlayerCharEl;
 
 // ── 状態フラグ getter/setter（Phase 0-2 Step 4: ui.js / input.js に注入するため）──
@@ -842,8 +797,8 @@ const { checkStoneOnSwitch, evaluateConditions, refreshGates } = createCondition
 });
 
 // ── 描画系（Phase 0-2 Step 3: render-board.js / render-chars.js へ切り出し）──────
-// render-board は charLayerElRef.value に新しい charLayerEl を書き込み、
-// render-chars はその .value を読む。game.js は charLayerEl も同期させる。
+// render-board は charLayerElRef.value に新しい char-layer を書き込み、
+// render-chars と game.js はその .value を読む。
 {
 	const _rb = createRenderBoard({
 		getStageData:    () => stageData,
@@ -876,15 +831,12 @@ const { checkStoneOnSwitch, evaluateConditions, refreshGates } = createCondition
 	});
 
 	// factory が生成した関数で旧実装を上書き
-	// renderBoard は呼び出し後に charLayerEl を同期する（game.js 内の直接参照のため）
-	renderBoard = () => { _rb.renderBoard(); charLayerEl = charLayerElRef.value; };
+	renderBoard = () => _rb.renderBoard();
 	// キュー21 F1: renderChars は char-layer を空にして描き直す∴拾う前の星の欠片の絵も
 	// 毎回消える。描き直しの後で「この部屋に拾う前の欠片があれば置き直す」を必ず続ける。
 	renderChars = () => { _rc.renderChars(); syncPendingTriforce(); reattachFloorDrops(); };
-	addCharEl   = _rc.addCharEl;
 	moveCharEl  = _rc.moveCharEl;
 	removeCharEl= _rc.removeCharEl;
-	addShieldOverlay    = _rc.addShieldOverlay;
 	updatePlayerCharEl  = _rc.updatePlayerCharEl;
 }
 
@@ -918,18 +870,14 @@ const { checkStoneOnSwitch, evaluateConditions, refreshGates } = createCondition
 	grantMark        = _ui.grantMark;
 	refreshUnreadMarks = _ui.refreshUnreadMarks;
 	startDialog      = (r, c, tileChar, extraLines) => _ui.startDialog(r, c, tileChar, stageData, NPC_DEFAULT_DIALOG, player, extraLines);
-	showDialogLine   = _ui.showDialogLine;
 	advanceDialog    = _ui.advanceDialog;
 	togglePause      = _ui.togglePause;
-	renderPauseMenu  = _ui.renderPauseMenu;
-	renderPauseDungeonMap = _ui.renderPauseDungeonMap;
 	pauseSelectPrev  = _ui.pauseSelectPrev;
 	pauseSelectNext  = _ui.pauseSelectNext;
 	pauseMarkPrev    = _ui.pauseMarkPrev;
 	pauseMarkNext    = _ui.pauseMarkNext;
 	openShop         = _ui.openShop;
 	closeShop        = _ui.closeShop;
-	renderShop       = _ui.renderShop;
 	shopSelectPrev   = _ui.shopSelectPrev;
 	shopSelectNext   = _ui.shopSelectNext;
 	shopBuy          = _ui.shopBuy;
@@ -984,7 +932,7 @@ const { checkStoneOnSwitch, evaluateConditions, refreshGates } = createCondition
 		},
 		renderBoard:  () => renderBoard(),
 		renderChars:  () => renderChars(),
-		getCharLayerEl: () => charLayerEl,
+		getCharLayerEl: () => charLayerElRef.value,
 		getCellPx,
 	});
 
@@ -1088,7 +1036,7 @@ const { checkStoneOnSwitch, evaluateConditions, refreshGates } = createCondition
 		getCurrentLayer:    () => currentLayer,
 		getStageKey:        () => stageKey,
 		getHeroDir:         () => heroDir,
-		getCharLayerEl:     () => charLayerEl,
+		getCharLayerEl:     () => charLayerElRef.value,
 		getCellPx,
 		toTileRow,
 		toTileCol,
@@ -1119,7 +1067,7 @@ const { checkStoneOnSwitch, evaluateConditions, refreshGates } = createCondition
 		getPlayer:             () => player,
 		getEnemies:            () => enemies,
 		getHeroDir:            () => heroDir,
-		getCharLayerEl:        () => charLayerEl,
+		getCharLayerEl:        () => charLayerElRef.value,
 		getCellPx,
 		toTileRow,
 		toTileCol,
@@ -1167,14 +1115,10 @@ const { checkStoneOnSwitch, evaluateConditions, refreshGates } = createCondition
 	addProjectile        = (config) => _proj.addProjectile(config);
 	getProjectiles       = () => _proj.getProjectiles();
 	fireEnemyProjectile  = _proj.fireEnemyProjectile;
-	isShieldBlocking     = (proj) => _proj.isShieldBlocking(proj);
 	isShieldBlockingDir  = _proj.isShieldBlockingDir;
 	showShieldBlockEffect= _proj.showShieldBlockEffect;
 	showExplosionEffect  = _proj.showExplosionEffect;
 	enemyTick            = _ai.enemyTick;
-	enemyChase           = _ai.enemyChase;
-	bossTickHitAndAway   = _ai.bossTickHitAndAway;
-	enemyAttack          = _ai.enemyAttack;
 	detachLeech          = _ai.detachLeech;
 	crashSoar            = _ai.crashSoar;
 	noticeEnemy          = _ai.noticeEnemy;
@@ -1225,7 +1169,7 @@ const { checkStoneOnSwitch, evaluateConditions, refreshGates } = createCondition
 		getMapData:     () => mapData,
 		getCurrentLayer:() => currentLayer,
 		getStageKey:    () => stageKey,
-		getCharLayerEl: () => charLayerEl,
+		getCharLayerEl: () => charLayerElRef.value,
 		getBossRoomLocked:  () => bossRoomLocked,
 		setBossRoomLocked:  (v) => { bossRoomLocked = v; },
 		getBossDefeating:   () => _bossDefeating,
@@ -1266,7 +1210,7 @@ const { checkStoneOnSwitch, evaluateConditions, refreshGates } = createCondition
 		getCurrentLayer:() => currentLayer,
 		getStageKey:    () => stageKey,
 		getHeroDir:     () => heroDir,
-		getCharLayerEl: () => charLayerEl,
+		getCharLayerEl: () => charLayerElRef.value,
 		getIsDialog:    () => isDialog,
 		getIsPaused:    () => isPaused,
 		getIsGameover:  () => isGameover,
@@ -1349,7 +1293,7 @@ const { checkStoneOnSwitch, evaluateConditions, refreshGates } = createCondition
 
 	// キュー 0o: 光の紋章が8つそろった瞬間の演出（世界を止めて紋章を剣へ注ぐ）。
 	const _awakening = createAuraAwakening({
-		getCharLayerEl: () => charLayerEl,
+		getCharLayerEl: () => charLayerElRef.value,
 		getCellPx:      () => getCellPx(),
 		getPlayer:      () => player,
 		setFrozen:      (v) => { isTransitioning = !!v; },
@@ -1360,7 +1304,7 @@ const { checkStoneOnSwitch, evaluateConditions, refreshGates } = createCondition
 	});
 	// 金の装束を手に入れた瞬間の演出（オーラの中で姿が変わる＝紋章の演出と同じ部品・2026-10-17）。
 	const _garbAwakening = createGarbAwakening({
-		getCharLayerEl: () => charLayerEl,
+		getCharLayerEl: () => charLayerElRef.value,
 		getCellPx:      () => getCellPx(),
 		getPlayer:      () => player,
 		setFrozen:      (v) => { isTransitioning = !!v; },
@@ -1383,7 +1327,7 @@ const { checkStoneOnSwitch, evaluateConditions, refreshGates } = createCondition
 		getStageKey:    () => stageKey,
 		getHeroDir:     () => heroDir,
 		setHeroDir:     (v) => { heroDir = v; },
-		getCharLayerEl: () => charLayerEl,
+		getCharLayerEl: () => charLayerElRef.value,
 		getIsDialog:    () => isDialog,
 		getIsPaused:    () => isPaused,
 		getIsGameover:  () => isGameover,
@@ -1423,8 +1367,6 @@ const { checkStoneOnSwitch, evaluateConditions, refreshGates } = createCondition
 
 	// factory が生成した関数で旧インライン実装を上書き
 	movePlayer        = _player.movePlayer;
-	handleTileEvent   = _player.handleTileEvent;
-	tryPushStone      = _player.tryPushStone;
 	checkSwitchOff    = _player.checkSwitchOff;
 	toggleSwitch      = _player.toggleSwitch;
 	setActiveColor    = _player.setActiveColor;
@@ -1447,9 +1389,6 @@ const { checkStoneOnSwitch, evaluateConditions, refreshGates } = createCondition
 	ensureSwordHeld   = _combat.ensureSwordHeld;
 	dealDamageToEnemy = _combat.dealDamageToEnemy;
 	takeDamage        = _combat.takeDamage;
-	gameOver          = _combat.gameOver;
-	showDmgPopupFloat = _combat.showDmgPopupFloat;
-	killEnemy         = _combat.killEnemy;
 
 	onBossDefeated    = _boss.onBossDefeated;
 	startBossBattle   = _boss.startBossBattle;
@@ -1459,9 +1398,6 @@ const { checkStoneOnSwitch, evaluateConditions, refreshGates } = createCondition
 	checkTriforceClear= _boss.checkTriforceClear;
 	checkPendingTriforce = _boss.checkPendingTriforce;
 	syncPendingTriforce  = _boss.syncPendingTriforce;
-	showBossHpBar    = _boss.showBossHpBar;
-	hideBossHpBar     = _boss.hideBossHpBar;
-	showBossRoomLockEffect = _boss.showBossRoomLockEffect;
 }
 
 // ── ドアウェイシステム（Phase 6.5） ──────────────────────────
@@ -1812,10 +1748,10 @@ function buildFloorDropEl(dr, dc, type) {
 			cv.style.height = sz;
 		}
 	} else {
-		// スプライト未定義の型は従来どおり絵文字でフォールバック
+		// 絵の無い型（データの書き間違い）は「?」で出す＝消えて見えなくなるより気づける
 		el.style.fontSize = `${Math.round(cellPx * 0.55)}px`;
-		el.style.color = FLOOR_DROP_COLORS[type] ?? '#fff';
-		el.textContent = FLOOR_DROP_ICONS[type] ?? '?';
+		el.style.color = '#fff';
+		el.textContent = '?';
 	}
 	return el;
 }
@@ -1824,6 +1760,7 @@ function buildFloorDropEl(dr, dc, type) {
 // （回転・リサイズ）作り直す。直す前＝スイッチ・宝箱・押した石の描き直しのたびに落とし物の絵だけが消え、
 // 拾えるのに見えなかった（キュー82⑦・Fable 実装レビュー #15 を直す途中で見つけた）。
 function reattachFloorDrops() {
+	const charLayerEl = charLayerElRef.value;
 	if (!charLayerEl) return;
 	const cellPx = getCellPx();
 	for (const d of activeFloorDrops) {
@@ -1848,7 +1785,7 @@ function spawnFloorDrop(r, c, type, lifeMs = FLOOR_DROP_LIFE_MS) {
 		}
 	}
 	const el = buildFloorDropEl(dr, dc, type);
-	if (charLayerEl) charLayerEl.appendChild(el);
+	charLayerElRef.value?.appendChild(el);
 	// 寿命 5 秒はゲームの時間で数える（tickFloorDrops）＝ポーズ・会話の間は減らない
 	// （直す前は実時間の setTimeout＝看板を読んでいる間に消えた・キュー82⑨・Fable 実装レビュー #24）
 	const drop = { r: dr, c: dc, type, until: gameNow() + lifeMs, el, cellPx: getCellPx() };
@@ -2119,6 +2056,7 @@ function playFlute() {
 
 // 笛ワープの渦巻き演出（プレイヤーの上に一時 div を出す）
 function showFluteWarpEffect() {
+	const charLayerEl = charLayerElRef.value;
 	if (!charLayerEl) return;
 	const cellPx = getCellPx();
 	const el = document.createElement('div');
@@ -2185,7 +2123,7 @@ function playCandle() {
 	ss.bushBurned = true;       // ロウソク固有：bushBurned トリガーを立てる
 	evaluateConditions();       // 隠し通路/入口/アイテムを出現させる
 	renderBoard(); renderChars();
-	// 炎演出は renderBoard/renderChars が charLayerEl を作り直した後に出す
+	// 炎演出は renderBoard/renderChars が char-layer を作り直した後に出す
 	// （先に出すと再描画で消えてしまうため）。
 	showCandleFireEffect(player.x + ndx, player.y + ndy);
 	pulse(tile === TILE.CURSE_MIST ? '{{candle}} 聖なる炎が 怨念を祓った！' : '{{bush}} 茂みが燃え上がった！', 1800);
@@ -2223,6 +2161,7 @@ function placeFlameAhead(tr, tc, fx, fy) {
 
 // ロウソクの炎演出（前方セルに一時 div を出す）
 function showCandleFireEffect(cx, cy) {
+	const charLayerEl = charLayerElRef.value;
 	if (!charLayerEl) return;
 	const cellPx = getCellPx();
 	const el = document.createElement('div');
