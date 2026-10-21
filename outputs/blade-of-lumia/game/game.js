@@ -293,7 +293,7 @@ function updateBoardScale({ redrawChars = false } = {}) {
 	document.documentElement.style.setProperty('--cell', `${cell}px`);
 	boardEl.style.transform = ''; // scaleは不使用
 	fitMarkGuide();
-	if (redrawChars && cell !== prevCell) renderChars();
+	if (redrawChars && cell !== prevCell) fx.renderChars();
 }
 
 // 目的地表示の置き場所。レーン方式ならハートの下（#hud-left）へ移して2段組み（.in-lane）、
@@ -539,12 +539,12 @@ function enterStage(lk, sk, pRow, pCol) {
 	// （幻影＝Z の像は char-layer の別 DOM ∴画面を出たら必ず捨てる＝別のステージへ
 	//   持ち込まれると「持ち主の居ない魔王」が歩く。持ち主が居ない像は enemyTick 冒頭の
 	//   pruneMirages も掃くが、こちらは画面遷移そのものの後始末＝二重の守り）
-	clearProjectiles();
-	clearBombs();
-	clearFlames();
-	clearMirages();
-	clearThorns();
-	cancelCharge();   // チャージ中の遷移はキャンセル（Phase 3-1）
+	fx.clearProjectiles();
+	fx.clearBombs();
+	fx.clearFlames();
+	fx.clearMirages();
+	fx.clearThorns();
+	fx.cancelCharge();   // チャージ中の遷移はキャンセル（Phase 3-1）
 	// ボス部屋ロックをリセット（非ボス部屋に移動したとき）
 	if (!stageData.isBossRoom) bossRoomLocked = false;
 
@@ -554,15 +554,15 @@ function enterStage(lk, sk, pRow, pCol) {
 	checkStoneOnSwitch();
 
 	updateBoardScale();
-	renderBoard();
-	renderChars();
-	updateHud();
+	fx.renderBoard();
+	fx.renderChars();
+	fx.updateHud();
 
 	const layerData = mapData.layers[lk];
 	const bgm = layerData?.bgm ?? 'field';
 	playBgm(bgm);
-	updateDungeonHud(lk);
-	if (stageData.isBossRoom) startBossBattle(lk, sk);
+	fx.updateDungeonHud(lk);
+	if (stageData.isBossRoom) fx.startBossBattle(lk, sk);
 	// 別の画面へ移ったらここで保存する＝到着した画面・盤の中の座標が残る（画面端・入口・笛・転移の石碑の
 	// どれもここを通る）。直す前は遷移を始めた瞬間に書いていた＝出発側の画面と盤の外にはみ出した座標
 	// （y:-0.5 など）が残り、続きからで入口の外から始まった（キュー83・Fable 実装レビュー #13）。
@@ -571,14 +571,6 @@ function enterStage(lk, sk, pRow, pCol) {
 	if (isStageChange) saveGame();
 }
 
-// ── レイヤー HUD 更新 ─────────────────────────────────────────
-// 実装は ui.js（createUi）にあり、下の UI ブロックで代入される（10e で
-// ここに残っていた旧実装＝絵文字の 🗺🧭 を出す死んだ複製を削除した。
-// モジュール読み込み時に上書きされる∴呼ばれることは無かった）。
-let updateDungeonHud = () => {};
-let grantMark = () => {};
-// キュー61：未読の目的地の印を付け直す（ui.js が持つ＝会話の版の選び方と同じ場所）。
-let refreshUnreadMarks = () => {};
 
 // ── 敵生成 ────────────────────────────────────────────────────
 function buildEnemies(sd, lk, sk) {
@@ -642,118 +634,36 @@ function getHeroPalName() {
 	return player.hasGoldGarb ? `${base}Gold` : base;
 }
 
-// ── Phase 0-2 で factory（外部モジュール）に切り出した関数の事前宣言 ────────
-// 各 factory は createXxx(deps) で生成され、その戻り値で下記 let を上書きする。
-// 旧 function 本体は削除済みなので、ホイスティングに頼らず let で前方宣言する。
-// ── ui.js / input.js ──
-let updateHud        = () => {};
-let pulse            = (t, d) => {};
-let processHeldKeys  = () => {};
-// ── charge.js（Phase 3-1）──
-let startCharge        = () => {};
-let releaseCharge      = () => {};
-let cancelCharge       = () => {};
-let tickCharge         = () => {};
-let getIsCharging      = () => false;
-let startDialog      = () => {};
-let advanceDialog    = () => {};
-let togglePause      = () => {};
-let pauseSelectPrev  = () => {};
-let pauseSelectNext  = () => {};
-let pauseMarkPrev    = () => {};
-let pauseMarkNext    = () => {};
-let openShop         = () => {};
-let closeShop        = () => {};
-let shopSelectPrev   = () => {};
-let shopSelectNext   = () => {};
-let shopBuy          = () => {};
-let openDialog       = () => {};
-let pickDialogVariant = () => ({ lines: ['…'], mark: null });
-let maybeShowSubItemHint = () => {};
-// updateDungeonHud は上で let 宣言済み（旧実装の複製を 10e で削除した）
-// ── projectile.js / enemy-ai.js ──
-let addProjectile    = () => {};
-let getProjectiles   = () => [];
-let enemyTick           = () => {};
-// Phase 5.5k k-5: combat.js の被弾フックから呼ぶ（張り付きを剥がす）。enemy-ai.js の
-// factory は別ブロックで生成される＝_ai をそのまま参照できないのでここへ引き出す。
-let detachLeech         = () => {};
-// Phase 8-4 (4) 0d-3（6体目 U）: 同じ理由でここへ引き出す（矢が滞空に刺さったとき＝
-// combat.js の被弾フックが呼ぶ「射落とす」。状態機械の持ち主は enemy-ai.js）。
-let crashSoar           = () => false;
-// キュー60: 同じ理由でここへ引き出す（攻撃を受けたさまよう敵が気づく＝combat.js の被弾フックが呼ぶ）。
-let noticeEnemy         = () => {};
-// Phase 8-4 (4) 0d-3（12体目 Z）: 幻影＝**敵ではない置き物**（`getEnemies()` に居ない）∴
-// 剣の当たり判定（combat.js）と場面の切り替え（下の reset）から呼ぶために引き出す。
-// 状態機械と器の持ち主は enemy-ai.js（`getMirages()` が唯一の真実）。
-let getMirages          = () => [];
-let destroyMirage       = () => false;
-let clearMirages        = () => {};
-// キュー76③-3（Ω 金翼の邪竜）: 金の棘＝幻影と同じ「敵ではない置き物」。剣（combat.js）・
-// 通行判定（passable.js）・場面の切り替えから読む。持ち主は enemy-ai.js（`getThorns()`）。
-let getThorns           = () => [];
-let destroyThorn        = () => false;
-let clearThorns         = () => {};
-// Phase 5.5k k-7: プレイヤー側の一時デバフ窓（剣封じ・毒）＝game/debuff.js が持ち主。
-// combat.js（剣の門）・charge.js（溜めの門）・enemy-ai.js（体当たりの解決で立てる）の3経路が
-// 参照するので、factory の生成より先に let を置いて wrapper 経由で読ませる。
-let inflictDebuff       = () => false;
-let isSwordSealed       = () => false;
-let isPoisoned          = () => false;
-let tickPlayerDebuffs   = () => {};
-let clearPlayerDebuffs  = () => {};
-let fireEnemyProjectile = () => {};
-let projectileTick       = () => {};
-let clearProjectiles     = () => {};
-let clearBombs           = () => {};
-let bombTick             = () => {};
-let placeBomb            = () => {};
-let clearFlames          = () => {};
-let placeCandleFlame     = () => 'placed';
-let flameTick            = () => {};
-let getPlacedFlames      = () => [];
-let isShieldBlockingDir  = () => false;
-let showShieldBlockEffect= () => {};
-let showExplosionEffect  = () => {};
-// ── player.js ──
-let movePlayer          = () => {};
-let checkSwitchOff      = () => {};
-let giveSubItem         = () => {};
-let gainHeartContainer  = () => {};
-let spawnDropEffect     = () => {};
-let toggleFlight        = () => {};
-let collectFieldItem    = () => null;
-let finalizeCarried     = () => {};
-let restoreCarried      = () => {};
-let equipSwordTier      = () => false;
-let equipArmorTier      = () => false;
-let equipShieldTier     = () => false;
-let equipBoomerangTier  = () => false;
-let grantReward         = () => '';
-let toggleSwitch        = () => {};
-let setActiveColor      = () => {};
-// ── combat.js ──
-let swordAttack         = () => {};
-let drawSwordHeld       = () => {};
-let clearSwordHeld      = () => {};
-let ensureSwordHeld     = () => {};
-let dealDamageToEnemy   = () => {};
-let takeDamage          = () => {};
-// ── boss.js ──
-let onBossDefeated      = () => {};
-let startBossBattle     = () => {};
-let startEnding         = () => {};
-let updateBossHpBar     = () => {};
-let checkBossPhase      = () => {};
-let checkTriforceClear  = () => {};
-let checkPendingTriforce= () => {};
-let syncPendingTriforce = () => {};
-// ── 描画系（render-board.js / render-chars.js）──
-let renderBoard;
-let renderChars;
-let moveCharEl;
-let removeCharEl;
-let updatePlayerCharEl;
+// ── factory が作った関数の置き場（キュー85 #27）────────────────────────────
+// 各 factory は createXxx(deps) で生成され、戻り値の関数を `install({ … })` で下の `fx` に入れる。
+// game.js の中の呼び出しは `fx.名前(…)`。旧実装は 91 本の `let 名前 = () => {}` を前方宣言して後で
+// 上書きしていた＝配線が漏れても既定値（空関数）が**黙って何もしない**ため気づけず、実際に
+// 「代入だけで1度も呼ばれない受け皿」が 18 本溜まっていた（キュー85 #10）。`fx` には既定値が無い＝
+// 入れ忘れた名前を呼べば TypeError で表に出る。同じ名前を2度入れても throw（黙って上書きしない）。
+const fx = Object.create(null);
+// 共通の状態 getter＝**状態を読むだけで、どの factory でも同じ意味の物**だけ。各 factory へは
+// `{ ...base, …固有の deps }` で渡す（factory は自分が要る名前だけを分割代入で読むので、
+// 余分に渡しても動きは変わらない）。値が違う物・名前が違う物はここへ入れず各呼び出しに残す。
+const base = {
+	getPlayer:       () => player,
+	getStageData:    () => stageData,
+	getEnemies:      () => enemies,
+	getCurrentLayer: () => currentLayer,
+	getStageKey:     () => stageKey,
+	getHeroDir:      () => heroDir,
+	getCharLayerEl:  () => charLayerElRef.value,
+	getCellPx,
+	toTileRow,
+	toTileCol,
+	gameNow,
+	getSS,
+};
+function install(fns) {
+	for (const [name, fn] of Object.entries(fns)) {
+		if (name in fx) throw new Error(`fx: ${name} は配線済み（二重の install）`);
+		fx[name] = fn;
+	}
+}
 
 // ── 状態フラグ getter/setter（Phase 0-2 Step 4: ui.js / input.js に注入するため）──
 // game.js の let 変数を外部モジュールが読み書きできるよう getter/setter を用意する。
@@ -770,30 +680,16 @@ function setIsPaused(v)   { isPaused = v; }
 // factory に注入して生成する（getter 経由で常に最新状態を読む）。生成された
 // 関数は呼び出し側を変えずにそのまま使える。
 const { isPassable, tilePassable, isPassableForEnemy, ladderOrientationAt, isWaterAt } = createPassable({
-	getStageData:    () => stageData,
-	getEnemies:      () => enemies,
-	getPlayer:       () => player,
-	getCurrentLayer: () => currentLayer,
-	getStageKey:     () => stageKey,
+	...base,
 	getDebugMode:    () => debugMode,
-	getSS,
-	toTileRow,
-	toTileCol,
 	// キュー76③-3: 立っている金の棘（phase 'up'）＝石と同じ「そこに在る物体」。
-	getThorns:       () => getThorns(),
+	getThorns:       () => fx.getThorns(),
 });
 
 const { checkStoneOnSwitch, evaluateConditions, refreshGates } = createConditions({
-	getStageData:    () => stageData,
-	getEnemies:      () => enemies,
-	getPlayer:       () => player,
-	getCurrentLayer: () => currentLayer,
-	getStageKey:     () => stageKey,
-	getSS,
-	toTileRow,
-	toTileCol,
-	renderBoard:     () => renderBoard(),
-	renderChars:     () => renderChars(),
+	...base,
+	renderBoard:     () => fx.renderBoard(),
+	renderChars:     () => fx.renderChars(),
 });
 
 // ── 描画系（Phase 0-2 Step 3: render-board.js / render-chars.js へ切り出し）──────
@@ -801,27 +697,17 @@ const { checkStoneOnSwitch, evaluateConditions, refreshGates } = createCondition
 // render-chars と game.js はその .value を読む。
 {
 	const _rb = createRenderBoard({
-		getStageData:    () => stageData,
-		getCurrentLayer: () => currentLayer,
-		getStageKey:     () => stageKey,
-		getSS,
+		...base,
 		getBoardEl:      () => boardEl,
 		getStageLabelEl: () => stageLabelEl,
 		charLayerElRef,
 		getDoorwayState,
 		isWarpStoneLit: (posKey) => (player.litWarpStones ?? []).includes(warpStoneId(currentLayer, stageKey, posKey)),
-		afterRender:    () => refreshUnreadMarks(),
+		afterRender:    () => fx.refreshUnreadMarks(),
 	});
 
 	const _rc = createRenderChars({
-		getPlayer:         () => player,
-		getEnemies:        () => enemies,
-		getCurrentLayer:   () => currentLayer,
-		getStageKey:       () => stageKey,
-		getStageData:      () => stageData,
-		getHeroDir:        () => heroDir,
-		getSS,
-		getCellPx,
+		...base,
 		charLayerElRef,
 		getHeroSpriteName: () => getHeroSpriteName(),
 		getHeroPalName:    () => getHeroPalName(),
@@ -830,27 +716,26 @@ const { checkStoneOnSwitch, evaluateConditions, refreshGates } = createCondition
 		ladderOrientationAt,
 	});
 
-	// factory が生成した関数で旧実装を上書き
-	renderBoard = () => _rb.renderBoard();
-	// キュー21 F1: renderChars は char-layer を空にして描き直す∴拾う前の星の欠片の絵も
-	// 毎回消える。描き直しの後で「この部屋に拾う前の欠片があれば置き直す」を必ず続ける。
-	renderChars = () => { _rc.renderChars(); syncPendingTriforce(); reattachFloorDrops(); };
-	moveCharEl  = _rc.moveCharEl;
-	removeCharEl= _rc.removeCharEl;
-	updatePlayerCharEl  = _rc.updatePlayerCharEl;
+	// factory が作った関数を置き場 fx へ入れる
+	install({
+		renderBoard: () => _rb.renderBoard(),
+		// キュー21 F1: renderChars は char-layer を空にして描き直す∴拾う前の星の欠片の絵も
+		// 毎回消える。描き直しの後で「この部屋に拾う前の欠片があれば置き直す」を必ず続ける。
+		renderChars: () => { _rc.renderChars(); fx.syncPendingTriforce(); reattachFloorDrops(); },
+		moveCharEl: _rc.moveCharEl,
+		removeCharEl: _rc.removeCharEl,
+		updatePlayerCharEl: _rc.updatePlayerCharEl,
+	});
 }
 
 // ── UI・入力（Phase 0-2 Step 4: ui.js / input.js へ切り出し）────────────────
-// createUi: HUD/ポーズ/ダイアログ/ショップを factory で生成し旧実装を上書き
+// createUi: HUD/ポーズ/ダイアログ/ショップを factory で生成し fx へ入れる
 // initInput: キーボード・モバイル・スワイプリスナーを登録し heldKeys / processHeldKeys を返す
 {
 	const _ui = createUi({
-		getPlayer:         () => player,
+		...base,
 		getMapData:        () => mapData,
 		getPlayStats,
-		getCurrentLayer:   () => currentLayer,
-		getStageKey:       () => stageKey,
-		getSS,
 		startGameLoop,
 		stopGameLoop,
 		saveGame,
@@ -859,61 +744,65 @@ const { checkStoneOnSwitch, evaluateConditions, refreshGates } = createCondition
 		getIsPaused,  setIsPaused,
 		// 店が渡す道具・報酬（キュー13 ③）。⚠️ 矢印で包む＝この2つは下の player 生成
 		// （`_player`）で後から差し替わる∴関数そのものを渡すと空の初期値を掴んだままになる。
-		giveSubItem:       (id) => giveSubItem(id),
-		grantReward:       (content) => grantReward(content),
+		giveSubItem:       (id) => fx.giveSubItem(id),
+		grantReward:       (content) => fx.grantReward(content),
 	});
 
-	// factory が生成した関数で旧実装を上書き
-	updateHud        = _ui.updateHud;
-	pulse            = _ui.pulse;
-	updateDungeonHud = _ui.updateDungeonHud;
-	grantMark        = _ui.grantMark;
-	refreshUnreadMarks = _ui.refreshUnreadMarks;
-	startDialog      = (r, c, tileChar, extraLines) => _ui.startDialog(r, c, tileChar, stageData, NPC_DEFAULT_DIALOG, player, extraLines);
-	advanceDialog    = _ui.advanceDialog;
-	togglePause      = _ui.togglePause;
-	pauseSelectPrev  = _ui.pauseSelectPrev;
-	pauseSelectNext  = _ui.pauseSelectNext;
-	pauseMarkPrev    = _ui.pauseMarkPrev;
-	pauseMarkNext    = _ui.pauseMarkNext;
-	openShop         = _ui.openShop;
-	closeShop        = _ui.closeShop;
-	shopSelectPrev   = _ui.shopSelectPrev;
-	shopSelectNext   = _ui.shopSelectNext;
-	shopBuy          = _ui.shopBuy;
-	// 第3引数＝看板が教える目的地（キュー16）。呼び元が渡さなければ null＝従来どおり。
-	openDialog       = (name, lines, mark, onClose, notice) => _ui.openDialog(name, lines, mark, onClose, notice);
-	// 台詞と目的地マークを同じ進行状態から解決する（キュー17-2）。
-	pickDialogVariant = (data, p, map) => _ui.pickDialogVariant(data, p, map);
+	// factory が作った関数を置き場 fx へ入れる
+	install({
+		updateHud: _ui.updateHud,
+		pulse: _ui.pulse,
+		updateDungeonHud: _ui.updateDungeonHud,
+		grantMark: _ui.grantMark,
+		refreshUnreadMarks: _ui.refreshUnreadMarks,
+		startDialog: (r, c, tileChar, extraLines) => _ui.startDialog(r, c, tileChar, stageData, NPC_DEFAULT_DIALOG, player, extraLines),
+		advanceDialog: _ui.advanceDialog,
+		togglePause: _ui.togglePause,
+		pauseSelectPrev: _ui.pauseSelectPrev,
+		pauseSelectNext: _ui.pauseSelectNext,
+		pauseMarkPrev: _ui.pauseMarkPrev,
+		pauseMarkNext: _ui.pauseMarkNext,
+		openShop: _ui.openShop,
+		closeShop: _ui.closeShop,
+		shopSelectPrev: _ui.shopSelectPrev,
+		shopSelectNext: _ui.shopSelectNext,
+		shopBuy: _ui.shopBuy,
+		// 第3引数＝看板が教える目的地（キュー16）。呼び元が渡さなければ null＝従来どおり。
+		openDialog: (name, lines, mark, onClose, notice) => _ui.openDialog(name, lines, mark, onClose, notice),
+		// 台詞と目的地マークを同じ進行状態から解決する（キュー17-2）。
+		pickDialogVariant: (data, p, map) => _ui.pickDialogVariant(data, p, map),
+	});
 
 	// maybeShowSubItemHint は ui.js の openDialog を通して開く
-	maybeShowSubItemHint = () => {
-		if (player._shownSubItemHint) return;
-		player._shownSubItemHint = true;
-		_ui.openDialog('！ ヒント', [
-			'サブアイテムを手に入れた！',
-			'Escapeキー（または ≡ボタン）を押すと\nアイテム切り替え画面を開けます。',
-			'左右キーでBボタンに使うアイテムを\n切り替えることができます。',
-			'Xキーを押し続けても、その場で\nすばやく持ち替えられます。',
-		]);
-	};
+	install({
+		maybeShowSubItemHint: () => {
+			if (player._shownSubItemHint) return;
+			player._shownSubItemHint = true;
+			_ui.openDialog('！ ヒント', [
+				'サブアイテムを手に入れた！',
+				'Escapeキー（または ≡ボタン）を押すと\nアイテム切り替え画面を開けます。',
+				'左右キーでBボタンに使うアイテムを\n切り替えることができます。',
+				'Xキーを押し続けても、その場で\nすばやく持ち替えられます。',
+			]);
+		},
+	});
 
 	// キュー27: 転移の石碑の行き先一覧と転移の演出（game/warp-menu.js）
 	warpMenu = createWarpMenu({
+		...base,
 		getMapData:   () => mapData,
-		getPlayer:    () => player,
 		stopGameLoop, startGameLoop,
 		setIsTransitioning: (v) => { isTransitioning = !!v; },
 		playSound, saveGame,
-		pulse:        (t, ms) => pulse(t, ms),
+		pulse:        (t, ms) => fx.pulse(t, ms),
 		readLines:    (ws) => {
 			// 本文は signData か npcData（読み取りと同じ順＝combat.js）。signData だけ見ると、本文が npcData 側の
 			// 入口の碑（水の迷宮の石碑など）で名前「転移の石碑」・本文「…」になっていた（キュー43）。
 			const st = mapData?.layers?.[ws.layer]?.stages?.[ws.stage];
 			const posKey = `${ws.r},${ws.c}`;
 			const sd = st?.signData?.[posKey] ?? st?.npcData?.[posKey] ?? {};
-			const v = pickDialogVariant(sd, player, mapData);
-			openDialog(sd.name ?? '転移の石碑', v.lines, v.mark, null,
+			const v = fx.pickDialogVariant(sd, player, mapData);
+			fx.openDialog(sd.name ?? '転移の石碑', v.lines, v.mark, null,
 				v.noticeKey ? noticeId(ws.layer, ws.stage, posKey, v.noticeKey) : null);
 		},
 		travelTo:     (ws) => {
@@ -930,23 +819,21 @@ const { checkStoneOnSwitch, evaluateConditions, refreshGates } = createCondition
 			mapEnterCooldownUntil = gameNow() + 1500;
 			return true;
 		},
-		renderBoard:  () => renderBoard(),
-		renderChars:  () => renderChars(),
-		getCharLayerEl: () => charLayerElRef.value,
-		getCellPx,
+		renderBoard:  () => fx.renderBoard(),
+		renderChars:  () => fx.renderChars(),
 	});
 
 	// キュー84: X 長押しの道具の早替え（game/quick-swap.js）。開けるのは「歩ける」間だけ。
 	quickSwap = createQuickSwap({
-		getPlayer:  () => player,
+		...base,
 		listItems:  (p) => listSubItemKeys(p),
 		iconOf:     (id, p, px) => subItemIconCanvas(id, p, px),
 		nameOf:     (id, p) => subItemDisplayName(id, p),
 		canOpen:    () => !!stageKey && !isPaused && !isDialog && !isGameover && !isTransitioning
 			&& !getIsShop() && !warpMenu?.isOpen() && !warpMenu?.isWarping() && !_bossDefeating,
 		stopGameLoop, startGameLoop,
-		cancelCharge: () => cancelCharge(),
-		updateHud:  () => updateHud(),
+		cancelCharge: () => fx.cancelCharge(),
+		updateHud:  () => fx.updateHud(),
 		playSound,
 	});
 
@@ -967,11 +854,11 @@ const { checkStoneOnSwitch, evaluateConditions, refreshGates } = createCondition
 		// 終幕の台詞を上書きしていた（2026-08-20 ユーザー報告「よくやった、若き剣よ が
 		// 表示されなかった」の実因＝実測で再現した）。
 		getIsCutscene:   () => _bossDefeating,
-		movePlayer:  (dir) => movePlayer(dir),
-		swordAttack: () => swordAttack(),
-		startCharge:   () => startCharge(),
-		releaseCharge: () => releaseCharge(),
-		cancelCharge:  () => cancelCharge(),
+		movePlayer:  (dir) => fx.movePlayer(dir),
+		swordAttack: () => fx.swordAttack(),
+		startCharge:   () => fx.startCharge(),
+		releaseCharge: () => fx.releaseCharge(),
+		cancelCharge:  () => fx.cancelCharge(),
 		useSubItem:  () => useSubItem(),
 		// キュー84: X 長押しの道具の早替え
 		getIsQuickSwap:   () => !!quickSwap?.isOpen(),
@@ -981,216 +868,191 @@ const { checkStoneOnSwitch, evaluateConditions, refreshGates } = createCondition
 		quickSwapPrev:    () => quickSwap?.selectPrev(),
 		quickSwapNext:    () => quickSwap?.selectNext(),
 		quickSwapTouchHoldMs: QUICK_SWAP_TOUCH_HOLD_MS,
-		toggleFlight: () => toggleFlight(),
-		togglePause,
+		toggleFlight: () => fx.toggleFlight(),
+		togglePause: fx.togglePause,
 		toggleDebugMode,
 		// 実行キュー58：M キー＝BGM・効果音をまとめて切り替え（ポーズ画面のボタンは片方ずつ）
-		toggleSound: initSoundToggle({ pulse: (t, ms) => pulse(t, ms) }).toggleAll,
-		advanceDialog,
-		closeShop,
-		shopSelectPrev,
-		shopSelectNext,
-		shopBuy,
-		pauseSelectPrev,
-		pauseSelectNext,
-		pauseMarkPrev,
-		pauseMarkNext,
+		toggleSound: initSoundToggle({ pulse: (t, ms) => fx.pulse(t, ms) }).toggleAll,
+		advanceDialog: fx.advanceDialog,
+		closeShop: fx.closeShop,
+		shopSelectPrev: fx.shopSelectPrev,
+		shopSelectNext: fx.shopSelectNext,
+		shopBuy: fx.shopBuy,
+		pauseSelectPrev: fx.pauseSelectPrev,
+		pauseSelectNext: fx.pauseSelectNext,
+		pauseMarkPrev: fx.pauseMarkPrev,
+		pauseMarkNext: fx.pauseMarkNext,
 		hasCleared,
 		canDash:    () => !!player.hasSwiftBoots,
 		setDashing: (v) => { isDashing = !!v; },
 	});
 
-	// heldKeys と processHeldKeys を factory 生成版で上書き
+	// processHeldKeys は factory 生成版を fx へ入れる
 	// _inputModule に保存することで window.__game 定義後も参照できる
-	processHeldKeys = _in.processHeldKeys;
+	install({
+		processHeldKeys: _in.processHeldKeys,
+	});
 	_inputModule = _in;  // window.__game の queueInput/releaseInput から参照するため保持
 }
 
 // ── プレイヤー側の一時デバフ窓（Phase 5.5k k-7: debuff.js へ切り出し）─────────
 // 敵AI（攻撃で立てる）・combat.js（剣の門）・charge.js（溜めの門）より先に生成する。
-// takeDamage は後方の combat ブロックで代入される let なので wrapper 経由で読む
-// （呼ばれるのは tick の中＝その時点では代入済み＝既存の factory 群と同じ作法）。
+// takeDamage は後方の combat ブロックで fx へ入る＝ wrapper 経由で読む
+// （呼ばれるのは tick の中＝その時点では入っている＝既存の factory 群と同じ作法）。
 {
 	const _debuff = createDebuff({
-		getPlayer:  () => player,
-		gameNow,
-		takeDamage: (amt, opts) => takeDamage(amt, opts),
-		pulse:      (t, d) => pulse(t, d),
-		updatePlayerCharEl: () => updatePlayerCharEl(),
+		...base,
+		takeDamage: (amt, opts) => fx.takeDamage(amt, opts),
+		pulse:      (t, d) => fx.pulse(t, d),
+		updatePlayerCharEl: () => fx.updatePlayerCharEl(),
 	});
-	inflictDebuff      = _debuff.inflictDebuff;
-	isSwordSealed      = _debuff.isSwordSealed;
-	isPoisoned         = _debuff.isPoisoned;
-	tickPlayerDebuffs  = _debuff.tickPlayerDebuffs;
-	clearPlayerDebuffs = _debuff.clearDebuffs;
+	install({
+		inflictDebuff: _debuff.inflictDebuff,
+		isSwordSealed: _debuff.isSwordSealed,
+		isPoisoned: _debuff.isPoisoned,
+		tickPlayerDebuffs: _debuff.tickPlayerDebuffs,
+		clearPlayerDebuffs: _debuff.clearDebuffs,
+	});
 }
 
 // ── 投擲物・爆弾 / 敵AI（Phase 0-2 Step 5: projectile.js / enemy-ai.js へ切り出し）──
-// createProjectile / createEnemyAi の factory を生成し、旧インライン実装を上書きする。
+// createProjectile / createEnemyAi の factory を生成し、fx へ入れる。
 // deps は getters 経由で常に最新の game.js 状態を読む。
 {
 	const _proj = createProjectile({
-		getStageData:       () => stageData,
-		getPlayer:          () => player,
-		getEnemies:         () => enemies,
-		getCurrentLayer:    () => currentLayer,
-		getStageKey:        () => stageKey,
-		getHeroDir:         () => heroDir,
-		getCharLayerEl:     () => charLayerElRef.value,
-		getCellPx,
-		toTileRow,
-		toTileCol,
-		gameNow,
-		getSS,
-		dealDamageToEnemy:  (e, dmg, atkType, srcX, srcY) => dealDamageToEnemy(e, dmg, atkType, srcX, srcY),
-		takeDamage:         (amt) => takeDamage(amt),
+		...base,
+		dealDamageToEnemy:  (e, dmg, atkType, srcX, srcY) => fx.dealDamageToEnemy(e, dmg, atkType, srcX, srcY),
+		takeDamage:         (amt) => fx.takeDamage(amt),
 		evaluateConditions: () => evaluateConditions(),
-		renderBoard:        () => renderBoard(),
-		renderChars:        () => renderChars(),
+		renderBoard:        () => fx.renderBoard(),
+		renderChars:        () => fx.renderChars(),
 		saveGame:           () => saveGame(),
-		updateHud:          () => updateHud(),
-		pulse:              (t, d) => pulse(t, d),
+		updateHud:          () => fx.updateHud(),
+		pulse:              (t, d) => fx.pulse(t, d),
 		hasCleared,
-		collectFieldItem:   (r, c) => collectFieldItem(r, c),
+		collectFieldItem:   (r, c) => fx.collectFieldItem(r, c),
 		collectFloorDrop:   (r, c) => collectBoomerangDrop(r, c),
-		finalizeCarried:    (carried) => finalizeCarried(carried),
-		restoreCarried:     (carried) => restoreCarried(carried),
-		toggleSwitch:       (r, c) => toggleSwitch(r, c),
-		setActiveColor:     (r, c) => setActiveColor(r, c),
+		finalizeCarried:    (carried) => fx.finalizeCarried(carried),
+		restoreCarried:     (carried) => fx.restoreCarried(carried),
+		toggleSwitch:       (r, c) => fx.toggleSwitch(r, c),
+		setActiveColor:     (r, c) => fx.setActiveColor(r, c),
 		// Phase 7-2: 盾は剣振り中・チャージ中はオフ
 		getLastSwordTime:   () => lastSwordTime,
-		getIsCharging:      () => getIsCharging(),
+		getIsCharging:      () => fx.getIsCharging(),
 	});
 
 	const _ai = createEnemyAi({
-		getStageData:          () => stageData,
-		getPlayer:             () => player,
-		getEnemies:            () => enemies,
-		getHeroDir:            () => heroDir,
-		getCharLayerEl:        () => charLayerElRef.value,
-		getCellPx,
-		toTileRow,
-		toTileCol,
-		gameNow,
+		...base,
 		isPassableForEnemy,
 		// Phase 8-4 (4) 0d-3（8体目 I 沼地の大蝦蟇）: 舌の引き寄せはプレイヤーを動かす∴
 		// プレイヤー側の通行判定を渡す（引数の順は x, y＝敵側と逆・combat.js と同じ形）。
 		isPassable:            (nx, ny, axis) => isPassable(nx, ny, axis),
-		moveCharEl:            (id, x, y) => moveCharEl(id, x, y),
-		takeDamage:            (amt) => takeDamage(amt),
-		dealDamageToEnemy:     (e, dmg, atkType) => dealDamageToEnemy(e, dmg, atkType),
+		moveCharEl:            (id, x, y) => fx.moveCharEl(id, x, y),
+		takeDamage:            (amt) => fx.takeDamage(amt),
+		dealDamageToEnemy:     (e, dmg, atkType) => fx.dealDamageToEnemy(e, dmg, atkType),
 		fireEnemyProjectile:   _proj.fireEnemyProjectile,
 		isShieldBlockingDir:   _proj.isShieldBlockingDir,
 		showShieldBlockEffect: _proj.showShieldBlockEffect,
 		showShieldPierceEffect: _proj.showShieldPierceEffect,
 		getDebugMode:          () => debugMode,
 		// Phase 5-3: 敵が石を押すパズル
-		getCurrentLayer:       () => currentLayer,
-		getStageKey:           () => stageKey,
-		getSS,
 		tilePassable:          (r, c) => tilePassable(r, c),
 		// Phase 9-6: 両生敵（海の主）の地形別速度に使う水判定
 		isWaterAt:             (r, c) => isWaterAt(r, c),
 		checkStoneOnSwitch:    () => checkStoneOnSwitch(),
 		evaluateConditions:    () => evaluateConditions(),
-		renderBoard:           () => renderBoard(),
-		renderChars:           () => renderChars(),
+		renderBoard:           () => fx.renderBoard(),
+		renderChars:           () => fx.renderChars(),
 		// Phase 5.5k k-5: ルピー喰いの吸血は所持ルピーを減らす＝HUD 更新とメッセージが要る
-		updateHud:             () => updateHud(),
-		pulse:                 (t, d) => pulse(t, d),
+		updateHud:             () => fx.updateHud(),
+		pulse:                 (t, d) => fx.pulse(t, d),
 		// Phase 5.5k k-7: 攻撃を当てた敵の meta.inflict をプレイヤー側の窓に立てる
-		inflictDebuff:         (meta) => inflictDebuff(meta),
+		inflictDebuff:         (meta) => fx.inflictDebuff(meta),
 	});
 
-	// factory が生成した関数で旧インライン実装を上書き
-	projectileTick       = _proj.projectileTick;
-	clearProjectiles     = _proj.clearProjectiles;
-	clearBombs           = _proj.clearBombs;
-	bombTick             = _proj.bombTick;
-	placeBomb            = _proj.placeBomb;
-	clearFlames          = _proj.clearFlames;
-	placeCandleFlame     = (r, c) => _proj.placeCandleFlame(r, c);
-	flameTick            = _proj.flameTick;
-	getPlacedFlames      = () => _proj.getPlacedFlames();
-	addProjectile        = (config) => _proj.addProjectile(config);
-	getProjectiles       = () => _proj.getProjectiles();
-	fireEnemyProjectile  = _proj.fireEnemyProjectile;
-	isShieldBlockingDir  = _proj.isShieldBlockingDir;
-	showShieldBlockEffect= _proj.showShieldBlockEffect;
-	showExplosionEffect  = _proj.showExplosionEffect;
-	enemyTick            = _ai.enemyTick;
-	detachLeech          = _ai.detachLeech;
-	crashSoar            = _ai.crashSoar;
-	noticeEnemy          = _ai.noticeEnemy;
-	getMirages           = _ai.getMirages;
-	destroyMirage        = _ai.destroyMirage;
-	clearMirages         = _ai.clearMirages;
-	getThorns            = _ai.getThorns;
-	destroyThorn         = _ai.destroyThorn;
-	clearThorns          = _ai.clearThorns;
+	// factory が作った関数を置き場 fx へ入れる
+	install({
+		projectileTick: _proj.projectileTick,
+		clearProjectiles: _proj.clearProjectiles,
+		clearBombs: _proj.clearBombs,
+		bombTick: _proj.bombTick,
+		placeBomb: _proj.placeBomb,
+		clearFlames: _proj.clearFlames,
+		placeCandleFlame: (r, c) => _proj.placeCandleFlame(r, c),
+		flameTick: _proj.flameTick,
+		getPlacedFlames: () => _proj.getPlacedFlames(),
+		addProjectile: (config) => _proj.addProjectile(config),
+		getProjectiles: () => _proj.getProjectiles(),
+		isShieldBlockingDir: _proj.isShieldBlockingDir,
+		showShieldBlockEffect: _proj.showShieldBlockEffect,
+		showExplosionEffect: _proj.showExplosionEffect,
+		enemyTick: _ai.enemyTick,
+		detachLeech: _ai.detachLeech,
+		crashSoar: _ai.crashSoar,
+		noticeEnemy: _ai.noticeEnemy,
+		getMirages: _ai.getMirages,
+		destroyMirage: _ai.destroyMirage,
+		clearMirages: _ai.clearMirages,
+		getThorns: _ai.getThorns,
+		destroyThorn: _ai.destroyThorn,
+		clearThorns: _ai.clearThorns,
+	});
 }
 
 // ── チャージ攻撃・剣ビーム（Phase 3-1）──────────────────────────
 // addProjectile が上のブロックで設定済みなので、ここで charge factory を生成する。
 {
 	const _charge = createCharge({
-		gameNow,
-		getPlayer:           () => player,
-		getHeroDir:          () => heroDir,
+		...base,
 		getIsDialog:         () => isDialog,
 		getIsPaused:         () => isPaused,
 		getIsGameover:       () => isGameover,
 		getIsTransitioning:  () => isTransitioning,
-		addProjectile:       (config) => addProjectile(config),
+		addProjectile:       (config) => fx.addProjectile(config),
 		hasCleared,
 		// Phase 5.5k k-7: 剣封じ中は溜めも始まらない／溜め中に封じられたら中断される
-		isSwordSealed:       () => isSwordSealed(),
+		isSwordSealed:       () => fx.isSwordSealed(),
 	});
-	startCharge        = _charge.startCharge;
-	releaseCharge      = _charge.releaseCharge;
-	cancelCharge       = _charge.cancelCharge;
-	tickCharge         = _charge.tickCharge;
-	getIsCharging      = _charge.isCharging;
+	install({
+		startCharge: _charge.startCharge,
+		releaseCharge: _charge.releaseCharge,
+		cancelCharge: _charge.cancelCharge,
+		tickCharge: _charge.tickCharge,
+		getIsCharging: _charge.isCharging,
+	});
 }
 
 // ── プレイヤー / 戦闘 / ボス（Phase 0-2b: player.js / combat.js / boss.js 統合）──
 // 3 モジュールは相互依存（combat→boss の onBossDefeated、player→combat/boss の
 // swordAttack/checkTriforceClear、boss→proj の showExplosionEffect）するため、
-// 1 つのブロックでまとめて factory を生成し、旧インライン実装を上書きする。
+// 1 つのブロックでまとめて factory を生成し、fx へ入れる。
 // deps はすべて getter/wrapper 経由なので、後方で宣言される let（bossRoomLocked 等）も
 // 呼び出し時には初期化済みで TDZ にかからない。
 {
 	const _boss = createBoss({
+		...base,
 		getPlayStats,
-		getStageData:   () => stageData,
-		getPlayer:      () => player,
-		getEnemies:     () => enemies,
 		setEnemies:     (v) => { enemies = v; },
 		getMapData:     () => mapData,
-		getCurrentLayer:() => currentLayer,
-		getStageKey:    () => stageKey,
-		getCharLayerEl: () => charLayerElRef.value,
 		getBossRoomLocked:  () => bossRoomLocked,
 		setBossRoomLocked:  (v) => { bossRoomLocked = v; },
 		getBossDefeating:   () => _bossDefeating,
 		setBossDefeating:   (v) => { _bossDefeating = v; },
 		getPendingTriforcePieceEl: () => _pendingTriforcePieceEl,
 		setPendingTriforcePieceEl: (v) => { _pendingTriforcePieceEl = v; },
-		getCellPx, toTileRow, toTileCol,
-		getSS,
 		getExitRegistry: () => exitRegistry,
 		evaluateConditions: () => evaluateConditions(),
 		lockBossDoors:   () => lockBossDoors(),
 		unlockBossDoors: () => unlockBossDoors(),
-		renderBoard:  () => renderBoard(),
-		renderChars:  () => renderChars(),
-		updateHud:    () => updateHud(),
-		pulse:        (t, d) => pulse(t, d),
+		renderBoard:  () => fx.renderBoard(),
+		renderChars:  () => fx.renderChars(),
+		updateHud:    () => fx.updateHud(),
+		pulse:        (t, d) => fx.pulse(t, d),
 		saveGame:     () => saveGame(),
 		stopGameLoop, startGameLoop,
-		showExplosionEffect: (r, c) => showExplosionEffect(r, c),
+		showExplosionEffect: (r, c) => fx.showExplosionEffect(r, c),
 		// Phase 9-6: stageData.bossReward の授与（player.js の共通付与口を注入）
-		grantReward:  (content) => grantReward(content),
+		grantReward:  (content) => fx.grantReward(content),
 		bossHpbarEl, bossNameEl, bossHpFillEl,
 		endingOverlayEl,
 		hasCleared, saveCleared,
@@ -1202,15 +1064,9 @@ const { checkStoneOnSwitch, evaluateConditions, refreshGates } = createCondition
 	});
 
 	const _combat = createCombat({
+		...base,
 		recordDeath,
-		getStageData:   () => stageData,
-		getPlayer:      () => player,
-		getEnemies:     () => enemies,
 		setEnemies:     (v) => { enemies = v; },
-		getCurrentLayer:() => currentLayer,
-		getStageKey:    () => stageKey,
-		getHeroDir:     () => heroDir,
-		getCharLayerEl: () => charLayerElRef.value,
 		getIsDialog:    () => isDialog,
 		getIsPaused:    () => isPaused,
 		getIsGameover:  () => isGameover,
@@ -1221,14 +1077,11 @@ const { checkStoneOnSwitch, evaluateConditions, refreshGates } = createCondition
 		getLastSwordTime:   () => lastSwordTime,
 		setLastSwordTime:   (v) => { lastSwordTime = v; },
 		getDebugMode:   () => debugMode,
-		gameNow, getCellPx,
-		toTileRow, toTileCol,
-		getSS,
 		evaluateConditions: () => evaluateConditions(),
-		removeCharEl:  (id) => removeCharEl(id),
-		updatePlayerCharEl: () => updatePlayerCharEl(),
-		updateHud:     () => updateHud(),
-		pulse:         (t, d) => pulse(t, d),
+		removeCharEl:  (id) => fx.removeCharEl(id),
+		updatePlayerCharEl: () => fx.updatePlayerCharEl(),
+		updateHud:     () => fx.updateHud(),
+		pulse:         (t, d) => fx.pulse(t, d),
 		saveGame:      () => saveGame(),
 		stopGameLoop, startGameLoop,
 		onBossDefeated:  (b) => _boss.onBossDefeated(b),
@@ -1240,46 +1093,46 @@ const { checkStoneOnSwitch, evaluateConditions, refreshGates } = createCondition
 		// ⚠️ posKey も渡す＝くじの天井・1回限りのキー（`layer:stageKey:posKey`）の一部。
 		//    キュー36（2026-09-30）まで `(sd) => openShop(sd)` で落としていた＝キーが
 		//    `field:9,9:` になり、同じ画面のくじが全部1つの天井を共有する形だった。
-		openShop:    (sd, posKey) => openShop(sd, posKey),
-		startDialog: (r, c, t) => startDialog(r, c, t),
+		openShop:    (sd, posKey) => fx.openShop(sd, posKey),
+		startDialog: (r, c, t) => fx.startDialog(r, c, t),
 		hasCleared,
-		isShieldBlockingDir:   (dx, dy) => isShieldBlockingDir(dx, dy),
-		showShieldBlockEffect: (x, y) => showShieldBlockEffect(x, y),
+		isShieldBlockingDir:   (dx, dy) => fx.isShieldBlockingDir(dx, dy),
+		showShieldBlockEffect: (x, y) => fx.showShieldBlockEffect(x, y),
 		// Phase 5.5k k-4: 盾騎士の正面ブロックはプレイヤーを1歩弾き返す＝押した先の
 		// 通行可否と DOM 位置更新が要る（この2つは combat では新規の依存）。
 		isPassable:       (nx, ny) => isPassable(nx, ny),
-		moveCharEl:       (id, x, y) => moveCharEl(id, x, y),
+		moveCharEl:       (id, x, y) => fx.moveCharEl(id, x, y),
 		// Phase 5.5k k-5: 被弾トリガー（分裂した小型の置き場所／張り付きを剥がす）。
 		// 張り付きの状態機械の持ち主は enemy-ai.js＝書き手を1か所に保つために委譲する。
 		tilePassable:     (r, c) => tilePassable(r, c),
-		detachLeech:      (e) => detachLeech(e),
+		detachLeech:      (e) => fx.detachLeech(e),
 		// Phase 8-4 (4) 0d-3（6体目 U）: 矢が刺さったら滞空を墜落へ落とす（＝弱点が機構の解除鍵）。
-		crashSoar:        (e, meta) => crashSoar(e, meta),
-		noticeEnemy:      (e) => noticeEnemy(e),
+		crashSoar:        (e, meta) => fx.crashSoar(e, meta),
+		noticeEnemy:      (e) => fx.noticeEnemy(e),
 		// Phase 8-4 (4) 0d-3（12体目 Z）: 幻影は剣の一撃で消える（HP を持たない置き物）。
 		// 剣の当たり判定は combat.js の1か所だけ＝そこに像の配列を渡す（判定を2つ書かない）。
-		getMirages:       () => getMirages(),
-		destroyMirage:    (id) => destroyMirage(id),
+		getMirages:       () => fx.getMirages(),
+		destroyMirage:    (id) => fx.destroyMirage(id),
 		// キュー76③-3: 金の棘も剣の一撃で壊れる（幻影と同じ当たり判定を通す）。
-		getThorns:        () => getThorns(),
-		destroyThorn:     (id) => destroyThorn(id),
-		spawnDropEffect:  (r, c, icon, color) => spawnDropEffect(r, c, icon, color),
+		getThorns:        () => fx.getThorns(),
+		destroyThorn:     (id) => fx.destroyThorn(id),
+		spawnDropEffect:  (r, c, icon, color) => fx.spawnDropEffect(r, c, icon, color),
 		spawnFloorDrop:   (r, c, type) => spawnFloorDrop(r, c, type),
 		getStageMoves:    () => player.stageMoves ?? 0,
-		toggleSwitch:     (r, c) => toggleSwitch(r, c),
-		setActiveColor:   (r, c) => setActiveColor(r, c),
+		toggleSwitch:     (r, c) => fx.toggleSwitch(r, c),
+		setActiveColor:   (r, c) => fx.setActiveColor(r, c),
 		gameoverOverlayEl,
 		// Phase 5.5k k-7: 剣封じ（#13 呪い火）＝剣だけが振れない（会話/看板は通る）
-		isSwordSealed:    () => isSwordSealed(),
+		isSwordSealed:    () => fx.isSwordSealed(),
 		// 看板は startDialog を通らない∴「教える目的地」（sd.mark）を第3引数で渡す（キュー16）。
 		// 17-0: 踏破後台詞（linesAfterBoss）は看板タイル（石碑）にも付く∴ NPC と同じ選択規則を通す。
 		// 17-2: マークも同じ進行状態から選ぶ（markAfterBoss）∴ sd.mark 直渡しをやめる。
 		// キュー27: 転移の石碑は (r,c) から碑を引いて warp-menu に渡す（灯す・行き先の一覧）。
 		openSignDialog: (sd, r, c, tile) => {
-			const v = pickDialogVariant(sd, player, mapData);
+			const v = fx.pickDialogVariant(sd, player, mapData);
 			// キュー64: 印を出す版なら、読み終えたら「読んだ版」に記す id も渡す。
 			const notice = v.noticeKey ? noticeId(currentLayer, stageKey, `${r},${c}`, v.noticeKey) : null;
-			const show = (onClose) => openDialog(sd.name ?? '看板', v.lines, v.mark, onClose, notice);
+			const show = (onClose) => fx.openDialog(sd.name ?? '看板', v.lines, v.mark, onClose, notice);
 			if (tile === TILE.WARP_STONE && warpMenu) {
 				const ws = { id: warpStoneId(currentLayer, stageKey, `${r},${c}`), layer: currentLayer, stage: stageKey, r, c, name: sd.name ?? '転移の石碑' };
 				warpMenu.onRead(ws, show);
@@ -1287,8 +1140,8 @@ const { checkStoneOnSwitch, evaluateConditions, refreshGates } = createCondition
 			}
 			show(null);
 		},
-		renderBoard:  () => renderBoard(),
-		renderChars:  () => renderChars(),
+		renderBoard:  () => fx.renderBoard(),
+		renderChars:  () => fx.renderChars(),
 	});
 
 	// キュー 0o: 光の紋章が8つそろった瞬間の演出（世界を止めて紋章を剣へ注ぐ）。
@@ -1298,7 +1151,7 @@ const { checkStoneOnSwitch, evaluateConditions, refreshGates } = createCondition
 		getPlayer:      () => player,
 		setFrozen:      (v) => { isTransitioning = !!v; },
 		setHeroDir:     (v) => { heroDir = v; },
-		refreshPlayer:  () => { player._atkUntil = null; updatePlayerCharEl?.(); },
+		refreshPlayer:  () => { player._atkUntil = null; fx.updatePlayerCharEl?.(); },
 		clearSwordHeld: () => document.querySelectorAll('.sword-held, .sword-aura').forEach((el) => el.remove()),
 		playSound,
 	});
@@ -1309,95 +1162,83 @@ const { checkStoneOnSwitch, evaluateConditions, refreshGates } = createCondition
 		getPlayer:      () => player,
 		setFrozen:      (v) => { isTransitioning = !!v; },
 		setHeroDir:     (v) => { heroDir = v; },
-		refreshPlayer:  () => { player._atkUntil = null; updatePlayerCharEl?.(); },
+		refreshPlayer:  () => { player._atkUntil = null; fx.updatePlayerCharEl?.(); },
 		clearSwordHeld: () => document.querySelectorAll('.sword-held, .sword-aura').forEach((el) => el.remove()),
 		playSound,
 	});
 	const _player = createPlayer({
+		...base,
 		// ⚠️ 宝箱から得たときは grantReward の直後に renderBoard() が char-layer を空に作り直す
 		//    （[[blade-renderboard-pairs-renderchars]]）＝その場で絵を足すと消される。世界は今止めて、
 		//    絵は宝箱の描き直しが済んでから出す（実際の宝箱で踏んだ・2026-10-11）。
 		onAuraAwakened: () => { isTransitioning = true; setTimeout(() => _awakening.play(), 0); },
 		// 金の装束も同じ理由で、宝箱の描き直しが済んでから出す。
 		onGoldGarbAwakened: () => { isTransitioning = true; setTimeout(() => _garbAwakening.play(), 0); },
-		getStageData:   () => stageData,
-		getPlayer:      () => player,
-		getEnemies:     () => enemies,
-		getCurrentLayer:() => currentLayer,
-		getStageKey:    () => stageKey,
-		getHeroDir:     () => heroDir,
 		setHeroDir:     (v) => { heroDir = v; },
-		getCharLayerEl: () => charLayerElRef.value,
 		getIsDialog:    () => isDialog,
 		getIsPaused:    () => isPaused,
 		getIsGameover:  () => isGameover,
 		getIsTransitioning: () => isTransitioning,
-		getIsCharging:  () => getIsCharging(),
-		drawSwordHeld:  () => drawSwordHeld(),
+		getIsCharging:  () => fx.getIsCharging(),
+		drawSwordHeld:  () => fx.drawSwordHeld(),
 		getLastStonePushTime: () => lastStonePushTime,
 		setLastStonePushTime: (v) => { lastStonePushTime = v; },
 		getLastSwordTime:     () => lastSwordTime,
 		setLastSwordTime:     (v) => { lastSwordTime = v; },
-		gameNow, getCellPx,
-		toTileRow, toTileCol,
-		getSS,
 		isPassable:   (nx, ny, axis) => isPassable(nx, ny, axis),
 		tilePassable: (r, c) => tilePassable(r, c),
 		checkStoneOnSwitch: () => checkStoneOnSwitch(),
 		evaluateConditions: () => evaluateConditions(),
 		refreshGates: () => refreshGates(),
 		checkStageTransition: () => checkStageTransition(),
-		updatePlayerCharEl: () => updatePlayerCharEl(),
-		moveCharEl:   (id, x, y) => moveCharEl(id, x, y),
-		renderBoard:  () => renderBoard(),
-		renderChars:  () => renderChars(),
-		updateHud:    () => updateHud(),
-		pulse:        (t, d) => pulse(t, d),
+		updatePlayerCharEl: () => fx.updatePlayerCharEl(),
+		moveCharEl:   (id, x, y) => fx.moveCharEl(id, x, y),
+		renderBoard:  () => fx.renderBoard(),
+		renderChars:  () => fx.renderChars(),
+		updateHud:    () => fx.updateHud(),
+		pulse:        (t, d) => fx.pulse(t, d),
 		saveGame:     () => saveGame(),
 		stopGameLoop, startGameLoop,
 		checkTriforceClear:   () => _boss.checkTriforceClear(),
 		offerAtAltar:         () => _boss.offerAtAltar(),
-		maybeShowSubItemHint: () => maybeShowSubItemHint(),
+		maybeShowSubItemHint: () => fx.maybeShowSubItemHint(),
 		getHeroSpriteName, getHeroPalName,
 		hasCleared,
-		updateDungeonHud: (lk) => updateDungeonHud(lk),
+		updateDungeonHud: (lk) => fx.updateDungeonHud(lk),
 		pickupFloorDropAt: (r, c) => pickupFloorDropAt(r, c),
-		grantMark: (m) => grantMark(m),
+		grantMark: (m) => fx.grantMark(m),
 	});
 
-	// factory が生成した関数で旧インライン実装を上書き
-	movePlayer        = _player.movePlayer;
-	checkSwitchOff    = _player.checkSwitchOff;
-	toggleSwitch      = _player.toggleSwitch;
-	setActiveColor    = _player.setActiveColor;
-	giveSubItem       = _player.giveSubItem;
-	gainHeartContainer= _player.gainHeartContainer;
-	spawnDropEffect   = _player.spawnDropEffect;
-	toggleFlight      = _player.toggleFlight;
-	collectFieldItem  = _player.collectFieldItem;
-	finalizeCarried   = _player.finalizeCarried;
-	restoreCarried    = _player.restoreCarried;
-	equipSwordTier    = _player.equipSwordTier;
-	equipArmorTier    = _player.equipArmorTier;
-	equipShieldTier   = _player.equipShieldTier;
-	equipBoomerangTier = _player.equipBoomerangTier;
-	grantReward       = _player.grantReward;
+	// factory が作った関数を置き場 fx へ入れる
+	install({
+		movePlayer: _player.movePlayer,
+		toggleSwitch: _player.toggleSwitch,
+		setActiveColor: _player.setActiveColor,
+		giveSubItem: _player.giveSubItem,
+		gainHeartContainer: _player.gainHeartContainer,
+		spawnDropEffect: _player.spawnDropEffect,
+		toggleFlight: _player.toggleFlight,
+		collectFieldItem: _player.collectFieldItem,
+		finalizeCarried: _player.finalizeCarried,
+		restoreCarried: _player.restoreCarried,
+		equipSwordTier: _player.equipSwordTier,
+		equipArmorTier: _player.equipArmorTier,
+		equipShieldTier: _player.equipShieldTier,
+		equipBoomerangTier: _player.equipBoomerangTier,
+		grantReward: _player.grantReward,
 
-	swordAttack       = _combat.swordAttack;
-	drawSwordHeld     = _combat.drawSwordHeld;
-	clearSwordHeld    = _combat.clearSwordHeld;
-	ensureSwordHeld   = _combat.ensureSwordHeld;
-	dealDamageToEnemy = _combat.dealDamageToEnemy;
-	takeDamage        = _combat.takeDamage;
+		swordAttack: _combat.swordAttack,
+		drawSwordHeld: _combat.drawSwordHeld,
+		clearSwordHeld: _combat.clearSwordHeld,
+		ensureSwordHeld: _combat.ensureSwordHeld,
+		dealDamageToEnemy: _combat.dealDamageToEnemy,
+		takeDamage: _combat.takeDamage,
 
-	onBossDefeated    = _boss.onBossDefeated;
-	startBossBattle   = _boss.startBossBattle;
-	startEnding       = _boss.startEnding;
-	updateBossHpBar   = _boss.updateBossHpBar;
-	checkBossPhase    = _boss.checkBossPhase;
-	checkTriforceClear= _boss.checkTriforceClear;
-	checkPendingTriforce = _boss.checkPendingTriforce;
-	syncPendingTriforce  = _boss.syncPendingTriforce;
+		startBossBattle: _boss.startBossBattle,
+		startEnding: _boss.startEnding,
+		checkPendingTriforce: _boss.checkPendingTriforce,
+		syncPendingTriforce: _boss.syncPendingTriforce,
+	});
 }
 
 // ── ドアウェイシステム（Phase 6.5） ──────────────────────────
@@ -1436,7 +1277,7 @@ function lockBossDoors() {
 			}
 		}
 	}
-	renderBoard(); renderChars();
+	fx.renderBoard(); fx.renderChars();
 }
 
 // ボス撃破時：DOORWAY_BOSS タイルを全て開く
@@ -1449,14 +1290,14 @@ function unlockBossDoors() {
 			}
 		}
 	}
-	renderBoard(); renderChars();
+	fx.renderBoard(); fx.renderChars();
 }
 
 // 条件達成時：DOORWAY_LOCKED タイルを開く（posKey指定または全て）
 function unlockLockedDoor(posKey) {
 	setDoorwayState(posKey, 'open');
 	playSound('gateOpen');
-	renderBoard(); renderChars();
+	fx.renderBoard(); fx.renderChars();
 }
 
 // 徒歩で決して立てない「壁」タイル集合（山・木・柵・水・穴・空・家・看板・
@@ -1571,7 +1412,7 @@ function checkStageTransition() {
 	if (isTransitioning) return;
 	// ボス部屋ロック中は全方向の退出を禁止
 	if (bossRoomLocked) {
-		pulse('扉が閉じている！', 1200);
+		fx.pulse('扉が閉じている！', 1200);
 		return;
 	}
 	const { x, y } = player;
@@ -1617,8 +1458,8 @@ function checkStageTransition() {
 			else if (y >= rows) player.y = rows - 1;
 			else if (x < 0) player.x = 0;
 			else if (x >= cols) player.x = cols - 1;
-			moveCharEl('player', player.x, player.y);
-			updatePlayerCharEl();
+			fx.moveCharEl('player', player.x, player.y);
+			fx.updatePlayerCharEl();
 			return;
 		}
 		isTransitioning = true;
@@ -1640,8 +1481,8 @@ function checkStageTransition() {
 		const margin = 0.5;
 		player.x = Math.min(Math.max(x, margin), cols - 1 - margin);
 		player.y = Math.min(Math.max(y, margin), rows - 1 - margin);
-		moveCharEl('player', player.x, player.y);
-		updatePlayerCharEl();
+		fx.moveCharEl('player', player.x, player.y);
+		fx.updatePlayerCharEl();
 		return;
 	}
 
@@ -1662,7 +1503,7 @@ function checkStageTransition() {
 		// Phase 1-5: 暗黒の塔の入り口は翼の羽衣がないと通れない（飛行ゲート）。
 		// 入り口自体が空島にあり飛行しないと到達できないが、安全策として明示判定する。
 		if (enter.destId === DARK_TOWER_EXIT_ID && !player.hasWingRobe) {
-			pulse('{{wingRobe}} 翼の羽衣が なければ 暗黒の塔へは 渡れない', 2500);
+			fx.pulse('{{wingRobe}} 翼の羽衣が なければ 暗黒の塔へは 渡れない', 2500);
 			return;
 		}
 		const dest = exitRegistry[enter.destId];
@@ -1681,13 +1522,13 @@ function checkStageTransition() {
 // ── プレイヤー移動・タイルイベント・石押し・宝箱・サブアイテム付与は player.js へ ──
 // ── 剣攻撃・ダメージ・撃破・ゲームオーバーは combat.js へ ──
 // ── ボス戦・HPバー・撃破演出・エンディング・星の欠片収集は boss.js へ ──
-//   （Phase 0-2b で旧本体を削除。factory 生成版で上書き済み）
+//   （Phase 0-2b で旧本体を削除。factory 生成版は fx に入っている）
 
 // ── デバッグモード切り替え ─────────────────────────────────────
 function toggleDebugMode() {
 	debugMode = !debugMode;
 	const label = debugMode ? '🛠 DEBUG ON（無敵・すり抜け）' : '🛠 DEBUG OFF';
-	pulse(label, 1500);
+	fx.pulse(label, 1500);
 	// HUD ラベルに [DBG] 表示
 	stageLabelEl.textContent = `[${currentLayer}] ${stageKey}${debugMode ? ' [DBG]' : ''}`;
 }
@@ -1701,8 +1542,8 @@ function retryGame() {
 	// Phase 5.5k k-7: 一時デバフはリトライに持ち越さない（倒された原因の毒/封印を
 	// 抱えたまま再開すると立て直せない）。⚠️ 部屋移動では消さない＝毒/封印は
 	// 部屋を跨いで後を引く（gameTime は連続している）。
-	clearPlayerDebuffs();
-	updateHud();
+	fx.clearPlayerDebuffs();
+	fx.updateHud();
 	enterStage(currentLayer, stageKey, player.y, player.x);
 	startGameLoop();
 }
@@ -1832,7 +1673,7 @@ function applyFloorDropEffect(type) {
 		const prev = player.subItems.bomb.count;
 		player.subItems.bomb.count = addStack(prev, 3, maxB);
 		if (player.subItems.bomb.count > prev) {
-			playSound('dropBomb'); pulse('{{bomb}} ×3'); updateHud(); saveGame();
+			playSound('dropBomb'); fx.pulse('{{bomb}} ×3'); fx.updateHud(); saveGame();
 		} else playSound('dropFull');
 	} else if (type === 'arrow') {
 		// 実行キュー19: 弓を手にしていない間は矢を渡さない（渡すと `subItems.bow` が
@@ -1842,18 +1683,18 @@ function applyFloorDropEffect(type) {
 		const prev = player.subItems.bow.count;
 		player.subItems.bow.count = addStack(prev, 3, maxA);
 		if (player.subItems.bow.count > prev) {
-			playSound('dropArrow'); pulse('{{arrow}} ×3'); updateHud(); saveGame();
+			playSound('dropArrow'); fx.pulse('{{arrow}} ×3'); fx.updateHud(); saveGame();
 		} else playSound('dropFull');
 	} else if (type === 'heart') {
 		const prev = player.hp;
 		player.hp = Math.min(player.maxHp, player.hp + 1);
 		if (player.hp > prev) {
-			playSound('dropHeart'); pulse('{{heart}} HP+1'); updateHud(); saveGame();
+			playSound('dropHeart'); fx.pulse('{{heart}} HP+1'); fx.updateHud(); saveGame();
 		} else playSound('dropFull');
 	} else if (type === 'rupee') {
 		// キュー90: マップのルピーと同じ「チャリン」（旧＝共通の 'item'）。
 		player.rupees = (player.rupees ?? 0) + 1;
-		playSound('rupee'); pulse('{{rupee}} ルピー ×1'); updateHud(); saveGame();
+		playSound('rupee'); fx.pulse('{{rupee}} ルピー ×1'); fx.updateHud(); saveGame();
 	}
 }
 
@@ -1903,24 +1744,24 @@ function gameTick() {
 	if (isPaused || isDialog || isGameover || isTransitioning) return;
 	// キュー84: 道具の早替えの枠が開いている間は世界を止める（ループは止めてある＝step() からの tick も進めない）
 	if (quickSwap?.isOpen()) return;
-	processHeldKeys();   // 押しっぱなしキーで毎tick移動
+	fx.processHeldKeys();   // 押しっぱなしキーで毎tick移動
 	// 移動で画面端・入口を越えて遷移が始まったら、この tick の残り（敵・弾・爆弾・炎）は走らせない
 	// ＝盤外座標の勇者が遷移の音の後に被弾しない（キュー82④・Fable 実装レビュー #14）。
 	if (isTransitioning || isGameover) return;
-	tickCharge();        // チャージゲージ更新（剣ビーム・Phase 3-1）
-	enemyTick();
-	projectileTick();
-	bombTick();
-	flameTick();          // 置いた炎の寿命と「踏んだ敵を焼く」判定（2026-08-31）
+	fx.tickCharge();        // チャージゲージ更新（剣ビーム・Phase 3-1）
+	fx.enemyTick();
+	fx.projectileTick();
+	fx.bombTick();
+	fx.flameTick();          // 置いた炎の寿命と「踏んだ敵を焼く」判定（2026-08-31）
 	tickFloorDrops();     // 落とし物の寿命（ゲームの時間・キュー82⑨）
 	                      // ＝enemyTick の**後**に置く∴同じ tick で炎に入った敵はその tick で焼ける
 	// Phase 5.5k k-7.5: **接触ダメージは廃止した**（2026-08-17 ユーザー決定②
 	// 「接触だけでは攻撃を受けることはないようにする」）。ここには checkEnemyContact() が
 	// あった＝「触れたら痛い」の唯一の入口。今は敵の攻撃はすべてモーションを持つ
 	// （体当たり＝enemy-ai.js の slam・剣・投擲）∴触れただけでは何も起きない。
-	tickPlayerDebuffs(); // 剣封じ・毒の窓を論理時間で進める（Phase 5.5k k-7）
+	fx.tickPlayerDebuffs(); // 剣封じ・毒の窓を論理時間で進める（Phase 5.5k k-7）
 	                     // ＝enemyTick（slam の解決でデバフが立つ）の後に置く
-	checkPendingTriforce(); // 魔王撃破後の星の欠片収集チェック
+	fx.checkPendingTriforce(); // 魔王撃破後の星の欠片収集チェック
 	tickAttackPose();    // 剣の構えポーズを論理時間で解除（Phase 5.5g3）
 	redrawAnimSprites();
 }
@@ -1931,18 +1772,18 @@ function tickAttackPose() {
 	// ポーズの窓（_atkUntil）を毎tick延長し続ける。窓は1つだけに保つのが要点で、
 	// これ1つで「ポーズの絵・構えた剣・盾の防御無効・足止め」が全部同期する。
 	// ∴ 溜め中は盾で防御できない（剣を突き出し盾は利き手側へ回っている絵と一致）。
-	if (getIsCharging()) {
+	if (fx.getIsCharging()) {
 		const wasIdle = player._atkUntil == null;
 		player._atkUntil = gameNow() + ATTACK_POSE_MS;
-		if (wasIdle) updatePlayerCharEl();   // 剣を振らずに溜めだけ始めた場合の絵合わせ
-		ensureSwordHeld();
+		if (wasIdle) fx.updatePlayerCharEl();   // 剣を振らずに溜めだけ始めた場合の絵合わせ
+		fx.ensureSwordHeld();
 		return;
 	}
 	if (player._atkUntil == null) return;
 	if (gameNow() < player._atkUntil) return;
 	player._atkUntil = null;
-	clearSwordHeld();
-	updatePlayerCharEl();
+	fx.clearSwordHeld();
+	fx.updatePlayerCharEl();
 }
 
 // step(frames): frames 分だけ世界を進める。
@@ -1975,18 +1816,18 @@ function playFlute() {
 	if (isDialog || isPaused || isGameover || isTransitioning) return;
 	resumeAudio();
 	playSound('flute');  // 魔法の音色（笛の短いメロディ）
-	const fx = stageData?.fluteEffect;
-	if (!fx) {
-		pulse('{{flute}} 不思議な音色が響いた…… 特に何も起きない', 1800);
+	const fe = stageData?.fluteEffect;
+	if (!fe) {
+		fx.pulse('{{flute}} 不思議な音色が響いた…… 特に何も起きない', 1800);
 		return;
 	}
-	if (fx.type === 'reveal') {
+	if (fe.type === 'reveal') {
 		const ss = getSS(currentLayer, stageKey);
-		if (ss.flutePlayed) { pulse('{{flute}} もう何かが現れている', 1500); return; }
+		if (ss.flutePlayed) { fx.pulse('{{flute}} もう何かが現れている', 1500); return; }
 		ss.flutePlayed = true;
 		evaluateConditions();
-		renderBoard(); renderChars();
-		pulse(fx.message ?? '{{flute}} 音色に応えて 何かが現れた！', 2200);
+		fx.renderBoard(); fx.renderChars();
+		fx.pulse(fe.message ?? '{{flute}} 音色に応えて 何かが現れた！', 2200);
 		saveGame();
 		return;
 	}
@@ -1994,14 +1835,14 @@ function playFlute() {
 	// 救済＝ステージ移動と同じリセット（enterStage の石リセットと同じ規則）をその場で発動する。
 	// ⚠️ 全ボタンに石が乗って解決済み（stonesLocked、または未ロックでも全ボタン充足）なら
 	// リセットしない＝解けたパズルを台無しにしない（enterStage と同じ防御）。
-	if (fx.type === 'resetStones') {
+	if (fe.type === 'resetStones') {
 		const ss = getSS(currentLayer, stageKey);
 		if (!ss.stonePositions || Object.keys(ss.stonePositions).length === 0) {
-			pulse('{{flute}} 音色は響いたが 特に何も起きない', 1800);
+			fx.pulse('{{flute}} 音色は響いたが 特に何も起きない', 1800);
 			return;
 		}
 		if (ss.stonesLocked) {
-			pulse('{{flute}} 音色は響いたが 石はもう動かない', 1800);
+			fx.pulse('{{flute}} 音色は響いたが 石はもう動かない', 1800);
 			return;
 		}
 		const buttons = [];
@@ -2015,32 +1856,32 @@ function playFlute() {
 			return Object.values(ss.stonePositions).some((st) => st.r === br && st.c === bc);
 		});
 		if (allSolved) {
-			pulse('{{flute}} 音色は響いたが 石はもう動かない', 1800);
+			fx.pulse('{{flute}} 音色は響いたが 石はもう動かない', 1800);
 			return;
 		}
 		ss.stonePositions = {};
 		ss.activeColor = null;
 		refreshGates();
 		evaluateConditions();
-		renderBoard(); renderChars();
-		pulse(fx.message ?? '{{flute}} 音色に応えて 石が元の位置に戻った！', 2200);
+		fx.renderBoard(); fx.renderChars();
+		fx.pulse(fe.message ?? '{{flute}} 音色に応えて 石が元の位置に戻った！', 2200);
 		saveGame();
 		return;
 	}
-	if (fx.type === 'warp') {
+	if (fe.type === 'warp') {
 		// 直接座標指定 {layer, stage, row, col} を優先、なければ destId → exitRegistry
 		let dest;
-		if (fx.layer && fx.stage) {
-			dest = { layer: fx.layer, stage: fx.stage, row: fx.row ?? 5, col: fx.col ?? 5 };
-		} else if (fx.destId) {
-			dest = exitRegistry[fx.destId];
+		if (fe.layer && fe.stage) {
+			dest = { layer: fe.layer, stage: fe.stage, row: fe.row ?? 5, col: fe.col ?? 5 };
+		} else if (fe.destId) {
+			dest = exitRegistry[fe.destId];
 		}
-		if (!dest) { pulse('{{flute}} 音色は響いたが 行き先が見つからない', 1800); return; }
+		if (!dest) { fx.pulse('{{flute}} 音色は響いたが 行き先が見つからない', 1800); return; }
 		if (isTransitioning) return;
 		isTransitioning = true;
 		showFluteWarpEffect();
 		playSound('stageTransition');
-		pulse(fx.message ?? '{{flute}} 竜巻が巻き起こり 運ばれていく！', 2000);
+		fx.pulse(fe.message ?? '{{flute}} 竜巻が巻き起こり 運ばれていく！', 2000);
 		setTimeout(() => {
 			// 画面端・入口の遷移と同じ門＝倒れた後に画面を変えない（enterStage は移った後に保存する＝
 			// 倒れたまま HP 0 を書かないため。遷移の間は世界が止まる∴今の作りでは倒れる経路は無い・キュー83）
@@ -2051,7 +1892,7 @@ function playFlute() {
 		}, 400);
 		return;
 	}
-	pulse('{{flute}} 不思議な音色が響いた……', 1800);
+	fx.pulse('{{flute}} 不思議な音色が響いた……', 1800);
 }
 
 // 笛ワープの渦巻き演出（プレイヤーの上に一時 div を出す）
@@ -2098,13 +1939,13 @@ function playCandle() {
 		const ss = getSS(currentLayer, stageKey);
 		if (ss.litTorches.has(posKey)) {
 			showCandleFireEffect(player.x + ndx, player.y + ndy);
-			pulse('{{candle}} もう火がついている', 1400);
+			fx.pulse('{{candle}} もう火がついている', 1400);
 		} else {
 			ss.litTorches.add(posKey);
 			evaluateConditions();
-			renderBoard(); renderChars();
+			fx.renderBoard(); fx.renderChars();
 			showCandleFireEffect(player.x + ndx, player.y + ndy);
-			pulse('{{torch}} かがり火に火をつけた！', 1600);
+			fx.pulse('{{torch}} かがり火に火をつけた！', 1600);
 			saveGame();
 		}
 		return;
@@ -2122,11 +1963,11 @@ function playCandle() {
 	ss.cutBushes.add(posKey);   // 茂みを燃やす／もやを祓う（通行可化・既存パイプライン）
 	ss.bushBurned = true;       // ロウソク固有：bushBurned トリガーを立てる
 	evaluateConditions();       // 隠し通路/入口/アイテムを出現させる
-	renderBoard(); renderChars();
+	fx.renderBoard(); fx.renderChars();
 	// 炎演出は renderBoard/renderChars が char-layer を作り直した後に出す
 	// （先に出すと再描画で消えてしまうため）。
 	showCandleFireEffect(player.x + ndx, player.y + ndy);
-	pulse(tile === TILE.CURSE_MIST ? '{{candle}} 聖なる炎が 怨念を祓った！' : '{{bush}} 茂みが燃え上がった！', 1800);
+	fx.pulse(tile === TILE.CURSE_MIST ? '{{candle}} 聖なる炎が 怨念を祓った！' : '{{bush}} 茂みが燃え上がった！', 1800);
 	saveGame();
 }
 
@@ -2135,28 +1976,28 @@ function playCandle() {
 // ⚠️ 置ける床の判定は `tilePassable`（passable.js）＝**歩ける床の上でだけ燃える**。
 //    壁・水・溶岩・閉じた扉の上で炎が燃える嘘を作らない（水に火を置ける絵は、
 //    後から「水で消える」等の例外を要求してしまう）。
-function placeFlameAhead(tr, tc, fx, fy) {
+function placeFlameAhead(tr, tc, flameX, flameY) {
 	if (!tilePassable(tr, tc)) {
 		// 従来の一瞬の炎演出だけ出す＝「火は点いたが置き場所がない」が読める。
-		showCandleFireEffect(fx, fy);
-		pulse('{{candle}} 炎が揺らめいた…… ここには置けない', 1600);
+		showCandleFireEffect(flameX, flameY);
+		fx.pulse('{{candle}} 炎が揺らめいた…… ここには置けない', 1600);
 		return;
 	}
-	const result = placeCandleFlame(tr, tc);
+	const result = fx.placeCandleFlame(tr, tc);
 	if (result === 'full') {
-		showCandleFireEffect(fx, fy);
-		pulse(`{{candle}} 炎はもう ${CANDLE_FLAME_MAX} つ燃えている！`, 1600);
+		showCandleFireEffect(flameX, flameY);
+		fx.pulse(`{{candle}} 炎はもう ${CANDLE_FLAME_MAX} つ燃えている！`, 1600);
 		return;
 	}
 	if (result === 'exists') {
-		pulse('{{candle}} ここはもう燃えている', 1400);
+		fx.pulse('{{candle}} ここはもう燃えている', 1400);
 		return;
 	}
 	if (result === 'burned') {
-		pulse('{{candle}} 炎が敵を焼いた！', 1400);
+		fx.pulse('{{candle}} 炎が敵を焼いた！', 1400);
 		return;
 	}
-	pulse('{{candle}} 炎を置いた（敵が踏めば焼ける）', 1600);
+	fx.pulse('{{candle}} 炎を置いた（敵が踏めば焼ける）', 1600);
 }
 
 // ロウソクの炎演出（前方セルに一時 div を出す）
@@ -2178,28 +2019,28 @@ function useSubItem() {
 	// （キュー82①・Fable 実装レビュー #1）。剣の swordAttack と同じ門。
 	if (isDialog || isPaused || isGameover || isTransitioning) return;
 	const id = player.activeSubItem;
-	if (!id) { pulse('サブアイテムがない！'); return; }
+	if (!id) { fx.pulse('サブアイテムがない！'); return; }
 	const meta = ITEM_META[id];
 	const si   = player.subItems[id];
 	// ⚠️ ここで残弾 0 を弾かない＝**残弾切れは道具ごとの言い方で断る**（矢なら「矢がない！」・
 	//    爆弾なら「爆弾がない！」）。空でもスロットは残る決まりになった（items.js の 🔴 注記）
 	//    ∴ここで一括して「アイテムがない！」と言うと、弓を持っているのに持っていないような
 	//    文が出る。スロットそのものが無い場合だけがここ。
-	if (!si) { pulse('アイテムがない！'); return; }
+	if (!si) { fx.pulse('アイテムがない！'); return; }
 	if (meta?.type === 'consumable') {
-		if (!si.count) { pulse(`${meta?.name ?? id}がない！`); return; }
-		if (player.hp >= player.maxHp) { pulse('HP は満タン！'); return; }
+		if (!si.count) { fx.pulse(`${meta?.name ?? id}がない！`); return; }
+		if (player.hp >= player.maxHp) { fx.pulse('HP は満タン！'); return; }
 		player.hp = Math.min(player.maxHp, player.hp + (meta.healAmount ?? 5));
 		if (si.count !== Infinity) si.count--;
 		if (si.count <= 0) { delete player.subItems[id]; player.activeSubItem = Object.keys(player.subItems)[0] ?? null; }
-		playSound('heal'); pulse(`HP を回復した！ (${player.hp}/${player.maxHp})`);
-		updateHud(); saveGame(); return;
+		playSound('heal'); fx.pulse(`HP を回復した！ (${player.hp}/${player.maxHp})`);
+		fx.updateHud(); saveGame(); return;
 	}
 	if (id === 'boomerang') {
 		// 飛翔中ならキャッチ待ち（**黙って断る**＝2026-09-21 ユーザー決定。矢の同時2本と同じ
 		// 理由で、飛んでいる間に押すのは普通の撃ち方∴文を出すと帯が点きっぱなしになる。
 		// 告知は「ブーメランが画面に見えている」こと自体。爆弾＝上限も断り文も無い）。
-		if (getProjectiles().some(p => p.type === 'boomerang' && p.owner === 'player')) return;
+		if (fx.getProjectiles().some(p => p.type === 'boomerang' && p.owner === 'player')) return;
 		const [dy, dx] = DIR_DELTA[heroDir];
 		const ndx = dx / MOVE_STEP;
 		const ndy = dy / MOVE_STEP;
@@ -2207,7 +2048,7 @@ function useSubItem() {
 		// Phase 9-6: ティアで性能が決まる（BOOMERANG_TIERS が単一の真実）。
 		// 未定義セーブは 0（木）扱い＝既存挙動そのまま。
 		const bt = BOOMERANG_TIERS[player.boomerangTier ?? 0] ?? BOOMERANG_TIERS[0];
-		addProjectile({
+		fx.addProjectile({
 			owner: 'player', type: 'boomerang',
 			x: player.x + ndx * 0.5, y: player.y + ndy * 0.5,
 			startX: player.x, startY: player.y,
@@ -2227,7 +2068,7 @@ function useSubItem() {
 		playCandle(); return;
 	}
 	if (id === 'bomb') {
-		placeBomb(); return;
+		fx.placeBomb(); return;
 	}
 	if (id === 'bow') {
 		// 矢を発射（ブーメランより大幅に速い・貫通・1消費）。
@@ -2236,14 +2077,14 @@ function useSubItem() {
 		// 制約が矢の残数だった（U 嵐の鷲王の直線移動と重なって過剰ダメージが出た）。
 		// ブーメラン（同時1本＝上の分岐）と同じ作法＝新しい絵/文なしで「画面に見えている」
 		// こと自体が告知になる。矢は貫通のため必ず壁か画面外まで飛んで消える＝謎は詰まらない。
-		if (getProjectiles().filter(p => p.type === 'arrow' && p.owner === 'player').length >= 2) {
+		if (fx.getProjectiles().filter(p => p.type === 'arrow' && p.owner === 'player').length >= 2) {
 			// ⚠️ **上限に当たったときは黙って断る**（2026-09-21 ユーザー報告＝「矢が飛んでいる！」は
 			//    要らない）。連打が普通の撃ち方＝3本目は戦闘中ずっと来る∴文を出すと帯が点きっぱなし
 			//    になる。上の設計どおり告知は「矢が2本飛んでいる画面」そのもの＝爆弾（上限なし∴
 			//    断り文も無い）と同じ静けさに揃える。
 			return;
 		}
-		if (si.count <= 0) { pulse('矢がない！'); return; }
+		if (si.count <= 0) { fx.pulse('矢がない！'); return; }
 		si.count--;
 		// ⚠️ 撃ち切ってもスロットは消さない（2026-09-21 ユーザー報告の直し）。消すと
 		//    `ownsItem(player,'bow')` が偽に戻り、矢束を踏んでも「弓矢が無いと持っていけない」
@@ -2252,7 +2093,7 @@ function useSubItem() {
 		const ndx = dx / MOVE_STEP;
 		const ndy = dy / MOVE_STEP;
 		resumeAudio(); playSound('slash');
-		addProjectile({
+		fx.addProjectile({
 			owner: 'player', type: 'arrow',
 			x: player.x + ndx * 0.5, y: player.y + ndy * 0.5,
 			dx: ndx, dy: ndy,
@@ -2260,9 +2101,9 @@ function useSubItem() {
 			atk: 5,  // 弓矢は固定ダメージ（剣ATK不使用）
 			piercing: true, // 貫通フラグ（checkProjHitで利用）
 		});
-		updateHud(); saveGame(); return;
+		fx.updateHud(); saveGame(); return;
 	}
-	pulse(`${meta?.name ?? id} を使用！`);
+	fx.pulse(`${meta?.name ?? id} を使用！`);
 }
 
 // ── 初期化 ────────────────────────────────────────────────────
@@ -2357,7 +2198,7 @@ function openIntroDialog() {
 		const [r, c] = pk.split(',').map(Number);
 		const tile = sd.tiles[r]?.[c];
 		if (!tile || !NPC_SPRITE_MAP[tile]) continue;   // 人のいないセルの会話データは使わない
-		startDialog(r, c, tile, entry.introLines);
+		fx.startDialog(r, c, tile, entry.introLines);
 		return;
 	}
 }
@@ -2481,7 +2322,7 @@ async function init() {
 		// ⚠️ `equipSwordTier()` は atk を `BASE_ATK + ティアの atk` で**再計算する**∴上の `ps_atk` を上書きする。
 		//    これは意図＝装備を指定したなら ATK は装備から導出されるのが正しい（ATK を直接いじりたい場合は
 		//    `ps_sword` を渡さない＝エディタの「指定なし」）。
-		if (psSword    !== null) equipSwordTier(parseInt(psSword, 10));
+		if (psSword    !== null) fx.equipSwordTier(parseInt(psSword, 10));
 		// 盾／防具ティア（Phase 7-2 → 2026-08-25 に曖昧さを解消）＝**値は常にティア番号**。
 		// 負値（`-1`）または欠落＝装備なし。⚠️ 旧実装は `'1'` を「チェックボックス ON＝ティア0」と
 		// 読んでいたため **(a) ティア1（鉄の盾 reflect 0.5 ／青銅の鎧 DEF 2）が指定できず**
@@ -2490,8 +2331,8 @@ async function init() {
 		// 埋める設計∴ここを直すまで DT max が再現できない。
 		// ⚠️ `equipArmorTier()` は def を `BASE_DEF + ティアの def` で再計算する∴上の `ps_def` を
 		//    上書きする（`ps_sword` が `ps_atk` を上書きするのと同じ＝装備を指定したなら数値は装備の帰結）。
-		if (psShield   !== null) { const t = parseInt(psShield, 10); if (t >= 0) equipShieldTier(t); }
-		if (psArmor    !== null) { const t = parseInt(psArmor,  10); if (t >= 0) equipArmorTier(t); }
+		if (psShield   !== null) { const t = parseInt(psShield, 10); if (t >= 0) fx.equipShieldTier(t); }
+		if (psArmor    !== null) { const t = parseInt(psArmor,  10); if (t >= 0) fx.equipArmorTier(t); }
 		if (psWingRobe === '1') player.hasWingRobe = true;
 		if (psLadder   === '1') player.hasLadder = true;
 		if (psSwiftBoots === '1') player.hasSwiftBoots = true;
@@ -2503,12 +2344,12 @@ async function init() {
 		// ⚠️ 本数は**上限（`maxArrows`/`maxBombs`）ちょうど＝満タン**で渡す。上限を超える
 		//    本数を直接入れると「矢束を踏んだら減る」状態を作ってしまう（2026-09-21）。
 		if (psBow      === '1') { player.subItems.bow       = { count: player.maxArrows ?? 8 };  if (!player.activeSubItem) player.activeSubItem = 'bow'; }
-		if (psBoomerang=== '1') equipBoomerangTier(0);   // 木のブーメラン（所持＋ティア0）
+		if (psBoomerang=== '1') fx.equipBoomerangTier(0);   // 木のブーメラン（所持＋ティア0）
 		// Phase 9-6: 銀のブーメラン。ps_boomerang が無くても単独で所持状態になる。
-		if (psSilverBoomerang === '1') equipBoomerangTier(1);
+		if (psSilverBoomerang === '1') fx.equipBoomerangTier(1);
 		// キュー20b ⑤-b: 星のブーメラン（ティア2）。銀と同じく単独で所持状態になる
 		// （`equipBoomerangTier` は下位を拒否するだけ＝銀と両方 1 でも星が残る）。
-		if (psStarBoomerang === '1') equipBoomerangTier(2);
+		if (psStarBoomerang === '1') fx.equipBoomerangTier(2);
 		if (psBomb     === '1') { player.subItems.bomb      = { count: player.maxBombs ?? 8 };   if (!player.activeSubItem) player.activeSubItem = 'bomb'; }
 		if (psFlute    === '1') { player.subItems.flute     = { count: Infinity };  if (!player.activeSubItem) player.activeSubItem = 'flute'; }
 		if (psCandle   === '1') { player.subItems.candle    = { count: Infinity };  if (!player.activeSubItem) player.activeSubItem = 'candle'; }
@@ -2562,7 +2403,7 @@ async function init() {
 			stopGameLoop,
 			startGameLoop,
 			clearHeldKeys: () => _inputModule?.heldKeys?.clear(),
-			pulse:         (t, ms) => pulse(t, ms),
+			pulse:         (t, ms) => fx.pulse(t, ms),
 		});
 		return;
 	}
@@ -2587,12 +2428,14 @@ export {
 	init,
 	updateBoardScale,
 	step,
-	movePlayer,
-	swordAttack,
 	useSubItem,
-	getProjectiles,
-	startEnding,
 };
+// factory が作った4つは `fx` の置き場にある（キュー85 #27）。旧 `export { movePlayer, … }` は `let` の生きた束縛だった
+// ＝呼び出しの時点の関数を渡す薄い関数にする（main.js の呼び方は変えない）。
+export function movePlayer(...a) { return fx.movePlayer(...a); }
+export function swordAttack(...a) { return fx.swordAttack(...a); }
+export function getProjectiles(...a) { return fx.getProjectiles(...a); }
+export function startEnding(...a) { return fx.startEnding(...a); }
 // テスト用：実時間ループ（setInterval(step,120)）の停止/再開を公開。
 // window.__game.step(n) で手動 tick する検証は、実ループが裏で並走していると
 // wall-clock 依存で余分な tick が入り込み結果が揺れる（flaky の原因）。
@@ -2600,10 +2443,10 @@ export {
 export function callStopGameLoop() { return stopGameLoop(); }
 export function callStartGameLoop() { return startGameLoop(); }
 // テスト用：飛行トグルを公開（main.js の __game から呼ぶ）
-export function callToggleFlight() { return toggleFlight(); }
+export function callToggleFlight() { return fx.toggleFlight(); }
 // テスト用：チャージ攻撃（剣ビーム）を公開（Phase 3-1）
-export function callStartCharge() { return startCharge(); }
-export function callReleaseCharge() { return releaseCharge(); }
+export function callStartCharge() { return fx.startCharge(); }
+export function callReleaseCharge() { return fx.releaseCharge(); }
 export { startAnimLoop, redrawAnimSprites } from '../shared/sprites.js';
 
 // テスト用フック（main.js 側の window.__game から呼ばれる）
@@ -2641,11 +2484,11 @@ export function getGameState() {
 			// Phase 5.5k k-7: 一時デバフ窓（論理時刻。null＝掛かっていない）。
 			// 窓そのものを出す＝テストが「いつ切れるか」を境界 tick で測れる。
 			sealUntil:   player._sealUntil ?? null,
-			swordSealed: isSwordSealed(),
+			swordSealed: fx.isSwordSealed(),
 			poisonUntil: player._poisonUntil ?? null,
 			poisonNextAt: player._poisonNextAt ?? null,
 			poisonDmg:   player._poisonDmg ?? null,
-			poisoned:    isPoisoned(),
+			poisoned:    fx.isPoisoned(),
 			// Phase 8-4 (4) 0d-3（4体目 J）: 被弾直後の無敵窓（論理時刻。0＝掛かっていない）。
 			// これが無いと「攻撃が当たったのに HP が減らない」を測るテストが
 			// **無敵で吸われた**のか**当たり判定が壊れた**のか区別できない
@@ -2665,7 +2508,7 @@ export function getGameState() {
 		bossDefeating: _bossDefeating,
 		// 剣ビームの溜め中か（charge.js isCharging）。溜めの光（.charge-aura）は描き直しで DOM が消えることが
 		// あり当てにならない∴状態はこちらで見る（2026-10-17 撃破後に動けないバグの番人用）。
-		charging: getIsCharging(),
+		charging: fx.getIsCharging(),
 	};
 }
 
@@ -2748,13 +2591,13 @@ export function injectTestEnemy(x, y, hp = 5, w = 1, h = 1, type = 'E', speed = 
 // 向き依存のブロック（ガード・盾騎士）を素通りする∴**方向を測るテストでは必ず渡す**。
 export function dealDamageToEnemyById(id, dmg, atkType, srcX, srcY) {
 	const e = enemies.find(x => x.id === id);
-	if (e) dealDamageToEnemy(e, dmg, atkType, srcX, srcY);
+	if (e) fx.dealDamageToEnemy(e, dmg, atkType, srcX, srcY);
 }
 
 // テスト用：敵の投擲物を注入する（盾跳ね返し Phase 7-2 の検証用）。
 // dx/dy は飛んでくる方向（プレイヤーへ向かう向き）。
 export function injectEnemyProjectileForTest(x, y, dx, dy, atk = 4, speed = 2) {
-	return addProjectile({ owner: 'enemy', type: 'arrow', x, y, dx, dy, atk, speed });
+	return fx.addProjectile({ owner: 'enemy', type: 'arrow', x, y, dx, dy, atk, speed });
 }
 
 // テスト用：指定 id の敵をスタンさせる（ブーメランスタン Phase 3-4 の検証用）。
@@ -2793,36 +2636,36 @@ export function getExitRegistryForTest() { return exitRegistry; }
 export function callSetHeroDir(dir) { heroDir = dir; }
 
 // テスト用：equipSwordTier をゲームモジュール外から呼べるよう再公開する（Phase 7-1）
-export function callEquipSwordTier(tierIndex) { return equipSwordTier(tierIndex); }
+export function callEquipSwordTier(tierIndex) { return fx.equipSwordTier(tierIndex); }
 
 // テスト用：防具/盾ティア装備を外部から呼べるよう再公開する（Phase 7-2）
-export function callEquipArmorTier(tierIndex)  { return equipArmorTier(tierIndex); }
-export function callEquipShieldTier(tierIndex) { return equipShieldTier(tierIndex); }
+export function callEquipArmorTier(tierIndex)  { return fx.equipArmorTier(tierIndex); }
+export function callEquipShieldTier(tierIndex) { return fx.equipShieldTier(tierIndex); }
 
 // テスト用：ブーメランティア装備を外部から呼べるよう再公開する（Phase 9-6）
-export function callEquipBoomerangTier(tierIndex) { return equipBoomerangTier(tierIndex); }
+export function callEquipBoomerangTier(tierIndex) { return fx.equipBoomerangTier(tierIndex); }
 
 // テスト用：updateHud を外部から呼べるよう再公開する（Phase 7-1）
-export function callUpdateHud() { return updateHud(); }
+export function callUpdateHud() { return fx.updateHud(); }
 
 // テスト用：gainHeartContainer を外部から呼べるよう再公開する（Phase 7-3）
-export function callGainHeartContainer() { return gainHeartContainer(); }
+export function callGainHeartContainer() { return fx.gainHeartContainer(); }
 
 // Phase 7-4: grantReward テスト用（player への付与を確認するため）
-export function callGrantReward(content) { return grantReward(content); }
+export function callGrantReward(content) { return fx.grantReward(content); }
 
 // Phase 9-5a: giveSubItem テスト用（容量拡充アイテムの passive 分岐を確認するため）
-export function callGiveSubItem(id) { return giveSubItem(id); }
+export function callGiveSubItem(id) { return fx.giveSubItem(id); }
 
 // 2026-08-31: 置いた炎の一覧（テスト用）。上限・寿命・「1つの炎は1体に1回」を
 // 外から観測できる唯一の窓（`burnedCount` がその炎が焼いた敵の数）。
-export function getPlacedFlamesSnapshot() { return getPlacedFlames(); }
+export function getPlacedFlamesSnapshot() { return fx.getPlacedFlames(); }
 
 // 2026-09-04（12体目 Z）: 幻影の一覧（テスト用）。像は敵ではない（`getEnemies()` に居ない）
 // ∴敵のスナップショットからは数えられない＝**この配列が像の数の唯一の真実**（絵・収束の
 // 打点・テストが同じ数を読む＝§7-7）。`id` は剣の一撃（`destroyMirage`）の宛先でもある。
 export function getMiragesSnapshot() {
-	return getMirages().map((m) => ({
+	return fx.getMirages().map((m) => ({
 		id: m.id, ownerId: m.ownerId, type: m.type,
 		x: m.x, y: m.y, dir: m.dir, sprite: m.sprite, pal: m.pal, flipX: !!m.flipX,
 		speed: m.speed ?? null,
@@ -2832,7 +2675,7 @@ export function getMiragesSnapshot() {
 // キュー76③-3（Ω）: 金の棘の一覧（テスト用）。棘は敵ではない∴この配列が唯一の真実
 // （絵・通行・剣・テストが同じ配列を読む）。`id` は剣の一撃（`destroyThorn`）の宛先。
 export function getThornsSnapshot() {
-	return getThorns().map((t) => ({
+	return fx.getThorns().map((t) => ({
 		id: t.id, ownerId: t.ownerId, r: t.r, c: t.c, phase: t.phase, at: t.at, until: t.until,
 	}));
 }
@@ -2847,7 +2690,7 @@ export function getFloorDropViewsSnapshot() {
 }
 
 // テスト用：キャラ層を描き直す（スイッチ・宝箱などの描き直しと同じ入口）
-export function callRenderChars() { renderChars(); }
+export function callRenderChars() { fx.renderChars(); }
 
 // Phase 9-5c: プレイヤーをフロアドロップ座標に移動させて拾わせる（テスト用）
 export function callPickupFloorDropAt(r, c) { return pickupFloorDropAt(r, c); }
