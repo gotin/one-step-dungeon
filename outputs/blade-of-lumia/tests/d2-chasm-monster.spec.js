@@ -146,10 +146,16 @@ test.describe('D2 1,0 流砂の裂け目の魔物 ② 実機', () => {
 		expect(await chestShown(), '倒す前から宝箱が出ている').toBe(false);
 		// 岸から上へブーメランを投げ続けて倒す（盾で上を向いたまま＝石も剣も前で受ける）。
 		// 木のブーメラン ATK 3・W は DEF 1・HP 48 ＝24 発。手元に戻るまで次は投げられない∴400 tick 前後かかる。
+		// ⚠️ W は広間の行5 を東西にうろつく（実測：負荷の回では列1〜3 や 9 に居座る）。ブーメランは英雄の列へ真っ直ぐ
+		// 飛ぶだけ∴列5 に立ち続けると 175 回投げても当たらない回が 160 回に 3 回出た（2026-10-22）。
+		// 岸（行8 は東西に歩ける）で W の列に合わせて動いてから投げる。
 		const left = await page.evaluate(() => {
 			const g = window.__game;
 			for (let i = 0; i < 1500; i++) {
-				if (g.getEnemies()[0]?.hp <= 0) break;
+				const w = g.getEnemies()[0];
+				if (w?.hp <= 0) break;
+				const dx = w ? w.x - g.getPlayer().x : 0;
+				if (Math.abs(dx) >= 0.5) g.movePlayer(dx > 0 ? 'right' : 'left');
 				g.setHeroDir('up');
 				if (!g.getProjectiles().some((x) => x.owner !== 'enemy')) g.useSubItem();
 				g.step(1);
