@@ -214,7 +214,12 @@ test.describe('D2 0,3 砂の獄 ② 実機', () => {
 				out = g.getEnemies().some((e) => Math.round(e.x) >= 3);
 			}
 			// 囚われ者を片付けてから中の牢へ歩く（行5 を西へ → 列1 で北へ＝宝箱 (4,1)）
-			for (const e of g.getEnemies()) g.dealDamage(e.id, 99, 'sword', e.x, e.y);
+			// ⚠️ 跳躍蜘蛛 β の滞空中は hidden＝ダメージ無効∴1回当てただけだと負荷の回で 1 体残る（10 回に 1 回ほど）。
+			// 滞空が明けるまで step を回して、全員倒れるまで当て直す（上限付き）。
+			for (let i = 0; i < 300 && g.getEnemies().length > 0; i++) {
+				for (const e of g.getEnemies()) if (!e.hidden) g.dealDamage(e.id, 99, 'sword', e.x, e.y);
+				g.step(1);
+			}
 			g.step(2);
 			const emblems0 = g.getPlayer().emblems ?? 0;
 			for (let i = 0; i < 40 && g.getPlayer().x > 1.01; i++) { g.movePlayer('left'); g.step(1); }
