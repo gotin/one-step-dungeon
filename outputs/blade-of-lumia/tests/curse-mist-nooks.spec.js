@@ -30,6 +30,11 @@ const SIGN_NOOKS = [
 ];
 // キュー88 の合図のもや（bushBurned で隠し入口を出す）＝この一覧の外で唯一のもや
 const SIGNAL_MIST = [['field', '6,13', '6,10']];
+// 部屋の主題として置いたもや（祓った先の届き方はその部屋の番人が持つ）
+// [層, 画面, もや, 番人]
+const ROOM_MIST = [
+	['dungeon_4', '0,3', '4,6', 'tests/d4-mist-shrine.spec.js'],  // キュー92 怨念の封じ祠
+];
 
 function reach(st, from, mist, cleared) {
 	const [mr, mc] = mist.split(',').map(Number);
@@ -98,7 +103,7 @@ test.describe('キュー89 もやの奥 ① ② データ', () => {
 				st.tiles.forEach((row, r) => row.forEach((ch, c) => { if (ch === TILE.CURSE_MIST) found.push(`${lk} ${sk} ${r},${c}`); }));
 			}
 		}
-		const expected = [...SIGNAL_MIST, ...NOOKS, ...SIGN_NOOKS].map(([l, sk, m]) => `${l} ${sk} ${m}`);
+		const expected = [...SIGNAL_MIST, ...NOOKS, ...SIGN_NOOKS, ...ROOM_MIST].map(([l, sk, m]) => `${l} ${sk} ${m}`);
 		expect(found.sort()).toEqual(expected.sort());
 	});
 });
