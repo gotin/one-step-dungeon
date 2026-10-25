@@ -43,7 +43,7 @@
 //
 import { readFileSync } from 'fs';
 import { bfsLayer, SOLVABLE_GATES, findEntryRoom, firstWalkable, isHardBlocked } from './lib/connectivity.mjs';
-import { isEnemyTile } from '../shared/enemies.js';
+import { isEnemyTile, ENEMY_META } from '../shared/enemies.js';
 import { canRoam } from '../shared/enemy-alert.js';
 import { toolsUsableIn } from '../shared/progression.js';
 import { KNOWN_TRIGGERS } from '../shared/triggers.js';
@@ -172,6 +172,17 @@ function keyCells(stages) {
     }
   }
   return out;
+}
+
+// 部屋の中に、爆風で `!` を壊せる敵（いちばん硬いひびの breakDef 以上の breakPower）がいるか。
+function stageBreaksWallsByEnemy(stage) {
+  const need = Math.max(1, ...Object.values(stage.breakableWalls ?? {}).map((w) => w?.breakDef ?? 1));
+  for (const ch of tilesOf(stage)) {
+    if (!isEnemyTile(ch)) continue;
+    const attacks = [ENEMY_META[ch].attack, ...(ENEMY_META[ch].attacks ?? [])].filter(Boolean);
+    if (attacks.some((a) => (a.blast?.breakPower ?? 0) >= need)) return true;
+  }
+  return false;
 }
 
 // Tiles that are impassable without a specific item (ignoring in-dungeon solvable gates)
@@ -327,6 +338,10 @@ function checkDungeon(layerName) {
     for (const [tile, { item, label }] of Object.entries(ITEM_LOCKED_TILES)) {
       if (!stageTiles.includes(tile)) continue;
       if (unlocked.has(item)) continue; // player has the item at this dungeon
+      // 同じ部屋に `!` を壊せる爆風を投げる敵（爆弾鬼 λ＝attack.blast.breakPower）がいれば、爆弾が無くても
+      // 部屋の中で壊せる＝「爆弾(D6)必須」ではない（2026-10-25 キュー92 D4 `4,2` 爆弾鬼の封じ窯）。
+      // 立ち位置へ投げられるかまでは見ない＝その部屋の移行スクリプトが自己検証で測る。
+      if (tile === '!' && stageBreaksWallsByEnemy(stage)) continue;
 
       // The tile exists and the player can't have the item yet.
       // Now check if it blocks any exits.
