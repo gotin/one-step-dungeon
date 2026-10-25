@@ -255,6 +255,10 @@ test.describe('Phase 9-6 深洋O – aquatic enemy movement + 魚群', () => {
       const el = document.querySelector(sel);
       const had = el.style.backgroundImage.includes('data:image');
       el.style.backgroundImage = '';            // 波の1フレームを消す
+      // redrawAnimSprites は「同じコマなら貼り直さない」ために cell._bgAnimKey を覚える。120ms の
+      // gameTick が先に呼ばれて同じコマのキーが残っていると、背景だけ消しても貼り直されず偽になる
+      // （負荷で呼ぶ順が前後して揺れた・キュー96）。キーを消す＝「コマが進んだ」状態を決定的に作る。
+      delete el._bgAnimKey;
       mod.redrawAnimSprites();                   // アニメループ相当を1回
       const restored = el.style.backgroundImage.includes('data:image');
       return { had, restored };
