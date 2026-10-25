@@ -1100,7 +1100,7 @@ export function createPlayer(deps) {
 	}
 
 	// ── ブーメランによるフィールドアイテム回収 ───────────────
-	// ブーメランが通過したセル (r, c) の鍵・ルピーを拾う。
+	// ブーメランが通過したセル (r, c) の鍵・ルピー・回復薬を拾う。
 	// 初代ゼルダ式（Phase 4-6）＝拾った瞬間に加算せず、ブーメランに「くっつけて」
 	// 持ち帰り、キャッチ成立時に確定加算する。
 	//   collectFieldItem(r, c)      … 拾えるアイテムがあれば carried 記述子を返す（無ければ null）。
@@ -1129,6 +1129,29 @@ export function createPlayer(deps) {
 			info = { keys: 0, rupees: 1, spr: 'rupee', pal: 'rupee',     sound: 'rupee', msg: '{{boomerang}}{{rupee}} ブーメランがルピーを持ち帰った！' };
 		} else if (tile === TILE.ITEM_RUPEE_LARGE) {
 			info = { keys: 0, rupees: 5, spr: 'rupee', pal: 'rupeeBlue', sound: 'rupee', msg: '{{boomerang}}{{rupeeBlue}} ブーメランがルピー×5を持ち帰った！' };
+		}
+		// 回復薬（小・大）も運べる（キュー92 の6室目・D4 `4,1`「溶岩の川向こうの薬棚」）。
+		// 床の薬を踏んだときと同じく**満杯なら拾わない**＝タイルは残る（飲んでから取りに来られる）。
+		// 地図・コンパスは運ばない（D2 `3,2`「地下水路の向こうの地図」がそれを前提にしている）。
+		// spr/pal は床の絵（shared/tile-sprites.js）・icon は文中の絵（shared/ui-icons.js のキー）。
+		const potion = tile === TILE.ITEM_HEAL_POTION    ? { id: 'healPotion',    spr: 'potion',        pal: 'potion',    icon: 'potion',    label: '回復薬（小）' }
+		             : tile === TILE.ITEM_BIG_HEAL_POTION ? { id: 'bigHealPotion', spr: 'bigHealPotion', pal: 'potionBig', icon: 'potionBig', label: '回復薬（大）' }
+		             : null;
+		if (potion) {
+			if (isStackFull(getPlayer(), potion.id)) { pulse(`{{${potion.icon}}} ${potion.label}は もう持てない！`); return null; }
+			ss.pickedKeys.add(posKey);
+			renderBoard(); renderChars();
+			const restore = () => { ss.pickedKeys.delete(posKey); renderBoard(); renderChars(); };
+			return {
+				spr: potion.spr, pal: potion.pal,
+				apply() {
+					// 運んでいる間に別の薬で満杯になっていたら、床へ戻す（運んだ薬を消さない）。
+					if (!giveSubItem(potion.id)) { restore(); pulse(`{{${potion.icon}}} ${potion.label}は もう持てない！`); return; }
+					playSound('item'); pulse(`{{boomerang}}{{${potion.icon}}} ブーメランが${potion.label}を持ち帰った！`);
+					renderChars(); updateHud(); saveGame();
+				},
+				restore,
+			};
 		}
 		if (!info) return null;
 

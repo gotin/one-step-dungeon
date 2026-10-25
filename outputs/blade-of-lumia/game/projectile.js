@@ -29,7 +29,9 @@ import { enemyPointHit, enemyCenter, enemyOccupiesTile } from './hitbox.js';
 const PROJ_SPRITE_SCALE = { boomerang: 1.71, thrownBomb: 1.89 };
 // ブーメランが拾った床ドロップ（rupee/heart/bombItem/arrow）を追従表示するアイコン
 // にも同じ理由の補正が要る（arrow は上と同じ理由で無補正のまま＝係数1）。
-const CARRY_SPRITE_SCALE = { rupee: 1.87, heart: 1.82, bombItem: 1.89 };
+// 回復薬（キュー92 の6室目で運べるようにした）は ink の高さ 18＝rupee と同じ∴同じ係数で背丈を揃える
+// （`.scratch/q92/ink.mjs` の実測＝rupee 15×18・potion 10×18・bigHealPotion 12×18）。
+const CARRY_SPRITE_SCALE = { rupee: 1.87, heart: 1.82, bombItem: 1.89, potion: 1.87, bigHealPotion: 1.87 };
 
 // Phase 10d-6: ブーメラン飛翔中の回転周期。「多めに回す」固定値ではなく、実際の
 // 飛距離/速度から求めた往復（投げてから戻ってキャッチされるまで）の実時間を、
