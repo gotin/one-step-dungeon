@@ -14,6 +14,10 @@ const PORT = 18080;
 export default defineConfig({
   testDir: './tests',
   fullyParallel: true,
+  // 同時に立ち上げる Chromium の数。指定なしだと Playwright は論理コアの半分（このマシンでは 6）を使い、
+  // テスト中に手前の Chrome などが固まった（2026-10-25 ユーザー報告）。既定を 3 に絞り、必要なら
+  // `PW_WORKERS=6 npx playwright test` のように環境変数で上書きする。
+  workers: process.env.PW_WORKERS ? Number(process.env.PW_WORKERS) : 3,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 1 : 0,
   reporter: process.env.CI ? 'github' : [['list'], ['html', { open: 'never' }]],

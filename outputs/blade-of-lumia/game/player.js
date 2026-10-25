@@ -3,7 +3,7 @@
 // movePlayer / handleTileEvent を提供。
 
 import { TILE, TILE_META, FLOOR_STACK_TILES } from '../shared/tiles.js';
-import { statefulTileClosed } from './passable.js';
+import { statefulTileClosed, lavaCooledAt, SUNK_ROW } from './passable.js';
 import { makeStoneEl } from './render-chars.js';
 import { ITEM_META, EQUIP_META, SWORD_TIERS, BASE_ATK, ARMOR_TIERS, BASE_DEF, SHIELD_TIERS, BOOMERANG_TIERS, HEART_PIECES_PER_HEART, EMBLEMS_FOR_AURA, ITEM_STACK_MAX, ownsItem, addStack, stackCount, isStackFull } from '../shared/items.js';
 import { NPC_SPRITE_MAP } from '../shared/npcs.js';
@@ -511,12 +511,19 @@ export function createPlayer(deps) {
 			};
 			let stoneDestR = nextR + pdr;
 			let stoneDestC = nextC + pdc;
-			const stoneDestOk = stoneCanEnter(stoneDestR, stoneDestC);
+			// キュー92 の8室目（D4 `2,0`）：押した先の1マス目が溶岩なら、石は沈んでそのセルを冷えた溶岩
+			// （床）に変える（passable.js lavaCooledAt）。冷えた溶岩は tilePassable が床として通す＝
+			// 2つ目の石は冷えた溶岩の上を転がって次の溶岩へ沈む。氷の上を滑ってきた石は溶岩の手前で
+			// 止まる（下の while は stoneCanEnter＝溶岩へは入らない）。敵の石押し（enemy-ai.js
+			// tryEnemyPushStone）は溶岩へ押さない＝沈めるのはプレイヤーだけ。ソルバー（lavaSinks）と同じ規則。
+			const stoneSinks = stageData.tiles[stoneDestR]?.[stoneDestC] === TILE.LAVA
+				&& !lavaCooledAt(ss, `${stoneDestR},${stoneDestC}`);
+			const stoneDestOk = stoneSinks || stoneCanEnter(stoneDestR, stoneDestC);
 			// キュー40（2026-10-06）：氷の床（bgTiles の TILE.ICE）の上にいる間、石は止まるまで滑る。
 			// 止まるのは「次のセルへ入れない（壁・水・石・閉じた門…）」か「氷でないセルに乗った」とき
 			// ＝ボタンを氷でない床に置けば、滑ってきた石はボタンの上で止まる。プレイヤーは滑らない
 			// （押した後に石の元セルへ1歩入るだけ）。ソルバー（blade-solver.mjs）と同じ規則。
-			if (stoneDestOk) {
+			if (stoneDestOk && !stoneSinks) {
 				while (stageData.bgTiles?.[`${stoneDestR},${stoneDestC}`] === TILE.ICE
 					&& stoneCanEnter(stoneDestR + pdr, stoneDestC + pdc)) {
 					stoneDestR += pdr;
@@ -535,7 +542,12 @@ export function createPlayer(deps) {
 				if (!ss.stonePositions) ss.stonePositions = {};
 				const stoneFromR = (ss.stonePositions[stoneKey] ?? { r: nextR, c: nextC }).r;
 				const stoneFromC = (ss.stonePositions[stoneKey] ?? { r: nextR, c: nextC }).c;
-				ss.stonePositions[stoneKey] = { r: stoneDestR, c: stoneDestC };
+				// sinking＝押しアニメ中（石が溶岩へ向かって転がっている間）は、盤面はまだ溶岩の絵のまま描く
+				// （render-board.js）。アニメが終わって石が届いた瞬間に外して描き直す＝「落ちてから冷える」。
+				// 通行の判定（lavaCooledAt）は押した瞬間から冷えた扱い（押しの冷却中は誰も歩かない）。
+				ss.stonePositions[stoneKey] = stoneSinks
+					? { r: SUNK_ROW, c: SUNK_ROW, sunk: `${stoneDestR},${stoneDestC}`, sinking: true }
+					: { r: stoneDestR, c: stoneDestC };
 				setLastStonePushTime(nowSt);
 				const _pushGen = ++_stonePushGen;   // この押しの世代（後始末ガード用）
 				const _pushLayer = getCurrentLayer(), _pushStage = getStageKey();   // 押した画面（後始末ガード用）
@@ -563,7 +575,7 @@ export function createPlayer(deps) {
 				// アニメーションしない他の移動済み石を先に描画（石は render-chars.js makeStoneEl＝盤面と同じ石・キュー85 #9）。
 				// 押せるのはロック前だけ（上の `!ss.stonesLocked`）∴ロックの印はここでは付かない。
 				for (const [otherKey, otherSt] of Object.entries(ss.stonePositions ?? {})) {
-					if (otherKey === stoneKey) continue;
+					if (otherKey === stoneKey || otherSt.sunk) continue;   // 沈んだ石は描かない（冷えた溶岩は盤面が描く）
 					charLayerEl.appendChild(makeStoneEl(otherKey, otherSt.r, otherSt.c, _animCellPx, {
 						onSwitch: stageData.tiles[otherSt.r]?.[otherSt.c] === TILE.BUTTON,
 					}));
@@ -594,6 +606,10 @@ export function createPlayer(deps) {
 
 				updateHud();
 				setTimeout(() => {
+					// 石が溶岩に届いた＝「沈みかけ」の印は下の早期 return より先に必ず外す（残ると、歩ける
+					// のに溶岩の絵のまま＝見た目と通行が食い違う）。描き直しは画面が同じときだけ下でやる。
+					const _sunkEntry = stoneSinks ? ss.stonePositions?.[stoneKey] : null;
+					if (_sunkEntry?.sinking) delete _sunkEntry.sinking;
 					// バグ(A): この後始末が走る前に次の押しが始まっていたら
 					// （世代が進んでいたら）renderChars を呼ばない。走行中の新しい
 					// アニメ要素を stale な後始末が消して「アニメが飛ぶ」のを防ぐ。
@@ -602,6 +618,11 @@ export function createPlayer(deps) {
 					// 押しの間に倒れた／別の画面へ移った＝古い画面の後始末を新しい状態に対して走らせない
 					// （倒れた瞬間をセーブしない＝game.js recordDeath の方針・キュー82⑥・Fable 実装レビュー #23）
 					if (getIsGameover() || getCurrentLayer() !== _pushLayer || getStageKey() !== _pushStage) return;
+					if (stoneSinks) {   // 石が溶岩に届いた瞬間＝ここで初めて冷えた溶岩の絵に替える
+						renderBoard();   // char-layer を作り直す＝下の renderChars とペア（[[blade-renderboard-pairs-renderchars]]）
+						playSound('fire');
+						pulse('石が 溶岩に 沈み、冷えて 固まった', 1400);
+					}
 					renderChars();
 					saveGame();
 					handleTileEvent();

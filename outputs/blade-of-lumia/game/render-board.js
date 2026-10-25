@@ -23,6 +23,7 @@ import { isConnectTile } from '../shared/tile-connect.js';
 import { describeCell, BG_TILE_STYLE } from '../shared/cell-appearance.js';
 import { npcSpriteOf } from '../shared/npcs.js';
 import { paintSkyCell, startSkyDrift } from './sky-drift.js';
+import { lavaCooledAt } from './passable.js';
 
 // 末尾の共通スプライト fallback で「静的に描いてよい落ちアイテム」タイルの集合。
 // 敵・プレイヤー・NPC は実体として render-chars が描くので含めない（重複描画防止）。
@@ -374,6 +375,19 @@ export function createRenderBoard(deps) {
 			return;
 		}
 		if (tile === TILE.LAVA) {
+			// 石が沈んで冷えた溶岩（passable.js lavaCooledAt）＝歩ける足場。block の形に焦げ色。
+			// 押しアニメ中（sinking）はまだ溶岩の絵＝石が届いてから冷えた絵に替わる（player.js）。
+			const sinkingHere = Object.values(ss.stonePositions ?? {}).some((st) => st.sunk === posKey && st.sinking);
+			if (lavaCooledAt(ss, posKey) && !sinkingHere) {
+				cellEl.dataset.cooledLava = '1';   // テストから見える
+				// 流れる溶岩（アニメ）を下に描き、その上に押してきた石と同じ形（block）を重ねる＝石が溶岩の上に
+				// 乗って見える。2026-10-25 ユーザー指摘：①初版＝溶岩の絵を消して焦げ色の石だけ＝「溶岩の中に
+				// 入っていて上を通れるように見えない」②石の形を平たい板に描き替えた版＝「なんで石の形完全に
+				// かえちゃったの？」③「形はそのままで、色を今までの石の色にすればいい」∴押す石と同じ絵（block）。
+				putCellSprite(cellEl, makeSprite('water', 'lava', true), 'obj-sprite');
+				putCellSprite(cellEl, makeSprite('block', 'block', false), 'obj-sprite');
+				return;
+			}
 			const cv = makeSprite('water', 'lava', true);   // water 形状＋lava 赤橙パレット
 			putCellSprite(cellEl, cv, 'obj-sprite');
 			return;

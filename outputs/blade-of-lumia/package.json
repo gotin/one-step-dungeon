@@ -7,6 +7,7 @@
   "scripts": {
     "dev": "vite ../ --port 18080",
     "test": "playwright test",
+    "test:bg": "nice -n 10 playwright test",
     "test:ui": "playwright test --ui",
     "test:report": "playwright show-report"
   },

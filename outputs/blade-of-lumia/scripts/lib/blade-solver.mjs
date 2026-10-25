@@ -33,6 +33,10 @@
  *     ∴色ゲートは「開くと同時に反対色が閉じる」非単調な関門＝潮ゲート `=`（開くだけ＝単調）と
  *     難しさの性質が違う。⚠️ `(`/`)` は `SOLVABLE_GATES` ＝`isHardBlocked` が false なので、
  *     ここで明示的に色を見ないと「常に通行可」として測ってしまう（T/= と同じ罠）。
+ *   ・溶岩 'l' に石を押し込むと沈んで「冷えた溶岩」＝床になる（opt.lavaSinks・キュー92 の8室目）。
+ *     沈んだ石は状態の石配列に `s<r>,<c>`（沈んだセル）として残る＝実エンジンの stonePositions の
+ *     `{ sunk: 'r,c' }` と同じ単一ソース（部屋を出て石が戻れば冷えた溶岩も戻る）。沈むのは押した先の
+ *     1マス目が溶岩のときだけ（氷の上を滑ってきた石は溶岩の手前で止まる＝エンジンと同じ）。
  *   ・石を押した後プレイヤーは石の元セルへ入る∴その**下地**（門の開閉）が閉じていたら押せない
  *     （2026-08-02・ユーザー報告のバグ修正）。⚠️ これが無いと「閉じた門の中に立って石を押し出す」
  *     実エンジンのバグ挙動を前提に L を測ってしまう（旧 Phase 5-1 の色ゲート合成盤面が実際に
@@ -73,10 +77,13 @@ export const isRing = (r, c) => r === 0 || r === ROWS - 1 || c === 0 || c === CO
  *   （game/passable.js）。**既定 off**＝下の isBank の保守側（ゲートは橋脚にしない）のまま、
  *   既存の呼び出し側の測定値を動かさない。D5 `0,2`（干した水門を湖の中の足場にする部屋・
  *   2026-10-05）で初めて要った。閉じた '=' は水ではない（はしごで渡れない）ことも同じ規則の裏面。
+ * @param {boolean} [opt.lavaSinks=false] 石を溶岩へ押し込むと沈んで冷えた溶岩（床）になるか。
+ *   実エンジン（game/player.js の石押し・game/passable.js lavaCooledAt）の規則。**既定 off**＝
+ *   既存の呼び出し側の測定値を動かさない（石と溶岩が同じ部屋にあるのは field `14,1` と D4 `2,0` だけ）。
  */
 export function makeSolver(tiles, bg, linkSpec, breakDefs, litInit,
   { hasLadder = true, noTools = false, hasCandle = false, bushCuttable = false, noPush = false,
-    pitCrossable = false, openTideBanks = false } = {}) {
+    pitCrossable = false, openTideBanks = false, lavaSinks = false } = {}) {
   const linksBySwitch = new Map();
   for (const [sw, gates] of linkSpec ?? []) linksBySwitch.set(sw, gates);
   const toggleCells = [];   // Y の位置
@@ -165,11 +172,18 @@ export function makeSolver(tiles, bg, linkSpec, breakDefs, litInit,
     return true;                        // 床・ボタン・未移動石の元セル等はそのまま通れる
   };
 
+  // 冷えた溶岩＝石が沈んだ溶岩のセル（実エンジン passable.js lavaCooledAt と同じ）。
+  const cooled = (r, c, stones) => lavaSinks && tiles[r]?.[c] === TILE.LAVA && stones.includes(`s${r},${c}`);
+  // 石が沈める溶岩か（まだ冷えていない溶岩）。
+  const sinkable = (r, c, stones) => lavaSinks && tiles[r]?.[c] === TILE.LAVA && bg[r]?.[c] !== W
+    && !stones.includes(`s${r},${c}`);
+
   // passable.js tilePassable の写し。broken は brokenWalls マスク。color は activeColor（0/1/2）。
   const passableFor = (r, c, stones, open, broken, { forStone }, color = 0) => {
     if (r < 0 || r >= ROWS || c < 0 || c >= COLS) return false;
     if (bg[r][c] === W) return false;                       // 水（bg 単一ソース）
     const ch = tiles[r][c];
+    if (cooled(r, c, stones)) return true;                  // 冷えた溶岩は床（石も載る）
     // 色ゲートは activeColor が一致する時だけ通れる（初期 color=0 は両方閉＝実ゲームと同じ）。
     if (ch === TILE.GATE_RED) return color === 1;
     if (ch === TILE.GATE_BLUE) return color === 2;
@@ -209,6 +223,7 @@ export function makeSolver(tiles, bg, linkSpec, breakDefs, litInit,
     if (bg[r][c] === W) return false;
     const ch = tiles[r][c];
     if (ch === TILE.BUSH) return bushCuttable;   // 刈れば立てる＝橋脚になる（isHardBlocked より先に見る）
+    if (cooled(r, c, stones)) return !stones.includes(`${r},${c}`);   // 冷えた溶岩は床
     if (isHardBlocked(ch)) return false;
     // 開いた潮ゲート＝床（実エンジンの isLadderBank）。石が乗っていれば下の保守側と同じく不可。
     if (openTideBanks && ch === TILE.TIDE_GATE) return !!open?.has(`${r},${c}`) && !stones.includes(`${r},${c}`);
@@ -349,6 +364,14 @@ export function makeSolver(tiles, bg, linkSpec, breakDefs, litInit,
         if (noPush) continue;   // 対照実験＝石は壁のまま
         if (locked) continue;   // ロック後は石を押せない（石は壁と同じ通行不可のまま）
         let sr = nr + dr, sc = nc + dc;
+        // 溶岩へ押し込む＝沈む（滑らない・押した後プレイヤーは石の元セルへ入る＝下地の規則は同じ）。
+        if (sinkable(sr, sc, stones)) {
+          if (!underOpen(nr, nc, open, color)) continue;
+          const ns = stones.slice();
+          ns[si] = `s${sr},${sc}`;
+          out.push(enc(nr, nc, ns, mask, broken, lit));
+          continue;
+        }
         if (!passableFor(sr, sc, stones, open, broken, { forStone: true }, color)) continue;
         if (stones.includes(`${sr},${sc}`)) continue;
         // キュー40（2026-10-06）：氷の床（bg が TILE.ICE）の上にいる間、石は止まるまで滑る

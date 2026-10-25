@@ -94,6 +94,20 @@ export function statefulTileClosed(tile, posKey, ss) {
 }
 
 /**
+ * キュー92 の8室目（D4 `2,0`・2026-10-25 ユーザー承認）：石を溶岩へ押し込むと沈み、そのセルは
+ * 「冷えた溶岩」＝床になる。沈んだ石は ss.stonePositions に `{ r: SUNK_ROW, c: SUNK_ROW, sunk: 'r,c' }`
+ * として残る＝**石の記録が冷えた溶岩の単一ソース**（部屋を出て石が戻れば溶岩も戻る・笛も同じ）。
+ * r/c を盤外に置くのは、石の位置を `st.r === r && st.c === c` で読む既存の読み手（通行・ボタン・
+ * 押し先の空き）が、沈んだ石を「どこにも無い石」として素通りするため。描画だけは明示的に外す
+ * （render-chars.js・player.js の押しアニメ）。
+ */
+export const SUNK_ROW = -1;
+export function lavaCooledAt(ss, posKey) {
+	for (const st of Object.values(ss?.stonePositions ?? {})) if (st.sunk === posKey) return true;
+	return false;
+}
+
+/**
  * Phase 5.5k k-7.5: プレイヤーと敵の「重なり」を測る単一の関数。
  *
  * 2026-08-17 のユーザー決定①「重なりはどの位置であろうと絶対に発生しないようにする」の実装点。
@@ -258,6 +272,8 @@ export function createPassable(d) {
 		const posKey = `${r},${c}`;
 		const ss     = getSS(getCurrentLayer(), getStageKey());
 		const debugMode = getDebugMode();
+		// 石が沈んだ溶岩は床（lavaCooledAt）。人も地上の敵も歩け、石も載る。
+		if (tile === TILE.LAVA && lavaCooledAt(ss, posKey)) return true;
 		// 徒歩で常に立てない物（壁・水・溶岩・空・穴・木・山・柵・家・読める立て物・かがり火・NPC）は
 		// `shared/tiles.js FOOT_SOLID_TILES` が単一の真実（着地・接続の検査も同じ集合を読む＝キュー85 #5）。
 		// ⚠️ 2026-09-23 まで個別の if の列挙で、ここだけがかがり火 'H' を落としていた＝歩いて上に乗れた

@@ -493,6 +493,7 @@ export function createRenderChars(deps) {
 			const ss = getSS(currentLayer, stageKey);
 			const cellPxSt = getCellPx();
 			for (const [origKey, st] of Object.entries(ss.stonePositions ?? {})) {
+				if (st.sunk) continue;   // 溶岩に沈んだ石＝描かない（冷えた溶岩は render-board.js が描く）
 				// 石がボタンの上にある場合はグロー（押されている演出）
 				charLayerEl.appendChild(makeStoneEl(origKey, st.r, st.c, cellPxSt, {
 					onSwitch: stageData.tiles[st.r]?.[st.c] === TILE.BUTTON,
