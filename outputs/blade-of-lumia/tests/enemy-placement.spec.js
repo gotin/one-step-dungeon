@@ -32,7 +32,7 @@ import { gameLayerEntries } from '../shared/layers.js';
 import { waitForBoard } from './helpers.js';
 import {
   NEW_ENEMY_PLACEMENT, SIGNATURE_LADDER, PINNED_STAGES, WEAKNESS_ITEM,
-  THREAT_OF, stageThreat, tilesOf,
+  THREAT_OF, stageThreat, tilesOf, EXTRA_ENEMY_ROOMS,
 } from '../scripts/lib/enemy-placement.mjs';
 import { toolsUsableIn } from '../shared/progression.js';
 
@@ -142,7 +142,12 @@ test.describe('Phase 5.5m – 新規敵15種の本編配置', () => {
           expect(item, `'${tile}' の弱点 ${meta.weakness.type} に対応する道具が表に無い`).toBeTruthy();
           // field は地域ごとに到達時期が違う＝空集合扱い∴弱点持ちを置くには地域別の表が必要
           const unlocked = TOOLS_USABLE_IN[layerName] ?? new Set();
-          if (!unlocked.has(item)) bad.push(`${layerName}/${sk} ${keys.join('・')} '${tile}'（要 ${item}）`);
+          if (unlocked.has(item)) continue;
+          // 例外＝EXTRA_ENEMY_ROOMS の answeredBy で「弱点の代わりに解く道具」を宣言した部屋
+          // （2026-10-25 ユーザー判断）。その道具がこの地点で使えることまで確かめる＝宣言だけでは通さない。
+          const alt = EXTRA_ENEMY_ROOMS.find((e) => e.layer === layerName && e.stage === sk)?.answeredBy?.[tile];
+          if (alt && unlocked.has(alt)) continue;
+          bad.push(`${layerName}/${sk} ${keys.join('・')} '${tile}'（要 ${item}${alt ? `・代わりの ${alt} もここでは使えない` : ''}）`);
         }
       }
     }
