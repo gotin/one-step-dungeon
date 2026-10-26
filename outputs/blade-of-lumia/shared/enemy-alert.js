@@ -33,3 +33,16 @@ export function startsAlert(sd, posKey, tile) {
 	if (isRoomAlert(sd)) return true;
 	return sd?.enemyChase?.[posKey] === true;
 }
+
+// ── 持ち場（キュー93 の3室目・2026-10-26）──────────────────────────────
+//   enemyHold: { "r,c": true }    … 置いた場所ごとの「持ち場を動かない」（enemyChase と同じ住み方）
+// 持ち場の敵は**歩かない**（さまよいも追いも止める）。向き直り・攻撃・専用の移動（突進・跳躍など）は
+// 止めない＝「その場に立って構える番兵」。初出＝D8 `3,2`「堀の盾騎士」（騎士が島の縁へ寄ると、
+// はしごの着地を塞いでしまう∴持ち場に立たせ、向き直りの合間に横や背中へ渡らせる）。
+// 指定できるのはさまよう雑魚だけ（エディタの「敵の動き」と同じ一覧＝canRoam）。
+
+/** その場所に置いた敵が、持ち場を動かないか。 */
+export function holdsPost(sd, posKey, tile) {
+	if (!canRoam(tile)) return false;
+	return sd?.enemyHold?.[posKey] === true;
+}

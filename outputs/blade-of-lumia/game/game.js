@@ -4,7 +4,7 @@ import { TILE, BG_TILES, FOOT_SOLID_TILES, CANDLE_CLEARABLE_TILES } from '../sha
 import { buildExitRegistry as buildExitRegistryShared } from '../shared/exits.js';
 import { liftGroundTiles } from '../shared/ground-layer.js';
 import { ENEMY_META, ENEMY_SPEED_NORMAL } from '../shared/enemies.js';
-import { startsAlert } from '../shared/enemy-alert.js';
+import { startsAlert, holdsPost } from '../shared/enemy-alert.js';
 import { ITEM_META, EQUIP_META, BOOMERANG_TIERS, ownsItem, addStack, EMBLEMS_FOR_AURA } from '../shared/items.js';
 import { NPC_SPRITE_MAP, NPC_DEFAULT_DIALOG } from '../shared/npcs.js';
 import { ARROW_CELL_SCALE } from '../shared/tile-sprites.js';
@@ -606,6 +606,8 @@ function buildEnemies(sd, lk, sk) {
 				// キュー60: マップで「追う」を指定された（部屋まるごと／この配置）さまよう雑魚は
 				// 最初から気づいている＝さまよわない（判定は shared/enemy-alert.js が単一の真実）。
 				alwaysAlert: startsAlert(sd, posKey, tile),
+				// キュー93: マップで「持ち場」を指定された敵は歩かない（shared/enemy-alert.js holdsPost）。
+				holdPost: holdsPost(sd, posKey, tile),
 				el:     null,   // DOM element（後で設定）
 			});
 		});

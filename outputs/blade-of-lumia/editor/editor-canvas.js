@@ -345,6 +345,7 @@ export function initCanvasEvents(renderSidePanel, renderWorldGrid, getPreviewPen
 		sd.bgm = undefined;
 		delete sd.enemiesAlert;   // キュー60: 敵の動きの指定も消す
 		delete sd.enemyChase;
+		delete sd.enemyHold;      // キュー93: 持ち場の指定も消す
 		renderStageCanvas(renderSidePanel);
 		renderSidePanel();
 	});

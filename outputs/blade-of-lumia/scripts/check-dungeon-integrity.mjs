@@ -868,6 +868,16 @@ function checkDungeon(layerName) {
       }
       if (v !== true) err(`ステージ [${stageKey}] の enemyChase[${posKey}] の値が true でない: ${JSON.stringify(v)}`);
     }
+    // キュー93: enemyHold（持ち場）も同じ住み方＝同じ嘘を数える（holdsPost は canRoam の敵しか見ない）
+    for (const [posKey, v] of Object.entries(stage.enemyHold ?? {})) {
+      const [r, c] = posKey.split(',').map(Number);
+      const tile = tileAt(stage, r, c);
+      if (!canRoam(tile)) {
+        err(`ステージ [${stageKey}] の enemyHold[${posKey}] がさまよう敵を指していない: '${tile}'`
+          + ' ← 敵を動かした後の残り（指定した敵が持ち場に立たない）');
+      }
+      if (v !== true) err(`ステージ [${stageKey}] の enemyHold[${posKey}] の値が true でない: ${JSON.stringify(v)}`);
+    }
     if (stage.enemiesAlert !== undefined && stage.enemiesAlert !== true) {
       err(`ステージ [${stageKey}] の enemiesAlert が true でない: ${JSON.stringify(stage.enemiesAlert)}`);
     }

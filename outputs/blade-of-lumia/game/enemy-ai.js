@@ -7000,7 +7000,10 @@ export function createEnemyAi(deps) {
 			// ⚠️ `busy.soar` ＝`rise`/`aim`/`dive`/`land` の4相はこの tick を専有する。`ground` と
 			//    `air` は tickSoar が false を返す＝ここが開く（地上は歩き＋鉤爪、空は旋回＋雷撃弾）。
 			if (!holdsTick(busy)) {
-				if (resolveHitAndAway(e, meta)) {
+				if (e.holdPost) {
+					// キュー93: 持ち場（マップの enemyHold）＝歩かない。向き直り（tickFaceLock）と
+					// 下の攻撃はそのまま＝その場に立って構える番兵（shared/enemy-alert.js holdsPost）。
+				} else if (resolveHitAndAway(e, meta)) {
 					bossTickHitAndAway(e, meta);
 				} else if (cmode === 'ranged') {
 					enemyKeepDistance(e, meta, resolveEnemySpeed(e, meta), resolveCombat(e, meta));

@@ -199,8 +199,9 @@ test.describe('キュー60 – マップの「追う」指定', () => {
       .filter({ has: page.locator('.cell-coord', { hasText: '(5,12)' }) }).first().click();
     await page.locator('#btn-edit-stage').click();
 
-    const items = page.locator('#enemy-chase-list input[type=checkbox]');
-    await expect(items).toHaveCount(1);
+    // 1体につき「追う」（data-key）と「持ち場を動かない」（data-hold・キュー93）の2つ
+    await expect(page.locator('#enemy-chase-list input[data-key]')).toHaveCount(1);
+    await expect(page.locator('#enemy-chase-list input[data-hold]')).toHaveCount(1);
     const f = page.locator('#enemy-chase-list input[data-key="4,7"]');
     await expect(f).not.toBeChecked();
     await expect(f).toBeEnabled();
@@ -216,6 +217,15 @@ test.describe('キュー60 – マップの「追う」指定', () => {
     const sd = saved.layers.field.stages['5,12'];
     expect(sd.enemiesAlert).toBe(true);
     expect(sd.enemyChase).toEqual({ '4,7': true });
+    expect(sd.enemyHold, '持ち場を押していないのに保存された').toBeUndefined();
+
+    // キュー93: 持ち場のチェックで enemyHold に保存・外すと消える
+    const hold = page.locator('#enemy-chase-list input[data-hold="4,7"]');
+    await hold.check();
+    await page.locator('#btn-save').click();
+    const savedH = JSON.parse(await page.evaluate(() => localStorage.getItem('bladeOfLumiaMapData')));
+    expect(savedH.layers.field.stages['5,12'].enemyHold).toEqual({ '4,7': true });
+    await hold.uncheck();
 
     await room.uncheck();
     await expect(f, '部屋をオフに戻したら配置のチェックが戻らない').toBeEnabled();
@@ -224,6 +234,7 @@ test.describe('キュー60 – マップの「追う」指定', () => {
     const saved2 = JSON.parse(await page.evaluate(() => localStorage.getItem('bladeOfLumiaMapData')));
     expect(saved2.layers.field.stages['5,12'].enemiesAlert).toBeUndefined();
     expect(saved2.layers.field.stages['5,12'].enemyChase).toBeUndefined();
+    expect(saved2.layers.field.stages['5,12'].enemyHold, '持ち場を外しても残った').toBeUndefined();
   });
 
   test('⑩ 部屋まるごと「追う」：遠い E が最初から寄って来る', async ({ page }) => {

@@ -9,7 +9,7 @@ import { variantOptions, readEntryVariants, applyEntryVariants } from '../shared
 import { CONDITION_TRIGGERS, KNOWN_TRIGGERS } from '../shared/triggers.js';
 import { SHOP_NPC_SPRITES, PERSON_NPC_SPRITES } from '../shared/npcs.js';
 import { ENEMY_META } from '../shared/enemies.js';
-import { canRoam, isRoomAlert, startsAlert } from '../shared/enemy-alert.js';
+import { canRoam, isRoomAlert, startsAlert, holdsPost } from '../shared/enemy-alert.js';
 
 // ── 右パネル統合呼び出し ──────────────────────────────────────
 export function renderSidePanel() {
@@ -775,14 +775,28 @@ function renderEnemyChase(sd) {
 				<input type="checkbox" data-key="${key}" style="width:auto;margin:0;" ${startsAlert(sd, key, t) ? 'checked' : ''} ${room ? 'disabled' : ''}>
 				(${r},${c}) ${ENEMY_META[t]?.name ?? t}：最初から追う
 			</label>
+			<label style="display:flex;align-items:center;gap:6px;margin-left:18px;">
+				<input type="checkbox" data-hold="${key}" style="width:auto;margin:0;" ${holdsPost(sd, key, t) ? 'checked' : ''}>
+				持ち場を動かない（向き直りと攻撃だけ）
+			</label>
 		`;
-		item.querySelector('input').addEventListener('change', e => {
+		item.querySelector(`input[data-key="${key}"]`).addEventListener('change', e => {
 			if (e.target.checked) {
 				if (!sd.enemyChase) sd.enemyChase = {};
 				sd.enemyChase[key] = true;
 			} else if (sd.enemyChase) {
 				delete sd.enemyChase[key];
 				if (!Object.keys(sd.enemyChase).length) delete sd.enemyChase;
+			}
+		});
+		// キュー93: 持ち場（sd.enemyHold）＝enemyChase と同じ住み方（判定は shared/enemy-alert.js holdsPost）
+		item.querySelector(`input[data-hold="${key}"]`).addEventListener('change', e => {
+			if (e.target.checked) {
+				if (!sd.enemyHold) sd.enemyHold = {};
+				sd.enemyHold[key] = true;
+			} else if (sd.enemyHold) {
+				delete sd.enemyHold[key];
+				if (!Object.keys(sd.enemyHold).length) delete sd.enemyHold;
 			}
 		});
 		el.appendChild(item);

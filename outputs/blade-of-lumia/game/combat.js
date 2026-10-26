@@ -523,6 +523,7 @@ export function createCombat(deps) {
 			_splitFrom: e.id,
 			// キュー60: 親は斬られた＝気づいている∴子も気づいた状態で湧く。マップの「追う」指定も継ぐ。
 			alwaysAlert: e.alwaysAlert,
+			holdPost: e.holdPost,   // キュー93: 持ち場の指定も継ぐ
 			_noticed: true,
 		}));
 		setEnemies([...rest, ...children]);
