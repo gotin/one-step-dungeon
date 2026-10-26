@@ -2609,6 +2609,40 @@ export function createEnemyAi(deps) {
 		applyHideClass(e, style);
 	}
 
+	// ── キュー93（D8 `0,1`）：笛の眠り ─────────────────────────────
+	// 画面の `fluteEffect:{type:'slumber', ms, enemies?}` で笛を吹くと、その画面の敵（enemies の
+	// タイル文字だけ・省略時はボス以外の全部）が ms のあいだ泥に沈んで眠る：
+	//   ・行動を丸ごと飛ばす（enemyTick の先頭）＝歩かない・攻撃しない・立っていた予告も捨てる
+	//   ・`e.hidden`＝こちらの攻撃も通らない（combat.js dealDamageToEnemy）＝眠らせて斬り放題にはしない
+	//   ・**上を歩ける**（passable.js isPassable が `_slumberUntil` の敵を重なり防止から外す）
+	//   ・眠っている敵には吹き直しても延びない＝起きてからもう一度吹く（時間の窓が謎の芯）
+	//   ・勇者が真上に居る間は起きない（重なったまま実体化させない＝詰み・不意打ちの防止）
+	// 見た目は地中の隠れ（hide-burrow＝土の盛り上がり）と同じ。部屋を出れば敵ごと作り直される。
+	function slumberEnemies(types, ms, now = gameNow()) {
+		let slept = 0, already = 0;
+		for (const e of getEnemies()) {
+			const meta = ENEMY_META[e.type];
+			if (!meta || meta.isBoss) continue;
+			if (Array.isArray(types) && types.length && !types.includes(e.type)) continue;
+			if (e._slumberUntil != null) { already++; continue; }
+			for (const m of ENEMY_MECHANISMS) m.stun?.(e, meta);
+			e._slumberUntil = now + ms;
+			setEnemyHidden(e, true, 'burrow');
+			slept++;
+		}
+		return { slept, already };
+	}
+
+	// 眠りの時計。眠っている（＝この tick を飛ばす）なら true。
+	function tickSlumber(e, now) {
+		if (now < e._slumberUntil) return true;
+		const player = getPlayer();
+		if (player && overlapArea(e.x, e.y, e.w ?? 1, e.h ?? 1, player.x, player.y, 1, 1) > 0) return true;
+		e._slumberUntil = null;
+		setEnemyHidden(e, false, 'burrow');
+		return false;
+	}
+
 	// ── Phase 5.5k k-8: 瞬間移動（術士）───────────────────────────
 	// meta.blink = { shownMs, goneMs, castDelayMs, range, style }
 	// 「歩かない敵」（speed 0）に移動手段として瞬間移動だけを与える3拍の状態機械：
@@ -6816,6 +6850,8 @@ export function createEnemyAi(deps) {
 		for (const e of enemies) {
 			const meta = ENEMY_META[e.type];
 			if (!meta) continue;
+			// キュー93: 笛の眠り（泥に沈んでいる間は行動を丸ごと飛ばす）。
+			if (e._slumberUntil != null && tickSlumber(e, now)) continue;
 			// 気絶中は機構の表の `stun` を上から全部呼んで、この tick の行動を丸ごと飛ばす
 			// （予告・専有状態を捨て、その絵もここで消す＝下の同期まで行かないため）。
 			if (e.stunUntil && now < e.stunUntil) {
@@ -7129,6 +7165,7 @@ export function createEnemyAi(deps) {
 		detachLeech,           // Phase 5.5k k-5: 張り付きを剥がす（combat.js の被弾フックが呼ぶ）
 		crashSoar,             // Phase 8-4 (4) 0d-3: 矢で射落とす（combat.js の被弾フックが呼ぶ）
 		noticeEnemy,           // キュー60: 攻撃を受けたら気づく（combat.js の被弾フックが呼ぶ）
+		slumberEnemies,        // キュー93: 笛の眠り（game.js playFlute が呼ぶ）
 		bossTickHitAndAway,
 		enemyAttack,
 	};

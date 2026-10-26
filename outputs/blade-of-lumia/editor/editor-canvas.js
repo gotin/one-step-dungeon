@@ -380,6 +380,14 @@ export function initCanvasEvents(renderSidePanel, renderWorldGrid, getPreviewPen
 			if (rowVal !== '') sd.fluteEffect.row = Number(rowVal);
 			if (colVal !== '') sd.fluteEffect.col = Number(colVal);
 			if (msg)           sd.fluteEffect.message = msg;
+		} else if (fluteType === 'resetStones' || fluteType === 'slumber') {
+			// 2026-10-26: 旧版は選択肢に無い型（resetStones）を保存で消していた＝欄の無い設定
+			// （slumber の ms・enemies など）は既存の値を引き継ぐ。
+			const prev = sd.fluteEffect?.type === fluteType ? sd.fluteEffect : {};
+			sd.fluteEffect = { ...prev, type: fluteType };
+			const msg = document.getElementById('stage-flute-message').value.trim();
+			if (msg) sd.fluteEffect.message = msg;
+			else delete sd.fluteEffect.message;
 		}
 		// Phase 5-1: initActiveColor（色スイッチの初期アクティブ色）
 		const initColorSaveEl = document.getElementById('stage-init-active-color');

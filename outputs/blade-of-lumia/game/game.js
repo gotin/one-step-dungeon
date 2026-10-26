@@ -990,6 +990,7 @@ const { checkStoneOnSwitch, evaluateConditions, refreshGates } = createCondition
 		detachLeech: _ai.detachLeech,
 		crashSoar: _ai.crashSoar,
 		noticeEnemy: _ai.noticeEnemy,
+		slumberEnemies: _ai.slumberEnemies,
 		getMirages: _ai.getMirages,
 		destroyMirage: _ai.destroyMirage,
 		clearMirages: _ai.clearMirages,
@@ -1811,6 +1812,9 @@ function step(frames = 1) {
 //   { type:'resetStones' } → 石パズルが色ゲート等で画面外に出られない状態に嵌ったときの
 //                       救済＝enterStage の石リセットと同じ規則をその場で発動する
 //                       （全ボタンに石が乗って解決済みなら不発＝解けたパズルは壊さない）
+//   { type:'slumber', ms, enemies? } → その画面の敵（enemies のタイル文字・省略時はボス以外）が
+//                       ms のあいだ泥に沈んで眠る＝上を歩ける・攻撃しない・攻撃も通らない
+//                       （キュー93・D8 `0,1`＝笛の戦闘側の役。眠っている間は吹き直しても延びない）
 //   未設定           → 何も起きない（音だけ鳴る）
 function playFlute() {
 	if (isDialog || isPaused || isGameover || isTransitioning) return;
@@ -1819,6 +1823,13 @@ function playFlute() {
 	const fe = stageData?.fluteEffect;
 	if (!fe) {
 		fx.pulse('{{flute}} 不思議な音色が響いた…… 特に何も起きない', 1800);
+		return;
+	}
+	if (fe.type === 'slumber') {
+		const { slept, already } = fx.slumberEnemies(fe.enemies ?? null, fe.ms ?? 4000);
+		if (slept > 0) fx.pulse(fe.message ?? '{{flute}} 音色に 誘われ 泥の 底へ 沈んでいった……', 2000);
+		else if (already > 0) fx.pulse('{{flute}} もう 眠っている', 1500);
+		else fx.pulse('{{flute}} 音色は響いたが 特に何も起きない', 1800);
 		return;
 	}
 	if (fe.type === 'reveal') {

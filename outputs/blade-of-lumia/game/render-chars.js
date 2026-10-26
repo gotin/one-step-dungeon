@@ -526,7 +526,9 @@ export function createRenderChars(deps) {
 				// 痕跡の描き分けは style 別クラス（hide-water/hide-burrow/hide-air）。
 				if (e.hidden) {
 					const meta = ENEMY_META[e.type];
-					const style = meta?.hide?.style ?? meta?.leap?.style ?? 'water';
+					// 笛の眠り（キュー93・enemy-ai.js slumberEnemies）は meta に hide を持たない敵も
+					// 泥へ沈める＝実体の印 `_slumberUntil` を先に見る。
+					const style = e._slumberUntil != null ? 'burrow' : (meta?.hide?.style ?? meta?.leap?.style ?? 'water');
 					wrapper.classList.add('hiding', `hide-${style}`);
 				}
 				// 大型敵（Phase 3-2）：wrapper を w×h セルに拡げ、canvas を全面に追従させる

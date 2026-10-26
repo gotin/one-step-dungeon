@@ -245,6 +245,8 @@ export function createPassable(d) {
 			// 動く自由は残す。剥がす手段は殴ること＝combat.js の被弾フック）。
 			// これが決定⑤「例外はルピー喰いだけ」の実装。
 			if (e._attached) continue;
+			// キュー93: 笛で泥に沈んで眠っている敵は上を歩ける（enemy-ai.js slumberEnemies）。
+			if (e._slumberUntil != null) continue;
 			const ew = e.w ?? 1, eh = e.h ?? 1;
 			const next = overlapArea(nx, ny, 1, 1, e.x, e.y, ew, eh);
 			if (next <= 0) continue;
