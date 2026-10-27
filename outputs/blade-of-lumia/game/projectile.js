@@ -10,7 +10,7 @@ import { makeSprite } from '../shared/sprites.js';
 import { playSound } from '../shared/sounds.js';
 import {
 	MOVE_STEP, TICK_MS, BOOMERANG_STUN_MS, ATTACK_POSE_MS,
-	CANDLE_FIRE_DMG, CANDLE_FLAME_MS, CANDLE_FLAME_MAX, GOLD_GARB_REFLECT_SPEED_MULT,
+	CANDLE_FIRE_DMG, CANDLE_FLAME_MS, CANDLE_FLAME_MAX, GOLD_GARB_REFLECT_SPEED_MULT, FIRE_SPREAD_MS,
 } from './constants.js';
 import { SHIELD_TIERS } from '../shared/items.js';
 import { enemyPointHit, enemyCenter, enemyOccupiesTile } from './hitbox.js';
@@ -95,6 +95,7 @@ export function createProjectile(deps) {
 	let _nextProjId   = 1;
 	let _placedBombs  = [];
 	let _placedFlames = [];   // ロウソクで置いた炎（2026-08-31）
+	let _fireSpread   = [];   // 燃え広がりの予定（キュー93）＝{ r, c, at }
 
 	// ── 盾ブロック判定 ────────────────────────────────────────
 	// 盾を持っていて、攻撃が来る向きに正面を向いていれば完全ブロック
@@ -608,6 +609,22 @@ export function createProjectile(deps) {
 				pulse('{{torch}} かがり火に火が灯った！');
 				saveGame();
 			}
+		} else if (proj.flaming && getStageData()?.tiles[br]?.[bc] === TILE.BUSH) {
+			// キュー93（D8 `2,0`・2026-10-26 ユーザー提案）：火の付いたブーメランが通った茂みは燃え上がり、
+			// つながった茂みへ燃え広がる（spreadFireFrom）＝水の隙間で途切れた導火線を、灯ったかがり火から
+			// 火を運んでつなぎ直す。もやは祓わない（祓うのはロウソクの聖なる火だけ＝キュー88）。
+			if (!bss.cutBushes) bss.cutBushes = new Set();
+			if (!bss.cutBushes.has(bpk)) {
+				bss.cutBushes.add(bpk);
+				bss.bushBurned = true;
+				const spreading = spreadFireFrom(br, bc);
+				playSound('fire');
+				renderBoard(); renderChars();
+				showSpreadFireEffect(br, bc);
+				pulse(spreading > 0 ? '{{bush}} 運んだ火が 茂みに 燃え移った！' : '{{bush}} 茂みが燃え上がった！', 1800);
+				// 燃え広がる間はセーブしない＝燃え尽きたときに fireSpreadTick が1回だけ（playCandle と同じ）
+				if (spreading === 0) { evaluateConditions(); saveGame(); }
+			}
 		}
 	}
 
@@ -897,6 +914,112 @@ export function createProjectile(deps) {
 			ensureFlameEl(flame);
 			burnEnemiesOnFlame(flame);
 		}
+		fireSpreadTick(now);
+	}
+
+	// ── 燃え広がる茂み（キュー93・D8 `2,0`・2026-10-26）────────────────
+	// ロウソクで燃やした茂みから、縦横に隣り合う未燃の茂みへ FIRE_SPREAD_MS ごとに火が移る。
+	// 燃えた茂みの隣に消えたかがり火があれば、それにも灯る＝つながった茂みは導火線になる
+	// （手の届かない所のかがり火へ、火を「走らせて」届ける）。
+	//   ・敵は焼かない＝炎のダメージの入口は置いた炎だけ（game.js playCandle の冒頭のコメント）。
+	//   ・途中ではセーブも条件の評価もしない＝燃え尽きた時点で1回だけ。途中で再読込しても
+	//     「火を点ける前」に戻るだけ＝半分燃えた導火線が届かない所に残って詰む、を作らない
+	//     （火を点けた側の playCandle も、燃え広がるときはセーブしない）。
+	//   ・画面を出るときは flushFireSpread() で残りを一度に燃やす（enterStage の冒頭＝まだ元の画面のうち）。
+	//   ・燃え移る順と時刻は予定の `at` から決める（tick の遅れで間隔が伸び縮みしない）。
+	function spreadFireFrom(r, c) {
+		return scheduleFireNeighbors(r, c, gameNow() + FIRE_SPREAD_MS);
+	}
+
+	function scheduleFireNeighbors(r, c, at) {
+		const sd = getStageData();
+		const ss = getSS(getCurrentLayer(), getStageKey());
+		if (!sd) return 0;
+		let n = 0;
+		for (const [dr, dc] of [[-1, 0], [1, 0], [0, -1], [0, 1]]) {
+			const nr = r + dr, nc = c + dc;
+			const tile = sd.tiles[nr]?.[nc];
+			const pk = `${nr},${nc}`;
+			const flammable = (tile === TILE.BUSH && !ss.cutBushes?.has(pk))
+				|| (tile === TILE.TORCH && !ss.litTorches?.has(pk));
+			if (!flammable) continue;
+			if (_fireSpread.some(f => f.r === nr && f.c === nc)) continue;
+			_fireSpread.push({ r: nr, c: nc, at });
+			n++;
+		}
+		return n;
+	}
+
+	// 1マスに火を移す。移ったら { r, c, torch } を返す（既に燃えていたら null）。
+	function igniteSpreadCell(r, c, nextAt) {
+		const sd = getStageData();
+		const ss = getSS(getCurrentLayer(), getStageKey());
+		const tile = sd?.tiles[r]?.[c];
+		const pk = `${r},${c}`;
+		if (tile === TILE.BUSH) {
+			if (!ss.cutBushes) ss.cutBushes = new Set();
+			if (ss.cutBushes.has(pk)) return null;
+			ss.cutBushes.add(pk);
+			ss.bushBurned = true;
+			scheduleFireNeighbors(r, c, nextAt);
+			return { r, c, torch: false };
+		}
+		if (tile === TILE.TORCH) {
+			if (!ss.litTorches) ss.litTorches = new Set();
+			if (ss.litTorches.has(pk)) return null;
+			ss.litTorches.add(pk);
+			return { r, c, torch: true };
+		}
+		return null;
+	}
+
+	function fireSpreadTick(now) {
+		if (_fireSpread.length === 0) return;
+		const due = _fireSpread.filter(f => now >= f.at);
+		if (due.length === 0) return;
+		_fireSpread = _fireSpread.filter(f => now < f.at);
+		const lit = [];
+		for (const f of due) {
+			const q = igniteSpreadCell(f.r, f.c, f.at + FIRE_SPREAD_MS);
+			if (q) lit.push(q);
+		}
+		if (lit.length > 0) {
+			playSound('fire');
+			renderBoard(); renderChars();
+			// 炎の絵は再描画の後に出す（先に出すと char-layer の作り直しで消える）
+			for (const q of lit) showSpreadFireEffect(q.r, q.c);
+			if (lit.some(q => q.torch)) pulse('{{torch}} 燃え移った火が かがり火に灯った！', 1800);
+		}
+		if (_fireSpread.length === 0) { evaluateConditions(); saveGame(); }
+	}
+
+	// 残りの燃え広がりを今すぐ全部済ませる（画面を出る直前に呼ぶ）。
+	function flushFireSpread() {
+		if (_fireSpread.length === 0) return;
+		while (_fireSpread.length > 0) {
+			const batch = _fireSpread;
+			_fireSpread = [];
+			for (const f of batch) igniteSpreadCell(f.r, f.c, 0);
+		}
+		evaluateConditions();
+		saveGame();
+	}
+
+	function showSpreadFireEffect(r, c) {
+		const charLayerEl = getCharLayerEl();
+		if (!charLayerEl) return;
+		const cellPx = getCellPx();
+		const el = document.createElement('div');
+		el.className = 'candle-fire fire-spread';
+		el.style.cssText = `position:absolute;left:${c * cellPx}px;top:${r * cellPx}px;`
+			+ `width:${cellPx}px;height:${cellPx}px;z-index:25;pointer-events:none;`;
+		charLayerEl.appendChild(el);
+		setTimeout(() => el.remove(), 600);
+	}
+
+	// テスト観測用（予定の残り）。
+	function getFireSpread() {
+		return _fireSpread.map(f => ({ r: f.r, c: f.c, at: f.at }));
 	}
 
 	function removeFlame(flame) {
@@ -1135,5 +1258,9 @@ export function createProjectile(deps) {
 		placeCandleFlame,
 		flameTick,
 		getPlacedFlames,
+		// 燃え広がる茂み（キュー93）
+		spreadFireFrom,
+		flushFireSpread,
+		getFireSpread,
 	};
 }

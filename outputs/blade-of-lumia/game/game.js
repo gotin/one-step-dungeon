@@ -449,6 +449,9 @@ function enterStage(lk, sk, pRow, pCol) {
 	// 先に書き換えてから気づいていた＝盤面が null になり次の一歩で例外（キュー82⑩・Fable 実装レビュー #16）。
 	const nextStageData = getStageData(lk, sk);
 	if (!nextStageData) { console.error(`Stage not found: ${lk}/${sk}`); return; }
+	// キュー93: 燃え広がりの途中で画面を出る＝残りを今の画面のうちに燃やし切る（projectile.js flushFireSpread）。
+	// 置いていかないと、半分燃えた導火線が「手の届かない所の茂み」として残り、戻っても点け直せない。
+	if (stageKey !== null) fx.flushFireSpread();
 	// 別のステージに移動する場合、現在ステージの石を元の位置にリセット
 	// （壁際に挟まって取り出せなくなった石をリセットするため）
 	if (stageKey !== null && (currentLayer !== lk || stageKey !== sk)) {
@@ -983,6 +986,9 @@ const { checkStoneOnSwitch, evaluateConditions, refreshGates } = createCondition
 		placeCandleFlame: (r, c) => _proj.placeCandleFlame(r, c),
 		flameTick: _proj.flameTick,
 		getPlacedFlames: () => _proj.getPlacedFlames(),
+		spreadFireFrom: (r, c) => _proj.spreadFireFrom(r, c),
+		flushFireSpread: () => _proj.flushFireSpread(),
+		getFireSpread: () => _proj.getFireSpread(),
 		addProjectile: (config) => _proj.addProjectile(config),
 		getProjectiles: () => _proj.getProjectiles(),
 		isShieldBlockingDir: _proj.isShieldBlockingDir,
@@ -1975,13 +1981,19 @@ function playCandle() {
 
 	ss.cutBushes.add(posKey);   // 茂みを燃やす／もやを祓う（通行可化・既存パイプライン）
 	ss.bushBurned = true;       // ロウソク固有：bushBurned トリガーを立てる
+	// キュー93: 茂みの火は縦横につながった茂み（と消えたかがり火）へ燃え広がる（projectile.js）。
+	// もやは燃え広がらない＝祓う物であって燃える物ではない。
+	const spreading = tile === TILE.BUSH ? fx.spreadFireFrom(tr, tc) : 0;
 	evaluateConditions();       // 隠し通路/入口/アイテムを出現させる
 	fx.renderBoard(); fx.renderChars();
 	// 炎演出は renderBoard/renderChars が char-layer を作り直した後に出す
 	// （先に出すと再描画で消えてしまうため）。
 	showCandleFireEffect(player.x + ndx, player.y + ndy);
-	fx.pulse(tile === TILE.CURSE_MIST ? '{{candle}} 聖なる炎が 怨念を祓った！' : '{{bush}} 茂みが燃え上がった！', 1800);
-	saveGame();
+	fx.pulse(tile === TILE.CURSE_MIST ? '{{candle}} 聖なる炎が 怨念を祓った！'
+		: spreading > 0 ? '{{bush}} 茂みが燃え上がり、火が 燃え広がる！' : '{{bush}} 茂みが燃え上がった！', 1800);
+	// 燃え広がる間はセーブしない＝燃え尽きたときに projectile.js が1回だけセーブする
+	// （ここで保存すると「火元だけ燃えた」状態が残り、再読込で導火線が途切れる）。
+	if (spreading === 0) saveGame();
 }
 
 // 前方1マスに炎を置く（2026-08-31）。置けたかどうかを必ず言葉で返す＝
@@ -2673,6 +2685,8 @@ export function callGiveSubItem(id) { return fx.giveSubItem(id); }
 // 2026-08-31: 置いた炎の一覧（テスト用）。上限・寿命・「1つの炎は1体に1回」を
 // 外から観測できる唯一の窓（`burnedCount` がその炎が焼いた敵の数）。
 export function getPlacedFlamesSnapshot() { return fx.getPlacedFlames(); }
+// キュー93: 燃え広がりの予定の残り（テスト用）。空になった時点で燃え尽きている。
+export function getFireSpreadSnapshot() { return fx.getFireSpread(); }
 
 // 2026-09-04（12体目 Z）: 幻影の一覧（テスト用）。像は敵ではない（`getEnemies()` に居ない）
 // ∴敵のスナップショットからは数えられない＝**この配列が像の数の唯一の真実**（絵・収束の

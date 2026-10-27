@@ -263,7 +263,10 @@ test.describe('Blade of Lumia – dark_tower 3F 淵の環／淵の火渡り（�
 		// `initLitTorches` の初期化（game.js:250 getSS＝火元を最初から点けるだけ）。
 		// ∴矢・剣ビーム・爆弾では点かない（増えたらこの数が動く）。
 		const adds = (src) => (src.match(/litTorches\.add\(/g) ?? []).length;
-		expect(adds(proj), 'projectile.js の点火は1箇所（ブーメラン）').toBe(1);
+		// キュー93（2026-10-26）：燃え広がる茂み（igniteSpreadCell）が2箇所目＝火元はロウソクで燃やした茂みだけ
+		// （spreadFireFrom を呼ぶのは game.js playCandle の1箇所）∴「矢・剣ビーム・爆弾では点かない」は変わらない。
+		expect(adds(proj), 'projectile.js の点火は2箇所（ブーメラン＋燃え広がる茂み）').toBe(2);
+		expect((game.match(/fx\.spreadFireFrom\(/g) ?? []).length, '燃え広がりの火元はロウソク（playCandle）の1箇所だけ').toBe(1);
 		expect(adds(game), 'game.js は2箇所（ロウソク＋initLitTorches の初期化）').toBe(2);
 		expect(game, 'initLitTorches の初期化は getSS の中').toContain('stageState[k].litTorches.add(pk)');
 		// かがり火は通行不可＝隣に立てない∴ロウソク（前方1セル）では点けられない。

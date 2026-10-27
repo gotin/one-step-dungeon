@@ -152,6 +152,12 @@ export const CANDLE_FIRE_DMG = 3; // ロウソクの炎による基本ダメー�
 export const CANDLE_FLAME_MS  = 3500; // 置いた炎が燃えている時間（ms・論理時間で測る）
 export const CANDLE_FLAME_MAX = 3;    // 同時に置いておける炎の数
 
+// ── キュー93（2026-10-26）: 燃え広がる茂み ─────────────────────────
+// ロウソクで燃やした茂みから、縦横に隣り合う茂みへこの間隔で火が移る（隣の消えたかがり火にも灯る）。
+// 2 tick（TICK_MS 120 の整数倍）＝観測 tick が揺れない。10 マスの導火線が約 2.4 秒で燃え切る
+// ＝「火が走っていく」が目で追える長さ。
+export const FIRE_SPREAD_MS = 240;
+
 // ── Phase 9-5b: 雑魚リスポーン ────────────────────────────────
 // 雑魚（isBoss=false・E/C/F）が復活するまでに必要なステージ移動回数。
 export const RESPAWN_MOVES = 8;

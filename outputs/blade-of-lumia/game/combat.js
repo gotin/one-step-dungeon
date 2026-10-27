@@ -836,6 +836,14 @@ export function createCombat(deps) {
 		if (!ss.cutBushes) ss.cutBushes = new Set();
 		if (ss.cutBushes.has(posKey)) return;
 		if (tile === TILE.CURSE_MIST) { pulse('{{sword}} 剣が すり抜けた… 実体が ない', 1800); return; }
+		// キュー93（D8 `2,0`）：水に立つ葦（茂みの下地が水）は剣では刈れない＝燃やすしかない。
+		// 刈れてしまうと、燃え広がりの導火線の根元を剣で切って、残りが岸から届かない所に取り残される。
+		// 茂みは tiles 層に居る＝水かどうかは bgTiles 側だけを見ればよい（passable.js isWaterAt の片側）。
+		const sd = getStageData();
+		if (tile === TILE.BUSH && (sd?.bgTiles?.[posKey] === TILE.WATER)) {
+			pulse('{{bush}} 水に 立つ 葦は 剣では 刈れない', 1800);
+			return;
+		}
 		ss.cutBushes.add(posKey);
 		playSound('slash');
 		const rand = Math.random();
