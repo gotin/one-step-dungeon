@@ -7,6 +7,8 @@ import { statefulTileClosed, lavaCooledAt, SUNK_ROW } from './passable.js';
 import { makeStoneEl } from './render-chars.js';
 import { ITEM_META, EQUIP_META, SWORD_TIERS, BASE_ATK, ARMOR_TIERS, BASE_DEF, SHIELD_TIERS, BOOMERANG_TIERS, HEART_PIECES_PER_HEART, EMBLEMS_FOR_AURA, ITEM_STACK_MAX, ownsItem, addStack, stackCount, isStackFull } from '../shared/items.js';
 import { NPC_SPRITE_MAP } from '../shared/npcs.js';
+import { ENEMY_META } from '../shared/enemies.js';
+import { enemyOccupiesTile } from './hitbox.js';
 import { makeSprite } from '../shared/sprites.js';
 import { iconCanvas, rewardIconKey } from '../shared/ui-icons.js';
 import { playSound, resumeAudio } from '../shared/sounds.js';
@@ -381,6 +383,10 @@ export function createPlayer(deps) {
 		const stageData = getStageData();
 		const player    = getPlayer();
 		const ss = getSS(getCurrentLayer(), getStageKey());
+		// 重しになる敵（ENEMY_META.pressesButtons）がいる部屋のボタンは syncEnemyButtons が
+		// 毎 tick まとめて持つ＝ここで「勇者も石も乗っていない」だけを見て離すと、ヒルが
+		// 押さえているボタンが勇者の一歩ごとに外れる。
+		if (roomHasButtonWeights(stageData)) return;
 		let changed = false;
 		for (let r = 0; r < stageData.rows; r++) {
 			for (let c = 0; c < stageData.cols; c++) {
@@ -397,6 +403,110 @@ export function createPlayer(deps) {
 			}
 		}
 		if (changed) { refreshGates(); renderBoard(); renderChars(); evaluateConditions(); saveGame(); }
+	}
+
+	// ── キュー93 の5室目（D8 `3,1`「ヒルの重し」）：敵がボタンを押す ──────────────
+	// ENEMY_META.pressesButtons を持つ敵（毒沼ヒル Γ だけ）は石と同じ「重し」。その敵がいる部屋では、
+	// ボタンの ON/OFF を毎 tick ここで「石・勇者・重しの敵のどれかが乗っているか」から決め直す
+	// （checkSwitchOff はこの部屋では何もしない＝持ち主を1つにする）。重しの敵がいない部屋は
+	// 今までどおり＝ここは何もしない。
+	//
+	// ⚠️ 閉じ込めの防止：ボタンが離れると連動の門 T は全部閉じる（conditions.js refreshGates ①）。
+	//    ヒルは勇者の動きで勝手に降りる・倒されもする＝石と違って**勇者が門の奥にいる間に離れうる**。
+	//    ∴離すと勇者が部屋の口へ戻れなくなる（門の奥に閉じ込められる）ときは、勇者が出てくるまで
+	//    押したままにする。セーブから門の奥で再開したとき（ヒルは家に戻っている）もこれが守る。
+	const _weightRoomCache = new WeakMap();
+	function roomHasButtonWeights(sd) {
+		if (!sd?.tiles) return false;
+		if (_weightRoomCache.has(sd)) return _weightRoomCache.get(sd);
+		let button = false, weight = false;
+		for (const row of sd.tiles) for (const t of row) {
+			if (t === TILE.BUTTON) button = true;
+			else if (ENEMY_META[t]?.pressesButtons) weight = true;
+		}
+		const yes = button && weight;
+		_weightRoomCache.set(sd, yes);
+		return yes;
+	}
+
+	// 連動の門 T を全部閉じたとき、勇者が部屋の口（外周の通れるセル・別マップへの入口）へ戻れなくなるか。
+	// 歩き＋はしご（幅1の水/穴を1枚）で探す。門の開閉以外の状態（壊した壁・切った茂み）は今のまま。
+	function closingGatesTrapsPlayer(stageData, ss) {
+		const gates = [];
+		for (let r = 0; r < stageData.rows; r++) for (let c = 0; c < stageData.cols; c++) {
+			if (stageData.tiles[r][c] === TILE.GATE && ss.openGates?.has(`${r},${c}`)) gates.push(`${r},${c}`);
+		}
+		if (!gates.length) return false;
+		const player = getPlayer();
+		const saved = ss.openGates;
+		ss.openGates = new Set([...saved].filter((g) => !gates.includes(g)));
+		try {
+			const { rows, cols } = stageData;
+			const water = (r, c) => {
+				const t = stageData.tiles[r]?.[c];
+				return t === TILE.WATER || t === TILE.PIT || stageData.bgTiles?.[`${r},${c}`] === TILE.WATER;
+			};
+			const exit = (r, c) => r === 0 || c === 0 || r === rows - 1 || c === cols - 1
+				|| stageData.tiles[r][c] === TILE.MAP_ENTER;
+			// 勇者は半マス位置で2セルに跨る＝跨いでいるセルのどれかから出られれば閉じ込めではない
+			const starts = [];
+			for (const r of new Set([Math.floor(player.y), Math.ceil(player.y)])) {
+				for (const c of new Set([Math.floor(player.x), Math.ceil(player.x)])) starts.push([r, c]);
+			}
+			// 門のセルに半分でも重なっている＝閉じると門の中に埋まる（どの向きへも動けない）
+			if (starts.some(([r, c]) => gates.includes(`${r},${c}`))) return true;
+			const seen = new Set(starts.map(([r, c]) => `${r},${c}`));
+			const q = [...starts];
+			while (q.length) {
+				const [r, c] = q.shift();
+				if (tilePassable(r, c) && exit(r, c)) return false;
+				for (const [dr, dc] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+					let nr = r + dr, nc = c + dc;
+					if (nr < 0 || nc < 0 || nr >= rows || nc >= cols) continue;
+					if (!tilePassable(nr, nc)) {
+						if (!(player.hasLadder && water(nr, nc))) continue;
+						nr += dr; nc += dc;   // はしごで1枚だけ渡る
+						if (nr < 0 || nc < 0 || nr >= rows || nc >= cols || !tilePassable(nr, nc)) continue;
+					}
+					const k = `${nr},${nc}`;
+					if (seen.has(k)) continue;
+					seen.add(k); q.push([nr, nc]);
+				}
+			}
+			return true;
+		} finally {
+			ss.openGates = saved;
+		}
+	}
+
+	function syncEnemyButtons() {
+		const stageData = getStageData();
+		if (!roomHasButtonWeights(stageData)) return;
+		const player = getPlayer();
+		const ss = getSS(getCurrentLayer(), getStageKey());
+		if (!ss.switchStates) ss.switchStates = {};
+		const weights = getEnemies().filter((e) => !e.hidden && ENEMY_META[e.type]?.pressesButtons);
+		let on = false, off = false;
+		for (let r = 0; r < stageData.rows; r++) {
+			for (let c = 0; c < stageData.cols; c++) {
+				if (stageData.tiles[r][c] !== TILE.BUTTON) continue;
+				const pk = `${r},${c}`;
+				const held = Object.values(ss.stonePositions ?? {}).some((st) => st.r === r && st.c === c)
+					|| (!player.flying && toTileRow(player.y) === r && toTileCol(player.x) === c)
+					|| weights.some((e) => enemyOccupiesTile(e, r, c));
+				if (held && !ss.switchStates[pk]) { ss.switchStates[pk] = true; on = true; }
+				else if (!held && ss.switchStates[pk]) {
+					if (!ss.stonesLocked && closingGatesTrapsPlayer(stageData, ss)) continue;   // 勇者が出てくるまで押したまま
+					ss.switchStates[pk] = false; off = true;
+				}
+			}
+		}
+		if (!on && !off) return;
+		if (on) playSound('switch');
+		refreshGates();
+		evaluateConditions();
+		renderBoard(); renderChars();
+		saveGame();
 	}
 
 	// ── プレイヤー移動 ────────────────────────────────────
@@ -1232,6 +1342,7 @@ export function createPlayer(deps) {
 		movePlayer,
 		handleTileEvent,
 		checkSwitchOff,
+		syncEnemyButtons, // キュー93: 重しの敵（毒沼ヒル）がボタンを押す＝game.js gameTick が enemyTick の後に呼ぶ
 		toggleSwitch,
 		setActiveColor,
 		giveSubItem,

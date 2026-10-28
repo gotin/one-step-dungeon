@@ -513,6 +513,19 @@ function enterStage(lk, sk, pRow, pCol) {
 				}
 			}
 		}
+		// キュー93 の5室目（D8 `3,1`「ヒルの重し」）：部屋の仕掛けの部品になっている敵は、入り直すたびに戻る
+		// （stage.enemiesRespawn）。ダンジョンの敵は普段は戻らない＝重しのヒルを倒すとコンパスへ二度と届かない。
+		// ボスと noRespawn は field と同じく戻さない。
+		const nextSD = getStageData(lk, sk);
+		if (nextSD?.enemiesRespawn) {
+			const ss = getSS(lk, sk);
+			for (const posKey of [...ss.defeatedEnemies]) {
+				const [r, c] = posKey.split(',').map(Number);
+				const meta = ENEMY_META[nextSD.tiles?.[r]?.[c]];
+				if (!meta || meta.isBoss || meta.noRespawn) continue;
+				ss.defeatedEnemies.delete(posKey);
+			}
+		}
 	}
 
 	currentLayer = lk;
@@ -1222,6 +1235,7 @@ const { checkStoneOnSwitch, evaluateConditions, refreshGates } = createCondition
 	install({
 		movePlayer: _player.movePlayer,
 		toggleSwitch: _player.toggleSwitch,
+		syncEnemyButtons: _player.syncEnemyButtons,
 		setActiveColor: _player.setActiveColor,
 		giveSubItem: _player.giveSubItem,
 		gainHeartContainer: _player.gainHeartContainer,
@@ -1759,6 +1773,7 @@ function gameTick() {
 	if (isTransitioning || isGameover) return;
 	fx.tickCharge();        // チャージゲージ更新（剣ビーム・Phase 3-1）
 	fx.enemyTick();
+	fx.syncEnemyButtons();   // 重しの敵（毒沼ヒル）がボタンに乗った／降りた＝敵が動いた直後に決め直す（キュー93）
 	fx.projectileTick();
 	fx.bombTick();
 	fx.flameTick();          // 置いた炎の寿命と「踏んだ敵を焼く」判定（2026-08-31）

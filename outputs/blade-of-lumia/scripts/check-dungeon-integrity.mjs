@@ -27,6 +27,8 @@
 //          立てる唯一の経路。無いと笛を吹いても条件が永久に成立しない）
 //   [MUST] '>' タイルと mapEnters が 1:1（未登録の '>' ＝飾りの入口／destId 付きなのに
 //          タイルが無い登録 ＝永久に使えない出入口。id だけの着地専用エントリは除く）
+//   [MUST] ボタンを押せる物が重しの敵（毒沼ヒル）だけの部屋は enemiesRespawn: true
+//          （倒すと門が二度と開かない＝ダンジョンの敵は戻らない・検査17）
 //
 // ⚠️ 2026-08-05（キュー5番）に上4件を追加した経緯：それまで本チェッカーは
 //    鍵の収支も links の形式も見ておらず、**dungeon_5 と dungeon_8 は入室した瞬間に
@@ -880,6 +882,24 @@ function checkDungeon(layerName) {
     }
     if (stage.enemiesAlert !== undefined && stage.enemiesAlert !== true) {
       err(`ステージ [${stageKey}] の enemiesAlert が true でない: ${JSON.stringify(stage.enemiesAlert)}`);
+    }
+  }
+
+  // ── 17. 重しの敵だけがボタンを押せる部屋は enemiesRespawn が要る（キュー93 の5室目・D8 3,1）──
+  // ボタン 'S' を押せる物＝勇者・石・重しの敵（ENEMY_META.pressesButtons＝毒沼ヒル）。勇者は押しながら
+  // 門をくぐれない∴石の無い部屋では重しの敵が唯一の鍵＝倒すと二度と開かない（ダンジョンの敵は戻らない）。
+  // game.js enterStage は stage.enemiesRespawn の部屋だけ、入り直すたびに敵を戻す。
+  for (const [stageKey, stage] of Object.entries(stages)) {
+    const flat = (stage.tiles ?? []).flatMap((row) => [...row]);
+    const hasButton = flat.includes('S');
+    const hasStone = flat.includes('*');
+    const hasWeight = flat.some((t) => ENEMY_META[t]?.pressesButtons);
+    if (hasButton && hasWeight && !hasStone && stage.enemiesRespawn !== true) {
+      err(`ステージ [${stageKey}] はボタンを押せる物が重しの敵だけなのに enemiesRespawn が無い`
+        + ' ← 重しの敵を倒すと門が二度と開かない（入り直しても敵が戻らない）');
+    }
+    if (stage.enemiesRespawn !== undefined && stage.enemiesRespawn !== true) {
+      err(`ステージ [${stageKey}] の enemiesRespawn が true でない: ${JSON.stringify(stage.enemiesRespawn)}`);
     }
   }
 

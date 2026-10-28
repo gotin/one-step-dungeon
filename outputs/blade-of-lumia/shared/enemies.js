@@ -596,6 +596,10 @@ export const ENEMY_META = {
 		name: '毒沼ヒル',
 		hp: 9, atk: 1, def: 1, exp: 10,       // 脅威度 hp*atk/(def+1) = 4.5（実効は毒込みで atk 4 相当）
 		speed: ENEMY_SPEED_SLOW,              // 鈍足＝機構（後を引く毒）と対の速度
+		// キュー93 の5室目（D8 `3,1`「ヒルの重し」・2026-10-27 ユーザー承認）：泥を吸った重い体は
+		// ボタン 'S' を押す（石と同じ「重し」）。押し方の単一の真実は game/player.js syncEnemyButtons。
+		// ⚠️ 押せるのはこの敵だけ＝ほかの敵がボタンの上を歩いても既存の石の仕掛けは崩れない。
+		pressesButtons: true,
 		sprite: 'poisonLeech',                // 背に毒の縞を持つヒル（k-7b・.scratch/draw-k7.mjs）
 		pal:    'poisonLeech',
 		isBoss: false,

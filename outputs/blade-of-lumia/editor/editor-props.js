@@ -762,6 +762,9 @@ function renderEnemyChase(sd) {
 	if (!el || !roomEl) return;
 	const room = isRoomAlert(sd);
 	roomEl.checked = room;
+	// キュー93: 入り直すたびに敵が戻る（sd.enemiesRespawn＝game.js enterStage が読む）
+	const respawnEl = document.getElementById('stage-enemies-respawn');
+	if (respawnEl) respawnEl.checked = sd.enemiesRespawn === true;
 	el.innerHTML = '';
 	const list = [];
 	(sd.tiles ?? []).forEach((row, r) => row.forEach((t, c) => { if (canRoam(t)) list.push({ r, c, t }); }));
@@ -810,6 +813,12 @@ export function initEnemyAlertEvents() {
 		if (e.target.checked) sd.enemiesAlert = true;
 		else delete sd.enemiesAlert;
 		renderEnemyChase(sd);
+	});
+	document.getElementById('stage-enemies-respawn')?.addEventListener('change', e => {
+		const sd = getCurrentStage();
+		if (!sd) return;
+		if (e.target.checked) sd.enemiesRespawn = true;
+		else delete sd.enemiesRespawn;
 	});
 }
 
