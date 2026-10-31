@@ -8,7 +8,7 @@ import { TILE } from '../shared/tiles.js';
 import { makeSprite } from '../shared/sprites.js';
 import { playSound } from '../shared/sounds.js';
 import { MOVE_STEP, ATTACK_POSE_MS, TICK_MS, SLAM_RANGE, SLAM_WINDUP_MS, SLAM_COOLDOWN_MS,
-	MELEE_WINDUP_MS, MELEE_FREEZE_MS } from './constants.js';
+	MELEE_WINDUP_MS, MELEE_FREEZE_MS, ENEMY_SINK_MS } from './constants.js';
 import { statefulTileClosed, overlapArea } from './passable.js';
 // Phase 5.5k k-9: 突進が壁に激突した印（⭐）の位置＝敵の中心。中心の取り方は hitbox.js が
 // 単一の真実（projectile.js showStunEffect も同じ関数を使う＝印の位置がずれない）。
@@ -83,6 +83,8 @@ export function createEnemyAi(deps) {
 		isWaterAt,
 		// Phase 5.5k k-7: 敵の攻撃で立てるプレイヤー側の一時デバフ（game/debuff.js）
 		inflictDebuff,
+		// キュー93: 水・溶岩へ突っ込んで沈んだ敵を倒す（combat.js killEnemy）
+		killEnemy,
 	} = deps;
 
 	// ── 速度の解決（Phase 9-6）─────────────────────────────────
@@ -2565,7 +2567,8 @@ export function createEnemyAi(deps) {
 	// 時間は gameNow()（論理時間）基準なのでテストから step() で決定論的に再現できる。
 	// 初期状態は「隠れ」＝タイル名（潜み鮫・地中蟲）どおり見えない所から現れる。
 	// style は見た目の種別（'water' 潜行／'burrow' 地中／'air' 滞空／'warp' 瞬間移動＝k-8）。
-	const HIDE_STYLES = ['water', 'burrow', 'air', 'warp'];
+	// 'sink'＝突進で水・溶岩へ突っ込んで沈む（キュー93・startSink）。
+	const HIDE_STYLES = ['water', 'burrow', 'air', 'warp', 'sink'];
 
 	function tickHide(e, meta, now) {
 		const cfg = resolveHide(e, meta);
@@ -2866,6 +2869,51 @@ export function createEnemyAi(deps) {
 		return along <= hitRange + halfAlong && off <= alignTol + halfOff;
 	}
 
+	// ── キュー93（2026-10-31・D8 `4,1`）：突進して水・溶岩へ突っ込むと沈む ─────────────
+	// ユーザー判断（2026-10-31）＝沈むのは**液体だけ**（水＝tiles／bgTiles の '~'・冷えていない溶岩 'l'）。
+	// 空 '%'・穴 'x'・壁は今までどおり縁で激突して気絶する（D7 `2,3` の空の裂け目はそのまま）。
+	// 溶岩を含めるのは「溶岩は水と全く同じ挙動」（shared/tiles.js）の約束を守るため。
+	// ボスは沈まない（ボスの突進は相で生える＝`resolveDash`。沈んで終わる戦いを作らない）。
+	// 判定＝次の一歩の占有セルに液体が1つ以上あり、残りのセルはすべて地形として通れる
+	// （壁と液体の角に突っ込んだら壁の勝ち＝気絶）。石・他の敵で塞がれていても液体があれば沈む。
+	function isLiquidAt(r, c) {
+		if (isWaterAt?.(r, c)) return true;
+		return getStageData?.()?.tiles?.[r]?.[c] === TILE.LAVA && !tilePassable(r, c);
+	}
+	function dashPlungesAt(e, meta, ny, nx) {
+		if (meta?.isBoss) return false;
+		// 地形を読む口が無い（突進の純関数テストの台＝isPassableForEnemy だけを渡す）なら沈まない
+		if (!getStageData || !tilePassable) return false;
+		if (e.move) return false;   // 飛ぶ・泳ぐ敵はそもそも液体で止まらない
+		const ew = e.w ?? 1, eh = e.h ?? 1;
+		const c0 = Math.floor(nx), c1 = Math.floor(nx + ew - 1 + 0.999);
+		const r0 = Math.floor(ny), r1 = Math.floor(ny + eh - 1 + 0.999);
+		let liquid = false;
+		for (let r = r0; r <= r1; r++) {
+			for (let c = c0; c <= c1; c++) {
+				if (isLiquidAt(r, c)) { liquid = true; continue; }
+				if (!tilePassable(r, c)) return false;
+			}
+		}
+		return liquid;
+	}
+	// 沈み始める。ENEMY_SINK_MS のあいだ隠れ（攻撃が通らない・行動しない）→ enemyTick が倒す。
+	// 体は岸に残す（落とし物が水の上に出ない）＝沈む絵は CSS 変数で突進の向きへずらす。
+	function startSink(e, meta, vec, now) {
+		for (const m of ENEMY_MECHANISMS) m.stun?.(e, meta);
+		e._sinkUntil = now + ENEMY_SINK_MS;
+		e._sinkVec = vec;
+		setEnemyHidden(e, true, 'sink');
+		applySinkVec(e);
+		playSound('sink');
+	}
+	function applySinkVec(e) {
+		const el = getCharLayerEl()?.ownerDocument?.getElementById(`char-enemy-${e.id}`);
+		if (!el || !e._sinkVec) return;
+		el.style.setProperty('--sink-dy', String(e._sinkVec[0]));
+		el.style.setProperty('--sink-dx', String(e._sinkVec[1]));
+	}
+
 	function tickDash(e, meta, now) {
 		// 0d-3（2体目 A）: 突進の設定は**フェーズで後から生える**ことがある∴ここは `meta.dash` を
 		// 直接読まず `resolveDash`（e._dash 優先）を通す。enemyTick 側の2つのゲートも同じ。
@@ -2896,7 +2944,7 @@ export function createEnemyAi(deps) {
 				if (!isPassableForEnemy(ny, nx, e)) {
 					// ② 進めない理由がプレイヤーなら接触・地形なら激突
 					const onPlayer = player && overlapArea(nx, ny, ew, eh, player.x, player.y, 1, 1) > 0;
-					outcome = onPlayer ? 'hit' : 'wall';
+					outcome = onPlayer ? 'hit' : (dashPlungesAt(e, meta, ny, nx) ? 'plunge' : 'wall');
 					break;
 				}
 				e.y = ny; e.x = nx; e._dashLeft -= MOVE_STEP; moved++;
@@ -2910,6 +2958,12 @@ export function createEnemyAi(deps) {
 				if (meta?.inflict) inflictDebuff?.(meta);
 				markAttack(e, meta, 0, now);   // クールダウン記録は攻撃の共通後処理に通す
 				endDash(e, now, cooldownMs);
+				return true;
+			}
+			if (outcome === 'plunge') {
+				// キュー93（D8 `4,1`）: 水・溶岩へ突っ込んだ＝沈んで倒れる（気絶の代わり）。
+				endDash(e, now, cooldownMs);
+				startSink(e, meta, [sy, sx], now);
 				return true;
 			}
 			if (outcome === 'wall') {
@@ -6852,6 +6906,11 @@ export function createEnemyAi(deps) {
 			if (!meta) continue;
 			// キュー93: 笛の眠り（泥に沈んでいる間は行動を丸ごと飛ばす）。
 			if (e._slumberUntil != null && tickSlumber(e, now)) continue;
+			// キュー93: 水・溶岩へ突っ込んで沈んでいる（沈み切ったら倒れる）。
+			if (e._sinkUntil != null) {
+				if (now >= e._sinkUntil) killEnemy?.(e);
+				continue;
+			}
 			// 気絶中は機構の表の `stun` を上から全部呼んで、この tick の行動を丸ごと飛ばす
 			// （予告・専有状態を捨て、その絵もここで消す＝下の同期まで行かないため）。
 			if (e.stunUntil && now < e.stunUntil) {

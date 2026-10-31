@@ -211,6 +211,27 @@
     box-shadow: 0 0 6px rgba(138, 122, 232, 0.6);
     animation: hide-warp-rune 1.2s linear infinite;
 }
+/* 沈む＝突進の勢いで水・溶岩へ半マス滑り込み、下から呑まれて消える（キュー93・enemy-ai.js startSink）。
+   体（.char-abs の位置）は岸に残る＝絵だけを突進の向き（--sink-dx/--sink-dy＝-1/0/1）へずらす。
+   隠れの共通の薄さは使わない＝沈み始めは実体のまま見せ、0.6 秒（ENEMY_SINK_MS）で消し切る。 */
+.char-abs.hiding.hide-sink canvas.sprite {
+    opacity: 1;
+    filter: none;
+    animation: hide-sink-body 0.6s ease-in forwards;
+}
+.char-abs.hiding.hide-sink::after {
+    left: calc(10% + var(--sink-dx, 0) * 50%);
+    top: calc(40% + var(--sink-dy, 0) * 50%);
+    width: 80%;
+    height: 40%;
+    border: 2px solid rgba(170, 220, 200, 0.75);
+    animation: hide-ripple 0.6s ease-out infinite;
+}
+@keyframes hide-sink-body {
+    0%   { transform: translate(0, 0); clip-path: inset(0 0 0 0); opacity: 1; }
+    35%  { transform: translate(calc(var(--sink-dx, 0) * 45%), calc(var(--sink-dy, 0) * 45% + 10%)); clip-path: inset(0 0 15% 0); opacity: 1; }
+    100% { transform: translate(calc(var(--sink-dx, 0) * 50%), calc(var(--sink-dy, 0) * 50% + 45%)); clip-path: inset(0 0 100% 0); opacity: 0.2; }
+}
 @keyframes hide-ripple {
     0%   { transform: scale(0.45); opacity: 0.75; }
     100% { transform: scale(1.15); opacity: 0;    }

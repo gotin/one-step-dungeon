@@ -158,6 +158,11 @@ export const CANDLE_FLAME_MAX = 3;    // 同時に置いておける炎の数
 // ＝「火が走っていく」が目で追える長さ。
 export const FIRE_SPREAD_MS = 240;
 
+// ── キュー93（2026-10-31）: 突進して水・溶岩へ突っ込んだ雑魚が沈む ───────────
+// 沈み始めてから倒れるまでの時間。5 tick（TICK_MS 120 の整数倍）＝沈む絵が目で追える長さ。
+// この間は隠れ扱い（攻撃は通らない・行動しない）。enemy-ai.js tickDash の plunge を参照。
+export const ENEMY_SINK_MS = 600;
+
 // ── Phase 9-5b: 雑魚リスポーン ────────────────────────────────
 // 雑魚（isBoss=false・E/C/F）が復活するまでに必要なステージ移動回数。
 export const RESPAWN_MOVES = 8;

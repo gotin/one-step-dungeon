@@ -498,6 +498,15 @@ export function playSound(kind) {
 		tone(ctx, now + 0.04, 330, 0.08, 'sawtooth', 0.06);
 		tone(ctx, now + 0.10, 220, 0.12, 'triangle', 0.05);
 	}
+	// 沈む「ドボン…ゴポゴポ」（キュー93：突進して水・溶岩へ突っ込んだ敵）
+	// 低い水音の一撃のあと、泡が下がりながら3つ弾ける＝撃破音（enemyDie）とは別の「落ちた」音。
+	if (kind === 'sink') {
+		tone(ctx, now,        120, 0.12, 'sine',     0.12);
+		tone(ctx, now + 0.02,  70, 0.18, 'triangle', 0.10);
+		tone(ctx, now + 0.18, 520, 0.05, 'sine',     0.04);
+		tone(ctx, now + 0.30, 420, 0.05, 'sine',     0.035);
+		tone(ctx, now + 0.42, 320, 0.06, 'sine',     0.03);
+	}
 	// アイテム取得
 	if (kind === 'item') {
 		tone(ctx, now,        660, 0.07, 'sine', 0.05);

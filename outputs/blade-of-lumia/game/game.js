@@ -986,6 +986,8 @@ const { checkStoneOnSwitch, evaluateConditions, refreshGates } = createCondition
 		pulse:                 (t, d) => fx.pulse(t, d),
 		// Phase 5.5k k-7: 攻撃を当てた敵の meta.inflict をプレイヤー側の窓に立てる
 		inflictDebuff:         (meta) => fx.inflictDebuff(meta),
+		// キュー93: 突進で水・溶岩へ突っ込んで沈み切った敵を倒す
+		killEnemy:             (e) => fx.killEnemy(e),
 	});
 
 	// factory が作った関数を置き場 fx へ入れる
@@ -1256,6 +1258,7 @@ const { checkStoneOnSwitch, evaluateConditions, refreshGates } = createCondition
 		ensureSwordHeld: _combat.ensureSwordHeld,
 		dealDamageToEnemy: _combat.dealDamageToEnemy,
 		takeDamage: _combat.takeDamage,
+		killEnemy: _combat.killEnemy,   // キュー93: 水・溶岩に沈んだ敵（enemy-ai.js startSink）
 
 		startBossBattle: _boss.startBossBattle,
 		startEnding: _boss.startEnding,

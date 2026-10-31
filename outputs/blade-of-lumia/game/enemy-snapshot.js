@@ -45,7 +45,7 @@ const NULL_WHEN_ABSENT = [
 	'lsHits', 'lsPhase', 'lsR', 'lsSpan', 'lsTravel', 'lsWhiffs', 'mgAt', 'mgC', 'mgConverges',
 	'mgHits', 'mgNextAt', 'mgPhase', 'mgR', 'mgSlain', 'mgSpan', 'mgWaves', 'mgWhiffs', 'mirage',
 	'modeWeights', 'momCrashes', 'momentum', 'momRams', 'momVx', 'momVy', 'move', 'noticed',
-	'roamTarget', 'shellPhase', 'shellUntil', 'slamAt', 'slamWindupMs', 'slumberUntil', 'soar', 'soarAng', 'soarArc',
+	'roamTarget', 'shellPhase', 'shellUntil', 'sinkUntil', 'sinkVec', 'slamAt', 'slamWindupMs', 'slumberUntil', 'soar', 'soarAng', 'soarArc',
 	'soarAt', 'soarBand', 'soarBandHits', 'soarBreaths', 'soarCrashes', 'soarCx', 'soarCy',
 	'soarDives', 'soarFlights', 'soarLeft', 'soarMaxAt', 'soarNextFlip', 'soarPhase', 'soarSpan',
 	'soarSpin', 'soarVec', 'speed', 'spikeHits', 'spikes', 'splitFrom', 'sprite', 'stunUntil', 'surge',

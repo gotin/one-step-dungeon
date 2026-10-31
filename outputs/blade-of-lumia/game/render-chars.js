@@ -528,8 +528,14 @@ export function createRenderChars(deps) {
 					const meta = ENEMY_META[e.type];
 					// 笛の眠り（キュー93・enemy-ai.js slumberEnemies）は meta に hide を持たない敵も
 					// 泥へ沈める＝実体の印 `_slumberUntil` を先に見る。
-					const style = e._slumberUntil != null ? 'burrow' : (meta?.hide?.style ?? meta?.leap?.style ?? 'water');
+					// 突進で水・溶岩へ沈んでいる敵（キュー93・enemy-ai.js startSink）も同じ＝`_sinkUntil` を先に見る。
+					const style = e._sinkUntil != null ? 'sink'
+						: e._slumberUntil != null ? 'burrow' : (meta?.hide?.style ?? meta?.leap?.style ?? 'water');
 					wrapper.classList.add('hiding', `hide-${style}`);
+					if (e._sinkUntil != null && e._sinkVec) {
+						wrapper.style.setProperty('--sink-dy', String(e._sinkVec[0]));
+						wrapper.style.setProperty('--sink-dx', String(e._sinkVec[1]));
+					}
 				}
 				// 大型敵（Phase 3-2）：wrapper を w×h セルに拡げ、canvas を全面に追従させる
 				applyEnemySize(wrapper, e, cellPx0);
