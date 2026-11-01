@@ -4,7 +4,8 @@
 let audioContext = null;
 
 export function getAudioContext() {
-	if (!audioContext) {
+	// 閉じた文脈（ブラウザ側が閉じた場合も）は resume も音も出せない∴作り直す（実行キュー97）
+	if (!audioContext || audioContext.state === 'closed') {
 		audioContext = new (window.AudioContext || window.webkitAudioContext)();
 	}
 	return audioContext;
@@ -409,7 +410,7 @@ export function stopBgm() {
 
 export function resumeAudio() {
 	if (audioContext && audioContext.state === 'suspended') {
-		audioContext.resume();
+		try { audioContext.resume().catch(() => {}); } catch (_) {}
 	}
 }
 
@@ -429,7 +430,7 @@ export function installAudioUnlock() {
 		let ctx;
 		try { ctx = getAudioContext(); } catch (_) { return; }
 		if (ctx.state !== 'running') {
-			try { ctx.resume(); } catch (_) {}
+			try { ctx.resume().catch(() => {}); } catch (_) {}
 			try {
 				const src = ctx.createBufferSource();
 				src.buffer = ctx.createBuffer(1, 1, 22050);

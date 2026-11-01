@@ -275,6 +275,11 @@
 
 ## セッションログ
 
+### 2026-11-01（⚡ Sonnet・実行キュー97）`d4-ogre-kiln`「矢もブーメランも窯の中の λ に届かない」の揺れ（`Cannot resume a context that has been closed`）を止めた
+
+- **やったこと：** `shared/sounds.js` の `getAudioContext` が state `closed` の文脈を返し続けないよう作り直す／`resumeAudio`・`installAudioUnlock` の `resume()` の reject を握る。テストは触っていない。`--repeat-each 40`×3 で 120/120 緑・d4-ogre-kiln 全 9 本・音の 4 spec 19 本緑。
+- **学び・気づき：** 閉じた文脈への `resume()` は同期 throw ではなく reject＝`try/catch` では握れない。修正前の再現は未実施（1/20 の揺れ）。
+
 <!-- 新しいエントリを上に追加していく（最新が一番上） -->
 
 > **⚠️ 過去エントリの「▶ 次やること」は書かれた当時の記録＝すべて失効している。** 実行順序は `PLAN.md` 冒頭「🎯 実行キュー」だけを見る（2026-07-28 集約）。新しいエントリには「▶ 次やること」を書かない。
