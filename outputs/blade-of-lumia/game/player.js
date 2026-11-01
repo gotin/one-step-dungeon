@@ -485,7 +485,9 @@ export function createPlayer(deps) {
 		const player = getPlayer();
 		const ss = getSS(getCurrentLayer(), getStageKey());
 		if (!ss.switchStates) ss.switchStates = {};
-		const weights = getEnemies().filter((e) => !e.hidden && ENEMY_META[e.type]?.pressesButtons);
+		// 笛で泥に沈んで眠っている重しの敵（`_slumberUntil`＝e.hidden も立つ）は、沈んでも重いまま＝押し続ける
+		// （キュー93 の8室目 D8 `1,4`「眠る重しの泥橋」＝眠らせて上を渡っても門は閉じない）。
+		const weights = getEnemies().filter((e) => (!e.hidden || e._slumberUntil != null) && ENEMY_META[e.type]?.pressesButtons);
 		let on = false, off = false;
 		for (let r = 0; r < stageData.rows; r++) {
 			for (let c = 0; c < stageData.cols; c++) {
