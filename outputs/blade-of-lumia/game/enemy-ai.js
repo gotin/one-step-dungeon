@@ -5425,6 +5425,21 @@ export function createEnemyAi(deps) {
 		e._attached = false;
 		e._leechNext = null;
 		e._leechCooldownUntil = now + (cfg.cooldownMs ?? 1200);
+		// キュー93（2026-10-31・D8 `4,3`・ユーザー判断「規則を足す」）：張り付いたまま運ばれて
+		// **体の下が全部液体（はしごで渡る水の上など）の所で剥がれた**ら、足場が無く沈んで倒れる
+		// ＝`4,1` の「沈むのは水と溶岩だけ」の延長。半歩で岸に掛かっている間は沈まない。
+		// 倒れた後（hp 0＝この被弾で倒れた）は killEnemy に任せる＝二重に倒さない。
+		if (e.hp > 0 && e._sinkUntil == null && bodyAllLiquid(e)) startSink(e, ENEMY_META[e.type], [0, 0], now);
+	}
+	function bodyAllLiquid(e) {
+		if (!getStageData || !tilePassable) return false;
+		const ew = e.w ?? 1, eh = e.h ?? 1;
+		const c0 = Math.floor(e.x), c1 = Math.floor(e.x + ew - 1 + 0.999);
+		const r0 = Math.floor(e.y), r1 = Math.floor(e.y + eh - 1 + 0.999);
+		for (let r = r0; r <= r1; r++) {
+			for (let c = c0; c <= c1; c++) if (!isLiquidAt(r, c)) return false;
+		}
+		return true;
 	}
 
 	// 正面（カーディナル1方向）へ breathCells セルぶん炎を吐く。
