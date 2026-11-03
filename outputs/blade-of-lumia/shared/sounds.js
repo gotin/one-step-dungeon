@@ -508,6 +508,19 @@ export function playSound(kind) {
 		tone(ctx, now + 0.30, 420, 0.05, 'sine',     0.035);
 		tone(ctx, now + 0.42, 320, 0.06, 'sine',     0.03);
 	}
+	// 潮が引く「サァァ…」（キュー94：潮の満ち引きの部屋で砂州が現れる）＝高い所から下がる細い波音
+	if (kind === 'tideOut') {
+		tone(ctx, now,        700, 0.10, 'sine',     0.03);
+		tone(ctx, now + 0.08, 560, 0.12, 'sine',     0.03);
+		tone(ctx, now + 0.18, 440, 0.16, 'triangle', 0.025);
+	}
+	// 潮が満ちる予告「ザザッ、ザザッ」（キュー94：引きの最後＝もうすぐ砂州が沈む）＝低い波が2度寄せる
+	if (kind === 'tideWarn') {
+		tone(ctx, now,        160, 0.10, 'triangle', 0.06);
+		tone(ctx, now + 0.06, 240, 0.08, 'sine',     0.04);
+		tone(ctx, now + 0.26, 160, 0.10, 'triangle', 0.06);
+		tone(ctx, now + 0.32, 240, 0.08, 'sine',     0.04);
+	}
 	// アイテム取得
 	if (kind === 'item') {
 		tone(ctx, now,        660, 0.07, 'sine', 0.05);

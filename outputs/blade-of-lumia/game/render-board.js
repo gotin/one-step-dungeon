@@ -191,6 +191,8 @@ export function createRenderBoard(deps) {
 				// Phase 9-6 深洋O: 潮ゲート。閉（満潮）＝水の背景／開（引き潮）＝床。
 				// 実際の水スプライトは addCellSprite が閉時のみ描く（GATE と同じ構造）。
 				if (!ss.openGates.has(posKey)) cellEl.classList.add('water');
+				// キュー94: 潮の満ち引きの予告（引きの最後＝もうすぐ沈む砂州が波打つ・game/tide.js）
+				else if (ss.tideWarn && stageData.tideCycle) cellEl.classList.add('tide-rising');
 				applyBg(); return;
 			case TILE.DOOR:
 				cellEl.classList.add('door');

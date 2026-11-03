@@ -881,6 +881,27 @@
     background: #5a1408;
 }
 
+/* 潮の満ち引きの予告（キュー94・game/tide.js）＝引きの最後に、もうすぐ沈む砂州へ青緑の波が寄せては返す。
+   床の絵（bgTile）の上に重ねる半透明の層だけ＝下の砂は見えたまま（まだ歩ける）。 */
+.cell.tide-rising {
+    position: relative;
+}
+.cell.tide-rising::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background: linear-gradient(90deg, rgba(40, 150, 160, 0.25) 0%, rgba(40, 150, 160, 0.8) 50%, rgba(40, 150, 160, 0.25) 100%);
+    box-shadow: inset 0 0 0 2px rgba(150, 230, 230, 0.55);
+    background-size: 200% 100%;
+    animation: tide-rising-wave 0.36s linear infinite;
+}
+@keyframes tide-rising-wave {
+    0%   { background-position: 100% 0; opacity: 0.5; }
+    50%  { opacity: 0.95; }
+    100% { background-position: -100% 0; opacity: 0.5; }
+}
+
 .cell.gate {
     background: #1a2c40;
 }

@@ -30,6 +30,7 @@ import {
 // ── 通行可否判定・条件評価（Phase 0-2 Step 2: passable.js / conditions.js へ切り出し）──
 import { createPassable, STATEFUL_TILES, statefulTileClosed, FLYABLE_OVER } from './passable.js';
 import { createConditions } from './conditions.js';
+import { createTide } from './tide.js';
 // 占有範囲（AABB）の当たり判定＝大型敵（2×2）を取りこぼさないための単一の真実。
 // （占有タイルで敵を探す判定は projectile.js の置き炎へ移した＝2026-08-31）
 import { toTileIndex } from './hitbox.js';
@@ -568,6 +569,8 @@ function enterStage(lk, sk, pRow, pCol) {
 
 	// 解決済み石パズルのゲートを再入時に開く
 	checkStoneOnSwitch();
+	// キュー94: 潮の満ち引きの部屋は入るたびに満ちから始める（game/tide.js）
+	fx.resetTide();
 
 	updateBoardScale();
 	fx.renderBoard();
@@ -1014,6 +1017,7 @@ const { checkStoneOnSwitch, evaluateConditions, refreshGates } = createCondition
 		crashSoar: _ai.crashSoar,
 		noticeEnemy: _ai.noticeEnemy,
 		slumberEnemies: _ai.slumberEnemies,
+		sinkEnemiesOnCells: _ai.sinkEnemiesOnCells,
 		getMirages: _ai.getMirages,
 		destroyMirage: _ai.destroyMirage,
 		clearMirages: _ai.clearMirages,
@@ -1264,6 +1268,23 @@ const { checkStoneOnSwitch, evaluateConditions, refreshGates } = createCondition
 		startEnding: _boss.startEnding,
 		checkPendingTriforce: _boss.checkPendingTriforce,
 		syncPendingTriforce: _boss.syncPendingTriforce,
+	});
+}
+
+// ── 潮の満ち引き（キュー94・game/tide.js）──────────────────────────
+{
+	const _tide = createTide({
+		...base,
+		getDebugMode:       () => debugMode,
+		sinkEnemiesOnCells: (cells, now) => fx.sinkEnemiesOnCells(cells, now),
+		takeDamage:         (amt, opts) => fx.takeDamage(amt, opts),
+		renderBoard:        () => fx.renderBoard(),
+		renderChars:        () => fx.renderChars(),
+	});
+	install({
+		resetTide: _tide.resetTide,
+		tickTide: _tide.tickTide,
+		getTideState: _tide.getTideState,
 	});
 }
 
@@ -1777,6 +1798,7 @@ function gameTick() {
 	fx.tickCharge();        // チャージゲージ更新（剣ビーム・Phase 3-1）
 	fx.enemyTick();
 	fx.syncEnemyButtons();   // 重しの敵（毒沼ヒル）がボタンに乗った／降りた＝敵が動いた直後に決め直す（キュー93）
+	fx.tickTide();           // 潮の満ち引き（キュー94）＝敵が動いた後に満ちる＝この tick で砂州に乗った敵も呑む
 	fx.projectileTick();
 	fx.bombTick();
 	fx.flameTick();          // 置いた炎の寿命と「踏んだ敵を焼く」判定（2026-08-31）
@@ -2584,6 +2606,8 @@ export function getStageStateSnapshot() {
 		// キュー88: 茂み・怨念のもやが消えたセル（剣／ロウソク）と、ロウソクの合図。
 		cutBushes:     [...(ss.cutBushes ?? [])],
 		bushBurned:    !!ss.bushBurned,
+		// キュー94: 潮の満ち引き（tideCycle の部屋だけ・他は null）
+		tide:          fx.getTideState(),
 	};
 }
 

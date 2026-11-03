@@ -2907,6 +2907,27 @@ export function createEnemyAi(deps) {
 		applySinkVec(e);
 		playSound('sink');
 	}
+	// キュー94（D3・潮の満ち引き＝game/tide.js）：満ちた潮ゲートの上に体が掛かっていた雑魚は沈んで倒れる
+	// ＝突進で水へ突っ込んだとき（dashPlungesAt）と同じ「沈むのは水と溶岩だけ」の延長。半歩でも掛かっていれば
+	// 沈む（突進の沈みと同じ＝体の一部が水に呑まれた）。ボスと飛ぶ・泳ぐ敵（e.move）は対象外。
+	function sinkEnemiesOnCells(cellSet, now = gameNow()) {
+		let n = 0;
+		for (const e of getEnemies()) {
+			const meta = ENEMY_META[e.type];
+			if (!meta || meta.isBoss || e.move || e.hp <= 0 || e._sinkUntil != null) continue;
+			const ew = e.w ?? 1, eh = e.h ?? 1;
+			const c0 = Math.floor(e.x), c1 = Math.floor(e.x + ew - 1 + 0.999);
+			const r0 = Math.floor(e.y), r1 = Math.floor(e.y + eh - 1 + 0.999);
+			let hit = false;
+			for (let r = r0; r <= r1 && !hit; r++) for (let c = c0; c <= c1; c++) if (cellSet.has(`${r},${c}`)) { hit = true; break; }
+			if (!hit) continue;
+			// 眠って泥に沈んでいた（hidden の burrow）なら一度出してから沈める＝絵が沈みに替わる
+			if (e._slumberUntil != null) { e._slumberUntil = null; setEnemyHidden(e, false, 'burrow'); }
+			startSink(e, meta, [0, 0], now);
+			n++;
+		}
+		return n;
+	}
 	function applySinkVec(e) {
 		const el = getCharLayerEl()?.ownerDocument?.getElementById(`char-enemy-${e.id}`);
 		if (!el || !e._sinkVec) return;
@@ -7171,6 +7192,7 @@ export function createEnemyAi(deps) {
 	return {
 		enemyTick,
 		enemyChase,
+		sinkEnemiesOnCells,    // キュー94: 満ちた潮に呑まれた雑魚を沈める（game/tide.js）
 		resolveEnemySpeed,     // Phase 9-6: 地形別速度（両生敵）のテスト用
 		// Phase 8-4 (4) 層1: フェーズで差し替わる表の解決（テスト用・boss.js は書くだけ）
 		resolveAttackList,
