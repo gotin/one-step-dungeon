@@ -206,8 +206,9 @@ test.describe('D6 ルピー喰いの檻 ③ 実機', () => {
 		await bomb(page);
 		expect((await ss(page)).brokenWalls, '爆弾で扉が開かない').toContain(DOOR);
 		expect(await eaters(page), '扉の内側の σ が爆風で倒れない').toEqual([]);
-		const r0 = await rupees(page);
+		// σ の落とし物（35% の乱数・ルピーもある）は倒れた (4,8) に落ちて通り道で拾う＝宝箱の直前で数える
 		await walk(page, 'left', 16);   // (4,10) → (4,2)
+		const r0 = await rupees(page);
 		await walk(page, 'up', 2);      // → (3,2)＝宝箱
 		expect((await ss(page)).openedChests, '宝箱が開かない').toContain(CHEST);
 		expect(await rupees(page), 'ルピーが 30 増えない').toBe(r0 + 30);
