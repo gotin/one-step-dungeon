@@ -190,6 +190,9 @@ test.describe('キュー60 – マップの「追う」指定', () => {
 
   // field 5,12（プレイメモの画面）＝C×2（追いかけ専用＝一覧に出ない）＋ F (4,7)（さまよう）。
   test('⑪ エディタ：一覧はさまよう敵だけ・配置のチェックで保存・部屋をオンにすると灰色で押せない', async ({ page }) => {
+    // 保存は alert を出す。ハンドラ無しだと Playwright の自動 dismiss がテスト終了と競り、
+    // 負荷時に「Page.handleJavaScriptDialog: session closed」で落ちる（PLAN 99）＝明示で閉じる
+    page.on('dialog', (d) => d.dismiss());
     const map = JSON.parse(readFileSync(new URL('../work/blade-of-lumia.json', import.meta.url), 'utf8'));
     await page.goto('/blade-of-lumia/editor/');
     await page.evaluate((json) => localStorage.setItem('bladeOfLumiaMapData', json), JSON.stringify(map));

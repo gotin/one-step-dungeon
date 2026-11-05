@@ -23,7 +23,7 @@
 import { test, expect } from '@playwright/test';
 import { readFileSync } from 'fs';
 import { fileURLToPath } from 'url';
-import { waitForBoard } from './helpers.js';
+import { waitForBoard, freezeGameLoop, expectLoopFrozen } from './helpers.js';
 import { TILE } from '../shared/tiles.js';
 import { ENEMY_META } from '../shared/enemies.js';
 import { startsAlert } from '../shared/enemy-alert.js';
@@ -125,7 +125,10 @@ function previewUrl(row, col) {
 	return `${GAME}?${p.toString()}`;
 }
 // debug を切る（fromEditor の既定は「無敵・すり抜け」＝すり抜けたままだと水も門も敵も通れてしまう）
+// 実時間ループは起動前に差し止める（freezeGameLoop）＝起動後の pause() では遅く、並列負荷が高いと
+// 止める前にヒルが数 tick 這ってボタンに乗り「入った瞬間は門が閉じている」前提が崩れる（PLAN 99）。
 async function boot(page, row = 4, col = 10, { patch } = {}) {
+	await freezeGameLoop(page);
 	if (patch) {
 		await page.route('**/work/blade-of-lumia.json', async (route) => {
 			const json = structuredClone(map);
@@ -136,6 +139,7 @@ async function boot(page, row = 4, col = 10, { patch } = {}) {
 	await page.goto(previewUrl(row, col));
 	await waitForBoard(page);
 	await page.waitForFunction(() => window.__game.getEnemies().length === 1);
+	await expectLoopFrozen(page);
 	await page.keyboard.press('g');
 	await page.evaluate(() => window.__game.pause());
 	await page.evaluate(() => window.__game.step(2));
