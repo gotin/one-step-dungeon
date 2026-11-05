@@ -138,15 +138,21 @@ test.describe('D8 戸口の盾騎士 ② 持ち場', () => {
 		expect(r.seen, '騎士が持ち場を離れた').toEqual([r.knight]);
 	});
 
-	test('対照：持ち場を外すと、近くに立った勇者へ戸口から出てくる', async ({ page }) => {
+	test('対照：持ち場を外すと、近くに立った勇者の前で戸口から動き出す', async ({ page }) => {
 		await boot(page, 8, 5, { noHold: true });
-		const r = await page.evaluate((walkSrc) => {
-			const g = window.__game; const walk = eval(walkSrc); let left = false;
-			walk(g, 6, 9, true);
-			for (let i = 0; i < 120 && !left; i++) { g.step(1); const e = g.getEnemies()[0]; if (e.y > 3.01) left = true; }
-			return left;
-		}, WALK);
-		expect(r, '持ち場を外しても騎士が戸口から出てこない＝番人に歯が無い').toBe(true);
+		// ⚠️ 判定は「(3,9) 以外の位置に居たことがある」。旧版は「戸口の外（y>3.01）へ出る」で、勇者を
+		//   (6,9) に立たせていた＝持ち場を外した騎士は地図の間をさまよい（roam・気づく距離 4）、遠い北寄りの
+		//   マスで気づかないまま 120 tick を過ぎることがあった（2026-11-04・キュー98）。かといって戸口の
+		//   真下 (4,9) では、戸口に立ったまま剣で斬ってくる＝「出る」は起きない。動き出すこと自体が
+		//   持ち場の有無の差（持ち場ありは 120 tick ずっと (3,9)＝上のテスト）なので、それを見る。
+		const r = await page.evaluate(([walkSrc, fr, fc, knight]) => {
+			const g = window.__game; const walk = eval(walkSrc); const seen = new Set();
+			walk(g, fr, fc, true);
+			for (let i = 0; i < 120; i++) { g.step(1); const e = g.getEnemies()[0]; seen.add(`${e.y},${e.x}`); }
+			seen.delete(knight);
+			return [...seen];
+		}, [WALK, ...parse(FRONT), KNIGHT]);
+		expect(r.length, '持ち場を外しても騎士が戸口から動かない＝番人に歯が無い').toBeGreaterThan(0);
 	});
 });
 
