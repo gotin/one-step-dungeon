@@ -639,6 +639,26 @@ export function createProjectile(deps) {
 		return true;
 	}
 
+	// 壊せる壁1枚を爆弾以外の力で壊す（キュー95・D6 `0,1`＝突進猪が頭からぶつかった）。
+	// 壊れたら true。爆風（explodeAt）と同じ状態（brokenWalls）に書く＝壊れた後の通行・描画・
+	// セーブは爆弾で壊したときと1つも変わらない。見た目は岩の土煙（'rock'）を壁の1マスにだけ出す。
+	function breakWallAt(r, c, msg) {
+		const sd = getStageData();
+		if (sd?.tiles[r]?.[c] !== TILE.BREAKABLE_WALL) return false;
+		const ss = getSS(getCurrentLayer(), getStageKey());
+		const pk = `${r},${c}`;
+		if (ss.brokenWalls.has(pk)) return false;
+		ss.brokenWalls.add(pk);
+		evaluateConditions();
+		playSound('bombExplosion');
+		renderBoard(); renderChars();
+		showExplosionEffect(r, c, 'rock', 1);
+		showBlastCells([{ r, c }], 'rock');
+		if (msg) pulse(msg, 1800);
+		saveGame();
+		return true;
+	}
+
 	// ── 投擲物ループ（毎 tick 呼ぶ） ─────────────────────────
 	function projectileTick() {
 		for (const proj of [..._projectiles]) {
@@ -1365,6 +1385,8 @@ export function createProjectile(deps) {
 		// 燃え広がる茂み（キュー93）
 		spreadFireFrom,
 		igniteBushAt,
+		// 突進猪が壊せる壁を砕く（キュー95）
+		breakWallAt,
 		flushFireSpread,
 		getFireSpread,
 	};

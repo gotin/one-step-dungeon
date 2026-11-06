@@ -87,6 +87,8 @@ export function createEnemyAi(deps) {
 		killEnemy,
 		// キュー95: 呪い火 ψ に接した茂みに火を点ける（projectile.js igniteBushAt）
 		igniteBush,
+		// キュー95: 突進猪が頭からぶつかった壊せる壁を砕く（projectile.js breakWallAt）
+		breakWall,
 	} = deps;
 
 	// ── 速度の解決（Phase 9-6）─────────────────────────────────
@@ -3016,6 +3018,20 @@ export function createEnemyAi(deps) {
 				return true;
 			}
 			if (outcome === 'wall') {
+				// キュー95（D6 `0,1`）: 突進猪（dash.breaksWalls）は、ぶつかった先の壊せる壁を砕く。
+				// 砕いても頭を打ったことに変わりはない＝下の気絶はそのまま（壁の手前で止まる）。
+				// 判定するセルは dashPlungesAt と同じ丸め（半マスの位置は2セルにまたがる）。
+				if (cfg.breaksWalls && breakWall) {
+					const sd = getStageData();
+					const ny = e.y + sy * MOVE_STEP, nx = e.x + sx * MOVE_STEP;
+					const c0 = Math.floor(nx), c1 = Math.floor(nx + ew - 1 + 0.999);
+					const r0 = Math.floor(ny), r1 = Math.floor(ny + eh - 1 + 0.999);
+					for (let r = r0; r <= r1; r++) {
+						for (let c = c0; c <= c1; c++) {
+							if (sd?.tiles[r]?.[c] === TILE.BREAKABLE_WALL) breakWall(r, c);
+						}
+					}
+				}
 				// 気絶＝ブーメランのスタンと同じ窓（enemyTick が先頭で全行動を止める）。
 				e.stunUntil = now + stunMs;
 				showDashStun(e, stunMs);   // 印の長さ＝気絶の長さ

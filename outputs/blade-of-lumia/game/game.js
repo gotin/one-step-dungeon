@@ -996,6 +996,8 @@ const { checkStoneOnSwitch, evaluateConditions, refreshGates } = createCondition
 		killEnemy:             (e) => fx.killEnemy(e),
 		// キュー95: 呪い火 ψ に縦横で接した茂みは燃える（enemy-ai.js scorchAround）
 		igniteBush:            (r, c) => _proj.igniteBushAt(r, c, '{{bush}} 呪い火が 茂みに 燃え移った！'),
+		// キュー95: 突進猪（dash.breaksWalls）が頭からぶつかった壊せる壁は砕ける（enemy-ai.js tickDash）
+		breakWall:             (r, c) => _proj.breakWallAt(r, c, '猪の 突進が 壊せる壁を 砕いた！'),
 	});
 
 	// factory が作った関数を置き場 fx へ入れる
