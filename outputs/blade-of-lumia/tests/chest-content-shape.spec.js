@@ -191,8 +191,10 @@ test.describe('Blade of Lumia – 宝箱データの形式（chestContents）', 
 // ── エンジン側の受け口（データを直しても、また同じ指定をされたら弾く）─────────
 const GAME = '/blade-of-lumia/game/';
 // ユーザーが報告した部屋は dungeon_7 2,4 だったが、2026-10-04（キュー39）に「空の術士の浮島」へ作り替えて
-// 宝箱を撤去した∴同じ形（四角い広間・宝箱 (2,5)・ルピー×5・敵なし）の写しの元 dungeon_6 2,4 で測る。
-const RUPEE_ROOM = { layer: 'dungeon_6', stage: '2,4', chest: { r: 2, c: 5 }, value: 5 };
+// 宝箱を撤去した∴同じ形（四角い広間・宝箱 (2,5)・ルピー×5・敵なし）の写しの元 dungeon_6 2,4 で測っていたが、
+// 2,4 も 2026-11-06（キュー95 の4室目）に作り替えた∴同じ形の dungeon_6 4,4 で測る。
+// ⚠️ 4,4 もキュー95 の残り（最後から2番目）＝作り替えるときはこの部屋を移すこと（chest-reward-icon.spec.js も同じ）。
+const RUPEE_ROOM = { layer: 'dungeon_6', stage: '4,4', chest: { r: 2, c: 5 }, value: 5 };
 
 /** n タイル歩く（1 タイル = movePlayer 2回・MOVE_STEP 0.5）。 */
 async function walkTiles(page, dir, tiles = 1) {

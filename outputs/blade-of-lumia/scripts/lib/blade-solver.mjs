@@ -102,7 +102,7 @@ export function makeSolver(tiles, bg, linkSpec, breakDefs, litInit,
     if (ch === TILE.GATE_RED) redGateCells.push(`${r},${c}`);
     if (ch === TILE.GATE_BLUE) blueGateCells.push(`${r},${c}`);
     if (ch === TILE.SWITCH) toggleCells.push(`${r},${c}`);
-    if (ch === TILE.STONE) stoneKeys.push(`${r},${c}`);
+    if (ch === TILE.STONE || ch === TILE.BURR) stoneKeys.push(`${r},${c}`);
     if (ch === TILE.BUTTON) buttons.push(`${r},${c}`);
     if (ch === TILE.GATE) gatesT.push(`${r},${c}`);
     if (ch === TILE.BREAKABLE_WALL) breakCells.push(`${r},${c}`);
@@ -120,6 +120,9 @@ export function makeSolver(tiles, bg, linkSpec, breakDefs, litInit,
     return closing.some((g) => g === playerCell || stones.includes(g));
   };
   if (toggleCells.length > 6) throw new Error('Y が多すぎる（ビットマスクの上限）');
+  // キュー95：大いが栗 '¤' の石番号（手では押せない・爆風で止まるまで転がる）。
+  const isBurr = stoneKeys.map((k) => { const [r, c] = k.split(',').map(Number); return tiles[r][c] === TILE.BURR; });
+  const hasBurr = isBurr.some(Boolean);
 
   const initStones = stoneKeys.map((k) => k);
   // brokenWalls / litTorches はビットマスク。litInit（初期点灯）は最初から立てる。
@@ -204,7 +207,7 @@ export function makeSolver(tiles, bg, linkSpec, breakDefs, litInit,
       const bi = breakCells.indexOf(`${r},${c}`);
       return bi >= 0 && (broken & (1 << bi)) !== 0;          // 壊れていれば床
     }
-    if (ch === TILE.STONE) {
+    if (ch === TILE.STONE || ch === TILE.BURR) {
       if (stones.includes(`${r},${c}`)) return false;
       const idx = stoneKeys.indexOf(`${r},${c}`);
       if (idx >= 0 && stones[idx] !== `${r},${c}`) return true;
@@ -234,7 +237,7 @@ export function makeSolver(tiles, bg, linkSpec, breakDefs, litInit,
       const bi = breakCells.indexOf(`${r},${c}`);
       return bi >= 0 && (broken & (1 << bi)) !== 0;
     }
-    if (ch === TILE.STONE && stones.includes(`${r},${c}`)) return false;
+    if ((ch === TILE.STONE || ch === TILE.BURR) && stones.includes(`${r},${c}`)) return false;
     return true;
   };
   // はしごで渡れる「隙間」＝bgTiles 水（沈んだ都）・tiles 層の水 '~'・pitCrossable なら tiles 層の穴 'x'。
@@ -310,13 +313,49 @@ export function makeSolver(tiles, bg, linkSpec, breakDefs, litInit,
     }
 
     // 爆弾: プレイヤーのセルに置き、AOE 半径2円内の未破壊 '!'（breakDef<=3）を壊す。
-    if (!noTools && breakCells.length) {
+    // キュー95：同じ1発で大いが栗も転がす（game/projectile.js rollBurrsFromBlast と同じ規則＝
+    // 爆心と同じ行/列・距離1〜2の栗だけ・遠い方から・止まるまで・外周/宝箱/色スイッチ/溶岩/
+    // 別の石/勇者のセルには入らない・ロック後は動かない）。敵は数えない（上界）。
+    if (!noTools && (breakCells.length || hasBurr)) {
       let nb = broken;
       breakCells.forEach((cell, i) => {
         const [br, bc] = cell.split(',').map(Number);
         if (Math.sqrt((br - pr) ** 2 + (bc - pc) ** 2) <= 2 && (breakDefs[cell] ?? 1) <= 3) nb |= (1 << i);
       });
-      if (nb !== broken) out.push(enc(pr, pc, stones, mask, nb, lit));
+      let ns = stones;
+      if (hasBurr && !locked) {
+        ns = stones.slice();
+        for (const [dr, dc] of DIRS) {
+          const onArm = [];
+          ns.forEach((s, i) => {
+            if (!isBurr[i] || s.startsWith('s')) return;
+            const [sr, sc] = s.split(',').map(Number);
+            const ddr = sr - pr, ddc = sc - pc;
+            const ok = dr !== 0 ? (ddc === 0 && Math.sign(ddr) === dr && Math.abs(ddr) <= 2)
+              : (ddr === 0 && Math.sign(ddc) === dc && Math.abs(ddc) <= 2);
+            if (ok) onArm.push([i, Math.abs(ddr) + Math.abs(ddc)]);
+          });
+          onArm.sort((a, b) => b[1] - a[1]);
+          for (const [i] of onArm) {
+            let [sr, sc] = ns[i].split(',').map(Number);
+            // 自分を置き場の外（'x'）にした石の並び＝石番号の位置を崩さない（passableFor が番号で引く）。
+            const others = ns.map((v, j) => (j === i ? 'x' : v));
+            const enter = (tr, tc) => {
+              if (tr <= 0 || tc <= 0 || tr >= ROWS - 1 || tc >= COLS - 1) return false;
+              const t = tiles[tr][tc];
+              if (t === TILE.CHEST || t === TILE.SWITCH_RED || t === TILE.SWITCH_BLUE || t === TILE.LAVA) return false;
+              if (tr === pr && tc === pc) return false;
+              if (others.includes(`${tr},${tc}`)) return false;
+              // 通行判定は石の規則（forStone）＝茂み・閉じた門・宝箱で止まる。
+              // 自分の元セル（栗が動いた後は床）は others で自分を外して判定する。
+              return passableFor(tr, tc, others, open, nb, { forStone: true }, color);
+            };
+            while (enter(sr + dr, sc + dc)) { sr += dr; sc += dc; }
+            ns[i] = `${sr},${sc}`;
+          }
+        }
+      }
+      if (nb !== broken || ns.join(';') !== stones.join(';')) out.push(enc(pr, pc, ns, mask, nb, lit));
     }
 
     // ブーメラン: 4方向へ飛ばし、通った直線（壁・未破壊 '!' まで）に**点いた 'H' が1本でも
@@ -362,6 +401,7 @@ export function makeSolver(tiles, bg, linkSpec, breakDefs, litInit,
       const si = stones.indexOf(`${nr},${nc}`);
       if (si >= 0) {
         if (noPush) continue;   // 対照実験＝石は壁のまま
+        if (isBurr[si]) continue;   // キュー95：大いが栗は手では押せない（とげ）
         if (locked) continue;   // ロック後は石を押せない（石は壁と同じ通行不可のまま）
         let sr = nr + dr, sc = nc + dc;
         // 溶岩へ押し込む＝沈む（滑らない・押した後プレイヤーは石の元セルへ入る＝下地の規則は同じ）。

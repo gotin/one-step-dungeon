@@ -71,6 +71,7 @@ export const UI_ICON = {
 	bush:       { spr: 'bush',       pal: 'bush'       },
 	torch:      { spr: 'torch',      pal: 'torch'      },
 	chest:      { spr: 'chest',      pal: 'chest'      },
+	burr:       { spr: 'burr',       pal: 'burr'       },   // 大いが栗（キュー95）
 	doorOpen:   { spr: 'doorOpen',   pal: 'door'       },
 };
 

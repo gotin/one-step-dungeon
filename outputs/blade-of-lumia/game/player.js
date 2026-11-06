@@ -2,9 +2,9 @@
 // createPlayer(deps) factory で生成する。
 // movePlayer / handleTileEvent を提供。
 
-import { TILE, TILE_META, FLOOR_STACK_TILES } from '../shared/tiles.js';
+import { TILE, TILE_META, FLOOR_STACK_TILES, STONE_TILES } from '../shared/tiles.js';
 import { statefulTileClosed, lavaCooledAt, SUNK_ROW } from './passable.js';
-import { makeStoneEl } from './render-chars.js';
+import { makeStoneEl, stoneSpriteOf } from './render-chars.js';
 import { ITEM_META, EQUIP_META, SWORD_TIERS, BASE_ATK, ARMOR_TIERS, BASE_DEF, SHIELD_TIERS, BOOMERANG_TIERS, HEART_PIECES_PER_HEART, EMBLEMS_FOR_AURA, ITEM_STACK_MAX, ownsItem, addStack, stackCount, isStackFull } from '../shared/items.js';
 import { NPC_SPRITE_MAP } from '../shared/npcs.js';
 import { ENEMY_META } from '../shared/enemies.js';
@@ -100,6 +100,8 @@ export function createPlayer(deps) {
 	// 早期 return する＝走行中の新しいアニメ要素を stale な後始末が消してしまい
 	// 「押しっぱなしでアニメが飛ぶ」現象を防ぐ。
 	let _stonePushGen = 0;
+	// キュー95：大いが栗を押そうとしたときの一言の間引き（押しっぱなしで毎 tick 言わない）。
+	let _lastBurrPulse = 0;
 
 	// ── 剣ティア装備（Phase 7-1）────────────────────────────────
 	// tierIndex: SWORD_TIERS のインデックス（0..3）
@@ -585,7 +587,7 @@ export function createPlayer(deps) {
 				}
 				for (const [oR, oC] of candidates) {
 					const tR = oR + pdr, tC = oC + pdc;   // 石がある想定セル
-					if (stageData.tiles[tR]?.[tC] === TILE.STONE && !ss.stonePositions?.[`${tR},${tC}`]) {
+					if (STONE_TILES.has(stageData.tiles[tR]?.[tC]) && !ss.stonePositions?.[`${tR},${tC}`]) {
 						stoneKey = `${tR},${tC}`;
 					} else {
 						for (const [k, st] of Object.entries(ss.stonePositions ?? {})) {
@@ -598,6 +600,19 @@ export function createPlayer(deps) {
 		}
 		const nextR = pr + pdr;
 		const nextC = pc + pdc;
+
+		// キュー95：大いが栗（元セルのタイルが '¤'）は全身とげ＝手では押せない（爆風でだけ転がる）。
+		// 石として見つけた上で押さずに止まる＝通常移動へ落とさない（落とすと石のセルへ歩こうとして
+		// 通行判定で止まるだけ＝何が起きたか分からない）。言うのは冷却時間おき＝押しっぱなしで連打しない。
+		if (stoneKey !== null && stageData.tiles[Number(stoneKey.split(',')[0])]?.[Number(stoneKey.split(',')[1])] === TILE.BURR) {
+			const nowB = Date.now();
+			if (nowB - _lastBurrPulse > 1600) {
+				_lastBurrPulse = nowB;
+				pulse('{{burr}} とげが 痛くて 押せない…（爆風なら 転がりそうだ）', 1600);
+			}
+			updatePlayerCharEl();
+			return;
+		}
 
 		if (stoneKey !== null) {
 			// 石を押す：クールダウンチェック（実時間）
@@ -648,7 +663,7 @@ export function createPlayer(deps) {
 			// 石は「押した時点で通行可だったセル」にしか居られない∴後から通行不可になり得るのは
 			// 状態で閉じるタイルだけ＝statefulTileClosed の判定で必要十分。
 			const underPlayer = stageData.tiles[nextR]?.[nextC];
-			const playerDestOk = underPlayer === TILE.STONE
+			const playerDestOk = STONE_TILES.has(underPlayer)
 				|| !statefulTileClosed(underPlayer, `${nextR},${nextC}`, ss);
 			if (stoneDestOk && playerDestOk) {
 				if (!ss.stonePositions) ss.stonePositions = {};
@@ -690,6 +705,7 @@ export function createPlayer(deps) {
 					if (otherKey === stoneKey || otherSt.sunk) continue;   // 沈んだ石は描かない（冷えた溶岩は盤面が描く）
 					charLayerEl.appendChild(makeStoneEl(otherKey, otherSt.r, otherSt.c, _animCellPx, {
 						onSwitch: stageData.tiles[otherSt.r]?.[otherSt.c] === TILE.BUTTON,
+						sprite:   stoneSpriteOf(stageData, otherKey),   // 同じ部屋の大いが栗は栗のまま（キュー95）
 					}));
 				}
 
@@ -932,7 +948,17 @@ export function createPlayer(deps) {
 				return `${content.name ?? ITEM_META[content.item]?.name ?? content.item} は もう持てない…`;
 			}
 			// 渡せない id（未定義／床タイル専用）は「手に入れた！」と嘘をつかない＝空文字。
+			// キュー95：数の付いた宝箱（`count`＝例 爆弾×5）。giveSubItem は初回 1セット・2回目以降 +1 しか
+			// 渡さない∴足りない分を上限まで足す（矢・爆弾だけ＝上限の欄を持つ道具）。
+			const hadBefore = !!player.subItems?.[content.item];
 			if (!giveSubItem(content.item)) return '';
+			if ((content.count ?? 1) > 1 && (content.item === 'bomb' || content.item === 'bow')) {
+				const given = hadBefore ? 1 : (ITEM_META[content.item]?.defaultStack ?? 1);
+				const extra = content.count - given;
+				const cap = content.item === 'bomb' ? (player.maxBombs ?? 8) : (player.maxArrows ?? 8);
+				if (extra > 0) player.subItems[content.item].count = addStack(player.subItems[content.item].count, extra, cap);
+				updateHud();
+			}
 			// 金の装束＝入手の瞬間にオーラの中で姿が変わる演出（game/garb-awakening.js）。効果は文に書かない
 			// （2026-10-17 ユーザー決定「どんな効果があるのかはプレーヤー自身が体感して理解するだけで」）。
 			if (content.item === 'goldGarb') deps.onGoldGarbAwakened?.();

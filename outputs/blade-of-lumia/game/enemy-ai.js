@@ -1654,6 +1654,12 @@ export function createEnemyAi(deps) {
 			}
 		}
 		if (stoneKey === null) return false;               // そこに石はない
+		// キュー95：大いが栗（元セルが '¤'）は全身とげ＝敵も押さない（動くのは爆風だけ）。
+		// 元位置の栗は上の `=== TILE.STONE` で既に外れる＝ここは動いた後の栗（stonePositions）の分。
+		{
+			const [okr, okc] = stoneKey.split(',').map(Number);
+			if (stageData.tiles[okr]?.[okc] === TILE.BURR) return false;
+		}
 
 		// 押し先 (dr,dc)
 		const dr = sr + ndr;
@@ -1667,7 +1673,7 @@ export function createEnemyAi(deps) {
 		// 閉じていたら押せない（石を無視して下のタイルだけ見る＝プレイヤー側と同じ判定・片方だけ
 		// 直すと敵に押させて「閉じた門越しに石を渡す」抜け道が残る）。
 		const underEnemy = stageData.tiles[sr]?.[sc];
-		if (underEnemy !== TILE.STONE && statefulTileClosed(underEnemy, `${sr},${sc}`, ss)) return false;
+		if (underEnemy !== TILE.STONE && underEnemy !== TILE.BURR && statefulTileClosed(underEnemy, `${sr},${sc}`, ss)) return false;
 		// 押し先に別の石・敵・プレイヤーがいないか
 		for (const st of Object.values(ss.stonePositions)) {
 			if (st.r === dr && st.c === dc) return false;

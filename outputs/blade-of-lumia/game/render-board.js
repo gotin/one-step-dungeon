@@ -456,10 +456,11 @@ export function createRenderBoard(deps) {
 			}
 			return;
 		}
-		if (tile === TILE.STONE) {
+		if (tile === TILE.STONE || tile === TILE.BURR) {
 			const _ssSt = getSS(currentLayer, stageKey);
 			if (_ssSt.stonePositions?.[posKey]) return;
-			const cv = makeSprite('block', 'block', false);
+			const _stSpr = tile === TILE.BURR ? 'burr' : 'block';   // 大いが栗（キュー95）
+			const cv = makeSprite(_stSpr, _stSpr, false);
 			putCellSprite(cellEl, cv, 'obj-sprite');
 			return;
 		}

@@ -72,6 +72,11 @@ export const TILE = {
 	KEY:     'K',  // 鍵アイテム
 	CHEST:   'B',  // 宝箱
 	STONE:   '*',  // 石（押せる）
+	// キュー95（2026-11-06・D6 `2,4`）：大いが栗＝聖樹から落ちた巨大な栗の実。全身とげ＝手では押せない／
+	// 丸い＝爆弾の爆風で止まるまで転がる／重い＝踏み板を押せる。普通の石 '*' は角があって床に座っている
+	// ＝爆風では動かない（全体のルールにすると既存の石の部屋が崩れる＝PLAN キュー95 4室目の監査）。
+	// 動いた後の位置は石と同じ `ss.stonePositions`（元セルのキー）に載る＝ボタン・ロック・描画の読み手を共有する。
+	BURR:    '¤',
 
 	// ── Blade of Lumia 追加タイル ─────────────────────────────
 	// 壊せる壁・マップ入り口
@@ -242,6 +247,7 @@ export const TILE_META = {
 	[TILE.KEY]:     { label: '鍵',           color: '#a08020', passable: true,  icon: '🗝' },
 	[TILE.CHEST]:   { label: '宝箱',         color: '#806010', passable: true,  icon: '☐' },
 	[TILE.STONE]:   { label: '石',           color: '#506070', passable: false, icon: '●' },
+	[TILE.BURR]:    { label: '大いが栗',     color: '#7a5028', passable: false, icon: '✷' },
 	// Blade of Lumia 追加
 	[TILE.BREAKABLE_WALL]: { label: '壊せる壁',    color: '#3a3028', passable: false, icon: '✦' },
 	[TILE.MAP_ENTER]:      { label: 'マップ入り口', color: '#202840', passable: true,  icon: '◎' },
@@ -359,6 +365,12 @@ export const FLOOR_STACK_TILES = {
 // 接続の検査／会話の検査／エディタの本文欄）はこの集合を見る＝`=== TILE.SIGN` を書かない
 // （書くと石碑だけ読めない・すり抜けられる、が起きる）。
 export const READABLE_SIGN_TILES = new Set([TILE.SIGN, TILE.MONUMENT, TILE.WARP_STONE]);
+
+// ── 「動かせる石」の単一の真実（キュー95・2026-11-06）──
+// 普通の石 '*' と大いが栗 '¤'。どちらも動いた後は `ss.stonePositions` に載り、踏み板を押し、
+// 全部の踏み板に乗れば石のロックが掛かる。違いは動かし方だけ＝'*' は手で押す／'¤' は爆風で転がる
+// （手では押せない・毒沼ヒルも押さない）。石を読むコードは `=== TILE.STONE` でなくこの集合を見る。
+export const STONE_TILES = new Set([TILE.STONE, TILE.BURR]);
 
 // ── 「徒歩では常に立てない」タイルの単一の真実（キュー85 #5・2026-10-19）──
 // 状態に依らず固い物＝壁・水・溶岩・空・穴・木・山・柵・家の壁と屋根・読める立て物・かがり火・NPC。

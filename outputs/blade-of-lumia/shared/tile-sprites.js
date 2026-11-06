@@ -16,6 +16,7 @@ export const TILE_SPRITE_MAP = {
 	[TILE.DOOR]:      { spr: 'door',     pal: 'door'     },
 	[TILE.KEY]:       { spr: 'key',      pal: 'key'      },
 	[TILE.STONE]:     { spr: 'block',    pal: 'block'    },
+	[TILE.BURR]:      { spr: 'burr',     pal: 'burr'     },   // 大いが栗（キュー95）
 	[TILE.CHEST]:     { spr: 'chest',    pal: 'chest'    },
 	[TILE.WATER]:     { spr: 'water',    pal: 'water'    },
 	[TILE.LAVA]:      { spr: 'water',    pal: 'lava'     },  // 溶岩＝water 形状＋lava 赤橙パレット

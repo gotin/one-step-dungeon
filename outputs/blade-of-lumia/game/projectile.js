@@ -1187,6 +1187,10 @@ export function createProjectile(deps) {
 			}
 		}
 
+		// キュー95：爆風は大いが栗 '¤' を転がす（普通の石 '*' は動かない＝全体のルールにしない）。
+		// 岩落とし（breakPower 0＝O 古森の巨人の岩）は爆発ではない∴転がさない。
+		if (breakPower > 0 && rollBurrsFromBlast(r, c, radius, sd, ss)) needRenderBoard = true;
+
 		// プレイヤーダメージは「セルの走査」ではなく中心からの距離で見る
 		// （プレイヤーは半セル位置に立てる＝タイル単位で数えると爆風の縁で1セルずれる）。
 		if (playerDamage > 0) {
@@ -1209,6 +1213,95 @@ export function createProjectile(deps) {
 		// ＝範囲の絵の約束を1つに保つ（爆弾鬼の爆風はプレイヤーの爆弾から学べる、の裏返し）。
 		showBlastCells(cells, effect);
 		saveGame();
+	}
+
+	// ── 大いが栗を爆風で転がす（キュー95・2026-11-06）─────────────────────
+	// 理屈＝全身とげで手では押せない／丸いので爆風で転がる（PLAN キュー95 4室目）。
+	// 規則（ソルバー scripts/lib/blade-solver.mjs の burr 遷移と同じ）：
+	//   ・爆心と**同じ行か列**にあり、距離が 1〜半径（爆弾は 2）の栗だけが動く。斜めの栗は向きが
+	//     決まらない∴動かない（爆風の円には入っていても転がらない）。
+	//   ・爆心から遠ざかる向きへ、**止まるまで転がる**＝次のセルに入れなくなったら止まる。
+	//     入れないセル＝通れないタイル（壁・水・穴・溶岩・閉じた門・茂み…）・宝箱・色スイッチ・
+	//     別の石・勇者・敵・部屋の外周（口をふさいで閉じ込めないため）。踏み板は転がって通り過ぎる
+	//     ＝踏み板の上で止めるには先に止め木（壁・石）が要る。
+	//   ・同じ腕に2つあるときは遠い方から転がす（近い方が遠い方に当たって止まる）。
+	//   ・石のロック（全部の踏み板に石）が掛かった後は動かない（解いた謎を崩さない＝石と同じ）。
+	// 戻り値＝1つでも動いたか（呼び手が盤面を描き直す）。
+	function rollBurrsFromBlast(r, c, radius, sd, ss) {
+		if (ss.stonesLocked) return false;
+		if (!ss.stonePositions) ss.stonePositions = {};
+		const posOf = (k) => ss.stonePositions[k] ?? (() => { const [a, b] = k.split(',').map(Number); return { r: a, c: b }; })();
+		// 部屋の栗（元セルのキー → 今の位置）。沈んだ栗は無い（溶岩の手前で止まる）。
+		const burrs = [];
+		for (let rr = 0; rr < sd.rows; rr++) for (let cc = 0; cc < sd.cols; cc++) {
+			if (sd.tiles[rr][cc] === TILE.BURR) burrs.push(`${rr},${cc}`);
+		}
+		if (!burrs.length) return false;
+		const player = getPlayer();
+		const pR = toTileRow(player.y), pC = toTileCol(player.x);
+		const stoneAt = (tr, tc) => {
+			for (const [k, st] of Object.entries(ss.stonePositions)) if (!st.sunk && st.r === tr && st.c === tc) return k;
+			const t = sd.tiles[tr]?.[tc];
+			if ((t === TILE.STONE || t === TILE.BURR) && !ss.stonePositions[`${tr},${tc}`]) return `${tr},${tc}`;
+			return null;
+		};
+		const canEnter = (tr, tc) => {
+			if (tr <= 0 || tc <= 0 || tr >= sd.rows - 1 || tc >= sd.cols - 1) return false;   // 外周（口）には入らない
+			const t = sd.tiles[tr][tc];
+			if (t === TILE.CHEST || t === TILE.SWITCH_RED || t === TILE.SWITCH_BLUE || t === TILE.LAVA) return false;
+			if (!deps.tilePassable?.(tr, tc)) return false;
+			if (stoneAt(tr, tc) !== null) return false;
+			if (pR === tr && pC === tc) return false;
+			if (getEnemies().some((e) => !e.hidden && enemyOccupiesTile(e, tr, tc))) return false;
+			return true;
+		};
+		const moves = [];
+		for (const [dr, dc] of [[-1, 0], [1, 0], [0, -1], [0, 1]]) {
+			// この腕の上の栗を遠い順に
+			const onArm = burrs.map((k) => ({ k, p: posOf(k) }))
+				.filter(({ p }) => {
+					if (p.sunk) return false;
+					const ddr = p.r - r, ddc = p.c - c;
+					if (dr !== 0) return ddc === 0 && Math.sign(ddr) === dr && Math.abs(ddr) <= radius;
+					return ddr === 0 && Math.sign(ddc) === dc && Math.abs(ddc) <= radius;
+				})
+				.sort((a, b) => (Math.abs(b.p.r - r) + Math.abs(b.p.c - c)) - (Math.abs(a.p.r - r) + Math.abs(a.p.c - c)));
+			for (const { k, p } of onArm) {
+				let tr = p.r, tc = p.c;
+				// 自分のセルは空ける（stoneAt が自分を見つけないように一時的に外へ）
+				const saved = ss.stonePositions[k];
+				ss.stonePositions[k] = { r: -100, c: -100 };
+				while (canEnter(tr + dr, tc + dc)) { tr += dr; tc += dc; }
+				if (tr === p.r && tc === p.c) {
+					if (saved) ss.stonePositions[k] = saved; else delete ss.stonePositions[k];
+					continue;
+				}
+				ss.stonePositions[k] = { r: tr, c: tc };
+				moves.push({ k, from: p, to: { r: tr, c: tc } });
+			}
+		}
+		if (!moves.length) return false;
+		deps.checkStoneOnSwitch?.();
+		evaluateConditions();
+		playSound('move');
+		// 転がる絵＝描き直した後の栗の要素を元の位置へ戻してから滑らせる（renderChars は呼び手が先に呼ぶ）。
+		requestAnimationFrame(() => {
+			const cellPx = getCellPx();
+			for (const { k, from, to } of moves) {
+				const el = document.getElementById(`char-stone-${k.replace(',', '-')}`);
+				if (!el) continue;
+				const cells = Math.abs(to.r - from.r) + Math.abs(to.c - from.c);
+				el.style.transition = 'none';
+				el.style.left = `${from.c * cellPx}px`;
+				el.style.top  = `${from.r * cellPx}px`;
+				void el.offsetLeft;
+				const ms = 120 + cells * 70;
+				el.style.transition = `left ${ms}ms ease-out, top ${ms}ms ease-out`;
+				el.style.left = `${to.c * cellPx}px`;
+				el.style.top  = `${to.r * cellPx}px`;
+			}
+		});
+		return true;
 	}
 
 	function showBlastCells(cells, kind = 'blast') {

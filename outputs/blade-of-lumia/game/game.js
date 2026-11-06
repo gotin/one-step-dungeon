@@ -957,6 +957,9 @@ const { checkStoneOnSwitch, evaluateConditions, refreshGates } = createCondition
 		restoreCarried:     (carried) => fx.restoreCarried(carried),
 		toggleSwitch:       (r, c) => fx.toggleSwitch(r, c),
 		setActiveColor:     (r, c) => fx.setActiveColor(r, c),
+		// キュー95：爆風で大いが栗を転がす（転がる先の通行判定・踏み板の更新）
+		tilePassable:       (r, c) => tilePassable(r, c),
+		checkStoneOnSwitch: () => checkStoneOnSwitch(),
 		// Phase 7-2: 盾は剣振り中・チャージ中はオフ
 		getLastSwordTime:   () => lastSwordTime,
 		getIsCharging:      () => fx.getIsCharging(),

@@ -46,6 +46,7 @@ export const HARD_BLOCKED = new Set([
   TILE.SWITCH_RED,      // '['
   TILE.SWITCH_BLUE,     // ']'
   TILE.STONE,           // '*' (pushable but blocks until pushed)
+  TILE.BURR,            // '¤' (rolls only from a bomb blast — queue 95)
   TILE.BUSH,            // 'u' (until cut)
   TILE.CURSE_MIST,      // 'Ψ' (only the candle clears it — queue 88)
 ]);

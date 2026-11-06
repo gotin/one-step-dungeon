@@ -6,6 +6,8 @@ import { skinName, MOUNTAIN_SKIN_DEFAULT, VEG_SKINS, VEG_SKIN_DEFAULT, FROZEN_WA
 
 export const TILE_PAL = {
 	block:    ['transparent','#0a0a14','#6a7470','#9aa3a0','#b8bfbc','#ffffff'],
+	// 大いが栗（キュー95）1=輪郭 2=とげの影 3=とげ 4=とげの先 5=殻の影 6=殻 7=殻の明 8=実 9=実の照り
+	burr:     ['transparent','#1a0e06','#6a4418','#a8783a','#ecd08a','#5a3410','#84521e','#b07a36','#4a1c08','#d89058'],
 	goal:     ['transparent','#0a0a14','#c09020','#f2c14e','#ffe080','#ffffff'],
 	// 10d-2（2026-09-07・OpenAI 画像 API で生成した木製部分＋自作の石アーチ枠の
 	// ハイブリッド）＝1-8 は生成した鉄帯／木目／ノブの色、9-13 は石の陰影

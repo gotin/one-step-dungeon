@@ -168,17 +168,21 @@ test.describe('Blade of Lumia – dark_tower 2F の爆弾の関門（キュー20
 		expect(measureRoom({ noTools: true, goal: BOMBS }).L,
 			'爆弾なしでは爆弾の山にも辿り着けない＝詰み').not.toBeNull();
 
-		// 世界の爆弾の出どころ＝dungeon_6 の宝箱 1 個だけ、という前提の見張り。
-		// ここが増えて「どこでも補給できる」ようになったら、この山は要らなくなる（設計を見直す）。
-		let sources = 0;
-		for (const layer of Object.values(map.layers)) {
-			for (const st2 of Object.values(layer.stages ?? {})) {
+		// 世界の爆弾の出どころ＝dungeon_6 の宝箱（1回きり）だけ、という前提の見張り。
+		// 塔の手前で補給できる所が増えたら、この山は要らなくなる（設計を見直す）。
+		// 2026-11-06（キュー95 の4室目）：D6 `2,4` に爆弾×5 の宝箱を足した＝D6 の中の補給（鍵の部屋の
+		// 手前の在庫）。宝箱は1回きり∴塔へ持ち込めるのは残りだけ＝山の要否は変わらない。∴数でなく層で見張る。
+		const sources = [];
+		for (const [ln, layer] of Object.entries(map.layers)) {
+			for (const [sk, st2] of Object.entries(layer.stages ?? {})) {
 				for (const cc of Object.values(st2.chestContents ?? {})) {
-					if (cc?.item === 'bomb' || cc?.type === 'bomb') sources++;
+					if (cc?.item === 'bomb' || cc?.type === 'bomb') sources.push(`${ln} ${sk}`);
 				}
 			}
 		}
-		expect(sources, '爆弾を配る宝箱が増減した＝2,1 の山の要否を再設計する').toBe(1);
+		expect(sources.filter((s) => !s.startsWith('dungeon_6 ')),
+			'dungeon_6 の外に爆弾を配る宝箱がある＝2,1 の山の要否を再設計する').toEqual([]);
+		expect(sources.length, '爆弾を配る宝箱が無い').toBeGreaterThan(0);
 	});
 
 	test(`データ：${LAYER} ${GATE_ROOM} の境界の開きは不変（部屋間の接続を動かさない）`, () => {

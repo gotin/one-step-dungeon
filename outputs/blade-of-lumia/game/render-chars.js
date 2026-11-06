@@ -30,12 +30,12 @@ import { SHIELD_TIERS } from '../shared/items.js';
 // 石は 32 ドットに描き直した（10d-1）＝canvas はセル全面。絵の中に透明の余白が
 // あるので見かけは従来（0.7 セル）のまま。ここを 0.7 倍にすると、盤面に置かれた
 // 石（render-board.js の .dot32）より小さい石が動く＝押した瞬間に石が縮む。
-function makeStoneCanvas(cellPx) {
+function makeStoneCanvas(cellPx, sprite = 'block') {
 	const stSize = Math.round(cellPx) + 'px';
 	const cv = document.createElement('canvas');
 	cv.style.cssText = `position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:${stSize};height:${stSize};image-rendering:pixelated;`;
-	const frames = SPRITES['block'];
-	const pal    = PAL['block'];
+	const frames = SPRITES[sprite];
+	const pal    = PAL[sprite];
 	if (frames && pal) {
 		const grid = frames[0];
 		cv.width   = grid[0].length;
@@ -68,18 +68,25 @@ function addStoneLockedMark(div) {
 	div.appendChild(mark);
 }
 
+// 動いた石の絵＝元セルのタイルで決まる（キュー95：大いが栗 '¤' は 'burr'・普通の石 '*' は 'block'）。
+// stonePositions のキーは元セル∴タイルはそこを引けば分かる（動いた先のタイルを見ない）。
+export function stoneSpriteOf(stageData, origKey) {
+	const [r, c] = origKey.split(',').map(Number);
+	return stageData?.tiles?.[r]?.[c] === TILE.BURR ? 'burr' : 'block';
+}
+
 /**
  * 石の要素（.char-abs）を作る。origKey＝石の元の位置（id に使う）／r,c＝今の位置。
  * locked＝ロック済みの印（優先）／onSwitch＝ボタンの上の光。
  */
-export function makeStoneEl(origKey, r, c, cellPx, { onSwitch = false, locked = false } = {}) {
+export function makeStoneEl(origKey, r, c, cellPx, { onSwitch = false, locked = false, sprite = 'block' } = {}) {
 	const div = document.createElement('div');
 	div.className = 'char-abs';
 	div.id = `char-stone-${origKey.replace(',', '-')}`;
 	div.style.left   = `${c * cellPx}px`;
 	div.style.top    = `${r * cellPx}px`;
 	div.style.zIndex = '1';
-	div.appendChild(makeStoneCanvas(cellPx));
+	div.appendChild(makeStoneCanvas(cellPx, sprite));
 	if (locked) addStoneLockedMark(div);
 	else if (onSwitch) addStoneGlow(div);
 	return div;
@@ -498,6 +505,7 @@ export function createRenderChars(deps) {
 				charLayerEl.appendChild(makeStoneEl(origKey, st.r, st.c, cellPxSt, {
 					onSwitch: stageData.tiles[st.r]?.[st.c] === TILE.BUTTON,
 					locked:   !!ss.stonesLocked,
+					sprite:   stoneSpriteOf(stageData, origKey),
 				}));
 			}
 		}

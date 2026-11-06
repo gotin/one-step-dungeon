@@ -44,7 +44,7 @@ const LADDER_OVER = new Set([
 //   - ':' を着地でブロックするとボス戦から逃げた後の再入場が塞がる
 export const STATEFUL_TILES = new Set([
 	TILE.GATE, TILE.TIDE_GATE, TILE.GATE_RED, TILE.GATE_BLUE,
-	TILE.BREAKABLE_WALL, TILE.DOORWAY_LOCKED, TILE.BUSH, TILE.CURSE_MIST, TILE.STONE,
+	TILE.BREAKABLE_WALL, TILE.DOORWAY_LOCKED, TILE.BUSH, TILE.CURSE_MIST, TILE.STONE, TILE.BURR,
 ]);
 
 // 2026-08-02 バグ修正（ユーザー報告「石が閉まってるゲートを通れるし、そのときはプレイヤーも
@@ -88,7 +88,8 @@ export function statefulTileClosed(tile, posKey, ss) {
 		case TILE.BUSH:
 		case TILE.CURSE_MIST:     return !ss?.cutBushes?.has(posKey);   // shared/tiles.js CANDLE_CLEARABLE_TILES
 		// 石は stonePositions に登録された時点で「動かされた」＝元のセルは床。
-		case TILE.STONE:          return !ss?.stonePositions?.[posKey];
+		case TILE.STONE:
+		case TILE.BURR:           return !ss?.stonePositions?.[posKey];   // 大いが栗も石と同じ（キュー95）
 		default: return false;
 	}
 }
