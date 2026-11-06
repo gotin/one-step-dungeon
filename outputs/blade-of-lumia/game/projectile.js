@@ -613,19 +613,30 @@ export function createProjectile(deps) {
 			// キュー93（D8 `2,0`・2026-10-26 ユーザー提案）：火の付いたブーメランが通った茂みは燃え上がり、
 			// つながった茂みへ燃え広がる（spreadFireFrom）＝水の隙間で途切れた導火線を、灯ったかがり火から
 			// 火を運んでつなぎ直す。もやは祓わない（祓うのはロウソクの聖なる火だけ＝キュー88）。
-			if (!bss.cutBushes) bss.cutBushes = new Set();
-			if (!bss.cutBushes.has(bpk)) {
-				bss.cutBushes.add(bpk);
-				bss.bushBurned = true;
-				const spreading = spreadFireFrom(br, bc);
-				playSound('fire');
-				renderBoard(); renderChars();
-				showSpreadFireEffect(br, bc);
-				pulse(spreading > 0 ? '{{bush}} 運んだ火が 茂みに 燃え移った！' : '{{bush}} 茂みが燃え上がった！', 1800);
-				// 燃え広がる間はセーブしない＝燃え尽きたときに fireSpreadTick が1回だけ（playCandle と同じ）
-				if (spreading === 0) { evaluateConditions(); saveGame(); }
-			}
+			igniteBushAt(br, bc, '{{bush}} 運んだ火が 茂みに 燃え移った！');
 		}
+	}
+
+	// 茂み1マスに外から火を点ける（ロウソク以外の火元＝燃えるブーメラン・呪い火 ψ）。
+	// 燃えたら true。つながった茂みへ燃え広がる（spreadFireFrom）。
+	// spreadMsg＝燃え広がるときの言葉（火元ごとに言い分ける）。広がらないときは共通の言葉。
+	// ⚠️ 燃え広がる間はセーブしない＝燃え尽きたときに fireSpreadTick が1回だけ（playCandle と同じ）。
+	function igniteBushAt(r, c, spreadMsg) {
+		const sd = getStageData();
+		if (sd?.tiles[r]?.[c] !== TILE.BUSH) return false;
+		const ss = getSS(getCurrentLayer(), getStageKey());
+		if (!ss.cutBushes) ss.cutBushes = new Set();
+		const pk = `${r},${c}`;
+		if (ss.cutBushes.has(pk)) return false;
+		ss.cutBushes.add(pk);
+		ss.bushBurned = true;
+		const spreading = spreadFireFrom(r, c);
+		playSound('fire');
+		renderBoard(); renderChars();
+		showSpreadFireEffect(r, c);
+		pulse(spreading > 0 ? spreadMsg : '{{bush}} 茂みが燃え上がった！', 1800);
+		if (spreading === 0) { evaluateConditions(); saveGame(); }
+		return true;
 	}
 
 	// ── 投擲物ループ（毎 tick 呼ぶ） ─────────────────────────
@@ -1260,6 +1271,7 @@ export function createProjectile(deps) {
 		getPlacedFlames,
 		// 燃え広がる茂み（キュー93）
 		spreadFireFrom,
+		igniteBushAt,
 		flushFireSpread,
 		getFireSpread,
 	};

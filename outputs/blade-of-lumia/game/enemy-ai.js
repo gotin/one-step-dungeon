@@ -85,6 +85,8 @@ export function createEnemyAi(deps) {
 		inflictDebuff,
 		// キュー93: 水・溶岩へ突っ込んで沈んだ敵を倒す（combat.js killEnemy）
 		killEnemy,
+		// キュー95: 呪い火 ψ に接した茂みに火を点ける（projectile.js igniteBushAt）
+		igniteBush,
 	} = deps;
 
 	// ── 速度の解決（Phase 9-6）─────────────────────────────────
@@ -2070,6 +2072,26 @@ export function createEnemyAi(deps) {
 		}
 
 		moveCharEl(`enemy-${e.id}`, e.x, e.y);
+	}
+
+	// キュー95（D6 `2,2`）: 呪い火 ψ（meta.ignitesBushes）の体に縦横で接した茂みは燃える
+	// （燃え広がりはロウソクと同じ＝projectile.js igniteBushAt → spreadFireFrom）。
+	// 「ぶつかったら」ではなく「接したら」＝池の上を茂みの縁に沿って飛んだだけでも燃え移る
+	// （ぶつかった時だけだと、斜めに池を横切る ψ が島の角をかすめても燃えず、狙いが狭すぎた＝実測）。
+	// 占有範囲は isPassableForEnemy と同じ丸め（半マスの位置は2セルにまたがる）。
+	function scorchAround(e) {
+		const sd = getStageData();
+		if (!sd || !igniteBush) return;
+		const ew = e.w ?? 1, eh = e.h ?? 1;
+		const r0 = Math.floor(e.y), r1 = Math.floor(e.y + eh - 1 + 0.999);
+		const c0 = Math.floor(e.x), c1 = Math.floor(e.x + ew - 1 + 0.999);
+		for (let r = r0 - 1; r <= r1 + 1; r++) {
+			for (let c = c0 - 1; c <= c1 + 1; c++) {
+				const inRows = r >= r0 && r <= r1, inCols = c >= c0 && c <= c1;
+				if (inRows === inCols) continue;   // 体の中と斜めの角は除く＝縦横に接するセルだけ
+				if (sd.tiles[r]?.[c] === TILE.BUSH) igniteBush(r, c);
+			}
+		}
 	}
 
 	// ── キュー60：さまよい（気づくまでは家の周りを歩く）──────────────
@@ -6947,6 +6969,8 @@ export function createEnemyAi(deps) {
 				if (now >= e._sinkUntil) killEnemy?.(e);
 				continue;
 			}
+			// キュー95: 呪い火 ψ は接した茂みを燃やす（気絶中も燃えている＝行動ゲートの外）。
+			if (meta.ignitesBushes && !e.hidden) scorchAround(e);
 			// 気絶中は機構の表の `stun` を上から全部呼んで、この tick の行動を丸ごと飛ばす
 			// （予告・専有状態を捨て、その絵もここで消す＝下の同期まで行かないため）。
 			if (e.stunUntil && now < e.stunUntil) {

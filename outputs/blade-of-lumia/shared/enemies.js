@@ -573,6 +573,13 @@ export const ENEMY_META = {
 		pal:    'curseFire',
 		isBoss: false,
 		move:   'air',                        // 飛行＝壁だけが障害（水/溶岩/空は越える）
+		// キュー95（D6 `2,2`・2026-11-05 ユーザー選択）: 体に縦横で接した茂みは燃える
+		// （game/enemy-ai.js scorchAround → projectile.js igniteBushAt＝ロウソクと同じ燃え広がり）。
+		// 茂み・木は越えない（陸の敵と同じ）＝茂みに塞がれても、接した時点で燃えて通れるようになる。
+		// 追っている時もさまよっている時も燃やす（行動ゲートの外＝気絶中も）。
+		// 監査（2026-11-05）＝ψ の居る画面の茂みは field の13か所×1本だけ・どれも陸（剣で刈れる）
+		// ＝ψ が燃やしても通れる所は変わらない。
+		ignitesBushes: true,
 		inflict: {
 			type: 'sealSword',
 			ms:   3000,   // 封印の長さ（25 tick＝TICK_MS 120 の整数倍＝観測 tick が揺れない）

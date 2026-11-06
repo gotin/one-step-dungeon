@@ -991,6 +991,8 @@ const { checkStoneOnSwitch, evaluateConditions, refreshGates } = createCondition
 		inflictDebuff:         (meta) => fx.inflictDebuff(meta),
 		// キュー93: 突進で水・溶岩へ突っ込んで沈み切った敵を倒す
 		killEnemy:             (e) => fx.killEnemy(e),
+		// キュー95: 呪い火 ψ に縦横で接した茂みは燃える（enemy-ai.js scorchAround）
+		igniteBush:            (r, c) => _proj.igniteBushAt(r, c, '{{bush}} 呪い火が 茂みに 燃え移った！'),
 	});
 
 	// factory が作った関数を置き場 fx へ入れる
