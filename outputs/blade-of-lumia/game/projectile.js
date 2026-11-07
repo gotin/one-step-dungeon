@@ -323,8 +323,8 @@ export function createProjectile(deps) {
 			? (proj.arcHeight ?? 1.2) * 4 * (proj._lobT ?? 0) * (1 - (proj._lobT ?? 0))
 			: 0;
 		el.style.top  = `${(proj.y - lift) * cellPx}px`;
-		// Phase 4-5 ②: 炎持ちブーメランにオーラを付ける
-		if (proj.type === 'boomerang') {
+		// Phase 4-5 ②: 炎持ちブーメランにオーラを付ける（キュー95：火矢も同じオーラ＝火を運ぶ絵は1つ）
+		if (proj.type === 'boomerang' || proj.type === 'arrow') {
 			let aura = el.querySelector('.boomerang-flaming');
 			if (proj.flaming && !aura) {
 				aura = document.createElement('div');
@@ -333,6 +333,8 @@ export function createProjectile(deps) {
 			} else if (!proj.flaming && aura) {
 				aura.remove();
 			}
+		}
+		if (proj.type === 'boomerang') {
 			// Phase 4-6: 拾ったアイテムを付随アイコンで追従表示（最後に拾った1個）
 			const carry = proj.carried?.[proj.carried.length - 1];
 			let icon = el.querySelector('.boomerang-carry');
@@ -596,8 +598,17 @@ export function createProjectile(deps) {
 			if (d) (proj.carried = proj.carried || []).push(d);
 		}
 		// Phase 4-5 ②: ブーメランで炎を運ぶ
-		const br  = toTileRow(proj.y);
-		const bc  = toTileCol(proj.x);
+		carryFireAt(proj, toTileRow(proj.y), toTileCol(proj.x), '{{bush}} 運んだ火が 茂みに 燃え移った！');
+	}
+
+	// 飛んでいる投擲物が1セルを通るときの火の受け渡し（ブーメランと矢で共通の単一の真実）。
+	//   ・点いたかがり火を通る → 火を拾う（proj.flaming）
+	//   ・火を持って消えたかがり火を通る → 灯す
+	//   ・火を持ってそれ以外を通る → 茂みを燃やす／大いが栗を爆ぜさせる（igniteBushAt）
+	// キュー95（D6 `1,4`・2026-11-07）：矢も同じ規則で火を運ぶ（火矢）。矢は貫通して壁まで飛ぶ＝
+	// ブーメランの届きの外にも火が届く（監査＝PLAN キュー95 の8室目・DECISIONS 2026-11-07（3））。
+	// 同じセルを複数サブステップで通っても、灯す・燃やすは既に済んでいれば何もしない＝冪等。
+	function carryFireAt(proj, br, bc, bushMsg) {
 		const bpk = `${br},${bc}`;
 		const bss = getSS(getCurrentLayer(), getStageKey());
 		if (getStageData()?.tiles[br]?.[bc] === TILE.TORCH) {
@@ -615,7 +626,7 @@ export function createProjectile(deps) {
 			// つながった茂みへ燃え広がる（spreadFireFrom）＝水の隙間で途切れた導火線を、灯ったかがり火から
 			// 火を運んでつなぎ直す。もやは祓わない（祓うのはロウソクの聖なる火だけ＝キュー88）。
 			// キュー95（D6 `3,2`）：大いが栗の上を通れば栗が爆ぜる（igniteBushAt が栗も受ける）。
-			igniteBushAt(br, bc, '{{bush}} 運んだ火が 茂みに 燃え移った！');
+			igniteBushAt(br, bc, bushMsg);
 		}
 	}
 
@@ -711,6 +722,11 @@ export function createProjectile(deps) {
 						_projectiles = _projectiles.filter(p => p !== proj);
 						hit = true;
 						break;
+					}
+					// キュー95（D6 `1,4`）：プレイヤーの矢は通ったセルで火を拾い・運ぶ（火矢）。
+					// 敵の矢は運ばない＝ギミックが敵の手で解けない（ブーメラン鬼と同じ理由）。
+					if (proj.type === 'arrow' && proj.owner === 'player') {
+						carryFireAt(proj, toTileRow(proj.y), toTileCol(proj.x), '{{bush}} 火矢が 茂みに 燃え移った！');
 					}
 					// Phase 4-5 ①：投擲武器がスイッチ（SWITCH）に当たったらトグルする。
 					// ・矢（arrow）：当たったら消える（1本＝1トグル）

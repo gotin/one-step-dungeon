@@ -366,6 +366,9 @@ export function makeSolver(tiles, bg, linkSpec, breakDefs, litInit,
     // 直線上を全部点ける」だった＝火元の無い直線でも点いたので、継ぎ渡しの順序（A を点けて
     // からでないと B へ運べない）を測れなかった。射程は見ない（銀・二周目は部屋の端まで届く
     // ＝射程を外すのは「点けられる」側の上界として安全）。
+    // キュー95（2026-11-07・D6 `1,4`）：矢も同じ規則で火を運ぶ（火矢＝壁まで飛ぶ・projectile.js
+    // carryFireAt）。この遷移は元から射程を見ない∴火矢を足しても状態空間は変わらない（火矢は戻らない
+    // ＝火元より手前の消えた火には点かない。ブーメランで点くので上界のまま）。
     if (!noTools && lit) {
       for (const [dr, dc] of DIRS) {
         let rr = pr + dr, cc = pc + dc, line = 0;
