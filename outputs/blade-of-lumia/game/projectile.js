@@ -14,6 +14,7 @@ import {
 } from './constants.js';
 import { SHIELD_TIERS } from '../shared/items.js';
 import { enemyPointHit, enemyCenter, enemyOccupiesTile } from './hitbox.js';
+import { SUNK_ROW } from './passable.js';
 
 // Phase 10d-3: boomerang・thrownBomb は落ちアイテムと同じ絵を共有する（同じ名前で
 // SPRITES を参照）。落ちアイテム側を 32 ドット化した際、絵の中の透明余白が増えた
@@ -609,10 +610,11 @@ export function createProjectile(deps) {
 				pulse('{{torch}} かがり火に火が灯った！');
 				saveGame();
 			}
-		} else if (proj.flaming && getStageData()?.tiles[br]?.[bc] === TILE.BUSH) {
+		} else if (proj.flaming) {
 			// キュー93（D8 `2,0`・2026-10-26 ユーザー提案）：火の付いたブーメランが通った茂みは燃え上がり、
 			// つながった茂みへ燃え広がる（spreadFireFrom）＝水の隙間で途切れた導火線を、灯ったかがり火から
 			// 火を運んでつなぎ直す。もやは祓わない（祓うのはロウソクの聖なる火だけ＝キュー88）。
+			// キュー95（D6 `3,2`）：大いが栗の上を通れば栗が爆ぜる（igniteBushAt が栗も受ける）。
 			igniteBushAt(br, bc, '{{bush}} 運んだ火が 茂みに 燃え移った！');
 		}
 	}
@@ -620,9 +622,12 @@ export function createProjectile(deps) {
 	// 茂み1マスに外から火を点ける（ロウソク以外の火元＝燃えるブーメラン・呪い火 ψ）。
 	// 燃えたら true。つながった茂みへ燃え広がる（spreadFireFrom）。
 	// spreadMsg＝燃え広がるときの言葉（火元ごとに言い分ける）。広がらないときは共通の言葉。
+	// キュー95（D6 `3,2`）：そのセルに大いが栗が居れば、茂みの代わりに栗が爆ぜる（burstBurrAt）
+	// ＝「茂みを燃やす火」と「栗を爆ぜさせる火」を同じ入口にして、火元の集合を1つに保つ。
 	// ⚠️ 燃え広がる間はセーブしない＝燃え尽きたときに fireSpreadTick が1回だけ（playCandle と同じ）。
 	function igniteBushAt(r, c, spreadMsg) {
 		const sd = getStageData();
+		if (burstBurrAt(r, c)) return true;
 		if (sd?.tiles[r]?.[c] !== TILE.BUSH) return false;
 		const ss = getSS(getCurrentLayer(), getStageKey());
 		if (!ss.cutBushes) ss.cutBushes = new Set();
@@ -971,8 +976,10 @@ export function createProjectile(deps) {
 			const nr = r + dr, nc = c + dc;
 			const tile = sd.tiles[nr]?.[nc];
 			const pk = `${nr},${nc}`;
+			// キュー95：燃える茂みに縦横で接した大いが栗も火を受ける（予定の時刻に爆ぜる）。
 			const flammable = (tile === TILE.BUSH && !ss.cutBushes?.has(pk))
-				|| (tile === TILE.TORCH && !ss.litTorches?.has(pk));
+				|| (tile === TILE.TORCH && !ss.litTorches?.has(pk))
+				|| burrKeyAt(nr, nc, sd, ss) !== null;
 			if (!flammable) continue;
 			if (_fireSpread.some(f => f.r === nr && f.c === nc)) continue;
 			_fireSpread.push({ r: nr, c: nc, at });
@@ -987,6 +994,8 @@ export function createProjectile(deps) {
 		const ss = getSS(getCurrentLayer(), getStageKey());
 		const tile = sd?.tiles[r]?.[c];
 		const pk = `${r},${c}`;
+		// 栗は予定を立てた後に転がって居なくなっていることがある＝今そこに居るときだけ爆ぜる。
+		if (burstBurrAt(r, c, { save: false })) return { r, c, torch: false, burr: true };
 		if (tile === TILE.BUSH) {
 			if (!ss.cutBushes) ss.cutBushes = new Set();
 			if (ss.cutBushes.has(pk)) return null;
@@ -1165,6 +1174,7 @@ export function createProjectile(deps) {
 			playerDamage = 0,
 			sound        = 'bombExplosion',
 			effect       = 'blast',
+			save         = true,   // 燃え広がりの途中（栗が爆ぜる）ではセーブしない＝fireSpreadTick が最後に1回
 		} = opts;
 		// ⚠️ `sound: undefined` を渡されても既定に落ちる（`= 'bombExplosion'` の分割代入）
 		//    ＝呼び出し側は「差し替えたいときだけ」書けばよい。
@@ -1232,7 +1242,7 @@ export function createProjectile(deps) {
 		// 中心から外へ順に灯す＝「広がった」と読める。敵の爆風（爆弾鬼・O の岩）も同じ規則で描く
 		// ＝範囲の絵の約束を1つに保つ（爆弾鬼の爆風はプレイヤーの爆弾から学べる、の裏返し）。
 		showBlastCells(cells, effect);
-		saveGame();
+		if (save) saveGame();
 	}
 
 	// ── 大いが栗を爆風で転がす（キュー95・2026-11-06）─────────────────────
@@ -1276,6 +1286,7 @@ export function createProjectile(deps) {
 			return true;
 		};
 		const moves = [];
+		const toBurst = [];
 		for (const [dr, dc] of [[-1, 0], [1, 0], [0, -1], [0, 1]]) {
 			// この腕の上の栗を遠い順に
 			const onArm = burrs.map((k) => ({ k, p: posOf(k) }))
@@ -1291,7 +1302,11 @@ export function createProjectile(deps) {
 				// 自分のセルは空ける（stoneAt が自分を見つけないように一時的に外へ）
 				const saved = ss.stonePositions[k];
 				ss.stonePositions[k] = { r: -100, c: -100 };
-				while (canEnter(tr + dr, tc + dc)) { tr += dr; tc += dc; }
+				while (canEnter(tr + dr, tc + dc)) {
+					tr += dr; tc += dc;
+					// キュー95（D6 `3,2`）：ロウソクの置き炎のセルに転がり込んだ栗は、そこで止まって爆ぜる。
+					if (_placedFlames.some((f) => f.r === tr && f.c === tc)) { toBurst.push(k); break; }
+				}
 				if (tr === p.r && tc === p.c) {
 					if (saved) ss.stonePositions[k] = saved; else delete ss.stonePositions[k];
 					continue;
@@ -1304,6 +1319,11 @@ export function createProjectile(deps) {
 		deps.checkStoneOnSwitch?.();
 		evaluateConditions();
 		playSound('move');
+		// 置き炎に入った栗＝転がり終えてから爆ぜる（この爆風がほかの栗を転がすのは次の段）。
+		for (const k of toBurst) {
+			const p = ss.stonePositions[k];
+			if (p && !p.sunk) burstBurrAt(p.r, p.c);
+		}
 		// 転がる絵＝描き直した後の栗の要素を元の位置へ戻してから滑らせる（renderChars は呼び手が先に呼ぶ）。
 		requestAnimationFrame(() => {
 			const cellPx = getCellPx();
@@ -1321,6 +1341,45 @@ export function createProjectile(deps) {
 				el.style.top  = `${to.r * cellPx}px`;
 			}
 		});
+		return true;
+	}
+
+	// ── 大いが栗は火で爆ぜる（キュー95 の7室目・D6 `3,2`・2026-11-07）────────────
+	// 理屈＝焼き栗が爆ぜる。火に触れた栗はその場で爆弾と同じ爆発を起こして消える
+	// （半径 2・壊せる壁を壊す・敵に爆弾と同じダメージ・勇者は傷まない・ほかの栗を転がす）。
+	// 火元＝茂みを燃やす火と同じ集合（igniteBushAt が受ける＝燃えるブーメラン・呪い火 ψ／
+	// 燃え広がり＝igniteSpreadCell／ロウソクを向ける＝game.js playCandle）＋置き炎へ転がり込む
+	// （rollBurrsFromBlast）。灯ったかがり火に接しても爆ぜない（茂みも燃えないのと同じ）。
+	// **爆風は火ではない**＝爆弾の爆風は栗を転がすだけ（爆ぜさせない）。
+	// 爆ぜた栗＝`stonePositions[k] = { r: SUNK_ROW, c: SUNK_ROW, sunk: 'burst' }`＝盤上に無い石
+	// （溶岩に沈んだ石と同じ読み手で消える）。部屋を出れば石と同じく元の位置に戻る。
+	// 踏み板で固定された栗（stonesLocked）は爆ぜない＝解いた謎を崩さない（転がらないのと同じ）。
+
+	// (r, c) に今いる大いが栗の元セルのキー（無ければ null）。
+	function burrKeyAt(r, c, sd = getStageData(), ss = getSS(getCurrentLayer(), getStageKey())) {
+		if (!sd) return null;
+		const sp = ss.stonePositions ?? {};
+		for (const [k, st] of Object.entries(sp)) {
+			if (st.sunk || st.r !== r || st.c !== c) continue;
+			const [a, b] = k.split(',').map(Number);
+			return sd.tiles[a]?.[b] === TILE.BURR ? k : null;
+		}
+		if (sd.tiles[r]?.[c] === TILE.BURR && !sp[`${r},${c}`]) return `${r},${c}`;
+		return null;
+	}
+
+	// (r, c) の栗を爆ぜさせる。爆ぜたら true。
+	function burstBurrAt(r, c, { save = true } = {}) {
+		const sd = getStageData();
+		const ss = getSS(getCurrentLayer(), getStageKey());
+		const k = burrKeyAt(r, c, sd, ss);
+		if (k === null || ss.stonesLocked) return false;
+		if (!ss.stonePositions) ss.stonePositions = {};
+		ss.stonePositions[k] = { r: SUNK_ROW, c: SUNK_ROW, sunk: 'burst' };
+		deps.checkStoneOnSwitch?.();
+		renderBoard(); renderChars();
+		pulse('{{burr}} 焼けた 大いが栗が 爆ぜた！', 1800);
+		explodeAt(r, c, { save });
 		return true;
 	}
 
@@ -1385,6 +1444,8 @@ export function createProjectile(deps) {
 		// 燃え広がる茂み（キュー93）
 		spreadFireFrom,
 		igniteBushAt,
+		// 大いが栗は火で爆ぜる（キュー95 の7室目）
+		burstBurrAt,
 		// 突進猪が壊せる壁を砕く（キュー95）
 		breakWallAt,
 		flushFireSpread,

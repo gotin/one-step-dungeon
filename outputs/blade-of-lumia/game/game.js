@@ -1012,6 +1012,7 @@ const { checkStoneOnSwitch, evaluateConditions, refreshGates } = createCondition
 		flameTick: _proj.flameTick,
 		getPlacedFlames: () => _proj.getPlacedFlames(),
 		spreadFireFrom: (r, c) => _proj.spreadFireFrom(r, c),
+		burstBurrAt: (r, c) => _proj.burstBurrAt(r, c),
 		flushFireSpread: () => _proj.flushFireSpread(),
 		getFireSpread: () => _proj.getFireSpread(),
 		addProjectile: (config) => _proj.addProjectile(config),
@@ -1999,6 +2000,13 @@ function playCandle() {
 	const posKey = `${tr},${tc}`;
 
 	playSound('fire');
+
+	// ⓪ 大いが栗（キュー95 の7室目）→ 火に触れた栗は爆ぜる（projectile.js burstBurrAt）。
+	//    動いた栗の居るセルのタイルは床のまま＝タイルでなく今の位置で見る（①より先）。
+	if (fx.burstBurrAt(tr, tc)) {
+		showCandleFireEffect(player.x + ndx, player.y + ndy);
+		return;
+	}
 
 	// 前方が TORCH なら点灯
 	if (tile === TILE.TORCH) {

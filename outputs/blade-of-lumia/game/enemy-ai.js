@@ -2097,7 +2097,9 @@ export function createEnemyAi(deps) {
 			for (let c = c0 - 1; c <= c1 + 1; c++) {
 				const inRows = r >= r0 && r <= r1, inCols = c >= c0 && c <= c1;
 				if (inRows === inCols) continue;   // 体の中と斜めの角は除く＝縦横に接するセルだけ
-				if (sd.tiles[r]?.[c] === TILE.BUSH) igniteBush(r, c);
+				// 大いが栗は動いた先のセルが床のまま＝タイルで絞らず igniteBush に任せる
+				// （茂みは燃やし、栗は爆ぜさせ、どちらも無ければ何もしない＝キュー95 の7室目）。
+				igniteBush(r, c);
 			}
 		}
 	}
