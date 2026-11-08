@@ -347,6 +347,7 @@ export function initCanvasEvents(renderSidePanel, renderWorldGrid, getPreviewPen
 		delete sd.enemyChase;
 		delete sd.enemyHold;      // キュー93: 持ち場の指定も消す
 		delete sd.enemiesRespawn; // キュー93: 入り直すたびに敵が戻る指定も消す
+		delete sd.regrowBushes;   // キュー95: 部屋を出ると茂みが戻る指定も消す
 		delete sd.tideCycle;      // キュー94: 潮の満ち引きの周期も消す
 		renderStageCanvas(renderSidePanel);
 		renderSidePanel();

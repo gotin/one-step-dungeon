@@ -11,6 +11,7 @@ import { playSound } from '../shared/sounds.js';
 import {
 	MOVE_STEP, TICK_MS, BOOMERANG_STUN_MS, ATTACK_POSE_MS,
 	CANDLE_FIRE_DMG, CANDLE_FLAME_MS, CANDLE_FLAME_MAX, GOLD_GARB_REFLECT_SPEED_MULT, FIRE_SPREAD_MS,
+	WILDFIRE_DMG,
 } from './constants.js';
 import { SHIELD_TIERS } from '../shared/items.js';
 import { enemyPointHit, enemyCenter, enemyOccupiesTile } from './hitbox.js';
@@ -646,6 +647,7 @@ export function createProjectile(deps) {
 		if (ss.cutBushes.has(pk)) return false;
 		ss.cutBushes.add(pk);
 		ss.bushBurned = true;
+		burnEnemiesBesideFire(r, c);
 		const spreading = spreadFireFrom(r, c);
 		playSound('fire');
 		renderBoard(); renderChars();
@@ -973,7 +975,9 @@ export function createProjectile(deps) {
 	// ロウソクで燃やした茂みから、縦横に隣り合う未燃の茂みへ FIRE_SPREAD_MS ごとに火が移る。
 	// 燃えた茂みの隣に消えたかがり火があれば、それにも灯る＝つながった茂みは導火線になる
 	// （手の届かない所のかがり火へ、火を「走らせて」届ける）。
-	//   ・敵は焼かない＝炎のダメージの入口は置いた炎だけ（game.js playCandle の冒頭のコメント）。
+	//   ・キュー95（D6 `4,1`・2026-11-08）：茂みに火が移った瞬間、その茂みに縦横で接した敵を1回焼く
+	//     （burnEnemiesBesideFire）。❌ 旧記述「敵は焼かない＝炎のダメージの入口は置いた炎だけ」は失効。
+	//     連打の穴（2026-08-31）は開かない＝茂みは一度燃えたら燃え尽きる∴1本の茂みが焼くのは1回きり。
 	//   ・途中ではセーブも条件の評価もしない＝燃え尽きた時点で1回だけ。途中で再読込しても
 	//     「火を点ける前」に戻るだけ＝半分燃えた導火線が届かない所に残って詰む、を作らない
 	//     （火を点けた側の playCandle も、燃え広がるときはセーブしない）。
@@ -1005,7 +1009,8 @@ export function createProjectile(deps) {
 	}
 
 	// 1マスに火を移す。移ったら { r, c, torch } を返す（既に燃えていたら null）。
-	function igniteSpreadCell(r, c, nextAt) {
+	// burn＝接した敵を焼くか（画面を出る直前の flushFireSpread は焼かない＝見えない所で敵を倒さない）。
+	function igniteSpreadCell(r, c, nextAt, burn = true) {
 		const sd = getStageData();
 		const ss = getSS(getCurrentLayer(), getStageKey());
 		const tile = sd?.tiles[r]?.[c];
@@ -1017,6 +1022,7 @@ export function createProjectile(deps) {
 			if (ss.cutBushes.has(pk)) return null;
 			ss.cutBushes.add(pk);
 			ss.bushBurned = true;
+			if (burn) burnEnemiesBesideFire(r, c);
 			scheduleFireNeighbors(r, c, nextAt);
 			return { r, c, torch: false };
 		}
@@ -1055,10 +1061,28 @@ export function createProjectile(deps) {
 		while (_fireSpread.length > 0) {
 			const batch = _fireSpread;
 			_fireSpread = [];
-			for (const f of batch) igniteSpreadCell(f.r, f.c, 0);
+			for (const f of batch) igniteSpreadCell(f.r, f.c, 0, false);
 		}
 		evaluateConditions();
 		saveGame();
+	}
+
+	// キュー95（D6 `4,1`「野火の掃討」・2026-11-08）：燃えた茂み (r, c) に縦横で接した敵を焼く。
+	// 火が移った瞬間に1回だけ＝ロウソク・燃え広がり・燃えるブーメラン／火矢・呪い火 ψ のどれで点いても同じ
+	// （茂みに火が付く3つの入口＝game.js playCandle／igniteBushAt／igniteSpreadCell から呼ぶ）。
+	//   ・発生源は燃えた茂みのセル（srcX=c, srcY=r）＝盾騎士の正面（盾）からは弾かれる（combat.js isBlockFacingDir）。
+	//     ∴盾を茂みに向けた騎士は焼けない＝横か背を向けさせてから火を点ける、が読みになる。
+	//   ・呪い火 ψ（meta.ignitesBushes）は焼けない＝自分が点けた火で自分が消える（2,2・4,2 が壊れる）のを防ぐ。
+	//   ・隠れ中（潜行・地中・滞空）は届かない（爆風・置き炎と同じ）。勇者は傷まない（爆弾と同じ）。
+	//   ⚠️ 倒した敵は killEnemy がセーブする＝燃え広がりの途中でも1回セーブが走る（茂みは燃えた所まで残る）。
+	function burnEnemiesBesideFire(r, c) {
+		const cells = [[r - 1, c], [r + 1, c], [r, c - 1], [r, c + 1]];
+		for (const e of [...getEnemies()]) {
+			if (!e || e.hp <= 0 || e.hidden) continue;
+			if (ENEMY_META[e.type]?.ignitesBushes) continue;
+			if (!cells.some(([tr, tc]) => enemyOccupiesTile(e, tr, tc))) continue;
+			dealDamageToEnemy(e, WILDFIRE_DMG, 'fire', c, r);
+		}
 	}
 
 	function showSpreadFireEffect(r, c) {
@@ -1556,6 +1580,7 @@ export function createProjectile(deps) {
 		// 燃え広がる茂み（キュー93）
 		spreadFireFrom,
 		igniteBushAt,
+		burnEnemiesBesideFire,
 		// 大いが栗は火で爆ぜる（キュー95 の7室目）
 		burstBurrAt,
 		// 突進猪が壊せる壁を砕く（キュー95）

@@ -460,6 +460,10 @@ function enterStage(lk, sk, pRow, pCol) {
 		// キュー95（D6 `2,0`）：爆風で倒れた枯れ木も部屋を出ると立ち直る（倒す向きを誤ったらやり直せる）。
 		// 宝箱を開けた後は戻っても失う物は無い＝解いたかどうかで分けない（石の解決済みスナップショットとは別）。
 		if (prevSS.fallenTrees && Object.keys(prevSS.fallenTrees).length > 0) prevSS.fallenTrees = {};
+		// キュー95（D6 `4,1`「野火の掃討」）：stage.regrowBushes の部屋だけ、燃やした／切った茂みが部屋を出ると戻る
+		// （火を点ける向きを誤ったらやり直せる）。普段の茂みは戻らない＝隠し通路や bushBurned の仕掛けを崩さない
+		// ∴部屋ごとの指定にした。bushBurned（一度でも燃やした）の旗は戻さない＝出現した物は消えない。
+		if (getStageData(currentLayer, stageKey)?.regrowBushes && prevSS.cutBushes?.size > 0) prevSS.cutBushes = new Set();
 		if (prevSS.stonePositions && Object.keys(prevSS.stonePositions).length > 0) {
 			if (prevSS.stonesLocked) {
 				// Phase 4.56: ロック済み＝崩れないので石位置は常に保持（防御的にスナップショットも残す）。
@@ -1017,6 +1021,7 @@ const { checkStoneOnSwitch, evaluateConditions, refreshGates } = createCondition
 		flameTick: _proj.flameTick,
 		getPlacedFlames: () => _proj.getPlacedFlames(),
 		spreadFireFrom: (r, c) => _proj.spreadFireFrom(r, c),
+		burnEnemiesBesideFire: (r, c) => _proj.burnEnemiesBesideFire(r, c),
 		burstBurrAt: (r, c) => _proj.burstBurrAt(r, c),
 		flushFireSpread: () => _proj.flushFireSpread(),
 		getFireSpread: () => _proj.getFireSpread(),
@@ -2043,6 +2048,9 @@ function playCandle() {
 	ss.bushBurned = true;       // ロウソク固有：bushBurned トリガーを立てる
 	// キュー93: 茂みの火は縦横につながった茂み（と消えたかがり火）へ燃え広がる（projectile.js）。
 	// もやは燃え広がらない＝祓う物であって燃える物ではない。
+	// キュー95（D6 `4,1`）：燃えた茂みは縦横に接した敵を1回焼く（projectile.js burnEnemiesBesideFire）。
+	// 前方の敵を直接焼くのではない（上の ⚠️＝連打の穴）＝茂みは燃え尽きる∴1本の茂みが焼くのは1回きり。
+	if (tile === TILE.BUSH) fx.burnEnemiesBesideFire(tr, tc);
 	const spreading = tile === TILE.BUSH ? fx.spreadFireFrom(tr, tc) : 0;
 	evaluateConditions();       // 隠し通路/入口/アイテムを出現させる
 	fx.renderBoard(); fx.renderChars();

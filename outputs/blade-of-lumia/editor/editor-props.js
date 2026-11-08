@@ -765,6 +765,9 @@ function renderEnemyChase(sd) {
 	// キュー93: 入り直すたびに敵が戻る（sd.enemiesRespawn＝game.js enterStage が読む）
 	const respawnEl = document.getElementById('stage-enemies-respawn');
 	if (respawnEl) respawnEl.checked = sd.enemiesRespawn === true;
+	// キュー95: 部屋を出ると茂みが戻る（sd.regrowBushes＝game.js enterStage が読む）
+	const regrowEl = document.getElementById('stage-regrow-bushes');
+	if (regrowEl) regrowEl.checked = sd.regrowBushes === true;
 	el.innerHTML = '';
 	const list = [];
 	(sd.tiles ?? []).forEach((row, r) => row.forEach((t, c) => { if (canRoam(t)) list.push({ r, c, t }); }));
@@ -819,6 +822,12 @@ export function initEnemyAlertEvents() {
 		if (!sd) return;
 		if (e.target.checked) sd.enemiesRespawn = true;
 		else delete sd.enemiesRespawn;
+	});
+	document.getElementById('stage-regrow-bushes')?.addEventListener('change', e => {
+		const sd = getCurrentStage();
+		if (!sd) return;
+		if (e.target.checked) sd.regrowBushes = true;
+		else delete sd.regrowBushes;
 	});
 }
 
