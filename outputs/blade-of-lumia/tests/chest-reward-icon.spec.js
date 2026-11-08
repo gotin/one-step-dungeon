@@ -14,7 +14,7 @@
 import { test, expect } from '@playwright/test';
 import { readFileSync } from 'fs';
 import { fileURLToPath } from 'url';
-import { waitForBoard } from './helpers.js';
+import { waitForBoard, PLAIN_CHEST_ROOM, routePlainChestRoom } from './helpers.js';
 import { UI_ICON, rewardIconKey } from '../shared/ui-icons.js';
 import { SPRITES } from '../shared/sprites.js';
 import { ITEM_META, EQUIP_META, SWORD_TIERS, ARMOR_TIERS, SHIELD_TIERS, BOOMERANG_TIERS } from '../shared/items.js';
@@ -98,23 +98,14 @@ test.describe('Blade of Lumia – 宝箱の文の頭の絵（データ）', () =
 });
 
 // ── 実機：宝箱を実際に開けてメッセージバーの頭の絵を見る ─────────────────
-// 部屋は chest-content-shape.spec.js と同じ dungeon_6 4,4 の宝箱 (2,5)（旧 dungeon_7 2,4 は
-// 2026-10-04 キュー39・旧 dungeon_6 2,4 は 2026-11-06 キュー95 で作り替えた）。
-// 中身だけ `page.route` でマップ応答へ差し込む（マップデータは1バイトも変えない）。
+// 部屋は chest-content-shape.spec.js と同じ素の広間（helpers.js PLAIN_CHEST_ROOM）＝盤面ごと
+// `page.route` でマップ応答へ差し込む（実マップの素の部屋を借りると作り込みのたびに壊れた＝
+// dungeon_7 2,4 → dungeon_6 2,4 → dungeon_6 4,4 の3回・最後は 2026-11-08 キュー95 の13室目）。
 const GAME = '/blade-of-lumia/game/';
-const ROOM = { layer: 'dungeon_6', stage: '4,4', chest: '2,5', r: 2, c: 5 };
+const ROOM = PLAIN_CHEST_ROOM;
 
 async function openWith(page, content, before) {
-  // ⚠️ `route.fetch()` で取りに行かない＝全体実行の負荷下で巨大な JSON の取得が
-  //    `socket hang up` で落ちた（2026-09-30）。上でディスクから読んだマップの複製を返す。
-  await page.route('**/work/blade-of-lumia.json', async (route) => {
-    const json = structuredClone(map);
-    const sd = json.layers[ROOM.layer].stages[ROOM.stage];
-    sd.chestContents = { ...(sd.chestContents ?? {}) };
-    if (content) sd.chestContents[ROOM.chest] = content;
-    else delete sd.chestContents[ROOM.chest];
-    await route.fulfill({ json });
-  });
+  await routePlainChestRoom(page, map, content);
   const p = new URLSearchParams({
     fromEditor: '1', layer: ROOM.layer, stage: ROOM.stage, row: String(ROOM.r + 2), col: String(ROOM.c),
   });

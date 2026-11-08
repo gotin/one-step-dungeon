@@ -132,3 +132,49 @@ export async function holdKey(page, key, holdMs = 500) {
   await page.waitForTimeout(holdMs);
   await page.keyboard.up(key);
 }
+
+// ── 宝箱を開けるテスト用の素の部屋（2026-11-08・キュー95 の13室目）─────────────
+// 宝箱の受け口（中身の形・文の頭の絵）を測る本は、実マップの「素の部屋」を借りていた
+// （dungeon_7 2,4 → dungeon_6 2,4 → dungeon_6 4,4）。素の部屋は作り込みの対象＝借りるたびに
+// 作り替えで壊れた∴盤面ごと `page.route` でマップ応答へ差し込み、実マップから切り離す。
+// 部屋＝四角い広間・宝箱 (2,5)・敵なし・口は西（行4-5）。宝箱の真下 2 マス (4,5) から上へ歩けば開く。
+export const PLAIN_CHEST_ROOM = {
+  layer: 'dungeon_6', stage: '4,4', chest: '2,5', r: 2, c: 5,
+  tiles: [
+    '############',
+    '#..........#',
+    '#....B.....#',
+    '#..........#',
+    '...........#',
+    '...........#',
+    '#..........#',
+    '#..........#',
+    '#..........#',
+    '############',
+  ],
+};
+
+/**
+ * マップ応答の PLAIN_CHEST_ROOM の部屋を素の広間に差し替える（宝箱の中身は content・null なら空箱）。
+ * ⚠️ `route.fetch()` で取りに行かない＝全体実行の負荷下で巨大な JSON の取得が `socket hang up` で
+ *    落ちた（2026-09-30）。呼び手がディスクから読んだマップ（map）の複製を返す。
+ */
+export async function routePlainChestRoom(page, map, content) {
+  await page.route('**/work/blade-of-lumia.json', async (route) => {
+    const json = structuredClone(map);
+    const R = PLAIN_CHEST_ROOM;
+    const sd = json.layers[R.layer].stages[R.stage];
+    sd.tiles = R.tiles.map((row) => [...row]);
+    sd.bgTiles = {};
+    sd.chestContents = content ? { [R.chest]: content } : {};
+    sd.showConditions = {};
+    sd.signData = {};
+    sd.initLitTorches = [];
+    sd.breakableWalls = {};
+    sd.floorItems = {};
+    delete sd.enemyChase;
+    delete sd.enemiesRespawn;
+    delete sd.enemyHold;
+    await route.fulfill({ json });
+  });
+}
