@@ -1001,6 +1001,8 @@ const { checkStoneOnSwitch, evaluateConditions, refreshGates } = createCondition
 		igniteBush:            (r, c) => _proj.igniteBushAt(r, c, '{{bush}} 呪い火が 茂みに 燃え移った！'),
 		// キュー95: 突進猪（dash.breaksWalls）が頭からぶつかった壊せる壁は砕ける（enemy-ai.js tickDash）
 		breakWall:             (r, c) => _proj.breakWallAt(r, c, '猪の 突進が 壊せる壁を 砕いた！'),
+		// キュー95: 突進猪（dash.fellsTrees）が頭からぶつかった枯れ木は猪の進む向きへ倒れる
+		fellTree:              (r, c, dir) => _proj.fellTreeByImpact(r, c, dir),
 	});
 
 	// factory が作った関数を置き場 fx へ入れる

@@ -89,6 +89,8 @@ export function createEnemyAi(deps) {
 		igniteBush,
 		// キュー95: 突進猪が頭からぶつかった壊せる壁を砕く（projectile.js breakWallAt）
 		breakWall,
+		// キュー95: 突進猪が頭からぶつかった枯れ木を猪の進む向きへ倒す（projectile.js fellTreeByImpact）
+		fellTree,
 	} = deps;
 
 	// ── 速度の解決（Phase 9-6）─────────────────────────────────
@@ -3023,14 +3025,21 @@ export function createEnemyAi(deps) {
 				// キュー95（D6 `0,1`）: 突進猪（dash.breaksWalls）は、ぶつかった先の壊せる壁を砕く。
 				// 砕いても頭を打ったことに変わりはない＝下の気絶はそのまま（壁の手前で止まる）。
 				// 判定するセルは dashPlungesAt と同じ丸め（半マスの位置は2セルにまたがる）。
-				if (cfg.breaksWalls && breakWall) {
+				// キュー95（D6 `3,1`）: 同じく dash.fellsTrees は、ぶつかった枯れ木を猪の進む向きへ倒す
+				// （爆風が爆心に背を向けて倒すのと同じ「押された向き」＝勇者めがけて走れば勇者の側へ）。
+				const breaks = cfg.breaksWalls && breakWall;
+				const fells  = cfg.fellsTrees && fellTree;
+				if (breaks || fells) {
 					const sd = getStageData();
 					const ny = e.y + sy * MOVE_STEP, nx = e.x + sx * MOVE_STEP;
 					const c0 = Math.floor(nx), c1 = Math.floor(nx + ew - 1 + 0.999);
 					const r0 = Math.floor(ny), r1 = Math.floor(ny + eh - 1 + 0.999);
+					const dir = sy > 0 ? 's' : sy < 0 ? 'n' : sx > 0 ? 'e' : 'w';
 					for (let r = r0; r <= r1; r++) {
 						for (let c = c0; c <= c1; c++) {
-							if (sd?.tiles[r]?.[c] === TILE.BREAKABLE_WALL) breakWall(r, c);
+							const t = sd?.tiles[r]?.[c];
+							if (breaks && t === TILE.BREAKABLE_WALL) breakWall(r, c);
+							if (fells && t === TILE.DEAD_TREE) fellTree(r, c, dir);
 						}
 					}
 				}

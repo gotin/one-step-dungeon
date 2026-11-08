@@ -1372,6 +1372,7 @@ export function createProjectile(deps) {
 	//     1マスでも塞がっていれば倒れない（途中で折れて止まる、を作らない）。
 	//   ・倒れた幹の2マスは歩ける（水の上なら橋）・根元は切り株で歩ける（passable.js）。
 	//   ・部屋を出ると立ち直る（game.js enterStage）・セーブとロードでは戻らない（save.js）。
+	//   ・突進猪が頭からぶつかったときも同じ規則で倒れる（下の fellTreeByImpact＝向きは猪の進む向き）。
 	// 戻り値＝1本でも倒れたか（呼び手が盤面を描き直す）。
 	function fellTreesFromBlast(r, c, radius, sd, ss) {
 		const trees = [];
@@ -1380,6 +1381,57 @@ export function createProjectile(deps) {
 		}
 		if (!trees.length) return false;
 		if (!ss.fallenTrees) ss.fallenTrees = {};
+		const felled = [];
+		let blocked = 0;
+		for (const [tr, tc] of trees) {
+			const k = `${tr},${tc}`;
+			if (ss.fallenTrees[k]) continue;
+			const ddr = tr - r, ddc = tc - c;
+			if ((ddr !== 0) === (ddc !== 0)) continue;              // 斜め・爆心そのもの
+			if (Math.abs(ddr) + Math.abs(ddc) > radius) continue;
+			const dir = ddr < 0 ? 'n' : ddr > 0 ? 's' : ddc < 0 ? 'w' : 'e';
+			if (!treeCanFall(tr, tc, dir, sd, ss)) { blocked++; continue; }
+			ss.fallenTrees[k] = dir;
+			felled.push(k);
+		}
+		if (!felled.length) {
+			// 押されたのに倒れる先が塞がっていた＝揺れるだけ（なぜ倒れないかを言う）
+			if (blocked) pulse(TREE_BLOCKED_MSG, 1800);
+			return false;
+		}
+		playSound('move');
+		pulse('{{deadTree}} 枯れ木が 倒れた！', 1800);
+		evaluateConditions();
+		return true;
+	}
+
+	const TREE_BLOCKED_MSG = '{{deadTree}} 枯れ木が 揺れた。倒れる 先が 塞がっている。';
+
+	// 突進猪が頭からぶつかった枯れ木を倒す（キュー95 の11室目・D6 `3,1`・2026-11-08）。
+	// 理屈＝爆風と同じ「押された向きへ倒れる」＝爆風は爆心に背を向けて、猪は猪の進む向きへ。
+	// ∴猪が勇者めがけて走ると、枯れ木は勇者の側へ倒れる（爆弾では勇者の側へ倒せない）。
+	// 倒れる先の条件は爆風と同じ（treeCanFall）＝倒れる先に勇者が立っていれば揺れるだけ。
+	// 戻り値＝倒れたか。
+	function fellTreeByImpact(r, c, dir) {
+		const sd = getStageData();
+		if (sd?.tiles[r]?.[c] !== TILE.DEAD_TREE || !FALL_DIRS[dir]) return false;
+		const ss = getSS(getCurrentLayer(), getStageKey());
+		if (!ss.fallenTrees) ss.fallenTrees = {};
+		const k = `${r},${c}`;
+		if (ss.fallenTrees[k]) return false;
+		if (!treeCanFall(r, c, dir, sd, ss)) { pulse(TREE_BLOCKED_MSG, 1800); return false; }
+		ss.fallenTrees[k] = dir;
+		playSound('move');
+		renderBoard(); renderChars();
+		pulse('{{deadTree}} 猪の 突進で 枯れ木が 倒れた！', 1800);
+		evaluateConditions();
+		saveGame();
+		return true;
+	}
+
+	// (tr, tc) の枯れ木が dir へ倒れられるか＝先の FALLEN_LOG_LEN マスが部屋の内側の床か水で、
+	// 石・栗・ほかの幹・勇者・敵が居ない（爆風と猪の突進で共通）。
+	function treeCanFall(tr, tc, dir, sd, ss) {
 		const player = getPlayer();
 		const pR = toTileRow(player.y), pC = toTileCol(player.x);
 		const stoneAt = (tr, tc) => {
@@ -1399,25 +1451,8 @@ export function createProjectile(deps) {
 			if (getEnemies().some((e) => !e.hidden && enemyOccupiesTile(e, tr, tc))) return false;
 			return true;
 		};
-		const felled = [];
-		for (const [tr, tc] of trees) {
-			const k = `${tr},${tc}`;
-			if (ss.fallenTrees[k]) continue;
-			const ddr = tr - r, ddc = tc - c;
-			if ((ddr !== 0) === (ddc !== 0)) continue;              // 斜め・爆心そのもの
-			if (Math.abs(ddr) + Math.abs(ddc) > radius) continue;
-			const dir = ddr < 0 ? 'n' : ddr > 0 ? 's' : ddc < 0 ? 'w' : 'e';
-			const [dr, dc] = FALL_DIRS[dir];
-			let ok = true;
-			for (let s = 1; s <= FALLEN_LOG_LEN && ok; s++) ok = canLie(tr + dr * s, tc + dc * s);
-			if (!ok) continue;
-			ss.fallenTrees[k] = dir;
-			felled.push(k);
-		}
-		if (!felled.length) return false;
-		playSound('move');
-		pulse('{{deadTree}} 枯れ木が 倒れた！', 1800);
-		evaluateConditions();
+		const [dr, dc] = FALL_DIRS[dir];
+		for (let s = 1; s <= FALLEN_LOG_LEN; s++) if (!canLie(tr + dr * s, tc + dc * s)) return false;
 		return true;
 	}
 
@@ -1525,6 +1560,8 @@ export function createProjectile(deps) {
 		burstBurrAt,
 		// 突進猪が壊せる壁を砕く（キュー95）
 		breakWallAt,
+		// 突進猪が枯れ木を倒す（キュー95 の11室目）
+		fellTreeByImpact,
 		flushFireSpread,
 		getFireSpread,
 	};
