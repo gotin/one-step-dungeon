@@ -44,6 +44,16 @@
     font-size: 15px;
     letter-spacing: 1px;
     line-height: 1;
+    display: flex;
+    flex-wrap: wrap;
+}
+
+/* ハートの間を詰める（2026-11-08 ユーザー指摘「隙間はもっと全然小さくていい」・初代ゼルダの並び）。
+   固定箱（--hud-heart）の中で絵は 17×16 ドット / 32 ドット＝四方に約 0.23 箱ぶんの透明余白がある。
+   それがそのまま隙間になって、ハート1つ分近く空いていた。左右 0.19・上下 0.2 箱ぶん詰める＝
+   隣のハートとの間は絵の幅の約 1/6（1ドット相当）。箱の大きさ（絵の大きさ）は変えない。 */
+#hud-hearts > canvas {
+    margin: calc(var(--hud-heart) * -0.2) calc(var(--hud-heart) * -0.19);
 }
 
 #hud-stage-label {

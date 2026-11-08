@@ -668,7 +668,7 @@ export function createUi(deps) {
 
 		pauseStatsEl.innerHTML = '';
 		const heartRow = document.createElement('div');
-		heartRow.style.cssText = 'display:flex;align-items:center;gap:2px;margin-bottom:4px;';
+		heartRow.id = 'pause-hearts';   // 間隔は css/overlays.css（HUD のハートと同じ詰め方）
 		for (let i = 0; i < player.maxHearts; i++) {
 			const cv = heartIconCanvas(player.hp - i * HP_PER_HEART);
 			if (cv) heartRow.appendChild(cv);

@@ -196,6 +196,18 @@
     text-align: center;
 }
 
+/* ポーズの体力欄のハート（2026-11-08 ユーザー指摘「ポーズ画面も合わせて」）＝HUD（css/hud.css）と同じ詰め方。
+   ここは #hud の外＝--hud-heart が無く、ハートの箱は絵の素の大きさ 32px になる∴既定値 32px で同じ比を掛ける。 */
+#pause-hearts {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    margin-bottom: 4px;
+}
+#pause-hearts > canvas {
+    margin: calc(var(--hud-heart, 32px) * -0.2) calc(var(--hud-heart, 32px) * -0.19);
+}
+
 /* 実行キュー66: 遊びの記録（探索率・宝箱・撃破数・倒れた回数）
    ゲームの操作とは関係しない∴枠の一番下に区切り線（上の罫線）を挟んで置く。 */
 #pause-score {
