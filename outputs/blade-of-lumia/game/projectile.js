@@ -14,7 +14,7 @@ import {
 } from './constants.js';
 import { SHIELD_TIERS } from '../shared/items.js';
 import { enemyPointHit, enemyCenter, enemyOccupiesTile } from './hitbox.js';
-import { SUNK_ROW } from './passable.js';
+import { SUNK_ROW, FALL_DIRS, FALLEN_LOG_LEN, fallenLogAt } from './passable.js';
 
 // Phase 10d-3: boomerang・thrownBomb は落ちアイテムと同じ絵を共有する（同じ名前で
 // SPRITES を参照）。落ちアイテム側を 32 ドット化した際、絵の中の透明余白が増えた
@@ -1236,6 +1236,8 @@ export function createProjectile(deps) {
 		// キュー95：爆風は大いが栗 '¤' を転がす（普通の石 '*' は動かない＝全体のルールにしない）。
 		// 岩落とし（breakPower 0＝O 古森の巨人の岩）は爆発ではない∴転がさない。
 		if (breakPower > 0 && rollBurrsFromBlast(r, c, radius, sd, ss)) needRenderBoard = true;
+		// キュー95（D6 `2,0`）：爆風は枯れ木 'ŧ' を爆心と反対の向きへ倒す（生きた木 't' は倒れない）。
+		if (breakPower > 0 && fellTreesFromBlast(r, c, radius, sd, ss)) needRenderBoard = true;
 
 		// プレイヤーダメージは「セルの走査」ではなく中心からの距離で見る
 		// （プレイヤーは半セル位置に立てる＝タイル単位で数えると爆風の縁で1セルずれる）。
@@ -1357,6 +1359,65 @@ export function createProjectile(deps) {
 				el.style.top  = `${to.r * cellPx}px`;
 			}
 		});
+		return true;
+	}
+
+	// ── 枯れ木を爆風で倒す（キュー95 の10室目・D6 `2,0`・2026-11-08）─────────────
+	// 理屈＝根の朽ちた立ち枯れの木。爆風に押されて、爆心に背を向けて倒れる。
+	// 規則（scripts/migrate-d6-2-0-fallen-tree-bridge.mjs の総当たりと同じ）：
+	//   ・爆心と**同じ行か列**にあり、距離が 1〜半径（爆弾は 2・爆弾鬼は 1）の立っている枯れ木だけ。
+	//     斜めは向きが決まらない∴倒れない（大いが栗と同じ）。
+	//   ・倒れる先＝根元から爆心と反対の向きへ FALLEN_LOG_LEN（2）マス。2マスとも部屋の内側で、
+	//     床か水で（茂み・木・柵などの物が無い）、石・栗・ほかの幹・勇者・敵が居ないときだけ倒れる。
+	//     1マスでも塞がっていれば倒れない（途中で折れて止まる、を作らない）。
+	//   ・倒れた幹の2マスは歩ける（水の上なら橋）・根元は切り株で歩ける（passable.js）。
+	//   ・部屋を出ると立ち直る（game.js enterStage）・セーブとロードでは戻らない（save.js）。
+	// 戻り値＝1本でも倒れたか（呼び手が盤面を描き直す）。
+	function fellTreesFromBlast(r, c, radius, sd, ss) {
+		const trees = [];
+		for (let rr = 0; rr < sd.rows; rr++) for (let cc = 0; cc < sd.cols; cc++) {
+			if (sd.tiles[rr][cc] === TILE.DEAD_TREE) trees.push([rr, cc]);
+		}
+		if (!trees.length) return false;
+		if (!ss.fallenTrees) ss.fallenTrees = {};
+		const player = getPlayer();
+		const pR = toTileRow(player.y), pC = toTileCol(player.x);
+		const stoneAt = (tr, tc) => {
+			for (const st of Object.values(ss.stonePositions ?? {})) {
+				if (!st.sunk && st.r === tr && st.c === tc) return true;
+			}
+			const t = sd.tiles[tr]?.[tc];
+			return (t === TILE.STONE || t === TILE.BURR) && !ss.stonePositions?.[`${tr},${tc}`];
+		};
+		const canLie = (tr, tc) => {
+			if (tr <= 0 || tc <= 0 || tr >= sd.rows - 1 || tc >= sd.cols - 1) return false;   // 外周（口）には倒れない
+			const t = sd.tiles[tr][tc];
+			if (t !== TILE.FLOOR && t !== TILE.WATER) return false;
+			if (stoneAt(tr, tc)) return false;
+			if (fallenLogAt(ss, tr, tc)) return false;
+			if (pR === tr && pC === tc) return false;
+			if (getEnemies().some((e) => !e.hidden && enemyOccupiesTile(e, tr, tc))) return false;
+			return true;
+		};
+		const felled = [];
+		for (const [tr, tc] of trees) {
+			const k = `${tr},${tc}`;
+			if (ss.fallenTrees[k]) continue;
+			const ddr = tr - r, ddc = tc - c;
+			if ((ddr !== 0) === (ddc !== 0)) continue;              // 斜め・爆心そのもの
+			if (Math.abs(ddr) + Math.abs(ddc) > radius) continue;
+			const dir = ddr < 0 ? 'n' : ddr > 0 ? 's' : ddc < 0 ? 'w' : 'e';
+			const [dr, dc] = FALL_DIRS[dir];
+			let ok = true;
+			for (let s = 1; s <= FALLEN_LOG_LEN && ok; s++) ok = canLie(tr + dr * s, tc + dc * s);
+			if (!ok) continue;
+			ss.fallenTrees[k] = dir;
+			felled.push(k);
+		}
+		if (!felled.length) return false;
+		playSound('move');
+		pulse('{{deadTree}} 枯れ木が 倒れた！', 1800);
+		evaluateConditions();
 		return true;
 	}
 

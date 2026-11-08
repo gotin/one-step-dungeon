@@ -30,11 +30,24 @@ export function createStageState() {
 		stonePositions:       {},    // { 'r,c': {r, c} } 石の移動後位置
 		solvedStonePositions: null,  // 全ボタン充足時の石位置スナップショット（再入時に復元）
 		stonesLocked:         false, // Phase 4.56: 全ボタンONを一度達成したら true（恒久・石を押せなくする）
+		fallenTrees:          {},    // キュー95: { 'r,c': 'n'|'s'|'w'|'e' } 爆風で倒れた枯れ木（部屋を出ると戻る）
 		switchToggles:   new Set(),  // Phase 4-5 ①: 武器の攻撃で ON にしたトグルスイッチ
 		litTorches:      new Set(),  // Phase 4-5 ②: 点灯したかがり火
 		activeColor:     null,       // Phase 5-1: 現在アクティブな色（'red'|'blue'|null）
 		lastKillMove:    0,          // Phase 9-5b: 最後に雑魚を倒した時点の stageMoves
 	};
+}
+
+// キュー95（D6 `2,0`）：倒れた枯れ木 `{ 'r,c': 'n'|'s'|'w'|'e' }`。壊れた値（向きでない・座標でない）は落とす
+// ＝通行判定（passable.js fallenLogAt）が知らない向きで幹の位置を見失わない。
+const FALL_DIR_KEYS = new Set(['n', 's', 'w', 'e']);
+export function normalizeFallenTrees(raw) {
+	const out = {};
+	if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return out;
+	for (const [k, d] of Object.entries(raw)) {
+		if (/^\d+,\d+$/.test(k) && FALL_DIR_KEYS.has(d)) out[k] = d;
+	}
+	return out;
 }
 
 // stageState（Set を含む実行時形式）を localStorage 保存用のプレーン形式
@@ -58,6 +71,7 @@ export function serializeStageState(stageState) {
 			stonePositions:       v.stonePositions ?? {},
 			solvedStonePositions: v.solvedStonePositions ?? null,
 			stonesLocked:         v.stonesLocked ?? false,
+			fallenTrees:     normalizeFallenTrees(v.fallenTrees),  // キュー95（D6 `2,0`）
 			switchToggles:   [...(v.switchToggles ?? [])],  // Phase 4-5 ①
 			litTorches:      [...(v.litTorches ?? [])],     // Phase 4-5 ②
 			activeColor:     v.activeColor ?? null,          // Phase 5-1
@@ -88,6 +102,9 @@ export function deserializeStageState(rawSS) {
 			stonePositions:       v.solvedStonePositions ?? {},  // パズル解決済みなら復元
 			solvedStonePositions: v.solvedStonePositions ?? null,
 			stonesLocked:         v.stonesLocked ?? false,
+			// ⚠️ 倒れた枯れ木は石と違ってロードで戻さない＝島の上でセーブして再開したとき、
+			//    橋が消えて島に取り残されるのを防ぐ。戻るのは部屋を出たとき（game.js enterStage）だけ。
+			fallenTrees:     normalizeFallenTrees(v.fallenTrees),
 			switchToggles:   new Set(v.switchToggles ?? []),  // Phase 4-5 ①
 			litTorches:      new Set(v.litTorches ?? []),     // Phase 4-5 ②
 			activeColor:     v.activeColor ?? null,            // Phase 5-1

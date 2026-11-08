@@ -457,6 +457,9 @@ function enterStage(lk, sk, pRow, pCol) {
 	// （壁際に挟まって取り出せなくなった石をリセットするため）
 	if (stageKey !== null && (currentLayer !== lk || stageKey !== sk)) {
 		const prevSS = getSS(currentLayer, stageKey);
+		// キュー95（D6 `2,0`）：爆風で倒れた枯れ木も部屋を出ると立ち直る（倒す向きを誤ったらやり直せる）。
+		// 宝箱を開けた後は戻っても失う物は無い＝解いたかどうかで分けない（石の解決済みスナップショットとは別）。
+		if (prevSS.fallenTrees && Object.keys(prevSS.fallenTrees).length > 0) prevSS.fallenTrees = {};
 		if (prevSS.stonePositions && Object.keys(prevSS.stonePositions).length > 0) {
 			if (prevSS.stonesLocked) {
 				// Phase 4.56: ロック済み＝崩れないので石位置は常に保持（防御的にスナップショットも残す）。
@@ -2611,6 +2614,7 @@ export function getStageStateSnapshot() {
 		brokenWalls:   [...(ss.brokenWalls ?? [])],
 		stonePositions: { ...(ss.stonePositions ?? {}) },  // Phase 5-3: 敵が押した石の確認用
 		stonesLocked:  !!ss.stonesLocked,  // Phase 4.56
+		fallenTrees:   { ...(ss.fallenTrees ?? {}) },  // キュー95（D6 `2,0`）: 爆風で倒れた枯れ木
 		flutePlayed:   !!ss.flutePlayed,   // Phase 5.5h: killAllAndFlute の検証用
 		// 実行キュー19: 拾った床アイテムのセル＝「踏んだのに拾えなかった矢束が残るか」の
 		// 観測用。⚠️ このスナップショットはホワイトリスト∴ここに足さない欄はテストから

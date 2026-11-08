@@ -45,7 +45,25 @@ const LADDER_OVER = new Set([
 export const STATEFUL_TILES = new Set([
 	TILE.GATE, TILE.TIDE_GATE, TILE.GATE_RED, TILE.GATE_BLUE,
 	TILE.BREAKABLE_WALL, TILE.DOORWAY_LOCKED, TILE.BUSH, TILE.CURSE_MIST, TILE.STONE, TILE.BURR,
+	TILE.DEAD_TREE,
 ]);
+
+// キュー95（2026-11-08・D6 `2,0`）：枯れ木の倒れた幹。`ss.fallenTrees` は元セルのキー → 向き
+// （'n'|'s'|'w'|'e'）。幹は根元から倒れた向きへ2マス＝その2マスは水の上でも歩ける（橋）。
+// 読み手＝通行（tilePassable）・描画（render-board.js）・爆風の倒し判定（projectile.js）。
+export const FALL_DIRS = { n: [-1, 0], s: [1, 0], w: [0, -1], e: [0, 1] };
+export const FALLEN_LOG_LEN = 2;
+// (r, c) を覆う幹 → { root: 'r,c', dir, seg }（seg＝根元から 1..FALLEN_LOG_LEN）。無ければ null。
+export function fallenLogAt(ss, r, c) {
+	for (const [k, dir] of Object.entries(ss?.fallenTrees ?? {})) {
+		const [dr, dc] = FALL_DIRS[dir] ?? [0, 0];
+		const [tr, tc] = k.split(',').map(Number);
+		for (let s = 1; s <= FALLEN_LOG_LEN; s++) {
+			if (tr + dr * s === r && tc + dc * s === c) return { root: k, dir, seg: s };
+		}
+	}
+	return null;
+}
 
 // 2026-08-02 バグ修正（ユーザー報告「石が閉まってるゲートを通れるし、そのときはプレイヤーも
 // 通れてしまう。そのバグがないとクリアできないよね？」）の記録。
@@ -90,6 +108,8 @@ export function statefulTileClosed(tile, posKey, ss) {
 		// 石は stonePositions に登録された時点で「動かされた」＝元のセルは床。
 		case TILE.STONE:
 		case TILE.BURR:           return !ss?.stonePositions?.[posKey];   // 大いが栗も石と同じ（キュー95）
+		// 枯れ木は倒れると根元が切り株＝歩ける（キュー95・D6 `2,0`）。
+		case TILE.DEAD_TREE:      return !ss?.fallenTrees?.[posKey];
 		default: return false;
 	}
 }
@@ -281,6 +301,9 @@ export function createPassable(d) {
 		// `shared/tiles.js FOOT_SOLID_TILES` が単一の真実（着地・接続の検査も同じ集合を読む＝キュー85 #5）。
 		// ⚠️ 2026-09-23 まで個別の if の列挙で、ここだけがかがり火 'H' を落としていた＝歩いて上に乗れた
 		// （dark_tower 3,5「淵の火渡り」の実機テストで発覚）。列挙を1か所にしてこの型の食い違いを消した。
+		// 枯れ木の倒れた幹の上は歩ける（キュー95・D6 `2,0`＝水の上の橋）。幹は水か床の上にしか倒れない
+		// （projectile.js fellTreesFromBlast）∴ここで通すのは水と床だけ＝壁の上に立つことは無い。
+		if (fallenLogAt(ss, r, c)) return true;
 		if (FOOT_SOLID_TILES.has(tile)) return false;
 		// 水は tiles 層でも bgTiles 層（下地）でも不通（はしご/飛行は isPassable で上書き）。
 		if (isWaterAt(r, c)) return false;

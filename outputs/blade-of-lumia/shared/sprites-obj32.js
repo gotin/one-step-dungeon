@@ -162,6 +162,92 @@ function burrGrid() {
 	return g;
 }
 
+// ── 枯れ木（DEAD_TREE 'ŧ'・キュー95 の10室目）──────────────────────────
+// 立ち枯れた細い木。生きた木 't'（丸い樹冠＝緑）と輪郭で区別する＝葉の無い灰褐色の幹＋裸の枝。
+// 理屈（PLAN キュー95 10室目）＝根が朽ちている∴爆風に押されて倒れる。
+// 色番号（TILE_PAL.deadTree）：1=輪郭 2=樹皮の影 3=樹皮 4=樹皮の明 5=照り 6=切り口 7=年輪 8=苔
+function deadTreeGrid() {
+	const g = blank();
+	// 幹＝根元で太く（6）上で細く（3）。光は左上＝左の縁を明るく、右の縁を暗く。
+	for (let r = 6; r <= 27; r++) {
+		const w = r >= 24 ? 6 : r >= 16 ? 5 : r >= 10 ? 4 : 3;
+		const c0 = 15 - Math.floor(w / 2);
+		for (let c = c0; c < c0 + w; c++) put(g, r, c, 3);
+		put(g, r, c0, 4);
+		put(g, r, c0 + w - 1, 2);
+	}
+	// 根の張り出し（左右へ低く）
+	rect(g, 26, 10, 27, 12, 3); put(g, 26, 10, 4);
+	rect(g, 26, 19, 27, 21, 2);
+	rect(g, 27, 9, 27, 22, 3);
+	// 裸の枝＝左は低く大きく、右は高く小さく（左右対称にしない＝枯れて欠けた木）
+	line(g, 15, 13, 9, 7, 3, 2);       // 左の大枝
+	line(g, 10, 8, 6, 6, 3);           // 左の小枝
+	line(g, 12, 10, 10, 11, 4);
+	line(g, 11, 17, 6, 22, 3, 2);      // 右の枝
+	line(g, 7, 21, 4, 24, 3);
+	line(g, 8, 20, 6, 19, 4);
+	line(g, 6, 15, 3, 14, 3);          // 梢の折れ残り
+	// 樹皮の裂け目（縦の暗い筋）と苔
+	for (const r of [12, 13, 14, 18, 19, 20, 21]) put(g, r, 15, 2);
+	rect(g, 22, 13, 23, 14, 8);
+	// うろ（洞）＝枯れ木に読ませる暗い穴
+	rect(g, 17, 16, 18, 16, 1);
+	strokeOutside(g);
+	return g;
+}
+
+// 切り株＝枯れ木が倒れた後の根元（歩ける）。上面の切り口に年輪。
+function deadStumpGrid() {
+	const g = blank();
+	rect(g, 17, 10, 25, 21, 3);
+	for (let r = 17; r <= 25; r++) { put(g, r, 10, 4); put(g, r, 21, 2); }
+	rect(g, 26, 8, 27, 23, 3); put(g, 26, 8, 4); put(g, 27, 23, 2);
+	// 切り口（上面の楕円）＝年輪は**閉じた輪**で描く（左右に点を置くと目に見え、縁のとげが耳に
+	// 見えて「顔のある生き物」になった＝2026-11-08 の撮影で自分で気づいて直した）。
+	for (let r = 12; r <= 19; r++) for (let c = 9; c <= 22; c++) {
+		const dy = (r - 15.5) / 3.6, dx = (c - 15.5) / 6.6;
+		const d = dy * dy + dx * dx;
+		if (d > 1) continue;
+		put(g, r, c, d > 0.62 ? 6 : d > 0.36 ? 7 : 6);   // 外の帯・年輪の輪・芯の帯
+	}
+	rect(g, 23, 11, 24, 12, 8);
+	strokeOutside(g);
+	return g;
+}
+
+// 倒れた幹（東へ倒れた版を描き、ほかの向きは回す）。seg 1＝根元の側／2＝梢の側（枝の折れ残り）。
+// 水の上に浮かぶ橋に読ませる＝セルを横いっぱいに貫く太い丸太（rows 11..20）＋下に水の影。
+function deadLogEastGrid(seg) {
+	const g = blank();
+	const c0 = 0, c1 = seg === 2 ? 26 : 31;
+	rect(g, 11, c0, 20, c1, 3);
+	for (let c = c0; c <= c1; c++) { put(g, 11, c, 4); put(g, 12, c, 4); put(g, 19, c, 2); put(g, 20, c, 2); }
+	// 樹皮の筋（横）＝途切れ途切れに
+	for (let c = c0 + 2; c <= c1 - 2; c += 5) { put(g, 15, c, 2); put(g, 15, c + 1, 2); put(g, 16, c + 3, 2); }
+	if (seg === 1) {
+		rect(g, 13, 6, 14, 7, 8);   // 苔
+	} else {
+		// 梢＝細くなって折れた先と、上下へ突き出た枝の折れ残り
+		rect(g, 13, 27, 18, 29, 3); put(g, 13, 27, 4);
+		line(g, 11, 20, 6, 24, 3, 2);
+		line(g, 20, 16, 25, 19, 3, 2);
+		line(g, 6, 24, 5, 26, 4);
+	}
+	strokeOutside(g);
+	return g;
+}
+const rotCW = (g) => g[0].map((_, c) => g.map((row) => row[c]).reverse());   // 時計回りに 90°
+const flipLR = (g) => g.map((row) => row.slice().reverse());
+const flipUD = (g) => g.slice().reverse().map((row) => row.slice());
+function deadLogGrid(dir, seg) {
+	const e = deadLogEastGrid(seg);
+	if (dir === 'e') return e;
+	if (dir === 'w') return flipLR(e);
+	if (dir === 's') return rotCW(e);
+	return flipUD(rotCW(e));   // 'n'
+}
+
 // ── 宝箱（CHEST 'C'）── ink 22×20（rows 5..24 / cols 5..26）──────────
 // ❌ 失効（2026-09-08・ユーザー指摘＝「宝箱は変だね。ためしにOpenAIに作らせてみた
 // のがこれ。これを参考にしてみて」＝参考画像を提示）＝木目の板目を縦線にした前回の
@@ -1989,6 +2075,10 @@ const BOMBITEM_FRAMES = [bombItemGrid()];
 export const OBJ32_SPRITES = {
 	block:     [blockGrid()],
 	burr:      [burrGrid()],   // 大いが栗（キュー95）
+	// 枯れ木・切り株・倒れた幹（キュー95 の10室目）。幹は向き（n/s/w/e）×根元側1／梢側2。
+	deadTree:  [deadTreeGrid()],
+	deadStump: [deadStumpGrid()],
+	...Object.fromEntries(['n', 's', 'w', 'e'].flatMap((d) => [1, 2].map((s) => [`deadLog_${d}${s}`, [deadLogGrid(d, s)]]))),
 	// 宝箱は単一フレーム（2026-09-08・ユーザー指摘＝「壁だよ？動いたら変じゃない？
 	// 宝箱もアニメーションしなくてよさそう」＝静物はちらつかせない）。
 	chest:     [chestGrid()],

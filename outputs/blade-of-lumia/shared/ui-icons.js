@@ -72,6 +72,7 @@ export const UI_ICON = {
 	torch:      { spr: 'torch',      pal: 'torch'      },
 	chest:      { spr: 'chest',      pal: 'chest'      },
 	burr:       { spr: 'burr',       pal: 'burr'       },   // 大いが栗（キュー95）
+	deadTree:   { spr: 'deadTree',   pal: 'deadTree'   },   // 枯れ木（キュー95 の10室目）
 	doorOpen:   { spr: 'doorOpen',   pal: 'door'       },
 };
 

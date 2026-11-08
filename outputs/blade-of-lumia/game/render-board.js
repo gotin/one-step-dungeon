@@ -23,7 +23,7 @@ import { isConnectTile } from '../shared/tile-connect.js';
 import { describeCell, BG_TILE_STYLE } from '../shared/cell-appearance.js';
 import { npcSpriteOf } from '../shared/npcs.js';
 import { paintSkyCell, startSkyDrift } from './sky-drift.js';
-import { lavaCooledAt } from './passable.js';
+import { lavaCooledAt, fallenLogAt } from './passable.js';
 
 // 末尾の共通スプライト fallback で「静的に描いてよい落ちアイテム」タイルの集合。
 // 敵・プレイヤー・NPC は実体として render-chars が描くので含めない（重複描画防止）。
@@ -456,6 +456,12 @@ export function createRenderBoard(deps) {
 			}
 			return;
 		}
+		// キュー95（D6 `2,0`）：枯れ木＝立っていれば裸の木・倒れた後は切り株（幹は renderBoard が重ねる）。
+		if (tile === TILE.DEAD_TREE) {
+			const spr = ss.fallenTrees?.[posKey] ? 'deadStump' : 'deadTree';
+			putCellSprite(cellEl, makeSprite(spr, 'deadTree', false), 'field-sprite');
+			return;
+		}
 		if (tile === TILE.STONE || tile === TILE.BURR) {
 			const _ssSt = getSS(currentLayer, stageKey);
 			if (_ssSt.stonePositions?.[posKey]) return;
@@ -611,6 +617,9 @@ export function createRenderBoard(deps) {
 				const desc = describeCell(stageData, r, c, tile, currentLayer);
 				setCellClass(cellEl, tile, posKey, ss, desc);
 				addCellSprite(cellEl, tile, posKey, ss, desc);
+				// キュー95（D6 `2,0`）：倒れた枯れ木の幹＝セルの絵（水・床）の上に重ねる。
+				const log = fallenLogAt(ss, r, c);
+				if (log) putCellSprite(cellEl, makeSprite(`deadLog_${log.dir}${log.seg}`, 'deadTree', false), 'field-sprite');
 				boardEl.appendChild(cellEl);
 			}
 		}

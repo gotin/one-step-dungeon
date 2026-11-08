@@ -77,6 +77,11 @@ export const TILE = {
 	// ＝爆風では動かない（全体のルールにすると既存の石の部屋が崩れる＝PLAN キュー95 4室目の監査）。
 	// 動いた後の位置は石と同じ `ss.stonePositions`（元セルのキー）に載る＝ボタン・ロック・描画の読み手を共有する。
 	BURR:    '¤',
+	// キュー95（2026-11-08・D6 `2,0`）：枯れ木＝立ち枯れた細い木。根が朽ちている∴爆弾の爆風を受けると
+	// 爆心と反対の向きへ倒れ、先の2マスに幹が横たわる。水の上の幹は橋になって歩ける（床の上でも歩ける）。
+	// 根元は切り株＝歩ける。倒れた向きは `ss.fallenTrees`（元セルのキー → 'n'|'s'|'w'|'e'）＝部屋を出ると
+	// 元に戻る（大いが栗の位置と同じ）。生きた木 't' は爆風では倒れない（全体のルールにしない）。
+	DEAD_TREE: 'ŧ',
 
 	// ── Blade of Lumia 追加タイル ─────────────────────────────
 	// 壊せる壁・マップ入り口
@@ -248,6 +253,7 @@ export const TILE_META = {
 	[TILE.CHEST]:   { label: '宝箱',         color: '#806010', passable: true,  icon: '☐' },
 	[TILE.STONE]:   { label: '石',           color: '#506070', passable: false, icon: '●' },
 	[TILE.BURR]:    { label: '大いが栗',     color: '#7a5028', passable: false, icon: '✷' },
+	[TILE.DEAD_TREE]: { label: '枯れ木',     color: '#6e5640', passable: false, icon: '🪵' },
 	// Blade of Lumia 追加
 	[TILE.BREAKABLE_WALL]: { label: '壊せる壁',    color: '#3a3028', passable: false, icon: '✦' },
 	[TILE.MAP_ENTER]:      { label: 'マップ入り口', color: '#202840', passable: true,  icon: '◎' },
