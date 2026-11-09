@@ -10,7 +10,7 @@
 //      3 #...~~~~~..#   ← 小島（行3〜6×列9〜10）
 //      4 ....~~~~~.E#   ← パトロール E(4,10)
 //      5 ....=====..#   ← 砂州（幅1・満ち 3.6 秒 → 引き 3.0 秒の繰り返し・最後の 0.72 秒は予告）
-//      6 #...~~~~~.B#   ← 宝箱 B(6,10)＝ルピー×20
+//      6 #...~~~~~.B#   ← 宝箱 B(6,10)＝ルピー×50（キュー100 で増額）
 //
 // 守るものは3つ。
 //   ① データ：盤面・水と砂・宝箱・潮の周期・砂州は links に無い・満ちれば小島は離れる・宣言・層の接続。
@@ -42,7 +42,7 @@ const grid = room.tiles.map((row, r) => [...rowStr(row)].map((ch, c) => (room.bg
 
 // ── ① データ ─────────────────────────────────────────────────────────
 test.describe('D3 潮だまりの砂州 ① データ', () => {
-	test('盤面・水と砂・宝箱（ルピー×20）・潮の周期', () => {
+	test('盤面・水と砂・宝箱（ルピー×50）・潮の周期', () => {
 		expect(grid.map((r) => r.join('')), '盤面が移行スクリプトの TARGET と違う').toEqual(TARGET);
 		expect(room.chestContents, '宝箱の中身が違う').toEqual({ [CHEST]: CHEST_CONTENT });
 		expect(SAND.every((k) => room.bgTiles?.[k] === TILE.SAND), '砂州と小島の下が砂でない').toBe(true);
@@ -246,7 +246,7 @@ test.describe('D3 潮だまりの砂州 ② 部屋', () => {
 		expect(r.enemiesLeft, 'E が潮に呑まれない').toBe(0);
 		expect(r.cross, '引いた間に小島へ渡れない').toBe(true);
 		expect(r.opened, '宝箱が開かない').toBe(true);
-		expect(r.gained, '宝箱でルピー×20 が増えていない').toBe(20);
+		expect(r.gained, '宝箱でルピー×50 が増えていない').toBe(50);
 		expect(r.back, '次の引きで岸へ戻れない').toBe(true);
 		expect(r.hpLost, '引きに合わせて渡ったのに減った').toBe(0);
 		expect(errors).toEqual([]);

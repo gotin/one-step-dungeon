@@ -30,6 +30,7 @@ import { AURA_SWORD_REACH, SWORD_REACH, ATTACK_POSE_MS } from '../game/constants
 import { AURA_AWAKEN_MS } from '../game/aura-awakening.js';
 import { collectRewards } from '../shared/progression.js';
 import { Q45_PLAN } from '../scripts/migrate-q45-dungeon-rewards.mjs';
+import { Q100_PLAN } from '../scripts/migrate-q100-dungeon-rewards.mjs';
 
 const MAP_PATH = fileURLToPath(new URL('../work/blade-of-lumia.json', import.meta.url));
 const map = JSON.parse(readFileSync(MAP_PATH, 'utf8'));
@@ -217,7 +218,11 @@ test.describe('Blade of Lumia – 光の紋章（データ・監査）', () => {
     expect(where.length, where.join('\n')).toBe(EMBLEMS_FOR_AURA);
     expect(new Set(where.map((w) => w.split(' ')[0])), '1ダンジョン1個になっていない')
       .toEqual(new Set([...Array(8)].map((_, i) => `dungeon_${i + 1}`)));
+    // キュー100 が後から差し替えた箱（D5 `4,3`・D7 `1,4` のルピー×100 → 剣技の巻物）はキュー100 の表で見る
+    // （tests/sword-scroll.spec.js ⑦）。ここで見るのはキュー45 の表のうち上書きされていない箱だけ。
+    const later = new Set(Q100_PLAN.map(([l, r, c]) => `${l}|${r}|${c}`));
     for (const [layer, room, cell, , after, label] of Q45_PLAN) {
+      if (later.has(`${layer}|${room}|${cell}`)) continue;
       const cur = map.layers[layer].stages[room].chestContents[cell];
       const ok = after.type === 'rupee' ? cur?.type === 'rupee' && cur.value === after.value : cur?.item === after.item;
       expect(ok, `${layer} ${room} (${cell}) ${label}：${JSON.stringify(cur)}`).toBe(true);

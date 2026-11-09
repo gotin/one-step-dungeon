@@ -182,6 +182,19 @@ export const ITEM_META = {
 		type: 'passive',
 		uses: null,
 	},
+	scroll: {
+		// 実行キュー100（2026-11-09 ユーザー判定）：剣技の巻物。D1〜D8 の「紋章の次に重い謎の部屋」に
+		// 1個ずつ・全 `SCROLLS_FOR_WIDE_SPIN` 個。`SCROLLS_FOR_SPIN` 個で、溜めた剣を満タンで放したとき
+		// ビームと同時に**回転斬り**が出る（周りの敵だけ・`SPIN_REACH`）。全部そろうと回転斬りが
+		// `SPIN_REACH_WIDE`（2マス先）まで届く（`player.scrolls` に個数・`spinReachOf`）。
+		// ⚠️ 新しいキーは足さない（ユーザー判定＝溜めの満タンで放すだけ）∴ビームの撃てる剣（銅の剣以上）が要る。
+		// ⚠️ 回転斬りが当たるのは**敵（と幻影・金の棘）だけ**。スイッチ・色の紋・茂みには当たらない＝謎の解き方は変わらない。
+		// ⚠️ 進行の鍵にしない（`SUB_ITEM_KEYS` に入れない＝無くてもクリアできる寄り道の報酬）。
+		// 宝箱には `{ type:'item', item:'scroll', name:'剣技の巻物' }` で書く。
+		name: '剣技の巻物', icon: '📜', sprite: 'scroll', pal: 'scroll',
+		type: 'passive',
+		uses: null,
+	},
 	flute: {
 		// Phase 4-2: 笛。active サブアイテム（使うと魔法の音色を奏でる）。
 		// 効果はステージ単位の stageData.fluteEffect で決まる：
@@ -359,6 +372,18 @@ export const HEART_PIECES_PER_HEART = 4;
 export const EMBLEMS_FOR_AURA = 8;
 export function hasSwordAura(player) {
 	return (Number(player?.emblems) || 0) >= EMBLEMS_FOR_AURA;
+}
+
+// ── 剣技の巻物（実行キュー100）────────────────────────────────────
+// `SCROLLS_FOR_SPIN` 個で回転斬り・`SCROLLS_FOR_WIDE_SPIN` 個（＝世界に置く総数・D1〜D8 に1個ずつ）で
+// 回転斬りが2マス先まで届く。ゲーム（`game/player.js gainScroll`・`game/charge.js` の満タンの放ち）・
+// ポーズの表示・監査（`shared/progression.js`）が同じ数を読む。
+export const SCROLLS_FOR_SPIN = 4;
+export const SCROLLS_FOR_WIDE_SPIN = 8;
+// 回転斬りの段（0＝まだ出ない／1＝周り／2＝2マス先まで）。届く距離の数は game/constants.js が持つ。
+export function spinLevelOf(player) {
+	const n = Number(player?.scrolls) || 0;
+	return n >= SCROLLS_FOR_WIDE_SPIN ? 2 : n >= SCROLLS_FOR_SPIN ? 1 : 0;
 }
 
 // ── くじの景品のうち最大ハートを増やすもの（実行キュー36・2026-09-30 ユーザー確定）──

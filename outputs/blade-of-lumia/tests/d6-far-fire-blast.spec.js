@@ -89,14 +89,14 @@ const snap = (page) => page.evaluate(({ chest, burr }) => {
 		burr: burst ? 'burst' : s ? `${s.r},${s.c}` : burr,
 		fallen: { ...(ss.fallenTrees ?? {}) },
 		opened: [...(ss.openedChests ?? [])].includes(chest),
-		bigPotion: p.subItems?.bigHealPotion?.count ?? 0,
+		rupees: p.rupees ?? 0,
 		hp: p.hp,
 		stage: g.getState().stageKey,
 	};
 }, { chest: CHEST, burr: BURR });
 
 test.describe('D6 遠火の発破 ② 実機', () => {
-	test('通し：かがり火の真南 (8,5) から北へ射ると栗が爆ぜ、枯れ木が東へ倒れて橋になり、回復薬（大）が手に入る', async ({ page }) => {
+	test('通し：かがり火の真南 (8,5) から北へ射ると栗が爆ぜ、枯れ木が東へ倒れて橋になり、ルピー×50 が手に入る', async ({ page }) => {
 		const errors = await boot(page, 8, 5);
 		const s0 = await snap(page);
 		await face(page, 'up');
@@ -117,7 +117,7 @@ test.describe('D6 遠火の発破 ② 実機', () => {
 		await step(page, 4);
 		s = await snap(page);
 		expect(s.opened, '宝箱が開かない').toBe(true);
-		expect(s.bigPotion, '宝箱で回復薬（大）が増えない').toBe(s0.bigPotion + 1);
+		expect(s.rupees, '宝箱でルピー×50 が増えない').toBe(s0.rupees + 50);
 		expect(errors).toEqual([]);
 	});
 

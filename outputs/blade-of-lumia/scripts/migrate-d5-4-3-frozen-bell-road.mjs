@@ -120,7 +120,7 @@ export const PILLARS = ['5,4', '6,6', '8,5', '8,6'];
 export const BRAKE = '6,5';
 export const LINKS = [{ switchId: BELL_NEAR, gateId: GATE_NEAR }, { switchId: BELL_FAR, gateId: GATE_FAR }];
 export const SHOW = { [CHEST]: { trigger: 'stonesPlaced' } };
-const CHEST_CONTENTS = { [CHEST]: { type: 'rupee', value: 30, name: 'ルピー×30' } };
+const CHEST_CONTENTS = { [CHEST]: { type: 'item', item: 'scroll', name: '剣技の巻物' } };   // キュー45 でルピー×100、キュー100（2026-11-09）で剣技の巻物
 export const SHORTEST = 50;                          // 最短手数（厳格）
 export const SHORTEST_LOOSE = 48;                    // 緩い版（はしごの上から押す近道・運ぶ並びは同じ）
 export const PUSHES = 9;
@@ -302,7 +302,7 @@ function main() {
 	}
 	if (JSON.stringify(room.chestContents ?? {}) !== JSON.stringify(CHEST_CONTENTS)) {
 		room.chestContents = JSON.parse(JSON.stringify(CHEST_CONTENTS));
-		log.push(`  ${ROOM}: 宝箱 ${CHEST}＝ルピー×30`);
+		log.push(`  ${ROOM}: 宝箱 ${CHEST}＝剣技の巻物`);
 	}
 	if (Object.keys(room.floorItems ?? {}).length) {
 		room.floorItems = {};
@@ -357,7 +357,7 @@ function main() {
 		cellsOf((ch) => [TILE.TREE, TILE.BUSH, TILE.SIGN, TILE.SWITCH_RED, TILE.SWITCH_BLUE,
 			TILE.GATE_RED, TILE.GATE_BLUE, TILE.TORCH, TILE.BREAKABLE_WALL, TILE.GATE].includes(ch)).length === 0
 		&& Object.keys(room.signData).length === 0 && Object.keys(room.npcData).length === 0);
-	check(`宝箱 B は ${CHEST} の1枚・中身＝ルピー×30・石が3つのボタンに乗ると現れる`,
+	check(`宝箱 B は ${CHEST} の1枚・中身＝剣技の巻物・石が3つのボタンに乗ると現れる`,
 		same(cellsOf((ch) => ch === TILE.CHEST), [CHEST]) && JSON.stringify(room.chestContents) === JSON.stringify(CHEST_CONTENTS)
 		&& JSON.stringify(room.showConditions) === JSON.stringify(SHOW));
 	check(`石は ${STONES.join(' ')}・ボタンは ${BUTTONS.join(' ')}・水門は ${GATE_NEAR} と ${GATE_FAR}・鐘は2つ・links は鐘→水門の2本`,

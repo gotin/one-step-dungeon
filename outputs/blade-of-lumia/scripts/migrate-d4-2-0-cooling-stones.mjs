@@ -72,7 +72,7 @@ export const TARGET = [
 	'#####..#####',
 ];
 export const CHEST = '1,5';
-export const CHEST_CONTENT = { type: 'rupee', value: 20, name: 'ルピー×20' };
+export const CHEST_CONTENT = { type: 'rupee', value: 50, name: 'ルピー×50' };   // キュー100（2026-11-09）で差し替え＝scripts/migrate-q100-dungeon-rewards.mjs
 export const STONE_WEST = '7,1';
 export const STONE_EAST = '6,9';
 export const RIVER_ROWS = [3, 4];

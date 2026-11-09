@@ -82,7 +82,7 @@ export const TARGET = [
 	'############',
 ];
 export const CHEST = '2,9';
-export const CHEST_CONTENT = { type: 'rupee', value: 20, name: 'ルピー×20' };
+export const CHEST_CONTENT = { type: 'item', item: 'scroll', name: '剣技の巻物' };   // キュー100（2026-11-09）で差し替え＝scripts/migrate-q100-dungeon-rewards.mjs
 export const DOOR = '4,7';           // 宝物庫の戸口（幅1）
 export const KNIGHT = '4,8';         // 戸口のすぐ内側で西を向く
 export const KNIGHT_DIR = 'left';

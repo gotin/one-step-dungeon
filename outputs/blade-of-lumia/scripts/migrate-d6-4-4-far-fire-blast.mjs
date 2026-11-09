@@ -91,7 +91,7 @@ export const MOUTHS = ['4,0', '5,0'];
 export const TARGET = PLAN_ROWS.map((row) => row.replace(/~/g, '.'));
 export const WATER = [BURR];
 PLAN_ROWS.forEach((row, r) => [...row].forEach((ch, c) => { if (ch === '~') WATER.push(`${r},${c}`); }));
-export const CHEST_CONTENTS = { [CHEST]: { type: 'item', item: 'bigHealPotion', name: '回復薬（大）' } };
+export const CHEST_CONTENTS = { [CHEST]: { type: 'rupee', value: 50, name: 'ルピー×50' } };   // キュー100（2026-11-09）で差し替え＝scripts/migrate-q100-dungeon-rewards.mjs
 export const SIGN_DATA = {
 	[SIGN]: {
 		name: '遠火の 発破',

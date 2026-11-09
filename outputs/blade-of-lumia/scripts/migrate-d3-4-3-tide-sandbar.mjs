@@ -79,7 +79,7 @@ export const TARGET = [
 export const TIDE_CYCLE = { highMs: 3600, lowMs: 3000, warnMs: 720 };
 export const PATROL = '4,10';
 export const CHEST = '6,10';
-export const CHEST_CONTENT = { type: 'rupee', value: 20, name: 'ルピー×20' };
+export const CHEST_CONTENT = { type: 'rupee', value: 50, name: 'ルピー×50' };   // キュー100（2026-11-09）で差し替え＝scripts/migrate-q100-dungeon-rewards.mjs
 export const SANDBAR = ['5,4', '5,5', '5,6', '5,7', '5,8'];
 export const ISLAND = [];
 for (let r = 3; r <= 6; r++) for (let c = 9; c <= 10; c++) ISLAND.push(`${r},${c}`);

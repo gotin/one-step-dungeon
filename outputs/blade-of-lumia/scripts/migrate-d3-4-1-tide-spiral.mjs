@@ -88,7 +88,7 @@ export const TARGET = [
 ];
 export const TIDE_CYCLE = { highMs: 3600, lowMs: 3000, warnMs: 720 };   // 1・2室目と同じ
 export const CHEST = '5,6';
-export const CHEST_ITEM = { type: 'rupee', value: 50, name: 'ルピー×50' };
+export const CHEST_ITEM = { type: 'item', item: 'scroll', name: '剣技の巻物' };   // キュー100（2026-11-09）で差し替え＝scripts/migrate-q100-dungeon-rewards.mjs
 export const PATROL = '2,9';
 export const MIDBAR = ['1,9', '1,10', '2,9'];                           // 中洲（乾いた床・E が居座る）
 export const ISLAND = ['4,3', '4,4', '4,5', '4,6', '5,3', '5,4', '5,5', '5,6'];   // 中央の小島（宝箱つき）

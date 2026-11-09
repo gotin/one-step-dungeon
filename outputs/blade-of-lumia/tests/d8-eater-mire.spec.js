@@ -10,7 +10,7 @@
 //      2 #......~~~~#   ← 堀（幅1）
 //      3 #......~...#   ← 小島（行3〜6×列8〜10・泥）
 //      4 .......~σ..#   ← ルピー喰い σ(4,8)
-//      5 .......~..B#   ← 宝箱 B(5,10)＝ルピー×30
+//      5 .......~..B#   ← 宝箱 B(5,10)＝ルピー×50（キュー100 で増額）
 //      6 #......~.σ.#   ← ルピー喰い σ(6,9)
 //      7 #......~~~~#
 //
@@ -45,7 +45,7 @@ const grid = room.tiles.map((row, r) => [...rowStr(row)].map((ch, c) => (room.bg
 
 // ── ① データ ─────────────────────────────────────────────────────────
 test.describe('D8 ルピー喰いの底なし沼 ① データ', () => {
-	test('盤面・堀と泥・宝箱（ルピー×30）', () => {
+	test('盤面・堀と泥・宝箱（ルピー×50）', () => {
 		expect(grid.map((r) => r.join('')), '盤面が移行スクリプトの TARGET と違う').toEqual(TARGET);
 		expect(grid.flat().filter((ch) => ch === TILE.CHEST).length, '宝箱が1つでない').toBe(1);
 		expect(room.chestContents, '宝箱の中身が違う').toEqual({ [CHEST]: CHEST_CONTENT });
@@ -201,7 +201,7 @@ test.describe('D8 ルピー喰いの底なし沼 ② 部屋', () => {
 		expect(r.left, 'σ が残っている').toBe(0);
 		expect(r.go, '小島の宝箱の手前まで行けない').toBe(true);
 		expect(r.opened, '宝箱が開かない').toBe(true);
-		expect(r.gained, '宝箱でルピー×30 が増えていない').toBe(30);
+		expect(r.gained, '宝箱でルピー×50 が増えていない').toBe(50);
 		expect(errors).toEqual([]);
 	});
 });

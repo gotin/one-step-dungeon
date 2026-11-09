@@ -96,7 +96,7 @@ export const ALTAR = { r0: 4, r1: 5, c0: 5, c1: 6 };   // 祭壇の中（行4-5�
 export const ALTAR_MOUTH = ['6,5', '6,6'];   // 祭壇の口（南）
 export const ENTRY = '4,0';                  // 西の口（墓廊から入った最初のセル）
 export const CHEST = '4,5';
-export const CHEST_CONTENT = { type: 'rupee', value: 30, name: 'ルピー×30' };   // キュー45（2026-10-11）で据え置き＝C 段（L12 以下・敵全滅の封印）
+export const CHEST_CONTENT = { type: 'item', item: 'scroll', name: '剣技の巻物' };   // キュー100（2026-11-09）で差し替え＝scripts/migrate-q100-dungeon-rewards.mjs
 export const CHEST_CONDITION = { trigger: 'killAll', message: '砂の 蟲を 退けた！祭壇に 宝箱が 現れた！' };
 export const POTION = '8,1';                 // 回復薬（小）＝書き換え前の物を南西の隅へ
 

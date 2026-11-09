@@ -44,7 +44,7 @@
 //   床のルピー×5（旧 (4,6) の r と floorItems）。
 //
 // ■ 検証（このスクリプト自身が最後に全部やる）
-//   ・盤面／宝箱1つ＝ルピー×20・出現条件なし／ひび1枚（breakDef 1・λ の breakPower で壊れる）／外周の口の形が不変
+//   ・盤面／宝箱1つ＝ルピー×50・出現条件なし／ひび1枚（breakDef 1・λ の breakPower で壊れる）／外周の口の形が不変
 //   ・宝箱はひびが壊れる前は届かず、壊れると届く／取り残しなし
 //   ・窯へは歩いて届かず、窯の隣に歩けるマスが無い（ロウソクの炎を置けない）／歩けるマスから窯の中へ縦横の
 //     壁の無い線が無い（矢・ブーメランが届かない）／対照＝窯の壁を1枚床にすると線ができる
@@ -181,7 +181,7 @@ function main() {
 	// 外周の口の形＝西の口（行4-5）だけが開いていること。宝物庫の壁 (7,0)・(8,0) は外周のまま。
 	check(`外周の口の形が書き換え前と同じ`, ringOf(before).replace(/[^#.]/g, '.') === ringOf(TARGET).replace(/[^#.]/g, '.'));
 	room.tiles = TARGET.map((row) => [...row]);
-	room.chestContents = { [CHEST_CELL]: { type: 'rupee', value: 20, name: 'ルピー×20' } };
+	room.chestContents = { [CHEST_CELL]: { type: 'rupee', value: 50, name: 'ルピー×50' } };   // キュー100（2026-11-09）で差し替え＝scripts/migrate-q100-dungeon-rewards.mjs
 	room.floorItems = {};
 	room.showConditions = {};
 	room.breakableWalls = { ...BREAKABLE_WALLS };
@@ -195,9 +195,9 @@ function main() {
 	const ogreMeta = ENEMY_META[TILE.BOMB_OGRE];
 	const blast = ogreMeta.attack.blast;
 	check(`盤面が狙いどおり`, t.map(rowStr).join('\n') === TARGET.join('\n'));
-	check(`宝箱は ${CHEST_CELL} の1つだけ＝ルピー×20・出現条件なし（最初から置いてある）`,
+	check(`宝箱は ${CHEST_CELL} の1つだけ＝ルピー×50・出現条件なし（最初から置いてある）`,
 		flat.filter((ch) => ch === TILE.CHEST).length === 1 && at(CHEST_CELL) === TILE.CHEST
-		&& room.chestContents[CHEST_CELL]?.type === 'rupee' && room.chestContents[CHEST_CELL]?.value === 20
+		&& room.chestContents[CHEST_CELL]?.type === 'rupee' && room.chestContents[CHEST_CELL]?.value === 50
 		&& !Object.keys(room.showConditions).length);
 	check(`ひびは ${CRACK} の1枚だけ・breakDef 1（λ の breakPower ${blast.breakPower} で壊れる）`,
 		flat.filter((ch) => ch === TILE.BREAKABLE_WALL).length === 1 && at(CRACK) === TILE.BREAKABLE_WALL

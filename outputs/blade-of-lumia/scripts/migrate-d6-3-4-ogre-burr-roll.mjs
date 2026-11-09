@@ -96,7 +96,7 @@ export const OGRE_RANGE = [2, 7];   // shared/enemies.js 爆弾鬼 attack.minRan
 export const TARGET = PLAN_ROWS.map((row) => row.replace(/~/g, '.'));
 export const WATER = [];
 PLAN_ROWS.forEach((row, r) => [...row].forEach((ch, c) => { if (ch === '~') WATER.push(`${r},${c}`); }));
-export const CHEST_CONTENTS = { [CHEST]: { type: 'item', item: 'bigHealPotion', name: '回復薬（大）' } };
+export const CHEST_CONTENTS = { [CHEST]: { type: 'rupee', value: 100, name: 'ルピー×100' } };   // キュー100（2026-11-09）で差し替え＝scripts/migrate-q100-dungeon-rewards.mjs
 export const SHOW = { [CHEST]: { trigger: 'stonesPlaced', message: '{{burr}} 大いが栗が 踏み板に 収まり、宝箱が 現れた！' } };
 export const SIGN_DATA = {
 	[SIGN]: {

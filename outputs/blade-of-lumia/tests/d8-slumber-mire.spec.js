@@ -8,7 +8,7 @@
 //
 // 新しい盤面（~ は bgTiles の水）:
 //      1 #~Γ~~Γ~~~###   ← 北の窪みのヒル
-//      2 #B.........#   ← 幅1の泥道・宝箱 (2,1)＝ルピー×20
+//      2 #B.........#   ← 幅1の泥道・宝箱 (2,1)＝ルピー×50（キュー100 で増額）
 //      3 #~~Γ~~Γ~~~~#   ← 南の窪みのヒル・堀 (3,10)
 //      4 #########i..   ← 立札・岸 (4,10)
 //   泥道の帯へははしごで堀を渡るしかない＝ヒルは帯から出られない。笛を吹くとヒルが 4 秒泥へ沈んで眠る
@@ -43,7 +43,7 @@ const grid = room.tiles.map((row, r) => [...rowStr(row)].map((ch, c) => (room.bg
 
 // ── ① データ ─────────────────────────────────────────────────────────
 test.describe('D8 眠りヒルの泥道 ① データ', () => {
-	test('盤面・水と泥・宝箱（ルピー×20）・立札・fluteEffect（slumber）', () => {
+	test('盤面・水と泥・宝箱（ルピー×50）・立札・fluteEffect（slumber）', () => {
 		expect(room.tiles.map(rowStr), '盤面が移行スクリプトの TARGET と違う').toEqual(tilesOf().map(rowStr));
 		expect(room.bgTiles, 'bgTiles（水と泥）が違う').toEqual(bgOf());
 		expect(grid.map((r) => r.join('')), '水の配置が TARGET と違う').toEqual(TARGET);
@@ -218,7 +218,7 @@ test.describe('D8 眠りヒルの泥道 ③ 主題', () => {
 		expect(r.go, '眠りの上を歩いて宝箱の手前まで行けない').toBe(true);
 		expect(r.allAsleepAtChest, '宝箱に着く前にヒルが起きた＝1回の眠りで片道が足りない').toBe(true);
 		expect(r.opened, '宝箱が開かない').toBe(true);
-		expect(r.gained, 'ルピー +20 にならない').toBe(20);
+		expect(r.gained, 'ルピー +50 にならない').toBe(50);
 		expect(r.hpAtChest, '行きで傷を受けた＝眠っているヒルが刺した').toBe(r.hp0);
 		expect(r.back, 'もう一度吹いても岸へ戻れない').toBe(true);
 		expect(r.hpEnd, '倒れた').toBeGreaterThan(0);

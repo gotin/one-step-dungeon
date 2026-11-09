@@ -44,7 +44,7 @@ const at = (k) => { const [r, c] = k.split(',').map(Number); return grid[r][c]; 
 
 // ── ① データ ─────────────────────────────────────────────────────────
 test.describe('D4 熾火の苗床 ① データ', () => {
-	test('盤面・宝箱は1つ（ルピー×20・全滅で出る）・看板に本文・床の拾い物は無い', () => {
+	test('盤面・宝箱は1つ（ルピー×50・全滅で出る）・看板に本文・床の拾い物は無い', () => {
 		expect(room.tiles.map(rowStr), '盤面が移行スクリプトの TARGET と違う').toEqual(TARGET);
 		expect(grid.flat().filter((ch) => ch === TILE.CHEST).length, '宝箱が1つでない').toBe(1);
 		expect(at(CHEST)).toBe(TILE.CHEST);
@@ -176,7 +176,7 @@ test.describe('D4 熾火の苗床 ③ 主題', () => {
 		expect(r.defeated, '撃破の記録が親の posKey に残らない＝部屋を出ると復活する').toContain('3,2');
 	});
 
-	test('通し：δ を3体とも片付けると宝箱が出て、開けるとルピー +20', async ({ page }) => {
+	test('通し：δ を3体とも片付けると宝箱が出て、開けるとルピー +50', async ({ page }) => {
 		const errors = [];
 		page.on('pageerror', (e) => errors.push(e.message));
 		// 通しで測るのは「全滅→宝箱→+20」＝被弾は測らない（無敵のまま＝狩りの手順が被弾で崩れない）。
@@ -215,7 +215,7 @@ test.describe('D4 熾火の苗床 ③ 主題', () => {
 		await page.evaluate(() => { const g = window.__game; for (let i = 0; i < 4; i++) { g.movePlayer('down'); g.step(1); } });
 		expect((await page.evaluate(() => window.__game.getStageState().openedChests)), '宝箱が開かない').toContain(CHEST);
 		const rupees1 = await page.evaluate(() => window.__game.getState().player.rupees);
-		expect(rupees1 - rupees0, 'ルピーが 20 増えない').toBe(20);
+		expect(rupees1 - rupees0, 'ルピーが 50 増えない').toBe(CHEST_CONTENT.value);
 		expect(errors).toEqual([]);
 	});
 });

@@ -5,7 +5,7 @@ import { buildExitRegistry as buildExitRegistryShared } from '../shared/exits.js
 import { liftGroundTiles } from '../shared/ground-layer.js';
 import { ENEMY_META, ENEMY_SPEED_NORMAL } from '../shared/enemies.js';
 import { startsAlert, holdsPost } from '../shared/enemy-alert.js';
-import { ITEM_META, EQUIP_META, BOOMERANG_TIERS, ownsItem, addStack, EMBLEMS_FOR_AURA } from '../shared/items.js';
+import { ITEM_META, EQUIP_META, BOOMERANG_TIERS, ownsItem, addStack, EMBLEMS_FOR_AURA, SCROLLS_FOR_WIDE_SPIN } from '../shared/items.js';
 import { NPC_SPRITE_MAP, NPC_DEFAULT_DIALOG } from '../shared/npcs.js';
 import { ARROW_CELL_SCALE } from '../shared/tile-sprites.js';
 import {
@@ -98,6 +98,8 @@ let player = {
 	heartPieces: 0,
 	// キュー45: 光の紋章の個数（8つで剣にオーラ＝items.js hasSwordAura）。
 	emblems: 0,
+	// キュー100: 剣技の巻物の個数（4つで回転斬り・8つで2マス先まで＝items.js spinLevelOf）。
+	scrolls: 0,
 	// キュー13 ③: 妖精の瓶の本数（上限1＝items.js ITEM_STACK_MAX・倒れたとき combat.js が使う）。
 	fairies: 0,
 	atk: 2, def: 0, keys: 0,
@@ -1058,6 +1060,8 @@ const { checkStoneOnSwitch, evaluateConditions, refreshGates } = createCondition
 		hasCleared,
 		// Phase 5.5k k-7: 剣封じ中は溜めも始まらない／溜め中に封じられたら中断される
 		isSwordSealed:       () => fx.isSwordSealed(),
+		// 実行キュー100：満タンで放したときの回転斬り（combat.js は後のブロックで作る∴fx 経由で遅く引く）
+		spinAttack:          () => fx.spinAttack?.(),
 	});
 	install({
 		startCharge: _charge.startCharge,
@@ -1275,6 +1279,7 @@ const { checkStoneOnSwitch, evaluateConditions, refreshGates } = createCondition
 		grantReward: _player.grantReward,
 
 		swordAttack: _combat.swordAttack,
+		spinAttack: _combat.spinAttack,
 		drawSwordHeld: _combat.drawSwordHeld,
 		clearSwordHeld: _combat.clearSwordHeld,
 		ensureSwordHeld: _combat.ensureSwordHeld,
@@ -2244,6 +2249,7 @@ function startNewGame() {
 		hp: 6, maxHp: 6, maxHearts: 3,
 		heartPieces: 0,
 		emblems: 0,
+		scrolls: 0,
 		fairies: 0,
 		atk: 2, def: 0, keys: 0,
 		weapon: null, shield: null, armor: null,
@@ -2391,6 +2397,7 @@ async function init() {
 		const psSwiftBoots = params.get('ps_swiftboots');  // 実行キュー13: 疾風の靴
 		const psGoldGarb = params.get('ps_goldgarb');  // 実行キュー76⑤: 金の装束
 		const psEmblems  = params.get('ps_emblems');   // 実行キュー45: 光の紋章の個数（8＝剣にオーラ）
+		const psScrolls  = params.get('ps_scrolls');   // 実行キュー100: 剣技の巻物の個数（4＝回転斬り・8＝2マス先まで）
 		const psDefeated = params.get('ps_defeated');  // 実行キュー23: 撃破済みボス（タイル文字のカンマ区切り）
 		const psMap      = params.get('ps_map');       // 2026-09-19: 地図の所持（目的地マークの見え方の確認用）
 
@@ -2433,6 +2440,10 @@ async function init() {
 		if (psEmblems !== null) {
 			const n = parseInt(psEmblems, 10);
 			player.emblems = Number.isFinite(n) ? Math.min(EMBLEMS_FOR_AURA, Math.max(0, n)) : 0;
+		}
+		if (psScrolls !== null) {
+			const n = parseInt(psScrolls, 10);
+			player.scrolls = Number.isFinite(n) ? Math.min(SCROLLS_FOR_WIDE_SPIN, Math.max(0, n)) : 0;
 		}
 		// ⚠️ 本数は**上限（`maxArrows`/`maxBombs`）ちょうど＝満タン**で渡す。上限を超える
 		//    本数を直接入れると「矢束を踏んだら減る」状態を作ってしまう（2026-09-21）。
@@ -2553,6 +2564,7 @@ export function getGameState() {
 			maxHearts: player.maxHearts ?? 3,
 			heartPieces: player.heartPieces ?? 0,
 			emblems: player.emblems ?? 0,
+			scrolls: player.scrolls ?? 0,
 			fairies: player.fairies ?? 0,
 			hasWingRobe: !!player.hasWingRobe, flying: !!player.flying,
 			hasLadder: !!player.hasLadder,

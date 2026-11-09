@@ -301,7 +301,7 @@ function main() {
 	// （寄道でも `warlord_lair` は主の間を持つ∴作る＝0h・2026-09-05）。
 	const preBoss    = collectRewards(map, { excludeBossRooms: true });
 	const bossLayers = bossRoomLayersOf(map);
-	const EMPTY_REWARDS = { sword: [], armor: [], shield: [], boomerang: [], items: [], hearts: 0, heartPieces: 0, emblems: 0, triforce: 0 };
+	const EMPTY_REWARDS = { sword: [], armor: [], shield: [], boomerang: [], items: [], hearts: 0, heartPieces: 0, emblems: 0, scrolls: 0, triforce: 0 };
 	const preBossAt = (i) => {
 		const layer = ORDER[i]?.layer;
 		return layer && bossLayers.has(layer) ? (preBoss.get(layer) ?? EMPTY_REWARDS) : null;
@@ -400,6 +400,7 @@ function main() {
 		if (r.hearts)        bits.push(`ハートの器 ×${r.hearts}`);
 		if (r.heartPieces)   bits.push(`ハートのかけら ×${r.heartPieces}`);
 		if (r.emblems)       bits.push(`光の紋章 ×${r.emblems}`);
+		if (r.scrolls)       bits.push(`剣技の巻物 ×${r.scrolls}`);
 		if (bits.length) console.log(`  ${layer.padEnd(14)} ${bits.join(' / ')}`);
 	}
 	if (report.unplacedTiers.length) {

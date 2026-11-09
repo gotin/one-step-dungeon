@@ -5,7 +5,7 @@
 import { TILE, TILE_META, FLOOR_STACK_TILES, STONE_TILES } from '../shared/tiles.js';
 import { statefulTileClosed, lavaCooledAt, SUNK_ROW } from './passable.js';
 import { makeStoneEl, stoneSpriteOf } from './render-chars.js';
-import { ITEM_META, EQUIP_META, SWORD_TIERS, BASE_ATK, ARMOR_TIERS, BASE_DEF, SHIELD_TIERS, BOOMERANG_TIERS, HEART_PIECES_PER_HEART, EMBLEMS_FOR_AURA, ITEM_STACK_MAX, ownsItem, addStack, stackCount, isStackFull } from '../shared/items.js';
+import { ITEM_META, EQUIP_META, SWORD_TIERS, BASE_ATK, ARMOR_TIERS, BASE_DEF, SHIELD_TIERS, BOOMERANG_TIERS, HEART_PIECES_PER_HEART, EMBLEMS_FOR_AURA, SCROLLS_FOR_SPIN, SCROLLS_FOR_WIDE_SPIN, ITEM_STACK_MAX, ownsItem, addStack, stackCount, isStackFull } from '../shared/items.js';
 import { NPC_SPRITE_MAP } from '../shared/npcs.js';
 import { ENEMY_META } from '../shared/enemies.js';
 import { enemyOccupiesTile } from './hitbox.js';
@@ -869,6 +869,14 @@ export function createPlayer(deps) {
 		return player.emblems === EMBLEMS_FOR_AURA;
 	}
 
+	// ── 剣技の巻物を得る（実行キュー100）──────────────────────
+	// 個数は `player.scrolls`。回転斬りの段は `spinLevelOf(player)` で読む（別の旗を持たない）。
+	function gainScroll() {
+		const player = getPlayer();
+		player.scrolls = (Number.isFinite(player.scrolls) ? player.scrolls : 0) + 1;
+		return player.scrolls;
+	}
+
 	// ── サブアイテムを与える ──────────────────────────────
 	function giveSubItem(id) {
 		const player = getPlayer();
@@ -890,6 +898,7 @@ export function createPlayer(deps) {
 			if (id === 'heartContainer') gainHeartContainer();
 			else if (id === 'heartPiece') gainHeartPiece();
 			else if (id === 'emblem')    gainEmblem();
+			else if (id === 'scroll')    gainScroll();
 			else if (id === 'ladder')    player.hasLadder  = true;
 			else if (id === 'quiver')    player.maxArrows  = (player.maxArrows  ?? 8) + 8;
 			else if (id === 'bombBag')   player.maxBombs   = (player.maxBombs   ?? 8) + 8;
@@ -941,6 +950,14 @@ export function createPlayer(deps) {
 				return done
 					? `光の紋章 が ${EMBLEMS_FOR_AURA}つ そろった！ 剣に 光の オーラ が 宿った！（剣が 1マス 先の 敵まで 届く）`
 					: `光の紋章 を手に入れた！（${player.emblems}/${EMBLEMS_FOR_AURA}）`;
+			}
+			// 剣技の巻物（キュー100）＝集まり具合（n/8）。回転斬りが出る4つ目と、2マス先まで届く8つ目で
+			// 初めて効果を言う（紋章と同じ＝それまでは何が起きるか明かさない）。
+			if (content.item === 'scroll') {
+				const n = gainScroll();
+				if (n === SCROLLS_FOR_SPIN) return `剣技の巻物 を手に入れた！（${n}/${SCROLLS_FOR_WIDE_SPIN}） 回転斬り を覚えた！（剣を 溜めて 満タンで 放つと まわりの 敵を 斬る）`;
+				if (n === SCROLLS_FOR_WIDE_SPIN) return `剣技の巻物 が ${SCROLLS_FOR_WIDE_SPIN}つ そろった！ 回転斬り が 2マス先 まで 届く！`;
+				return `剣技の巻物 を手に入れた！（${n}/${SCROLLS_FOR_WIDE_SPIN}）`;
 			}
 			// 上限つきの道具が満杯（キュー13 ③）＝渡さず、そう言う。宝箱と店は先に確かめて
 			// 開けない／売らない∴ここに来るのはくじ・ボス報酬だけ。

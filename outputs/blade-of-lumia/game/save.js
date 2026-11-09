@@ -10,7 +10,7 @@
 //    （SAVE_KEY を使った保存・player 等への代入は呼び出し側の責務）。
 
 import { normalizeSavedMarks, markId } from '../shared/marks.js';
-import { EMBLEMS_FOR_AURA } from '../shared/items.js';
+import { EMBLEMS_FOR_AURA, SCROLLS_FOR_WIDE_SPIN } from '../shared/items.js';
 import { sanitizePlayMs } from './play-time.js';
 import { sanitizeCount } from './play-stats.js';
 
@@ -167,6 +167,12 @@ export function sanitizeLoadedPlayer(player, itemMeta) {
 	{
 		const n = Math.floor(Number(player.emblems));
 		player.emblems = Number.isFinite(n) ? Math.min(EMBLEMS_FOR_AURA, Math.max(0, n)) : 0;
+	}
+	// キュー100: 剣技の巻物の個数。巻物の導入前のセーブは 0。壊れた値は 0〜SCROLLS_FOR_WIDE_SPIN の整数に丸める
+	// ＝`spinLevelOf` が文字列や NaN で化けない。
+	{
+		const n = Math.floor(Number(player.scrolls));
+		player.scrolls = Number.isFinite(n) ? Math.min(SCROLLS_FOR_WIDE_SPIN, Math.max(0, n)) : 0;
 	}
 	// キュー13 ③: 妖精の瓶の本数。瓶の導入前のセーブは 0。壊れた値（数でない・負・小数）は
 	// 0 以上の整数に丸める＝`takeDamage` の `fairies > 0` が文字列や NaN で化けない。

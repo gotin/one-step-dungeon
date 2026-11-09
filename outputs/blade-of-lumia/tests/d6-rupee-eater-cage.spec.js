@@ -22,7 +22,7 @@
 //      回廊から起こせる・敵と脅威度・層の接続は不変。
 //   ② エンジンの前提：σ のさまよい方・爆弾の半径と威力・床の爆弾は爆弾無しでも拾える（置かない理由）。
 //   ③ 挙動（実機）：剣では扉が開かない／扉の前で待っても σ は来ない／回廊で起こして置けば σ ごと
-//      吹き飛び、宝箱でルピー +30／起こさずに置くと σ は生き残り、檻へ入ると財布を吸われる。
+//      吹き飛び、宝箱でルピー +50（キュー100 で増額）／起こさずに置くと σ は生き残り、檻へ入ると財布を吸われる。
 import { test, expect } from '@playwright/test';
 import { readFileSync } from 'fs';
 import { fileURLToPath } from 'url';
@@ -194,7 +194,7 @@ test.describe('D6 ルピー喰いの檻 ③ 実機', () => {
 		expect(errors).toEqual([]);
 	});
 
-	test('通し：北の回廊で起こして扉の前で爆弾＝σ ごと吹き飛び、宝箱でルピー +30', async ({ page }) => {
+	test('通し：北の回廊で起こして扉の前で爆弾＝σ ごと吹き飛び、宝箱でルピー +50', async ({ page }) => {
 		const errors = [];
 		page.on('pageerror', (e) => errors.push(e.message));
 		await boot(page, previewUrl(4, 10, { ps_bomb: '1' }));
@@ -211,7 +211,7 @@ test.describe('D6 ルピー喰いの檻 ③ 実機', () => {
 		const r0 = await rupees(page);
 		await walk(page, 'up', 2);      // → (3,2)＝宝箱
 		expect((await ss(page)).openedChests, '宝箱が開かない').toContain(CHEST);
-		expect(await rupees(page), 'ルピーが 30 増えない').toBe(r0 + 30);
+		expect(await rupees(page), 'ルピーが 50 増えない').toBe(r0 + 50);
 		expect(errors).toEqual([]);
 	});
 

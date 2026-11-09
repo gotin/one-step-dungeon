@@ -78,7 +78,7 @@ const snap = (page) => page.evaluate(({ burr, root, chest, torch }) => {
 		opened: ss.openedChests.includes(chest),
 		torchLit: ss.litTorches.includes(torch),
 		hp: g.getPlayer().hp,
-		rupees: g.getState().player.rupees,
+		scrolls: g.getPlayer().scrolls ?? 0,
 	};
 }, { burr: BURR, root: ROOT, chest: CHEST, torch: TORCH });
 
@@ -106,7 +106,7 @@ test.describe('D6 焼き栗の淵 ② 実機', () => {
 		await step(page, 4);
 		s = await snap(page);
 		expect(s.opened, '宝箱が開かない').toBe(true);
-		expect(s.rupees, '宝箱でルピーが +50 にならない').toBe(150);
+		expect(s.scrolls, '宝箱で剣技の巻物が手に入らない（キュー100 でルピー×50 から差し替え）').toBe(1);
 		expect(errors).toEqual([]);
 	});
 

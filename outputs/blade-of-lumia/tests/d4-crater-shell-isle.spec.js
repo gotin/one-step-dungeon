@@ -9,7 +9,7 @@
 //      1 #6..lllllξφ#   ← 島（北東の角・2×2）に火吐き亀 φ と蝙蝠 ξ×3／矢束 6(1,1)
 //      2 #...lllllξξ#
 //      3〜7 湖（行4-5 は西の口・湖の岩 (5,6)・南西の岸は斜め）
-//      8 #.........B#   ← 宝箱 B(8,10)＝ルピー×20（killAll）
+//      8 #.........B#   ← 宝箱 B(8,10)＝ルピー×50（killAll）（キュー100 で増額）
 //   島は岸から縦横 6 マス＝木のブーメラン（実効 4.5 マス）の外＝弓で、甲羅が開いた瞬間に射る。
 //
 // 守るものは3つ。
@@ -17,7 +17,7 @@
 //      （対照＝岸を1列広げると縮む）・亀の炎が岸に届かない・敵と脅威度・層の接続は不変。
 //   ② 挙動（実機）：溶岩に踏み込めない／蝙蝠は湖を越えて岸へ来る。
 //   ③ 主題（実機）：木のブーメランは島に届かない（亀は無傷）／閉じた甲羅には矢が効かない／
-//      開いた瞬間に射れば倒せる／通しで全滅→宝箱→ルピー +20。
+//      開いた瞬間に射れば倒せる／通しで全滅→宝箱→ルピー +50。
 import { test, expect } from '@playwright/test';
 import { readFileSync } from 'fs';
 import { fileURLToPath } from 'url';
@@ -42,11 +42,11 @@ const at = (k) => { const [r, c] = k.split(',').map(Number); return grid[r][c]; 
 
 // ── ① データ ─────────────────────────────────────────────────────────
 test.describe('D4 火口湖の甲羅島 ① データ', () => {
-	test('盤面・宝箱（ルピー×20・killAll）・床の矢束', () => {
+	test('盤面・宝箱（ルピー×50・killAll）・床の矢束', () => {
 		expect(room.tiles.map(rowStr), '盤面が移行スクリプトの TARGET と違う').toEqual(TARGET);
 		expect(grid.flat().filter((ch) => ch === TILE.CHEST).length, '宝箱が1つでない').toBe(1);
 		expect(at(CHEST_CELL)).toBe(TILE.CHEST);
-		expect(room.chestContents[CHEST_CELL]).toMatchObject({ type: 'rupee', value: 20 });
+		expect(room.chestContents[CHEST_CELL]).toMatchObject({ type: 'rupee', value: 50 });
 		expect(room.showConditions).toEqual({ [CHEST_CELL]: { trigger: 'killAll' } });
 		expect(at(ARROWS_CELL)).toBe(TILE.ITEM_ARROWS);
 		expect(room.floorItems).toEqual({ [ARROWS_CELL]: { count: ARROWS_COUNT } });
@@ -236,7 +236,7 @@ test.describe('D4 火口湖の甲羅島 ③ 主題', () => {
 		expect(errors).toEqual([]);
 	});
 
-	test('通し：蝙蝠を片付け、開いた瞬間に射って亀を倒すと宝箱が出てルピー +20', async ({ page }) => {
+	test('通し：蝙蝠を片付け、開いた瞬間に射って亀を倒すと宝箱が出てルピー +50', async ({ page }) => {
 		const errors = [];
 		page.on('pageerror', (e) => errors.push(e.message));
 		await boot(page, previewUrl(1, 3, { ps_bow: '1' }));
@@ -267,7 +267,7 @@ test.describe('D4 火口湖の甲羅島 ③ 主題', () => {
 		expect(await pos(page), '南の岸を宝箱まで歩けない').toBe(CHEST_CELL);
 		expect((await page.evaluate(() => window.__game.getStageState().openedChests)), '宝箱が開かない').toContain(CHEST_CELL);
 		const rupees1 = await page.evaluate(() => window.__game.getState().player.rupees);
-		expect(rupees1 - rupees0, 'ルピーが 20 増えない').toBe(20);
+		expect(rupees1 - rupees0, 'ルピーが 50 増えない').toBe(50);
 		expect(errors).toEqual([]);
 	});
 });

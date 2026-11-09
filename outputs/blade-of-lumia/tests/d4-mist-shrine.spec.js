@@ -16,7 +16,7 @@
 //   ① データ：盤面・宝の中身・もや1枚・祓う前は宝箱に届かず祓うと届く・祓える足場は (4,7) だけ・
 //      対照（もやを床／壁）・はしごで溶岩を渡れない・敵は φ 1体・層の接続は不変。
 //   ② エンジンの前提：もやは徒歩で通れない・剣では消えない・ロウソクで消える（`CANDLE_CLEARABLE_TILES`）。
-//   ③ 挙動（実機）：もやと溶岩に踏み込めない／剣で振ってももやは残る／ロウソクで祓って宝箱でルピー +20／
+//   ③ 挙動（実機）：もやと溶岩に踏み込めない／剣で振ってももやは残る／ロウソクで祓って宝箱でルピー +50（キュー100 で増額）／
 //      ロウソクを持たずに来た一周目は祓えない。
 import { test, expect } from '@playwright/test';
 import { readFileSync } from 'fs';
@@ -155,7 +155,7 @@ test.describe('D4 怨念の封じ祠 ③ 実機', () => {
 		expect(await pos(page)).toBe(SEAT);
 	});
 
-	test('通し：(4,7) から西へロウソク＝もやが祓われ、宝箱でルピー +20', async ({ page }) => {
+	test('通し：(4,7) から西へロウソク＝もやが祓われ、宝箱でルピー +50', async ({ page }) => {
 		const errors = [];
 		page.on('pageerror', (e) => errors.push(e.message));
 		await boot(page, previewUrl(4, 7, { ps_candle: '1' }));
@@ -165,7 +165,7 @@ test.describe('D4 怨念の封じ祠 ③ 実機', () => {
 		await walk(page, 'left', 6);
 		expect(await pos(page), '祠の宝箱へ歩いて行けない').toBe(CHEST);
 		expect((await ss(page)).openedChests, '宝箱が開かない').toContain(CHEST);
-		expect(await rupees(page), 'ルピーが 20 増えない').toBe(r0 + 20);
+		expect(await rupees(page), 'ルピーが 50 増えない').toBe(r0 + 50);
 		expect(errors).toEqual([]);
 	});
 });

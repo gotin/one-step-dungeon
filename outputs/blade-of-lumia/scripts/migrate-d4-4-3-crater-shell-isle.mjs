@@ -16,7 +16,7 @@
 //      5 ....ll#llll#     ← 湖の岩 (5,6)（飾り・射る線の外）
 //      6 #....llllll#
 //      7 #.....lllll#     ← 南西の岸は斜めに削る（射る線＝行1-2・列9-10 には触れない）
-//      8 #.........B#     ← 宝箱 B(8,10)＝ルピー×20（killAll で出る）
+//      8 #.........B#     ← 宝箱 B(8,10)＝ルピー×50（killAll で出る）
 //      9 ############
 //   北東を溶岩の湖にし、角の 2×2 だけを岩の島に残す。岸は西の3〜5列と南の1行。
 //   ・島へは歩いて渡れない（溶岩・はしごは溶岩を渡れない）＝剣は亀に届かない。
@@ -48,7 +48,7 @@
 //   床のルピー×5（旧 (4,6) の r と floorItems）。
 //
 // ■ 検証（このスクリプト自身が最後に全部やる）
-//   ・盤面／宝箱1つ＝ルピー×20・killAll／床の矢束×5／links・signData が空／外周の口の形が不変
+//   ・盤面／宝箱1つ＝ルピー×50・killAll／床の矢束×5／links・signData が空／外周の口の形が不変
 //   ・西の口から宝箱・矢束へ届く・床の取り残しなし・島へは届かない・島の隣は溶岩か壁だけ
 //   ・岸から島へ縦横に並ぶ線は全部 6 マス以上（木のブーメランの実効 4.5 マスの外）・射る線が少なくとも
 //     1本ずつ西と南にある・線の途中に壁が無い／対照＝西の岸を1列広げると届く距離になる
@@ -170,7 +170,7 @@ function main() {
 	// ── 書き換え ───────────────────────────────────────────────────────
 	check(`外周の口の形が書き換え前と同じ`, ringOf(before) === ringOf(TARGET));
 	room.tiles = TARGET.map((row) => [...row]);
-	room.chestContents = { [CHEST_CELL]: { type: 'rupee', value: 20, name: 'ルピー×20' } };
+	room.chestContents = { [CHEST_CELL]: { type: 'rupee', value: 50, name: 'ルピー×50' } };   // キュー100（2026-11-09）で差し替え＝scripts/migrate-q100-dungeon-rewards.mjs
 	room.floorItems = { [ARROWS_CELL]: { count: ARROWS_COUNT } };
 	room.showConditions = { [CHEST_CELL]: { trigger: 'killAll' } };
 	room.links = Array.isArray(room.links) ? [] : {};
@@ -181,8 +181,8 @@ function main() {
 	const at = (k) => { const [r, c] = k.split(',').map(Number); return t[r]?.[c]; };
 	const flat = t.flat();
 	check(`盤面が狙いどおり`, t.map(rowStr).join('\n') === TARGET.join('\n'));
-	check(`宝箱は ${CHEST_CELL} の1つだけ＝ルピー×20`, flat.filter((ch) => ch === TILE.CHEST).length === 1 && at(CHEST_CELL) === TILE.CHEST
-		&& room.chestContents[CHEST_CELL]?.type === 'rupee' && room.chestContents[CHEST_CELL]?.value === 20);
+	check(`宝箱は ${CHEST_CELL} の1つだけ＝ルピー×50`, flat.filter((ch) => ch === TILE.CHEST).length === 1 && at(CHEST_CELL) === TILE.CHEST
+		&& room.chestContents[CHEST_CELL]?.type === 'rupee' && room.chestContents[CHEST_CELL]?.value === 50);
 	check(`宝箱は全滅（killAll）で出る`, room.showConditions[CHEST_CELL]?.trigger === 'killAll' && Object.keys(room.showConditions).length === 1);
 	check(`床の矢束は ${ARROWS_CELL} の1つだけ（×${ARROWS_COUNT}）`, flat.filter((ch) => ch === TILE.ITEM_ARROWS).length === 1
 		&& at(ARROWS_CELL) === TILE.ITEM_ARROWS && room.floorItems[ARROWS_CELL]?.count === ARROWS_COUNT);

@@ -7,14 +7,14 @@
 //      3 #~~~..t....#
 //      6 #.........S#     ← 踏み板 S(6,10)
 //      7 #..¤....t..#     ← 大いが栗 ¤(7,3)
-//      8 #i........B#     ← 宝箱 B(8,10)＝回復薬（大）・栗が踏み板に乗ると現れる
+//      8 #i........B#     ← 宝箱 B(8,10)＝ルピー×100（キュー100 で回復薬（大）から差し替え）・栗が踏み板に乗ると現れる
 //
 // 主題＝爆弾鬼の爆弾は勇者の足元に落ち、その爆風でも大いが栗は転がる。栗の隣に立って投げさせ、
 // 着弾の前に離れる。鬼から遠い (8,7) だけは投げてこない＝自分の爆弾1個（5押しのうち鬼4・自分1）。
 //
 // 守るもの
 //   ① データ：盤面・中身・出る条件・鬼の島・鬼ありの BFS（自分の爆弾1・5押し）・鬼なしのソルバー（爆弾5・詰まない）。
-//   ② 実機：通し（本物の鬼の爆弾4回＋自分の爆弾1個で栗が踏み板へ→宝箱→回復薬（大））／
+//   ② 実機：通し（本物の鬼の爆弾4回＋自分の爆弾1個で栗が踏み板へ→宝箱→ルピー×100）／
 //      投げられた瞬間に離れれば傷まない（対照＝立ちっぱなしは傷む）／届きの外 (8,7) では投げてこず栗は動かない／
 //      鬼は島から動かない／入り直すと鬼も栗も戻る。
 import { test, expect } from '@playwright/test';
@@ -38,7 +38,7 @@ const rowStr = (row) => (Array.isArray(row) ? row.join('') : String(row));
 
 // ── ① データ ─────────────────────────────────────────────────────────
 test.describe('D6 鬼火薬の栗転がし ① データ', () => {
-	test('盤面・中身（回復薬（大））・栗が踏み板に乗ると現れる・敵は島の爆弾鬼1体・宣言あり', () => {
+	test('盤面・中身（ルピー×100）・栗が踏み板に乗ると現れる・敵は島の爆弾鬼1体・宣言あり', () => {
 		expect(room.tiles.map(rowStr), '盤面が移行スクリプトの TARGET と違う').toEqual(TARGET);
 		expect(Object.keys(room.bgTiles ?? {}).sort(), '水が鬼の島の周りと違う').toEqual([...WATER].sort());
 		expect(room.chestContents).toEqual(CHEST_CONTENTS);
@@ -106,7 +106,7 @@ const snap = (page) => page.evaluate(({ burr, chest }) => {
 		thrownAt: g.getProjectiles().filter((q) => q.owner === 'enemy' && q.type === 'thrownBomb').map((q) => `${q.targetY},${q.targetX}`),
 		chestShown: ss.conditionsMet.includes(chest),
 		opened: ss.openedChests.includes(chest),
-		bigPotion: p.subItems?.bigHealPotion?.count ?? 0,
+		rupees: p.rupees ?? 0,
 		stageKey: g.getState().stageKey,
 	};
 }, { burr: BURR, chest: CHEST });
@@ -127,7 +127,7 @@ async function ogrePush(page, seat, escape) {
 }
 
 test.describe('D6 鬼火薬の栗転がし ② 実機', () => {
-	test('通し：鬼の爆弾4回＋自分の爆弾1個で栗が踏み板に乗り、宝箱が現れて回復薬（大）が手に入る', async ({ page }) => {
+	test('通し：鬼の爆弾4回＋自分の爆弾1個で栗が踏み板に乗り、宝箱が現れてルピー×100 が手に入る', async ({ page }) => {
 		const errors = await boot(page, 7, 2);
 		let s = await ogrePush(page, '7,2', [['up', 2]]);
 		expect(s.burr, '①鬼の爆風で栗が東へ転がらない').toBe('7,7');
@@ -153,12 +153,12 @@ test.describe('D6 鬼火薬の栗転がし ② 実機', () => {
 		s = await ogrePush(page, '6,7', [['down', 2]]);
 		expect(s.burr, '⑤鬼の爆風で栗が踏み板へ転がらない').toBe(PLATE);
 		expect(s.chestShown, '栗が踏み板に乗ったのに宝箱が現れない').toBe(true);
-		const potion0 = s.bigPotion;
+		const rupees0 = s.rupees;
 		await walk(page, 'right', 3);
 		await step(page, 4);
 		s = await snap(page);
 		expect(s.opened, '宝箱が開かない').toBe(true);
-		expect(s.bigPotion, '宝箱で回復薬（大）が増えない').toBe(potion0 + 1);
+		expect(s.rupees, '宝箱でルピー×100 が増えない').toBe(rupees0 + 100);
 		expect(errors).toEqual([]);
 	});
 

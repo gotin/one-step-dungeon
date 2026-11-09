@@ -10,7 +10,7 @@
 //      1 #~=======..#   ← 北の砂州 (1,2)〜(1,8)／中洲 (1,9)(1,10)
 //      2 #~=~~~~~~E=#   ← 中洲 (2,9)＝パトロール E／東の砂州の先 (2,10)
 //      4 #~=....~~~=#   ← 北の砂州の先 (4,2)／中央の小島
-//      5 #~~...B~~~=#   ← 宝箱 (5,6)＝ルピー×50
+//      5 #~~...B~~~=#   ← 宝箱 (5,6)＝剣技の巻物（キュー100 でルピー×50 から差し替え）
 //      8 #~~~~..====#   ← 南の岸・南の口／東の砂州の根元 (8,7)〜(8,10)
 //
 // 守るものは2つ。
@@ -46,10 +46,10 @@ const TICKS_PER_CELL = 2;
 
 // ── ① データ ─────────────────────────────────────────────────────────
 test.describe('D3 渦の砂州 ① データ', () => {
-	test('盤面・水と砂・宝箱（小島・ルピー×50）・潮の周期（1・2室目と同じ）', () => {
+	test('盤面・水と砂・宝箱（小島・剣技の巻物）・潮の周期（1・2室目と同じ）', () => {
 		expect(grid.map((r) => r.join('')), '盤面が移行スクリプトの TARGET と違う').toEqual(TARGET);
 		expect(room.chestContents, '宝箱の中身が違う').toEqual({ [CHEST]: CHEST_ITEM });
-		expect(CHEST_ITEM, '報酬がルピー×50 でない').toEqual({ type: 'rupee', value: 50, name: 'ルピー×50' });
+		expect(CHEST_ITEM, '報酬が剣技の巻物でない（キュー100）').toEqual({ type: 'item', item: 'scroll', name: '剣技の巻物' });
 		expect(ISLAND.includes(CHEST), '宝箱が小島に無い').toBe(true);
 		expect(SAND.every((k) => room.bgTiles?.[k] === TILE.SAND), '砂州の下が砂でない').toBe(true);
 		expect([...MIDBAR, ...ISLAND, ...SHORE].filter((k) => room.bgTiles?.[k]), '中洲・小島・岸に見た目の下地がある').toEqual([]);
@@ -226,11 +226,11 @@ test.describe('D3 渦の砂州 ② 部屋', () => {
 			const stuckN = h.path(g, north);
 			h.until(g, (t) => !t.low, 40);
 			const onIsland = h.at(g);
-			const rupees0 = g.getState().player.rupees;
+			const scrolls0 = g.getPlayer().scrolls ?? 0;
 			h.path(g, ['4,4', '4,5', '5,5']);
 			for (let i = 0; i < 3; i++) { g.movePlayer('right'); g.step(1); }
 			return { left, stuckE, waited, stuckN, onIsland, opened: g.getStageState().openedChests.includes(chest),
-				gained: g.getState().player.rupees - rupees0, hpLost: hp0 - g.getState().player.hp };
+				gained: (g.getPlayer().scrolls ?? 0) - scrolls0, hpLost: hp0 - g.getState().player.hp };
 		}, [HELPERS, TO_CORNER, BACK, ROUTE_EAST, ROUTE_NORTH, CHEST]);
 		expect(r.left, 'E が呑まれない').toBe(0);
 		expect(r.stuckE, '東の砂州を1回の引きで渡り切れない').toBeNull();
@@ -238,7 +238,7 @@ test.describe('D3 渦の砂州 ② 部屋', () => {
 		expect(r.stuckN, '北の砂州を1回の引きで渡り切れない').toBeNull();
 		expect(r.onIsland, '小島で満ちを待てない').toBe(ISLAND_LAND);
 		expect(r.opened, '宝箱が開かない').toBe(true);
-		expect(r.gained, '宝箱でルピー×50 が増えていない').toBe(50);
+		expect(r.gained, '宝箱で剣技の巻物が増えていない').toBe(1);
 		expect(r.hpLost, '潮を読んで渡ったのに減った').toBe(0);
 		expect(errors).toEqual([]);
 	});

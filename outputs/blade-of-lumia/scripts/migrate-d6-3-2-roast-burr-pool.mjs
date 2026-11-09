@@ -95,7 +95,7 @@ export const BOMB_CELL = '4,9';
 export const MAP_ITEM = '1,2';
 export const SIGN = '7,9';
 export const MOUTHS = { north: ['0,5', '0,6'], south: ['9,5', '9,6'], west: ['4,0', '5,0'], east: ['4,11', '5,11'] };
-export const CHEST_CONTENTS = { [CHEST]: { type: 'rupee', value: 50, name: 'ルピー×50' } };
+export const CHEST_CONTENTS = { [CHEST]: { type: 'item', item: 'scroll', name: '剣技の巻物' } };   // キュー100（2026-11-09）で差し替え＝scripts/migrate-q100-dungeon-rewards.mjs
 export const SHOW = { [CHEST]: { trigger: 'wallBroken', wallId: ROOT, message: '{{burr}} 朽ちた 根が 崩れ、宝箱が 現れた！' } };
 export const SIGN_DATA = {
 	[SIGN]: {

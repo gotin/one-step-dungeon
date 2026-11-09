@@ -100,7 +100,7 @@ export const PLATE_W = '2,1';
 export const PLATE_E = '2,8';
 export const BOMB_CELLS = ['2,5', '2,6'];   // 両方の栗を1発で転がせるセル
 export const MOUTHS = { north: ['0,5', '0,6'], south: ['9,5', '9,6'], west: ['4,0', '5,0'], east: ['4,11', '5,11'] };
-export const CHEST_CONTENTS = { [CHEST]: { type: 'rupee', value: 50, name: 'ルピー×50' } };
+export const CHEST_CONTENTS = { [CHEST]: { type: 'rupee', value: 100, name: 'ルピー×100' } };   // キュー100（2026-11-09）で差し替え＝scripts/migrate-q100-dungeon-rewards.mjs
 export const SIGN_DATA = {
 	[SIGN]: {
 		name: '栗番の 辻',

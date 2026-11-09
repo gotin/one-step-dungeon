@@ -83,7 +83,7 @@ export const TARGET = [
 ];
 export const EATERS = ['4,8', '6,9'];
 export const CHEST = '5,10';
-export const CHEST_CONTENT = { type: 'rupee', value: 30, name: 'ルピー×30' };
+export const CHEST_CONTENT = { type: 'rupee', value: 50, name: 'ルピー×50' };   // キュー100（2026-11-09）で差し替え＝scripts/migrate-q100-dungeon-rewards.mjs
 export const ISLAND = [];
 for (let r = 3; r <= 6; r++) for (let c = 8; c <= 10; c++) ISLAND.push(`${r},${c}`);
 export const MOAT = [];
@@ -161,7 +161,7 @@ function main() {
 	}
 	check(`宝箱は小島の ${CHEST} の1つだけ・中身はルピー×30`,
 		flat.filter((ch) => ch === TILE.CHEST).length === 1 && at(CHEST) === TILE.CHEST && ISLAND.includes(CHEST)
-		&& Object.keys(room.chestContents).join() === CHEST && room.chestContents[CHEST].type === 'rupee' && room.chestContents[CHEST].value === 30);
+		&& Object.keys(room.chestContents).join() === CHEST && room.chestContents[CHEST].type === 'rupee' && room.chestContents[CHEST].value === CHEST_CONTENT.value);
 	check(`石・立札・ボタン・門・床の拾い物・出現条件・笛の効き目が無い`,
 		![TILE.STONE, TILE.SIGN, TILE.BUTTON, TILE.GATE].some((ch) => flat.includes(ch))
 		&& !Object.keys(room.floorItems).length && !Object.keys(room.showConditions).length && !room.fluteEffect);

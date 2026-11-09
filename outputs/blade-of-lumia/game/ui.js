@@ -28,7 +28,7 @@
 import { HP_PER_HEART } from './constants.js';
 import { playStatsItems } from './play-stats.js';
 import { PAL, makeSprite } from '../shared/sprites.js';
-import { ITEM_META, BOOMERANG_TIERS, HEART_PIECES_PER_HEART, EMBLEMS_FOR_AURA, hasSwordAura, ownsItem, addStack, isStackFull, isMaxHpReward } from '../shared/items.js';
+import { ITEM_META, BOOMERANG_TIERS, HEART_PIECES_PER_HEART, EMBLEMS_FOR_AURA, hasSwordAura, SCROLLS_FOR_WIDE_SPIN, spinLevelOf, ownsItem, addStack, isStackFull, isMaxHpReward } from '../shared/items.js';
 import { iconCanvas, iconText, iconPxOf, tierIconSpec } from '../shared/ui-icons.js';
 import { playSound } from '../shared/sounds.js';
 // field の地図（キュー15）の色。エディタのワールドマップのサムネと**同じ関数**を呼ぶ
@@ -726,6 +726,10 @@ export function createUi(deps) {
 			[player.emblems > 0,   'emblem',     hasSwordAura(player)
 				? `光の紋章 ${EMBLEMS_FOR_AURA}/${EMBLEMS_FOR_AURA}(剣に オーラ)`
 				: `光の紋章 ${player.emblems}/${EMBLEMS_FOR_AURA}`],
+			// キュー100：剣技の巻物＝集まり具合（n/8）。回転斬りが出るまで（4つ）効果は書かない（紋章と同じ作法）。
+			[player.scrolls > 0,   'scroll',     `剣技の巻物 ${player.scrolls}/${SCROLLS_FOR_WIDE_SPIN}` + [
+				'', '(溜めて 放つと 回転斬り)', '(回転斬りが 2マス先まで)',
+			][spinLevelOf(player)]],
 		].filter(([owned]) => owned);
 		if (keyItems.length > 0) {
 			const keyLine = document.createElement('div');

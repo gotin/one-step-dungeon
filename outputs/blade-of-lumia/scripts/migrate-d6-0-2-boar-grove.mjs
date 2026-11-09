@@ -86,7 +86,7 @@ export const EAST_MOUTH  = ['4,11', '5,11'];
 export const NORTH_MOUTH = ['0,5', '0,6'];
 export const TREES = [];
 for (const r of [2, 4, 6]) for (const c of [2, 5, 8]) TREES.push(`${r},${c}`);
-export const CHEST_CONTENTS = { [CHEST]: { type: 'rupee', value: 20, name: 'ルピー×20' } };
+export const CHEST_CONTENTS = { [CHEST]: { type: 'rupee', value: 50, name: 'ルピー×50' } };   // キュー100（2026-11-09）で差し替え＝scripts/migrate-q100-dungeon-rewards.mjs
 export const SHOW = { [CHEST]: { trigger: 'killAll', message: '{{sword}} 木立ちの 主を 退けた！宝箱が現れた！' } };
 
 // 部屋の中だけの歩行（4近傍）。敵のセルと宝箱は床とみなす。

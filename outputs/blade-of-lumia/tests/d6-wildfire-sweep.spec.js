@@ -5,11 +5,11 @@
 //      2 #.~~~H~~~~.#     ← 北のかがり火 H(2,5)＝射る座 (1,5)（誤り）
 //      3 #.~uuuuuuH.#     ← 茂みの垣 (3,3)〜(3,8)・東のかがり火 H(3,9)＝射る座 (3,10)（正解）
 //      4 ..~#ζ..ζ#~.#     ← 1列の檻に盾騎士 ζ×2（最初から追う＝勇者の方を向く）
-//      8 #i........B#     ← 宝箱 B(8,10)＝回復薬（大）（killAll）
+//      8 #i........B#     ← 宝箱 B(8,10)＝ルピー×50（キュー100 で回復薬（大）から差し替え）（killAll）
 //
 // 守るもの
 //   ① データ：盤面・水・宝の中身と出現条件・かがり火2つは初めから灯る・騎士は追う・茂みは部屋を出ると戻る。
-//   ② 実機：通し（(3,10) から西へ火矢→騎士は横を向いている＝2体とも焼ける→宝箱→回復薬（大）+1・無傷）
+//   ② 実機：通し（(3,10) から西へ火矢→騎士は横を向いている＝2体とも焼ける→宝箱→ルピー +50・無傷）
 //      ／誤り（(1,5) から南へ火矢＝騎士は見上げて盾で弾く＝2体とも無傷・垣は燃え尽きる）
 //      ／対照（火の無い矢は正面の盾に弾かれる）
 //      ／入り直すと垣が戻り、騎士も元の位置から（やり直せる）。
@@ -84,13 +84,13 @@ const snap = (page) => page.evaluate((chest) => {
 		burned: [...(ss.cutBushes ?? [])].sort(),
 		cond: [...(ss.conditionsMet ?? [])],
 		opened: [...(ss.openedChests ?? [])].includes(chest),
-		bigPotion: p.subItems?.bigHealPotion?.count ?? 0,
+		rupees: p.rupees ?? 0,
 		hp: p.hp,
 	};
 }, CHEST);
 
 test.describe('D6 野火の掃討 ② 実機', () => {
-	test('通し：東のかがり火越しに (3,10) から西へ射ると、横を向いた騎士が2体とも焼け、回復薬（大）が手に入る', async ({ page }) => {
+	test('通し：東のかがり火越しに (3,10) から西へ射ると、横を向いた騎士が2体とも焼け、ルピー×50 が手に入る', async ({ page }) => {
 		const errors = await boot(page, SHOT_RIGHT.at);
 		const s0 = await snap(page);
 		expect(s0.knights.map((k) => k.dir), '騎士が勇者の方（東）を向いていない＝前提が崩れている').toEqual(['right', 'right']);
@@ -108,7 +108,7 @@ test.describe('D6 野火の掃討 ② 実機', () => {
 		await step(page, 4);
 		s = await snap(page);
 		expect(s.opened, '宝箱が開かない').toBe(true);
-		expect(s.bigPotion, '宝箱で回復薬（大）が増えない').toBe(s0.bigPotion + 1);
+		expect(s.rupees, '宝箱でルピー×50 が増えない').toBe(s0.rupees + 50);
 		expect(errors).toEqual([]);
 	});
 

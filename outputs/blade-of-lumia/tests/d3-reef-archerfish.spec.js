@@ -6,18 +6,18 @@
 //   四角い広間に床の大ルピーが1つあるだけ・敵なし・水なし。
 //
 // 新しい盤面（'~'＝bgTiles の水）:
-//      1 #.........B#   ← 北の岸・宝箱 B(1,10)＝回復薬（大）（全滅で出る）
+//      1 #.........B#   ← 北の岸・宝箱 B(1,10)＝ルピー×50（全滅で出る・キュー100 で回復薬（大）から差し替え）
 //      3 #..~/~#~~~~#   ← 西の湾の射水魚 (3,4)・岩礁（列6）
 //      4 ...~~~#~~/~#   ← 西の口／東の湾の射水魚 (4,9)
 //      8 #6.~~~#~~~~#   ← 床の矢束×5 (8,1)
 //
 // 守るものは2つ。
-//   ① データ：盤面・水・宝箱（回復薬（大）・killAll）・矢束・敵（射水魚×2）・宣言・脅威度・
+//   ① データ：盤面・水・宝箱（ルピー×50・killAll）・矢束・敵（射水魚×2）・宣言・脅威度・
 //      岩礁が湾を2つに割る・湾の上の岸へは隣の湾から水弾の線が通らない・岩礁の付け根へは両方から通る・層の接続。
 //   ② 部屋（実機）：岩礁の付け根に立つと両方の湾から撃たれ続ける（実測 113 tick でハート6）
 //      ／湾の上の岸で水を向いて立てば、寄ってきた魚の水弾は盾が受け、隣の湾の水弾は岩礁が止める
 //        （⚠️ 魚が斜め隣に来た瞬間の1発だけは盾の外＝盾の向き判定は横の成分が勝つ。実測 150 tick でハート0〜1）
-//      ／通し＝湾の上から1匹ずつ射る→宝箱が出て回復薬（大）。
+//      ／通し＝湾の上から1匹ずつ射る→宝箱が出てルピー×50。
 import { test, expect } from '@playwright/test';
 import { readFileSync } from 'fs';
 import { fileURLToPath } from 'url';
@@ -64,13 +64,13 @@ const clear = (from, to) => {
 
 // ── ① データ ─────────────────────────────────────────────────────────
 test.describe('D3 射水魚の入り江 ① データ', () => {
-	test('盤面・水・宝箱（回復薬（大）・killAll）・矢束・敵（射水魚×2）・宣言・脅威度', () => {
+	test('盤面・水・宝箱（ルピー×50・killAll）・矢束・敵（射水魚×2）・宣言・脅威度', () => {
 		const shown = TARGET.map((row) => row);
 		expect(grid.map((r) => r.join('')), '盤面が移行スクリプトの TARGET と違う').toEqual(shown);
 		expect(rowStr(room.tiles.flat()).includes(TILE.WATER), 'tiles 層に水がある（水は bgTiles だけ）').toBe(false);
 		expect(wet(...parse(FISH_WEST)) && wet(...parse(FISH_EAST)), '魚の下が水でない').toBe(true);
 		expect(grid.flat().filter((ch) => ch === TILE.CHEST).length, '宝箱が1つでない').toBe(1);
-		expect(room.chestContents[CHEST_CELL], '宝箱の中身が回復薬（大）でない').toMatchObject({ type: 'item', item: 'bigHealPotion' });
+		expect(room.chestContents[CHEST_CELL], '宝箱の中身がルピー×50 でない').toMatchObject({ type: 'rupee', value: 50 });
 		expect(room.showConditions, '宝箱が全滅で出ない').toEqual({ [CHEST_CELL]: { trigger: 'killAll' } });
 		expect(room.floorItems, '床の矢束が違う').toEqual({ [ARROWS_CELL]: { count: ARROWS_COUNT } });
 		const mobs = [];
@@ -163,7 +163,7 @@ const PLAN = `((g, stops, shoot, after) => {
 	const ss = g.getStageState();
 	return { ticks, hpLost: hp0 - P().hp, at, lined, fish: fishes().length,
 		shown: ss.conditionsMet ?? [], opened: ss.openedChests ?? [],
-		big: g.getPlayer().subItems?.bigHealPotion?.count ?? 0 };
+		rupees: g.getPlayer().rupees ?? 0 };
 })`;
 
 test.describe('D3 射水魚の入り江 ② 部屋', () => {
@@ -187,7 +187,7 @@ test.describe('D3 射水魚の入り江 ② 部屋', () => {
 		expect(errors).toEqual([]);
 	});
 
-	test('通し：湾の上から1匹ずつ射ると宝箱が出て、回復薬（大）が手に入る', async ({ page }) => {
+	test('通し：湾の上から1匹ずつ射ると宝箱が出て、ルピー×50 が手に入る', async ({ page }) => {
 		const errors = await boot(page, 10);
 		const shownBefore = await page.evaluate(() => window.__game.getStageState().conditionsMet ?? []);
 		expect(shownBefore, '前提：宝箱が最初から出ている').not.toContain(CHEST_CELL);
@@ -196,7 +196,8 @@ test.describe('D3 射水魚の入り江 ② 部屋', () => {
 		expect(r.fish, '射水魚が残っている').toBe(0);
 		expect(r.shown, '全滅しても宝箱が出ない').toContain(CHEST_CELL);
 		expect(r.opened, '宝箱が開かない').toContain(CHEST_CELL);
-		expect(r.big, '回復薬（大）が手に入らない').toBe(1);
+		// 射水魚の落とし物（ルピー＋1）を拾うことがある∴下限で見る（宝箱が開かなければ 50 に届かない）
+		expect(r.rupees, 'ルピー×50 が手に入らない').toBeGreaterThanOrEqual(50);
 		expect(r.hpLost, `減りすぎ（${r.hpLost}）`).toBeLessThanOrEqual(6);   // 実測 2〜4（湾の上へ歩く間の被弾）
 		expect(errors).toEqual([]);
 	});

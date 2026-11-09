@@ -90,7 +90,7 @@ export const EATER  = '4,2';
 export const OPENINGS = ['4,11', '5,11'];
 export const CAGE_INSIDE = [];
 for (let r = 3; r <= 5; r++) for (let c = 2; c <= 8; c++) CAGE_INSIDE.push(`${r},${c}`);
-export const CHEST_CONTENTS = { [CHEST]: { type: 'rupee', value: 30, name: 'ルピー×30' } };
+export const CHEST_CONTENTS = { [CHEST]: { type: 'rupee', value: 50, name: 'ルピー×50' } };   // キュー100（2026-11-09）で差し替え＝scripts/migrate-q100-dungeon-rewards.mjs
 export const BREAKABLE = { [DOOR]: { breakDef: 1 } };
 export const BOMB_RADIUS = 2;
 // ルピー喰いのさまよい方（shared/enemies.js ROAM_DEFAULT）＝家から縦横 radius の箱の中を歩き、

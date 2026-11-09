@@ -378,6 +378,8 @@ function getPreviewSettings() {
 		goldgarb:  document.getElementById('ps-goldgarb')?.checked ?? false,
 		// 実行キュー45：光の紋章8つ（剣にオーラ）。editor.js の ps 定義にも同じ行がある（両方に足す）。
 		emblems:   document.getElementById('ps-emblems')?.checked ?? false,
+		// 実行キュー100：剣技の巻物8つ（回転斬りが2マス先まで）。editor.js の ps 定義にも同じ行がある（両方に足す）。
+		scrolls:   document.getElementById('ps-scrolls')?.checked ?? false,
 		// 2026-09-19：地図（目的地マークの見え方の確認用）。editor.js の ps 定義にも同じ行がある。
 		map:       document.getElementById('ps-map')?.checked ?? true,
 		cleared:   document.getElementById('ps-cleared').checked,
@@ -412,6 +414,7 @@ export function openPreview(stX, stY, row, col, ps, TILE) {
 		url += `&ps_swiftboots=${ps.swiftboots?1:0}`;
 		url += `&ps_goldgarb=${ps.goldgarb?1:0}`;
 		url += `&ps_emblems=${ps.emblems?8:0}`;
+		url += `&ps_scrolls=${ps.scrolls?8:0}`;
 		// 撃破済みボス＝タイル文字をカンマで並べる（空なら付けない＝1体も倒していない）。
 		if (ps.defeated?.length) url += `&ps_defeated=${encodeURIComponent(ps.defeated.join(','))}`;
 	}

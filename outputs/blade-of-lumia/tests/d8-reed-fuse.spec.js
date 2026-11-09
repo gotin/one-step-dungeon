@@ -241,11 +241,11 @@ test.describe('D8 葦の導火線 ③ 主題', () => {
 			for (let i = 0; i < 80 && farAt < 0; i++) { g.step(1); if (g.getStageState().litTorches.includes(torch)) farAt = i + 1; }
 			g.step(4);
 			const ss = g.getStageState();
-			const rupees0 = g.getPlayer().rupees;
+			const scrolls0 = g.getPlayer().scrolls ?? 0;
 			const go = walk(g, cr, cc - 1, false);
 			for (let i = 0; i < 3; i++) { g.movePlayer('right'); g.step(1); }
 			return { relayAt, afterNear, farAt, cut: ss.cutBushes.length, met: ss.conditionsMet, go,
-				opened: g.getStageState().openedChests.includes(`${cr},${cc}`), gained: g.getPlayer().rupees - rupees0 };
+				opened: g.getStageState().openedChests.includes(`${cr},${cc}`), gained: (g.getPlayer().scrolls ?? 0) - scrolls0 };
 		}, [WALK, LIGHT_NEAR, ...parse(FUSE_STAND), RELAY, ...parse(THROW_STAND), TORCH, ...parse(CHEST)]);
 		const nearN = fireReach(grid, FUSE_ROOT).burnt.size, farN = fireReach(grid, FAR_ROOT).burnt.size;
 		expect(r.relayAt, '手前の火が中継のかがり火に灯らない／一度に灯った（間隔が無い）')
@@ -256,7 +256,7 @@ test.describe('D8 葦の導火線 ③ 主題', () => {
 		expect(r.met, '宝箱の封印が解けない').toEqual([CHEST]);
 		expect(r.go, '宝箱の隣へ歩けない').toBe(true);
 		expect(r.opened, '宝箱を開けられない').toBe(true);
-		expect(r.gained, '中身のルピーが入らない').toBe(CHEST_CONTENT.value);
+		expect(r.gained, '中身の剣技の巻物が入らない（キュー100 でルピー×20 から差し替え）').toBe(1);
 		expect(errors).toEqual([]);
 	});
 

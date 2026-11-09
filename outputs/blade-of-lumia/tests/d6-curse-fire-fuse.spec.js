@@ -6,14 +6,14 @@
 //      2 #.ψ~~~~~~~.#     ← 呪い火 ψ(2,2)＝池の北西の隅（最初から追う）
 //      4 ..~S.¤t¤~~.#     ← 小島：踏み板 S(4,3)・西の栗 ¤(4,5)・木・東の栗 ¤(4,7)
 //      7 #..........#     ← 南の岸
-//      8 #i........B#     ← 宝箱 B(8,10)＝回復薬（大）・栗が踏み板に乗ると現れる
+//      8 #i........B#     ← 宝箱 B(8,10)＝ルピー×50（キュー100 で回復薬（大）から差し替え）・栗が踏み板に乗ると現れる
 //
 // 主題＝呪い火 ψ に縦横で接した大いが栗は爆ぜ、爆風は隣の栗を転がす。踏み板から遠い東の栗を焼かせると
 // 西の栗が踏み板へ転がる。ψ は勇者へまっすぐ寄る＝北の岸で引き寄せてから南東へ走ると池を斜めに渡る。
 //
 // 守るもの
 //   ① データ：盤面・水・中身・出る条件・最初から追う・入り直しで戻る・宣言・勇者の火も爆弾も届かない・連鎖の向き。
-//   ② 実機：通し（北で待って東回りで南東へ→東の栗が爆ぜ西の栗が踏み板→宝箱→回復薬（大））／
+//   ② 実機：通し（北で待って東回りで南東へ→東の栗が爆ぜ西の栗が踏み板→宝箱→ルピー×50）／
 //      誤り（西の口から南の岸を東へ＝西の栗が爆ぜて踏み板は空）／口から口へ抜けるだけでは栗に触れない／
 //      失敗しても入り直すと ψ も栗も戻る。
 import { test, expect } from '@playwright/test';
@@ -39,7 +39,7 @@ const nb = (k) => { const [r, c] = rc(k); return [[r - 1, c], [r + 1, c], [r, c 
 
 // ── ① データ ─────────────────────────────────────────────────────────
 test.describe('D6 呪い火の導火 ① データ', () => {
-	test('盤面・水・中身（回復薬（大））・栗が踏み板に乗ると現れる・ψ は最初から追い入り直すと戻る・宣言あり', () => {
+	test('盤面・水・中身（ルピー×50）・栗が踏み板に乗ると現れる・ψ は最初から追い入り直すと戻る・宣言あり', () => {
 		expect(room.tiles.map(rowStr), '盤面が移行スクリプトの TARGET と違う').toEqual(TARGET);
 		expect([...water].sort(), '水の下地が違う').toEqual([...WATER].sort());
 		expect(room.chestContents).toEqual(CHEST_CONTENTS);
@@ -109,13 +109,13 @@ const snap = (page) => page.evaluate(({ w, e, chest }) => {
 		psi: g.getEnemies().map((x) => `${x.y},${x.x}`),
 		chestShown: ss.conditionsMet.includes(chest),
 		opened: ss.openedChests.includes(chest),
-		bigPotion: p.subItems?.bigHealPotion?.count ?? 0,
+		rupees: p.rupees ?? 0,
 		stageKey: g.getState().stageKey,
 	};
 }, { w: BURR_W, e: BURR_E, chest: CHEST });
 
 test.describe('D6 呪い火の導火 ② 実機', () => {
-	test('通し：北の岸で ψ を引き寄せ、東回りで南東へ走ると、ψ が池を斜めに渡って東の栗を焼き、西の栗が踏み板へ→宝箱→回復薬（大）', async ({ page }) => {
+	test('通し：北の岸で ψ を引き寄せ、東回りで南東へ走ると、ψ が池を斜めに渡って東の栗を焼き、西の栗が踏み板へ→宝箱→ルピー×50', async ({ page }) => {
 		const errors = await boot(page, 1, 5);
 		await step(page, 60);
 		let s = await snap(page);
@@ -127,11 +127,11 @@ test.describe('D6 呪い火の導火 ② 実機', () => {
 		expect(s.e, '東の栗が爆ぜていない').toBe('burst');
 		expect(s.w, '西の栗が踏み板へ転がっていない').toBe(PLATE);
 		expect(s.chestShown, '栗が踏み板に乗ったのに宝箱が現れない').toBe(true);
-		const potion0 = s.bigPotion;
+		const rupees0 = s.rupees;
 		await page.evaluate(() => { const g = window.__game; for (let i = 0; i < 2; i++) { g.movePlayer('down'); g.step(1); } g.step(4); });
 		s = await snap(page);
 		expect(s.opened, '宝箱が開かない').toBe(true);
-		expect(s.bigPotion, '宝箱で回復薬（大）が増えない').toBe(potion0 + 1);
+		expect(s.rupees, '宝箱でルピー×50 が増えない').toBe(rupees0 + 50);
 		expect(errors).toEqual([]);
 	});
 

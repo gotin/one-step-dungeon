@@ -11,7 +11,7 @@
 //      3 #....#######
 //      4〜6 広間（行4-5 は西の口・溶岩の池 (5〜6, 3〜5)）
 //      7 ##.........#
-//      8 #B!........#   ← 宝物庫：宝箱 B(8,1)（ルピー×20）の東がひび `!`(8,2)
+//      8 #B!........#   ← 宝物庫：宝箱 B(8,1)（ルピー×50・キュー100 で増額）の東がひび `!`(8,2)
 //   D4 では爆弾が無い∴λ の爆弾（投げた瞬間の足元に落ちる・`!` を壊す）をひびの隣で投げさせ、落ちる前に離れる。
 //
 // 守るものは3つ。
@@ -44,11 +44,11 @@ const OGRE_META = ENEMY_META[TILE.BOMB_OGRE];
 
 // ── ① データ ─────────────────────────────────────────────────────────
 test.describe('D4 爆弾鬼の封じ窯 ① データ', () => {
-	test('盤面・宝箱（ルピー×20・最初から置いてある）・ひび1枚（λ の爆風で壊れる）', () => {
+	test('盤面・宝箱（ルピー×50・最初から置いてある）・ひび1枚（λ の爆風で壊れる）', () => {
 		expect(room.tiles.map(rowStr), '盤面が移行スクリプトの TARGET と違う').toEqual(TARGET);
 		expect(grid.flat().filter((ch) => ch === TILE.CHEST).length, '宝箱が1つでない').toBe(1);
 		expect(at(CHEST_CELL)).toBe(TILE.CHEST);
-		expect(room.chestContents[CHEST_CELL]).toMatchObject({ type: 'rupee', value: 20 });
+		expect(room.chestContents[CHEST_CELL]).toMatchObject({ type: 'rupee', value: 50 });
 		expect(room.showConditions ?? {}, '宝箱に出現条件が付いた').toEqual({});
 		expect(grid.flat().filter((ch) => ch === TILE.BREAKABLE_WALL).length, 'ひびが1枚でない').toBe(1);
 		expect(at(CRACK)).toBe(TILE.BREAKABLE_WALL);
@@ -206,7 +206,7 @@ test.describe('D4 爆弾鬼の封じ窯 ③ 主題', () => {
 		expect(await page.evaluate(() => window.__game.getState().player.hp), '立ち止まっても爆風を浴びない').toBeLessThan(hp0);
 	});
 
-	test('通し：ひびの隣で投げさせて離れると、無傷でひびが崩れ、宝箱が開いてルピー +20', async ({ page }) => {
+	test('通し：ひびの隣で投げさせて離れると、無傷でひびが崩れ、宝箱が開いてルピー +50', async ({ page }) => {
 		const errors = [];
 		page.on('pageerror', (e) => errors.push(e.message));
 		await boot(page, previewUrl(8, 3));
@@ -233,7 +233,7 @@ test.describe('D4 爆弾鬼の封じ窯 ③ 主題', () => {
 		expect(await pos(page), '崩れたひびを通って宝箱まで歩けない').toBe(CHEST_CELL);
 		expect(await page.evaluate(() => window.__game.getStageState().openedChests), '宝箱が開かない').toContain(CHEST_CELL);
 		const rupees1 = await page.evaluate(() => window.__game.getState().player.rupees);
-		expect(rupees1 - rupees0, 'ルピーが 20 増えない').toBe(20);
+		expect(rupees1 - rupees0, 'ルピーが 50 増えない').toBe(50);
 		expect(errors).toEqual([]);
 	});
 });

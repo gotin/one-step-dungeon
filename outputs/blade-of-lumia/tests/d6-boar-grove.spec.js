@@ -18,7 +18,7 @@
 //   ① データ：盤面・宝の中身と出る条件・通り抜け・木の柱の形・敵と脅威度・宣言・層の接続。
 //   ② エンジンの前提：猪の突進の数字（気絶・溜め・突進の最短距離）。
 //   ③ 挙動（実機）：木の陰で待つと猪は木に頭を打ち続けて届かない（対照＝木の無い列だと轢かれる）／
-//      気絶の間に回り込めば斬れる／倒すと宝箱が現れてルピー +20／戦わずに東の口から北の口へ抜けられる。
+//      気絶の間に回り込めば斬れる／倒すと宝箱が現れてルピー +50（キュー100 で増額）／戦わずに東の口から北の口へ抜けられる。
 import { test, expect } from '@playwright/test';
 import { readFileSync } from 'fs';
 import { fileURLToPath } from 'url';
@@ -181,7 +181,7 @@ test.describe('D6 猪の木立ち ③ 実機', () => {
 		expect(await hp(page), '回り込む間に轢かれた').toBe(hp0);
 	});
 
-	test('倒すと宝箱が現れ、開けるとルピー +20', async ({ page }) => {
+	test('倒すと宝箱が現れ、開けるとルピー +50', async ({ page }) => {
 		const errors = [];
 		page.on('pageerror', (e) => errors.push(e.message));
 		await boot(page, previewUrl(8, 3));
@@ -194,7 +194,7 @@ test.describe('D6 猪の木立ち ③ 実機', () => {
 		const r0 = await page.evaluate(() => window.__game.getState().player.rupees);
 		await walk(page, 'left', 4);   // (8,3) → (8,1)＝宝箱
 		expect((await page.evaluate(() => window.__game.getStageState())).openedChests, '宝箱が開かない').toContain(CHEST);
-		expect(await page.evaluate(() => window.__game.getState().player.rupees), 'ルピーが 20 増えない').toBe(r0 + 20);
+		expect(await page.evaluate(() => window.__game.getState().player.rupees), 'ルピーが 50 増えない').toBe(r0 + 50);
 		expect(errors).toEqual([]);
 	});
 

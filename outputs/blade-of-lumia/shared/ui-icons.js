@@ -62,6 +62,7 @@ export const UI_ICON = {
 	quiver:     { spr: 'quiver',     pal: 'quiver'     },   // 矢筒（キュー37）
 	bombBag:    { spr: 'bombBag',    pal: 'bombBag'    },   // 爆弾袋（キュー37）
 	emblem:     { spr: 'emblem',     pal: 'emblem'     },   // 光の紋章（キュー45）
+	scroll:     { spr: 'scroll',     pal: 'scroll'     },   // 剣技の巻物（キュー100）
 	// その他
 	princess:   { spr: 'princess',   pal: 'princess'   },   // エディタの「姫状態」
 	altar:      { spr: 'altar',      pal: 'altar'      },
@@ -169,7 +170,7 @@ export const EMOJI_TO_ICON = {
 	'⚔': 'sword', '🛡': 'shield', '⚚': 'armor',
 	'🪃': 'boomerang', '💣': 'bomb', '🧪': 'potion', '💊': 'potionBig',
 	'🗺': 'map', '🧭': 'compass', '🎵': 'flute', '🕯': 'candle', '🪜': 'ladder',
-	'🪽': 'wingRobe', '👢': 'swiftBoots', '🧚': 'fairy', '⛩': 'altar', '🎲': 'dice',
+	'🪽': 'wingRobe', '👢': 'swiftBoots', '📜': 'scroll', '🧚': 'fairy', '⛩': 'altar', '🎲': 'dice',
 	'🌿': 'bush', '🔥': 'torch', '☐': 'chest', '🔓': 'doorOpen',
 	'◆': 'rupee', '◇': 'rupeeBlue',
 };

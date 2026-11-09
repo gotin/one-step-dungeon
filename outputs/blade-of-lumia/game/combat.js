@@ -7,13 +7,13 @@ import { ENEMY_META } from '../shared/enemies.js';
 import { NPC_SPRITE_MAP } from '../shared/npcs.js';
 import { playSound, resumeAudio, stopBgm } from '../shared/sounds.js';
 import { makeSprite } from '../shared/sprites.js';
-import { SWORD_TIERS, ownsItem, hasSwordAura } from '../shared/items.js';
+import { SWORD_TIERS, ownsItem, hasSwordAura, spinLevelOf } from '../shared/items.js';
 import {
-	MOVE_STEP, DIR_DELTA, SWORD_REACH, AURA_SWORD_REACH, SWORD_COOLDOWN_MS, INVINCIBLE_MS,
+	MOVE_STEP, DIR_DELTA, SWORD_REACH, AURA_SWORD_REACH, SPIN_REACH, SPIN_REACH_WIDE, SWORD_COOLDOWN_MS, INVINCIBLE_MS,
 	ATTACK_POSE_MS, GOLD_GARB_SWORD_COOLDOWN_MS,
 } from './constants.js';
 import { enemyW, enemyH, enemyCenter } from './hitbox.js';
-import { findSwordTarget } from './sword-reach.js';
+import { findSwordTarget, findSpinTargets } from './sword-reach.js';
 // Phase 8-4 (4) 0d-2.11 (A): 攻撃硬直の窓（＝反撃の窓）の判定＝enemy-ai.js の `.attack-recover`
 // と共有する（enemy-state.js が単一の真実）。`weakness.window: 'recover'` の弱点で使う。
 // isSoaring も同じ理由でそこから読む（0d-3 6体目 U＝浮いている絵と「矢しか届かない」を一致させる）。
@@ -827,6 +827,49 @@ export function createCombat(deps) {
 		return true;
 	}
 
+	// 実行キュー100：剣技の巻物の回転斬り。charge.js が「満タンで放した」ときにビームと一緒に呼ぶ。
+	// 巻物が足りなければ何もしない（戻り値＝当てた数・出なかったら -1）。まわりの相手に**全部**当てる。
+	// 当たり方は剣と同じ（dealDamageToEnemy に 'sword' で渡す＝盾騎士の正面は弾く・meleeOnly も通る）。
+	// スイッチ・茂みは見ない＝謎の解き方は変わらない。
+	function spinAttack() {
+		const player = getPlayer();
+		const level = spinLevelOf(player);
+		if (!level || !player?.weapon) return -1;
+		const pcx = player.x + 0.5, pcy = player.y + 0.5;
+		const reach = level >= 2 ? SPIN_REACH_WIDE : SPIN_REACH;
+		const hits = findSpinTargets(
+			{ pcx, pcy, reach },
+			{ enemies: getEnemies(), mirages: deps.getMirages?.() ?? [], thorns: deps.getThorns?.() ?? [] },
+		);
+		showSpinSlash(player, reach);
+		const swordAtk = hasCleared() ? player.atk * 2 : player.atk;
+		for (const { kind, target } of hits) {
+			if (kind === 'mirage') deps.destroyMirage?.(target.id);
+			else if (kind === 'thorn') deps.destroyThorn?.(target.id);
+			else dealDamageToEnemy(target, swordAtk, 'sword', player.x, player.y);
+		}
+		return hits.length;
+	}
+
+	// 回転斬りの絵＝勇者を中心にした光の輪（届く距離の大きさ）が一回り回って消える。
+	// 寿命は CSS アニメの終わり（見た目だけ＝当たりは spinAttack が先に済ませている）。
+	function showSpinSlash(player, reach) {
+		const layer = getCharLayerEl?.();
+		if (!layer) return;
+		const cellPx = getCellPx();
+		const size = (reach * 2 + 1) * cellPx;
+		const el = document.createElement('div');
+		el.className = `spin-slash${reach > SPIN_REACH ? ' wide' : ''}`;
+		el.style.position = 'absolute';
+		el.style.width = `${size}px`;
+		el.style.height = `${size}px`;
+		el.style.left = `${(player.x + 0.5) * cellPx - size / 2}px`;
+		el.style.top  = `${(player.y + 0.5) * cellPx - size / 2}px`;
+		el.addEventListener('animationend', () => el.remove(), { once: true });
+		setTimeout(() => el.remove(), 800);   // アニメが走らない環境（headless の一部）の後始末
+		layer.appendChild(el);
+	}
+
 	// 茂みを切る（目の前のマス）。
 	// キュー88：怨念のもやは剣がすり抜ける＝消さない（ロウソクの聖なる火でだけ祓える）。
 	// 茂みと同じく「振った」後に言う＝敵が居れば敵に当たる（上の strikeTarget が先）。
@@ -863,6 +906,7 @@ export function createCombat(deps) {
 
 	return {
 		swordAttack,
+		spinAttack,
 		drawSwordHeld,
 		clearSwordHeld,
 		ensureSwordHeld,

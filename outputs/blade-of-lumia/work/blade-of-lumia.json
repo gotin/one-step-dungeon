@@ -95511,9 +95511,9 @@
           "enemyDirs": {},
           "chestContents": {
             "5,7": {
-              "type": "rupee",
-              "value": 20,
-              "name": "ルピー×20"
+              "type": "item",
+              "item": "scroll",
+              "name": "剣技の巻物"
             }
           },
           "floorItems": {},
@@ -102321,9 +102321,9 @@
           "enemyDirs": {},
           "chestContents": {
             "4,5": {
-              "type": "rupee",
-              "value": 30,
-              "name": "ルピー×30"
+              "type": "item",
+              "item": "scroll",
+              "name": "剣技の巻物"
             }
           },
           "floorItems": {},
@@ -105503,8 +105503,8 @@
           "chestContents": {
             "6,10": {
               "type": "rupee",
-              "value": 20,
-              "name": "ルピー×20"
+              "value": 50,
+              "name": "ルピー×50"
             }
           },
           "floorItems": {},
@@ -107026,9 +107026,9 @@
           "enemyDirs": {},
           "chestContents": {
             "5,6": {
-              "type": "rupee",
-              "value": 50,
-              "name": "ルピー×50"
+              "type": "item",
+              "item": "scroll",
+              "name": "剣技の巻物"
             }
           },
           "floorItems": {},
@@ -107615,9 +107615,9 @@
           "enemyDirs": {},
           "chestContents": {
             "1,10": {
-              "type": "item",
-              "item": "bigHealPotion",
-              "name": "回復薬（大）"
+              "type": "rupee",
+              "value": 50,
+              "name": "ルピー×50"
             }
           },
           "floorItems": {
@@ -109378,8 +109378,8 @@
           "chestContents": {
             "8,6": {
               "type": "rupee",
-              "value": 20,
-              "name": "ルピー×20"
+              "value": 50,
+              "name": "ルピー×50"
             }
           },
           "floorItems": {},
@@ -109555,8 +109555,8 @@
           "chestContents": {
             "4,4": {
               "type": "rupee",
-              "value": 20,
-              "name": "ルピー×20"
+              "value": 50,
+              "name": "ルピー×50"
             }
           },
           "floorItems": {},
@@ -110052,8 +110052,8 @@
           "chestContents": {
             "8,10": {
               "type": "rupee",
-              "value": 20,
-              "name": "ルピー×20"
+              "value": 50,
+              "name": "ルピー×50"
             }
           },
           "floorItems": {
@@ -110543,8 +110543,8 @@
           "chestContents": {
             "8,1": {
               "type": "rupee",
-              "value": 20,
-              "name": "ルピー×20"
+              "value": 50,
+              "name": "ルピー×50"
             }
           },
           "floorItems": {},
@@ -111189,8 +111189,8 @@
           "chestContents": {
             "1,5": {
               "type": "rupee",
-              "value": 20,
-              "name": "ルピー×20"
+              "value": 50,
+              "name": "ルピー×50"
             }
           },
           "floorItems": {},
@@ -111522,9 +111522,9 @@
           },
           "chestContents": {
             "2,9": {
-              "type": "rupee",
-              "value": 20,
-              "name": "ルピー×20"
+              "type": "item",
+              "item": "scroll",
+              "name": "剣技の巻物"
             }
           },
           "floorItems": {},
@@ -116043,9 +116043,9 @@
           "enemyDirs": {},
           "chestContents": {
             "1,1": {
-              "type": "rupee",
-              "value": 100,
-              "name": "ルピー×100"
+              "type": "item",
+              "item": "scroll",
+              "name": "剣技の巻物"
             }
           },
           "floorItems": {},
@@ -116968,8 +116968,8 @@
           "chestContents": {
             "7,10": {
               "type": "rupee",
-              "value": 50,
-              "name": "ルピー×50"
+              "value": 100,
+              "name": "ルピー×100"
             }
           },
           "floorItems": {},
@@ -117336,9 +117336,9 @@
           "enemyDirs": {},
           "chestContents": {
             "8,10": {
-              "type": "item",
-              "item": "bigHealPotion",
-              "name": "回復薬（大）"
+              "type": "rupee",
+              "value": 50,
+              "name": "ルピー×50"
             }
           },
           "floorItems": {},
@@ -117525,8 +117525,8 @@
           "chestContents": {
             "8,1": {
               "type": "rupee",
-              "value": 20,
-              "name": "ルピー×20"
+              "value": 50,
+              "name": "ルピー×50"
             }
           },
           "floorItems": {},
@@ -117881,8 +117881,8 @@
           "chestContents": {
             "3,7": {
               "type": "rupee",
-              "value": 30,
-              "name": "ルピー×30"
+              "value": 50,
+              "name": "ルピー×50"
             }
           },
           "floorItems": {},
@@ -118103,9 +118103,9 @@
           "enemyDirs": {},
           "chestContents": {
             "1,10": {
-              "type": "rupee",
-              "value": 50,
-              "name": "ルピー×50"
+              "type": "item",
+              "item": "scroll",
+              "name": "剣技の巻物"
             }
           },
           "floorItems": {},
@@ -118323,9 +118323,9 @@
           "enemyDirs": {},
           "chestContents": {
             "8,10": {
-              "type": "item",
-              "item": "bigHealPotion",
-              "name": "回復薬（大）"
+              "type": "rupee",
+              "value": 50,
+              "name": "ルピー×50"
             }
           },
           "floorItems": {},
@@ -118507,8 +118507,8 @@
           "chestContents": {
             "3,2": {
               "type": "rupee",
-              "value": 30,
-              "name": "ルピー×30"
+              "value": 50,
+              "name": "ルピー×50"
             }
           },
           "floorItems": {},
@@ -119619,9 +119619,9 @@
           },
           "chestContents": {
             "8,10": {
-              "type": "item",
-              "item": "bigHealPotion",
-              "name": "回復薬（大）"
+              "type": "rupee",
+              "value": 100,
+              "name": "ルピー×100"
             }
           },
           "floorItems": {},
@@ -120270,9 +120270,9 @@
           "enemyDirs": {},
           "chestContents": {
             "3,10": {
-              "type": "item",
-              "item": "bigHealPotion",
-              "name": "回復薬（大）"
+              "type": "rupee",
+              "value": 50,
+              "name": "ルピー×50"
             }
           },
           "floorItems": {},
@@ -123382,9 +123382,9 @@
           "enemyDirs": {},
           "chestContents": {
             "1,1": {
-              "type": "rupee",
-              "value": 100,
-              "name": "ルピー×100"
+              "type": "item",
+              "item": "scroll",
+              "name": "剣技の巻物"
             }
           },
           "floorItems": {},
@@ -125644,8 +125644,8 @@
           "chestContents": {
             "2,1": {
               "type": "rupee",
-              "value": 20,
-              "name": "ルピー×20"
+              "value": 50,
+              "name": "ルピー×50"
             }
           },
           "floorItems": {},
@@ -128130,8 +128130,8 @@
           "chestContents": {
             "5,10": {
               "type": "rupee",
-              "value": 30,
-              "name": "ルピー×30"
+              "value": 50,
+              "name": "ルピー×50"
             }
           },
           "floorItems": {},
@@ -128936,9 +128936,9 @@
           "enemyDirs": {},
           "chestContents": {
             "7,9": {
-              "type": "rupee",
-              "value": 20,
-              "name": "ルピー×20"
+              "type": "item",
+              "item": "scroll",
+              "name": "剣技の巻物"
             }
           },
           "floorItems": {},

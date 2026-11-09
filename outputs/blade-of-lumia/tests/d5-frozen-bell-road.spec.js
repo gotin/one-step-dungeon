@@ -62,7 +62,7 @@ test.describe('D5 4,3 凍れる湖の鐘の道 ① データ', () => {
 		for (const b of [BELL_NEAR, BELL_FAR]) expect(rowsOf(st)[Number(b.split(',')[0])][Number(b.split(',')[1])], `鐘 ${b}`).toBe(TILE.SWITCH);
 		expect(st.links).toEqual(LINKS);
 		expect(st.showConditions).toEqual(SHOW);
-		expect(st.chestContents).toEqual({ [CHEST]: { type: 'rupee', value: 100, name: 'ルピー×100' } });
+		expect(st.chestContents).toEqual({ [CHEST]: { type: 'item', item: 'scroll', name: '剣技の巻物' } });   // キュー100 でルピー×100→剣技の巻物
 		expect(st.floorItems ?? {}, '床のルピーが残っている').toEqual({});
 		expect(Object.keys(st.signData ?? {})).toEqual([]);
 		const chars = rowsOf(st).join('');
@@ -159,7 +159,7 @@ const snap = (page) => page.evaluate((stones) => {
 		met: [...(ss.conditionsMet ?? [])],
 		locked: !!ss.stonesLocked,
 		opened: [...(ss.openedChests ?? [])],
-		rupees: window.__game.getState().player.rupees,
+		scrolls: window.__game.getPlayer().scrolls ?? 0,
 	};
 }, STONES);
 // [kind, dir, n, 着いた位置, 押した後の石（押しのとき）／開いている水門（射るとき）]
@@ -240,20 +240,20 @@ test.describe('D5 4,3 凍れる湖の鐘の道 ② 鐘の道（実機）', () =>
 });
 
 test.describe('D5 4,3 凍れる湖の鐘の道 ③ 通し（実機）', () => {
-	test('通し：奥から順に水門を閉じながら3つのボタンに石を止める→宝箱（ルピー×100）が開く', async ({ page }) => {
+	test('通し：奥から順に水門を閉じながら3つのボタンに石を止める→宝箱（剣技の巻物）が開く', async ({ page }) => {
 		test.setTimeout(180_000);
 		const errors = await boot(page, 4, 0);
 		await run(page, SOLVE);
 		let s = await snap(page);
 		expect(s.met, '石が3つのボタンに乗ったのに宝箱が現れない').toContain(CHEST);
 		expect(s.locked, '石がロックされない').toBe(true);
-		const before = s.rupees;
+		const before = s.scrolls;
 		// 押した後は道の西端 (7,5)。列3 を北へ上がって行4 を西へ、堀をはしごで渡って帯へ。宝箱 (1,1) の真下 (2,1) から北へ
 		await run(page, [['walk', 'left', 2, '7,3'], ['walk', 'up', 3, '4,3'], ['walk', 'left', 2, '4,1'], ['walk', 'up', 2, '2,1']]);
 		await walk(page, 'up', 1);
 		s = await snap(page);
 		expect(s.opened, '宝箱が開かない').toContain(CHEST);
-		expect(s.rupees, 'ルピーが 100 増えない').toBe(before + 100);
+		expect(s.scrolls, '剣技の巻物が増えない').toBe(before + 1);
 		expect(errors).toEqual([]);
 	});
 });

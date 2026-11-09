@@ -218,7 +218,7 @@ export function collectRewards(map, { excludeBossRooms = false } = {}) {
 	const perLayer = new Map();   // layer → { sword:[], armor:[], shield:[], boomerang:[], items:[], hearts:n, heartPieces:n, triforce:n }
 	const bump = (layer) => {
 		if (!perLayer.has(layer)) {
-			perLayer.set(layer, { sword: [], armor: [], shield: [], boomerang: [], items: [], hearts: 0, heartPieces: 0, emblems: 0, triforce: 0 });
+			perLayer.set(layer, { sword: [], armor: [], shield: [], boomerang: [], items: [], hearts: 0, heartPieces: 0, emblems: 0, scrolls: 0, triforce: 0 });
 		}
 		return perLayer.get(layer);
 	};
@@ -244,6 +244,8 @@ export function collectRewards(map, { excludeBossRooms = false } = {}) {
 					if (v.type === 'heartPiece' || v.item === 'heartPiece') bucket.heartPieces += 1;
 					// キュー45: 光の紋章（8つで剣にオーラ）＝監査の「報酬の配置」に個数を出す。
 					if (v.item === 'emblem') bucket.emblems += 1;
+					// キュー100: 剣技の巻物（4つで回転斬り・8つで2マス先まで）＝同じく個数を出す。
+					if (v.item === 'scroll') bucket.scrolls += 1;
 				}
 			}
 			// キュー36: くじの壺（店の品 `gacha`）＝最大ハートの景品は1台につき1回限り
@@ -274,7 +276,7 @@ export function collectRewards(map, { excludeBossRooms = false } = {}) {
 // フィールドの報酬＝「寄道もフィールドも全部拾った」上限側にだけ数える（下限には数えない）。
 export function fieldRewardsOf(perLayer) {
 	const fr = perLayer.get('field')
-		?? { sword: [], armor: [], shield: [], boomerang: [], items: [], hearts: 0, heartPieces: 0, emblems: 0, triforce: 0 };
+		?? { sword: [], armor: [], shield: [], boomerang: [], items: [], hearts: 0, heartPieces: 0, emblems: 0, scrolls: 0, triforce: 0 };
 	return {
 		swordMax:     Math.max(-1, ...fr.sword),
 		armorMax:     Math.max(-1, ...fr.armor),
@@ -376,7 +378,7 @@ export function presetsFrom(map) {
 	const preBoss      = collectRewards(map, { excludeBossRooms: true });
 	const bossLayers   = bossRoomLayersOf(map);
 	const fieldRewards = fieldRewardsOf(perLayer);
-	const empty = { sword: [], armor: [], shield: [], boomerang: [], items: [], hearts: 0, heartPieces: 0, emblems: 0, triforce: 0 };
+	const empty = { sword: [], armor: [], shield: [], boomerang: [], items: [], hearts: 0, heartPieces: 0, emblems: 0, scrolls: 0, triforce: 0 };
 	return ORDER.map((cp, i) => {
 		// ボス部屋が無いレイヤーは「ボス直前」を作らない（報酬が有っても選択肢にしない）。
 		const preBossHere = cp.layer && bossLayers.has(cp.layer) ? (preBoss.get(cp.layer) ?? empty) : null;

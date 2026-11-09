@@ -18,7 +18,7 @@
 // ビーム本体は projectile.js の addProjectile に type:'beam' で乗せる（飛翔・当たり判定を共有）。
 
 import { playSound, resumeAudio } from '../shared/sounds.js';
-import { SWORD_TIERS } from '../shared/items.js';
+import { SWORD_TIERS, spinLevelOf } from '../shared/items.js';
 import {
 	DIR_DELTA, MOVE_STEP,
 	CHARGE_FULL_MS, CHARGE_MIN_RATIO, BEAM_SPEED, BEAM_STRONG_MULT,
@@ -38,13 +38,14 @@ import {
  *   addProjectile(config)  – 投擲物追加（projectile.js）
  *   hasCleared()           – 二周目か（剣ATK2倍）
  *   isSwordSealed()        – 剣封じの窓が立っているか（Phase 5.5k k-7・game/debuff.js）
+ *   spinAttack()           – 剣技の巻物の回転斬り（実行キュー100・combat.js＝巻物が足りなければ何もしない）
  */
 export function createCharge(deps) {
 	const {
 		gameNow, getPlayer, getHeroDir,
 		getIsDialog, getIsPaused, getIsGameover, getIsTransitioning,
 		addProjectile, hasCleared,
-		isSwordSealed,
+		isSwordSealed, spinAttack,
 	} = deps;
 
 	// 押下した論理時刻（ms）。null のときは非チャージ。
@@ -101,6 +102,8 @@ export function createCharge(deps) {
 		clearAura();
 		if (ratio < CHARGE_MIN_RATIO) return;   // 剣のみ（既に振っている）
 		fireBeam(ratio >= 1);
+		// 実行キュー100：剣技の巻物＝満タンで放したときだけ、ビームと同時に回転斬り（新しいキーは足さない）。
+		if (ratio >= 1) spinAttack?.();
 	}
 
 	// チャージを中断（ステージ遷移・ポーズ等）
@@ -161,10 +164,23 @@ export function createCharge(deps) {
 		aura.classList.toggle('charge-ready', ready && !(full && canPierce));
 		aura.classList.toggle('charge-full',  full  &&   canPierce);  // 金色は聖剣満タンのみ
 		aura.style.opacity = String(0.25 + ratio * 0.75);
+		// 実行キュー100（2026-11-09 ユーザー判定）：回転斬りが出る瞬間（満タン）を見せる。
+		// 銅・銀の剣は 1/4 で青くなった後、満タンで見た目が変わらなかった＝いつ放せば回転斬りか分からない。
+		// 巻物がそろっていれば、満タンで白い光の輪が勇者のまわりを回り出す（放つと出る回転斬りの輪と同じ形）。
+		// 満タンになった瞬間だけ輪が外へ弾ける（`.ping`）＝溜まった合図。輪は剣の色の光（青・金）と重ねて出す。
+		const spinReady = full && spinLevelOf(player) > 0;
+		let ring = playerEl.querySelector('.charge-spin-ring');
+		if (spinReady && !ring) {
+			ring = document.createElement('div');
+			ring.className = `charge-spin-ring ping${spinLevelOf(player) >= 2 ? ' wide' : ''}`;
+			playerEl.appendChild(ring);
+		} else if (!spinReady && ring) {
+			ring.remove();
+		}
 	}
 
 	function clearAura() {
-		document.querySelectorAll('.charge-aura').forEach(el => el.remove());
+		document.querySelectorAll('.charge-aura, .charge-spin-ring').forEach(el => el.remove());
 	}
 
 	return {

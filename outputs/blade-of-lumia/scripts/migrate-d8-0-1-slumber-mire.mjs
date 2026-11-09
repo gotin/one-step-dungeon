@@ -87,7 +87,7 @@ export const TARGET = [
 	'#####..#####',
 ];
 export const CHEST = '2,1';
-export const CHEST_CONTENT = { type: 'rupee', value: 20, name: 'ルピー×20' };
+export const CHEST_CONTENT = { type: 'rupee', value: 50, name: 'ルピー×50' };   // キュー100（2026-11-09）で差し替え＝scripts/migrate-q100-dungeon-rewards.mjs
 export const SIGN = '4,9';
 export const SIGN_DATA = {
 	name: '泥田の 子守唄',

@@ -99,7 +99,7 @@ export const MOUTHS = { west: ['4,0', '5,0'], south: ['9,5', '9,6'] };
 export const TARGET = PLAN_ROWS.map((row) => row.replace(/~/g, '.'));
 export const WATER = [];
 PLAN_ROWS.forEach((row, r) => [...row].forEach((ch, c) => { if (ch === '~') WATER.push(`${r},${c}`); }));
-export const CHEST_CONTENTS = { [CHEST]: { type: 'item', item: 'bigHealPotion', name: '回復薬（大）' } };
+export const CHEST_CONTENTS = { [CHEST]: { type: 'rupee', value: 50, name: 'ルピー×50' } };   // キュー100（2026-11-09）で差し替え＝scripts/migrate-q100-dungeon-rewards.mjs
 export const SHOW = { [CHEST]: { trigger: 'killAll', message: '{{bush}} 盾騎士が 野火に 倒れ、宝箱が 現れた！' } };
 export const SIGN_DATA = {
 	[SIGN]: {

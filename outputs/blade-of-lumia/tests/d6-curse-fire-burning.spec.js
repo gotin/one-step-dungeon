@@ -198,7 +198,7 @@ test.describe('D6 呪い火の野焼き ③ 実機', () => {
 		expect(NW.every((k) => s.cutBushes.includes(k)), '北西の島が燃え切っていない').toBe(true);
 	});
 
-	test('2本灯ると宝箱が現れ、開けるとルピー +30', async ({ page }) => {
+	test('2本灯ると宝箱が現れ、開けるとルピー +50', async ({ page }) => {
 		const errors = [];
 		page.on('pageerror', (e) => errors.push(e.message));
 		await boot(page, 4, 10);
@@ -210,7 +210,7 @@ test.describe('D6 呪い火の野焼き ③ 実機', () => {
 		await run(page, [['go', 3, 5], ['go', 3, 6]]);
 		await page.evaluate(() => { window.__game.movePlayer('right'); window.__game.step(2); });
 		expect((await state(page)).openedChests, '宝箱が開かない').toContain(CHEST);
-		expect(await page.evaluate(() => window.__game.getState().player.rupees), 'ルピーが 30 増えない').toBe(r0 + 30);
+		expect(await page.evaluate(() => window.__game.getState().player.rupees), 'ルピーが 50 増えない').toBe(r0 + 50);
 		expect(errors).toEqual([]);
 	});
 

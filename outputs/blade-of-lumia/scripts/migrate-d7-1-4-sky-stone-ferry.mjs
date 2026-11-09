@@ -90,7 +90,7 @@ const GATE_CELL = '1,2';
 const BUTTONS = ['1,6', '4,1'];
 const STONES = ['6,1', '6,5'];
 const PITS = ['2,5', '5,2'];
-const CHEST_CONTENTS = { [CHEST_CELL]: { type: 'item', item: 'bigHealPotion', name: '回復薬（大）' } };
+const CHEST_CONTENTS = { [CHEST_CELL]: { type: 'item', item: 'scroll', name: '剣技の巻物' } };   // キュー45 でルピー×100、キュー100（2026-11-09）で剣技の巻物
 const SHORTEST = 35;                           // 最短手数（厳格・緩い とも）
 
 // ── 読み込み ─────────────────────────────────────────────────────────
@@ -122,7 +122,7 @@ if (room.tiles.map(rowStr).join('|') !== TARGET.join('|')) {
 }
 if (JSON.stringify(room.chestContents ?? {}) !== JSON.stringify(CHEST_CONTENTS)) {
 	room.chestContents = JSON.parse(JSON.stringify(CHEST_CONTENTS));
-	log.push(`  ${ROOM}: 宝箱 ${CHEST_CELL}＝回復薬（大）（旧＝(2,5) の回復薬）`);
+	log.push(`  ${ROOM}: 宝箱 ${CHEST_CELL}＝剣技の巻物（旧＝(2,5) の回復薬）`);
 }
 room.links ??= [];
 room.bgTiles ??= {};
@@ -200,7 +200,7 @@ check(`敵が居ない（謎解きの部屋）`, cellsOf(t, (ch) => !!ENEMY_META
 check(`植生・看板・Y・色・かがり火・壊せる壁が無い`,
 	cellsOf(t, (ch) => [TILE.TREE, TILE.BUSH, TILE.SIGN, TILE.SWITCH, TILE.SWITCH_RED, TILE.SWITCH_BLUE, TILE.GATE_RED, TILE.GATE_BLUE, TILE.TORCH, TILE.BREAKABLE_WALL].includes(ch)).length === 0
 	&& Object.keys(room.signData).length === 0 && Object.keys(room.npcData).length === 0);
-check(`宝箱 B は ${CHEST_CELL} の1枚・中身＝回復薬（大）`,
+check(`宝箱 B は ${CHEST_CELL} の1枚・中身＝剣技の巻物`,
 	same(cellsOf(t, (ch) => ch === TILE.CHEST), [CHEST_CELL])
 	&& JSON.stringify(room.chestContents) === JSON.stringify(CHEST_CONTENTS));
 check(`門 T は ${GATE_CELL} の1枚`, same(cellsOf(t, (ch) => ch === TILE.GATE), [GATE_CELL]));

@@ -76,3 +76,22 @@ export function findSwordTarget(swing, { enemies = [], mirages = [], thorns = []
 	}
 	return best;
 }
+
+// 実行キュー100：剣技の巻物の回転斬り。勇者のまわり `reach` 以内の相手を**全部**返す（剣と違い1つに絞らない）。
+// 距離＝勇者の中心から相手の体の縁まで、縦と横の大きい方（チェビシェフ）＝斜めの隣も縦横の隣と同じ 1.0。
+// 隠れ中の敵・伏せている棘は外す（剣と同じ）。戻り値＝[{ kind, target }]。
+export function findSpinTargets({ pcx, pcy, reach }, { enemies = [], mirages = [], thorns = [] } = {}) {
+	const within = (t) => {
+		const { cx, cy } = enemyCenter(t);
+		const halfW = (enemyW(t) - 1) / 2;
+		const halfH = (enemyH(t) - 1) / 2;
+		const dx = Math.max(0, Math.abs(cx - pcx) - halfW);
+		const dy = Math.max(0, Math.abs(cy - pcy) - halfH);
+		return Math.max(dx, dy) <= reach;
+	};
+	const out = [];
+	for (const e of enemies) if (!e.hidden && within(e)) out.push({ kind: 'enemy', target: e });
+	for (const m of mirages) if (within(m)) out.push({ kind: 'mirage', target: m });
+	for (const t of thorns) if (t.phase === 'up' && within(t)) out.push({ kind: 'thorn', target: t });
+	return out;
+}

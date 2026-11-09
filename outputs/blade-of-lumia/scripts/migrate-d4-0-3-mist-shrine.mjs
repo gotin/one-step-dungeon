@@ -91,7 +91,7 @@ export const MIST   = '4,6';
 export const SEAT   = '4,7';   // もやを祓う足場（西を向いてロウソク）
 export const TURTLE = '7,7';
 export const OPENINGS = ['4,11', '5,11'];
-export const CHEST_CONTENTS = { [CHEST]: { type: 'rupee', value: 20, name: 'ルピー×20' } };
+export const CHEST_CONTENTS = { [CHEST]: { type: 'rupee', value: 50, name: 'ルピー×50' } };   // キュー100（2026-11-09）で差し替え＝scripts/migrate-q100-dungeon-rewards.mjs
 
 // 部屋の中だけの歩行（4近傍）。`clearMist` で祓った後を測る。敵のセルは床とみなす。
 export function reach(grid, starts, { clearMist = false } = {}) {

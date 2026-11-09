@@ -92,7 +92,7 @@ export const SPOT_WEST = '1,4';    // 西の湾の上＝西の魚とだけ向き
 export const SPOT_EAST = '1,8';    // 東の湾の上
 export const REEF_ROOT = '1,6';    // 岩礁の付け根＝両方の湾から狙われる所
 export const OPENING = { west: '4,0' };
-export const CHEST = { type: 'item', item: 'bigHealPotion', name: '回復薬（大）' };
+export const CHEST = { type: 'rupee', value: 50, name: 'ルピー×50' };   // キュー100（2026-11-09）で差し替え＝scripts/migrate-q100-dungeon-rewards.mjs
 
 const key = (r, c) => `${r},${c}`;
 const parse = (k) => k.split(',').map(Number);
@@ -207,7 +207,7 @@ function main() {
 	}
 	check(`宝箱は ${CHEST_CELL} の1つだけ＝回復薬（大）・全滅（killAll）で出る`,
 		flat.filter((ch) => ch === TILE.CHEST).length === 1 && at(CHEST_CELL) === TILE.CHEST
-		&& room.chestContents[CHEST_CELL]?.item === 'bigHealPotion' && Object.keys(room.chestContents).length === 1
+		&& room.chestContents[CHEST_CELL]?.type === CHEST.type && room.chestContents[CHEST_CELL]?.value === CHEST.value && Object.keys(room.chestContents).length === 1
 		&& room.showConditions[CHEST_CELL]?.trigger === 'killAll' && Object.keys(room.showConditions).length === 1);
 	check(`床の矢束は ${ARROWS_CELL} の1つ×${ARROWS_COUNT}`,
 		flat.filter((ch) => ch === TILE.ITEM_ARROWS).length === 1 && at(ARROWS_CELL) === TILE.ITEM_ARROWS

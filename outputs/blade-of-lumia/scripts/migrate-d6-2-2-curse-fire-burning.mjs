@@ -100,7 +100,7 @@ export const TORCH_SE = '8,10';
 export const MOUTHS = {
 	north: ['0,5', '0,6'], south: ['9,5', '9,6'], west: ['4,0', '5,0'], east: ['4,11', '5,11'],
 };
-export const CHEST_CONTENTS = { [CHEST]: { type: 'rupee', value: 30, name: 'ルピー×30' } };
+export const CHEST_CONTENTS = { [CHEST]: { type: 'rupee', value: 50, name: 'ルピー×50' } };   // キュー100（2026-11-09）で差し替え＝scripts/migrate-q100-dungeon-rewards.mjs
 export const SHOW = { [CHEST]: { trigger: 'torchesLit', message: '{{torch}} 池の 島の 火が 灯り、宝箱が 現れた！' } };
 export const SIGN_DATA = {
 	[SIGN]: {

@@ -7,7 +7,7 @@
 //
 // 新しい盤面:
 //      1 #......#...#
-//      2 #......#.B.#   ← 宝物庫（東・中は 3×8）の宝箱 (2,9)＝ルピー×20
+//      2 #......#.B.#   ← 宝物庫（東・中は 3×8）の宝箱 (2,9)＝剣技の巻物（キュー100 でルピー×20 から差し替え）
 //      3 #..ll..#...#
 //      4 ...ll...ζ..#   ← 西の口／宝物庫の戸口 (4,7)（幅1）の内側に盾騎士 ζ (4,8)・西向き
 //      5 ...ll..#...#
@@ -19,7 +19,7 @@
 //      敵と向き・脅威度・宣言・層の接続は不変。
 //   ② 挙動（実機）：溶岩に踏み込めない／戸口の正面で剣を振っても騎士は無傷で、立ち止まると斬られる／
 //      北の道に居る間、騎士は壁の内側から出てこない（戸口の行でしか出てこない）。
-//   ③ 主題（実機）：戸口の前で気づかせて池を回ると、無傷で宝箱が開きルピー +20。
+//   ③ 主題（実機）：戸口の前で気づかせて池を回ると、無傷で宝箱が開き剣技の巻物が手に入る。
 import { test, expect } from '@playwright/test';
 import { readFileSync } from 'fs';
 import { fileURLToPath } from 'url';
@@ -43,11 +43,11 @@ const at = (k) => { const [r, c] = k.split(',').map(Number); return grid[r][c]; 
 
 // ── ① データ ─────────────────────────────────────────────────────────
 test.describe('D4 炉番の盾騎士 ① データ', () => {
-	test('盤面・宝箱は1つ（ルピー×20・最初から置いてある）・床の拾い物は無い', () => {
+	test('盤面・宝箱は1つ（剣技の巻物・最初から置いてある）・床の拾い物は無い', () => {
 		expect(room.tiles.map(rowStr), '盤面が移行スクリプトの TARGET と違う').toEqual(TARGET);
 		expect(grid.flat().filter((ch) => ch === TILE.CHEST).length, '宝箱が1つでない').toBe(1);
 		expect(at(CHEST)).toBe(TILE.CHEST);
-		expect(room.chestContents[CHEST]).toMatchObject({ type: 'rupee', value: CHEST_CONTENT.value });
+		expect(room.chestContents[CHEST]).toEqual(CHEST_CONTENT);
 		expect(room.showConditions ?? {}, '宝箱に出現条件が付いた').toEqual({});
 		expect(room.floorItems ?? {}, '床の拾い物の記述が残っている').toEqual({});
 	});
@@ -185,11 +185,11 @@ test.describe('D4 炉番の盾騎士 ② 実機', () => {
 });
 
 test.describe('D4 炉番の盾騎士 ③ 主題', () => {
-	test('通し：戸口の前で気づかせて池を回ると、無傷で宝箱が開きルピー +20', async ({ page }) => {
+	test('通し：戸口の前で気づかせて池を回ると、無傷で宝箱が開き剣技の巻物が手に入る', async ({ page }) => {
 		const errors = [];
 		page.on('pageerror', (e) => errors.push(e.message));
 		await boot(page, previewUrl(4, 1));
-		const rupees0 = await page.evaluate(() => window.__game.getState().player.rupees);
+		const scrolls0 = await page.evaluate(() => window.__game.getPlayer().scrolls ?? 0);
 		const hp0 = await page.evaluate(() => window.__game.getState().player.hp);
 		// 北の道を回って戸口の行 (4,5) へ＝騎士が気づいて戸口から出てくる
 		let minHp = await walk(page, [[2, 1], [2, 5], [4, 5]]);
@@ -209,8 +209,8 @@ test.describe('D4 炉番の盾騎士 ③ 主題', () => {
 		minHp = Math.min(minHp, await walk(page, [[2, 5], [2, 1], [8, 1], [8, 6], [4, 6], [4, 7], [4, 8], [3, 8], [3, 9], [2, 9]]));
 		expect(await pos(page), '宝箱まで歩けない').toBe(CHEST);
 		expect(await page.evaluate(() => window.__game.getStageState().openedChests), '宝箱が開かない').toContain(CHEST);
-		const rupees1 = await page.evaluate(() => window.__game.getState().player.rupees);
-		expect(rupees1 - rupees0, 'ルピーが 20 増えない').toBe(CHEST_CONTENT.value);
+		const scrolls1 = await page.evaluate(() => window.__game.getPlayer().scrolls ?? 0);
+		expect(scrolls1 - scrolls0, '剣技の巻物が増えない').toBe(1);
 		expect(minHp, '池を回って先回りしたのに斬られた＝騎士が戸口へ先に戻れる').toBe(hp0);
 		const e = await page.evaluate(() => { const e = window.__game.getEnemies()[0]; return { x: e.x, y: e.y }; });
 		expect(e.x, '前提：騎士が広間に出ていない＝おびき出しが起きていない').toBeLessThan(7);

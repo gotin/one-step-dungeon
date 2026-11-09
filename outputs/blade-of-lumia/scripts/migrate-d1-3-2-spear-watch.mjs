@@ -101,7 +101,7 @@ export const PILLARS = ['2,6', '2,7'];                             // 北の回�
 export const SHADE = ['1,6', '1,7'];                               // 柱の陰（縦の槍が届かない）
 export const EAST = { c0: 9, c1: 10 };                             // 東の通路（斬り合う場所）
 export const CHEST = '5,7';
-export const CHEST_CONTENT = { type: 'rupee', value: 20, name: 'ルピー×20' };   // 据え置き（位置だけ動かす）
+export const CHEST_CONTENT = { type: 'item', item: 'scroll', name: '剣技の巻物' };   // キュー100（2026-11-09）で差し替え＝scripts/migrate-q100-dungeon-rewards.mjs
 export const SPEAR_RANGE = ENEMY_META[TILE.SENTRY].attack.range;   // 4
 export const SIGNATURE_THREAT = 18;                                // 看板部屋 `1,1`（地中蟲）
 
