@@ -1,0 +1,140 @@
+/* 読みやすさ優先の最小スタイル。見た目の作り込みは後の段で行う */
+:root {
+  --bg: #fbfaf7;
+  --fg: #22231f;
+  --muted: #6b6d64;
+  --accent: #2f6f62;
+  --line: #e4e2da;
+  --code-bg: #f3f1ea;
+  color-scheme: light dark;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #16171a;
+    --fg: #e6e4dd;
+    --muted: #9a9b93;
+    --accent: #7cc4b3;
+    --line: #2c2d31;
+    --code-bg: #1f2024;
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--fg);
+  font-family:
+    system-ui, -apple-system, "Hiragino Sans", "Noto Sans JP", sans-serif;
+  line-height: 1.8;
+}
+
+a {
+  color: var(--accent);
+}
+
+.site-header,
+.site-main,
+.site-footer {
+  max-width: 42rem;
+  margin: 0 auto;
+  padding: 0 1rem;
+}
+
+.site-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  padding-top: 1.5rem;
+  padding-bottom: 1.5rem;
+}
+
+.site-name {
+  color: var(--fg);
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.site-header nav {
+  display: flex;
+  gap: 1rem;
+}
+
+.site-footer {
+  margin-top: 4rem;
+  padding-bottom: 2rem;
+  color: var(--muted);
+  font-size: 0.875rem;
+}
+
+.muted {
+  color: var(--muted);
+}
+
+.post-list,
+.game-list {
+  list-style: none;
+  padding: 0;
+}
+
+.post-list li {
+  padding: 1rem 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.post-list h3 {
+  margin: 0;
+}
+
+.post-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin: 0.25rem 0;
+  color: var(--muted);
+  font-size: 0.875rem;
+}
+
+.tag {
+  color: var(--muted);
+}
+
+.prose img {
+  max-width: 100%;
+}
+
+.prose blockquote {
+  margin: 1rem 0;
+  padding-left: 1rem;
+  border-left: 3px solid var(--line);
+  color: var(--muted);
+}
+
+.prose :not(pre) > code {
+  padding: 0.1em 0.3em;
+  border-radius: 4px;
+  background: var(--code-bg);
+}
+
+.prose pre {
+  padding: 1rem;
+  border-radius: 6px;
+  overflow-x: auto;
+  line-height: 1.5;
+}
+
+/* Shiki の2テーマ：既定は light、ダークモードでは --shiki-dark の色を使う */
+@media (prefers-color-scheme: dark) {
+  /* Shiki は色をインライン style で付けるので、上書きには !important が要る（Shiki の公式の方法） */
+  .shiki,
+  .shiki span {
+    /* biome-ignore lint/complexity/noImportantStyles: インライン style の上書き */
+    color: var(--shiki-dark) !important;
+    /* biome-ignore lint/complexity/noImportantStyles: インライン style の上書き */
+    background-color: var(--shiki-dark-bg) !important;
+  }
+}

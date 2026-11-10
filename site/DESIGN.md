@@ -13,7 +13,8 @@
 - フォルダの `index.html`：Next.js の `public/` はディレクトリの `index.html` を自動では返さないので、`next.config` の fallback rewrite 1本で「Next.js のページに当たらない `/…/` は `/…/index.html` を返す」。ゲームを足しても書き足し不要。
   ∴ `/blade-of-lumia/game/` などの既存 URL は同じドメイン・同じパスのまま動く。
 - 変わるのはトップ `/` だけ：ゲーム一覧から Small Isle のトップになる。ゲーム一覧は `/games` へ移す。
-- ゲームの push でも Next.js のビルドが走る。軽くするため、記事ページはビルド時に作らず初回アクセス時に生成してキャッシュする（ISR）＝ビルドは DB に触らずコンパイルだけ。
+- ゲームの push でも Next.js のビルドが走る。ビルドは公開記事を DB から読んで静的ページを作る（Cache Components の仕様で、`'use cache'` の部分はビルド時に描画される。読むだけで書かない）。記事が増えてビルドが重くなったら、`generateStaticParams` を最新 N 件に絞り、残りは初回アクセス時に生成する。
+  - ∴ ビルド時に DB に届かないとデプロイが失敗する（ゲームの更新も止まる）。Neon が落ちていたら復旧を待つ
 - 弱点：ブログのコードが壊れているとゲームのデプロイも止まる。push 前にローカルで `npm run build` を通す。
 - 切り替えは本番に直接出さない：ブランチのプレビューデプロイで既存ゲームの全 URL が動くのを確かめてから main に入れる。
 - 開発時のゲームの作業（`outputs/` での vite 開発サーバ・Playwright テスト）は従来どおりで変わらない。
@@ -169,7 +170,8 @@ BLOB_READ_WRITE_TOKEN=
 
 1. ✅ `site/` の雛形（Next.js 16.4・TypeScript・Biome 2 は `site/biome.json` で独立。直下の Biome 1.9 設定は使わない）＋ゲームのコピーと `index.html` の rewrite（2026-11-10。ローカルの `next build && next start` で全ゲーム・エディタを headless で開き、失敗リクエスト0を確認。`/_vercel/speed-insights/script.js` の 404 はローカルだけで vite でも同じ）
 2. ✅ DB 接続＋migration、`posts` / `post_revisions` / `tags` / `post_tags` / `slug_redirects`（2026-11-10。`drizzle/0000_init.sql` を開発用ブランチへ適用済み。本番 `main` は切り替え時に適用する）
-3. 公開ページ（`/`、`/blog`、`/blog/[slug]`、`/tags/[tag]`）と seed
+3. ✅ 公開ページ（`/`、`/blog`、`/blog/[slug]`、`/tags/[tag]`）と seed（2026-11-10。`npm run db:seed` で開発用ブランチにサンプル4件＝公開2・下書き1・未来の予約1。下書きと予約は一覧に出ず記事 URL も not-found になること、本文の `<script>` が消えること、コードの色付け・表・引用を確認）
+   - 存在しない slug は not-found の画面になるが、HTTP ステータスは 200（Partial Prerender で先に殻を返すため。Next.js が `noindex` を付けるので検索には載らない）
 4. 管理画面の認証（Better Auth＋GitHub）
 5. 管理画面の CRUD（textarea＋右に Markdown プレビュー、画像アップロード）
 6. CLI / API（push・pull・export）
