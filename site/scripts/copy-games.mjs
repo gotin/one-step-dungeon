@@ -11,9 +11,20 @@ const src = join(siteDir, "..", "outputs");
 const dest = join(siteDir, "public");
 
 // 配信しないもの。トップの index.html / index.css は Next.js のトップに置き換わる。
-const SKIP_DIRS = new Set(["node_modules", "tests", "scripts", "playwright-report", "test-results"]);
+const SKIP_DIRS = new Set([
+  "node_modules",
+  "tests",
+  "scripts",
+  "playwright-report",
+  "test-results",
+]);
 const SKIP_TOP_FILES = new Set(["index.html", "index.css", "vite.config.mjs"]);
-const SKIP_FILES = new Set(["package.json", "package-lock.json", "playwright.config.js", "playtest-notes.json"]);
+const SKIP_FILES = new Set([
+  "package.json",
+  "package-lock.json",
+  "playwright.config.js",
+  "playtest-notes.json",
+]);
 
 function shouldCopy(path) {
   const rel = relative(src, path);
@@ -33,4 +44,6 @@ if (!existsSync(src)) {
 }
 rmSync(dest, { recursive: true, force: true });
 cpSync(src, dest, { recursive: true, filter: shouldCopy });
-console.log(`copy-games: ${relative(siteDir, src)} → ${relative(siteDir, dest)}`);
+console.log(
+  `copy-games: ${relative(siteDir, src)} → ${relative(siteDir, dest)}`,
+);

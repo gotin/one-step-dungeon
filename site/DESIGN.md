@@ -168,7 +168,7 @@ BLOB_READ_WRITE_TOKEN=
 指示書の Step 3〜10 に沿う。1段ずつ動作確認してからコミットする。
 
 1. ✅ `site/` の雛形（Next.js 16.4・TypeScript・Biome 2 は `site/biome.json` で独立。直下の Biome 1.9 設定は使わない）＋ゲームのコピーと `index.html` の rewrite（2026-11-10。ローカルの `next build && next start` で全ゲーム・エディタを headless で開き、失敗リクエスト0を確認。`/_vercel/speed-insights/script.js` の 404 はローカルだけで vite でも同じ）
-2. DB 接続＋migration、`posts` / `post_revisions` / `tags` / `post_tags` / `slug_redirects`
+2. ✅ DB 接続＋migration、`posts` / `post_revisions` / `tags` / `post_tags` / `slug_redirects`（2026-11-10。`drizzle/0000_init.sql` を開発用ブランチへ適用済み。本番 `main` は切り替え時に適用する）
 3. 公開ページ（`/`、`/blog`、`/blog/[slug]`、`/tags/[tag]`）と seed
 4. 管理画面の認証（Better Auth＋GitHub）
 5. 管理画面の CRUD（textarea＋右に Markdown プレビュー、画像アップロード）
@@ -180,7 +180,13 @@ BLOB_READ_WRITE_TOKEN=
 ## 11. ユーザー側の作業（実装中に必要になった時点で依頼する）
 
 - ✅ Neon：2026-11-10 に Vercel Marketplace から作成（`small-isle-db`、Free プラン、シンガポール `sin1`、Neon Auth なし）。プロジェクト `one-step-dungeon`（Vercel アカウント gotin-8885 / チーム go-kojima-s-projects）に接続済みで `DATABASE_URL` ほかが自動登録された。手元は `site/.env.local`（`vercel env pull`）
-  - 未決：今は手元も本番と同じ DB を指す。本番へ切り替える前に、開発用の Neon ブランチを作って手元の `DATABASE_URL` をそちらへ向ける
+  - ✅ 開発用と本番用を分けた（2026-11-10）：Neon のブランチ `main`＝本番、`development`＝開発（`main` から作成）。Vercel 側の環境変数はプロジェクトの3環境とも `main` を指したまま（integration 管理の変数なので触らない）
+  - 手元の env ファイル（すべて git-ignore・権限 600）：
+    - `.env.local`：`vercel env pull` の出力＝本番 `main`
+    - `.env.development.local` / `.env.production.local`：開発用 `development` の `DATABASE_URL` / `DATABASE_URL_UNPOOLED`。Next.js はこれらを `.env.local` より優先するので、手元の `next dev` も `next start` も開発用ブランチを使う
+    - `drizzle.config.ts` は既定で `.env.development.local` だけを読む。本番へ migrate するのは `DB_TARGET=production npm run db:migrate` のときだけ
+  - Neon の API キーは `.secrets/neon-api-key`（リポジトリ直下、git-ignore）。ブランチ操作は `NEON_API_KEY` に渡して `npx neonctl` で行う
+  - `npm run db:check`：接続先の表と migration の適用数を表示する（接続文字列は出さない）
 - GitHub OAuth App の作成（開発用 `http://localhost:3000`、本番用 `https://smallisle.works`）
 - Blob ストアの作成
 - 切り替え：既存プロジェクトの Root Directory を `site/`、Framework を Next.js に変える（ダッシュボード操作）。ルートの `vercel.json`（`outputDirectory: outputs`）は同時に外す。「Root Directory の外のファイルをビルドに含める」設定が有効であること（`../outputs` を読むため。既定で有効）。直前にプレビューデプロイで既存ゲームの全 URL を確認する
