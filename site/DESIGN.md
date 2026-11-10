@@ -179,7 +179,8 @@ BLOB_READ_WRITE_TOKEN=
 
 ## 11. ユーザー側の作業（実装中に必要になった時点で依頼する）
 
-- Neon のプロジェクト作成と `DATABASE_URL` の取得（本番用・開発用ブランチ）
+- ✅ Neon：2026-11-10 に Vercel Marketplace から作成（`small-isle-db`、Free プラン、シンガポール `sin1`、Neon Auth なし）。プロジェクト `one-step-dungeon`（Vercel アカウント gotin-8885 / チーム go-kojima-s-projects）に接続済みで `DATABASE_URL` ほかが自動登録された。手元は `site/.env.local`（`vercel env pull`）
+  - 未決：今は手元も本番と同じ DB を指す。本番へ切り替える前に、開発用の Neon ブランチを作って手元の `DATABASE_URL` をそちらへ向ける
 - GitHub OAuth App の作成（開発用 `http://localhost:3000`、本番用 `https://smallisle.works`）
 - Blob ストアの作成
 - 切り替え：既存プロジェクトの Root Directory を `site/`、Framework を Next.js に変える（ダッシュボード操作）。ルートの `vercel.json`（`outputDirectory: outputs`）は同時に外す。「Root Directory の外のファイルをビルドに含める」設定が有効であること（`../outputs` を読むため。既定で有効）。直前にプレビューデプロイで既存ゲームの全 URL を確認する
