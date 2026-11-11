@@ -213,7 +213,14 @@ BLOB_READ_WRITE_TOKEN=
      - 手順は `.scratch/blog/preview-deploy.py build|deploy`（git 管理外の使い捨て）
      - プロジェクトの Output Directory が `outputs/one-step-dungeon` に設定されていて Next.js のビルドを邪魔するので、`site/vercel.json` で `framework: nextjs`・`outputDirectory: .next` を指定した。切り替え後もこのファイルが設定を上書きする
      - プレビューは Deployment Protection 付き。E2E は `E2E_VERCEL_OIDC_TOKEN`（`.env.local` の `VERCEL_OIDC_TOKEN`）を渡すとヘッダーで入れる。`vercel curl` を初めて使ったとき、CLI がプロジェクトに保護回避用のトークンを自動で作った
-     - 関数は既定の `iad1`（米国東部）で動き、DB はシンガポール `sin1` にある。往復が遠いので、切り替え前に関数の region を `sin1` にするか決める
+     - 関数は既定の `iad1`（米国東部）で動き、DB はシンガポール `sin1` にあった。ユーザーの判断で `site/vercel.json` の `regions` を `sin1` にした
+   - 本番の準備（2026-11-11、push 前まで）：
+     - 本番 DB（Neon `main`）に migration を適用（`DB_TARGET=production npm run db:migrate`。表9つ・適用数2を確認）。記事は0件から始まる（seed は流さない）
+     - Vercel の Production 環境変数に `GITHUB_CLIENT_ID` / `GITHUB_CLIENT_SECRET` / `ADMIN_GITHUB_ID` / `BETTER_AUTH_URL` / `BETTER_AUTH_SECRET` / `ADMIN_API_TOKEN` を登録。`BETTER_AUTH_SECRET` と `ADMIN_API_TOKEN` は手元とは別に新しく作った
+     - 本番へ投稿する CLI 用の env ファイル `site/.env.post.production`（git-ignore・権限 600）を作った：`POST_ENV_FILE=.env.post.production npm run post push <file>`
+     - GitHub OAuth App の戻り先に `www` 版が入っていることをユーザーが確認
+     - プロジェクトの設定を変更：Root Directory `site`、Framework Next.js、Output Directory は自動、Root Directory の外のファイルを含める＝有効。ルートの `vercel.json` は削除
+     - **この時点から、main への push はどれも新しいサイトの本番デプロイになる**（Blade の作業の push も同じ）
 10. デザインの作り込み（ユーザー希望：「もっとかっこよく」。機能が揃ってからでよい）
 
 ## 11. ユーザー側の作業（実装中に必要になった時点で依頼する）
