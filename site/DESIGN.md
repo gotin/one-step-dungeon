@@ -172,7 +172,12 @@ BLOB_READ_WRITE_TOKEN=
 2. ✅ DB 接続＋migration、`posts` / `post_revisions` / `tags` / `post_tags` / `slug_redirects`（2026-11-10。`drizzle/0000_init.sql` を開発用ブランチへ適用済み。本番 `main` は切り替え時に適用する）
 3. ✅ 公開ページ（`/`、`/blog`、`/blog/[slug]`、`/tags/[tag]`）と seed（2026-11-10。`npm run db:seed` で開発用ブランチにサンプル4件＝公開2・下書き1・未来の予約1。下書きと予約は一覧に出ず記事 URL も not-found になること、本文の `<script>` が消えること、コードの色付け・表・引用を確認）
    - 存在しない slug は not-found の画面になるが、HTTP ステータスは 200（Partial Prerender で先に殻を返すため。Next.js が `noindex` を付けるので検索には載らない）
-4. 管理画面の認証（Better Auth＋GitHub）
+4. ✅ 管理画面の認証（Better Auth＋GitHub）（2026-11-11。`drizzle/0001_auth.sql`＝`user` / `session` / `account` / `verification` を開発用ブランチへ適用。`next dev -p 3000` で GitHub ログイン→`/admin/` 表示→ログアウトを確認し、`account` に GitHub ID 18266 が入ったことを確認）
+   - 管理者の判定は2段：`src/lib/auth.ts` の `user.validateUserInfo` がログインのたびに GitHub の ID を `ADMIN_GITHUB_ID` と照合して断る。`src/server/admin.ts` の `requireAdmin()` が管理画面の表示ごとに保存済みの `account` を照合する。管理画面のページ・Server Action・API は必ず `requireAdmin()` を通す
+   - `src/proxy.ts` は Cookie が無ければ `/login/` へ先に飛ばすだけ（守りにはならない）
+   - サイトは `trailingSlash: true` なので `/api/auth/*` も末尾 `/` 付きへ 308 で回される。Better Auth 側で `advanced.skipTrailingSlashes: true` にして受け付けている（外すとログインのリクエストが 404 になる）
+   - 管理者以外を断る動きは別アカウントで未確認（ロジックは ID の文字列比較だけ）
+   - 手元の `.env.production.local` には認証の変数を入れていない＝手元の `next start` では管理画面に入れない（公開ページの確認用）
 5. 管理画面の CRUD（textarea＋右に Markdown プレビュー、画像アップロード）
 6. CLI / API（push・pull・export）
 7. 全体ナビゲーションと `/games`
@@ -189,6 +194,8 @@ BLOB_READ_WRITE_TOKEN=
     - `drizzle.config.ts` は既定で `.env.development.local` だけを読む。本番へ migrate するのは `DB_TARGET=production npm run db:migrate` のときだけ
   - Neon の API キーは `.secrets/neon-api-key`（リポジトリ直下、git-ignore）。ブランチ操作は `NEON_API_KEY` に渡して `npx neonctl` で行う
   - `npm run db:check`：接続先の表と migration の適用数を表示する（接続文字列は出さない）
-- GitHub OAuth App の作成（開発用 `http://localhost:3000`、本番用 `https://smallisle.works`）
+- ✅ GitHub OAuth App（2026-11-11）：1つのアプリに Redirect URI を開発用（`http://localhost:3000/api/auth/callback/github`）と本番用（`https://www.smallisle.works/…`・`https://smallisle.works/…`）で登録（`localhost` と `smallisle.works` は登録済み。本番 URL は `www` なので、`www` 版が入っているか切り替え前にアプリの設定画面で確認する）。Client ID / secret は手元では `.env.development.local` にだけある
+  - 切り替え時に Vercel の Production 環境変数へ登録するもの：`GITHUB_CLIENT_ID`、`GITHUB_CLIENT_SECRET`、`ADMIN_GITHUB_ID=18266`、`BETTER_AUTH_URL=https://www.smallisle.works`、`BETTER_AUTH_SECRET`（手元とは別の値を新しく作る）
+  - 手元の開発サーバは port 3000 固定（戻り先がこの port で登録されているため）。別プロジェクトが 3000 を使っていると起動できない
 - Blob ストアの作成
 - 切り替え：既存プロジェクトの Root Directory を `site/`、Framework を Next.js に変える（ダッシュボード操作）。ルートの `vercel.json`（`outputDirectory: outputs`）は同時に外す。「Root Directory の外のファイルをビルドに含める」設定が有効であること（`../outputs` を読むため。既定で有効）。直前にプレビューデプロイで既存ゲームの全 URL を確認する
