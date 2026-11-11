@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { notFound, permanentRedirect } from "next/navigation";
+import { Suspense } from "react";
 import { MarkdownBody } from "@/components/markdown-body";
 import { PostMeta } from "@/components/post-meta";
 import { renderMarkdown } from "@/lib/markdown";
@@ -36,11 +37,15 @@ async function PostBody({ markdown }: { markdown: string }) {
   return <MarkdownBody html={html} />;
 }
 
-export default async function PostPage({ params }: PageProps<"/blog/[slug]">) {
+// URL（slug）を読む部分は Suspense の中に置く。外で読むと、リンク先の共通の殻（App Shell）が
+// 1つの URL に縛られ、移動がすぐに切り替わらない（Partial Prefetching の instant-shell-url-data）。
+// 公開済みの記事は generateStaticParams でビルド時に描画済みなので、ふだんは待ち表示は出ない。
+async function Post({ params }: Pick<PageProps<"/blog/[slug]">, "params">) {
   const slug = decodeURIComponent((await params).slug);
   const post = await getPublishedPost(slug);
   if (!post) {
     const renamed = await findRenamedSlug(slug);
+    // ストリーミングの途中なので 308 ではなく、ページ内の転送になる
     if (renamed) permanentRedirect(`/blog/${renamed}/`);
     notFound();
   }
@@ -50,5 +55,13 @@ export default async function PostPage({ params }: PageProps<"/blog/[slug]">) {
       <PostMeta post={post} showUpdated />
       <PostBody markdown={post.body} />
     </article>
+  );
+}
+
+export default function PostPage({ params }: PageProps<"/blog/[slug]">) {
+  return (
+    <Suspense fallback={<p className="muted">読み込み中…</p>}>
+      <Post params={params} />
+    </Suspense>
   );
 }

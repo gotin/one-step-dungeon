@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
+import { Suspense } from "react";
 import { PostList } from "@/components/post-list";
 import { getTag, listPublishedPosts, listTagSlugs } from "@/server/posts";
 
@@ -17,7 +18,8 @@ export async function generateMetadata({
   return tag ? { title: `#${tag.name}` } : {};
 }
 
-export default async function TagPage({ params }: PageProps<"/tags/[tag]">) {
+// URL を読む部分は Suspense の中に置く（理由は blog/[slug]/page.tsx と同じ）
+async function TagPosts({ params }: Pick<PageProps<"/tags/[tag]">, "params">) {
   const tag = await getTag(decodeURIComponent((await params).tag));
   if (!tag) notFound();
   const posts = await listPublishedPosts({ tagSlug: tag.slug });
@@ -26,5 +28,13 @@ export default async function TagPage({ params }: PageProps<"/tags/[tag]">) {
       <h1>#{tag.name}</h1>
       <PostList posts={posts} />
     </>
+  );
+}
+
+export default function TagPage({ params }: PageProps<"/tags/[tag]">) {
+  return (
+    <Suspense fallback={<p className="muted">読み込み中…</p>}>
+      <TagPosts params={params} />
+    </Suspense>
   );
 }

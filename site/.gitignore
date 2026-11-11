@@ -45,3 +45,7 @@ next-env.d.ts
 
 # 書きかけの原稿（npm run post pull の書き出し先）
 /drafts/
+
+# Playwright
+/test-results/
+/playwright-report/

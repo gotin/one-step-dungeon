@@ -1,7 +1,8 @@
-// CLI 用：1記事の取得（pull）と、slug をキーにした作成・更新（push）。
+// CLI 用：1記事の取得（pull）、slug をキーにした作成・更新（push）、削除（delete）。
 // 書き込みは管理画面と同じ savePost() を通る（版が残り、公開ページのキャッシュも更新される）。
 import { NextResponse } from "next/server";
 import {
+  deletePost,
   deleteUnusedTags,
   getEditablePost,
   PostInputError,
@@ -53,4 +54,18 @@ export async function PUT(
     }
     throw error;
   }
+}
+
+export async function DELETE(
+  request: Request,
+  { params }: RouteContext<"/api/cli/posts/[slug]">,
+): Promise<NextResponse> {
+  if (!hasApiToken(request)) return unauthorized();
+  const post = await getEditablePost({
+    slug: decodeURIComponent((await params).slug),
+  });
+  if (!post) return NextResponse.json({ error: "not found" }, { status: 404 });
+  await deletePost(post.id);
+  await deleteUnusedTags();
+  return NextResponse.json({ deleted: post.slug });
 }

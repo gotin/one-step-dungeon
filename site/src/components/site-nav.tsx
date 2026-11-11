@@ -9,8 +9,8 @@ const LINKS = [
   { href: "/games/", label: "Games", match: ["/games/"] },
 ];
 
-export function SiteNav() {
-  const pathname = usePathname();
+/** 今いる場所が分からないとき（pathname 無し）は、どれも強調しない */
+export function NavLinks({ pathname }: { pathname?: string }) {
   return (
     <nav aria-label="サイト">
       {LINKS.map((l) => (
@@ -18,7 +18,9 @@ export function SiteNav() {
           key={l.href}
           href={l.href}
           aria-current={
-            l.match.some((m) => pathname.startsWith(m)) ? "page" : undefined
+            pathname && l.match.some((m) => pathname.startsWith(m))
+              ? "page"
+              : undefined
           }
         >
           {l.label}
@@ -26,4 +28,9 @@ export function SiteNav() {
       ))}
     </nav>
   );
+}
+
+// usePathname() は URL を読むので、レイアウトでは <Suspense> の中に置く（外だとビルドが止まる）
+export function SiteNav() {
+  return <NavLinks pathname={usePathname()} />;
 }

@@ -1,7 +1,7 @@
 // 記事の書き込みと、管理画面用の読み出し（下書きも含む・キャッシュしない）。
 // 管理画面と CLI / API（§10-6）の両方がここを通る。呼ぶ側で必ず管理者の確認を済ませること。
 import { and, desc, eq, ne, notInArray } from "drizzle-orm";
-import { revalidateTag } from "next/cache";
+import { revalidatePath, revalidateTag } from "next/cache";
 import { getDb } from "@/db/client";
 import {
   postRevisions,
@@ -11,6 +11,16 @@ import {
   tags,
 } from "@/db/schema";
 import { POSTS_TAG } from "./posts";
+
+/**
+ * 公開ページを作り直す。記事のデータ（posts タグ）だけでなく、ページそのものも捨てる。
+ * データだけだと、一度 404 になった URL（下書きのうちに開いた記事・まだ無かったタグ）が
+ * あとで公開しても 404 のまま残る（2026-11-11 に E2E で見つけた）。記事数が少ないうちは全ページでよい。
+ */
+function refreshPublicPages(): void {
+  revalidateTag(POSTS_TAG, { expire: 0 });
+  revalidatePath("/", "layout");
+}
 
 export type PostStatus = "draft" | "scheduled" | "published";
 
@@ -189,7 +199,7 @@ export async function savePost(
     source,
   });
 
-  revalidateTag(POSTS_TAG, { expire: 0 });
+  refreshPublicPages();
   return postId;
 }
 
@@ -215,7 +225,7 @@ async function setTags(postId: string, names: string[]) {
 export async function deletePost(id: string): Promise<void> {
   // 版・タグの紐付け・slug の転送は外部キーの cascade で一緒に消える
   await getDb().delete(posts).where(eq(posts.id, id));
-  revalidateTag(POSTS_TAG, { expire: 0 });
+  refreshPublicPages();
 }
 
 /** どの記事にも付いていないタグを消す（記事の削除・タグの付け替えのあとに呼ぶ） */
@@ -226,7 +236,7 @@ export async function deleteUnusedTags(): Promise<void> {
     .where(
       notInArray(tags.id, db.select({ id: postTags.tagId }).from(postTags)),
     );
-  revalidateTag(POSTS_TAG, { expire: 0 });
+  refreshPublicPages();
 }
 
 export type RevisionRow = {

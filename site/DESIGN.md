@@ -201,6 +201,13 @@ BLOB_READ_WRITE_TOKEN=
    - アイコンが3つとも ⚔️ だったので、Dungeon World を 🏰、Blade of Lumia を 🗡️ に変えた。「（開発中）」は説明文から外してバッジにした
    - `/projects` と `/about` は中身がまだ無いので作っていない。書く内容ができたら足す
 8. build / lint / test（Playwright で公開ページ・未認証の `/admin` 拒否・作成〜公開〜非公開化）
+   - 途中まで（2026-11-11）：
+     - `npm run test:e2e`（Playwright。`tests/e2e/`、既定は開発サーバ port 3000）。公開ページ・ゲームの URL・未ログインの `/admin` 拒否・API の 401・作成〜公開〜非公開化（CLI 用 API で操作。GitHub のログインは自動化できないため）。17件中15件が通る
+     - Next.js 16 は移動前のページを隠したまま DOM に残すので、テストの要素は `:visible` や `article > h1` で絞る
+     - `npm run build` が通らなかった：§10-7 のナビの `usePathname()` が Suspense の外だった。Suspense で包み、待つ間は強調なしのナビを出す形で直した（ビルドが通ることを確認）
+     - instant-shell-url-data の警告：`/blog/[slug]` と `/tags/[tag]` で URL を読む部分を Suspense の中へ移した。そのため改名した記事の旧 slug への転送は 308 ではなくページ内の転送になる
+     - CLI 用 API に削除（`DELETE /api/cli/posts/<slug>/`、`npm run post delete <slug>`）を足した（テストの後片付け用）
+     - 未解決の不具合：一度 404 を出した記事の URL が、公開したあとも 404 のままになることがある（開発サーバで再現。同じ手順で直る回と直らない回がある）。保存時に `revalidatePath("/", "layout")` も呼ぶようにしたが、まだ再現する。本番ビルド（`next start`）でも起きるかは未確認
 9. 既存 Vercel プロジェクトを Next.js のビルドへ切り替え（プレビューで確認→本番）。既存ゲームが同じ URL で起動することを確認する
 10. デザインの作り込み（ユーザー希望：「もっとかっこよく」。機能が揃ってからでよい）
 

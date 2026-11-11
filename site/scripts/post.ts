@@ -3,6 +3,7 @@
 //   npm run post push <file.md> [...]   slug をキーに作成または更新する
 //   npm run post pull <slug>            drafts/<slug>.md に書き出す
 //   npm run post -- pull <slug> --force 既にあっても上書きする（-- が無いと npm が --force を自分の設定として食べる）
+//   npm run post delete <slug>          記事を消す（版・転送も消える。画像は残る）
 //   npm run export [dir]                全記事を dir（既定 content-backup/）へ書き出す
 //
 // 送り先と認証：既定は開発サーバ（http://localhost:3000）と .env.development.local の ADMIN_API_TOKEN。
@@ -262,9 +263,21 @@ switch (command) {
   case "pull":
     await pull(rest);
     break;
+  case "delete": {
+    const slug = rest[0];
+    if (!slug) fail("delete する slug を指定する");
+    const res = await api(`posts/${encodeURIComponent(slug)}/`, {
+      method: "DELETE",
+    });
+    if (!res.ok) fail(`${slug}：${await errorText(res)}`);
+    console.log(`削除: ${slug}`);
+    break;
+  }
   case "export":
     await exportAll(rest);
     break;
   default:
-    fail("使い方: npm run post push <file.md> | pull <slug> | export [dir]");
+    fail(
+      "使い方: npm run post push <file.md> | pull <slug> | delete <slug> | export [dir]",
+    );
 }

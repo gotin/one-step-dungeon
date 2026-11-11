@@ -3,7 +3,8 @@ import Link from "next/link";
 import "github-markdown-css/github-markdown.css";
 import "katex/dist/katex.min.css";
 import "./globals.css";
-import { SiteNav } from "@/components/site-nav";
+import { Suspense } from "react";
+import { NavLinks, SiteNav } from "@/components/site-nav";
 
 export const metadata: Metadata = {
   title: { default: "Small Isle", template: "%s | Small Isle" },
@@ -18,7 +19,9 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
           <Link href="/" className="site-name">
             Small Isle
           </Link>
-          <SiteNav />
+          <Suspense fallback={<NavLinks />}>
+            <SiteNav />
+          </Suspense>
         </header>
         <main className="site-main">{children}</main>
         <footer className="site-footer">
