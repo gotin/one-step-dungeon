@@ -221,6 +221,10 @@ BLOB_READ_WRITE_TOKEN=
      - GitHub OAuth App の戻り先に `www` 版が入っていることをユーザーが確認
      - プロジェクトの設定を変更：Root Directory `site`、Framework Next.js、Output Directory は自動、Root Directory の外のファイルを含める＝有効。ルートの `vercel.json` は削除
      - **この時点から、main への push はどれも新しいサイトの本番デプロイになる**（Blade の作業の push も同じ）
+   - ✅ 本番へ切り替え（2026-11-11、ユーザーの OK で push）：https://www.smallisle.works が Next.js のサイトになった。関数は `sin1` で動く（`x-vercel-id` で確認）
+     - 全ゲーム・エディタを headless で開いて失敗リクエスト0。`/index.html` は `/games/` へ 308
+     - 本番に対して書き込みの無い E2E（`admin-guard` と `public`）を流し、15件中12件が通った。落ちた3件は本番に記事がまだ無いため（トップの記事一覧・一覧から記事を開く・Markdown の見本記事）で、不具合ではない。作成〜公開の流れ（`publish-flow`）は本番 DB に書き込むので本番には流さない
+     - 管理画面への GitHub ログインはユーザーが本番で確かめる
 10. デザインの作り込み（ユーザー希望：「もっとかっこよく」。機能が揃ってからでよい）
 
 ## 11. ユーザー側の作業（実装中に必要になった時点で依頼する）
