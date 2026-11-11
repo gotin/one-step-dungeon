@@ -1,13 +1,31 @@
 ---
 name: workflow
-description: Blade of Lumia の開発を進める。outputs/blade-of-lumia/WORKFLOW.md の手順書（runbook）に従って、次にやるべきタスクを自律的に判断・実行・記録する。ユーザーが「WORKFLOW に従って進めて」「次のタスクを進めて」「workflow」と言ったときに使う。
+description: このリポジトリの開発を手順書（runbook）に従って進める入口。対象は2つ＝Blade of Lumia（outputs/blade-of-lumia/WORKFLOW.md）と Small Isle サイト（site/WORKFLOW.md。ブログ・管理画面・Vercel/Neon）。「/workflow」「/workflow blade」「/workflow site」「WORKFLOW に従って進めて」「次のタスクを進めて」と言われたときに使う。
 ---
 
-# Blade of Lumia ワークフロー実行
+# ワークフローの入口（対象を選ぶ）
+
+## 対象の決め方
+
+1. 引数で決める：`blade`（または Blade of Lumia・ゲーム・マップ・敵など）→ **Blade of Lumia**。`site`（または サイト・ブログ・記事・管理画面・smallisle・Vercel・Neon）→ **Small Isle サイト**。
+2. 引数が無ければ、同じセッションで直前まで進めていた方を続ける。
+3. それでも決まらなければ、どちらを進めるかをユーザーに1回だけ聞く（推測で始めない）。
+
+## Small Isle サイトの場合
+
+1. **まず `site/WORKFLOW.md` を全文 Read する**（毎回。記憶に頼らない）。
+2. その手順（Step 1〜5）に従って進める。進み具合の記録は `site/DESIGN.md` §10。
+3. サイトの作業は段ごとにコミットしてよい（push はしない）。下の Blade of Lumia の「コミットしない」「Step 5 の3点」はサイトには当てはまらない。
+
+## Blade of Lumia の場合
+
+以下の手順に従う。
+
+### Blade of Lumia ワークフロー実行
 
 このスキルは `outputs/blade-of-lumia/WORKFLOW.md` の runbook に従って開発を進めるためのもの。
 
-## 手順
+#### 手順
 
 1. **まず `outputs/blade-of-lumia/WORKFLOW.md` を全文 Read する**（毎回必ず読む。内容が更新されている可能性があるため記憶に頼らない）。
 2. WORKFLOW.md に書かれたフロー（デフォルトフロー / 分岐フロー）に従って進める。
@@ -15,13 +33,13 @@ description: Blade of Lumia の開発を進める。outputs/blade-of-lumia/WORKF
    - ユーザーがレビュー・バグ報告・アイデア相談など特定の指示をしている場合は、該当する「🔀 分岐フロー」を実行する。
 3. WORKFLOW.md が参照する関連ファイル（`PLAN.md` / `PROGRESS.md` / `DECISIONS.md` / `IDEA.md`）も WORKFLOW.md の指示に従って読み書きする。これらは `outputs/blade-of-lumia/` 配下にある。
 
-## 注意
+#### 注意
 
 - WORKFLOW.md の指示が常に優先される。このファイルは「WORKFLOW.md を読んで従え」という入口にすぎない。
 - コミット操作は実行しない（WORKFLOW.md の規定どおり、メッセージ案の提示まで）。
 - `git` を使うときは `git --no-pager ...` を付ける。
 
-## ⚠️ Step 5 の完了報告で必ずやること（抜け防止）
+#### ⚠️ Step 5 の完了報告で必ずやること（抜け防止）
 
 完了報告には **必ず** 以下の3つすべてを出力する。1つでも欠けたら Step 5 未完了。
 

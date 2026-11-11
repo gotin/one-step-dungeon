@@ -21,7 +21,7 @@ import sys
 # 応答が Step 5 の完了報告だと判断する目印
 REPORT_MARKERS = ("コミットメッセージ案",)
 # 試し方ガイドが在ると判断する目印
-GUIDE_MARKERS = ("localhost:18080", "画面に出る変化なし")
+GUIDE_MARKERS = ("localhost:18080", "localhost:3000", "画面に出る変化なし")
 
 REASON = (
     "Step 5 の完了報告に「試し方ガイド（動作確認手順）」が入っていない。"
