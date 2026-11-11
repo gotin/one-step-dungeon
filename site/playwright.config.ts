@@ -3,13 +3,19 @@
 import { defineConfig, devices } from "@playwright/test";
 
 const baseURL = process.env.E2E_BASE_URL ?? "http://localhost:3000";
+// Vercel のプレビュー（Deployment Protection 付き）へは、手元の OIDC トークンをヘッダーで付けて入る。
+// トークンは `vercel env pull` で .env.local に入る短命のもの
+const oidc = process.env.E2E_VERCEL_OIDC_TOKEN;
+const extraHTTPHeaders = oidc
+  ? { "x-vercel-trusted-oidc-idp-token": oidc }
+  : undefined;
 
 export default defineConfig({
   testDir: "tests/e2e",
   workers: 2,
   timeout: 60_000,
   reporter: "list",
-  use: { baseURL, trace: "retain-on-failure" },
+  use: { baseURL, extraHTTPHeaders, trace: "retain-on-failure" },
   projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"] } }],
   webServer: process.env.E2E_BASE_URL
     ? undefined

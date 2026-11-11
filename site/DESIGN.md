@@ -209,6 +209,11 @@ BLOB_READ_WRITE_TOKEN=
      - CLI 用 API に削除（`DELETE /api/cli/posts/<slug>/`、`npm run post delete <slug>`）を足した（テストの後片付け用）
      - 開発サーバだけで起きる不具合：一度 404 を出した記事の URL が、公開したあとも 404 のままになることがある（同じ手順で直る回と直らない回がある）。本番ビルド（`next start`）では、404→公開→下書きに戻す、を3回試して3回とも正しく切り替わった。E2E の公開の流れが開発サーバで落ちたら、本番ビルドに対して走らせて確かめる。保存時の `revalidatePath("/", "layout")` は残している
 9. 既存 Vercel プロジェクトを Next.js のビルドへ切り替え（プレビューで確認→本番）。既存ゲームが同じ URL で起動することを確認する
+   - ✅ プレビュー（2026-11-11）：プロジェクトの設定は変えずに、手元で `vercel build` → `vercel deploy --prebuilt` した（`site/` で実行）。DB と認証の値は開発用（`.env.development.local`）で上書きした（Vercel の Preview の環境変数は本番 `main` を指しているため）。E2E 20件がすべて通り、全ゲーム・エディタを headless で開いて失敗リクエスト0
+     - 手順は `.scratch/blog/preview-deploy.py build|deploy`（git 管理外の使い捨て）
+     - プロジェクトの Output Directory が `outputs/one-step-dungeon` に設定されていて Next.js のビルドを邪魔するので、`site/vercel.json` で `framework: nextjs`・`outputDirectory: .next` を指定した。切り替え後もこのファイルが設定を上書きする
+     - プレビューは Deployment Protection 付き。E2E は `E2E_VERCEL_OIDC_TOKEN`（`.env.local` の `VERCEL_OIDC_TOKEN`）を渡すとヘッダーで入れる。`vercel curl` を初めて使ったとき、CLI がプロジェクトに保護回避用のトークンを自動で作った
+     - 関数は既定の `iad1`（米国東部）で動き、DB はシンガポール `sin1` にある。往復が遠いので、切り替え前に関数の region を `sin1` にするか決める
 10. デザインの作り込み（ユーザー希望：「もっとかっこよく」。機能が揃ってからでよい）
 
 ## 11. ユーザー側の作業（実装中に必要になった時点で依頼する）
