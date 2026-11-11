@@ -178,10 +178,14 @@ BLOB_READ_WRITE_TOKEN=
    - サイトは `trailingSlash: true` なので `/api/auth/*` も末尾 `/` 付きへ 308 で回される。Better Auth 側で `advanced.skipTrailingSlashes: true` にして受け付けている（外すとログインのリクエストが 404 になる）
    - 管理者以外を断る動きは別アカウントで未確認（ロジックは ID の文字列比較だけ）
    - 手元の `.env.production.local` には認証の変数を入れていない＝手元の `next start` では管理画面に入れない（公開ページの確認用）
-5. 管理画面の CRUD（textarea＋右に Markdown プレビュー、画像アップロード）
-   - 途中まで（2026-11-11）：記事の一覧・作成・編集・削除と、入力が止まって 0.4 秒後に更新するプレビューまで済み。ユーザーが作成・保存を実画面で確認した。保存は `src/server/admin-posts.ts` の `savePost()`（版を1行残す・slug を変えたら旧 slug の転送を登録・使われなくなったタグを消す・`revalidateTag`）
+5. ✅ 管理画面の CRUD（textarea＋右に Markdown プレビュー、画像アップロード）（2026-11-11）
+   - 前半：記事の一覧・作成・編集・削除と、入力が止まって 0.4 秒後に更新するプレビューまで済み。ユーザーが作成・保存を実画面で確認した。保存は `src/server/admin-posts.ts` の `savePost()`（版を1行残す・slug を変えたら旧 slug の転送を登録・使われなくなったタグを消す・`revalidateTag`）
    - Markdown は GitHub と同じ書き方：GFM、アラート（見出しは絵文字付き）、`:smile:` の絵文字（`remark-gemoji`＝Unicode の絵文字だけ。GitHub 独自の `:shipit:` などの画像の絵文字は対応しないと決めた）、数式（KaTeX・サーバ側）、Mermaid（ブラウザ側。`src/components/markdown-body.tsx` が図のある本文のときだけ読み込む）。見た目は `github-markdown-css`。sanitize の後に足すのは、こちらが作る HTML だけ（`src/lib/markdown.ts` の冒頭に順序の理由）
-   - 残り：画像のアップロード（Vercel Blob。ストアの作成が要る）、版の一覧と復元の画面、削除の実画面での確認
+   - 画像：Vercel Blob のストア `small-isle-images`（東京 `hnd1`・公開アクセス）をプロジェクトに接続。エディタの「画像を追加…」・貼り付け・ドロップで、ブラウザから Blob へ直接上げてカーソル位置に `![名前](URL)` を入れる。`src/app/api/admin/upload/route.ts` は管理者にだけ短期トークンを出す（PNG / JPEG / GIF / WebP / AVIF、10MB まで、`posts/` の下、名前にランダムな文字列を付ける。SVG はスクリプトを含められるので外した）。ユーザーが実画面で確認した
+   - 画像の注意：開発用と本番用で同じストアを使う（開発中に上げた画像も本番の置き場に残る）。記事を消しても画像は消えない。掃除は export / バックアップ（§10-6）と合わせて考える
+   - 版：編集画面の下の「保存した版」から選ぶと（`?rev=`）タイトル・概要・本文をエディタに読み込み、保存するとその内容に戻る。タグと slug は版に残していないので戻らない。一覧に「エディタに表示中」と「公開中」（未公開の記事では「最新（未公開）」）の目印を付ける。保存がそのまま記事に反映されるので、公開中の中身はいちばん新しい版。ユーザーが実画面で確認した（削除も確認済み）
+   - 公開中の版と編集中の版を分ける仕組み（下書きを書きためてから公開する）は無い。欲しくなったら別の段で考える
+   - Mermaid の図にマウスを乗せると例外が出ていた（`d3-transition` がバンドルで落ちていた）。`markdown-body.tsx` で明示的に読み込んで直した
    - 気づいた点：開発サーバで `/blog/[slug]` に「instant-shell-url-data」の警告が出る（`await params` が Suspense の外）。表示は正しい。§10-8 でまとめて見る
 6. CLI / API（push・pull・export）
 7. 全体ナビゲーションと `/games`

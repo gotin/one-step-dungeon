@@ -7,6 +7,7 @@ import { useEffect, useRef } from "react";
 export function MarkdownBody({ html }: { html: string }) {
   const ref = useRef<HTMLDivElement>(null);
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: html が変わる＝中の DOM が作り直されたので図を描き直す
   useEffect(() => {
     const root = ref.current;
     if (!root) return;
@@ -16,6 +17,9 @@ export function MarkdownBody({ html }: { html: string }) {
     if (nodes.length === 0) return;
     let cancelled = false;
     (async () => {
+      // d3-transition は selection に .transition() を足す「読み込むだけで効く」モジュール。
+      // バンドル時に落とされると、図にマウスを乗せたとき mermaid が例外を出すので明示的に読む
+      await import("d3-transition");
       const { default: mermaid } = await import("mermaid");
       if (cancelled) return;
       const dark = window.matchMedia("(prefers-color-scheme: dark)").matches;

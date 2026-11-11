@@ -288,3 +288,42 @@ a.button {
     border-left: 0;
   }
 }
+
+.editor-tools {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.75rem;
+  margin-top: 1rem;
+}
+
+.notice {
+  padding: 0.5rem 0.75rem;
+  border-left: 3px solid var(--accent);
+  background: var(--code-bg);
+}
+
+.revisions {
+  margin-top: 2rem;
+}
+
+.revisions ul {
+  padding-left: 1.25rem;
+}
+
+.revisions li[aria-current] > a {
+  font-weight: 600;
+}
+
+.rev-badge {
+  margin-left: 0.25em;
+  padding: 0.05em 0.45em;
+  border-radius: 4px;
+  background: var(--code-bg);
+  font-size: 0.75rem;
+  white-space: nowrap;
+}
+
+.rev-badge-public {
+  color: var(--accent);
+}

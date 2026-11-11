@@ -228,3 +228,51 @@ export async function deleteUnusedTags(): Promise<void> {
     );
   revalidateTag(POSTS_TAG, "max");
 }
+
+export type RevisionRow = {
+  id: string;
+  title: string;
+  source: "admin" | "cli";
+  createdAt: Date;
+};
+
+/** 記事の版（新しい順） */
+export async function listRevisions(
+  postId: string,
+  limit = 30,
+): Promise<RevisionRow[]> {
+  return getDb()
+    .select({
+      id: postRevisions.id,
+      title: postRevisions.title,
+      source: postRevisions.source,
+      createdAt: postRevisions.createdAt,
+    })
+    .from(postRevisions)
+    .where(eq(postRevisions.postId, postId))
+    .orderBy(desc(postRevisions.createdAt))
+    .limit(limit);
+}
+
+export async function getRevision(
+  postId: string,
+  revisionId: string,
+): Promise<{
+  title: string;
+  excerpt: string;
+  body: string;
+  createdAt: Date;
+} | null> {
+  const [row] = await getDb()
+    .select({
+      title: postRevisions.title,
+      excerpt: postRevisions.excerpt,
+      body: postRevisions.body,
+      createdAt: postRevisions.createdAt,
+    })
+    .from(postRevisions)
+    .where(
+      and(eq(postRevisions.postId, postId), eq(postRevisions.id, revisionId)),
+    );
+  return row ?? null;
+}
