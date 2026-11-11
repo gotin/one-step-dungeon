@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { notFound, permanentRedirect } from "next/navigation";
+import { MarkdownBody } from "@/components/markdown-body";
 import { PostMeta } from "@/components/post-meta";
 import { renderMarkdown } from "@/lib/markdown";
 import {
@@ -32,9 +33,7 @@ export async function generateMetadata({
 async function PostBody({ markdown }: { markdown: string }) {
   "use cache";
   const html = await renderMarkdown(markdown);
-  // renderMarkdown は sanitize 済みの HTML を返す
-  // biome-ignore lint/security/noDangerouslySetInnerHtml: sanitize 済み
-  return <div className="prose" dangerouslySetInnerHTML={{ __html: html }} />;
+  return <MarkdownBody html={html} />;
 }
 
 export default async function PostPage({ params }: PageProps<"/blog/[slug]">) {

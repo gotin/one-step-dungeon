@@ -179,10 +179,15 @@ BLOB_READ_WRITE_TOKEN=
    - 管理者以外を断る動きは別アカウントで未確認（ロジックは ID の文字列比較だけ）
    - 手元の `.env.production.local` には認証の変数を入れていない＝手元の `next start` では管理画面に入れない（公開ページの確認用）
 5. 管理画面の CRUD（textarea＋右に Markdown プレビュー、画像アップロード）
+   - 途中まで（2026-11-11）：記事の一覧・作成・編集・削除と、入力が止まって 0.4 秒後に更新するプレビューまで済み。ユーザーが作成・保存を実画面で確認した。保存は `src/server/admin-posts.ts` の `savePost()`（版を1行残す・slug を変えたら旧 slug の転送を登録・使われなくなったタグを消す・`revalidateTag`）
+   - Markdown は GitHub と同じ書き方：GFM、アラート（見出しは絵文字付き）、`:smile:` の絵文字（`remark-gemoji`＝Unicode の絵文字だけ。GitHub 独自の `:shipit:` などの画像の絵文字は対応しないと決めた）、数式（KaTeX・サーバ側）、Mermaid（ブラウザ側。`src/components/markdown-body.tsx` が図のある本文のときだけ読み込む）。見た目は `github-markdown-css`。sanitize の後に足すのは、こちらが作る HTML だけ（`src/lib/markdown.ts` の冒頭に順序の理由）
+   - 残り：画像のアップロード（Vercel Blob。ストアの作成が要る）、版の一覧と復元の画面、削除の実画面での確認
+   - 気づいた点：開発サーバで `/blog/[slug]` に「instant-shell-url-data」の警告が出る（`await params` が Suspense の外）。表示は正しい。§10-8 でまとめて見る
 6. CLI / API（push・pull・export）
 7. 全体ナビゲーションと `/games`
 8. build / lint / test（Playwright で公開ページ・未認証の `/admin` 拒否・作成〜公開〜非公開化）
 9. 既存 Vercel プロジェクトを Next.js のビルドへ切り替え（プレビューで確認→本番）。既存ゲームが同じ URL で起動することを確認する
+10. デザインの作り込み（ユーザー希望：「もっとかっこよく」。機能が揃ってからでよい）
 
 ## 11. ユーザー側の作業（実装中に必要になった時点で依頼する）
 

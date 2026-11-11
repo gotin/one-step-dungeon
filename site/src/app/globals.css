@@ -103,40 +103,35 @@ a {
   color: var(--muted);
 }
 
-.prose img {
-  max-width: 100%;
+/* 記事本文は github-markdown-css（layout.tsx で読み込み）。サイトの背景に合わせて背景だけ透明にする */
+.markdown-body {
+  background: transparent;
 }
 
-.prose blockquote {
-  margin: 1rem 0;
-  padding-left: 1rem;
-  border-left: 3px solid var(--line);
-  color: var(--muted);
-}
-
-.prose :not(pre) > code {
-  padding: 0.1em 0.3em;
-  border-radius: 4px;
-  background: var(--code-bg);
-}
-
-.prose pre {
-  padding: 1rem;
-  border-radius: 6px;
-  overflow-x: auto;
-  line-height: 1.5;
-}
-
-/* Shiki の2テーマ：既定は light、ダークモードでは --shiki-dark の色を使う */
+/* Shiki の2テーマ：既定は light、ダークモードでは --shiki-dark の色を使う。
+   Shiki は色をインライン style で付けるので、上書きには !important が要る（Shiki の公式の方法） */
 @media (prefers-color-scheme: dark) {
-  /* Shiki は色をインライン style で付けるので、上書きには !important が要る（Shiki の公式の方法） */
-  .shiki,
   .shiki span {
     /* biome-ignore lint/complexity/noImportantStyles: インライン style の上書き */
     color: var(--shiki-dark) !important;
-    /* biome-ignore lint/complexity/noImportantStyles: インライン style の上書き */
-    background-color: var(--shiki-dark-bg) !important;
   }
+
+  .shiki {
+    /* biome-ignore lint/complexity/noImportantStyles: インライン style の上書き */
+    color: var(--shiki-dark) !important;
+  }
+}
+
+/* コードブロックの背景は Shiki のテーマ色ではなく GitHub と同じ色にする */
+.markdown-body pre.shiki,
+.markdown-body pre.shiki span {
+  /* biome-ignore lint/complexity/noImportantStyles: インライン style の上書き */
+  background-color: transparent !important;
+}
+
+.markdown-body pre.shiki {
+  /* biome-ignore lint/complexity/noImportantStyles: インライン style の上書き */
+  background-color: var(--bgColor-muted) !important;
 }
 
 /* ログイン・管理画面 */
@@ -176,4 +171,120 @@ a {
   gap: 1rem;
   padding-bottom: 0.5rem;
   border-bottom: 1px solid var(--line);
+}
+
+a.button {
+  display: inline-block;
+  text-decoration: none;
+}
+
+.small {
+  font-size: 0.8125rem;
+}
+
+.saved {
+  margin-right: 1rem;
+  color: var(--accent);
+}
+
+.admin-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.admin-table th,
+.admin-table td {
+  padding: 0.5rem 0.5rem 0.5rem 0;
+  border-bottom: 1px solid var(--line);
+  text-align: left;
+  vertical-align: top;
+}
+
+.status {
+  padding: 0.1em 0.5em;
+  border-radius: 4px;
+  background: var(--code-bg);
+  font-size: 0.8125rem;
+  white-space: nowrap;
+}
+
+.status-published {
+  color: var(--accent);
+}
+
+/* 記事の編集：入力欄は本文の幅、本文とプレビューは画面いっぱいに横並び */
+.editor label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  font-size: 0.875rem;
+  color: var(--muted);
+}
+
+.editor input,
+.editor select,
+.editor textarea {
+  padding: 0.4rem 0.5rem;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: var(--bg);
+  color: var(--fg);
+  font: inherit;
+  font-size: 1rem;
+}
+
+.editor-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.editor-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+}
+
+.editor-panes {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+  width: min(96vw, 80rem);
+  margin: 1rem 0 0 50%;
+  transform: translateX(-50%);
+}
+
+.editor-body textarea {
+  min-height: 60vh;
+  font-family: ui-monospace, "SFMono-Regular", Menlo, monospace;
+  font-size: 0.875rem;
+  line-height: 1.6;
+  resize: vertical;
+}
+
+.editor-preview {
+  min-width: 0;
+  padding: 0 1rem;
+  border-left: 1px solid var(--line);
+}
+
+.editor-delete {
+  display: flex;
+  align-items: baseline;
+  gap: 1rem;
+  margin-top: 2rem;
+}
+
+@media (max-width: 48rem) {
+  .editor-panes {
+    grid-template-columns: 1fr;
+    width: 100%;
+    margin-left: 0;
+    transform: none;
+  }
+
+  .editor-preview {
+    padding: 0;
+    border-left: 0;
+  }
 }
