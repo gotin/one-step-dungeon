@@ -122,7 +122,7 @@ OR (status = 'scheduled' AND published_at <= now())
 
 ## 6. CLI / API からの投稿
 
-ローカルで Markdown を書いて、そのまま投稿できる入口。管理画面と同じ `server/posts.ts` を通る。
+ローカルで Markdown を書いて、そのまま投稿できる入口。CLI（`scripts/post.ts`）はサイトの API（`/api/cli/`）を呼び、API は管理画面と同じ `src/server/admin-posts.ts` の `savePost(…, "cli")` を通る（版が残り、公開ページのキャッシュも更新される）。
 
 ```markdown
 ---
@@ -137,14 +137,19 @@ published_at: 2026-11-20T09:00:00+09:00
 本文（Markdown）
 ```
 
-- `npm run post push <file.md>`：slug をキーに作成または更新する。本文中のローカル画像は Blob へ上げて URL に置き換える
-- `npm run post pull <slug>`：DB の記事を同じ形式の Markdown に書き出す
-- API の認証は `ADMIN_API_TOKEN`（Bearer）。値は `.secrets/` か `.env.local` に置き、Git に入れない
+- `npm run post push <file.md> [...]`：slug をキーに作成または更新する。slug は変えられない（変えるのは管理画面で。旧 slug の転送もそこで登録される）
+  - 本文中のローカル画像（`![…](./a.png)`）は Blob へ上げて URL に置き換え、原稿のファイルも書き換える（次の push で二重に上げないため）。Blob のトークンは `.env.local` の `BLOB_READ_WRITE_TOKEN`
+- `npm run post pull <slug>`：`drafts/<slug>.md` に書き出す。既にあれば止まる。上書きは `npm run post -- pull <slug> --force`（`--` が無いと npm が `--force` を自分の設定として食べる）
+- API：`GET /api/cli/posts/`（全記事・本文つき）、`GET` / `PUT /api/cli/posts/<slug>/`。認証は `Authorization: Bearer <ADMIN_API_TOKEN>`。サーバに `ADMIN_API_TOKEN` が無ければすべて 401
+- 送り先：既定は `http://localhost:3000` と `.env.development.local` の `ADMIN_API_TOKEN`。本番へは `POST_ENV_FILE=<env ファイル>` で、`POST_API_URL` と本番の `ADMIN_API_TOKEN` を書いたファイル（git-ignore・権限 600）を渡す
 - 書きかけの原稿の置き場は `site/drafts/`（git-ignore）
 
 ## 7. バックアップ
 
-`npm run export` で全記事を §6 と同じ形式の Markdown に書き出す。出力先を Git 管理下（例：`site/content-backup/`）にすれば、DB を正としつつ Git にも履歴が残る。定期実行するかは運用で決める。
+`npm run export [dir]` で全記事（下書きも含む）を §6 と同じ形式の Markdown に書き出す（既定 `site/content-backup/`）。出力先を Git 管理下にすれば、DB を正としつつ Git にも履歴が残る。定期実行するかは運用で決める。
+
+- 書き出し先は DB の写し：DB から消えた記事の `.md` は消える。ただし目印のファイル `.small-isle-export` がある場所だけ（初回に無関係の `.md` がある場所を指定すると止まる）
+- 画像は Blob の URL のまま（画像そのものは書き出さない）
 
 ## 8. 検索（Phase 2）
 
@@ -187,7 +192,9 @@ BLOB_READ_WRITE_TOKEN=
    - 公開中の版と編集中の版を分ける仕組み（下書きを書きためてから公開する）は無い。欲しくなったら別の段で考える
    - Mermaid の図にマウスを乗せると例外が出ていた（`d3-transition` がバンドルで落ちていた）。`markdown-body.tsx` で明示的に読み込んで直した
    - 気づいた点：開発サーバで `/blog/[slug]` に「instant-shell-url-data」の警告が出る（`await params` が Suspense の外）。表示は正しい。§10-8 でまとめて見る
-6. CLI / API（push・pull・export）
+6. ✅ CLI / API（push・pull・export）（2026-11-11。開発サーバに対して確かめた：トークン無し・違うトークンは 401、push で作成（201）→更新、ローカル画像の Blob へのアップロードと原稿の書き換え、`published` と `published_at` の往復（日本時間で書き戻る）・公開ページへの反映、pull、export、status の誤りは 400、無い slug の pull は 404）
+   - 開発用の `ADMIN_API_TOKEN` は `.env.development.local` に生成して入れた。本番用は §10-9 で別の値を作る
+   - 開発用 DB に確認用の記事 `cli-test`（公開）が残っている
 7. 全体ナビゲーションと `/games`
 8. build / lint / test（Playwright で公開ページ・未認証の `/admin` 拒否・作成〜公開〜非公開化）
 9. 既存 Vercel プロジェクトを Next.js のビルドへ切り替え（プレビューで確認→本番）。既存ゲームが同じ URL で起動することを確認する
@@ -204,7 +211,7 @@ BLOB_READ_WRITE_TOKEN=
   - Neon の API キーは `.secrets/neon-api-key`（リポジトリ直下、git-ignore）。ブランチ操作は `NEON_API_KEY` に渡して `npx neonctl` で行う
   - `npm run db:check`：接続先の表と migration の適用数を表示する（接続文字列は出さない）
 - ✅ GitHub OAuth App（2026-11-11）：1つのアプリに Redirect URI を開発用（`http://localhost:3000/api/auth/callback/github`）と本番用（`https://www.smallisle.works/…`・`https://smallisle.works/…`）で登録（`localhost` と `smallisle.works` は登録済み。本番 URL は `www` なので、`www` 版が入っているか切り替え前にアプリの設定画面で確認する）。Client ID / secret は手元では `.env.development.local` にだけある
-  - 切り替え時に Vercel の Production 環境変数へ登録するもの：`GITHUB_CLIENT_ID`、`GITHUB_CLIENT_SECRET`、`ADMIN_GITHUB_ID=18266`、`BETTER_AUTH_URL=https://www.smallisle.works`、`BETTER_AUTH_SECRET`（手元とは別の値を新しく作る）
+  - 切り替え時に Vercel の Production 環境変数へ登録するもの：`GITHUB_CLIENT_ID`、`GITHUB_CLIENT_SECRET`、`ADMIN_GITHUB_ID=18266`、`BETTER_AUTH_URL=https://www.smallisle.works`、`BETTER_AUTH_SECRET`（手元とは別の値を新しく作る）、`ADMIN_API_TOKEN`（同じく別の値。手元の本番投稿用の env ファイルにも同じ値を入れる＝§6）
   - 手元の開発サーバは port 3000 固定（戻り先がこの port で登録されているため）。別プロジェクトが 3000 を使っていると起動できない
 - Blob ストアの作成
 - 切り替え：既存プロジェクトの Root Directory を `site/`、Framework を Next.js に変える（ダッシュボード操作）。ルートの `vercel.json`（`outputDirectory: outputs`）は同時に外す。「Root Directory の外のファイルをビルドに含める」設定が有効であること（`../outputs` を読むため。既定で有効）。直前にプレビューデプロイで既存ゲームの全 URL を確認する

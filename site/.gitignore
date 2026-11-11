@@ -42,3 +42,6 @@ next-env.d.ts
 
 # ゲームの配信物のコピー先（scripts/copy-games.mjs が outputs/ から作る）
 /public/
+
+# 書きかけの原稿（npm run post pull の書き出し先）
+/drafts/
