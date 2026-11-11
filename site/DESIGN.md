@@ -196,7 +196,10 @@ BLOB_READ_WRITE_TOKEN=
    - 開発用の `ADMIN_API_TOKEN` は `.env.development.local` に生成して入れた。本番用は §10-9 で別の値を作る
    - 開発用 DB に確認用の記事 `cli-test`（公開）が残っている
    - 保存後の最初の表示が古い内容だった（`revalidateTag(tag, "max")` は古い内容を返しながら裏で作り直す）。即反映にするため `{ expire: 0 }` に変えた。`updateTag` は Server Action 専用で API からは使えない
-7. 全体ナビゲーションと `/games`
+7. ✅ 全体ナビゲーションと `/games`（2026-11-11。ヘッダーは Blog / Games で、今いる場所のリンクを太字にする（`aria-current`）。`/games/` はゲームのカード一覧（旧トップ `outputs/index.html` の内容を移した）、トップにも同じカードを出す。旧トップへの直リンク `/index.html` は `/games/` へ 308。headless でライト・ダーク・スマホ幅の表示、ナビ→Games→ゲームへの遷移、全ゲームの URL が開くことを確認）
+   - ゲームの一覧は `src/data/games.ts` の1か所。新しいゲームを公開したらここに足す（切り替えまでは今の本番が `outputs/index.html` を出しているので、そちらにも足す）
+   - アイコンが3つとも ⚔️ だったので、Dungeon World を 🏰、Blade of Lumia を 🗡️ に変えた。「（開発中）」は説明文から外してバッジにした
+   - `/projects` と `/about` は中身がまだ無いので作っていない。書く内容ができたら足す
 8. build / lint / test（Playwright で公開ページ・未認証の `/admin` 拒否・作成〜公開〜非公開化）
 9. 既存 Vercel プロジェクトを Next.js のビルドへ切り替え（プレビューで確認→本番）。既存ゲームが同じ URL で起動することを確認する
 10. デザインの作り込み（ユーザー希望：「もっとかっこよく」。機能が揃ってからでよい）

@@ -1,26 +1,9 @@
-// トップ。紹介・最新記事・ゲームへの導線。Projects への導線と /games の一覧ページは §10-7 で作る。
+// トップ。紹介・最新記事・ゲームへの導線。
 import Link from "next/link";
+import { GameList } from "@/components/game-list";
 import { PostList } from "@/components/post-list";
+import { GAMES } from "@/data/games";
 import { listPublishedPosts } from "@/server/posts";
-
-const GAMES = [
-  {
-    href: "/one-step-dungeon/",
-    title: "One Step Dungeon",
-    desc: "ターン制ダンジョン脱出パズル",
-  },
-  { href: "/sword-duel/", title: "Sword Duel", desc: "1on1 剣戟アクション" },
-  {
-    href: "/dungeon-world/game/",
-    title: "Dungeon World",
-    desc: "1歩ずつ探索するダンジョン RPG（開発中）",
-  },
-  {
-    href: "/blade-of-lumia/game/",
-    title: "Blade of Lumia",
-    desc: "リアルタイムアクション RPG（開発中）",
-  },
-];
 
 export default async function Home() {
   const posts = await listPublishedPosts({ limit: 5 });
@@ -41,15 +24,10 @@ export default async function Home() {
 
       <section id="games">
         <h2>Games</h2>
-        <ul className="game-list">
-          {GAMES.map((g) => (
-            <li key={g.href}>
-              {/* ゲームは Next.js の外の静的ページ＝通常の <a> で全画面遷移する */}
-              <a href={g.href}>{g.title}</a>
-              <span className="muted"> — {g.desc}</span>
-            </li>
-          ))}
-        </ul>
+        <GameList games={GAMES} />
+        <p>
+          <Link href="/games/">ゲーム一覧へ →</Link>
+        </p>
       </section>
     </>
   );

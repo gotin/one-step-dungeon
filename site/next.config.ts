@@ -5,6 +5,10 @@ const nextConfig: NextConfig = {
   partialPrefetching: true,
   // 既存のゲーム配信（vercel.json の trailingSlash: true）と URL の形を揃える
   trailingSlash: true,
+  async redirects() {
+    // 旧トップ（ゲーム一覧の outputs/index.html）への直リンクを /games へ
+    return [{ source: "/index.html", destination: "/games/", permanent: true }];
+  },
   async rewrites() {
     return {
       beforeFiles: [],
