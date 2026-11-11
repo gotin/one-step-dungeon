@@ -189,7 +189,7 @@ export async function savePost(
     source,
   });
 
-  revalidateTag(POSTS_TAG, "max");
+  revalidateTag(POSTS_TAG, { expire: 0 });
   return postId;
 }
 
@@ -215,7 +215,7 @@ async function setTags(postId: string, names: string[]) {
 export async function deletePost(id: string): Promise<void> {
   // 版・タグの紐付け・slug の転送は外部キーの cascade で一緒に消える
   await getDb().delete(posts).where(eq(posts.id, id));
-  revalidateTag(POSTS_TAG, "max");
+  revalidateTag(POSTS_TAG, { expire: 0 });
 }
 
 /** どの記事にも付いていないタグを消す（記事の削除・タグの付け替えのあとに呼ぶ） */
@@ -226,7 +226,7 @@ export async function deleteUnusedTags(): Promise<void> {
     .where(
       notInArray(tags.id, db.select({ id: postTags.tagId }).from(postTags)),
     );
-  revalidateTag(POSTS_TAG, "max");
+  revalidateTag(POSTS_TAG, { expire: 0 });
 }
 
 export type RevisionRow = {

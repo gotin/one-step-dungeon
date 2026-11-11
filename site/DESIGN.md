@@ -195,6 +195,7 @@ BLOB_READ_WRITE_TOKEN=
 6. ✅ CLI / API（push・pull・export）（2026-11-11。開発サーバに対して確かめた：トークン無し・違うトークンは 401、push で作成（201）→更新、ローカル画像の Blob へのアップロードと原稿の書き換え、`published` と `published_at` の往復（日本時間で書き戻る）・公開ページへの反映、pull、export、status の誤りは 400、無い slug の pull は 404）
    - 開発用の `ADMIN_API_TOKEN` は `.env.development.local` に生成して入れた。本番用は §10-9 で別の値を作る
    - 開発用 DB に確認用の記事 `cli-test`（公開）が残っている
+   - 保存後の最初の表示が古い内容だった（`revalidateTag(tag, "max")` は古い内容を返しながら裏で作り直す）。即反映にするため `{ expire: 0 }` に変えた。`updateTag` は Server Action 専用で API からは使えない
 7. 全体ナビゲーションと `/games`
 8. build / lint / test（Playwright で公開ページ・未認証の `/admin` 拒否・作成〜公開〜非公開化）
 9. 既存 Vercel プロジェクトを Next.js のビルドへ切り替え（プレビューで確認→本番）。既存ゲームが同じ URL で起動することを確認する
