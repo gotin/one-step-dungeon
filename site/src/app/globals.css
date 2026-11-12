@@ -20,7 +20,26 @@
      ドット文字（--font-dot）はロゴとトップの大見出しだけ */
   --font-body: var(--font-noto), system-ui, -apple-system, sans-serif;
   --font-ui: var(--font-jb), var(--font-noto), ui-monospace, monospace;
+  /* 幅（2026-11-12 ユーザー判断：広い画面では狭すぎる）。
+     --page-max はヘッダー・本体・フッター、--post-max は記事の本文。
+     本文は日本語で1行45字前後までに抑える */
+  --page-max: 46rem;
+  --post-max: 40rem;
   color-scheme: light dark;
+}
+
+@media (min-width: 75rem) {
+  :root {
+    --page-max: 62rem;
+    --post-max: 46rem;
+  }
+}
+
+@media (min-width: 100rem) {
+  :root {
+    --page-max: 70rem;
+    --post-max: 50rem;
+  }
 }
 
 @media (prefers-color-scheme: dark) {
@@ -63,7 +82,7 @@ img {
 .site-main {
   flex: 1;
   width: 100%;
-  max-width: 46rem;
+  max-width: var(--page-max);
   margin: 0 auto;
   padding: 0 1rem;
 }
@@ -88,7 +107,7 @@ img {
   justify-content: space-between;
   align-items: center;
   gap: 1rem;
-  max-width: 46rem;
+  max-width: var(--page-max);
   margin: 0 auto;
   padding: 0.6rem 1rem;
 }
@@ -159,14 +178,10 @@ img {
 .site-footer-inner {
   display: flex;
   justify-content: space-between;
-  max-width: 46rem;
+  max-width: var(--page-max);
   margin: 0 auto;
   padding: 1.75rem 1rem 2rem;
   font-family: var(--font-ui);
-}
-
-.site-footer a {
-  color: var(--night-fg);
 }
 
 /* ── ドット調の部品 ── */
@@ -372,7 +387,7 @@ a.chip:hover {
 
 /* ── 記事：明朝の題、ゆったりした本文 ── */
 .post {
-  max-width: 40rem;
+  max-width: var(--post-max);
   margin: 0 auto;
 }
 

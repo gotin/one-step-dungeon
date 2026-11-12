@@ -58,13 +58,6 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
           <div className="site-footer-shore" aria-hidden="true" />
           <div className="site-footer-inner">
             <span>© Small Isle</span>
-            <a
-              href="https://github.com/gotin/one-step-dungeon"
-              target="_blank"
-              rel="noopener"
-            >
-              GitHub
-            </a>
           </div>
         </footer>
       </body>
