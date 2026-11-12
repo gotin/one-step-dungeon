@@ -241,7 +241,8 @@ BLOB_READ_WRITE_TOKEN=
 ## 11. ユーザー側の作業（実装中に必要になった時点で依頼する）
 
 - ✅ Neon：2026-11-10 に Vercel Marketplace から作成（`small-isle-db`、Free プラン、シンガポール `sin1`、Neon Auth なし）。プロジェクト `one-step-dungeon`（Vercel アカウント gotin-8885 / チーム go-kojima-s-projects）に接続済みで `DATABASE_URL` ほかが自動登録された。手元は `site/.env.local`（`vercel env pull`）
-  - ✅ 開発用と本番用を分けた（2026-11-10）：Neon のブランチ `main`＝本番、`development`＝開発（`main` から作成）。Vercel 側の環境変数はプロジェクトの3環境とも `main` を指したまま（integration 管理の変数なので触らない）
+  - ✅ 開発用と本番用を分けた（2026-11-10）：Neon のブランチ `main`＝本番、`development`＝開発（`main` から作成）。Vercel 側の環境変数は Production と Development が `main` を指す
+  - ✅ プレビューを開発用 DB に向けた（2026-11-13、develop ブランチ運用の開始に合わせて）：integration 管理の `DATABASE_URL` / `DATABASE_URL_UNPOOLED` の対象から Preview を外し（API で target を production・development に変更）、Preview 専用の同名の変数（sensitive）に `development` の接続先を入れた。`PG*` / `POSTGRES_*` は3環境とも `main` のままだが、アプリは読まない。Neon の連携が変数を再同期したら Preview が本番に戻るので、プレビューの `/blog/` に開発用の記事（「テスト投稿」など）が出るかで確かめる
   - 手元の env ファイル（すべて git-ignore・権限 600）：
     - `.env.local`：`vercel env pull` の出力＝本番 `main`
     - `.env.development.local` / `.env.production.local`：開発用 `development` の `DATABASE_URL` / `DATABASE_URL_UNPOOLED`。Next.js はこれらを `.env.local` より優先するので、手元の `next dev` も `next start` も開発用ブランチを使う
