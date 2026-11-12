@@ -50,7 +50,7 @@ async function Post({ params }: Pick<PageProps<"/blog/[slug]">, "params">) {
     notFound();
   }
   return (
-    <article>
+    <article className="post">
       <h1>{post.title}</h1>
       <PostMeta post={post} showUpdated />
       <PostBody markdown={post.body} />

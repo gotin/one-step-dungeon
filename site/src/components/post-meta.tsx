@@ -8,8 +8,16 @@ const dateFormat = new Intl.DateTimeFormat("ja-JP", {
   day: "2-digit",
 });
 
-function DateText({ date }: { date: Date }) {
+export function DateText({ date }: { date: Date }) {
   return <time dateTime={date.toISOString()}>{dateFormat.format(date)}</time>;
+}
+
+export function TagLinks({ post }: { post: PostSummary }) {
+  return post.tags.map((tag) => (
+    <Link key={tag.slug} href={`/tags/${tag.slug}/`} className="chip tag">
+      #{tag.name}
+    </Link>
+  ));
 }
 
 export function PostMeta({
@@ -31,11 +39,7 @@ export function PostMeta({
           （更新 <DateText date={post.updatedAt} />）
         </span>
       )}
-      {post.tags.map((tag) => (
-        <Link key={tag.slug} href={`/tags/${tag.slug}/`} className="tag">
-          #{tag.name}
-        </Link>
-      ))}
+      <TagLinks post={post} />
     </p>
   );
 }

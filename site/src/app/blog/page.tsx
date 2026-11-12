@@ -8,7 +8,7 @@ export default async function BlogPage() {
   const posts = await listPublishedPosts();
   return (
     <>
-      <h1>Blog</h1>
+      <h1 className="pixel-title page-title">Blog</h1>
       <PostList posts={posts} />
     </>
   );

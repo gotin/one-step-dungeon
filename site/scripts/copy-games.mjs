@@ -44,6 +44,8 @@ if (!existsSync(src)) {
 }
 rmSync(dest, { recursive: true, force: true });
 cpSync(src, dest, { recursive: true, filter: shouldCopy });
+// サイトの飾りの絵（Blade of Lumia のドット絵・ゲーム画面）。site/art/ は git 管理、public/ は作り直すのでここで写す
+cpSync(join(siteDir, "art"), join(dest, "art"), { recursive: true });
 console.log(
   `copy-games: ${relative(siteDir, src)} → ${relative(siteDir, dest)}`,
 );
