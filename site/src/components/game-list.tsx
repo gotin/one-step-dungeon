@@ -32,7 +32,6 @@ export function FeaturedGameCard({
         <h3 className="featured-title">
           <a href={game.href}>{game.title}</a>
         </h3>
-        <p className="featured-tagline">{game.tagline}</p>
         <p className="featured-desc">{game.desc}</p>
         <Badges game={game} />
       </div>
