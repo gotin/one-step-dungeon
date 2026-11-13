@@ -12,19 +12,17 @@ export type Game = {
 };
 
 export type FeaturedGame = Game & {
-  /** 見出しの下に出す一言 */
-  tagline: string;
   /** ゲーム画面のギャラリー（先頭が大きい1枚） */
   shots: { src: string; caption: string }[];
 };
 
-// 作り込みの量が他と大きく違うので、Blade of Lumia だけを大きく扱う（2026-11-12 ユーザー判断）
+// 作り込みの量が他と大きく違うので、Blade of Lumia だけを大きく扱う（2026-11-12 ユーザー判断）。
+// ただし「いちばん時間をかけている」と文で主張はしない（2026-11-13 ユーザー判断で一言を削除）
 export const FEATURED: FeaturedGame = {
   href: "/blade-of-lumia/game/",
   title: "Blade of Lumia",
   thumb: "/art/blade/field_13-5.jpg",
   desc: "剣・盾・ブーメランで、島じゅうのダンジョンを攻略するリアルタイムアクション RPG。",
-  tagline: "いちばん時間をかけて作っているゲーム。",
   genre: "Action RPG",
   wip: true,
   shots: [

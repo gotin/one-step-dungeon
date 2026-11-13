@@ -718,11 +718,6 @@ a.button {
   text-decoration: none;
 }
 
-.featured-tagline {
-  margin: 0;
-  font-weight: 700;
-}
-
 .featured-desc {
   margin: 0.4rem 0 0;
   color: var(--muted);
