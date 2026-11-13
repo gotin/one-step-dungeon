@@ -27,7 +27,18 @@ export async function generateMetadata({
   return {
     title: post.title,
     description: post.excerpt || undefined,
-    openGraph: { title: post.title, description: post.excerpt || undefined },
+    // openGraph はレイアウトの設定を丸ごと置き換えるので、サイト名と画像もここで指定する。
+    // 画像はサイト共通（app/opengraph-image.png）
+    openGraph: {
+      title: post.title,
+      description: post.excerpt || undefined,
+      type: "article",
+      siteName: "Small Isle",
+      locale: "ja_JP",
+      publishedTime: post.publishedAt?.toISOString(),
+      images: [{ url: "/opengraph-image.png", width: 1200, height: 630 }],
+    },
+    twitter: { card: "summary_large_image", images: ["/opengraph-image.png"] },
   };
 }
 
