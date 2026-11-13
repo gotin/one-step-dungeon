@@ -4,6 +4,7 @@ import { Suspense } from "react";
 import { MarkdownBody } from "@/components/markdown-body";
 import { PostMeta } from "@/components/post-meta";
 import { renderMarkdown } from "@/lib/markdown";
+import { postOgp } from "@/lib/post-ogp";
 import {
   findRenamedSlug,
   getPublishedPost,
@@ -24,21 +25,32 @@ export async function generateMetadata({
   const { slug } = await params;
   const post = await getPublishedPost(decodeURIComponent(slug));
   if (!post) return {};
+  // 説明文は記事の「要約」、空なら本文の最初の段落。画像は本文の最初の画像、無ければサイト共通
+  // （app/opengraph-image.png＝トップのヒーロー）。2026-11-13 ユーザー判断
+  const ogp = postOgp(post.body);
+  const description = post.excerpt || ogp.description || undefined;
+  const image = ogp.image
+    ? { url: ogp.image.url, alt: ogp.image.alt || post.title }
+    : {
+        url: "/opengraph-image.png",
+        width: 1200,
+        height: 630,
+        alt: "Small Isle",
+      };
   return {
     title: post.title,
-    description: post.excerpt || undefined,
-    // openGraph はレイアウトの設定を丸ごと置き換えるので、サイト名と画像もここで指定する。
-    // 画像はサイト共通（app/opengraph-image.png）
+    description,
+    // openGraph はレイアウトの設定を丸ごと置き換えるので、サイト名もここで指定する
     openGraph: {
       title: post.title,
-      description: post.excerpt || undefined,
+      description,
       type: "article",
       siteName: "Small Isle",
       locale: "ja_JP",
       publishedTime: post.publishedAt?.toISOString(),
-      images: [{ url: "/opengraph-image.png", width: 1200, height: 630 }],
+      images: [image],
     },
-    twitter: { card: "summary_large_image", images: ["/opengraph-image.png"] },
+    twitter: { card: "summary_large_image", images: [image] },
   };
 }
 
