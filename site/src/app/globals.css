@@ -20,25 +20,18 @@
      ドット文字（--font-dot）はロゴとトップの大見出しだけ */
   --font-body: var(--font-noto), system-ui, -apple-system, sans-serif;
   --font-ui: var(--font-jb), var(--font-noto), ui-monospace, monospace;
-  /* 幅（2026-11-12 ユーザー判断：広い画面では狭すぎる）。
+  /* 幅（2026-11-13 ユーザー判断：サイドバーの無い作りなので、本文にもっと幅を渡す）。
      --page-max はヘッダー・本体・フッター、--post-max は記事の本文。
-     本文は日本語で1行45字前後までに抑える */
-  --page-max: 46rem;
-  --post-max: 40rem;
+     画面がこれより狭いときは画面いっぱい（左右の余白だけ残す）。記事の画像は別に 600px までに抑える */
+  --page-max: 72rem;
+  --post-max: 62.5rem;
   color-scheme: light dark;
-}
-
-@media (min-width: 75rem) {
-  :root {
-    --page-max: 62rem;
-    --post-max: 46rem;
-  }
 }
 
 @media (min-width: 100rem) {
   :root {
-    --page-max: 70rem;
-    --post-max: 50rem;
+    --page-max: 96rem;
+    --post-max: 80rem;
   }
 }
 
@@ -424,7 +417,11 @@ a.chip:hover {
   vertical-align: 0.15em;
 }
 
+/* 本文の画像は本文の幅に引っ張られず 600px まで、本文に対して中央（2026-11-13 ユーザー判断） */
 .post .markdown-body img {
+  display: block;
+  max-width: min(100%, 600px);
+  margin-inline: auto;
   border: 3px solid var(--frame-dark);
 }
 
