@@ -32,6 +32,10 @@ const noto = Noto_Sans_JP({
 export const metadata: Metadata = {
   title: { default: "Small Isle", template: "%s | Small Isle" },
   description: "A small place for things I make.",
+  // OGP の画像（app/opengraph-image.png＝トップのヒーローを撮ったもの）を絶対 URL にするための基準
+  metadataBase: new URL("https://www.smallisle.works"),
+  openGraph: { siteName: "Small Isle", type: "website", locale: "ja_JP" },
+  twitter: { card: "summary_large_image" },
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
