@@ -20,25 +20,21 @@
      ドット文字（--font-dot）はロゴとトップの大見出しだけ */
   --font-body: var(--font-noto), system-ui, -apple-system, sans-serif;
   --font-ui: var(--font-jb), var(--font-noto), ui-monospace, monospace;
-  /* 幅（2026-11-12 ユーザー判断：広い画面では狭すぎる）。
+  /* 幅（2026-11-13 ユーザー判断：サイドバーの無い作りなので、本文にもっと幅を渡す）。
      --page-max はヘッダー・本体・フッター、--post-max は記事の本文。
-     本文は日本語で1行45字前後までに抑える */
-  --page-max: 46rem;
-  --post-max: 40rem;
+     画面がこれより狭いときは画面いっぱい（左右の余白だけ残す）。記事の画像は別に 600px までに抑える */
+  --page-max: 72rem;
+  --post-max: 62.5rem;
+  /* 左右の余白（2026-11-13 ユーザー判断：狭い画面で余白が小さすぎて読みにくい）。
+     スマホで 1.25rem、画面幅に比例して広げ、最大 4rem */
+  --gutter: clamp(1.25rem, 5vw, 4rem);
   color-scheme: light dark;
-}
-
-@media (min-width: 75rem) {
-  :root {
-    --page-max: 62rem;
-    --post-max: 46rem;
-  }
 }
 
 @media (min-width: 100rem) {
   :root {
-    --page-max: 70rem;
-    --post-max: 50rem;
+    --page-max: 96rem;
+    --post-max: 80rem;
   }
 }
 
@@ -84,7 +80,7 @@ img {
   width: 100%;
   max-width: var(--page-max);
   margin: 0 auto;
-  padding: 0 1rem;
+  padding: 0 var(--gutter);
 }
 
 /* ── ヘッダー：夜の海の帯＋下に波のドット ── */
@@ -109,7 +105,7 @@ img {
   gap: 1rem;
   max-width: var(--page-max);
   margin: 0 auto;
-  padding: 0.6rem 1rem;
+  padding: 0.6rem var(--gutter);
 }
 
 .site-name {
@@ -180,7 +176,7 @@ img {
   justify-content: space-between;
   max-width: var(--page-max);
   margin: 0 auto;
-  padding: 1.75rem 1rem 2rem;
+  padding: 1.75rem var(--gutter) 2rem;
   font-family: var(--font-ui);
 }
 
@@ -424,7 +420,11 @@ a.chip:hover {
   vertical-align: 0.15em;
 }
 
+/* 本文の画像は本文の幅に引っ張られず 600px まで、本文に対して中央（2026-11-13 ユーザー判断） */
 .post .markdown-body img {
+  display: block;
+  max-width: min(100%, 600px);
+  margin-inline: auto;
   border: 3px solid var(--frame-dark);
 }
 
