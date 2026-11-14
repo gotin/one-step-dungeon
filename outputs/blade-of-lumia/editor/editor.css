@@ -992,6 +992,42 @@ html, body {
     cursor: pointer;
 }
 
+/* 灯っている転移の石碑（2026-11-14）。石碑が増えてもダイアログが画面からはみ出さないよう、
+   一覧だけをスクロールさせる。 */
+.ps-lit {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    border-top: 1px solid var(--border);
+    padding-top: 8px;
+}
+
+.ps-lit-head {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.82rem;
+    color: var(--text);
+}
+
+.ps-lit-head span {
+    flex: 1;
+}
+
+.ps-lit-list {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    max-height: 11.5rem;
+    overflow-y: auto;
+}
+
+.ps-lit-where,
+.ps-lit-empty {
+    font-size: 0.72rem;
+    color: var(--muted);
+}
+
 .preview-settings-actions {
     display: flex;
     gap: 8px;

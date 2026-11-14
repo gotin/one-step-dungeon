@@ -11,6 +11,7 @@ import { renderSidePanel, initLinksEvents, initConditionEvents, initDoorwayEvent
 import {
 	tryRestoreFromStorage, initIOEvents, initFileFreshnessCheck,
 	getPreviewPending, setPreviewPending, openPreview,
+	buildLitWarpOptions, readLitWarpStones,
 } from './editor-io.js';
 import { initSpriteEditor, onLeaveSpriteEditor } from './editor-sprite.js';
 import { initCharacterEditor, onLeaveCharacterEditor } from './editor-character.js';
@@ -125,6 +126,8 @@ document.addEventListener('editor:previewClickAt', e => {
 	const { row, col } = e.detail;
 	// プレビュー設定ダイアログを開いて openPreview を呼ぶ
 	const overlay = document.getElementById('preview-settings-overlay');
+	// 転移の石碑の一覧は編集中のマップから作り直す（石碑を置き直した直後でも一覧が追いつく）。
+	buildLitWarpOptions();
 	overlay.classList.remove('hidden');
 	const btnStart  = document.getElementById('ps-btn-start');
 	const btnCancel = document.getElementById('ps-btn-cancel');
@@ -179,6 +182,8 @@ document.addEventListener('editor:previewClickAt', e => {
 			// 実行キュー23: 撃破済みボス（会話の「進行で切り替わる版」の確認用）。
 			// editor-io.js の getPreviewSettings にも同じ行がある（両方に足す）。
 			defeated:  bossesDefeatedUpTo(state.mapData, document.getElementById('ps-defeated')?.value || ''),
+			// 2026-11-14：灯っている転移の石碑。editor-io.js の getPreviewSettings にも同じ行がある（両方に足す）。
+			lit:       readLitWarpStones(),
 		};
 		openPreview(state.currentCoord.x, state.currentCoord.y, row, col, ps, TILE);
 	});

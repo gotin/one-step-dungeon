@@ -46,7 +46,7 @@ import { createQuickSwap, QUICK_SWAP_TOUCH_HOLD_MS } from './quick-swap.js';
 import { createWarpMenu } from './warp-menu.js';
 import { initPlaytestNotes } from './playtest-notes.js';
 import { initSoundToggle } from './sound-toggle.js';
-import { warpStoneId, warpLandingCandidates, WARP_NO_LANDING_TILES } from '../shared/warp-stones.js';
+import { warpStoneId, warpLandingCandidates, WARP_NO_LANDING_TILES, listWarpStones } from '../shared/warp-stones.js';
 import { noticeId } from '../shared/dialog-variants.js';
 import { isTestLayer } from '../shared/layers.js';
 // ── 投擲物・爆弾（Phase 0-2 Step 5: projectile.js へ切り出し）───────────────
@@ -832,8 +832,10 @@ const { checkStoneOnSwitch, evaluateConditions, refreshGates } = createCondition
 			const posKey = `${ws.r},${ws.c}`;
 			const sd = st?.signData?.[posKey] ?? st?.npcData?.[posKey] ?? {};
 			const v = fx.pickDialogVariant(sd, player, mapData);
+			// 読んだ版の記し方は openSignDialog と同じ（転移の石碑は印が無くても基本でない版を記す）
+			const readKey = v.noticeKey ?? v.variantKey;
 			fx.openDialog(sd.name ?? '転移の石碑', v.lines, v.mark, null,
-				v.noticeKey ? noticeId(ws.layer, ws.stage, posKey, v.noticeKey) : null);
+				readKey ? noticeId(ws.layer, ws.stage, posKey, readKey) : null);
 		},
 		travelTo:     (ws) => {
 			const dest = getStageData(ws.layer, ws.stage);
@@ -1180,12 +1182,17 @@ const { checkStoneOnSwitch, evaluateConditions, refreshGates } = createCondition
 		// キュー27: 転移の石碑は (r,c) から碑を引いて warp-menu に渡す（灯す・行き先の一覧）。
 		openSignDialog: (sd, r, c, tile) => {
 			const v = fx.pickDialogVariant(sd, player, mapData);
+			const isWarp = tile === TILE.WARP_STONE && warpMenu;
 			// キュー64: 印を出す版なら、読み終えたら「読んだ版」に記す id も渡す。
-			const notice = v.noticeKey ? noticeId(currentLayer, stageKey, `${r},${c}`, v.noticeKey) : null;
+			// 転移の石碑は印の有無によらず、基本でない版（踏破後の行き先の案内など）を読んだら記す
+			// （2026-11-14 ユーザー指摘「一覧が先に出ると、変わった碑文を読まない」＝未読なら一覧より先に本文）。
+			const readKey = v.noticeKey ?? (isWarp ? v.variantKey : null);
+			const notice = readKey ? noticeId(currentLayer, stageKey, `${r},${c}`, readKey) : null;
 			const show = (onClose) => fx.openDialog(sd.name ?? '看板', v.lines, v.mark, onClose, notice);
-			if (tile === TILE.WARP_STONE && warpMenu) {
+			if (isWarp) {
 				const ws = { id: warpStoneId(currentLayer, stageKey, `${r},${c}`), layer: currentLayer, stage: stageKey, r, c, name: sd.name ?? '転移の石碑' };
-				warpMenu.onRead(ws, show);
+				const unread = !!notice && !(player.readNotices ?? []).includes(notice);
+				warpMenu.onRead(ws, show, { unread });
 				return;
 			}
 			show(null);
@@ -2400,6 +2407,7 @@ async function init() {
 		const psScrolls  = params.get('ps_scrolls');   // 実行キュー100: 剣技の巻物の個数（4＝回転斬り・8＝2マス先まで）
 		const psDefeated = params.get('ps_defeated');  // 実行キュー23: 撃破済みボス（タイル文字のカンマ区切り）
 		const psMap      = params.get('ps_map');       // 2026-09-19: 地図の所持（目的地マークの見え方の確認用）
+		const psLit      = params.get('ps_lit');       // 2026-11-14: 灯っている転移の石碑（id の `;` 区切り）
 
 		if (psAtk      !== null) player.atk    = parseInt(psAtk,  10) || 2;
 		if (psDef      !== null) player.def    = parseInt(psDef,  10) || 0;
@@ -2476,6 +2484,14 @@ async function init() {
 		// ⚠️ `defeatedBosses` は Set（保存時だけ配列に変換される）∴ここも Set で入れる。
 		if (psDefeated !== null) {
 			player.defeatedBosses = new Set(psDefeated.split(',').map((s) => s.trim()).filter(Boolean));
+		}
+		// 灯っている転移の石碑（2026-11-14）＝読まずに灯った状態から始める。踏破で碑文が変わる石碑は
+		// 「灯っている＋ボスを倒した」で初めて変わった碑文が先に出る∴上の ps_defeated と組み合わせて使う。
+		// id は `field:9,9:3,9` の形＝`,` と `:` を含む∴区切りは `;`。マップに無い id は落とす
+		// （古い URL を開いても一覧に幽霊の行き先が出ない）。
+		if (psLit !== null) {
+			const known = new Set(listWarpStones(mapData).map((ws) => ws.id));
+			player.litWarpStones = [...new Set(psLit.split(';').map((s) => s.trim()).filter((id) => known.has(id)))];
 		}
 		// 姫状態（クリア済みフラグ）の設定
 		if (psCleared === '1') {
