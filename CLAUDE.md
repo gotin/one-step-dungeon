@@ -7,6 +7,21 @@
 
 コミットメッセージは `prefix: summary` 形式のみ（例: `feat: add bow gate mechanic`）。
 
+## ブランチ運用（2026-11-13 ユーザー確定。Blade・サイトとも共通）
+
+`main`（本番）・`develop`（本番の手前）・`feature/*`（作業）の3種類を使う。
+
+1. 作業は `develop` から `feature/<内容>` を切って行う。コミットはこのブランチに積む。
+2. `feature/*` → `develop` の PR を作る。マージすると develop のプレビューに出る。
+3. 本番に出すときは `develop` → `main` の PR を作り、マージする。マージ＝本番公開（Vercel の production ブランチが `main`）。
+
+- `main` と `develop` は GitHub のブランチ保護で直接 push できない（PR 必須・承認数0・管理者も対象・force push と削除は禁止）。
+- PR のマージは、ユーザーに頼まれたときだけ行う。特に `develop` → `main` は本番公開なので必ず確認する。
+- develop のプレビュー：`https://one-step-dungeon-git-develop-go-kojima-s-projects.vercel.app/`（Deployment Protection 付き。`vercel curl` で読める）。
+- プレビューの DB は開発用の Neon ブランチ（Vercel の Preview 環境の `DATABASE_URL` / `DATABASE_URL_UNPOOLED` だけを開発用に差し替えてある）。本番の記事は読まない・書かない。
+- ブログの記事の投稿・編集は DB への書き込みなので、ブランチとは関係なく本番の管理画面か CLI（`POST_ENV_FILE=.env.post.production`）で行う。
+- 使い終わった `feature/*` はマージ後に消す。溜め込まない（2026-06〜08 に作業ブランチへ2か月ぶんのコミットが溜まり、公開が止まっていた）。
+
 ## Blade of Lumia：敵キャラ作業前の必読
 
 `outputs/blade-of-lumia/` で敵キャラ（陸上敵の directional 機構・スプライト生成）関連のタスクに着手する前に、必ず以下2文書を読むこと：
