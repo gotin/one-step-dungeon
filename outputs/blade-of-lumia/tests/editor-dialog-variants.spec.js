@@ -129,18 +129,20 @@ test.describe('会話の「進行で切り替わる版」をエディタで編�
 		await expect(variantBlock(item, gIdx).locator('[data-vf="lines"]'))
 			.toHaveValue(entry.linesAfterBoss.G.join('\n'));
 
-		// 印の欄が実データから読めることは、印を残した相手＝賢者エルン（O）で見る
+		// 印の欄が実データから読めることは、印を残した相手＝賢者エルンで見る
 		// （老賢者の markAfterBoss は17-10bの掃除で全部削った＝本文だけの版になった。
-		//   エルンの L の印は 2026-11-14 のキュー103 で「エルンの使い」へ移した）。
+		//   エルンの印は 2026-11-14 のキュー103/104 で版が入れ替わった＝今ある印の版をデータから引く）。
 		const elunEntry = entryOf(ELUN.stage, ELUN.pos);
+		const markKey = Object.keys(elunEntry.markAfterBoss ?? {})[0];
+		expect(markKey, 'エルンに印の版が1つも無い＝別の相手で測り直す').toBeTruthy();
 		await page.locator('#tab-world').click();   // ステージ表示からワールドマップへ戻る
 		await openStageInEditor(page, ELUN.stage);
 		const elunItem = npcItem(page, ELUN.pos);
-		const oIdx = elunIdx('O');
-		await expect(variantBlock(elunItem, oIdx).locator('[data-vf="markStage"]'))
-			.toHaveValue(elunEntry.markAfterBoss.O.stage);
-		await expect(variantBlock(elunItem, oIdx).locator('[data-vf="markLabel"]'))
-			.toHaveValue(elunEntry.markAfterBoss.O.label);
+		const mIdx = elunIdx(markKey);
+		await expect(variantBlock(elunItem, mIdx).locator('[data-vf="markStage"]'))
+			.toHaveValue(elunEntry.markAfterBoss[markKey].stage);
+		await expect(variantBlock(elunItem, mIdx).locator('[data-vf="markLabel"]'))
+			.toHaveValue(elunEntry.markAfterBoss[markKey].label);
 		await page.locator('#tab-world').click();
 		await openStageInEditor(page, SAGE.stage);
 

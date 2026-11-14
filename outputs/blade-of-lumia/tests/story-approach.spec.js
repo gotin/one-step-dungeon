@@ -23,6 +23,9 @@ import { sanitizeLoadedPlayer } from '../game/save.js';
 import { ITEM_META } from '../shared/items.js';
 import { Q103_MESSENGER } from '../scripts/migrate-q103-ice-messenger.mjs';
 import { Q104_TARO } from '../scripts/migrate-q104-d3-taro.mjs';
+import { Q104_KEEPER } from '../scripts/migrate-q104-d6-forest-keeper.mjs';
+import { PERSON_NPC_SPRITES } from '../shared/npcs.js';
+import { SPRITES, PAL } from '../shared/sprites.js';
 
 const MAP_PATH = fileURLToPath(new URL('../work/blade-of-lumia.json', import.meta.url));
 const map = JSON.parse(readFileSync(MAP_PATH, 'utf8'));
@@ -243,6 +246,62 @@ test.describe('出来事 ⑧（D3 ボス部屋に駆けつけるタロ）', () =
 		s = await page.evaluate(([r, c]) => !!document.querySelector(`#board .cell[data-row="${r}"][data-col="${c}"] > canvas.char-sprite`), [T.r, T.c]);
 		expect(s, '去ったタロが残った').toBe(false);
 		expect(await page.evaluate(() => window.__homeFlash), '扉から入る前のタロが自分の場所に一瞬描かれた').toBe(false);
+	});
+});
+
+// ── キュー104 ②：森の聖域の後＝森の番人の老婆 → 賢者エルン（出来事の連鎖）──────
+const K = Q104_KEEPER;
+test.describe('出来事 ⑨（D6 の後の連鎖）', () => {
+	test('⑨ データ＝老婆は O の後だけ・東の端から来る・町の印／エルンの出来事の版が氷の廃墟の印を持つ（O の印は外した）', () => {
+		const e = map.layers[K.layer].stages[K.stage].npcData[`${K.r},${K.c}`];
+		expect(e).toMatchObject({ showWhen: ['O'], hideWhen: [`flag:${K.flag}`, 'L'], approach: true, approachFrom: K.from, setsFlag: K.flag });
+		expect(e.mark).toMatchObject({ stage: '13,5', kind: 'town' });
+		const ern = map.layers.field.stages[K.ern.stage].npcData[K.ern.pos];
+		expect(ern.markAfterBoss.O, 'エルンの O の版にも氷の廃墟の印が残っている').toBeUndefined();
+		expect(ern.markAfterBoss[`flag:${K.flag}`]).toMatchObject({ stage: '15,4' });
+		const keys = Object.keys(ern.linesAfterBoss);
+		expect(keys.indexOf(`flag:${K.flag}`), '出来事の版が O のすぐ下に無い').toBe(keys.indexOf('O') + 1);
+		// 専用の絵（2026-11-15 ユーザー指摘「両方とも見た目若すぎる」「老婆はおとこにしかみえない」）
+		expect(e.sprite).toBe('npcGranny');
+		expect(ern.sprite).toBe('npcErn');
+		for (const k of ['npcGranny', 'npcErn']) {
+			expect(PERSON_NPC_SPRITES[k], `${k} が人ごとの絵の表に無い`).toBeTruthy();
+			const fr = SPRITES[k];
+			expect(fr?.length, `${k} は2コマ`).toBe(2);
+			for (const f of fr) {
+				expect(f.length).toBe(32);
+				expect(f.every((r) => r.length === 32 && r.every((v) => Number.isInteger(v) && v >= 0 && v < PAL[k].length)), `${k} の番号がパレットの外`).toBe(true);
+			}
+		}
+	});
+
+	test('⑨ 実ゲーム＝出ると老婆が東の端から来て町に印 → エルンに話すと氷の廃墟の印', async ({ page }) => {
+		await page.goto(`${GAME_URL}?fromEditor=1&layer=field&stage=${K.stage}&row=5&col=3&ps_weapon=1&ps_map=1&ps_defeated=G,N,J,A,O`);
+		await waitForBoard(page);
+		await page.waitForFunction(() => document.querySelectorAll('.story-walker').length === 1, null, { timeout: 5000 });
+		const firstCol = await page.evaluate(() => {
+			const w = document.querySelector('.story-walker'); const cell = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--cell'));
+			return Math.round(parseFloat(w.style.left) / cell);
+		});
+		expect(firstCol, '老婆が東の端の外から入ってこない').toBeGreaterThanOrEqual(11);
+		await page.waitForFunction(() => !document.getElementById('dialog-overlay').classList.contains('hidden'), null, { timeout: 8000 });
+		expect(await page.evaluate(() => document.getElementById('dialog-name').textContent)).toBe('森の番人の老婆');
+		await readAll(page);
+		let pl = await page.evaluate(() => { const p = window.__game.getPlayer(); return { flags: p.storyFlags, marks: p.mapMarks.map((m) => m.stage) }; });
+		expect(pl.flags).toContain(K.flag);
+		expect(pl.marks, '石畳の町の印が付かない').toContain('13,5');
+		expect(pl.marks, '老婆の段で氷の廃墟の印が付いた').not.toContain('15,4');
+		await page.waitForFunction(() => document.querySelectorAll('.story-walker').length === 0, null, { timeout: 8000 });
+
+		// 町のエルン（4,5）の南に立って話す
+		await page.evaluate(([sk]) => window.__game.enterStage('field', sk, 5, 5), [K.ern.stage]);
+		await page.waitForTimeout(300);
+		await page.evaluate(() => { window.__game.setHeroDir('up'); window.__game.swordAttack(); });
+		await page.waitForFunction(() => !document.getElementById('dialog-overlay').classList.contains('hidden'), null, { timeout: 3000 });
+		expect(await page.evaluate(() => document.getElementById('dialog-text').textContent)).toContain('ばあさま');
+		await readAll(page);
+		pl = await page.evaluate(() => ({ marks: window.__game.getPlayer().mapMarks.map((m) => m.stage) }));
+		expect(pl.marks, 'エルンが氷の廃墟の印をくれない').toContain('15,4');
 	});
 });
 

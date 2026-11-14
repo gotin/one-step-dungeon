@@ -1,6 +1,9 @@
 // ── Blade of Lumia – Player & NPC Sprites ────────────────────
 // heroD/R/L/U（勇者4方向）・escape/monster/darklord/princess・NPC
 
+// キュー104：森の番人の老婆・賢者エルンの絵は別ファイル（行を文字列で持つ＝この表を太らせない）。末尾で取り込む。
+import { NPC_PEOPLE_SPRITES, NPC_PEOPLE_PAL } from './sprites-npc-people.js';
+
 export const PLAYER_PAL = {
 	hero:     ['transparent','#000000','#ff9500','#f1d7c9','#4cd964','#5856d6','#edd1c3'],
 	escape:   ['transparent','#000000','#1a1a1a','#f0d090','#f0c040','#ffffff'],
@@ -33,6 +36,9 @@ export const PLAYER_PAL = {
 };
 
 export const PLAYER_SPRITES = {};
+// キュー104：別ファイルの人物の絵とパレットを取り込む（shared/sprites-npc-people.js）
+Object.assign(PLAYER_SPRITES, NPC_PEOPLE_SPRITES);
+Object.assign(PLAYER_PAL, NPC_PEOPLE_PAL);
 
 // ── HERO（勇者 4方向 2フレーム）────────────────────── 32×32 px
 PLAYER_SPRITES.heroD = [
