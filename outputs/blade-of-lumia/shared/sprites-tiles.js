@@ -6,6 +6,9 @@ import { skinName, MOUNTAIN_SKIN_DEFAULT, VEG_SKINS, VEG_SKIN_DEFAULT, FROZEN_WA
 
 export const TILE_PAL = {
 	block:    ['transparent','#0a0a14','#6a7470','#9aa3a0','#b8bfbc','#ffffff'],
+	// 冷えた溶岩のかさぶた（2026-11-14）1=縁 2=暗い斑 3=かさぶた 4=明るい斑 5=割れ目の赤 6=割れ目の芯
+	// 床（#1b1f26 前後）より明るく暖かい灰＝黒い影ではなく「岩の地面」に見せる。
+	cooledCrust: ['transparent','#140c0a','#2c221e','#3e332d','#5e4c41','#a8380e','#ff7a28'],
 	// 大いが栗（キュー95）1=輪郭 2=とげの影 3=とげ 4=とげの先 5=殻の影 6=殻 7=殻の明 8=実 9=実の照り
 	burr:     ['transparent','#1a0e06','#6a4418','#a8783a','#ecd08a','#5a3410','#84521e','#b07a36','#4a1c08','#d89058'],
 	// 枯れ木（キュー95 の10室目）1=輪郭 2=樹皮の影 3=樹皮 4=樹皮の明 5=照り 6=切り口 7=年輪 8=苔

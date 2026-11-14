@@ -66,6 +66,22 @@ import {
  *   getHeroPalName()             – パレット名取得
  *   hasCleared()                 – クリア済み判定
  */
+// 石が溶岩に沈んだ瞬間の演出（2026-11-14 ユーザー案③）＝かさぶたが内から外へ広がって固まり、
+// 白い湯気が上がる。止まっている絵（render-board.js の cooledCrust）は「足場」を、この演出は
+// 「いま溶岩が冷えて固まった」という変化を見せる。CSS は game/css/board.css の .lava-cooling。
+// renderBoard() の直後に呼ぶ（作り直したセルに印を付ける）。途中でまた描き直されたら演出は消えるだけ。
+const LAVA_COOL_FX_MS = 1100;
+function playLavaCoolFx(r, c) {
+	const cell = document.querySelector(`#board .cell[data-row="${r}"][data-col="${c}"]`);
+	if (!cell) return;
+	cell.classList.add('lava-cooling');
+	const steam = document.createElement('div');
+	steam.className = 'lava-steam';
+	for (let i = 0; i < 3; i++) steam.appendChild(document.createElement('span'));
+	cell.appendChild(steam);
+	setTimeout(() => { cell.classList.remove('lava-cooling'); steam.remove(); }, LAVA_COOL_FX_MS);
+}
+
 export function createPlayer(deps) {
 	const {
 		getStageData, getPlayer, getEnemies,
@@ -748,6 +764,7 @@ export function createPlayer(deps) {
 					if (getIsGameover() || getCurrentLayer() !== _pushLayer || getStageKey() !== _pushStage) return;
 					if (stoneSinks) {   // 石が溶岩に届いた瞬間＝ここで初めて冷えた溶岩の絵に替える
 						renderBoard();   // char-layer を作り直す＝下の renderChars とペア（[[blade-renderboard-pairs-renderchars]]）
+						playLavaCoolFx(stoneDestR, stoneDestC);
 						playSound('fire');
 						pulse('石が 溶岩に 沈み、冷えて 固まった', 1400);
 					}
