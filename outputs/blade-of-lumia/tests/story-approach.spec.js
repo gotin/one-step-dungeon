@@ -22,6 +22,7 @@ import { variantOptions, readEntryVariants, VARIANT_KIND } from '../shared/dialo
 import { sanitizeLoadedPlayer } from '../game/save.js';
 import { ITEM_META } from '../shared/items.js';
 import { Q103_MESSENGER } from '../scripts/migrate-q103-ice-messenger.mjs';
+import { Q104_TARO } from '../scripts/migrate-q104-d3-taro.mjs';
 
 const MAP_PATH = fileURLToPath(new URL('../work/blade-of-lumia.json', import.meta.url));
 const map = JSON.parse(readFileSync(MAP_PATH, 'utf8'));
@@ -186,6 +187,62 @@ test.describe('出来事 ④⑤⑥（実ゲーム・field 15,4 の使い）', ()
 		await page.waitForTimeout(1500);
 		const s = await look(page);
 		expect(s.dialog || s.busy || s.walkers > 0, '一度来た人がまた来た').toBe(false);
+	});
+});
+
+// ── キュー104 ①：水の迷宮のボス部屋に駆けつけるタロ ─────────────────────
+const T = Q104_TARO;
+test.describe('出来事 ⑧（D3 ボス部屋に駆けつけるタロ）', () => {
+	test('⑧ データ＝J の後だけ・来る・記す・炎の神殿の印は1か所・村のタロに出来事の版', () => {
+		const e = map.layers[T.layer].stages[T.stage].npcData[`${T.r},${T.c}`];
+		expect(map.layers[T.layer].stages[T.stage].tiles[T.r][T.c]).toBe(T.tile);
+		expect(e).toMatchObject({ showWhen: ['J'], hideWhen: [`flag:${T.flag}`, 'A'], approach: true, setsFlag: T.flag });
+		expect(e.mark).toMatchObject({ layer: 'field', stage: '12,2', label: '炎の神殿' });
+		const post = map.layers.field.stages['10,0'];
+		expect((post.signData?.['5,5'] ?? post.npcData?.['5,5']).mark, '灰境の道標も炎の神殿の印を渡している').toBeUndefined();
+		const keys = Object.keys(map.layers.field.stages['7,14'].npcData['3,5'].linesAfterBoss);
+		expect(keys.indexOf(`flag:${T.flag}`), '村のタロの出来事の版が J のすぐ下に無い').toBe(keys.indexOf('J') + 1);
+	});
+
+	test('⑧ 実ゲーム＝J を倒すと扉の内側から駆けつけて話し、印を付けて去る', async ({ page }) => {
+		await page.goto(`${GAME_URL}?fromEditor=1&layer=${T.layer}&stage=${T.stage}&row=5&col=8&ps_weapon=1&ps_map=1`);
+		await waitForBoard(page);
+		await page.waitForTimeout(500);
+		let s = await page.evaluate(([r, c]) => ({
+			art: !!document.querySelector(`#board .cell[data-row="${r}"][data-col="${c}"] > canvas.char-sprite`),
+			walkers: document.querySelectorAll('.story-walker').length,
+		}), [T.r, T.c]);
+		expect(s.art || s.walkers > 0, '戦う前にタロが居る').toBe(false);
+		const boss = await page.evaluate(() => window.__game.getEnemies().find((e) => e.type === 'J')?.id);
+		expect(boss, 'ボス J が居ない').toBeTruthy();
+		// 扉から入る前に、自分のセル（扉の左上）へ一瞬描かれないこと（2026-11-14 ユーザー指摘）。
+		// 盤は撃破の瞬間に描き直される∴DOM の変化を見張って、自分のセルに絵が置かれたら記録する。
+		await page.evaluate(([r, c]) => {
+			window.__homeFlash = false;
+			new MutationObserver(() => {
+				if (document.querySelector(`#board .cell[data-row="${r}"][data-col="${c}"] > canvas.char-sprite`)) window.__homeFlash = true;
+			}).observe(document.getElementById('board'), { childList: true, subtree: true });
+		}, [T.r, T.c]);
+		await page.evaluate((id) => window.__game.dealDamage(id, 9999, 'sword'), boss);
+		await page.waitForFunction(() => document.querySelectorAll('.story-walker').length === 1, null, { timeout: 15000 });
+		// 下の扉（approachFrom 9,5）の外から入ってくる＝現れた瞬間は扉の行より下に居る
+		const firstRow = await page.evaluate(() => {
+			const w = document.querySelector('.story-walker'); const cell = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--cell'));
+			return Math.round(parseFloat(w.style.top) / cell);
+		});
+		expect(firstRow, 'タロが扉の外から入ってこない').toBeGreaterThanOrEqual(9);
+		await page.waitForFunction(() => !document.getElementById('dialog-overlay').classList.contains('hidden'), null, { timeout: 8000 });
+		expect(await page.evaluate(() => document.getElementById('dialog-name').textContent)).toBe('村人 タロ');
+		for (let i = 0; i < 10 && await page.evaluate(() => !document.getElementById('dialog-overlay').classList.contains('hidden')); i++) {
+			await page.keyboard.press('Space'); await page.waitForTimeout(80);
+		}
+		const pl = await page.evaluate(() => { const p = window.__game.getPlayer(); return { flags: p.storyFlags, marks: p.mapMarks.map((m) => m.stage) }; });
+		expect(pl.flags).toContain(T.flag);
+		expect(pl.marks).toContain('12,2');
+		await page.waitForFunction(() => document.querySelectorAll('.story-walker').length === 0, null, { timeout: 6000 });
+		s = await page.evaluate(([r, c]) => !!document.querySelector(`#board .cell[data-row="${r}"][data-col="${c}"] > canvas.char-sprite`), [T.r, T.c]);
+		expect(s, '去ったタロが残った').toBe(false);
+		expect(await page.evaluate(() => window.__homeFlash), '扉から入る前のタロが自分の場所に一瞬描かれた').toBe(false);
 	});
 });
 

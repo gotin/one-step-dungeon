@@ -5,7 +5,7 @@
 import { TILE, READABLE_SIGN_TILES } from '../shared/tiles.js';
 import { ENEMY_META } from '../shared/enemies.js';
 import { NPC_SPRITE_MAP } from '../shared/npcs.js';
-import { npcPresent } from '../shared/story-events.js';
+import { npcStandsAt } from '../shared/story-events.js';
 import { playSound, resumeAudio, stopBgm } from '../shared/sounds.js';
 import { makeSprite } from '../shared/sprites.js';
 import { SWORD_TIERS, ownsItem, hasSwordAura, spinLevelOf } from '../shared/items.js';
@@ -745,7 +745,7 @@ export function createCombat(deps) {
 		}
 		// キュー103: 居ない人（まだ来ていない／もう去った）とは話せない＝そのセルはただの地面。
 		if (tile && NPC_SPRITE_MAP[tile]) {
-			if (!npcPresent(stageData.npcData?.[posKey], player)) return false;
+			if (!npcStandsAt(stageData.npcData?.[posKey], player, getCurrentLayer(), getStageKey(), posKey)) return false;
 			startDialog(tr, tc, tile); return true;
 		}
 

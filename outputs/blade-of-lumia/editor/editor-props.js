@@ -453,6 +453,9 @@ function renderNPCs(sd) {
 				<div class="hint">居なくなる条件（どれか1つで居なくなる）</div>
 				<div class="story-cond-list" data-cond="hideWhen"></div>
 				<label class="inline-check"><input type="checkbox" data-key="${key}" data-f="approach" ${data.approach === true ? 'checked' : ''}> 向こうから歩いてきて話しかける（居る状態で画面に居合わせたら1回だけ）</label>
+				<label>入ってくる所（行,列。扉など。盤の端なら外から現れて、帰りもそこから出ていく。空＝自分の場所から歩く）
+					<input type="text" data-key="${key}" data-f="approachFrom" value="${data.approachFrom ?? ''}" placeholder="例: 9,5">
+				</label>
 				<label>読み終えたら記す出来事（名前。版や条件の「出来事「…」の後」になる）
 					<input type="text" data-key="${key}" data-f="setsFlag" value="${data.setsFlag ?? ''}" placeholder="例: エルンの使いの知らせ">
 				</label>
@@ -492,6 +495,7 @@ function renderNPCs(sd) {
 				// キュー103: 既定（来ない・記さない）はキーごと消す＝空の値を残さない
 				else if (f === 'approach') { if (inp.checked) e.approach = true; else delete e.approach; }
 				else if (f === 'setsFlag') { const v = inp.value.trim(); if (v) e.setsFlag = v; else delete e.setsFlag; }
+				else if (f === 'approachFrom') { const v = inp.value.replace(/\s/g, ''); if (v) e.approachFrom = v; else delete e.approachFrom; }
 				else e[f] = inp.value;
 			};
 			inp.addEventListener('input', handler);

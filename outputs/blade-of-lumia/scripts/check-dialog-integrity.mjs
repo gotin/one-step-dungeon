@@ -39,6 +39,7 @@ import { TILE, READABLE_SIGN_TILES } from '../shared/tiles.js';
 import { NPC_SPRITE_MAP } from '../shared/npcs.js';
 import { ORDER, labelOf, bossesInOrder } from '../shared/progression.js';
 import { AFTER_KEY, itemIdOfVariantKey, VARIANT_ITEM_IDS } from '../shared/dialog-variants.js';
+import { listStoryFlags, flagNameOfVariantKey } from '../shared/story-events.js';
 import { normalizeDialogMarks } from '../shared/marks.js';
 import { findRawIconEmoji, countIconMarkers } from '../shared/map-texts.js';
 
@@ -253,6 +254,7 @@ for (const [layerName, layer] of Object.entries(d.layers)) {
 // ∴ここが「5層のうち検査の層」（[[blade-bad-data-fix-five-layers]]）。
 const VALID_BOSS_KEYS = new Set(bossesInOrder(d).map(b => b.tile));
 const VALID_ITEM_IDS  = new Set(VARIANT_ITEM_IDS);   // 会話の版の選択肢と同じ一覧（キュー63 で盾が入った）
+const VALID_FLAGS     = new Set(listStoryFlags(d).map(f => f.name));   // キュー103: 誰かが setsFlag で記す出来事
 let variantKeyCount = 0;
 for (const [layerName, layer] of Object.entries(d.layers)) {
   for (const [stageKey, stage] of Object.entries(layer.stages ?? {})) {
@@ -269,10 +271,21 @@ for (const [layerName, layer] of Object.entries(d.layers)) {
           ...Object.keys(entry.linesAfterBoss ?? {}),
           ...Object.keys(entry.markAfterBoss ?? {}),
           ...Object.keys(entry.notifyAfterBoss ?? {}),
+          // キュー103: 人の出現条件も同じキーの書き方（shared/story-events.js）＝同じ検査を通す
+          ...(Array.isArray(entry.showWhen) ? entry.showWhen : []),
+          ...(Array.isArray(entry.hideWhen) ? entry.hideWhen : []),
         ]);
         for (const key of keys) {
           variantKeyCount++;
           if (key === 'default' || key === AFTER_KEY) continue;
+          // キュー103: 出来事の版（`flag:<名前>`）＝どこかの人が `setsFlag` で記す名前でないと永久に成り立たない
+          const flag = flagNameOfVariantKey(key);
+          if (flag !== null) {
+            if (!VALID_FLAGS.has(flag)) {
+              err(`[${layerName} ${stageKey}] (${posKey}) の条件 "${key}" の出来事を記す人がいない（setsFlag に無い名前）`);
+            }
+            continue;
+          }
           const itemId = itemIdOfVariantKey(key);
           if (itemId !== null) {
             if (!VALID_ITEM_IDS.has(itemId)) {

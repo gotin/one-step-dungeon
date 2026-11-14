@@ -40,7 +40,7 @@ import { markId, markColor, markGuide, addMark, normalizeDialogMarks, normalizeS
 // Dn 踏破後台詞の選択規則（17-0 → 2026-09-15 に改訂）＝版の並びと種類は
 // `shared/dialog-variants.js` が単一の真実。「条件がヒットした版のうち**一番下**を採る」。
 import { variantOptions, readEntryVariants, noticeId } from '../shared/dialog-variants.js';
-import { conditionKeyHolds, npcPresent } from '../shared/story-events.js';
+import { conditionKeyHolds, npcStandsAt } from '../shared/story-events.js';
 // 未読の目的地の印（キュー61）＝人か読める立て物かで印の形を変える。
 import { NPC_SPRITE_MAP } from '../shared/npcs.js';
 import { READABLE_SIGN_TILES } from '../shared/tiles.js';
@@ -451,7 +451,7 @@ export function createUi(deps) {
 		if (tile && NPC_SPRITE_MAP[tile]) {
 			kind = 'npc';  entry = stageData.npcData?.[posKey];
 			// キュー103: まだ来ていない／もう去った人には印を出さない（居ない人の上に吹き出しが浮く）。
-			if (!npcPresent(entry, getPlayer())) return null;
+			if (!npcStandsAt(entry, getPlayer(), getCurrentLayer(), getStageKey(), posKey)) return null;
 		} else if (READABLE_SIGN_TILES.has(tile)) {
 			kind = 'sign'; entry = stageData.signData?.[posKey] ?? stageData.npcData?.[posKey];
 		} else {

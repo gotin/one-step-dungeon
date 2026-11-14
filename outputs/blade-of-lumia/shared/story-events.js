@@ -4,6 +4,8 @@
 //   ・`showWhen: [キー, ...]`   … 全部が成り立つときだけ居る（無ければいつでも居る）
 //   ・`hideWhen: [キー, ...]`   … どれか1つでも成り立てば居ない（無ければ消えない）
 //   ・`approach: true`          … 居る状態で画面に居合わせたら、向こうから歩いてきて話しかける（1回だけ）
+//   ・`approachFrom: "r,c"`     … 話しかけに来るとき、そこ（扉など）から歩き出す。盤の端なら外から現れ、
+//                                 帰りもそこから出ていく（無ければ自分のセルから歩く）
 //   ・`setsFlag: "出来事の名前"` … この人との会話を読み終えたら「出来事」を記す（`player.storyFlags`）
 //
 // キーは会話の「進行で切り替わる版」（`shared/dialog-variants.js`）と**同じ書き方**＝
@@ -70,6 +72,20 @@ export function npcPresent(entry, player) {
 /** 「向こうから話しかけてきた」記録の id（`player.approachedNpcs` の要素）。 */
 export function approachId(layer, stage, posKey) {
 	return `${layer}:${stage}:${posKey}`;
+}
+
+/**
+ * その人が今、自分のセルに立っているか（描く・通れない・話せる・吹き出しを出す、の判定）。
+ * `npcPresent` に加えて、**よそから入ってくる人（`approach`＋`approachFrom`）はまだ来ていない間は
+ * 自分のセルに居ない**＝ボスを倒した瞬間に盤が描き直されても、扉から入る前の人が自分の場所に
+ * 一瞬描かれない（2026-11-14 ユーザー指摘「一瞬入り口の左上あたりに表示されてから、その直後下から移動してきた」）。
+ * ⚠️ 話しかけに来るかどうか（`pendingApproach`）は `npcPresent` で見る＝ここを使うと永久に来ない。
+ */
+export function npcStandsAt(entry, player, layer, stage, posKey) {
+	if (!npcPresent(entry, player)) return false;
+	if (entry?.approach === true && entry?.approachFrom
+		&& !(player?.approachedNpcs ?? []).includes(approachId(layer, stage, posKey))) return false;
+	return true;
 }
 
 /**

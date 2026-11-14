@@ -148,12 +148,25 @@ export function createStoryApproach(deps) {
 		player.approachedNpcs.push(approachId(layer, stage, posKey));
 
 		const playerCell = { r: deps.toTileRow(player.y), c: deps.toTileCol(player.x) };
-		const path = findPath(home, playerCell) ?? [home];
+		// 入ってくる所（`approachFrom: "r,c"`＝扉など）。無ければ自分のセルから歩き出す。
+		// 盤の端のセルなら、その外側の1マスから現れる（扉の外から入ってくるように見せる）。
+		const from = entranceOf(entry, sd) ?? home;
+		const outside = outsideOf(from, sd);
+		const path = findPath(from, playerCell) ?? [from];
 
 		const homeCv = homeCanvas(r, c);
-		const walker = makeWalker(sd, posKey, tile, home);
+		const walker = makeWalker(sd, posKey, tile, outside ?? from);
 		if (walker) {
 			homeCell(r, c)?.classList.add('story-away');
+			if (outside) {
+				// 盤の外から1歩で入る（入りながら現れる）
+				walker.style.opacity = '0';
+				walker.classList.add('walking');
+				await sleep(30);   // 初期位置を描かせてから動かす（同じフレームだと transition が効かない）
+				walker.style.opacity = '1';
+				await walk(walker, [outside, from]);
+				walker.classList.remove('walking');
+			}
 			const bubble = makeSprite('markBubble', 'markBubble', false);
 			// 未読の吹き出しと同じ絵・同じ置き方（`.mark-bubble`）＝「この人が何か言いたい」の合図を1つにする
 			if (bubble) { bubble.className = 'mark-bubble story-walker-notice'; walker.appendChild(bubble); }
@@ -171,21 +184,51 @@ export function createStoryApproach(deps) {
 		deps.startDialog(r, c, tile, () => {
 			deps.saveGame();
 			deps.refreshUnreadMarks();
-			void leave(walker, homeCv, path, entry, home);
+			void leave(walker, homeCv, outside ? [...path.slice().reverse(), outside] : [...path].reverse(), entry, home);
 		});
 	}
 
-	// 読み終えたら元の場所へ戻る。もう居ない人（hideWhen が成り立った）は歩きながら消える。
-	async function leave(walker, homeCv, path, entry, home) {
+	// 入ってくる所（`approachFrom: "r,c"`）。盤の外・書式違いは null（自分のセルから歩き出す）。
+	function entranceOf(entry, sd) {
+		const m = /^(\d+),(\d+)$/.exec(entry?.approachFrom ?? '');
+		if (!m) return null;
+		const r = Number(m[1]), c = Number(m[2]);
+		if (r >= sd.rows || c >= sd.cols) return null;
+		return { r, c };
+	}
+	// 盤の端のセルなら、その外側の1マス（扉の外）。端でなければ null。
+	function outsideOf(cell, sd) {
+		if (cell.r === sd.rows - 1) return { r: cell.r + 1, c: cell.c };
+		if (cell.r === 0)           return { r: -1, c: cell.c };
+		if (cell.c === sd.cols - 1) return { r: cell.r, c: cell.c + 1 };
+		if (cell.c === 0)           return { r: cell.r, c: -1 };
+		return null;
+	}
+
+	// 読み終えたら来た道を戻る（入ってきた所から来た人はそこから出ていく）。
+	// もう居ない人（hideWhen が成り立った）は歩きながら消える。
+	async function leave(walker, homeCv, back, entry, home) {
 		const gone = !npcPresent(entry, deps.getPlayer());
 		const cell = homeCell(home.r, home.c);
 		if (gone) { homeCv?.remove(); cell?.querySelector(':scope > canvas.mark-bubble')?.remove(); }
 		if (!walker) return;
-		if (gone) walker.style.opacity = '0';
 		walker.classList.add('walking');
-		await walk(walker, [...path].reverse());
+		const last = back[back.length - 1];
+		const exitsBoard = back.length >= 2 && (last.r < 0 || last.c < 0 || last.r >= deps.getStageData().rows || last.c >= deps.getStageData().cols);
+		if (gone && exitsBoard) {
+			// 扉の外へ出ていく人は、扉まで歩いてから消える（途中で薄れると「出ていった」に見えない）
+			await walk(walker, back.slice(0, -1));
+			walker.style.opacity = '0';
+			await walk(walker, back.slice(-2));
+		} else {
+			if (gone) walker.style.opacity = '0';
+			await walk(walker, back);
+		}
 		cell?.classList.remove('story-away');
 		walker.remove();
+		// 画面の途中で現れた人（ボス部屋に駆けつけた人）は、元のセルに絵がまだ無い＝居残るなら盤を描き直す
+		// （renderBoard は char-layer を作り直す∴renderChars と必ず対で＝deps.redraw）。
+		if (!gone && !homeCv && walker.isConnected === false && cell?.isConnected) deps.redraw?.();
 	}
 
 	/**

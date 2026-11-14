@@ -48,7 +48,7 @@ import { initPlaytestNotes } from './playtest-notes.js';
 import { initSoundToggle } from './sound-toggle.js';
 import { warpStoneId, warpLandingCandidates, WARP_NO_LANDING_TILES, listWarpStones } from '../shared/warp-stones.js';
 import { noticeId } from '../shared/dialog-variants.js';
-import { npcPresent } from '../shared/story-events.js';
+import { npcStandsAt } from '../shared/story-events.js';
 import { createStoryApproach } from './story-approach.js';
 import { isTestLayer } from '../shared/layers.js';
 // ── 投擲物・爆弾（Phase 0-2 Step 5: projectile.js へ切り出し）───────────────
@@ -739,7 +739,7 @@ const { checkStoneOnSwitch, evaluateConditions, refreshGates } = createCondition
 		charLayerElRef,
 		getDoorwayState,
 		isWarpStoneLit: (posKey) => (player.litWarpStones ?? []).includes(warpStoneId(currentLayer, stageKey, posKey)),
-		isNpcPresent:   (posKey) => npcPresent(stageData?.npcData?.[posKey], player),
+		isNpcPresent:   (posKey) => npcStandsAt(stageData?.npcData?.[posKey], player, currentLayer, stageKey, posKey),
 		afterRender:    () => fx.refreshUnreadMarks(),
 	});
 
@@ -840,6 +840,7 @@ const { checkStoneOnSwitch, evaluateConditions, refreshGates } = createCondition
 		faceHero: (dir) => { heroDir = dir; fx.updatePlayerCharEl(); },
 		saveGame:     () => saveGame(),
 		refreshUnreadMarks: () => fx.refreshUnreadMarks(),
+		redraw: () => { fx.renderBoard(); fx.renderChars(); },
 	});
 
 	// キュー27: 転移の石碑の行き先一覧と転移の演出（game/warp-menu.js）
