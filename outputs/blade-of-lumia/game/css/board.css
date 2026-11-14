@@ -1042,3 +1042,53 @@ canvas.sprite.dot32 {
     0%   { transform: translateY(0); }
     50%  { transform: translateY(calc(var(--cell) * -1 / 32)); }
 }
+
+/* ── 石が溶岩に沈んだ瞬間（2026-11-14 ユーザー案③）──────────────────
+   付け外しは game/player.js playLavaCoolFx（1.1 秒で外す）。
+   かさぶた（.cooled-crust）が石の下から外へ広がって固まり、石は少し上から落ちて据わり、
+   白い湯気が3つ上がる。止まった後の絵は render-board.js の cooledCrust＋block。 */
+.cell.lava-cooling canvas.cooled-crust {
+    animation: lava-crust-spread 0.6s ease-out both;
+}
+.cell.lava-cooling canvas.cooled-stone {
+    animation: lava-stone-settle 0.35s ease-in both;
+}
+@keyframes lava-crust-spread {
+    0%   { transform: translate(-50%, -50%) scale(0.35); filter: brightness(2.2) saturate(1.6) sepia(0.6); }
+    60%  { transform: translate(-50%, -50%) scale(1.06); filter: brightness(1.3) sepia(0.2); }
+    100% { transform: translate(-50%, -50%) scale(1);    filter: none; }
+}
+@keyframes lava-stone-settle {
+    /* canvas.sprite は translate(-50%, -50%) で中央に置いている＝アニメでも必ず先頭に残す */
+    0%   { transform: translate(-50%, -50%) translateY(calc(var(--cell) * -4 / 32)); }
+    100% { transform: translate(-50%, -50%); }
+}
+.lava-steam {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    z-index: 3;
+}
+.lava-steam span {
+    position: absolute;
+    bottom: 35%;
+    width: 26%;
+    height: 26%;
+    border-radius: 50%;
+    background: rgba(235, 235, 230, 0.85);
+    opacity: 0;
+    animation: lava-steam-rise 0.9s ease-out forwards;
+}
+.lava-steam span:nth-child(1) { left: 14%; animation-delay: 0.05s; }
+.lava-steam span:nth-child(2) { left: 40%; animation-delay: 0.15s; width: 30%; height: 30%; }
+.lava-steam span:nth-child(3) { left: 62%; animation-delay: 0.25s; }
+@keyframes lava-steam-rise {
+    0%   { opacity: 0;    transform: translateY(0) scale(0.5); }
+    25%  { opacity: 0.85; }
+    100% { opacity: 0;    transform: translateY(calc(var(--cell) * -0.7)) scale(1.4); }
+}
+@media (prefers-reduced-motion: reduce) {
+    .cell.lava-cooling canvas.cooled-crust,
+    .cell.lava-cooling canvas.cooled-stone { animation: none; }
+    .lava-steam { display: none; }
+}

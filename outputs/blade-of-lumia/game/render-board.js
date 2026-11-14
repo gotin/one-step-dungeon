@@ -386,8 +386,11 @@ export function createRenderBoard(deps) {
 				// 乗って見える。2026-10-25 ユーザー指摘：①初版＝溶岩の絵を消して焦げ色の石だけ＝「溶岩の中に
 				// 入っていて上を通れるように見えない」②石の形を平たい板に描き替えた版＝「なんで石の形完全に
 				// かえちゃったの？」③「形はそのままで、色を今までの石の色にすればいい」∴押す石と同じ絵（block）。
+				// ④ 2026-11-14 ユーザー指摘「マグマに落ちても見た目がいままでの石のまんまで上を渡れるようにみえない」
+				//   ＝溶岩と石の間に黒く固まったかさぶた（cooledCrust）を敷く。石の絵は③のまま変えない。
 				putCellSprite(cellEl, makeSprite('water', 'lava', true), 'obj-sprite');
-				putCellSprite(cellEl, makeSprite('block', 'block', false), 'obj-sprite');
+				putCellSprite(cellEl, makeSprite('cooledCrust', 'cooledCrust', false), 'obj-sprite')?.classList.add('cooled-crust');
+				putCellSprite(cellEl, makeSprite('block', 'block', false), 'obj-sprite')?.classList.add('cooled-stone');
 				return;
 			}
 			const cv = makeSprite('water', 'lava', true);   // water 形状＋lava 赤橙パレット
