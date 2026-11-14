@@ -219,6 +219,61 @@ test.describe('転移の石碑 ③④（実ゲーム）', () => {
 		expect(await page.locator('#dialog-overlay').textContent()).toContain('【水の迷宮】');
 	});
 
+	test('⑪ 踏破で碑文が変わった灯った碑は、一覧より先に本文 → 閉じたら一覧・読んだ後は一覧だけ', async ({ page }) => {
+		// 2026-11-14 ユーザー指摘「一覧が先に出ると、変わった碑文（次の行き先の案内）を読まない」。
+		// 水の迷宮の石碑＝linesAfterBoss.J（印＝notify は付いていない版）。南 (4,9) に立つ
+		await page.goto(`${GAME_URL}?fromEditor=1&layer=field&stage=9,9&row=4&col=9&ps_weapon=1`);
+		await waitForBoard(page);
+		await page.waitForTimeout(300);
+		await page.evaluate((ids) => { window.__game.getPlayer().litWarpStones = ids; }, [LAKE, VILLAGE]);
+
+		// 踏破前＝碑文は基本のまま∴これまでどおり一覧が先
+		await readStone(page);
+		let s = await state(page);
+		expect(s.menu, '踏破前なのに一覧が出ない').toBe(true);
+		expect(s.dialog).toBe(false);
+		await page.keyboard.press('Escape');
+
+		// 水の迷宮（J）を踏破＝碑文が変わる→本文が先
+		await page.evaluate(() => { const p = window.__game.getPlayer(); p.defeatedBosses = new Set([...(p.defeatedBosses ?? []), 'J']); });
+		await readStone(page);
+		s = await state(page);
+		expect(s.menu, '変わった碑文より先に一覧が出た').toBe(false);
+		expect(s.dialog, '変わった碑文が出ない').toBe(true);
+		expect(await page.locator('#dialog-overlay').textContent()).toContain('攻略済み');
+		await closeDialog(page);
+		s = await state(page);
+		expect(s.menu, '読み終えても一覧が開かない').toBe(true);
+		expect(s.rows, '読んだ直後の一覧に「碑文を読む」は要らない').toEqual(['村を見守る碑']);
+		await page.keyboard.press('Escape');
+
+		// 一度読んだら、次からは一覧が先（最後に「碑文を読む」）。読んだ記録はセーブにも残る
+		await readStone(page);
+		s = await state(page);
+		expect(s.dialog, '読んだのにまた本文が先に出た').toBe(false);
+		expect(s.rows).toEqual(['村を見守る碑', '碑文を読む']);
+		const saved = await page.evaluate(() => JSON.parse(localStorage.getItem('blade-of-lumia-save') ?? 'null')?.player?.readNotices);
+		expect(saved).toContain('field:9,9:3,9:J');
+	});
+
+	test('⑫ ps_lit で灯った状態から始まる（ps_defeated と組み合わせると変わった碑文が先）', async ({ page }) => {
+		// 2026-11-14 ユーザー依頼「石碑ごとの灯っている状態をプレビューで設定したい」。
+		// id は `,` と `:` を含む∴区切りは `;`。マップに無い id は落とす。
+		const lit = [LAKE, VILLAGE, 'field:0,0:9,9'].join(';');
+		await page.goto(`${GAME_URL}?fromEditor=1&layer=field&stage=9,9&row=4&col=9&ps_weapon=1&ps_defeated=J&ps_lit=${encodeURIComponent(lit)}`);
+		await waitForBoard(page);
+		await page.waitForTimeout(300);
+		let s = await state(page);
+		expect(s.lit, 'ps_lit が効かない／マップに無い id が残った').toEqual([LAKE, VILLAGE]);
+		expect(await art(page, 3, 9), '灯った碑の絵').toBe('warpStoneLit');
+		await readStone(page);
+		s = await state(page);
+		expect(s.dialog, '変わった碑文が先に出ない').toBe(true);
+		expect(s.menu).toBe(false);
+		await closeDialog(page);
+		expect((await state(page)).rows).toEqual(['村を見守る碑']);
+	});
+
 	test('⑩ 碑の真下が入口の D4（field 12,2）へ飛んでも入口には降りない', async ({ page }) => {
 		const D4 = 'field:12,2:7,5';
 		expect(map.layers.field.stages['12,2'].tiles[8][5], '碑の南は入口').toBe(TILE.MAP_ENTER);
@@ -299,5 +354,36 @@ test.describe('石碑 ⑦ エディタ', () => {
 		await openStage('6,13');
 		await expect(item('7,8').locator('select[data-f="sprite"]'), '石碑にスプライト欄').toHaveCount(0);
 		await expect(item('7,8').locator('textarea[data-f="lines"]'), '石碑の本文欄が無い').toHaveCount(1);
+	});
+
+	test('⑬ プレビュー設定の「灯っている転移の石碑」＝実マップから導出し、URL に載る', async ({ page }) => {
+		const errors = [];
+		page.on('pageerror', (e) => errors.push(e.message));
+		page.on('dialog', (d) => d.dismiss().catch(() => {}));
+		const stones = listWarpStones(map);
+		await page.goto('/blade-of-lumia/editor/');
+		await page.evaluate((json) => localStorage.setItem('bladeOfLumiaMapData', json), JSON.stringify(map));
+		await page.reload();
+		await page.waitForSelector('#world-grid .world-cell.has-stage', { state: 'visible' });
+		await page.click('#btn-preview');
+		await expect(page.locator('#preview-settings-overlay')).not.toHaveClass(/hidden/);
+		const boxes = page.locator('#ps-lit-list input[type="checkbox"]');
+		expect(await boxes.evaluateAll((els) => els.map((e) => e.value)), '一覧が実マップの転移の石碑と違う')
+			.toEqual(stones.map((ws) => ws.id));
+		await expect(page.locator('#ps-lit-list'), '名前が出ない').toContainText(stones[0].name);
+
+		// 「全部」→「なし」→2つだけチェック
+		await page.click('#ps-lit-all');
+		expect(await boxes.evaluateAll((els) => els.every((e) => e.checked))).toBe(true);
+		await page.click('#ps-lit-none');
+		expect(await boxes.evaluateAll((els) => els.some((e) => e.checked))).toBe(false);
+		await page.locator(`#ps-lit-list input[value="${LAKE}"]`).check();
+		await page.locator(`#ps-lit-list input[value="${VILLAGE}"]`).check();
+		await page.click('#ps-btn-start');
+		await page.waitForFunction(() => document.getElementById('preview-frame')?.src.includes('ps_lit='));
+		const src = await page.$eval('#preview-frame', (el) => el.src);
+		const want = stones.map((ws) => ws.id).filter((id) => id === LAKE || id === VILLAGE);
+		expect(new URL(src).searchParams.get('ps_lit')?.split(';')).toEqual(want);
+		expect(errors).toEqual([]);
 	});
 });

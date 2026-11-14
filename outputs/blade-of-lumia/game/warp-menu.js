@@ -4,6 +4,7 @@
 //   ① まだ灯っていない転移碑を読む → 本文を読み終えたら灯る（`player.litWarpStones`）
 //      → 灯った他の碑が1つでもあれば、そのまま行き先の一覧を開く
 //   ② 灯った転移碑を読む → 本文は出さずに一覧を開く（一覧の最後に「碑文を読む」）
+//      ただし碑文が変わってまだ読んでいなければ（印を出す版＝キュー64）、先に本文 → 閉じたら一覧（2026-11-14）
 //   ③ 一覧で選ぶ → 転移の演出（出発：プレイヤーが光の柱に吸われて消える → 到着：
 //      光の柱から現れる）→ 行き先の碑の前（南 → 東 → 西 → 北の空いたセル）に立つ
 // ユーザーの要望「ワープするときに、プレーヤーに対するワープをしてる感じのアニメーション
@@ -153,7 +154,13 @@ export function createWarpMenu(deps) {
 
 	// ── 読んだときの入口（game.js の openSignDialog から）──────────────
 	// ws＝今読んだ碑。showDialog(onClose)＝本文を出す（閉じたら onClose）。
-	function onRead(ws, showDialog) {
+	// unread＝碑文が変わって（踏破後の行き先の案内など）まだ読んでいない。2026-11-14 ユーザー指摘
+	// 「一覧が先に出ると読まない」＝灯った碑でも、変わった碑文を先に出し、閉じてから一覧を開く。
+	function onRead(ws, showDialog, { unread = false } = {}) {
+		if (isLit(ws.id) && unread) {
+			showDialog(() => openMenu(ws, false));
+			return;
+		}
 		if (isLit(ws.id)) {
 			// 灯っている碑：行き先があれば一覧（最後に「碑文を読む」）。無ければ本文だけ
 			if (!openMenu(ws, true)) showDialog(null);

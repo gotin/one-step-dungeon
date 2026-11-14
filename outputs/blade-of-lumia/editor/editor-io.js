@@ -7,6 +7,7 @@ import {
 import { bossVariantOptions } from '../shared/dialog-variants.js';
 import { normalizeMapIconMarkers } from '../shared/map-texts.js';
 import { liftGroundTiles } from '../shared/ground-layer.js';
+import { listWarpStones } from '../shared/warp-stones.js';
 
 // ── 保存データ構築 ────────────────────────────────────────────
 export function buildSaveData() {
@@ -84,6 +85,8 @@ export function loadMapData(data, renderLayerTabs, renderDungeonMeta, renderWorl
 	buildPreviewPresetOptions();
 	// 撃破済みボスの選択肢も同じ理由で組み立て直す（ボスは実マップのボス部屋から導出する）。
 	buildDefeatedOptions();
+	// 灯っている転移の石碑の一覧も同じ（石碑は実マップのタイル `‡` から導出する）。
+	buildLitWarpOptions();
 	// showView は editor.js 側で注入する
 	document.dispatchEvent(new CustomEvent('editor:showWorld'));
 }
@@ -240,6 +243,9 @@ const PROGRESS_VARIANTS = [
 
 export function initPreviewPresetSelect() {
 	buildDefeatedOptions();
+	buildLitWarpOptions();
+	document.getElementById('ps-lit-all')?.addEventListener('click', () => setAllLitWarp(true));
+	document.getElementById('ps-lit-none')?.addEventListener('click', () => setAllLitWarp(false));
 	const sel = document.getElementById('ps-progress');
 	if (!sel) return;
 	buildPreviewPresetOptions();
@@ -266,6 +272,49 @@ export function buildDefeatedOptions() {
 		sel.appendChild(opt);
 	}
 	sel.value = [...sel.options].some((o) => o.value === keep) ? keep : '';
+}
+
+// ── 灯っている転移の石碑（2026-11-14）────────────────────────────
+// 転移の石碑は「読んで灯す → 他の灯った石碑から飛べる」機構（キュー27）。踏破で碑文が変わる石碑を
+// プレビューで確かめるには「灯っている＋ボスを倒した」状態が要るが、それまで灯す手段は実際に
+// 歩いて読むことしか無かった∴石碑ごとに灯すかどうかを選べるようにする。
+// 一覧は実マップのタイル `‡` から導出する（shared/warp-stones.js が単一の真実＝ここに書き写さない）。
+// 組み立て直しても、チェック済みの石碑はチェックを残す（id が同じ限り）。
+export function buildLitWarpOptions() {
+	const box = document.getElementById('ps-lit-list');
+	if (!box) return;
+	const keep = new Set(readLitWarpStones());
+	box.replaceChildren();
+	const stones = listWarpStones(state.mapData);
+	if (!stones.length) {
+		const empty = document.createElement('span');
+		empty.className = 'ps-lit-empty';
+		empty.textContent = 'マップに転移の石碑がありません';
+		box.appendChild(empty);
+		return;
+	}
+	for (const ws of stones) {
+		const label = document.createElement('label');
+		label.className = 'ps-check';
+		const cb = document.createElement('input');
+		cb.type = 'checkbox';
+		cb.value = ws.id;
+		cb.checked = keep.has(ws.id);
+		const where = document.createElement('span');
+		where.className = 'ps-lit-where';
+		where.textContent = `${ws.layer} ${ws.stage}`;
+		label.append(cb, ` ${ws.name} `, where);
+		box.appendChild(label);
+	}
+}
+
+/** チェックされた転移の石碑の id（`player.litWarpStones` の要素）を返す。 */
+export function readLitWarpStones() {
+	return [...document.querySelectorAll('#ps-lit-list input[type="checkbox"]:checked')].map((cb) => cb.value);
+}
+
+function setAllLitWarp(on) {
+	for (const cb of document.querySelectorAll('#ps-lit-list input[type="checkbox"]')) cb.checked = on;
 }
 
 // 選択肢を組み立て直す（先頭の「指定なし」は index.html 側の静的 option＝残す）。
@@ -328,6 +377,8 @@ function applyProgressPreset(value) {
 // ── プレビュー設定ダイアログ ──────────────────────────────────
 function showPreviewSettingsDialog(onStart) {
 	const overlay = document.getElementById('preview-settings-overlay');
+	// 転移の石碑の一覧は編集中のマップから作り直す（石碑を置き直した直後でも一覧が追いつく）。
+	buildLitWarpOptions();
 	overlay.classList.remove('hidden');
 	const btnStart  = document.getElementById('ps-btn-start');
 	const btnCancel = document.getElementById('ps-btn-cancel');
@@ -386,6 +437,8 @@ function getPreviewSettings() {
 		// 実行キュー23: 撃破済みボス（タイル文字の配列）。選ぶのは「最も後に倒した1体」で、
 		// そこまでの必須ダンジョンのボスは導出して足す。editor.js の ps 定義にも同じ行がある。
 		defeated:  bossesDefeatedUpTo(state.mapData, document.getElementById('ps-defeated')?.value || ''),
+		// 2026-11-14：灯っている転移の石碑（id の配列）。editor.js の ps 定義にも同じ行がある（両方に足す）。
+		lit:       readLitWarpStones(),
 	};
 }
 
@@ -417,6 +470,8 @@ export function openPreview(stX, stY, row, col, ps, TILE) {
 		url += `&ps_scrolls=${ps.scrolls?8:0}`;
 		// 撃破済みボス＝タイル文字をカンマで並べる（空なら付けない＝1体も倒していない）。
 		if (ps.defeated?.length) url += `&ps_defeated=${encodeURIComponent(ps.defeated.join(','))}`;
+		// 灯っている転移の石碑＝id を `;` で並べる（id 自体が `,` と `:` を含む＝`field:9,9:3,9`）。
+		if (ps.lit?.length) url += `&ps_lit=${encodeURIComponent(ps.lit.join(';'))}`;
 	}
 	frameEl.src = 'about:blank';
 	requestAnimationFrame(() => {

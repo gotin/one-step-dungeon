@@ -610,6 +610,18 @@
         <!-- 目的地マーク（キュー16）は地図を持つ層でしか見えない＝ON でマップ内の全層の地図を持たせる。 -->
         <label class="ps-check"><input id="ps-map" type="checkbox" checked> <span data-icon="map" data-icon-px="14">🗺</span> 地図（目的地マーク）</label>
         <label class="ps-check"><input id="ps-cleared" type="checkbox"> <span data-icon="princess" data-icon-px="14">👸</span> 姫状態（二周目）</label>
+        <!-- 2026-11-14: 灯っている転移の石碑。チェックした石碑は最初から灯っている＝読まなくても
+             行き先の一覧に出る。「灯っている石碑の碑文が踏破で変わった」ときの出方を、上の
+             ☠撃破済みと組み合わせて確かめるための口。
+             ⚠️ 一覧は JS が実マップのタイル `‡` から組み立てる（editor-io.js buildLitWarpOptions）。 -->
+        <div class="ps-lit" style="grid-column:1/-1">
+          <div class="ps-lit-head">
+            <span>灯っている転移の石碑</span>
+            <button type="button" id="ps-lit-all" class="btn btn-sm">全部</button>
+            <button type="button" id="ps-lit-none" class="btn btn-sm">なし</button>
+          </div>
+          <div id="ps-lit-list" class="ps-lit-list"></div>
+        </div>
       </div>
       <div class="preview-settings-actions">
         <button id="ps-btn-start" class="btn btn-accent">▶ この設定でプレビュー</button>

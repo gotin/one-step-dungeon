@@ -525,6 +525,7 @@ export function createUi(deps) {
 		let lines = null;
 		let mark  = null;
 		let noticeKey = null;   // キュー64: 本文を採った版が印を出す版なら、そのキー
+		let variantKey = null;  // 本文を採った版のキー（印の有無によらない。基本の台詞なら null）
 		for (const v of readEntryVariants(data, variantOptions(map))) {
 			let hit;
 			if (v.kind === VARIANT_KIND.AFTER)        hit = hasSeenBoss;
@@ -534,14 +535,14 @@ export function createUi(deps) {
 			else if (v.kind === VARIANT_KIND.ITEM)   hit = ownsItem(player, v.itemId ?? itemIdOfVariantKey(v.key));
 			else                                      hit = !!defeated?.has(v.key);
 			if (!hit) continue;
-			if (v.lines.length) { lines = v.lines; noticeKey = v.notify ? v.key : null; }
+			if (v.lines.length) { lines = v.lines; noticeKey = v.notify ? v.key : null; variantKey = v.key; }
 			// 星の欠片の版（`after`）は印を持てない（欄を出していない）∴`mark` は最初から null。
 			if (v.mark) mark = v.mark;
 		}
 		if (!lines) lines = data.lines ?? ['…'];
 		if (!mark)  mark  = data.mark ?? null;
 
-		return { lines, mark, noticeKey };
+		return { lines, mark, noticeKey, variantKey };
 	}
 
 	/** 台詞だけが要るとき用の薄い包み（既存の呼び出し元・テストのため残す） */
