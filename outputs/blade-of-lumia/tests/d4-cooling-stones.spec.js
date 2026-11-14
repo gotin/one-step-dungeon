@@ -121,7 +121,15 @@ test.describe('D4 冷え石の渡り ② ルール（実機）', () => {
 		// （2026-10-25 ユーザー指摘「落ちる直前に溶岩の中の石が描かれ、その上を押している石が動いて見える」）。
 		await page.evaluate(() => { window.__game.movePlayer('up'); window.__game.step(1); });
 		expect(await cooledCell(page, 4, 1), '石が届く前に冷えた溶岩の絵になった').toBe(false);
-		await page.waitForTimeout(800);
+		// 2026-11-14 ユーザー案③：届いた瞬間に湯気が上がり、かさぶたが広がる（1.1 秒で消える）
+		const cell41 = page.locator('#board .cell[data-row="4"][data-col="1"]');
+		await expect(cell41.locator('.lava-steam'), '沈んだ瞬間の湯気が出ない').toHaveCount(1, { timeout: 1500 });
+		await expect(cell41, '沈んだ瞬間の演出の印が無い').toHaveClass(/lava-cooling/);
+		await expect(cell41.locator('.lava-steam'), '湯気が消えない').toHaveCount(0, { timeout: 2000 });
+		await expect(cell41).not.toHaveClass(/lava-cooling/);
+		// 2026-11-14 ユーザー案①：溶岩と石の間に黒く固まったかさぶた（溶岩 → かさぶた → 石の順に重なる）
+		expect(await cell41.evaluate((el) => [...el.querySelectorAll('canvas')].map((cv) => cv.dataset.sprite ?? (cv.classList.contains('cooled-crust') ? 'crust' : cv.classList.contains('cooled-stone') ? 'stone' : '?'))),
+			'冷えた溶岩の重なり順が違う').toEqual(['water', 'crust', 'stone']);
 		const s = await snap(page);
 		expect(s.stones[STONE_WEST], '石が溶岩に沈んだ記録が無い').toMatchObject({ sunk: '4,1' });
 		expect(await cooledCell(page, 4, 1), '沈んだセルが冷えた溶岩の絵になっていない').toBe(true);
