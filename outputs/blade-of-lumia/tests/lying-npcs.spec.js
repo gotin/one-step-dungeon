@@ -25,9 +25,9 @@ test.describe('Blade of Lumia – 嘘をつくNPC', () => {
 		const npc = stage.npcData?.['4,5'];
 		expect(npc).toBeDefined();
 		expect(npc.name).toBeTruthy();
-		// 嘘の内容：茂みの先は行き止まりと言っているが実際は隠し入口がある
-		const allLines = npc.lines.join(' ');
-		expect(allLines).toMatch(/茂み|行き止まり|何もない/);
+		// 2026-11-14 ユーザーがエディタで台詞を書き換えた（茂みの嘘をやめ、この場所の成り立ちを語る）。
+		// 嘘の中身はもう決めない＝台詞があることだけを確かめる。
+		expect(npc.lines?.join('').trim()).toBeTruthy();
 	});
 
 	test('field 7,14 (7,3) に諦めた老人が配置されている', () => {
