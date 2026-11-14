@@ -48,6 +48,8 @@ import { initPlaytestNotes } from './playtest-notes.js';
 import { initSoundToggle } from './sound-toggle.js';
 import { warpStoneId, warpLandingCandidates, WARP_NO_LANDING_TILES, listWarpStones } from '../shared/warp-stones.js';
 import { noticeId } from '../shared/dialog-variants.js';
+import { npcPresent } from '../shared/story-events.js';
+import { createStoryApproach } from './story-approach.js';
 import { isTestLayer } from '../shared/layers.js';
 // ── 投擲物・爆弾（Phase 0-2 Step 5: projectile.js へ切り出し）───────────────
 import { createProjectile } from './projectile.js';
@@ -138,6 +140,9 @@ let player = {
 	litWarpStones: [],
 	// キュー64: 読み終えた「印を出す版」の id（`shared/dialog-variants.js noticeId()`）。素の配列＝そのまま保存できる。
 	readNotices: [],
+	// キュー103: 記した出来事の名前（`npcData.setsFlag`）・話しかけに来た人の id（`approachId()`）。素の配列。
+	storyFlags: [],
+	approachedNpcs: [],
 	// キュー65: 遊んでいた時間（ミリ秒）＝step() が世界を進めた分だけ足す（game/play-time.js）。
 	playMs: 0,
 	// キュー66: 倒した雑魚の延べ数・ゲームオーバーの回数（game/play-stats.js）。
@@ -194,6 +199,7 @@ let isGameover      = false;
 let isTransitioning = false;
 let warpMenu = null;   // キュー27: 転移の石碑の行き先一覧（createWarpMenu）
 let quickSwap = null;  // キュー84: X 長押しの道具の早替え（createQuickSwap）
+let storyApproach = null;  // キュー103: 向こうから歩いてきて話しかける人（createStoryApproach）
 let invincibleUntil = 0;
 // MAP_ENTER 遷移直後クールダウン：遷移先に着いた直後は同じ入り口に乗っても再遷移しない
 let mapEnterCooldownUntil = 0;
@@ -733,6 +739,7 @@ const { checkStoneOnSwitch, evaluateConditions, refreshGates } = createCondition
 		charLayerElRef,
 		getDoorwayState,
 		isWarpStoneLit: (posKey) => (player.litWarpStones ?? []).includes(warpStoneId(currentLayer, stageKey, posKey)),
+		isNpcPresent:   (posKey) => npcPresent(stageData?.npcData?.[posKey], player),
 		afterRender:    () => fx.refreshUnreadMarks(),
 	});
 
@@ -817,6 +824,24 @@ const { checkStoneOnSwitch, evaluateConditions, refreshGates } = createCondition
 		},
 	});
 
+	// キュー103: 向こうから歩いてきて話しかける人（game/story-approach.js）
+	storyApproach = createStoryApproach({
+		getPlayer:       () => player,
+		getStageData:    () => stageData,
+		getCurrentLayer: () => currentLayer,
+		getStageKey:     () => stageKey,
+		getCharLayerEl:  () => charLayerElRef.value,
+		getCellPx:       () => getCellPx(),
+		tilePassable:    (r, c) => tilePassable(r, c),
+		toTileRow, toTileCol,
+		startDialog: (r, c, t, onClose) => _ui.startDialog(r, c, t, stageData, NPC_DEFAULT_DIALOG, player, [], onClose),
+		stopGameLoop, startGameLoop,
+		cancelCharge: () => fx.cancelCharge(),
+		faceHero: (dir) => { heroDir = dir; fx.updatePlayerCharEl(); },
+		saveGame:     () => saveGame(),
+		refreshUnreadMarks: () => fx.refreshUnreadMarks(),
+	});
+
 	// キュー27: 転移の石碑の行き先一覧と転移の演出（game/warp-menu.js）
 	warpMenu = createWarpMenu({
 		...base,
@@ -862,7 +887,8 @@ const { checkStoneOnSwitch, evaluateConditions, refreshGates } = createCondition
 		iconOf:     (id, p, px) => subItemIconCanvas(id, p, px),
 		nameOf:     (id, p) => subItemDisplayName(id, p),
 		canOpen:    () => !!stageKey && !isPaused && !isDialog && !isGameover && !isTransitioning
-			&& !getIsShop() && !warpMenu?.isOpen() && !warpMenu?.isWarping() && !_bossDefeating,
+			&& !getIsShop() && !warpMenu?.isOpen() && !warpMenu?.isWarping() && !_bossDefeating
+			&& !storyApproach?.isBusy(),
 		stopGameLoop, startGameLoop,
 		cancelCharge: () => fx.cancelCharge(),
 		updateHud:  () => fx.updateHud(),
@@ -885,7 +911,8 @@ const { checkStoneOnSwitch, evaluateConditions, refreshGates } = createCondition
 		// 「剣を持っていない！」「◯◯ を使用！」等が共有バー（#msg-bar）へ割り込んで
 		// 終幕の台詞を上書きしていた（2026-08-20 ユーザー報告「よくやった、若き剣よ が
 		// 表示されなかった」の実因＝実測で再現した）。
-		getIsCutscene:   () => _bossDefeating,
+		// キュー103: 向こうから歩いてくる人の演出中も同じく飲む（game/story-approach.js）。
+		getIsCutscene:   () => _bossDefeating || !!storyApproach?.isBusy(),
 		movePlayer:  (dir) => fx.movePlayer(dir),
 		swordAttack: () => fx.swordAttack(),
 		startCharge:   () => fx.startCharge(),
@@ -1821,6 +1848,9 @@ function gameTick() {
 	if (isPaused || isDialog || isGameover || isTransitioning) return;
 	// キュー84: 道具の早替えの枠が開いている間は世界を止める（ループは止めてある＝step() からの tick も進めない）
 	if (quickSwap?.isOpen()) return;
+	// キュー103: 向こうから話しかけに来る人が居れば、その演出を始めてこの tick は止める
+	// （画面に入った直後・ボスを倒した直後・出来事を記した直後のどれもここが入口）。
+	if (storyApproach?.tryStart()) return;
 	fx.processHeldKeys();   // 押しっぱなしキーで毎tick移動
 	// 移動で画面端・入口を越えて遷移が始まったら、この tick の残り（敵・弾・爆弾・炎）は走らせない
 	// ＝盤外座標の勇者が遷移の音の後に被弾しない（キュー82④・Fable 実装レビュー #14）。
@@ -2277,6 +2307,8 @@ function startNewGame() {
 		gachaPrizeTaken: {},
 		litWarpStones: [],
 		readNotices: [],
+		storyFlags: [],
+		approachedNpcs: [],
 		playMs: 0,
 		kills: 0,
 		deaths: 0,
@@ -2587,6 +2619,10 @@ export function getGameState() {
 			hasSwiftBoots: !!player.hasSwiftBoots, dashing: isDashing,
 			hasGoldGarb: !!player.hasGoldGarb,
 			defeatedBosses: [...(player.defeatedBosses ?? [])],
+			// キュー103: 記した出来事・話しかけに来た人・その演出中か
+			storyFlags: [...(player.storyFlags ?? [])],
+			approachedNpcs: [...(player.approachedNpcs ?? [])],
+			storyApproachBusy: !!storyApproach?.isBusy(),
 			hasFlute: !!player.subItems?.flute,
 			hasCandle: !!player.subItems?.candle,
 			hasBoomerang: !!player.subItems?.boomerang,

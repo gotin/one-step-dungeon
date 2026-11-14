@@ -150,6 +150,13 @@ export function sanitizeLoadedPlayer(player, itemMeta) {
 	player.readNotices = Array.isArray(player.readNotices)
 		? [...new Set(player.readNotices.filter((x) => typeof x === 'string'))]
 		: [];
+	// キュー103: 記した出来事・話しかけに来た人。導入前のセーブ・壊れた値は []（＝まだ何も起きていない）。
+	player.storyFlags = Array.isArray(player.storyFlags)
+		? [...new Set(player.storyFlags.filter((x) => typeof x === 'string' && x))]
+		: [];
+	player.approachedNpcs = Array.isArray(player.approachedNpcs)
+		? [...new Set(player.approachedNpcs.filter((x) => typeof x === 'string' && x))]
+		: [];
 	// キュー65: 遊んでいた時間。導入前のセーブ・壊れた値は 0（クリアタイムが NaN にならない）。
 	player.playMs = sanitizePlayMs(player.playMs);
 	// キュー66: 撃破数・倒れた回数。導入前のセーブ・壊れた値は 0（表示が NaN にならない）。

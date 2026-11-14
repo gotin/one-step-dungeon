@@ -668,11 +668,19 @@ test.describe('目的地マーク（一覧・選択・方向表示）', () => {
 	// 実行キュー17-10b＝老賢者の markAfterBoss は「1目的地1提供元」の掃除で全部削った
 	// （本文＝linesAfterBoss の G/N/J/A/O/I はそのまま残る＝markAfterBoss だけを落とした）。
 	// markAfterBoss を2キー以上持つのは賢者エルン（O/L）だけになった∴この検査の相手を差し替える。
+	// ⚠️ 2026-11-14（キュー103）＝沼地の神殿の印はエルンの L の版から「エルンの使い」（field 15,4）へ移した
+	//    （印は1目的地1提供元）∴実データに印の版を2キー持つ相手はもう居ない。検査したいのは機構
+	//    （印が進行に追従する）なので、この検査の中だけエルンの L の版に印を戻した盤を配る。
 	test('⑪ エルンの印は「最も後に倒したボス」に追従する（O→L）', async ({ page }) => {
 		const elun = MAP.layers.field.stages[ELUN_STAGE].npcData[ELUN_RC.join(',')];
-		expect(elun.markAfterBoss, 'エルンに markAfterBoss が無い＝17-10b が未実行').toBeTruthy();
-		const afterO = elun.markAfterBoss.O, afterL = elun.markAfterBoss.L;
-		expect([afterO, afterL], '踏破後の印が2件そろっていない').not.toContain(undefined);
+		expect(elun.markAfterBoss?.O, 'エルンに O の印が無い').toBeTruthy();
+		const afterO = elun.markAfterBoss.O;
+		const afterL = { layer: 'field', stage: '10,14', label: '沼地の神殿', kind: 'dungeon' };
+		await page.route('**/work/blade-of-lumia.json', async (route) => {
+			const json = structuredClone(MAP);
+			json.layers.field.stages[ELUN_STAGE].npcData[ELUN_RC.join(',')].markAfterBoss.L = afterL;
+			await route.fulfill({ json });
+		});
 
 		await gotoFreshGame(page);
 		await grantMap(page, 'field');

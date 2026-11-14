@@ -274,7 +274,8 @@ test.describe('Blade of Lumia – dark_tower 3F 淵の環／淵の火渡り（�
 		// キュー85 #5（2026-10-19）で通行・着地・接続の検査は `FOOT_SOLID_TILES` 1つを読む形にした
 		// ∴「集合にかがり火がある」＋「3か所がその集合を読んでいる」を見る（踏み込めないことは bomb-torch が実際に歩いて見る）。
 		expect(FOOT_SOLID_TILES.has(TILE.TORCH), 'FOOT_SOLID_TILES にかがり火が無い').toBe(true);
-		expect(passable, 'tilePassable が FOOT_SOLID_TILES を見ていない').toContain('if (FOOT_SOLID_TILES.has(tile)) return false;');
+		// キュー103（2026-11-14）: 居ない人のセルだけ地面として通す条件が付いた＝集合を読んでいることは同じ
+		expect(passable, 'tilePassable が FOOT_SOLID_TILES を見ていない').toContain('if (FOOT_SOLID_TILES.has(tile) && !absentNpc) return false;');
 		expect(game, '着地判定 ARRIVAL_WALL_TILES が FOOT_SOLID_TILES を含んでいない')
 			.toMatch(/const ARRIVAL_WALL_TILES = new Set\(\[\s*\.\.\.FOOT_SOLID_TILES,/);
 		expect(HARD_BLOCKED.has(TILE.TORCH), '接続の検査がかがり火を壁にしていない').toBe(true);

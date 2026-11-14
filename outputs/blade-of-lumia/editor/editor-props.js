@@ -374,6 +374,40 @@ function renderDialogVariants(host, entryOf, variants, options) {
 	});
 }
 
+// キュー103: 人の「居る条件」「居なくなる条件」（`showWhen` / `hideWhen`＝版と同じキーの配列）。
+// 1行に1条件・「＋条件」で足す・×で消す。空になったらキーごと消す（空の配列を残さない）。
+// 選択肢に無いキー（消えたボス・誰も記さない出来事）も落とさず「不明」として出す＝開いただけで消えない。
+function renderStoryConds(host, entryOf, field, keys, options) {
+	const labelOf = (k) => options.find((o) => o.key === k)?.label ?? `${k}（不明な条件）`;
+	const write = () => {
+		const e = entryOf();
+		const clean = keys.filter(Boolean);
+		if (clean.length) e[field] = clean; else delete e[field];
+	};
+	host.innerHTML = '';
+	keys.forEach((k, i) => {
+		const row = document.createElement('div');
+		row.className = 'story-cond-row';
+		const sel = document.createElement('select');
+		const opts = options.some((o) => o.key === k) ? options : [{ key: k, label: labelOf(k) }, ...options];
+		sel.innerHTML = opts.map((o) => `<option value="${o.key}" ${o.key === k ? 'selected' : ''}>${o.label}</option>`).join('');
+		sel.addEventListener('change', () => { keys[i] = sel.value; write(); });
+		const del = document.createElement('button');
+		del.className = 'btn btn-sm'; del.textContent = '×'; del.title = 'この条件を消す';
+		del.addEventListener('click', () => { keys.splice(i, 1); write(); renderStoryConds(host, entryOf, field, keys, options); });
+		row.append(sel, del);
+		host.appendChild(row);
+	});
+	const add = document.createElement('button');
+	add.className = 'btn btn-sm'; add.textContent = '＋条件';
+	add.addEventListener('click', () => {
+		const opt = options.find((o) => !keys.includes(o.key));
+		if (!opt) return;
+		keys.push(opt.key); write(); renderStoryConds(host, entryOf, field, keys, options);
+	});
+	host.appendChild(add);
+}
+
 function renderNPCs(sd) {
 	const el = document.getElementById('npc-list');
 	el.innerHTML = '';
@@ -412,6 +446,17 @@ function renderNPCs(sd) {
 			</label>` : ''}
 			<div class="hint">教える目的地（話を聞き終えると地図に印が付く。画面を空にすると印なし）</div>
 			${markFieldsHtml('data-f', ` data-key="${key}"`, mark)}
+			${READABLE_SIGN_TILES.has(tile) ? '' : `<div class="story-event-fields">
+				<div class="hint"><b>出来事</b>（居る条件・話しかけに来る・読み終えたら記す出来事）</div>
+				<div class="hint">居る条件（全部そろったら居る。無ければいつでも居る）</div>
+				<div class="story-cond-list" data-cond="showWhen"></div>
+				<div class="hint">居なくなる条件（どれか1つで居なくなる）</div>
+				<div class="story-cond-list" data-cond="hideWhen"></div>
+				<label class="inline-check"><input type="checkbox" data-key="${key}" data-f="approach" ${data.approach === true ? 'checked' : ''}> 向こうから歩いてきて話しかける（居る状態で画面に居合わせたら1回だけ）</label>
+				<label>読み終えたら記す出来事（名前。版や条件の「出来事「…」の後」になる）
+					<input type="text" data-key="${key}" data-f="setsFlag" value="${data.setsFlag ?? ''}" placeholder="例: エルンの使いの知らせ">
+				</label>
+			</div>`}
 			<div class="hint">進行で切り替わる版（▲▼で並べ替え＝条件が両方合うときは<b>下にある版が勝つ</b>）</div>
 			${data.linesAfter !== undefined
 				? '<div class="hint" style="color:#f08080">⚠️ 旧形式の <code>linesAfter</code> が残っている＝この本文はゲームに出ない。'
@@ -444,15 +489,23 @@ function renderNPCs(sd) {
 				else if (f === 'introLines') e.introLines = inp.value.split('\n').filter(l => l.trim());
 				// 見た目：既定＝キーごと消す（空文字を残さない＝店の shopData.sprite と同じ作法）
 				else if (f === 'sprite') { if (inp.value) e.sprite = inp.value; else delete e.sprite; }
+				// キュー103: 既定（来ない・記さない）はキーごと消す＝空の値を残さない
+				else if (f === 'approach') { if (inp.checked) e.approach = true; else delete e.approach; }
+				else if (f === 'setsFlag') { const v = inp.value.trim(); if (v) e.setsFlag = v; else delete e.setsFlag; }
 				else e[f] = inp.value;
 			};
 			inp.addEventListener('input', handler);
+			if (inp.type === 'checkbox') inp.addEventListener('change', handler);
 			// select は input を出さないブラウザもある∴change も拾う。
 			if (inp.tagName === 'SELECT') inp.addEventListener('change', handler);
 		});
 		// 進行で切り替わる版（キュー23）。読むのは実データ・書くのは `applyEntryVariants`
 		// ＝空の版（`{}` / `[""]`）を作らない・親キーが空になったら消す。
 		const vOptions  = variantOptions(state.mapData);
+		// キュー103: 居る条件・居なくなる条件（条件の書き方は版のキーと同じ＝選択肢も同じ一覧から引く）
+		for (const host of item.querySelectorAll('.story-cond-list')) {
+			renderStoryConds(host, entry, host.dataset.cond, Array.isArray(data[host.dataset.cond]) ? [...data[host.dataset.cond]] : [], vOptions);
+		}
 		const vList     = readEntryVariants(data, vOptions);
 		const vHost     = item.querySelector('.dialog-variant-list');
 		renderDialogVariants(vHost, entry, vList, vOptions);

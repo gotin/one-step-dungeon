@@ -8,6 +8,8 @@
 //  起動時に一度だけ createPassable(deps) を呼んで関数群を生成する。
 //  getter 経由で常に最新状態を読むので、呼び出し側の改修は不要。
 import { TILE, FOOT_SOLID_TILES } from '../shared/tiles.js';
+import { NPC_SPRITE_MAP } from '../shared/npcs.js';
+import { npcPresent } from '../shared/story-events.js';
 
 // Phase 1-5: 翼の羽衣で飛行中に「上を飛び越えられる」障害物タイル。
 // ルール：自然物（空・水・木・茂み・柵）は飛び越え可。
@@ -304,7 +306,9 @@ export function createPassable(d) {
 		// 枯れ木の倒れた幹の上は歩ける（キュー95・D6 `2,0`＝水の上の橋）。幹は水か床の上にしか倒れない
 		// （projectile.js fellTreesFromBlast）∴ここで通すのは水と床だけ＝壁の上に立つことは無い。
 		if (fallenLogAt(ss, r, c)) return true;
-		if (FOOT_SOLID_TILES.has(tile)) return false;
+		// キュー103: まだ来ていない／もう去った人（`showWhen`/`hideWhen`）のセルはただの地面＝通れる。
+		const absentNpc = NPC_SPRITE_MAP[tile] && !npcPresent(stageData.npcData?.[posKey], getPlayer());
+		if (FOOT_SOLID_TILES.has(tile) && !absentNpc) return false;
 		// 水は tiles 層でも bgTiles 層（下地）でも不通（はしご/飛行は isPassable で上書き）。
 		if (isWaterAt(r, c)) return false;
 		// Phase 9-6 ⑥-landing: 開閉しうるタイル（'T'/'='/'('/')'/'!'/'|'/'u'/'*'）の
