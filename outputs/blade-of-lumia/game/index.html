@@ -159,7 +159,13 @@
       <button id="warp-close" class="overlay-close" type="button" aria-label="転移をやめる">✕ やめる</button>
       <div id="warp-title">転移の石碑</div>
       <div id="warp-sub">どの碑へ 転移する？</div>
-      <div id="warp-list"></div>
+      <div id="warp-body">
+        <div id="warp-map-wrap" class="hidden">
+          <canvas id="warp-map"></canvas>
+          <div id="warp-map-sel" class="hidden"></div>
+        </div>
+        <div id="warp-list"></div>
+      </div>
       <div id="warp-hint">↑↓ で選択　Space/Z で決定　Escape でやめる</div>
     </div>
   </div>

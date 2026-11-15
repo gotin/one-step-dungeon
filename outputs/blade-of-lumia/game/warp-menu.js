@@ -29,10 +29,14 @@ export function createWarpMenu(deps) {
 		travelTo,           // (ws) => 行き先の碑の前へ移す（enterStage）。成否を返す
 		renderBoard, renderChars,
 		getCharLayerEl, getCellPx,
+		getFieldGlance,     // キュー107：() => { canvas, minX, minY, cols, rows, w, h } | null
 	} = deps;
 
 	const overlayEl = document.getElementById('warp-overlay');
 	const listEl    = document.getElementById('warp-list');
+	const mapWrapEl = document.getElementById('warp-map-wrap');
+	const mapEl     = document.getElementById('warp-map');
+	const mapSelEl  = document.getElementById('warp-map-sel');
 	let open = false;
 	let rows = [];      // { kind:'dest', ws } | { kind:'read' }
 	let idx  = 0;
@@ -67,6 +71,59 @@ export function createWarpMenu(deps) {
 			listEl.appendChild(el);
 			if (i === idx) el.scrollIntoView?.({ block: 'nearest' });
 		});
+		renderMap();
+	}
+
+	// ── 行き先の地図（キュー107・2026-11-15 ユーザー提案）──────────────────
+	// 「転移の石碑の選択画面に、地図も一緒に出して、選んでる石碑がどこなのか表示する。
+	//   地図には選んでない石碑の位置も示して、選んでるものは光らせることで目立たせて」。
+	//   ・地形＝ポーズ画面の見取り図と同じ（訪問済みの画面だけ・ui.js getFieldGlance）。
+	//   ・碑＝行ける碑（灯った碑）は水色の点・今いる碑は白い点。灯っていない碑は出さない（行く前に場所を明かさない）。
+	//   ・選んでいる碑＝点の上に枠を重ねて点滅（CSS）。「碑文を読む」の行では枠を消す。
+	const STONE_DOT = 5;       // 地図の画素（1セル1px）での点の大きさ
+	const SEL_BOX   = 11;      // 選んでいる碑の枠
+	const MAP_MAX_W = 420;     // 表示の最大幅（px）
+	let mapGeo = null;         // 直近に描いた地図の { minX, minY, cols, rows, scale }
+
+	function stonePx(ws, g) {
+		const [sx, sy] = ws.stage.split(',').map(Number);
+		return [(sx - g.minX) * g.cols + ws.c, (sy - g.minY) * g.rows + ws.r];
+	}
+
+	function renderMap() {
+		const g = getFieldGlance?.();
+		if (!g || !mapEl || !mapWrapEl) { mapWrapEl?.classList.add('hidden'); return; }
+		mapWrapEl.classList.remove('hidden');
+		mapEl.width = g.w; mapEl.height = g.h;
+		const ctx = mapEl.getContext('2d');
+		ctx.imageSmoothingEnabled = false;
+		ctx.clearRect(0, 0, g.w, g.h);
+		ctx.drawImage(g.canvas, 0, 0);
+		const dot = (ws, color) => {
+			const [x, y] = stonePx(ws, g);
+			const h = Math.floor(STONE_DOT / 2);
+			ctx.fillStyle = '#05090c';
+			ctx.fillRect(x - h - 1, y - h - 1, STONE_DOT + 2, STONE_DOT + 2);
+			ctx.fillStyle = color;
+			ctx.fillRect(x - h, y - h, STONE_DOT, STONE_DOT);
+		};
+		for (const row of rows) if (row.kind === 'dest') dot(row.ws, '#5fe0ff');
+		if (here) dot(here, '#ffffff');
+		// 表示の倍率＝整数倍（ドットを滲ませない）・最大幅に収める・最低1倍
+		const avail = Math.min(MAP_MAX_W, (window.innerWidth || 800) * 0.86);
+		const scale = Math.max(1, Math.floor(avail / g.w));
+		mapEl.style.width  = `${g.w * scale}px`;
+		mapEl.style.height = `${g.h * scale}px`;
+		mapGeo = { ...g, scale };
+		const row = rows[idx];
+		if (row?.kind !== 'dest') { mapSelEl.classList.add('hidden'); return; }
+		const [x, y] = stonePx(row.ws, g);
+		const half = Math.floor(SEL_BOX / 2);
+		mapSelEl.style.left   = `${(x - half) * scale}px`;
+		mapSelEl.style.top    = `${(y - half) * scale}px`;
+		mapSelEl.style.width  = `${SEL_BOX * scale}px`;
+		mapSelEl.style.height = `${SEL_BOX * scale}px`;
+		mapSelEl.classList.remove('hidden');
 	}
 
 	function openMenu(ws, withRead) {
@@ -184,6 +241,8 @@ export function createWarpMenu(deps) {
 		isLit, warp,
 		// テスト用：id から碑を引く
 		find: (id) => listWarpStones(getMapData()).find((ws) => ws.id === id) ?? null,
+		// テスト用：地図の上で碑が描かれた位置（地図の画素）
+		mapPointOf: (ws) => (mapGeo ? stonePx(ws, mapGeo) : null),
 		idOf: warpStoneId,
 	};
 }
