@@ -7,7 +7,7 @@ import { ENEMY_META, ENEMY_SPEED_NORMAL } from '../shared/enemies.js';
 import { startsAlert, holdsPost } from '../shared/enemy-alert.js';
 import { ITEM_META, EQUIP_META, BOOMERANG_TIERS, ownsItem, addStack, EMBLEMS_FOR_AURA, SCROLLS_FOR_WIDE_SPIN } from '../shared/items.js';
 import { arrowPotState, arrowPotRefillCount } from '../shared/arrow-pot.js';
-import { playArrowPotFx } from './arrow-pot-fx.js';
+import { playArrowPotFx } from './arrow-pot-effect.js';
 let _arrowPotBusy = false;   // 矢の壺の演出中（二度叩きで重ねない）
 import { NPC_SPRITE_MAP, NPC_DEFAULT_DIALOG } from '../shared/npcs.js';
 import { ARROW_CELL_SCALE } from '../shared/tile-sprites.js';
@@ -1214,7 +1214,7 @@ const { checkStoneOnSwitch, evaluateConditions, refreshGates } = createCondition
 		// 17-2: マークも同じ進行状態から選ぶ（markAfterBoss）∴ sd.mark 直渡しをやめる。
 		// キュー27: 転移の石碑は (r,c) から碑を引いて warp-menu に渡す（灯す・行き先の一覧）。
 		// 矢の壺（2026-11-15）＝弓を持っていて矢が0本のときだけ矢が湧く（shared/arrow-pot.js）
-		// 叩くと矢が壺から飛び出して勇者に届く演出（game/arrow-pot-fx.js）＝本数は最後の1本が届いてから増やす。
+		// 叩くと矢が壺から飛び出して勇者に届く演出（game/arrow-pot-effect.js）＝本数は最後の1本が届いてから増やす。
 		useArrowPot: (r, c) => {
 			if (_arrowPotBusy) return;
 			const state = arrowPotState(player);

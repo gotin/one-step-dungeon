@@ -1040,7 +1040,7 @@ canvas.sprite.dot32 {
 @media (prefers-reduced-motion: reduce) {
     .cell.arrow-pot-ready > canvas.obj-sprite { animation: none; filter: drop-shadow(2px 0 0 #7fe0ff) drop-shadow(-2px 0 0 #7fe0ff) drop-shadow(0 2px 0 #7fe0ff) drop-shadow(0 -2px 0 #7fe0ff); }
 }
-/* 矢の壺を叩いたとき（2026-11-15）＝壺が揺れて、矢が飛び出す（game/arrow-pot-fx.js） */
+/* 矢の壺を叩いたとき（2026-11-15）＝壺が揺れて、矢が飛び出す（game/arrow-pot-effect.js） */
 .cell.arrow-pot-burst > canvas.obj-sprite {
     animation: arrow-pot-shake 0.12s linear 4;
 }
