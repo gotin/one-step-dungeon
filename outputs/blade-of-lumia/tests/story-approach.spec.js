@@ -24,6 +24,7 @@ import { ITEM_META } from '../shared/items.js';
 import { Q103_MESSENGER } from '../scripts/migrate-q103-ice-messenger.mjs';
 import { Q104_TARO } from '../scripts/migrate-q104-d3-taro.mjs';
 import { Q104_KEEPER } from '../scripts/migrate-q104-d6-forest-keeper.mjs';
+import { Q104_TARO_CALL } from '../scripts/migrate-q104-d7-taro-call.mjs';
 import { PERSON_NPC_SPRITES } from '../shared/npcs.js';
 import { SPRITES, PAL } from '../shared/sprites.js';
 
@@ -302,6 +303,51 @@ test.describe('出来事 ⑨（D6 の後の連鎖）', () => {
 		await readAll(page);
 		pl = await page.evaluate(() => ({ marks: window.__game.getPlayer().mapMarks.map((m) => m.stage) }));
 		expect(pl.marks, 'エルンが氷の廃墟の印をくれない').toContain('15,4');
+	});
+});
+
+// ── キュー104 ③：空中の遺跡の後＝タロが村へ呼び戻しに来る ──────────────────
+const TC = Q104_TARO_CALL;
+test.describe('出来事 ⑩（D7 の後にタロが村へ呼び戻す）', () => {
+	test('⑩ データ＝U の後だけ・南の端から来る・村の印（台詞では触れない）／老賢者と村のタロに出来事の版（U のすぐ下）', () => {
+		const e = map.layers[TC.layer].stages[TC.stage].npcData[`${TC.r},${TC.c}`];
+		expect(e).toMatchObject({ showWhen: ['U'], hideWhen: [`flag:${TC.flag}`], approach: true, approachFrom: TC.from, setsFlag: TC.flag });
+		// 台詞では印に触れない（実プレイでは村の印は地図を拾った時点で立っている）。印のデータは持つ＝無いときだけ付く
+		expect(e.mark).toMatchObject({ stage: TC.village, kind: 'town' });
+		expect(e.lines.join(''), 'タロが「印」と言っている').not.toContain('印');
+		const vd = map.layers.field.stages[TC.village].npcData;
+		for (const pos of [TC.sage, TC.taro]) {
+			const keys = Object.keys(vd[pos].linesAfterBoss);
+			expect(keys.indexOf(`flag:${TC.flag}`), `${vd[pos].name} の出来事の版が U のすぐ下に無い`).toBe(keys.indexOf('U') + 1);
+		}
+		// 石の台の印は今までどおり諦めた老人が渡す（1目的地1提供元）
+		expect(vd['7,3'].markAfterBoss?.U?.stage).toBe('7,1');
+	});
+
+	test('⑩ 実ゲーム＝出ると南の端からタロが来て呼び戻す →村の老賢者が「タロが呼びに行った」', async ({ page }) => {
+		await page.goto(`${GAME_URL}?fromEditor=1&layer=field&stage=${TC.stage}&row=7&col=5&ps_weapon=1&ps_map=1&ps_defeated=G,N,J,A,O,L,I,U`);
+		await waitForBoard(page);
+		await page.waitForFunction(() => document.querySelectorAll('.story-walker').length === 1, null, { timeout: 5000 });
+		const firstRow = await page.evaluate(() => {
+			const w = document.querySelector('.story-walker'); const cell = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--cell'));
+			return Math.round(parseFloat(w.style.top) / cell);
+		});
+		expect(firstRow, 'タロが南の端の外から入ってこない').toBeGreaterThanOrEqual(9);
+		await page.waitForFunction(() => !document.getElementById('dialog-overlay').classList.contains('hidden'), null, { timeout: 8000 });
+		expect(await page.evaluate(() => document.getElementById('dialog-name').textContent)).toBe('村人 タロ');
+		await readAll(page);
+		const pl = await page.evaluate(() => { const p = window.__game.getPlayer(); return { flags: p.storyFlags, marks: p.mapMarks.map((m) => m.stage) }; });
+		expect(pl.flags).toContain(TC.flag);
+		// 村の印が無い状態（ps_map は印を立てない）→ タロの話で付く
+		expect(pl.marks, 'はじまりの村の印が付かない').toEqual([TC.village]);
+		await page.waitForFunction(() => document.querySelectorAll('.story-walker').length === 0, null, { timeout: 8000 });
+
+		// 村の老賢者（3,3）の南に立って話す
+		await page.evaluate(([sk]) => window.__game.enterStage('field', sk, 4, 3), [TC.village]);
+		await page.waitForTimeout(300);
+		await page.evaluate(() => { window.__game.setHeroDir('up'); window.__game.swordAttack(); });
+		await page.waitForFunction(() => !document.getElementById('dialog-overlay').classList.contains('hidden'), null, { timeout: 3000 });
+		expect(await page.evaluate(() => document.getElementById('dialog-text').textContent)).toContain('タロが呼びに行った');
 	});
 });
 

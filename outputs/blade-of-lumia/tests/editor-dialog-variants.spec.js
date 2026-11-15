@@ -107,7 +107,8 @@ test.describe('会話の「進行で切り替わる版」をエディタで編�
 	test('① 実データが持つ版が優先順に並んで出る（ボス名は実マップから導出）', async ({ page }) => {
 		const entry    = entryOf(SAGE.stage, SAGE.pos);
 		const expected = readEntryVariants(entry, OPTIONS);
-		expect(expected.length, '老賢者の版が減った＝別の相手で測り直す').toBe(9);
+		// 2026-11-15（キュー104 ③）＝出来事「タロの呼び出し」の版を U のすぐ下に足した＝9 → 10
+		expect(expected.length, '老賢者の版が減った＝別の相手で測り直す').toBe(10);
 
 		await gotoEditorWithMap(page);
 		await openStageInEditor(page, SAGE.stage);
@@ -334,7 +335,8 @@ test.describe('会話の「進行で切り替わる版」をエディタで編�
 
 	test('⑦ ps_defeated で実ゲームの版が切り替わる（並び＝実ゲームの優先順）', async ({ page }) => {
 		const entry = entryOf(SAGE.stage, SAGE.pos);
-		const keys  = OPTIONS.filter((o) => entry.linesAfterBoss?.[o.key] && o.key !== 'default').map((o) => o.key);
+		// ボスの版だけ（ps_defeated で作れる状態）。出来事の版（キュー103〜）は ps_defeated では成り立たない∴外す
+		const keys  = OPTIONS.filter((o) => entry.linesAfterBoss?.[o.key] && o.kind === VARIANT_KIND.BOSS).map((o) => o.key);
 		expect(keys.length, '老賢者のボス別の版が減った').toBeGreaterThanOrEqual(8);
 
 		// 1体も倒していない＝基本のセリフ
