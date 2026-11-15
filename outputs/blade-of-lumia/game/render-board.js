@@ -100,6 +100,8 @@ export function createRenderBoard(deps) {
 		getDoorwayState,
 		// キュー27：その転移の石碑が灯っているか（posKey は今の画面のセル）。状態は player にある∴注入
 		isWarpStoneLit = () => false,
+		// キュー103：その人が今そこに居るか（`shared/story-events.js npcPresent`）。状態は player にある∴注入
+		isNpcPresent = () => true,
 		// キュー61：盤面を作り直すとセルに付けた「未読の目的地」の印も消える∴描き終えたら付け直す。
 		afterRender = () => {},
 	} = deps;
@@ -507,6 +509,8 @@ export function createRenderBoard(deps) {
 		// NPC
 		const npcMeta = npcSpriteOf(stageData, posKey, tile);   // 店ごとの見た目（shopData.sprite）もここで引く
 		if (npcMeta) {
+			// キュー103：まだ来ていない／もう去った人は描かない（下地だけが見える＝通れる地面）。
+			if (!isNpcPresent(posKey)) return;
 			// putCellSprite を通す＝32×32 の絵には dot32（セル全面）が付き、1ドットがプレイヤー・敵
 			// （キャラ層＝セル全面）と同じ大きさになる。❌ 旧＝直に appendChild していた∴10d の
 			// dot32 化から漏れ、`char-sprite` の 0.85 倍のまま＝プレイヤーより約 18% 小さく描かれていた
