@@ -28,7 +28,7 @@
 import { HP_PER_HEART } from './constants.js';
 import { playStatsItems } from './play-stats.js';
 import { PAL, makeSprite } from '../shared/sprites.js';
-import { ITEM_META, BOOMERANG_TIERS, HEART_PIECES_PER_HEART, EMBLEMS_FOR_AURA, hasSwordAura, SCROLLS_FOR_WIDE_SPIN, spinLevelOf, addStack, isStackFull, isMaxHpReward } from '../shared/items.js';
+import { ITEM_META, BOOMERANG_TIERS, HEART_PIECES_PER_HEART, EMBLEMS_FOR_AURA, hasSwordAura, SCROLLS_FOR_WIDE_SPIN, spinLevelOf, addStack, isStackFull, isMaxHpReward, subItemCountLabel } from '../shared/items.js';
 import { iconCanvas, iconText, iconPxOf, tierIconSpec } from '../shared/ui-icons.js';
 import { playSound } from '../shared/sounds.js';
 // field の地図（キュー15）の色。エディタのワールドマップのサムネと**同じ関数**を呼ぶ
@@ -43,7 +43,8 @@ import { variantOptions, readEntryVariants, noticeId } from '../shared/dialog-va
 import { conditionKeyHolds, npcStandsAt } from '../shared/story-events.js';
 // 未読の目的地の印（キュー61）＝人か読める立て物かで印の形を変える。
 import { NPC_SPRITE_MAP } from '../shared/npcs.js';
-import { READABLE_SIGN_TILES } from '../shared/tiles.js';
+import { READABLE_SIGN_TILES, TILE } from '../shared/tiles.js';
+import { arrowPotState } from '../shared/arrow-pot.js';
 
 // HUD のハート（heart/heartEmpty/heartHalf）の表示サイズ。Phase 10d-3 で
 // 絵を32ドット化した際、絵の中の透明余白が増えた分だけ見かけが縮むのを補う
@@ -227,7 +228,7 @@ export function createUi(deps) {
 			// ⚠️ `×0` も出す（2026-09-21）。空でもスロットは残る決まり（items.js の 🔴 注記）∴
 			//    0 を空欄にすると「弓は持っているが矢が無い」が**笛やブーメラン（数を持たない道具）と
 			//    同じ見た目**になり、撃てない理由が画面から読めない。
-			subCountEl.textContent = (typeof cnt === 'number' && cnt !== Infinity) ? `×${cnt}` : '';
+			subCountEl.textContent = subItemCountLabel(cnt);
 		} else {
 			subIconEl.textContent  = '—';
 			subIconEl.title        = '';
@@ -238,6 +239,24 @@ export function createUi(deps) {
 		updateMarkGuide();
 		// 道具を拾う（道具の版）・画面が変わるで「未読の行き先」も変わる（キュー61）。
 		refreshUnreadMarks();
+		// 矢の本数が変わる（撃つ・拾う）と矢の壺の光り方も変わる（2026-11-15）。
+		refreshArrowPots();
+	}
+
+	// 矢の壺（2026-11-15）＝使える（弓あり・矢0本）ときだけ光らせる。描画は盤の作り直し（afterRender）と
+	// HUD の更新の両方から呼ぶ＝撃って0本になった瞬間にも光る。
+	function refreshArrowPots() {
+		const boardEl = document.getElementById('board');
+		if (!boardEl) return;
+		const ready = arrowPotState(getPlayer()) === 'ready';
+		const tiles = getMapData()?.layers?.[getCurrentLayer()]?.stages?.[getStageKey()]?.tiles;
+		if (!tiles) return;
+		for (let r = 0; r < tiles.length; r++) {
+			for (let c = 0; c < tiles[r].length; c++) {
+				if (tiles[r][c] !== TILE.ARROW_POT) continue;
+				boardEl.querySelector(`.cell[data-row="${r}"][data-col="${c}"]`)?.classList.toggle('arrow-pot-ready', ready);
+			}
+		}
 	}
 
 	function pulse(text, duration = 2000) {
@@ -663,7 +682,7 @@ export function createUi(deps) {
 				div.appendChild(nameDiv);
 				const cntDiv = document.createElement('div');
 				cntDiv.className = 'pause-item-count';
-				cntDiv.textContent = cnt === Infinity ? '∞' : `×${cnt}`;
+				cntDiv.textContent = subItemCountLabel(cnt);
 				div.appendChild(cntDiv);
 				div.addEventListener('click', () => {
 					pauseItemIdx = i; player.activeSubItem = pauseItemKeys[i];
@@ -859,6 +878,20 @@ export function createUi(deps) {
 	// ── ② 見取り図（field）─────────────────────────────────────
 	function renderPauseGlanceMap(lk, ld, stages) {
 		const stageKey = getStageKey();
+		const { minX, minY, cols, rows, w, h } = ensureGlanceCache(lk, ld, stages);
+
+		pauseMapCanvasEl.width  = w;
+		pauseMapCanvasEl.height = h;
+		const ctx = pauseMapCanvasEl.getContext('2d');
+		ctx.clearRect(0, 0, w, h);
+		ctx.drawImage(glanceMapCache.canvas, 0, 0);
+		renderPauseGlanceMapRest(lk, ctx, stageKey, minX, minY, cols, rows, w, h);
+	}
+
+	// 見取り図の地形（訪問済みの画面）をオフスクリーンに描き足して、その寸法を返す。
+	// ポーズ画面と転移の石碑の地図（キュー107）の両方が使う。
+	function ensureGlanceCache(lk, ld, stages) {
+		const stageKey = getStageKey();
 		const coords = stages.map(k => k.split(',').map(Number));
 		const minX = Math.min(...coords.map(c => c[0]));
 		const maxX = Math.max(...coords.map(c => c[0]));
@@ -898,13 +931,20 @@ export function createUi(deps) {
 			}
 			glanceMapCache.drawn.add(sk);
 		}
+		return { minX, minY, cols, rows, w, h };
+	}
 
-		pauseMapCanvasEl.width  = w;
-		pauseMapCanvasEl.height = h;
-		const ctx = pauseMapCanvasEl.getContext('2d');
-		ctx.clearRect(0, 0, w, h);
-		ctx.drawImage(glanceMapCache.canvas, 0, 0);
+	/** 転移の石碑の地図（キュー107）用＝field の見取り図の地形と寸法。地図が無い層・画面が無ければ null。 */
+	function getFieldGlance() {
+		const mapData = getMapData();
+		const ld = mapData?.layers?.field;
+		const stages = Object.keys(ld?.stages ?? {});
+		if (!stages.length) return null;
+		const g = ensureGlanceCache('field', ld, stages);
+		return { ...g, canvas: glanceMapCache.canvas };
+	}
 
+	function renderPauseGlanceMapRest(lk, ctx, stageKey, minX, minY, cols, rows, w, h) {
 		const scale = glanceMapScale(w, h);
 		pauseMapCanvasEl.style.width  = `${w * scale}px`;
 		pauseMapCanvasEl.style.height = `${h * scale}px`;
@@ -1414,6 +1454,8 @@ export function createUi(deps) {
 		pickDialogLines,
 		pickDialogVariant,
 		refreshUnreadMarks,
+		refreshArrowPots,
+		getFieldGlance,
 		// ポーズ
 		togglePause,
 		renderPauseMenu,

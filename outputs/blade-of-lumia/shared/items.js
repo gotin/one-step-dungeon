@@ -315,6 +315,16 @@ export const ITEM_OWNED_FLAG = { ladder: 'hasLadder', swiftBoots: 'hasSwiftBoots
  * @param {number} cap 上限（`maxArrows` / `maxBombs`）
  * @returns {number} 新しい本数（`<= prev` なら「もう持てない」）
  */
+/**
+ * 道具の数の表示（HUD・ポーズ画面・クイック切り替えの共通）。キュー106（2026-11-15 ユーザー指摘）。
+ * 数を持たない道具（ブーメラン・ロウソク・笛など＝count が Infinity）は何も出さない。
+ * ⚠️ Infinity は保存（JSON）を通ると null になる＝読み込み直した後にポーズ画面へ「×null」が出ていた。
+ *    ∴数でない値（null・undefined・Infinity）はすべて「数なし」として空にする。
+ */
+export function subItemCountLabel(cnt) {
+	return (typeof cnt === 'number' && Number.isFinite(cnt)) ? `×${cnt}` : '';
+}
+
 export function addStack(prev, add, cap) {
 	return Math.max(prev, Math.min(prev + add, cap));
 }

@@ -1027,6 +1027,38 @@ canvas.sprite.dot32 {
     0%   { filter: drop-shadow(2px 0 0 #ffc830) drop-shadow(-2px 0 0 #ffc830) drop-shadow(0 2px 0 #ffc830) drop-shadow(0 -2px 0 #ffc830) drop-shadow(0 0 6px #ffd860); }
     50%  { filter: none; }
 }
+/* 矢の壺（2026-11-15）＝使える（弓あり・矢0本）ときだけ水色にゆっくり光る。未読の印（金の点滅）と
+   取り違えないよう色と拍を変える。 */
+.cell.arrow-pot-ready > canvas.obj-sprite {
+    animation: arrow-pot-glow 1.6s ease-in-out infinite;
+}
+@keyframes arrow-pot-glow {
+    /* 縁（2px の水色）＋外への光＝暗い床の上でも見落とさない（ぼかしだけだと headless のスクショで見えなかった） */
+    0%, 100% { filter: drop-shadow(2px 0 0 #7fe0ff) drop-shadow(-2px 0 0 #7fe0ff) drop-shadow(0 2px 0 #7fe0ff) drop-shadow(0 -2px 0 #7fe0ff) drop-shadow(0 0 8px #4fc0ff); }
+    50%      { filter: drop-shadow(0 0 3px #4fc0ff); }
+}
+@media (prefers-reduced-motion: reduce) {
+    .cell.arrow-pot-ready > canvas.obj-sprite { animation: none; filter: drop-shadow(2px 0 0 #7fe0ff) drop-shadow(-2px 0 0 #7fe0ff) drop-shadow(0 2px 0 #7fe0ff) drop-shadow(0 -2px 0 #7fe0ff); }
+}
+/* 矢の壺を叩いたとき（2026-11-15）＝壺が揺れて、矢が飛び出す（game/arrow-pot-effect.js） */
+.cell.arrow-pot-burst > canvas.obj-sprite {
+    animation: arrow-pot-shake 0.12s linear 4;
+}
+@keyframes arrow-pot-shake {
+    0%, 100% { translate: 0 0; }
+    25%      { translate: -2px 0; }
+    75%      { translate: 2px 0; }
+}
+.arrow-pot-flyer {
+    position: absolute;
+    left: 0;
+    top: 0;
+    pointer-events: none;
+    z-index: 6;
+}
+.arrow-pot-flyer > canvas {
+    image-rendering: pixelated;
+}
 .cell > canvas.mark-bubble {
     position: absolute;
     left: 52%;

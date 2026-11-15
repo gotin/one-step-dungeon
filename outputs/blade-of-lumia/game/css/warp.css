@@ -31,7 +31,45 @@
     text-align: center;
     margin: 4px 0 14px;
 }
+/* 行き先の地図（キュー107）＝地図の右に一覧。狭い画面では地図が上・一覧が下。 */
+#warp-body {
+    display: flex;
+    gap: 16px;
+    align-items: flex-start;
+    flex-wrap: wrap;
+    justify-content: center;
+}
+#warp-map-wrap {
+    position: relative;
+    line-height: 0;
+    border: 1px solid #1f3a44;
+    background: #000;
+    max-width: 100%;
+}
+#warp-map-wrap.hidden { display: none; }
+#warp-map {
+    display: block;
+    image-rendering: pixelated;
+    max-width: 100%;
+}
+#warp-map-sel {
+    position: absolute;
+    box-sizing: border-box;
+    border: 2px solid #8fe6ff;
+    border-radius: 2px;
+    box-shadow: 0 0 8px #5fe0ff, inset 0 0 4px #5fe0ff;
+    pointer-events: none;
+    animation: warp-map-sel-blink 0.9s steps(1) infinite;
+}
+#warp-map-sel.hidden { display: none; }
+@keyframes warp-map-sel-blink {
+    50% { border-color: #ffffff; box-shadow: 0 0 14px #8fe6ff, inset 0 0 6px #8fe6ff; }
+}
+@media (prefers-reduced-motion: reduce) {
+    #warp-map-sel { animation: none; }
+}
 #warp-list {
+    min-width: 200px;
     display: flex;
     flex-direction: column;
     gap: 8px;

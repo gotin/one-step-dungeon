@@ -82,6 +82,9 @@ export const TILE = {
 	// 根元は切り株＝歩ける。倒れた向きは `ss.fallenTrees`（元セルのキー → 'n'|'s'|'w'|'e'）＝部屋を出ると
 	// 元に戻る（大いが栗の位置と同じ）。生きた木 't' は爆風では倒れない（全体のルールにしない）。
 	DEAD_TREE: 'ŧ',
+	// 矢の壺（2026-11-15 ユーザー提案）＝弓を持っていて矢が0本のときだけ、隣で叩くと矢が湧く（game/arrow-pot.js）。
+	// 矢でしか鳴らせない鐘の奥で撃ち尽くして閉じ込められるのを防ぐ（D8 二色の鐘の間）。通れない置き物。
+	ARROW_POT: '0',
 
 	// ── Blade of Lumia 追加タイル ─────────────────────────────
 	// 壊せる壁・マップ入り口
@@ -254,6 +257,7 @@ export const TILE_META = {
 	[TILE.STONE]:   { label: '石',           color: '#506070', passable: false, icon: '●' },
 	[TILE.BURR]:    { label: '大いが栗',     color: '#7a5028', passable: false, icon: '✷' },
 	[TILE.DEAD_TREE]: { label: '枯れ木',     color: '#6e5640', passable: false, icon: '🪵' },
+	[TILE.ARROW_POT]: { label: '矢の壺',     color: '#8a5a34', passable: false, icon: '⚱' },
 	// Blade of Lumia 追加
 	[TILE.BREAKABLE_WALL]: { label: '壊せる壁',    color: '#3a3028', passable: false, icon: '✦' },
 	[TILE.MAP_ENTER]:      { label: 'マップ入り口', color: '#202840', passable: true,  icon: '◎' },
@@ -392,6 +396,7 @@ export const FOOT_SOLID_TILES = new Set([
 	TILE.TREE, TILE.MOUNTAIN, TILE.FENCE, TILE.HOUSE_WALL, TILE.HOUSE_ROOF,
 	...READABLE_SIGN_TILES,
 	TILE.TORCH,
+	TILE.ARROW_POT,   // 矢の壺（2026-11-15）＝状態に依らず通れない
 	...Object.keys(NPC_SPRITE_MAP),
 ]);
 

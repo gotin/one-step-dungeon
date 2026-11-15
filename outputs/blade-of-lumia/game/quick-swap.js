@@ -23,6 +23,8 @@
 //     ＝ゲームループを止め、input.js が ←→／Escape／X の離しをここへ渡す。gameTick も isOpen を見る
 //     （テストの step() やループの外から tick が来ても世界が進まない）。
 
+import { subItemCountLabel } from '../shared/items.js';
+
 export const QUICK_SWAP_HOLD_MS = 220;
 // SUB ボタンは「離したときに使う」（旧 click）∴長押しを足してもタップの感触は変わらない。
 // 連打の1回（100〜150ms）より十分長く、X より長めに取る。
@@ -68,7 +70,7 @@ export function createQuickSwap(deps) {
 			const cnt = player.subItems[id]?.count;
 			const cntEl = document.createElement('div');
 			cntEl.className = 'quickswap-count';
-			cntEl.textContent = cnt === Infinity || cnt == null ? '∞' : `×${cnt}`;
+			cntEl.textContent = subItemCountLabel(cnt);   // 数を持たない道具は出さない（キュー106）
 			slot.appendChild(cntEl);
 			listEl.appendChild(slot);
 		});

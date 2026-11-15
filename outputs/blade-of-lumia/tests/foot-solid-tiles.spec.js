@@ -19,6 +19,7 @@ test('① FOOT_SOLID_TILES の中身', () => {
     TILE.WALL, TILE.WATER, TILE.LAVA, TILE.SKY, TILE.PIT,
     TILE.TREE, TILE.MOUNTAIN, TILE.FENCE, TILE.HOUSE_WALL, TILE.HOUSE_ROOF,
     TILE.SIGN, TILE.MONUMENT, TILE.WARP_STONE, TILE.TORCH,
+    TILE.ARROW_POT,   // 矢の壺（2026-11-15）
     ...Object.keys(NPC_SPRITE_MAP),
   ];
   expect(sorted(FOOT_SOLID_TILES)).toEqual(sorted(new Set(expected)));

@@ -66,8 +66,12 @@ test.describe('出来事 ①②③（データと判定）', () => {
 		// 入口の画面の出入り口（西の端の行4・5）を塞がない
 		expect(M.r === 4 || M.r === 5, '西の出入り口の行に置いた').toBe(false);
 		expect(listStoryFlags(map).map((f) => f.name)).toContain(M.flag);
-		// 印は1目的地1提供元（check-dialog-integrity ⑤b）＝沼地の神殿の印は使いが渡す。エルンの L の版からは外した
-		expect(map.layers.field.stages['13,5'].npcData['4,5'].markAfterBoss?.L, 'エルンも沼地の神殿の印を渡している').toBeUndefined();
+		// 印は1目的地1提供元（check-dialog-integrity ⑤b）＝本命は使い。エルンの L の版は予備（markFallback）＝
+		// 使いに会わずに先へ進んだ古いセーブでも印が付く（2026-11-15 本番のセーブで印が入らなかった報告）
+		const ern = map.layers.field.stages['13,5'].npcData['4,5'];
+		expect(ern.markAfterBoss?.L).toMatchObject({ stage: '10,14' });
+		expect(ern.markFallback).toContain('L');
+		expect(ENTRY.markFallback, '使いが予備になっている').toBeUndefined();
 		const isNpc = (t) => t === 'a';
 		expect(pendingApproach(sd, M.layer, M.stage, P(), isNpc), 'L の前に来た').toBe(null);
 		expect(pendingApproach(sd, M.layer, M.stage, P({ bosses: ['L'] }), isNpc)?.posKey).toBe(POS);
@@ -203,7 +207,11 @@ test.describe('出来事 ⑧（D3 ボス部屋に駆けつけるタロ）', () =
 		expect(e).toMatchObject({ showWhen: ['J'], hideWhen: [`flag:${T.flag}`, 'A'], approach: true, setsFlag: T.flag });
 		expect(e.mark).toMatchObject({ layer: 'field', stage: '12,2', label: '炎の神殿' });
 		const post = map.layers.field.stages['10,0'];
-		expect((post.signData?.['5,5'] ?? post.npcData?.['5,5']).mark, '灰境の道標も炎の神殿の印を渡している').toBeUndefined();
+		// 灰境の道標は予備（markFallback）＝本命はタロ
+		const sign = post.signData['5,5'];
+		expect(sign.mark).toMatchObject({ stage: '12,2' });
+		expect(sign.markFallback).toEqual(['mark']);
+		expect(e.markFallback, 'タロが予備になっている').toBeUndefined();
 		const keys = Object.keys(map.layers.field.stages['7,14'].npcData['3,5'].linesAfterBoss);
 		expect(keys.indexOf(`flag:${T.flag}`), '村のタロの出来事の版が J のすぐ下に無い').toBe(keys.indexOf('J') + 1);
 	});
@@ -258,7 +266,10 @@ test.describe('出来事 ⑨（D6 の後の連鎖）', () => {
 		expect(e).toMatchObject({ showWhen: ['O'], hideWhen: [`flag:${K.flag}`, 'L'], approach: true, approachFrom: K.from, setsFlag: K.flag });
 		expect(e.mark).toMatchObject({ stage: '13,5', kind: 'town' });
 		const ern = map.layers.field.stages[K.ern.stage].npcData[K.ern.pos];
-		expect(ern.markAfterBoss.O, 'エルンの O の版にも氷の廃墟の印が残っている').toBeUndefined();
+		// O の版の印は予備（markFallback）＝本命は出来事の版
+		expect(ern.markAfterBoss.O).toMatchObject({ stage: '15,4' });
+		expect(ern.markFallback).toContain('O');
+		expect(ern.markFallback, '出来事の版が予備になっている').not.toContain(`flag:${K.flag}`);
 		expect(ern.markAfterBoss[`flag:${K.flag}`]).toMatchObject({ stage: '15,4' });
 		const keys = Object.keys(ern.linesAfterBoss);
 		expect(keys.indexOf(`flag:${K.flag}`), '出来事の版が O のすぐ下に無い').toBe(keys.indexOf('O') + 1);
@@ -303,6 +314,51 @@ test.describe('出来事 ⑨（D6 の後の連鎖）', () => {
 		await readAll(page);
 		pl = await page.evaluate(() => ({ marks: window.__game.getPlayer().mapMarks.map((m) => m.stage) }));
 		expect(pl.marks, 'エルンが氷の廃墟の印をくれない').toContain('15,4');
+	});
+});
+
+// ── 予備の印（2026-11-15 本番のセーブで「エルンが沼地の神殿と言うのに印が入らない」報告）──
+// 出来事の人に会わずに先へ進んだセーブ＝元の提供元に話すと印が付く。出来事で先に付いていれば何も出ない。
+test.describe('予備の印（出来事を通らなかったセーブ）', () => {
+	async function talkToErn(page) {
+		await page.evaluate(() => window.__game.enterStage('field', '13,5', 5, 5));
+		await page.waitForTimeout(300);
+		await page.evaluate(() => { window.__game.setHeroDir('up'); window.__game.swordAttack(); });
+		await page.waitForFunction(() => !document.getElementById('dialog-overlay').classList.contains('hidden'), null, { timeout: 3000 });
+		const text = await page.evaluate(() => document.getElementById('dialog-text').textContent);
+		await readAll(page);
+		return text;
+	}
+	const marks = (page) => page.evaluate(() => window.__game.getPlayer().mapMarks.map((m) => m.stage));
+	const pulses = (page) => page.evaluate(() => { const el = document.getElementById('msg-bar'); return el.classList.contains('hidden') ? '' : el.textContent; });
+
+	test('L を倒して使いに会っていない → エルンが沼地の神殿の印をくれる', async ({ page }) => {
+		// 町から始める＝氷の廃墟の出口（使いが来る画面）には入らない
+		await page.goto(`${GAME_URL}?fromEditor=1&layer=field&stage=13,5&row=5&col=5&ps_weapon=1&ps_map=1&ps_defeated=G,N,J,A,O,L`);
+		await waitForBoard(page);
+		expect(await page.evaluate(() => window.__game.getPlayer().storyFlags)).not.toContain(Q103_MESSENGER.flag);
+		expect(await talkToErn(page), 'エルンが L の版で話していない').toContain('氷の廃墟を抜けた');
+		expect(await marks(page), 'エルンが沼地の神殿の印をくれない').toContain('10,14');
+	});
+
+	test('O を倒して老婆に会っていない → エルンの O の版が氷の廃墟の印をくれる', async ({ page }) => {
+		await page.goto(`${GAME_URL}?fromEditor=1&layer=field&stage=13,5&row=5&col=5&ps_weapon=1&ps_map=1&ps_defeated=G,N,J,A,O`);
+		await waitForBoard(page);
+		expect(await talkToErn(page), 'エルンが O の版で話していない').toContain('古森の巨人');
+		expect(await marks(page), 'エルンが氷の廃墟の印をくれない').toContain('15,4');
+	});
+
+	test('使いで印を受け取った後にエルンに話しても、もう一度「記した」は出ない', async ({ page }) => {
+		await page.goto(`${ENTER('G,N,J,A,O,L')}&ps_map=1`);
+		await waitForBoard(page);
+		await page.waitForFunction(() => !document.getElementById('dialog-overlay').classList.contains('hidden'), null, { timeout: 8000 });
+		await readAll(page);
+		expect(await marks(page)).toContain('10,14');
+		const before = (await marks(page)).length;
+		await page.waitForFunction(() => document.getElementById('msg-bar').classList.contains('hidden'), null, { timeout: 6000 });   // 使いの「記した」が消えるのを待つ
+		await talkToErn(page);
+		expect((await marks(page)).length, '印が増えた').toBe(before);
+		expect(await pulses(page), 'エルンでもう一度「記した」が出た').not.toContain('沼地の神殿');
 	});
 });
 

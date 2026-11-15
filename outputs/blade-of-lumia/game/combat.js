@@ -718,6 +718,13 @@ export function createCombat(deps) {
 
 		const f = frontCell();
 		if (talkOrRead(f)) return;          // 剣なしでも可能
+		// 矢の壺（2026-11-15 ユーザー指定「ちゃんと攻撃できるように」）＝剣を振って叩く。剣が無い・封じられている
+		// ときも叩かずに使える（閉じ込められた時の出口なので剣の有無に依らない）。
+		if (f.tile === TILE.ARROW_POT && deps.useArrowPot) {
+			if (f.player.weapon && !isSwordSealed?.()) { if (!readySwing(f.player)) return; }
+			deps.useArrowPot(f.tr, f.tc);
+			return;
+		}
 		if (!readySwing(f.player)) return;  // 以降は剣が必要な操作
 		if (hitSwitch(f)) return;
 		if (strikeTarget(f)) return;
