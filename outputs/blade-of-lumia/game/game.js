@@ -6,6 +6,9 @@ import { liftGroundTiles } from '../shared/ground-layer.js';
 import { ENEMY_META, ENEMY_SPEED_NORMAL } from '../shared/enemies.js';
 import { startsAlert, holdsPost } from '../shared/enemy-alert.js';
 import { ITEM_META, EQUIP_META, BOOMERANG_TIERS, ownsItem, addStack, EMBLEMS_FOR_AURA, SCROLLS_FOR_WIDE_SPIN } from '../shared/items.js';
+import { arrowPotState, arrowPotRefillCount } from '../shared/arrow-pot.js';
+import { playArrowPotFx } from './arrow-pot-fx.js';
+let _arrowPotBusy = false;   // 矢の壺の演出中（二度叩きで重ねない）
 import { NPC_SPRITE_MAP, NPC_DEFAULT_DIALOG } from '../shared/npcs.js';
 import { ARROW_CELL_SCALE } from '../shared/tile-sprites.js';
 import {
@@ -740,7 +743,7 @@ const { checkStoneOnSwitch, evaluateConditions, refreshGates } = createCondition
 		getDoorwayState,
 		isWarpStoneLit: (posKey) => (player.litWarpStones ?? []).includes(warpStoneId(currentLayer, stageKey, posKey)),
 		isNpcPresent:   (posKey) => npcStandsAt(stageData?.npcData?.[posKey], player, currentLayer, stageKey, posKey),
-		afterRender:    () => fx.refreshUnreadMarks(),
+		afterRender:    () => { fx.refreshUnreadMarks(); fx.refreshArrowPots(); },
 	});
 
 	const _rc = createRenderChars({
@@ -792,6 +795,7 @@ const { checkStoneOnSwitch, evaluateConditions, refreshGates } = createCondition
 		updateDungeonHud: _ui.updateDungeonHud,
 		grantMark: _ui.grantMark,
 		refreshUnreadMarks: _ui.refreshUnreadMarks,
+		refreshArrowPots: _ui.refreshArrowPots,
 		startDialog: (r, c, tileChar, extraLines) => _ui.startDialog(r, c, tileChar, stageData, NPC_DEFAULT_DIALOG, player, extraLines),
 		advanceDialog: _ui.advanceDialog,
 		togglePause: _ui.togglePause,
@@ -1208,6 +1212,33 @@ const { checkStoneOnSwitch, evaluateConditions, refreshGates } = createCondition
 		// 17-0: 踏破後台詞（linesAfterBoss）は看板タイル（石碑）にも付く∴ NPC と同じ選択規則を通す。
 		// 17-2: マークも同じ進行状態から選ぶ（markAfterBoss）∴ sd.mark 直渡しをやめる。
 		// キュー27: 転移の石碑は (r,c) から碑を引いて warp-menu に渡す（灯す・行き先の一覧）。
+		// 矢の壺（2026-11-15）＝弓を持っていて矢が0本のときだけ矢が湧く（shared/arrow-pot.js）
+		// 叩くと矢が壺から飛び出して勇者に届く演出（game/arrow-pot-fx.js）＝本数は最後の1本が届いてから増やす。
+		useArrowPot: (r, c) => {
+			if (_arrowPotBusy) return;
+			const state = arrowPotState(player);
+			if (state === 'noBow') { fx.pulse('矢の壺だ。弓が無いと使えない'); return; }
+			if (state === 'hasArrows') { fx.pulse('矢の壺だ。矢を使い切ると、ここから矢が湧く'); return; }
+			const n = arrowPotRefillCount(player);
+			const atLayer = currentLayer, atStage = stageKey;
+			_arrowPotBusy = true;
+			playArrowPotFx({
+				layer: charLayerElRef.value, cellPx: getCellPx(),
+				pot: { r, c }, hero: { x: player.x, y: player.y }, count: n,
+				potCell: document.querySelector(`#board .cell[data-row="${r}"][data-col="${c}"]`),
+				onEach: () => playSound('dropArrow'),
+				onDone: () => {
+					_arrowPotBusy = false;
+					// 演出の間に画面を出た・矢を拾った等＝もう「0本」でなければ増やさない（壺で矢を集めさせない）
+					if (currentLayer !== atLayer || stageKey !== atStage || arrowPotState(player) !== 'ready') return;
+					player.subItems.bow.count = n;
+					playSound('item');
+					fx.pulse(`{{arrow}} 壺から矢が湧いた！ ×${n}`);
+					fx.updateHud();
+					saveGame();
+				},
+			});
+		},
 		openSignDialog: (sd, r, c, tile) => {
 			const v = fx.pickDialogVariant(sd, player, mapData);
 			const isWarp = tile === TILE.WARP_STONE && warpMenu;
@@ -2489,6 +2520,9 @@ async function init() {
 		// ⚠️ 本数は**上限（`maxArrows`/`maxBombs`）ちょうど＝満タン**で渡す。上限を超える
 		//    本数を直接入れると「矢束を踏んだら減る」状態を作ってしまう（2026-09-21）。
 		if (psBow      === '1') { player.subItems.bow       = { count: player.maxArrows ?? 8 };  if (!player.activeSubItem) player.activeSubItem = 'bow'; }
+		// 2026-11-15：矢の本数（矢の壺の確かめ用＝ps_bow=1&ps_arrows=0 で「弓はあるが矢が0本」）
+		const psArrows = params.get('ps_arrows');
+		if (psArrows !== null && player.subItems.bow && /^\d+$/.test(psArrows)) player.subItems.bow.count = Math.min(Number(psArrows), player.maxArrows ?? 8);
 		if (psBoomerang=== '1') fx.equipBoomerangTier(0);   // 木のブーメラン（所持＋ティア0）
 		// Phase 9-6: 銀のブーメラン。ps_boomerang が無くても単独で所持状態になる。
 		if (psSilverBoomerang === '1') fx.equipBoomerangTier(1);

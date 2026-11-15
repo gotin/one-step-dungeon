@@ -43,7 +43,8 @@ import { variantOptions, readEntryVariants, noticeId } from '../shared/dialog-va
 import { conditionKeyHolds, npcStandsAt } from '../shared/story-events.js';
 // 未読の目的地の印（キュー61）＝人か読める立て物かで印の形を変える。
 import { NPC_SPRITE_MAP } from '../shared/npcs.js';
-import { READABLE_SIGN_TILES } from '../shared/tiles.js';
+import { READABLE_SIGN_TILES, TILE } from '../shared/tiles.js';
+import { arrowPotState } from '../shared/arrow-pot.js';
 
 // HUD のハート（heart/heartEmpty/heartHalf）の表示サイズ。Phase 10d-3 で
 // 絵を32ドット化した際、絵の中の透明余白が増えた分だけ見かけが縮むのを補う
@@ -238,6 +239,24 @@ export function createUi(deps) {
 		updateMarkGuide();
 		// 道具を拾う（道具の版）・画面が変わるで「未読の行き先」も変わる（キュー61）。
 		refreshUnreadMarks();
+		// 矢の本数が変わる（撃つ・拾う）と矢の壺の光り方も変わる（2026-11-15）。
+		refreshArrowPots();
+	}
+
+	// 矢の壺（2026-11-15）＝使える（弓あり・矢0本）ときだけ光らせる。描画は盤の作り直し（afterRender）と
+	// HUD の更新の両方から呼ぶ＝撃って0本になった瞬間にも光る。
+	function refreshArrowPots() {
+		const boardEl = document.getElementById('board');
+		if (!boardEl) return;
+		const ready = arrowPotState(getPlayer()) === 'ready';
+		const tiles = getMapData()?.layers?.[getCurrentLayer()]?.stages?.[getStageKey()]?.tiles;
+		if (!tiles) return;
+		for (let r = 0; r < tiles.length; r++) {
+			for (let c = 0; c < tiles[r].length; c++) {
+				if (tiles[r][c] !== TILE.ARROW_POT) continue;
+				boardEl.querySelector(`.cell[data-row="${r}"][data-col="${c}"]`)?.classList.toggle('arrow-pot-ready', ready);
+			}
+		}
 	}
 
 	function pulse(text, duration = 2000) {
@@ -1414,6 +1433,7 @@ export function createUi(deps) {
 		pickDialogLines,
 		pickDialogVariant,
 		refreshUnreadMarks,
+		refreshArrowPots,
 		// ポーズ
 		togglePause,
 		renderPauseMenu,

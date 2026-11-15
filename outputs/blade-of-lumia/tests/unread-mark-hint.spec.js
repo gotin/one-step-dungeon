@@ -63,14 +63,16 @@ test.describe('キュー61 未読の目的地の印', () => {
 	});
 
 	// ⚠️ 2026-11-14（キュー104 ②）＝エルンの氷の廃墟の印は O の版から「出来事（森の番人の頼み）の後」の版へ移した
-	//    （O を倒して出ると必ず森の番人の老婆が頼みに来る）∴吹き出しが出るのは O＋その出来事の後。
-	test('② 人（賢者エルン・field 13,5）＝森の番人の頼みの後に吹き出しが出て、読むと消える', async ({ page }) => {
+	//    （O を倒して出ると必ず森の番人の老婆が頼みに来る）。
+	// ⚠️ 2026-11-15＝O の版の印を予備（markFallback）として戻した（老婆に会わずに先へ進んだ古いセーブでも印が付く）
+	//    ∴O を倒した時点で吹き出しが出る。出来事の後も同じ印＝吹き出しは1つのまま。
+	test('② 人（賢者エルン・field 13,5）＝O の後に吹き出しが出て（出来事の後も同じ）、読むと消える', async ({ page }) => {
 		await gotoFreshGame(page);
 		await enter(page, '13,5', 4, 6);
 		expect(await bubbleCount(page), 'O を倒す前から吹き出しがある').toBe(0);
 
 		await enter(page, '13,5', 4, 6, { defeated: ['O'] });
-		expect(await bubbleCount(page), '老婆の頼みの前から吹き出しがある').toBe(0);
+		expect(await unreadCells(page), '老婆に会っていない古いセーブで吹き出しが出ない').toEqual(['4,5:npc']);
 
 		await enter(page, '13,5', 4, 6, { flags: ['森の番人の頼み'] });
 		expect(await unreadCells(page)).toEqual(['4,5:npc']);

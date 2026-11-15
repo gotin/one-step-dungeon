@@ -467,6 +467,11 @@ export function createRenderBoard(deps) {
 			putCellSprite(cellEl, makeSprite(spr, 'deadTree', false), 'field-sprite');
 			return;
 		}
+		// 矢の壺（2026-11-15）＝置き物。使えるときの光は ui.js refreshArrowPots がセルに付けるクラス（CSS）。
+		if (tile === TILE.ARROW_POT) {
+			putCellSprite(cellEl, makeSprite('arrowPot', 'arrowPot', false), 'obj-sprite');
+			return;
+		}
 		if (tile === TILE.STONE || tile === TILE.BURR) {
 			const _ssSt = getSS(currentLayer, stageKey);
 			if (_ssSt.stonePositions?.[posKey]) return;

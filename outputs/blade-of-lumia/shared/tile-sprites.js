@@ -19,6 +19,7 @@ export const TILE_SPRITE_MAP = {
 	[TILE.BURR]:      { spr: 'burr',     pal: 'burr'     },   // 大いが栗（キュー95）
 	[TILE.DEAD_TREE]: { spr: 'deadTree', pal: 'deadTree' },   // 枯れ木（キュー95 の10室目）
 	[TILE.CHEST]:     { spr: 'chest',    pal: 'chest'    },
+	[TILE.ARROW_POT]: { spr: 'arrowPot', pal: 'arrowPot' },   // 矢の壺（2026-11-15）
 	[TILE.WATER]:     { spr: 'water',    pal: 'water'    },
 	[TILE.LAVA]:      { spr: 'water',    pal: 'lava'     },  // 溶岩＝water 形状＋lava 赤橙パレット
 	[TILE.TIDE_GATE]: { spr: 'water',    pal: 'tide'     },  // 潮ゲート＝water 形状＋tide 青緑パレット（閉＝満潮の見た目）

@@ -146,11 +146,21 @@ for (const [layerName, layer] of Object.entries(d.layers)) {
       for (const [posKey, entry] of Object.entries(stage[store] ?? {})) {
         if (!entry || typeof entry !== 'object') continue;
         const sources = [];
-        if (entry.mark !== undefined) sources.push(['mark', entry.mark]);
+        if (entry.mark !== undefined) sources.push(['mark', entry.mark, 'mark']);
         for (const [boss, mk] of Object.entries(entry.markAfterBoss ?? {})) {
-          sources.push([`markAfterBoss[${boss}]`, mk]);
+          sources.push([`markAfterBoss[${boss}]`, mk, boss]);
         }
-        for (const [label, raw] of sources) {
+        // 予備の提供元（markFallback＝'mark' か版のキーの配列）。⑤b を参照。
+        const fallbackKeys = new Set(Array.isArray(entry.markFallback) ? entry.markFallback : []);
+        if (entry.markFallback !== undefined && !Array.isArray(entry.markFallback)) {
+          err(`[${layerName} ${stageKey}] (${posKey}) の markFallback は配列で書く（'mark' か版のキー）：${JSON.stringify(entry.markFallback)}`);
+        }
+        for (const k of fallbackKeys) {
+          if (!sources.some(([, , key]) => key === k)) {
+            err(`[${layerName} ${stageKey}] (${posKey}) の markFallback「${k}」に当たる印が無い（版を消したら markFallback からも外す）`);
+          }
+        }
+        for (const [label, raw, srcKey] of sources) {
           const norm = normalizeDialogMarks(raw, layerName);
           if (!norm.length) {
             err(`[${layerName} ${stageKey}] (${posKey}) の ${label} の形が不正：${JSON.stringify(raw)}`);
@@ -171,7 +181,7 @@ for (const [layerName, layer] of Object.entries(d.layers)) {
             }
             const dest = `${m.layer}:${m.stage}`;
             if (!markDests.has(dest)) markDests.set(dest, []);
-            markDests.get(dest).push({ at: `${layerName} ${stageKey} (${posKey}) ${label}`, label: m.label });
+            markDests.get(dest).push({ at: `${layerName} ${stageKey} (${posKey}) ${label}`, label: m.label, fallback: fallbackKeys.has(srcKey) });
           }
         }
       }
@@ -197,10 +207,23 @@ for (const [dest, uses] of markDests) {
 // 「地図に記した！」が出ずゲーム内で黙って死ぬ（実害＝17-9b着手時の裏取りで発覚・帯2〜5が
 // 敷いた過剰な印を17-10bで掃除した）。ラベルが揃っているかは上の ⚠️ 警告が見る＝ここは
 // 件数そのもの（ラベルが同じでも2箇所から渡すのは禁止）。
+//
+// 例外＝予備の提供元（`markFallback`・2026-11-15 ユーザー了承）。出来事の人（キュー103/104）へ
+// 印を移すと、それより前のセーブで出来事を通らずに先へ進んだプレイヤーは印をもらい損ねる
+// （実害＝本番のセーブで L を倒した後にエルンが「沼地の神殿」と言うのに印をくれなかった）。
+// ∴元の提供元に印を残し、`markFallback` に 'mark' か版のキーを書いて「予備」と宣言する。
+// 出来事で先に付いていれば addMark が false＝何も出ない（黙るのが正しい）。予備は数えず、
+// 本命（予備でない提供元）がちょうど1つあることを見る。
 for (const [dest, uses] of markDests) {
-  if (uses.length < 2) continue;
-  err(`印の行き先 ${dest} を渡す提供元が ${uses.length} 箇所ある（1目的地1提供元のルールに反する）：`
-    + uses.map(u => `${u.at}＝「${u.label}」`).join(' / '));
+  const primaries = uses.filter(u => !u.fallback);
+  if (primaries.length > 1) {
+    err(`印の行き先 ${dest} を渡す提供元が ${primaries.length} 箇所ある（1目的地1提供元のルールに反する）：`
+      + primaries.map(u => `${u.at}＝「${u.label}」`).join(' / '));
+  }
+  if (primaries.length === 0 && uses.length > 0) {
+    err(`印の行き先 ${dest} を渡すのが予備（markFallback）だけ＝本命が無い：`
+      + uses.map(u => `${u.at}＝「${u.label}」`).join(' / '));
+  }
 }
 
 // ── ⑤ 本文の絵文字（実行キュー24・2026-09-16）─────────────────────────────
