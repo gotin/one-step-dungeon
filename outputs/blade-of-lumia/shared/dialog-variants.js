@@ -48,6 +48,7 @@
 import { labelOf, bossesInOrder, SUB_ITEM_KEYS } from './progression.js';
 import { ENEMY_META } from './enemies.js';
 import { ITEM_META, EQUIP_META } from './items.js';
+import { listStoryFlags, flagVariantKey, flagNameOfVariantKey } from './story-events.js';
 
 /**
  * 選べるボスの一覧（進行順）＝実マップのボス部屋から導出する。手書きの表は作らない。
@@ -65,7 +66,7 @@ export function bossVariantOptions(map) {
 }
 
 /** 版の種類＝マークを持てるか／条件文の書き方が違う4種 */
-export const VARIANT_KIND = { BOSS: 'boss', DEFAULT: 'default', AFTER: 'after', ITEM: 'item' };
+export const VARIANT_KIND = { BOSS: 'boss', DEFAULT: 'default', AFTER: 'after', ITEM: 'item', FLAG: 'flag' };
 
 /**
  * 道具の所持を条件にする版のキーの接頭辞（実行キュー26）＝`item:<ITEM_META の id>`。
@@ -156,6 +157,14 @@ export function variantOptions(map) {
 			supportsMark: true, itemId: o.itemId,
 		});
 	}
+	// 出来事の版（キュー103）＝その出来事を済ませた後（`shared/story-events.js`）。一覧はマップの
+	// `setsFlag` から導く＝手書きしない。既定では一番下＝出来事は進行の中で一番新しい条件として使う。
+	for (const f of listStoryFlags(map)) {
+		opts.push({
+			key: flagVariantKey(f.name), kind: VARIANT_KIND.FLAG,
+			label: `出来事「${f.name}」の後`, supportsMark: true, flag: f.name,
+		});
+	}
 	return opts;
 }
 
@@ -207,10 +216,13 @@ export function readEntryVariants(entry, options) {
 		// 選択肢に無いキー（不明なボス・不明な道具）＝名前が引けないことを明示して**そのまま持つ**
 		// （黙って別の条件へ移さない・エディタで開いただけで消えない）。
 		const unknownItem = itemIdOfVariantKey(key);
+		const unknownFlag = flagNameOfVariantKey(key);
 		const opt = byKey.get(key)
 			?? (unknownItem !== null
 				? { key, kind: VARIANT_KIND.ITEM, label: `${unknownItem}（不明な道具）`, supportsMark: true }
-				: { key, kind: VARIANT_KIND.BOSS, label: `${key}（不明なボス）`, supportsMark: true });
+				: unknownFlag !== null
+					? { key, kind: VARIANT_KIND.FLAG, label: `出来事「${unknownFlag}」の後（どの人も記さない）`, supportsMark: true, flag: unknownFlag }
+					: { key, kind: VARIANT_KIND.BOSS, label: `${key}（不明なボス）`, supportsMark: true });
 		out.push({
 			...opt,
 			lines: asLines(lab[key]),

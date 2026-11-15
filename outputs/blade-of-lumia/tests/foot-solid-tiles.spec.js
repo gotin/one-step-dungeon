@@ -33,7 +33,8 @@ test('③ 通行と着地が FOOT_SOLID_TILES を読んでいる（各自で列�
   const read = (rel) => readFileSync(fileURLToPath(new URL(rel, import.meta.url)), 'utf8');
   const passable = read('../game/passable.js');
   const game = read('../game/game.js');
-  expect(passable).toContain('if (FOOT_SOLID_TILES.has(tile)) return false;');
+  // キュー103: 居ない人（showWhen/hideWhen）のセルだけは地面として通す＝集合は読んだまま
+  expect(passable).toContain('if (FOOT_SOLID_TILES.has(tile) && !absentNpc) return false;');
   expect(game).toMatch(/const ARRIVAL_WALL_TILES = new Set\(\[\s*\.\.\.FOOT_SOLID_TILES,/);
   // 旧の個別の列挙が残っていない（残ると集合と食い違う）
   expect(passable).not.toMatch(/if \(tile === TILE\.(TREE|MOUNTAIN|FENCE|HOUSE_WALL|HOUSE_ROOF|TORCH|WALL|LAVA|SKY|PIT)\)/);

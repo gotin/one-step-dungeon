@@ -23,6 +23,8 @@ export const SHOP_NPC_SPRITES = {
 export const PERSON_NPC_SPRITES = {
 	npcElder: { sprite: 'npcElder', pal: 'npcElder', label: '老賢者' }, // refs/老賢者1.png・2.png（2026-10-13）
 	npcVeteran: { sprite: 'npcVeteran', pal: 'npcVeteran', label: '老兵' }, // refs/老兵1.png・2.png（2026-10-14）
+	npcGranny: { sprite: 'npcGranny', pal: 'npcGranny', label: '老婆' }, // refs/老婆1.png・2.png（2026-11-15・森の番人）
+	npcErn: { sprite: 'npcErn', pal: 'npcErn', label: '賢者エルン' }, // refs/賢者エルン.webp（2026-11-15）
 };
 
 /** そのセルの NPC を描く絵 {sprite, pal}。NPC でないタイルは null。 */

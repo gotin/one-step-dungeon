@@ -1043,6 +1043,40 @@ canvas.sprite.dot32 {
     50%  { transform: translateY(calc(var(--cell) * -1 / 32)); }
 }
 
+/* ── 向こうから歩いてきて話しかける人（実行キュー103）────────────────
+   game/story-approach.js が #char-layer に置く見た目だけの人。位置（left/top）は 1 マスごとに
+   書き換え、transition で滑らかに歩かせる。元のセルの絵は歩いている間だけ隠す。
+   ⚠️ 中の canvas.sprite は translate(-50%, -50%) で中心に置いている∴歩く揺れは外側の箱に掛ける。 */
+.story-walker {
+    position: absolute;
+    pointer-events: none;
+    z-index: 2;
+}
+.cell.story-away > canvas.char-sprite,
+.cell.story-away > canvas.mark-bubble {
+    visibility: hidden;
+}
+.story-walker.walking {
+    animation: story-walker-bob 0.34s steps(1) infinite;
+}
+@keyframes story-walker-bob {
+    0%   { transform: translateY(0); }
+    50%  { transform: translateY(calc(var(--cell) * -2 / 32)); }
+}
+.story-walker > canvas.mark-bubble {
+    position: absolute;
+    left: 52%;
+    top: calc(var(--cell) * -0.36);
+    width: calc(var(--cell) * 12 / 32);
+    height: calc(var(--cell) * 14 / 32);
+    image-rendering: pixelated;
+    pointer-events: none;
+    animation: mark-bubble-bob 0.9s steps(1) infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+    .story-walker.walking { animation: none; }
+}
+
 /* ── 石が溶岩に沈んだ瞬間（2026-11-14 ユーザー案③）──────────────────
    付け外しは game/player.js playLavaCoolFx（1.1 秒で外す）。
    かさぶた（.cooled-crust）が石の下から外へ広がって固まり、石は少し上から落ちて据わり、

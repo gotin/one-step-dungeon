@@ -27,6 +27,7 @@ async function enter(page, sk, r, c, setup = {}) {
 	await page.evaluate(({ sk, r, c, setup }) => {
 		const p = window.__game.getPlayer();
 		for (const b of setup.defeated ?? []) p.defeatedBosses.add(b);
+		for (const f of setup.flags ?? []) (p.storyFlags ??= []).push(f);
 		window.__game.enterStage('field', sk, r, c);
 	}, { sk, r, c, setup });
 }
@@ -61,12 +62,17 @@ test.describe('キュー61 未読の目的地の印', () => {
 		expect(marks).toContain('2,15');
 	});
 
-	test('② 人（賢者エルン・field 13,5）＝O の後に吹き出しが出て、読むと消える', async ({ page }) => {
+	// ⚠️ 2026-11-14（キュー104 ②）＝エルンの氷の廃墟の印は O の版から「出来事（森の番人の頼み）の後」の版へ移した
+	//    （O を倒して出ると必ず森の番人の老婆が頼みに来る）∴吹き出しが出るのは O＋その出来事の後。
+	test('② 人（賢者エルン・field 13,5）＝森の番人の頼みの後に吹き出しが出て、読むと消える', async ({ page }) => {
 		await gotoFreshGame(page);
 		await enter(page, '13,5', 4, 6);
 		expect(await bubbleCount(page), 'O を倒す前から吹き出しがある').toBe(0);
 
 		await enter(page, '13,5', 4, 6, { defeated: ['O'] });
+		expect(await bubbleCount(page), '老婆の頼みの前から吹き出しがある').toBe(0);
+
+		await enter(page, '13,5', 4, 6, { flags: ['森の番人の頼み'] });
 		expect(await unreadCells(page)).toEqual(['4,5:npc']);
 		expect(await bubbleCount(page)).toBe(1);
 
@@ -80,7 +86,7 @@ test.describe('キュー61 未読の目的地の印', () => {
 		await page.evaluate(() => {
 			window.__game.getPlayer().mapMarks.push({ layer: 'field', stage: '15,4', label: '氷の廃墟', kind: 'dungeon' });
 		});
-		await enter(page, '13,5', 4, 6, { defeated: ['O'] });
+		await enter(page, '13,5', 4, 6, { defeated: ['O'], flags: ['森の番人の頼み'] });
 		expect(await unreadCells(page)).toEqual([]);
 	});
 

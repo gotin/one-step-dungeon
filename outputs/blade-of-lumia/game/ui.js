@@ -28,7 +28,7 @@
 import { HP_PER_HEART } from './constants.js';
 import { playStatsItems } from './play-stats.js';
 import { PAL, makeSprite } from '../shared/sprites.js';
-import { ITEM_META, BOOMERANG_TIERS, HEART_PIECES_PER_HEART, EMBLEMS_FOR_AURA, hasSwordAura, SCROLLS_FOR_WIDE_SPIN, spinLevelOf, ownsItem, addStack, isStackFull, isMaxHpReward } from '../shared/items.js';
+import { ITEM_META, BOOMERANG_TIERS, HEART_PIECES_PER_HEART, EMBLEMS_FOR_AURA, hasSwordAura, SCROLLS_FOR_WIDE_SPIN, spinLevelOf, addStack, isStackFull, isMaxHpReward } from '../shared/items.js';
 import { iconCanvas, iconText, iconPxOf, tierIconSpec } from '../shared/ui-icons.js';
 import { playSound } from '../shared/sounds.js';
 // field の地図（キュー15）の色。エディタのワールドマップのサムネと**同じ関数**を呼ぶ
@@ -39,7 +39,8 @@ import { layerEntranceStages } from '../shared/exits.js';
 import { markId, markColor, markGuide, addMark, normalizeDialogMarks, normalizeSavedMarks } from '../shared/marks.js';
 // Dn 踏破後台詞の選択規則（17-0 → 2026-09-15 に改訂）＝版の並びと種類は
 // `shared/dialog-variants.js` が単一の真実。「条件がヒットした版のうち**一番下**を採る」。
-import { variantOptions, readEntryVariants, VARIANT_KIND, itemIdOfVariantKey, noticeId } from '../shared/dialog-variants.js';
+import { variantOptions, readEntryVariants, noticeId } from '../shared/dialog-variants.js';
+import { conditionKeyHolds, npcStandsAt } from '../shared/story-events.js';
 // 未読の目的地の印（キュー61）＝人か読める立て物かで印の形を変える。
 import { NPC_SPRITE_MAP } from '../shared/npcs.js';
 import { READABLE_SIGN_TILES } from '../shared/tiles.js';
@@ -449,6 +450,8 @@ export function createUi(deps) {
 		let kind, entry;
 		if (tile && NPC_SPRITE_MAP[tile]) {
 			kind = 'npc';  entry = stageData.npcData?.[posKey];
+			// キュー103: まだ来ていない／もう去った人には印を出さない（居ない人の上に吹き出しが浮く）。
+			if (!npcStandsAt(entry, getPlayer(), getCurrentLayer(), getStageKey(), posKey)) return null;
 		} else if (READABLE_SIGN_TILES.has(tile)) {
 			kind = 'sign'; entry = stageData.signData?.[posKey] ?? stageData.npcData?.[posKey];
 		} else {
@@ -518,23 +521,14 @@ export function createUi(deps) {
 	// NPC タイル（startDialog）・看板タイル（game.js の openSignDialog）の両方から呼ぶ
 	// ＝看板タイルは startDialog を通らないため、ここでは呼ばず game.js 側が直接呼ぶ。
 	function pickDialogVariant(data, player, map) {
-		const defeated    = player?.defeatedBosses;
-		const hasDefeated = (defeated?.size ?? 0) > 0;
-		const hasSeenBoss = (player?.triforceCount ?? 0) > 0;
-
 		let lines = null;
 		let mark  = null;
 		let noticeKey = null;   // キュー64: 本文を採った版が印を出す版なら、そのキー
 		let variantKey = null;  // 本文を採った版のキー（印の有無によらない。基本の台詞なら null）
 		for (const v of readEntryVariants(data, variantOptions(map))) {
-			let hit;
-			if (v.kind === VARIANT_KIND.AFTER)        hit = hasSeenBoss;
-			else if (v.kind === VARIANT_KIND.DEFAULT) hit = hasDefeated;
-			// 道具の版（キュー26）＝所持の置き場は道具ごとに違う∴`ownsItem` に任せる
-			// （はしごは `player.hasLadder`＝`subItems` を直接見るとここだけ常に未所持になる）。
-			else if (v.kind === VARIANT_KIND.ITEM)   hit = ownsItem(player, v.itemId ?? itemIdOfVariantKey(v.key));
-			else                                      hit = !!defeated?.has(v.key);
-			if (!hit) continue;
+			// 成り立つかの判定は `shared/story-events.js conditionKeyHolds` の1本（キュー103＝人の出現
+			// 条件も同じ判定を読む）。道具の版は `ownsItem` に任せる（はしごは `player.hasLadder`）。
+			if (!conditionKeyHolds(v.key, player)) continue;
 			if (v.lines.length) { lines = v.lines; noticeKey = v.notify ? v.key : null; variantKey = v.key; }
 			// 星の欠片の版（`after`）は印を持てない（欄を出していない）∴`mark` は最初から null。
 			if (v.mark) mark = v.mark;
@@ -551,13 +545,25 @@ export function createUi(deps) {
 	}
 
 	// extraLines＝通常の台詞の後に足す行（キュー21 F2＝「はじめから」の老賢者の introLines）。
-	function startDialog(r, c, tileChar, stageData, npcDefaultDialog, player, extraLines = []) {
+	// onClose＝読み終えて閉じた直後に1回呼ぶ（キュー103＝話しかけに来た人が去っていく）。
+	function startDialog(r, c, tileChar, stageData, npcDefaultDialog, player, extraLines = [], onClose = null) {
 		const posKey = `${r},${c}`;
 		const data   = stageData.npcData?.[posKey] ?? npcDefaultDialog[tileChar] ?? { name: 'NPC', lines: ['…'] };
 		const variant = pickDialogVariant(data, player, getMapData());
 		dialogLines = [...variant.lines, ...extraLines];
 		dialogLineIdx = 0;
-		dialogOnClose = null;
+		dialogOnClose = onClose;
+		// キュー103: この人との会話を読み終えたら「出来事」を記す（`setsFlag`）。途中で閉じる道は無い
+		// （advanceDialog の閉じる枝だけ）∴読み終えたことと記したことが一致する。
+		if (typeof data.setsFlag === 'string' && data.setsFlag) {
+			const flag = data.setsFlag;
+			const prevClose = dialogOnClose;
+			dialogOnClose = () => {
+				if (!Array.isArray(player.storyFlags)) player.storyFlags = [];
+				if (!player.storyFlags.includes(flag)) player.storyFlags.push(flag);
+				prevClose?.();
+			};
+		}
 		// キュー16: 会話データの `mark` が教える目的地。ここでは保留するだけで、
 		// 記すのは読み終えた時（advanceDialog の閉じる枝）＝話の途中で
 		// 「記した！」が会話の後ろに隠れて出てしまうのを避ける。
