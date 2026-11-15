@@ -32,7 +32,9 @@ async function measure(page, width, height, label = '草原の洞窟') {
     return {
       parent: el('hud-mark-guide').parentElement.id,
       inLane: el('hud-mark-guide').classList.contains('in-lane'),
-      guide: fs('hud-mark-guide'), sub: fs('hud-sub-label'),
+      // 基準＝アイテムの行（#hud-sub-item）。見出しは 2026-11-15 に「SUB:」→「アイテム」で小さくした（ユーザー指摘）＝
+      // 当初の「SUB: の表示と同じか少し小さい」は行の文字の大きさのこと（見出しを縮めても目的地表示は縮めない）。
+      guide: fs('hud-mark-guide'), sub: fs('hud-sub-item'),
       arrowBox: el('hud-mark-arrow').getBoundingClientRect().height,
       guideRight: g.right, guideLeft: g.left, boardLeft: b.left, labelH: label.height,
       // 名前の規則は「1行・はみ出しは … で省略」＝縮めないと途中で切れる（折り返しにはならない）

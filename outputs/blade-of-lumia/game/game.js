@@ -53,6 +53,7 @@ import { warpStoneId, warpLandingCandidates, WARP_NO_LANDING_TILES, listWarpSton
 import { noticeId } from '../shared/dialog-variants.js';
 import { npcStandsAt } from '../shared/story-events.js';
 import { createStoryApproach } from './story-approach.js';
+import { createEndingScene } from './ending-scene.js';
 import { isTestLayer } from '../shared/layers.js';
 // ── 投擲物・爆弾（Phase 0-2 Step 5: projectile.js へ切り出し）───────────────
 import { createProjectile } from './projectile.js';
@@ -203,6 +204,7 @@ let isTransitioning = false;
 let warpMenu = null;   // キュー27: 転移の石碑の行き先一覧（createWarpMenu）
 let quickSwap = null;  // キュー84: X 長押しの道具の早替え（createQuickSwap）
 let storyApproach = null;  // キュー103: 向こうから歩いてきて話しかける人（createStoryApproach）
+let endingScene = null;    // キュー108: ザーネルを倒した後の場面（createEndingScene）
 let invincibleUntil = 0;
 // MAP_ENTER 遷移直後クールダウン：遷移先に着いた直後は同じ入り口に乗っても再遷移しない
 let mapEnterCooldownUntil = 0;
@@ -834,6 +836,18 @@ const { checkStoneOnSwitch, evaluateConditions, refreshGates } = createCondition
 		},
 	});
 
+	// キュー108: ザーネルを倒した後の場面（game/ending-scene.js）
+	endingScene = createEndingScene({
+		getCharLayerEl: () => charLayerElRef.value,
+		getCellPx:      () => getCellPx(),
+		getPlayer:      () => player,
+		// renderChars は char-layer を空にする＝場面の女王まで消える∴向きだけ描き直す（story-approach の faceHero と同じ）
+		setHeroDir:     (d) => { heroDir = d; fx.updatePlayerCharEl(); },
+		enterStage:     (lk, sk, r, c) => enterStage(lk, sk, r, c),
+		openDialog:     (name, lines, mark, onClose) => _ui.openDialog(name, lines, mark, onClose),
+		stopGameLoop,
+		playSound,
+	});
 	// キュー103: 向こうから歩いてきて話しかける人（game/story-approach.js）
 	storyApproach = createStoryApproach({
 		getPlayer:       () => player,
@@ -924,7 +938,8 @@ const { checkStoneOnSwitch, evaluateConditions, refreshGates } = createCondition
 		// 終幕の台詞を上書きしていた（2026-08-20 ユーザー報告「よくやった、若き剣よ が
 		// 表示されなかった」の実因＝実測で再現した）。
 		// キュー103: 向こうから歩いてくる人の演出中も同じく飲む（game/story-approach.js）。
-		getIsCutscene:   () => _bossDefeating || !!storyApproach?.isBusy(),
+		// 終わりの場面（キュー108）は会話を挟む＝会話が開いている間は読み進めのキーを通す（それ以外は飲む）
+		getIsCutscene:   () => _bossDefeating || !!storyApproach?.isBusy() || (!!endingScene?.isBusy() && !isDialog),
 		movePlayer:  (dir) => fx.movePlayer(dir),
 		swordAttack: () => fx.swordAttack(),
 		startCharge:   () => fx.startCharge(),
@@ -1133,6 +1148,7 @@ const { checkStoneOnSwitch, evaluateConditions, refreshGates } = createCondition
 		setPendingTriforcePieceEl: (v) => { _pendingTriforcePieceEl = v; },
 		getExitRegistry: () => exitRegistry,
 		evaluateConditions: () => evaluateConditions(),
+		playFinale:      (done) => endingScene?.play(done),   // キュー108：ザーネルを倒した後の場面
 		lockBossDoors:   () => lockBossDoors(),
 		unlockBossDoors: () => unlockBossDoors(),
 		renderBoard:  () => fx.renderBoard(),
@@ -1889,6 +1905,9 @@ function gameTick() {
 	if (quickSwap?.isOpen()) return;
 	// キュー103: 向こうから話しかけに来る人が居れば、その演出を始めてこの tick は止める
 	// （画面に入った直後・ボスを倒した直後・出来事を記した直後のどれもここが入口）。
+	// キュー108：終わりの場面の間は世界を進めない。会話を閉じると ui.js がループを再開する＝場面の途中で
+	// 沼の画面の毒を受けた（2026-11-15 ユーザー報告「エンディングのシーンの間に毒をうけたと表示されてた」）。
+	if (endingScene?.isBusy()) return;
 	if (storyApproach?.tryStart()) return;
 	fx.processHeldKeys();   // 押しっぱなしキーで毎tick移動
 	// 移動で画面端・入口を越えて遷移が始まったら、この tick の残り（敵・弾・爆弾・炎）は走らせない

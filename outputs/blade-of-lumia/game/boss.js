@@ -399,7 +399,10 @@ export function createBoss(deps) {
 			pulse(`${ENEMY_META[boss.type]?.name ?? 'ザーネル'} を 倒した！`, 3000);
 			// 撃破フラグを解除してからエンディング演出へ（ループは startEnding が停止する）
 			setBossDefeating(false);
-			setTimeout(() => startEnding(), 2500);
+			// キュー108：倒しただけでは終わらせない＝最期の言葉 → 女王の目覚め → 世界が戻る場面（game/ending-scene.js）
+			// を挟んでからスタッフロール。場面が無い（テストの差し替え等）ときは今までどおり 2.5 秒後。
+			if (deps.playFinale) setTimeout(() => deps.playFinale(() => startEnding()), 1500);
+			else setTimeout(() => startEnding(), 2500);
 			return;
 		}
 		// 7b. 星の欠片付与（`ENEMY_META[tile].dropsTriforce` を持つボス＝8ダンジョンのボス）
@@ -795,13 +798,16 @@ export function createBoss(deps) {
 			container.appendChild(cv);
 		}
 
+		// ピンクの髪の2人＝ゲーム中のピンクあたまの2人（2026-11-15 ユーザー「endingに出てるピンクの髪の2人はゲーム中に
+		// 出てくるピンクの頭の2人を表現してた」）。その間に女王ルミアと勇者（キュー108）。
 		placeBigSprite('ending-princess1-canvas', 'princess', 'princess');
+		placeBigSprite('ending-queen-canvas',     'queenD',   'queen');   // 遊べる絵と同じ（旧 npcQueen は崩れていた）
 		placeBigSprite('ending-hero-canvas',      'heroD',    'hero');
 		placeBigSprite('ending-princess2-canvas', 'princess', 'princess');
 
 		const msgEl = document.getElementById('ending-msg');
 		if (msgEl) {
-			msgEl.innerHTML = 'ザーネルを倒し、すべての星の欠片を集め、女王ルミアの呪いを解いた。<br>光が世界に戻り、ルミアの地に平和が訪れた……';
+			msgEl.innerHTML = 'ザーネルは倒れ、深みで眠っていた女王ルミアが目覚めた。<br>光は世界に戻り、ルミアの地に平和が訪れた……';
 		}
 		const timeEl = document.getElementById('ending-time');
 		if (timeEl) {

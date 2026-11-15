@@ -1040,6 +1040,30 @@ canvas.sprite.dot32 {
 @media (prefers-reduced-motion: reduce) {
     .cell.arrow-pot-ready > canvas.obj-sprite { animation: none; filter: drop-shadow(2px 0 0 #7fe0ff) drop-shadow(-2px 0 0 #7fe0ff) drop-shadow(0 2px 0 #7fe0ff) drop-shadow(0 -2px 0 #7fe0ff); }
 }
+/* ── ザーネルを倒した後の場面（キュー108・game/ending-scene.js）── */
+#ending-flash {
+    position: fixed; inset: 0; background: #fff; opacity: 0; pointer-events: none; z-index: 90;
+    transition: opacity 0.9s ease;
+}
+#ending-flash.on { opacity: 1; }
+#ending-caption {
+    position: fixed; left: 50%; bottom: 14%; transform: translateX(-50%);
+    padding: 10px 22px; border-radius: 8px; background: rgba(4, 10, 14, 0.72);
+    color: #fff6d8; font-size: clamp(16px, 2.4vw, 24px); letter-spacing: 0.25em;
+    opacity: 0; transition: opacity 0.8s ease; pointer-events: none; z-index: 91; white-space: nowrap;
+}
+#ending-caption.on { opacity: 1; }
+/* 石の女王（灰色）→ 色が戻る */
+.ending-queen > canvas { transition: filter 1.4s ease; }
+.ending-queen.stone > canvas { filter: grayscale(1) brightness(0.75) contrast(1.1); }
+/* 島に勇者が現れる前・世界が戻る場面＝勇者を描かない／戻る場面は魔物も描かない */
+body.ending-hide-hero #char-player,
+body.ending-montage #char-player,
+body.ending-montage #char-layer .char-abs { visibility: hidden; }
+/* 世界が戻る＝暗い色 → 明るい色 */
+#board { transition: filter 1.3s ease; }
+#board.ending-dim { filter: grayscale(0.85) brightness(0.45); transition: none; }
+
 /* 矢の壺を叩いたとき（2026-11-15）＝壺が揺れて、矢が飛び出す（game/arrow-pot-effect.js） */
 .cell.arrow-pot-burst > canvas.obj-sprite {
     animation: arrow-pot-shake 0.12s linear 4;

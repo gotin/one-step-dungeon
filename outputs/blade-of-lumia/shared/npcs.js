@@ -25,7 +25,9 @@ export const PERSON_NPC_SPRITES = {
 	npcVeteran: { sprite: 'npcVeteran', pal: 'npcVeteran', label: '老兵' }, // refs/老兵1.png・2.png（2026-10-14）
 	npcGranny: { sprite: 'npcGranny', pal: 'npcGranny', label: '老婆' }, // refs/老婆1.png・2.png（2026-11-15・森の番人）
 	npcErn: { sprite: 'npcErn', pal: 'npcErn', label: '賢者エルン' }, // refs/賢者エルン.webp（2026-11-15）
-	npcQueen: { sprite: 'npcQueen', pal: 'npcQueen', label: '女王ルミア' }, // refs/女王32b.png（2026-11-15・キュー108）
+	// 女王ルミア＝遊べる絵の正面（shared/sprites-queen.js queenD・refs/女王シート.png）と同じ絵。
+	// ❌ 旧＝refs/女王32b.png の読み戻し（専用の npcQueen）＝崩れていた（2026-11-15 ユーザー指摘）→ 消した。
+	npcQueen: { sprite: 'queenD', pal: 'queen', label: '女王ルミア' },
 };
 
 /** そのセルの NPC を描く絵 {sprite, pal}。NPC でないタイルは null。 */

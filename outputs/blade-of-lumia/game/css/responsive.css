@@ -16,9 +16,18 @@
         bottom: 20px;
     }
 
+    /* 会話の枠（2026-11-15 ユーザー指摘「会話のダイアログはもっと上に」「文字の大きさをもっと大きく。SUBとかの大きさに比べて小さすぎない？」）
+       ＝画面の下端から 22vh 上げ、文字は画面幅で伸ばす（HUD と同じ vw 基準）。 */
     #dialog-overlay {
-        padding-bottom: 20px;
+        padding-bottom: 22vh;
     }
+    #dialog-box {
+        max-width: min(760px, 62vw);
+        padding: 1.1vw 1.6vw;
+    }
+    #dialog-name { font-size: clamp(13px, 1.05vw, 18px); }
+    #dialog-text { font-size: clamp(17px, 1.5vw, 26px); }
+    #dialog-next { font-size: clamp(11px, 0.85vw, 14px); }
 
     /* PC向けHUD：ビューポート幅基準で大きく */
     #hud {
@@ -59,6 +68,11 @@
 
     #hud-sub-count {
         font-size: 2.2vw;
+    }
+    /* 見出し（2026-11-15 ユーザー「SUBの文字は大きすぎる気もする」「SUBよりアイテムとかの方がわかりやすい」）
+       ＝「アイテム」にして小さく（絵と数を主役に）。#hud-sub-item の大きさ（目的地表示の基準）は変えない。 */
+    #hud-sub-label {
+        font-size: 1.4vw;
     }
 
     #hud-wallet {
