@@ -851,6 +851,7 @@ const { checkStoneOnSwitch, evaluateConditions, refreshGates } = createCondition
 	warpMenu = createWarpMenu({
 		...base,
 		getMapData:   () => mapData,
+		getFieldGlance: () => _ui.getFieldGlance(),   // キュー107：行き先の地図
 		stopGameLoop, startGameLoop,
 		setIsTransitioning: (v) => { isTransitioning = !!v; },
 		playSound, saveGame,
