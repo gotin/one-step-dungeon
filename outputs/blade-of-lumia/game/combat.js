@@ -130,6 +130,8 @@ export function createCombat(deps) {
 	//   背面では剣は体の向こう側にある∴頭や上げた腕の上に剣が乗るのはおかしい。
 	//   char-layer 内で z-index:-1＝盤面セルより上・.char-abs（z-index auto）より下
 	//   （はしごオーバーレイと同じ手）。
+	// 女王の横向きの剣の上げ幅（drawSwordHeld）。2 ドット → ユーザー「もう１ドット上にしてみて」で 3 ドット（2026-11-15）。
+	const QUEEN_SIDE_SWORD_LIFT = 3 / 32;   // tests/queen-player.spec.js が同じ値を見る
 	const SWORD_HELD_GEO = {
 		//        スプライト名        ox      oy      w  h   flipX   zi
 		down:  { spr: 'swordHeldDown',  ox:  0.47, oy:  0.64, w: T, h: L, flipX: false, zi: '8'  },
@@ -154,7 +156,11 @@ export function createCombat(deps) {
 		const cellPx  = getCellPx();
 		const player  = getPlayer();
 		const tier    = SWORD_TIERS[player?.swordTier ?? -1];
-		const geo     = SWORD_HELD_GEO[heroDir] ?? SWORD_HELD_GEO.down;
+		const base    = SWORD_HELD_GEO[heroDir] ?? SWORD_HELD_GEO.down;
+		// 女王ルミア（クリア後・キュー108／109）の横向きは手が勇者より高い（queenRAtk の手＝20 行）
+		// ＝剣を QUEEN_SIDE_SWORD_LIFT だけ上げる（2026-11-15 ユーザー指摘「剣の位置が女王の手の位置より２ドットぐらい下」）。
+		const geo     = (hasCleared?.() && (heroDir === 'right' || heroDir === 'left'))
+			? { ...base, oy: base.oy - QUEEN_SIDE_SWORD_LIFT } : base;
 
 		const cv = makeSprite(geo.spr, tier?.pal ?? 'sword', false, geo.flipX);
 		if (!cv) return;

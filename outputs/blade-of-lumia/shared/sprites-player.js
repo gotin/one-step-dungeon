@@ -3,6 +3,7 @@
 
 // キュー104：森の番人の老婆・賢者エルンの絵は別ファイル（行を文字列で持つ＝この表を太らせない）。末尾で取り込む。
 import { NPC_PEOPLE_SPRITES, NPC_PEOPLE_PAL } from './sprites-npc-people.js';
+import { QUEEN_SPRITES, QUEEN_PAL } from './sprites-queen.js';
 
 export const PLAYER_PAL = {
 	hero:     ['transparent','#000000','#ff9500','#f1d7c9','#4cd964','#5856d6','#edd1c3'],
@@ -39,6 +40,9 @@ export const PLAYER_SPRITES = {};
 // キュー104：別ファイルの人物の絵とパレットを取り込む（shared/sprites-npc-people.js）
 Object.assign(PLAYER_SPRITES, NPC_PEOPLE_SPRITES);
 Object.assign(PLAYER_PAL, NPC_PEOPLE_PAL);
+// キュー108／109：クリア後に遊ぶ女王ルミアの絵（shared/sprites-queen.js）
+Object.assign(PLAYER_SPRITES, QUEEN_SPRITES);
+Object.assign(PLAYER_PAL, QUEEN_PAL);
 
 // ── HERO（勇者 4方向 2フレーム）────────────────────── 32×32 px
 PLAYER_SPRITES.heroD = [

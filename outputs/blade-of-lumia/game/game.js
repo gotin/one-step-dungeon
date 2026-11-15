@@ -660,6 +660,12 @@ function getHeroSpriteName() {
 	const atk = player?._atkUntil != null && gameNow() < player._atkUntil;
 	// 金の装束（キュー76⑤）＝尖った金の髪の絵（shared/sprites-player.js `heroDGold` 等）。
 	const gold = player?.hasGoldGarb ? 'Gold' : '';
+	// キュー108／109（2026-11-15 ユーザー指定「この女王キャラでゲームできるように」）＝クリア後は女王ルミアの絵。
+	// 女王には金の装束の版が無い＝装束を持っていても同じ絵（色は getHeroPalName が 'queen' のまま）。
+	if (hasCleared()) {
+		const d = { down: 'D', right: 'R', left: 'R', up: 'U' }[heroDir] ?? 'D';
+		return `queen${d}${atk ? 'Atk' : ''}`;
+	}
 	if (atk) {
 		return ({ down: 'heroDAtk', right: 'heroRAtk', left: 'heroRAtk', up: 'heroUAtk' }[heroDir] ?? 'heroDAtk') + gold;
 	}
@@ -669,8 +675,8 @@ function getHeroSpriteName() {
 // クリア済みなら姫パレット、未クリアなら勇者パレットを返す。
 // 金の装束（キュー76⑤）を持っていれば、それぞれの金版（服と下衣だけ金）。
 function getHeroPalName() {
-	const base = hasCleared() ? 'princess' : 'hero';
-	return player.hasGoldGarb ? `${base}Gold` : base;
+	if (hasCleared()) return 'queen';   // キュー108／109：女王ルミアの絵は専用の色（金の装束の版は無い）
+	return player.hasGoldGarb ? 'heroGold' : 'hero';
 }
 
 // ── factory が作った関数の置き場（キュー85 #27）────────────────────────────
