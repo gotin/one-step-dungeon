@@ -2,6 +2,7 @@
 // ユーザー提供の参考画像（ChatGPT 作）をドット格子で読み戻して作った 32×32・2コマ。
 //   ・npcGranny＝森の番人の老婆（field 2,4）…… refs/老婆1.png・老婆2.png
 //   ・npcErn   ＝賢者エルン（field 13,5）……… refs/賢者エルン.webp（2コマが1枚にまとまった画像＝右のコマを土台）
+//   ・女王ルミアはここに無い＝遊べる絵の正面（shared/sprites-queen.js queenD）を使う（npcs.js PERSON_NPC_SPRITES.npcQueen）。
 // 作り方＝.scratch/sample-ref.mjs（読み戻し）→ build-person-sprite.mjs（k-means で色を寄せる）
 //   → finish-granny.mjs / finish-ern.mjs（はみ出し点・色の誤りだけを直す。清書はしない＝参考画像の味を残す）。
 // 2コマ目＝頭を1ドット下げたうなずき（参考画像は2枚とも同じ姿勢だった＝動きを足した）。エルンは杖の玉も強く光る。

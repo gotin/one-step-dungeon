@@ -1040,6 +1040,79 @@ canvas.sprite.dot32 {
 @media (prefers-reduced-motion: reduce) {
     .cell.arrow-pot-ready > canvas.obj-sprite { animation: none; filter: drop-shadow(2px 0 0 #7fe0ff) drop-shadow(-2px 0 0 #7fe0ff) drop-shadow(0 2px 0 #7fe0ff) drop-shadow(0 -2px 0 #7fe0ff); }
 }
+/* ── ザーネルを倒した後の場面（キュー108・game/ending-scene.js）── */
+#ending-flash {
+    position: fixed; inset: 0; background: #fff; opacity: 0; pointer-events: none; z-index: 90;
+    transition: opacity 0.9s ease;
+}
+#ending-flash.on { opacity: 1; }
+#ending-caption {
+    position: fixed; left: 50%; bottom: 14%; transform: translateX(-50%);
+    padding: 10px 22px; border-radius: 8px; background: rgba(4, 10, 14, 0.72);
+    color: #fff6d8; font-size: clamp(16px, 2.4vw, 24px); letter-spacing: 0.25em;
+    opacity: 0; transition: opacity 0.8s ease; pointer-events: none; z-index: 91; white-space: nowrap;
+}
+#ending-caption.on { opacity: 1; }
+/* 石の女王（灰色）→ 色が戻る */
+.ending-queen > canvas { transition: filter 1.4s ease; }
+.ending-queen.stone > canvas { filter: grayscale(1) brightness(0.75) contrast(1.1); }
+/* 島に勇者が現れる前・世界が戻る場面＝勇者を描かない（魔物は描く＝光になって消える所を見せる） */
+body.ending-hide-hero #char-player,
+body.ending-montage #char-player { visibility: hidden; }
+/* 世界が戻る（2026-11-16 ユーザー「ゲーム画面中はこういう有様じゃなかったのに、それが浄化された、っていうのなんか変」）＝
+   ゲーム中に実在した悪いもの（怨念のもや Ψ・呪い火 ψ・魔物）だけが光の輪で消え、地形は汚さず跡に花が咲く
+   （game/ending-scene.js cleanseBoard）。 */
+/* 魔物（呪い火を含む）＝白く光って、上へ溶ける */
+#char-layer .char-abs.ending-vanish { animation: ending-vanish 0.9s ease-in forwards; pointer-events: none; }
+@keyframes ending-vanish {
+    0%   { filter: brightness(1); opacity: 1; transform: translateY(0); }
+    35%  { filter: brightness(3) saturate(0); opacity: 1; }
+    100% { filter: brightness(3) saturate(0); opacity: 0; transform: translateY(calc(var(--cell) * -0.5)); }
+}
+/* 怨念のもや＝白く光って薄れる（マスの絵＝field-sprite） */
+.cell.ending-unmist > canvas { animation: ending-unmist 1.1s ease-out forwards; }
+@keyframes ending-unmist {
+    0%   { filter: brightness(1); opacity: 1; transform: scale(1); }
+    40%  { filter: brightness(2.6) saturate(0); opacity: 0.9; }
+    100% { filter: brightness(2.6) saturate(0); opacity: 0; transform: scale(1.3); }
+}
+/* 花＝幅5ドット（芯＋花びら8＋先4）＋茎と葉。1ドットはセルの 1/32＝地面の絵と同じ粗さ
+   （1ドットの十字だと headless で見えなかった） */
+.ending-flower {
+    --d: calc(var(--cell) / 32);
+    --d2: calc(var(--d) * 2);
+    position: absolute; width: var(--d); height: var(--d); z-index: 2; pointer-events: none;
+    background: #ffd84a;   /* 芯 */
+    box-shadow:
+        var(--d) 0 0 var(--p), calc(var(--d) * -1) 0 0 var(--p), 0 var(--d) 0 var(--p), 0 calc(var(--d) * -1) 0 var(--p),
+        var(--d) var(--d) 0 var(--p2), calc(var(--d) * -1) var(--d) 0 var(--p2), var(--d) calc(var(--d) * -1) 0 var(--p2), calc(var(--d) * -1) calc(var(--d) * -1) 0 var(--p2),
+        var(--d2) 0 0 var(--p), calc(var(--d2) * -1) 0 0 var(--p), 0 calc(var(--d2) * -1) 0 var(--p),
+        0 var(--d2) 0 #3f8a2c, 0 calc(var(--d) * 3) 0 #3f8a2c, var(--d) calc(var(--d) * 3) 0 #5aa83a, calc(var(--d) * -1) calc(var(--d) * 4) 0 #5aa83a, 0 calc(var(--d) * 4) 0 #3f8a2c;
+    transform: scale(0); transform-origin: center bottom;
+    animation: ending-bloom 0.5s ease-out forwards;
+}
+.ending-flower--0 { --p: #ff7fb6; --p2: #e0558f; }
+.ending-flower--1 { --p: #ffffff; --p2: #d8dce8; }
+.ending-flower--2 { --p: #ffe066; --p2: #e8b830; }
+@keyframes ending-bloom { to { transform: scale(1); } }
+/* 光の輪と、戻った後に立ちのぼる光の粒 */
+.ending-ring { position: absolute; inset: 0; z-index: 6; pointer-events: none; mix-blend-mode: screen; }
+.ending-mote {
+    position: absolute; width: calc(var(--cell) / 10); height: calc(var(--cell) / 10);
+    background: #fff4c0; box-shadow: 0 0 6px 2px rgba(255, 230, 140, 0.8);
+    z-index: 6; pointer-events: none; opacity: 0;
+    animation: ending-mote 1.8s ease-out forwards;
+}
+@keyframes ending-mote {
+    0%   { opacity: 0; transform: translateY(0); }
+    25%  { opacity: 1; }
+    100% { opacity: 0; transform: translateY(calc(var(--cell) * -1.6)); }
+}
+@media (prefers-reduced-motion: reduce) {
+    .ending-mote { animation: none; }
+    .ending-flower { animation: none; transform: none; }
+}
+
 /* 矢の壺を叩いたとき（2026-11-15）＝壺が揺れて、矢が飛び出す（game/arrow-pot-effect.js） */
 .cell.arrow-pot-burst > canvas.obj-sprite {
     animation: arrow-pot-shake 0.12s linear 4;

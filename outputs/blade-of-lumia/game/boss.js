@@ -10,6 +10,7 @@ import { makeSprite } from '../shared/sprites.js';
 import { mountIconEls } from '../shared/ui-icons.js';
 import { playSound, playBgm, stopBgm, setBossBgmIntensity } from '../shared/sounds.js';
 import { SAVE_KEY, CLEARED_KEY, BEST_TIME_KEY, ALTAR_EXIT_ID } from './constants.js';
+import { writeCarry, snapshotCarry } from './carry-over.js';
 import { formatPlayTime, recordClearTime } from './play-time.js';
 import { playStatsItems } from './play-stats.js';
 
@@ -399,7 +400,15 @@ export function createBoss(deps) {
 			pulse(`${ENEMY_META[boss.type]?.name ?? 'ザーネル'} を 倒した！`, 3000);
 			// 撃破フラグを解除してからエンディング演出へ（ループは startEnding が停止する）
 			setBossDefeating(false);
-			setTimeout(() => startEnding(), 2500);
+			// キュー108：場面の途中でタブを閉じても戦い直しにならないよう、ここで「場面待ち」の印をセーブに残す
+			// （玉座の間・ザーネル撃破済み）。続きから（game.js の「続きから」）で印があれば場面を最初から流す。
+			// 場面の間は画面を移してもセーブしない（game.js enterStage）＝島や村の位置がセーブに残らない。
+			player.finalePending = true;
+			saveGame();
+			// キュー108：倒しただけでは終わらせない＝最期の言葉 → 女王の目覚め → 世界が戻る場面（game/ending-scene.js）
+			// を挟んでからスタッフロール。場面が無い（テストの差し替え等）ときは今までどおり 2.5 秒後。
+			if (deps.playFinale) setTimeout(() => deps.playFinale(() => startEnding()), 1500);
+			else setTimeout(() => startEnding(), 2500);
 			return;
 		}
 		// 7b. 星の欠片付与（`ENEMY_META[tile].dropsTriforce` を持つボス＝8ダンジョンのボス）
@@ -752,6 +761,9 @@ export function createBoss(deps) {
 		stopGameLoop(); stopBgm();
 
 		saveCleared();
+		// キュー109：クリアした瞬間の強さを女王の周回へ引き継ぐ（セーブを消す前＝生きている player から写す）。
+		// 何度クリアしても最後のクリアの強さで上書きする（周回で集め直した強さが次へ渡る）。
+		writeCarry(localStorage, snapshotCarry(getPlayer()));
 		localStorage.removeItem(SAVE_KEY);
 		// キュー65: クリアタイム（遊んでいた時間）を自己ベストと比べて残す。
 		// セーブは上で消える∴値は生きている player から読む。
@@ -795,13 +807,16 @@ export function createBoss(deps) {
 			container.appendChild(cv);
 		}
 
+		// ピンクの髪の2人＝ゲーム中のピンクあたまの2人（2026-11-15 ユーザー「endingに出てるピンクの髪の2人はゲーム中に
+		// 出てくるピンクの頭の2人を表現してた」）。その間に女王ルミアと勇者（キュー108）。
 		placeBigSprite('ending-princess1-canvas', 'princess', 'princess');
+		placeBigSprite('ending-queen-canvas',     'queenD',   'queen');   // 遊べる絵と同じ（旧 npcQueen は崩れていた）
 		placeBigSprite('ending-hero-canvas',      'heroD',    'hero');
 		placeBigSprite('ending-princess2-canvas', 'princess', 'princess');
 
 		const msgEl = document.getElementById('ending-msg');
 		if (msgEl) {
-			msgEl.innerHTML = 'ザーネルを倒し、すべての星の欠片を集め、女王ルミアの呪いを解いた。<br>光が世界に戻り、ルミアの地に平和が訪れた……';
+			msgEl.innerHTML = 'ザーネルは倒れ、深みで眠っていた女王ルミアが目覚めた。<br>光は世界に戻り、ルミアの地に平和が訪れた……';
 		}
 		const timeEl = document.getElementById('ending-time');
 		if (timeEl) {

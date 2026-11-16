@@ -427,7 +427,9 @@ export function initInput(deps) {
 		if (fromTouch) dir = touchDir;
 		if (!dir) { _moveSpeedAccum = 0; setDashing?.(false); return; }
 
-		// 二周目（姫パレット）は移動速度1.2倍
+		// キュー109 ②（2026-11-16 ユーザー確定）：周回（クリア後）の歩く速さ ×1.2 はやめた。
+		// 1.2 は tick ごとの歩数が 1,1,1,1,2 と揃わず「周期的に速くなったり遅くなったり」に見えた
+		// （一定の 1.2 倍は tick の間隔か歩幅を変えないと出ない＝半マス単位の判定を崩す）。
 		// チャージ中の半速は撤去した（Phase 5.5g5）＝溜め中は movePlayer 側で
 		// 足が止まる∴ここで係数を掛ける意味が無い（規則を2箇所に置かない）。
 		// 疾風の靴＋Shift は DASH_SPEED（二周目の 1.2 倍とは掛け合わせない＝整数のまま保つ
@@ -435,7 +437,7 @@ export function initInput(deps) {
 		// ＝1歩ずつ壁・床・入口を判定する∴位置は常にセルの中央か半セルの位置に乗る。
 		const dashing = !!canDash?.() && (heldKeys.has('Shift') || touchDash);
 		setDashing?.(dashing);
-		const speed = dashing ? DASH_SPEED : (hasCleared() ? 1.2 : 1.0);
+		const speed = dashing ? DASH_SPEED : 1;
 		_moveSpeedAccum += speed;
 		const times = Math.floor(_moveSpeedAccum);
 		_moveSpeedAccum -= times;

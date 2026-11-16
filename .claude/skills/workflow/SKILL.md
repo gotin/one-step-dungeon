@@ -1,6 +1,6 @@
 ---
 name: workflow
-description: このリポジトリの開発を手順書（runbook）に従って進める入口。対象は2つ＝Blade of Lumia（outputs/blade-of-lumia/WORKFLOW.md）と Small Isle サイト（site/WORKFLOW.md。ブログ・管理画面・Vercel/Neon）。「/workflow」「/workflow blade」「/workflow site」「WORKFLOW に従って進めて」「次のタスクを進めて」と言われたときに使う。
+description: このリポジトリの開発を手順書（runbook）に従って進める入口。対象は2つ＝Blade of Lumia（outputs/blade-of-lumia/WORKFLOW.md）と Small Isle サイト（site/WORKFLOW.md。ブログ・管理画面・Vercel/Neon）。「/workflow」「/workflow blade」「/workflow site」「WORKFLOW に従って進めて」「次のタスクを進めて」と言われたときに使う。「/workflow check」＝次のセッションで想定どおり再開できるかをサブエージェントで確かめる（作業はしない）。
 ---
 
 # ワークフローの入口（対象を選ぶ）
@@ -10,6 +10,18 @@ description: このリポジトリの開発を手順書（runbook）に従って
 1. 引数で決める：`blade`（または Blade of Lumia・ゲーム・マップ・敵など）→ **Blade of Lumia**。`site`（または サイト・ブログ・記事・管理画面・smallisle・Vercel・Neon）→ **Small Isle サイト**。
 2. 引数が無ければ、同じセッションで直前まで進めていた方を続ける。
 3. それでも決まらなければ、どちらを進めるかをユーザーに1回だけ聞く（推測で始めない）。
+
+## オプション：`check`（再開できるかの確かめ・作業はしない）
+
+`/workflow check`（`/workflow blade check`・`/workflow site check` も可）＝**次のセッションで `/workflow` したときに、想定どおりの所から再開できるか**を確かめる。セッションを区切る前に使う（2026-11-15 ユーザー依頼「次に /workflowしたら想定通りのところから再開できるのかサブエージェントとかで確認して欲しい。またこのような確認をするための/workflowのオプションをつけて欲しい」）。
+
+1. **今のセッションの「想定する再開地点」を1〜3行で書き出す**（例：「PLAN キュー108 の『世界が戻る場面の浄化』を作る。最初の一手＝5画面ぶんの塗り替えを作って見せる」）。これは比べる答え＝サブエージェントには渡さない。
+2. **会話の文脈を持たない新しいサブエージェント**（`subagent_type` は `general-purpose` か `Explore`・`fork` は使わない＝文脈を引き継いでしまう）を1つ起動し、次だけを頼む：
+   - 「あなたは新しいセッションで `/workflow`（対象＝blade か site）を実行した Claude です。`.claude/skills/workflow/SKILL.md` の手順どおり、まず WORKFLOW.md を全文読み、そこから指示される PLAN.md／PROGRESS.md 等を読んで、**次に何をするか**を決めてください。**ファイルの編集・コミット・テストの実行はしない**（読むだけ）。答え＝①どのタスク（PLAN のキュー番号と見出し）②最初の一手（具体的に）③着手の前にユーザーへ聞くつもりのこと④読んで迷った所・記述が食い違っていた所。」
+3. サブエージェントの答えを 1. の想定と突き合わせ、ユーザーに報告する：
+   - 一致 → 「再開できる」と書く。
+   - ずれ・迷い・食い違いがある → **原因の記述（PLAN の再開地点・PROGRESS の現在地・キューの順など）をその場で直し、もう一度サブエージェントで確かめる**（直したことを報告に含める）。
+4. `check` は作業を進めない。コミットもしない（直したドキュメントは、ユーザーに確認してからコミットする）。
 
 ## Small Isle サイトの場合
 

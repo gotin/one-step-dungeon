@@ -7,6 +7,7 @@ import { statefulTileClosed, lavaCooledAt, SUNK_ROW } from './passable.js';
 import { makeStoneEl, stoneSpriteOf } from './render-chars.js';
 import { ITEM_META, EQUIP_META, SWORD_TIERS, BASE_ATK, ARMOR_TIERS, BASE_DEF, SHIELD_TIERS, BOOMERANG_TIERS, HEART_PIECES_PER_HEART, EMBLEMS_FOR_AURA, SCROLLS_FOR_SPIN, SCROLLS_FOR_WIDE_SPIN, ITEM_STACK_MAX, ownsItem, addStack, stackCount, isStackFull } from '../shared/items.js';
 import { NPC_SPRITE_MAP } from '../shared/npcs.js';
+import { carriedGain } from './carry-over.js';
 import { ENEMY_META } from '../shared/enemies.js';
 import { enemyOccupiesTile } from './hitbox.js';
 import { makeSprite } from '../shared/sprites.js';
@@ -861,6 +862,13 @@ export function createPlayer(deps) {
 	// ── ハートの器を得る ──────────────────────────────
 	function gainHeartContainer() {
 		const player = getPlayer();
+		// キュー109 ③：引き継いだ周回は「引き継いだ数まで」＝増えない器もある（HP は満タンにする）。
+		const carried = carriedGain(player, 'hearts');
+		if (carried !== null) {
+			if (carried > player.maxHearts) { player.maxHearts = carried; player.maxHp = carried * HP_PER_HEART; }
+			player.hp = player.maxHp;
+			return;
+		}
 		player.maxHearts++; player.maxHp += HP_PER_HEART; player.hp = player.maxHp;
 	}
 
@@ -882,15 +890,22 @@ export function createPlayer(deps) {
 	// `hasSwordAura(player)` で読む＝別の旗を持たない）。戻り値＝この1個でそろったか。
 	function gainEmblem() {
 		const player = getPlayer();
-		player.emblems = (Number.isFinite(player.emblems) ? player.emblems : 0) + 1;
-		return player.emblems === EMBLEMS_FOR_AURA;
+		const before = Number.isFinite(player.emblems) ? player.emblems : 0;
+		// キュー109 ③：引き継いだ周回は「引き継いだ数まで」＝そろっていたら増えない＝演出も出ない。
+		const carried = carriedGain(player, 'emblems');
+		player.emblems = carried ?? before + 1;
+		return player.emblems === EMBLEMS_FOR_AURA && before < EMBLEMS_FOR_AURA;
 	}
 
 	// ── 剣技の巻物を得る（実行キュー100）──────────────────────
 	// 個数は `player.scrolls`。回転斬りの段は `spinLevelOf(player)` で読む（別の旗を持たない）。
+	// 戻り値＝拾った後の個数。キュー109 ③：引き継いだ周回は増えないことがある＝`player._scrollGained` が増えたか。
 	function gainScroll() {
 		const player = getPlayer();
-		player.scrolls = (Number.isFinite(player.scrolls) ? player.scrolls : 0) + 1;
+		const before = Number.isFinite(player.scrolls) ? player.scrolls : 0;
+		const carried = carriedGain(player, 'scrolls');
+		player.scrolls = carried ?? before + 1;
+		player._scrollGained = player.scrolls > before;
 		return player.scrolls;
 	}
 
@@ -972,6 +987,7 @@ export function createPlayer(deps) {
 			// 初めて効果を言う（紋章と同じ＝それまでは何が起きるか明かさない）。
 			if (content.item === 'scroll') {
 				const n = gainScroll();
+				if (!player._scrollGained) return `剣技の巻物 を手に入れた！（${n}/${SCROLLS_FOR_WIDE_SPIN}）`;
 				if (n === SCROLLS_FOR_SPIN) return `剣技の巻物 を手に入れた！（${n}/${SCROLLS_FOR_WIDE_SPIN}） 回転斬り を覚えた！（剣を 溜めて 満タンで 放つと まわりの 敵を 斬る）`;
 				if (n === SCROLLS_FOR_WIDE_SPIN) return `剣技の巻物 が ${SCROLLS_FOR_WIDE_SPIN}つ そろった！ 回転斬り が 2マス先 まで 届く！`;
 				return `剣技の巻物 を手に入れた！（${n}/${SCROLLS_FOR_WIDE_SPIN}）`;
@@ -985,6 +1001,8 @@ export function createPlayer(deps) {
 			// キュー95：数の付いた宝箱（`count`＝例 爆弾×5）。giveSubItem は初回 1セット・2回目以降 +1 しか
 			// 渡さない∴足りない分を上限まで足す（矢・爆弾だけ＝上限の欄を持つ道具）。
 			const hadBefore = !!player.subItems?.[content.item];
+			// キュー109 ④：金の装束を引き継いだ周回で裏ボスをもう一度倒しても、装束を得る演出は出さない。
+			const hadGarb = content.item === 'goldGarb' && !!player.hasGoldGarb;
 			if (!giveSubItem(content.item)) return '';
 			if ((content.count ?? 1) > 1 && (content.item === 'bomb' || content.item === 'bow')) {
 				const given = hadBefore ? 1 : (ITEM_META[content.item]?.defaultStack ?? 1);
@@ -995,7 +1013,7 @@ export function createPlayer(deps) {
 			}
 			// 金の装束＝入手の瞬間にオーラの中で姿が変わる演出（game/garb-awakening.js）。効果は文に書かない
 			// （2026-10-17 ユーザー決定「どんな効果があるのかはプレーヤー自身が体感して理解するだけで」）。
-			if (content.item === 'goldGarb') deps.onGoldGarbAwakened?.();
+			if (content.item === 'goldGarb' && !hadGarb) deps.onGoldGarbAwakened?.();
 			// ⚠️ 上限を広げる passive（矢筒・爆弾袋）は**サブアイテム欄に並ばない**
 			// （`giveSubItem` の passive 分岐は早期 return ∴ヒントも出ない）＝名前だけでは
 			// 何が増えたのか分からない。下の 'ladder' 分岐と同じ作法で効果を文に足す。

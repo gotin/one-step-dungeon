@@ -44,6 +44,7 @@ import {
 	callGainHeartContainer,
 	callGrantReward,
 	callGiveSubItem,
+	callTakeDamage,
 	getPlacedFlamesSnapshot,
 	getFireSpreadSnapshot,
 	getMiragesSnapshot,
@@ -195,6 +196,8 @@ window.__game = {
 	grantReward: (content) => callGrantReward(content),
 	// Phase 9-5a: giveSubItem テスト用（quiver/bombBag 等の passive 拡充アイテム）
 	giveSubItem: (id) => callGiveSubItem(id),
+	// キュー109：周回の守りの確かめ用
+	takeDamage: (amount) => callTakeDamage(amount),
 	// Phase 9-5c: フロアドロップ確認・手動拾得（テスト用）
 	// 2026-08-31: 置いた炎（ロウソク）の一覧。上限3・寿命・「1つの炎は1体に1回」の観測用
 	getPlacedFlames: () => getPlacedFlamesSnapshot(),

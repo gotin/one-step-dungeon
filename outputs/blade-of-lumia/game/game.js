@@ -26,6 +26,7 @@ import {
 	DARK_TOWER_EXIT_ID, CANDLE_FLAME_MAX, RESPAWN_MOVES,
 	ATTACK_POSE_MS,
 } from './constants.js';
+import { applyCarry, readCarry } from './carry-over.js';
 // ── セーブ/ロードの純粋変換ロジック（Phase 0-2 Step 1b: save.js へ切り出し）──
 import {
 	createStageState, serializeStageState, deserializeStageState, sanitizeLoadedPlayer,
@@ -53,6 +54,7 @@ import { warpStoneId, warpLandingCandidates, WARP_NO_LANDING_TILES, listWarpSton
 import { noticeId } from '../shared/dialog-variants.js';
 import { npcStandsAt } from '../shared/story-events.js';
 import { createStoryApproach } from './story-approach.js';
+import { createEndingScene } from './ending-scene.js';
 import { isTestLayer } from '../shared/layers.js';
 // ── 投擲物・爆弾（Phase 0-2 Step 5: projectile.js へ切り出し）───────────────
 import { createProjectile } from './projectile.js';
@@ -203,6 +205,7 @@ let isTransitioning = false;
 let warpMenu = null;   // キュー27: 転移の石碑の行き先一覧（createWarpMenu）
 let quickSwap = null;  // キュー84: X 長押しの道具の早替え（createQuickSwap）
 let storyApproach = null;  // キュー103: 向こうから歩いてきて話しかける人（createStoryApproach）
+let endingScene = null;    // キュー108: ザーネルを倒した後の場面（createEndingScene）
 let invincibleUntil = 0;
 // MAP_ENTER 遷移直後クールダウン：遷移先に着いた直後は同じ入り口に乗っても再遷移しない
 let mapEnterCooldownUntil = 0;
@@ -605,7 +608,9 @@ function enterStage(lk, sk, pRow, pCol) {
 	// （y:-0.5 など）が残り、続きからで入口の外から始まった（キュー83・Fable 実装レビュー #13）。
 	// 同じ画面に入り直す呼び出し（はじめから・続きから・リトライ・プレビューの開始）では書かない＝
 	// リトライは倒れた瞬間の部屋をセーブに残さない（recordDeath の注）。
-	if (isStageChange) saveGame();
+	// キュー108：ザーネルを倒した後の場面は見た目のために画面を移すだけ＝書かない
+	// （書くと途中で閉じたとき「島や村に立った・未クリア」のセーブが残り、エンディングに戻れなくなる）。
+	if (isStageChange && !endingScene?.isBusy()) saveGame();
 }
 
 
@@ -660,6 +665,12 @@ function getHeroSpriteName() {
 	const atk = player?._atkUntil != null && gameNow() < player._atkUntil;
 	// 金の装束（キュー76⑤）＝尖った金の髪の絵（shared/sprites-player.js `heroDGold` 等）。
 	const gold = player?.hasGoldGarb ? 'Gold' : '';
+	// キュー108／109（2026-11-15 ユーザー指定「この女王キャラでゲームできるように」）＝クリア後は女王ルミアの絵。
+	// 女王の金の装束は絵を替えない＝同じ絵で髪の色だけ金（getHeroPalName が 'queenGold'）。
+	if (hasCleared()) {
+		const d = { down: 'D', right: 'R', left: 'R', up: 'U' }[heroDir] ?? 'D';
+		return `queen${d}${atk ? 'Atk' : ''}`;
+	}
 	if (atk) {
 		return ({ down: 'heroDAtk', right: 'heroRAtk', left: 'heroRAtk', up: 'heroUAtk' }[heroDir] ?? 'heroDAtk') + gold;
 	}
@@ -669,8 +680,9 @@ function getHeroSpriteName() {
 // クリア済みなら姫パレット、未クリアなら勇者パレットを返す。
 // 金の装束（キュー76⑤）を持っていれば、それぞれの金版（服と下衣だけ金）。
 function getHeroPalName() {
-	const base = hasCleared() ? 'princess' : 'hero';
-	return player.hasGoldGarb ? `${base}Gold` : base;
+	// キュー108／109：女王ルミアの絵は専用の色。金の装束を持てば髪が金（queenGold・キュー109 ④）。
+	if (hasCleared()) return player.hasGoldGarb ? 'queenGold' : 'queen';
+	return player.hasGoldGarb ? 'heroGold' : 'hero';
 }
 
 // ── factory が作った関数の置き場（キュー85 #27）────────────────────────────
@@ -828,6 +840,20 @@ const { checkStoneOnSwitch, evaluateConditions, refreshGates } = createCondition
 		},
 	});
 
+	// キュー108: ザーネルを倒した後の場面（game/ending-scene.js）
+	endingScene = createEndingScene({
+		getCharLayerEl: () => charLayerElRef.value,
+		getCellPx:      () => getCellPx(),
+		getPlayer:      () => player,
+		// renderChars は char-layer を空にする＝場面の女王まで消える∴向きだけ描き直す（story-approach の faceHero と同じ）
+		setHeroDir:     (d) => { heroDir = d; fx.updatePlayerCharEl(); },
+		enterStage:     (lk, sk, r, c) => enterStage(lk, sk, r, c),
+		// 世界が戻る場面：今の画面のタイル（怨念のもや Ψ のマスを知る）
+		getTileAt:      (r, c) => getStageData(currentLayer, stageKey)?.tiles?.[r]?.[c],
+		openDialog:     (name, lines, mark, onClose) => _ui.openDialog(name, lines, mark, onClose),
+		stopGameLoop,
+		playSound,
+	});
 	// キュー103: 向こうから歩いてきて話しかける人（game/story-approach.js）
 	storyApproach = createStoryApproach({
 		getPlayer:       () => player,
@@ -918,7 +944,8 @@ const { checkStoneOnSwitch, evaluateConditions, refreshGates } = createCondition
 		// 終幕の台詞を上書きしていた（2026-08-20 ユーザー報告「よくやった、若き剣よ が
 		// 表示されなかった」の実因＝実測で再現した）。
 		// キュー103: 向こうから歩いてくる人の演出中も同じく飲む（game/story-approach.js）。
-		getIsCutscene:   () => _bossDefeating || !!storyApproach?.isBusy(),
+		// 終わりの場面（キュー108）は会話を挟む＝会話が開いている間は読み進めのキーを通す（それ以外は飲む）
+		getIsCutscene:   () => _bossDefeating || !!storyApproach?.isBusy() || (!!endingScene?.isBusy() && !isDialog),
 		movePlayer:  (dir) => fx.movePlayer(dir),
 		swordAttack: () => fx.swordAttack(),
 		startCharge:   () => fx.startCharge(),
@@ -1127,6 +1154,7 @@ const { checkStoneOnSwitch, evaluateConditions, refreshGates } = createCondition
 		setPendingTriforcePieceEl: (v) => { _pendingTriforcePieceEl = v; },
 		getExitRegistry: () => exitRegistry,
 		evaluateConditions: () => evaluateConditions(),
+		playFinale:      (done) => endingScene?.play(done),   // キュー108：ザーネルを倒した後の場面
 		lockBossDoors:   () => lockBossDoors(),
 		unlockBossDoors: () => unlockBossDoors(),
 		renderBoard:  () => fx.renderBoard(),
@@ -1883,6 +1911,9 @@ function gameTick() {
 	if (quickSwap?.isOpen()) return;
 	// キュー103: 向こうから話しかけに来る人が居れば、その演出を始めてこの tick は止める
 	// （画面に入った直後・ボスを倒した直後・出来事を記した直後のどれもここが入口）。
+	// キュー108：終わりの場面の間は世界を進めない。会話を閉じると ui.js がループを再開する＝場面の途中で
+	// 沼の画面の毒を受けた（2026-11-15 ユーザー報告「エンディングのシーンの間に毒をうけたと表示されてた」）。
+	if (endingScene?.isBusy()) return;
 	if (storyApproach?.tryStart()) return;
 	fx.processHeldKeys();   // 押しっぱなしキーで毎tick移動
 	// 移動で画面端・入口を越えて遷移が始まったら、この tick の残り（敵・弾・爆弾・炎）は走らせない
@@ -2349,6 +2380,9 @@ function startNewGame() {
 		selectedMarkId: null,
 		pendingTriforce: null,
 	};
+	// キュー109：クリア後の周回（女王）は最後のクリアの強さ（剣・盾・鎧・ハートの器・紋章・巻物・金の装束）から始める。
+	// 道具は引き継がない（game/carry-over.js の冒頭）。記録の無い古いクリアは素のまま。
+	if (hasCleared()) applyCarry(player, readCarry(localStorage));
 	heroDir = 'down';
 	enterStage(currentLayer, stageKey, player.y, player.x);
 	startGameLoop();
@@ -2378,8 +2412,14 @@ function openIntroDialog() {
 btnContinueEl.addEventListener('click', () => {
 	titleOverlayEl.classList.add('hidden');
 	enterStage(currentLayer, stageKey, player.y, player.x);
-	startGameLoop();
 	resumeAudio();
+	// キュー108：ザーネルを倒した後の場面の途中で閉じていた（「場面待ち」の印がある）→ 場面を最初から流す
+	// （ループは場面が止めたまま・終わればスタッフロール＝startEnding がセーブを消す）。
+	if (player.finalePending && endingScene) {
+		endingScene.play(() => fx.startEnding());
+		return;
+	}
+	startGameLoop();
 });
 
 btnNewgameEl.addEventListener('click', () => {
@@ -2852,6 +2892,8 @@ export function callGrantReward(content) { return fx.grantReward(content); }
 
 // Phase 9-5a: giveSubItem テスト用（容量拡充アイテムの passive 分岐を確認するため）
 export function callGiveSubItem(id) { return fx.giveSubItem(id); }
+// キュー109：周回の守り（上乗せなし）を確かめる口＝プレイヤーが HP を失う唯一の入口をそのまま呼ぶ
+export function callTakeDamage(amount) { return fx.takeDamage(amount); }
 
 // 2026-08-31: 置いた炎の一覧（テスト用）。上限・寿命・「1つの炎は1体に1回」を
 // 外から観測できる唯一の窓（`burnedCount` がその炎が焼いた敵の数）。
