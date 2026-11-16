@@ -27,7 +27,7 @@ import { TILE } from '../shared/tiles.js';
 import { ENEMY_META } from '../shared/enemies.js';
 import { ROWS, COLS, makeSolver } from '../scripts/lib/blade-solver.mjs';
 import { measureMetrics } from '../scripts/lib/puzzle-metrics.mjs';
-import { THREAT_OF, PINNED_STAGES, EXTRA_ENEMY_ROOMS } from '../scripts/lib/enemy-placement.mjs';
+import { THREAT_OF, PINNED_STAGES, EXTRA_ENEMY_ROOMS, DARK_TOWER_THREAT_CAP } from '../scripts/lib/enemy-placement.mjs';
 
 const MAP_PATH = fileURLToPath(new URL('../work/blade-of-lumia.json', import.meta.url));
 const map = JSON.parse(readFileSync(MAP_PATH, 'utf8'));
@@ -40,7 +40,7 @@ const PIT_ROW = 3;              // `3,0` の穴の帯
 const ISLAND_REWARD = '1,5';    // `3,0` の島の矢束
 const SOUTH_OUT = '9,5';        // 本道の出口（→ `3,1` のはしごの関門へ）
 const EDGES = 'N[] S[5,6] W[] E[]';
-const THREAT_CAP = 900;         // 不変条件 (d4)
+const THREAT_CAP = DARK_TOWER_THREAT_CAP;   // 不変条件 (d4)（単一の真実は enemy-placement.mjs）
 const ROOM_CAP = 162;           // 不変条件 (d3)（`1,2` の 225.0 は PINNED_STAGES の既存例外）
 const TOTAL_BEFORE = 894;       // ⑤-b 完了時の塔の非ボス合計＝ここより軽くしない
 
@@ -119,8 +119,9 @@ test.describe('Blade of Lumia – dark_tower 踊り場3室の差別化（キュ�
 		expect(sig(F1), `${F1} と ${F2} が同じ盤面（踊り場の使い回し）`).not.toBe(sig(F2));
 		expect(sig(F2), `${F2} と ${F3} が同じ盤面（⑱の再発）`).not.toBe(sig(F3));
 		expect(sig(F1), `${F1} と ${F3} が同じ盤面（踊り場の使い回し）`).not.toBe(sig(F3));
-		// 1F は触らない＝E×4 の見張りのまま（(d4) の予算の余裕をここで使わない）
-		expect(threatOf(stageOf(F1)), `${F1} の脅威度`).toBe(16);
+		// 1F はキュー111（2026-11-16）で μ の習い場にした（E×4 16.0 → μ×1 45.0）＝
+		// 盤面そのものの見張りは tests/dark-tower-1f-sword-beast-hall.spec.js
+		expect(threatOf(stageOf(F1)), `${F1} の脅威度`).toBe(45);
 		// 3室すべて階段と境界はそのまま（部屋間の接続を動かしていない）
 		for (const key of [F1, F2, F3]) {
 			expect(edgeSig(rowsOf(stageOf(key))), `${key} の境界の開き`).toBe(EDGES);

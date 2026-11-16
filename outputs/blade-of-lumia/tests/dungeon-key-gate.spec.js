@@ -28,6 +28,7 @@ import { makeSolver } from '../scripts/lib/blade-solver.mjs';
 // 静かに漏れる＝過去に13タイル漏れの実害があった。5.5k で敵を15種足すので特に危険）。
 import { ENEMY_META, ENEMY_TILES } from '../shared/enemies.js';
 import { READABLE_SIGN_TILES } from '../shared/tiles.js';
+import { DARK_TOWER_THREAT_CAP } from '../scripts/lib/enemy-placement.mjs';
 // 看板 'i'・石碑 '†'・転移の石碑 '‡'（キュー27 で看板から石碑を分けた）＝どれも読めて通れない
 const isReadable = (ch) => READABLE_SIGN_TILES.has(ch);
 
@@ -1863,8 +1864,9 @@ test.describe('Blade of Lumia – ダンジョンの鍵（進行の背骨）', (
   // ⚠️ 不変条件は 2026-09-23 に改訂した（旧 (d)「階合計の単調増加＋合計 ≤709.8」は
   //    **実現不可能だと数で確定して失効**＝DECISIONS 2026-09-23（12））∴縛るのは
   //    (d1) どの階にも実戦室が1室以上／(d2) 最後に会う群れ `5,2` ≥ 3F の大広間 `3,3`／
-  //    (d3) 1室 ≤ 162（`1,2` の 225 は PINNED の既存例外）／(d4) 塔の非ボス合計 ≤ 900。
-  const DT_THREAT_CAP = 900;
+  //    (d3) 1室 ≤ 162（`1,2` の 225 は PINNED の既存例外）／(d4) 塔の非ボス合計 ≤ 上限
+  //    （上限は enemy-placement.mjs の DARK_TOWER_THREAT_CAP＝2026-11-16 に 900 → 950）。
+  const DT_THREAT_CAP = DARK_TOWER_THREAT_CAP;
   const dtStages = () => map.layers.dark_tower.stages;
   const dtFloors = () => {
     const byFloor = {};
@@ -1897,7 +1899,7 @@ test.describe('Blade of Lumia – ダンジョンの鍵（進行の背骨）', (
     }
   });
 
-  test('⑩ dark_tower：塔の非ボス脅威度の合計が上限（900）を超えない', () => {
+  test('⑩ dark_tower：塔の非ボス脅威度の合計が上限を超えない', () => {
     const total = Object.values(dtStages())
       .filter(s => !s.isBossRoom)
       .reduce((sum, s) => sum + threatOfStage(s), 0);
