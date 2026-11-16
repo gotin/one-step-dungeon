@@ -27,7 +27,7 @@ import { TILE } from '../shared/tiles.js';
 import { ENEMY_META } from '../shared/enemies.js';
 import { ROWS, COLS, makeSolver } from '../scripts/lib/blade-solver.mjs';
 import { measureMetrics } from '../scripts/lib/puzzle-metrics.mjs';
-import { THREAT_OF, PINNED_STAGES, EXTRA_ENEMY_ROOMS, DARK_TOWER_THREAT_CAP } from '../scripts/lib/enemy-placement.mjs';
+import { THREAT_OF, PINNED_STAGES, EXTRA_ENEMY_ROOMS } from '../scripts/lib/enemy-placement.mjs';
 
 const MAP_PATH = fileURLToPath(new URL('../work/blade-of-lumia.json', import.meta.url));
 const map = JSON.parse(readFileSync(MAP_PATH, 'utf8'));
@@ -40,7 +40,6 @@ const PIT_ROW = 3;              // `3,0` の穴の帯
 const ISLAND_REWARD = '1,5';    // `3,0` の島の矢束
 const SOUTH_OUT = '9,5';        // 本道の出口（→ `3,1` のはしごの関門へ）
 const EDGES = 'N[] S[5,6] W[] E[]';
-const THREAT_CAP = DARK_TOWER_THREAT_CAP;   // 不変条件 (d4)（単一の真実は enemy-placement.mjs）
 const ROOM_CAP = 162;           // 不変条件 (d3)（`1,2` の 225.0 は PINNED_STAGES の既存例外）
 const TOTAL_BEFORE = 894;       // ⑤-b 完了時の塔の非ボス合計＝ここより軽くしない
 
@@ -227,7 +226,7 @@ test.describe('Blade of Lumia – dark_tower 踊り場3室の差別化（キュ�
 			if (t > ROOM_CAP && !PINNED_STAGES.has(`${LAYER}/${key}`)) heavy.push(`${key}=${t}`);
 		}
 		expect(heavy, `1室 ${ROOM_CAP} 超の部屋（関門を除く）＝(d3)`).toEqual([]);
-		expect(total, `塔の非ボス合計＝(d4)`).toBeLessThanOrEqual(THREAT_CAP);
+		// (d4) 塔の非ボス合計の上限は 2026-11-16 に失効（ユーザー判断）＝下限だけ見る
 		expect(total, `⑤-b 時点（${TOTAL_BEFORE}）より軽くなった＝踊り場の作り込みが消えた`)
 			.toBeGreaterThan(TOTAL_BEFORE);
 	});

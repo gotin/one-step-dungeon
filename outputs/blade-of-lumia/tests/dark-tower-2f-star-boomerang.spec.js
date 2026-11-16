@@ -33,7 +33,7 @@ import { GAME_URL, SAVE_KEY } from './helpers.js';
 import { TILE } from '../shared/tiles.js';
 import { BOOMERANG_TIERS } from '../shared/items.js';
 import { ENEMY_META } from '../shared/enemies.js';
-import { THREAT_OF, EXTRA_ENEMY_ROOMS, DARK_TOWER_THREAT_CAP } from '../scripts/lib/enemy-placement.mjs';
+import { THREAT_OF, EXTRA_ENEMY_ROOMS } from '../scripts/lib/enemy-placement.mjs';
 import { ROWS, COLS } from '../scripts/lib/blade-solver.mjs';
 
 const MAP_PATH = fileURLToPath(new URL('../work/blade-of-lumia.json', import.meta.url));
@@ -190,7 +190,7 @@ test.describe('Blade of Lumia – dark_tower 2F 代償の廊／星の間（キ�
 			total += t;
 			if (key !== '1,2') expect(t, `${key} の脅威度が 162 以下`).toBeLessThanOrEqual(162);
 		}
-		expect(total, `塔の非ボス合計は ${DARK_TOWER_THREAT_CAP} 以下`).toBeLessThanOrEqual(DARK_TOWER_THREAT_CAP);
+		// (d4) 塔の非ボス合計の上限は 2026-11-16 に失効（ユーザー判断）＝下限だけ見る
 		expect(total, 'λ を足したので ⑤-a 完了時（858）より重い').toBeGreaterThan(858);
 	});
 
