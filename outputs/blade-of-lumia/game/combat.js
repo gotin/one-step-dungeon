@@ -20,6 +20,7 @@ import { findSwordTarget, findSpinTargets } from './sword-reach.js';
 // isSoaring も同じ理由でそこから読む（0d-3 6体目 U＝浮いている絵と「矢しか届かない」を一致させる）。
 import { isInRecoverWindow, isSoaring, soarConfigOf } from './enemy-state.js';
 import { sanitizeCount } from './play-stats.js';
+import { clearedSwordAtk } from './carry-over.js';
 
 /**
  * createCombat(deps) – factory
@@ -669,8 +670,8 @@ export function createCombat(deps) {
 		if (getIsGameover()) return;
 		if (!opts.ignoreInvincible && gameNow() < getInvincibleUntil()) return;
 		const player = getPlayer();
-		const effectiveDef = hasCleared() ? player.def * 2 : player.def;
-		const actual = Math.max(1, amount - effectiveDef);
+		// キュー109 ②：周回（クリア後）の守りの上乗せ（旧 ×2）はやめた＝引き継いだ鎧と重なると敵がほぼ痛くない。
+		const actual = Math.max(1, amount - player.def);
 		player.hp = Math.max(0, player.hp - actual);
 		if (!opts.noInvincible) setInvincibleUntil(gameNow() + INVINCIBLE_MS);
 		playSound('playerHit');
@@ -839,8 +840,8 @@ export function createCombat(deps) {
 		if (!hit) return false;
 		if (hit.kind === 'mirage') { deps.destroyMirage?.(hit.target.id); return true; }
 		if (hit.kind === 'thorn')  { deps.destroyThorn?.(hit.target.id); return true; }
-		// 二周目は攻撃力2倍
-		const swordAtk = hasCleared() ? player.atk * 2 : player.atk;
+		// 周回（クリア後）は剣の威力 ×1.2（キュー109 ②＝旧 ×2・装備を引き継ぐので下げた）
+		const swordAtk = clearedSwordAtk(player.atk, hasCleared());
 		dealDamageToEnemy(hit.target, swordAtk, 'sword', player.x, player.y);
 		return true;
 	}
@@ -860,7 +861,7 @@ export function createCombat(deps) {
 			{ enemies: getEnemies(), mirages: deps.getMirages?.() ?? [], thorns: deps.getThorns?.() ?? [] },
 		);
 		showSpinSlash(player, reach);
-		const swordAtk = hasCleared() ? player.atk * 2 : player.atk;
+		const swordAtk = clearedSwordAtk(player.atk, hasCleared());
 		for (const { kind, target } of hits) {
 			if (kind === 'mirage') deps.destroyMirage?.(target.id);
 			else if (kind === 'thorn') deps.destroyThorn?.(target.id);

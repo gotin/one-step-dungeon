@@ -19,6 +19,7 @@
 
 import { playSound, resumeAudio } from '../shared/sounds.js';
 import { SWORD_TIERS, spinLevelOf } from '../shared/items.js';
+import { clearedSwordAtk } from './carry-over.js';
 import {
 	DIR_DELTA, MOVE_STEP,
 	CHARGE_FULL_MS, CHARGE_MIN_RATIO, BEAM_SPEED, BEAM_STRONG_MULT,
@@ -121,7 +122,7 @@ export function createCharge(deps) {
 		const [dy, dx] = DIR_DELTA[heroDir];
 		const ndx = dx / MOVE_STEP;
 		const ndy = dy / MOVE_STEP;
-		const baseAtk = hasCleared() ? player.atk * 2 : player.atk;
+		const baseAtk = clearedSwordAtk(player.atk, hasCleared());   // キュー109 ②：周回は ×1.2（旧 ×2）
 		const piercing = full && !!tier.pierce;  // 満タン＆貫通ティア（聖剣／ルミアの剣）のみ貫通
 		const strong   = full && !!tier.pierce;  // 同条件で強ビーム演出
 		const atk = strong ? baseAtk * BEAM_STRONG_MULT : baseAtk;

@@ -14,7 +14,7 @@
 //   getCellPx()       → セルサイズ (px)
 //   charLayerElRef    → { value: HTMLElement|null } ラッパー（render-board が更新）
 //   getHeroSpriteName() → 'heroD' | 'heroR' | 'heroU'（攻撃中は 'heroDAtk' 等・金の装束なら末尾に 'Gold'）
-//   getHeroPalName()    → 'hero'（金の装束なら 'heroGold'）| クリア後は 'queen'（女王ルミア・キュー108／109＝旧 'princess'）
+//   getHeroPalName()    → 'hero'（金の装束なら 'heroGold'）| クリア後は 'queen'（女王ルミア・キュー108／109＝旧 'princess'・金の装束なら 'queenGold'）
 //   getGameNow()        → 論理時間（攻撃ポーズ中は盾を描かない判定に使う）
 //
 // TILE / SPRITES / PAL / ENEMY_META / makeSprite は直接 import する。
@@ -314,10 +314,10 @@ export function createRenderChars(deps) {
 	const GOLD_SHINE_MS = 1800;
 	function addGoldShine(div, spr, flipX) {
 		if (!getPlayer().hasGoldGarb) return;
-		// 女王ルミア（クリア後・キュー108／109）は金の装束の版が無い＝光の重ね絵は勇者の色番号用∴重ねない
-		if (spr.startsWith('queen')) return;
+		// 女王ルミア（クリア後・キュー109 ④）は色番号の並びが勇者と違う＝体全体を抜く専用の型（queenGoldShine）
+		const shinePal = spr.startsWith('queen') ? 'queenGoldShine' : 'goldShine';
 		const phase = `${-(performance.now() % GOLD_SHINE_MS)}ms`;
-		const cv = makeSprite(spr, 'goldShine', true, flipX);
+		const cv = makeSprite(spr, shinePal, true, flipX);
 		if (cv) {
 			cv.classList.add('gold-shine');
 			cv.style.animationDelay = phase;

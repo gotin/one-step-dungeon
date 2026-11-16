@@ -10,6 +10,7 @@ import { makeSprite } from '../shared/sprites.js';
 import { mountIconEls } from '../shared/ui-icons.js';
 import { playSound, playBgm, stopBgm, setBossBgmIntensity } from '../shared/sounds.js';
 import { SAVE_KEY, CLEARED_KEY, BEST_TIME_KEY, ALTAR_EXIT_ID } from './constants.js';
+import { writeCarry, snapshotCarry } from './carry-over.js';
 import { formatPlayTime, recordClearTime } from './play-time.js';
 import { playStatsItems } from './play-stats.js';
 
@@ -760,6 +761,9 @@ export function createBoss(deps) {
 		stopGameLoop(); stopBgm();
 
 		saveCleared();
+		// キュー109：クリアした瞬間の強さを女王の周回へ引き継ぐ（セーブを消す前＝生きている player から写す）。
+		// 何度クリアしても最後のクリアの強さで上書きする（周回で集め直した強さが次へ渡る）。
+		writeCarry(localStorage, snapshotCarry(getPlayer()));
 		localStorage.removeItem(SAVE_KEY);
 		// キュー65: クリアタイム（遊んでいた時間）を自己ベストと比べて残す。
 		// セーブは上で消える∴値は生きている player から読む。

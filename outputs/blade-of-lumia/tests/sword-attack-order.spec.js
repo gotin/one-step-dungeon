@@ -10,7 +10,7 @@
 //   ② 実機（ライブマップ test_mechanics の color_switch）
 //      - 半歩スイッチに入り込んだ位置では、1マス先でなく手前のスイッチを叩く
 //      - スイッチと敵が両方届くなら、スイッチだけを叩く（敵は削らない）
-//      - 二周目（ps_cleared=1）は剣の攻撃力が2倍
+//      - 二周目（ps_cleared=1）は剣の攻撃力が 1.2 倍（四捨五入・キュー109 で ×2 から下げた）
 import { test, expect } from '@playwright/test';
 import { waitForBoard } from './helpers.js';
 import { TEST_LAYER, stageKey } from './test-stage-keys.js';
@@ -114,7 +114,7 @@ test.describe('剣の1振りの優先順位（実機・color_switch）', () => {
 	});
 
 	for (const cleared of [false, true]) {
-		test(`剣の攻撃力：${cleared ? '二周目は2倍' : '一周目は等倍'}`, async ({ page }) => {
+		test(`剣の攻撃力：${cleared ? '二周目は1.2倍' : '一周目は等倍'}`, async ({ page }) => {
 			const errors = await boot(page, { col: 4, cleared });
 			const r = await page.evaluate(() => {
 				const g = window.__game;
@@ -126,7 +126,7 @@ test.describe('剣の1振りの優先順位（実機・color_switch）', () => {
 				return { atk: pl.atk, lost: 50 - g.getEnemies().find((e) => e.id === id).hp };
 			});
 			expect(r.atk).toBeGreaterThan(0);
-			expect(r.lost).toBe(cleared ? r.atk * 2 : r.atk);
+			expect(r.lost).toBe(cleared ? Math.round(r.atk * 1.2) : r.atk);
 			expect(errors).toEqual([]);
 		});
 	}

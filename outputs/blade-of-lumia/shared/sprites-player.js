@@ -43,6 +43,13 @@ Object.assign(PLAYER_PAL, NPC_PEOPLE_PAL);
 // キュー108／109：クリア後に遊ぶ女王ルミアの絵（shared/sprites-queen.js）
 Object.assign(PLAYER_SPRITES, QUEEN_SPRITES);
 Object.assign(PLAYER_PAL, QUEEN_PAL);
+// キュー109 ④（2026-11-16 ユーザー「裏ボスの褒美をゲットしてる状態になったら、髪の色を金色にして体全体がひかってる演出」）：
+// 金の装束を持つ女王＝髪（14 明・15 中・16 影）だけ金の髪の色（heroGold の 7・2・8）に替える。ほかは queen のまま。
+PLAYER_PAL.queenGold = PLAYER_PAL.queen.map((c, i) => ({ 14: '#fcf05a', 15: '#fce21e', 16: '#fca600' })[i] ?? c);
+// 女王の光の型抜き＝体全体（輪郭 1・2 の黒以外の全部）を光の色で塗る（勇者の goldShine は服と髪だけ）。
+// 明るい色（肌・金・白・髪の明）はより白く、暗い色は淡い金にする＝光の帯が体の形どおりに流れる。
+PLAYER_PAL.queenGoldShine = PLAYER_PAL.queen.map((c, i) =>
+	i <= 2 ? 'transparent' : ([9, 11, 12, 13, 14].includes(i) ? '#ffffff' : '#fff0b0'));
 
 // ── HERO（勇者 4方向 2フレーム）────────────────────── 32×32 px
 PLAYER_SPRITES.heroD = [

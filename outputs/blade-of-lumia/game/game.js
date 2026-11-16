@@ -26,6 +26,7 @@ import {
 	DARK_TOWER_EXIT_ID, CANDLE_FLAME_MAX, RESPAWN_MOVES,
 	ATTACK_POSE_MS,
 } from './constants.js';
+import { applyCarry, readCarry } from './carry-over.js';
 // ── セーブ/ロードの純粋変換ロジック（Phase 0-2 Step 1b: save.js へ切り出し）──
 import {
 	createStageState, serializeStageState, deserializeStageState, sanitizeLoadedPlayer,
@@ -665,7 +666,7 @@ function getHeroSpriteName() {
 	// 金の装束（キュー76⑤）＝尖った金の髪の絵（shared/sprites-player.js `heroDGold` 等）。
 	const gold = player?.hasGoldGarb ? 'Gold' : '';
 	// キュー108／109（2026-11-15 ユーザー指定「この女王キャラでゲームできるように」）＝クリア後は女王ルミアの絵。
-	// 女王には金の装束の版が無い＝装束を持っていても同じ絵（色は getHeroPalName が 'queen' のまま）。
+	// 女王の金の装束は絵を替えない＝同じ絵で髪の色だけ金（getHeroPalName が 'queenGold'）。
 	if (hasCleared()) {
 		const d = { down: 'D', right: 'R', left: 'R', up: 'U' }[heroDir] ?? 'D';
 		return `queen${d}${atk ? 'Atk' : ''}`;
@@ -679,7 +680,8 @@ function getHeroSpriteName() {
 // クリア済みなら姫パレット、未クリアなら勇者パレットを返す。
 // 金の装束（キュー76⑤）を持っていれば、それぞれの金版（服と下衣だけ金）。
 function getHeroPalName() {
-	if (hasCleared()) return 'queen';   // キュー108／109：女王ルミアの絵は専用の色（金の装束の版は無い）
+	// キュー108／109：女王ルミアの絵は専用の色。金の装束を持てば髪が金（queenGold・キュー109 ④）。
+	if (hasCleared()) return player.hasGoldGarb ? 'queenGold' : 'queen';
 	return player.hasGoldGarb ? 'heroGold' : 'hero';
 }
 
@@ -2378,6 +2380,9 @@ function startNewGame() {
 		selectedMarkId: null,
 		pendingTriforce: null,
 	};
+	// キュー109：クリア後の周回（女王）は最後のクリアの強さ（剣・盾・鎧・ハートの器・紋章・巻物・金の装束）から始める。
+	// 道具は引き継がない（game/carry-over.js の冒頭）。記録の無い古いクリアは素のまま。
+	if (hasCleared()) applyCarry(player, readCarry(localStorage));
 	heroDir = 'down';
 	enterStage(currentLayer, stageKey, player.y, player.x);
 	startGameLoop();
@@ -2887,6 +2892,8 @@ export function callGrantReward(content) { return fx.grantReward(content); }
 
 // Phase 9-5a: giveSubItem テスト用（容量拡充アイテムの passive 分岐を確認するため）
 export function callGiveSubItem(id) { return fx.giveSubItem(id); }
+// キュー109：周回の守り（上乗せなし）を確かめる口＝プレイヤーが HP を失う唯一の入口をそのまま呼ぶ
+export function callTakeDamage(amount) { return fx.takeDamage(amount); }
 
 // 2026-08-31: 置いた炎の一覧（テスト用）。上限・寿命・「1つの炎は1体に1回」を
 // 外から観測できる唯一の窓（`burnedCount` がその炎が焼いた敵の数）。
