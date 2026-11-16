@@ -16,7 +16,9 @@ test('ザーネルを倒すと、最期の言葉 → 女王の目覚め → 世�
 	expect(z, 'ザーネルが居ない').toBeTruthy();
 	await page.evaluate((id) => window.__game.dealDamage(id, 9999, 'sword'), z);
 
-	const seen = { names: [], captions: [], queenOnIsland: false, stoneFirst: false, pulses: new Set() };
+	// 2026-11-16 ユーザー「ゲーム画面中はこういう有様じゃなかったのに、それが浄化された、っていうのなんか変」
+	// ＝各画面はゲーム中と同じ姿（魔物・呪い火・怨念のもやが居る）で始まり、光の輪で魔物ともやが消え、花が咲く
+	const seen = { names: [], captions: [], queenOnIsland: false, stoneFirst: false, pulses: new Set(), foes: new Set(), cleared: new Set(), unmist: new Set(), flowers: new Set() };
 	// 2026-11-15 ユーザー報告「シーンの間に毒をうけたと表示されてた」＝場面の間に世界が進まない（HP も減らない）
 	const hp0 = await page.evaluate(() => window.__game.getPlayer().hp);
 	const t0 = Date.now();
@@ -32,7 +34,19 @@ test('ザーネルを倒すと、最期の言葉 → 女王の目覚め → 世�
 			ending: !document.getElementById('ending-overlay').classList.contains('hidden'),
 			msg: document.getElementById('msg-bar')?.classList.contains('hidden') ? '' : document.getElementById('msg-bar')?.textContent,
 			hp: window.__game.getPlayer().hp,
+			stage: (document.getElementById('hud-stage-label')?.textContent ?? '').replace(/^\[\w+\]\s*/, ''),
+			montage: document.body.classList.contains('ending-montage'),
+			foes: document.querySelectorAll('#char-layer .char-abs[data-enemy-id]').length,
+			vanished: document.querySelectorAll('#char-layer .char-abs[data-enemy-id].ending-vanish').length,
+			allClean: document.querySelectorAll('#board .cell').length > 0
+				&& document.querySelectorAll('#board .cell.ending-cleansed').length === document.querySelectorAll('#board .cell').length,
+			unmist: document.querySelectorAll('#board .cell.ending-unmist').length,
+			flowers: document.querySelectorAll('#board .ending-flower').length,
 		}));
+		if (st.montage && st.foes > 0 && st.vanished === 0) seen.foes.add(st.stage);
+		if (st.montage && st.allClean && st.foes > 0 && st.vanished === st.foes) seen.cleared.add(st.stage);
+		if (st.montage && st.unmist > 0) seen.unmist.add(st.stage);
+		if (st.montage && st.flowers > 0) seen.flowers.add(st.stage);
 		if (st.msg) seen.pulses.add(st.msg);
 		if (!st.ending) expect(st.hp, '場面の間に HP が減った').toBe(hp0);
 		if (st.stone && !seen.queenOnIsland) seen.stoneFirst = true;
@@ -50,4 +64,10 @@ test('ザーネルを倒すと、最期の言葉 → 女王の目覚め → 世�
 	expect(seen.names).toEqual([FINALE.zarnel.name, FINALE.queen.name, ...FINALE.village.talks.map((t) => t.name)]);
 	expect(seen.stoneFirst, '女王が石（灰色）から始まらない').toBe(true);
 	expect(seen.captions).toEqual(FINALE.restore.map((s) => s.text));
+	const restoreStages = FINALE.restore.map((s) => s.stage);
+	const sorted = (s) => [...s].filter((k) => restoreStages.includes(k)).sort();
+	expect(sorted(seen.foes), '魔物（呪い火）が居る姿で始まらない画面がある').toEqual([...restoreStages].sort());
+	expect(sorted(seen.cleared), '光の輪の後に魔物が全部消えない画面がある').toEqual([...restoreStages].sort());
+	expect(sorted(seen.unmist), '怨念のもやが晴れない').toEqual(['11,18', '3,16']);
+	expect(sorted(seen.flowers), '花が咲かない画面がある').toEqual([...restoreStages].sort());
 });

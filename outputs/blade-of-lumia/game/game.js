@@ -844,6 +844,8 @@ const { checkStoneOnSwitch, evaluateConditions, refreshGates } = createCondition
 		// renderChars は char-layer を空にする＝場面の女王まで消える∴向きだけ描き直す（story-approach の faceHero と同じ）
 		setHeroDir:     (d) => { heroDir = d; fx.updatePlayerCharEl(); },
 		enterStage:     (lk, sk, r, c) => enterStage(lk, sk, r, c),
+		// 世界が戻る場面：今の画面のタイル（怨念のもや Ψ のマスを知る）
+		getTileAt:      (r, c) => getStageData(currentLayer, stageKey)?.tiles?.[r]?.[c],
 		openDialog:     (name, lines, mark, onClose) => _ui.openDialog(name, lines, mark, onClose),
 		stopGameLoop,
 		playSound,
