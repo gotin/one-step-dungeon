@@ -237,9 +237,11 @@ export const EXTRA_ENEMY_ROOMS = [
 	},
 	{
 		layer: 'dark_tower', stage: '2,3',
-		by: 'scripts/migrate-warlord-lair.mjs',
-		why: '【2F の大広間】0h で魔将 V ×1（中ボス）を抜いた跡に爆弾鬼 λ ×2（脅威度 72.0）を'
-			+ '東西から降下ラインへ向けて置いた。V は寄道 warlord_lair の主へ格上げ＝道中から退場した。'
+		by: 'scripts/migrate-dark-tower-111-2f-stairs.mjs',
+		why: '【2F の階段の部屋＝火を渡す鍵の間】（キュー111・2026-11-16）階段は鍵の扉の奥・鍵は全かがり火で出る。'
+			+ '爆弾鬼 λ×2（72.0）を (2,2)・(6,9) へ移した＝かがり火の仕掛けを解く間に爆弾で邪魔をする'
+			+ '（λ の爆風も壊せる壁を壊せる）。着地 (8,4) の ±2 には置かない。'
+			+ '（元は 0h で魔将 V ×1 を抜いた跡に `scripts/migrate-warlord-lair.mjs` が置いた。）'
 			+ 'λ は道具を要する弱点を持たない∴DT の弱点関門に触れない。',
 	},
 	{
