@@ -21,6 +21,7 @@ import { findSwordTarget, findSpinTargets } from './sword-reach.js';
 import { isInRecoverWindow, isSoaring, soarConfigOf } from './enemy-state.js';
 import { sanitizeCount } from './play-stats.js';
 import { clearedSwordAtk } from './carry-over.js';
+import { isTempered, temperFactor, temperDamage } from '../shared/boss-sword-temper.js';
 
 /**
  * createCombat(deps) – factory
@@ -606,7 +607,17 @@ export function createCombat(deps) {
 		const windowOpen = weakness?.window !== 'recover' || isInRecoverWindow(e, gameNow());
 		const isWeak = !!(atkType && weakness && weakness.type === atkType && windowOpen);
 		const effective = isWeak ? Math.round(dmg * (weakness.multiplier ?? 2)) : dmg;
-		const actual = Math.max(1, effective - e.def);
+		let actual = Math.max(1, effective - e.def);
+		// キュー110：ボスに入る剣・回転斬り・ビームのダメージは、剣が強いほど平方根で抑える
+		// （規則と理由は shared/boss-sword-temper.js＝体力は変えない・道具のダメージは抑えない）。
+		if (isTempered(meta, atkType, !!getStageData()?.isBossRoom)) {
+			const player = getPlayer();
+			const swordAtk = clearedSwordAtk(player?.atk ?? 0, !!hasCleared?.());
+			const f = temperFactor(swordAtk, e.def, meta.swordTemperRef ?? 0);
+			const t = temperDamage(actual, f, e.temperCarry ?? 0);
+			actual = t.dmg;
+			e.temperCarry = t.carry;
+		}
 		// Phase 9-6: yieldAt ボスの HP は合格ラインより下へは落とさない。
 		// 大ダメージ1発で 0 まで飛ぶと HP バーが空＝見た目は「倒した」になる。
 		// 床を張れば「HP を残して戦いが終わった」が画面上でも読める。
