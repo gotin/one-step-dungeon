@@ -399,6 +399,11 @@ export function createBoss(deps) {
 			pulse(`${ENEMY_META[boss.type]?.name ?? 'ザーネル'} を 倒した！`, 3000);
 			// 撃破フラグを解除してからエンディング演出へ（ループは startEnding が停止する）
 			setBossDefeating(false);
+			// キュー108：場面の途中でタブを閉じても戦い直しにならないよう、ここで「場面待ち」の印をセーブに残す
+			// （玉座の間・ザーネル撃破済み）。続きから（game.js の「続きから」）で印があれば場面を最初から流す。
+			// 場面の間は画面を移してもセーブしない（game.js enterStage）＝島や村の位置がセーブに残らない。
+			player.finalePending = true;
+			saveGame();
 			// キュー108：倒しただけでは終わらせない＝最期の言葉 → 女王の目覚め → 世界が戻る場面（game/ending-scene.js）
 			// を挟んでからスタッフロール。場面が無い（テストの差し替え等）ときは今までどおり 2.5 秒後。
 			if (deps.playFinale) setTimeout(() => deps.playFinale(() => startEnding()), 1500);

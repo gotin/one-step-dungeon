@@ -71,3 +71,58 @@ test('ザーネルを倒すと、最期の言葉 → 女王の目覚め → 世�
 	expect(sorted(seen.unmist), '怨念のもやが晴れない').toEqual(['11,18', '3,16']);
 	expect(sorted(seen.flowers), '花が咲かない画面がある').toEqual([...restoreStages].sort());
 });
+
+// キュー108：場面の途中でタブを閉じた場合。直す前は場面の画面替え（enterStage）が毎回セーブを書き、
+// 「島や村に立った・ザーネル撃破済み・未クリア」のセーブが残った＝続きからでエンディングに二度と行けなかった。
+// 今＝倒した時点で「場面待ち」の印（玉座の間）を書き、場面の間は書かない → 続きからで場面を最初から流す。
+test('場面の途中で閉じても、続きからで場面を最初から流してスタッフロールまで行く', async ({ page }) => {
+	test.setTimeout(150000);
+	const errors = [];
+	page.on('pageerror', (e) => errors.push(String(e)));
+	await page.goto(`${GAME_URL}?fromEditor=1&layer=dark_tower&stage=5,3&row=7&col=5&ps_weapon=1&ps_defeated=G,N,J,A,O,L,I,U`);
+	await waitForBoard(page);
+	await page.waitForTimeout(800);
+	const z = await page.evaluate(() => window.__game.getEnemies().find((e) => e.type === 'Z')?.id);
+	await page.evaluate((id) => window.__game.dealDamage(id, 9999, 'sword'), z);
+
+	// 世界が戻る場面（島の後・画面替えを何度か通った後）まで進めてからセーブを読む
+	const t0 = Date.now();
+	while (Date.now() - t0 < 60000) {
+		await page.waitForTimeout(250);
+		const st = await page.evaluate(() => ({
+			dlg: !document.getElementById('dialog-overlay').classList.contains('hidden'),
+			cap: document.getElementById('ending-caption')?.classList.contains('on'),
+		}));
+		if (st.cap) break;
+		if (st.dlg) await page.keyboard.press('Space');
+	}
+	const save = await page.evaluate(() => JSON.parse(localStorage.getItem('blade-of-lumia-save') ?? 'null'));
+	expect(save?.player?.finalePending, '「場面待ち」の印が無い').toBe(true);
+	expect([save?.currentLayer, save?.stageKey], '場面の画面替えがセーブに残った').toEqual(['dark_tower', '5,3']);
+
+	// タブを閉じた＝素の URL で開き直して「続きから」
+	await page.goto(GAME_URL);
+	await page.locator('#btn-continue').click();
+	const seen = [];
+	let ended = false;
+	const t1 = Date.now();
+	while (Date.now() - t1 < 110000 && !ended) {
+		await page.waitForTimeout(250);
+		const st = await page.evaluate(() => ({
+			dlg: !document.getElementById('dialog-overlay').classList.contains('hidden'),
+			name: document.getElementById('dialog-name')?.textContent,
+			ending: !document.getElementById('ending-overlay').classList.contains('hidden'),
+		}));
+		if (st.dlg) {
+			if (seen.at(-1) !== st.name) seen.push(st.name);
+			await page.keyboard.press('Space');
+		}
+		ended = st.ending;
+	}
+	expect(errors).toEqual([]);
+	expect(ended, '続きからでスタッフロールまで行かない').toBe(true);
+	expect(seen).toEqual([FINALE.zarnel.name, FINALE.queen.name, ...FINALE.village.talks.map((t) => t.name)]);
+	// スタッフロールに入ったらセーブは消え、クリアの印が残る（次は女王で遊べる）
+	const after = await page.evaluate(() => ({ save: localStorage.getItem('blade-of-lumia-save'), cleared: localStorage.getItem('blade-of-lumia-cleared') }));
+	expect(after).toEqual({ save: null, cleared: '1' });
+});

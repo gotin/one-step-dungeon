@@ -607,7 +607,9 @@ function enterStage(lk, sk, pRow, pCol) {
 	// （y:-0.5 など）が残り、続きからで入口の外から始まった（キュー83・Fable 実装レビュー #13）。
 	// 同じ画面に入り直す呼び出し（はじめから・続きから・リトライ・プレビューの開始）では書かない＝
 	// リトライは倒れた瞬間の部屋をセーブに残さない（recordDeath の注）。
-	if (isStageChange) saveGame();
+	// キュー108：ザーネルを倒した後の場面は見た目のために画面を移すだけ＝書かない
+	// （書くと途中で閉じたとき「島や村に立った・未クリア」のセーブが残り、エンディングに戻れなくなる）。
+	if (isStageChange && !endingScene?.isBusy()) saveGame();
 }
 
 
@@ -2405,8 +2407,14 @@ function openIntroDialog() {
 btnContinueEl.addEventListener('click', () => {
 	titleOverlayEl.classList.add('hidden');
 	enterStage(currentLayer, stageKey, player.y, player.x);
-	startGameLoop();
 	resumeAudio();
+	// キュー108：ザーネルを倒した後の場面の途中で閉じていた（「場面待ち」の印がある）→ 場面を最初から流す
+	// （ループは場面が止めたまま・終わればスタッフロール＝startEnding がセーブを消す）。
+	if (player.finalePending && endingScene) {
+		endingScene.play(() => fx.startEnding());
+		return;
+	}
+	startGameLoop();
 });
 
 btnNewgameEl.addEventListener('click', () => {
