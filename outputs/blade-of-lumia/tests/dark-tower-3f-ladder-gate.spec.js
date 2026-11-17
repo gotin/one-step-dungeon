@@ -1,179 +1,116 @@
 // tests/dark-tower-3f-ladder-gate.spec.js
-// dark_tower 3F「はしごの関門」の番人（2026-09-22 / PLAN 実行キュー20b ④の 3F 分）。
+// dark_tower 3F の関門 `3,1` の番人。
 //
-// 直す前の実測（キュー20b ⑮・DECISIONS 2026-09-21（8）で検算済み）：
-//   `3,1` の row6 は穴 x×10 の中に橋 v（TILE.BRIDGE＝常時通行可）が1枚 (6,3) 残っていて、
-//   はしご不要の抜け道になっていた（対照実験＝橋を戻すと18/30室・はしごで30/30室）。
+// 経緯：
+//   ・キュー20b ④（2026-09-22）＝row6 の穴の一本帯をはしごで渡るだけの関門にした（それまでは橋 v が1枚残っていて
+//     はしご無しで素通しだった）。
+//   ・キュー111（2026-11-17・`scripts/migrate-dark-tower-111-3f-gate.mjs`）＝「最後のダンジョンなのに簡単」を受けて
+//     **はしごと石の関門**（パズルの部屋・敵なし）に作り直した。南の門 T (8,5)(8,6) は踏み板 S (4,1)(7,2) の両方に
+//     石が乗ると開く。2つ目の石を北へ押し上げる立ち位置 (7,4) へは、穴 (7,5) をはしごで渡って入る。
 //
-// 新しい機構：
-//    6 #xxxxxxxxxx#   ← 橋を撤去した穴の一本帯（row5/row7 が全幅の床＝isLadderBridgeCell 成立）
-//   案内の刻み文は置かない（(1,1) に置いていたが、キュー20c＝ユーザー判定 2026-09-24 で
-//   外した。穴の帯は画面に見えており、はしごで渡る作法は dungeon_5 1,1 と field で既習）。
-//
-// 守るものは2つ。
-// ① データ（状態空間）：**はしごが無いと南（3,2 以降）へ抜けられない**。歩いて行けるかの
-//    目視では判定できない∴ソルバーで測る（[[blade-puzzle-must-verify-with-solver]]）。
-//    対照実験が空振りでないことも同時に測る（無関係な床を潰しても抜けられる）。
-// ② 挙動（実機）：はしご無しでは穴に阻まれ、はしごを使うと渡れる（`fromEditor=1` プレビュー）。
+// 守るもの：
+// ① 盤面・敵なし・橋なし・刻み文なし・境界の開き
+// ② ソルバー：解ける／抜け出せなくなる状態 0／詰む状態がある／最少の押し 15／はしご・押し・穴 (7,5) のどれを欠いても解けない
+// ③ 実機：はしご無しでは row3 の穴の帯を渡れない
+// ④ 実機：ソルバーの解をそのままなぞると、石がロックして門が開き、南の口から 3,2 へ抜けられる
 import { test, expect } from '@playwright/test';
 import { readFileSync } from 'fs';
 import { fileURLToPath } from 'url';
 import { waitForBoard } from './helpers.js';
 import { TILE } from '../shared/tiles.js';
-import { ROWS, COLS, makeSolver } from '../scripts/lib/blade-solver.mjs';
-import { measureMetrics } from '../scripts/lib/puzzle-metrics.mjs';
+import { ENEMY_META } from '../shared/enemies.js';
+import {
+	AFTER, MIN_PUSHES, LADDER_KEY_PIT, measureGate, bestSolution, wallAt,
+} from '../scripts/migrate-dark-tower-111-3f-gate.mjs';
 
 const MAP_PATH = fileURLToPath(new URL('../work/blade-of-lumia.json', import.meta.url));
 const map = JSON.parse(readFileSync(MAP_PATH, 'utf8'));
 
 const LAYER = 'dark_tower';
 const GATE_ROOM = '3,1';
-const NORTH_IN = ['1,5', '1,6'];   // 北の入口 (0,5)(0,6) から入った直後の室内セル
-const SOUTH_OUT = '9,5';           // 南の出口＝ここに届けば 3,2 へ抜けられる
-const EDGES = 'N[5,6] S[5,6] W[] E[]';
+const st = map.layers[LAYER].stages[GATE_ROOM];
+const rowsOf = (s) => s.tiles.map((r) => (Array.isArray(r) ? r.join('') : r));
 
-const GATE_ROWS = [
-	'#####..#####',
-	'#..........#',
-	'#..........#',
-	'#..........#',
-	'#..........#',
-	'#..........#',
-	'#xxxxxxxxxx#',
-	'#..........#',
-	'#..........#',
-	'#####..#####',
-];
-
-const rowsOf = (st) => st.tiles.map((r) => (Array.isArray(r) ? r.join('') : r));
-
-function edgeSig(rows) {
-	const n = [...rows[0]].map((ch, c) => (ch !== '#' ? c : -1)).filter((c) => c >= 0);
-	const s = [...rows[ROWS - 1]].map((ch, c) => (ch !== '#' ? c : -1)).filter((c) => c >= 0);
-	const w = rows.map((r, i) => (r[0] !== '#' ? i : -1)).filter((i) => i >= 0);
-	const e = rows.map((r, i) => (r[COLS - 1] !== '#' ? i : -1)).filter((i) => i >= 0);
-	return `N[${n}] S[${s}] W[${w}] E[${e}]`;
-}
-
-/**
- * 北の入口から `goal` まで抜けられるか測る。
- * `hasLadder: false` ＝はしご無し。`kill` ＝そのセルを壁で潰す対照実験。
- * ⚠️ 潰すセルは必ず `'#'`（未知の文字は通行可になる＝[[blade-control-experiment-needs-tile-wall]]）。
- */
-function measureRoom({ hasLadder = true, kill = null, goal = SOUTH_OUT } = {}) {
-	const st = map.layers[LAYER].stages[GATE_ROOM];
-	const tiles = st.tiles.map((r) => (Array.isArray(r) ? r.slice() : [...r]));
-	if (kill) {
-		const [r, c] = kill.split(',').map(Number);
-		tiles[r][c] = TILE.WALL;
-	}
-	const bg = Array.from({ length: ROWS }, () => Array(COLS).fill('g'));
-	for (const [k, ch] of Object.entries(st.bgTiles ?? {})) {
-		const [r, c] = k.split(',').map(Number); bg[r][c] = ch;
-	}
-	const S = makeSolver(tiles, bg, [], {}, new Set(),
-		{ hasLadder, pitCrossable: true });
-	const starts = NORTH_IN.map((cell) => {
-		const [r, c] = cell.split(',').map(Number);
-		return S.encode(r, c, S.initStones, 0, 0, S.litInitMask);
-	});
-	const [gr, gc] = goal.split(',').map(Number);
-	return measureMetrics(
-		S,
-		starts,
-		(state) => state.split('|')[0] === goal,
-		(state) => {
-			const [pr, pc] = state.split('|')[0].split(',').map(Number);
-			return Math.abs(pr - gr) + Math.abs(pc - gc);
-		},
-		// escapeTest を渡さないと noEscape が null になる（＝「入って詰まない」を測れない）
-		{ guardMax: 2_000_000, escapeTest: (state) => S.exitCells.includes(state.split('|')[0]) },
-	);
-}
-
-test.describe('Blade of Lumia – dark_tower 3F のはしごの関門（キュー20b ④）', () => {
-	test(`データ：${LAYER} ${GATE_ROOM} の盤面`, () => {
-		const st = map.layers[LAYER].stages[GATE_ROOM];
-		expect(rowsOf(st), '3,1 の盤面').toEqual(GATE_ROWS);
-
-		// 橋 'v' が1枚も残っていない（旧・飾りの再発防止）
-		const bridges = [];
-		for (let r = 0; r < st.rows; r++) {
-			for (let c = 0; c < st.cols; c++) if (st.tiles[r][c] === TILE.BRIDGE) bridges.push(`${r},${c}`);
-		}
-		expect(bridges, '橋は1枚も残っていない').toEqual([]);
-
-		// ⚠️ 案内の刻み文は置かない（キュー20c・ユーザー判定 2026-09-24＝「dark_tower は
-		// もう最終盤だからそんなヒントなくてもいい」）。穴の帯は画面に見えており、
-		// はしごで渡る作法は dungeon_5 1,1 と field 3,4／2,18 で既に教えている。
-		// 'i' タイルと signData の**両方**が無いことを見張る（片方だけ残すと無言看板／死にデータ）。
-		expect(st.tiles[1][1], '(1,1) は素の床（刻み文を外した跡）').toBe(TILE.FLOOR);
-		expect(rowsOf(st).some((row) => row.includes(TILE.SIGN)), "看板タイル 'i' が1枚も無い").toBe(false);
-		expect(Object.keys(st.signData ?? {}), 'signData も空（死にデータを残さない）').toEqual([]);
+test.describe('Blade of Lumia – dark_tower 3F はしごと石の関門（キュー111）', () => {
+	test('① 盤面・敵なし・橋なし・刻み文なし・境界の開き', () => {
+		const g = rowsOf(st);
+		expect(g, '3,1 の盤面').toEqual(AFTER);
+		const cells = (pred) => g.flatMap((row, r) => [...row].flatMap((ch, c) => (pred(ch) ? [`${r},${c}`] : [])));
+		expect(cells((ch) => !!ENEMY_META[ch]), 'パズルの部屋に敵を置かない').toEqual([]);
+		expect(cells((ch) => ch === TILE.BRIDGE), '橋は1枚も無い（はしご無しの抜け道の再発防止）').toEqual([]);
+		expect(cells((ch) => ch === TILE.SIGN), '刻み文は置かない（キュー20c）').toEqual([]);
+		expect(Object.keys(st.signData ?? {}), 'signData も空').toEqual([]);
+		expect(cells((ch) => ch === TILE.BUTTON), '踏み板').toEqual(['4,1', '7,2']);
+		expect(cells((ch) => ch === TILE.STONE), '石').toEqual(['6,6', '6,9']);
+		expect(cells((ch) => ch === TILE.GATE), '南の門').toEqual(['8,5', '8,6']);
+		expect([g[0], g[9]], '北と南の口 (5,6) はそのまま').toEqual(['#####..#####', '#####..#####']);
+		expect(g.every((r) => r[0] === '#' && r[11] === '#'), '東西の境界は壁').toBe(true);
 	});
 
-	test(`データ：${LAYER} ${GATE_ROOM} ははしごが無いと南へ抜けられない`, () => {
-		// 素の測定＝抜けられる／入って詰まない
-		// ⚠️ 抜けられないときの L は `null`（`lib/puzzle-metrics.mjs` の表現）＝Infinity ではない。
-		const m = measureRoom();
-		expect(m.L, '南の出口へ届く（解なし＝null ではない）').not.toBeNull();
-		expect(m.noEscape, '入って詰む状態は無い').toBe(0);
-
-		// 対照実験＝はしごが無いと届かない
-		expect(measureRoom({ hasLadder: false }).L,
-			'対照実験（はしごなし）では南へ抜けられない').toBeNull();
-
-		// 歯の確認＝既に通れる床を潰しても結果が変わらない（対照実験が空振りでない証明）
-		expect(measureRoom({ kill: '1,9' }).L, '無関係な床を潰しても抜けられる').not.toBeNull();
-	});
-
-	test(`データ：${LAYER} ${GATE_ROOM} の境界の開きは不変（部屋間の接続を動かさない）`, () => {
-		expect(edgeSig(rowsOf(map.layers[LAYER].stages[GATE_ROOM]))).toBe(EDGES);
+	test('② ソルバー：解ける・詰む手がある・どれか1つ欠くと解けない', () => {
+		const m = measureGate(AFTER);
+		expect(m.L, '南の口へ届く').not.toBeNull();
+		expect(m.noEscape, '抜け出せなくなる状態は無い').toBe(0);
+		expect(m.deadlocks, '押す順を間違えると詰む状態がある').toBeGreaterThan(0);
+		expect(bestSolution(AFTER).pushes, '最少の押し').toBe(MIN_PUSHES);
+		expect(measureGate(AFTER, { hasLadder: false }).L, 'はしご無しで抜けられた').toBeNull();
+		expect(measureGate(AFTER, { noPush: true }).L, '石を押さずに抜けられた').toBeNull();
+		expect(measureGate(wallAt(AFTER, LADDER_KEY_PIT)).L, `穴 ${LADDER_KEY_PIT} を壁にしても抜けられた（石の裏へ回る手が飾り）`).toBeNull();
+		expect(measureGate(wallAt(AFTER, '1,9')).L, '対照の空振り検査：無関係な床を潰したら解けなくなった').not.toBeNull();
 	});
 });
 
-// ── 挙動（実機・fromEditor=1 プレビュー）──────────────────────────────────
+// ── 実機（fromEditor=1 プレビュー）──────────────────────────────────────
 const GAME = '/blade-of-lumia/game/';
-function previewUrl(stage, row, col, extra = {}) {
-	const p = new URLSearchParams({
-		fromEditor: '1', layer: LAYER, stage, row: String(row), col: String(col), ...extra,
-	});
+function previewUrl(row, col, extra = {}) {
+	const p = new URLSearchParams({ fromEditor: '1', layer: LAYER, stage: GATE_ROOM, row: String(row), col: String(col), ...extra });
 	return `${GAME}?${p.toString()}`;
 }
-/** n タイル歩く（1タイル = movePlayer 2回／MOVE_STEP = 0.5 セル＝[[blade-moveplayer-is-half-tile]]）。 */
-async function walkTiles(page, dir, tiles = 1) {
-	await page.evaluate(({ d, n }) => {
-		for (let i = 0; i < n * 2; i++) { window.__game.movePlayer(d); window.__game.step(1); }
-	}, { d: dir, n: tiles });
-}
-// ⚠️ プレイヤーの座標は `getPlayer()` で読む（[[blade-snapshot-api-names]]）。
 const at = (page) => page.evaluate(() => {
 	const p = window.__game.getPlayer();
-	return { r: Math.floor(p.y + 0.5), c: Math.floor(p.x + 0.5) };
+	return `${p.y},${p.x}`;
 });
 
-test.describe('Blade of Lumia – dark_tower 3F は実機ではしごを要求する（キュー20b ④）', () => {
-	test('はしご無しでは穴に阻まれ、はしごを使うと渡れる', async ({ page }) => {
+test.describe('Blade of Lumia – dark_tower 3F の関門は実機で解ける（キュー111）', () => {
+	test('③ はしご無しでは row3 の穴の帯を渡れない', async ({ page }) => {
+		await page.goto(previewUrl(2, 5));
+		await waitForBoard(page);
+		expect(await page.evaluate(() => window.__game.getPlayer().hasLadder), 'はしごを持たない前提').toBeFalsy();
+		await page.evaluate(() => { for (let i = 0; i < 6; i++) { window.__game.movePlayer('down'); window.__game.step(1); } });
+		const r = await page.evaluate(() => window.__game.getPlayer().y);
+		expect(r, 'はしご無しで穴の帯を渡ってしまった').toBeLessThanOrEqual(2);
+	});
+
+	test('④ ソルバーの解をなぞると石がロックし、門を抜けて 3,2 へ', async ({ page }) => {
+		test.setTimeout(90_000);
 		const errors = [];
 		page.on('pageerror', (e) => errors.push(e.message));
-
-		// ① はしごを持たずに穴の帯の手前 (5,5) から南を押す＝渡れない。
-		// ⚠️ はしごの所持は `player.hasLadder`（bool）で見る＝道具の実体は subItems ではない
-		//    （`shared/items.js` の ITEM_OWNED_FLAG={ladder:'hasLadder'}）。
-		await page.goto(previewUrl(GATE_ROOM, 5, 5));
+		const { cells } = bestSolution(AFTER);
+		await page.goto(previewUrl(...cells[0].split(',').map(Number), { ps_ladder: '1' }));
 		await waitForBoard(page);
-		expect(await page.evaluate(() => window.__game.getPlayer().hasLadder),
-			'はしごを持たない前提のテスト').toBeFalsy();
-		await walkTiles(page, 'down', 3);
-		expect((await at(page)).r, 'はしごなしで穴の帯を渡り抜けてしまった').toBeLessThanOrEqual(6);
+		await page.evaluate(() => window.__game.pause?.());
+		expect(await page.evaluate(() => window.__game.getPlayer().hasLadder), 'はしごを持てていない').toBeTruthy();
 
-		// ② はしごを持たせて同じ場所から南へ渡る。
-		await page.goto(previewUrl(GATE_ROOM, 5, 5, { ps_ladder: '1' }));
-		await waitForBoard(page);
-		expect(await page.evaluate(() => window.__game.getPlayer().hasLadder),
-			'はしごを持てていない').toBeTruthy();
-		await walkTiles(page, 'down', 4);
-		expect((await at(page)).r, 'はしごを持っていても穴の帯を渡れない').toBeGreaterThanOrEqual(8);
-		expect(errors, `page errors on ${GATE_ROOM}:\n${errors.join('\n')}`).toEqual([]);
+		let pushes = 0;
+		for (let i = 1; i < cells.length; i++) {
+			const [r0, c0] = cells[i - 1].split(',').map(Number);
+			const [r1, c1] = cells[i].split(',').map(Number);
+			if (r0 === r1 && c0 === c1) continue;
+			const dir = r1 < r0 ? 'up' : r1 > r0 ? 'down' : c1 < c0 ? 'left' : 'right';
+			const before = await page.evaluate(() => JSON.stringify(window.__game.getStageState().stonePositions ?? {}));
+			// 1マス＝movePlayer 2回（[[blade-moveplayer-is-half-tile]]）。石押しは1回で1マス進む＝到達したら止める。
+			for (let k = 0; k < 4 && (await at(page)) !== cells[i]; k++) {
+				await page.evaluate((d) => { window.__game.setHeroDir(d); window.__game.movePlayer(d); window.__game.step(1); }, dir);
+			}
+			const after = await page.evaluate(() => JSON.stringify(window.__game.getStageState().stonePositions ?? {}));
+			if (before !== after) { pushes++; await page.waitForTimeout(700); }   // 石押しの冷却時間（実時間 600ms）
+			if (cells[i] === '9,5' || cells[i] === '9,6') break;
+			expect(await at(page), `手 ${i}：${cells[i - 1]} → ${cells[i]}`).toBe(cells[i]);
+		}
+		expect(pushes, '押した回数').toBe(MIN_PUSHES);
+		expect(await page.evaluate(() => window.__game.getStageState().stonesLocked), '両方の踏み板に石＝ロック').toBe(true);
+		await page.evaluate(() => { for (let i = 0; i < 6; i++) { window.__game.movePlayer('down'); window.__game.step(1); } });
+		await page.waitForFunction(() => window.__game.getState().stageKey === '3,2', null, { timeout: 5000 });
+		expect(errors, errors.join('\n')).toEqual([]);
 	});
 });
