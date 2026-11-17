@@ -2969,6 +2969,43 @@ export function createEnemyAi(deps) {
 		el.style.setProperty('--sink-dx', String(e._sinkVec[1]));
 	}
 
+	// 走り出す前の試し走り（キュー111・2026-11-17）。run の1歩と同じ判定で前へ進め、
+	// 最初に止まる理由が「ただの壁（#）」か「他の敵」なら false＝走り出さない（柱越しの自爆の繰り返しを止める）。
+	// それ以外（プレイヤー・木・空の縁・水・溶岩・壊せる壁・枯れ木など）は true＝今までどおり走る。
+	// 木や縁に頭を打たせて気絶させるのは部屋の遊び方（D6 猪の木立ち・D7 空の崩れ天蓋・D8 泥浴び場）なので残す
+	// （2026-11-17 ユーザー了承）。走り切っても届かない（maxCells）なら今までどおり走る。
+	function dashLaneOpen(e, meta, cfg, vec, player, hitRange, alignTol, maxCells) {
+		const [sy, sx] = vec;
+		const ew = e.w ?? 1, eh = e.h ?? 1;
+		let y = e.y, x = e.x;
+		const probe = { ...e };
+		for (let left = maxCells; left > 0; left -= MOVE_STEP) {
+			probe.y = y; probe.x = x;
+			if (dashReachHit(probe, player, [sy, sx], hitRange, alignTol)) return true;
+			const ny = y + sy * MOVE_STEP, nx = x + sx * MOVE_STEP;
+			if (!isPassableForEnemy(ny, nx, e)) {
+				if (overlapArea(nx, ny, ew, eh, player.x, player.y, 1, 1) > 0) return true;
+				// 止める＝ただの壁（#）と他の敵だけ。木・空の縁・水・壊せる壁などは部屋の仕掛け
+				// （D6 猪の木立ち＝木に頭を打たせて気絶させる）なので、今までどおり突っ込む。
+				const sd = getStageData?.();   // 純関数テストの台には地形を読む口が無い
+				const c0 = Math.floor(nx), c1 = Math.floor(nx + ew - 1 + 0.999);
+				const r0 = Math.floor(ny), r1 = Math.floor(ny + eh - 1 + 0.999);
+				for (let r = r0; r <= r1; r++) {
+					for (let c = c0; c <= c1; c++) {
+						if (sd?.tiles?.[r]?.[c] === TILE.WALL) return false;
+					}
+				}
+				for (const o of getEnemies()) {
+					if (o === e) continue;
+					if (overlapArea(nx, ny, ew, eh, o.x, o.y, o.w ?? 1, o.h ?? 1) > 0) return false;
+				}
+				return true;
+			}
+			y = ny; x = nx;
+		}
+		return true;
+	}
+
 	function tickDash(e, meta, now) {
 		// 0d-3（2体目 A）: 突進の設定は**フェーズで後から生える**ことがある∴ここは `meta.dash` を
 		// 直接読まず `resolveDash`（e._dash 優先）を通す。enemyTick 側の2つのゲートも同じ。
@@ -3086,7 +3123,11 @@ export function createEnemyAi(deps) {
 		if (off > alignTol + halfOff) return false;
 		// 距離の上下限は body の端から（＝密着では走らない・届かない距離では走らない）
 		if (along - halfAlong < minRange || along - halfAlong > maxRange) return false;
-		e._dashVec = vertical ? [Math.sign(dy) || 1, 0] : [0, Math.sign(dx) || 1];
+		const vec = vertical ? [Math.sign(dy) || 1, 0] : [0, Math.sign(dx) || 1];
+		// キュー111（2026-11-17・ユーザー指摘）: プレイヤーとの間にただの壁（柱など）があるなら走り出さない。
+		// 柱越しに並ぶたびに「溜め→激突→気絶」を繰り返していた（dark_tower 3,3）。
+		if (!dashLaneOpen(e, meta, cfg, vec, player, hitRange, alignTol, maxCells)) return false;
+		e._dashVec = vec;
 		e.dir = vertical ? (dy > 0 ? 'down' : 'up') : (dx > 0 ? 'right' : 'left');
 		e._dashPhase = 'windup';
 		e._dashUntil = now + windupMs;

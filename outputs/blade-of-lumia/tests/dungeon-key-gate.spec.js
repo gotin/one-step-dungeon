@@ -132,7 +132,7 @@ test.describe('Blade of Lumia – ダンジョンの鍵（進行の背骨）', (
     }
   });
 
-  test('① 11個の鍵すべてに、その部屋の型どおりの関門が付いている', () => {
+  test('① 12個の鍵すべてに、その部屋の型どおりの関門が付いている', () => {
     // キュー5番では全部 killAll で背骨を通し、5.5 で1部屋ずつ本物の型へ差し替える
     // （型の割り当ては PUZZLE-DESIGN.md §7-4）。**差し替え済みの部屋はその型を固定し、
     // 未着手の部屋は killAll のまま**であることを明示的に縛る＝どちらの方向の
@@ -149,6 +149,7 @@ test.describe('Blade of Lumia – ダンジョンの鍵（進行の背骨）', (
       'dungeon_8/1,0':  'stonesPlaced', // C 倉庫番②（石4・関門の上限帯・5.5g 済）
       'dark_tower/1,2': 'killAll',      // A 戦闘型③（強化・5.5h 済）
       'dark_tower/2,3': 'torchesLit',   // B 道具型④（爆弾＋ロウソク＋火矢で火を渡す・キュー111・2026-11-16）
+      'dark_tower/3,3': 'killAll',      // A 戦闘型④（剣獣・爆弾鬼・突進猪の3体を全滅・キュー111・2026-11-17）
       'dark_tower/4,3': 'stonesPlaced', // C 倉庫番③（石4・ユーザー作り込み盤面＝23,0 と同程度の難しさで実プレイ合格・全10鍵の最終・5.5i 済）
     };
     const found = {};
@@ -167,7 +168,7 @@ test.describe('Blade of Lumia – ダンジョンの鍵（進行の背骨）', (
     }
     // 鍵が消える方向の回帰（K を消せば「全ての鍵に関門」は自明に真になる）も防ぐ。
     expect(Object.keys(found).sort()).toEqual(Object.keys(EXPECTED).sort());
-    expect(Object.values(found).reduce((a, b) => a + b, 0), 'ダンジョン内の鍵の総数').toBe(11);
+    expect(Object.values(found).reduce((a, b) => a + b, 0), 'ダンジョン内の鍵の総数').toBe(12);
   });
 
   test('① ダンジョンに「床置きの鍵」（floorItems の key）が1個も無い', () => {
