@@ -28,6 +28,7 @@ import { ENEMY_META } from '../shared/enemies.js';
 import { ROWS, COLS, makeSolver } from '../scripts/lib/blade-solver.mjs';
 import { measureMetrics } from '../scripts/lib/puzzle-metrics.mjs';
 import { THREAT_OF, PINNED_STAGES, EXTRA_ENEMY_ROOMS } from '../scripts/lib/enemy-placement.mjs';
+import { AFTER as F2_AFTER, ENEMIES as F2_ENEMIES, DIRS_AFTER as F2_DIRS, THREAT as F2_THREAT } from '../scripts/migrate-dark-tower-111-2f-landing.mjs';
 
 const MAP_PATH = fileURLToPath(new URL('../work/blade-of-lumia.json', import.meta.url));
 const map = JSON.parse(readFileSync(MAP_PATH, 'utf8'));
@@ -35,7 +36,10 @@ const map = JSON.parse(readFileSync(MAP_PATH, 'utf8'));
 const LAYER = 'dark_tower';
 const F1 = '1,0', F2 = '2,0', F3 = '3,0';
 const LANDING = '6,4';          // 3室すべて共通＝下の階の階段から上がってきた着地セル
-const SLIME = '7,7';            // `2,0` の δ
+// `2,0` の δ はキュー111（2026-11-17・`scripts/migrate-dark-tower-111-2f-landing.mjs`）で
+// 北東に2×2 で4体＝分裂の踊り場（戦闘の部屋）。盤面・鍵・扉の見張りは tests/dark-tower-2f-split-landing.spec.js。
+// ここでは「δ が分裂できる湧き場がある」ことだけを持ち続ける。代表＝南西の δ (4,8)。
+const SLIME = '4,8';
 const PIT_ROW = 3;              // `3,0` の穴の帯
 const ISLAND_REWARD = '1,5';    // `3,0` の島の矢束
 const SOUTH_OUT = '9,5';        // 本道の出口（→ `3,1` のはしごの関門へ）
@@ -43,18 +47,7 @@ const EDGES = 'N[] S[5,6] W[] E[]';
 const ROOM_CAP = 162;           // 不変条件 (d3)（`1,2` の 225.0 は PINNED_STAGES の既存例外）
 const TOTAL_BEFORE = 894;       // ⑤-b 完了時の塔の非ボス合計＝ここより軽くしない
 
-const F2_ROWS = [
-	'############',
-	'#..........#',
-	'#..........#',
-	'#..........#',
-	'#..........#',
-	'#..........#',
-	'#...>......#',
-	'#......δ...#',
-	'#..........#',
-	'#####..#####',
-];
+const F2_ROWS = F2_AFTER;
 const F3_ROWS = [
 	'############',
 	'#....6.....#',
@@ -135,32 +128,35 @@ test.describe('Blade of Lumia – dark_tower 踊り場3室の差別化（キュ�
 		for (let r = 0; r < ROWS; r++) for (let c = 0; c < COLS; c++) {
 			if (grid[r][c] === TILE.SPLIT_SLIME) cells.push(`${r},${c}`);
 		}
-		expect(cells, `${F2} の δ は1体だけ`).toEqual([SLIME]);
-		expect(threatOf(st), `${F2} の脅威度（E×2 の 8.0 → δ の 12.0）`).toBe(12);
+		// キュー111（2026-11-17）＝δ×4 を北東に2×2（旧＝δ (7,7) が1体・12.0）
+		const slimes = F2_ENEMIES.filter((e) => e.endsWith('δ')).map((e) => e.slice(0, -1));
+		expect(cells, `${F2} の δ は北東の2×2 に4体`).toEqual(slimes);
+		expect(threatOf(st), `${F2} の脅威度`).toBe(F2_THREAT);
 
-		// 着地直後に張り付かれない（棚卸し⑪）＝チェビシェフ距離3以上
-		const [sr, sc] = SLIME.split(',').map(Number);
 		const [lr, lc] = LANDING.split(',').map(Number);
-		expect(Math.max(Math.abs(sr - lr), Math.abs(sc - lc)),
-			`${F2} の δ が着地セル ${LANDING} に近すぎる`).toBeGreaterThanOrEqual(3);
-
-		// ★ 分裂は「小型の置き場所」を要求する＝4近傍が床でないと分裂そのものが起きない
-		//   （`pickSplitCells` が空 → 素直に倒れる＝機構が黙って死ぬ）
-		for (const [dr, dc, label] of [[1, 0, '南'], [-1, 0, '北'], [0, 1, '東'], [0, -1, '西']]) {
-			expect(grid[sr + dr][sc + dc], `${F2} の δ の${label}隣が床でない＝小型の湧き場が足りない`)
-				.toBe(TILE.FLOOR);
+		for (const s of slimes) {
+			const [sr, sc] = s.split(',').map(Number);
+			// 着地直後に張り付かれない（棚卸し⑪）＝チェビシェフ距離3以上
+			expect(Math.max(Math.abs(sr - lr), Math.abs(sc - lc)),
+				`${F2} の δ ${s} が着地セル ${LANDING} に近すぎる`).toBeGreaterThanOrEqual(3);
+			// ★ 分裂は「小型の置き場所」を要求する＝4近傍が床（か隣の δ のセル）でないと分裂そのものが起きない
+			//   （`pickSplitCells` が空 → 素直に倒れる＝機構が黙って死ぬ）。隣の δ が先に倒れればそこも空く。
+			for (const [dr, dc, label] of [[1, 0, '南'], [-1, 0, '北'], [0, 1, '東'], [0, -1, '西']]) {
+				expect([TILE.FLOOR, TILE.SPLIT_SLIME], `${F2} の δ ${s} の${label}隣が床でない＝小型の湧き場が足りない`)
+					.toContain(grid[sr + dr][sc + dc]);
+			}
 		}
 
-		// δ は向き別スプライトではない∴enemyDirs は空（残すと幽霊キー）
+		// δ は向き別スプライトではない∴enemyDirs は向き別の敵（π・μ）だけ（δ を入れると幽霊キー）
 		expect(ENEMY_META[TILE.SPLIT_SLIME].directional, 'δ が directional になった（前提の変化）')
 			.toBeFalsy();
-		expect(st.enemyDirs ?? {}, `${F2} の enemyDirs`).toEqual({});
+		expect(st.enemyDirs ?? {}, `${F2} の enemyDirs`).toEqual(F2_DIRS);
 
 		// 表に登録してある（`tests/hit-trigger-enemies.spec.js` が「表に無い部屋の δ」を弾く）
 		const entry = EXTRA_ENEMY_ROOMS.find((e) => e.layer === LAYER && e.stage === F2);
 		expect(entry, `${LAYER}/${F2} が EXTRA_ENEMY_ROOMS に無い`).toBeTruthy();
 		expect(entry.by, '登録の by が移行スクリプトを指していない')
-			.toBe('scripts/migrate-dark-tower-5c-landings.mjs');
+			.toBe('scripts/migrate-dark-tower-111-2f-landing.mjs');
 	});
 
 	test('③ 3,0 の穴の帯は幅1（はしごで渡れる）で、島に矢束と守り手がある', () => {
@@ -259,8 +255,8 @@ test.describe('Blade of Lumia – 踊り場3室は実機でも狙いどおり（
 		page.on('pageerror', (e) => errors.push(e.message));
 		// 実時間ループを止めてから開く＝δ が勝手に動いて間合いが変わるのを防ぐ
 		await freezeGameLoop(page);
-		// δ(7,7) の西隣 (7,6) に立つ＝距離ちょうど 1.0（剣の間合い SWORD_REACH 1.2 の内側）
-		await page.goto(previewUrl(F2, 7, 6));
+		// δ(4,8) の西隣 (4,7) に立つ＝距離ちょうど 1.0（剣の間合い SWORD_REACH 1.2 の内側）
+		await page.goto(previewUrl(F2, 4, 7));
 		await waitForBoard(page);
 		expect(await page.evaluate(() => window.__loopBlocked),
 			'実時間ループの差し込み阻止が効いていない').toBeGreaterThan(0);
@@ -271,15 +267,16 @@ test.describe('Blade of Lumia – 踊り場3室は実機でも狙いどおり（
 			if (g.getState().gameTime !== 0) throw new Error('実ループの tick が漏れている（計測前提が崩れる）');
 			g.equipSwordTier(0);            // 本番と同じ木の剣（atk = 2 + 2 = 4＝δ の hp 4）
 			g.step(1);                      // 剣のクールダウン（100ms）を越える
-			const before = g.getEnemies();
+			// 部屋には π・μ・ほかの δ も居る（キュー111）＝親 δ (4,8) とその子だけを見る
+			const before = g.getEnemies().filter((e) => e.id === '4,8');
 			g.setHeroDir('right');
 			g.swordAttack();                // 実経路で殴る（本番と同じ src 付き）
-			const after = g.getEnemies();
+			const after = g.getEnemies().filter((e) => e.splitFrom === '4,8');
 			return { before, after, px: g.getPlayer().x, py: g.getPlayer().y };
 		});
 
 		const cfg = ENEMY_META[TILE.SPLIT_SLIME].split;
-		expect(`${res.py},${res.px}`, '前提：プレイヤーは δ の西隣 (7,6)').toBe('7,6');
+		expect(`${res.py},${res.px}`, '前提：プレイヤーは δ の西隣 (4,7)').toBe('4,7');
 		expect(res.before.map((e) => e.id), `${F2} に δ が1体 spawn する`).toEqual([SLIME]);
 		expect(res.before[0].type, 'spawn した敵が δ でない').toBe(TILE.SPLIT_SLIME);
 		expect(res.before[0].hp, '前提：親の hp').toBe(ENEMY_META[TILE.SPLIT_SLIME].hp);
@@ -293,7 +290,7 @@ test.describe('Blade of Lumia – 踊り場3室は実機でも狙いどおり（
 		// この部屋で実際に空いていることが ⑤-c の設計の要（外周や壁に押し出されない）。
 		const cells = res.after.map((c) => `${c.y},${c.x}`).sort();
 		expect(cells, `小型の湧き場所が想定外（${cells.join(' ')}）`)
-			.toEqual(['7,7', '7,8']);
+			.toEqual(['4,8', '5,8']);   // 北 (3,8)・東 (4,9) は隣の δ が居る＝空いている南へ
 		expect(errors, `page errors on ${F2}:\n${errors.join('\n')}`).toEqual([]);
 	});
 
