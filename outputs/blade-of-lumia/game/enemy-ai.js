@@ -2723,10 +2723,24 @@ export function createEnemyAi(deps) {
 		// 北/西の出現だけプレイヤーに 1 セル近い（＝出る方向で間合いが変わる）。
 		// ⚠️ セルは整数∴「中心を合わせる」ではなく「**手前の端**を d セル離す」で対称にする。
 		const backW = (e.w ?? 1) - 1, backH = (e.h ?? 1) - 1;
+		// キュー111（2026-11-18）：閉じた鍵の扉 'D' を越えた先には出ない。ワープは壁を越えるので、
+		// 塔 `4,1` で術士が鍵の扉 (8,5) の向こうの南の口 (9,5) に出て、矢も剣も届かない所から撃っていた。
+		// ⚠️ 外周を一律に外すのは不可＝D3 堤の術士の部屋は北の口への出方を前提にしている（d3-causeway-sorcerer）。
+		const sd = getStageData();
+		const ssNow = getSS?.(getCurrentLayer(), getStageKey());
+		const beyondClosedDoor = (dr, dc, ny, nx) => {
+			for (let k = 1; ; k++) {
+				const r = pr + dr * k, c = pc + dc * k;
+				if (sd?.tiles?.[r]?.[c] === TILE.DOOR && !ssNow?.openedDoors?.has(`${r},${c}`)) return true;
+				if (r === ny && c === nx) return false;
+				if (k > d + 2) return false;
+			}
+		};
 		for (const i of order) {
 			const [dr, dc] = BLINK_DIRS[i];
 			const ny = pr + dr * d + (dr < 0 ? -backH : 0);
 			const nx = pc + dc * d + (dc < 0 ? -backW : 0);
+			if (beyondClosedDoor(dr, dc, ny, nx)) continue;
 			if (isPassableForEnemy(ny, nx, e)) { e._blinkDir = i; return [ny, nx]; }
 		}
 		return null;
