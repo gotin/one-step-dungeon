@@ -23,7 +23,7 @@ import { isConnectTile } from '../shared/tile-connect.js';
 import { describeCell, BG_TILE_STYLE } from '../shared/cell-appearance.js';
 import { npcSpriteOf } from '../shared/npcs.js';
 import { paintSkyCell, startSkyDrift } from './sky-drift.js';
-import { lavaCooledAt, fallenLogAt } from './passable.js';
+import { lavaCooledAt, fallenLogAt, revealedBridgeAt } from './passable.js';
 
 // 末尾の共通スプライト fallback で「静的に描いてよい落ちアイテム」タイルの集合。
 // 敵・プレイヤー・NPC は実体として render-chars が描くので含めない（重複描画防止）。
@@ -632,6 +632,11 @@ export function createRenderBoard(deps) {
 				// キュー95（D6 `2,0`）：倒れた枯れ木の幹＝セルの絵（水・床）の上に重ねる。
 				const log = fallenLogAt(ss, r, c);
 				if (log) putCellSprite(cellEl, makeSprite(`deadLog_${log.dir}${log.seg}`, 'deadTree', false), 'field-sprite');
+				// キュー111（塔 `5,1`）：現れた橋＝条件のそろった穴の上に橋板を重ねる（向きは左右の隣が穴なら東西渡り）。
+				if (revealedBridgeAt(stageData, ss, r, c)) {
+					const ew = tiles[r]?.[c - 1] === 'x' || tiles[r]?.[c + 1] === 'x';
+					putCellSprite(cellEl, makeSprite(ew ? 'bridgeDeckV' : 'bridgeDeckH', 'bridge', false), 'field-sprite');
+				}
 				boardEl.appendChild(cellEl);
 			}
 		}

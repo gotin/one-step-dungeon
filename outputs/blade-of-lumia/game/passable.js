@@ -56,6 +56,16 @@ export const STATEFUL_TILES = new Set([
 export const FALL_DIRS = { n: [-1, 0], s: [1, 0], w: [0, -1], e: [0, 1] };
 export const FALLEN_LOG_LEN = 2;
 // (r, c) を覆う幹 → { root: 'r,c', dir, seg }（seg＝根元から 1..FALLEN_LOG_LEN）。無ければ null。
+// キュー111（2026-11-18・塔 `5,1`）：現れる橋＝出現条件（showConditions）の付いた穴 'x' は、条件がそろうと
+// 橋になって歩ける（例：笛を吹くと橋が架かる＝fluteEffect reveal ＋ trigger flutePlayed）。
+// 条件がそろう前はただの穴（はしごも羽衣も今までどおり＝穴は飛べない・はしごは1マス幅だけ）。
+// 絵は render-board.js が穴の上に橋板を重ねる（倒れた枯れ木の幹と同じ重ね方）。
+export function revealedBridgeAt(stageData, ss, r, c) {
+	if (stageData?.tiles?.[r]?.[c] !== TILE.PIT) return false;
+	const posKey = `${r},${c}`;
+	return !!stageData.showConditions?.[posKey] && !!ss?.conditionsMet?.has?.(posKey);
+}
+
 export function fallenLogAt(ss, r, c) {
 	for (const [k, dir] of Object.entries(ss?.fallenTrees ?? {})) {
 		const [dr, dc] = FALL_DIRS[dir] ?? [0, 0];
@@ -306,6 +316,7 @@ export function createPassable(d) {
 		// 枯れ木の倒れた幹の上は歩ける（キュー95・D6 `2,0`＝水の上の橋）。幹は水か床の上にしか倒れない
 		// （projectile.js fellTreesFromBlast）∴ここで通すのは水と床だけ＝壁の上に立つことは無い。
 		if (fallenLogAt(ss, r, c)) return true;
+		if (revealedBridgeAt(stageData, ss, r, c)) return true;
 		// キュー103: まだ来ていない／もう去った人（`showWhen`/`hideWhen`）のセルはただの地面＝通れる。
 		const absentNpc = NPC_SPRITE_MAP[tile]
 			&& !npcStandsAt(stageData.npcData?.[posKey], getPlayer(), getCurrentLayer(), getStageKey(), posKey);
