@@ -10,7 +10,7 @@
 // 新しい姿：
 //   ・南東に穴の淵（rows5-8 × cols7-10）。中の小島 (7,9) と回復薬（大）の宝箱 (7,10) が岸から見える。
 //     淵はどこも2マス以上＝はしごは架からない・穴は羽衣でも飛べない＝歩いては取れない。
-//   ・岸の刻み文 (8,6)「途切れた橋」が、笛で渡りが戻ると教える。笛を吹くと (7,7)(7,8) に橋が架かる
+//   ・岸の立札 (8,6)「途切れた橋」が、笛で渡りが戻ると教える。笛を吹くと (7,7)(7,8) に橋が架かる
 //     （fluteEffect reveal ＋ 穴に showConditions flutePlayed＝game/passable.js revealedBridgeAt）。
 //   ・看板（ザーネルの声）はそのまま。敵は置かない。南の口から門番の間 5,2 へ。
 //
@@ -60,12 +60,13 @@ const CONTENT = { type: 'item', item: 'bigHealPotion', name: '回復薬（大）
 const SHOW = Object.fromEntries(BRIDGE.map((k) => [k, { trigger: 'flutePlayed' }]));
 const FLUTE = { type: 'reveal', message: '{{flute}} 音色に 応えて 崩れた 橋が 架かった！' };
 const HINT_SIGN = {
-	name: '途切れた橋の刻み文',
+	// ⚠️ 木の看板 'i' に碑の名前（刻み文・石碑…）を付けない（tests/warp-stone.spec.js ①）。初版の「刻み文」を 2026-11-19 に直した。
+	name: '途切れた橋の立札',
 	lines: ['【途切れた 橋】', '玉座の 主が 橋を 落とした。', '古き 調べを 奏でれば 渡りは 戻るという。'],
 };
 const COMMENT = '[キュー111] 5F ザーネルの声の間＝一息の部屋（敵なし）。5,0 の呪い火の踊り場と 5,2 の門番の間にはさむ休み。'
 	+ '南東の穴の淵の小島 (7,9) に回復薬（大）の宝箱 (7,10)。淵はどこも2マス以上（はしごが架からない・穴は羽衣でも飛べない）。'
-	+ '岸の刻み文 (8,6) が笛を教え、笛を吹くと (7,7)(7,8) に橋が架かる（穴の showConditions flutePlayed＝revealedBridgeAt）。'
+	+ '岸の立札 (8,6) が笛を教え、笛を吹くと (7,7)(7,8) に橋が架かる（穴の showConditions flutePlayed＝revealedBridgeAt）。'
 	+ '看板（ザーネルの声）はそのまま。❌ 1版目のスイッチ撃ちは「あまりにも簡単」で作り直した。';
 
 function die(msg) { console.error(`✗ ${msg}`); process.exit(1); }
@@ -91,7 +92,7 @@ if (isMain) {
 	apply('宝箱', st.chestContents, {}, { [CHEST]: CONTENT }, () => { st.chestContents = { [CHEST]: { ...CONTENT } }; });
 	apply('出現条件（橋）', st.showConditions, {}, SHOW, () => { st.showConditions = structuredClone(SHOW); });
 	apply('笛の効き目', st.fluteEffect, undefined, FLUTE, () => { st.fluteEffect = { ...FLUTE }; });
-	apply('刻み文', st.signData, signBefore, { ...signBefore, [HINT]: HINT_SIGN }, () => { st.signData[HINT] = structuredClone(HINT_SIGN); });
+	apply('立札', st.signData, signBefore, { ...signBefore, [HINT]: HINT_SIGN }, () => { st.signData[HINT] = structuredClone(HINT_SIGN); });
 	if (st.comment !== COMMENT) { st.comment = COMMENT; changed = true; }
 
 	// ── 自己検証 ─────────────────────────────────────────
@@ -101,7 +102,7 @@ if (isMain) {
 	ok(g[0] === '#####..#####' && g[9] === '#####..#####', '北と南の口はそのまま');
 	ok(g.every((r) => r[0] === '#' && r[11] === '#'), '東西の境界は全部壁');
 	ok(at(SIGN) === 'i' && st.signData[SIGN].name === 'ザーネルの声', '看板（ザーネルの声）はそのまま');
-	ok(at(HINT) === 'i', '岸の刻み文 (8,6)');
+	ok(at(HINT) === 'i', '岸の立札 (8,6)');
 	ok(at(CHEST) === 'B' && at(ISLAND) === '.', '小島 (7,9) と宝箱 (7,10)');
 	ok(BRIDGE.every((k) => at(k) === 'x'), '橋のセルは穴（笛の前は渡れない）');
 	ok(at(SHORE) === '.', '橋の西の岸 (7,6) は床');
