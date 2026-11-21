@@ -182,7 +182,7 @@ export function createRenderBoard(deps) {
 		switch (tile) {
 			case TILE.WALL:           cellEl.classList.add('wall'); return;
 			case TILE.WATER:          cellEl.classList.add('water'); return;
-			case TILE.LAVA:           cellEl.classList.add('lava'); return;
+			case TILE.LAVA:           cellEl.classList.add('lava'); if (dsc.obj?.skin === 'mire') cellEl.classList.add('mire'); return;
 			case TILE.GATE:
 				// 開いたゲートは床と同じ背景に（bgTile に任せる）。閉じている時だけ gate 色。
 				// ※ 以前は開時に switch-on を付けていたが、これはスイッチ ON の緑色で
@@ -390,12 +390,15 @@ export function createRenderBoard(deps) {
 				// かえちゃったの？」③「形はそのままで、色を今までの石の色にすればいい」∴押す石と同じ絵（block）。
 				// ④ 2026-11-14 ユーザー指摘「マグマに落ちても見た目がいままでの石のまんまで上を渡れるようにみえない」
 				//   ＝溶岩と石の間に黒く固まったかさぶた（cooledCrust）を敷く。石の絵は③のまま変えない。
-				putCellSprite(cellEl, makeSprite('water', 'lava', true), 'obj-sprite');
-				putCellSprite(cellEl, makeSprite('cooledCrust', 'cooledCrust', false), 'obj-sprite')?.classList.add('cooled-crust');
+				// キュー112：底なし沼（下地が泥＝describeCell の肌 'mire'）は泥の色＋泥の縁。石の絵は同じ。
+				const mire = dsc.obj?.skin === 'mire';
+				putCellSprite(cellEl, makeSprite('water', mire ? 'mire' : 'lava', true), 'obj-sprite');
+				putCellSprite(cellEl, makeSprite('cooledCrust', mire ? 'mireCrust' : 'cooledCrust', false), 'obj-sprite')?.classList.add('cooled-crust');
 				putCellSprite(cellEl, makeSprite('block', 'block', false), 'obj-sprite')?.classList.add('cooled-stone');
 				return;
 			}
-			const cv = makeSprite('water', 'lava', true);   // water 形状＋lava 赤橙パレット
+			// water 形状＋lava 赤橙パレット（底なし沼は泥の色＝キュー112）
+			const cv = makeSprite('water', dsc.obj?.skin === 'mire' ? 'mire' : 'lava', true);
 			putCellSprite(cellEl, cv, 'obj-sprite');
 			return;
 		}

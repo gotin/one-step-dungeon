@@ -7,6 +7,7 @@ import { statefulTileClosed, lavaCooledAt, SUNK_ROW } from './passable.js';
 import { makeStoneEl, stoneSpriteOf } from './render-chars.js';
 import { ITEM_META, EQUIP_META, SWORD_TIERS, BASE_ATK, ARMOR_TIERS, BASE_DEF, SHIELD_TIERS, BOOMERANG_TIERS, HEART_PIECES_PER_HEART, EMBLEMS_FOR_AURA, SCROLLS_FOR_SPIN, SCROLLS_FOR_WIDE_SPIN, ITEM_STACK_MAX, ownsItem, addStack, stackCount, isStackFull } from '../shared/items.js';
 import { NPC_SPRITE_MAP } from '../shared/npcs.js';
+import { lavaSkinAt } from '../shared/tile-skins.js';
 import { carriedGain } from './carry-over.js';
 import { ENEMY_META } from '../shared/enemies.js';
 import { enemyOccupiesTile } from './hitbox.js';
@@ -72,6 +73,13 @@ import {
 // 「いま溶岩が冷えて固まった」という変化を見せる。CSS は game/css/board.css の .lava-cooling。
 // renderBoard() の直後に呼ぶ（作り直したセルに印を付ける）。途中でまた描き直されたら演出は消えるだけ。
 const LAVA_COOL_FX_MS = 1100;
+// キュー112（2026-11-21 ユーザー指摘「石を泥に入れた瞬間にプレイヤーが石の上に乗ってしまい、何が起きたかわからない」）：
+// 石が溶岩／底なし沼に沈む押しをしたら、石が届いて足場の絵に替わり、それを見せ終わるまで移動を止める。
+// 窓＝押しのアニメ（石が転がる時間）＋ SINK_HOLD_SHOW_MS。実時間（Date.now）＝石押しの冷却と同じ時計。
+// 向きの変更も止める（向きだけ変わると絵がずれる）。止めるのは沈む押しのときだけ＝ふつうの石押しは今までどおり。
+export const SINK_HOLD_SHOW_MS = 600;
+let _sinkHoldUntil = 0;
+export const sinkHoldActive = () => Date.now() < _sinkHoldUntil;
 function playLavaCoolFx(r, c) {
 	const cell = document.querySelector(`#board .cell[data-row="${r}"][data-col="${c}"]`);
 	if (!cell) return;
@@ -533,6 +541,7 @@ export function createPlayer(deps) {
 	// ── プレイヤー移動 ────────────────────────────────────
 	function movePlayer(dir) {
 		if (getIsDialog() || getIsPaused() || getIsGameover() || getIsTransitioning()) return;
+		if (sinkHoldActive()) return;   // 石が沈むのを見せ終わるまで待つ（キュー112）
 		// Phase 5.5g5: チャージ（剣ビームの溜め）中は足を止める。ただし向き変更は通す
 		// ＝離した瞬間に飛ぶビームの狙いを付けられないと溜めそのものが使えなくなる。
 		// Phase 5.5g6 で溜め中も剣を構えたまま（出しっぱなし）にしたので、向きを変えたら
@@ -734,6 +743,7 @@ export function createPlayer(deps) {
 				// 氷の上を滑った分（2セル目以降）は1セルあたり 90ms 足す＝押しより速く滑って見える
 				const _slideCells = Math.abs(stoneDestR - stoneFromR) + Math.abs(stoneDestC - stoneFromC);
 				const _stoneDuration = _animDuration + Math.max(0, _slideCells - 1) * 90;
+				if (stoneSinks) _sinkHoldUntil = nowSt + _stoneDuration + 10 + SINK_HOLD_SHOW_MS;   // キュー112
 				requestAnimationFrame(() => {
 					void _animStDiv.offsetLeft;
 					void _animPlayerDiv.offsetLeft;
@@ -765,9 +775,15 @@ export function createPlayer(deps) {
 					if (getIsGameover() || getCurrentLayer() !== _pushLayer || getStageKey() !== _pushStage) return;
 					if (stoneSinks) {   // 石が溶岩に届いた瞬間＝ここで初めて冷えた溶岩の絵に替える
 						renderBoard();   // char-layer を作り直す＝下の renderChars とペア（[[blade-renderboard-pairs-renderchars]]）
-						playLavaCoolFx(stoneDestR, stoneDestC);
-						playSound('fire');
-						pulse('石が 溶岩に 沈み、冷えて 固まった', 1400);
+						// キュー112：底なし沼（下地が泥の溶岩タイル＝shared/tile-skins.js lavaSkinAt）は泥の言葉と音
+						if (lavaSkinAt(stageData, stoneDestR, stoneDestC) === 'mire') {
+							playSound('sink');
+							pulse('石が 泥に 沈み、足場に なった', 1400);
+						} else {
+							playLavaCoolFx(stoneDestR, stoneDestC);
+							playSound('fire');
+							pulse('石が 溶岩に 沈み、冷えて 固まった', 1400);
+						}
 					}
 					renderChars();
 					saveGame();
