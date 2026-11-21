@@ -1,6 +1,6 @@
 // ── Blade of Lumia – game.js ──────────────────────────────────
 // Phase 1: マップ読み込み・プレイヤー移動（半セル）・ステージ遷移
-import { TILE, BG_TILES, FOOT_SOLID_TILES, CANDLE_CLEARABLE_TILES } from '../shared/tiles.js';
+import { TILE, BG_TILES, FOOT_SOLID_TILES, CANDLE_CLEARABLE_TILES, FLOOR_STACK_TILES } from '../shared/tiles.js';
 import { buildExitRegistry as buildExitRegistryShared } from '../shared/exits.js';
 import { liftGroundTiles } from '../shared/ground-layer.js';
 import { ENEMY_META, ENEMY_SPEED_NORMAL } from '../shared/enemies.js';
@@ -478,6 +478,16 @@ function enterStage(lk, sk, pRow, pCol) {
 		// （火を点ける向きを誤ったらやり直せる）。普段の茂みは戻らない＝隠し通路や bushBurned の仕掛けを崩さない
 		// ∴部屋ごとの指定にした。bushBurned（一度でも燃やした）の旗は戻さない＝出現した物は消えない。
 		if (getStageData(currentLayer, stageKey)?.regrowBushes && prevSS.cutBushes?.size > 0) prevSS.cutBushes = new Set();
+		// キュー112（D8 `4,4`「倒木の渡し」・2026-11-21 ユーザー提案「ここにも爆弾を置いておく方がいい」）：
+		// stage.restockFloorItems の部屋だけ、拾った床の矢束・爆弾（FLOOR_STACK_TILES）が部屋を出ると戻る
+		// （やり直すたびに使う弾を、入り直せば補える）。上限は矢筒・爆弾袋のまま＝集めて溜めることはできない。
+		if (getStageData(currentLayer, stageKey)?.restockFloorItems && prevSS.pickedKeys?.size > 0) {
+			const sdPrev = getStageData(currentLayer, stageKey);
+			for (const k of [...prevSS.pickedKeys]) {
+				const [r, c] = k.split(',').map(Number);
+				if (FLOOR_STACK_TILES[sdPrev.tiles?.[r]?.[c]]) prevSS.pickedKeys.delete(k);
+			}
+		}
 		if (prevSS.stonePositions && Object.keys(prevSS.stonePositions).length > 0) {
 			if (prevSS.stonesLocked) {
 				// Phase 4.56: ロック済み＝崩れないので石位置は常に保持（防御的にスナップショットも残す）。
