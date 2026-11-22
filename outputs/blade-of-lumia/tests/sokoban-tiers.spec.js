@@ -535,6 +535,8 @@ test.describe('Phase 4.7 – 合成パズル 26,0（sokoban_color）', () => {
 			{ dir: 'down', to: { r: 2, c: 2 }, push: false },
 			{ dir: 'down', to: { r: 3, c: 2 }, push: false },
 			{ dir: 'right', to: { r: 3, c: 3 }, push: true },
+			// 石の戻る場所に立ったまま吹くと不発（キュー112・game.js playFlute）＝1歩下がってから吹く
+			{ dir: 'left', to: { r: 3, c: 2 }, push: false },
 		]);
 
 		const stoneAt = () => page.evaluate(() => {
@@ -810,6 +812,8 @@ test.describe('バグ回帰 – 色ゲートは石も通さない・不発は音
 			{ dir: 'right', to: { r: 5, c: 3 }, push: false },
 			{ dir: 'up', to: { r: 4, c: 3 }, push: false },
 			{ dir: 'right', to: { r: 4, c: 4 }, push: true },
+			// 石の戻る場所に立ったまま吹くと不発（キュー112・game.js playFlute）＝1歩下がってから吹く
+			{ dir: 'left', to: { r: 4, c: 3 }, push: false },
 		]);
 		expect(await stoneAt(), '前提：石が (4,5) に乗っている').toContain('4,4→4,5');
 		expect(await color(), '前提：色は red').toBe('red');

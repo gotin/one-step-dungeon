@@ -211,6 +211,15 @@ export function pitSkinAt(sd, r, c) {
 	return GROUND_TO_PIT_SKIN[best] ?? PIT_SKIN_DEFAULT;
 }
 
+// ── 底なし沼（キュー112・2026-11-21・D8 `2,4`）＝溶岩タイルの泥の肌 ─────────────
+// 溶岩 `l` はもともと「水と同じ扱い（はしごで1マス渡れる・投げ物は越える）＋石を押し込むと沈んで床になる」。
+// 沼の「石を沈めて足場にする」は同じ動き∴新しいタイルは作らず、**下地（bgTiles）が泥 `w` の溶岩**を
+// 底なし沼として描く（見た目だけ＝[[field-water-tile-no-skins]] の「見た目は肌・挙動違いは専用タイル」）。
+// 沈んだときの言葉と音も肌で分ける（game/player.js）。ソルバーの lavaSinks もそのまま効く。
+export function lavaSkinAt(sd, r, c) {
+	return sd?.bgTiles?.[posKey(r, c)] === TILE.MUD ? 'mire' : null;
+}
+
 /**
  * タイル1枚の「絵と色の名前」に肌を織り込む（肌を持たないタイルは素通し）。
  *
@@ -227,6 +236,8 @@ export function pitSkinAt(sd, r, c) {
  */
 export function skinnedSprite(sd, r, c, tile, si) {
 	if (!si) return si;
+	// キュー112：溶岩は下地が泥なら底なし沼の色（絵の形は溶岩と同じ water・色だけ差し替える）
+	if (tile === TILE.LAVA) return lavaSkinAt(sd, r, c) === 'mire' ? { ...si, pal: 'mire', skin: 'mire' } : si;
 	const skin = tile === TILE.MOUNTAIN ? mountainSkinAt(sd, r, c)
 		: (tile === TILE.TREE || tile === TILE.BUSH) ? vegSkinAt(sd, r, c)
 			: null;

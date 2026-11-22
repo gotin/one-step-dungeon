@@ -23,7 +23,7 @@ import { isConnectTile } from '../shared/tile-connect.js';
 import { describeCell, BG_TILE_STYLE } from '../shared/cell-appearance.js';
 import { npcSpriteOf } from '../shared/npcs.js';
 import { paintSkyCell, startSkyDrift } from './sky-drift.js';
-import { lavaCooledAt, fallenLogAt } from './passable.js';
+import { lavaCooledAt, fallenLogAt, revealedBridgeAt } from './passable.js';
 
 // 末尾の共通スプライト fallback で「静的に描いてよい落ちアイテム」タイルの集合。
 // 敵・プレイヤー・NPC は実体として render-chars が描くので含めない（重複描画防止）。
@@ -182,7 +182,7 @@ export function createRenderBoard(deps) {
 		switch (tile) {
 			case TILE.WALL:           cellEl.classList.add('wall'); return;
 			case TILE.WATER:          cellEl.classList.add('water'); return;
-			case TILE.LAVA:           cellEl.classList.add('lava'); return;
+			case TILE.LAVA:           cellEl.classList.add('lava'); if (dsc.obj?.skin === 'mire') cellEl.classList.add('mire'); return;
 			case TILE.GATE:
 				// 開いたゲートは床と同じ背景に（bgTile に任せる）。閉じている時だけ gate 色。
 				// ※ 以前は開時に switch-on を付けていたが、これはスイッチ ON の緑色で
@@ -390,12 +390,15 @@ export function createRenderBoard(deps) {
 				// かえちゃったの？」③「形はそのままで、色を今までの石の色にすればいい」∴押す石と同じ絵（block）。
 				// ④ 2026-11-14 ユーザー指摘「マグマに落ちても見た目がいままでの石のまんまで上を渡れるようにみえない」
 				//   ＝溶岩と石の間に黒く固まったかさぶた（cooledCrust）を敷く。石の絵は③のまま変えない。
-				putCellSprite(cellEl, makeSprite('water', 'lava', true), 'obj-sprite');
-				putCellSprite(cellEl, makeSprite('cooledCrust', 'cooledCrust', false), 'obj-sprite')?.classList.add('cooled-crust');
+				// キュー112：底なし沼（下地が泥＝describeCell の肌 'mire'）は泥の色＋泥の縁。石の絵は同じ。
+				const mire = dsc.obj?.skin === 'mire';
+				putCellSprite(cellEl, makeSprite('water', mire ? 'mire' : 'lava', true), 'obj-sprite');
+				putCellSprite(cellEl, makeSprite('cooledCrust', mire ? 'mireCrust' : 'cooledCrust', false), 'obj-sprite')?.classList.add('cooled-crust');
 				putCellSprite(cellEl, makeSprite('block', 'block', false), 'obj-sprite')?.classList.add('cooled-stone');
 				return;
 			}
-			const cv = makeSprite('water', 'lava', true);   // water 形状＋lava 赤橙パレット
+			// water 形状＋lava 赤橙パレット（底なし沼は泥の色＝キュー112）
+			const cv = makeSprite('water', dsc.obj?.skin === 'mire' ? 'mire' : 'lava', true);
 			putCellSprite(cellEl, cv, 'obj-sprite');
 			return;
 		}
@@ -632,6 +635,11 @@ export function createRenderBoard(deps) {
 				// キュー95（D6 `2,0`）：倒れた枯れ木の幹＝セルの絵（水・床）の上に重ねる。
 				const log = fallenLogAt(ss, r, c);
 				if (log) putCellSprite(cellEl, makeSprite(`deadLog_${log.dir}${log.seg}`, 'deadTree', false), 'field-sprite');
+				// キュー111（塔 `5,1`）：現れた橋＝条件のそろった穴の上に橋板を重ねる（向きは左右の隣が穴なら東西渡り）。
+				if (revealedBridgeAt(stageData, ss, r, c)) {
+					const ew = tiles[r]?.[c - 1] === 'x' || tiles[r]?.[c + 1] === 'x';
+					putCellSprite(cellEl, makeSprite(ew ? 'bridgeDeckV' : 'bridgeDeckH', 'bridge', false), 'field-sprite');
+				}
 				boardEl.appendChild(cellEl);
 			}
 		}

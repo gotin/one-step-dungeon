@@ -132,7 +132,7 @@ test.describe('Blade of Lumia – ダンジョンの鍵（進行の背骨）', (
     }
   });
 
-  test('① 10個の鍵すべてに、その部屋の型どおりの関門が付いている', () => {
+  test('① 16個の鍵すべてに、その部屋の型どおりの関門が付いている', () => {
     // キュー5番では全部 killAll で背骨を通し、5.5 で1部屋ずつ本物の型へ差し替える
     // （型の割り当ては PUZZLE-DESIGN.md §7-4）。**差し替え済みの部屋はその型を固定し、
     // 未着手の部屋は killAll のまま**であることを明示的に縛る＝どちらの方向の
@@ -148,6 +148,12 @@ test.describe('Blade of Lumia – ダンジョンの鍵（進行の背骨）', (
       'dungeon_7/1,0':  'killAllAndFlute', // A 戦闘型②（強化＋笛の2段目・5.5h 済）
       'dungeon_8/1,0':  'stonesPlaced', // C 倉庫番②（石4・関門の上限帯・5.5g 済）
       'dark_tower/1,2': 'killAll',      // A 戦闘型③（強化・5.5h 済）
+      'dark_tower/2,0': 'killAll',      // A 戦闘型⑤（分裂スライム×4・ブーメラン鬼×2・剣獣を全滅・扉の先が 2,1・キュー111・2026-11-17）
+      'dark_tower/4,1': 'killAll',      // A 戦闘型⑥（術士×2・骸骨剣士×2・剣獣・盾騎士を全滅・扉の先が 4,2・キュー111・2026-11-18）
+      'dark_tower/5,0': 'killAll',      // A 戦闘型⑦（呪い火×4・盾騎士・剣獣・爆弾鬼・骸骨剣士を全滅・扉の先が 5,1・キュー111・2026-11-18）
+      'dark_tower/5,2': 'killAll',      // A 戦闘型⑧（玉座の門番＝盾騎士×2・剣獣・突進猪を全滅・扉の先が玉座 5,3・キュー111・2026-11-18）
+      'dark_tower/2,3': 'torchesLit',  // B 道具型④（爆弾＋ロウソク＋火矢で火を渡す・キュー111・2026-11-16）
+      'dark_tower/3,3': 'killAll',      // A 戦闘型④（剣獣・爆弾鬼・突進猪の3体を全滅・キュー111・2026-11-17）
       'dark_tower/4,3': 'stonesPlaced', // C 倉庫番③（石4・ユーザー作り込み盤面＝23,0 と同程度の難しさで実プレイ合格・全10鍵の最終・5.5i 済）
     };
     const found = {};
@@ -166,7 +172,7 @@ test.describe('Blade of Lumia – ダンジョンの鍵（進行の背骨）', (
     }
     // 鍵が消える方向の回帰（K を消せば「全ての鍵に関門」は自明に真になる）も防ぐ。
     expect(Object.keys(found).sort()).toEqual(Object.keys(EXPECTED).sort());
-    expect(Object.values(found).reduce((a, b) => a + b, 0), 'ダンジョン内の鍵の総数').toBe(10);
+    expect(Object.values(found).reduce((a, b) => a + b, 0), 'ダンジョン内の鍵の総数').toBe(16);   // 2026-11-17 キュー111 で塔 2,0・2026-11-18 で塔 4,1 と 5,0 と 5,2 の鍵を足した
   });
 
   test('① ダンジョンに「床置きの鍵」（floorItems の key）が1個も無い', () => {
@@ -1863,8 +1869,8 @@ test.describe('Blade of Lumia – ダンジョンの鍵（進行の背骨）', (
   // ⚠️ 不変条件は 2026-09-23 に改訂した（旧 (d)「階合計の単調増加＋合計 ≤709.8」は
   //    **実現不可能だと数で確定して失効**＝DECISIONS 2026-09-23（12））∴縛るのは
   //    (d1) どの階にも実戦室が1室以上／(d2) 最後に会う群れ `5,2` ≥ 3F の大広間 `3,3`／
-  //    (d3) 1室 ≤ 162（`1,2` の 225 は PINNED の既存例外）／(d4) 塔の非ボス合計 ≤ 900。
-  const DT_THREAT_CAP = 900;
+  //    (d3) 1室 ≤ 162（`1,2` の 225 は PINNED の既存例外）。
+  //    ❌ (d4) 塔の非ボス合計の上限は 2026-11-16 に失効（ユーザー判断＝最後のダンジョンを重くする）。
   const dtStages = () => map.layers.dark_tower.stages;
   const dtFloors = () => {
     const byFloor = {};
@@ -1897,11 +1903,10 @@ test.describe('Blade of Lumia – ダンジョンの鍵（進行の背骨）', (
     }
   });
 
-  test('⑩ dark_tower：塔の非ボス脅威度の合計が上限（900）を超えない', () => {
+  test('⑩ dark_tower：塔の非ボス脅威度の合計が軽く戻っていない', () => {
     const total = Object.values(dtStages())
       .filter(s => !s.isBossRoom)
       .reduce((sum, s) => sum + threatOfStage(s), 0);
-    expect(total, `塔の非ボス合計（実測 ${total}）`).toBeLessThanOrEqual(DT_THREAT_CAP);
     // 4F/5F が無人に戻っていないことを合計でも押さえる（⑲の回帰）。
     expect(total, '20b ⑤ 着手前（668.0）より軽くしない').toBeGreaterThanOrEqual(668);
   });

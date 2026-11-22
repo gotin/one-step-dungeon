@@ -176,12 +176,14 @@ test.describe('Blade of Lumia – dark_tower 2F 代償の廊／星の間（キ�
 
 	test('データ：塔の不変条件 (e)(d3)(d4) が保たれている', () => {
 		const stages = map.layers[LAYER].stages;
-		// (e) 回復薬（大）は3室以下＝この部屋の差し替えで 4室 → 3室になった
+		// (e) 回復薬（大）＝この部屋の差し替えで 4室 → 3室になった。
+		// 2026-11-18（キュー111）に 5,1 を足して4室＝ユーザー判断「5,0 と 5,2 の間は一息の部屋・仕掛けを解くと回復薬（大）」。
+		// 塔を難しくした（最後のダンジョン）ぶん、玉座の直前に1つ足した。増やすときはここを理由つきで直す。
 		const healRooms = Object.entries(stages)
 			.filter(([, st]) => Object.values(st.chestContents ?? {})
 				.some((cc) => cc?.item === 'bigHealPotion'))
 			.map(([k]) => k).sort();
-		expect(healRooms, '回復薬（大）は 0,1／0,4／4,4 の3室だけ').toEqual(['0,1', '0,4', '4,4']);
+		expect(healRooms, '回復薬（大）は 0,1／0,4／4,4／5,1 の4室だけ').toEqual(['0,1', '0,4', '4,4', '5,1']);
 		// (d3) 1室162以下（例外＝`1,2` 二色の錠の間）／(d4) 非ボス合計900以下
 		let total = 0;
 		for (const [key, st] of Object.entries(stages)) {
@@ -190,7 +192,7 @@ test.describe('Blade of Lumia – dark_tower 2F 代償の廊／星の間（キ�
 			total += t;
 			if (key !== '1,2') expect(t, `${key} の脅威度が 162 以下`).toBeLessThanOrEqual(162);
 		}
-		expect(total, '塔の非ボス合計は 900 以下').toBeLessThanOrEqual(900);
+		// (d4) 塔の非ボス合計の上限は 2026-11-16 に失効（ユーザー判断）＝下限だけ見る
 		expect(total, 'λ を足したので ⑤-a 完了時（858）より重い').toBeGreaterThan(858);
 	});
 

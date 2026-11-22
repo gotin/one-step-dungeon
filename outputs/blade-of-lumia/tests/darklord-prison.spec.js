@@ -996,6 +996,9 @@ test.describe('Blade of Lumia – 魔王の岩牢（X 魔王）', () => {
     expect(await stoneDrawnAt(page, 5, 5), '押した後も (5,5) に石が描かれている').toBe(false);
 
     // ③ 笛 → 石が初期位置に戻り、activeColor も消える（`resetStones` は色も戻す）。
+    // 石の戻る場所に立ったまま吹くと不発（キュー112・game.js playFlute）＝1歩下がってから吹く
+    await walkTiles(page, 'left', 1);
+    expect(await at(page), '石の元の位置から西へ下がれない').toEqual({ r: 5, c: 4 });
     await page.evaluate(() => window.__game.useSubItem());
     await step(page, 2);
     const reset = await ss(page);

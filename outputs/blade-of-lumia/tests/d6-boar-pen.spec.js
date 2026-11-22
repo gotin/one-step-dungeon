@@ -171,12 +171,23 @@ test.describe('D6 猪の囲い ③ 実機', () => {
 		expect(errors).toEqual([]);
 	});
 
-	test('対照：普通の壁の列（岸 (6,4)・猪 (2,4)）では頭を打って気絶するだけ＝壁は砕けない', async ({ page }) => {
+	// キュー111（2026-11-17・ユーザー了承）で変わった：猪は間にただの壁（#）があると走り出さない
+	// （enemy-ai.js dashLaneOpen）。前は「壁に頭を打って気絶するだけ」を見ていた。
+	test('対照：普通の壁の列（岸 (6,4)・猪 (2,4)）では走り出さない＝壁は砕けない', async ({ page }) => {
 		await boot(page, previewUrl(6, 4));
 		await placeBoar(page, 2, 4);
-		const s = await untilStun(page, 40);
-		expect(s.tick, '猪が壁に頭を打たない＝対照が空虚').not.toBe(null);
-		await step(page, 60);   // 2回目の突進まで回す
+		const windups = await page.evaluate(() => {
+			const g = window.__game;
+			let n = 0;
+			for (let i = 0; i < 120; i++) {
+				const e = g.getEnemies()[0];
+				g.setEnemyFieldForTest(e.id, { y: 2, x: 4 });   // 列を外れて正当に走るのを除く
+				g.step(1);
+				if (g.getEnemies()[0].dashPhase === 'windup') n++;
+			}
+			return n;
+		});
+		expect(windups, '普通の壁越しに走り出そうとした').toBe(0);
 		expect(await broken(page), '普通の壁の列なのに壊せる壁が砕けた').toEqual([]);
 		expect((await boars(page)).length, '普通の壁の列で猪が倒れた').toBe(1);
 	});

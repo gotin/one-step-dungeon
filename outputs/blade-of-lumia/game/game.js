@@ -1,6 +1,6 @@
 // ── Blade of Lumia – game.js ──────────────────────────────────
 // Phase 1: マップ読み込み・プレイヤー移動（半セル）・ステージ遷移
-import { TILE, BG_TILES, FOOT_SOLID_TILES, CANDLE_CLEARABLE_TILES } from '../shared/tiles.js';
+import { TILE, BG_TILES, FOOT_SOLID_TILES, CANDLE_CLEARABLE_TILES, FLOOR_STACK_TILES } from '../shared/tiles.js';
 import { buildExitRegistry as buildExitRegistryShared } from '../shared/exits.js';
 import { liftGroundTiles } from '../shared/ground-layer.js';
 import { ENEMY_META, ENEMY_SPEED_NORMAL } from '../shared/enemies.js';
@@ -40,7 +40,7 @@ import { createTide } from './tide.js';
 import { toTileIndex } from './hitbox.js';
 // ── 描画系（Phase 0-2 Step 3: render-board.js / render-chars.js へ切り出し）──────
 import { createRenderBoard, putCellSprite } from './render-board.js';
-import { createRenderChars } from './render-chars.js';
+import { createRenderChars, stoneSpriteOf } from './render-chars.js';
 // ── 入力・UI（Phase 0-2 Step 4: input.js / ui.js へ切り出し）──────────────────
 import { initInput } from './input.js';
 import { createUi, listSubItemKeys, subItemIconCanvas, subItemDisplayName } from './ui.js';
@@ -62,7 +62,8 @@ import { createProjectile } from './projectile.js';
 import { createEnemyAi } from './enemy-ai.js';
 import { snapshotEnemy } from './enemy-snapshot.js';
 // ── プレイヤー移動・タイルイベント（Phase 0-2 Step 5: player.js へ切り出し）──
-import { createPlayer } from './player.js';
+import { createPlayer, holdMovesUntil, sinkHoldActive } from './player.js';
+import { playStoneReturnFx } from './stone-return.js';
 import { createAuraAwakening } from './aura-awakening.js';
 import { createGarbAwakening } from './garb-awakening.js';
 // ── 剣攻撃・ダメージ（Phase 0-2 Step 5: combat.js へ切り出し）───────────────
@@ -478,6 +479,16 @@ function enterStage(lk, sk, pRow, pCol) {
 		// （火を点ける向きを誤ったらやり直せる）。普段の茂みは戻らない＝隠し通路や bushBurned の仕掛けを崩さない
 		// ∴部屋ごとの指定にした。bushBurned（一度でも燃やした）の旗は戻さない＝出現した物は消えない。
 		if (getStageData(currentLayer, stageKey)?.regrowBushes && prevSS.cutBushes?.size > 0) prevSS.cutBushes = new Set();
+		// キュー112（D8 `4,4`「倒木の渡し」・2026-11-21 ユーザー提案「ここにも爆弾を置いておく方がいい」）：
+		// stage.restockFloorItems の部屋だけ、拾った床の矢束・爆弾（FLOOR_STACK_TILES）が部屋を出ると戻る
+		// （やり直すたびに使う弾を、入り直せば補える）。上限は矢筒・爆弾袋のまま＝集めて溜めることはできない。
+		if (getStageData(currentLayer, stageKey)?.restockFloorItems && prevSS.pickedKeys?.size > 0) {
+			const sdPrev = getStageData(currentLayer, stageKey);
+			for (const k of [...prevSS.pickedKeys]) {
+				const [r, c] = k.split(',').map(Number);
+				if (FLOOR_STACK_TILES[sdPrev.tiles?.[r]?.[c]]) prevSS.pickedKeys.delete(k);
+			}
+		}
 		if (prevSS.stonePositions && Object.keys(prevSS.stonePositions).length > 0) {
 			if (prevSS.stonesLocked) {
 				// Phase 4.56: ロック済み＝崩れないので石位置は常に保持（防御的にスナップショットも残す）。
@@ -498,6 +509,10 @@ function enterStage(lk, sk, pRow, pCol) {
 				if (allSolved) {
 					// パズル解決済み：石位置スナップショットを保存してリセットしない
 					prevSS.solvedStonePositions = { ...prevSS.stonePositions };
+				} else if (prevSD?.keepStonesOnExit) {
+					// キュー112（2026-11-22・D8 `1,2` 笛の間）：この部屋の石は出ても戻らない＝戻すのは笛だけ
+					// （笛で石を戻す手を解き筋に使う部屋で、出入りが笛の代わりにならないように）。
+					// 入ったときに石が着地セルに居れば、下の enterStage の着地の手当てが石を戻す。
 				} else {
 					// 未解決：通常リセット（スナップショットも消す）
 					prevSS.stonePositions = {};
@@ -567,6 +582,16 @@ function enterStage(lk, sk, pRow, pCol) {
 	// float 座標でプレイヤーを配置（整数セル中央 = そのセルの中心）
 	player.x = pCol ?? 1;
 	player.y = pRow ?? 1;
+	// キュー112（2026-11-22）：石が出ても戻らない部屋（keepStonesOnExit）で、動かした石が着地セルに
+	// 残っていたら石を元の位置へ戻す（重なったままだと勇者がどの向きにも動けない＝笛の手当てと同じ理由）。
+	if (nextStageData?.keepStonesOnExit) {
+		const ssIn = getSS(lk, sk);
+		const r0 = Math.floor(player.y), r1 = Math.ceil(player.y);
+		const c0 = Math.floor(player.x), c1 = Math.ceil(player.x);
+		const blocked = !ssIn.stonesLocked && Object.values(ssIn.stonePositions ?? {}).some((st) =>
+			st.r >= r0 && st.r <= r1 && st.c >= c0 && st.c <= c1);
+		if (blocked) ssIn.stonePositions = {};
+	}
 
 	// 画面が変わっても飛行は続ける（キュー86・2026-10-19 ユーザー決定＝PLAN 1-5 改善 TODO）。降りるのは F／🪽 だけ。
 	// 旧＝到着セルが歩けるセルなら自動で降ろしていた＝飛んで画面をまたぐたびに飛び直しが要った。
@@ -2019,6 +2044,7 @@ function playFlute() {
 	// ⚠️ 全ボタンに石が乗って解決済み（stonesLocked、または未ロックでも全ボタン充足）なら
 	// リセットしない＝解けたパズルを台無しにしない（enterStage と同じ防御）。
 	if (fe.type === 'resetStones') {
+		if (sinkHoldActive()) return;   // 石が飛んでいる／沈んでいる間は吹き直さない（キュー112b）
 		const ss = getSS(currentLayer, stageKey);
 		if (!ss.stonePositions || Object.keys(ss.stonePositions).length === 0) {
 			fx.pulse('{{flute}} 音色は響いたが 特に何も起きない', 1800);
@@ -2042,11 +2068,48 @@ function playFlute() {
 			fx.pulse('{{flute}} 音色は響いたが 石はもう動かない', 1800);
 			return;
 		}
+		// キュー112（2026-11-22・D8 `1,2` の設計中に発覚）：石の戻る場所（動かした石の元のセル）に勇者が
+		// 重なっていたら戻さない。戻すと石が勇者に重なり、どの向きにも動けなくなる（実機で確認＝D8 `2,4`）。
+		// 勇者の占める範囲は半マスの位置で2セルにまたがる（passable.js と同じ丸め）。
+		{
+			const r0 = Math.floor(player.y), r1 = Math.ceil(player.y);
+			const c0 = Math.floor(player.x), c1 = Math.ceil(player.x);
+			const onOrigin = Object.keys(ss.stonePositions).some((k) => {
+				const [or, oc] = k.split(',').map(Number);
+				return or >= r0 && or <= r1 && oc >= c0 && oc <= c1;
+			});
+			if (onOrigin) {
+				fx.pulse('{{flute}} 音色は響いたが 石の 戻る 場所に 立っている', 1800);
+				return;
+			}
+			// キュー112b（2026-11-22・ユーザーの問い「逆に脱出できなくなるステージはない？」を状態空間で測って発覚）：
+			// 沈んだ石の足場（冷えた溶岩・埋まった泥）に立って吹くと、石が戻って足元が溶岩／泥に戻り、どの向きにも
+			// 動けなくなる（D8 `2,4` で実測＝ダメージも無く永久に詰む）。石の戻る場所と同じく不発にする。
+			const onSunk = Object.values(ss.stonePositions).some((st) => {
+				if (!st.sunk) return false;
+				const [sr, sc] = st.sunk.split(',').map(Number);
+				return sr >= r0 && sr <= r1 && sc >= c0 && sc <= c1;
+			});
+			if (onSunk) {
+				fx.pulse('{{flute}} 音色は響いたが 沈んだ 石の 上に 立っている', 1800);
+				return;
+			}
+		}
+		// キュー112b：戻る石の一覧（今いた所 → 元の位置）を、状態を戻す前に取っておく＝演出（stone-return.js）に渡す。
+		// 沈んだ石は沈んだセルから浮かび上がる。
+		const flights = Object.entries(ss.stonePositions).map(([key, st]) => {
+			const [or, oc] = key.split(',').map(Number);
+			const [fr, fc] = st.sunk ? st.sunk.split(',').map(Number) : [st.r, st.c];
+			return { key, fr, fc, or, oc, sprite: stoneSpriteOf(stageData, key) };
+		}).filter((f) => f.fr !== f.or || f.fc !== f.oc);
 		ss.stonePositions = {};
 		ss.activeColor = null;
 		refreshGates();
 		evaluateConditions();
 		fx.renderBoard(); fx.renderChars();
+		// 状態は戻し終えた＝演出は見た目だけ。飛んでいる間は勇者を止める（石と勇者が重なって見えないように）。
+		const fxMs = playStoneReturnFx(charLayerElRef.value?.parentElement, getCellPx(), flights);
+		if (fxMs > 0) holdMovesUntil(Date.now() + fxMs);
 		fx.pulse(fe.message ?? '{{flute}} 音色に応えて 石が元の位置に戻った！', 2200);
 		saveGame();
 		return;
