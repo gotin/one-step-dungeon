@@ -372,20 +372,27 @@ export function createUi(deps) {
 		const marks   = getMarks();
 		let added = 0;
 		let lastLabel = '';
+		let lastId = null;
 		for (const m of list) {
 			if (!mapData?.layers?.[m.layer]?.stages?.[m.stage]) {
 				console.warn(`[marks] 行き先が実在しない: ${m.layer}/${m.stage}（${m.label}）`);
 				continue;
 			}
-			if (addMark(marks, m)) { added++; lastLabel = m.label; }
-			// 初めてのマークは自動で選択する（1つしか無いのに選ばせる意味が無い）
+			if (addMark(marks, m)) { added++; lastLabel = m.label; lastId = markId(m.layer, m.stage); }
+			// 選択が空なら、教え直し（新しく足さなかった印）でも選ぶ（選ばせる相手が1つも無い状態を作らない）
 			if (!player.selectedMarkId) player.selectedMarkId = markId(m.layer, m.stage);
 		}
+		// キュー115（2026-11-22 ユーザー指示）：新しく加わった目的地は、自動で今の目的地に選ぶ
+		// ＝「ほとんどの場合その目的地に進む」。1度に複数加わったら最後に教わったものを選ぶ。
+		// 教え直し（既にある印）では選択を変えない＝プレイヤーが選んだ印を、同じ話の読み返しで奪わない。
+		if (lastId) player.selectedMarkId = lastId;
 		if (added) {
 			// 地図を持っていないときは黙る＝「地図に記した」が嘘になる（記録自体は残す
-			// ∴後で地図を拾えばちゃんと出る）。
+			// ∴後で地図を拾えばちゃんと出る）。選んだことも、この知らせで伝える（ユーザー指示）。
 			if (hasLayerMap(getCurrentLayer())) {
-				pulse(added === 1 ? `{{map}} 地図に「${lastLabel}」を記した！` : `{{map}} 地図に ${added} か所を記した！`);
+				pulse(added === 1
+					? `{{map}} 地図に「${lastLabel}」を記した！ 目的地に した`
+					: `{{map}} 地図に ${added} か所を記した！ 目的地は「${lastLabel}」`, 2600);   // 文が長くなった分だけ長く出す
 			}
 			updateMarkGuide();
 			refreshUnreadMarks();   // 読み終えた相手の印を消す（キュー61）
@@ -1447,7 +1454,7 @@ export function createUi(deps) {
 		player.selectedMarkId = markId(layer, r.stage);
 		updateMarkGuide();
 		playSound('item');
-		shopSay(`地図に「${r.label}」を記した！${r.hint ? ` ${r.hint}` : ''}`);
+		shopSay(`地図に「${r.label}」を記した！ 目的地に した${r.hint ? ` ${r.hint}` : ''}`);
 		updateHud();
 		saveGame();
 		renderShop();
