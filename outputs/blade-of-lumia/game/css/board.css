@@ -1236,7 +1236,7 @@ body.ending-montage #char-player { visibility: hidden; }
     .lava-steam { display: none; }
 }
 
-/* キュー112b：笛で石が元の位置へ戻る演出（game/flute-stone-fx.js）。
+/* キュー112b：笛で石が元の位置へ戻る演出（game/stone-return.js）。
    キャラ層（#char-layer＝5）より手前＝浮いた石は勇者の上を越えて飛ぶ。影は地面に残る。 */
 #stone-return-layer {
     position: absolute;

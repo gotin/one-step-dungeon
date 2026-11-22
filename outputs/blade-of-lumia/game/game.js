@@ -63,7 +63,7 @@ import { createEnemyAi } from './enemy-ai.js';
 import { snapshotEnemy } from './enemy-snapshot.js';
 // ── プレイヤー移動・タイルイベント（Phase 0-2 Step 5: player.js へ切り出し）──
 import { createPlayer, holdMovesUntil, sinkHoldActive } from './player.js';
-import { playStoneReturnFx } from './flute-stone-fx.js';
+import { playStoneReturnFx } from './stone-return.js';
 import { createAuraAwakening } from './aura-awakening.js';
 import { createGarbAwakening } from './garb-awakening.js';
 // ── 剣攻撃・ダメージ（Phase 0-2 Step 5: combat.js へ切り出し）───────────────
@@ -2095,7 +2095,7 @@ function playFlute() {
 				return;
 			}
 		}
-		// キュー112b：戻る石の一覧（今いた所 → 元の位置）を、状態を戻す前に取っておく＝演出（flute-stone-fx.js）に渡す。
+		// キュー112b：戻る石の一覧（今いた所 → 元の位置）を、状態を戻す前に取っておく＝演出（stone-return.js）に渡す。
 		// 沈んだ石は沈んだセルから浮かび上がる。
 		const flights = Object.entries(ss.stonePositions).map(([key, st]) => {
 			const [or, oc] = key.split(',').map(Number);
