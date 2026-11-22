@@ -828,6 +828,9 @@ function renderEnemyChase(sd) {
 	// キュー112: 部屋を出ると床の矢束・爆弾が戻る（sd.restockFloorItems＝game.js enterStage が読む）
 	const restockEl = document.getElementById('stage-restock-floor-items');
 	if (restockEl) restockEl.checked = sd.restockFloorItems === true;
+	// キュー112: 部屋を出ても石が戻らない（sd.keepStonesOnExit＝game.js enterStage が読む）
+	const keepStonesEl = document.getElementById('stage-keep-stones-on-exit');
+	if (keepStonesEl) keepStonesEl.checked = sd.keepStonesOnExit === true;
 	el.innerHTML = '';
 	const list = [];
 	(sd.tiles ?? []).forEach((row, r) => row.forEach((t, c) => { if (canRoam(t)) list.push({ r, c, t }); }));
@@ -894,6 +897,12 @@ export function initEnemyAlertEvents() {
 		if (!sd) return;
 		if (e.target.checked) sd.restockFloorItems = true;
 		else delete sd.restockFloorItems;
+	});
+	document.getElementById('stage-keep-stones-on-exit')?.addEventListener('change', e => {
+		const sd = getCurrentStage();
+		if (!sd) return;
+		if (e.target.checked) sd.keepStonesOnExit = true;
+		else delete sd.keepStonesOnExit;
 	});
 }
 

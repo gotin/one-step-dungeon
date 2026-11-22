@@ -508,6 +508,10 @@ function enterStage(lk, sk, pRow, pCol) {
 				if (allSolved) {
 					// パズル解決済み：石位置スナップショットを保存してリセットしない
 					prevSS.solvedStonePositions = { ...prevSS.stonePositions };
+				} else if (prevSD?.keepStonesOnExit) {
+					// キュー112（2026-11-22・D8 `1,2` 笛の間）：この部屋の石は出ても戻らない＝戻すのは笛だけ
+					// （笛で石を戻す手を解き筋に使う部屋で、出入りが笛の代わりにならないように）。
+					// 入ったときに石が着地セルに居れば、下の enterStage の着地の手当てが石を戻す。
 				} else {
 					// 未解決：通常リセット（スナップショットも消す）
 					prevSS.stonePositions = {};
@@ -577,6 +581,16 @@ function enterStage(lk, sk, pRow, pCol) {
 	// float 座標でプレイヤーを配置（整数セル中央 = そのセルの中心）
 	player.x = pCol ?? 1;
 	player.y = pRow ?? 1;
+	// キュー112（2026-11-22）：石が出ても戻らない部屋（keepStonesOnExit）で、動かした石が着地セルに
+	// 残っていたら石を元の位置へ戻す（重なったままだと勇者がどの向きにも動けない＝笛の手当てと同じ理由）。
+	if (nextStageData?.keepStonesOnExit) {
+		const ssIn = getSS(lk, sk);
+		const r0 = Math.floor(player.y), r1 = Math.ceil(player.y);
+		const c0 = Math.floor(player.x), c1 = Math.ceil(player.x);
+		const blocked = !ssIn.stonesLocked && Object.values(ssIn.stonePositions ?? {}).some((st) =>
+			st.r >= r0 && st.r <= r1 && st.c >= c0 && st.c <= c1);
+		if (blocked) ssIn.stonePositions = {};
+	}
 
 	// 画面が変わっても飛行は続ける（キュー86・2026-10-19 ユーザー決定＝PLAN 1-5 改善 TODO）。降りるのは F／🪽 だけ。
 	// 旧＝到着セルが歩けるセルなら自動で降ろしていた＝飛んで画面をまたぐたびに飛び直しが要った。
@@ -2051,6 +2065,21 @@ function playFlute() {
 		if (allSolved) {
 			fx.pulse('{{flute}} 音色は響いたが 石はもう動かない', 1800);
 			return;
+		}
+		// キュー112（2026-11-22・D8 `1,2` の設計中に発覚）：石の戻る場所（動かした石の元のセル）に勇者が
+		// 重なっていたら戻さない。戻すと石が勇者に重なり、どの向きにも動けなくなる（実機で確認＝D8 `2,4`）。
+		// 勇者の占める範囲は半マスの位置で2セルにまたがる（passable.js と同じ丸め）。
+		{
+			const r0 = Math.floor(player.y), r1 = Math.ceil(player.y);
+			const c0 = Math.floor(player.x), c1 = Math.ceil(player.x);
+			const onOrigin = Object.keys(ss.stonePositions).some((k) => {
+				const [or, oc] = k.split(',').map(Number);
+				return or >= r0 && or <= r1 && oc >= c0 && oc <= c1;
+			});
+			if (onOrigin) {
+				fx.pulse('{{flute}} 音色は響いたが 石の 戻る 場所に 立っている', 1800);
+				return;
+			}
 		}
 		ss.stonePositions = {};
 		ss.activeColor = null;
