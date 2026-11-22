@@ -43,6 +43,8 @@ import {
 	SLAM_RANGE, SLAM_WINDUP_MS, SLAM_COOLDOWN_MS,
 } from '../game/constants.js';
 import { THREAT_OF } from './lib/enemy-placement.mjs';
+import { isTempered, temperFactor, swingsToKill } from '../shared/boss-sword-temper.js';
+import { clearedSwordAtk } from '../game/carry-over.js';
 // 進行順（ORDER）と「その地点で何を持っているか」の導出は **`shared/progression.js` が単一の真実**。
 // 元はこのファイルの内部定数・内部関数だったが、実行キュー 0f でエディタ（プレビュー設定の
 // 「🚩進行地点」プリセット）からも同じ値が必要になった∴共有へ出した（コピーを作らない）。
@@ -138,10 +140,18 @@ function kindOf(tile, meta, enc) {
 // combat.js damageEnemy：actual = max(1, dmg - e.def)（弱点は別倍率・ここでは等倍で見る）
 // 剣は SWORD_COOLDOWN_MS ごとに振れる＝敵側に被弾無敵は無い（実コードで確認）。
 // 満タンビームは剣ATK×BEAM_STRONG_MULT・貫通（聖剣のみ pierce も付く）。
-function offense(stats, meta) {
-	const swordDmg = Math.max(1, stats.atk - (meta.def ?? 0));
-	const swings   = Math.ceil(meta.hp / swordDmg);
-	const beamDmg  = stats.beam ? Math.max(1, stats.atk * BEAM_STRONG_MULT - (meta.def ?? 0)) : null;
+// キュー110：ボスに入る剣・ビームのダメージは剣が強いほど抑える（shared/boss-sword-temper.js）＝
+// ゲームと同じ関数で振り数を数える（端数の持ち越しまで同じ）。表の 1振りdmg は抑えた後の平均。
+// ボス部屋の戦いだけが対象（道中の中ボス W は抑えない）＝`inBossRoom` は実マップから導出した値。
+function offense(stats, meta, inBossRoom = false) {
+	const def = meta.def ?? 0;
+	const tempered = isTempered(meta, 'sword', inBossRoom);
+	const f = tempered ? temperFactor(stats.atk, def, meta.swordTemperRef ?? 0) : 1;
+	const rawSword = Math.max(1, stats.atk - def);
+	const swordDmg = Math.round(rawSword * f * 10) / 10;
+	const swings   = tempered ? swingsToKill(meta.hp, stats.atk, def, meta.swordTemperRef ?? 0)
+		: Math.ceil(meta.hp / rawSword);
+	const beamDmg  = stats.beam ? Math.max(1, (stats.atk * BEAM_STRONG_MULT - def) * f) : null;
 	return {
 		swordDmg, swings,
 		ttkMs: swings * SWORD_COOLDOWN_MS,
@@ -359,7 +369,7 @@ function main() {
 		const judgeStats   = atMax ? max : kind === 'boss' ? (boss ?? min) : min;
 		const judgeVariant = atMax ? 'max' : kind === 'boss' ? (boss ? 'boss' : 'min') : 'min';
 		const measure = (stats) => {
-			const o = offense(stats, meta), d = defense(stats, meta);
+			const o = offense(stats, meta, enc.inBossRoom), d = defense(stats, meta);
 			return { ...o, ...d, flags: flagsOf({ o, d, meta, tile, kind }) };
 		};
 		const jd = measure(judgeStats), mx = measure(max);
@@ -383,6 +393,36 @@ function main() {
 		|| (a.threat - b.threat));
 	report.encounters = rows;
 	report.defects = rows.filter((r) => r.flags.length);
+
+	// ── ⑥ 剣の順（キュー110・ユーザー条件「剣が強い方が有利」）───────────────
+	// ボスごとに、剣だけで倒すのに要る振り数を全部の剣（＋クリア後の ×1.2）で数える。
+	// 守る条件＝①5本の剣の順に**必ず減る**（同じ数に並ぶのも不可）②×1.2 を混ぜて攻撃力の順に
+	// 並べても**増えない**。どちらかが崩れたら `swordOrderViolations` に積む（テストが 0 を要求）。
+	const swordCols = [];
+	for (let t = 0; t < SWORD_TIERS.length; t++) {
+		const atk = BASE_ATK + SWORD_TIERS[t].atk;
+		swordCols.push({ label: SWORD_TIERS[t].name, tier: t, cleared: false, atk });
+		swordCols.push({ label: `${SWORD_TIERS[t].name}×周回`, tier: t, cleared: true, atk: clearedSwordAtk(atk, true) });
+	}
+	swordCols.sort((a, b) => a.atk - b.atk || (a.cleared - b.cleared));
+	report.swordOrder = [];
+	report.swordOrderViolations = [];
+	for (const { tile } of rows.filter((r) => r.kind === 'boss')) {
+		const meta = ENEMY_META[tile];
+		const cols = swordCols.map((c) => ({ ...c, swings: offense({ atk: c.atk, beam: false }, meta, true).swings }));
+		report.swordOrder.push({ tile, name: meta.name, ref: meta.swordTemperRef ?? 0, cols });
+		const plain = cols.filter((c) => !c.cleared).sort((a, b) => a.tier - b.tier);
+		for (let i = 1; i < plain.length; i++) {
+			if (plain[i].swings >= plain[i - 1].swings) {
+				report.swordOrderViolations.push(`${tile} ${plain[i - 1].label} ${plain[i - 1].swings} → ${plain[i].label} ${plain[i].swings}（減っていない）`);
+			}
+		}
+		for (let i = 1; i < cols.length; i++) {
+			if (cols[i].atk > cols[i - 1].atk && cols[i].swings > cols[i - 1].swings) {
+				report.swordOrderViolations.push(`${tile} ${cols[i - 1].label} ${cols[i - 1].swings} → ${cols[i].label} ${cols[i].swings}（増えた）`);
+			}
+		}
+	}
 
 	if (json) { console.log(JSON.stringify(report, null, 2)); return; }
 
@@ -452,6 +492,15 @@ function main() {
 	}
 	console.log(`\n  欠陥のある遭遇 ${report.defects.length} / ${rows.length} 種`
 		+ `（測れなかった敵 ${report.unplacedEnemies.length} 種は除く）`);
+
+	console.log('\n## 剣の順（キュー110＝ボスに入る剣のダメージを抑えた後の、剣だけで倒す振り数）');
+	console.log(`  列＝${swordCols.map((c) => `${c.label}(${c.atk})`).join(' / ')}`);
+	for (const s of report.swordOrder) {
+		console.log(`  ${(s.tile + ' ' + s.name).padEnd(16)} 基準=${SWORD_TIERS[s.ref].name.padEnd(6)} | ${s.cols.map((c) => String(c.swings).padStart(4)).join('')}`);
+	}
+	console.log(report.swordOrderViolations.length
+		? `  🔴 剣の順が崩れた ${report.swordOrderViolations.length} 件:\n${report.swordOrderViolations.map((v) => `     - ${v}`).join('\n')}`
+		: '  剣の順の崩れ 0 件（5本の剣の順に必ず減る・周回の ×1.2 を混ぜても増えない）');
 
 	// ── ⑤ 目標帯から逆算した推奨値 ───────────────────────────────
 	// 「いくつにするか」を勘で決めないための逆算。判定プロファイル（雑魚・中ボスは min＝

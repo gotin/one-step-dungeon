@@ -141,7 +141,8 @@ test.describe('Blade of Lumia – 疾風の靴（Shift で走る）', () => {
     expect(xs.at(-1)).toBe(10);
   });
 
-  test('④ 二周目（1.2 倍）でも走ると毎 tick ちょうど 1マス（掛け合わせない）', async ({ page }) => {
+  // キュー109 ②：二周目の歩きの 1.2 倍はやめた（足取りが揃わない）＝二周目でも走りは同じ
+  test('④ 二周目でも走ると毎 tick ちょうど 1マス', async ({ page }) => {
     await open(page, 2, 1, `${BOOTS}&ps_cleared=1`);
     await page.keyboard.down('Shift');
     await page.keyboard.down('ArrowRight');

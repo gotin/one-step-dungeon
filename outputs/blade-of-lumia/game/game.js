@@ -1,6 +1,6 @@
 // ── Blade of Lumia – game.js ──────────────────────────────────
 // Phase 1: マップ読み込み・プレイヤー移動（半セル）・ステージ遷移
-import { TILE, BG_TILES, FOOT_SOLID_TILES, CANDLE_CLEARABLE_TILES } from '../shared/tiles.js';
+import { TILE, BG_TILES, FOOT_SOLID_TILES, CANDLE_CLEARABLE_TILES, FLOOR_STACK_TILES } from '../shared/tiles.js';
 import { buildExitRegistry as buildExitRegistryShared } from '../shared/exits.js';
 import { liftGroundTiles } from '../shared/ground-layer.js';
 import { ENEMY_META, ENEMY_SPEED_NORMAL } from '../shared/enemies.js';
@@ -26,6 +26,7 @@ import {
 	DARK_TOWER_EXIT_ID, CANDLE_FLAME_MAX, RESPAWN_MOVES,
 	ATTACK_POSE_MS,
 } from './constants.js';
+import { applyCarry, readCarry } from './carry-over.js';
 // ── セーブ/ロードの純粋変換ロジック（Phase 0-2 Step 1b: save.js へ切り出し）──
 import {
 	createStageState, serializeStageState, deserializeStageState, sanitizeLoadedPlayer,
@@ -39,7 +40,7 @@ import { createTide } from './tide.js';
 import { toTileIndex } from './hitbox.js';
 // ── 描画系（Phase 0-2 Step 3: render-board.js / render-chars.js へ切り出し）──────
 import { createRenderBoard, putCellSprite } from './render-board.js';
-import { createRenderChars } from './render-chars.js';
+import { createRenderChars, stoneSpriteOf } from './render-chars.js';
 // ── 入力・UI（Phase 0-2 Step 4: input.js / ui.js へ切り出し）──────────────────
 import { initInput } from './input.js';
 import { createUi, listSubItemKeys, subItemIconCanvas, subItemDisplayName } from './ui.js';
@@ -53,6 +54,7 @@ import { warpStoneId, warpLandingCandidates, WARP_NO_LANDING_TILES, listWarpSton
 import { noticeId } from '../shared/dialog-variants.js';
 import { npcStandsAt } from '../shared/story-events.js';
 import { createStoryApproach } from './story-approach.js';
+import { createEndingScene } from './ending-scene.js';
 import { isTestLayer } from '../shared/layers.js';
 // ── 投擲物・爆弾（Phase 0-2 Step 5: projectile.js へ切り出し）───────────────
 import { createProjectile } from './projectile.js';
@@ -60,7 +62,8 @@ import { createProjectile } from './projectile.js';
 import { createEnemyAi } from './enemy-ai.js';
 import { snapshotEnemy } from './enemy-snapshot.js';
 // ── プレイヤー移動・タイルイベント（Phase 0-2 Step 5: player.js へ切り出し）──
-import { createPlayer } from './player.js';
+import { createPlayer, holdMovesUntil, sinkHoldActive } from './player.js';
+import { playStoneReturnFx } from './stone-return.js';
 import { createAuraAwakening } from './aura-awakening.js';
 import { createGarbAwakening } from './garb-awakening.js';
 // ── 剣攻撃・ダメージ（Phase 0-2 Step 5: combat.js へ切り出し）───────────────
@@ -203,6 +206,7 @@ let isTransitioning = false;
 let warpMenu = null;   // キュー27: 転移の石碑の行き先一覧（createWarpMenu）
 let quickSwap = null;  // キュー84: X 長押しの道具の早替え（createQuickSwap）
 let storyApproach = null;  // キュー103: 向こうから歩いてきて話しかける人（createStoryApproach）
+let endingScene = null;    // キュー108: ザーネルを倒した後の場面（createEndingScene）
 let invincibleUntil = 0;
 // MAP_ENTER 遷移直後クールダウン：遷移先に着いた直後は同じ入り口に乗っても再遷移しない
 let mapEnterCooldownUntil = 0;
@@ -475,6 +479,16 @@ function enterStage(lk, sk, pRow, pCol) {
 		// （火を点ける向きを誤ったらやり直せる）。普段の茂みは戻らない＝隠し通路や bushBurned の仕掛けを崩さない
 		// ∴部屋ごとの指定にした。bushBurned（一度でも燃やした）の旗は戻さない＝出現した物は消えない。
 		if (getStageData(currentLayer, stageKey)?.regrowBushes && prevSS.cutBushes?.size > 0) prevSS.cutBushes = new Set();
+		// キュー112（D8 `4,4`「倒木の渡し」・2026-11-21 ユーザー提案「ここにも爆弾を置いておく方がいい」）：
+		// stage.restockFloorItems の部屋だけ、拾った床の矢束・爆弾（FLOOR_STACK_TILES）が部屋を出ると戻る
+		// （やり直すたびに使う弾を、入り直せば補える）。上限は矢筒・爆弾袋のまま＝集めて溜めることはできない。
+		if (getStageData(currentLayer, stageKey)?.restockFloorItems && prevSS.pickedKeys?.size > 0) {
+			const sdPrev = getStageData(currentLayer, stageKey);
+			for (const k of [...prevSS.pickedKeys]) {
+				const [r, c] = k.split(',').map(Number);
+				if (FLOOR_STACK_TILES[sdPrev.tiles?.[r]?.[c]]) prevSS.pickedKeys.delete(k);
+			}
+		}
 		if (prevSS.stonePositions && Object.keys(prevSS.stonePositions).length > 0) {
 			if (prevSS.stonesLocked) {
 				// Phase 4.56: ロック済み＝崩れないので石位置は常に保持（防御的にスナップショットも残す）。
@@ -495,6 +509,10 @@ function enterStage(lk, sk, pRow, pCol) {
 				if (allSolved) {
 					// パズル解決済み：石位置スナップショットを保存してリセットしない
 					prevSS.solvedStonePositions = { ...prevSS.stonePositions };
+				} else if (prevSD?.keepStonesOnExit) {
+					// キュー112（2026-11-22・D8 `1,2` 笛の間）：この部屋の石は出ても戻らない＝戻すのは笛だけ
+					// （笛で石を戻す手を解き筋に使う部屋で、出入りが笛の代わりにならないように）。
+					// 入ったときに石が着地セルに居れば、下の enterStage の着地の手当てが石を戻す。
 				} else {
 					// 未解決：通常リセット（スナップショットも消す）
 					prevSS.stonePositions = {};
@@ -564,6 +582,16 @@ function enterStage(lk, sk, pRow, pCol) {
 	// float 座標でプレイヤーを配置（整数セル中央 = そのセルの中心）
 	player.x = pCol ?? 1;
 	player.y = pRow ?? 1;
+	// キュー112（2026-11-22）：石が出ても戻らない部屋（keepStonesOnExit）で、動かした石が着地セルに
+	// 残っていたら石を元の位置へ戻す（重なったままだと勇者がどの向きにも動けない＝笛の手当てと同じ理由）。
+	if (nextStageData?.keepStonesOnExit) {
+		const ssIn = getSS(lk, sk);
+		const r0 = Math.floor(player.y), r1 = Math.ceil(player.y);
+		const c0 = Math.floor(player.x), c1 = Math.ceil(player.x);
+		const blocked = !ssIn.stonesLocked && Object.values(ssIn.stonePositions ?? {}).some((st) =>
+			st.r >= r0 && st.r <= r1 && st.c >= c0 && st.c <= c1);
+		if (blocked) ssIn.stonePositions = {};
+	}
 
 	// 画面が変わっても飛行は続ける（キュー86・2026-10-19 ユーザー決定＝PLAN 1-5 改善 TODO）。降りるのは F／🪽 だけ。
 	// 旧＝到着セルが歩けるセルなら自動で降ろしていた＝飛んで画面をまたぐたびに飛び直しが要った。
@@ -605,7 +633,9 @@ function enterStage(lk, sk, pRow, pCol) {
 	// （y:-0.5 など）が残り、続きからで入口の外から始まった（キュー83・Fable 実装レビュー #13）。
 	// 同じ画面に入り直す呼び出し（はじめから・続きから・リトライ・プレビューの開始）では書かない＝
 	// リトライは倒れた瞬間の部屋をセーブに残さない（recordDeath の注）。
-	if (isStageChange) saveGame();
+	// キュー108：ザーネルを倒した後の場面は見た目のために画面を移すだけ＝書かない
+	// （書くと途中で閉じたとき「島や村に立った・未クリア」のセーブが残り、エンディングに戻れなくなる）。
+	if (isStageChange && !endingScene?.isBusy()) saveGame();
 }
 
 
@@ -660,6 +690,12 @@ function getHeroSpriteName() {
 	const atk = player?._atkUntil != null && gameNow() < player._atkUntil;
 	// 金の装束（キュー76⑤）＝尖った金の髪の絵（shared/sprites-player.js `heroDGold` 等）。
 	const gold = player?.hasGoldGarb ? 'Gold' : '';
+	// キュー108／109（2026-11-15 ユーザー指定「この女王キャラでゲームできるように」）＝クリア後は女王ルミアの絵。
+	// 女王の金の装束は絵を替えない＝同じ絵で髪の色だけ金（getHeroPalName が 'queenGold'）。
+	if (hasCleared()) {
+		const d = { down: 'D', right: 'R', left: 'R', up: 'U' }[heroDir] ?? 'D';
+		return `queen${d}${atk ? 'Atk' : ''}`;
+	}
 	if (atk) {
 		return ({ down: 'heroDAtk', right: 'heroRAtk', left: 'heroRAtk', up: 'heroUAtk' }[heroDir] ?? 'heroDAtk') + gold;
 	}
@@ -669,8 +705,9 @@ function getHeroSpriteName() {
 // クリア済みなら姫パレット、未クリアなら勇者パレットを返す。
 // 金の装束（キュー76⑤）を持っていれば、それぞれの金版（服と下衣だけ金）。
 function getHeroPalName() {
-	const base = hasCleared() ? 'princess' : 'hero';
-	return player.hasGoldGarb ? `${base}Gold` : base;
+	// キュー108／109：女王ルミアの絵は専用の色。金の装束を持てば髪が金（queenGold・キュー109 ④）。
+	if (hasCleared()) return player.hasGoldGarb ? 'queenGold' : 'queen';
+	return player.hasGoldGarb ? 'heroGold' : 'hero';
 }
 
 // ── factory が作った関数の置き場（キュー85 #27）────────────────────────────
@@ -828,6 +865,20 @@ const { checkStoneOnSwitch, evaluateConditions, refreshGates } = createCondition
 		},
 	});
 
+	// キュー108: ザーネルを倒した後の場面（game/ending-scene.js）
+	endingScene = createEndingScene({
+		getCharLayerEl: () => charLayerElRef.value,
+		getCellPx:      () => getCellPx(),
+		getPlayer:      () => player,
+		// renderChars は char-layer を空にする＝場面の女王まで消える∴向きだけ描き直す（story-approach の faceHero と同じ）
+		setHeroDir:     (d) => { heroDir = d; fx.updatePlayerCharEl(); },
+		enterStage:     (lk, sk, r, c) => enterStage(lk, sk, r, c),
+		// 世界が戻る場面：今の画面のタイル（怨念のもや Ψ のマスを知る）
+		getTileAt:      (r, c) => getStageData(currentLayer, stageKey)?.tiles?.[r]?.[c],
+		openDialog:     (name, lines, mark, onClose) => _ui.openDialog(name, lines, mark, onClose),
+		stopGameLoop,
+		playSound,
+	});
 	// キュー103: 向こうから歩いてきて話しかける人（game/story-approach.js）
 	storyApproach = createStoryApproach({
 		getPlayer:       () => player,
@@ -918,7 +969,8 @@ const { checkStoneOnSwitch, evaluateConditions, refreshGates } = createCondition
 		// 終幕の台詞を上書きしていた（2026-08-20 ユーザー報告「よくやった、若き剣よ が
 		// 表示されなかった」の実因＝実測で再現した）。
 		// キュー103: 向こうから歩いてくる人の演出中も同じく飲む（game/story-approach.js）。
-		getIsCutscene:   () => _bossDefeating || !!storyApproach?.isBusy(),
+		// 終わりの場面（キュー108）は会話を挟む＝会話が開いている間は読み進めのキーを通す（それ以外は飲む）
+		getIsCutscene:   () => _bossDefeating || !!storyApproach?.isBusy() || (!!endingScene?.isBusy() && !isDialog),
 		movePlayer:  (dir) => fx.movePlayer(dir),
 		swordAttack: () => fx.swordAttack(),
 		startCharge:   () => fx.startCharge(),
@@ -1127,6 +1179,7 @@ const { checkStoneOnSwitch, evaluateConditions, refreshGates } = createCondition
 		setPendingTriforcePieceEl: (v) => { _pendingTriforcePieceEl = v; },
 		getExitRegistry: () => exitRegistry,
 		evaluateConditions: () => evaluateConditions(),
+		playFinale:      (done) => endingScene?.play(done),   // キュー108：ザーネルを倒した後の場面
 		lockBossDoors:   () => lockBossDoors(),
 		unlockBossDoors: () => unlockBossDoors(),
 		renderBoard:  () => fx.renderBoard(),
@@ -1883,6 +1936,9 @@ function gameTick() {
 	if (quickSwap?.isOpen()) return;
 	// キュー103: 向こうから話しかけに来る人が居れば、その演出を始めてこの tick は止める
 	// （画面に入った直後・ボスを倒した直後・出来事を記した直後のどれもここが入口）。
+	// キュー108：終わりの場面の間は世界を進めない。会話を閉じると ui.js がループを再開する＝場面の途中で
+	// 沼の画面の毒を受けた（2026-11-15 ユーザー報告「エンディングのシーンの間に毒をうけたと表示されてた」）。
+	if (endingScene?.isBusy()) return;
 	if (storyApproach?.tryStart()) return;
 	fx.processHeldKeys();   // 押しっぱなしキーで毎tick移動
 	// 移動で画面端・入口を越えて遷移が始まったら、この tick の残り（敵・弾・爆弾・炎）は走らせない
@@ -1988,6 +2044,7 @@ function playFlute() {
 	// ⚠️ 全ボタンに石が乗って解決済み（stonesLocked、または未ロックでも全ボタン充足）なら
 	// リセットしない＝解けたパズルを台無しにしない（enterStage と同じ防御）。
 	if (fe.type === 'resetStones') {
+		if (sinkHoldActive()) return;   // 石が飛んでいる／沈んでいる間は吹き直さない（キュー112b）
 		const ss = getSS(currentLayer, stageKey);
 		if (!ss.stonePositions || Object.keys(ss.stonePositions).length === 0) {
 			fx.pulse('{{flute}} 音色は響いたが 特に何も起きない', 1800);
@@ -2011,11 +2068,48 @@ function playFlute() {
 			fx.pulse('{{flute}} 音色は響いたが 石はもう動かない', 1800);
 			return;
 		}
+		// キュー112（2026-11-22・D8 `1,2` の設計中に発覚）：石の戻る場所（動かした石の元のセル）に勇者が
+		// 重なっていたら戻さない。戻すと石が勇者に重なり、どの向きにも動けなくなる（実機で確認＝D8 `2,4`）。
+		// 勇者の占める範囲は半マスの位置で2セルにまたがる（passable.js と同じ丸め）。
+		{
+			const r0 = Math.floor(player.y), r1 = Math.ceil(player.y);
+			const c0 = Math.floor(player.x), c1 = Math.ceil(player.x);
+			const onOrigin = Object.keys(ss.stonePositions).some((k) => {
+				const [or, oc] = k.split(',').map(Number);
+				return or >= r0 && or <= r1 && oc >= c0 && oc <= c1;
+			});
+			if (onOrigin) {
+				fx.pulse('{{flute}} 音色は響いたが 石の 戻る 場所に 立っている', 1800);
+				return;
+			}
+			// キュー112b（2026-11-22・ユーザーの問い「逆に脱出できなくなるステージはない？」を状態空間で測って発覚）：
+			// 沈んだ石の足場（冷えた溶岩・埋まった泥）に立って吹くと、石が戻って足元が溶岩／泥に戻り、どの向きにも
+			// 動けなくなる（D8 `2,4` で実測＝ダメージも無く永久に詰む）。石の戻る場所と同じく不発にする。
+			const onSunk = Object.values(ss.stonePositions).some((st) => {
+				if (!st.sunk) return false;
+				const [sr, sc] = st.sunk.split(',').map(Number);
+				return sr >= r0 && sr <= r1 && sc >= c0 && sc <= c1;
+			});
+			if (onSunk) {
+				fx.pulse('{{flute}} 音色は響いたが 沈んだ 石の 上に 立っている', 1800);
+				return;
+			}
+		}
+		// キュー112b：戻る石の一覧（今いた所 → 元の位置）を、状態を戻す前に取っておく＝演出（stone-return.js）に渡す。
+		// 沈んだ石は沈んだセルから浮かび上がる。
+		const flights = Object.entries(ss.stonePositions).map(([key, st]) => {
+			const [or, oc] = key.split(',').map(Number);
+			const [fr, fc] = st.sunk ? st.sunk.split(',').map(Number) : [st.r, st.c];
+			return { key, fr, fc, or, oc, sprite: stoneSpriteOf(stageData, key) };
+		}).filter((f) => f.fr !== f.or || f.fc !== f.oc);
 		ss.stonePositions = {};
 		ss.activeColor = null;
 		refreshGates();
 		evaluateConditions();
 		fx.renderBoard(); fx.renderChars();
+		// 状態は戻し終えた＝演出は見た目だけ。飛んでいる間は勇者を止める（石と勇者が重なって見えないように）。
+		const fxMs = playStoneReturnFx(charLayerElRef.value?.parentElement, getCellPx(), flights);
+		if (fxMs > 0) holdMovesUntil(Date.now() + fxMs);
 		fx.pulse(fe.message ?? '{{flute}} 音色に応えて 石が元の位置に戻った！', 2200);
 		saveGame();
 		return;
@@ -2349,6 +2443,9 @@ function startNewGame() {
 		selectedMarkId: null,
 		pendingTriforce: null,
 	};
+	// キュー109：クリア後の周回（女王）は最後のクリアの強さ（剣・盾・鎧・ハートの器・紋章・巻物・金の装束）から始める。
+	// 道具は引き継がない（game/carry-over.js の冒頭）。記録の無い古いクリアは素のまま。
+	if (hasCleared()) applyCarry(player, readCarry(localStorage));
 	heroDir = 'down';
 	enterStage(currentLayer, stageKey, player.y, player.x);
 	startGameLoop();
@@ -2378,8 +2475,14 @@ function openIntroDialog() {
 btnContinueEl.addEventListener('click', () => {
 	titleOverlayEl.classList.add('hidden');
 	enterStage(currentLayer, stageKey, player.y, player.x);
-	startGameLoop();
 	resumeAudio();
+	// キュー108：ザーネルを倒した後の場面の途中で閉じていた（「場面待ち」の印がある）→ 場面を最初から流す
+	// （ループは場面が止めたまま・終わればスタッフロール＝startEnding がセーブを消す）。
+	if (player.finalePending && endingScene) {
+		endingScene.play(() => fx.startEnding());
+		return;
+	}
+	startGameLoop();
 });
 
 btnNewgameEl.addEventListener('click', () => {
@@ -2852,6 +2955,8 @@ export function callGrantReward(content) { return fx.grantReward(content); }
 
 // Phase 9-5a: giveSubItem テスト用（容量拡充アイテムの passive 分岐を確認するため）
 export function callGiveSubItem(id) { return fx.giveSubItem(id); }
+// キュー109：周回の守り（上乗せなし）を確かめる口＝プレイヤーが HP を失う唯一の入口をそのまま呼ぶ
+export function callTakeDamage(amount) { return fx.takeDamage(amount); }
 
 // 2026-08-31: 置いた炎の一覧（テスト用）。上限・寿命・「1つの炎は1体に1回」を
 // 外から観測できる唯一の窓（`burnedCount` がその炎が焼いた敵の数）。

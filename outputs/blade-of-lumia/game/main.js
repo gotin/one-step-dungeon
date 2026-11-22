@@ -6,6 +6,7 @@
 import { applyBgSpriteToCell } from '../shared/sprites.js';
 import { mountIconEls } from '../shared/ui-icons.js';
 import { ENEMY_META } from '../shared/enemies.js';
+import { sinkHoldActive } from './player.js';
 import { getSoundSettings, getSoundGainsForTest, getBgmStateForTest, playSound, playBgm, installAudioUnlock, getAudioStateForTest, suspendAudioForTest } from '../shared/sounds.js';
 import {
 	init,
@@ -44,6 +45,7 @@ import {
 	callGainHeartContainer,
 	callGrantReward,
 	callGiveSubItem,
+	callTakeDamage,
 	getPlacedFlamesSnapshot,
 	getFireSpreadSnapshot,
 	getMiragesSnapshot,
@@ -159,6 +161,8 @@ window.__game = {
 	},
 	// 現在ステージのスイッチ/ゲート/かがり火状態（Phase 4-5 テスト用）
 	getStageState: () => getStageStateSnapshot(),
+	// 勇者の移動が止められている間か（石が沈む／笛で石が戻る演出の間・キュー112／112b）＝テストが待つため
+	movesHeld: () => sinkHoldActive(),
 	// 敵のスナップショットを返す（テスト用）
 	getEnemies: () => getEnemiesSnapshot(),
 	// テスト用に任意の座標へ擬似敵を注入する（hp 減少で命中確認）
@@ -195,6 +199,8 @@ window.__game = {
 	grantReward: (content) => callGrantReward(content),
 	// Phase 9-5a: giveSubItem テスト用（quiver/bombBag 等の passive 拡充アイテム）
 	giveSubItem: (id) => callGiveSubItem(id),
+	// キュー109：周回の守りの確かめ用
+	takeDamage: (amount) => callTakeDamage(amount),
 	// Phase 9-5c: フロアドロップ確認・手動拾得（テスト用）
 	// 2026-08-31: 置いた炎（ロウソク）の一覧。上限3・寿命・「1つの炎は1体に1回」の観測用
 	getPlacedFlames: () => getPlacedFlamesSnapshot(),

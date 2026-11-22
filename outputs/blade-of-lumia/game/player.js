@@ -7,6 +7,8 @@ import { statefulTileClosed, lavaCooledAt, SUNK_ROW } from './passable.js';
 import { makeStoneEl, stoneSpriteOf } from './render-chars.js';
 import { ITEM_META, EQUIP_META, SWORD_TIERS, BASE_ATK, ARMOR_TIERS, BASE_DEF, SHIELD_TIERS, BOOMERANG_TIERS, HEART_PIECES_PER_HEART, EMBLEMS_FOR_AURA, SCROLLS_FOR_SPIN, SCROLLS_FOR_WIDE_SPIN, ITEM_STACK_MAX, ownsItem, addStack, stackCount, isStackFull } from '../shared/items.js';
 import { NPC_SPRITE_MAP } from '../shared/npcs.js';
+import { lavaSkinAt } from '../shared/tile-skins.js';
+import { carriedGain } from './carry-over.js';
 import { ENEMY_META } from '../shared/enemies.js';
 import { enemyOccupiesTile } from './hitbox.js';
 import { makeSprite } from '../shared/sprites.js';
@@ -71,6 +73,15 @@ import {
 // 「いま溶岩が冷えて固まった」という変化を見せる。CSS は game/css/board.css の .lava-cooling。
 // renderBoard() の直後に呼ぶ（作り直したセルに印を付ける）。途中でまた描き直されたら演出は消えるだけ。
 const LAVA_COOL_FX_MS = 1100;
+// キュー112（2026-11-21 ユーザー指摘「石を泥に入れた瞬間にプレイヤーが石の上に乗ってしまい、何が起きたかわからない」）：
+// 石が溶岩／底なし沼に沈む押しをしたら、石が届いて足場の絵に替わり、それを見せ終わるまで移動を止める。
+// 窓＝押しのアニメ（石が転がる時間）＋ SINK_HOLD_SHOW_MS。実時間（Date.now）＝石押しの冷却と同じ時計。
+// 向きの変更も止める（向きだけ変わると絵がずれる）。止めるのは沈む押しのときだけ＝ふつうの石押しは今までどおり。
+export const SINK_HOLD_SHOW_MS = 600;
+let _sinkHoldUntil = 0;
+export const sinkHoldActive = () => Date.now() < _sinkHoldUntil;
+// キュー112b：笛で石が戻る演出の間も同じ窓で移動を止める（game.js playFlute）。延ばすだけ・縮めない。
+export const holdMovesUntil = (t) => { _sinkHoldUntil = Math.max(_sinkHoldUntil, t); };
 function playLavaCoolFx(r, c) {
 	const cell = document.querySelector(`#board .cell[data-row="${r}"][data-col="${c}"]`);
 	if (!cell) return;
@@ -532,6 +543,7 @@ export function createPlayer(deps) {
 	// ── プレイヤー移動 ────────────────────────────────────
 	function movePlayer(dir) {
 		if (getIsDialog() || getIsPaused() || getIsGameover() || getIsTransitioning()) return;
+		if (sinkHoldActive()) return;   // 石が沈むのを見せ終わるまで待つ（キュー112）
 		// Phase 5.5g5: チャージ（剣ビームの溜め）中は足を止める。ただし向き変更は通す
 		// ＝離した瞬間に飛ぶビームの狙いを付けられないと溜めそのものが使えなくなる。
 		// Phase 5.5g6 で溜め中も剣を構えたまま（出しっぱなし）にしたので、向きを変えたら
@@ -733,6 +745,7 @@ export function createPlayer(deps) {
 				// 氷の上を滑った分（2セル目以降）は1セルあたり 90ms 足す＝押しより速く滑って見える
 				const _slideCells = Math.abs(stoneDestR - stoneFromR) + Math.abs(stoneDestC - stoneFromC);
 				const _stoneDuration = _animDuration + Math.max(0, _slideCells - 1) * 90;
+				if (stoneSinks) _sinkHoldUntil = nowSt + _stoneDuration + 10 + SINK_HOLD_SHOW_MS;   // キュー112
 				requestAnimationFrame(() => {
 					void _animStDiv.offsetLeft;
 					void _animPlayerDiv.offsetLeft;
@@ -764,9 +777,15 @@ export function createPlayer(deps) {
 					if (getIsGameover() || getCurrentLayer() !== _pushLayer || getStageKey() !== _pushStage) return;
 					if (stoneSinks) {   // 石が溶岩に届いた瞬間＝ここで初めて冷えた溶岩の絵に替える
 						renderBoard();   // char-layer を作り直す＝下の renderChars とペア（[[blade-renderboard-pairs-renderchars]]）
-						playLavaCoolFx(stoneDestR, stoneDestC);
-						playSound('fire');
-						pulse('石が 溶岩に 沈み、冷えて 固まった', 1400);
+						// キュー112：底なし沼（下地が泥の溶岩タイル＝shared/tile-skins.js lavaSkinAt）は泥の言葉と音
+						if (lavaSkinAt(stageData, stoneDestR, stoneDestC) === 'mire') {
+							playSound('sink');
+							pulse('石が 泥に 沈み、足場に なった', 1400);
+						} else {
+							playLavaCoolFx(stoneDestR, stoneDestC);
+							playSound('fire');
+							pulse('石が 溶岩に 沈み、冷えて 固まった', 1400);
+						}
 					}
 					renderChars();
 					saveGame();
@@ -861,6 +880,13 @@ export function createPlayer(deps) {
 	// ── ハートの器を得る ──────────────────────────────
 	function gainHeartContainer() {
 		const player = getPlayer();
+		// キュー109 ③：引き継いだ周回は「引き継いだ数まで」＝増えない器もある（HP は満タンにする）。
+		const carried = carriedGain(player, 'hearts');
+		if (carried !== null) {
+			if (carried > player.maxHearts) { player.maxHearts = carried; player.maxHp = carried * HP_PER_HEART; }
+			player.hp = player.maxHp;
+			return;
+		}
 		player.maxHearts++; player.maxHp += HP_PER_HEART; player.hp = player.maxHp;
 	}
 
@@ -882,15 +908,22 @@ export function createPlayer(deps) {
 	// `hasSwordAura(player)` で読む＝別の旗を持たない）。戻り値＝この1個でそろったか。
 	function gainEmblem() {
 		const player = getPlayer();
-		player.emblems = (Number.isFinite(player.emblems) ? player.emblems : 0) + 1;
-		return player.emblems === EMBLEMS_FOR_AURA;
+		const before = Number.isFinite(player.emblems) ? player.emblems : 0;
+		// キュー109 ③：引き継いだ周回は「引き継いだ数まで」＝そろっていたら増えない＝演出も出ない。
+		const carried = carriedGain(player, 'emblems');
+		player.emblems = carried ?? before + 1;
+		return player.emblems === EMBLEMS_FOR_AURA && before < EMBLEMS_FOR_AURA;
 	}
 
 	// ── 剣技の巻物を得る（実行キュー100）──────────────────────
 	// 個数は `player.scrolls`。回転斬りの段は `spinLevelOf(player)` で読む（別の旗を持たない）。
+	// 戻り値＝拾った後の個数。キュー109 ③：引き継いだ周回は増えないことがある＝`player._scrollGained` が増えたか。
 	function gainScroll() {
 		const player = getPlayer();
-		player.scrolls = (Number.isFinite(player.scrolls) ? player.scrolls : 0) + 1;
+		const before = Number.isFinite(player.scrolls) ? player.scrolls : 0;
+		const carried = carriedGain(player, 'scrolls');
+		player.scrolls = carried ?? before + 1;
+		player._scrollGained = player.scrolls > before;
 		return player.scrolls;
 	}
 
@@ -972,6 +1005,7 @@ export function createPlayer(deps) {
 			// 初めて効果を言う（紋章と同じ＝それまでは何が起きるか明かさない）。
 			if (content.item === 'scroll') {
 				const n = gainScroll();
+				if (!player._scrollGained) return `剣技の巻物 を手に入れた！（${n}/${SCROLLS_FOR_WIDE_SPIN}）`;
 				if (n === SCROLLS_FOR_SPIN) return `剣技の巻物 を手に入れた！（${n}/${SCROLLS_FOR_WIDE_SPIN}） 回転斬り を覚えた！（剣を 溜めて 満タンで 放つと まわりの 敵を 斬る）`;
 				if (n === SCROLLS_FOR_WIDE_SPIN) return `剣技の巻物 が ${SCROLLS_FOR_WIDE_SPIN}つ そろった！ 回転斬り が 2マス先 まで 届く！`;
 				return `剣技の巻物 を手に入れた！（${n}/${SCROLLS_FOR_WIDE_SPIN}）`;
@@ -985,6 +1019,8 @@ export function createPlayer(deps) {
 			// キュー95：数の付いた宝箱（`count`＝例 爆弾×5）。giveSubItem は初回 1セット・2回目以降 +1 しか
 			// 渡さない∴足りない分を上限まで足す（矢・爆弾だけ＝上限の欄を持つ道具）。
 			const hadBefore = !!player.subItems?.[content.item];
+			// キュー109 ④：金の装束を引き継いだ周回で裏ボスをもう一度倒しても、装束を得る演出は出さない。
+			const hadGarb = content.item === 'goldGarb' && !!player.hasGoldGarb;
 			if (!giveSubItem(content.item)) return '';
 			if ((content.count ?? 1) > 1 && (content.item === 'bomb' || content.item === 'bow')) {
 				const given = hadBefore ? 1 : (ITEM_META[content.item]?.defaultStack ?? 1);
@@ -995,7 +1031,7 @@ export function createPlayer(deps) {
 			}
 			// 金の装束＝入手の瞬間にオーラの中で姿が変わる演出（game/garb-awakening.js）。効果は文に書かない
 			// （2026-10-17 ユーザー決定「どんな効果があるのかはプレーヤー自身が体感して理解するだけで」）。
-			if (content.item === 'goldGarb') deps.onGoldGarbAwakened?.();
+			if (content.item === 'goldGarb' && !hadGarb) deps.onGoldGarbAwakened?.();
 			// ⚠️ 上限を広げる passive（矢筒・爆弾袋）は**サブアイテム欄に並ばない**
 			// （`giveSubItem` の passive 分岐は早期 return ∴ヒントも出ない）＝名前だけでは
 			// 何が増えたのか分からない。下の 'ladder' 分岐と同じ作法で効果を文に足す。
@@ -1122,6 +1158,12 @@ export function createPlayer(deps) {
 		const tile   = stageData.tiles[r]?.[c];
 		const ss     = getSS(getCurrentLayer(), getStageKey());
 		if (!tile) return;
+
+		// キュー112b（2026-11-22 ユーザー判断「すでに理想状態になっているのであれば石は動かない状態にする」）：
+		// 部屋ごとの指定 stageData.lockStonesAt（セルの配列）に乗ったら石を固める（stonesLocked＝笛でも出入りでも
+		// 戻らない）。パズルが解けないと乗れないマスを指定する＝D8 `2,4` は沈めた石の泥橋の先（宝箱の小島）。
+		// そこで笛を吹くと橋が消えて戻れなかった（状態空間の計測で発覚・宝箱を開ける前のはしごの上も同じ）。
+		if (!ss.stonesLocked && stageData.lockStonesAt?.includes(posKey)) ss.stonesLocked = true;
 
 		// 祭壇から離れたら再判定できるようにガードを解除する
 		if (tile !== TILE.ALTAR) _lastAltarPosKey = null;

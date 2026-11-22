@@ -474,7 +474,7 @@ test.describe('Blade of Lumia – 魔将の巣（伝説の鎧）', () => {
     const errors = [];
     page.on('pageerror', (e) => errors.push(e.message));
 
-    for (const [stage, want] of [['2,3', ['λ', 'λ']], ['3,3', ['μ', 'μ', 'π']]]) {
+    for (const [stage, want] of [['2,3', ['λ', 'λ']], ['3,3', ['λ', 'μ', 'ω'].sort()]]) {   // 3,3＝キュー111 ⑤（2026-11-17）で μ・λ・ω の三つの手の広間に
       await page.goto(towerUrl(stage, 1, 5));
       await waitForBoard(page);
       const spawned = await page.evaluate(() => {

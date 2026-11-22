@@ -20,6 +20,8 @@ import { findSwordTarget, findSpinTargets } from './sword-reach.js';
 // isSoaring も同じ理由でそこから読む（0d-3 6体目 U＝浮いている絵と「矢しか届かない」を一致させる）。
 import { isInRecoverWindow, isSoaring, soarConfigOf } from './enemy-state.js';
 import { sanitizeCount } from './play-stats.js';
+import { clearedSwordAtk } from './carry-over.js';
+import { isTempered, temperFactor, temperDamage } from '../shared/boss-sword-temper.js';
 
 /**
  * createCombat(deps) – factory
@@ -130,6 +132,8 @@ export function createCombat(deps) {
 	//   背面では剣は体の向こう側にある∴頭や上げた腕の上に剣が乗るのはおかしい。
 	//   char-layer 内で z-index:-1＝盤面セルより上・.char-abs（z-index auto）より下
 	//   （はしごオーバーレイと同じ手）。
+	// 女王の横向きの剣の上げ幅（drawSwordHeld）。2 ドット → ユーザー「もう１ドット上にしてみて」で 3 ドット（2026-11-15）。
+	const QUEEN_SIDE_SWORD_LIFT = 3 / 32;   // tests/queen-player.spec.js が同じ値を見る
 	const SWORD_HELD_GEO = {
 		//        スプライト名        ox      oy      w  h   flipX   zi
 		down:  { spr: 'swordHeldDown',  ox:  0.47, oy:  0.64, w: T, h: L, flipX: false, zi: '8'  },
@@ -154,7 +158,11 @@ export function createCombat(deps) {
 		const cellPx  = getCellPx();
 		const player  = getPlayer();
 		const tier    = SWORD_TIERS[player?.swordTier ?? -1];
-		const geo     = SWORD_HELD_GEO[heroDir] ?? SWORD_HELD_GEO.down;
+		const base    = SWORD_HELD_GEO[heroDir] ?? SWORD_HELD_GEO.down;
+		// 女王ルミア（クリア後・キュー108／109）の横向きは手が勇者より高い（queenRAtk の手＝20 行）
+		// ＝剣を QUEEN_SIDE_SWORD_LIFT だけ上げる（2026-11-15 ユーザー指摘「剣の位置が女王の手の位置より２ドットぐらい下」）。
+		const geo     = (hasCleared?.() && (heroDir === 'right' || heroDir === 'left'))
+			? { ...base, oy: base.oy - QUEEN_SIDE_SWORD_LIFT } : base;
 
 		const cv = makeSprite(geo.spr, tier?.pal ?? 'sword', false, geo.flipX);
 		if (!cv) return;
@@ -599,7 +607,17 @@ export function createCombat(deps) {
 		const windowOpen = weakness?.window !== 'recover' || isInRecoverWindow(e, gameNow());
 		const isWeak = !!(atkType && weakness && weakness.type === atkType && windowOpen);
 		const effective = isWeak ? Math.round(dmg * (weakness.multiplier ?? 2)) : dmg;
-		const actual = Math.max(1, effective - e.def);
+		let actual = Math.max(1, effective - e.def);
+		// キュー110：ボスに入る剣・回転斬り・ビームのダメージは、剣が強いほど平方根で抑える
+		// （規則と理由は shared/boss-sword-temper.js＝体力は変えない・道具のダメージは抑えない）。
+		if (isTempered(meta, atkType, !!getStageData()?.isBossRoom)) {
+			const player = getPlayer();
+			const swordAtk = clearedSwordAtk(player?.atk ?? 0, !!hasCleared?.());
+			const f = temperFactor(swordAtk, e.def, meta.swordTemperRef ?? 0);
+			const t = temperDamage(actual, f, e.temperCarry ?? 0);
+			actual = t.dmg;
+			e.temperCarry = t.carry;
+		}
 		// Phase 9-6: yieldAt ボスの HP は合格ラインより下へは落とさない。
 		// 大ダメージ1発で 0 まで飛ぶと HP バーが空＝見た目は「倒した」になる。
 		// 床を張れば「HP を残して戦いが終わった」が画面上でも読める。
@@ -663,8 +681,8 @@ export function createCombat(deps) {
 		if (getIsGameover()) return;
 		if (!opts.ignoreInvincible && gameNow() < getInvincibleUntil()) return;
 		const player = getPlayer();
-		const effectiveDef = hasCleared() ? player.def * 2 : player.def;
-		const actual = Math.max(1, amount - effectiveDef);
+		// キュー109 ②：周回（クリア後）の守りの上乗せ（旧 ×2）はやめた＝引き継いだ鎧と重なると敵がほぼ痛くない。
+		const actual = Math.max(1, amount - player.def);
 		player.hp = Math.max(0, player.hp - actual);
 		if (!opts.noInvincible) setInvincibleUntil(gameNow() + INVINCIBLE_MS);
 		playSound('playerHit');
@@ -833,8 +851,8 @@ export function createCombat(deps) {
 		if (!hit) return false;
 		if (hit.kind === 'mirage') { deps.destroyMirage?.(hit.target.id); return true; }
 		if (hit.kind === 'thorn')  { deps.destroyThorn?.(hit.target.id); return true; }
-		// 二周目は攻撃力2倍
-		const swordAtk = hasCleared() ? player.atk * 2 : player.atk;
+		// 周回（クリア後）は剣の威力 ×1.2（キュー109 ②＝旧 ×2・装備を引き継ぐので下げた）
+		const swordAtk = clearedSwordAtk(player.atk, hasCleared());
 		dealDamageToEnemy(hit.target, swordAtk, 'sword', player.x, player.y);
 		return true;
 	}
@@ -854,7 +872,7 @@ export function createCombat(deps) {
 			{ enemies: getEnemies(), mirages: deps.getMirages?.() ?? [], thorns: deps.getThorns?.() ?? [] },
 		);
 		showSpinSlash(player, reach);
-		const swordAtk = hasCleared() ? player.atk * 2 : player.atk;
+		const swordAtk = clearedSwordAtk(player.atk, hasCleared());
 		for (const { kind, target } of hits) {
 			if (kind === 'mirage') deps.destroyMirage?.(target.id);
 			else if (kind === 'thorn') deps.destroyThorn?.(target.id);
