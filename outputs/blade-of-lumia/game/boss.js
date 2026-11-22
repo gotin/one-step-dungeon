@@ -358,6 +358,9 @@ export function createBoss(deps) {
 		if (getBossDefeating()) return;
 		setBossDefeating(true);
 		stopGameLoop();
+		// キュー116 ⑤：女王の周回でザーネルが呼んだ手下（_summoned）は、主が倒れた瞬間に消える（演出を待たない）
+		for (const m of getEnemies().filter(x => x._summoned)) document.getElementById(`char-enemy-${m.id}`)?.remove();
+		if (getEnemies().some(x => x._summoned)) setEnemies(getEnemies().filter(x => !x._summoned));
 
 		// 1. ボスを点滅
 		const bossEl = document.getElementById(`char-enemy-${boss.id}`);

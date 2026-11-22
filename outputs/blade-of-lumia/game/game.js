@@ -70,6 +70,7 @@ import { createGarbAwakening } from './garb-awakening.js';
 import { createCombat } from './combat.js';
 // ── ボス戦・エンディング（Phase 0-2 Step 5: boss.js へ切り出し）─────────────
 import { createBoss } from './boss.js';
+import { createZarnelSummon } from './zarnel-summon.js';   // キュー116 ⑤
 // ── チャージ攻撃・剣ビーム（Phase 3-1: charge.js へ切り出し）──────────────────
 import { createCharge } from './charge.js';
 import { createDebuff } from './debuff.js';
@@ -207,6 +208,7 @@ let warpMenu = null;   // キュー27: 転移の石碑の行き先一覧（creat
 let quickSwap = null;  // キュー84: X 長押しの道具の早替え（createQuickSwap）
 let storyApproach = null;  // キュー103: 向こうから歩いてきて話しかける人（createStoryApproach）
 let endingScene = null;    // キュー108: ザーネルを倒した後の場面（createEndingScene）
+let zarnelSummon = null;   // キュー116 ⑤: 女王の周回の闇のザーネルが手下を呼ぶ（createZarnelSummon）
 let invincibleUntil = 0;
 // MAP_ENTER 遷移直後クールダウン：遷移先に着いた直後は同じ入り口に乗っても再遷移しない
 let mapEnterCooldownUntil = 0;
@@ -608,6 +610,7 @@ function enterStage(lk, sk, pRow, pCol) {
 	fx.clearBombs();
 	fx.clearFlames();
 	fx.clearMirages();
+	zarnelSummon?.reset();   // キュー116 ⑤：呼び出しの予告と時計を画面ごとに捨てる
 	fx.clearThorns();
 	fx.cancelCharge();   // チャージ中の遷移はキャンセル（Phase 3-1）
 	// ボス部屋ロックをリセット（非ボス部屋に移動したとき）
@@ -650,38 +653,44 @@ function buildEnemies(sd, lk, sk) {
 			if (!ENEMY_META[tile]) return;
 			const posKey = `${r},${c}`;
 			if (ss.defeatedEnemies.has(posKey)) return;
-			const m = ENEMY_META[tile];
-			result.push({
-				id:    posKey,
-				type:  tile,
-				x:     c,     // float 座標
-				y:     r,
-				hp:    m.hp, maxHp: m.hp,
-				atk:   m.atk, def: m.def,
-				speed: m.speed ?? ENEMY_SPEED_NORMAL,
-				// Phase 9-6 深洋O: 遊泳属性。isPassableForEnemy が self.move を見て
-				// 水/陸の通行可否を切り替える（未指定=陸棲）。これを渡さないと水棲敵が
-				// 陸を歩けてしまう。moveSpeed は両生の地形別速度（将来の enemy-ai 用）。
-				move:  m.move, moveSpeed: m.moveSpeed,
-				// 隠れ↔出現する敵（潜み鮫・地中蟲）は「隠れた状態」で登場する。
-				// 周期の進行は enemy-ai.js の tickHide（gameNow 基準）が担当。
-				hidden: !!m.hide,
-				sprite: m.sprite, pal: m.pal,
-				// Phase 3-2: 占有セル数（大型敵）。省略時は 1×1。
-				w:      m.size?.w ?? 1,
-				h:      m.size?.h ?? 1,
-				accum:  0,
-				dir:    sd.enemyDirs?.[posKey] ?? 'down',
-				// キュー60: マップで「追う」を指定された（部屋まるごと／この配置）さまよう雑魚は
-				// 最初から気づいている＝さまよわない（判定は shared/enemy-alert.js が単一の真実）。
-				alwaysAlert: startsAlert(sd, posKey, tile),
-				// キュー93: マップで「持ち場」を指定された敵は歩かない（shared/enemy-alert.js holdsPost）。
-				holdPost: holdsPost(sd, posKey, tile),
-				el:     null,   // DOM element（後で設定）
-			});
+			result.push(makeEnemyEntity(sd, tile, r, c, posKey));
 		});
 	});
 	return result;
+}
+
+// 敵1体の体（buildEnemies と、戦いの途中で呼び出される手下〈キュー116 ⑤ zarnel-summon.js〉が同じ形を使う）。
+function makeEnemyEntity(sd, tile, r, c, id) {
+	const posKey = `${r},${c}`;
+	const m = ENEMY_META[tile];
+	return {
+		id,
+		type:  tile,
+		x:     c,     // float 座標
+		y:     r,
+		hp:    m.hp, maxHp: m.hp,
+		atk:   m.atk, def: m.def,
+		speed: m.speed ?? ENEMY_SPEED_NORMAL,
+		// Phase 9-6 深洋O: 遊泳属性。isPassableForEnemy が self.move を見て
+		// 水/陸の通行可否を切り替える（未指定=陸棲）。これを渡さないと水棲敵が
+		// 陸を歩けてしまう。moveSpeed は両生の地形別速度（将来の enemy-ai 用）。
+		move:  m.move, moveSpeed: m.moveSpeed,
+		// 隠れ↔出現する敵（潜み鮫・地中蟲）は「隠れた状態」で登場する。
+		// 周期の進行は enemy-ai.js の tickHide（gameNow 基準）が担当。
+		hidden: !!m.hide,
+		sprite: m.sprite, pal: m.pal,
+		// Phase 3-2: 占有セル数（大型敵）。省略時は 1×1。
+		w:      m.size?.w ?? 1,
+		h:      m.size?.h ?? 1,
+		accum:  0,
+		dir:    sd.enemyDirs?.[posKey] ?? 'down',
+		// キュー60: マップで「追う」を指定された（部屋まるごと／この配置）さまよう雑魚は
+		// 最初から気づいている＝さまよわない（判定は shared/enemy-alert.js が単一の真実）。
+		alwaysAlert: startsAlert(sd, posKey, tile),
+		// キュー93: マップで「持ち場」を指定された敵は歩かない（shared/enemy-alert.js holdsPost）。
+		holdPost: holdsPost(sd, posKey, tile),
+		el:     null,   // DOM element（後で設定）
+	};
 }
 
 
@@ -868,6 +877,20 @@ const { checkStoneOnSwitch, evaluateConditions, refreshGates } = createCondition
 	});
 
 	// キュー108: ザーネルを倒した後の場面（game/ending-scene.js）
+	zarnelSummon = createZarnelSummon({
+		getEnemies:   () => enemies,
+		// 動的に湧いた敵の DOM は renderChars でしか生えない（combat.js の分裂と同じ）
+		addEnemy:     (e) => { enemies = [...enemies, e]; fx.renderChars(); },
+		getPlayer:    () => player,
+		getStageData: () => getStageData(currentLayer, stageKey),
+		isPassableForEnemy,
+		makeEnemy:    (type, r, c, id) => makeEnemyEntity(getStageData(currentLayer, stageKey), type, r, c, id),
+		gameNow,
+		getCharLayerEl: () => charLayerElRef.value,
+		getCellPx:    () => getCellPx(),
+		playSound,
+		isBossDefeating: () => _bossDefeating,
+	});
 	endingScene = createEndingScene({
 		getCharLayerEl: () => charLayerElRef.value,
 		getCellPx:      () => getCellPx(),
@@ -1948,6 +1971,7 @@ function gameTick() {
 	if (isTransitioning || isGameover) return;
 	fx.tickCharge();        // チャージゲージ更新（剣ビーム・Phase 3-1）
 	fx.enemyTick();
+	zarnelSummon?.tick();   // キュー116 ⑤：女王の周回の闇のザーネルが手下を呼ぶ
 	fx.syncEnemyButtons();   // 重しの敵（毒沼ヒル）がボタンに乗った／降りた＝敵が動いた直後に決め直す（キュー93）
 	fx.tickTide();           // 潮の満ち引き（キュー94）＝敵が動いた後に満ちる＝この tick で砂州に乗った敵も呑む
 	fx.projectileTick();
