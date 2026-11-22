@@ -431,6 +431,8 @@ function loadGame() {
 		const data = JSON.parse(raw);
 		player       = sanitizeLoadedPlayer({ ...player, ...data.player }, ITEM_META);
 		player.defeatedBosses = new Set(data.player?.defeatedBosses ?? []);
+		// キュー116：女王の周回か（会話の版 `queen`）。勇者の絵と同じくクリアの印から決める＝古いセーブにも効く
+		player.queenRun = hasCleared();
 		heroDir      = data.heroDir ?? 'down';
 		currentLayer = data.currentLayer ?? 'field';
 		stageKey     = data.stageKey ?? null;
@@ -2446,6 +2448,7 @@ function startNewGame() {
 	// キュー109：クリア後の周回（女王）は最後のクリアの強さ（剣・盾・鎧・ハートの器・紋章・巻物・金の装束）から始める。
 	// 道具は引き継がない（game/carry-over.js の冒頭）。記録の無い古いクリアは素のまま。
 	if (hasCleared()) applyCarry(player, readCarry(localStorage));
+	player.queenRun = hasCleared();   // キュー116：会話の版 `queen`（loadGame と同じ決め方）
 	heroDir = 'down';
 	resumeAudio();
 	const begin = () => {
@@ -2696,6 +2699,7 @@ async function init() {
 		} else {
 			localStorage.removeItem(CLEARED_KEY);
 		}
+		player.queenRun = psCleared === '1';   // キュー116：プレビューでも女王の周回の会話を確かめられる
 
 		console.log('[Game] player after ps apply:', JSON.stringify({
 			atk: player.atk, def: player.def, rupees: player.rupees,
