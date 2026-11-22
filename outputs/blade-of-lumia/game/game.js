@@ -2575,6 +2575,7 @@ async function init() {
 		const psScrolls  = params.get('ps_scrolls');   // 実行キュー100: 剣技の巻物の個数（4＝回転斬り・8＝2マス先まで）
 		const psDefeated = params.get('ps_defeated');  // 実行キュー23: 撃破済みボス（タイル文字のカンマ区切り）
 		const psMap      = params.get('ps_map');       // 2026-09-19: 地図の所持（目的地マークの見え方の確認用）
+		const psCompass  = params.get('ps_compass');   // キュー114: コンパスの所持（ダンジョンのボス部屋の印の確認用）
 		const psLit      = params.get('ps_lit');       // 2026-11-14: 灯っている転移の石碑（id の `;` 区切り）
 
 		if (psAtk      !== null) player.atk    = parseInt(psAtk,  10) || 2;
@@ -2646,6 +2647,12 @@ async function init() {
 			player.dungeonItems ??= {};
 			for (const layerKey of Object.keys(mapData?.layers ?? {})) {
 				(player.dungeonItems[layerKey] ??= { hasMap: false, hasCompass: false }).hasMap = true;
+			}
+		}
+		if (psCompass === '1') {
+			player.dungeonItems ??= {};
+			for (const layerKey of Object.keys(mapData?.layers ?? {})) {
+				(player.dungeonItems[layerKey] ??= { hasMap: false, hasCompass: false }).hasCompass = true;
 			}
 		}
 		// 撃破済みボス（実行キュー23）＝会話の「進行で切り替わる版」（`linesAfterBoss` /

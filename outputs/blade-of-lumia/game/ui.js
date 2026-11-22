@@ -45,6 +45,8 @@ import { conditionKeyHolds, npcStandsAt } from '../shared/story-events.js';
 import { NPC_SPRITE_MAP } from '../shared/npcs.js';
 import { READABLE_SIGN_TILES, TILE } from '../shared/tiles.js';
 import { arrowPotState } from '../shared/arrow-pot.js';
+// ボス部屋の印を倒した後に消す（キュー114）＝ボス部屋のボスのマスが撃破済みか。
+import { ENEMY_META } from '../shared/enemies.js';
 
 // HUD のハート（heart/heartEmpty/heartHalf）の表示サイズ。Phase 10d-3 で
 // 絵を32ドット化した際、絵の中の透明余白が増えた分だけ見かけが縮むのを補う
@@ -1088,6 +1090,18 @@ export function createUi(deps) {
 		ctx.fillRect(x + 10, y + 9, 4, 1);
 	}
 
+	// ボス部屋のボスが倒れているか。撃破は部屋の状態の defeatedEnemies（ボスのマス "r,c"）に残る
+	// （game.js buildEnemies が再出現を止めるのと同じ記録）。defeatedBosses は種類の記録＝
+	// 同じ種類が道中の部屋にも出るので部屋の判定には使わない。
+	function bossRoomCleared(lk, ld) {
+		const sd = ld.stages?.[ld.bossStage];
+		if (!sd?.tiles) return false;
+		const defeated = getSS(lk, ld.bossStage).defeatedEnemies;
+		const cells = [];
+		sd.tiles.forEach((row, r) => [...row].forEach((t, c) => { if (ENEMY_META[t]?.isBoss) cells.push(`${r},${c}`); }));
+		return cells.length > 0 && cells.every((k) => defeated?.has(k));
+	}
+
 	function renderPauseRoomMap(lk, ld, stages, dm, entranceStages = new Set()) {
 		const stageKey = getStageKey();
 		pauseMapHereEl.classList.add('hidden');
@@ -1098,7 +1112,9 @@ export function createUi(deps) {
 		pauseMarkIds = [];
 		if (pauseMapLabelEl) pauseMapLabelEl.textContent = 'ダンジョンマップ';
 		const hasCompass   = !!dm.hasCompass;
-		const bossStageKey = ld?.bossStage ?? null;
+		// キュー114（2026-11-22 ユーザー指示「ボスを倒したらマップからボス部屋のマークは消していい」）：
+		// 倒した後は印もヒントも出さない＝ふつうの訪れた部屋として描く。
+		const bossStageKey = (ld?.bossStage && !bossRoomCleared(lk, ld)) ? ld.bossStage : null;
 
 		const coords = stages.map(k => k.split(',').map(Number));
 		const minX = Math.min(...coords.map(c => c[0]));
