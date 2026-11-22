@@ -759,6 +759,8 @@ export function createBoss(deps) {
 	async function startEnding() {
 		deps.setIsGameover(true);
 		stopGameLoop(); stopBgm();
+		// キュー116 ④：女王の周回の終わりか（クリアの印を書く前の player から読む）
+		const queenRun = !!getPlayer()?.queenRun;
 
 		saveCleared();
 		// キュー109：クリアした瞬間の強さを女王の周回へ引き継ぐ（セーブを消す前＝生きている player から写す）。
@@ -816,7 +818,17 @@ export function createBoss(deps) {
 
 		const msgEl = document.getElementById('ending-msg');
 		if (msgEl) {
-			msgEl.innerHTML = 'ザーネルは倒れ、深みで眠っていた女王ルミアが目覚めた。<br>光は世界に戻り、ルミアの地に平和が訪れた……';
+			// キュー116 ④：女王の周回の終わり＝剣士の呪いが解けた（1周目＝女王が目覚めた）
+			msgEl.innerHTML = queenRun
+				? 'ザーネルの闇は消え、石になっていた光の剣を継ぐ者が目覚めた。<br>女王と剣士はともに村へ帰り、ルミアの地に光が戻った……'
+				: 'ザーネルは倒れ、深みで眠っていた女王ルミアが目覚めた。<br>光は世界に戻り、ルミアの地に平和が訪れた……';
+		}
+		// キュー116：1周目のボタン＝「つづき…」（剣士が石になる場面から女王の周回へ）。
+		// 女王の周回の終わり＝再会で話が閉じる∴「はじめから」（ページを読み直してタイトルへ＝旧来の動き）。
+		const restartEl = document.getElementById('ending-restart');
+		if (restartEl) {
+			restartEl.textContent = queenRun ? 'はじめから' : 'つづき…';
+			restartEl.dataset.next = queenRun ? 'title' : 'queen';
 		}
 		const timeEl = document.getElementById('ending-time');
 		if (timeEl) {

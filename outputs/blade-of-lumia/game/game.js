@@ -2527,7 +2527,9 @@ btnConfirmNoEl.addEventListener('click', () => {
 gameoverRetryEl?.addEventListener('click', () => { retryGame(); });
 // エンディング「つづき…」ボタン（キュー116・2026-11-22 ユーザー提案）＝そのまま女王の周回を始める
 // ＝剣士が石になる場面（ending-scene playCurse）から。旧＝ページを読み直してタイトルへ戻っていた。
+// 女王の周回の終わり（boss.js が data-next='title' を付ける）＝再会で話が閉じる∴ページを読み直してタイトルへ。
 endingRestartEl?.addEventListener('click', () => {
+	if (endingRestartEl.dataset.next === 'title') { location.reload(); return; }
 	document.getElementById('ending-overlay')?.classList.add('hidden');
 	startNewGame();
 });

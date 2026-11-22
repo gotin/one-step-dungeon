@@ -157,3 +157,52 @@ test('場面の途中で閉じても、続きからで場面を最初から流�
 	const after = await page.evaluate(() => ({ save: localStorage.getItem('blade-of-lumia-save'), cleared: localStorage.getItem('blade-of-lumia-cleared') }));
 	expect(after).toEqual({ save: null, cleared: '1' });
 });
+
+// キュー116 ④（2026-11-22）：女王の周回の終わり＝1周目の立場を入れ替える。島に立っていた石の剣士に光が降りて目覚め、
+// 女王が光から現れ、剣士が話す → 世界が戻る → 村（剣士も隣に立つ）→ THE END（剣士が目覚めた文・ボタンは「はじめから」）。
+test('女王の周回の終わり：島で石の剣士が目覚めて再会 → 村 → THE END は「はじめから」', async ({ page }) => {
+	test.setTimeout(150000);
+	const errors = [];
+	page.on('pageerror', (e) => errors.push(String(e)));
+	await page.goto(`${GAME_URL}?fromEditor=1&layer=dark_tower&stage=5,3&row=7&col=5&ps_weapon=1&ps_cleared=1&ps_defeated=G,N,J,A,O,L,I,U`);
+	await waitForBoard(page);
+	await page.waitForTimeout(800);
+	const z = await page.evaluate(() => window.__game.getEnemies().find((e) => e.type === 'Z')?.id);
+	expect(z, 'ザーネルが居ない').toBeTruthy();
+	await page.evaluate((id) => window.__game.dealDamage(id, 9999, 'sword'), z);
+	const Q = FINALE.queenRun;
+	const seen = { names: [], heroStoneFirst: false, heroAwake: false, statueHidden: false, heroInVillage: false };
+	let ended = false;
+	const t0 = Date.now();
+	while (Date.now() - t0 < 110000 && !ended) {
+		await page.waitForTimeout(250);
+		const st = await page.evaluate(() => ({
+			dlg: !document.getElementById('dialog-overlay').classList.contains('hidden'),
+			name: document.getElementById('dialog-name')?.textContent,
+			stage: (document.getElementById('hud-stage-label')?.textContent ?? '').replace(/^\[\w+\]\s*/, ''),
+			heroStone: document.querySelectorAll('.ending-hero.stone').length,
+			hero: document.querySelectorAll('.ending-hero').length,
+			statueVisible: [...document.querySelectorAll('#board canvas[data-pal="heroStone"]')].some((c) => c.style.visibility !== 'hidden'),
+			ending: !document.getElementById('ending-overlay').classList.contains('hidden'),
+		}));
+		if (st.heroStone && !seen.heroAwake) seen.heroStoneFirst = true;
+		if (st.hero && !st.heroStone && st.stage === FINALE.island.stage) seen.heroAwake = true;
+		if (st.hero && st.stage === FINALE.island.stage && !st.statueVisible) seen.statueHidden = true;
+		if (st.hero && st.stage === Q.village.stage) seen.heroInVillage = true;
+		if (st.dlg) {
+			if (seen.names.at(-1) !== st.name) seen.names.push(st.name);
+			await page.keyboard.press('Space');
+		}
+		ended = st.ending;
+	}
+	expect(errors).toEqual([]);
+	expect(ended, 'スタッフロールまで行かない').toBe(true);
+	expect(seen.names).toEqual([Q.zarnel.name, Q.hero.name, Q.queenReply.name, ...Q.village.talks.map((t) => t.name)]);
+	expect(seen.heroStoneFirst, '剣士が石（灰色）から始まらない').toBe(true);
+	expect(seen.heroAwake, '島で剣士の色が戻らない').toBe(true);
+	expect(seen.statueHidden, '島の石像（npcData）と目覚める剣士が重なった').toBe(true);
+	expect(seen.heroInVillage, '村に剣士が居ない').toBe(true);
+	await expect(page.locator('#ending-msg')).toContainText('光の剣を継ぐ者が目覚めた', { timeout: 60_000 });
+	await expect(page.locator('#ending-restart')).toHaveText('はじめから');
+	expect(await page.locator('#ending-restart').getAttribute('data-next')).toBe('title');
+});
