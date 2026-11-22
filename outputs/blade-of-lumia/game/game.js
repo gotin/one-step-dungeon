@@ -2448,10 +2448,13 @@ function startNewGame() {
 	// キュー109：クリア後の周回（女王）は最後のクリアの強さ（剣・盾・鎧・ハートの器・紋章・巻物・金の装束）から始める。
 	// 道具は引き継がない（game/carry-over.js の冒頭）。記録の無い古いクリアは素のまま。
 	if (hasCleared()) applyCarry(player, readCarry(localStorage));
-	player.queenRun = hasCleared();   // キュー116：会話の版 `queen`（loadGame と同じ決め方）
+	// キュー116：会話の版・人の出現の `queen`（loadGame と同じ決め方）。立てるのは周回の始まりの場面の後＝
+	// 場面の島に「女王の周回だけ出る石の剣士」（field 11,19）が先に立っていると、石になる前の剣士と重なる。
+	player.queenRun = false;
 	heroDir = 'down';
 	resumeAudio();
 	const begin = () => {
+		player.queenRun = hasCleared();
 		heroDir = 'down';
 		enterStage(currentLayer, stageKey, player.y, player.x);
 		startGameLoop();

@@ -73,6 +73,8 @@ test('ザーネルを倒すと、最期の言葉 → 女王の目覚め → 世�
 	await expect(page.locator('#ending-overlay')).toBeHidden();
 	await expect(page.locator('#ending-caption')).toHaveText(FINALE.curse.caption);
 	await expect(page.locator('.ending-hero.stone')).toHaveCount(1, { timeout: 10_000 });
+	// キュー116 ③：女王の周回だけ出る島の石の剣士（npcData）は、場面の間は出さない＝石になる前の剣士と重ならない
+	await expect(page.locator('#board canvas[data-pal="heroStone"]')).toHaveCount(0);
 	await expect(page.locator('#char-player')).toBeHidden();   // 遊ぶ側（もう女王の絵）は場面の間は隠す
 	await expect(page.locator('#dialog-name')).toHaveText(FINALE.queen.name, { timeout: 10_000 });
 	await expect(page.locator('#dialog-text')).toContainText(FINALE.curse.lines[0].slice(0, 6));

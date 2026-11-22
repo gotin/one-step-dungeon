@@ -8,6 +8,7 @@
 // ② 実機：女王の周回では老賢者が女王に話しかける／1周目は今までどおり勇者に（対照）
 // ③ 実機：女王の周回でもボスを倒した後の案内の版が勝つ（`queen` が一番弱い）
 // ④ 実機：島の女王の石碑は、2周目だけ剣士が眠る一行が足される
+// ⑤ 実機（キュー116 ③）：女王の周回のあいだ、島 (4,7) に石の剣士が立つ・話せる／1周目は居ない（ただの床）
 import { test, expect } from '@playwright/test';
 import { readFileSync } from 'fs';
 import { fileURLToPath } from 'url';
@@ -75,5 +76,18 @@ test.describe('Blade of Lumia – 女王の周回の会話（キュー116 ②）
 		await openAt(page, { layer: 'field', stage: '11,19', row: 4, col: 6, cleared: false });
 		const h = await readLeft(page, 'up');
 		expect(h.join('')).not.toContain('ここで 石と なって 眠る');
+	});
+
+	test('⑤ 女王の周回では島に石の剣士が立ち、話せる（対照：1周目は居ない）', async ({ page }) => {
+		const statue = () => page.locator('#board .cell[data-row="4"][data-col="7"] canvas[data-pal="heroStone"]');
+		await openAt(page, { layer: 'field', stage: '11,19', row: 4, col: 8, cleared: true });
+		await expect(statue()).toHaveCount(1);
+		const lines = await readLeft(page);
+		expect(lines[0]).toContain('石に なった 剣士');
+		await openAt(page, { layer: 'field', stage: '11,19', row: 4, col: 8, cleared: false });
+		await expect(page.locator('#board canvas[data-pal="heroStone"]')).toHaveCount(0);
+		// 居ない＝ただの床＝左へ歩ける
+		await page.keyboard.down('ArrowLeft'); await page.waitForTimeout(600); await page.keyboard.up('ArrowLeft');
+		expect(await page.evaluate(() => window.__game.getPlayer().x)).toBeLessThan(8);
 	});
 });

@@ -92209,7 +92209,7 @@
               ".",
               ".",
               ".",
-              ".",
+              "a",
               ".",
               ".",
               ".",
@@ -92418,7 +92418,19 @@
           },
           "floorItems": {},
           "objects": {},
-          "npcData": {},
+          "npcData": {
+            "4,7": {
+              "name": "石の剣士",
+              "sprite": "heroStone",
+              "lines": [
+                "剣を 握ったまま、石に なった 剣士が 立っている。",
+                "……冷たい。けれど、かすかに 温もりが 残っている。"
+              ],
+              "showWhen": [
+                "queen"
+              ]
+            }
+          },
           "shopData": {},
           "mapEnters": {},
           "showConditions": {
