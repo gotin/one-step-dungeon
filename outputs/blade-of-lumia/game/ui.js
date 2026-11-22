@@ -668,7 +668,7 @@ export function createUi(deps) {
 		const stageKey     = getStageKey();
 
 		pauseItemKeys = listSubItemKeys(player);
-		if (pauseItemIdx >= pauseItemKeys.length) pauseItemIdx = 0;
+		syncPauseItemIdx(player);
 		pauseItemsEl.innerHTML = '';
 		if (pauseItemKeys.length === 0) {
 			pauseItemsEl.innerHTML = '<div style="color:#4a6a8a;font-size:13px;">サブアイテムなし</div>';
@@ -1192,9 +1192,19 @@ export function createUi(deps) {
 		}
 	}
 
+	// 選んでいる道具の真実は `player.activeSubItem` だけ。ポーズの並びの番号はそこから毎回導く。
+	// 2026-11-22 ユーザー報告＝「右上のアイテムはロウソクなのに、ポーズ画面で表示されているのはブーメラン」。
+	// 原因＝番号をポーズ側で別に持ち続けていた∴X の早替え（quick-swap.js）や道具の増減で
+	// activeSubItem だけが変わると、次にポーズを開いたとき古い番号の枠が光っていた。
+	function syncPauseItemIdx(player) {
+		const cur = pauseItemKeys.indexOf(player.activeSubItem);
+		pauseItemIdx = cur >= 0 ? cur : 0;
+	}
+
 	function pauseSelectPrev() {
 		const player = getPlayer();
 		if (!pauseItemKeys.length) return;
+		syncPauseItemIdx(player);
 		pauseItemIdx = (pauseItemIdx - 1 + pauseItemKeys.length) % pauseItemKeys.length;
 		player.activeSubItem = pauseItemKeys[pauseItemIdx];
 		playSound('switch');
@@ -1204,6 +1214,7 @@ export function createUi(deps) {
 	function pauseSelectNext() {
 		const player = getPlayer();
 		if (!pauseItemKeys.length) return;
+		syncPauseItemIdx(player);
 		pauseItemIdx = (pauseItemIdx + 1) % pauseItemKeys.length;
 		player.activeSubItem = pauseItemKeys[pauseItemIdx];
 		playSound('switch');
