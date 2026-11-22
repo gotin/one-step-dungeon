@@ -1060,6 +1060,7 @@ canvas.sprite.dot32 {
 /* 石の女王（灰色）→ 色が戻る */
 .ending-queen > canvas { transition: filter 1.4s ease; }
 .ending-queen.stone > canvas { filter: grayscale(1) brightness(0.75) contrast(1.1); }
+/* キュー116：女王の周回の始まり＝勇者（.ending-hero）が石になる。女王が目覚めたときと同じ灰色（.stone）を逆向きに使う */
 /* 島に勇者が現れる前・世界が戻る場面＝勇者を描かない（魔物は描く＝光になって消える所を見せる） */
 body.ending-hide-hero #char-player,
 body.ending-montage #char-player { visibility: hidden; }

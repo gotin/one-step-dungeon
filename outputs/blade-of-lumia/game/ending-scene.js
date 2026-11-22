@@ -12,6 +12,13 @@
 //   ③ 世界が戻っていく：各地の画面で光の輪が広がり、怨念のもや・呪い火・魔物が光になって消え、跡に花が咲く。一行ずつ添える
 //   ④ はじまりの村：村の人のひとこと → done()（＝startEnding＝スタッフロール）
 //
+// 女王の周回の始まり（playCurse・キュー116）：女王の島で、呪いは消えずに勇者（光の剣を継ぐ者）へ移り、
+//   勇者が石になる → 女王の言葉 → done()（＝周回のはじまりの村）。
+//   2026-11-22 ユーザー選択 A「呪いの身代わり」＝クリア後に女王が主人公になる理由（DECISIONS 2026-11-22）。
+//   流す時＝THE END の「つづき…」とタイトルの「はじめから」（クリア済みの「はじめから」はいつも女王の周回）。
+//   ユーザー「エンディングのスタッフロールまで流れてから、そのあと「はじめから」のボタンの代わりに「つづき…」
+//   ボタンにして、それをおすと、剣士が石になるくだりからはじまる」＝THE END までは明るい終わりのまま。
+//
 // 見た目だけの場面＝ゲームの状態は変えない（enterStage で画面を移すだけ・ゲームループは止めたまま）。
 // 入力は飲む（game.js getIsCutscene が isBusy を見る）。会話は ui.js openDialog（読み進めはいつもの操作）。
 import { makeSprite } from '../shared/sprites.js';
@@ -60,6 +67,15 @@ export const FINALE = {
 			{ name: '老賢者', lines: ['よくぞ……よくぞ成し遂げた、若き勇者よ。', 'ルミアの地に、光が戻ったのじゃ。'] },
 		],
 	},
+	// 女王の周回の始まり＝呪いが勇者へ移る（キュー116）。場所は②と同じ島・同じ立ち位置（女王は勇者の隣＝②で歩み寄った所）。
+	curse: {
+		caption: 'その夜 ―― 女王の島',
+		lines: [
+			'……この冷たさは、わたしを縛っていた呪い。',
+			'呪いは消えたのではなかった。光の剣を継ぐ者へ、移ったのですね。',
+			'待っていてください。今度は、わたしが八つの星を集めます。',
+		],
+	},
 };
 
 export const FINALE_MS = { BEAM: 1100, AWAKE: 1600, STEP: 260, SHOW: 1100, WAVE: 2200, HOLD: 1600 };
@@ -100,11 +116,11 @@ export function createEndingScene(deps) {
 		layer.appendChild(el);
 		setTimeout(() => el.remove(), 900);
 	}
-	function placeQueen({ r, c }) {
+	function placeQueen({ r, c }, { stone = true } = {}) {
 		const layer = getCharLayerEl(); if (!layer) return null;
 		const cp = getCellPx();
 		const el = document.createElement('div');
-		el.className = 'ending-queen stone';
+		el.className = stone ? 'ending-queen stone' : 'ending-queen';
 		el.style.cssText = `position:absolute;left:${c * cp}px;top:${r * cp}px;width:${cp}px;height:${cp}px;z-index:6;`;
 		// 遊べる絵の正面（queenD）と同じ絵＝旧 npcQueen（refs/女王32b の読み戻し）は崩れていた（2026-11-15 ユーザー指摘）
 		putCellSprite(el, makeSprite('queenD', 'queen', true), 'char-sprite');
@@ -250,5 +266,51 @@ export function createEndingScene(deps) {
 		done?.();
 	}
 
-	return { play, isBusy: () => busy };
+	// 勇者（剣士）の絵を置く。女王の周回では遊ぶ側の絵が女王になる∴本物の勇者は隠し、この絵で見せる。
+	// 金の装束を持ってクリアしたなら金の髪のまま（クリアの強さの記録 carry の goldGarb）。左向き＝右向きの絵の左右反転。
+	function placeHero({ r, c }, { gold = false } = {}) {
+		const layer = getCharLayerEl(); if (!layer) return null;
+		const cp = getCellPx();
+		const el = document.createElement('div');
+		el.className = 'ending-queen ending-hero';
+		el.style.cssText = `position:absolute;left:${c * cp}px;top:${r * cp}px;width:${cp}px;height:${cp}px;z-index:6;`;
+		putCellSprite(el, makeSprite(gold ? 'heroRGold' : 'heroR', gold ? 'heroGold' : 'hero', true), 'char-sprite');
+		el.querySelector('canvas')?.style.setProperty('transform', 'scaleX(-1)');
+		layer.appendChild(el);
+		return el;
+	}
+
+	// 女王の周回の始まり（キュー116）：呪いが勇者へ移り、勇者が石になる → 女王の言葉 → done()
+	async function playCurse(done, { gold = false } = {}) {
+		if (busy) return;
+		busy = true;
+		stopGameLoop();
+		document.body.classList.add('ending-scene', 'ending-hide-hero');
+		try {
+			const I = FINALE.island;
+			flash(true);
+			enterStage('field', I.stage, I.hero.r, I.hero.c);
+			const hero = placeHero(I.hero, { gold });
+			placeQueen({ r: I.hero.r, c: I.hero.c - 1 }, { stone: false });
+			await sleep(400);
+			flash(false);
+			caption(FINALE.curse.caption);
+			await sleep(FINALE_MS.SHOW + 500);
+			caption(null);
+			playSound('mirageCurse');
+			hero?.classList.add('stone');   // 灰色へ（女王が目覚めたときの逆）
+			await sleep(FINALE_MS.AWAKE);
+			await say(FINALE.queen.name, FINALE.curse.lines);
+			flash(true);
+			await sleep(FINALE_MS.BEAM);
+		} finally {
+			caption(null);
+			flash(false);
+			document.body.classList.remove('ending-scene', 'ending-hide-hero');
+			busy = false;
+		}
+		done?.();
+	}
+
+	return { play, playCurse, isBusy: () => busy };
 }

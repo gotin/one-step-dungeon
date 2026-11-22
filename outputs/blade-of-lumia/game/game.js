@@ -2447,10 +2447,25 @@ function startNewGame() {
 	// 道具は引き継がない（game/carry-over.js の冒頭）。記録の無い古いクリアは素のまま。
 	if (hasCleared()) applyCarry(player, readCarry(localStorage));
 	heroDir = 'down';
-	enterStage(currentLayer, stageKey, player.y, player.x);
-	startGameLoop();
 	resumeAudio();
-	openIntroDialog();
+	const begin = () => {
+		heroDir = 'down';
+		enterStage(currentLayer, stageKey, player.y, player.x);
+		startGameLoop();
+		openIntroDialog();
+	};
+	// キュー116：女王の周回は、剣士が石になる場面から始まる（周回の理由＝女王が剣士の呪いを解く旅）。
+	// 場面の間は enterStage がセーブを書かない（isBusy）＝途中で閉じてもセーブは残らない（続きからは無い）。
+	if (hasCleared() && endingScene) {
+		// 場面の enterStage が今の画面と勇者の位置を島へ動かす∴始まりの場所を覚えておいて戻す
+		const start = { lk: currentLayer, sk: stageKey, x: player.x, y: player.y };
+		endingScene.playCurse(() => {
+			currentLayer = start.lk; stageKey = start.sk; player.x = start.x; player.y = start.y;
+			begin();
+		}, { gold: !!player.hasGoldGarb });
+		return;
+	}
+	begin();
 }
 
 // キュー21 F2（2026-10-11 ユーザー案）：「はじめから」の直後、開始画面の人のうち
@@ -2504,8 +2519,12 @@ btnConfirmNoEl.addEventListener('click', () => {
 
 // ゲームオーバー「リトライ」ボタン
 gameoverRetryEl?.addEventListener('click', () => { retryGame(); });
-// エンディング「もう一度」ボタン
-endingRestartEl?.addEventListener('click', () => { location.reload(); });
+// エンディング「つづき…」ボタン（キュー116・2026-11-22 ユーザー提案）＝そのまま女王の周回を始める
+// ＝剣士が石になる場面（ending-scene playCurse）から。旧＝ページを読み直してタイトルへ戻っていた。
+endingRestartEl?.addEventListener('click', () => {
+	document.getElementById('ending-overlay')?.classList.add('hidden');
+	startNewGame();
+});
 
 async function init() {
 	// URL パラメータ解析

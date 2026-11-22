@@ -64,6 +64,35 @@ test('ザーネルを倒すと、最期の言葉 → 女王の目覚め → 世�
 	expect(seen.names).toEqual([FINALE.zarnel.name, FINALE.queen.name, ...FINALE.village.talks.map((t) => t.name)]);
 	expect(seen.stoneFirst, '女王が石（灰色）から始まらない').toBe(true);
 	expect(seen.captions).toEqual(FINALE.restore.map((s) => s.text));
+	// THE END までは明るい終わりのまま（キュー116：呪いの移りは「つづき…」の先）
+	await expect(page.locator('#ending-msg')).toContainText('ルミアの地に平和が訪れた', { timeout: 60_000 });
+	await expect(page.locator('#ending-restart')).toHaveText('つづき…');
+
+	// 「つづき…」＝女王の島で剣士が石になる場面 → 女王の言葉 → はじまりの村で女王の周回が始まる
+	await page.locator('#ending-restart').click();
+	await expect(page.locator('#ending-overlay')).toBeHidden();
+	await expect(page.locator('#ending-caption')).toHaveText(FINALE.curse.caption);
+	await expect(page.locator('.ending-hero.stone')).toHaveCount(1, { timeout: 10_000 });
+	await expect(page.locator('#char-player')).toBeHidden();   // 遊ぶ側（もう女王の絵）は場面の間は隠す
+	await expect(page.locator('#dialog-name')).toHaveText(FINALE.queen.name, { timeout: 10_000 });
+	await expect(page.locator('#dialog-text')).toContainText(FINALE.curse.lines[0].slice(0, 6));
+	const curseSave = await page.evaluate(() => localStorage.getItem('blade-of-lumia-save'));
+	expect(curseSave, '場面の間にセーブを書いた（島に立ったセーブが残る）').toBeNull();
+	for (let i = 0; i < 40 && await page.evaluate(() => document.body.classList.contains('ending-scene')); i++) {
+		if (await page.locator('#dialog-overlay').isVisible()) await page.keyboard.press('Space');
+		await page.waitForTimeout(200);
+	}
+	const after = await page.evaluate(() => ({
+		stage: window.__game.getState().stageKey ?? null,
+		pal: document.querySelector('#char-player canvas')?.dataset?.pal,
+		hero: document.querySelectorAll('.ending-hero').length,
+		save: JSON.parse(localStorage.getItem('blade-of-lumia-save') ?? 'null'),
+	}));
+	expect(after.pal, '周回の勇者が女王の絵でない').toMatch(/^queen/);
+	expect(after.hero, '場面の剣士の絵が残った').toBe(0);
+	expect(after.stage, '周回がはじまりの村から始まらない').toBe('7,14');
+	expect(after.save, '島の場面のセーブが残った（ふつうの「はじめから」と同じく、歩き出すまで書かない）').toBeNull();
+	expect(errors).toEqual([]);
 	const restoreStages = FINALE.restore.map((s) => s.stage);
 	const sorted = (s) => [...s].filter((k) => restoreStages.includes(k)).sort();
 	expect(sorted(seen.foes), '魔物（呪い火）が居る姿で始まらない画面がある').toEqual([...restoreStages].sort());
