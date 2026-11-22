@@ -350,6 +350,7 @@ export function initCanvasEvents(renderSidePanel, renderWorldGrid, getPreviewPen
 		delete sd.regrowBushes;   // キュー95: 部屋を出ると茂みが戻る指定も消す
 		delete sd.restockFloorItems; // キュー112: 部屋を出ると床の矢束・爆弾が戻る指定も消す
 		delete sd.keepStonesOnExit;  // キュー112: 部屋を出ても石が戻らない指定も消す
+		delete sd.lockStonesAt;      // キュー112b: 乗ったら石を固めるマスの指定も消す
 		delete sd.tideCycle;      // キュー94: 潮の満ち引きの周期も消す
 		renderStageCanvas(renderSidePanel);
 		renderSidePanel();

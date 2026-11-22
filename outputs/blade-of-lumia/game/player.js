@@ -80,6 +80,8 @@ const LAVA_COOL_FX_MS = 1100;
 export const SINK_HOLD_SHOW_MS = 600;
 let _sinkHoldUntil = 0;
 export const sinkHoldActive = () => Date.now() < _sinkHoldUntil;
+// キュー112b：笛で石が戻る演出の間も同じ窓で移動を止める（game.js playFlute）。延ばすだけ・縮めない。
+export const holdMovesUntil = (t) => { _sinkHoldUntil = Math.max(_sinkHoldUntil, t); };
 function playLavaCoolFx(r, c) {
 	const cell = document.querySelector(`#board .cell[data-row="${r}"][data-col="${c}"]`);
 	if (!cell) return;
@@ -1156,6 +1158,12 @@ export function createPlayer(deps) {
 		const tile   = stageData.tiles[r]?.[c];
 		const ss     = getSS(getCurrentLayer(), getStageKey());
 		if (!tile) return;
+
+		// キュー112b（2026-11-22 ユーザー判断「すでに理想状態になっているのであれば石は動かない状態にする」）：
+		// 部屋ごとの指定 stageData.lockStonesAt（セルの配列）に乗ったら石を固める（stonesLocked＝笛でも出入りでも
+		// 戻らない）。パズルが解けないと乗れないマスを指定する＝D8 `2,4` は沈めた石の泥橋の先（宝箱の小島）。
+		// そこで笛を吹くと橋が消えて戻れなかった（状態空間の計測で発覚・宝箱を開ける前のはしごの上も同じ）。
+		if (!ss.stonesLocked && stageData.lockStonesAt?.includes(posKey)) ss.stonesLocked = true;
 
 		// 祭壇から離れたら再判定できるようにガードを解除する
 		if (tile !== TILE.ALTAR) _lastAltarPosKey = null;

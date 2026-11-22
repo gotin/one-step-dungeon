@@ -115,6 +115,15 @@ test.describe('Blade of Lumia – D8 底なし沼の石は実機で解ける（�
 		await page.evaluate(() => window.__game.step(5));
 		const r1 = await page.evaluate(() => window.__game.getPlayer().rupees);
 		expect(r1 - r0, 'ルピー×50 を拾えていない').toBe(50);
+		// キュー112b：泥橋の先（7,6）(8,6) に乗ったら石は固まる（lockStonesAt）＝小島で笛を吹いても泥橋は消えず、帰れる
+		expect(await page.evaluate(() => window.__game.getStageState().stonesLocked), '泥橋の先に乗っても石が固まらない（lockStonesAt）').toBe(true);
+		const bridge = await page.evaluate(() => JSON.stringify(window.__game.getStageState().stonePositions));
+		await page.evaluate(() => { const g = window.__game; g.getPlayer().activeSubItem = 'flute'; g.useSubItem(); g.step(3); });
+		expect(await page.evaluate(() => JSON.stringify(window.__game.getStageState().stonePositions)), '小島で笛を吹いたら泥橋が消えた').toBe(bridge);
+		for (let k = 0; k < 12 && (await at(page)) !== '4,6'; k++) {
+			await page.evaluate(() => { const g = window.__game; g.setHeroDir('up'); g.movePlayer('up'); g.step(1); });
+		}
+		expect(await at(page), '宝箱の小島から泥橋を渡って戻れない').toBe('4,6');
 		expect(errors, errors.join('\n')).toEqual([]);
 	});
 
@@ -130,6 +139,8 @@ test.describe('Blade of Lumia – D8 底なし沼の石は実機で解ける（�
 		await page.waitForTimeout(700);            // 石押しの冷却時間（実時間 600ms）
 		await down();                              // 石 (4,8) → (5,8) の泥に沈む
 		await page.waitForTimeout(700);
+		// 沈むのを見せ終わるまでは笛も吹けない（キュー112b・game.js playFlute）
+		await page.waitForFunction(() => !window.__game.movesHeld(), null, { timeout: 3000 });
 		const res = await page.evaluate(() => {
 			const g = window.__game;
 			const sunk = Object.values(g.getStageState().stonePositions ?? {}).map((s) => s.sunk).filter(Boolean);
@@ -158,5 +169,30 @@ test.describe('Blade of Lumia – D8 底なし沼の石は実機で解ける（�
 		expect(await down(), 'まだ見せている間に進んだ').toBe(4);
 		await page.waitForTimeout(900);
 		expect(await down(), '見せ終わった後も進めない').toBe(5);
+	});
+
+	// キュー112b（ユーザーの問い「逆に脱出できなくなるステージはない？」を状態空間で測って発覚）：
+	// 沈めた石の足場に立って笛を吹くと、足元が泥に戻ってどの向きにも動けなくなっていた＝不発にした
+	test('⑦ 沈めた石の足場に立って笛を吹いても石は戻らず、動ける', async ({ page }) => {
+		const errors = [];
+		page.on('pageerror', (e) => errors.push(e.message));
+		await freezeGameLoop(page);
+		await page.goto(previewUrl(1, 3, { ps_flute: '1' }));
+		await waitForBoard(page);
+		await page.keyboard.press('g');
+		const move = (d) => page.evaluate((x) => { const g = window.__game; for (let i = 0; i < 2; i++) { g.setHeroDir(x); g.movePlayer(x); g.step(1); } }, d);
+		for (let i = 0; i < 3; i++) {                 // 石 (2,3) を南へ3回＝(5,3) の泥に沈む
+			await move('down'); await page.waitForTimeout(700);
+			await page.waitForFunction(() => !window.__game.movesHeld(), null, { timeout: 3000 });
+		}
+		await move('down');                           // 沈んだ石の足場 (5,3) に乗る
+		expect(await at(page), '前提：沈んだ石の足場に立つ').toBe('5,3');
+		const before = await page.evaluate(() => JSON.stringify(window.__game.getStageState().stonePositions));
+		expect(before, '前提：石が (5,3) に沈んだ').toContain('"sunk":"5,3"');
+		await page.evaluate(() => { const g = window.__game; g.getPlayer().activeSubItem = 'flute'; g.useSubItem(); g.step(3); });
+		expect(await page.evaluate(() => JSON.stringify(window.__game.getStageState().stonePositions)), '足場の上で笛が効いて泥に戻った').toBe(before);
+		await move('up');
+		expect(await at(page), '笛の後に足場から動けない').toBe('4,3');
+		expect(errors, errors.join('\n')).toEqual([]);
 	});
 });

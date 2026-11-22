@@ -1235,3 +1235,21 @@ body.ending-montage #char-player { visibility: hidden; }
     .cell.lava-cooling canvas.cooled-stone { animation: none; }
     .lava-steam { display: none; }
 }
+
+/* キュー112b：笛で石が元の位置へ戻る演出（game/flute-stone-fx.js）。
+   キャラ層（#char-layer＝5）より手前＝浮いた石は勇者の上を越えて飛ぶ。影は地面に残る。 */
+#stone-return-layer {
+    position: absolute;
+    top: 0;
+    left: 0;
+    pointer-events: none;
+    z-index: 6;
+}
+#stone-return-layer .stone-return-shadow {
+    position: absolute;
+    background: radial-gradient(ellipse 34% 13% at 50% 88%, rgba(0, 0, 0, 0.75), rgba(0, 0, 0, 0) 100%);
+    transform-origin: 50% 88%;
+}
+#stone-return-layer .stone-return {
+    filter: drop-shadow(0 0 3px rgba(170, 230, 255, 0.85));
+}

@@ -40,7 +40,7 @@ import { createTide } from './tide.js';
 import { toTileIndex } from './hitbox.js';
 // ── 描画系（Phase 0-2 Step 3: render-board.js / render-chars.js へ切り出し）──────
 import { createRenderBoard, putCellSprite } from './render-board.js';
-import { createRenderChars } from './render-chars.js';
+import { createRenderChars, stoneSpriteOf } from './render-chars.js';
 // ── 入力・UI（Phase 0-2 Step 4: input.js / ui.js へ切り出し）──────────────────
 import { initInput } from './input.js';
 import { createUi, listSubItemKeys, subItemIconCanvas, subItemDisplayName } from './ui.js';
@@ -62,7 +62,8 @@ import { createProjectile } from './projectile.js';
 import { createEnemyAi } from './enemy-ai.js';
 import { snapshotEnemy } from './enemy-snapshot.js';
 // ── プレイヤー移動・タイルイベント（Phase 0-2 Step 5: player.js へ切り出し）──
-import { createPlayer } from './player.js';
+import { createPlayer, holdMovesUntil, sinkHoldActive } from './player.js';
+import { playStoneReturnFx } from './flute-stone-fx.js';
 import { createAuraAwakening } from './aura-awakening.js';
 import { createGarbAwakening } from './garb-awakening.js';
 // ── 剣攻撃・ダメージ（Phase 0-2 Step 5: combat.js へ切り出し）───────────────
@@ -2043,6 +2044,7 @@ function playFlute() {
 	// ⚠️ 全ボタンに石が乗って解決済み（stonesLocked、または未ロックでも全ボタン充足）なら
 	// リセットしない＝解けたパズルを台無しにしない（enterStage と同じ防御）。
 	if (fe.type === 'resetStones') {
+		if (sinkHoldActive()) return;   // 石が飛んでいる／沈んでいる間は吹き直さない（キュー112b）
 		const ss = getSS(currentLayer, stageKey);
 		if (!ss.stonePositions || Object.keys(ss.stonePositions).length === 0) {
 			fx.pulse('{{flute}} 音色は響いたが 特に何も起きない', 1800);
@@ -2080,12 +2082,34 @@ function playFlute() {
 				fx.pulse('{{flute}} 音色は響いたが 石の 戻る 場所に 立っている', 1800);
 				return;
 			}
+			// キュー112b（2026-11-22・ユーザーの問い「逆に脱出できなくなるステージはない？」を状態空間で測って発覚）：
+			// 沈んだ石の足場（冷えた溶岩・埋まった泥）に立って吹くと、石が戻って足元が溶岩／泥に戻り、どの向きにも
+			// 動けなくなる（D8 `2,4` で実測＝ダメージも無く永久に詰む）。石の戻る場所と同じく不発にする。
+			const onSunk = Object.values(ss.stonePositions).some((st) => {
+				if (!st.sunk) return false;
+				const [sr, sc] = st.sunk.split(',').map(Number);
+				return sr >= r0 && sr <= r1 && sc >= c0 && sc <= c1;
+			});
+			if (onSunk) {
+				fx.pulse('{{flute}} 音色は響いたが 沈んだ 石の 上に 立っている', 1800);
+				return;
+			}
 		}
+		// キュー112b：戻る石の一覧（今いた所 → 元の位置）を、状態を戻す前に取っておく＝演出（flute-stone-fx.js）に渡す。
+		// 沈んだ石は沈んだセルから浮かび上がる。
+		const flights = Object.entries(ss.stonePositions).map(([key, st]) => {
+			const [or, oc] = key.split(',').map(Number);
+			const [fr, fc] = st.sunk ? st.sunk.split(',').map(Number) : [st.r, st.c];
+			return { key, fr, fc, or, oc, sprite: stoneSpriteOf(stageData, key) };
+		}).filter((f) => f.fr !== f.or || f.fc !== f.oc);
 		ss.stonePositions = {};
 		ss.activeColor = null;
 		refreshGates();
 		evaluateConditions();
 		fx.renderBoard(); fx.renderChars();
+		// 状態は戻し終えた＝演出は見た目だけ。飛んでいる間は勇者を止める（石と勇者が重なって見えないように）。
+		const fxMs = playStoneReturnFx(charLayerElRef.value?.parentElement, getCellPx(), flights);
+		if (fxMs > 0) holdMovesUntil(Date.now() + fxMs);
 		fx.pulse(fe.message ?? '{{flute}} 音色に応えて 石が元の位置に戻った！', 2200);
 		saveGame();
 		return;

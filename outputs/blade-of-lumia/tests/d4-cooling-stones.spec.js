@@ -96,6 +96,8 @@ const walk = (page, d, tiles = 1) => page.evaluate(({ d, n }) => {
 async function push(page, d) {
 	await page.evaluate((dir) => { window.__game.movePlayer(dir); window.__game.step(1); }, d);
 	await page.waitForTimeout(800);
+	// 石が沈む押しの後は、沈むのを見せ終わるまで移動が止まる（キュー112・player.js SINK_HOLD_SHOW_MS）
+	await page.waitForFunction(() => !window.__game.movesHeld(), null, { timeout: 3000 });
 }
 const snap = (page) => page.evaluate(() => {
 	const g = window.__game;

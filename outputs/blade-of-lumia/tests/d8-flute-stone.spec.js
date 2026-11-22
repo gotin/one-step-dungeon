@@ -11,6 +11,7 @@
 // ③ 実機：解をなぞる（笛を1回吹く）と水門が開き、宝箱でルピー +100
 // ④ 実機：石の戻る場所に立って笛を吹いても石は戻らず、動ける（D8 `2,4` でも同じ）
 // ⑤ 実機：この部屋の石は出ても戻らない（着地セルに石が残っていたときの手当て＝game.js enterStage は未検証）
+// ⑥ 実機：笛で石が戻るとき、石が浮いて元の位置へ飛ぶ（キュー112b）＝状態はすぐ戻る・飛んでいる間は元の位置の絵を隠す・勇者は止まる・終われば層が消える
 import { test, expect } from '@playwright/test';
 import { readFileSync } from 'fs';
 import { fileURLToPath } from 'url';
@@ -59,7 +60,13 @@ const at = (page) => page.evaluate(() => {
 	const p = window.__game.getPlayer();
 	return Number.isInteger(p.y) && Number.isInteger(p.x) ? `${p.y},${p.x}` : `mid ${p.y},${p.x}`;
 });
-const flute = (page) => page.evaluate(() => { const g = window.__game; g.getPlayer().activeSubItem = 'flute'; g.useSubItem(); g.step(3); });
+const blow = (page) => page.evaluate(() => { const g = window.__game; g.getPlayer().activeSubItem = 'flute'; g.useSubItem(); g.step(3); });
+// 石が戻る演出（キュー112b）の間は勇者が止まる＝演出の層が消えるまで待つ
+const flute = async (page) => {
+	await blow(page);
+	await page.waitForFunction(() => !document.getElementById('stone-return-layer'), null, { timeout: 3000 });
+	await page.waitForTimeout(50);
+};
 const stones = (page) => page.evaluate(() => JSON.stringify(window.__game.getStageState().stonePositions ?? {}));
 
 test.describe('Blade of Lumia – D8 笛で呼び戻す石は実機で解ける（キュー112）', () => {
@@ -140,5 +147,37 @@ test.describe('Blade of Lumia – D8 笛で呼び戻す石は実機で解ける�
 		await page.evaluate(() => { const g = window.__game; g.step(3); for (let i = 0; i < 3; i++) { g.movePlayer('up'); g.step(1); } });
 		await page.waitForFunction(() => window.__game.getState().stageKey === '1,2', null, { timeout: 5000 });
 		expect(await stones(page), '出入りで石が戻った（笛の代わりになる）').toBe(moved);
+	});
+
+	test('⑥ 笛で石が戻るとき、石が浮いて元の位置へ飛ぶ（キュー112b）', async ({ page }) => {
+		const errors = [];
+		page.on('pageerror', (e) => errors.push(e.message));
+		const move = (d, n) => page.evaluate(({ d, n }) => { const g = window.__game; for (let i = 0; i < n * 2; i++) { g.setHeroDir(d); g.movePlayer(d); g.step(1); } }, { d, n });
+		await freezeGameLoop(page);
+		await page.goto(previewUrl(7, 7));
+		await waitForBoard(page);
+		await page.keyboard.press('g');
+		await move('right', 1); await page.waitForTimeout(700);   // 石 (7,8) → (7,9)
+		await move('left', 2);                                    // 石の戻る場所から離れる
+		const p0 = await at(page);
+		await blow(page);
+		const mid = await page.evaluate(() => {
+			const layer = document.getElementById('stone-return-layer');
+			const st = layer?.querySelector('.stone-return');
+			const orig = document.querySelector('#board .cell[data-row="7"][data-col="8"] > canvas.obj-sprite');
+			return { layer: !!layer, stone: !!st, origHidden: orig?.style.visibility === 'hidden', stones: JSON.stringify(window.__game.getStageState().stonePositions ?? {}) };
+		});
+		expect(mid.layer && mid.stone, '石が飛ぶ層が出ていない').toBe(true);
+		expect(mid.origHidden, '飛んでいる間、元の位置の石の絵が見えている（二重に見える）').toBe(true);
+		expect(mid.stones, '状態は吹いた瞬間に戻る').toBe('{}');
+		await move('down', 1);
+		expect(await at(page), '飛んでいる間に勇者が動いた').toBe(p0);
+		await page.waitForFunction(() => !document.getElementById('stone-return-layer'), null, { timeout: 3000 });
+		const after = await page.evaluate(() => document.querySelector('#board .cell[data-row="7"][data-col="8"] > canvas.obj-sprite')?.style.visibility);
+		expect(after, '着いた後も元の位置の石が隠れたまま').toBe('');
+		await page.waitForTimeout(50);
+		await move('down', 1);
+		expect(await at(page), '演出の後に動けない').not.toBe(p0);
+		expect(errors, errors.join('\n')).toEqual([]);
 	});
 });

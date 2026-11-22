@@ -124,6 +124,7 @@ test.describe('Blade of Lumia – D8 ヒルと石の泥道は実機で解ける�
 			for (let i = 0; i < 2; i++) { g.setHeroDir('left'); g.movePlayer('left'); g.step(1); }   // (4,8) → (4,7)
 			for (let i = 0; i < 2; i++) { g.setHeroDir('left'); g.movePlayer('left'); g.step(1); }   // 石 (4,6) を西へ
 			const moved = JSON.stringify(g.getStageState().stonePositions ?? {});
+			for (let i = 0; i < 2; i++) { g.setHeroDir('right'); g.movePlayer('right'); g.step(1); }   // 石の戻る場所に立ったまま吹くと不発（キュー112・game.js playFlute）＝1歩下がってから吹く
 			g.useSubItem(); g.step(3);
 			return { moved, after: JSON.stringify(g.getStageState().stonePositions ?? {}) };
 		});
