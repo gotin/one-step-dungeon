@@ -64,6 +64,37 @@ test('ザーネルを倒すと、最期の言葉 → 女王の目覚め → 世�
 	expect(seen.names).toEqual([FINALE.zarnel.name, FINALE.queen.name, ...FINALE.village.talks.map((t) => t.name)]);
 	expect(seen.stoneFirst, '女王が石（灰色）から始まらない').toBe(true);
 	expect(seen.captions).toEqual(FINALE.restore.map((s) => s.text));
+	// THE END までは明るい終わりのまま（キュー116：呪いの移りは「つづき…」の先）
+	await expect(page.locator('#ending-msg')).toContainText('ルミアの地に平和が訪れた', { timeout: 60_000 });
+	await expect(page.locator('#ending-restart')).toHaveText('つづき…');
+
+	// 「つづき…」＝女王の島で剣士が石になる場面 → 女王の言葉 → はじまりの村で女王の周回が始まる
+	await page.locator('#ending-restart').click();
+	await expect(page.locator('#ending-overlay')).toBeHidden();
+	await expect(page.locator('#ending-caption')).toHaveText(FINALE.curse.caption);
+	await expect(page.locator('.ending-hero.stone')).toHaveCount(1, { timeout: 10_000 });
+	// キュー116 ③：女王の周回だけ出る島の石の剣士（npcData）は、場面の間は出さない＝石になる前の剣士と重ならない
+	await expect(page.locator('#board canvas[data-pal="heroStone"]')).toHaveCount(0);
+	await expect(page.locator('#char-player')).toBeHidden();   // 遊ぶ側（もう女王の絵）は場面の間は隠す
+	await expect(page.locator('#dialog-name')).toHaveText(FINALE.queen.name, { timeout: 10_000 });
+	await expect(page.locator('#dialog-text')).toContainText(FINALE.curse.lines[0].slice(0, 6));
+	const curseSave = await page.evaluate(() => localStorage.getItem('blade-of-lumia-save'));
+	expect(curseSave, '場面の間にセーブを書いた（島に立ったセーブが残る）').toBeNull();
+	for (let i = 0; i < 40 && await page.evaluate(() => document.body.classList.contains('ending-scene')); i++) {
+		if (await page.locator('#dialog-overlay').isVisible()) await page.keyboard.press('Space');
+		await page.waitForTimeout(200);
+	}
+	const after = await page.evaluate(() => ({
+		stage: window.__game.getState().stageKey ?? null,
+		pal: document.querySelector('#char-player canvas')?.dataset?.pal,
+		hero: document.querySelectorAll('.ending-hero').length,
+		save: JSON.parse(localStorage.getItem('blade-of-lumia-save') ?? 'null'),
+	}));
+	expect(after.pal, '周回の勇者が女王の絵でない').toMatch(/^queen/);
+	expect(after.hero, '場面の剣士の絵が残った').toBe(0);
+	expect(after.stage, '周回がはじまりの村から始まらない').toBe('7,14');
+	expect(after.save, '島の場面のセーブが残った（ふつうの「はじめから」と同じく、歩き出すまで書かない）').toBeNull();
+	expect(errors).toEqual([]);
 	const restoreStages = FINALE.restore.map((s) => s.stage);
 	const sorted = (s) => [...s].filter((k) => restoreStages.includes(k)).sort();
 	expect(sorted(seen.foes), '魔物（呪い火）が居る姿で始まらない画面がある').toEqual([...restoreStages].sort());
@@ -125,4 +156,53 @@ test('場面の途中で閉じても、続きからで場面を最初から流�
 	// スタッフロールに入ったらセーブは消え、クリアの印が残る（次は女王で遊べる）
 	const after = await page.evaluate(() => ({ save: localStorage.getItem('blade-of-lumia-save'), cleared: localStorage.getItem('blade-of-lumia-cleared') }));
 	expect(after).toEqual({ save: null, cleared: '1' });
+});
+
+// キュー116 ④（2026-11-22）：女王の周回の終わり＝1周目の立場を入れ替える。島に立っていた石の剣士に光が降りて目覚め、
+// 女王が光から現れ、剣士が話す → 世界が戻る → 村（剣士も隣に立つ）→ THE END（剣士が目覚めた文・ボタンは「はじめから」）。
+test('女王の周回の終わり：島で石の剣士が目覚めて再会 → 村 → THE END は「はじめから」', async ({ page }) => {
+	test.setTimeout(150000);
+	const errors = [];
+	page.on('pageerror', (e) => errors.push(String(e)));
+	await page.goto(`${GAME_URL}?fromEditor=1&layer=dark_tower&stage=5,3&row=7&col=5&ps_weapon=1&ps_cleared=1&ps_defeated=G,N,J,A,O,L,I,U`);
+	await waitForBoard(page);
+	await page.waitForTimeout(800);
+	const z = await page.evaluate(() => window.__game.getEnemies().find((e) => e.type === 'Z')?.id);
+	expect(z, 'ザーネルが居ない').toBeTruthy();
+	await page.evaluate((id) => window.__game.dealDamage(id, 9999, 'sword'), z);
+	const Q = FINALE.queenRun;
+	const seen = { names: [], heroStoneFirst: false, heroAwake: false, statueHidden: false, heroInVillage: false };
+	let ended = false;
+	const t0 = Date.now();
+	while (Date.now() - t0 < 110000 && !ended) {
+		await page.waitForTimeout(250);
+		const st = await page.evaluate(() => ({
+			dlg: !document.getElementById('dialog-overlay').classList.contains('hidden'),
+			name: document.getElementById('dialog-name')?.textContent,
+			stage: (document.getElementById('hud-stage-label')?.textContent ?? '').replace(/^\[\w+\]\s*/, ''),
+			heroStone: document.querySelectorAll('.ending-hero.stone').length,
+			hero: document.querySelectorAll('.ending-hero').length,
+			statueVisible: [...document.querySelectorAll('#board canvas[data-pal="heroStone"]')].some((c) => c.style.visibility !== 'hidden'),
+			ending: !document.getElementById('ending-overlay').classList.contains('hidden'),
+		}));
+		if (st.heroStone && !seen.heroAwake) seen.heroStoneFirst = true;
+		if (st.hero && !st.heroStone && st.stage === FINALE.island.stage) seen.heroAwake = true;
+		if (st.hero && st.stage === FINALE.island.stage && !st.statueVisible) seen.statueHidden = true;
+		if (st.hero && st.stage === Q.village.stage) seen.heroInVillage = true;
+		if (st.dlg) {
+			if (seen.names.at(-1) !== st.name) seen.names.push(st.name);
+			await page.keyboard.press('Space');
+		}
+		ended = st.ending;
+	}
+	expect(errors).toEqual([]);
+	expect(ended, 'スタッフロールまで行かない').toBe(true);
+	expect(seen.names).toEqual([Q.zarnel.name, Q.hero.name, Q.queenReply.name, ...Q.village.talks.map((t) => t.name)]);
+	expect(seen.heroStoneFirst, '剣士が石（灰色）から始まらない').toBe(true);
+	expect(seen.heroAwake, '島で剣士の色が戻らない').toBe(true);
+	expect(seen.statueHidden, '島の石像（npcData）と目覚める剣士が重なった').toBe(true);
+	expect(seen.heroInVillage, '村に剣士が居ない').toBe(true);
+	await expect(page.locator('#ending-msg')).toContainText('光の剣を継ぐ者が目覚めた', { timeout: 60_000 });
+	await expect(page.locator('#ending-restart')).toHaveText('はじめから');
+	expect(await page.locator('#ending-restart').getAttribute('data-next')).toBe('title');
 });

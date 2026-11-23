@@ -126,6 +126,42 @@
         <button id="btn-continue" class="title-btn">続きから</button>
         <button id="btn-newgame"  class="title-btn title-btn--new">はじめから</button>
       </div>
+      <!-- キュー117：ログインしてセーブを預ける（サイトの上で開いたときだけ出す＝game/cloud-save.js） -->
+      <div id="title-account" class="hidden">
+        <div id="title-account-guest">
+          <button id="btn-login" class="title-btn title-btn--account">Google でログイン</button>
+          <div class="title-account-note">ログインすると、別のブラウザでも<br>続きから遊べます</div>
+        </div>
+        <div id="title-account-user" class="hidden">
+          <div class="title-account-note"><span id="title-account-name"></span> でログイン中<br>セーブはログイン先にも保存されます</div>
+          <div class="title-account-row">
+            <button id="btn-logout" class="title-btn title-btn--account">ログアウト</button>
+            <button id="btn-account-delete" class="title-btn title-btn--account">退会</button>
+          </div>
+        </div>
+        <a class="title-account-link" href="/privacy/" target="_blank" rel="noopener">プライバシー</a>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── 退会の確認（キュー117）── -->
+  <div id="account-delete-overlay" class="hidden">
+    <div id="account-delete-box" class="cloud-box">
+      <div class="cloud-msg">ログイン先のセーブとアカウントを消します。<br>このブラウザのセーブは残ります。<br>本当に消しますか？</div>
+      <div class="cloud-buttons">
+        <button id="btn-account-delete-yes" class="title-btn title-btn--danger">はい、消す</button>
+        <button id="btn-account-delete-no"  class="title-btn">戻る</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── 別の画面で開かれた（キュー117：最後に開いた画面だけが保存できる）── -->
+  <div id="takeover-overlay" class="hidden">
+    <div id="takeover-box" class="cloud-box">
+      <div class="cloud-msg">別の場所でゲームが開かれました。<br>保存できるのは最後に開いた画面だけです。</div>
+      <div class="cloud-buttons">
+        <button id="btn-takeover" class="title-btn">こちらで続ける</button>
+      </div>
     </div>
   </div>
 
@@ -207,7 +243,7 @@
       <div id="ending-msg"></div>
       <div id="ending-time"></div>
       <div id="ending-score"></div>
-      <button id="ending-restart" class="title-btn">はじめから</button>
+      <button id="ending-restart" class="title-btn">つづき…</button>
     </div>
   </div>
 

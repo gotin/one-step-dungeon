@@ -19,6 +19,9 @@
 
 import { ownsItem } from './items.js';
 
+/** 女王の周回の版のキー（キュー116）。ボスの版は1字・道具は `item:`・出来事は `flag:`＝衝突しない。 */
+export const QUEEN_KEY = 'queen';
+
 /** 出来事の版のキーの接頭辞＝`flag:<出来事の名前>`（ボスの版は1字・道具の版は `item:`）。 */
 export const FLAG_KEY_PREFIX = 'flag:';
 
@@ -40,6 +43,9 @@ export function flagNameOfVariantKey(key) {
  */
 export function conditionKeyHolds(key, player) {
 	if (typeof key !== 'string' || !key) return false;
+	// キュー116：女王の周回（クリア後の「はじめから」）。game.js が周回の始めと読み込みで player.queenRun を立てる
+	// （クリアの印 CLEARED_KEY は localStorage＝ここ〈エディタとも共有〉からは読まない）。
+	if (key === QUEEN_KEY) return !!player?.queenRun;
 	if (key === 'after')   return (player?.triforceCount ?? 0) > 0;
 	if (key === 'default') return (player?.defeatedBosses?.size ?? 0) > 0;
 	if (key.startsWith('item:')) return ownsItem(player, key.slice('item:'.length));

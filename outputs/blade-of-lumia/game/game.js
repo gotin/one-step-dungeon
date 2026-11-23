@@ -70,11 +70,13 @@ import { createGarbAwakening } from './garb-awakening.js';
 import { createCombat } from './combat.js';
 // ── ボス戦・エンディング（Phase 0-2 Step 5: boss.js へ切り出し）─────────────
 import { createBoss } from './boss.js';
+import { createZarnelSummon } from './zarnel-summon.js';   // キュー116 ⑤
 // ── チャージ攻撃・剣ビーム（Phase 3-1: charge.js へ切り出し）──────────────────
 import { createCharge } from './charge.js';
 import { createDebuff } from './debuff.js';
 // ── 遊びの記録（探索率・宝箱・撃破数・倒れた回数＝実行キュー66）──────────────
 import { collectPlayStats, sanitizeCount } from './play-stats.js';
+import { initCloudSave, signInWithGoogle, signOut as cloudSignOut, deleteCloudAccount } from './cloud-save.js';   // キュー117
 
 
 // ── DOM ───────────────────────────────────────────────────────
@@ -207,6 +209,7 @@ let warpMenu = null;   // キュー27: 転移の石碑の行き先一覧（creat
 let quickSwap = null;  // キュー84: X 長押しの道具の早替え（createQuickSwap）
 let storyApproach = null;  // キュー103: 向こうから歩いてきて話しかける人（createStoryApproach）
 let endingScene = null;    // キュー108: ザーネルを倒した後の場面（createEndingScene）
+let zarnelSummon = null;   // キュー116 ⑤: 女王の周回の闇のザーネルが手下を呼ぶ（createZarnelSummon）
 let invincibleUntil = 0;
 // MAP_ENTER 遷移直後クールダウン：遷移先に着いた直後は同じ入り口に乗っても再遷移しない
 let mapEnterCooldownUntil = 0;
@@ -431,6 +434,8 @@ function loadGame() {
 		const data = JSON.parse(raw);
 		player       = sanitizeLoadedPlayer({ ...player, ...data.player }, ITEM_META);
 		player.defeatedBosses = new Set(data.player?.defeatedBosses ?? []);
+		// キュー116：女王の周回か（会話の版 `queen`）。勇者の絵と同じくクリアの印から決める＝古いセーブにも効く
+		player.queenRun = hasCleared();
 		heroDir      = data.heroDir ?? 'down';
 		currentLayer = data.currentLayer ?? 'field';
 		stageKey     = data.stageKey ?? null;
@@ -606,6 +611,7 @@ function enterStage(lk, sk, pRow, pCol) {
 	fx.clearBombs();
 	fx.clearFlames();
 	fx.clearMirages();
+	zarnelSummon?.reset();   // キュー116 ⑤：呼び出しの予告と時計を画面ごとに捨てる
 	fx.clearThorns();
 	fx.cancelCharge();   // チャージ中の遷移はキャンセル（Phase 3-1）
 	// ボス部屋ロックをリセット（非ボス部屋に移動したとき）
@@ -648,38 +654,44 @@ function buildEnemies(sd, lk, sk) {
 			if (!ENEMY_META[tile]) return;
 			const posKey = `${r},${c}`;
 			if (ss.defeatedEnemies.has(posKey)) return;
-			const m = ENEMY_META[tile];
-			result.push({
-				id:    posKey,
-				type:  tile,
-				x:     c,     // float 座標
-				y:     r,
-				hp:    m.hp, maxHp: m.hp,
-				atk:   m.atk, def: m.def,
-				speed: m.speed ?? ENEMY_SPEED_NORMAL,
-				// Phase 9-6 深洋O: 遊泳属性。isPassableForEnemy が self.move を見て
-				// 水/陸の通行可否を切り替える（未指定=陸棲）。これを渡さないと水棲敵が
-				// 陸を歩けてしまう。moveSpeed は両生の地形別速度（将来の enemy-ai 用）。
-				move:  m.move, moveSpeed: m.moveSpeed,
-				// 隠れ↔出現する敵（潜み鮫・地中蟲）は「隠れた状態」で登場する。
-				// 周期の進行は enemy-ai.js の tickHide（gameNow 基準）が担当。
-				hidden: !!m.hide,
-				sprite: m.sprite, pal: m.pal,
-				// Phase 3-2: 占有セル数（大型敵）。省略時は 1×1。
-				w:      m.size?.w ?? 1,
-				h:      m.size?.h ?? 1,
-				accum:  0,
-				dir:    sd.enemyDirs?.[posKey] ?? 'down',
-				// キュー60: マップで「追う」を指定された（部屋まるごと／この配置）さまよう雑魚は
-				// 最初から気づいている＝さまよわない（判定は shared/enemy-alert.js が単一の真実）。
-				alwaysAlert: startsAlert(sd, posKey, tile),
-				// キュー93: マップで「持ち場」を指定された敵は歩かない（shared/enemy-alert.js holdsPost）。
-				holdPost: holdsPost(sd, posKey, tile),
-				el:     null,   // DOM element（後で設定）
-			});
+			result.push(makeEnemyEntity(sd, tile, r, c, posKey));
 		});
 	});
 	return result;
+}
+
+// 敵1体の体（buildEnemies と、戦いの途中で呼び出される手下〈キュー116 ⑤ zarnel-summon.js〉が同じ形を使う）。
+function makeEnemyEntity(sd, tile, r, c, id) {
+	const posKey = `${r},${c}`;
+	const m = ENEMY_META[tile];
+	return {
+		id,
+		type:  tile,
+		x:     c,     // float 座標
+		y:     r,
+		hp:    m.hp, maxHp: m.hp,
+		atk:   m.atk, def: m.def,
+		speed: m.speed ?? ENEMY_SPEED_NORMAL,
+		// Phase 9-6 深洋O: 遊泳属性。isPassableForEnemy が self.move を見て
+		// 水/陸の通行可否を切り替える（未指定=陸棲）。これを渡さないと水棲敵が
+		// 陸を歩けてしまう。moveSpeed は両生の地形別速度（将来の enemy-ai 用）。
+		move:  m.move, moveSpeed: m.moveSpeed,
+		// 隠れ↔出現する敵（潜み鮫・地中蟲）は「隠れた状態」で登場する。
+		// 周期の進行は enemy-ai.js の tickHide（gameNow 基準）が担当。
+		hidden: !!m.hide,
+		sprite: m.sprite, pal: m.pal,
+		// Phase 3-2: 占有セル数（大型敵）。省略時は 1×1。
+		w:      m.size?.w ?? 1,
+		h:      m.size?.h ?? 1,
+		accum:  0,
+		dir:    sd.enemyDirs?.[posKey] ?? 'down',
+		// キュー60: マップで「追う」を指定された（部屋まるごと／この配置）さまよう雑魚は
+		// 最初から気づいている＝さまよわない（判定は shared/enemy-alert.js が単一の真実）。
+		alwaysAlert: startsAlert(sd, posKey, tile),
+		// キュー93: マップで「持ち場」を指定された敵は歩かない（shared/enemy-alert.js holdsPost）。
+		holdPost: holdsPost(sd, posKey, tile),
+		el:     null,   // DOM element（後で設定）
+	};
 }
 
 
@@ -866,6 +878,20 @@ const { checkStoneOnSwitch, evaluateConditions, refreshGates } = createCondition
 	});
 
 	// キュー108: ザーネルを倒した後の場面（game/ending-scene.js）
+	zarnelSummon = createZarnelSummon({
+		getEnemies:   () => enemies,
+		// 動的に湧いた敵の DOM は renderChars でしか生えない（combat.js の分裂と同じ）
+		addEnemy:     (e) => { enemies = [...enemies, e]; fx.renderChars(); },
+		getPlayer:    () => player,
+		getStageData: () => getStageData(currentLayer, stageKey),
+		isPassableForEnemy,
+		makeEnemy:    (type, r, c, id) => makeEnemyEntity(getStageData(currentLayer, stageKey), type, r, c, id),
+		gameNow,
+		getCharLayerEl: () => charLayerElRef.value,
+		getCellPx:    () => getCellPx(),
+		playSound,
+		isBossDefeating: () => _bossDefeating,
+	});
 	endingScene = createEndingScene({
 		getCharLayerEl: () => charLayerElRef.value,
 		getCellPx:      () => getCellPx(),
@@ -1946,6 +1972,7 @@ function gameTick() {
 	if (isTransitioning || isGameover) return;
 	fx.tickCharge();        // チャージゲージ更新（剣ビーム・Phase 3-1）
 	fx.enemyTick();
+	zarnelSummon?.tick();   // キュー116 ⑤：女王の周回の闇のザーネルが手下を呼ぶ
 	fx.syncEnemyButtons();   // 重しの敵（毒沼ヒル）がボタンに乗った／降りた＝敵が動いた直後に決め直す（キュー93）
 	fx.tickTide();           // 潮の満ち引き（キュー94）＝敵が動いた後に満ちる＝この tick で砂州に乗った敵も呑む
 	fx.projectileTick();
@@ -2446,11 +2473,30 @@ function startNewGame() {
 	// キュー109：クリア後の周回（女王）は最後のクリアの強さ（剣・盾・鎧・ハートの器・紋章・巻物・金の装束）から始める。
 	// 道具は引き継がない（game/carry-over.js の冒頭）。記録の無い古いクリアは素のまま。
 	if (hasCleared()) applyCarry(player, readCarry(localStorage));
+	// キュー116：会話の版・人の出現の `queen`（loadGame と同じ決め方）。立てるのは周回の始まりの場面の後＝
+	// 場面の島に「女王の周回だけ出る石の剣士」（field 11,19）が先に立っていると、石になる前の剣士と重なる。
+	player.queenRun = false;
 	heroDir = 'down';
-	enterStage(currentLayer, stageKey, player.y, player.x);
-	startGameLoop();
 	resumeAudio();
-	openIntroDialog();
+	const begin = () => {
+		player.queenRun = hasCleared();
+		heroDir = 'down';
+		enterStage(currentLayer, stageKey, player.y, player.x);
+		startGameLoop();
+		openIntroDialog();
+	};
+	// キュー116：女王の周回は、剣士が石になる場面から始まる（周回の理由＝女王が剣士の呪いを解く旅）。
+	// 場面の間は enterStage がセーブを書かない（isBusy）＝途中で閉じてもセーブは残らない（続きからは無い）。
+	if (hasCleared() && endingScene) {
+		// 場面の enterStage が今の画面と勇者の位置を島へ動かす∴始まりの場所を覚えておいて戻す
+		const start = { lk: currentLayer, sk: stageKey, x: player.x, y: player.y };
+		endingScene.playCurse(() => {
+			currentLayer = start.lk; stageKey = start.sk; player.x = start.x; player.y = start.y;
+			begin();
+		}, { gold: !!player.hasGoldGarb });
+		return;
+	}
+	begin();
 }
 
 // キュー21 F2（2026-10-11 ユーザー案）：「はじめから」の直後、開始画面の人のうち
@@ -2486,8 +2532,10 @@ btnContinueEl.addEventListener('click', () => {
 });
 
 btnNewgameEl.addEventListener('click', () => {
-	// 確認ダイアログを表示
 	titleOverlayEl.classList.add('hidden');
+	// キュー117：セーブが無い（「続きから」を隠している）ときは消すものが無い＝確認せずに始める
+	if (btnContinueEl.style.display === 'none') { startNewGame(); return; }
+	// 確認ダイアログを表示
 	confirmOverlayEl.classList.remove('hidden');
 });
 
@@ -2502,10 +2550,58 @@ btnConfirmNoEl.addEventListener('click', () => {
 	titleOverlayEl.classList.remove('hidden');
 });
 
+// ── キュー117：ログインしてセーブを預ける（タイトルのアカウント欄・退会・別の画面で開かれた）──
+const titleAccountEl   = document.getElementById('title-account');
+const accountDeleteEl  = document.getElementById('account-delete-overlay');
+const takeoverEl       = document.getElementById('takeover-overlay');
+
+function showAccountArea(user) {
+	titleAccountEl?.classList.remove('hidden');
+	document.getElementById('title-account-guest')?.classList.toggle('hidden', !!user);
+	document.getElementById('title-account-user')?.classList.toggle('hidden', !user);
+	const nameEl = document.getElementById('title-account-name');
+	if (nameEl) nameEl.textContent = user ? (user.name || user.email) : '';
+}
+
+// 後から別の画面（別のブラウザ・別のタブ）が開かれた＝この画面はもう保存できない∴世界を止めて知らせる。
+// 「こちらで続ける」＝読み直す＝起動の claim でこの画面が書ける画面に戻り、ログイン先の最新のセーブを読む。
+function showTakeover() {
+	stopGameLoop();
+	_inputModule?.heldKeys?.clear();
+	takeoverEl?.classList.remove('hidden');
+}
+
+document.getElementById('btn-takeover')?.addEventListener('click', () => location.reload());
+document.getElementById('btn-login')?.addEventListener('click', () => {
+	signInWithGoogle().catch((e) => { console.warn(e); fx.pulse?.('ログインを始められませんでした'); });
+});
+document.getElementById('btn-logout')?.addEventListener('click', () => { cloudSignOut(); });
+document.getElementById('btn-account-delete')?.addEventListener('click', () => {
+	titleOverlayEl.classList.add('hidden');      // 枠を1つずつ出す（矢印で選ぶボタンが混ざらない）
+	accountDeleteEl?.classList.remove('hidden');
+});
+document.getElementById('btn-account-delete-no')?.addEventListener('click', () => {
+	accountDeleteEl?.classList.add('hidden');
+	titleOverlayEl.classList.remove('hidden');
+});
+document.getElementById('btn-account-delete-yes')?.addEventListener('click', () => {
+	deleteCloudAccount().catch((e) => {
+		console.warn(e);
+		accountDeleteEl?.classList.add('hidden');
+		titleOverlayEl.classList.remove('hidden');
+	});
+});
+
 // ゲームオーバー「リトライ」ボタン
 gameoverRetryEl?.addEventListener('click', () => { retryGame(); });
-// エンディング「もう一度」ボタン
-endingRestartEl?.addEventListener('click', () => { location.reload(); });
+// エンディング「つづき…」ボタン（キュー116・2026-11-22 ユーザー提案）＝そのまま女王の周回を始める
+// ＝剣士が石になる場面（ending-scene playCurse）から。旧＝ページを読み直してタイトルへ戻っていた。
+// 女王の周回の終わり（boss.js が data-next='title' を付ける）＝再会で話が閉じる∴ページを読み直してタイトルへ。
+endingRestartEl?.addEventListener('click', () => {
+	if (endingRestartEl.dataset.next === 'title') { location.reload(); return; }
+	document.getElementById('ending-overlay')?.classList.add('hidden');
+	startNewGame();
+});
 
 async function init() {
 	// URL パラメータ解析
@@ -2575,6 +2671,7 @@ async function init() {
 		const psScrolls  = params.get('ps_scrolls');   // 実行キュー100: 剣技の巻物の個数（4＝回転斬り・8＝2マス先まで）
 		const psDefeated = params.get('ps_defeated');  // 実行キュー23: 撃破済みボス（タイル文字のカンマ区切り）
 		const psMap      = params.get('ps_map');       // 2026-09-19: 地図の所持（目的地マークの見え方の確認用）
+		const psCompass  = params.get('ps_compass');   // キュー114: コンパスの所持（ダンジョンのボス部屋の印の確認用）
 		const psLit      = params.get('ps_lit');       // 2026-11-14: 灯っている転移の石碑（id の `;` 区切り）
 
 		if (psAtk      !== null) player.atk    = parseInt(psAtk,  10) || 2;
@@ -2648,6 +2745,12 @@ async function init() {
 				(player.dungeonItems[layerKey] ??= { hasMap: false, hasCompass: false }).hasMap = true;
 			}
 		}
+		if (psCompass === '1') {
+			player.dungeonItems ??= {};
+			for (const layerKey of Object.keys(mapData?.layers ?? {})) {
+				(player.dungeonItems[layerKey] ??= { hasMap: false, hasCompass: false }).hasCompass = true;
+			}
+		}
 		// 撃破済みボス（実行キュー23）＝会話の「進行で切り替わる版」（`linesAfterBoss` /
 		// `markAfterBoss`）と目的地の矢印がこれで切り替わる。エディタで版を書いたあと
 		// **実ゲームでその版が出るところ**まで確認できるようにするための口
@@ -2670,6 +2773,7 @@ async function init() {
 		} else {
 			localStorage.removeItem(CLEARED_KEY);
 		}
+		player.queenRun = psCleared === '1';   // キュー116：プレビューでも女王の周回の会話を確かめられる
 
 		console.log('[Game] player after ps apply:', JSON.stringify({
 			atk: player.atk, def: player.def, rupees: player.rupees,
@@ -2700,7 +2804,18 @@ async function init() {
 	}
 
 	await loadMapData();
+	// キュー117：ログイン中ならログイン先のセーブを手元に写してから読む（ログイン先を優先＝ユーザー決定）。
+	// サイトの API に届かない（開発用の vite サーバ）ときは何もしない＝下は今までどおり。
+	const cloud = await initCloudSave({ onTakenOver: showTakeover });
 	const hasSave = loadGame();
+
+	// サイトの上では、セーブが無くてもタイトルを出す＝ログインの入口（新しいブラウザで続きを引くため・ユーザー決定）。
+	if (cloud.available) {
+		showAccountArea(cloud.user);
+		titleOverlayEl.classList.remove('hidden');
+		btnContinueEl.style.display = hasSave && stageKey ? '' : 'none';
+		return;
+	}
 
 	if (!hasSave || !stageKey) {
 		// セーブデータなし → 即新規ゲーム開始

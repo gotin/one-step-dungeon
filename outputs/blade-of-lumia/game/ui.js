@@ -45,6 +45,8 @@ import { conditionKeyHolds, npcStandsAt } from '../shared/story-events.js';
 import { NPC_SPRITE_MAP } from '../shared/npcs.js';
 import { READABLE_SIGN_TILES, TILE } from '../shared/tiles.js';
 import { arrowPotState } from '../shared/arrow-pot.js';
+// ボス部屋の印を倒した後に消す（キュー114）＝ボス部屋のボスのマスが撃破済みか。
+import { ENEMY_META } from '../shared/enemies.js';
 
 // HUD のハート（heart/heartEmpty/heartHalf）の表示サイズ。Phase 10d-3 で
 // 絵を32ドット化した際、絵の中の透明余白が増えた分だけ見かけが縮むのを補う
@@ -370,20 +372,27 @@ export function createUi(deps) {
 		const marks   = getMarks();
 		let added = 0;
 		let lastLabel = '';
+		let lastId = null;
 		for (const m of list) {
 			if (!mapData?.layers?.[m.layer]?.stages?.[m.stage]) {
 				console.warn(`[marks] 行き先が実在しない: ${m.layer}/${m.stage}（${m.label}）`);
 				continue;
 			}
-			if (addMark(marks, m)) { added++; lastLabel = m.label; }
-			// 初めてのマークは自動で選択する（1つしか無いのに選ばせる意味が無い）
+			if (addMark(marks, m)) { added++; lastLabel = m.label; lastId = markId(m.layer, m.stage); }
+			// 選択が空なら、教え直し（新しく足さなかった印）でも選ぶ（選ばせる相手が1つも無い状態を作らない）
 			if (!player.selectedMarkId) player.selectedMarkId = markId(m.layer, m.stage);
 		}
+		// キュー115（2026-11-22 ユーザー指示）：新しく加わった目的地は、自動で今の目的地に選ぶ
+		// ＝「ほとんどの場合その目的地に進む」。1度に複数加わったら最後に教わったものを選ぶ。
+		// 教え直し（既にある印）では選択を変えない＝プレイヤーが選んだ印を、同じ話の読み返しで奪わない。
+		if (lastId) player.selectedMarkId = lastId;
 		if (added) {
 			// 地図を持っていないときは黙る＝「地図に記した」が嘘になる（記録自体は残す
-			// ∴後で地図を拾えばちゃんと出る）。
+			// ∴後で地図を拾えばちゃんと出る）。選んだことも、この知らせで伝える（ユーザー指示）。
 			if (hasLayerMap(getCurrentLayer())) {
-				pulse(added === 1 ? `{{map}} 地図に「${lastLabel}」を記した！` : `{{map}} 地図に ${added} か所を記した！`);
+				pulse(added === 1
+					? `{{map}} 地図に「${lastLabel}」を記した！ 目的地に した`
+					: `{{map}} 地図に ${added} か所を記した！ 目的地は「${lastLabel}」`, 2600);   // 文が長くなった分だけ長く出す
 			}
 			updateMarkGuide();
 			refreshUnreadMarks();   // 読み終えた相手の印を消す（キュー61）
@@ -659,7 +668,7 @@ export function createUi(deps) {
 		const stageKey     = getStageKey();
 
 		pauseItemKeys = listSubItemKeys(player);
-		if (pauseItemIdx >= pauseItemKeys.length) pauseItemIdx = 0;
+		syncPauseItemIdx(player);
 		pauseItemsEl.innerHTML = '';
 		if (pauseItemKeys.length === 0) {
 			pauseItemsEl.innerHTML = '<div style="color:#4a6a8a;font-size:13px;">サブアイテムなし</div>';
@@ -1088,6 +1097,18 @@ export function createUi(deps) {
 		ctx.fillRect(x + 10, y + 9, 4, 1);
 	}
 
+	// ボス部屋のボスが倒れているか。撃破は部屋の状態の defeatedEnemies（ボスのマス "r,c"）に残る
+	// （game.js buildEnemies が再出現を止めるのと同じ記録）。defeatedBosses は種類の記録＝
+	// 同じ種類が道中の部屋にも出るので部屋の判定には使わない。
+	function bossRoomCleared(lk, ld) {
+		const sd = ld.stages?.[ld.bossStage];
+		if (!sd?.tiles) return false;
+		const defeated = getSS(lk, ld.bossStage).defeatedEnemies;
+		const cells = [];
+		sd.tiles.forEach((row, r) => [...row].forEach((t, c) => { if (ENEMY_META[t]?.isBoss) cells.push(`${r},${c}`); }));
+		return cells.length > 0 && cells.every((k) => defeated?.has(k));
+	}
+
 	function renderPauseRoomMap(lk, ld, stages, dm, entranceStages = new Set()) {
 		const stageKey = getStageKey();
 		pauseMapHereEl.classList.add('hidden');
@@ -1098,7 +1119,9 @@ export function createUi(deps) {
 		pauseMarkIds = [];
 		if (pauseMapLabelEl) pauseMapLabelEl.textContent = 'ダンジョンマップ';
 		const hasCompass   = !!dm.hasCompass;
-		const bossStageKey = ld?.bossStage ?? null;
+		// キュー114（2026-11-22 ユーザー指示「ボスを倒したらマップからボス部屋のマークは消していい」）：
+		// 倒した後は印もヒントも出さない＝ふつうの訪れた部屋として描く。
+		const bossStageKey = (ld?.bossStage && !bossRoomCleared(lk, ld)) ? ld.bossStage : null;
 
 		const coords = stages.map(k => k.split(',').map(Number));
 		const minX = Math.min(...coords.map(c => c[0]));
@@ -1169,9 +1192,19 @@ export function createUi(deps) {
 		}
 	}
 
+	// 選んでいる道具の真実は `player.activeSubItem` だけ。ポーズの並びの番号はそこから毎回導く。
+	// 2026-11-22 ユーザー報告＝「右上のアイテムはロウソクなのに、ポーズ画面で表示されているのはブーメラン」。
+	// 原因＝番号をポーズ側で別に持ち続けていた∴X の早替え（quick-swap.js）や道具の増減で
+	// activeSubItem だけが変わると、次にポーズを開いたとき古い番号の枠が光っていた。
+	function syncPauseItemIdx(player) {
+		const cur = pauseItemKeys.indexOf(player.activeSubItem);
+		pauseItemIdx = cur >= 0 ? cur : 0;
+	}
+
 	function pauseSelectPrev() {
 		const player = getPlayer();
 		if (!pauseItemKeys.length) return;
+		syncPauseItemIdx(player);
 		pauseItemIdx = (pauseItemIdx - 1 + pauseItemKeys.length) % pauseItemKeys.length;
 		player.activeSubItem = pauseItemKeys[pauseItemIdx];
 		playSound('switch');
@@ -1181,6 +1214,7 @@ export function createUi(deps) {
 	function pauseSelectNext() {
 		const player = getPlayer();
 		if (!pauseItemKeys.length) return;
+		syncPauseItemIdx(player);
 		pauseItemIdx = (pauseItemIdx + 1) % pauseItemKeys.length;
 		player.activeSubItem = pauseItemKeys[pauseItemIdx];
 		playSound('switch');
@@ -1431,7 +1465,7 @@ export function createUi(deps) {
 		player.selectedMarkId = markId(layer, r.stage);
 		updateMarkGuide();
 		playSound('item');
-		shopSay(`地図に「${r.label}」を記した！${r.hint ? ` ${r.hint}` : ''}`);
+		shopSay(`地図に「${r.label}」を記した！ 目的地に した${r.hint ? ` ${r.hint}` : ''}`);
 		updateHud();
 		saveGame();
 		renderShop();

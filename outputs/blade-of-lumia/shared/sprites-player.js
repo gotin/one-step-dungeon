@@ -19,6 +19,9 @@ export const PLAYER_PAL = {
 	// 金の装束のきらめき用の型抜き＝服（4/5）と金の髪（2/7/8/9/10）だけを光の色で塗り、ほかは透明
 	// （`game/render-chars.js addGoldShine` が勇者の絵に重ね、光の帯をマスクで流す）。
 	goldShine:    ['transparent','transparent','#fffbe0','transparent','#fffbe0','#ffe9a0','transparent','#ffffff','#fff0b0','#ffffff','#fff0b0'],
+	// キュー116 ③：女王の周回の島に立つ石の剣士（`shared/npcs.js` PERSON_NPC_SPRITES.heroStone）。hero の各色を
+	// 灰色にした値＝場面で勇者が石になる見え方（board.css `.stone`＝grayscale(1) brightness(0.75) contrast(1.1)）と揃える。
+	heroStone: ['transparent','#000000','#7a7a7a','#aaaaaa','#787878','#474747','#a5a5a5'],
 	guard:    ['transparent','#0a0a14','#501880','#9040c0','#b989e8','#ffd0ff'],
 	// NPC 村人（緑服）
 	npcA:     ['transparent','#000000','#2a5020','#e0bca9','#113e09','#3a7030','#f0c080'],

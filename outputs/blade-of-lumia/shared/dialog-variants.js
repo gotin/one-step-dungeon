@@ -48,7 +48,7 @@
 import { labelOf, bossesInOrder, SUB_ITEM_KEYS } from './progression.js';
 import { ENEMY_META } from './enemies.js';
 import { ITEM_META, EQUIP_META } from './items.js';
-import { listStoryFlags, flagVariantKey, flagNameOfVariantKey } from './story-events.js';
+import { listStoryFlags, flagVariantKey, flagNameOfVariantKey, QUEEN_KEY } from './story-events.js';
 
 /**
  * 選べるボスの一覧（進行順）＝実マップのボス部屋から導出する。手書きの表は作らない。
@@ -66,7 +66,7 @@ export function bossVariantOptions(map) {
 }
 
 /** 版の種類＝マークを持てるか／条件文の書き方が違う4種 */
-export const VARIANT_KIND = { BOSS: 'boss', DEFAULT: 'default', AFTER: 'after', ITEM: 'item', FLAG: 'flag' };
+export const VARIANT_KIND = { BOSS: 'boss', DEFAULT: 'default', AFTER: 'after', ITEM: 'item', FLAG: 'flag', QUEEN: 'queen' };
 
 /**
  * 道具の所持を条件にする版のキーの接頭辞（実行キュー26）＝`item:<ITEM_META の id>`。
@@ -135,6 +135,12 @@ export const AFTER_KEY = 'after';
  */
 export function variantOptions(map) {
 	const opts = [{
+		// キュー116（2026-11-22）：女王の周回＝クリア後の「はじめから」。**既定では一番上＝一番弱い**
+		// ＝その周回の「基本の台詞」として使う（ボスを倒した後の案内などの版は、周回でもそのまま勝つ）。
+		// 1周目の基本の台詞（勇者への呼びかけ・女王は石で眠る）を、女王に向けて言い直すための版。
+		key: QUEEN_KEY, kind: VARIANT_KIND.QUEEN,
+		label: '女王の周回（クリア後の「はじめから」）', supportsMark: true,
+	}, {
 		key: AFTER_KEY, kind: VARIANT_KIND.AFTER,
 		label: '星の欠片を1つ以上手にした後', supportsMark: false,
 	}, {

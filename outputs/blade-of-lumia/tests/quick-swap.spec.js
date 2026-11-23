@@ -215,3 +215,31 @@ test.describe('スマホ：SUB ボタン', () => {
     expect(s.player.activeSubItem, 'やめたのに持ち替わった').toBe('bow');
   });
 });
+
+// 2026-11-22 ユーザー報告＝「画面右上のアイテムはロウソクなのに、ポーズ画面で表示されているのはブーメラン」。
+// 原因＝ポーズの並びの番号をポーズ側で別に持ち続けていた∴X で持ち替えた後にポーズを開くと、古い番号の枠が光った。
+// 守るもの＝ポーズの光る枠はいつも今の道具（activeSubItem）・ポーズの ←→ も今の道具から動く。
+test('⑫ X で持ち替えた後にポーズを開くと、今の道具の枠が光り、←→ もそこから動く', async ({ page }) => {
+  await open(page);
+  const pauseSelected = () => page.locator('.pause-item-slot.selected .pause-item-name').textContent();
+  // ポーズで → ＝弓 → ブーメラン（ポーズ側の番号が 1 になる）
+  await page.keyboard.press('Escape');
+  await expect(page.locator('#pause-overlay')).toBeVisible();
+  await page.keyboard.press('ArrowRight');
+  expect((await state(page)).player.activeSubItem).toBe('boomerang');
+  await page.keyboard.press('Escape');
+  await expect(page.locator('#pause-overlay')).toBeHidden();
+  // X の早替えで爆弾へ
+  await holdXUntilOpen(page);
+  await page.keyboard.press('ArrowRight');
+  await page.keyboard.up('x');
+  expect((await state(page)).player.activeSubItem, '前提：X で爆弾に持ち替えた').toBe('bomb');
+  // もう一度ポーズ＝光る枠は爆弾（古い番号のブーメランではない）
+  await page.keyboard.press('Escape');
+  await expect(page.locator('#pause-overlay')).toBeVisible();
+  expect(await pauseSelected()).toContain('爆弾');
+  // → は爆弾から端を回って弓へ（古い番号から動くと爆弾のままになる）
+  await page.keyboard.press('ArrowRight');
+  expect((await state(page)).player.activeSubItem).toBe('bow');
+  expect(await pauseSelected()).toContain('弓');
+});

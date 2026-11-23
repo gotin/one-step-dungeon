@@ -15,6 +15,13 @@
       "when": 1794311377534,
       "tag": "0001_auth",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1795402143897,
+      "tag": "0002_game_saves",
+      "breakpoints": true
     }
   ]
 }
