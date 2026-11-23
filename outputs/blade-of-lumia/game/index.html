@@ -90,6 +90,18 @@
         <button id="pause-sound-se" class="pause-sound-btn" type="button">効果音：ON</button>
         <span id="pause-sound-hint">M キーで両方まとめて</span>
       </div>
+      <!-- アカウント（キュー118）＝サイトの上で開いたときだけ出す（game/cloud-save.js） -->
+      <div id="pause-account" class="hidden">
+        <div id="pause-account-guest">
+          <button id="pause-login" class="pause-sound-btn" type="button">Google でログイン</button>
+          <div class="pause-account-note">今の進みを保存してからログインします。<br>ログイン先にあるセーブは、今の進みで上書きされます。</div>
+        </div>
+        <div id="pause-account-user" class="hidden">
+          <span class="pause-account-note"><span id="pause-account-name"></span> でログイン中</span>
+          <button id="pause-logout" class="pause-sound-btn" type="button">ログアウト</button>
+          <button id="pause-account-delete" class="pause-sound-btn" type="button">退会</button>
+        </div>
+      </div>
       <!-- 地図（その層の地図を入手済みのときのみ表示）
            ダンジョン＝部屋グリッド／field＝1セル1px の見取り図（キュー15）。
            見出しの文字は層によって変わる∴文字だけ別の span に分ける（絵は起動時に

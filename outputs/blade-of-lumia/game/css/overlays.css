@@ -629,3 +629,29 @@
     flex-direction: column;
     gap: 12px;
 }
+
+/* キュー118：ポーズのアカウント欄（音の切り替えと同じボタンの形） */
+#pause-account {
+    margin-top: 10px;
+    padding-top: 8px;
+    border-top: 1px solid #1e3448;
+}
+#pause-account.hidden,
+#pause-account-guest.hidden,
+#pause-account-user.hidden { display: none; }
+#pause-account-guest,
+#pause-account-user {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    align-items: center;
+    justify-content: center;
+}
+.pause-account-note {
+    font-size: 11px;
+    color: #8aa0b4;
+    line-height: 1.5;
+    text-align: center;
+}
+#pause-account-guest .pause-account-note { flex-basis: 100%; }
+#pause-account-name { color: #c8dcef; word-break: break-all; }

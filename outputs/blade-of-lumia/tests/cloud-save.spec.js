@@ -29,11 +29,11 @@ function seedLocalOnce(page, value) {
 }
 
 /** サイトの API を偽装する。saves に PUT の本文が溜まる */
-async function mockSite(page, { user = null, serverData = null, saveStatus = () => 200 } = {}) {
+async function mockSite(page, { user = null, getUser = () => user, serverData = null, saveStatus = () => 200 } = {}) {
   const calls = { claims: 0, saves: [], deletes: 0, signIns: [] };
   const json = (route, body, status = 200) =>
     route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(body) });
-  await page.route('**/api/auth/get-session/', (r) => json(r, user ? { user, session: {} } : null));
+  await page.route('**/api/auth/get-session/', (r) => { const u = getUser(); return json(r, u ? { user: u, session: {} } : null); });
   await page.route(`${API}/claim/`, (r) => { calls.claims++; return json(r, { token: `t${calls.claims}`, data: serverData, savedAt: null }); });
   await page.route(`${API}/save/`, (r) => {
     const body = r.request().postDataJSON();
@@ -160,10 +160,70 @@ test.describe('キュー117 ログインしてセーブを預ける', () => {
     await expect.poll(() => calls.deletes).toBe(1);
   });
 
+  test('キュー118 ポーズ：未ログインは「Google でログイン」＝押した瞬間の状態を保存し、戻ったらログイン先を上書きして上げる', async ({ page }) => {
+    await seedLocalOnce(page, saveOf('7,14'));
+    let loggedIn = false;
+    const calls = await mockSite(page, {
+      getUser: () => (loggedIn ? { name: 'A', email: 'a@example.test' } : null),
+      serverData: { [SAVE_KEY]: saveOf('3,4') },   // ログイン先には別の（古い）セーブがある
+    });
+    await page.goto(GAME_URL);
+    await continueGame(page);
+    // 部屋の中で動いてから（最後の保存より後の進み）ポーズ → ログイン
+    await page.evaluate(() => window.__game.giveSubItem('quiver'));
+    // この時点の手元のセーブにはまだ矢筒が無い（押した瞬間に保存することを確かめるため）
+    const beforeLogin = JSON.parse(await page.evaluate((k) => localStorage.getItem(k), SAVE_KEY));
+    expect(beforeLogin.player.subItems?.quiver).toBeFalsy();
+    const maxArrows = await page.evaluate(() => window.__game.getState().player.maxArrows);
+    await page.keyboard.press('Escape');
+    await expect(page.locator('#pause-account-guest')).toBeVisible();
+    await expect(page.locator('#pause-account-user')).toBeHidden();
+    loggedIn = true;   // Google から戻ったらログイン中
+    await page.locator('#pause-login').click();
+    await page.waitForURL(/signed-in-mock=1/);
+    expect(calls.signIns[0].provider).toBe('google');
+
+    // 戻った後：ログイン先の 3,4 を読まず、押した瞬間の手元（7,14・77 ルピー）を上げている
+    await expect(page.locator('#title-account-user')).toBeVisible();
+    await expect.poll(() => calls.saves.length).toBeGreaterThan(0);
+    const sent = JSON.parse(calls.saves[0].data[SAVE_KEY]);
+    expect(sent.stageKey).toBe('7,14');
+    expect(sent.player.maxArrows).toBe(maxArrows);
+    expect(sent.player.maxArrows).toBeGreaterThan(8);
+    await continueGame(page);
+    expect(await page.evaluate(() => window.__game.getState().stageKey)).toBe('7,14');
+  });
+
+  test('キュー118 ポーズ：ログイン中は名前・ログアウト・退会。退会の「戻る」はポーズへ帰る', async ({ page }) => {
+    await seedLocalOnce(page, saveOf('7,14'));
+    const calls = await mockSite(page, { user: { name: 'テスト花子', email: 'h@example.test' }, serverData: { [SAVE_KEY]: saveOf('7,14') } });
+    await page.goto(GAME_URL);
+    await continueGame(page);
+    await page.keyboard.press('Escape');
+    await expect(page.locator('#pause-account-name')).toHaveText('テスト花子');
+    await expect(page.locator('#pause-login')).toBeHidden();
+    await page.locator('#pause-account-delete').click();
+    await expect(page.locator('#account-delete-overlay')).toBeVisible();
+    await page.locator('#btn-account-delete-no').click();
+    await expect(page.locator('#account-delete-overlay')).toBeHidden();
+    await expect(page.locator('#pause-overlay')).toBeVisible();
+    await expect(page.locator('#title-overlay')).toBeHidden();
+    expect(calls.deletes).toBe(0);
+  });
+
   test('サイトの API が無い（開発用の vite サーバ）＝今までどおり：セーブが無ければすぐ始まる', async ({ page }) => {
     await page.goto(GAME_URL);
     await page.waitForFunction(() => document.getElementById('board')?.children.length > 0);
     await expect(page.locator('#title-overlay')).toBeHidden();
     await expect(page.locator('#title-account')).toBeHidden();
+  });
+
+  test('サイトの API が無い＝ポーズにもアカウント欄は出ない', async ({ page }) => {
+    await seedLocalOnce(page, saveOf('7,14'));
+    await page.goto(GAME_URL);
+    await continueGame(page);
+    await page.keyboard.press('Escape');
+    await expect(page.locator('#pause-overlay')).toBeVisible();
+    await expect(page.locator('#pause-account')).toBeHidden();
   });
 });
