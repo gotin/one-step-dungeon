@@ -51,6 +51,7 @@ async function mockSite(page, { user = null, serverData = null, saveStatus = () 
 
 async function continueGame(page) {
   await page.locator('#btn-continue').click();
+  await expect(page.locator('#title-overlay')).toBeHidden();
   await page.waitForFunction(() => document.getElementById('board')?.children.length > 0);
 }
 
@@ -137,9 +138,10 @@ test.describe('キュー117 ログインしてセーブを預ける', () => {
     await page.waitForTimeout(3500);
     expect(calls.saves.length).toBe(n);
 
-    await page.locator('#btn-takeover').click();
+    // 読み直し＝もう一度 claim してこの画面が書ける画面に戻る（読み直しを待ってから見る＝古い画面の枠で判定しない）
+    await Promise.all([page.waitForEvent('load'), page.locator('#btn-takeover').click()]);
+    await expect.poll(() => calls.claims).toBe(2);
     await expect(page.locator('#title-overlay')).toBeVisible();
-    expect(calls.claims).toBe(2);   // 読み直し＝もう一度 claim してこの画面が書ける画面に戻る
     await expect(page.locator('#takeover-overlay')).toBeHidden();
   });
 
