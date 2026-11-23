@@ -97,7 +97,8 @@ export function initInput(deps) {
 
 	// ボタンを選ぶ枠（タイトル・削除確認・ゲームオーバー・エンディング）が出ているか。
 	// この間だけ Tab の既定動作（次の要素へフォーカス）を通す＝マウスを使わずボタンへ届く道を残す。
-	const BUTTON_OVERLAYS = ['title-overlay', 'confirm-overlay', 'gameover-overlay', 'ending-overlay'];
+	// キュー117：退会の確認・別の画面で開かれた、も同じ扱い（ゲームの操作を通さない・矢印でボタンを選ぶ）。
+	const BUTTON_OVERLAYS = ['title-overlay', 'confirm-overlay', 'gameover-overlay', 'ending-overlay', 'account-delete-overlay', 'takeover-overlay'];
 	const buttonOverlayOpen = () => BUTTON_OVERLAYS.some(id => {
 		const el = document.getElementById(id);
 		return !!el && !el.classList.contains('hidden');

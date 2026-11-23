@@ -76,6 +76,7 @@ import { createCharge } from './charge.js';
 import { createDebuff } from './debuff.js';
 // ── 遊びの記録（探索率・宝箱・撃破数・倒れた回数＝実行キュー66）──────────────
 import { collectPlayStats, sanitizeCount } from './play-stats.js';
+import { initCloudSave, signInWithGoogle, signOut as cloudSignOut, deleteCloudAccount } from './cloud-save.js';   // キュー117
 
 
 // ── DOM ───────────────────────────────────────────────────────
@@ -2531,8 +2532,10 @@ btnContinueEl.addEventListener('click', () => {
 });
 
 btnNewgameEl.addEventListener('click', () => {
-	// 確認ダイアログを表示
 	titleOverlayEl.classList.add('hidden');
+	// キュー117：セーブが無い（「続きから」を隠している）ときは消すものが無い＝確認せずに始める
+	if (btnContinueEl.style.display === 'none') { startNewGame(); return; }
+	// 確認ダイアログを表示
 	confirmOverlayEl.classList.remove('hidden');
 });
 
@@ -2545,6 +2548,48 @@ btnConfirmNoEl.addEventListener('click', () => {
 	// タイトルに戻る
 	confirmOverlayEl.classList.add('hidden');
 	titleOverlayEl.classList.remove('hidden');
+});
+
+// ── キュー117：ログインしてセーブを預ける（タイトルのアカウント欄・退会・別の画面で開かれた）──
+const titleAccountEl   = document.getElementById('title-account');
+const accountDeleteEl  = document.getElementById('account-delete-overlay');
+const takeoverEl       = document.getElementById('takeover-overlay');
+
+function showAccountArea(user) {
+	titleAccountEl?.classList.remove('hidden');
+	document.getElementById('title-account-guest')?.classList.toggle('hidden', !!user);
+	document.getElementById('title-account-user')?.classList.toggle('hidden', !user);
+	const nameEl = document.getElementById('title-account-name');
+	if (nameEl) nameEl.textContent = user ? (user.name || user.email) : '';
+}
+
+// 後から別の画面（別のブラウザ・別のタブ）が開かれた＝この画面はもう保存できない∴世界を止めて知らせる。
+// 「こちらで続ける」＝読み直す＝起動の claim でこの画面が書ける画面に戻り、ログイン先の最新のセーブを読む。
+function showTakeover() {
+	stopGameLoop();
+	_inputModule?.heldKeys?.clear();
+	takeoverEl?.classList.remove('hidden');
+}
+
+document.getElementById('btn-takeover')?.addEventListener('click', () => location.reload());
+document.getElementById('btn-login')?.addEventListener('click', () => {
+	signInWithGoogle().catch((e) => { console.warn(e); fx.pulse?.('ログインを始められませんでした'); });
+});
+document.getElementById('btn-logout')?.addEventListener('click', () => { cloudSignOut(); });
+document.getElementById('btn-account-delete')?.addEventListener('click', () => {
+	titleOverlayEl.classList.add('hidden');      // 枠を1つずつ出す（矢印で選ぶボタンが混ざらない）
+	accountDeleteEl?.classList.remove('hidden');
+});
+document.getElementById('btn-account-delete-no')?.addEventListener('click', () => {
+	accountDeleteEl?.classList.add('hidden');
+	titleOverlayEl.classList.remove('hidden');
+});
+document.getElementById('btn-account-delete-yes')?.addEventListener('click', () => {
+	deleteCloudAccount().catch((e) => {
+		console.warn(e);
+		accountDeleteEl?.classList.add('hidden');
+		titleOverlayEl.classList.remove('hidden');
+	});
 });
 
 // ゲームオーバー「リトライ」ボタン
@@ -2759,7 +2804,18 @@ async function init() {
 	}
 
 	await loadMapData();
+	// キュー117：ログイン中ならログイン先のセーブを手元に写してから読む（ログイン先を優先＝ユーザー決定）。
+	// サイトの API に届かない（開発用の vite サーバ）ときは何もしない＝下は今までどおり。
+	const cloud = await initCloudSave({ onTakenOver: showTakeover });
 	const hasSave = loadGame();
+
+	// サイトの上では、セーブが無くてもタイトルを出す＝ログインの入口（新しいブラウザで続きを引くため・ユーザー決定）。
+	if (cloud.available) {
+		showAccountArea(cloud.user);
+		titleOverlayEl.classList.remove('hidden');
+		btnContinueEl.style.display = hasSave && stageKey ? '' : 'none';
+		return;
+	}
 
 	if (!hasSave || !stageKey) {
 		// セーブデータなし → 即新規ゲーム開始
