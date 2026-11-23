@@ -108,7 +108,8 @@ test.describe('会話の「進行で切り替わる版」をエディタで編�
 		const entry    = entryOf(SAGE.stage, SAGE.pos);
 		const expected = readEntryVariants(entry, OPTIONS);
 		// 2026-11-15（キュー104 ③）＝出来事「タロの呼び出し」の版を U のすぐ下に足した＝9 → 10
-		expect(expected.length, '老賢者の版が減った＝別の相手で測り直す').toBe(10);
+		// 2026-11-22（キュー116 ②）＝女王の周回の版 `queen` を先頭に足した＝10 → 11
+		expect(expected.length, '老賢者の版が減った＝別の相手で測り直す').toBe(11);
 
 		await gotoEditorWithMap(page);
 		await openStageInEditor(page, SAGE.stage);
@@ -118,7 +119,9 @@ test.describe('会話の「進行で切り替わる版」をエディタで編�
 		const conds = await item.locator('[data-vf="cond"]').evaluateAll((els) => els.map((e) => e.value));
 		expect(conds, '版の並びが実ゲームの優先順と違う').toEqual(expected.map((v) => v.key));
 		// 並びは**上が一般・下が特殊**（下がヒットしたら勝つ）∴一般の版が先頭に来る。
-		expect(expected[0].key, '一般の版（default／after）が先頭に来ていない').toBe('default');
+		// キュー116：女王の周回の版 `queen` は2周目の基本の台詞＝一番弱い＝先頭。その次が一般の版。
+		expect(expected[0].key, '女王の周回の版が先頭に来ていない').toBe('queen');
+		expect(expected[1].key, '一般の版（default／after）が女王の版の次に来ていない').toBe('default');
 
 		// 条件のラベルにボスの名前が入る（タイル文字だけでは何のボスか分からない）
 		const gIdx = sageIdx('G');
@@ -309,7 +312,9 @@ test.describe('会話の「進行で切り替わる版」をエディタで編�
 		// → 51（2026-10-14・実行キュー63＝field 6,13 (8,10) に老兵ガルドを新設＝`item:shield` 版
 		//   （盾を手にした後に盾の使い方を話す）。盾は装備だが `VARIANT_EQUIP_IDS` で版の条件にした）。
 		// この数は「増えたことに気づくため」の目印∴増やすときは PLAN の記述も一緒に直す。
-		expect(targets.length, '版を持つエントリの数が変わった（PLAN の記述も直す）').toBe(51);
+		// → 55（2026-11-22・キュー116 ②＝女王の周回の版を7か所に足した。うち版が初めて付いたのは4か所
+		//   ＝女王の石碑・ザーネルの声・終章・エルンの使い）。
+		expect(targets.length, '版を持つエントリの数が変わった（PLAN の記述も直す）').toBe(55);
 		for (const t of targets) {
 			const clone = JSON.parse(JSON.stringify(t.entry));
 			applyEntryVariants(clone, readEntryVariants(clone, OPTIONS));

@@ -39,7 +39,7 @@ import { TILE, READABLE_SIGN_TILES } from '../shared/tiles.js';
 import { NPC_SPRITE_MAP } from '../shared/npcs.js';
 import { ORDER, labelOf, bossesInOrder } from '../shared/progression.js';
 import { AFTER_KEY, itemIdOfVariantKey, VARIANT_ITEM_IDS } from '../shared/dialog-variants.js';
-import { listStoryFlags, flagNameOfVariantKey } from '../shared/story-events.js';
+import { listStoryFlags, flagNameOfVariantKey, QUEEN_KEY } from '../shared/story-events.js';
 import { normalizeDialogMarks } from '../shared/marks.js';
 import { findRawIconEmoji, countIconMarkers } from '../shared/map-texts.js';
 
@@ -300,7 +300,7 @@ for (const [layerName, layer] of Object.entries(d.layers)) {
         ]);
         for (const key of keys) {
           variantKeyCount++;
-          if (key === 'default' || key === AFTER_KEY) continue;
+          if (key === 'default' || key === AFTER_KEY || key === QUEEN_KEY) continue;   // queen＝女王の周回（キュー116）
           // キュー103: 出来事の版（`flag:<名前>`）＝どこかの人が `setsFlag` で記す名前でないと永久に成り立たない
           const flag = flagNameOfVariantKey(key);
           if (flag !== null) {
@@ -319,7 +319,7 @@ for (const [layerName, layer] of Object.entries(d.layers)) {
           }
           if (!VALID_BOSS_KEYS.has(key)) {
             err(`[${layerName} ${stageKey}] (${posKey}) の版 "${key}" が実在しないボスを指す`
-              + `（選べるのは ${[...VALID_BOSS_KEYS].join(' / ')} と default / after / item:<道具id>）`);
+              + `（選べるのは ${[...VALID_BOSS_KEYS].join(' / ')} と default / after / queen / item:<道具id>）`);
           }
         }
       }

@@ -178,6 +178,8 @@ document.addEventListener('editor:previewClickAt', e => {
 			// 2026-09-19：地図（目的地マークの見え方の確認用）。editor-io.js の
 			// getPreviewSettings にも同じ行がある（両方に足す）。
 			map:       document.getElementById('ps-map')?.checked ?? true,
+			// キュー114：コンパス（全ダンジョン）。editor-io.js の ps 定義にも同じ行がある（両方に足す）。
+			compass:   document.getElementById('ps-compass')?.checked ?? false,
 			cleared:   document.getElementById('ps-cleared').checked,
 			// 実行キュー23: 撃破済みボス（会話の「進行で切り替わる版」の確認用）。
 			// editor-io.js の getPreviewSettings にも同じ行がある（両方に足す）。

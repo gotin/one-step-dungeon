@@ -709,12 +709,14 @@ test.describe('目的地マーク（一覧・選択・方向表示）', () => {
 
 	// 実行キュー17-10b＝老賢者の2件目の印（G 等）が消えた∴「奪わない」検査は同じ村の中の
 	// 別の相手＝老賢者（1件目・静的）→ 諦めた老人（2件目・U＝嵐の鷲王＝最後の1体）に差し替える。
-	test('⑫ 新しく教わった印は、選んでいる印を奪わない', async ({ page }) => {
+	// キュー115（2026-11-22 ユーザー指示）で規則を逆にした＝旧⑫「新しく教わった印は、選んでいる印を奪わない」は失効。
+	// ユーザーの言葉＝「新しい目的地が追加されたら、自動的にその目的地を今の選択にしてしまってよさそう。
+	// ほとんどの場合その目的地に進むし。ただし、メッセージでその新しい目的地を設定したことを伝えるようにしたい」。
+	test('⑫ 新しく教わった印は今の目的地に選ばれ、知らせに出る（教え直しでは選択を変えない）', async ({ page }) => {
 		await gotoFreshGame(page);
 		await grantMap(page, 'field');
 		await talkToSage(page);
 		await finishDialog(page);
-		// 1件目は選択が空∴自動で選ばれる（選ばせる相手が1つも無い状態を作らないため）
 		expect(await page.evaluate(() => window.__game.getPlayer().selectedMarkId)).toBe(`field:${DEST_STAGE}`);
 
 		await page.evaluate(() => window.__game.addDefeatedBoss('U'));
@@ -722,20 +724,22 @@ test.describe('目的地マーク（一覧・選択・方向表示）', () => {
 		await finishDialog(page);
 		const after = await page.evaluate(() => {
 			const p = window.__game.getPlayer();
-			return { sel: p.selectedMarkId, n: p.mapMarks.length };
+			return { sel: p.selectedMarkId, n: p.mapMarks.length, newest: p.mapMarks.at(-1) };
 		});
 		expect(after.n, '2件目の印が付いていない＝この検査は空振り').toBe(2);
-		expect(after.sel, '教わった印が選択を奪った（プレイヤーが選んだ印が勝手に変わる）').toBe(`field:${DEST_STAGE}`);
-		// HUD も選んでいる印を指し続ける
-		await expect(page.locator('#hud-mark-label')).toHaveText(DEST_LABEL);
+		expect(after.sel, '新しく教わった印が今の目的地にならない').toBe(`field:${after.newest.stage}`);
+		await expect(page.locator('#msg-bar')).toContainText(`地図に「${after.newest.label}」を記した！ 目的地に した`);
+		// HUD も新しい印を指す
+		await expect(page.locator('#hud-mark-label')).toHaveText(after.newest.label);
+		// 保存にも残る
+		expect((await readSave(page)).player.selectedMarkId).toBe(`field:${after.newest.stage}`);
 
-		// 自分で解除してから聞けば、次の印が自動で選ばれる（＝①の枝が生きていることの裏取り）
-		await page.evaluate(() => { window.__game.getPlayer().selectedMarkId = ''; });
+		// 自分で前の印を選び直してから同じ話を聞き直しても、選択は奪われない（新しく加わっていない）
+		await page.evaluate((id) => { window.__game.getPlayer().selectedMarkId = id; }, `field:${DEST_STAGE}`);
 		await talkToOldMan(page);
 		await finishDialog(page);
-		const sel = await page.evaluate(() => window.__game.getPlayer().selectedMarkId);
-		expect(sel, '選択を空にしても自動で選ばれない').not.toBe('');
-		expect(sel).not.toBe(`field:${DEST_STAGE}`);
+		expect(await page.evaluate(() => window.__game.getPlayer().selectedMarkId),
+			'教え直し（既にある印）で選択が変わった').toBe(`field:${DEST_STAGE}`);
 	});
 
 	test('⑬ ダンジョンでは ↑↓ が field の印を動かさない（一覧が消えたら並びも消える）', async ({ page }) => {

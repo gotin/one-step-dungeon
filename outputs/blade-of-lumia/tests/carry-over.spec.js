@@ -54,7 +54,23 @@ async function startClearedRun(page, carry) {
 	}, { SAVE_KEY, CLEARED_KEY, CARRY_KEY, carry });
 	await page.goto(GAME_URL);
 	await waitForBoard(page);
+	await finishCurseScene(page);
 	await page.waitForTimeout(300);
+}
+
+// キュー116：クリア後の「はじめから」は、剣士が石になる場面から始まる＝読み進めて村に立つまで送る
+async function finishCurseScene(page) {
+	await page.waitForFunction(() => document.body.classList.contains('ending-scene'), null, { timeout: 5000 });
+	for (let i = 0; i < 200; i++) {
+		const st = await page.evaluate(() => ({
+			busy: document.body.classList.contains('ending-scene'),
+			dlg: !document.getElementById('dialog-overlay').classList.contains('hidden'),
+		}));
+		if (!st.busy) return;
+		if (st.dlg) await page.keyboard.press('Space');
+		await page.waitForTimeout(150);
+	}
+	throw new Error('剣士が石になる場面が終わらない');
 }
 
 test('はじめから（クリア後）＝引き継いだ強さで始まり、道具は無い・女王の髪が金で光る', async ({ page }) => {

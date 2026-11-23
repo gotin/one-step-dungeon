@@ -28,6 +28,8 @@ export const PERSON_NPC_SPRITES = {
 	// 女王ルミア＝遊べる絵の正面（shared/sprites-queen.js queenD・refs/女王シート.png）と同じ絵。
 	// ❌ 旧＝refs/女王32b.png の読み戻し（専用の npcQueen）＝崩れていた（2026-11-15 ユーザー指摘）→ 消した。
 	npcQueen: { sprite: 'queenD', pal: 'queen', label: '女王ルミア' },
+	// キュー116 ③：女王の周回で女王の島（field 11,19）に立つ石の剣士＝勇者の正面の絵を灰色で。
+	heroStone: { sprite: 'heroD', pal: 'heroStone', label: '石の剣士' },
 };
 
 /** そのセルの NPC を描く絵 {sprite, pal}。NPC でないタイルは null。 */

@@ -370,7 +370,7 @@ function applyProgressPreset(value) {
 	setCheck('ps-silverboomerang', p.boomerang >= 1);
 	setCheck('ps-starboomerang',   p.boomerang >= 2);
 	setCheck('ps-wingrobe', p.wingrobe);
-	// `ps-map`（地図）はプリセットで動かさない＝地図は層ごとの拾い物で進行の段と1対1にならず、
+	// `ps-map`（地図）と `ps-compass`（コンパス）はプリセットで動かさない＝地図は層ごとの拾い物で進行の段と1対1にならず、
 	// かつ「印が見えるか」を確かめるための確認用の口∴ユーザーの指定をそのまま残す。
 }
 
@@ -433,6 +433,8 @@ function getPreviewSettings() {
 		scrolls:   document.getElementById('ps-scrolls')?.checked ?? false,
 		// 2026-09-19：地図（目的地マークの見え方の確認用）。editor.js の ps 定義にも同じ行がある。
 		map:       document.getElementById('ps-map')?.checked ?? true,
+		// キュー114：コンパス（全ダンジョン）。editor.js の ps 定義にも同じ行がある（両方に足す）。
+		compass:   document.getElementById('ps-compass')?.checked ?? false,
 		cleared:   document.getElementById('ps-cleared').checked,
 		// 実行キュー23: 撃破済みボス（タイル文字の配列）。選ぶのは「最も後に倒した1体」で、
 		// そこまでの必須ダンジョンのボスは導出して足す。editor.js の ps 定義にも同じ行がある。
@@ -462,6 +464,7 @@ export function openPreview(stX, stY, row, col, ps, TILE) {
 		url += `&ps_ladder=${ps.ladder?1:0}&ps_wingrobe=${ps.wingrobe?1:0}&ps_flute=${ps.flute?1:0}`;
 		url += `&ps_candle=${ps.candle?1:0}`;
 		url += `&ps_map=${ps.map?1:0}`;
+		if (ps.compass) url += `&ps_compass=1`;
 		url += `&ps_silverboomerang=${ps.silverboomerang?1:0}`;
 		url += `&ps_starboomerang=${ps.starboomerang?1:0}`;
 		url += `&ps_swiftboots=${ps.swiftboots?1:0}`;
