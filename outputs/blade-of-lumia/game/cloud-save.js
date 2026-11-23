@@ -19,6 +19,10 @@ export const CLOUD_PUSH_INTERVAL_MS = 3000;
 /** タブを閉じるときの keepalive の fetch は本文が 64KB まで＝それより大きいと送らない（直前の数秒を諦める） */
 const KEEPALIVE_MAX_CHARS = 60_000;
 
+/** ポーズからログインしたとき（キュー118）＝戻ってきたら、ログイン先のセーブを読まずに手元を上げる印。
+ *  タブの中だけで生きればよい（Google の画面へ移って戻るまで）∴ sessionStorage。 */
+const UPLOAD_LOCAL_FLAG = 'blade-of-lumia-login-upload-local';
+
 const state = {
 	available: false,   // サイトの API に届くか（届かなければ今までどおり手元だけ）
 	user: null,         // { name, email } ログイン中の人
@@ -72,11 +76,17 @@ export async function initCloudSave({ onTakenOver } = {}) {
 		if (!claim.res.ok || !claim.body?.token) return getCloudStatus();
 		state.user = { name: body.user.name ?? '', email: body.user.email ?? '' };
 		state.token = claim.body.token;
-		if (claim.body.data) {
+		let uploadLocal = false;
+		try {
+			uploadLocal = sessionStorage.getItem(UPLOAD_LOCAL_FLAG) === '1';
+			sessionStorage.removeItem(UPLOAD_LOCAL_FLAG);
+		} catch { /* 読めなければ今までどおり */ }
+		if (claim.body.data && !uploadLocal) {
 			writeLocal(claim.body.data);
 			state.lastSent = JSON.stringify(readLocal());
 		} else {
-			// ログイン先にまだ無い＝手元を上げる（初めてログインしたブラウザ）。手元も空なら送らない
+			// ログイン先にまだ無い＝手元を上げる（初めてログインしたブラウザ）。手元も空なら送らない。
+			// ポーズからログインした（uploadLocal）ときも、押した瞬間に保存した手元を上げる＝ログイン先は上書き（キュー118）
 			const local = readLocal();
 			state.lastSent = hasAnyLocal(local) ? null : JSON.stringify(local);
 			await pushIfChanged();
@@ -146,8 +156,15 @@ function pushOnPageHide() {
 	} catch { /* 閉じる途中＝何もできない */ }
 }
 
-/** Google でログインする（Google の画面へ移り、終わるとこの画面に戻ってくる） */
-export async function signInWithGoogle() {
+/**
+ * Google でログインする（Google の画面へ移り、終わるとこの画面に戻ってくる）。
+ * @param {{ uploadLocal?: boolean }} [opts] uploadLocal＝戻ったらログイン先のセーブを読まずに手元を上げる（ポーズから・キュー118）
+ */
+export async function signInWithGoogle({ uploadLocal = false } = {}) {
+	try {
+		if (uploadLocal) sessionStorage.setItem(UPLOAD_LOCAL_FLAG, '1');
+		else sessionStorage.removeItem(UPLOAD_LOCAL_FLAG);
+	} catch { /* 書けなければ今までどおり（ログイン先を優先） */ }
 	const { body } = await fetchJson('/api/auth/sign-in/social/', {
 		method: 'POST',
 		headers: { 'content-type': 'application/json' },

@@ -2561,6 +2561,24 @@ function showAccountArea(user) {
 	document.getElementById('title-account-user')?.classList.toggle('hidden', !user);
 	const nameEl = document.getElementById('title-account-name');
 	if (nameEl) nameEl.textContent = user ? (user.name || user.email) : '';
+	// キュー118：ポーズにも同じ欄（遊んでいる途中の入口）
+	document.getElementById('pause-account')?.classList.remove('hidden');
+	document.getElementById('pause-account-guest')?.classList.toggle('hidden', !!user);
+	document.getElementById('pause-account-user')?.classList.toggle('hidden', !user);
+	const pauseNameEl = document.getElementById('pause-account-name');
+	if (pauseNameEl) pauseNameEl.textContent = user ? (user.name || user.email) : '';
+}
+
+// 退会の確認をどこから開いたか（'title' | 'pause'）＝「戻る」で元の枠へ帰す
+let accountDeleteFrom = 'title';
+function openAccountDelete(from) {
+	accountDeleteFrom = from;
+	if (from === 'title') titleOverlayEl.classList.add('hidden');   // 枠を1つずつ出す（矢印で選ぶボタンが混ざらない）
+	accountDeleteEl?.classList.remove('hidden');                     // ポーズの上には重ねて出す（z-index が上）
+}
+function closeAccountDelete() {
+	accountDeleteEl?.classList.add('hidden');
+	if (accountDeleteFrom === 'title') titleOverlayEl.classList.remove('hidden');
 }
 
 // 後から別の画面（別のブラウザ・別のタブ）が開かれた＝この画面はもう保存できない∴世界を止めて知らせる。
@@ -2576,21 +2594,19 @@ document.getElementById('btn-login')?.addEventListener('click', () => {
 	signInWithGoogle().catch((e) => { console.warn(e); fx.pulse?.('ログインを始められませんでした'); });
 });
 document.getElementById('btn-logout')?.addEventListener('click', () => { cloudSignOut(); });
-document.getElementById('btn-account-delete')?.addEventListener('click', () => {
-	titleOverlayEl.classList.add('hidden');      // 枠を1つずつ出す（矢印で選ぶボタンが混ざらない）
-	accountDeleteEl?.classList.remove('hidden');
-});
-document.getElementById('btn-account-delete-no')?.addEventListener('click', () => {
-	accountDeleteEl?.classList.add('hidden');
-	titleOverlayEl.classList.remove('hidden');
-});
+document.getElementById('btn-account-delete')?.addEventListener('click', () => openAccountDelete('title'));
+document.getElementById('btn-account-delete-no')?.addEventListener('click', closeAccountDelete);
 document.getElementById('btn-account-delete-yes')?.addEventListener('click', () => {
-	deleteCloudAccount().catch((e) => {
-		console.warn(e);
-		accountDeleteEl?.classList.add('hidden');
-		titleOverlayEl.classList.remove('hidden');
-	});
+	deleteCloudAccount().catch((e) => { console.warn(e); closeAccountDelete(); });
 });
+// キュー118：ポーズのアカウント欄。ログインとログアウトは、押した瞬間の状態を先にセーブする
+// （ログイン＝戻ったらその手元をログイン先へ上げる＝ユーザーの問い「ログイン操作をするタイミングで保存状態を今の状態にする」）。
+document.getElementById('pause-login')?.addEventListener('click', () => {
+	saveGame();
+	signInWithGoogle({ uploadLocal: true }).catch((e) => { console.warn(e); fx.pulse?.('ログインを始められませんでした'); });
+});
+document.getElementById('pause-logout')?.addEventListener('click', () => { saveGame(); cloudSignOut(); });
+document.getElementById('pause-account-delete')?.addEventListener('click', () => openAccountDelete('pause'));
 
 // ゲームオーバー「リトライ」ボタン
 gameoverRetryEl?.addEventListener('click', () => { retryGame(); });

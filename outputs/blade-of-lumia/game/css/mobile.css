@@ -211,6 +211,7 @@
     #pause-box[data-tab="map"] #pause-items,
     #pause-box[data-tab="map"] #pause-stats,
     #pause-box[data-tab="map"] #pause-sound,
+    #pause-box[data-tab="map"] #pause-account,
     #pause-box[data-tab="map"] #pause-score {
         display: none;
     }
