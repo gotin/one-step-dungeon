@@ -2,6 +2,7 @@
 import {
   boolean,
   index,
+  jsonb,
   pgEnum,
   pgTable,
   primaryKey,
@@ -162,4 +163,27 @@ export const verification = pgTable(
     updatedAt: updatedAt(),
   },
   (t) => [index("verification_identifier_idx").on(t.identifier)],
+);
+
+// ---- ゲームのセーブ（Blade of Lumia キュー117：ログインして別のブラウザでも続ける） ----
+
+/** ゲームの手元のセーブ（localStorage の値の文字列）をそのまま持つ。null＝そのキーは無い */
+export type GameSaveData = Record<string, string | null>;
+
+export const gameSaves = pgTable(
+  "game_saves",
+  {
+    userId: text("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    // ゲームの名前（'blade-of-lumia'）。受け付ける名前は src/server/game-saves.ts の GAMES
+    game: text("game").notNull(),
+    // null＝まだ一度も保存していない（画面を開いただけ）
+    data: jsonb("data").$type<GameSaveData>(),
+    // 今書ける画面の印。画面を開くたびに作り直す＝最後に開いた画面だけが書ける
+    activeToken: text("active_token").notNull(),
+    savedAt: timestamp("saved_at", { withTimezone: true }),
+    createdAt: createdAt(),
+  },
+  (t) => [primaryKey({ columns: [t.userId, t.game] })],
 );

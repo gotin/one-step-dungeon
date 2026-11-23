@@ -27,6 +27,7 @@
 - Next.js 16（App Router）＋ TypeScript、Node.js 24
 - Neon PostgreSQL（`@neondatabase/serverless`）＋ Drizzle ORM ＋ drizzle-kit（migration）
 - 認証：Better Auth ＋ GitHub OAuth。管理者は GitHub のユーザー ID で allowlist（`ADMIN_GITHUB_ID`）
+  - 2026-11-23 追加：Google ログイン＝ゲームを遊ぶ人（Blade of Lumia キュー117＝セーブを預かって別のブラウザでも続ける）。誰でも通す。管理画面は `requireAdmin()` が GitHub の account を照合するので Google の人は入れない
   - 採用理由：Auth.js は Better Auth に合流し v5 は beta のまま。メールの allowlist はメール送信サービスが別途要るので、GitHub OAuth が最も軽い。メールアドレスでなく数値の ID で照合するのは、メール変更で締め出されないため
   - 認証情報は自前実装しない（パスワードを持たない）。セッション等の表は Better Auth が生成する
 - Markdown：remark / rehype ＋ `rehype-sanitize`（XSS 対策）、コードのハイライトは Shiki。MDX は使わない
@@ -105,7 +106,15 @@ slug_redirects                  slug を変えたとき旧 URL から 308 で飛
 （Better Auth 生成：user / session / account / verification）
 
 comments                        Phase 2。指示書の案どおり
+
+game_saves                      ゲームのセーブ（2026-11-23・Blade キュー117）
+  user_id FK(user, cascade), game text, PK(user_id, game)
+  data jsonb NULL                 手元の localStorage のキーと値をそのまま（受け付けるキーは server/game-saves.ts の GAMES）
+  active_token text               画面を開くたび作り直す＝最後に開いた画面だけが書ける
+  saved_at timestamptz NULL, created_at
 ```
+
+ゲームのセーブの API（ログインの Cookie で本人確認・別サイトからの書き込みは Origin で 403）：`POST /api/game/<game>/claim/`（新しい token とセーブを返す）・`PUT /api/game/<game>/save/`（`{token, data}`。token が古ければ 409）・`DELETE /api/game/account/`（退会＝user を消し、session・account・game_saves は連鎖で消える）。番人 `tests/e2e/game-save.spec.ts`（`tests/e2e/helpers/test-session.ts` が開発用 DB に仮のユーザーとセッションを作り、Better Auth と同じ形で署名した Cookie で叩く）。
 
 公開記事の条件は1箇所（`server/posts.ts`）にだけ書く：
 
@@ -164,6 +173,8 @@ BETTER_AUTH_SECRET=
 BETTER_AUTH_URL=
 GITHUB_CLIENT_ID=
 GITHUB_CLIENT_SECRET=
+GOOGLE_CLIENT_ID=               ゲームを遊ぶ人のログイン（Google Cloud プロジェクト smallisle の OAuth クライアント smallisle-web）
+GOOGLE_CLIENT_SECRET=
 ADMIN_GITHUB_ID=
 ADMIN_API_TOKEN=
 BLOB_READ_WRITE_TOKEN=
